@@ -4,6 +4,45 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+### Changed
+
+- The build system is now driven by per-family manifests
+  (`packaging/families/<id>/family.psd1`) instead of per-chip switches. A
+  family is one package covering one or more chips that share a driver binary;
+  the manifest declares its chips, sources, defines, audit signatures, INF
+  metadata, floppy placement and VM profile. `-S3Trio64` and
+  `-MatroxMillennium2` remain as aliases for `-Family`. See
+  `docs/specifications/family-manifest.md` and
+  `docs/decisions/2026-08-16-per-family-packaging.md`.
+- The INF is generated from the manifest rather than rewritten out of a
+  checked-in single-model file, so a family can carry more than one chip. The
+  single-hardware-ID assertion became set equality against the manifest. The
+  generated file is byte-identical to the previous output for both S3 targets.
+- Post-link auditing moved to `scripts/audit-family-binary.ps1`. Chip signature
+  checks are manifest-driven: an image must match all of its own chips'
+  signatures and none of any other family's, with the forbidden set derived
+  from the sibling manifests, so adding a family strengthens every existing
+  family's audit with no script change.
+- `run-vm-mode-matrix.ps1` takes `-Family`, and with it the guest port, package
+  path and mode list, so it can address a guest other than the controller's
+  default. A family declaring no emulator is refused explicitly instead of
+  silently testing the wrong machine. Its depth check no longer trusts the
+  remote agent's `BitsPerPixel`, which reports 0 against this driver while
+  reporting correctly against the stock S3 driver; depth is verified from the
+  guest-side GDI test result, which has always been accurate.
+
+### Added
+
+- `scripts/run-checks.ps1`, the local CI gate: tree check, host tests,
+  per-family builds with audits and INF assertions, floppy.
+- `scripts/build-all-packages.ps1`, which builds every declared family and
+  writes `build/packages.json` with per-file SHA-256.
+- `scripts/golden-baseline.ps1`, which captures and compares the byte-level
+  baseline the restructure must preserve. Win32 PE link timestamps are zeroed
+  before hashing so a rebuild is reproducible.
+
 ## 0.3 - 2026-08-15
 
 ### Added

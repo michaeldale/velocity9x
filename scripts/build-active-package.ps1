@@ -10,12 +10,39 @@ param(
     # so existing invocations keep working. Use -NoBootTrace to omit it.
     [switch]$BootTrace,
     [switch]$NoBootTrace,
+    # Family manifest id under packaging\families.
+    [string]$Family,
+    # Deprecated alias for -Family s3-trio64. Retired at phase 8 of
+    # docs\plans\multi-chip-restructure.md.
     [switch]$S3Trio64
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outputDir = Join-Path $repoRoot $(if ($S3Trio64) { "build\win98se-trio64" } else { "build\win98se-active" })
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+. (Join-Path $PSScriptRoot "lib\inf.ps1")
+
+if (-not $Family) {
+    $Family = if ($S3Trio64) { 's3-trio64' } else { 's3-virge' }
+    if ($S3Trio64) {
+        Write-Verbose "Legacy -S3Trio64 mapped to -Family $Family."
+    }
+} elseif ($S3Trio64) {
+    throw "-Family cannot be combined with -S3Trio64."
+}
+$familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
+if ($familyManifest.Inf.Generate -eq $false) {
+    throw ("Family $Family installs by guarded file replacement and has no " +
+           "INF package; build it with its own packaging script.")
+}
+# LegacyOutputName keeps the historic directory names alive so the phase 1-7
+# golden compare stays meaningful. Phase 8 retires it.
+$packageDirectory = if ($familyManifest.Build.LegacyOutputName) {
+    "build\{0}" -f $familyManifest.Build.LegacyOutputName
+} else {
+    $familyManifest.Build.PackageOutput
+}
+$outputDir = Join-Path $repoRoot $packageDirectory
 
 . (Join-Path $PSScriptRoot "common.ps1")
 $ProductVersion = Get-V9xProductVersion -RepoRoot $repoRoot
@@ -29,7 +56,7 @@ if ($BuildId -notmatch '^[A-Za-z0-9._+-]+$') {
 $traceEnabled = -not $NoBootTrace
 & (Join-Path $PSScriptRoot "build-win16-ddi-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -ForceModeIndex $ForceModeIndex `
-    -BootTrace:$traceEnabled -S3Trio64:$S3Trio64
+    -BootTrace:$traceEnabled -Family $Family
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId
@@ -47,76 +74,29 @@ $traceEnabled = -not $NoBootTrace
 & (Join-Path $PSScriptRoot "build-win16-loader-probe.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-driver-stage-probe.ps1") -BuildId $BuildId
 
-$infSource = Join-Path $repoRoot "packaging\win98se\velocity9x.inf"
 $installSource = Join-Path $repoRoot "packaging\win98se\INSTALL.TXT"
 $recoverSource = Join-Path $repoRoot "packaging\win98se\RECOVER.TXT"
 $firstBootSource = Join-Path $repoRoot "packaging\win98se\FIRSTBOOT.TXT"
 $normalRepairSource = Join-Path $repoRoot "packaging\win98se\V9XFIX.BAT"
-$infText = Get-Content -LiteralPath $infSource -Raw
-$forcedModes = @(
-    "8,640,480", "8,800,600", "8,1024,768",
-    "16,640,480", "16,800,600", "16,1024,768"
-)
+
+# The INF is now generated from the family manifest rather than rewritten out
+# of packaging\win98se\velocity9x.inf, so a family can carry more than one
+# chip. The checked-in INF is retired at phase 8.
+$forcedModes = @($familyManifest.Inf.ForcedModes)
 $defaultMode = if ($ForceModeIndex -ge 0) {
     $forcedModes[$ForceModeIndex]
 } else {
-    "8,640,480"
+    $familyManifest.Inf.DefaultMode
 }
-$infText = $infText.Replace('DEFAULT,Mode,,"8,640,480"',
-                            "DEFAULT,Mode,,`"$defaultMode`"")
-$infText = $infText.Replace('Provider=%Provider%',
-                            'Provider="Velocity9x Project"')
-$infText = $infText.Replace('1=%DiskName%,,0',
-                            '1="Velocity9x Windows 98SE driver-stage disk",,0')
-$infText = $infText.Replace('%Manufacturer%=Velocity9x.Models',
-                            'Velocity9x=Velocity9x.Models')
-$infText = $infText.Replace('%DeviceDesc%=Velocity9x.Install',
-                            '"Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)"=Velocity9x.Install')
-if ($S3Trio64) {
-    $infText = $infText.Replace('PCI\VEN_5333&DEV_8A01', 'PCI\VEN_5333&DEV_8811')
-    $infText = $infText.Replace('Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)',
-                                'Velocity9x S3 Trio32/64 86C764 (software GDI)')
-}
-if ($infText -match '%[A-Za-z][A-Za-z0-9_]*%') {
-    throw "The generated active INF contains an unresolved string token."
-}
-
-$hardwareIds = @([regex]::Matches(
-    $infText, 'PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}') |
-    ForEach-Object { $_.Value.ToUpperInvariant() } | Sort-Object -Unique)
-$expectedHardwareId = if ($S3Trio64) { 'PCI\VEN_5333&DEV_8811' } else { 'PCI\VEN_5333&DEV_8A01' }
-if ($hardwareIds.Count -ne 1 -or $hardwareIds[0] -ne $expectedHardwareId) {
-    throw "The active INF must match only $expectedHardwareId."
-}
-foreach ($forbidden in @('MODES\24',
-                          'MODES\32', 'DDC', 'carddvdd')) {
-    if ($infText.IndexOf($forbidden, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        throw "The active INF contains out-of-scope entry $forbidden."
-    }
-}
-foreach ($required in @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
-                         'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
-                         'CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32',
-                         "DEFAULT,Mode,,`"$defaultMode`"",
-                         'MODES\8\640,400',
-                         'MODES\8\640,480', 'MODES\8\800,600',
-                         'MODES\8\1024,768', 'MODES\16\640,480',
-                         'MODES\16\800,600', 'MODES\16\1024,768',
-                         'DEFAULT,vdd,,"*vdd,*vflatd"',
-                         'DEFAULT,RefreshRate,,0',
-                         'DEFAULT,PCIRebalance,,1')) {
-    if ($infText.IndexOf($required, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-        throw "The active INF is missing required entry $required."
-    }
-}
-if ($infText -match '(?im)^HKR,CURRENT,') {
-    throw "The active INF must let Windows create the volatile CURRENT display key."
-}
+$infLines = @(New-V9xInfText -Family $familyManifest -DefaultMode $defaultMode)
+Assert-V9xInf -Lines $infLines -Family $familyManifest -DefaultMode $defaultMode
+$expectedHardwareIds = @(Get-V9xFamilyHardwareIds -Family $familyManifest)
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 Remove-Item -LiteralPath (Join-Path $outputDir "V9XFIX.INF") -Force `
     -ErrorAction SilentlyContinue
-Copy-Item -LiteralPath (Join-Path $repoRoot $(if ($S3Trio64) { "build\win16-ddi-trio64\v9xdisp.drv" } else { "build\win16-ddi\v9xdisp.drv" })) `
+Copy-Item -LiteralPath (Join-Path $repoRoot (Join-Path `
+        $familyManifest.Build.SkeletonOutput "v9xdisp.drv")) `
     -Destination (Join-Path $outputDir "V9XDISP.DRV") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\minivdd32\v9xmini.vxd") `
     -Destination (Join-Path $outputDir "V9XMINI.VXD") -Force
@@ -146,7 +126,6 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\win16-loader-probe\v9x16ld.ex
     -Destination (Join-Path $outputDir "V9X16LD.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\driver-stage-probe\v9xstage.exe") `
     -Destination (Join-Path $outputDir "V9XSTAGE.EXE") -Force
-$infLines = [regex]::Split($infText.TrimEnd("`r", "`n"), "\r?\n")
 Set-Content -LiteralPath (Join-Path $outputDir "VELOCITY9X.INF") `
     -Value $infLines -Encoding Ascii
 Copy-Item -LiteralPath $installSource `
@@ -163,8 +142,8 @@ $manifest = @(
     "Velocity9x active display bring-up package",
     "Version: $ProductVersion",
     "Build: $BuildId",
-    "Target: Windows 98SE, $expectedHardwareId only",
-    "Modes: 640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz",
+    "Target: Windows 98SE, $($expectedHardwareIds -join ', ') only",
+    "Modes: $($familyManifest.Package.ModesSummary)",
     "Forced diagnostic mode index: $ForceModeIndex (-1 means registry-selected)",
     "Boot trace: $traceEnabled (writes C:\\V9XBOOT.INI)",
     "Rendering: Windows DIB Engine plus DirectDraw HAL",
@@ -174,7 +153,7 @@ $manifest = @(
     "GDI test: on-screen primitives, blits, and tolerant pixel readback",
     "Palette test: 8-bit reserved-entry animation and screen readback",
     "Mode switching: live same-depth via ReEnable; depth change needs restart",
-    $(if ($S3Trio64) { "DirectDraw HAL: V9XHAL.DLL (vidmem + CRTC flip + bounded Trio solid fill)" } else { "DirectDraw HAL: V9XHAL.DLL (vidmem + flip + bounded solid fill)" }),
+    "DirectDraw HAL: $($familyManifest.Package.HalDescription)",
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
@@ -217,7 +196,7 @@ if ($unexpectedPackageFiles.Count -ne 0 -or $missingPackageFiles.Count -ne 0) {
     throw "Active package file-set mismatch. Missing: $($missingPackageFiles -join ', '); unexpected: $($unexpectedPackageFiles -join ', ')"
 }
 
-$vmStageDir = Join-Path $repoRoot "build\vm-probe\ACTIVE"
+$vmStageDir = Join-Path $repoRoot $familyManifest.Build.VmStageDirectory
 New-Item -ItemType Directory -Force -Path $vmStageDir | Out-Null
 Remove-Item -LiteralPath (Join-Path $vmStageDir "V9XFIX.INF") -Force `
     -ErrorAction SilentlyContinue

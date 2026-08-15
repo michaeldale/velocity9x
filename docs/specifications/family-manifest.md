@@ -1,0 +1,155 @@
+# Family manifest specification
+
+Status: current (schema version 1)
+Recorded: 2026-08-16
+
+A *family* is one built package covering one or more chips that share a driver
+binary. `packaging\families\<familyId>\family.psd1` is the single declaration
+of what that package contains, how it is built, how it is audited, what its INF
+says, and which VM validates it. Build scripts read it; they do not hard-code
+chip facts.
+
+The file is PowerShell data (`Import-PowerShellDataFile`): built into
+PowerShell 5.1, data-only, and it evaluates no code, so regex audit patterns
+need no JSON escaping.
+
+Load it with `scripts\lib\family.ps1`. `check-tree.ps1` validates every
+manifest on every run, so a schema error is caught before a build.
+
+## Top-level keys
+
+| Key | Meaning |
+| --- | --- |
+| `SchemaVersion` | Must equal the loader's version (currently 1). |
+| `Id` | Lowercase kebab-case, matching the directory name. |
+| `DisplayName` | Human name used in build output. |
+| `Description` | One line; what the family covers and any limits. |
+| `Chips` | One entry per supported chip. See below. |
+| `Build` | Source list, defines, output directories, variants. |
+| `Audit` | Family-wide audit additions. |
+| `Inf` | INF metadata, or `Generate = $false`. |
+| `Package` | Lines the package `MANIFEST.TXT` states. |
+| `Floppy` | Whether and where the family rides the transfer disk. |
+| `Vm` | Emulator, profile, port and modes for automated validation. |
+
+## Chips
+
+Each chip declares its PCI identity, the strings the driver publishes about it,
+its MODES capability, and its instruction signatures.
+
+```powershell
+@{
+    Id = 'virge-dx'
+    Name = 'S3 ViRGE/DX 86C375'
+    VendorId = '5333'          # four uppercase hex digits
+    DeviceId = '8A01'
+    DeviceDesc = 'Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)'
+    Adapter = 'S3 ViRGE/DX 86C375'   # as written to C:\V9XHW.INI
+    Modes = @(
+        @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+    )
+    Audit = @{ Required = @('mov\s+cx,8A01H'); Forbidden = @() }
+}
+```
+
+`Modes` is the chip's capability, not the driver's mode table. The INF
+generator orders it by depth, width, height; `ddi.c`'s table has its own order
+(640x400 last, so GDI enumerates it after the other 8-bpp modes).
+
+A PCI ID may be claimed by exactly one family. Two families claiming one device
+would give Windows two matching INF models, and which driver installs becomes a
+coin toss. `Get-V9xFamilies` enforces this.
+
+## Audit signatures and cross-family derivation
+
+`Chips[].Audit.Required` lists `wdis` patterns that must appear in this chip's
+code. Every *other* family's required patterns automatically become this
+family's forbidden set, minus anything this family legitimately produces. That
+is the whole cross-contamination rule, and it means adding a family
+strengthens every existing family's audit with no script edit.
+
+Only patterns that no manifest declares need an explicit `Forbidden` entry.
+
+Match the disassembler's spelling, not the assembler's: `wdis` prints small
+immediates bare, so `or al,08h` in the source is `or\s+al,8\b` in a pattern.
+
+`scripts\audit-family-binary.ps1` applies three layers:
+
+1. **Cross-family** - the family image matches all its chips' signatures and no
+   other family's.
+2. **Per-chip objects** - `Chips[].Objects` names objects that must carry that
+   chip's signatures and none of its siblings'. Inert until per-chip modules
+   land.
+3. **Link-map symbols** - `Audit.RequiredMapSymbols`, `Audit.DispatchSymbol`,
+   `Chips[].MapSymbols` are required; other families' `Audit.BackendSymbols`
+   are forbidden.
+
+Chip-agnostic audits (VDD handoff, DIB thunk guards, NE header, exports,
+segment flags) stay as script logic in the auditor - they are the same for
+every family.
+
+## Build
+
+```powershell
+Build = @{
+    Sources = @( @{ Name = 'ddi'; Path = 'src\display16\ddi.c' } )
+    Defines = @('V9X_TARGET_S3_TRIO64=1')     # wcc
+    RuntimeDefines = @('V9X_TARGET_S3_TRIO64=1')  # wasm, runtime.asm
+    SkeletonOutput = 'build\win16-ddi-trio64'
+    PackageOutput = 'build\win98se-trio64'
+    LegacyOutputName = 'win98se-trio64'
+    LegacySwitch = 'S3Trio64'
+    VmStageDirectory = 'build\vm-probe\ACTIVE'
+    Variants = @( @{ Id = '8bpp'; Defines = @(); AllowedModeIndexes = @(0); Default = $true } )
+}
+```
+
+`Sources` is both the compile order and the link order. Reordering it changes
+the linked image, so a reorder needs a golden re-baseline.
+
+`Variants` are build-time flavours of one family (the Matrox 8-bpp and 16-bpp
+drops). A family with no variants omits the key.
+
+`LegacyOutputName` and `LegacySwitch` keep the historic directory names and
+command-line switches working during the restructure. Both are retired at
+phase 8 of `docs\plans\multi-chip-restructure.md`.
+
+## Inf
+
+`scripts\lib\inf.ps1` generates a Chicago INF from this section plus `Chips`:
+one `[Velocity9x.Models]` line and one install section per chip, shared copy
+and registry sections, per-chip `MODES` AddReg. A single-chip family produces
+exactly one install section named `Velocity9x.Install`.
+
+The generated hardware-ID set is asserted equal to the family's declared set -
+that set equality is what lets a family carry more than one chip.
+
+A family that installs by guarded file replacement sets `Generate = $false` and
+supplies no other INF keys.
+
+## Vm
+
+```powershell
+Vm = @{
+    Emulator = '86box'      # or 'none' for physical-hardware-only families
+    Controller = 'virge_dx_pci'
+    Profile = 'Win86SE'
+    Port = 9869             # remote-agent port for this guest
+    ReferenceProfile = 'Win98SE-Native-S3'
+    ReferencePort = 9870
+    Modes = @('640x480x8', '1024x768x16')
+}
+```
+
+`run-vm-mode-matrix.ps1 -Family <id>` takes the port, the package directory and
+the mode list from here. `Emulator = 'none'` makes it refuse with an explicit
+real-hardware-only error rather than silently testing the wrong guest.
+
+## Adding a family
+
+1. Create `packaging\families\<id>\family.psd1`.
+2. Run `scripts\check-tree.ps1`; fix schema and cross-family errors.
+3. Build it: `scripts\build-active-package.ps1 -Family <id>`.
+4. The audit will report any signature that the manifest claims but the
+   binary does not produce, and vice versa.
+5. Add the manifest path to `check-tree.ps1`'s required-file list.

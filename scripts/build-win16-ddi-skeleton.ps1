@@ -2,9 +2,16 @@
 param(
     [string]$BuildId,
     [string]$DdkRoot = "C:\98DDK",
+    # Family manifest id under packaging\families. Defaults to s3-virge, which
+    # is what the switchless invocation has always built.
+    [string]$Family,
+    # Build-time variant declared by the family manifest (Matrox 8bpp/16bpp).
+    [string]$Variant,
     [ValidateRange(-1, 5)]
     [int]$ForceModeIndex = -1,
     [switch]$BootTrace,
+    # Deprecated aliases for -Family. Retired at phase 8 of
+    # docs\plans\multi-chip-restructure.md.
     [switch]$MatroxMillennium2,
     [switch]$S3Trio64,
     [ValidateSet(8, 16)]
@@ -13,20 +20,56 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outputDir = Join-Path $repoRoot $(if ($MatroxMillennium2) {
-    "build\win16-ddi-mga2"
-} elseif ($S3Trio64) {
-    "build\win16-ddi-trio64"
-} else {
-    "build\win16-ddi"
-})
+. (Join-Path $PSScriptRoot "lib\family.ps1")
 
 if ($MatroxMillennium2 -and $S3Trio64) {
     throw "MatroxMillennium2 and S3Trio64 are mutually exclusive."
 }
-if ($MatroxMillennium2 -and $ForceModeIndex -gt 0 -and $MatroxBitsPerPixel -ne 16) {
-    throw "The guarded Millennium II 8-bpp build supports only mode index 0."
+if (-not $Family) {
+    $Family = if ($MatroxMillennium2) {
+        'matrox-m2'
+    } elseif ($S3Trio64) {
+        's3-trio64'
+    } else {
+        's3-virge'
+    }
+    if ($MatroxMillennium2 -or $S3Trio64) {
+        Write-Verbose "Legacy target switch mapped to -Family $Family."
+    }
+} elseif ($MatroxMillennium2 -or $S3Trio64) {
+    throw "-Family cannot be combined with a legacy target switch."
 }
+
+$familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
+$variants = @($familyManifest.Build.Variants | Where-Object { $_ })
+$activeVariant = $null
+if ($variants.Count -ne 0) {
+    if (-not $Variant) {
+        # -MatroxBitsPerPixel is the legacy spelling of the variant id; 16 bpp
+        # selects the wider variant, anything else takes the manifest default.
+        $default = @($variants | Where-Object { $_.Default })
+        if ($default.Count -ne 1) {
+            throw "Family $Family must declare exactly one default variant."
+        }
+        $Variant = if ($MatroxBitsPerPixel -eq 16) { '16bpp' } else { $default[0].Id }
+    }
+    $activeVariant = @($variants | Where-Object { $_.Id -eq $Variant })
+    if ($activeVariant.Count -ne 1) {
+        throw ("Family $Family has no variant '$Variant'. Known: " +
+               (@($variants | ForEach-Object { $_.Id }) -join ', '))
+    }
+    $activeVariant = $activeVariant[0]
+    if ($ForceModeIndex -ge 0 -and
+        $ForceModeIndex -notin @($activeVariant.AllowedModeIndexes)) {
+        throw ("Family $Family variant $Variant supports mode index(es) " +
+               (@($activeVariant.AllowedModeIndexes) -join ', ') +
+               "; $ForceModeIndex was requested.")
+    }
+} elseif ($Variant) {
+    throw "Family $Family declares no build variants."
+}
+
+$outputDir = Join-Path $repoRoot $familyManifest.Build.SkeletonOutput
 
 . (Join-Path $PSScriptRoot "common.ps1")
 if (-not $BuildId) {
@@ -63,22 +106,14 @@ $env:INCLUDE = "$(Join-Path $watcomRoot 'h');$(Join-Path $watcomRoot 'h\win')"
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 $includeDir = Join-Path $repoRoot "include"
-$sources = @(
-    @{ Name = "build"; Path = "src\common\build.c" },
-    @{ Name = "log"; Path = "src\common\log.c" },
-    @{ Name = "mode"; Path = "src\common\mode.c" },
-    @{ Name = "resources"; Path = "src\common\resources.c" },
-    @{ Name = "display_component"; Path = "src\display16\display_component.c" },
-    @{ Name = "loader"; Path = "src\display16\loader.c" },
-    @{ Name = "ddi"; Path = "src\display16\ddi.c" },
-    @{ Name = "dd16"; Path = "src\display16\dd16.c" }
-)
-if (-not $MatroxMillennium2) {
-    $sources = @($sources[0..3]) + @(
-        @{ Name = "virge_backend"; Path = "src\chipsets\s3\virge\backend.c" },
-        @{ Name = "virge_clocks"; Path = "src\chipsets\s3\virge\clocks.c" },
-        @{ Name = "virge_memory"; Path = "src\chipsets\s3\virge\memory.c" }
-    ) + @($sources[4..($sources.Count - 1)])
+# Compile and link order both come from the manifest; reordering it changes
+# the linked image, so the golden compare has to be re-based if it moves.
+$sources = @($familyManifest.Build.Sources)
+$familyDefines = @($familyManifest.Build.Defines)
+$familyRuntimeDefines = @($familyManifest.Build.RuntimeDefines)
+if ($activeVariant) {
+    $familyDefines += @($activeVariant.Defines)
+    $familyRuntimeDefines += @($activeVariant.RuntimeDefines)
 }
 
 foreach ($source in $sources) {
@@ -99,14 +134,8 @@ foreach ($source in $sources) {
     if ($BootTrace) {
         $arguments = @("-dV9X_BOOT_TRACE=1") + $arguments
     }
-    if ($MatroxMillennium2) {
-        $arguments = @("-dV9X_TARGET_MATROX_MILLENNIUM2=1") + $arguments
-        if ($MatroxBitsPerPixel -eq 16) {
-            $arguments = @("-dV9X_MATROX_16BPP=1") + $arguments
-        }
-    }
-    if ($S3Trio64) {
-        $arguments = @("-dV9X_TARGET_S3_TRIO64=1") + $arguments
+    foreach ($define in $familyDefines) {
+        $arguments = @("-d$define") + $arguments
     }
     & $compiler @arguments
     if ($LASTEXITCODE -ne 0) {
@@ -124,14 +153,8 @@ if ($LASTEXITCODE -ne 0) {
 $runtimeSource = Join-Path $repoRoot "src\display16\runtime.asm"
 $runtimeObject = Join-Path $outputDir "runtime.obj"
 $runtimeAssemblerArguments = @("-zq", "-fo=$runtimeObject")
-if ($MatroxMillennium2) {
-    $runtimeAssemblerArguments += "-dV9X_TARGET_MATROX_MILLENNIUM2=1"
-    if ($MatroxBitsPerPixel -eq 16) {
-        $runtimeAssemblerArguments += "-dV9X_MATROX_16BPP=1"
-    }
-}
-if ($S3Trio64) {
-    $runtimeAssemblerArguments += "-dV9X_TARGET_S3_TRIO64=1"
+foreach ($define in $familyRuntimeDefines) {
+    $runtimeAssemblerArguments += "-d$define"
 }
 $runtimeAssemblerArguments += $runtimeSource
 & $assembler @runtimeAssemblerArguments
@@ -187,164 +210,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to link the Win16 DDI skeleton."
 }
 
-$bytes = [System.IO.File]::ReadAllBytes($driverPath)
-$newHeaderOffset = if ($bytes.Length -ge 64) {
-    [System.BitConverter]::ToInt32($bytes, 0x3c)
-} else { -1 }
-if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a -or
-    $newHeaderOffset -lt 0 -or $newHeaderOffset + 1 -ge $bytes.Length -or
-    $bytes[$newHeaderOffset] -ne 0x4e -or
-    $bytes[$newHeaderOffset + 1] -ne 0x45) {
-    throw "The Win16 DDI output is not an MZ/NE image."
-}
-if (-not [System.Text.Encoding]::ASCII.GetString($bytes).Contains($BuildId)) {
-    throw "The Win16 DDI output does not contain the build identifier."
-}
+# All post-link auditing lives in audit-family-binary.ps1: the chip-agnostic
+# checks stay script logic there, and the chip signature checks are driven by
+# the family manifests so a family binary may legitimately carry more than one
+# chip. See docs\plans\multi-chip-restructure.md.
+& (Join-Path $PSScriptRoot "audit-family-binary.ps1") `
+    -Family $Family -OutputDir $outputDir -BuildId $BuildId `
+    -BootTrace:$BootTrace | Write-Verbose
 
-$exports = (& $dumper "-x" $driverPath 2>&1) -join "`n"
-$requiredExports = @("Enable", "Disable", "BitBlt", "ReEnable",
-                     "Inquire", "SetCursor", "MoveCursor", "CheckCursor",
-                     "ValidateMode")
-foreach ($requiredExport in $requiredExports) {
-    if ($exports -cnotmatch "(?m)^\s*$requiredExport\s+@") {
-        throw "The Win16 DDI output is missing export $requiredExport."
-    }
-}
-
-$image = (& $dumper "-e" $driverPath 2>&1) -join "`n"
-if ($image -notmatch "DIBENG") {
-    throw "The Win16 DDI output does not import the DIB Engine."
-}
-if ($image -notmatch "CODE\|FIXED\|SHARE\|PRELOAD") {
-    throw "The Win16 DDI code segment is not fixed, shared, and preloaded."
-}
-if ($image -notmatch "DATA\|FIXED\|(SHARE\|)?PRELOAD\|READWRITE") {
-    throw "The Win16 DDI data segment is not fixed and preloaded."
-}
-if ($image -notmatch "(?m)^DISPLAY\s+unknown ordinal 0000$") {
-    throw "The Win16 DDI internal module name is not DISPLAY."
-}
-$mapText = Get-Content -LiteralPath $mapPath -Raw
-if ($mapText -notmatch "(?m)^.*DriverInit.*$") {
-    throw "The Win16 DDI map is missing the DriverInit entry point."
-}
-foreach ($forbiddenStartup in @('__DLLstart_', 'WINMAIN', 'DEFAULTWINMAIN',
-                                 'main_')) {
-    if ($mapText -match [regex]::Escape($forbiddenStartup)) {
-        throw "The Win16 DDI pulled forbidden C startup symbol $forbiddenStartup."
-    }
-}
-if ($BootTrace) {
-    if ($mapText -notmatch "WRITEPRIVATEPROFILESTRING\s+KERNEL") {
-        throw "The traced Win16 DDI does not import WritePrivateProfileString."
-    }
-    $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
-    foreach ($marker in @("libmain", "trace-write-fail stage=libmain")) {
-        if (-not $imageText.Contains($marker)) {
-            throw "The traced Win16 DDI is missing marker $marker."
-        }
-    }
-}
-
-$requiredRuntimeSymbols = @(
-    "V9XHARDWAREPRESENT", "V9XHARDWAREENABLE", "V9XHARDWAREDISABLE",
-    "V9XHARDWARESTAGE",
-    "V9XVDDGETDISPLAYCONFIG", "V9XVDDPREMODE", "V9XVDDREGISTER", "V9XVDDUNREGISTER",
-    "V9XVDDPOSTMODE",
-    "V9XCREATEDIBPDEVICECALL", "V9XDIBSETPALETTETRANSLATECALL",
-    "DIB_EnumObjExt", "DIB_RealizeObjectExt",
-    "DIB_DibBltExt", "DIB_GetPaletteExt", "DIB_SetCursorExt",
-    "DIB_MoveCursorExt", "DIB_CheckCursorExt"
-)
-foreach ($symbol in $requiredRuntimeSymbols) {
-    if ($mapText -notmatch "(?m)^.*$([regex]::Escape($symbol)).*$") {
-        throw "The Win16 DDI map is missing runtime symbol $symbol."
-    }
-}
-
-$runtimeDisassembly = (& $disassembler "-a" $runtimeObject 2>&1) -join "`n"
-$commonRuntimeInstructions = @(
-    'mov\s+eax,80H', 'mov\s+eax,81H', 'mov\s+eax,82H',
-    'mov\s+eax,85H', 'mov\s+eax,86H', 'mov\s+eax,87H',
-    'push\s+esi', 'push\s+edi',
-    'movzx\s+edi,word ptr 6\[bp\]',
-    'xor\s+edx,edx',
-    'mov\s+ecx,dword ptr DGROUP:_v9x_active_visible_bytes',
-    'mov\s+bx,word ptr DGROUP:_v9x_active_vbe_mode',
-    'mov\s+ax,seg RESETHIRESMODE', 'int\s+2fH'
-)
-foreach ($instruction in $commonRuntimeInstructions) {
-    if ($runtimeDisassembly -notmatch $instruction) {
-        throw "The Win16 runtime is missing audited VDD handoff instruction $instruction."
-    }
-}
-if ($MatroxMillennium2) {
-    foreach ($instruction in @(
-        'or\s+bx,4000H', 'mov\s+cx,51BH', 'mov\s+dx,102BH',
-        'mov\s+ax,0B10AH', 'mov\s+di,10H',
-        'and\s+eax,0FFFFFFF0H', 'test\s+eax,0FFFFFFH',
-        'mov\s+ax,4F06H',
-        'mov\s+cx,word ptr DGROUP:_v9x_active_width',
-        'cmp\s+bx,word ptr DGROUP:_v9x_active_pitch'
-    )) {
-        if ($runtimeDisassembly -notmatch $instruction) {
-            throw "The Millennium II runtime is missing audited instruction $instruction."
-        }
-    }
-    foreach ($forbiddenInstruction in @(
-        'mov\s+cx,8A01H', 'mov\s+dx,5333H',
-        'mov\s+al,58H', 'or\s+al,13H',
-        'mov\s+di,14H', 'dword ptr es:\[1E54H\]'
-    )) {
-        if ($runtimeDisassembly -match $forbiddenInstruction) {
-            throw "The Millennium II runtime contains forbidden S3 instruction $forbiddenInstruction."
-        }
-    }
-} else {
-    foreach ($instruction in @(
-        'or\s+bx,8000H', 'mov\s+al,58H', 'and\s+al,0FCH', 'or\s+al,13H'
-    )) {
-        if ($runtimeDisassembly -notmatch $instruction) {
-            throw "The ViRGE/DX runtime is missing audited instruction $instruction."
-        }
-    }
-    if ($runtimeDisassembly -match 'or\s+bx,4000H') {
-        throw "The ViRGE/DX runtime must not request the GX2-only VBE LFB flag."
-    }
-}
-foreach ($instruction in @('pop\s+dword ptr .*',
-                            'call\s+far ptr CreateDIBPDevice',
-                            'push\s+dword ptr .*', 'mov\s+dx,ax',
-                            'shr\s+eax,10H', 'xchg\s+ax,dx')) {
-    if ($runtimeDisassembly -notmatch $instruction) {
-        throw "The CreateDIBPDevice thunk is missing ABI fixup $instruction."
-    }
-}
-
-$thunkDisassembly = (& $disassembler "-a" $thunkObject 2>&1) -join "`n"
-if ($thunkDisassembly -notmatch
-    '(?s)CheckCursor:.*?cmp\s+dword ptr es:_v9x_driver_pdevice,0.*?jmp\s+far ptr DIB_CheckCursorExt.*?retf') {
-    throw "The DIB CheckCursor thunk is missing its disabled-state guard."
-}
-foreach ($cursorThunk in @(
-    @("SetCursor", "DIB_SetCursorExt"),
-    @("MoveCursor", "DIB_MoveCursorExt")
-)) {
-    if ($thunkDisassembly -notmatch
-        ("(?s)$($cursorThunk[0]):.*?cmp\s+dword ptr " +
-         "es:_v9x_driver_pdevice,0.*?jmp\s+far ptr " +
-         "$($cursorThunk[1]).*?retf\s+(?:4|0004H)")) {
-        throw "The DIB $($cursorThunk[0]) thunk is missing its disabled-state guard."
-    }
-}
-if ($thunkDisassembly -notmatch
-    '(?s)DibBlt:.*?push\s+word ptr es:_v9x_palettized.*?jmp\s+far ptr DIB_DibBltExt') {
-    throw "The DIB BitBlt thunk is not forwarding the selected palette mode."
-}
-
-$modeDescription = if ($MatroxMillennium2) {
-    "guarded Millennium II $(if ($MatroxBitsPerPixel -eq 16) {'640/800/1024x16'} else {'640x480x8'})"
-} else {
-    "Phase 3 640/800/1024 x 8/16-bpp"
-}
-Write-Output "Built $modeDescription Win16 DDI candidate: $driverPath"
+$variantDescription = if ($activeVariant) { " $($activeVariant.Id)" } else { "" }
+Write-Output ("Built {0}{1} Win16 DDI candidate: {2}" -f
+    $familyManifest.DisplayName, $variantDescription, $driverPath)

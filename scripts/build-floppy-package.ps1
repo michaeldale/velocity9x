@@ -20,6 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "lib\family.ps1")
 $ProductVersion = Get-V9xProductVersion -RepoRoot $repoRoot
 if (-not $BuildId) {
     $BuildId = Get-V9xBuildId -RepoRoot $repoRoot -Fallback "floppy-local"
@@ -28,19 +29,34 @@ if (-not $BuildId) {
 # Usable space on a formatted 1.44 MB floppy, after the FAT12 overhead.
 $floppyCapacity = 1457664
 
-if (-not $SkipBuild) {
-    & (Join-Path $PSScriptRoot "build-active-package.ps1") `
-        -BuildId $BuildId -DdkRoot $DdkRoot
-    & (Join-Path $PSScriptRoot "build-active-package.ps1") `
-        -BuildId $BuildId -DdkRoot $DdkRoot -S3Trio64
+# Which families ride the disk, in which folder, and in what order on the
+# printed chip table is all manifest data.
+$floppyFamilies = @(Get-V9xFamilies -RepoRoot $repoRoot |
+    Where-Object { $_.Floppy.Include } |
+    Sort-Object { [int]$_.Floppy.Order })
+if ($floppyFamilies.Count -eq 0) {
+    throw "No family manifest opts into the floppy package."
 }
 
-$virgeSource = Join-Path $repoRoot "build\win98se-active"
-$trioSource = Join-Path $repoRoot "build\win98se-trio64"
-foreach ($source in @($virgeSource, $trioSource)) {
+if (-not $SkipBuild) {
+    foreach ($family in $floppyFamilies) {
+        & (Join-Path $PSScriptRoot "build-active-package.ps1") `
+            -BuildId $BuildId -DdkRoot $DdkRoot -Family $family.Id
+    }
+}
+
+$sources = @{}
+foreach ($family in $floppyFamilies) {
+    $source = Join-Path $repoRoot ("build\{0}" -f $(
+        if ($family.Build.LegacyOutputName) {
+            $family.Build.LegacyOutputName
+        } else {
+            Split-Path -Leaf $family.Build.PackageOutput
+        }))
     if (-not (Test-Path -LiteralPath $source)) {
         throw "Missing package $source. Run without -SkipBuild."
     }
+    $sources[$family.Id] = $source
 }
 
 $outputDir = Join-Path $repoRoot "build\floppy"
@@ -48,16 +64,54 @@ if (Test-Path -LiteralPath $outputDir) {
     Remove-Item -LiteralPath $outputDir -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-Copy-Item -LiteralPath $virgeSource -Destination (Join-Path $outputDir "VIRGE") `
-    -Recurse -Force
-Copy-Item -LiteralPath $trioSource -Destination (Join-Path $outputDir "TRIO64") `
-    -Recurse -Force
+foreach ($family in $floppyFamilies) {
+    Copy-Item -LiteralPath $sources[$family.Id] `
+        -Destination (Join-Path $outputDir $family.Floppy.Folder) -Recurse -Force
+}
 
 # Recovery instructions belong at the root as well as inside each package: if
 # the machine will not display after the install, the reader needs them without
 # having to remember which folder was used.
-Copy-Item -LiteralPath (Join-Path $virgeSource "RECOVER.TXT") `
+Copy-Item -LiteralPath (Join-Path $sources[$floppyFamilies[0].Id] "RECOVER.TXT") `
     -Destination (Join-Path $outputDir "RECOVER.TXT") -Force
+
+# The chip table and the hardware-ID sentence are generated so that adding a
+# family updates the disk's own instructions. Column widths and the 73-column
+# wrap match the hand-written body around them.
+$chipTable = @()
+$hardwareIdWords = @()
+foreach ($family in $floppyFamilies) {
+    foreach ($chip in @($family.Chips)) {
+        $chipTable += "   {0}{1}{2}" -f $family.Floppy.Folder.PadRight(9),
+            $chip.Name.PadRight(23), $family.Floppy.HardwareIdHint
+        $hardwareIdWords += "VEN_{0}&DEV_{1}" -f $chip.VendorId, $chip.DeviceId
+    }
+}
+$chipTableText = $chipTable -join "`n"
+
+function Format-V9xParagraph {
+    param([string]$Text, [int]$Width = 73)
+    $lines = @()
+    $current = ""
+    foreach ($word in ($Text -split '\s+')) {
+        if (-not $current) {
+            $current = $word
+        } elseif (($current.Length + 1 + $word.Length) -le $Width) {
+            $current = "$current $word"
+        } else {
+            $lines += $current
+            $current = $word
+        }
+    }
+    if ($current) { $lines += $current }
+    $lines -join "`n"
+}
+
+$hardwareIdSentence = Format-V9xParagraph -Text (
+    "and read the hardware ID. It will contain " +
+    ($hardwareIdWords -join " or ") +
+    ". If it shows neither, this driver does not support your card and the " +
+    "install will refuse to match it.")
 
 $readme = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
@@ -74,17 +128,14 @@ you cannot recover by hand.
 
 This disk carries both supported chips. Use exactly one.
 
-   VIRGE    S3 ViRGE/DX 86C375     PCI 5333:8A01
-   TRIO64   S3 Trio32/64 86C764    PCI 5333:8811
+$chipTableText
 
 To check which card is fitted, in Windows 98 open:
 
    Control Panel, System, Device Manager,
    Display adapters, <your adapter>, Properties, Details
 
-and read the hardware ID. It will contain VEN_5333&DEV_8A01 or
-VEN_5333&DEV_8811. If it shows neither, this driver does not support your
-card and the install will refuse to match it.
+$hardwareIdSentence
 
 
 2. BEFORE YOU START

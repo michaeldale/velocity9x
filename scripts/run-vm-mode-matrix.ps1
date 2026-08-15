@@ -3,13 +3,19 @@ param(
     # Path to the remote-agent controller (v9xctl.ps1). Set V9X_AGENT_CTL to
     # avoid passing it on every call; the agent lives outside this repository.
     [string]$ControllerPath = $env:V9X_AGENT_CTL,
+    # Family manifest id. Supplies the guest port, the package to verify
+    # against, and the mode list, so the matrix can address more than the one
+    # guest the controller defaults to.
+    [string]$Family = "s3-virge",
+    # Overrides the family's declared guest port.
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0,
     [string]$PackagePath,
     [string]$GuestJob = "C:\V9XREMOTE\JOBS\velocity9x-mode-matrix",
     [string]$ResultsDirectory,
     [ValidateSet("640x480x8", "800x600x8", "1024x768x8",
                  "640x480x16", "800x600x16", "1024x768x16")]
-    [string[]]$Mode = @("640x480x8", "800x600x8", "1024x768x8",
-                        "640x480x16", "800x600x16", "1024x768x16"),
+    [string[]]$Mode,
     [ValidateRange(30, 600)]
     [int]$BootTimeoutSeconds = 180,
     [ValidateRange(1, 10)]
@@ -19,12 +25,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+
+$familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
+if ($familyManifest.Vm.Emulator -eq 'none') {
+    throw ("Family $Family declares no emulator: it is validated on physical " +
+           "hardware only. There is no VM to run the mode matrix against.")
+}
+if ($Port -eq 0) {
+    $Port = [int]$familyManifest.Vm.Port
+}
+if (-not $Mode) {
+    $Mode = @($familyManifest.Vm.Modes)
+}
 if (-not $PackagePath) {
-    $PackagePath = Join-Path $repoRoot "build\vm-probe\ACTIVE"
+    $PackagePath = Join-Path $repoRoot ("build\{0}" -f $(
+        if ($familyManifest.Build.LegacyOutputName) {
+            $familyManifest.Build.LegacyOutputName
+        } else {
+            Split-Path -Leaf $familyManifest.Build.PackageOutput
+        }))
 }
 if (-not $ResultsDirectory) {
     $ResultsDirectory = Join-Path $repoRoot (
-        "build\driver-results\mode-matrix-{0}" -f
+        "build\driver-results\mode-matrix-{0}-{1}" -f $Family,
         (Get-Date -Format "yyyyMMdd-HHmmss"))
 }
 if (-not $ControllerPath) {
@@ -50,7 +74,7 @@ function Invoke-V9xCtlJson {
     param([string]$Operation, [string[]]$OperationArguments = @())
     $arguments = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-        $ControllerPath, $Operation, "-Json"
+        $ControllerPath, $Operation, "-Json", "-Port", [string]$Port
     ) + $OperationArguments
     $lastFailure = ""
     for ($attempt = 1; $attempt -le 3; ++$attempt) {
@@ -134,8 +158,16 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $desktop = Invoke-V9xCtlJson wait-desktop @(
         "-WaitSeconds", [string]$BootTimeoutSeconds)
     $info = Invoke-V9xCtlJson info
-    if ($info.ScreenWidth -ne $width -or $info.ScreenHeight -ne $height -or
-        $info.BitsPerPixel -ne $bits) {
+    if ($info.ScreenWidth -ne $width -or $info.ScreenHeight -ne $height) {
+        throw ("Mode {0} fell back to {1}x{2}." -f $name,
+               $info.ScreenWidth, $info.ScreenHeight)
+    }
+    # Remote agent 0.5.2 reports BitsPerPixel 0 against this driver while
+    # returning the correct value against the stock S3 driver, so it is not a
+    # trustworthy depth check. Depth is verified below from V9XGDI.INI, which
+    # the guest-side test reads with GetDeviceCaps and which has always
+    # reported the true depth. A non-zero disagreement is still a failure.
+    if ($info.BitsPerPixel -ne 0 -and $info.BitsPerPixel -ne $bits) {
         throw ("Mode {0} fell back to {1}x{2}x{3}." -f $name,
                $info.ScreenWidth, $info.ScreenHeight, $info.BitsPerPixel)
     }
@@ -206,6 +238,8 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
 
 $summary = [pscustomobject]@{
     Success = $true
+    Family = $Family
+    Port = $Port
     PackagePath = [IO.Path]::GetFullPath($PackagePath)
     GuestJob = $GuestJob
     Repeat = $Repeat

@@ -9,9 +9,13 @@ $required = @(
     "CHANGELOG.md",
     "docs\vm-environment.md",
     "docs\plans\hellbender-hardware-d3d.md",
+    "docs\plans\multi-chip-restructure.md",
     "docs\decisions\2026-08-08-vxd-lifecycle-probe.md",
     "docs\decisions\2026-08-08-active-640-candidate.md",
     "docs\specifications\win9x-driver-boundaries.md",
+    "docs\specifications\family-manifest.md",
+    "docs\decisions\2026-08-16-per-family-packaging.md",
+    "docs\decisions\2026-08-16-restructure-baseline.md",
     "docs\specifications\logging-protocol.md",
     "docs\specifications\hardware-diagnostics.md",
     "include\velocity9x\backend.h",
@@ -20,7 +24,16 @@ $required = @(
     "packaging\win98se\INSTALL.TXT",
     "packaging\win98se\FIRSTBOOT.TXT",
     "packaging\win98se\RECOVER.TXT",
+    "packaging\families\s3-virge\family.psd1",
+    "packaging\families\s3-trio64\family.psd1",
+    "packaging\families\matrox-m2\family.psd1",
     "scripts\common.ps1",
+    "scripts\lib\family.ps1",
+    "scripts\lib\inf.ps1",
+    "scripts\audit-family-binary.ps1",
+    "scripts\build-all-packages.ps1",
+    "scripts\run-checks.ps1",
+    "scripts\golden-baseline.ps1",
     "scripts\build-host.ps1",
     "scripts\build-host-msvc.ps1",
     "scripts\run-vm-mode-matrix.ps1",
@@ -97,4 +110,34 @@ if ($forbidden) {
     throw "Portable skeleton source contains an unapproved Windows/DDK dependency."
 }
 
-Write-Output "Velocity9x tree check passed ($($sourceFiles.Count) source/header files)."
+# Family manifests are data, so nothing else catches a typo in one until a
+# build fails much later. Validate the schema and the cross-family invariants
+# (unique PCI ownership, non-empty derived forbidden sets) here.
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+$families = @(Get-V9xFamilies -RepoRoot $repoRoot)
+if ($families.Count -eq 0) {
+    throw "No family manifests found under packaging\families."
+}
+foreach ($family in $families) {
+    foreach ($source in @($family.Build.Sources)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $source.Path))) {
+            throw "Family $($family.Id) references missing source $($source.Path)."
+        }
+    }
+    $forbidden = @(Get-V9xFamilyForbiddenPatterns -Family $family -AllFamilies $families)
+    $required = @(Get-V9xFamilyRequiredPatterns -Family $family)
+    $overlap = @($forbidden | Where-Object { $_ -in $required })
+    if ($overlap.Count -ne 0) {
+        throw ("Family $($family.Id) both requires and forbids: " +
+               ($overlap -join ', '))
+    }
+    if ($families.Count -gt 1 -and $forbidden.Count -eq 0) {
+        throw ("Family $($family.Id) derives no forbidden patterns; its audit " +
+               "cannot detect cross-family contamination.")
+    }
+}
+
+$summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
+                 "{1} families: {2})."
+Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,
+              (($families | ForEach-Object { $_.Id }) -join ', '))

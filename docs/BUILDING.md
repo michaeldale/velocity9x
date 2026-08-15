@@ -35,32 +35,75 @@ This locates MSVC directly or via `vswhere` and builds into `build/host-msvc`.
 Both scripts default the embedded build identifier to the current git revision,
 with a `-dirty` suffix for a modified tree.
 
+## Everything at once
+
+```powershell
+./scripts/run-checks.ps1
+```
+
+The local CI gate: tree check, host tests, every family package with its
+post-link audits and INF assertions, then the floppy. Run this before calling a
+change done.
+
+## Families
+
+A *family* is one built package covering one or more chips that share a driver
+binary. Each is declared by `packaging/families/<id>/family.psd1`, which the
+build scripts read instead of hard-coding chip facts. See
+`docs/specifications/family-manifest.md`.
+
+| Family | Chips | Package |
+|---|---|---|
+| `s3-virge` | S3 ViRGE/DX 86C375 (`5333:8A01`) | `build/win98se-active` |
+| `s3-trio64` | S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-trio64` |
+| `matrox-m2` | Matrox Millennium II MGA-2164W (`102B:051B`) | `build/matrox-candidate` |
+
 ## The installable packages
 
 This is what you want if you intend to test the driver on a guest.
 
 ```powershell
-./scripts/build-active-package.ps1
+./scripts/build-active-package.ps1 -Family s3-virge
 ```
 
-Produces `build/win98se-active` for the S3 ViRGE/DX (`5333:8A01`), also staged
-as `build/vm-probe/ACTIVE`. The package contains the driver, the mini-VDD, the
-DirectDraw HAL, the settings page, the diagnostic utilities, and the
-`FIRSTBOOT.TXT`, `INSTALL.TXT` and `RECOVER.TXT` you must read before
-installing.
+Produces `build/win98se-active`, also staged as `build/vm-probe/ACTIVE`. The
+package contains the driver, the mini-VDD, the DirectDraw HAL, the settings
+page, the diagnostic utilities, and the `FIRSTBOOT.TXT`, `INSTALL.TXT` and
+`RECOVER.TXT` you must read before installing.
 
-For the conservative S3 Trio32/64 (`5333:8811`) target:
+For the conservative S3 Trio32/64 target:
 
 ```powershell
-./scripts/build-active-package.ps1 -S3Trio64 -BootTrace
+./scripts/build-active-package.ps1 -Family s3-trio64
 ```
 
-Produces `build/win98se-trio64`. It matches only `5333:8811`, uses the shared
-S3 VBE/linear-framebuffer path, and deliberately does not expose the ViRGE
-DirectDraw MMIO window, the S3D engine or Direct3D.
+It matches only `5333:8811`, uses the shared S3 VBE/linear-framebuffer path,
+and deliberately does not expose the ViRGE DirectDraw MMIO window, the S3D
+engine or Direct3D.
+
+To build every declared family and write `build/packages.json` (family,
+version, build, per-file SHA-256):
+
+```powershell
+./scripts/build-all-packages.ps1
+```
 
 Pass `-BuildId <id>` to stamp a specific identifier into every binary, which is
 how a guest-tested build stays traceable.
+
+The older `-S3Trio64` and `-MatroxMillennium2` switches still work as aliases
+for `-Family`, and are retired once the S3 families merge.
+
+## Post-link auditing
+
+```powershell
+./scripts/audit-family-binary.ps1 -Family s3-virge -OutputDir build/win16-ddi -BuildId <id>
+```
+
+The package builders run this for you. It checks the NE header, exports, DIB
+Engine imports, segment flags, the VDD handoff and thunk guards - and then, from
+the manifests, that the image carries all of its own chips' instruction
+signatures and none of any other family's.
 
 ## The offline transfer disk
 
@@ -68,11 +111,13 @@ how a guest-tested build stays traceable.
 ./scripts/build-floppy-package.ps1
 ```
 
-Builds both chip packages and assembles `build/floppy` — roughly 460 KB, so it
-fits one 1.44 MB floppy with room to spare. It carries `VIRGE\` and `TRIO64\`
-side by side plus a root `README.TXT` written for the real-hardware case
-(identifying the card, the Have Disk flow, recovery, and which `C:\V9X*.INI`
-files to collect when reporting a problem).
+Builds every family that opts into the disk and assembles `build/floppy` —
+roughly 460 KB, so it fits one 1.44 MB floppy with room to spare. It carries
+`VIRGE\` and `TRIO64\` side by side plus a root `README.TXT` written for the
+real-hardware case (identifying the card, the Have Disk flow, recovery, and
+which `C:\V9X*.INI` files to collect when reporting a problem). Which folders
+appear, in what order, and the chip table printed in `README.TXT` all come from
+the family manifests.
 
 The output is a plain directory tree on purpose: Windows 98 has no built-in
 extractor, so an offline machine must be able to use the files directly. Pass
@@ -137,8 +182,13 @@ is **not** part of this repository. Point `V9X_AGENT_CTL` at the agent's
 
 ```powershell
 $env:V9X_AGENT_CTL = "<path to>\v9xctl.ps1"
-./scripts/run-vm-mode-matrix.ps1
+./scripts/run-vm-mode-matrix.ps1 -Family s3-virge
 ```
+
+The family manifest supplies the guest port, the package to verify against and
+the mode list, so `-Family s3-trio64` drives the Trio guest rather than the
+controller's default one. A family whose manifest declares
+`Vm.Emulator = 'none'` is refused with a real-hardware-only error.
 
 The runner refuses a mismatched installed DRV/VXD pair, verifies the requested
 mode and the `enable-ok` trace after every reboot, runs the machine-readable
@@ -165,3 +215,26 @@ To take a cold backup of an 86Box profile before any of this:
 
 It refuses to run while 86Box is open, copies the VHD, `86box.cfg` and NVR
 directory, and writes hashes.
+
+## Golden compare
+
+The multi-chip restructure (`docs/plans/multi-chip-restructure.md`) requires the
+shipped images to stay byte-for-byte identical while the build system is
+rewired underneath them. Capture a baseline once:
+
+```powershell
+./scripts/golden-baseline.ps1 -Capture
+```
+
+It builds with a pinned `-BuildId golden-compare` and archives hashes and a copy
+of every tracked tree to `..\velocity9x-golden\`, outside `build/` because
+`build/` is what the restructure rewrites. Then, after a change:
+
+```powershell
+./scripts/run-checks.ps1 -GoldenCompare
+```
+
+Win32 PE images embed the link timestamp in the COFF header, the import and
+export directories, every resource directory node and the debug directory, so
+the comparison zeroes those fields before hashing. NE images and VxDs carry no
+such field and are hashed as-is.
