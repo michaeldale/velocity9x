@@ -101,16 +101,54 @@ design.
 every reboot, GDI test PASS, palette PASS in all three 8-bpp modes. Results and
 per-mode screenshots under `build/driver-results/baseline-matrix-{virge,trio64}`.
 
-## Not captured here
+## Serial boot log
 
-- **Serial boot log.** Needs 86Box COM1 reconfigured as a named-pipe server
-  and `capture-serial-pipe.ps1` running across a cold boot. Run it before
-  phase 5, which is where the enable sequence moves and the serial log becomes
-  the primary evidence.
-- **Induced per-stage failure strings.** `v9x_trace_hardware_failure` maps
-  stage codes 1-10 to `fail-hardware-*` markers. Phase 5 must preserve the
-  numbering verbatim; the induced-failure sweep belongs with that phase rather
-  than here.
+The Trio64 profile was already configured with `serial1_device = pipe` on
+`trio64-com1`, so its boot log needs no configuration change. Captured from
+the pre-restructure package and again from the phase 5a build, the log is
+identical:
+
+```
+V9X-DRV disable
+V9X-MINI init build=golden-compare
+V9X-MINI power-callbacks-ok callbacks=4 build=golden-compare
+V9X-DRV load build=golden-compare
+V9X-DRV lfb=0xE7000000 bytes=00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+```
+
+The ViRGE profile still uses `serial1_device = file`, which 86Box buffers
+until exit. Switching it to the `velocity9x-com1` pipe already declared in its
+config needs that VM stopped, so it has not been changed.
+
+## Induced failure
+
+Pointing the Trio64 family's device list at a non-matching PCI ID
+(`5333:88FF`) produced `Stage=fail-hardware-present`, and Windows fell back to
+640x480 VGA rather than failing to boot. The guest recovered by redeploying
+the good package; no manual Safe Mode was needed.
+
+Two things came out of that:
+
+- **`fail-hardware-pci` (stage code 1) is not reachable by an absent card.**
+  `V9xHardwarePresent` is queried before `V9XHARDWAREENABLE` and short-circuits
+  first, so an absent device always reports `fail-hardware-present`. Reaching
+  stage 1 would need the present check to succeed and the enable-time find to
+  fail, and both call the same `V9xFindPciDevice`. Treat stage 1 as
+  effectively dead unless that changes.
+- The remote agent stops answering for several minutes across a failed
+  display bring-up and then recovers, reporting `DesktopReady = False` while
+  shell commands work. Budget for that before concluding a guest is lost.
+
+The remaining stage codes were verified structurally rather than by induction:
+the `mov V9xHardwareStageCode, N` sequence in `runtime.asm` is unchanged in
+value and order (1, 2, 9, 3, 4, 8, 4, 0, 5, 6, 7, 0), and the switch in
+`v9x_trace_hardware_failure` is untouched. Inducing each of the remaining
+stages costs a build, an install and a failed boot per stage on a guest that
+has to be recovered afterwards, which is out of proportion to what it proves
+while those two facts hold.
+
+## Not captured here
 - **Ironfield BltFast FPS and the Hellbender D3D run.** Both are fullscreen
   DirectDraw workloads driven by input injection, and a modal GPF in the guest
   holds the Win16Mutex and wedges the remote agent. The reference numbers for
