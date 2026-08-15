@@ -95,6 +95,76 @@ static unsigned long v9x_s3_detect_video_memory(void)
 }
 
 /*
+ * The aperture registers are addressed at the fixed colour CRTC pair, not the
+ * MISC-derived one the diagnostics reads use. That is what the assembly did
+ * and what the S3 sample does: by the time this runs the card is in a VBE
+ * graphics mode, so the mono pair cannot be the live one.
+ */
+#define V9X_S3_CRTC_INDEX 0x03d4u
+#define V9X_S3_CRTC_DATA  0x03d5u
+
+unsigned char v9x_s3_crtc_read(unsigned char index)
+{
+    v9x_port_out(V9X_S3_CRTC_INDEX, index);
+    return v9x_port_in(V9X_S3_CRTC_DATA);
+}
+
+void v9x_s3_crtc_write(unsigned char index, unsigned char value)
+{
+    v9x_port_out(V9X_S3_CRTC_INDEX, index);
+    v9x_port_out(V9X_S3_CRTC_DATA, value);
+}
+
+static void v9x_s3_unlock_extended(void)
+{
+    v9x_s3_crtc_write(0x38u, 0x48u);
+    v9x_s3_crtc_write(0x39u, 0xa5u);
+}
+
+unsigned long v9x_s3_read_aperture(void)
+{
+    unsigned short high;
+    unsigned short low;
+    unsigned long base;
+
+    v9x_s3_unlock_extended();
+    high = v9x_s3_crtc_read(0x59u);
+    low = v9x_s3_crtc_read(0x5au);
+    base = ((unsigned long)((high << 8) | low)) << 16;
+
+    if (base < 0x01000000ul || base > 0xffc00000ul) {
+        return 0ul;
+    }
+    return base;
+}
+
+unsigned short v9x_s3_enable_linear_aperture(void)
+{
+    unsigned char value;
+
+    v9x_s3_unlock_extended();
+
+    /* CR58: 4 MiB aperture in [1:0] plus linear addressing in [4]. Read back
+     * and require the bits to have stuck; a card that ignores the write must
+     * not be treated as mapped. */
+    value = v9x_s3_crtc_read(0x58u);
+    value = (unsigned char)((value & 0xfcu) | 0x13u);
+    v9x_port_out(V9X_S3_CRTC_DATA, value);
+    if ((v9x_port_in(V9X_S3_CRTC_DATA) & 0x13u) != 0x13u) {
+        return 0u;
+    }
+
+    /* CR40[0] enables the graphics engine. Without it, engine register
+     * offsets address framebuffer memory instead. */
+    value = v9x_s3_crtc_read(0x40u);
+    v9x_port_out(V9X_S3_CRTC_DATA, (unsigned char)(value | 0x01u));
+    if ((v9x_port_in(V9X_S3_CRTC_DATA) & 0x01u) == 0u) {
+        return 0u;
+    }
+    return 1u;
+}
+
+/*
  * The shared S3 diagnostics block.
  *
  * Key order is the diagnostic contract: C:\V9XHW.INI is written by appending,

@@ -8,6 +8,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- The staged hardware enable sequence moved from `runtime.asm` into
+  `src/display16/enable16.c`, which calls the new `vbe16` mode-set service and
+  the family's `post_mode_set`, `read_aperture` and `enable_aperture` hooks.
+  `runtime.asm` now has no chip `IFDEF` at all: it keeps the DIB thunks, the
+  VDD calls, and two chip-agnostic primitives — a PCI BAR0 read and the DPMI
+  selector/mapping helper, both of which need 32-bit registers the 8086-target
+  C cannot use. Stage code numbering, selector reuse across Enable cycles and
+  the never-free-the-selector Disable behaviour are unchanged.
+- The audit now scans every object in the image rather than `runtime.obj`
+  alone: chip code lives in C modules now, and a check that only looked at the
+  assembly would pass vacuously once the code it audits moved out. Several
+  instruction signatures were retargeted to what the compiler actually emits
+  (Watcom folds `(v & 0xFC) | 0x13` into `and al,0ECH`), and the PCI BAR0
+  patterns were dropped from the Matrox set because that code is now a shared
+  primitive and no longer distinguishes one family from another. The link-map
+  symbol layer carries proportionally more of the audit as a result.
 - `runtime.asm` no longer selects chip literals with `IFDEF`. The PCI identity,
   the VBE 4F02h mode-set flag and the DPMI aperture size are DGROUP variables
   stamped from the family's `v9x_hw16` table at load, and `V9xFindPciDevice`

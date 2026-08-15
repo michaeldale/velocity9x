@@ -40,14 +40,14 @@
             # PCI identity and the VBE flag are data in this chip's hw16
             # object now; see the note in the s3-virge manifest.
             Audit = @{
+                # Only signatures unique to this family's own chip module.
+                # The PCI BAR0 read is a shared chip-agnostic primitive in
+                # runtime.asm now, so its instructions no longer discriminate
+                # between families and are not listed.
                 Required = @(
-                    'mov\s+ax,0B10AH'
-                    'mov\s+di,10H'
-                    'and\s+eax,0FFFFFFF0H'
-                    'test\s+eax,0FFFFFFH'
                     'mov\s+ax,4F06H'
-                    'mov\s+cx,word ptr DGROUP:_v9x_active_width'
-                    'cmp\s+bx,word ptr DGROUP:_v9x_active_pitch'
+                    'mov\s+cx,word ptr _v9x_active_width'
+                    'cmp\s+cx,word ptr _v9x_active_pitch'
                 )
                 # Carried verbatim from the pre-manifest audit list. These two
                 # patterns are no longer produced by any family, so cross-family
@@ -71,6 +71,8 @@
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
+            @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
+            @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }

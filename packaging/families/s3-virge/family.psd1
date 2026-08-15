@@ -55,12 +55,11 @@
             # register sequence, which is still instructions.
             Audit = @{
                 Required = @(
-                    'mov\s+al,58H'
-                    'and\s+al,0FCH'
                     'or\s+al,13H'
-                    'mov\s+al,53H'
-                    # wdis prints small immediates bare: "or al,8", not 08H.
+                    'cmp\s+al,13H'
+                    'mov\s+ax,53H'
                     'or\s+al,8\b'
+                    'test\s+al,8'
                 )
                 Forbidden = @()
             }
@@ -81,6 +80,8 @@
             @{ Name = 'virge_memory'; Path = 'src\chipsets\s3\virge\memory.c' }
             @{ Name = 's3_regs16'; Path = 'src\chipsets\s3\common\s3_regs16.c' }
             @{ Name = 'virge_hw16'; Path = 'src\chipsets\s3\virge\virge_hw16.c' }
+            @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
+            @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }

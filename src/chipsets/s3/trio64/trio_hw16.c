@@ -41,5 +41,9 @@ const V9X_HW16_OPS v9x_hw16 = {
     V9X_HW16_VBE_NO_CLEAR,
     0x03ffu, 0xffffu,
     v9x_s3_publish_diagnostics,
+    0,
+    v9x_s3_read_aperture,
+    /* No CR53 new-MMIO window on this chip: the shared sequence is all of it. */
+    v9x_s3_enable_linear_aperture,
     0
 };

@@ -104,6 +104,7 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\loader.c"),
     (Join-Path $repoRoot "src\display16\ddi.c"),
     (Join-Path $repoRoot "src\display16\dd16.c"),
+    (Join-Path $repoRoot "src\display16\enable16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     (Join-Path $repoRoot "src\display32\ddhal.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")

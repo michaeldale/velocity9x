@@ -125,6 +125,37 @@ typedef struct v9x_hw16_ops {
                                 v9x_hw16_write_fn write);
 
     /*
+     * Runs immediately after the VBE 4F02h mode set and before the aperture is
+     * read. Non-zero to continue. NULL when the mode set is sufficient, which
+     * is the S3 and tier-0 case; the Millennium II forces its scan-line pitch
+     * through 4F06h here and rejects a BIOS that picks a different stride.
+     *
+     * Failure reports stage code 9.
+     */
+    unsigned short (*post_mode_set)(void);
+
+    /*
+     * Returns the physical framebuffer aperture, or 0 if it cannot be trusted.
+     *
+     * NULL means ask the BIOS through VBE 4F01h, which is the chip-agnostic
+     * answer and the one tier-0 will use. The S3 families read CR59/CR5A and
+     * the Matrox family reads PCI BAR0, because neither card has a 4F01h that
+     * can be relied on.
+     *
+     * Failure reports stage code 3.
+     */
+    unsigned long (*read_aperture)(void);
+
+    /*
+     * Enables linear addressing on the chip once the aperture is known.
+     * Non-zero to continue. NULL when the VBE mode set already did everything,
+     * which is the tier-0 and Millennium II case.
+     *
+     * Failure reports stage code 8.
+     */
+    unsigned short (*enable_aperture)(void);
+
+    /*
      * Build the screen PDEVICE, returning non-zero on success.
      *
      * NULL uses the DIB Engine's CreateDIBPDevice, which is the proven S3

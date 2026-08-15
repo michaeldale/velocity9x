@@ -147,7 +147,6 @@ $commonRuntimeInstructions = @(
     'movzx\s+edi,word ptr 6\[bp\]',
     'xor\s+edx,edx',
     'mov\s+ecx,dword ptr DGROUP:_v9x_active_visible_bytes',
-    'mov\s+bx,word ptr DGROUP:_v9x_active_vbe_mode',
     'mov\s+ax,seg RESETHIRESMODE', 'int\s+2fH'
 )
 foreach ($instruction in $commonRuntimeInstructions) {
@@ -155,6 +154,16 @@ foreach ($instruction in $commonRuntimeInstructions) {
         throw "The Win16 runtime is missing audited VDD handoff instruction $instruction."
     }
 }
+# The VBE mode set moved out of runtime.asm into the shared vbe16 service, so
+# this one is audited across the image rather than against the assembly.
+# The compiler spells a DGROUP reference without the group prefix the
+# assembler emits, so these match the bare symbol.
+$commonImageInstructions = @(
+    'mov\s+\w+,word ptr _v9x_active_vbe_mode',
+    'mov\s+\w+,word ptr _v9x_vbe_mode_flags',
+    'mov\s+ax,4f02H',
+    'int\s+10H'
+)
 foreach ($instruction in @('pop\s+dword ptr .*',
                             'call\s+far ptr CreateDIBPDevice',
                             'push\s+dword ptr .*', 'mov\s+dx,ax',
@@ -189,17 +198,31 @@ if ($thunkDisassembly -notmatch
 # Layer 1: cross-family contamination.
 # ---------------------------------------------------------------------------
 
+# Scan every object in the image, not just the assembled runtime. Chip code
+# now lives in per-family C modules, and a signature check that only looked at
+# runtime.obj would silently pass once the code it audits moved out of it.
+$imageDisassembly = (@(Get-ChildItem -LiteralPath $OutputDir -Filter "*.obj" -File |
+    Sort-Object Name | ForEach-Object {
+        (& $disassembler "-a" $_.FullName 2>&1) -join "`n"
+    }) -join "`n")
+
+foreach ($instruction in $commonImageInstructions) {
+    if ($imageDisassembly -notmatch $instruction) {
+        throw "The $($target.Id) image is missing audited mode-set instruction $instruction."
+    }
+}
+
 $requiredPatterns = @(Get-V9xFamilyRequiredPatterns -Family $target)
 $forbiddenPatterns = @(Get-V9xFamilyForbiddenPatterns -Family $target `
     -AllFamilies $families)
 foreach ($pattern in $requiredPatterns) {
-    if ($runtimeDisassembly -notmatch $pattern) {
-        throw "The $($target.Id) runtime is missing audited instruction $pattern."
+    if ($imageDisassembly -notmatch $pattern) {
+        throw "The $($target.Id) image is missing audited instruction $pattern."
     }
 }
 foreach ($pattern in $forbiddenPatterns) {
-    if ($runtimeDisassembly -match $pattern) {
-        throw ("The $($target.Id) runtime contains foreign-family instruction " +
+    if ($imageDisassembly -match $pattern) {
+        throw ("The $($target.Id) image contains foreign-family instruction " +
                "$pattern.")
     }
 }

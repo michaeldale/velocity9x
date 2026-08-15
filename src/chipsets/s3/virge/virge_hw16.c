@@ -41,6 +41,30 @@ static const V9X_HW16_MODE v9x_virge_modes[] = {
     { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 }
 };
 
+/*
+ * The ViRGE adds CR53[3] on top of the shared S3 sequence: it opens the "new
+ * MMIO" window, without which offsets such as SUBSYS_STAT (8504h) address
+ * framebuffer memory rather than engine registers.
+ *
+ * This lives here rather than in s3_regs16.c on purpose. The Trio has no such
+ * window, and a shared implementation would put the CR53 signature into the
+ * Trio binary and defeat the cross-family audit.
+ */
+static unsigned short v9x_virge_enable_aperture(void)
+{
+    unsigned char value;
+
+    if (v9x_s3_enable_linear_aperture() == 0u) {
+        return 0u;
+    }
+    value = v9x_s3_crtc_read(0x53u);
+    v9x_s3_crtc_write(0x53u, (unsigned char)(value | 0x08u));
+    if ((v9x_s3_crtc_read(0x53u) & 0x08u) == 0u) {
+        return 0u;
+    }
+    return 1u;
+}
+
 const V9X_HW16_OPS v9x_hw16 = {
     "s3-virge",
     v9x_virge_devices,
@@ -55,6 +79,10 @@ const V9X_HW16_OPS v9x_hw16 = {
      * and the ViRGE new-MMIO window sits at BAR + 16 MiB. */
     0x03ffu, 0xffffu,
     v9x_s3_publish_diagnostics,
+    /* The mode set needs no follow-up on this target. */
+    0,
+    v9x_s3_read_aperture,
+    v9x_virge_enable_aperture,
     /* CreateDIBPDevice builds the screen PDEVICE on this target. */
     0
 };
