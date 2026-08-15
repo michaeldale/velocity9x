@@ -18,7 +18,8 @@
 extern void FAR PASCAL V9xDibBeginAccess(void);
 extern void FAR PASCAL V9xDibEndAccess(void);
 
-static const V9X_HW16_DEVICE v9x_mga2_devices[] = {
+/* Not static: see the note in virge_hw16.c. */
+const V9X_HW16_DEVICE v9x_mga2_devices[] = {
     {
         0x102bu, 0x051bu,
         "Matrox Millennium II MGA-2164W",
@@ -96,6 +97,11 @@ const V9X_HW16_OPS v9x_hw16 = {
     (unsigned short)(sizeof(v9x_mga2_devices) / sizeof(v9x_mga2_devices[0])),
     v9x_mga2_modes,
     (unsigned short)(sizeof(v9x_mga2_modes) / sizeof(v9x_mga2_modes[0])),
+    /* Request the advertised linear framebuffer. Unlike the S3 path, do not
+     * preserve the previous mode's framebuffer origin: the physical
+     * Millennium II BIOS must establish a fresh origin at BAR0 offset zero. */
+    V9X_HW16_VBE_LINEAR,
+    0x03ffu, 0xffffu,
     v9x_mga2_publish_diagnostics,
     v9x_mga2_build_screen_pdevice
 };

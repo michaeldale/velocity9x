@@ -8,6 +8,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- `runtime.asm` no longer selects chip literals with `IFDEF`. The PCI identity,
+  the VBE 4F02h mode-set flag and the DPMI aperture size are DGROUP variables
+  stamped from the family's `v9x_hw16` table at load, and `V9xFindPciDevice`
+  walks the device list rather than testing one hard-coded ID — which is what
+  lets one binary serve more than one card. Stage code numbering is unchanged,
+  so the boot-trace tooling still detects divergence.
+- Because the PCI identity and VBE flag are now data rather than immediates,
+  the per-chip audit follows them: each chip declares a `MapSymbols` entry for
+  its device table, and every family declares `Audit.DispatchSymbol`. A family
+  binary must contain its own device-table symbol and no other family's.
 - Chip data moved out of `src/display16/ddi.c` into a 16-bit hardware layer.
   `include/velocity9x/hw16.h` declares one statically linked `v9x_hw16_ops`
   table per family binary carrying the PCI identity, the audited VBE mode

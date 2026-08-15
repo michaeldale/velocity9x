@@ -70,6 +70,22 @@ DWORD v9x_active_visible_bytes = 307200ul;
 WORD v9x_active_width = 640u;
 WORD v9x_active_pitch = 640u;
 WORD v9x_palettized = 1u;
+
+/*
+ * The rest of what runtime.asm needs from the family table, flattened into
+ * DGROUP so the assembly can read it without walking a struct of far
+ * pointers. Stamped once at load, below.
+ *
+ * V9xFindPciDevice walks v9x_pci_vendor/device, which is what lets one family
+ * binary serve more than one card.
+ */
+#define V9X_PCI_ID_LIMIT 8u
+WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
+WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
+WORD v9x_pci_count = 0u;
+WORD v9x_vbe_mode_flags = 0x8000u;
+WORD v9x_map_pages_hi = 0x03ffu;
+WORD v9x_map_pages_lo = 0xffffu;
 static RGBQUAD FAR *v9x_color_table;
 static const V9X_HW16_MODE *v9x_selected_mode;
 static const V9X_HW16_MODE *v9x_active_mode;
@@ -327,10 +343,22 @@ WORD v9x_dd_active_mode(WORD FAR *width, WORD FAR *height,
 
 void v9x_display_boot_log(void)
 {
-    /* Stamp the family's first mode into the DGROUP variables runtime.asm
-     * reads, before any DDI entry point can run. Every later path reselects a
-     * mode from the registry first; this only guarantees a coherent starting
-     * state for the family that was actually linked. */
+    WORD index;
+
+    /* Stamp the family table into the DGROUP variables runtime.asm reads,
+     * before any DDI entry point can run. V9XHARDWAREENABLE is reached only
+     * through Enable, which is long after LibMain. */
+    v9x_pci_count = v9x_hw16.device_count;
+    if (v9x_pci_count > V9X_PCI_ID_LIMIT) {
+        v9x_pci_count = V9X_PCI_ID_LIMIT;
+    }
+    for (index = 0u; index < v9x_pci_count; ++index) {
+        v9x_pci_vendor[index] = v9x_hw16.devices[index].vendor_id;
+        v9x_pci_device[index] = v9x_hw16.devices[index].device_id;
+    }
+    v9x_vbe_mode_flags = v9x_hw16.vbe_mode_flags;
+    v9x_map_pages_hi = v9x_hw16.map_pages_hi;
+    v9x_map_pages_lo = v9x_hw16.map_pages_lo;
     v9x_apply_mode(&v9x_hw16.modes[0]);
     v9x_serial_write("V9X-DRV load build=" V9X_BUILD_ID "\r\n");
     /* Boot-capture evidence shows ring-3 serial writes from LibMain do not

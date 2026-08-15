@@ -70,6 +70,14 @@ strengthens every existing family's audit with no script edit.
 
 Only patterns that no manifest declares need an explicit `Forbidden` entry.
 
+Not every chip fact is an instruction. The PCI identity and the VBE mode-set
+flag live in the chip's `hw16` object as data and are stamped into DGROUP at
+load, so no signature can find them. Those are audited instead through
+`Chips[].MapSymbols` (the chip's device table must be in the link map, and no
+other family's may be) and through the generated INF's hardware-ID set
+equality. What remains in `Audit.Required` is the chip register sequence,
+which is still instructions.
+
 Match the disassembler's spelling, not the assembler's: `wdis` prints small
 immediates bare, so `or al,08h` in the source is `or\s+al,8\b` in a pattern.
 

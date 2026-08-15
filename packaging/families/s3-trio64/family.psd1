@@ -42,17 +42,17 @@
             # Trio does not have. Those two patterns are declared required by
             # the s3-virge manifest, so cross-family derivation forbids them
             # here automatically.
+            # PCI identity and the VBE flag are data in this chip's hw16
+            # object now; see the note in the s3-virge manifest.
             Audit = @{
                 Required = @(
-                    'mov\s+cx,8811H'
-                    'mov\s+dx,5333H'
-                    'or\s+bx,8000H'
                     'mov\s+al,58H'
                     'and\s+al,0FCH'
                     'or\s+al,13H'
                 )
                 Forbidden = @()
             }
+            MapSymbols = @('v9x_trio_devices')
         }
     )
 
@@ -86,6 +86,8 @@
         RequiredInstructions = @()
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
+        DispatchSymbol = 'v9x_hw16'
+        BackendSymbols = @('v9x_trio_devices')
     }
 
     Inf = @{

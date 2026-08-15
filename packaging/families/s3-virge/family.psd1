@@ -47,11 +47,14 @@
             # required patterns become forbidden here automatically, so only
             # patterns that no other manifest declares need listing under
             # Forbidden.
+            # The PCI identity and the VBE mode-set flag are no longer
+            # immediates in the assembled runtime: they are data in this
+            # chip's hw16 object, stamped into DGROUP at load. Identity is
+            # audited through MapSymbols below and through the INF
+            # hardware-ID set equality; what remains here is the chip
+            # register sequence, which is still instructions.
             Audit = @{
                 Required = @(
-                    'mov\s+cx,8A01H'
-                    'mov\s+dx,5333H'
-                    'or\s+bx,8000H'
                     'mov\s+al,58H'
                     'and\s+al,0FCH'
                     'or\s+al,13H'
@@ -61,6 +64,7 @@
                 )
                 Forbidden = @()
             }
+            MapSymbols = @('v9x_virge_devices')
         }
     )
 
@@ -103,6 +107,11 @@
         RequiredInstructions = @()
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
+        # The family's hardware table. Every family defines this symbol, so it
+        # is required rather than cross-family forbidden.
+        DispatchSymbol = 'v9x_hw16'
+        # Symbols another family's binary must not contain.
+        BackendSymbols = @('v9x_virge_devices')
     }
 
     Inf = @{

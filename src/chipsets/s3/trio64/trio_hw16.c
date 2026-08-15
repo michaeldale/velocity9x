@@ -8,7 +8,8 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_regs16.h"
 
-static const V9X_HW16_DEVICE v9x_trio_devices[] = {
+/* Not static: see the note in virge_hw16.c. */
+const V9X_HW16_DEVICE v9x_trio_devices[] = {
     {
         0x5333u, 0x8811u,
         "S3 Trio32/64 86C764",
@@ -37,6 +38,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     (unsigned short)(sizeof(v9x_trio_devices) / sizeof(v9x_trio_devices[0])),
     v9x_trio_modes,
     (unsigned short)(sizeof(v9x_trio_modes) / sizeof(v9x_trio_modes[0])),
+    V9X_HW16_VBE_NO_CLEAR,
+    0x03ffu, 0xffffu,
     v9x_s3_publish_diagnostics,
     0
 };

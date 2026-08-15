@@ -37,11 +37,10 @@
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
             )
 
+            # PCI identity and the VBE flag are data in this chip's hw16
+            # object now; see the note in the s3-virge manifest.
             Audit = @{
                 Required = @(
-                    'or\s+bx,4000H'
-                    'mov\s+cx,51BH'
-                    'mov\s+dx,102BH'
                     'mov\s+ax,0B10AH'
                     'mov\s+di,10H'
                     'and\s+eax,0FFFFFFF0H'
@@ -59,6 +58,7 @@
                     'dword ptr es:\[1E54H\]'
                 )
             }
+            MapSymbols = @('v9x_mga2_devices')
         }
     )
 
@@ -108,6 +108,8 @@
         RequiredInstructions = @()
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
+        DispatchSymbol = 'v9x_hw16'
+        BackendSymbols = @('v9x_mga2_devices')
     }
 
     # No INF: this family installs by guarded file replacement, and

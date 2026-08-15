@@ -9,7 +9,10 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_regs16.h"
 
-static const V9X_HW16_DEVICE v9x_virge_devices[] = {
+/* Not static: the link map is where the per-chip audit looks for it, now that
+ * the PCI identity is data in this object rather than an immediate in the
+ * assembled runtime. */
+const V9X_HW16_DEVICE v9x_virge_devices[] = {
     {
         0x5333u, 0x8a01u,
         "S3 ViRGE/DX 86C375",
@@ -44,6 +47,13 @@ const V9X_HW16_OPS v9x_hw16 = {
     (unsigned short)(sizeof(v9x_virge_devices) / sizeof(v9x_virge_devices[0])),
     v9x_virge_modes,
     (unsigned short)(sizeof(v9x_virge_modes) / sizeof(v9x_virge_modes[0])),
+    /* The Windows 98 S3 ViRGE sample uses the S3/VBE no-clear flag for these
+     * modes. It only requests the generic VBE linear-framebuffer bit on GX2,
+     * not on the 86C375 targeted here. */
+    V9X_HW16_VBE_NO_CLEAR,
+    /* Map the complete 64-MiB PCI BAR: the first 4 MiB is allocatable VRAM
+     * and the ViRGE new-MMIO window sits at BAR + 16 MiB. */
+    0x03ffu, 0xffffu,
     v9x_s3_publish_diagnostics,
     /* CreateDIBPDevice builds the screen PDEVICE on this target. */
     0

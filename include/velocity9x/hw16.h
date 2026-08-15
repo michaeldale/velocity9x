@@ -97,6 +97,23 @@ typedef struct v9x_hw16_ops {
     unsigned short mode_count;
 
     /*
+     * OR'd into BX for the VBE 4F02h mode set. The S3 BIOS wants the S3/VBE
+     * no-clear bit; a generic card wants the linear-framebuffer bit.
+     *
+     * Known limit: the ViRGE/DX BIOS ignores the generic 0x4000 bit, which is
+     * why the S3 families cannot simply use the tier-0 value.
+     */
+    unsigned short vbe_mode_flags;
+
+    /*
+     * Size of the DPMI physical mapping, as the page count DPMI 0800h wants
+     * in SI:DI and 0008h wants in CX:DX. Every family maps the whole 64 MiB
+     * PCI aperture today; a card with a smaller BAR sets less.
+     */
+    unsigned short map_pages_hi;
+    unsigned short map_pages_lo;
+
+    /*
      * Publish this family's C:\V9XHW.INI block. The caller has already
      * cleared the section.
      *

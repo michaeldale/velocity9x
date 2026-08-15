@@ -14,6 +14,15 @@ EXTRN _v9x_active_vbe_mode:WORD
 EXTRN _v9x_active_visible_bytes:DWORD
 EXTRN _v9x_active_width:WORD
 EXTRN _v9x_active_pitch:WORD
+; Stamped from the family's v9x_hw16 table at load time (ddi.c). Keeping the
+; PCI identity, the VBE mode-set flags and the aperture size out of the
+; instruction stream is what lets one binary serve more than one card.
+EXTRN _v9x_pci_vendor:WORD
+EXTRN _v9x_pci_device:WORD
+EXTRN _v9x_pci_count:WORD
+EXTRN _v9x_vbe_mode_flags:WORD
+EXTRN _v9x_map_pages_hi:WORD
+EXTRN _v9x_map_pages_lo:WORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -424,17 +433,9 @@ V9XVDDUNREGISTER ENDP
 V9xSetVbeMode PROC NEAR
     mov     ax, 4f02h
     mov     bx, _v9x_active_vbe_mode
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    ; Request the advertised linear framebuffer. Unlike the S3 path, do not
-    ; preserve the previous mode's framebuffer/display origin: the physical
-    ; Millennium II BIOS must establish a fresh origin at BAR0 offset zero.
-    or      bx, 4000h
-ELSE
-    ; The Windows 98 S3 ViRGE sample uses the S3/VBE no-clear flag for these
-    ; modes. It only requests the generic VBE linear-framebuffer bit on GX2,
-    ; not on the 86C375 ViRGE/DX targeted here.
-    or      bx, 8000h
-ENDIF
+    ; 8000h (S3/VBE no-clear) or 4000h (generic linear framebuffer), chosen by
+    ; the family table rather than by a build-time define.
+    or      bx, _v9x_vbe_mode_flags
     int     10h
     cmp     ax, 004fh
     jne     short V9xSetVbeModeFailed
@@ -466,28 +467,37 @@ V9xSetMatroxScanLinePitchFailed:
 V9xSetMatroxScanLinePitch ENDP
 ENDIF
 
+; Walk the family's device list and stop at the first card present.
+;
+; PCI BIOS B102h returns the bus and device/function in BH/BL, and
+; V9xReadMatroxAperture reads that straight after calling here, so BX must
+; carry the successful call's result out. DI is the table cursor and is saved
+; and restored; SI is zeroed for the call, as it always was.
 V9xFindPciDevice PROC NEAR
+    push    di
+    xor     di, di
+V9xFindPciDeviceNext:
+    mov     ax, _v9x_pci_count
+    shl     ax, 1
+    cmp     di, ax
+    jae     short V9xFindPciDeviceFailed
+    mov     cx, _v9x_pci_device[di]
+    mov     dx, _v9x_pci_vendor[di]
     mov     ax, 0b102h
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    mov     cx, 0051bh
-    mov     dx, 0102bh
-ELSE
-IFDEF V9X_TARGET_S3_TRIO64
-    mov     cx, 08811h
-    mov     dx, 05333h
-ELSE
-    mov     cx, 08a01h
-    mov     dx, 05333h
-ENDIF
-ENDIF
     xor     si, si
     int     1ah
-    jc      short V9xFindPciDeviceFailed
+    jc      short V9xFindPciDeviceTryNext
     or      ah, ah
-    jne     short V9xFindPciDeviceFailed
+    je      short V9xFindPciDeviceFound
+V9xFindPciDeviceTryNext:
+    add     di, 2
+    jmp     short V9xFindPciDeviceNext
+V9xFindPciDeviceFound:
+    pop     di
     mov     ax, 1
     ret
 V9xFindPciDeviceFailed:
+    pop     di
     xor     ax, ax
     ret
 V9xFindPciDevice ENDP
@@ -711,10 +721,11 @@ V9xHardwareSelectorAllocated:
     mov     ebx, eax
     shr     ebx, 16
     mov     cx, ax
-    ; Map the complete 64-MiB PCI BAR. The first 4 MiB is allocatable VRAM;
+    ; Aperture size in pages, from the family table. Every family maps the
+    ; complete 64-MiB PCI BAR today: the first 4 MiB is allocatable VRAM and
     ; the ViRGE new-MMIO window is at BAR + 16 MiB.
-    mov     si, 03ffh
-    mov     di, 0ffffh
+    mov     si, _v9x_map_pages_hi
+    mov     di, _v9x_map_pages_lo
     mov     ax, 0800h
     int     31h
     jc      short V9xHardwareFreeSelector
@@ -731,8 +742,8 @@ V9xHardwareSelectorAllocated:
     mov     V9xHardwareStageCode, 7
 
     mov     bx, V9xScreenSelector
-    mov     cx, 03ffh
-    mov     dx, 0ffffh
+    mov     cx, _v9x_map_pages_hi
+    mov     dx, _v9x_map_pages_lo
     mov     ax, 0008h
     int     31h
     jc      short V9xHardwareUnmap
