@@ -8,6 +8,20 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- The 32-bit HAL's runtime chip dispatch is now a `v9x_engine32_ops` table
+  selected from `engine.engine_type`, replacing the
+  `v9x_trio_engine_ready() ? trio : virge` pair inlined at the drain, source
+  copy, colour fill and GetBltStatus call sites. Writing them out showed the
+  pairs were not asking one question but three, so the table keeps `ready`,
+  the latching `validate_status`, the passive `status_validated` and `can_blt`
+  apart by name. There is no `recover` member: it is only ever called from
+  inside the bounded wait that expired, and the Trio64 has none.
+  `V9X_DD_ENGINE_TYPE_*` and `V9X_DD_ENGINE_CAP_*` moved to a new
+  dependency-free `include/velocity9x/engine_abi.h`, so `win9x_ddraw_abi.h` no
+  longer reaches into the 16-bit-only `hw16.h`. Behaviour is unchanged against
+  both S3 guests: D3D gate set, engine counters, Ironfield FPS and the
+  timeout-injection asymmetry all match the recorded pre-split baselines.
+
 - `V9X_DD_ENGINE` gained `engine_type`, `engine_caps`, `io_base`,
   `crtc_index_port` and two reserved DWORDs, appended so the existing fields
   keep their offsets and `ddhal.c` reads them unmodified. One deliberate

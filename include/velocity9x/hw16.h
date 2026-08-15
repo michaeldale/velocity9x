@@ -24,6 +24,10 @@
 #ifndef VELOCITY9X_HW16_H
 #define VELOCITY9X_HW16_H
 
+/* Engine type and capability values, shared with the 32-bit HAL. Header has
+ * no includes of its own, so this stays inside the no-<windows.h> rule. */
+#include "velocity9x/engine_abi.h"
+
 /*
  * Deliberately no <windows.h>. A chip module publishes its diagnostics through
  * the writer callback below rather than calling WritePrivateProfileString
@@ -73,16 +77,6 @@ typedef struct v9x_hw16_device {
     const char *acceleration;
     const char *direct3d;
 } V9X_HW16_DEVICE;
-
-#define V9X_DD_ENGINE_TYPE_NONE         0ul
-#define V9X_DD_ENGINE_TYPE_S3_VIRGE_DX  1ul
-#define V9X_DD_ENGINE_TYPE_S3_TRIO64    2ul
-
-#define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
-#define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
-#define V9X_DD_ENGINE_CAP_FLIP          0x00000004ul
-#define V9X_DD_ENGINE_CAP_VBLANK        0x00000008ul
-#define V9X_DD_ENGINE_CAP_D3D           0x00000010ul
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
  * generic linear-framebuffer bit is what a tier-0 card needs. */

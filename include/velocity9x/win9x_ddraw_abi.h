@@ -3,7 +3,7 @@
 
 /* Engine type and capability values are shared with the 16-bit hardware
  * layer, which cannot include this header. */
-#include "velocity9x/hw16.h"
+#include "velocity9x/engine_abi.h"
 
 /*
  * Minimal Windows 9x DirectDraw HAL ABI used by Velocity9x, written from

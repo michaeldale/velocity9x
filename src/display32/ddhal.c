@@ -708,6 +708,50 @@ static void v9x_set_display_start(DWORD byte_offset)
     v9x_write_crtc(0x69u, extension);
 }
 
+/*
+ * Runtime engine dispatch.
+ *
+ * Each engine entry point used to be reached through a
+ * `v9x_trio_engine_ready() ? trio : virge` test inlined at the call site.
+ * That is a branch per chip per site, and it hid the fact that the tests are
+ * not all asking the same question:
+ *
+ *   ready            - is this engine present and addressable at all
+ *   validate_status  - may a command be issued right now? Latching on the
+ *                      ViRGE, where the first use of a mode has to confirm
+ *                      the status register reads sensibly before any MMIO
+ *                      command is written to it
+ *   status_validated - has that already happened? A passive test, used by
+ *                      the drain before the CPU touches engine-owned memory
+ *   can_blt          - the DDGBS_CANBLT answer
+ *
+ * On the Trio64 the first three collapse onto one flag test and CANBLT is a
+ * non-blocking idle poll, because its 8514/A engine has no status latch. On
+ * the ViRGE they are four different things, and conflating them is exactly
+ * what V9X_DD_ENGINE_STATUS_VALIDATED was separated out to prevent.
+ *
+ * There is deliberately no `recover` member. Recovery is never dispatched
+ * across engines: it is called only from within the bounded wait that expired,
+ * and the Trio64 has no recovery at all - forced timeouts there raise
+ * idle_timeouts and leave reset_count flat, which is the measured per-target
+ * baseline in docs\decisions\2026-08-16-engine-fault-injection.md. A member no
+ * caller reads would only invite the assumption that every engine has one.
+ */
+typedef struct v9x_engine32_ops {
+    int (*ready)(void);
+    int (*validate_status)(void);
+    int (*status_validated)(void);
+    int (*can_blt)(void);
+    int (*wait_idle)(int wait);
+    int (*fill)(V9X_DDHAL_BLTDATA *data, DWORD offset,
+                DWORD bytes_per_pixel, int wait);
+    int (*copy)(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
+                DWORD destination_offset, DWORD bytes_per_pixel, int wait);
+} V9X_ENGINE32_OPS;
+
+/* Defined below the per-engine fill and copy bodies the tables point at. */
+static const V9X_ENGINE32_OPS *v9x_engine32(void);
+
 static DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface)
 {
     DWORD address;
@@ -1049,11 +1093,10 @@ static int v9x_copy_rect_valid(const V9X_DD_SURFACE_LCL *surface,
  * from the CPU. With no engine enabled there is nothing in flight. */
 static int v9x_blt_drain(int wait)
 {
-    if (v9x_trio_engine_ready()) {
-        return v9x_trio_wait_idle(wait);
-    }
-    if (v9x_engine_status_validated()) {
-        return v9x_wait_idle(wait);
+    const V9X_ENGINE32_OPS *ops = v9x_engine32();
+
+    if (ops != 0 && ops->status_validated()) {
+        return ops->wait_idle(wait);
     }
     return 1;
 }
@@ -1269,6 +1312,7 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     DWORD row;
     BYTE *base;
     int wait;
+    const V9X_ENGINE32_OPS *ops;
 
     data->ddRVal = V9X_DD_OK;
     if ((data->dwFlags & ~allowed) != 0ul ||
@@ -1293,12 +1337,10 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     }
     wait = (data->dwFlags &
             (V9X_DDBLT_ASYNC | V9X_DDBLT_DONOTWAIT)) == 0ul;
-    if (v9x_trio_engine_ready() || v9x_engine_validate_status()) {
-        int outcome = v9x_trio_engine_ready()
-            ? v9x_trio_copy(data, source_offset, destination_offset,
-                            bytes_per_pixel, wait)
-            : v9x_virge_copy(data, source_offset, destination_offset,
-                             bytes_per_pixel, wait);
+    ops = v9x_engine32();
+    if (ops != 0 && ops->validate_status()) {
+        int outcome = ops->copy(data, source_offset, destination_offset,
+                                bytes_per_pixel, wait);
 
         if (outcome == V9X_BLT_BUSY) {
             data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1419,6 +1461,69 @@ static int v9x_virge_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     return V9X_BLT_DONE;
 }
 
+/*
+ * The Trio64 has no status to validate, so CANBLT is answered by the same
+ * non-blocking idle poll that answers ISBLTDONE. Passing wait == 0 is also
+ * what keeps a poll from spending a fault injection on an answer it was
+ * always entitled to give.
+ */
+static int v9x_trio_can_blt(void)
+{
+    return v9x_trio_wait_idle(0);
+}
+
+static const V9X_ENGINE32_OPS v9x_engine32_virge = {
+    v9x_engine_ready,
+    v9x_engine_validate_status,
+    v9x_engine_status_validated,
+    v9x_engine_validate_status,
+    v9x_wait_idle,
+    v9x_virge_fill,
+    v9x_virge_copy
+};
+
+static const V9X_ENGINE32_OPS v9x_engine32_trio = {
+    v9x_trio_engine_ready,
+    v9x_trio_engine_ready,
+    v9x_trio_engine_ready,
+    v9x_trio_can_blt,
+    v9x_trio_wait_idle,
+    v9x_trio_fill,
+    v9x_trio_copy
+};
+
+/*
+ * Resolve the engine ops lazily.
+ *
+ * DriverInit runs before the 16-bit side has filled the engine descriptor, so
+ * there is nothing to select from at load time. Selection is on
+ * engine.engine_type rather than on the V9X_DD_ENGINE_S3_* identity bits,
+ * which is what lets a new chip arrive as a new table and a new enum value
+ * instead of another bit and another branch.
+ *
+ * The result is not cached. The descriptor is refreshed on every DirectDraw
+ * session setup, and a switch over two values costs far less than the risk of
+ * holding a pointer that was selected from a block since invalidated. Each
+ * table's own ready/validate_status still re-checks the descriptor, so a
+ * resolved pointer never means the engine is usable.
+ */
+static const V9X_ENGINE32_OPS *v9x_engine32(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul) {
+        return 0;
+    }
+    switch (v9x_hal->engine.engine_type) {
+    case V9X_DD_ENGINE_TYPE_S3_VIRGE_DX:
+        return &v9x_engine32_virge;
+    case V9X_DD_ENGINE_TYPE_S3_TRIO64:
+        return &v9x_engine32_trio;
+    default:
+        break;
+    }
+    return 0;
+}
+
 static void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                          DWORD bytes_per_pixel)
 {
@@ -1484,6 +1589,7 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     DWORD offset;
     int wait;
     int outcome = V9X_BLT_DECLINED;
+    const V9X_ENGINE32_OPS *ops;
 
     if ((data->dwFlags & V9X_DDBLT_COLORFILL) == 0ul ||
         (data->dwFlags & ~allowed) != 0ul ||
@@ -1501,10 +1607,9 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     wait = (data->dwFlags &
             (V9X_DDBLT_ASYNC | V9X_DDBLT_DONOTWAIT)) == 0ul;
 
-    if (v9x_trio_engine_ready()) {
-        outcome = v9x_trio_fill(data, offset, bytes_per_pixel, wait);
-    } else if (v9x_engine_validate_status()) {
-        outcome = v9x_virge_fill(data, offset, bytes_per_pixel, wait);
+    ops = v9x_engine32();
+    if (ops != 0 && ops->validate_status()) {
+        outcome = ops->fill(data, offset, bytes_per_pixel, wait);
     }
     if (outcome == V9X_BLT_BUSY) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1559,30 +1664,26 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
 DWORD __stdcall V9xHalGetBltStatus(V9X_DDHAL_GETBLTSTATUSDATA *data)
 {
     int ready;
+    const V9X_ENGINE32_OPS *ops = v9x_engine32();
 
     v9x_trace_count(V9X_TRACE_GETBLTSTATUS, data->dwFlags);
-    if (v9x_trio_engine_ready()) {
-        if (data->dwFlags != V9X_DDGBS_CANBLT &&
-            data->dwFlags != V9X_DDGBS_ISBLTDONE) {
-            data->ddRVal = V9X_DD_OK;
-            return V9X_DDHAL_DRIVER_NOTHANDLED;
-        }
-        ready = v9x_trio_wait_idle(0);
-        data->ddRVal = ready ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    if (!v9x_engine_ready()) {
+    if (ops == 0 || !ops->ready()) {
         data->ddRVal = V9X_DD_OK;
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     if (data->dwFlags == V9X_DDGBS_CANBLT) {
-        ready = v9x_engine_validate_status();
+        ready = ops->can_blt();
     } else if (data->dwFlags == V9X_DDGBS_ISBLTDONE) {
-        if (!v9x_engine_status_validated()) {
+        /* An engine that has never been validated has issued nothing, so
+         * "is the blit done" is not this driver's question to answer. On the
+         * Trio64 this test is its plain readiness check and is already true.
+         * The idle poll is non-blocking, which on the ViRGE is the same
+         * status-register read this branch always did. */
+        if (!ops->status_validated()) {
             data->ddRVal = V9X_DD_OK;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        ready = (v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul;
+        ready = ops->wait_idle(0);
     } else {
         data->ddRVal = V9X_DD_OK;
         return V9X_DDHAL_DRIVER_NOTHANDLED;
