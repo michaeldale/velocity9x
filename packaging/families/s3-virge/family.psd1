@@ -75,6 +75,8 @@
             @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
             @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }
             @{ Name = 'virge_memory'; Path = 'src\chipsets\s3\virge\memory.c' }
+            @{ Name = 's3_regs16'; Path = 'src\chipsets\s3\common\s3_regs16.c' }
+            @{ Name = 'virge_hw16'; Path = 'src\chipsets\s3\virge\virge_hw16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }

@@ -449,6 +449,24 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
     }
 }
 
+#else /* no DirectDraw HAL on this target */
+
+/*
+ * ddi.c calls these on every Enable, Disable and ReEnable. Rather than guard
+ * each call site on the target, a family without a HAL links the no-op forms.
+ * The full versions are retired into a family capability at phase 6 of
+ * docs\plans\multi-chip-restructure.md.
+ */
+WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
+{
+    (void)reset;
+    return 0u;
+}
+
+void FAR PASCAL V9xDdInvalidate(void)
+{
+}
+
 #endif /* DirectDraw targets */
 
 LONG __loadds FAR PASCAL Control(LPVOID device,

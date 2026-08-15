@@ -70,6 +70,7 @@
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }

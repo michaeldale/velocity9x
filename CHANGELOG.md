@@ -8,6 +8,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- Chip data moved out of `src/display16/ddi.c` into a 16-bit hardware layer.
+  `include/velocity9x/hw16.h` declares one statically linked `v9x_hw16_ops`
+  table per family binary carrying the PCI identity, the audited VBE mode
+  table (640x400 still ordered last, for Doom95), the `C:\V9XHW.INI` strings,
+  and nullable hooks; a NULL hook means the chip-agnostic default. The tables
+  live in `src/chipsets/{s3/virge,s3/trio64,matrox/millennium2}/*_hw16.c`, and
+  the shared S3 CR36/PLL register reads in `src/chipsets/s3/common/s3_regs16.c`.
+  No `#ifdef V9X_TARGET_*` remains in `ddi.c`. `C:\V9XHW.INI` is byte-identical
+  on both S3 targets and the code segment grew 76, 78 and 338 bytes for ViRGE,
+  Trio64 and Millennium II respectively.
+
 - The build system is now driven by per-family manifests
   (`packaging/families/<id>/family.psd1`) instead of per-chip switches. A
   family is one package covering one or more chips that share a driver binary;
