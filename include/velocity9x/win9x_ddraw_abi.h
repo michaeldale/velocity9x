@@ -1,6 +1,10 @@
 #ifndef VELOCITY9X_WIN9X_DDRAW_ABI_H
 #define VELOCITY9X_WIN9X_DDRAW_ABI_H
 
+/* Engine type and capability values are shared with the 16-bit hardware
+ * layer, which cannot include this header. */
+#include "velocity9x/hw16.h"
+
 /*
  * Minimal Windows 9x DirectDraw HAL ABI used by Velocity9x, written from
  * the published Windows 98 DDK interface documentation (DDRAWI.H layouts).
@@ -933,7 +937,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * V9XHAL.DLL's DriverInit. The 32-bit side owns all content except the
  * framebuffer descriptor, which the 16-bit side refreshes on every enable.
  */
-#define V9X_DD_SHARED_ABI   2026081503ul
+/* Bumped once for the generalized engine descriptor. A mixed old/new DRV+DLL
+ * pair fails safe: DriverInit rejects on the dwSize/abi mismatch and leaves a
+ * driverinit-pending trace rather than running against the wrong layout. */
+#define V9X_DD_SHARED_ABI   2026081601ul
 #define V9X_DD_MODE_COUNT            7u
 
 /* fb.flags */
@@ -971,13 +978,34 @@ typedef struct v9x_dd_framebuffer {
  * through the Trio64 port-I/O command sequence. */
 #define V9X_DD_ENGINE_STATUS_VALIDATED 0x00000008ul
 
+/*
+ * Engine identity and capability, as data rather than as flag bits.
+ *
+ * The V9X_DD_ENGINE_S3_* bits above still say which chip this is and are what
+ * ddhal.c reads today. These fields are the general form that replaces them:
+ * a new chip becomes a new engine_type value and a caps mask rather than
+ * another bit and another branch. Both descriptions are filled in, and the
+ * flag bits are retired when the 32-bit side moves to the vtable.
+ */
+
 typedef struct v9x_dd_engine {
+    /* Existing fields keep their offsets: ddhal.c reads them unmodified
+     * through this ABI bump, and only moves to the new ones at phase 7. */
     DWORD control_linear_base;
     DWORD mapped_aperture_bytes;
     DWORD flags;
     DWORD fifo_timeouts;
     DWORD idle_timeouts;
     DWORD reset_count;
+    /* Appended in ABI 2026081601. */
+    DWORD engine_type;
+    DWORD engine_caps;
+    /* Port-I/O base and CRTC index port for engines addressed that way; the
+     * Trio64's 8514/A command set needs both, the ViRGE's MMIO does not. */
+    DWORD io_base;
+    DWORD crtc_index_port;
+    DWORD reserved0;
+    DWORD reserved1;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {

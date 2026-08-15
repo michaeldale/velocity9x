@@ -8,6 +8,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- `V9X_DD_ENGINE` gained `engine_type`, `engine_caps`, `io_base`,
+  `crtc_index_port` and two reserved DWORDs, appended so the existing fields
+  keep their offsets and `ddhal.c` reads them unmodified. One deliberate
+  `V9X_DD_SHARED_ABI` bump to 2026081601; a mixed old/new DRV+DLL pair fails
+  safe on the dwSize/abi check. `dd16.c` fills the descriptor through a new
+  `fill_engine_descriptor` hook, and the Trio64 caps clamp is now driven by
+  `engine_caps` rather than a build-time define — so a family that does not
+  claim D3D cannot have it advertised on its behalf.
 - The staged hardware enable sequence moved from `runtime.asm` into
   `src/display16/enable16.c`, which calls the new `vbe16` mode-set service and
   the family's `post_mode_set`, `read_aperture` and `enable_aperture` hooks.

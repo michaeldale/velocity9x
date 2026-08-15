@@ -65,6 +65,26 @@ static unsigned short v9x_virge_enable_aperture(void)
     return 1u;
 }
 
+/*
+ * ViRGE/DX engine: the S3D core plus the new-MMIO window at BAR + 16 MiB.
+ * V9xHardwareEnable maps the whole 64 MiB aperture, and register offsets such
+ * as SUBSYS_STAT (8504h) are relative to that 64 KiB window, not to VRAM.
+ */
+static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps)
+{
+    *control_linear_base = framebuffer_linear_base + 0x01000000ul;
+    *mapped_aperture_bytes = 0x00010000ul;
+    *engine_type = V9X_DD_ENGINE_TYPE_S3_VIRGE_DX;
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_VBLANK |
+                   V9X_DD_ENGINE_CAP_D3D;
+}
 const V9X_HW16_OPS v9x_hw16 = {
     "s3-virge",
     v9x_virge_devices,
@@ -84,5 +104,6 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_s3_read_aperture,
     v9x_virge_enable_aperture,
     /* CreateDIBPDevice builds the screen PDEVICE on this target. */
-    0
+    0,
+    v9x_virge_fill_engine
 };

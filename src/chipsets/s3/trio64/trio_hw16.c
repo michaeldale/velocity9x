@@ -32,6 +32,25 @@ static const V9X_HW16_MODE v9x_trio_modes[] = {
     { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 }
 };
 
+/*
+ * Trio64 engine: the 8514/A-compatible command set, reached through port I/O.
+ * There is no MMIO control window to map and no S3D core, so no D3D.
+ */
+static void v9x_trio_fill_engine(unsigned long framebuffer_linear_base,
+                                 unsigned long *control_linear_base,
+                                 unsigned long *mapped_aperture_bytes,
+                                 unsigned long *engine_type,
+                                 unsigned long *engine_caps)
+{
+    (void)framebuffer_linear_base;
+    *control_linear_base = 0ul;
+    *mapped_aperture_bytes = 0ul;
+    *engine_type = V9X_DD_ENGINE_TYPE_S3_TRIO64;
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_VBLANK;
+}
 const V9X_HW16_OPS v9x_hw16 = {
     "s3-trio64",
     v9x_trio_devices,
@@ -45,5 +64,6 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_s3_read_aperture,
     /* No CR53 new-MMIO window on this chip: the shared sequence is all of it. */
     v9x_s3_enable_linear_aperture,
-    0
+    0,
+    v9x_trio_fill_engine
 };

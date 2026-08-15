@@ -174,5 +174,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* VBE 4F02h already enabled the linear framebuffer; do not write MGA
      * control registers during this conservative first activation. */
     0,
-    v9x_mga2_build_screen_pdevice
+    v9x_mga2_build_screen_pdevice,
+    /* No 2D/3D engine on this conservative path. */
+    0
 };

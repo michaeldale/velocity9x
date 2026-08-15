@@ -74,6 +74,16 @@ typedef struct v9x_hw16_device {
     const char *direct3d;
 } V9X_HW16_DEVICE;
 
+#define V9X_DD_ENGINE_TYPE_NONE         0ul
+#define V9X_DD_ENGINE_TYPE_S3_VIRGE_DX  1ul
+#define V9X_DD_ENGINE_TYPE_S3_TRIO64    2ul
+
+#define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
+#define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
+#define V9X_DD_ENGINE_CAP_FLIP          0x00000004ul
+#define V9X_DD_ENGINE_CAP_VBLANK        0x00000008ul
+#define V9X_DD_ENGINE_CAP_D3D           0x00000010ul
+
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
  * generic linear-framebuffer bit is what a tier-0 card needs. */
 #define V9X_HW16_VBE_NO_CLEAR   0x8000u
@@ -169,6 +179,24 @@ typedef struct v9x_hw16_ops {
                                           const V9X_HW16_MODE *mode,
                                           unsigned short screen_selector,
                                           unsigned short pdevice_flags);
+
+    /*
+     * Describe this family's 2D/3D engine to the DirectDraw shared block.
+     *
+     * Called with the framebuffer's linear base, and fills in the control
+     * window, its size, the engine type and its capability mask. NULL means
+     * the family has no engine: everything falls back to the CPU, which is
+     * the tier-0 answer.
+     *
+     * The 16-bit side is the authority on capability. dd16.c narrows the
+     * description handed to DDRAW from this mask, so a family that does not
+     * claim D3D cannot have it advertised on its behalf.
+     */
+    void (*fill_engine_descriptor)(unsigned long framebuffer_linear_base,
+                                   unsigned long *control_linear_base,
+                                   unsigned long *mapped_aperture_bytes,
+                                   unsigned long *engine_type,
+                                   unsigned long *engine_caps);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\<chip>\*_hw16.c. */

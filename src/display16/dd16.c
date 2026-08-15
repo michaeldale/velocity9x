@@ -12,6 +12,7 @@
 #include <windows.h>
 #undef SetCursor
 
+#include "velocity9x/hw16.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 
 extern void v9x_serial_write(const char FAR *message);
@@ -159,18 +160,37 @@ static void v9x_dd_refresh_framebuffer(void)
     /* V9xHardwareEnable maps the complete 64-MiB ViRGE linear aperture.
      * New-MMIO is a 64-KiB window at BAR + 16 MiB; register offsets such as
      * SUBSYS_STAT (0x8504) are relative to that window, not to VRAM. */
-#ifdef V9X_TARGET_S3_TRIO64
-    shared->engine.control_linear_base = 0ul;
-    shared->engine.mapped_aperture_bytes = 0ul;
-    shared->engine.flags = V9X_DD_ENGINE_VALID |
-                           V9X_DD_ENGINE_S3_TRIO64;
-#else
-    shared->engine.control_linear_base =
-        shared->fb.linear_base + 0x01000000ul;
-    shared->engine.mapped_aperture_bytes = 0x00010000ul;
-    shared->engine.flags = V9X_DD_ENGINE_VALID |
-                           V9X_DD_ENGINE_S3_VIRGE_DX;
-#endif
+    if (v9x_hw16.fill_engine_descriptor != 0) {
+        DWORD control_base = 0ul;
+        DWORD aperture_bytes = 0ul;
+        DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
+        DWORD engine_caps = 0ul;
+
+        v9x_hw16.fill_engine_descriptor(shared->fb.linear_base,
+                                        &control_base, &aperture_bytes,
+                                        &engine_type, &engine_caps);
+        shared->engine.control_linear_base = control_base;
+        shared->engine.mapped_aperture_bytes = aperture_bytes;
+        shared->engine.engine_type = engine_type;
+        shared->engine.engine_caps = engine_caps;
+        /* The chipset identity bits are what ddhal.c still reads; they are
+         * derived from engine_type here and retire when the 32-bit side moves
+         * to the vtable at phase 7. */
+        shared->engine.flags = V9X_DD_ENGINE_VALID |
+            (engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
+                 ? V9X_DD_ENGINE_S3_TRIO64
+                 : V9X_DD_ENGINE_S3_VIRGE_DX);
+    } else {
+        shared->engine.control_linear_base = 0ul;
+        shared->engine.mapped_aperture_bytes = 0ul;
+        shared->engine.engine_type = V9X_DD_ENGINE_TYPE_NONE;
+        shared->engine.engine_caps = 0ul;
+        shared->engine.flags = 0ul;
+    }
+    shared->engine.io_base = 0ul;
+    shared->engine.crtc_index_port = 0ul;
+    shared->engine.reserved0 = 0ul;
+    shared->engine.reserved1 = 0ul;
 }
 
 /*
@@ -296,12 +316,16 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_info16.hInstance =
         (DWORD)SELECTOROF((LPVOID)&v9x_dd_info16);
 
-#ifdef V9X_TARGET_S3_TRIO64
-    /* The shared HAL binary describes the ViRGE feature set. Trio64 keeps the
-     * scanout and vertical-blank services but has neither the new-MMIO window
-     * nor the S3D engine, so the description handed to DDRAW is narrowed here
-     * - on the DGROUP copy only, leaving the shared block's full description
-     * intact for the 32-bit side. */
+    /* The shared HAL binary describes the ViRGE feature set. A family whose
+     * engine does not claim D3D keeps the scanout and vertical-blank services
+     * but has neither the new-MMIO window nor the S3D engine, so the
+     * description handed to DDRAW is narrowed here - on the DGROUP copy only,
+     * leaving the shared block's full description intact for the 32-bit side.
+     *
+     * Driven by engine_caps rather than by a build-time define: the 16-bit
+     * side is the capability authority, so a family that does not claim D3D
+     * cannot have it advertised on its behalf. */
+    if ((v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
     v9x_dd_info16.GetDriverInfo = 0;
     v9x_dd_info16.lpD3DGlobalDriverData = 0ul;
     v9x_dd_info16.lpD3DHALCallbacks = 0ul;
@@ -321,7 +345,7 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
         V9X_DDHAL_SURFCB32_LOCK | V9X_DDHAL_SURFCB32_UNLOCK |
         V9X_DDHAL_SURFCB32_ADDATTACHEDSURFACE |
         V9X_DDHAL_SURFCB32_BLT | V9X_DDHAL_SURFCB32_GETBLTSTATUS;
-#endif
+    }
 
     v9x_dd_trace_event(6u, v9x_dd_callbacks16.dwFlags);
     v9x_dd_trace_event(7u, (DWORD)v9x_dd_callbacks16.WaitForVerticalBlank);
