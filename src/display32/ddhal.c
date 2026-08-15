@@ -504,6 +504,22 @@ static int v9x_trio_engine_ready(void)
             (V9X_DD_ENGINE_VALID | V9X_DD_ENGINE_S3_TRIO64);
 }
 
+/*
+ * Consume one armed fault injection, if any.
+ *
+ * Callers gate this on the wait actually being a blocking one, so a
+ * non-blocking probe that legitimately reports "not ready" never spends an
+ * injection and never counts a timeout it did not take.
+ */
+static int v9x_fault_injected(void)
+{
+    if (v9x_hal == 0 || v9x_hal->engine.fault_inject == 0ul) {
+        return 0;
+    }
+    --v9x_hal->engine.fault_inject;
+    return 1;
+}
+
 static int v9x_trio_wait_idle(int wait)
 {
     DWORD spins;
@@ -511,16 +527,18 @@ static int v9x_trio_wait_idle(int wait)
     if (!v9x_trio_engine_ready()) {
         return 0;
     }
-    if ((v9x_inpw(V9X_TRIO_CMD_STATUS) & V9X_TRIO_STATUS_BUSY) == 0u) {
-        return 1;
-    }
-    if (!wait) {
-        return 0;
-    }
-    spins = V9X_TRIO_IDLE_SPIN_LIMIT;
-    while (spins-- != 0ul) {
+    if (!(wait && v9x_fault_injected())) {
         if ((v9x_inpw(V9X_TRIO_CMD_STATUS) & V9X_TRIO_STATUS_BUSY) == 0u) {
             return 1;
+        }
+        if (!wait) {
+            return 0;
+        }
+        spins = V9X_TRIO_IDLE_SPIN_LIMIT;
+        while (spins-- != 0ul) {
+            if ((v9x_inpw(V9X_TRIO_CMD_STATUS) & V9X_TRIO_STATUS_BUSY) == 0u) {
+                return 1;
+            }
         }
     }
     ++v9x_hal->engine.idle_timeouts;
@@ -620,16 +638,18 @@ static int v9x_wait_fifo(DWORD entries, int wait)
     if (!v9x_engine_ready() || entries == 0ul || entries > 31ul) {
         return 0;
     }
-    if (v9x_fifo_free(v9x_engine_status()) >= entries) {
-        return 1;
-    }
-    if (!wait) {
-        return 0;
-    }
-    spins = V9X_VIRGE_FIFO_SPIN_LIMIT;
-    while (spins-- != 0ul) {
+    if (!(wait && v9x_fault_injected())) {
         if (v9x_fifo_free(v9x_engine_status()) >= entries) {
             return 1;
+        }
+        if (!wait) {
+            return 0;
+        }
+        spins = V9X_VIRGE_FIFO_SPIN_LIMIT;
+        while (spins-- != 0ul) {
+            if (v9x_fifo_free(v9x_engine_status()) >= entries) {
+                return 1;
+            }
         }
     }
     ++v9x_hal->engine.fifo_timeouts;
@@ -645,16 +665,18 @@ static int v9x_wait_idle(int wait)
     if (!v9x_engine_ready()) {
         return 0;
     }
-    if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
-        return 1;
-    }
-    if (!wait) {
-        return 0;
-    }
-    spins = V9X_VIRGE_IDLE_SPIN_LIMIT;
-    while (spins-- != 0ul) {
+    if (!(wait && v9x_fault_injected())) {
         if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
             return 1;
+        }
+        if (!wait) {
+            return 0;
+        }
+        spins = V9X_VIRGE_IDLE_SPIN_LIMIT;
+        while (spins-- != 0ul) {
+            if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
+                return 1;
+            }
         }
     }
     ++v9x_hal->engine.idle_timeouts;

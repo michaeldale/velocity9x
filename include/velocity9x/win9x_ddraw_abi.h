@@ -46,6 +46,12 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * so a runtime that does not know it cannot collide with it. */
 #define V9X_DDGETTRACE           0x56395452ul /* 'V9TR' */
 
+/* Project-private DCICOMMAND: arm the engine fault injector. dwParam1 is the
+ * number of subsequent bounded engine waits that must report a timeout
+ * instead of completing, which drives the recovery path deterministically
+ * without needing the hardware to actually hang. See fault_inject below. */
+#define V9X_DDFAULTINJECT        0x56394649ul /* 'V9FI' */
+
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul
 #define V9X_DDHAL_DRIVER_HANDLED     0x00000001ul
@@ -1004,7 +1010,17 @@ typedef struct v9x_dd_engine {
      * Trio64's 8514/A command set needs both, the ViRGE's MMIO does not. */
     DWORD io_base;
     DWORD crtc_index_port;
-    DWORD reserved0;
+    /* Engine fault injector, armed by V9X_DDFAULTINJECT. Non-zero means the
+     * next N bounded waits report a timeout instead of completing: each one
+     * decrements this, counts itself in fifo_timeouts/idle_timeouts, flushes
+     * the fault trace and runs the engine's recovery, exactly as a real
+     * timeout would. It exists because the timeout and reset paths are
+     * otherwise unreachable on healthy hardware, so any gate that asserts
+     * "recovery still works" would pass vacuously. Zero (the default, and
+     * what every normal boot leaves it at) disables it entirely; it occupies
+     * what was reserved0 through ABI 2026081601, so the layout is unchanged.
+     */
+    DWORD fault_inject;
     DWORD reserved1;
 } V9X_DD_ENGINE;
 

@@ -208,6 +208,53 @@ Hellbender (`docs/issues/2026-08-14-hellbender-dibeng-gpf.md`), not here:
 The Hellbender D3D run on ViRGE, the other phase 7 gate item, still carries the
 wedge risk and is not captured here.
 
+### Hellbender on ViRGE (captured 2026-08-16, pre-phase-7)
+
+Ran end-to-end against the phase-6 driver: Quick Configuration rendered
+correctly, New Game switched 1024x768 to 640x480x16, the intro cinematic
+played with correct colour, and it reached the ship briefing screen — well past
+the point where `docs/issues/2026-08-14-hellbender-dibeng-gpf.md` used to
+fault. No GPF, no `C:\V9XTRACE.INI` fault capture, and the agent answered
+throughout, including while the game's own "end the current game?" confirm
+dialog was up. Orderly exit, desktop restored to 1024x768.
+
+**But it is not a Direct3D gate, and it is not a gate for this split at all.**
+Every 32-bit HAL counter was byte-identical before and after the session:
+
+| counter | before | after |
+|---|---|---|
+| `CountD3dContextCreate` / `Destroy` | 2 / 2 | 2 / 2 |
+| `CountD3dRenderState` / `RenderPrimitive` | 11 / 8 | 11 / 8 |
+| `CountD3dTextureCreate` / `Destroy` / `Swap` | 3 / 3 / 1 | 3 / 3 / 1 |
+| `CountBlt` / `CountBltEngine` | 11 / 7 | 11 / 7 |
+| `CountFlip` / `CountLock` / `CountUnlock` | 23 / 61 / 61 | 23 / 61 / 61 |
+
+Every one of those values came from the preceding `V9XDDP` run. Hellbender
+added nothing to any of them. The only counters it moved were `EnableCount`
+(5 to 7) and `DisableCount` (0 to 2) — the 16-bit enable and mode-switch path.
+
+This is consistent with `docs/issues/2026-08-15-hellbender-software-fallback.md`,
+closed as not-a-driver-defect: the game enumerates the Direct3D HAL, reads its
+caps, and then renders in software, creating no context. What is new here is
+that its DirectDraw presentation did not reach `ddhal.c` either.
+
+So Hellbender exercises `runtime.asm`/`enable16.c`/`dd16.c` — the phases 4 to 6
+territory — and none of the code phase 7 moves. It is a good regression test
+for the enable and mode-switch path and should keep being run, but it cannot
+certify `d3d_virge.c` or `blt_cpu.c`. `V9XDDP` is what actually covers those:
+`D3DHalFound=1`, `D3DTrianglePixelOk=1`, `D3DSubpixelTriangleOk=1`,
+`D3DSpecularGouraudOk=1`, `D3DDepthFogOk=1`, `D3DVertexAlphaBlendOk=1`,
+`D3DBaseTextureOk=1`, `D3DMipmapLevelSelectOk=1`, `D3DTrilinearBlendOk=1`,
+`Tex4444PixelOk=1`, `D3DContextCycleOk=1`, plus the fill/copy/overlap pixel
+checks. That full set is archived as the pre-split reference.
+
+### Timeout-injection baseline
+
+The other phase 7 gate input, engine timeout and recovery, had no way to be
+induced at all until this same session. The mechanism and its per-target
+baseline are recorded separately in
+`docs/decisions/2026-08-16-engine-fault-injection.md`.
+
 ### The deployed diagnostics were stale
 
 The first dump attempt returned `Ok=0`, `Error=abi-mismatch`,

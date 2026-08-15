@@ -189,7 +189,13 @@ static void v9x_dd_refresh_framebuffer(void)
     }
     shared->engine.io_base = 0ul;
     shared->engine.crtc_index_port = 0ul;
-    shared->engine.reserved0 = 0ul;
+    /* fault_inject is deliberately NOT cleared here. This runs on every
+     * DirectDraw session setup, which is exactly between arming the injector
+     * and the workload that is supposed to consume it, so clearing it made
+     * the knob unusable. v9x_dd_block zeroes the whole block on allocation,
+     * so it starts disarmed; after that the escape is the only writer and
+     * the HAL's own consumption is the only decrementer. A forced timeout
+     * acts on whichever bounded wait runs next, which is mode-independent. */
     shared->engine.reserved1 = 0ul;
 }
 
@@ -457,6 +463,16 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
                 destination[index] = source[index];
             }
         }
+        return 1;
+    case V9X_DDFAULTINJECT:
+        /* Arm the 32-bit side's engine fault injector. Writing the count is
+         * the whole operation: this side never touches the engine, and the
+         * HAL decrements it as the forced timeouts are consumed. */
+        if (v9x_dd_block() == 0) {
+            return 0;
+        }
+        v9x_dd_shared->engine.fault_inject = command->dwParam1;
+        v9x_dd_trace("faultinject");
         return 1;
     case V9X_DDVERSIONINFO:
         if (output != 0) {

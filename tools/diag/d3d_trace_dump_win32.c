@@ -187,12 +187,57 @@ static void v9x_write_counters(const V9X_DD_TRACE *trace)
     }
 }
 
+/*
+ * Parse "-inject" / "-inject=N" off the command line.
+ *
+ * Returns the number of engine waits to force into their timeout path, or 0
+ * when the switch is absent. Arming is a separate step from dumping on
+ * purpose: nothing in this tool issues a blit, so the count is consumed by
+ * whatever real workload runs between the arming call and the next dump.
+ */
+static DWORD v9x_parse_inject(void)
+{
+    const char *cmd = GetCommandLineA();
+    const char *match = "-inject";
+    int index;
+
+    if (cmd == 0) {
+        return 0ul;
+    }
+    for (; *cmd != '\0'; ++cmd) {
+        for (index = 0; match[index] != '\0'; ++index) {
+            if (cmd[index] != match[index]) {
+                break;
+            }
+        }
+        if (match[index] != '\0') {
+            continue;
+        }
+        cmd += index;
+        if (*cmd != '=') {
+            return 1ul;
+        }
+        ++cmd;
+        {
+            DWORD value = 0ul;
+
+            while (*cmd >= '0' && *cmd <= '9') {
+                value = value * 10ul + (DWORD)(*cmd - '0');
+                ++cmd;
+            }
+            return value;
+        }
+    }
+    return 0ul;
+}
+
 void __stdcall V9xTraceDumpEntry(void)
 {
     V9X_DCICMD command;
     V9X_DD_TRACE_SNAPSHOT snapshot;
     HDC screen;
     DWORD escape = V9X_DCICOMMAND;
+    DWORD inject;
     int result;
     unsigned index;
     unsigned char *bytes;
@@ -209,6 +254,19 @@ void __stdcall V9xTraceDumpEntry(void)
     result = ExtEscape(screen, V9X_QUERYESCSUPPORT, sizeof(escape),
                        (LPCSTR)&escape, 0, 0);
     v9x_write_uint("DciEscapeSupported", result > 0 ? 1ul : 0ul);
+
+    inject = v9x_parse_inject();
+    if (inject != 0ul) {
+        command.dwCommand = V9X_DDFAULTINJECT;
+        command.dwParam1 = inject;
+        command.dwParam2 = 0ul;
+        command.dwVersion = V9X_DD_VERSION;
+        command.dwReserved = 0ul;
+        result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                           (LPCSTR)&command, 0, 0);
+        v9x_write_uint("InjectRequested", inject);
+        v9x_write_uint("InjectArmed", result > 0 ? 1ul : 0ul);
+    }
 
     bytes = (unsigned char *)&snapshot;
     for (index = 0u; index < sizeof(snapshot); ++index) {
@@ -250,6 +308,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("EngineFifoTimeouts", snapshot.engine.fifo_timeouts);
     v9x_write_uint("EngineIdleTimeouts", snapshot.engine.idle_timeouts);
     v9x_write_uint("EngineResets", snapshot.engine.reset_count);
+    v9x_write_uint("EngineFaultInjectRemaining", snapshot.engine.fault_inject);
     v9x_write_uint("D3dContextCreates", snapshot.d3d.context_creates);
     v9x_write_uint("D3dContextDestroys", snapshot.d3d.context_destroys);
     v9x_write_uint("D3dContextDestroyAlls",
