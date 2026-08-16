@@ -39,12 +39,15 @@ Hooks must stay non-FAR: the driver builds with `wcc -mc` (compact = near code),
 
 `ddhal.c` cannot call 16-bit code; chip dispatch flows through a generalized engine descriptor in `V9X_DD_SHARED`. `V9X_DD_ENGINE` gains `engine_type`, `engine_caps` (SOLID_FILL / SCREEN_COPY / FLIP / VBLANK / D3D), `io_base`, `crtc_index_port`, two reserved DWORDs; existing fields and VALID/STATUS_VALIDATED bits keep their positions. One deliberate `V9X_DD_SHARED_ABI` bump; the 4096-byte DPMI bound (`runtime.asm` `V9X_DD_SHARED_BYTES`, `v9x_dd_assert_shared_fits_dpmi_block`) must be re-asserted on both compilers.
 
-`ddhal.c` (3455 lines) splits into:
+`ddhal.c` (3455 lines) splits into (**landed 2026-08-16**, with
+`src\display32\ddhal_internal.h` as the private seam and the module's only
+`<windows.h>`):
 
 - `ddhal_core.c` — DriverInit, shared-block validation, trace ring, surface bookkeeping, Lock/Unlock, engine-ops selection. Engine ops resolve **lazily** from `engine.engine_type` on first use after VALID, because DriverInit runs before the 16-bit descriptor refresh; the 16-bit data-driven caps clamp remains the caps authority.
 - `blt_cpu.c` — CPU fill/copy fallbacks used by all engines.
-- `engines\eng_none.c` (tier-0: everything falls to CPU, no FLIP, Lock/Unlock-only caps), `engines\eng_s3_virge.c`, `engines\eng_s3_trio.c`, `engines\vga_scanout.c` (shared CRTC 0C/0D/69 display-start + 3DA vblank).
-- `d3d\d3d_virge.c` — the entire D3D block (~`ddhal.c:1607-3455`), reachable only from `eng_s3_virge`'s caps builder.
+- `engines\eng_s3_virge.c`, `engines\eng_s3_trio.c`, `engines\vga_scanout.c` (shared CRTC 0C/0D/69 display-start + 3DA vblank). `engines\eng_none.c` was **not** written: a null ops pointer already is tier-0, since the resolver returns null for an unknown `engine_type` and every call site then falls to `blt_cpu.c`. It becomes worth a file when `build_caps` joins the table and tier-0 has Lock/Unlock-only caps of its own to publish.
+- `d3d\d3d_virge.c` — the entire D3D block, plus `v9x_d3d_publish`, the capability block lifted out of `DriverInit` so the D3D module owns what it advertises. Still gated by the 16-bit caps clamp; it moves behind `eng_s3_virge`'s caps builder when that exists.
+- The S3 register vocabulary went into `ddhal_internal.h`, not `include\velocity9x\regs\s3.h`: nothing outside the 32-bit HAL uses those constants yet. The public header is worth creating when the GDI acceleration work needs the same registers from the 16-bit driver.
 
 The runtime dual dispatch (`v9x_trio_engine_ready() ? v9x_trio_copy : v9x_virge_copy` at `:1274`, fills at `:1482`, drains at `:1028`, blt status at `:1542`) collapses into one `const struct v9x_engine32_ops *` vtable. **Landed 2026-08-16** as `ready / validate_status / status_validated / can_blt / wait_idle / fill / copy`, resolved per call from `engine.engine_type`. The three predicates are separate because the four call sites genuinely ask three different questions — the drain wants the passive `status_validated`, the blit paths want the latching `validate_status`, and DDGBS_CANBLT is a Trio64 idle poll but a ViRGE latch. `recover` is deliberately **not** a member: recovery is only ever called from inside the bounded wait that expired, and the Trio64 has none, so it stays file-local when the waits move to `engines\eng_s3_virge.c`. `set_display_start`, `in_vblank` and `build_caps` join the table when the files move; none of them is dual-dispatched today. `V9X_DD_ENGINE_TYPE_*` and `V9X_DD_ENGINE_CAP_*` moved out of the 16-bit-only `hw16.h` into a new dependency-free `include\velocity9x\engine_abi.h`, so the 32-bit HAL no longer includes the 16-bit hardware layer. See `docs\decisions\2026-08-16-engine32-vtable.md`.
 

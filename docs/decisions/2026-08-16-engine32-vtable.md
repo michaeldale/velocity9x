@@ -1,13 +1,15 @@
-# The 32-bit engine dispatch vtable
+# The 32-bit engine dispatch vtable and the ddhal.c split
 
 Date: 2026-08-16
 Status: accepted
 
 Phase 7 of `docs/plans/multi-chip-restructure.md` collapses the runtime
 `v9x_trio_engine_ready() ? trio : virge` pairs in `src/display32/ddhal.c` onto
-one `v9x_engine32_ops` table, selected from `engine.engine_type`. This is the
-step taken before any file moves, so that the dispatch change and the physical
-split fail independently.
+one `v9x_engine32_ops` table selected from `engine.engine_type`, then splits
+the file along the seams that table exposes. The two landed as separate
+commits, in that order, so the dispatch change and the physical motion fail
+independently — a behavioural regression in the first would have shown up
+before 3500 lines moved on top of it.
 
 ## What the four call sites actually asked
 
@@ -81,14 +83,63 @@ learn its own engine's identity. They now live in a new
 pull in. That keeps `src/chipsets` free of `<windows.h>` as before and gives the
 32-bit side the vocabulary without the layer it belongs to.
 
+## The split
+
+`ddhal.c` became six translation units and one private header:
+
+| file | holds |
+|---|---|
+| `ddhal_core.c` | DirectDraw callbacks, trace ring, surface bookkeeping, Lock/Unlock/Flip, blit dispatch, ops resolution, `DriverInit` |
+| `blt_cpu.c` | the CPU fill and copy every engine falls back to |
+| `engines/vga_scanout.c` | CRTC display start and the vblank bit |
+| `engines/eng_s3_virge.c` | MMIO engine, bounded waits, CR66 recovery, ops table |
+| `engines/eng_s3_trio.c` | 8514/A port-I/O engine, ops table |
+| `d3d/d3d_virge.c` | the whole S3D path and the caps it publishes |
+
+`ddhal_internal.h` is the seam, and it is deliberately narrow: a symbol appears
+in it only where a second unit needs it. That is what makes the split worth
+more than the file count — the ViRGE's MMIO accessors, its engine recovery, and
+the Trio's readiness test are now unreachable from outside their own engine,
+which no amount of care could enforce while they were file-scope statics in one
+3500-line file. It is also the module's only `<windows.h>`, which `check-tree`
+now enforces in place of the old per-file allowance, so a new HAL module cannot
+quietly acquire its own OS boundary.
+
+Two pieces are not verbatim motion. The CPU copy loop that was inline in
+`v9x_srccopy_body` became `v9x_cpu_copy` beside `v9x_cpu_fill`, so `blt_cpu.c`
+holds both fallbacks rather than one and a half. And the D3D capability block
+`DriverInit` wrote inline became `v9x_d3d_publish`, called at the same point
+with the same fields written in the same order, so the D3D module owns what it
+advertises rather than having the core advertise on its behalf.
+
+`build-ddraw-hal-dll.ps1` compiles and links a source list, and refuses two
+sources sharing a base name because the objects share one output directory.
+
+### What was not split, and why
+
+`engines/eng_none.c` is not there. A null ops pointer already *is* tier-0: the
+resolver returns null for an unknown `engine_type`, and every call site treats
+that as "no engine", falling to `blt_cpu.c`. A module of stubs would add a file
+without adding behaviour. It becomes worth writing when `build_caps` joins the
+table and tier-0 needs to publish Lock/Unlock-only caps of its own.
+
+The S3 register vocabulary went into `ddhal_internal.h` rather than the
+`include/velocity9x/regs/s3.h` the plan sketches. Nothing outside the 32-bit
+HAL uses those constants today; the public header is worth creating when the
+GDI acceleration work needs the same registers from the 16-bit driver, which is
+the sharing that motivated it.
+
 ## Verification
 
 Behaviour is unchanged, which is the whole claim, so every gate is a comparison
-against the pre-split reading rather than a pass/fail.
+against the pre-split reading rather than a pass/fail. The full set was run
+twice — once after the dispatch collapse and again after the files moved — and
+both rounds reproduced the baseline.
 
-`scripts/run-checks.ps1 -BuildId golden-compare` green. Both guests updated and
-rebooted, with `V9XTRACE.EXE` and `V9XDDP.EXE` pushed to the guest root
-alongside the driver.
+`scripts/run-checks.ps1 -BuildId golden-compare` green at both points. Both
+guests updated and rebooted each time, with `V9XTRACE.EXE` and `V9XDDP.EXE`
+pushed to the guest root alongside the driver, because
+`update-associated-driver.ps1` refreshes the driver and not those.
 
 | | ViRGE (9869) | Trio64 (9871) |
 |---|---|---|
@@ -96,11 +147,17 @@ alongside the driver.
 | `GblHalCaps` / `GblHalDdsCaps` | `0x04000441` / `0x40623258` | `0x04000440` / `0x40200258` |
 | `CountBlt` / `CountBltEngine` after `V9XDDP` | 7 / 7 | 6 / 3 |
 | `CountFlip` / `CountLock` / `CountUnlock` | 23 / 61 / 61 | 23 / 35 / 35 |
-| Ironfield `-benchmark -fullscreen -renderer-video` | 18 FPS, 307 frames | 16 FPS, 279 frames |
-| `CountBlt` / `CountBltEngine` after Ironfield | 314 / 314 | 285 / 282 |
+| `CountCreateSurface` / `CountDestroySurface` | 9 / 10 | 4 / 4 |
+| Ironfield, vtable commit | 18 FPS, 307 frames | 16 FPS, 279 frames |
+| Ironfield, after the split | 18 FPS, 310 frames | 16 FPS, 276 frames |
+| `CountBlt` / `CountBltEngine` after Ironfield | 317 / 317 | 282 / 279 |
 | `-inject=4`: fifo / idle / resets | 4 / 0 / 4 | 0 / 4 / 0 |
 | `CountBlt` / `CountBltEngine` under injection | 11 / 7 | 10 / 3 |
 | desktop after injection | alive | alive |
+
+The Ironfield frame counts move by a few frames between runs, as they did
+across the pre-phase-7 captures; the reported FPS and the engine-versus-CPU
+split are what the gate reads, and neither moved.
 
 Every figure matches `docs/decisions/2026-08-16-restructure-baseline.md` and
 `docs/decisions/2026-08-16-engine-fault-injection.md`, including the asymmetries

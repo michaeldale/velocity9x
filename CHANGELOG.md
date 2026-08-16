@@ -8,6 +8,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- `src/display32/ddhal.c` split into `ddhal_core.c`, `blt_cpu.c`,
+  `engines/{vga_scanout,eng_s3_virge,eng_s3_trio}.c` and `d3d/d3d_virge.c`
+  behind one private header, `ddhal_internal.h`. The header is deliberately
+  narrow — a symbol crosses it only where a second module needs it — so the
+  ViRGE's MMIO accessors and engine recovery and the Trio's readiness test are
+  now unreachable from outside their own engine. It is also the HAL's only
+  `<windows.h>`, which `check-tree.ps1` enforces in place of the old per-file
+  allowance. `build-ddraw-hal-dll.ps1` compiles and links a source list.
 - The 32-bit HAL's runtime chip dispatch is now a `v9x_engine32_ops` table
   selected from `engine.engine_type`, replacing the
   `v9x_trio_engine_ready() ? trio : virge` pair inlined at the drain, source
