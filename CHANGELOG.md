@@ -8,6 +8,28 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Added
 
+- The `ati` family: ATI Mach64 VT2 (`1002:5654`) and Rage Mobility-M
+  (`1002:4C4D`) in one binary with run-time PCI dispatch, on tier-0. Every
+  `hw16` hook is NULL, so the VBE mode set programs the card and the CPU draws;
+  `EngineType` is `NONE` until `eng_mach64.c` exists. Phase 10 of the
+  multi-chip restructure, against a Gateway Solo 2150.
+- A hardware audit of the Mach64/Rage 2D engine, memory sizing, LCD panel path
+  and errata, drawn from `xf86-video-mach64` (MIT), FreeBE/AF and 86Box's
+  emulation - `docs/decisions/2026-08-16-ati-mach64-hardware-audit.md`. The
+  laptop's panel (LG LP141XA, 1024x768) was decoded out of its own video BIOS,
+  since the internal panel has no EDID.
+- Per-target `Emulator` in a family manifest's `Vm.Targets`. A family can now be
+  part emulated and part physical, which `ati` is: 86Box emulates the VT2 but no
+  Rage, so `rage-mobility-m` is real hardware only and the mode matrix refuses
+  it explicitly instead of resolving to port 0 and failing on a parameter
+  validation error. Absent the key a target inherits the family emulator, so
+  every existing manifest is unchanged.
+
+### Fixed
+
+- `check-tree.ps1` now requires `packaging/families/vbe/family.psd1`, which
+  phase 9 added without listing, alongside the new `ati` manifest.
+
 - A family matrix generated from the manifests
   (`scripts/lib/family-matrix.ps1`) and `tests/host/test_family_matrix.c`
   asserting the C side against it: every declared PCI ID resolves to a backend,

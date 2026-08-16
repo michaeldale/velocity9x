@@ -184,8 +184,24 @@ function Test-V9xFamilyManifest {
     if ($Family.Vm.ContainsKey('Targets')) {
         $chipIds = @(@($Family.Chips) | ForEach-Object { $_.Id })
         foreach ($vmTarget in @($Family.Vm.Targets)) {
-            Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId', 'Profile', 'Port') `
-                -Context "Family $Id Vm target"
+            # A per-target Emulator overrides the family's, and 'none' means
+            # this chip is real hardware only. That is not hypothetical: the
+            # ati family pairs a Mach64 VT2 that 86Box emulates with a Rage
+            # Mobility that nothing does, and demanding a profile and port for
+            # the Mobility would mean inventing a guest that cannot exist.
+            # Absent the key a target inherits the family emulator, so every
+            # existing manifest behaves exactly as before.
+            $targetEmulator = $Family.Vm.Emulator
+            if ($vmTarget.ContainsKey('Emulator')) {
+                $targetEmulator = $vmTarget.Emulator
+            }
+            if ($targetEmulator -eq 'none') {
+                Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId') `
+                    -Context "Family $Id Vm target"
+            } else {
+                Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId', 'Profile', 'Port') `
+                    -Context "Family $Id Vm target"
+            }
             if ($vmTarget.ChipId -notin $chipIds) {
                 throw ("Family $Id declares a VM target for unknown chip " +
                        "'$($vmTarget.ChipId)'.")
@@ -231,10 +247,15 @@ function Get-V9xFamilyVmTarget {
         }
         $chosen = $chosen[0]
     }
+    $chosenEmulator = $Family.Vm.Emulator
+    if ($chosen.ContainsKey('Emulator')) {
+        $chosenEmulator = $chosen.Emulator
+    }
     [pscustomobject]@{
         ChipId = $chosen.ChipId
         Profile = $chosen.Profile
         Port = [int]$chosen.Port
+        Emulator = $chosenEmulator
     }
 }
 

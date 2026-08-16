@@ -55,6 +55,7 @@ $sourceNames = @(
     "src\chipsets\s3\virge\memory.c",
     "src\chipsets\matrox\millennium2\mga2_backend.c",
     "src\chipsets\generic\vbe\vbe_backend.c",
+    "src\chipsets\ati\ati_backend.c",
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
     "tests\host\test_family_matrix.c",

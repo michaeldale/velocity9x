@@ -37,6 +37,16 @@ if ($familyManifest.Vm.Emulator -eq 'none') {
            "hardware only. There is no VM to run the mode matrix against.")
 }
 $vmTarget = Get-V9xFamilyVmTarget -Family $familyManifest -ChipId $ChipId
+# A family can be part emulated and part physical - the ati family pairs a
+# Mach64 VT2 that 86Box emulates with a Rage Mobility that nothing does. Refuse
+# the physical chip here with the same message the whole-family check gives,
+# rather than falling through to a port of 0 and failing three retries later on
+# a parameter-validation error that says nothing about why.
+if ($vmTarget.Emulator -eq 'none') {
+    throw ("Family $Family chip '$($vmTarget.ChipId)' declares no emulator: it " +
+           "is validated on physical hardware only. There is no VM to run the " +
+           "mode matrix against.")
+}
 if ($Port -eq 0) {
     $Port = $vmTarget.Port
 }
