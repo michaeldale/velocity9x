@@ -19,6 +19,14 @@ build identifier so exact guest-tested binaries remain traceable.
   Trio64's. Verified on both 86Box guests from the one package: correct
   per-chip identity and clocks, all six modes green on both, and the Trio64
   still advertising no Direct3D.
+- The two-model INF was verified through a real SetupX Have-Disk install on
+  both guests, not just by generation: each card was offered only its own
+  model, bound its own install section (`Velocity9x.Install.virge-dx` /
+  `.trio64`), got its own `MODES` AddReg, and reproduced its full phase 7
+  readings afterwards. Also measured, and worth knowing: a PnP re-detect
+  installs Microsoft's in-box `DXS3.INF` rather than this driver, so removing
+  the display device is not a way to reinstall — the documented Have-Disk
+  selection is required.
 - Retired with it: the two single-chip manifests, `LegacyOutputName` /
   `LegacySkeletonOutput` / `LegacySwitch`, the `-S3Trio64` and
   `-MatroxMillennium2` builder aliases, and the checked-in

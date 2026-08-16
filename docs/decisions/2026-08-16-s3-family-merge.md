@@ -124,12 +124,57 @@ Also retired: the `s3-virge` and `s3-trio64` manifests, `LegacyOutputName` /
 `packaging/win98se/velocity9x.inf` - the INF has been generated since phase 3
 and the checked-in copy was already only a source of drift.
 
-## Not done here
+## The SetupX install, measured
 
-The multi-model INF was validated by generation and by set-equality assertion,
-not by a SetupX install. Both guests were updated by file replacement against
-an already-associated driver, which is what the mode matrix requires and what
-it verifies. Whether Windows 98 SetupX picks the right model and applies the
-right per-model `MODES` AddReg from a two-model INF is the one Win98-specific
-behaviour the plan flagged as worth an empirical check, and it still wants a
-throwaway-snapshot install on both guests.
+The plan flagged per-model `MODES` AddReg as the one Win98-specific mechanism
+worth an empirical check. It was run on both guests, from cold profile backups,
+through the documented Have-Disk procedure in `docs/INSTALL.md`.
+
+**It works, in both directions.** Given one INF carrying two models, the Select
+Device dialog offered exactly the model matching the fitted card - only
+`Velocity9x S3 ViRGE/DX 86C375` on the ViRGE guest, only
+`Velocity9x S3 Trio32/64 86C764` on the Trio64 - and binding produced the
+per-chip section:
+
+| after install | ViRGE guest | Trio64 guest |
+|---|---|---|
+| `InfSection` | `Velocity9x.Install.virge-dx` | `Velocity9x.Install.trio64` |
+| `DriverDesc` | `Velocity9x S3 ViRGE/DX 86C375` | `Velocity9x S3 Trio32/64 86C764` |
+| `MatchingDeviceId` | `PCI\VEN_5333&DEV_8A01` | `PCI\VEN_5333&DEV_8811` |
+| `MODES` applied | 8: 640x400/480, 800x600, 1024x768; 16: three | identical |
+| driver after reboot | `enable-ok`, `hardware-s3d`, 56079 kHz | `enable-ok`, `not-advertised`, 69800 kHz |
+
+Both then reproduced their full phase 7 readings from the INF-installed driver:
+ViRGE 7/7 blits with the complete 11-item D3D gate set and `EngineCaps` `0x1F`,
+Trio64 6/3 with no D3D HAL and `0x0F`. The guests are now installed the way a
+user installs, rather than by the file replacement they had been carrying.
+
+### Auto-detect does not choose this driver
+
+Worth recording because it is easy to assume otherwise. The first attempt drove
+the install by deleting the device's `Enum` key and letting PnP re-detect on
+reboot, with the INF placed in `C:\WINDOWS\INF` and the driver-info cache
+invalidated. Windows 98 installed **Microsoft's in-box `DXS3.INF`** instead -
+`drv=s3.drv`, `ProviderName=Microsoft` - and the Velocity9x driver was
+displaced.
+
+That is not a defect: `docs/INSTALL.md` step 6 has always said to pick the
+Velocity9x entry explicitly through Have Disk. But it means a re-detect is not
+a shortcut for reinstalling, and anyone who removes the display device
+expecting the driver to come back will get the in-box S3 driver instead. The
+guest was recovered by re-importing its pre-test registry export, which is a
+cheaper revert than the profile backup and worth knowing works.
+
+### Two things found in passing
+
+`backup-86box-profile.ps1` named every backup `Win86SE-*` regardless of the
+profile it copied. Contents were always correct, which is the worse failure -
+nothing looks wrong until someone restores the wrong disk. Fixed.
+
+`run-vm-mode-matrix.ps1` writes the mode to
+`Services\Class\Display\0001\DEFAULT`, but the active display key index is per
+guest: `0001` on the ViRGE, `0002` on the Trio64, because each carries
+leftovers from earlier drivers. The matrix passes anyway because the
+`Config\0001\Display\Settings` half of the same `.reg` is what actually takes
+effect. It works by accident and should be driven from the device's own
+`Driver` value instead.

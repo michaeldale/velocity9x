@@ -87,7 +87,12 @@ installing.
 5. **Have Disk**, and browse to the built package directory.
 6. Select the Velocity9x entry for your chip.
 7. Let Windows copy the files. **Do not accept a different device ID** if it
-   offers one.
+   offers one. The list shows only the model matching your card, so on a
+   ViRGE/DX you should see exactly one Velocity9x entry and no Trio64 entry.
+
+Step 5 is not optional and there is no shortcut. Removing the display adapter
+and letting Windows re-detect it installs Microsoft's in-box S3 driver, not
+this one — measured on both guests, 2026-08-16.
 8. When prompted, **shut down fully**. Do not warm-restart the first boot.
 9. Start the serial capture, then cold-start the machine once.
 
