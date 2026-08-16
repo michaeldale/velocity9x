@@ -479,10 +479,24 @@ static void test_components_and_log(void)
 static void test_build_identity(void)
 {
     const struct v9x_build_identity *identity = v9x_get_build_identity();
+    char expected[32];
+
     CHECK(identity != 0);
     CHECK(identity->major == V9X_VERSION_MAJOR);
+    CHECK(identity->minor == V9X_VERSION_MINOR);
+    CHECK(identity->patch == V9X_VERSION_PATCH);
     CHECK(identity->build_id != 0);
     CHECK(identity->build_id[0] != '\0');
+
+    /*
+     * The numbers and the string are separate defines, and the build scripts
+     * read only the string while the driver reports only the numbers. Nothing
+     * else would notice them drifting apart, so this composes one from the
+     * other.
+     */
+    sprintf(expected, "%u.%u.%u", (unsigned int)V9X_VERSION_MAJOR,
+            (unsigned int)V9X_VERSION_MINOR, (unsigned int)V9X_VERSION_PATCH);
+    CHECK(strcmp(expected, V9X_VERSION_STRING) == 0);
 }
 
 int main(void)

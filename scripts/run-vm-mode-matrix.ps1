@@ -105,12 +105,42 @@ function Invoke-GuestShell {
     Invoke-V9xCtlJson shell @("-ShellCommand", $Command.Replace('"', '\"'))
 }
 
+# Which Services\Class\Display\NNNN key this driver is installed under.
+#
+# It is not always 0001. Each guest carries a key per display driver it has
+# ever hosted, so the index depends on that guest's history - the ViRGE guest's
+# is 0001 and the Trio64 guest's is 0002. Writing the mode to a hardcoded 0001
+# landed on whatever other driver happened to own that key, and the matrix
+# still passed only because the Config\0001 half of the same .reg is what
+# actually takes effect. That is a pass by accident, so the key is resolved
+# from the registry instead.
+function Get-V9xDisplayKeyIndex {
+    $guestExport = "$GuestJob\DISPLAY.REG"
+    $null = Invoke-GuestShell (
+        "REGEDIT /E $guestExport " +
+        "HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display")
+    $local = Join-Path $results "display-class.reg"
+    $null = Invoke-V9xCtlJson get @("-Source", $guestExport, "-Destination", $local)
+    $text = Get-Content -LiteralPath $local -Raw
+
+    $pattern = '(?ms)^\[HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services' +
+               '\\Class\\Display\\(\d{4})\\DEFAULT\](.*?)(?=^\[|\z)'
+    foreach ($match in [regex]::Matches($text, $pattern)) {
+        if ($match.Groups[2].Value -match '(?im)^"drv"\s*=\s*"v9xdisp\.drv"\s*$') {
+            return $match.Groups[1].Value
+        }
+    }
+    throw ("No Services\Class\Display key on the guest names v9xdisp.drv, so " +
+           "the Velocity9x driver is not the installed display driver.")
+}
+
 function New-ModeRegistryFile {
-    param([string]$Name, [int]$Width, [int]$Height, [int]$BitsPerPixel)
+    param([string]$Name, [int]$Width, [int]$Height, [int]$BitsPerPixel,
+          [string]$DisplayKey)
     $path = Join-Path $results ("mode-{0}.reg" -f $Name)
     $lines = @(
         "REGEDIT4", "",
-        "[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\DEFAULT]",
+        ("[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\{0}\DEFAULT]" -f $DisplayKey),
         ('"Mode"="{0},{1},{2}"' -f $BitsPerPixel, $Width, $Height), "",
         "[HKEY_LOCAL_MACHINE\Config\0001\Display\Settings]",
         '"UpgradeToDefaultMode"=-',
@@ -133,6 +163,9 @@ foreach ($driverFile in @("V9XDISP.DRV", "V9XMINI.VXD")) {
         throw "Installed $driverFile does not match the package; activate it before running the matrix."
     }
 }
+# Resolved once, after the DRV check has confirmed this driver is the installed
+# one, and reused for every mode in the run.
+$displayKey = Get-V9xDisplayKeyIndex
 
 $matrix = @()
 for ($pass = 1; $pass -le $Repeat; ++$pass) {
@@ -145,7 +178,7 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $bits = [int]$Matches[3]
     $modeResults = Join-Path (Join-Path $results "pass-$pass") $name
     New-Item -ItemType Directory -Force -Path $modeResults | Out-Null
-    $regFile = New-ModeRegistryFile $name $width $height $bits
+    $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
     $null = Invoke-V9xCtlJson put @(
         "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
     $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
@@ -243,6 +276,7 @@ $summary = [pscustomobject]@{
     ChipId = $vmTarget.ChipId
     Profile = $vmTarget.Profile
     Port = $Port
+    DisplayKey = $displayKey
     PackagePath = [IO.Path]::GetFullPath($PackagePath)
     GuestJob = $GuestJob
     Repeat = $Repeat

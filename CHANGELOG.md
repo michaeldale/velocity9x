@@ -6,6 +6,11 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+## 0.3.5 - 2026-08-16
+
+The multi-chip restructure through phase 8: one S3 binary serving both chips,
+and the 32-bit HAL split along the seams that made it possible.
+
 ### Changed
 
 - The `s3-virge` and `s3-trio64` families merged into one `s3` family: one
@@ -147,6 +152,20 @@ build identifier so exact guest-tested binaries remain traceable.
 - `scripts/golden-baseline.ps1`, which captures and compares the byte-level
   baseline the restructure must preserve. Win32 PE link timestamps are zeroed
   before hashing so a rebuild is reproducible.
+
+### Fixed
+
+- `scripts/backup-86box-profile.ps1` named every backup after the ViRGE
+  profile whatever it was given. The copied contents were always correct,
+  which is the worse failure: nothing looks wrong until someone restores what
+  they believe is one guest over another.
+- `scripts/run-vm-mode-matrix.ps1` wrote the requested mode to a hardcoded
+  `Services\Class\Display\0001`, which is the wrong key on any guest whose
+  display-class index differs — the Trio64 guest's is `0002`. It passed
+  regardless because the `Config\0001` half of the same `.reg` is what takes
+  effect, so the matrix had been green by accident. The key is now resolved
+  from the registry by finding the one that names `v9xdisp.drv`, and the run
+  refuses if no key does.
 
 ## 0.3 - 2026-08-15
 
