@@ -175,7 +175,15 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     const V9X_HW16_DEVICE *device;
 
     v9x_hardware_stage_code = 1u;
-    if (V9xHardwarePresent() == 0u) {
+    /*
+     * Always call it: this is the scan that records which entry matched, and
+     * so decides whose hooks run below. Only whether a miss is fatal depends
+     * on the family. A tier-0 family reads no chip register and gets its
+     * aperture from the BIOS, so an unrecognised card is not a reason to
+     * refuse - the INF already decided what this driver is claimed to support,
+     * and a second veto here is one a Have-Disk install cannot reach.
+     */
+    if (V9xHardwarePresent() == 0u && v9x_hw16.pci_match_optional == 0u) {
         return 0u;
     }
     /* Read after the present check, not before: that is the call that runs the

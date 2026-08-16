@@ -17,8 +17,12 @@
 
 /*
  * QEMU/Bochs std-vga. The allowlist is deliberately one entry: tier-0 works on
- * far more cards than this, but the INF may only claim what has been tested,
- * and everything else installs by Have-Disk. See the vbe family manifest.
+ * far more cards than this, but the INF may only claim what has been tested.
+ *
+ * Other cards are reached by choosing this package through Have-Disk. That
+ * route is real rather than nominal only because the 16-bit family table sets
+ * pci_match_optional, so the driver does not apply an allowlist of its own on
+ * top of the INF's; see hw16.h and the vbe family manifest.
  */
 #define V9X_PCI_VENDOR_QEMU_BOCHS ((v9x_u16)0x1234u)
 #define V9X_PCI_DEVICE_STDVGA     ((v9x_u16)0x1111u)

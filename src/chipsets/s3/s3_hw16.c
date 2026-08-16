@@ -67,5 +67,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     v9x_s3_read_aperture,
     /* CreateDIBPDevice builds the screen PDEVICE on both. */
-    0
+    0,
+    /* The card must be one of ours: CR59/CR5A and the CR58/CR53 pokes below
+     * are S3 registers and mean something else on anything not S3. */
+    0u
 };

@@ -129,11 +129,17 @@
         Include = $true
         Folder = 'VBE'
         Order = 2
-        # The INF claims one id because one is what has been tested. Tier-0 is
-        # expected to work on far more than that, and the honest way to offer
-        # it is Have-Disk, where a person decides - not a wildcard that makes
-        # Windows bind this driver to every display adapter it finds.
-        HardwareIdHint = 'PCI 1234:1111; other VBE 2.0 cards via Have-Disk'
+        # The INF claims one id because one is what has been tested - not a
+        # wildcard that makes Windows bind this driver to every display adapter
+        # it finds. Other VBE 2.0 cards are reached by choosing this package
+        # through Have-Disk, which is a decision a person makes rather than one
+        # Windows makes for them.
+        #
+        # That route only works because this family sets pci_match_optional:
+        # until 2026-08-16 the driver carried a second allowlist of its own and
+        # refused at stage 1 on any card the family did not name, whatever the
+        # INF said. See docs\issues\2026-08-16-tier0-defects-deferred.md D3.
+        HardwareIdHint = 'PCI 1234:1111 automatically; any VBE 2.0 card via Have-Disk'
     }
 
     Vm = @{

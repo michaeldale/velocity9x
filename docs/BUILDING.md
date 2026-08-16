@@ -65,7 +65,7 @@ build scripts read instead of hard-coding chip facts. See
 |---|---|---|
 | `s3` | S3 ViRGE/DX 86C375 (`5333:8A01`), S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-s3` |
 | `matrox-m2` | Matrox Millennium II MGA-2164W (`102B:051B`) | `build/matrox-candidate` |
-| `vbe` | QEMU/Bochs std-vga (`1234:1111`); other VBE 2.0 cards by Have-Disk | `build/win98se-vbe` |
+| `vbe` | QEMU/Bochs std-vga (`1234:1111`) automatically; any VBE 2.0 card by Have-Disk | `build/win98se-vbe` |
 | `ati` | ATI Mach64 VT2 (`1002:5654`), ATI Rage Mobility-M (`1002:4C4D`) | `build/win98se-ati` |
 
 The `ati` family is the first that is **part emulated and part physical**. 86Box

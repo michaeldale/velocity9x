@@ -29,7 +29,13 @@ const struct v9x_backend_ops *v9x_backend_for_pci(
      * easy to return it for anything unmatched, and wrong: this function's
      * refusal is what the driver and the family-matrix tests rely on to mean
      * "this card is not claimed", and a generic catch-all would silently claim
-     * hardware nobody has run. Unlisted cards reach tier-0 by Have-Disk.
+     * hardware nobody has run.
+     *
+     * Unlisted cards reach tier-0 by a Have-Disk install of the vbe package,
+     * which is a person choosing it rather than this function guessing. Note
+     * that route is governed by the 16-bit family table's pci_match_optional,
+     * not by anything here: this registry is the host-testable policy layer
+     * and is not on the driver's enable path at all.
      */
     if (pci->vendor_id == V9X_PCI_VENDOR_QEMU_BOCHS &&
         pci->device_id == V9X_PCI_DEVICE_STDVGA) {

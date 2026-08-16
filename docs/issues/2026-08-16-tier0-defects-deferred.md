@@ -1,9 +1,9 @@
-# Two tier-0 backend defects
+# Three tier-0 backend defects
 
-Status: **D1 and D2 fixed 2026-08-16** on this branch, for merge into
-`vbe-tier0`. **D3 is open.** All three were found while designing the ATI
-Mach64 family; they live in chip-agnostic code belonging to the tier-0 backend
-rather than in anything ATI-specific.
+Status: **D1, D2 and D3 all fixed 2026-08-16** on this branch, for merge into
+`vbe-tier0`. All three were found while designing the ATI Mach64 family; they
+live in chip-agnostic code belonging to the tier-0 backend rather than in
+anything ATI-specific.
 
 D1 and D2 were blocking for stage 4, the first install on the physical laptop.
 
@@ -98,6 +98,35 @@ set `dwNumHeaps = 0` in that case rather than inventing memory.
 ---
 
 ## D3 - "other VBE 2.0 cards via Have-Disk" does not actually work
+
+**FIXED 2026-08-16.** Option 1 and option 2 were both rejected in favour of a
+narrower change: the `vbe` family sets a new `pci_match_optional` flag in its
+`v9x_hw16` table, and `enable16.c` stage 1 treats a PCI miss as fatal only for
+families that do not set it. The scan still runs - it is what decides whose
+hooks execute - but tier-0 no longer vetoes a card the INF never claimed to
+match, which is the whole point of a Have-Disk override.
+
+Every other family leaves the flag zero, including `ati`, which is itself
+tier-0: the generic package is the single answer to "my card is not listed", and
+a vendor package accepting anything would publish its vendor's identity for a
+card that is not one. The field sits last in the struct so that zero - the
+strict behaviour - is also what an initializer that forgets it gets.
+
+`v9x_vbe_publish_diagnostics` now reports `unmatched` for the adapter and ids
+when `v9x_pci_match` is `0xFFFF`, rather than the fallback entry's std-vga
+strings. Rationale and the rejected alternatives are recorded in
+`docs\decisions\2026-08-16-vbe-tier0-family.md`.
+
+Code cost: **+34 bytes** on `s3`, `matrox-m2` and `ati` - the shared
+`enable16.c` condition and the struct field - and **+150** on `vbe`, which also
+carries the diagnostics check and its two strings. Inside the 2 KiB per-step
+budget.
+
+**Not yet re-measured on hardware.** The original failure was observed on the
+86Box Mach64 VT2 guest; the fix has been built and audited for all four families
+but not re-run there. That re-run is the outstanding verification.
+
+The original finding follows.
 
 **Measured 2026-08-16** on the `Win98SE-Mach64VT2` guest (86Box Mach64 VT2,
 `1002:5654`), by doing exactly what the manifest advertises.

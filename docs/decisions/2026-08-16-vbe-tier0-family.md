@@ -100,6 +100,12 @@ families wanting them link - which is a packaging change, not a source one.
   far more than that, but the INF may only claim what has been tested, and the
   honest way to offer the rest is Have-Disk, where a person decides. A wildcard
   would make Windows bind this driver to every display adapter it finds.
+  **Amended 2026-08-16:** that promise was false as first shipped. The 16-bit
+  driver carried a second allowlist the INF could not reach, so a Have-Disk
+  install onto an unlisted card bound successfully and then refused at stage 1.
+  This family now sets `pci_match_optional`, which is what makes the Have-Disk
+  route real. See the section below and
+  `docs\issues\2026-08-16-tier0-defects-deferred.md` D3.
 - The registry arm is an exact-id match like every other arm, deliberately not a
   catch-all fallback. `v9x_backend_for_pci` returning null is what the driver
   and the family-matrix tests rely on to mean "not claimed".
@@ -108,6 +114,57 @@ families wanting them link - which is a packaging change, not a source one.
 - **Known limit:** the ViRGE/DX BIOS ignores the generic linear-framebuffer bit,
   so this package cannot drive one. It refuses cleanly at stage 3 rather than
   rendering incorrectly. That is the documented behaviour, not a bug to fix.
+
+## The second allowlist, and why tier-0 drops it
+
+Resolves D3 of `docs\issues\2026-08-16-tier0-defects-deferred.md`, measured on
+an 86Box Mach64 VT2: a Have-Disk install of this package onto an unlisted card
+bound correctly and then wrote `Stage=fail-hardware-present`.
+
+A family carries two allowlists. The INF's `[Velocity9x.Models]` decides what
+Windows binds automatically, and Have-Disk is the documented way for a person to
+override it. But `v9x_hw16.devices[]` is compiled into `v9xdisp.drv`, stamped
+into DGROUP by `ddi.c` and scanned by `V9xFindPciDevice`, and stage 1 refused
+whenever it matched nothing. Have-Disk can override the first and cannot reach
+the second, so the advertised route produced a bound-but-inert driver on every
+card it was meant to serve.
+
+The fix is a family flag, `pci_match_optional`, set only by `vbe`. Stage 1 still
+runs the scan - it is what records which entry matched, and so whose hooks run -
+but a miss is no longer fatal for a family that declares it does not need the
+identity.
+
+Tier-0 genuinely does not need it. It pokes no chip register, takes its aperture
+from 4F01h and its memory size from 4F00h, and publishes no acceleration. The
+PCI id told it nothing it uses. For every other family the flag stays zero,
+because their code reads CR59/CR5A or a PCI BAR and would otherwise be reading a
+stranger's registers - so the safe value is the default, and adding the field at
+the end of the struct means an initializer that forgets it gets the strict
+behaviour.
+
+Two alternatives were considered and rejected. A wildcard device entry that
+`V9xFindPciDevice` treats as "match anything" would make the scan's result
+meaningless for `V9xPciReadBar0`, which shares it, and would leave the family
+publishing a std-vga identity for whatever card actually answered. Reading the
+accepted hardware id out of the registry at Enable time is the most faithful
+answer but is a much larger change to a 16-bit driver that has no registry code
+today, for no behaviour this flag does not already give.
+
+What did **not** change: the INF still names exactly one id. Automatic binding
+is still limited to hardware that has been tested, which is the claim that
+matters. The flag only stops the driver adding a veto on top of a decision a
+person already made.
+
+Vendor families stay strict even when they are themselves tier-0 - `ati` sets
+zero. The generic package is the one answer to "my card is not listed", and a
+vendor package that accepted anything would publish its vendor's identity
+strings for a card that is not one. That is also the route for the Rage Pro id
+`ati` deliberately does not claim.
+
+An unmatched card is reported as such: `v9x_vbe_publish_diagnostics` checks
+`v9x_pci_match` and writes `unmatched` rather than the fallback entry's ids,
+because a bug report from an untested card is where a confident wrong answer
+would cost the most.
 
 ## A refusal, not an adaptation
 

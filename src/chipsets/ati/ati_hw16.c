@@ -138,5 +138,14 @@ const V9X_HW16_OPS v9x_hw16 = {
      * contemplated as a fallback is not required. */
     0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
-    0
+    0,
+    /*
+     * Strict, even though this family is tier-0 and touches no ATI register.
+     * The permissive setting belongs to the generic vbe package, which is the
+     * one answer to "my card is not listed"; a vendor package staying strict
+     * is what keeps its name meaningful and stops ATI identity strings being
+     * published for a card that is not one. A Rage Pro owner - the id this
+     * family deliberately does not claim - installs the vbe package.
+     */
+    0u
 };

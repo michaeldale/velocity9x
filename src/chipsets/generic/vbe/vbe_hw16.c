@@ -23,6 +23,10 @@
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
 extern unsigned long v9x_vbe_vram_reported;
 
+/* ddi.c: the index V9xFindPciDevice matched, or 0xFFFF when nothing did.
+ * This family runs either way, so the diagnostics have to say which. */
+extern unsigned short v9x_pci_match;
+
 /*
  * Not static: the per-object audit resolves this symbol by name to prove the
  * family's own table is in the image, the same way each S3 chip module exports
@@ -103,11 +107,20 @@ static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                         v9x_hw16_write_fn write)
 {
     char number[11];
+    /*
+     * This family accepts a card its device list does not name, so the entry
+     * the caller hands back is the fallback first entry rather than a card
+     * that answered. Publishing its ids then would state as fact that this is
+     * a QEMU std-vga when it demonstrably is not - and a bug report from an
+     * untested card is exactly where that lie would cost the most.
+     */
+    unsigned short matched = (unsigned short)(v9x_pci_match != 0xffffu);
 
     write("SchemaVersion", "1");
-    write("Adapter", device->adapter);
-    write("VendorId", device->vendor_text);
-    write("DeviceId", device->device_text);
+    write("Adapter", matched ? device->adapter
+                             : "Unrecognised card on the generic VBE path");
+    write("VendorId", matched ? device->vendor_text : "unmatched");
+    write("DeviceId", matched ? device->device_text : "unmatched");
     write("ClockDetector", device->clock_detector);
     write("ClockStatus", "unavailable");
     write("ModeSwitching", device->mode_switching);
@@ -140,5 +153,10 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* NULL: ask the BIOS through 4F01h. This one hole is the family. */
     0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
-    0
+    0,
+    /* A PCI miss is not fatal here. This family names one id because one is
+     * what has been tested, but it touches no chip register, so an untested
+     * card reached through a Have-Disk install gets the same BIOS-only path
+     * and either works or refuses at stage 3 on its own merits. */
+    1u
 };
