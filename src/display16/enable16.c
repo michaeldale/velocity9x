@@ -33,6 +33,12 @@
 
 extern WORD v9x_active_vbe_mode;
 extern WORD v9x_vbe_mode_flags;
+extern WORD v9x_map_pages_hi;
+extern WORD v9x_map_pages_lo;
+
+/* ddi.c. The mode row being enabled, valid before the PDEVICE exists. */
+extern WORD v9x_selected_mode_geometry(WORD FAR *width, WORD FAR *height,
+                                       WORD FAR *bpp, WORD FAR *pitch);
 
 /* Chip-agnostic primitives that remain in runtime.asm. */
 extern WORD FAR PASCAL V9xHardwarePresent(void);
@@ -48,9 +54,72 @@ extern WORD FAR PASCAL V9xMapAperture(void);
 WORD v9x_hardware_stage_code = 0u;
 DWORD v9x_map_physical_base = 0ul;
 
+/*
+ * VRAM as the BIOS reported it, or 0 when nothing asked.
+ *
+ * Only the tier-0 path fills this in: a family with a read_aperture hook knows
+ * its own memory size and never calls 4F00h, so its images leave this zero and
+ * dd16.c keeps the size it always used.
+ */
+DWORD v9x_vbe_vram_bytes = 0ul;
+
 WORD FAR PASCAL V9xHardwareStage(void)
 {
     return v9x_hardware_stage_code;
+}
+
+/*
+ * Stage 3 for a family with no read_aperture hook: ask the BIOS.
+ *
+ * This is the tier-0 backend. Nothing here is chip-specific, which is the
+ * point - a family whose hooks are all NULL reaches this and gets a working
+ * linear framebuffer out of VBE alone.
+ *
+ * The mode agreement check is a refusal, not an adaptation. GDI and the
+ * registry have already agreed on the pitch in the family's table, and the
+ * PDEVICE is built from it, so a BIOS reporting a different stride would put
+ * every scan line in the wrong place. Refusing at stage 3 leaves a legible
+ * boot trace instead; adapting would leave a display that looks broken with
+ * no failure recorded anywhere.
+ */
+static DWORD v9x_vbe_default_aperture(void)
+{
+    struct v9x_vbe_mode_summary mode;
+    struct v9x_vbe_controller_summary controller;
+    WORD width;
+    WORD height;
+    WORD bpp;
+    WORD pitch;
+    DWORD mapped_bytes;
+
+    if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        return 0ul;
+    }
+    /* The bare mode number: 4F01h describes a mode, not a mode plus the
+     * family's linear and no-clear request bits. */
+    if (v9x_vbe_read_mode_info(v9x_active_vbe_mode, &mode) == 0u) {
+        return 0ul;
+    }
+    if (v9x_vbe_mode_matches(&mode, width, height, bpp, pitch) == 0u) {
+        return 0ul;
+    }
+
+    /*
+     * VRAM only sizes the off-screen heap, and dd16.c has a floor to fall back
+     * on, so a BIOS with a broken 4F00h costs some off-screen surfaces rather
+     * than the whole enable. Clamped to what the family actually maps: the
+     * DirectDraw heap runs to linear_base + vram_bytes - 1, and that has to
+     * stay inside the mapping however much memory the card claims.
+     */
+    if (v9x_vbe_read_controller_info(&controller) != 0u) {
+        mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
+                        (DWORD)v9x_map_pages_lo) + 1ul;
+        v9x_vbe_vram_bytes = controller.total_memory_bytes > mapped_bytes
+                                 ? mapped_bytes
+                                 : controller.total_memory_bytes;
+    }
+
+    return mode.phys_base;
 }
 
 /*
@@ -86,9 +155,10 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     }
 
     v9x_hardware_stage_code = 3u;
-    /* A family with no read_aperture hook has nothing to map until VBE 4F01h
-     * lands with the tier-0 backend at phase 9. */
-    base = v9x_hw16.read_aperture != 0 ? v9x_hw16.read_aperture() : 0ul;
+    /* NULL means "ask the BIOS", which is the whole of the tier-0 backend.
+     * Either way a zero base is the same stage 3 refusal. */
+    base = v9x_hw16.read_aperture != 0 ? v9x_hw16.read_aperture()
+                                       : v9x_vbe_default_aperture();
     if (base == 0ul) {
         return 0u;
     }

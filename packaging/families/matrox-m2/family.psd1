@@ -73,6 +73,9 @@
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            # vbe16 parses 4F00h/4F01h answers through this, so every family
+            # links it even where no hook asks the BIOS anything.
+            @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

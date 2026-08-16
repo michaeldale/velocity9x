@@ -355,6 +355,29 @@ WORD v9x_dd_disable_count(void)
     return v9x_disable_count;
 }
 
+/*
+ * The mode the hardware sequence is currently bringing up.
+ *
+ * Deliberately not v9x_dd_active_mode: that one reports what the DIB Engine is
+ * drawing into and so is gated on v9x_enabled, which is not set until the
+ * PDEVICE has been built. V9xHardwareEnable runs before that and needs the row
+ * it is enabling, to ask the BIOS whether the mode it just set agrees with the
+ * family's table. v9x_selected_mode is stamped by v9x_apply_mode, which every
+ * path runs before the hardware sequence starts.
+ */
+WORD v9x_selected_mode_geometry(WORD FAR *width, WORD FAR *height,
+                                WORD FAR *bpp, WORD FAR *pitch)
+{
+    if (v9x_selected_mode == 0) {
+        return 0u;
+    }
+    *width = v9x_selected_mode->width;
+    *height = v9x_selected_mode->height;
+    *bpp = v9x_selected_mode->bits_per_pixel;
+    *pitch = v9x_selected_mode->pitch;
+    return 1u;
+}
+
 WORD v9x_dd_active_mode(WORD FAR *width, WORD FAR *height,
                         WORD FAR *bpp, WORD FAR *pitch)
 {

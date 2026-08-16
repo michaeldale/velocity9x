@@ -101,6 +101,24 @@ which is still instructions.
 Match the disassembler's spelling, not the assembler's: `wdis` prints small
 immediates bare, so `or al,08h` in the source is `or\s+al,8\b` in a pattern.
 
+**Anchor the immediate.** The `\b` is not decoration. These patterns are
+regexes over disassembly text, so an unanchored `test\s+al,8` also matches
+`test al,80H`, and because required patterns become other families' forbidden
+patterns, the false positive surfaces as a build failure in a *different*
+family from the one that owns the pattern. That happened: the ViRGE's CR53
+pattern shipped unanchored and convicted the Matrox image the moment shared
+code gained a `test al,80H`. See
+`docs\decisions\2026-08-16-vbe-tier0-family.md`.
+
+**Only claim instructions your own objects own.** The audit scans every object
+in the image, including shared ones that every family links. An instruction in
+`src\common\` or `src\display16\` appears in all families, so declaring it as a
+required pattern forbids it everywhere else and fails those builds while
+proving nothing about yours. The `vbe` family declares no required patterns for
+exactly this reason - its 4F00h/4F01h calls live in shared `vbe16.c`. If a
+family needs a signature, move the code that produces it into that family's own
+object first.
+
 `scripts\audit-family-binary.ps1` applies three layers:
 
 1. **Cross-family** - the family image matches all its chips' signatures and no
