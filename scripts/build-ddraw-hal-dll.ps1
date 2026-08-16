@@ -41,16 +41,45 @@ $env:INCLUDE = "$(Join-Path $watcomRoot 'h');$(Join-Path $watcomRoot 'h\nt')"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 $includeDir = Join-Path $repoRoot "include"
-$source = Join-Path $repoRoot "src\display32\ddhal.c"
-$object = Join-Path $outputDir "ddhal.obj"
+# The HAL's own private header lives beside its sources, so every translation
+# unit can say #include "ddhal_internal.h" regardless of which subdirectory it
+# sits in.
+$privateIncludeDir = Join-Path $repoRoot "src\display32"
+# One entry per translation unit. Object names are flattened into one output
+# directory, so two sources may not share a base name.
+$sources = @(
+    "src\display32\ddhal_core.c",
+    "src\display32\blt_cpu.c",
+    "src\display32\engines\vga_scanout.c",
+    "src\display32\engines\eng_s3_virge.c",
+    "src\display32\engines\eng_s3_trio.c",
+    "src\display32\d3d\d3d_virge.c"
+)
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"
 $linkFile = Join-Path $outputDir "v9xhal.lnk"
 
-& $compiler "-bt=nt" "-bd" "-zq" "-wx" "-zl" "-s" `
-    "-i=$includeDir" "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-if ($LASTEXITCODE -ne 0) {
-    throw "Open Watcom failed to compile the DirectDraw HAL DLL."
+$objects = @()
+$objectNames = @{}
+foreach ($relative in $sources) {
+    $source = Join-Path $repoRoot $relative
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "DirectDraw HAL source is missing: $relative"
+    }
+    $name = [IO.Path]::GetFileNameWithoutExtension($source)
+    if ($objectNames.ContainsKey($name)) {
+        throw ("Two DirectDraw HAL sources share the base name '$name': " +
+               "$($objectNames[$name]) and $relative.")
+    }
+    $objectNames[$name] = $relative
+    $object = Join-Path $outputDir "$name.obj"
+    & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-zl" "-s" `
+        "-i=$includeDir" "-i=$privateIncludeDir" `
+        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+    if ($LASTEXITCODE -ne 0) {
+        throw "Open Watcom failed to compile $relative."
+    }
+    $objects += $object
 }
 
 $linkLines = @(
@@ -64,8 +93,8 @@ $linkLines = @(
     "option map='$mapFile'",
     "option modname='V9XHAL'",
     "export DriverInit='_DriverInit@4'",
-    "name '$dll'",
-    "file '$object'",
+    "name '$dll'"
+) + @($objects | ForEach-Object { "file '$_'" }) + @(
     "library '$kernel32'"
 )
 Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines

@@ -73,6 +73,13 @@ $required = @(
     "src\display16\loader.c",
     "src\display16\ddi.c",
     "src\display16\win9x_display_abi.h",
+    "src\display32\ddhal_internal.h",
+    "src\display32\ddhal_core.c",
+    "src\display32\blt_cpu.c",
+    "src\display32\engines\vga_scanout.c",
+    "src\display32\engines\eng_s3_virge.c",
+    "src\display32\engines\eng_s3_trio.c",
+    "src\display32\d3d\d3d_virge.c",
     "src\display16\runtime.asm",
     "src\display16\dib_thunks.asm",
     "src\minivdd32\minivdd_component.c",
@@ -109,7 +116,10 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\dd16.c"),
     (Join-Path $repoRoot "src\display16\enable16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
-    (Join-Path $repoRoot "src\display32\ddhal.c"),
+    # The 32-bit HAL now has exactly one OS boundary: its private header. Every
+    # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
+    # that, so a new HAL module cannot quietly acquire its own.
+    (Join-Path $repoRoot "src\display32\ddhal_internal.h"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |
