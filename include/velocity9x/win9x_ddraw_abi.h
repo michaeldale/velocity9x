@@ -976,10 +976,18 @@ typedef struct v9x_dd_framebuffer {
  * first vram_bytes are allocatable VRAM; the register window is addressed
  * through control_linear_base and must never be exposed as a heap. */
 #define V9X_DD_ENGINE_VALID          0x00000001ul
-#define V9X_DD_ENGINE_S3_VIRGE_DX    0x00000002ul
-#define V9X_DD_ENGINE_S3_TRIO64      0x00000004ul
-/* Distinct from the chipset identity bits. This previously aliased
- * V9X_DD_ENGINE_S3_TRIO64, so validating the ViRGE engine status made
+/*
+ * 0x00000002 and 0x00000004 were V9X_DD_ENGINE_S3_VIRGE_DX and
+ * V9X_DD_ENGINE_S3_TRIO64, one identity bit per chip. Retired 2026-08-16:
+ * chip identity is engine_type below, so adding a chip is a new enum value
+ * rather than a new bit and a new branch at every reader. Left unassigned
+ * rather than immediately reused, so a stale diagnostic reading this field
+ * reports nothing rather than reporting a wrong chip.
+ *
+ * This field is now runtime state only.
+ */
+/* Distinct from the identity bits that used to live here. It once aliased
+ * the Trio64 bit, so validating the ViRGE engine status made
  * v9x_trio_engine_ready() true on a ViRGE and would have routed its blits
  * through the Trio64 port-I/O command sequence. */
 #define V9X_DD_ENGINE_STATUS_VALIDATED 0x00000008ul
@@ -987,16 +995,15 @@ typedef struct v9x_dd_framebuffer {
 /*
  * Engine identity and capability, as data rather than as flag bits.
  *
- * The V9X_DD_ENGINE_S3_* bits above still say which chip this is and are what
- * ddhal.c reads today. These fields are the general form that replaces them:
- * a new chip becomes a new engine_type value and a caps mask rather than
- * another bit and another branch. Both descriptions are filled in, and the
- * flag bits are retired when the 32-bit side moves to the vtable.
+ * engine_type is the sole statement of which chip this is; a new chip is a new
+ * value here and a caps mask, not another flag bit. engine_caps says what that
+ * engine will do, so a chip can carry an engine with only part of its family's
+ * capability set.
  */
 
 typedef struct v9x_dd_engine {
-    /* Existing fields keep their offsets: ddhal.c reads them unmodified
-     * through this ABI bump, and only moves to the new ones at phase 7. */
+    /* Field offsets are unchanged since ABI 2026081601. Phase 7 changed only
+     * which of them the 32-bit HAL reads, not where any of them sit. */
     DWORD control_linear_base;
     DWORD mapped_aperture_bytes;
     DWORD flags;

@@ -173,13 +173,15 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.mapped_aperture_bytes = aperture_bytes;
         shared->engine.engine_type = engine_type;
         shared->engine.engine_caps = engine_caps;
-        /* The chipset identity bits are what ddhal.c still reads; they are
-         * derived from engine_type here and retire when the 32-bit side moves
-         * to the vtable at phase 7. */
-        shared->engine.flags = V9X_DD_ENGINE_VALID |
-            (engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
-                 ? V9X_DD_ENGINE_S3_TRIO64
-                 : V9X_DD_ENGINE_S3_VIRGE_DX);
+        /* VALID says the descriptor was filled in, nothing more. Which chip
+         * this is, and what its engine will do, are engine_type and
+         * engine_caps above; the per-chip identity bits that used to be
+         * derived here retired with the 32-bit vtable.
+         *
+         * That derivation also read as ViRGE for any engine_type it did not
+         * recognise, including NONE. A family with a descriptor hook but no
+         * engine now says so. */
+        shared->engine.flags = V9X_DD_ENGINE_VALID;
     } else {
         shared->engine.control_linear_base = 0ul;
         shared->engine.mapped_aperture_bytes = 0ul;

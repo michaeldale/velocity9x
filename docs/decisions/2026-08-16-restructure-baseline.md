@@ -80,7 +80,8 @@ which makes them a better regression gate than a frame-rate measurement.
 
 | | ViRGE | Trio64 |
 |---|---|---|
-| `EngineFlags` | 3 | 5 |
+| `EngineFlags` (pre-phase-7) | 3 | 5 |
+| `EngineFlags` / `EngineType` / `EngineCaps` (phase 7 on) | 1 / 1 / `0x1F` | 1 / 2 / `0x0F` |
 | `CountBlt` / `CountBltEngine` | 7 / 7 | 6 / 3 |
 | `CountFlip` | 23 | 23 |
 | `CountLock` / `CountUnlock` | 61 / 61 | 35 / 35 |
@@ -89,6 +90,14 @@ which makes them a better regression gate than a frame-rate measurement.
 | `EngineIdleTimeouts` | 0 | 0 |
 | `EngineResets` | 0 | 0 |
 | `CountD3dContextCreate` | 2 | - |
+
+`EngineFlags` changed meaning at phase 7 and is no longer a per-target value:
+the chipset identity bits retired, so it is VALID plus the `STATUS_VALIDATED`
+latch and reads 1 on both targets. Chip identity is `EngineType`, and
+`EngineCaps` is what that chip's engine will do — both added to the `V9XTRACE`
+dump in the same change so the diagnostic did not lose the information. Every
+other row is unchanged and remains the gate. See
+`docs/decisions/2026-08-16-engine32-vtable.md`.
 
 The Trio64 split of 6 blits with 3 engine-executed is expected, not a fault:
 its 8514/A engine only serves display-pitch surfaces on scan-line boundaries,
@@ -177,10 +186,11 @@ boot that contains the run:
 | `EngineFlags` | 3 | 5 |
 | D3D callback counts | non-zero | **absent** |
 
-`EngineFlags` is chip identity, not capability: `VALID|S3_VIRGE_DX` and
-`VALID|S3_TRIO64`. These are the old flag bits the plan keeps until phase 7
-retires them in favour of `engine_type` / `engine_caps`, so they are the last
-reading of them before the vtable lands. `STATUS_VALIDATED` is clear on both.
+`EngineFlags` here is chip identity, not capability: `VALID|S3_VIRGE_DX` and
+`VALID|S3_TRIO64`, with `STATUS_VALIDATED` clear on both. This is the **last
+reading of those bits**: phase 7 retired them in favour of `engine_type` and
+`engine_caps`, and `EngineFlags` now reads 1 on both targets. Every other row
+in this table was reproduced unchanged after the phase 7 split.
 
 ViRGE executes every blit on the engine. Trio64's three CPU fallbacks are the
 documented decline of copies that are not display-pitch on a scan-line

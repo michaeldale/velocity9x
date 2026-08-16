@@ -67,11 +67,41 @@ of holding a pointer chosen from a block since invalidated. A resolved pointer
 still means nothing on its own — each table's own `ready`/`validate_status`
 re-reads the descriptor.
 
-The `V9X_DD_ENGINE_S3_*` identity bits are still what those predicates test, and
-`dd16.c` still derives them from `engine_type`, so the two descriptions cannot
-disagree. Retiring the bits is a separate change with its own gate: they are
-what `V9XTRACE` reports as `EngineFlags`, whose values (3 on ViRGE, 5 on Trio64)
-are a recorded baseline.
+## Retiring the identity bits
+
+The dispatch collapse left `engine_type` selecting the table while each table's
+`ready()` still tested a `V9X_DD_ENGINE_S3_*` bit, with `dd16.c` deriving one
+from the other. Two statements of the same fact, kept in step by hand. Both
+predicates now test `engine_type` directly and `dd16.c` writes
+`flags = V9X_DD_ENGINE_VALID` alone, so `flags` is runtime state — VALID plus
+the `STATUS_VALIDATED` latch — and identity is data.
+
+Bits 0x2 and 0x4 are left unassigned rather than reused, so a stale diagnostic
+reading this field reports nothing rather than confidently reporting the wrong
+chip. No ABI bump: the layout is untouched, and this is the same release train
+as the bump that added `engine_type`.
+
+That derivation also had a latent bug. It read as ViRGE for *any* `engine_type`
+it did not recognise, `NONE` included, so a family with a descriptor hook but no
+engine claimed a ViRGE. It was inert only because `v9x_engine_ready` separately
+requires a non-zero control base and a mapped aperture. A family arriving with
+a hook, no engine, and a valid aperture would have found the bug.
+
+`V9XTRACE` had to learn the new vocabulary first, or retiring the bits would
+have blinded it: `EngineFlags` alone can no longer say which chip ran. It now
+also dumps `EngineType` and `EngineCaps`, and those are the values to read.
+
+| | ViRGE | Trio64 |
+|---|---|---|
+| `EngineFlags` (was 3 / 5) | 1 | 1 |
+| `EngineType` | 1 (`S3_VIRGE_DX`) | 2 (`S3_TRIO64`) |
+| `EngineCaps` | `0x1F` | `0x0F` |
+
+`EngineCaps` is the first direct reading of the phase 6 caps data on live
+hardware, and it says what the D3D gate says by another route: the ViRGE claims
+`D3D`, the Trio64 claims the other four capabilities and not that one.
+
+
 
 ## Header layering
 
@@ -157,7 +187,39 @@ pushed to the guest root alongside the driver, because
 
 The Ironfield frame counts move by a few frames between runs, as they did
 across the pre-phase-7 captures; the reported FPS and the engine-versus-CPU
-split are what the gate reads, and neither moved.
+split are what the gate reads, and neither moved. The set was run a third time
+after the identity bits retired, with the same result.
+
+### Warnings as errors
+
+The split surfaced six dead locals in `v9x_srccopy_body` — and the build
+reported them and exited 0, because `-wx` is Watcom's warning *level*, not
+warnings-as-errors. `-we` is now set on both the 32-bit HAL and the 16-bit
+driver compiles, and both were already clean once those six were removed, so
+nothing was suppressed to get there.
+
+### Hellbender, as an enable regression
+
+Run on the ViRGE after the split and the retirement: launcher rendered, New Game
+switched 1024x768 to 640x480x16, gameplay rendered with correct colour, and the
+orderly exit through the game's own menu restored the desktop to 1024x768. No
+GPF, and the agent answered throughout — including with the game's "End without
+saving?" prompt up.
+
+It confirms the phase-6 finding rather than adding coverage. Every 32-bit HAL
+counter was identical before and after: `CountBlt` 11, `CountBltEngine` 7,
+`CountFlip` 23, `CountLock`/`CountUnlock` 61, and every D3D counter. The only
+movement was `EnableCount` 3 to 9, `DisableCount` 0 to 4, `CountDriverInit` 1 to
+2 and the `Dd16*` object-creation counters — the 16-bit enable path and
+DirectDraw session setup, none of which phase 7 touched. It is the right
+regression test for phase 8, and it remains the wrong instrument for this one.
+
+Two notes for whoever runs it next. The agent's `screenshot` reads the GDI
+primary and returns black while the game is flipping, so gameplay has to be
+captured host-side by `PrintWindow` on the 86Box window. And `C:\V9XTRACE.INI`
+existing afterwards is not evidence of a fault: `FaultCode=0x56394646` is the
+ViRGE FIFO-timeout marker left by the `-inject=4` run earlier in the same boot,
+not an exception.
 
 Every figure matches `docs/decisions/2026-08-16-restructure-baseline.md` and
 `docs/decisions/2026-08-16-engine-fault-injection.md`, including the asymmetries

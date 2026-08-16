@@ -120,7 +120,7 @@ foreach ($source in $sources) {
     $sourcePath = Join-Path $repoRoot $source.Path
     $objectPath = Join-Path $outputDir "$($source.Name).obj"
     $arguments = @(
-        "-bt=windows", "-mc", "-zu", "-zc", "-zls", "-s", "-zq", "-wx",
+        "-bt=windows", "-mc", "-zu", "-zc", "-zls", "-s", "-zq", "-wx", "-we",
         "-i=$includeDir", "-i=$(Join-Path $repoRoot 'src\display16')",
         "-dV9X_BUILD_ID=`"$BuildId`"",
         "-fo=$objectPath", $sourcePath

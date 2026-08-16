@@ -73,7 +73,7 @@ foreach ($relative in $sources) {
     }
     $objectNames[$name] = $relative
     $object = Join-Path $outputDir "$name.obj"
-    & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-zl" "-s" `
+    & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" `
         "-i=$includeDir" "-i=$privateIncludeDir" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) {

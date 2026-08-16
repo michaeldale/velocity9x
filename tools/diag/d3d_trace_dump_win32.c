@@ -304,7 +304,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("ScreenSelector", snapshot.fb.screen_selector);
     v9x_write_uint("EnableCount", snapshot.fb.enable_count);
     v9x_write_uint("DisableCount", snapshot.fb.disable_count);
+    /* EngineFlags is now runtime state only: VALID plus the STATUS_VALIDATED
+     * latch. Chip identity moved to EngineType, and what that chip will do to
+     * EngineCaps, so both have to be dumped or retiring the old identity bits
+     * would leave the diagnostics unable to say which engine ran. */
     v9x_write_uint("EngineFlags", snapshot.engine.flags);
+    v9x_write_uint("EngineType", snapshot.engine.engine_type);
+    v9x_write_hex("EngineCaps", snapshot.engine.engine_caps);
     v9x_write_uint("EngineFifoTimeouts", snapshot.engine.fifo_timeouts);
     v9x_write_uint("EngineIdleTimeouts", snapshot.engine.idle_timeouts);
     v9x_write_uint("EngineResets", snapshot.engine.reset_count);

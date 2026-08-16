@@ -8,6 +8,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- The per-chip `V9X_DD_ENGINE_S3_*` identity bits retired. `engine.flags` is
+  now runtime state only — VALID plus the `STATUS_VALIDATED` latch — and which
+  chip this is comes from `engine_type` alone, so a new chip is a new enum
+  value rather than a new bit. The old derivation in `dd16.c` also read as
+  ViRGE for any engine type it did not recognise, `NONE` included, which a
+  family with a descriptor hook and no engine would eventually have hit.
+  `V9XTRACE.EXE` gained `EngineType` and `EngineCaps` in the same change, since
+  `EngineFlags` alone can no longer say which engine ran.
+- Both compiles now use `-we`. `-wx` is Watcom's warning *level*, not
+  warnings-as-errors, so the HAL build had been reporting warnings and exiting
+  0 — which is how six dead locals survived the `ddhal.c` split.
 - `src/display32/ddhal.c` split into `ddhal_core.c`, `blt_cpu.c`,
   `engines/{vga_scanout,eng_s3_virge,eng_s3_trio}.c` and `d3d/d3d_virge.c`
   behind one private header, `ddhal_internal.h`. The header is deliberately

@@ -18,9 +18,8 @@ static int v9x_trio_engine_ready(void)
 {
     return v9x_hal != 0 &&
            (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
-           (v9x_hal->engine.flags &
-            (V9X_DD_ENGINE_VALID | V9X_DD_ENGINE_S3_TRIO64)) ==
-            (V9X_DD_ENGINE_VALID | V9X_DD_ENGINE_S3_TRIO64);
+           (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
+           v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64;
 }
 
 static int v9x_trio_wait_idle(int wait)
