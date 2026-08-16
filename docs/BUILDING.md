@@ -54,32 +54,30 @@ build scripts read instead of hard-coding chip facts. See
 
 | Family | Chips | Package |
 |---|---|---|
-| `s3-virge` | S3 ViRGE/DX 86C375 (`5333:8A01`) | `build/win98se-active` |
-| `s3-trio64` | S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-trio64` |
+| `s3` | S3 ViRGE/DX 86C375 (`5333:8A01`), S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-s3` |
 | `matrox-m2` | Matrox Millennium II MGA-2164W (`102B:051B`) | `build/matrox-candidate` |
+
+The `s3` package is one binary serving both chips: its INF declares two models,
+and the driver picks the matching device at PCI scan time and calls that chip's
+hooks. It replaced the separate `s3-virge` and `s3-trio64` families at phase 8.
 
 ## The installable packages
 
 This is what you want if you intend to test the driver on a guest.
 
 ```powershell
-./scripts/build-active-package.ps1 -Family s3-virge
+./scripts/build-active-package.ps1 -Family s3
 ```
 
-Produces `build/win98se-active`, also staged as `build/vm-probe/ACTIVE`. The
-package contains the driver, the mini-VDD, the DirectDraw HAL, the settings
-page, the diagnostic utilities, and the `FIRSTBOOT.TXT`, `INSTALL.TXT` and
-`RECOVER.TXT` you must read before installing.
+Produces `build/win98se-s3`, also staged as `build/vm-probe/S3`. The package
+contains the driver, the mini-VDD, the DirectDraw HAL, the settings page, the
+diagnostic utilities, and the `FIRSTBOOT.TXT`, `INSTALL.TXT` and `RECOVER.TXT`
+you must read before installing.
 
-For the conservative S3 Trio32/64 target:
-
-```powershell
-./scripts/build-active-package.ps1 -Family s3-trio64
-```
-
-It matches only `5333:8811`, uses the shared S3 VBE/linear-framebuffer path,
-and deliberately does not expose the ViRGE DirectDraw MMIO window, the S3D
-engine or Direct3D.
+It installs on either S3 chip. The differences between them are per chip rather
+than per package: on a `5333:8811` Trio32/64 the driver opens no ViRGE MMIO
+window and advertises neither the S3D engine nor Direct3D, because the device
+entry the PCI scan matched says so.
 
 To build every declared family and write `build/packages.json` (family,
 version, build, per-file SHA-256):
@@ -91,13 +89,13 @@ version, build, per-file SHA-256):
 Pass `-BuildId <id>` to stamp a specific identifier into every binary, which is
 how a guest-tested build stays traceable.
 
-The older `-S3Trio64` and `-MatroxMillennium2` switches still work as aliases
-for `-Family`, and are retired once the S3 families merge.
+The pre-restructure `-S3Trio64` and `-MatroxMillennium2` switches were retired
+at phase 8; use `-Family`.
 
 ## Post-link auditing
 
 ```powershell
-./scripts/audit-family-binary.ps1 -Family s3-virge -OutputDir build/win16-ddi -BuildId <id>
+./scripts/audit-family-binary.ps1 -Family s3 -OutputDir build/win16-ddi-s3 -BuildId <id>
 ```
 
 The package builders run this for you. It checks the NE header, exports, DIB
@@ -182,13 +180,16 @@ is **not** part of this repository. Point `V9X_AGENT_CTL` at the agent's
 
 ```powershell
 $env:V9X_AGENT_CTL = "<path to>\v9xctl.ps1"
-./scripts/run-vm-mode-matrix.ps1 -Family s3-virge
+./scripts/run-vm-mode-matrix.ps1 -Family s3 -ChipId virge-dx
+./scripts/run-vm-mode-matrix.ps1 -Family s3 -ChipId trio64
 ```
 
 The family manifest supplies the guest port, the package to verify against and
-the mode list, so `-Family s3-trio64` drives the Trio guest rather than the
-controller's default one. A family whose manifest declares
-`Vm.Emulator = 'none'` is refused with a real-hardware-only error.
+the mode list. A multi-chip family declares one VM target per chip, and it is
+green only when every one of them passes from the same package - a pass on one
+guest says nothing about the sibling sharing its binary. A family whose
+manifest declares `Vm.Emulator = 'none'` is refused with a real-hardware-only
+error.
 
 The runner refuses a mismatched installed DRV/VXD pair, verifies the requested
 mode and the `enable-ok` trace after every reboot, runs the machine-readable

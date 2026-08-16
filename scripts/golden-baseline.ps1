@@ -26,17 +26,23 @@ if (-not $ArchiveRoot) {
 $archiveDir = Join-Path $ArchiveRoot $BuildId
 $manifestPath = Join-Path $archiveDir "golden.txt"
 
-# Trees whose contents must not move. Map files are covered separately because
-# their absolute paths and timestamps differ per run; only segment sizes count.
+# Trees whose contents are hashed, and the map files whose segment sizes are
+# recorded separately because their absolute paths and timestamps differ per
+# run.
+#
+# Phase 8 merged the two S3 packages into one, so this is no longer a
+# byte-for-byte gate against the pre-restructure images: build\win98se-s3
+# contains both chips and can reproduce neither win98se-active nor
+# win98se-trio64. What it still does, and what it is now for, is catch an
+# unintended change between two builds of the current tree - and the map sizes
+# remain the code-growth budget.
 $trackedTrees = @(
-    "build\win98se-active",
-    "build\win98se-trio64",
+    "build\win98se-s3",
     "build\floppy",
     "build\matrox-candidate"
 )
 $trackedMaps = @(
-    "build\win16-ddi\v9xdisp.map",
-    "build\win16-ddi-trio64\v9xdisp.map",
+    "build\win16-ddi-s3\v9xdisp.map",
     "build\win16-ddi-mga2\v9xdisp.map"
 )
 

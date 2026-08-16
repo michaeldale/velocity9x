@@ -8,6 +8,25 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Changed
 
+- The `s3-virge` and `s3-trio64` families merged into one `s3` family: one
+  binary, one INF with a model per chip, and dispatch by PCI id at scan time.
+  `enable_aperture` and `fill_engine_descriptor` moved from the family ops
+  table into the device entry — they are the only two hooks the ViRGE and the
+  Trio64 disagree about — and `V9X_HW16_OPS.devices` became an array of
+  pointers so each chip module owns its own identity and hooks. The per-object
+  audit layer now does the work the image-wide one cannot, asserting the
+  ViRGE's CR53 new-MMIO sequence is present in its object and absent from the
+  Trio64's. Verified on both 86Box guests from the one package: correct
+  per-chip identity and clocks, all six modes green on both, and the Trio64
+  still advertising no Direct3D.
+- Retired with it: the two single-chip manifests, `LegacyOutputName` /
+  `LegacySkeletonOutput` / `LegacySwitch`, the `-S3Trio64` and
+  `-MatroxMillennium2` builder aliases, and the checked-in
+  `packaging/win98se/velocity9x.inf`. Byte-for-byte golden compare against the
+  pre-restructure images ends here by design — one package with both chips
+  cannot reproduce either single-chip package — so `golden-baseline.ps1` is now
+  a build-to-build check and a code-size budget.
+
 - The per-chip `V9X_DD_ENGINE_S3_*` identity bits retired. `engine.flags` is
   now runtime state only — VALID plus the `STATUS_VALIDATED` latch — and which
   chip this is comes from `engine_type` alone, so a new chip is a new enum

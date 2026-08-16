@@ -12,8 +12,11 @@ Velocity9x installs on exactly two PCI devices and refuses everything else.
 
 | Chip | PCI ID | Package to build |
 |---|---|---|
-| S3 ViRGE/DX 86C375 | `5333:8A01` | `build/win98se-active` |
-| S3 Trio32/64 86C764 | `5333:8811` | `build/win98se-trio64` |
+| S3 ViRGE/DX 86C375 | `5333:8A01` | `build/win98se-s3` |
+| S3 Trio32/64 86C764 | `5333:8811` | `build/win98se-s3` |
+
+One package covers both. Its INF declares a model per chip, and the driver
+detects which card is fitted when it scans the PCI bus.
 
 In Windows 98, check Device Manager → Display adapters → Properties →
 Details for the hardware ID. If it is not one of the two above, stop: the INF
@@ -29,12 +32,6 @@ See [BUILDING.md](BUILDING.md) for prerequisites. Then:
 
 ```powershell
 ./scripts/build-active-package.ps1
-```
-
-or, for the Trio32/64:
-
-```powershell
-./scripts/build-active-package.ps1 -S3Trio64 -BootTrace
 ```
 
 Never install from `packaging/win98se` directly — that is the INF source, not

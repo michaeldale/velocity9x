@@ -35,11 +35,7 @@ $entries = @()
 # Not $family: the [string[]]$Family parameter is the same name to PowerShell,
 # and assigning a manifest hashtable to it silently coerces it to strings.
 foreach ($manifest in $families) {
-    $directoryName = if ($manifest.Build.LegacyOutputName) {
-        $manifest.Build.LegacyOutputName
-    } else {
-        Split-Path -Leaf $manifest.Build.PackageOutput
-    }
+    $directoryName = Split-Path -Leaf $manifest.Build.PackageOutput
     $outputDir = Join-Path $repoRoot "build\$directoryName"
 
     if ($manifest.Inf.Generate -eq $false) {

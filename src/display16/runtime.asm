@@ -20,6 +20,7 @@ EXTRN _v9x_active_pitch:WORD
 EXTRN _v9x_pci_vendor:WORD
 EXTRN _v9x_pci_device:WORD
 EXTRN _v9x_pci_count:WORD
+EXTRN _v9x_pci_match:WORD
 EXTRN _v9x_vbe_mode_flags:WORD
 EXTRN _v9x_map_pages_hi:WORD
 EXTRN _v9x_map_pages_lo:WORD
@@ -454,10 +455,17 @@ V9xFindPciDeviceTryNext:
     add     di, 2
     jmp     short V9xFindPciDeviceNext
 V9xFindPciDeviceFound:
+    ; Record which entry answered. DI is the byte offset into the parallel
+    ; vendor/device arrays, so the index is DI/2. A family with more than one
+    ; chip needs this to know whose hooks to call; a single-chip family lands
+    ; on 0 and behaves exactly as before.
+    shr     di, 1
+    mov     _v9x_pci_match, di
     pop     di
     mov     ax, 1
     ret
 V9xFindPciDeviceFailed:
+    mov     _v9x_pci_match, 0FFFFh
     pop     di
     xor     ax, ax
     ret

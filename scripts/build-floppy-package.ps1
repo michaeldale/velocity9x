@@ -47,12 +47,8 @@ if (-not $SkipBuild) {
 
 $sources = @{}
 foreach ($family in $floppyFamilies) {
-    $source = Join-Path $repoRoot ("build\{0}" -f $(
-        if ($family.Build.LegacyOutputName) {
-            $family.Build.LegacyOutputName
-        } else {
-            Split-Path -Leaf $family.Build.PackageOutput
-        }))
+    $source = Join-Path $repoRoot ("build\{0}" -f
+        (Split-Path -Leaf $family.Build.PackageOutput))
     if (-not (Test-Path -LiteralPath $source)) {
         throw "Missing package $source. Run without -SkipBuild."
     }

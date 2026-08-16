@@ -23,7 +23,9 @@
             ModeSwitching = 'single-mode'
             Acceleration = 'none'
             Direct3D = 'not-advertised'
-            EngineFlag = ''
+            # No engine: the 32-bit HAL resolves no ops table for this type and
+            # every blit falls to the CPU path.
+            EngineType = 'NONE'
             EngineCaps = @()
 
             # The 8-bpp build is single-mode by construction; the 16-bpp build
@@ -38,7 +40,7 @@
             )
 
             # PCI identity and the VBE flag are data in this chip's hw16
-            # object now; see the note in the s3-virge manifest.
+            # object now; see the note in the s3 manifest.
             Audit = @{
                 # Only signatures unique to this family's own chip module.
                 # The PCI BAR0 read is a shared chip-agnostic primitive in
@@ -58,7 +60,7 @@
                     'dword ptr es:\[1E54H\]'
                 )
             }
-            MapSymbols = @('v9x_mga2_devices')
+            MapSymbols = @('v9x_mga2_device')
         }
     )
 
@@ -82,9 +84,6 @@
         RuntimeDefines = @('V9X_TARGET_MATROX_MILLENNIUM2=1')
         SkeletonOutput = 'build\win16-ddi-mga2'
         PackageOutput = 'build\matrox-candidate'
-        LegacyOutputName = 'matrox-candidate'
-        LegacySkeletonOutput = 'build\win16-ddi-mga2'
-        LegacySwitch = 'MatroxMillennium2'
         VmStageDirectory = ''
         # Build-time variants beyond the plain family build. The 16-bpp variant
         # adds a define and unlocks mode indices 1 and 2.
@@ -111,7 +110,7 @@
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
-        BackendSymbols = @('v9x_mga2_devices')
+        BackendSymbols = @('v9x_mga2_device')
     }
 
     # No INF: this family installs by guarded file replacement, and

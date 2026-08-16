@@ -48,9 +48,21 @@ its MODES capability, and its instruction signatures.
     Modes = @(
         @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
     )
-    Audit = @{ Required = @('mov\s+cx,8A01H'); Forbidden = @() }
+    Objects = @('virge_hw16')        # this chip's own object(s)
+    MapSymbols = @('v9x_virge_device')
+    EngineType = 'S3_VIRGE_DX'       # V9X_DD_ENGINE_TYPE_* without the prefix
+    EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
+    Audit = @{ Required = @('mov\s+ax,53H'); Forbidden = @() }
 }
 ```
+
+`Objects` names the objects this chip's code compiles into. It is what makes
+the per-object audit layer possible: once two chips share one image, an
+image-wide signature check can no longer tell their code apart. Declare it for
+every chip in a family or for none - a family that declares it for some would
+audit those and silently skip the rest. `EngineType` and `EngineCaps` document
+what the chip's `fill_engine_descriptor` hook publishes; they are the per-chip
+values the 16-bit caps clamp narrows DDRAW's view from.
 
 `Modes` is the chip's capability, not the driver's mode table. The INF
 generator orders it by depth, width, height; `ddi.c`'s table has its own order
@@ -86,8 +98,13 @@ immediates bare, so `or al,08h` in the source is `or\s+al,8\b` in a pattern.
 1. **Cross-family** - the family image matches all its chips' signatures and no
    other family's.
 2. **Per-chip objects** - `Chips[].Objects` names objects that must carry that
-   chip's signatures and none of its siblings'. Inert until per-chip modules
-   land.
+   chip's signatures and none of its siblings'. This is the layer that does the
+   work in a multi-chip family: the S3 image contains both chips, so only this
+   can assert that the ViRGE's CR53 new-MMIO poke is absent from the Trio64's
+   object. A chip whose identity is entirely data declares no required patterns
+   and is covered by the derived forbidden set, its map symbol and the INF
+   hardware-ID equality - declaring a signature it does not own would be a
+   check that proves nothing.
 3. **Link-map symbols** - `Audit.RequiredMapSymbols`, `Audit.DispatchSymbol`,
    `Chips[].MapSymbols` are required; other families' `Audit.BackendSymbols`
    are forbidden.
@@ -103,11 +120,9 @@ Build = @{
     Sources = @( @{ Name = 'ddi'; Path = 'src\display16\ddi.c' } )
     Defines = @('V9X_TARGET_S3_TRIO64=1')     # wcc
     RuntimeDefines = @('V9X_TARGET_S3_TRIO64=1')  # wasm, runtime.asm
-    SkeletonOutput = 'build\win16-ddi-trio64'
-    PackageOutput = 'build\win98se-trio64'
-    LegacyOutputName = 'win98se-trio64'
-    LegacySwitch = 'S3Trio64'
-    VmStageDirectory = 'build\vm-probe\ACTIVE'
+    SkeletonOutput = 'build\win16-ddi-s3'
+    PackageOutput = 'build\win98se-s3'
+    VmStageDirectory = 'build\vm-probe\S3'
     Variants = @( @{ Id = '8bpp'; Defines = @(); AllowedModeIndexes = @(0); Default = $true } )
 }
 ```
@@ -118,9 +133,9 @@ the linked image, so a reorder needs a golden re-baseline.
 `Variants` are build-time flavours of one family (the Matrox 8-bpp and 16-bpp
 drops). A family with no variants omits the key.
 
-`LegacyOutputName` and `LegacySwitch` keep the historic directory names and
-command-line switches working during the restructure. Both are retired at
-phase 8 of `docs\plans\multi-chip-restructure.md`.
+`LegacyOutputName` and `LegacySwitch`, which kept the pre-restructure directory
+names and command-line switches alive, were retired at phase 8 along with the
+byte-for-byte golden compare they existed to serve.
 
 ## Inf
 
@@ -146,12 +161,22 @@ Vm = @{
     ReferenceProfile = 'Win98SE-Native-S3'
     ReferencePort = 9870
     Modes = @('640x480x8', '1024x768x16')
+    Targets = @(                       # one per chip; required when >1 chip
+        @{ ChipId = 'virge-dx'; Profile = 'Win86SE'; Port = 9869 }
+        @{ ChipId = 'trio64'; Profile = 'Win98SE-Trio64'; Port = 9871 }
+    )
 }
 ```
 
-`run-vm-mode-matrix.ps1 -Family <id>` takes the port, the package directory and
-the mode list from here. `Emulator = 'none'` makes it refuse with an explicit
-real-hardware-only error rather than silently testing the wrong guest.
+`run-vm-mode-matrix.ps1 -Family <id> [-ChipId <chip>]` takes the port, the
+package directory and the mode list from here. `Emulator = 'none'` makes it
+refuse with an explicit real-hardware-only error rather than silently testing
+the wrong guest.
+
+`Targets` is one VM per chip, and a multi-chip family with an emulator must
+declare it: without it a matrix pass on one guest would read as a pass for the
+whole family, which is exactly the claim a merged binary has to prove. The
+family is green only when every target passes from the same package.
 
 ## Adding a family
 

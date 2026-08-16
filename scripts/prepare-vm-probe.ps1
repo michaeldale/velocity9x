@@ -43,7 +43,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\win16-loader-probe\v9x16ld.ex
     -Destination (Join-Path $outputDir "V9X16LD.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\driver-stage-probe\v9xstage.exe") `
     -Destination (Join-Path $outputDir "V9XSTAGE.EXE") -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot "build\win16-ddi\v9xdisp.drv") `
+Copy-Item -LiteralPath (Join-Path $repoRoot "build\win16-ddi-s3\v9xdisp.drv") `
     -Destination (Join-Path $outputDir "V9XDISP.DRV") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\minivdd32\v9xmini.vxd") `
     -Destination (Join-Path $outputDir "V9XMINI.VXD") -Force

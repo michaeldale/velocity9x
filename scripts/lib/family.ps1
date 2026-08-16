@@ -108,6 +108,31 @@ function Test-V9xFamilyManifest {
         throw "Family $Id repeats object name(s): $($duplicateNames -join ', ')."
     }
 
+    # Chips[].Objects is what makes the per-object audit layer possible: a
+    # multi-chip image checked only as a whole cannot tell one sibling's code
+    # from another's. Optional, because a single-chip family gains nothing from
+    # it - but a name that does not resolve to a real object would make the
+    # audit silently skip the chip, so it is validated when present.
+    foreach ($chip in @($Family.Chips)) {
+        if (-not $chip.ContainsKey('Objects')) {
+            continue
+        }
+        $unknown = @(@($chip.Objects | Where-Object { $_ }) |
+            Where-Object { $_ -notin $sourceNames })
+        if ($unknown.Count -ne 0) {
+            throw ("Family $Id chip $($chip.Id) names object(s) the build does " +
+                   "not produce: $($unknown -join ', ').")
+        }
+    }
+    # A family whose chips all declare objects gets the per-object layer; one
+    # that mixes declared and undeclared would audit some chips and not others,
+    # which reads as coverage it does not have.
+    $withObjects = @(@($Family.Chips) | Where-Object { $_.ContainsKey('Objects') }).Count
+    if ($withObjects -ne 0 -and $withObjects -ne @($Family.Chips).Count) {
+        throw ("Family $Id declares Objects for $withObjects of " +
+               "$(@($Family.Chips).Count) chips; declare it for all or none.")
+    }
+
     Assert-V9xFamilyKeys -Table $Family.Audit -Context "Family $Id Audit" -Required @(
         'RequiredInstructions', 'ForbiddenInstructions', 'RequiredMapSymbols')
     Assert-V9xFamilyKeys -Table $Family.Floppy -Context "Family $Id Floppy" -Required @(
@@ -122,6 +147,74 @@ function Test-V9xFamilyManifest {
             throw "Family $Id declares emulator '$($Family.Vm.Emulator)' but no profile/port."
         }
     }
+    # One VM target per chip. A multi-chip family that declared only the
+    # primary would let a mode-matrix pass on one chip read as a pass for the
+    # family, which is exactly the claim the merge has to prove.
+    if ($Family.Vm.ContainsKey('Targets')) {
+        $chipIds = @(@($Family.Chips) | ForEach-Object { $_.Id })
+        foreach ($vmTarget in @($Family.Vm.Targets)) {
+            Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId', 'Profile', 'Port') `
+                -Context "Family $Id Vm target"
+            if ($vmTarget.ChipId -notin $chipIds) {
+                throw ("Family $Id declares a VM target for unknown chip " +
+                       "'$($vmTarget.ChipId)'.")
+            }
+        }
+        $covered = @(@($Family.Vm.Targets) | ForEach-Object { $_.ChipId } | Sort-Object -Unique)
+        $uncovered = @($chipIds | Where-Object { $_ -notin $covered })
+        if ($uncovered.Count -ne 0) {
+            throw ("Family $Id declares VM targets but none for chip(s): " +
+                   "$($uncovered -join ', ').")
+        }
+    } elseif (@($Family.Chips).Count -gt 1 -and $Family.Vm.Emulator -ne 'none') {
+        throw ("Family $Id has $(@($Family.Chips).Count) chips and an emulator " +
+               "but declares no Vm.Targets, so its mode matrix could only ever " +
+               "cover one of them.")
+    }
+}
+
+# The VM target for one chip, or the family's primary when it declares none.
+function Get-V9xFamilyVmTarget {
+    param(
+        [Parameter(Mandatory = $true)]$Family,
+        [string]$ChipId
+    )
+
+    $targets = @($Family.Vm.Targets)
+    if ($targets.Count -eq 0) {
+        return [pscustomobject]@{
+            ChipId = @(@($Family.Chips) | ForEach-Object { $_.Id })[0]
+            Profile = $Family.Vm.Profile
+            Port = [int]$Family.Vm.Port
+        }
+    }
+    if (-not $ChipId) {
+        $match = @($targets | Where-Object { $_.Profile -eq $Family.Vm.Profile })
+        if ($match.Count -eq 0) { $match = @($targets) }
+        $chosen = $match[0]
+    } else {
+        $chosen = @($targets | Where-Object { $_.ChipId -eq $ChipId })
+        if ($chosen.Count -ne 1) {
+            $known = (@($targets | ForEach-Object { $_.ChipId })) -join ', '
+            throw "Family $($Family.Id) has no VM target for chip '$ChipId'. Known: $known."
+        }
+        $chosen = $chosen[0]
+    }
+    [pscustomobject]@{
+        ChipId = $chosen.ChipId
+        Profile = $chosen.Profile
+        Port = [int]$chosen.Port
+    }
+}
+
+# Every chip a family's mode matrix has to cover.
+function Get-V9xFamilyVmChipIds {
+    param([Parameter(Mandatory = $true)]$Family)
+    $targets = @($Family.Vm.Targets)
+    if ($targets.Count -eq 0) {
+        return @(@(@($Family.Chips) | ForEach-Object { $_.Id })[0])
+    }
+    @($targets | ForEach-Object { $_.ChipId })
 }
 
 function Import-V9xFamily {

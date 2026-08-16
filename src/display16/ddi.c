@@ -83,6 +83,13 @@ WORD v9x_palettized = 1u;
 WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_count = 0u;
+/*
+ * Index of the entry V9xFindPciDevice matched, or 0xFFFF before it has run or
+ * when nothing answered. It is the one thing the scan learns that the family
+ * table cannot state in advance, and with more than one chip per binary it
+ * decides whose hooks run and which identity is published.
+ */
+WORD v9x_pci_match = 0xffffu;
 WORD v9x_vbe_mode_flags = 0x8000u;
 WORD v9x_map_pages_hi = 0x03ffu;
 WORD v9x_map_pages_lo = 0xffffu;
@@ -168,15 +175,35 @@ static void v9x_write_hardware_info(const char *key, const char *value)
                               (LPCSTR)value, V9X_HARDWARE_INFO_PATH);
 }
 
+/*
+ * The chip this binary is actually driving.
+ *
+ * Falls back to the first entry when the PCI scan has not run or matched
+ * nothing, which is what a single-chip family always saw. For a family with
+ * several chips the fallback is only ever reached before Enable, and every
+ * caller of a per-chip hook runs after it.
+ */
+const V9X_HW16_DEVICE *v9x_hw16_active_device(void)
+{
+    if (v9x_hw16.device_count == 0u) {
+        return 0;
+    }
+    if (v9x_pci_match >= v9x_hw16.device_count) {
+        return v9x_hw16.devices[0];
+    }
+    return v9x_hw16.devices[v9x_pci_match];
+}
+
 static void v9x_publish_hardware_diagnostics(void)
 {
-    if (v9x_hw16.publish_diagnostics == 0 || v9x_hw16.device_count == 0u) {
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
+    if (v9x_hw16.publish_diagnostics == 0 || device == 0) {
         return;
     }
     WritePrivateProfileString("Velocity9xHardware", 0, 0,
                               V9X_HARDWARE_INFO_PATH);
-    v9x_hw16.publish_diagnostics(&v9x_hw16.devices[0],
-                                 v9x_write_hardware_info);
+    v9x_hw16.publish_diagnostics(device, v9x_write_hardware_info);
 }
 
 void v9x_serial_write(const char FAR *message)
@@ -353,8 +380,8 @@ void v9x_display_boot_log(void)
         v9x_pci_count = V9X_PCI_ID_LIMIT;
     }
     for (index = 0u; index < v9x_pci_count; ++index) {
-        v9x_pci_vendor[index] = v9x_hw16.devices[index].vendor_id;
-        v9x_pci_device[index] = v9x_hw16.devices[index].device_id;
+        v9x_pci_vendor[index] = v9x_hw16.devices[index]->vendor_id;
+        v9x_pci_device[index] = v9x_hw16.devices[index]->device_id;
     }
     v9x_vbe_mode_flags = v9x_hw16.vbe_mode_flags;
     v9x_map_pages_hi = v9x_hw16.map_pages_hi;

@@ -11,10 +11,7 @@ param(
     [switch]$BootTrace,
     [switch]$NoBootTrace,
     # Family manifest id under packaging\families.
-    [string]$Family,
-    # Deprecated alias for -Family s3-trio64. Retired at phase 8 of
-    # docs\plans\multi-chip-restructure.md.
-    [switch]$S3Trio64
+    [string]$Family = 's3'
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,27 +19,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "lib\family.ps1")
 . (Join-Path $PSScriptRoot "lib\inf.ps1")
 
-if (-not $Family) {
-    $Family = if ($S3Trio64) { 's3-trio64' } else { 's3-virge' }
-    if ($S3Trio64) {
-        Write-Verbose "Legacy -S3Trio64 mapped to -Family $Family."
-    }
-} elseif ($S3Trio64) {
-    throw "-Family cannot be combined with -S3Trio64."
-}
 $familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
 if ($familyManifest.Inf.Generate -eq $false) {
     throw ("Family $Family installs by guarded file replacement and has no " +
            "INF package; build it with its own packaging script.")
 }
-# LegacyOutputName keeps the historic directory names alive so the phase 1-7
-# golden compare stays meaningful. Phase 8 retires it.
-$packageDirectory = if ($familyManifest.Build.LegacyOutputName) {
-    "build\{0}" -f $familyManifest.Build.LegacyOutputName
-} else {
-    $familyManifest.Build.PackageOutput
-}
-$outputDir = Join-Path $repoRoot $packageDirectory
+$outputDir = Join-Path $repoRoot $familyManifest.Build.PackageOutput
 
 . (Join-Path $PSScriptRoot "common.ps1")
 $ProductVersion = Get-V9xProductVersion -RepoRoot $repoRoot

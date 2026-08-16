@@ -132,6 +132,7 @@ static DWORD __loadds FAR PASCAL v9x_dd_destroy_driver(
 static void v9x_dd_refresh_framebuffer(void)
 {
     V9X_DD_SHARED FAR *shared = v9x_dd_shared;
+    const V9X_HW16_DEVICE *device;
     WORD width;
     WORD height;
     WORD bpp;
@@ -160,15 +161,16 @@ static void v9x_dd_refresh_framebuffer(void)
     /* V9xHardwareEnable maps the complete 64-MiB ViRGE linear aperture.
      * New-MMIO is a 64-KiB window at BAR + 16 MiB; register offsets such as
      * SUBSYS_STAT (0x8504) are relative to that window, not to VRAM. */
-    if (v9x_hw16.fill_engine_descriptor != 0) {
+    device = v9x_hw16_active_device();
+    if (device != 0 && device->fill_engine_descriptor != 0) {
         DWORD control_base = 0ul;
         DWORD aperture_bytes = 0ul;
         DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
         DWORD engine_caps = 0ul;
 
-        v9x_hw16.fill_engine_descriptor(shared->fb.linear_base,
-                                        &control_base, &aperture_bytes,
-                                        &engine_type, &engine_caps);
+        device->fill_engine_descriptor(shared->fb.linear_base,
+                                       &control_base, &aperture_bytes,
+                                       &engine_type, &engine_caps);
         shared->engine.control_linear_base = control_base;
         shared->engine.mapped_aperture_bytes = aperture_bytes;
         shared->engine.engine_type = engine_type;

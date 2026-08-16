@@ -42,7 +42,7 @@ provides:
 | | **S3 ViRGE/DX 86C375** | **S3 Trio32/64 86C764** |
 |---|---|---|
 | PCI ID | `5333:8A01` | `5333:8811` |
-| Package | `build/win98se-active` | `build/win98se-trio64` |
+| Package | `build/win98se-s3` (one binary serves both) | `build/win98se-s3` |
 | Status | Primary target | Conservative baseline |
 | Display modes | 640x400x8, 640/800/1024 at 8 and 16 bpp | same |
 | Live resolution change | Yes | Yes |

@@ -6,8 +6,12 @@ param(
     # Family manifest id. Supplies the guest port, the package to verify
     # against, and the mode list, so the matrix can address more than the one
     # guest the controller defaults to.
-    [string]$Family = "s3-virge",
-    # Overrides the family's declared guest port.
+    [string]$Family = "s3",
+    # Which chip of the family to run against. A multi-chip family declares one
+    # VM target per chip, and the family is only proven when every one of them
+    # passes from the same binary.
+    [string]$ChipId,
+    # Overrides the resolved guest port.
     [ValidateRange(0, 65535)]
     [int]$Port = 0,
     [string]$PackagePath,
@@ -32,24 +36,21 @@ if ($familyManifest.Vm.Emulator -eq 'none') {
     throw ("Family $Family declares no emulator: it is validated on physical " +
            "hardware only. There is no VM to run the mode matrix against.")
 }
+$vmTarget = Get-V9xFamilyVmTarget -Family $familyManifest -ChipId $ChipId
 if ($Port -eq 0) {
-    $Port = [int]$familyManifest.Vm.Port
+    $Port = $vmTarget.Port
 }
 if (-not $Mode) {
     $Mode = @($familyManifest.Vm.Modes)
 }
 if (-not $PackagePath) {
-    $PackagePath = Join-Path $repoRoot ("build\{0}" -f $(
-        if ($familyManifest.Build.LegacyOutputName) {
-            $familyManifest.Build.LegacyOutputName
-        } else {
-            Split-Path -Leaf $familyManifest.Build.PackageOutput
-        }))
+    $PackagePath = Join-Path $repoRoot ("build\{0}" -f
+        (Split-Path -Leaf $familyManifest.Build.PackageOutput))
 }
 if (-not $ResultsDirectory) {
     $ResultsDirectory = Join-Path $repoRoot (
-        "build\driver-results\mode-matrix-{0}-{1}" -f $Family,
-        (Get-Date -Format "yyyyMMdd-HHmmss"))
+        "build\driver-results\mode-matrix-{0}-{1}-{2}" -f $Family,
+        $vmTarget.ChipId, (Get-Date -Format "yyyyMMdd-HHmmss"))
 }
 if (-not $ControllerPath) {
     throw "Specify -ControllerPath (or set V9X_AGENT_CTL) to the remote agent's v9xctl.ps1."
@@ -239,6 +240,8 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
 $summary = [pscustomobject]@{
     Success = $true
     Family = $Family
+    ChipId = $vmTarget.ChipId
+    Profile = $vmTarget.Profile
     Port = $Port
     PackagePath = [IO.Path]::GetFullPath($PackagePath)
     GuestJob = $GuestJob

@@ -69,8 +69,8 @@ than the controller's default port.
 
 | Family | Guest profile | Agent port | Notes |
 |---|---|---|---|
-| `s3-virge` | `Win86SE` | 9869 | The Velocity9x bring-up guest. |
-| `s3-trio64` | `Win98SE-Trio64` | 9871 | A clone of the native-S3 guest, so its agent still reports ComputerName `WIN98-S3NATIVE`. Identify it by port, never by name. |
+| `s3` / `-ChipId virge-dx` | `Win86SE` | 9869 | The Velocity9x bring-up guest. |
+| `s3` / `-ChipId trio64` | `Win98SE-Trio64` | 9871 | A clone of the native-S3 guest, so its agent still reports ComputerName `WIN98-S3NATIVE`. Identify it by port, never by name. |
 | `matrox-m2` | none | - | `Vm.Emulator = 'none'`: no emulator covers the MGA-2164W, so the VM runner refuses with a real-hardware-only error. |
 
 The stock-driver reference guest `Win98SE-Native-S3` listens on 9870 and is

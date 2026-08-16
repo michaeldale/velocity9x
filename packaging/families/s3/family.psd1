@@ -1,0 +1,211 @@
+# Velocity9x family manifest: S3.
+#
+# Data only. Loaded with Import-PowerShellDataFile, which is built into
+# PowerShell 5.1 and evaluates no code, so the regex audit patterns below need
+# no JSON escaping. See docs\plans\multi-chip-restructure.md and
+# docs\specifications\family-manifest.md.
+#
+# This is the first family with more than one chip, and it is what the whole
+# restructure was for: one binary, one INF with two models, runtime PCI
+# dispatch between them. It replaces the single-chip s3-virge and s3-trio64
+# manifests, and with them the byte-for-byte golden compare - two chips in one
+# image cannot reproduce either one-chip image.
+@{
+    SchemaVersion = 1
+    Id = 's3'
+    DisplayName = 'S3'
+    Description = 'S3 ViRGE/DX and Trio32/64, dispatched at runtime by PCI id.'
+
+    Chips = @(
+        @{
+            Id = 'virge-dx'
+            Name = 'S3 ViRGE/DX 86C375'
+            VendorId = '5333'
+            DeviceId = '8A01'
+            DeviceDesc = 'Velocity9x S3 ViRGE/DX 86C375'
+            # Written to C:\V9XHW.INI by ddi.c's diagnostics publisher, for
+            # whichever chip the PCI scan matched.
+            Adapter = 'S3 ViRGE/DX 86C375'
+            ClockDetector = 's3-virge-pll-v1'
+            ModeSwitching = 'live-any-depth'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-s3d'
+            EngineType = 'S3_VIRGE_DX'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
+
+            # Per-chip MODES capability. Both chips take the same list; the
+            # order is the order the shared mode table uses and the order GDI
+            # enumerates the MODES registry key, so 640x400 sits after the
+            # other 8-bpp entries (Doom95).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            # The object this chip's code compiles into. Both chips are now in
+            # one image, so the image-wide signature audit can no longer tell
+            # them apart - this is what does.
+            Objects = @('virge_hw16')
+
+            # CR53[3] opens the ViRGE's new-MMIO window. It is the one register
+            # sequence the Trio64 must never execute, so it is required in this
+            # chip's object and, by sibling derivation, forbidden in the Trio's.
+            #
+            # The shared S3 unlock (or/cmp al,13H) is NOT listed here: it lives
+            # in s3_regs16.obj, which both chips call, so it is a family-wide
+            # required instruction below rather than a per-chip one.
+            Audit = @{
+                Required = @(
+                    'mov\s+ax,53H'
+                    'or\s+al,8\b'
+                    'test\s+al,8'
+                )
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_virge_device')
+        }
+        @{
+            Id = 'trio64'
+            Name = 'S3 Trio32/64 86C764'
+            VendorId = '5333'
+            DeviceId = '8811'
+            DeviceDesc = 'Velocity9x S3 Trio32/64 86C764'
+            Adapter = 'S3 Trio32/64 86C764'
+            ClockDetector = 's3-virge-pll-v1'
+            ModeSwitching = 'live-any-depth'
+            Acceleration = 'directdraw-fill-blt'
+            # No S3d core. dd16.c nulls lpD3D*/GetDriverInfo from this chip's
+            # engine_caps, and the 32-bit D3D module is never reached.
+            Direct3D = 'not-advertised'
+            EngineType = 'S3_TRIO64'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK')
+
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('trio_hw16')
+
+            # This chip has no register sequence of its own: what makes it the
+            # Trio64 is its PCI id and its engine descriptor, both data. The
+            # audit that matters here is therefore the derived forbidden set -
+            # the ViRGE's CR53 patterns must not appear in this object - plus
+            # the map symbol and the INF hardware-ID set equality. Declaring a
+            # required instruction it does not actually own would be a check
+            # that proves nothing.
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_trio_device')
+        }
+    )
+
+    Build = @{
+        # Ordered compile list. The object order is also the link order.
+        Sources = @(
+            @{ Name = 'build'; Path = 'src\common\build.c' }
+            @{ Name = 'log'; Path = 'src\common\log.c' }
+            @{ Name = 'mode'; Path = 'src\common\mode.c' }
+            @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
+            @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }
+            @{ Name = 'virge_memory'; Path = 'src\chipsets\s3\virge\memory.c' }
+            @{ Name = 's3_regs16'; Path = 'src\chipsets\s3\common\s3_regs16.c' }
+            # One object per chip, then the family table that points at both.
+            @{ Name = 'virge_hw16'; Path = 'src\chipsets\s3\virge\virge_hw16.c' }
+            @{ Name = 'trio_hw16'; Path = 'src\chipsets\s3\trio64\trio_hw16.c' }
+            @{ Name = 's3_hw16'; Path = 'src\chipsets\s3\s3_hw16.c' }
+            @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
+            @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
+            @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
+            @{ Name = 'loader'; Path = 'src\display16\loader.c' }
+            @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
+            @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
+        )
+        Defines = @()
+        RuntimeDefines = @()
+        SkeletonOutput = 'build\win16-ddi-s3'
+        PackageOutput = 'build\win98se-s3'
+        VmStageDirectory = 'build\vm-probe\S3'
+    }
+
+    Audit = @{
+        # The shared S3 unlock, in s3_regs16.obj. It belongs to the family
+        # rather than to either chip: both call it, and neither chip's object
+        # contains it.
+        RequiredInstructions = @(
+            'or\s+al,13H'
+            'cmp\s+al,13H'
+        )
+        ForbiddenInstructions = @()
+        RequiredMapSymbols = @()
+        DispatchSymbol = 'v9x_hw16'
+        # Symbols another family's binary must not contain.
+        BackendSymbols = @('v9x_virge_device', 'v9x_trio_device')
+    }
+
+    Inf = @{
+        Provider = 'Velocity9x Project'
+        Manufacturer = 'Velocity9x'
+        DiskName = 'Velocity9x Windows 98SE driver-stage disk'
+        ModelsSection = 'Velocity9x.Models'
+        DefaultMode = '8,640,480'
+        ForcedModes = @('8,640,480', '8,800,600', '8,1024,768',
+                        '16,640,480', '16,800,600', '16,1024,768')
+    }
+
+    Package = @{
+        ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip + per-chip engine blit)'
+    }
+
+    Floppy = @{
+        Include = $true
+        Folder = 'S3'
+        Order = 1
+        HardwareIdHint = 'PCI 5333:8A01, 5333:8811'
+    }
+
+    Vm = @{
+        Emulator = '86box'
+        Controller = 'virge_dx_pci'
+        Bios = 'virge375_pci'
+        # The primary target, used when no -ChipId is given.
+        Profile = 'Win86SE'
+        Port = 9869
+        ReferenceProfile = 'Win98SE-Native-S3'
+        ReferencePort = 9870
+        Modes = @('640x480x8', '800x600x8', '1024x768x8',
+                  '640x480x16', '800x600x16', '1024x768x16')
+        # One entry per chip. The phase 8 gate is the mode matrix passing on
+        # both of these from the one binary, which is the whole claim of the
+        # merge; a single-profile pass would prove only that one of the two
+        # chips still works.
+        Targets = @(
+            @{
+                ChipId = 'virge-dx'
+                Profile = 'Win86SE'
+                Port = 9869
+                Controller = 'virge_dx_pci'
+            }
+            @{
+                ChipId = 'trio64'
+                Profile = 'Win98SE-Trio64'
+                Port = 9871
+                Controller = 's3_trio64_pci'
+            }
+        )
+    }
+}

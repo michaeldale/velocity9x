@@ -35,17 +35,23 @@ extern WORD FAR PASCAL V9xPciReadBar0(DWORD FAR *base);
 extern WORD v9x_active_width;
 extern WORD v9x_active_pitch;
 
-/* Not static: see the note in virge_hw16.c. */
-const V9X_HW16_DEVICE v9x_mga2_devices[] = {
-    {
-        0x102bu, 0x051bu,
-        "Matrox Millennium II MGA-2164W",
-        "102B", "051B",
-        "matrox-mga2164w-unavailable-v1",
-        "single-mode",
-        0,
-        0
-    }
+/* Not static: see the note in virge_hw16.c. Both per-chip hooks are null - this
+ * conservative path writes no MGA control registers after the VBE mode set and
+ * advertises no engine. */
+const V9X_HW16_DEVICE v9x_mga2_device = {
+    0x102bu, 0x051bu,
+    "Matrox Millennium II MGA-2164W",
+    "102B", "051B",
+    "matrox-mga2164w-unavailable-v1",
+    "single-mode",
+    0,
+    0,
+    0,
+    0
+};
+
+static const V9X_HW16_DEVICE * const v9x_mga2_devices[] = {
+    &v9x_mga2_device
 };
 
 static const V9X_HW16_MODE v9x_mga2_modes[] = {
@@ -171,10 +177,5 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_mga2_publish_diagnostics,
     v9x_mga2_post_mode_set,
     v9x_mga2_read_aperture,
-    /* VBE 4F02h already enabled the linear framebuffer; do not write MGA
-     * control registers during this conservative first activation. */
-    0,
-    v9x_mga2_build_screen_pdevice,
-    /* No 2D/3D engine on this conservative path. */
-    0
+    v9x_mga2_build_screen_pdevice
 };

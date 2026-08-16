@@ -62,11 +62,16 @@ WORD FAR PASCAL V9xHardwareStage(void)
 WORD FAR PASCAL V9xHardwareEnable(void)
 {
     DWORD base;
+    const V9X_HW16_DEVICE *device;
 
     v9x_hardware_stage_code = 1u;
     if (V9xHardwarePresent() == 0u) {
         return 0u;
     }
+    /* Read after the present check, not before: that is the call that runs the
+     * PCI scan and so decides which chip's hooks the rest of this sequence
+     * uses. */
+    device = v9x_hw16_active_device();
 
     v9x_hardware_stage_code = 2u;
     if (v9x_vbe_set_mode(v9x_active_vbe_mode, v9x_vbe_mode_flags) == 0u) {
@@ -88,9 +93,9 @@ WORD FAR PASCAL V9xHardwareEnable(void)
         return 0u;
     }
 
-    if (v9x_hw16.enable_aperture != 0) {
+    if (device != 0 && device->enable_aperture != 0) {
         v9x_hardware_stage_code = 8u;
-        if (v9x_hw16.enable_aperture() == 0u) {
+        if (device->enable_aperture() == 0u) {
             return 0u;
         }
     }
@@ -112,14 +117,16 @@ WORD FAR PASCAL V9xHardwareEnable(void)
  */
 WORD FAR PASCAL V9xHardwareReset(void)
 {
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
     if (v9x_vbe_set_mode(v9x_active_vbe_mode, v9x_vbe_mode_flags) == 0u) {
         return 0u;
     }
     if (v9x_hw16.post_mode_set != 0) {
         return v9x_hw16.post_mode_set();
     }
-    if (v9x_hw16.enable_aperture != 0) {
-        return v9x_hw16.enable_aperture();
+    if (device != 0 && device->enable_aperture != 0) {
+        return device->enable_aperture();
     }
     return 1u;
 }

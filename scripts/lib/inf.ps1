@@ -44,9 +44,15 @@ function New-V9xInfText {
     $models = $inf.ModelsSection
     if (-not $models) { $models = 'Velocity9x.Models' }
 
+    # The header used to name one hardcoded adapter, which stopped being true
+    # the moment a family carried two chips. It is generated from the manifest
+    # now, so it cannot drift from the models below.
     $lines = @(
         '; Velocity9x Windows 98SE bring-up package'
-        '; First and only supported adapter: S3 ViRGE/DX 86C375, PCI 5333:8A01'
+        ('; Family {0}: {1}' -f $Family.Id, $Family.DisplayName)
+    ) + @($chips | ForEach-Object {
+        '; Supported adapter: {0}, PCI {1}:{2}' -f $_.Name, $_.VendorId, $_.DeviceId
+    }) + @(
         ''
         '[Version]'
         'Signature="$CHICAGO$"'
@@ -173,7 +179,13 @@ function New-V9xInfText {
         '[Strings]'
         ('Provider="{0}"' -f $inf.Provider)
         ('Manufacturer="{0}"' -f $inf.Manufacturer)
-        ('DeviceDesc="{0}"' -f $chips[0].DeviceDesc)
+        # One entry per chip. The models section inlines its own description, so
+        # these are not what SetupX reads - but a single DeviceDesc in a
+        # multi-chip family names one card and silently implies the others are
+        # not there.
+    ) + @($chips | ForEach-Object {
+        'DeviceDesc.{0}="{1}"' -f $_.Id, $_.DeviceDesc
+    }) + @(
         ('DiskName="{0}"' -f $inf.DiskName)
     )
     $lines

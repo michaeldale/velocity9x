@@ -2,56 +2,29 @@
 param(
     [string]$BuildId,
     [string]$DdkRoot = "C:\98DDK",
-    # Family manifest id under packaging\families. Defaults to s3-virge, which
-    # is what the switchless invocation has always built.
-    [string]$Family,
+    # Family manifest id under packaging\families.
+    [string]$Family = 's3',
     # Build-time variant declared by the family manifest (Matrox 8bpp/16bpp).
     [string]$Variant,
     [ValidateRange(-1, 5)]
     [int]$ForceModeIndex = -1,
-    [switch]$BootTrace,
-    # Deprecated aliases for -Family. Retired at phase 8 of
-    # docs\plans\multi-chip-restructure.md.
-    [switch]$MatroxMillennium2,
-    [switch]$S3Trio64,
-    [ValidateSet(8, 16)]
-    [int]$MatroxBitsPerPixel = 8
+    [switch]$BootTrace
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "lib\family.ps1")
 
-if ($MatroxMillennium2 -and $S3Trio64) {
-    throw "MatroxMillennium2 and S3Trio64 are mutually exclusive."
-}
-if (-not $Family) {
-    $Family = if ($MatroxMillennium2) {
-        'matrox-m2'
-    } elseif ($S3Trio64) {
-        's3-trio64'
-    } else {
-        's3-virge'
-    }
-    if ($MatroxMillennium2 -or $S3Trio64) {
-        Write-Verbose "Legacy target switch mapped to -Family $Family."
-    }
-} elseif ($MatroxMillennium2 -or $S3Trio64) {
-    throw "-Family cannot be combined with a legacy target switch."
-}
-
 $familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
 $variants = @($familyManifest.Build.Variants | Where-Object { $_ })
 $activeVariant = $null
 if ($variants.Count -ne 0) {
     if (-not $Variant) {
-        # -MatroxBitsPerPixel is the legacy spelling of the variant id; 16 bpp
-        # selects the wider variant, anything else takes the manifest default.
         $default = @($variants | Where-Object { $_.Default })
         if ($default.Count -ne 1) {
             throw "Family $Family must declare exactly one default variant."
         }
-        $Variant = if ($MatroxBitsPerPixel -eq 16) { '16bpp' } else { $default[0].Id }
+        $Variant = $default[0].Id
     }
     $activeVariant = @($variants | Where-Object { $_.Id -eq $Variant })
     if ($activeVariant.Count -ne 1) {

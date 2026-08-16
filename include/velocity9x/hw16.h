@@ -65,6 +65,12 @@ typedef struct v9x_hw16_mode {
  * in the diagnostics publisher.
  *
  * acceleration and direct3d may be null for a family that publishes neither.
+ *
+ * The two hooks at the end are per chip rather than per family, because they
+ * are where sibling chips in one binary actually differ: the ViRGE opens its
+ * new-MMIO window and describes an S3D engine, the Trio64 does neither. The
+ * driver calls them on the device that the PCI scan matched, so a family may
+ * hold chips whose engines have nothing in common.
  */
 typedef struct v9x_hw16_device {
     unsigned short vendor_id;
@@ -76,6 +82,35 @@ typedef struct v9x_hw16_device {
     const char *mode_switching;
     const char *acceleration;
     const char *direct3d;
+
+    /*
+     * Enables linear addressing on this chip once the aperture is known.
+     * Non-zero to continue. NULL when the VBE mode set already did everything,
+     * which is the tier-0 and Millennium II case.
+     *
+     * Failure reports stage code 8.
+     */
+    unsigned short (*enable_aperture)(void);
+
+    /*
+     * Describe this chip's 2D/3D engine to the DirectDraw shared block.
+     *
+     * Called with the framebuffer's linear base, and fills in the control
+     * window, its size, the engine type and its capability mask. NULL means
+     * the chip has no engine: everything falls back to the CPU, which is the
+     * tier-0 answer.
+     *
+     * The 16-bit side is the authority on capability. dd16.c narrows the
+     * description handed to DDRAW from this mask, so a chip that does not
+     * claim D3D cannot have it advertised on its behalf - and because the mask
+     * is per chip, one member of a family claiming D3D does not give it to the
+     * others.
+     */
+    void (*fill_engine_descriptor)(unsigned long framebuffer_linear_base,
+                                   unsigned long *control_linear_base,
+                                   unsigned long *mapped_aperture_bytes,
+                                   unsigned long *engine_type,
+                                   unsigned long *engine_caps);
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
@@ -94,7 +129,13 @@ typedef struct v9x_hw16_ops {
     /* Family id, matching packaging\families\<id>. Diagnostic only. */
     const char *family_id;
 
-    const V9X_HW16_DEVICE *devices;
+    /*
+     * One pointer per chip, not one array of chips: each entry is defined by
+     * its own chip module, so a chip's identity and its hooks stay in the
+     * object the per-object audit checks. A flat array would have had to live
+     * in one file and pull every chip's data with it.
+     */
+    const V9X_HW16_DEVICE * const *devices;
     unsigned short device_count;
 
     const V9X_HW16_MODE *modes;
@@ -151,15 +192,6 @@ typedef struct v9x_hw16_ops {
     unsigned long (*read_aperture)(void);
 
     /*
-     * Enables linear addressing on the chip once the aperture is known.
-     * Non-zero to continue. NULL when the VBE mode set already did everything,
-     * which is the tier-0 and Millennium II case.
-     *
-     * Failure reports stage code 8.
-     */
-    unsigned short (*enable_aperture)(void);
-
-    /*
      * Build the screen PDEVICE, returning non-zero on success.
      *
      * NULL uses the DIB Engine's CreateDIBPDevice, which is the proven S3
@@ -173,27 +205,18 @@ typedef struct v9x_hw16_ops {
                                           const V9X_HW16_MODE *mode,
                                           unsigned short screen_selector,
                                           unsigned short pdevice_flags);
-
-    /*
-     * Describe this family's 2D/3D engine to the DirectDraw shared block.
-     *
-     * Called with the framebuffer's linear base, and fills in the control
-     * window, its size, the engine type and its capability mask. NULL means
-     * the family has no engine: everything falls back to the CPU, which is
-     * the tier-0 answer.
-     *
-     * The 16-bit side is the authority on capability. dd16.c narrows the
-     * description handed to DDRAW from this mask, so a family that does not
-     * claim D3D cannot have it advertised on its behalf.
-     */
-    void (*fill_engine_descriptor)(unsigned long framebuffer_linear_base,
-                                   unsigned long *control_linear_base,
-                                   unsigned long *mapped_aperture_bytes,
-                                   unsigned long *engine_type,
-                                   unsigned long *engine_caps);
 } V9X_HW16_OPS;
 
-/* Defined once per family binary, in src\chipsets\<vendor>\<chip>\*_hw16.c. */
+/* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */
 extern const V9X_HW16_OPS v9x_hw16;
+
+/*
+ * The device the PCI scan matched, or the first entry before the scan has run.
+ *
+ * Supplied by the display16 side, which owns the match index that
+ * V9xFindPciDevice records. Never null while device_count is non-zero, so a
+ * caller checks the hook it wants rather than this.
+ */
+const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 
 #endif /* VELOCITY9X_HW16_H */
