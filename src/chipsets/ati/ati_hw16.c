@@ -16,7 +16,7 @@
 #include "velocity9x/hw16.h"
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
-extern unsigned long v9x_vbe_vram_bytes;
+extern unsigned long v9x_vbe_vram_reported;
 
 extern const V9X_HW16_DEVICE v9x_mach64_vt2_device;
 extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
@@ -82,10 +82,12 @@ static void v9x_ati_format_u32(char *text, unsigned long value)
  * Key order is the diagnostic contract; see the note in s3_regs16.c.
  *
  * No Mach64 register is read here yet, so the clock and acceleration keys say
- * what is true rather than guessing. VbeVramBytes is reported raw and is
- * expected to be WRONG on the Rage Mobility - its BIOS claims 512 KiB on a
- * panel running 1024x768x16 - which is precisely why the raw number is worth
- * having in a bug report rather than a corrected one.
+ * what is true rather than guessing.
+ *
+ * VbeVramBytes is the raw 4F00h answer, not the floored figure the driver
+ * uses. Measured on the Rage Mobility: 4 MiB from real DOS, but 512 KiB from a
+ * DOS box under Windows, where the stock driver owns the card. Reporting the
+ * raw number is what makes that distinction visible in a bug report.
  */
 static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                         v9x_hw16_write_fn write)
@@ -101,8 +103,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("ModeSwitching", device->mode_switching);
     write("Acceleration", "none");
     write("Direct3D", "not-advertised");
-    if (v9x_vbe_vram_bytes != 0ul) {
-        v9x_ati_format_u32(number, v9x_vbe_vram_bytes);
+    if (v9x_vbe_vram_reported != 0ul) {
+        v9x_ati_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);
     } else {
         write("VbeVramBytes", "unavailable");
@@ -115,10 +117,13 @@ const V9X_HW16_OPS v9x_hw16 = {
     (unsigned short)(sizeof(v9x_ati_devices) / sizeof(v9x_ati_devices[0])),
     v9x_ati_modes,
     (unsigned short)(sizeof(v9x_ati_modes) / sizeof(v9x_ati_modes[0])),
-    /* The generic linear-framebuffer bit only. The no-clear bit is an S3 BIOS
-     * quirk and means nothing here. Whether a Mach64 BIOS honours the generic
-     * bit at all is the open question stage 2 answers - the ViRGE/DX's does
-     * not, which is what makes it worth asking rather than assuming. */
+    /* The generic linear-framebuffer bit only; the no-clear bit is an S3 BIOS
+     * quirk and means nothing here.
+     *
+     * Measured from real DOS on the Rage Mobility: the Mach64 BIOS honours
+     * this bit. All seven modes below come back supported with a linear
+     * framebuffer. The ViRGE/DX ignores it, which is the documented tier-0
+     * limit and is what made this worth checking rather than assuming. */
     V9X_HW16_VBE_LINEAR,
     /* 16 MiB. The Mobility's BAR0 is a 16 MiB aperture, and this is also the
      * ceiling this family will believe from 4F00h, since the DirectDraw heap
@@ -127,9 +132,10 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_ati_publish_diagnostics,
     /* NULL: the mode set is sufficient at tier-0. */
     0,
-    /* NULL: ask the BIOS through 4F01h. If stage 2 finds the Mach64 BIOS
-     * uncooperative, this is the hook that reads BAR0 instead - the driver
-     * already has a chip-agnostic V9xPciReadBar0 primitive for it. */
+    /* NULL: ask the BIOS through 4F01h, and that is enough here. Measured from
+     * real DOS, this card's 4F01h returns PhysBasePtr F5000000 for every mode,
+     * which is exactly its BAR0 - so the native read_aperture hook once
+     * contemplated as a fallback is not required. */
     0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
     0

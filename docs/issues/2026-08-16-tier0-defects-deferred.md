@@ -1,13 +1,31 @@
-# Two tier-0 backend defects, deferred to `vbe-tier0`
+# Two tier-0 backend defects
 
-Status: **open, deliberately not fixed here.** Found 2026-08-16 while designing
-the ATI Mach64 family. Both live in chip-agnostic code that belongs to the tier-0
-backend, so they should be fixed on the `vbe-tier0` branch and merged forward,
-not patched on `ati-mach64`. Michael's call, 2026-08-16: hold until the
-`vbe-tier0` session is finished.
+Status: **D1 and D2 fixed 2026-08-16** on this branch, for merge into
+`vbe-tier0`. **D3 is open.** All three were found while designing the ATI
+Mach64 family; they live in chip-agnostic code belonging to the tier-0 backend
+rather than in anything ATI-specific.
 
-Both are **blocking for stage 4** (first install on the physical laptop). Neither
-blocks stages 1-3.
+D1 and D2 were blocking for stage 4, the first install on the physical laptop.
+
+**Measured effect of the fixes:**
+
+| Family | D1 (`CR69`) | D2 (VRAM floor) |
+|---|---|---|
+| `s3` | declares `FLIP` - **unchanged**, still writes CR69 | non-NULL `read_aperture`, never reaches the tier-0 default - **no effect** |
+| `matrox-m2` | no caps - **stops** writing S3 CR69 on a Matrox | non-NULL `read_aperture` - **no effect** |
+| `vbe` | no caps - **stops** writing S3 CR69 on std-vga | applies |
+| `ati` | no caps - never writes CR69 | applies |
+
+S3's `publish_diagnostics` lives in `s3_regs16.c` and never references the VRAM
+variables, so its `V9XHW.INI` output is unchanged.
+
+Code cost: **+54 bytes** on the S3, VBE and ATI images and +56 on Matrox, all
+from the shared `enable16.c` change. Well inside the 2 KiB per-step budget.
+
+**One caveat worth stating.** The Matrox behaviour change is a fix - writing an
+S3 extension register on an MGA-2164W was never right - but `matrox-m2` is
+real-hardware-only and this has not been run on that card. `V9xHalFlip` will now
+decline a primary flip there rather than report success it could not deliver.
 
 ---
 
@@ -78,6 +96,64 @@ almost nothing, whereas a wrong ceiling costs corruption.
 set `dwNumHeaps = 0` in that case rather than inventing memory.
 
 ---
+
+## D3 - "other VBE 2.0 cards via Have-Disk" does not actually work
+
+**Measured 2026-08-16** on the `Win98SE-Mach64VT2` guest (86Box Mach64 VT2,
+`1002:5654`), by doing exactly what the manifest advertises.
+
+`packaging\families\vbe\family.psd1` says:
+
+> `HardwareIdHint = 'PCI 1234:1111; other VBE 2.0 cards via Have-Disk'`
+
+and the backend registry comment says unlisted cards "reach tier-0 by
+Have-Disk". The Have-Disk install itself works: Windows offers
+"Velocity9x VBE-generic display (QEMU std-vga)", warns that the driver was not
+written for this hardware, accepts it, copies the files, and binds the class to
+`v9xdisp.drv` / `v9xmini.vxd`.
+
+**Then the driver refuses to enable.** `C:\V9XBOOT.INI` reads:
+
+```
+Stage=fail-hardware-present
+```
+
+which is `ddi.c:613` - `V9xHardwarePresent()` returning 0, serial
+`stage=device-id`. The cause is that a family carries **two independent
+allowlists**, and Have-Disk only satisfies one of them:
+
+| Allowlist | Where | Satisfied by Have-Disk? |
+|---|---|---|
+| INF hardware ids | generated `[Velocity9x.Models]` | **No** - Have-Disk bypasses the match entirely, which is the point of the mismatch warning |
+| Runtime PCI device list | `v9x_hw16.devices[]`, stamped into DGROUP by `ddi.c` and scanned by `V9xFindPciDevice` | **No** - it is compiled into `v9xdisp.drv` and never consulted the INF |
+
+So Have-Disk gets you a bound-but-inert driver on any card the family does not
+name. The card falls back to VGA and the only evidence is a stage code.
+
+This is not academic: it is the documented route for owners of untested cards,
+and it cannot work for any of them.
+
+**Options**, none of which should be chosen without a decision record:
+
+1. Say so honestly - change `HardwareIdHint` to state that tier-0 requires the
+   card's PCI id to be added to the family, and that Have-Disk alone is not
+   enough. Smallest change, and it stops the docs promising something false.
+2. Give the `vbe` family a wildcard runtime device entry (say vendor `0xFFFF`)
+   that `V9xFindPciDevice` treats as "match anything". This makes the advertised
+   behaviour real, but it deliberately reintroduces the catch-all that
+   `backend_registry.c:21-26` argues against - though note the argument there is
+   about the *backend registry*, which is a different allowlist from this one.
+3. Read the accepted hardware id out of the registry at Enable time rather than
+   compiling it in.
+
+**A second, smaller finding from the same run.** Hot-swapping the `ati`
+binaries onto that vbe-bound class with `update-associated-driver.ps1` produced
+`Stage=query-ok` - the driver was loaded and its GDIINFO queried, but Enable
+never ran, so the guest stayed on VGA. That is correct behaviour rather than a
+bug: the script's own scope is `already-associated-driver-only`, and the
+registry association still carried the vbe INF's `MatchingDeviceId` of
+`1234:1111`. Swapping the binary does not re-associate the device. The `ati`
+family has to be installed through its **own** INF.
 
 ## Why these are not ATI bugs
 

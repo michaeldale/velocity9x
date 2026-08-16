@@ -127,6 +127,52 @@ Memory *type* is not in `MEM_CNTL` - it is `CONFIG_STAT0` (block 0 MMIO `0xE4`),
 field `CFG_MEM_TYPE_T` = bits [2:0] on 264xT. It feeds the DSP calculation (§6)
 and gates `BLOCK_WRITE_EN` (SGRAM only). Our part is an SDRAM board.
 
+### Measured from real MS-DOS, 2026-08-16 - the DOS-box figures were artefacts
+
+`V9XSURV.EXE` was re-run on the laptop from **real MS-DOS mode**
+(`WindowsPresent=no`), and it settles the tier-0 question outright. Report:
+`personal\v9x-ragepro\baseline\survey\V9XSURV-ragepro-realdos.ini`.
+
+| | DOS box under Windows | **Real MS-DOS** |
+|---|---|---|
+| `TotalMemory64K` | 8 (512 KiB) | **64 (4 MiB)** |
+| `0105` 1024x768x8 | `003A` not-supported, no LFB | **`00BB` supported, LFB** |
+| `0111` 640x480x16 | `003A` not-supported, no LFB | **`00BB` supported, LFB** |
+| `0114` 800x600x16 | `003A` not-supported, no LFB | **`00BB` supported, LFB** |
+| `0117` 1024x768x16 | `003A` not-supported, no LFB | **`00BB` supported, LFB** |
+| `PhysBasePtr` (all modes) | `30000000` - disagrees with BAR0 | **`F5000000` - exactly BAR0** |
+
+Four conclusions, all of which simplify the plan:
+
+1. **The card has 4 MiB.** The manifest's declared `VideoMemoryBytes = 4194304`
+   is correct as written.
+2. **The Mach64 BIOS honours the generic linear-framebuffer bit.** Unlike the
+   ViRGE/DX, which ignores it and is the documented tier-0 limit. All seven
+   advertised modes come back supported with an LFB.
+3. **`PhysBasePtr` agrees with BAR0 exactly**, so 4F01h is trustworthy on this
+   card and `v9x_vbe_default_aperture()` needs no help. **The native
+   `read_aperture` hook contemplated as a fallback is not required** - the `ati`
+   family can stay all-NULL, exactly as designed.
+4. **Every stride matches the family mode table**: 640/800/1024 at 8 bpp and
+   1280/1600/2048 at 16 bpp. `LinBytesPerScanLine` is 0 (this is a VBE 2.0
+   BIOS), so the driver correctly falls back to `BytesPerScanLine`, and
+   `v9x_vbe_mode_matches()` will agree rather than refuse at stage 3.
+
+> **Caveat on the report's completeness.** Neither survey run - the DOS-box one
+> or this one, on two different tool builds - contains the `[Result]
+> Complete=yes` sentinel, and both are missing the `[EDID]`, `[VgaRegisters]`,
+> `[Tier1]` and `[Tier2]` section headers even though the register *values* they
+> introduce are present. At byte level the last mode line is followed directly by
+> `Reason=vbe-4f15-read-returned-014F`, with `wr_section("EDID")`,
+> `wr_x8("DdcLevel")`, `wr_u("DdcBlockTransferMs")` and `wr_status("unavailable")`
+> all absent - four helper writes lost, while the bare `fprintf` on the next
+> source line survived. **That is a survey-tool defect and it is not yet
+> diagnosed.** By the tool's own rule such a report should be treated as
+> truncated. The conclusions above are drawn only from the `[VBE]` section, which
+> is properly headed, complete from `Mode.00` to `Mode.39`, and internally
+> consistent - but the EDID and VGA-register data from this machine should be
+> considered not yet collected.
+
 **None of this can be developed against 86Box.** Its `MEM_CNTL` is a plain
 scratch register, unconnected to the configured VRAM size - whatever the ROM
 dump wrote at POST is what you read. Worse, aperture-probe sizing behaves

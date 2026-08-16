@@ -63,6 +63,16 @@ DWORD v9x_map_physical_base = 0ul;
  */
 DWORD v9x_vbe_vram_bytes = 0ul;
 
+/*
+ * The raw 4F00h answer, before the floor below is applied.
+ *
+ * publish_diagnostics reports this rather than the usable figure on purpose.
+ * "This BIOS claims 512 KiB" is exactly the fact a bug report from an untested
+ * card needs, and a corrected number would hide it. The Rage Mobility really
+ * does answer 512 KiB from a Windows DOS box, and 4 MiB from real DOS.
+ */
+DWORD v9x_vbe_vram_reported = 0ul;
+
 WORD FAR PASCAL V9xHardwareStage(void)
 {
     return v9x_hardware_stage_code;
@@ -112,11 +122,42 @@ static DWORD v9x_vbe_default_aperture(void)
      * stay inside the mapping however much memory the card claims.
      */
     if (v9x_vbe_read_controller_info(&controller) != 0u) {
+        DWORD visible_bytes;
+
         mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
                         (DWORD)v9x_map_pages_lo) + 1ul;
+        v9x_vbe_vram_reported = controller.total_memory_bytes;
         v9x_vbe_vram_bytes = controller.total_memory_bytes > mapped_bytes
                                  ? mapped_bytes
                                  : controller.total_memory_bytes;
+
+        /*
+         * Floor the usable size at what the mode being set actually displays.
+         *
+         * A BIOS that reports less memory than the mode it just accepted is
+         * lying, and believing it corrupts arithmetic downstream rather than
+         * merely losing off-screen surfaces: dd16.c computes the heap as
+         * fpStart = base + visible_bytes and fpEnd = base + vram_bytes - 1, so
+         * an under-report puts fpEnd *before* fpStart, and dwVidMemTotal =
+         * vram_bytes - visible_bytes underflows the DWORD to about 4.29 GB -
+         * a heap the size of the address space, starting past the end of the
+         * framebuffer. ddhal_core.c then bounds-checks every blit against the
+         * same wrong number.
+         *
+         * Flooring at the visible bytes rather than at dd16.c's 4 MiB fallback
+         * is the conservative choice: on an unknown card, believing in
+         * off-screen memory that has not been proven hands DirectDraw surfaces
+         * aliasing the visible framebuffer. Tier-0 draws with the CPU and
+         * barely uses the off-screen heap, so an empty heap costs almost
+         * nothing, whereas a ceiling that is too high costs corruption.
+         *
+         * Rounded up to the next 64 KiB by masking rather than complementing,
+         * because ~ on a 16-bit int would not widen the way this needs.
+         */
+        visible_bytes = (DWORD)pitch * (DWORD)height;
+        if (v9x_vbe_vram_bytes < visible_bytes) {
+            v9x_vbe_vram_bytes = (visible_bytes + 0xfffful) & 0xffff0000ul;
+        }
     }
 
     return mode.phys_base;

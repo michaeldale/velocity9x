@@ -21,7 +21,7 @@
 #include "velocity9x/hw16.h"
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
-extern unsigned long v9x_vbe_vram_bytes;
+extern unsigned long v9x_vbe_vram_reported;
 
 /*
  * Not static: the per-object audit resolves this symbol by name to prove the
@@ -113,8 +113,8 @@ static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("ModeSwitching", device->mode_switching);
     write("Acceleration", "none");
     write("Direct3D", "not-advertised");
-    if (v9x_vbe_vram_bytes != 0ul) {
-        v9x_vbe_format_u32(number, v9x_vbe_vram_bytes);
+    if (v9x_vbe_vram_reported != 0ul) {
+        v9x_vbe_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);
     } else {
         write("VbeVramBytes", "unavailable");
