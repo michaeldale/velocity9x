@@ -12,8 +12,11 @@ Velocity9x installs on exactly two PCI devices and refuses everything else.
 
 | Chip | PCI ID | Package to build |
 |---|---|---|
-| S3 ViRGE/DX 86C375 | `5333:8A01` | `build/win98se-active` |
-| S3 Trio32/64 86C764 | `5333:8811` | `build/win98se-trio64` |
+| S3 ViRGE/DX 86C375 | `5333:8A01` | `build/win98se-s3` |
+| S3 Trio32/64 86C764 | `5333:8811` | `build/win98se-s3` |
+
+One package covers both. Its INF declares a model per chip, and the driver
+detects which card is fitted when it scans the PCI bus.
 
 In Windows 98, check Device Manager → Display adapters → Properties →
 Details for the hardware ID. If it is not one of the two above, stop: the INF
@@ -29,12 +32,6 @@ See [BUILDING.md](BUILDING.md) for prerequisites. Then:
 
 ```powershell
 ./scripts/build-active-package.ps1
-```
-
-or, for the Trio32/64:
-
-```powershell
-./scripts/build-active-package.ps1 -S3Trio64 -BootTrace
 ```
 
 Never install from `packaging/win98se` directly — that is the INF source, not
@@ -90,7 +87,12 @@ installing.
 5. **Have Disk**, and browse to the built package directory.
 6. Select the Velocity9x entry for your chip.
 7. Let Windows copy the files. **Do not accept a different device ID** if it
-   offers one.
+   offers one. The list shows only the model matching your card, so on a
+   ViRGE/DX you should see exactly one Velocity9x entry and no Trio64 entry.
+
+Step 5 is not optional and there is no shortcut. Removing the display adapter
+and letting Windows re-detect it installs Microsoft's in-box S3 driver, not
+this one — measured on both guests, 2026-08-16.
 8. When prompted, **shut down fully**. Do not warm-restart the first boot.
 9. Start the serial capture, then cold-start the machine once.
 

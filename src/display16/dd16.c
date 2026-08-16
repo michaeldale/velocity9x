@@ -12,6 +12,7 @@
 #include <windows.h>
 #undef SetCursor
 
+#include "velocity9x/hw16.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 
 extern void v9x_serial_write(const char FAR *message);
@@ -131,6 +132,7 @@ static DWORD __loadds FAR PASCAL v9x_dd_destroy_driver(
 static void v9x_dd_refresh_framebuffer(void)
 {
     V9X_DD_SHARED FAR *shared = v9x_dd_shared;
+    const V9X_HW16_DEVICE *device;
     WORD width;
     WORD height;
     WORD bpp;
@@ -159,18 +161,46 @@ static void v9x_dd_refresh_framebuffer(void)
     /* V9xHardwareEnable maps the complete 64-MiB ViRGE linear aperture.
      * New-MMIO is a 64-KiB window at BAR + 16 MiB; register offsets such as
      * SUBSYS_STAT (0x8504) are relative to that window, not to VRAM. */
-#ifdef V9X_TARGET_S3_TRIO64
-    shared->engine.control_linear_base = 0ul;
-    shared->engine.mapped_aperture_bytes = 0ul;
-    shared->engine.flags = V9X_DD_ENGINE_VALID |
-                           V9X_DD_ENGINE_S3_TRIO64;
-#else
-    shared->engine.control_linear_base =
-        shared->fb.linear_base + 0x01000000ul;
-    shared->engine.mapped_aperture_bytes = 0x00010000ul;
-    shared->engine.flags = V9X_DD_ENGINE_VALID |
-                           V9X_DD_ENGINE_S3_VIRGE_DX;
-#endif
+    device = v9x_hw16_active_device();
+    if (device != 0 && device->fill_engine_descriptor != 0) {
+        DWORD control_base = 0ul;
+        DWORD aperture_bytes = 0ul;
+        DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
+        DWORD engine_caps = 0ul;
+
+        device->fill_engine_descriptor(shared->fb.linear_base,
+                                       &control_base, &aperture_bytes,
+                                       &engine_type, &engine_caps);
+        shared->engine.control_linear_base = control_base;
+        shared->engine.mapped_aperture_bytes = aperture_bytes;
+        shared->engine.engine_type = engine_type;
+        shared->engine.engine_caps = engine_caps;
+        /* VALID says the descriptor was filled in, nothing more. Which chip
+         * this is, and what its engine will do, are engine_type and
+         * engine_caps above; the per-chip identity bits that used to be
+         * derived here retired with the 32-bit vtable.
+         *
+         * That derivation also read as ViRGE for any engine_type it did not
+         * recognise, including NONE. A family with a descriptor hook but no
+         * engine now says so. */
+        shared->engine.flags = V9X_DD_ENGINE_VALID;
+    } else {
+        shared->engine.control_linear_base = 0ul;
+        shared->engine.mapped_aperture_bytes = 0ul;
+        shared->engine.engine_type = V9X_DD_ENGINE_TYPE_NONE;
+        shared->engine.engine_caps = 0ul;
+        shared->engine.flags = 0ul;
+    }
+    shared->engine.io_base = 0ul;
+    shared->engine.crtc_index_port = 0ul;
+    /* fault_inject is deliberately NOT cleared here. This runs on every
+     * DirectDraw session setup, which is exactly between arming the injector
+     * and the workload that is supposed to consume it, so clearing it made
+     * the knob unusable. v9x_dd_block zeroes the whole block on allocation,
+     * so it starts disarmed; after that the escape is the only writer and
+     * the HAL's own consumption is the only decrementer. A forced timeout
+     * acts on whichever bounded wait runs next, which is mode-independent. */
+    shared->engine.reserved1 = 0ul;
 }
 
 /*
@@ -296,12 +326,16 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_info16.hInstance =
         (DWORD)SELECTOROF((LPVOID)&v9x_dd_info16);
 
-#ifdef V9X_TARGET_S3_TRIO64
-    /* The shared HAL binary describes the ViRGE feature set. Trio64 keeps the
-     * scanout and vertical-blank services but has neither the new-MMIO window
-     * nor the S3D engine, so the description handed to DDRAW is narrowed here
-     * - on the DGROUP copy only, leaving the shared block's full description
-     * intact for the 32-bit side. */
+    /* The shared HAL binary describes the ViRGE feature set. A family whose
+     * engine does not claim D3D keeps the scanout and vertical-blank services
+     * but has neither the new-MMIO window nor the S3D engine, so the
+     * description handed to DDRAW is narrowed here - on the DGROUP copy only,
+     * leaving the shared block's full description intact for the 32-bit side.
+     *
+     * Driven by engine_caps rather than by a build-time define: the 16-bit
+     * side is the capability authority, so a family that does not claim D3D
+     * cannot have it advertised on its behalf. */
+    if ((v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
     v9x_dd_info16.GetDriverInfo = 0;
     v9x_dd_info16.lpD3DGlobalDriverData = 0ul;
     v9x_dd_info16.lpD3DHALCallbacks = 0ul;
@@ -321,7 +355,7 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
         V9X_DDHAL_SURFCB32_LOCK | V9X_DDHAL_SURFCB32_UNLOCK |
         V9X_DDHAL_SURFCB32_ADDATTACHEDSURFACE |
         V9X_DDHAL_SURFCB32_BLT | V9X_DDHAL_SURFCB32_GETBLTSTATUS;
-#endif
+    }
 
     v9x_dd_trace_event(6u, v9x_dd_callbacks16.dwFlags);
     v9x_dd_trace_event(7u, (DWORD)v9x_dd_callbacks16.WaitForVerticalBlank);
@@ -434,6 +468,16 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             }
         }
         return 1;
+    case V9X_DDFAULTINJECT:
+        /* Arm the 32-bit side's engine fault injector. Writing the count is
+         * the whole operation: this side never touches the engine, and the
+         * HAL decrements it as the forced timeouts are consumed. */
+        if (v9x_dd_block() == 0) {
+            return 0;
+        }
+        v9x_dd_shared->engine.fault_inject = command->dwParam1;
+        v9x_dd_trace("faultinject");
+        return 1;
     case V9X_DDVERSIONINFO:
         if (output != 0) {
             V9X_DDVERSIONDATA FAR *version =
@@ -447,6 +491,24 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
     default:
         return 0;
     }
+}
+
+#else /* no DirectDraw HAL on this target */
+
+/*
+ * ddi.c calls these on every Enable, Disable and ReEnable. Rather than guard
+ * each call site on the target, a family without a HAL links the no-op forms.
+ * The full versions are retired into a family capability at phase 6 of
+ * docs\plans\multi-chip-restructure.md.
+ */
+WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
+{
+    (void)reset;
+    return 0u;
+}
+
+void FAR PASCAL V9xDdInvalidate(void)
+{
 }
 
 #endif /* DirectDraw targets */

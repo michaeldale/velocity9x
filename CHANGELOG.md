@@ -4,6 +4,194 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+### Added
+
+- A family matrix generated from the manifests
+  (`scripts/lib/family-matrix.ps1`) and `tests/host/test_family_matrix.c`
+  asserting the C side against it: every declared PCI ID resolves to a backend,
+  chips of one family share that backend and chips of different families do
+  not, undeclared hardware resolves to nothing, and no engine capability is
+  claimed against `EngineType = 'NONE'`. Chips gained a `VideoMemoryBytes` key,
+  and every mode a family's INF advertises must be one its backend can lay out
+  in that VRAM — the first check holding the INF and the driver to the same
+  answer. It needs no emulator and no guest.
+- The mode check runs one direction only, deliberately: `validate_mode` is a
+  VRAM-bounded layout calculator rather than a whitelist, so "accepts exactly
+  the advertised modes" is not a property it has. Advertising something
+  unservable is the failure that matters, and that is what is caught.
+
+### Fixed
+
+- `scripts/build-host-msvc.ps1` had a stale source list — the clock, memory,
+  registry and Matrox modules were missing — so the second-compiler pass failed
+  at the link step on every run and never executed a test. It compiles, links
+  and runs again, now over the same source set as the Watcom pass.
+- The host build joins the driver and HAL compiles in using `-we`, so a warning
+  fails it rather than being reported alongside a successful exit.
+
+## 0.3.5 - 2026-08-16
+
+The multi-chip restructure through phase 8: one S3 binary serving both chips,
+and the 32-bit HAL split along the seams that made it possible.
+
+### Changed
+
+- The `s3-virge` and `s3-trio64` families merged into one `s3` family: one
+  binary, one INF with a model per chip, and dispatch by PCI id at scan time.
+  `enable_aperture` and `fill_engine_descriptor` moved from the family ops
+  table into the device entry — they are the only two hooks the ViRGE and the
+  Trio64 disagree about — and `V9X_HW16_OPS.devices` became an array of
+  pointers so each chip module owns its own identity and hooks. The per-object
+  audit layer now does the work the image-wide one cannot, asserting the
+  ViRGE's CR53 new-MMIO sequence is present in its object and absent from the
+  Trio64's. Verified on both 86Box guests from the one package: correct
+  per-chip identity and clocks, all six modes green on both, and the Trio64
+  still advertising no Direct3D.
+- The two-model INF was verified through a real SetupX Have-Disk install on
+  both guests, not just by generation: each card was offered only its own
+  model, bound its own install section (`Velocity9x.Install.virge-dx` /
+  `.trio64`), got its own `MODES` AddReg, and reproduced its full phase 7
+  readings afterwards. Also measured, and worth knowing: a PnP re-detect
+  installs Microsoft's in-box `DXS3.INF` rather than this driver, so removing
+  the display device is not a way to reinstall — the documented Have-Disk
+  selection is required.
+- Retired with it: the two single-chip manifests, `LegacyOutputName` /
+  `LegacySkeletonOutput` / `LegacySwitch`, the `-S3Trio64` and
+  `-MatroxMillennium2` builder aliases, and the checked-in
+  `packaging/win98se/velocity9x.inf`. Byte-for-byte golden compare against the
+  pre-restructure images ends here by design — one package with both chips
+  cannot reproduce either single-chip package — so `golden-baseline.ps1` is now
+  a build-to-build check and a code-size budget.
+
+- The per-chip `V9X_DD_ENGINE_S3_*` identity bits retired. `engine.flags` is
+  now runtime state only — VALID plus the `STATUS_VALIDATED` latch — and which
+  chip this is comes from `engine_type` alone, so a new chip is a new enum
+  value rather than a new bit. The old derivation in `dd16.c` also read as
+  ViRGE for any engine type it did not recognise, `NONE` included, which a
+  family with a descriptor hook and no engine would eventually have hit.
+  `V9XTRACE.EXE` gained `EngineType` and `EngineCaps` in the same change, since
+  `EngineFlags` alone can no longer say which engine ran.
+- Both compiles now use `-we`. `-wx` is Watcom's warning *level*, not
+  warnings-as-errors, so the HAL build had been reporting warnings and exiting
+  0 — which is how six dead locals survived the `ddhal.c` split.
+- `src/display32/ddhal.c` split into `ddhal_core.c`, `blt_cpu.c`,
+  `engines/{vga_scanout,eng_s3_virge,eng_s3_trio}.c` and `d3d/d3d_virge.c`
+  behind one private header, `ddhal_internal.h`. The header is deliberately
+  narrow — a symbol crosses it only where a second module needs it — so the
+  ViRGE's MMIO accessors and engine recovery and the Trio's readiness test are
+  now unreachable from outside their own engine. It is also the HAL's only
+  `<windows.h>`, which `check-tree.ps1` enforces in place of the old per-file
+  allowance. `build-ddraw-hal-dll.ps1` compiles and links a source list.
+- The 32-bit HAL's runtime chip dispatch is now a `v9x_engine32_ops` table
+  selected from `engine.engine_type`, replacing the
+  `v9x_trio_engine_ready() ? trio : virge` pair inlined at the drain, source
+  copy, colour fill and GetBltStatus call sites. Writing them out showed the
+  pairs were not asking one question but three, so the table keeps `ready`,
+  the latching `validate_status`, the passive `status_validated` and `can_blt`
+  apart by name. There is no `recover` member: it is only ever called from
+  inside the bounded wait that expired, and the Trio64 has none.
+  `V9X_DD_ENGINE_TYPE_*` and `V9X_DD_ENGINE_CAP_*` moved to a new
+  dependency-free `include/velocity9x/engine_abi.h`, so `win9x_ddraw_abi.h` no
+  longer reaches into the 16-bit-only `hw16.h`. Behaviour is unchanged against
+  both S3 guests: D3D gate set, engine counters, Ironfield FPS and the
+  timeout-injection asymmetry all match the recorded pre-split baselines.
+
+- `V9X_DD_ENGINE` gained `engine_type`, `engine_caps`, `io_base`,
+  `crtc_index_port` and two reserved DWORDs, appended so the existing fields
+  keep their offsets and `ddhal.c` reads them unmodified. One deliberate
+  `V9X_DD_SHARED_ABI` bump to 2026081601; a mixed old/new DRV+DLL pair fails
+  safe on the dwSize/abi check. `dd16.c` fills the descriptor through a new
+  `fill_engine_descriptor` hook, and the Trio64 caps clamp is now driven by
+  `engine_caps` rather than a build-time define — so a family that does not
+  claim D3D cannot have it advertised on its behalf.
+- The staged hardware enable sequence moved from `runtime.asm` into
+  `src/display16/enable16.c`, which calls the new `vbe16` mode-set service and
+  the family's `post_mode_set`, `read_aperture` and `enable_aperture` hooks.
+  `runtime.asm` now has no chip `IFDEF` at all: it keeps the DIB thunks, the
+  VDD calls, and two chip-agnostic primitives — a PCI BAR0 read and the DPMI
+  selector/mapping helper, both of which need 32-bit registers the 8086-target
+  C cannot use. Stage code numbering, selector reuse across Enable cycles and
+  the never-free-the-selector Disable behaviour are unchanged.
+- The audit now scans every object in the image rather than `runtime.obj`
+  alone: chip code lives in C modules now, and a check that only looked at the
+  assembly would pass vacuously once the code it audits moved out. Several
+  instruction signatures were retargeted to what the compiler actually emits
+  (Watcom folds `(v & 0xFC) | 0x13` into `and al,0ECH`), and the PCI BAR0
+  patterns were dropped from the Matrox set because that code is now a shared
+  primitive and no longer distinguishes one family from another. The link-map
+  symbol layer carries proportionally more of the audit as a result.
+- `runtime.asm` no longer selects chip literals with `IFDEF`. The PCI identity,
+  the VBE 4F02h mode-set flag and the DPMI aperture size are DGROUP variables
+  stamped from the family's `v9x_hw16` table at load, and `V9xFindPciDevice`
+  walks the device list rather than testing one hard-coded ID — which is what
+  lets one binary serve more than one card. Stage code numbering is unchanged,
+  so the boot-trace tooling still detects divergence.
+- Because the PCI identity and VBE flag are now data rather than immediates,
+  the per-chip audit follows them: each chip declares a `MapSymbols` entry for
+  its device table, and every family declares `Audit.DispatchSymbol`. A family
+  binary must contain its own device-table symbol and no other family's.
+- Chip data moved out of `src/display16/ddi.c` into a 16-bit hardware layer.
+  `include/velocity9x/hw16.h` declares one statically linked `v9x_hw16_ops`
+  table per family binary carrying the PCI identity, the audited VBE mode
+  table (640x400 still ordered last, for Doom95), the `C:\V9XHW.INI` strings,
+  and nullable hooks; a NULL hook means the chip-agnostic default. The tables
+  live in `src/chipsets/{s3/virge,s3/trio64,matrox/millennium2}/*_hw16.c`, and
+  the shared S3 CR36/PLL register reads in `src/chipsets/s3/common/s3_regs16.c`.
+  No `#ifdef V9X_TARGET_*` remains in `ddi.c`. `C:\V9XHW.INI` is byte-identical
+  on both S3 targets and the code segment grew 76, 78 and 338 bytes for ViRGE,
+  Trio64 and Millennium II respectively.
+
+- The build system is now driven by per-family manifests
+  (`packaging/families/<id>/family.psd1`) instead of per-chip switches. A
+  family is one package covering one or more chips that share a driver binary;
+  the manifest declares its chips, sources, defines, audit signatures, INF
+  metadata, floppy placement and VM profile. `-S3Trio64` and
+  `-MatroxMillennium2` remain as aliases for `-Family`. See
+  `docs/specifications/family-manifest.md` and
+  `docs/decisions/2026-08-16-per-family-packaging.md`.
+- The INF is generated from the manifest rather than rewritten out of a
+  checked-in single-model file, so a family can carry more than one chip. The
+  single-hardware-ID assertion became set equality against the manifest. The
+  generated file is byte-identical to the previous output for both S3 targets.
+- Post-link auditing moved to `scripts/audit-family-binary.ps1`. Chip signature
+  checks are manifest-driven: an image must match all of its own chips'
+  signatures and none of any other family's, with the forbidden set derived
+  from the sibling manifests, so adding a family strengthens every existing
+  family's audit with no script change.
+- `run-vm-mode-matrix.ps1` takes `-Family`, and with it the guest port, package
+  path and mode list, so it can address a guest other than the controller's
+  default. A family declaring no emulator is refused explicitly instead of
+  silently testing the wrong machine. Its depth check no longer trusts the
+  remote agent's `BitsPerPixel`, which reports 0 against this driver while
+  reporting correctly against the stock S3 driver; depth is verified from the
+  guest-side GDI test result, which has always been accurate.
+
+### Added
+
+- `scripts/run-checks.ps1`, the local CI gate: tree check, host tests,
+  per-family builds with audits and INF assertions, floppy.
+- `scripts/build-all-packages.ps1`, which builds every declared family and
+  writes `build/packages.json` with per-file SHA-256.
+- `scripts/golden-baseline.ps1`, which captures and compares the byte-level
+  baseline the restructure must preserve. Win32 PE link timestamps are zeroed
+  before hashing so a rebuild is reproducible.
+
+### Fixed
+
+- `scripts/backup-86box-profile.ps1` named every backup after the ViRGE
+  profile whatever it was given. The copied contents were always correct,
+  which is the worse failure: nothing looks wrong until someone restores what
+  they believe is one guest over another.
+- `scripts/run-vm-mode-matrix.ps1` wrote the requested mode to a hardcoded
+  `Services\Class\Display\0001`, which is the wrong key on any guest whose
+  display-class index differs — the Trio64 guest's is `0002`. It passed
+  regardless because the `Config\0001` half of the same `.reg` is what takes
+  effect, so the matrix had been green by accident. The key is now resolved
+  from the registry by finding the one that names `v9xdisp.drv`, and the run
+  refuses if no key does.
+
 ## 0.3 - 2026-08-15
 
 ### Added

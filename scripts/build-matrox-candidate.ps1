@@ -33,7 +33,7 @@ $selectedMode = $matroxModes[$ModeIndex]
 
 & (Join-Path $PSScriptRoot "build-win16-ddi-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -ForceModeIndex $ModeIndex -BootTrace `
-    -MatroxMillennium2 -MatroxBitsPerPixel $BitsPerPixel
+    -Family 'matrox-m2' -Variant $(if ($BitsPerPixel -eq 16) { '16bpp' } else { '8bpp' })
 if (-not $PreserveStockMiniVdd) {
     & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
         -BuildId $BuildId -DdkRoot $DdkRoot

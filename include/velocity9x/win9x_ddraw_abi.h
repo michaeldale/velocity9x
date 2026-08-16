@@ -1,6 +1,10 @@
 #ifndef VELOCITY9X_WIN9X_DDRAW_ABI_H
 #define VELOCITY9X_WIN9X_DDRAW_ABI_H
 
+/* Engine type and capability values are shared with the 16-bit hardware
+ * layer, which cannot include this header. */
+#include "velocity9x/engine_abi.h"
+
 /*
  * Minimal Windows 9x DirectDraw HAL ABI used by Velocity9x, written from
  * the published Windows 98 DDK interface documentation (DDRAWI.H layouts).
@@ -41,6 +45,12 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * buffer. The value is far outside the documented DCI/DDRAW command range
  * so a runtime that does not know it cannot collide with it. */
 #define V9X_DDGETTRACE           0x56395452ul /* 'V9TR' */
+
+/* Project-private DCICOMMAND: arm the engine fault injector. dwParam1 is the
+ * number of subsequent bounded engine waits that must report a timeout
+ * instead of completing, which drives the recovery path deterministically
+ * without needing the hardware to actually hang. See fault_inject below. */
+#define V9X_DDFAULTINJECT        0x56394649ul /* 'V9FI' */
 
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul
@@ -933,7 +943,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * V9XHAL.DLL's DriverInit. The 32-bit side owns all content except the
  * framebuffer descriptor, which the 16-bit side refreshes on every enable.
  */
-#define V9X_DD_SHARED_ABI   2026081503ul
+/* Bumped once for the generalized engine descriptor. A mixed old/new DRV+DLL
+ * pair fails safe: DriverInit rejects on the dwSize/abi mismatch and leaves a
+ * driverinit-pending trace rather than running against the wrong layout. */
+#define V9X_DD_SHARED_ABI   2026081601ul
 #define V9X_DD_MODE_COUNT            7u
 
 /* fb.flags */
@@ -963,21 +976,59 @@ typedef struct v9x_dd_framebuffer {
  * first vram_bytes are allocatable VRAM; the register window is addressed
  * through control_linear_base and must never be exposed as a heap. */
 #define V9X_DD_ENGINE_VALID          0x00000001ul
-#define V9X_DD_ENGINE_S3_VIRGE_DX    0x00000002ul
-#define V9X_DD_ENGINE_S3_TRIO64      0x00000004ul
-/* Distinct from the chipset identity bits. This previously aliased
- * V9X_DD_ENGINE_S3_TRIO64, so validating the ViRGE engine status made
+/*
+ * 0x00000002 and 0x00000004 were V9X_DD_ENGINE_S3_VIRGE_DX and
+ * V9X_DD_ENGINE_S3_TRIO64, one identity bit per chip. Retired 2026-08-16:
+ * chip identity is engine_type below, so adding a chip is a new enum value
+ * rather than a new bit and a new branch at every reader. Left unassigned
+ * rather than immediately reused, so a stale diagnostic reading this field
+ * reports nothing rather than reporting a wrong chip.
+ *
+ * This field is now runtime state only.
+ */
+/* Distinct from the identity bits that used to live here. It once aliased
+ * the Trio64 bit, so validating the ViRGE engine status made
  * v9x_trio_engine_ready() true on a ViRGE and would have routed its blits
  * through the Trio64 port-I/O command sequence. */
 #define V9X_DD_ENGINE_STATUS_VALIDATED 0x00000008ul
 
+/*
+ * Engine identity and capability, as data rather than as flag bits.
+ *
+ * engine_type is the sole statement of which chip this is; a new chip is a new
+ * value here and a caps mask, not another flag bit. engine_caps says what that
+ * engine will do, so a chip can carry an engine with only part of its family's
+ * capability set.
+ */
+
 typedef struct v9x_dd_engine {
+    /* Field offsets are unchanged since ABI 2026081601. Phase 7 changed only
+     * which of them the 32-bit HAL reads, not where any of them sit. */
     DWORD control_linear_base;
     DWORD mapped_aperture_bytes;
     DWORD flags;
     DWORD fifo_timeouts;
     DWORD idle_timeouts;
     DWORD reset_count;
+    /* Appended in ABI 2026081601. */
+    DWORD engine_type;
+    DWORD engine_caps;
+    /* Port-I/O base and CRTC index port for engines addressed that way; the
+     * Trio64's 8514/A command set needs both, the ViRGE's MMIO does not. */
+    DWORD io_base;
+    DWORD crtc_index_port;
+    /* Engine fault injector, armed by V9X_DDFAULTINJECT. Non-zero means the
+     * next N bounded waits report a timeout instead of completing: each one
+     * decrements this, counts itself in fifo_timeouts/idle_timeouts, flushes
+     * the fault trace and runs the engine's recovery, exactly as a real
+     * timeout would. It exists because the timeout and reset paths are
+     * otherwise unreachable on healthy hardware, so any gate that asserts
+     * "recovery still works" would pass vacuously. Zero (the default, and
+     * what every normal boot leaves it at) disables it entirely; it occupies
+     * what was reserved0 through ABI 2026081601, so the layout is unchanged.
+     */
+    DWORD fault_inject;
+    DWORD reserved1;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {

@@ -4,15 +4,18 @@
  * Scope is restricted to an unaccelerated standard VBE mode matrix. The
  * assembly runtime performs VBE mode entry and DPMI mapping; every drawing
  * operation remains with the Windows DIB Engine.
+ *
+ * This file is chip-agnostic. Everything that differs between cards - the
+ * mode table, the PCI identity, the C:\V9XHW.INI strings, and the two places
+ * where a family must run its own code - comes from the statically linked
+ * v9x_hw16 table declared in include\velocity9x\hw16.h.
  */
 #define SetCursor V9xUserSetCursor
 #include <windows.h>
 #undef SetCursor
 
 #include "velocity9x/build.h"
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
-#include "velocity9x/s3_virge.h"
-#endif
+#include "velocity9x/hw16.h"
 #include "win9x_display_abi.h"
 
 #define V9X_BITMAP_HEADER_SIZE     40u
@@ -53,59 +56,46 @@ extern void FAR PASCAL V9xVddPostMode(void);
 extern void FAR PASCAL V9xVddUnregister(void);
 extern WORD FAR PASCAL V9xVddGetDisplayConfig(V9X_DISPLAY_INFO FAR *);
 
-typedef struct v9x_display_mode {
-    WORD width;
-    WORD height;
-    WORD bits_per_pixel;
-    WORD pitch;
-    WORD vbe_mode;
-    short english_low;
-    short english_high;
-} V9X_DISPLAY_MODE;
-
-static const V9X_DISPLAY_MODE v9x_modes[] = {
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-#ifdef V9X_MATROX_16BPP
-    {  640u, 480u, 16u, 1280u, 0x0111u, 254, 127 },
-    {  800u, 600u, 16u, 1600u, 0x0114u, 318, 159 },
-    { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 }
-#else
-    /* The physical Millennium II reports a packed 640-byte pitch for 101h. */
-    {  640u, 480u,  8u,  640u, 0x0101u, 254, 127 }
-#endif
-#else
-    {  640u, 480u,  8u,  640u, 0x0101u, 254, 127 },
-    {  800u, 600u,  8u,  800u, 0x0103u, 318, 159 },
-    { 1024u, 768u,  8u, 1024u, 0x0105u, 407, 203 },
-    /* 640x400 is VBE mode 100h, the first mode VESA defined and the default
-     * screen size Doom95 asks DirectDraw for. Without it SetDisplayMode
-     * fails, the game keeps the 16-bpp desktop mode and writes its 8-bpp
-     * frame into it: one byte per pixel into a two-byte pitch renders the
-     * picture at half width in garbage colours. It sits after the other
-     * 8-bpp entries so this list runs in the same order as the MODES
-     * registry key GDI enumerates. */
-    {  640u, 400u,  8u,  640u, 0x0100u, 254, 127 },
-    {  640u, 480u, 16u, 1280u, 0x0111u, 254, 127 },
-    {  800u, 600u, 16u, 1600u, 0x0114u, 318, 159 },
-    { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 }
-#endif
-};
-#define V9X_MODE_COUNT (sizeof(v9x_modes) / sizeof(v9x_modes[0]))
+/* The mode table, the PCI identity and the C:\V9XHW.INI strings are family
+ * data now, supplied by the statically linked v9x_hw16 table. */
+#define v9x_modes      (v9x_hw16.modes)
+#define V9X_MODE_COUNT (v9x_hw16.mode_count)
 
 V9X_DIB_ENGINE FAR *v9x_driver_pdevice;
+/* These four are read by runtime.asm. LibMain applies the family's first mode
+ * to them before any DDI entry point can run, so the initialisers here only
+ * have to be a sane VGA-ish default rather than a per-family one. */
 WORD v9x_active_vbe_mode = 0x0101u;
 DWORD v9x_active_visible_bytes = 307200ul;
-#ifdef V9X_MATROX_16BPP
-WORD v9x_active_width = 640u;
-WORD v9x_active_pitch = 1280u;
-#else
 WORD v9x_active_width = 640u;
 WORD v9x_active_pitch = 640u;
-#endif
 WORD v9x_palettized = 1u;
+
+/*
+ * The rest of what runtime.asm needs from the family table, flattened into
+ * DGROUP so the assembly can read it without walking a struct of far
+ * pointers. Stamped once at load, below.
+ *
+ * V9xFindPciDevice walks v9x_pci_vendor/device, which is what lets one family
+ * binary serve more than one card.
+ */
+#define V9X_PCI_ID_LIMIT 8u
+WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
+WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
+WORD v9x_pci_count = 0u;
+/*
+ * Index of the entry V9xFindPciDevice matched, or 0xFFFF before it has run or
+ * when nothing answered. It is the one thing the scan learns that the family
+ * table cannot state in advance, and with more than one chip per binary it
+ * decides whose hooks run and which identity is published.
+ */
+WORD v9x_pci_match = 0xffffu;
+WORD v9x_vbe_mode_flags = 0x8000u;
+WORD v9x_map_pages_hi = 0x03ffu;
+WORD v9x_map_pages_lo = 0xffffu;
 static RGBQUAD FAR *v9x_color_table;
-static const V9X_DISPLAY_MODE *v9x_selected_mode = &v9x_modes[0];
-static const V9X_DISPLAY_MODE *v9x_active_mode;
+static const V9X_HW16_MODE *v9x_selected_mode;
+static const V9X_HW16_MODE *v9x_active_mode;
 static WORD v9x_dib_pdevice_size;
 static WORD v9x_screen_selector;
 static WORD v9x_enabled;
@@ -168,202 +158,52 @@ static BYTE v9x_port_in(WORD port);
 static void v9x_port_out(WORD port, BYTE value);
 #pragma aux v9x_port_out = "out dx,al" parm [dx] [al] modify exact []
 
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
-static void v9x_format_u32(char *text, DWORD value)
+/*
+ * Publish the hardware diagnostics file the settings page and the support
+ * instructions both read.
+ *
+ * The section is cleared here, and the family hook appends its keys. Key
+ * order is part of the contract - the file is written by appending - so the
+ * hook owns it rather than this function.
+ */
+static void v9x_write_hardware_info(const char *key, const char *value)
 {
-    char reverse[11];
-    WORD length = 0u;
-    WORD index;
-
-    do {
-        reverse[length++] = (char)('0' + (value % 10ul));
-        value /= 10ul;
-    } while (value != 0ul && length < 10u);
-    for (index = 0u; index < length; ++index) {
-        text[index] = reverse[length - index - 1u];
+    if (value == 0) {
+        return;
     }
-    text[length] = '\0';
-}
-
-static BYTE v9x_s3_read_sequencer(BYTE index)
-{
-    v9x_port_out(0x03c4u, index);
-    return v9x_port_in(0x03c5u);
-}
-
-/* The CRTC pair follows the MISC output register's colour/mono bit. */
-static WORD v9x_crtc_index_port(void)
-{
-    return (v9x_port_in(0x03ccu) & 0x01u) != 0u ? 0x03d4u : 0x03b4u;
-}
-
-static BYTE v9x_s3_read_crtc(WORD index_port, BYTE index)
-{
-    v9x_port_out(index_port, index);
-    return v9x_port_in((WORD)(index_port + 1u));
-}
-
-static void v9x_s3_write_crtc(WORD index_port, BYTE index, BYTE value)
-{
-    v9x_port_out(index_port, index);
-    v9x_port_out((WORD)(index_port + 1u), value);
+    WritePrivateProfileString("Velocity9xHardware", (LPCSTR)key,
+                              (LPCSTR)value, V9X_HARDWARE_INFO_PATH);
 }
 
 /*
- * Installed video memory from CRTC register 36h.
+ * The chip this binary is actually driving.
  *
- * CR36 sits behind the S3 extended-register locks, so CR38 and CR39 are
- * unlocked around the read and restored afterwards. Returns 0 when the code
- * is one this driver does not decode, which the caller reports as unavailable
- * rather than guessing a size.
+ * Falls back to the first entry when the PCI scan has not run or matched
+ * nothing, which is what a single-chip family always saw. For a family with
+ * several chips the fallback is only ever reached before Enable, and every
+ * caller of a per-chip hook runs after it.
  */
-static DWORD v9x_s3_detect_video_memory(void)
+const V9X_HW16_DEVICE *v9x_hw16_active_device(void)
 {
-    WORD index_port = v9x_crtc_index_port();
-    BYTE saved_index = v9x_port_in(index_port);
-    BYTE saved_lock1;
-    BYTE saved_lock2;
-    BYTE cr36;
-    DWORD bytes = 0ul;
-
-    saved_lock1 = v9x_s3_read_crtc(index_port, 0x38u);
-    saved_lock2 = v9x_s3_read_crtc(index_port, 0x39u);
-    v9x_s3_write_crtc(index_port, 0x38u, 0x48u);
-    v9x_s3_write_crtc(index_port, 0x39u, 0xa5u);
-    cr36 = v9x_s3_read_crtc(index_port, 0x36u);
-    v9x_s3_write_crtc(index_port, 0x39u, saved_lock2);
-    v9x_s3_write_crtc(index_port, 0x38u, saved_lock1);
-    v9x_port_out(index_port, saved_index);
-
-    if (v9x_s3_virge_decode_memory_size(cr36, &bytes) != V9X_STATUS_OK) {
-        return 0ul;
+    if (v9x_hw16.device_count == 0u) {
+        return 0;
     }
-    return bytes;
+    if (v9x_pci_match >= v9x_hw16.device_count) {
+        return v9x_hw16.devices[0];
+    }
+    return v9x_hw16.devices[v9x_pci_match];
 }
-#endif
 
 static void v9x_publish_hardware_diagnostics(void)
 {
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-    WritePrivateProfileString("Velocity9xHardware", 0, 0,
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "SchemaVersion", "1",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "Adapter",
-                              "Matrox Millennium II MGA-2164W",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "VendorId", "102B",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "DeviceId", "051B",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "ClockDetector",
-                              "matrox-mga2164w-unavailable-v1",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "ClockStatus",
-                              "unavailable",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "ModeSwitching",
-                              "single-mode",
-                              V9X_HARDWARE_INFO_PATH);
-#else
-    struct v9x_clock_info clocks;
-    BYTE saved_index = v9x_port_in(0x03c4u);
-    BYTE saved_unlock;
-    BYTE sr10;
-    BYTE sr11;
-    char number[11];
-    v9x_status status;
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
 
-    v9x_port_out(0x03c4u, 0x08u);
-    saved_unlock = v9x_port_in(0x03c5u);
-    v9x_port_out(0x03c5u, 0x06u);
-    sr10 = v9x_s3_read_sequencer(0x10u);
-    sr11 = v9x_s3_read_sequencer(0x11u);
-    v9x_port_out(0x03c4u, 0x08u);
-    v9x_port_out(0x03c5u, saved_unlock);
-    v9x_port_out(0x03c4u, saved_index);
-
-    WritePrivateProfileString("Velocity9xHardware", 0, 0,
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "SchemaVersion", "1",
-                              V9X_HARDWARE_INFO_PATH);
-#ifdef V9X_TARGET_S3_TRIO64
-    WritePrivateProfileString("Velocity9xHardware", "Adapter",
-                              "S3 Trio32/64 86C764",
-                              V9X_HARDWARE_INFO_PATH);
-#else
-    WritePrivateProfileString("Velocity9xHardware", "Adapter",
-                              "S3 ViRGE/DX 86C375",
-                              V9X_HARDWARE_INFO_PATH);
-#endif
-    WritePrivateProfileString("Velocity9xHardware", "VendorId", "5333",
-                              V9X_HARDWARE_INFO_PATH);
-#ifdef V9X_TARGET_S3_TRIO64
-    WritePrivateProfileString("Velocity9xHardware", "DeviceId", "8811",
-                              V9X_HARDWARE_INFO_PATH);
-#else
-    WritePrivateProfileString("Velocity9xHardware", "DeviceId", "8A01",
-                              V9X_HARDWARE_INFO_PATH);
-#endif
-    WritePrivateProfileString("Velocity9xHardware", "ClockDetector",
-                              "s3-virge-pll-v1",
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "ModeSwitching",
-                              "live-any-depth",
-                              V9X_HARDWARE_INFO_PATH);
-    /* What the DirectDraw HAL actually executes on the engine. Both S3
-     * targets do bounded solid fills and screen-to-screen copies; only the
-     * ViRGE advertises Direct3D. */
-    WritePrivateProfileString("Velocity9xHardware", "Acceleration",
-                              "directdraw-fill-blt",
-                              V9X_HARDWARE_INFO_PATH);
-#ifdef V9X_TARGET_S3_TRIO64
-    WritePrivateProfileString("Velocity9xHardware", "Direct3D",
-                              "not-advertised",
-                              V9X_HARDWARE_INFO_PATH);
-#else
-    WritePrivateProfileString("Velocity9xHardware", "Direct3D",
-                              "hardware-s3d",
-                              V9X_HARDWARE_INFO_PATH);
-#endif
-    {
-        DWORD memory_bytes = v9x_s3_detect_video_memory();
-
-        if (memory_bytes != 0ul) {
-            v9x_format_u32(number, memory_bytes);
-            WritePrivateProfileString("Velocity9xHardware",
-                                      "VideoMemoryBytes", number,
-                                      V9X_HARDWARE_INFO_PATH);
-            WritePrivateProfileString("Velocity9xHardware",
-                                      "VideoMemoryStatus", "valid",
-                                      V9X_HARDWARE_INFO_PATH);
-        } else {
-            WritePrivateProfileString("Velocity9xHardware",
-                                      "VideoMemoryStatus", "unavailable",
-                                      V9X_HARDWARE_INFO_PATH);
-        }
-    }
-
-    status = v9x_s3_virge_decode_clock_pll(sr10, sr11, &clocks);
-    if (status != V9X_STATUS_OK) {
-        WritePrivateProfileString("Velocity9xHardware", "ClockStatus",
-                                  "unavailable",
-                                  V9X_HARDWARE_INFO_PATH);
+    if (v9x_hw16.publish_diagnostics == 0 || device == 0) {
         return;
     }
-    WritePrivateProfileString("Velocity9xHardware", "ClockStatus", "valid",
+    WritePrivateProfileString("Velocity9xHardware", 0, 0,
                               V9X_HARDWARE_INFO_PATH);
-    v9x_format_u32(number, clocks.core_clock_khz);
-    WritePrivateProfileString("Velocity9xHardware", "CoreClockKHz", number,
-                              V9X_HARDWARE_INFO_PATH);
-    v9x_format_u32(number, clocks.memory_clock_khz);
-    WritePrivateProfileString("Velocity9xHardware", "MemoryClockKHz", number,
-                              V9X_HARDWARE_INFO_PATH);
-    WritePrivateProfileString("Velocity9xHardware", "CoreClockRelation",
-                              (clocks.flags & V9X_CLOCK_CORE_SHARED_MCLK) != 0u
-                                  ? "shared-memory-clock" : "independent",
-                              V9X_HARDWARE_INFO_PATH);
-#endif
+    v9x_hw16.publish_diagnostics(device, v9x_write_hardware_info);
 }
 
 void v9x_serial_write(const char FAR *message)
@@ -432,7 +272,7 @@ static void v9x_serial_write_mode(const char FAR *prefix)
     v9x_serial_write_u16(v9x_selected_mode->bits_per_pixel);
 }
 
-static const V9X_DISPLAY_MODE *v9x_find_mode(WORD width,
+static const V9X_HW16_MODE *v9x_find_mode(WORD width,
                                               WORD height,
                                               WORD bits_per_pixel)
 {
@@ -448,7 +288,7 @@ static const V9X_DISPLAY_MODE *v9x_find_mode(WORD width,
     return 0;
 }
 
-static void v9x_apply_mode(const V9X_DISPLAY_MODE *mode)
+static void v9x_apply_mode(const V9X_HW16_MODE *mode)
 {
     v9x_selected_mode = mode;
     v9x_active_vbe_mode = mode->vbe_mode;
@@ -461,7 +301,7 @@ static void v9x_apply_mode(const V9X_DISPLAY_MODE *mode)
 
 static void v9x_select_requested_mode(void)
 {
-    const V9X_DISPLAY_MODE *requested = 0;
+    const V9X_HW16_MODE *requested = 0;
 
 #if V9X_FORCE_MODE_INDEX >= 0
     requested = &v9x_modes[V9X_FORCE_MODE_INDEX];
@@ -487,8 +327,8 @@ static void v9x_select_requested_mode(void)
     v9x_apply_mode(requested);
 }
 
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
-/* DirectDraw glue accessors (dd16.c). */
+/* DirectDraw glue accessors (dd16.c). A family with no DirectDraw HAL links
+ * the no-op forms, so these calls need no per-target guard here. */
 extern WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset);
 extern void FAR PASCAL V9xDdInvalidate(void);
 
@@ -527,10 +367,26 @@ WORD v9x_dd_active_mode(WORD FAR *width, WORD FAR *height,
     *pitch = v9x_active_mode->pitch;
     return 1u;
 }
-#endif
 
 void v9x_display_boot_log(void)
 {
+    WORD index;
+
+    /* Stamp the family table into the DGROUP variables runtime.asm reads,
+     * before any DDI entry point can run. V9XHARDWAREENABLE is reached only
+     * through Enable, which is long after LibMain. */
+    v9x_pci_count = v9x_hw16.device_count;
+    if (v9x_pci_count > V9X_PCI_ID_LIMIT) {
+        v9x_pci_count = V9X_PCI_ID_LIMIT;
+    }
+    for (index = 0u; index < v9x_pci_count; ++index) {
+        v9x_pci_vendor[index] = v9x_hw16.devices[index]->vendor_id;
+        v9x_pci_device[index] = v9x_hw16.devices[index]->device_id;
+    }
+    v9x_vbe_mode_flags = v9x_hw16.vbe_mode_flags;
+    v9x_map_pages_hi = v9x_hw16.map_pages_hi;
+    v9x_map_pages_lo = v9x_hw16.map_pages_lo;
+    v9x_apply_mode(&v9x_hw16.modes[0]);
     v9x_serial_write("V9X-DRV load build=" V9X_BUILD_ID "\r\n");
     /* Boot-capture evidence shows ring-3 serial writes from LibMain do not
      * normally reach the host log. The INI marker is strong load evidence,
@@ -814,37 +670,19 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     } else {
         v9x_color_table = 0;
     }
-/*
- * The working vmdisp9x minidriver initializes the screen DIBENGINE record
- * explicitly.  That is important for hardware whose BIOS-selected scan-line
- * layout is not reconstructed reliably by CreateDIBPDevice.  Keep the proven
- * S3 path unchanged while making every Matrox surface field auditable.
- */
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-    v9x_driver_pdevice = (V9X_DIB_ENGINE FAR *)device_info;
-    v9x_driver_pdevice->deType = V9X_TYPE_DIBENG;
-    v9x_driver_pdevice->deWidth = v9x_selected_mode->width;
-    v9x_driver_pdevice->deHeight = v9x_selected_mode->height;
-    v9x_driver_pdevice->deWidthBytes = v9x_selected_mode->pitch;
-    v9x_driver_pdevice->dePlanes = 1u;
-    v9x_driver_pdevice->deBitsPixel = v9x_selected_mode->bits_per_pixel;
-    v9x_driver_pdevice->deReserved1 = 0ul;
-    v9x_driver_pdevice->deDeltaScan = v9x_selected_mode->pitch;
-    v9x_driver_pdevice->delpPDevice = 0;
-    v9x_driver_pdevice->deBitsOffset = 0ul;
-    v9x_driver_pdevice->deBitsSelector = v9x_screen_selector;
-    v9x_driver_pdevice->deFlags = pdevice_flags;
-    v9x_driver_pdevice->deVersion = V9X_DE_VERSION;
-    v9x_driver_pdevice->deBitmapInfo = bitmap_info;
-    v9x_driver_pdevice->deBeginAccess = V9xDibBeginAccess;
-    v9x_driver_pdevice->deEndAccess = V9xDibEndAccess;
-    v9x_driver_pdevice->deDriverReserved = 0ul;
-    created = 1ul;
-#else
-    created = V9xCreateDibPDeviceCall(bitmap_info, device_info,
-                                     MAKELP(v9x_screen_selector, 0u),
-                                     pdevice_flags);
-#endif
+    /* A family supplies build_screen_pdevice only when its BIOS-selected
+     * scan-line layout is not reconstructed reliably by CreateDIBPDevice.
+     * The proven S3 path leaves the hook null and uses the DIB Engine. */
+    if (v9x_hw16.build_screen_pdevice != 0) {
+        created = v9x_hw16.build_screen_pdevice(device_info, bitmap_info,
+                                                v9x_selected_mode,
+                                                v9x_screen_selector,
+                                                pdevice_flags);
+    } else {
+        created = V9xCreateDibPDeviceCall(bitmap_info, device_info,
+                                         MAKELP(v9x_screen_selector, 0u),
+                                         pdevice_flags);
+    }
     if (created == 0ul) {
         v9x_boot_trace("fail-create-pdevice");
         v9x_serial_write("V9X-DRV enable-fail stage=create-pdevice\r\n");
@@ -874,7 +712,6 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_serial_write_mode("V9X-DRV enable-ok mode=");
     v9x_serial_write(" lfb-mapped\r\n");
     v9x_publish_hardware_diagnostics();
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     /* A live ReEnable owns a DIBENGINE BeginAccessRect exclusion until the
      * rebuilt PDEVICE has been finalized below. Calling DIBENGINE's SetInfo
      * from inside that exclusion re-enters DIBENG and can fault. The
@@ -883,7 +720,6 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     if (v9x_reenabling == 0u) {
         (void)V9xDdCreateDriverObject(1u);
     }
-#endif
     v9x_boot_trace("enable-ok");
     return 1u;
 }
@@ -914,9 +750,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     v9x_active_mode = 0;
     v9x_driver_pdevice = 0;
     v9x_color_table = 0;
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     V9xDdInvalidate();
-#endif
     V9xVddUnregister();
     V9xHardwareDisable();
     v9x_screen_selector = 0u;
@@ -929,7 +763,7 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
 {
     V9X_DIB_ENGINE FAR *device =
         (V9X_DIB_ENGINE FAR *)destination_device;
-    const V9X_DISPLAY_MODE *previous_mode;
+    const V9X_HW16_MODE *previous_mode;
 
     if (device == 0 || gdi_info == 0 || v9x_enabled == 0u ||
         v9x_active_mode == 0) {
@@ -984,11 +818,9 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         return 0u;
     }
     device->deFlags &= (WORD)~V9X_DE_BUSY;
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     /* PDEVICE reconstruction is complete; it is now safe to call the
      * runtime's SetInfo reset callback. */
     (void)V9xDdCreateDriverObject(1u);
-#endif
     v9x_serial_write_mode("V9X-DRV switch-ok mode=");
     v9x_serial_write("\r\n");
     return 1u;
@@ -998,7 +830,7 @@ WORD __loadds FAR PASCAL ValidateMode(LPVOID display_info)
 {
     V9X_DISPLAY_VALIDATE_MODE FAR *mode =
         (V9X_DISPLAY_VALIDATE_MODE FAR *)display_info;
-    const V9X_DISPLAY_MODE *candidate;
+    const V9X_HW16_MODE *candidate;
 
     if (mode == 0 || mode->size < sizeof(*mode)) {
         return V9X_VALMODE_NO_WRONG_DRIVER;

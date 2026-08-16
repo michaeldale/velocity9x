@@ -54,7 +54,12 @@ $diskCandidates = @($diskNames | ForEach-Object {
 })
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$destination = Join-Path $BackupRoot "Win86SE-pre-velocity9x-$stamp"
+# Name the backup after the profile it actually came from. This was hardcoded
+# to Win86SE, so every profile's backup claimed to be that one - the contents
+# were right and only the label lied, which is the worse failure: it is not
+# visible until someone restores the wrong disk over a working guest.
+$destination = Join-Path $BackupRoot ("{0}-pre-velocity9x-{1}" -f
+    $profileItem.Name, $stamp)
 if (Test-Path -LiteralPath $destination) {
     throw "Backup destination already exists: $destination"
 }

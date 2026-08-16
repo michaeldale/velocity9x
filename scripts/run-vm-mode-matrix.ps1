@@ -3,13 +3,23 @@ param(
     # Path to the remote-agent controller (v9xctl.ps1). Set V9X_AGENT_CTL to
     # avoid passing it on every call; the agent lives outside this repository.
     [string]$ControllerPath = $env:V9X_AGENT_CTL,
+    # Family manifest id. Supplies the guest port, the package to verify
+    # against, and the mode list, so the matrix can address more than the one
+    # guest the controller defaults to.
+    [string]$Family = "s3",
+    # Which chip of the family to run against. A multi-chip family declares one
+    # VM target per chip, and the family is only proven when every one of them
+    # passes from the same binary.
+    [string]$ChipId,
+    # Overrides the resolved guest port.
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0,
     [string]$PackagePath,
     [string]$GuestJob = "C:\V9XREMOTE\JOBS\velocity9x-mode-matrix",
     [string]$ResultsDirectory,
     [ValidateSet("640x480x8", "800x600x8", "1024x768x8",
                  "640x480x16", "800x600x16", "1024x768x16")]
-    [string[]]$Mode = @("640x480x8", "800x600x8", "1024x768x8",
-                        "640x480x16", "800x600x16", "1024x768x16"),
+    [string[]]$Mode,
     [ValidateRange(30, 600)]
     [int]$BootTimeoutSeconds = 180,
     [ValidateRange(1, 10)]
@@ -19,13 +29,28 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+
+$familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id $Family
+if ($familyManifest.Vm.Emulator -eq 'none') {
+    throw ("Family $Family declares no emulator: it is validated on physical " +
+           "hardware only. There is no VM to run the mode matrix against.")
+}
+$vmTarget = Get-V9xFamilyVmTarget -Family $familyManifest -ChipId $ChipId
+if ($Port -eq 0) {
+    $Port = $vmTarget.Port
+}
+if (-not $Mode) {
+    $Mode = @($familyManifest.Vm.Modes)
+}
 if (-not $PackagePath) {
-    $PackagePath = Join-Path $repoRoot "build\vm-probe\ACTIVE"
+    $PackagePath = Join-Path $repoRoot ("build\{0}" -f
+        (Split-Path -Leaf $familyManifest.Build.PackageOutput))
 }
 if (-not $ResultsDirectory) {
     $ResultsDirectory = Join-Path $repoRoot (
-        "build\driver-results\mode-matrix-{0}" -f
-        (Get-Date -Format "yyyyMMdd-HHmmss"))
+        "build\driver-results\mode-matrix-{0}-{1}-{2}" -f $Family,
+        $vmTarget.ChipId, (Get-Date -Format "yyyyMMdd-HHmmss"))
 }
 if (-not $ControllerPath) {
     throw "Specify -ControllerPath (or set V9X_AGENT_CTL) to the remote agent's v9xctl.ps1."
@@ -50,7 +75,7 @@ function Invoke-V9xCtlJson {
     param([string]$Operation, [string[]]$OperationArguments = @())
     $arguments = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-        $ControllerPath, $Operation, "-Json"
+        $ControllerPath, $Operation, "-Json", "-Port", [string]$Port
     ) + $OperationArguments
     $lastFailure = ""
     for ($attempt = 1; $attempt -le 3; ++$attempt) {
@@ -80,12 +105,42 @@ function Invoke-GuestShell {
     Invoke-V9xCtlJson shell @("-ShellCommand", $Command.Replace('"', '\"'))
 }
 
+# Which Services\Class\Display\NNNN key this driver is installed under.
+#
+# It is not always 0001. Each guest carries a key per display driver it has
+# ever hosted, so the index depends on that guest's history - the ViRGE guest's
+# is 0001 and the Trio64 guest's is 0002. Writing the mode to a hardcoded 0001
+# landed on whatever other driver happened to own that key, and the matrix
+# still passed only because the Config\0001 half of the same .reg is what
+# actually takes effect. That is a pass by accident, so the key is resolved
+# from the registry instead.
+function Get-V9xDisplayKeyIndex {
+    $guestExport = "$GuestJob\DISPLAY.REG"
+    $null = Invoke-GuestShell (
+        "REGEDIT /E $guestExport " +
+        "HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display")
+    $local = Join-Path $results "display-class.reg"
+    $null = Invoke-V9xCtlJson get @("-Source", $guestExport, "-Destination", $local)
+    $text = Get-Content -LiteralPath $local -Raw
+
+    $pattern = '(?ms)^\[HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services' +
+               '\\Class\\Display\\(\d{4})\\DEFAULT\](.*?)(?=^\[|\z)'
+    foreach ($match in [regex]::Matches($text, $pattern)) {
+        if ($match.Groups[2].Value -match '(?im)^"drv"\s*=\s*"v9xdisp\.drv"\s*$') {
+            return $match.Groups[1].Value
+        }
+    }
+    throw ("No Services\Class\Display key on the guest names v9xdisp.drv, so " +
+           "the Velocity9x driver is not the installed display driver.")
+}
+
 function New-ModeRegistryFile {
-    param([string]$Name, [int]$Width, [int]$Height, [int]$BitsPerPixel)
+    param([string]$Name, [int]$Width, [int]$Height, [int]$BitsPerPixel,
+          [string]$DisplayKey)
     $path = Join-Path $results ("mode-{0}.reg" -f $Name)
     $lines = @(
         "REGEDIT4", "",
-        "[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\DEFAULT]",
+        ("[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\{0}\DEFAULT]" -f $DisplayKey),
         ('"Mode"="{0},{1},{2}"' -f $BitsPerPixel, $Width, $Height), "",
         "[HKEY_LOCAL_MACHINE\Config\0001\Display\Settings]",
         '"UpgradeToDefaultMode"=-',
@@ -108,6 +163,9 @@ foreach ($driverFile in @("V9XDISP.DRV", "V9XMINI.VXD")) {
         throw "Installed $driverFile does not match the package; activate it before running the matrix."
     }
 }
+# Resolved once, after the DRV check has confirmed this driver is the installed
+# one, and reused for every mode in the run.
+$displayKey = Get-V9xDisplayKeyIndex
 
 $matrix = @()
 for ($pass = 1; $pass -le $Repeat; ++$pass) {
@@ -120,7 +178,7 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $bits = [int]$Matches[3]
     $modeResults = Join-Path (Join-Path $results "pass-$pass") $name
     New-Item -ItemType Directory -Force -Path $modeResults | Out-Null
-    $regFile = New-ModeRegistryFile $name $width $height $bits
+    $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
     $null = Invoke-V9xCtlJson put @(
         "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
     $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
@@ -134,8 +192,16 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $desktop = Invoke-V9xCtlJson wait-desktop @(
         "-WaitSeconds", [string]$BootTimeoutSeconds)
     $info = Invoke-V9xCtlJson info
-    if ($info.ScreenWidth -ne $width -or $info.ScreenHeight -ne $height -or
-        $info.BitsPerPixel -ne $bits) {
+    if ($info.ScreenWidth -ne $width -or $info.ScreenHeight -ne $height) {
+        throw ("Mode {0} fell back to {1}x{2}." -f $name,
+               $info.ScreenWidth, $info.ScreenHeight)
+    }
+    # Remote agent 0.5.2 reports BitsPerPixel 0 against this driver while
+    # returning the correct value against the stock S3 driver, so it is not a
+    # trustworthy depth check. Depth is verified below from V9XGDI.INI, which
+    # the guest-side test reads with GetDeviceCaps and which has always
+    # reported the true depth. A non-zero disagreement is still a failure.
+    if ($info.BitsPerPixel -ne 0 -and $info.BitsPerPixel -ne $bits) {
         throw ("Mode {0} fell back to {1}x{2}x{3}." -f $name,
                $info.ScreenWidth, $info.ScreenHeight, $info.BitsPerPixel)
     }
@@ -206,6 +272,11 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
 
 $summary = [pscustomobject]@{
     Success = $true
+    Family = $Family
+    ChipId = $vmTarget.ChipId
+    Profile = $vmTarget.Profile
+    Port = $Port
+    DisplayKey = $displayKey
     PackagePath = [IO.Path]::GetFullPath($PackagePath)
     GuestJob = $GuestJob
     Repeat = $Repeat

@@ -14,6 +14,20 @@ EXTRN _v9x_active_vbe_mode:WORD
 EXTRN _v9x_active_visible_bytes:DWORD
 EXTRN _v9x_active_width:WORD
 EXTRN _v9x_active_pitch:WORD
+; Stamped from the family's v9x_hw16 table at load time (ddi.c). Keeping the
+; PCI identity, the VBE mode-set flags and the aperture size out of the
+; instruction stream is what lets one binary serve more than one card.
+EXTRN _v9x_pci_vendor:WORD
+EXTRN _v9x_pci_device:WORD
+EXTRN _v9x_pci_count:WORD
+EXTRN _v9x_pci_match:WORD
+EXTRN _v9x_vbe_mode_flags:WORD
+EXTRN _v9x_map_pages_hi:WORD
+EXTRN _v9x_map_pages_lo:WORD
+; Shared with enable16.c: it owns stages 1-3, 8 and 9 and V9XMAPAPERTURE owns
+; 4-7, so the numbered sequence stays one variable.
+EXTRN _v9x_hardware_stage_code:WORD
+EXTRN _v9x_map_physical_base:DWORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -421,73 +435,38 @@ V9xVddUnregisterDone:
     retf
 V9XVDDUNREGISTER ENDP
 
-V9xSetVbeMode PROC NEAR
-    mov     ax, 4f02h
-    mov     bx, _v9x_active_vbe_mode
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    ; Request the advertised linear framebuffer. Unlike the S3 path, do not
-    ; preserve the previous mode's framebuffer/display origin: the physical
-    ; Millennium II BIOS must establish a fresh origin at BAR0 offset zero.
-    or      bx, 4000h
-ELSE
-    ; The Windows 98 S3 ViRGE sample uses the S3/VBE no-clear flag for these
-    ; modes. It only requests the generic VBE linear-framebuffer bit on GX2,
-    ; not on the 86C375 ViRGE/DX targeted here.
-    or      bx, 8000h
-ENDIF
-    int     10h
-    cmp     ax, 004fh
-    jne     short V9xSetVbeModeFailed
-    mov     ax, 1
-    ret
-V9xSetVbeModeFailed:
-    xor     ax, ax
-    ret
-V9xSetVbeMode ENDP
-
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-V9xSetMatroxScanLinePitch PROC NEAR
-    ; VBE 4F06h subfunction 00h sets the logical scan-line length in pixels.
-    ; Force the packed pitch selected by the audited mode table. Reject a BIOS
-    ; that silently selects a different stride.
-    mov     ax, 4f06h
-    xor     bx, bx
-    mov     cx, _v9x_active_width
-    int     10h
-    cmp     ax, 004fh
-    jne     short V9xSetMatroxScanLinePitchFailed
-    cmp     bx, _v9x_active_pitch
-    jne     short V9xSetMatroxScanLinePitchFailed
-    mov     ax, 1
-    ret
-V9xSetMatroxScanLinePitchFailed:
-    xor     ax, ax
-    ret
-V9xSetMatroxScanLinePitch ENDP
-ENDIF
-
 V9xFindPciDevice PROC NEAR
+    push    di
+    xor     di, di
+V9xFindPciDeviceNext:
+    mov     ax, _v9x_pci_count
+    shl     ax, 1
+    cmp     di, ax
+    jae     short V9xFindPciDeviceFailed
+    mov     cx, _v9x_pci_device[di]
+    mov     dx, _v9x_pci_vendor[di]
     mov     ax, 0b102h
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    mov     cx, 0051bh
-    mov     dx, 0102bh
-ELSE
-IFDEF V9X_TARGET_S3_TRIO64
-    mov     cx, 08811h
-    mov     dx, 05333h
-ELSE
-    mov     cx, 08a01h
-    mov     dx, 05333h
-ENDIF
-ENDIF
     xor     si, si
     int     1ah
-    jc      short V9xFindPciDeviceFailed
+    jc      short V9xFindPciDeviceTryNext
     or      ah, ah
-    jne     short V9xFindPciDeviceFailed
+    je      short V9xFindPciDeviceFound
+V9xFindPciDeviceTryNext:
+    add     di, 2
+    jmp     short V9xFindPciDeviceNext
+V9xFindPciDeviceFound:
+    ; Record which entry answered. DI is the byte offset into the parallel
+    ; vendor/device arrays, so the index is DI/2. A family with more than one
+    ; chip needs this to know whose hooks to call; a single-chip family lands
+    ; on 0 and behaves exactly as before.
+    shr     di, 1
+    mov     _v9x_pci_match, di
+    pop     di
     mov     ax, 1
     ret
 V9xFindPciDeviceFailed:
+    mov     _v9x_pci_match, 0FFFFh
+    pop     di
     xor     ax, ax
     ret
 V9xFindPciDevice ENDP
@@ -506,130 +485,20 @@ V9XHARDWAREPRESENT PROC FAR
     retf
 V9XHARDWAREPRESENT ENDP
 
-IFNDEF V9X_TARGET_MATROX_MILLENNIUM2
-V9xReadS3Aperture PROC NEAR
-    mov     dx, 03d4h
-    mov     ax, 4838h
-    out     dx, ax
-    mov     ax, 0a039h
-    out     dx, ax
-
-    mov     al, 59h
-    out     dx, al
-    inc     dx
-    in      al, dx
-    mov     bh, al
-    dec     dx
-    mov     al, 5ah
-    out     dx, al
-    inc     dx
-    in      al, dx
-    mov     bl, al
-
-    xor     eax, eax
-    mov     ax, bx
-    shl     eax, 16
-    cmp     eax, 01000000h
-    jb      short V9xReadS3ApertureFailed
-    cmp     eax, 0ffc00000h
-    ja      short V9xReadS3ApertureFailed
-    ret
-V9xReadS3ApertureFailed:
-    xor     eax, eax
-    ret
-V9xReadS3Aperture ENDP
-ENDIF
-
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-V9xReadMatroxAperture PROC NEAR
-    ; PCI BIOS B102h leaves the selected bus/device-function in BH/BL. BAR0
-    ; (configuration offset 10h) is MGABASE2, the direct framebuffer aperture.
-    call    V9xFindPciDevice
-    or      ax, ax
-    jz      short V9xReadMatroxApertureFailed
-    mov     ax, 0b10ah
-    mov     di, 0010h
-    int     1ah
-    jc      short V9xReadMatroxApertureFailed
-    or      ah, ah
-    jne     short V9xReadMatroxApertureFailed
-    test    cl, 1
-    jnz     short V9xReadMatroxApertureFailed
-    mov     eax, ecx
-    and     eax, 0fffffff0h
-    cmp     eax, 01000000h
-    jb      short V9xReadMatroxApertureFailed
-    cmp     eax, 0fe000000h
-    ja      short V9xReadMatroxApertureFailed
-    test    eax, 00ffffffh
-    jnz     short V9xReadMatroxApertureFailed
-    ret
-V9xReadMatroxApertureFailed:
-    xor     eax, eax
-    ret
-V9xReadMatroxAperture ENDP
-
-ENDIF
-
-IFNDEF V9X_TARGET_MATROX_MILLENNIUM2
-V9xEnableS3LinearAperture PROC NEAR
-    ; Unlock the S3 system-extension registers, select a 4-MiB aperture in
-    ; CR58[1:0], and explicitly enable linear addressing in CR58[4]. This is
-    ; the sequence used by the Windows 98 S3 display sample after 4F02h.
-    mov     dx, 03d4h
-    mov     ax, 4838h
-    out     dx, ax
-    mov     ax, 0a039h
-    out     dx, ax
-
-    mov     al, 58h
-    out     dx, al
-    inc     dx
-    in      al, dx
-    and     al, 0fch
-    or      al, 13h
-    out     dx, al
-    in      al, dx
-    and     al, 13h
-    cmp     al, 13h
-    jne     short V9xEnableS3LinearApertureFailed
-
-    ; Enable the S3 graphics engine and the ViRGE "new MMIO" window. Without
-    ; CR40[0] and CR53[3], offsets such as 8504h/A500h address framebuffer
-    ; memory rather than engine registers.
-    dec     dx
-    mov     al, 40h
-    out     dx, al
-    inc     dx
-    in      al, dx
-    or      al, 01h
-    out     dx, al
-    in      al, dx
-    test    al, 01h
-    jz      short V9xEnableS3LinearApertureFailed
-
-IFNDEF V9X_TARGET_S3_TRIO64
-    dec     dx
-    mov     al, 53h
-    out     dx, al
-    inc     dx
-    in      al, dx
-    or      al, 08h
-    out     dx, al
-    in      al, dx
-    test    al, 08h
-    jz      short V9xEnableS3LinearApertureFailed
-ENDIF
-    mov     ax, 1
-    ret
-V9xEnableS3LinearApertureFailed:
-    xor     ax, ax
-    ret
-V9xEnableS3LinearAperture ENDP
-ENDIF
-
-PUBLIC V9XHARDWAREENABLE
-V9XHARDWAREENABLE PROC FAR
+; Read and validate PCI BAR0 of the family's card into the DWORD the caller
+; points at. Returns 1 on success, 0 on refusal.
+;
+; This stays in assembly because PCI BIOS B10Ah returns its result in ECX and
+; the validation masks are 32-bit, while the C is compiled for 8086. It is a
+; chip-agnostic INT 1Ah primitive: which card it reads comes from the family's
+; device list, not from a build-time define.
+;
+; A base below 16 MiB, above FE000000h, or not aligned to 16 MiB is a read
+; that went wrong rather than an unusual slot, and is refused.
+PUBLIC V9XPCIREADBAR0
+V9XPCIREADBAR0 PROC FAR
+    push    bp
+    mov     bp, sp
     push    bx
     push    cx
     push    dx
@@ -637,129 +506,139 @@ V9XHARDWAREENABLE PROC FAR
     push    di
     push    es
 
-    mov     V9xEnableResult, 0
-    mov     V9xHardwareStageCode, 1
     call    V9xFindPciDevice
     or      ax, ax
-    jnz     short V9xHardwareDeviceFound
-    jmp     V9xHardwareEnableDone
-V9xHardwareDeviceFound:
-    mov     V9xHardwareStageCode, 2
-    call    V9xSetVbeMode
-    or      ax, ax
-    jnz     short V9xHardwareModeSet
-    jmp     V9xHardwareEnableDone
-V9xHardwareModeSet:
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    mov     V9xHardwareStageCode, 9
-    call    V9xSetMatroxScanLinePitch
-    or      ax, ax
-    jnz     short V9xHardwarePitchSet
-    jmp     V9xHardwareEnableDone
-V9xHardwarePitchSet:
-ENDIF
-    mov     V9xHardwareStageCode, 3
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    call    V9xReadMatroxAperture
-ELSE
-    call    V9xReadS3Aperture
-ENDIF
-    or      eax, eax
-    jnz     short V9xHardwareBaseValid
-    jmp     V9xHardwareEnableDone
-V9xHardwareBaseValid:
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    ; VBE 4F02h enabled the linear framebuffer. Do not write MGA control
-    ; registers during this conservative first activation.
-    mov     V9xHardwareStageCode, 4
-ELSE
-    mov     V9xHardwareStageCode, 8
-    push    eax
-    call    V9xEnableS3LinearAperture
-    mov     dx, ax
-    pop     eax
-    or      dx, dx
-    jnz     short V9xHardwareApertureEnabled
-    jmp     V9xHardwareEnableDone
-V9xHardwareApertureEnabled:
-    mov     V9xHardwareStageCode, 4
-ENDIF
+    jz      short V9xPciReadBar0Failed
+
+    mov     ax, 0b10ah
+    mov     di, 0010h
+    int     1ah
+    jc      short V9xPciReadBar0Failed
+    or      ah, ah
+    jne     short V9xPciReadBar0Failed
+    ; Bit 0 set marks an I/O BAR; this must be the memory aperture.
+    test    cl, 1
+    jnz     short V9xPciReadBar0Failed
+
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadBar0Failed
+    cmp     eax, 0fe000000h
+    ja      short V9xPciReadBar0Failed
+    test    eax, 00ffffffh
+    jnz     short V9xPciReadBar0Failed
+
+    les     bx, dword ptr 6[bp]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadBar0Done
+
+V9xPciReadBar0Failed:
+    xor     ax, ax
+V9xPciReadBar0Done:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADBAR0 ENDP
+
+; Map the aperture in _v9x_map_physical_base and return its selector in AX,
+; or 0 on failure. Stages 4 to 7 of the enable sequence.
+;
+; Reuse is deliberate: if a selector is already live and the physical base has
+; not moved, the same selector is returned. The DIB Engine caches this value
+; inside the PDEVICE it builds and never reacquires it, so handing back a
+; different one leaves the engine writing through a stale descriptor. See
+; docs/issues/2026-08-14-hellbender-dibeng-gpf.md.
+PUBLIC V9XMAPAPERTURE
+V9XMAPAPERTURE PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+
+    mov     V9xEnableResult, 0
+    mov     eax, _v9x_map_physical_base
 
     cmp     V9xScreenSelector, 0
-    je      short V9xHardwareAllocate
+    je      short V9xMapAllocate
     cmp     eax, V9xPhysicalBase
-    je      short V9xHardwareReuse
-    jmp     V9xHardwareEnableDone
-V9xHardwareReuse:
-    mov     V9xHardwareStageCode, 0
+    je      short V9xMapReuse
+    ; A live selector against a moved aperture cannot be reconciled here.
+    jmp     V9xMapDone
+V9xMapReuse:
+    mov     _v9x_hardware_stage_code, 0
     mov     ax, V9xScreenSelector
     mov     V9xEnableResult, ax
-    jmp     V9xHardwareEnableDone
+    jmp     V9xMapDone
 
-V9xHardwareAllocate:
+V9xMapAllocate:
     mov     V9xPhysicalBase, eax
     xor     ax, ax
     mov     cx, 1
     int     31h
-    jnc     short V9xHardwareSelectorAllocated
-    jmp     V9xHardwareMapFailed
-V9xHardwareSelectorAllocated:
-    mov     V9xHardwareStageCode, 5
+    jnc     short V9xMapSelectorAllocated
+    jmp     V9xMapFailed
+V9xMapSelectorAllocated:
+    mov     _v9x_hardware_stage_code, 5
     mov     V9xScreenSelector, ax
 
     mov     eax, V9xPhysicalBase
     mov     ebx, eax
     shr     ebx, 16
     mov     cx, ax
-    ; Map the complete 64-MiB PCI BAR. The first 4 MiB is allocatable VRAM;
-    ; the ViRGE new-MMIO window is at BAR + 16 MiB.
-    mov     si, 03ffh
-    mov     di, 0ffffh
+    mov     si, _v9x_map_pages_hi
+    mov     di, _v9x_map_pages_lo
     mov     ax, 0800h
     int     31h
-    jc      short V9xHardwareFreeSelector
+    jc      short V9xMapFreeSelector
     mov     word ptr V9xLinearAddress, cx
     mov     word ptr V9xLinearAddress+2, bx
-    mov     V9xHardwareStageCode, 6
+    mov     _v9x_hardware_stage_code, 6
 
     mov     bx, V9xScreenSelector
     mov     dx, word ptr V9xLinearAddress
     mov     cx, word ptr V9xLinearAddress+2
     mov     ax, 0007h
     int     31h
-    jc      short V9xHardwareUnmap
-    mov     V9xHardwareStageCode, 7
+    jc      short V9xMapUnmap
+    mov     _v9x_hardware_stage_code, 7
 
     mov     bx, V9xScreenSelector
-    mov     cx, 03ffh
-    mov     dx, 0ffffh
+    mov     cx, _v9x_map_pages_hi
+    mov     dx, _v9x_map_pages_lo
     mov     ax, 0008h
     int     31h
-    jc      short V9xHardwareUnmap
+    jc      short V9xMapUnmap
 
-    mov     V9xHardwareStageCode, 0
+    mov     _v9x_hardware_stage_code, 0
     mov     ax, V9xScreenSelector
     mov     V9xEnableResult, ax
-    jmp     short V9xHardwareEnableDone
+    jmp     short V9xMapDone
 
-V9xHardwareUnmap:
+V9xMapUnmap:
     mov     bx, word ptr V9xLinearAddress+2
     mov     cx, word ptr V9xLinearAddress
     mov     ax, 0801h
     int     31h
     mov     V9xLinearAddress, 0
 
-V9xHardwareFreeSelector:
+V9xMapFreeSelector:
     mov     bx, V9xScreenSelector
     mov     ax, 0001h
     int     31h
     mov     V9xScreenSelector, 0
 
-V9xHardwareMapFailed:
+V9xMapFailed:
     mov     V9xPhysicalBase, 0
 
-V9xHardwareEnableDone:
-    pop     es
+V9xMapDone:
     pop     di
     pop     si
     pop     dx
@@ -767,34 +646,7 @@ V9xHardwareEnableDone:
     pop     bx
     mov     ax, V9xEnableResult
     retf
-V9XHARDWAREENABLE ENDP
-
-PUBLIC V9XHARDWARESTAGE
-V9XHARDWARESTAGE PROC FAR
-    mov     ax, V9xHardwareStageCode
-    retf
-V9XHARDWARESTAGE ENDP
-
-PUBLIC V9XHARDWARERESET
-V9XHARDWARERESET PROC FAR
-    push    bx
-    call    V9xSetVbeMode
-IFDEF V9X_TARGET_MATROX_MILLENNIUM2
-    or      ax, ax
-    jz      short V9xHardwareResetDone
-    call    V9xSetMatroxScanLinePitch
-    or      ax, ax
-    jz      short V9xHardwareResetDone
-V9xHardwareResetDone:
-ELSE
-    or      ax, ax
-    jz      short V9xHardwareResetDone
-    call    V9xEnableS3LinearAperture
-V9xHardwareResetDone:
-ENDIF
-    pop     bx
-    retf
-V9XHARDWARERESET ENDP
+V9XMAPAPERTURE ENDP
 
 PUBLIC V9XHARDWAREBASE
 V9XHARDWAREBASE PROC FAR
