@@ -10,6 +10,14 @@
 
 $script:V9xFamilySchemaVersion = 1
 
+# The engine vocabulary, spelled without the V9X_DD_ENGINE_TYPE_ /
+# V9X_DD_ENGINE_CAP_ prefix that include\velocity9x\engine_abi.h gives it. The
+# generated host family matrix pastes the prefix back on, so a name that is not
+# in this list would become a compile error rather than a silent zero - but
+# catching it here names the manifest and the chip instead.
+$script:V9xEngineTypes = @('NONE', 'S3_VIRGE_DX', 'S3_TRIO64')
+$script:V9xEngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
+
 function Get-V9xFamilyRoot {
     param([Parameter(Mandatory = $true)][string]$RepoRoot)
     Join-Path $RepoRoot "packaging\families"
@@ -69,7 +77,30 @@ function Test-V9xFamilyManifest {
     }
     foreach ($chip in $chips) {
         Assert-V9xFamilyKeys -Table $chip -Context "Family $Id chip" -Required @(
-            'Id', 'Name', 'VendorId', 'DeviceId', 'DeviceDesc', 'Modes', 'Audit')
+            'Id', 'Name', 'VendorId', 'DeviceId', 'DeviceDesc', 'Modes', 'Audit',
+            'EngineType', 'EngineCaps', 'VideoMemoryBytes')
+        if ($chip.EngineType -notin $script:V9xEngineTypes) {
+            throw ("Family $Id chip $($chip.Id) declares unknown EngineType " +
+                   "'$($chip.EngineType)'. Known: " +
+                   ($script:V9xEngineTypes -join ', '))
+        }
+        foreach ($cap in @($chip.EngineCaps)) {
+            if ($cap -notin $script:V9xEngineCaps) {
+                throw ("Family $Id chip $($chip.Id) declares unknown EngineCap " +
+                       "'$cap'. Known: " + ($script:V9xEngineCaps -join ', '))
+            }
+        }
+        # A chip with no engine cannot have engine capabilities. This is the
+        # rule the 32-bit HAL relies on: it resolves no ops table for
+        # V9X_DD_ENGINE_TYPE_NONE, so anything the manifest claimed there would
+        # be advertised and then never served.
+        if ($chip.EngineType -eq 'NONE' -and @($chip.EngineCaps).Count -ne 0) {
+            throw ("Family $Id chip $($chip.Id) has EngineType NONE but claims " +
+                   "capabilities: $(@($chip.EngineCaps) -join ', ').")
+        }
+        if ([uint32]$chip.VideoMemoryBytes -eq 0) {
+            throw "Family $Id chip $($chip.Id) declares no VideoMemoryBytes."
+        }
         foreach ($field in @('VendorId', 'DeviceId')) {
             if ($chip.$field -notmatch '^[0-9A-F]{4}$') {
                 throw ("Family $Id chip $($chip.Id) has a non-canonical $field " +

@@ -52,6 +52,7 @@ its MODES capability, and its instruction signatures.
     MapSymbols = @('v9x_virge_device')
     EngineType = 'S3_VIRGE_DX'       # V9X_DD_ENGINE_TYPE_* without the prefix
     EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
+    VideoMemoryBytes = 4194304       # the VRAM Modes is declared against
     Audit = @{ Required = @('mov\s+ax,53H'); Forbidden = @() }
 }
 ```
@@ -62,7 +63,14 @@ image-wide signature check can no longer tell their code apart. Declare it for
 every chip in a family or for none - a family that declares it for some would
 audit those and silently skip the rest. `EngineType` and `EngineCaps` document
 what the chip's `fill_engine_descriptor` hook publishes; they are the per-chip
-values the 16-bit caps clamp narrows DDRAW's view from.
+values the 16-bit caps clamp narrows DDRAW's view from. A chip declaring
+`EngineType = 'NONE'` may declare no capabilities: the 32-bit HAL resolves no
+ops table for that type, so anything claimed there would be advertised and then
+never served.
+
+`VideoMemoryBytes` is the VRAM `Modes` is declared against. It is what the host
+family-matrix test binds before asking the backend to lay out each advertised
+mode, so it is the number that decides whether a mode list is honest.
 
 `Modes` is the chip's capability, not the driver's mode table. The INF
 generator orders it by depth, width, height; `ddi.c`'s table has its own order
@@ -182,7 +190,27 @@ family is green only when every target passes from the same package.
 
 1. Create `packaging\families\<id>\family.psd1`.
 2. Run `scripts\check-tree.ps1`; fix schema and cross-family errors.
-3. Build it: `scripts\build-active-package.ps1 -Family <id>`.
-4. The audit will report any signature that the manifest claims but the
+3. Run `scripts\build-host.ps1`. It regenerates `build\host\v9x_family_matrix.h`
+   from every manifest and runs the family-matrix tests, which will refuse a
+   chip the backend registry does not resolve, a chip that shares a backend
+   with another family, an engine capability declared against no engine, and a
+   mode the backend cannot lay out in the declared VRAM. This is the cheapest
+   feedback in the sequence — no emulator, no Windows.
+4. Build it: `scripts\build-active-package.ps1 -Family <id>`.
+5. The audit will report any signature that the manifest claims but the
    binary does not produce, and vice versa.
-5. Add the manifest path to `check-tree.ps1`'s required-file list.
+6. Add the manifest path to `check-tree.ps1`'s required-file list.
+
+## The generated family matrix
+
+`build-host.ps1` writes `build\host\v9x_family_matrix.h` from the manifests and
+compiles `tests\host\test_family_matrix.c` against it. The point is that the C
+side restates parts of the manifest by hand — the backend registry dispatches
+on literal PCI ids, and each backend decides for itself which modes it can lay
+out — and nothing else makes the two agree.
+
+The mode check runs one way only, deliberately. `validate_mode` is a layout
+calculator bounded by VRAM, not a whitelist, so it cannot be asserted to accept
+*only* the advertised modes; it will lay out plenty no INF mentions. What it is
+held to is the direction that matters: every advertised mode must be servable,
+and a mode that does not fit the declared VRAM must be refused.

@@ -27,6 +27,7 @@
             # every blit falls to the CPU path.
             EngineType = 'NONE'
             EngineCaps = @()
+            VideoMemoryBytes = 4194304
 
             # The 8-bpp build is single-mode by construction; the 16-bpp build
             # carries the three-mode table. Both are forced-mode builds, so the

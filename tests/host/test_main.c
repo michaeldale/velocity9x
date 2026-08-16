@@ -7,6 +7,10 @@
 #include "velocity9x/matrox_millennium2.h"
 #include "velocity9x/s3_virge.h"
 
+/* tests\host\test_family_matrix.c: assertions against the manifest-generated
+ * family matrix. It keeps its own failure count and returns it. */
+unsigned int v9x_run_family_matrix_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -476,10 +480,34 @@ static void test_components_and_log(void)
     CHECK(sink.records[1].argument0 == V9X_COMPONENT_MINIVDD32);
 }
 
+static void append_char(char *buffer, unsigned int capacity,
+                        unsigned int *at, char value)
+{
+    if (*at < capacity) {
+        buffer[(*at)++] = value;
+    }
+}
+
+static void append_decimal(char *buffer, unsigned int capacity,
+                           unsigned int *at, unsigned int value)
+{
+    char digits[12];
+    unsigned int count = 0u;
+
+    do {
+        digits[count++] = (char)('0' + (value % 10u));
+        value /= 10u;
+    } while (value != 0u && count < sizeof(digits));
+    while (count-- != 0u) {
+        append_char(buffer, capacity, at, digits[count]);
+    }
+}
+
 static void test_build_identity(void)
 {
     const struct v9x_build_identity *identity = v9x_get_build_identity();
     char expected[32];
+    unsigned int at;
 
     CHECK(identity != 0);
     CHECK(identity->major == V9X_VERSION_MAJOR);
@@ -493,9 +521,17 @@ static void test_build_identity(void)
      * read only the string while the driver reports only the numbers. Nothing
      * else would notice them drifting apart, so this composes one from the
      * other.
+     *
+     * Built by hand rather than with sprintf: this suite is also compiled by
+     * MSVC at /W4 /WX, which rejects sprintf outright.
      */
-    sprintf(expected, "%u.%u.%u", (unsigned int)V9X_VERSION_MAJOR,
-            (unsigned int)V9X_VERSION_MINOR, (unsigned int)V9X_VERSION_PATCH);
+    at = 0u;
+    append_decimal(expected, sizeof(expected), &at, V9X_VERSION_MAJOR);
+    append_char(expected, sizeof(expected), &at, '.');
+    append_decimal(expected, sizeof(expected), &at, V9X_VERSION_MINOR);
+    append_char(expected, sizeof(expected), &at, '.');
+    append_decimal(expected, sizeof(expected), &at, V9X_VERSION_PATCH);
+    append_char(expected, sizeof(expected), &at, '\0');
     CHECK(strcmp(expected, V9X_VERSION_STRING) == 0);
 }
 
@@ -513,6 +549,7 @@ int main(void)
     test_backend_registry_and_millennium2();
     test_components_and_log();
     test_build_identity();
+    failures += v9x_run_family_matrix_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

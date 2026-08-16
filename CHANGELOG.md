@@ -6,6 +6,31 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Added
+
+- A family matrix generated from the manifests
+  (`scripts/lib/family-matrix.ps1`) and `tests/host/test_family_matrix.c`
+  asserting the C side against it: every declared PCI ID resolves to a backend,
+  chips of one family share that backend and chips of different families do
+  not, undeclared hardware resolves to nothing, and no engine capability is
+  claimed against `EngineType = 'NONE'`. Chips gained a `VideoMemoryBytes` key,
+  and every mode a family's INF advertises must be one its backend can lay out
+  in that VRAM — the first check holding the INF and the driver to the same
+  answer. It needs no emulator and no guest.
+- The mode check runs one direction only, deliberately: `validate_mode` is a
+  VRAM-bounded layout calculator rather than a whitelist, so "accepts exactly
+  the advertised modes" is not a property it has. Advertising something
+  unservable is the failure that matters, and that is what is caught.
+
+### Fixed
+
+- `scripts/build-host-msvc.ps1` had a stale source list — the clock, memory,
+  registry and Matrox modules were missing — so the second-compiler pass failed
+  at the link step on every run and never executed a test. It compiles, links
+  and runs again, now over the same source set as the Watcom pass.
+- The host build joins the driver and HAL compiles in using `-we`, so a warning
+  fails it rather than being reported alongside a successful exit.
+
 ## 0.3.5 - 2026-08-16
 
 The multi-chip restructure through phase 8: one S3 binary serving both chips,

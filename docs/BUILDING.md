@@ -24,8 +24,17 @@ To check the repository structure without any compiler:
 ./scripts/build-host.ps1
 ```
 
-Builds and runs `build/host/v9x-host-tests.exe`. For an independent set of
-warnings, the same suite can be built with MSVC at `/W4 /WX`:
+Builds and runs `build/host/v9x-host-tests.exe`. It first regenerates
+`build/host/v9x_family_matrix.h` from every family manifest, so the suite
+includes the family-matrix checks: every declared PCI ID resolves to a backend,
+chips of one family share it and chips of different families do not, undeclared
+hardware resolves to nothing, no capability is claimed against an engine type
+of `NONE`, and every mode a family's INF advertises can be laid out in the VRAM
+that family declares. It needs no emulator and no Windows guest, so it is the
+first thing to run after editing a manifest.
+
+For an independent set of warnings, the same suite can be built with MSVC at
+`/W4 /WX`:
 
 ```powershell
 ./scripts/build-host-msvc.ps1

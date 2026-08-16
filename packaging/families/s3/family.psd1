@@ -32,6 +32,11 @@
             Direct3D = 'hardware-s3d'
             EngineType = 'S3_VIRGE_DX'
             EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
+            # The VRAM the mode list below is declared against. The host
+            # family-matrix test binds this and asserts every declared mode
+            # validates, which is what stops the INF advertising a mode the
+            # card cannot hold.
+            VideoMemoryBytes = 4194304
 
             # Per-chip MODES capability. Both chips take the same list; the
             # order is the order the shared mode table uses and the order GDI
@@ -84,6 +89,7 @@
             Direct3D = 'not-advertised'
             EngineType = 'S3_TRIO64'
             EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK')
+            VideoMemoryBytes = 4194304
 
             Modes = @(
                 @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }

@@ -36,6 +36,12 @@ if (-not $compiler) {
 }
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+# The host tests assert against a matrix generated from the family
+# manifests; see scripts\lib\family-matrix.ps1 for why.
+. (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
+$null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
+
 $executable = Join-Path $outputDir "v9x-host-tests.exe"
 $sourceNames = @(
     "src\common\build.c",
@@ -49,14 +55,20 @@ $sourceNames = @(
     "src\chipsets\matrox\millennium2\mga2_backend.c",
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
+    "tests\host\test_family_matrix.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })
 $arguments = @(
     "-bt=nt",
     "-zq",
+    # -wx is the warning level; -we is what makes a warning fail the build.
+    # Both are set on the driver and HAL compiles, so the host build matches.
     "-wx",
+    "-we",
     "-i=$(Join-Path $repoRoot 'include')",
+    # The generated family matrix lives beside the test executable.
+    "-i=$outputDir",
     "-dV9X_BUILD_ID=`"$BuildId`"",
     "-fe=$executable"
 ) + $sources

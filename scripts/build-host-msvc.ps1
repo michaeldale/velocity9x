@@ -55,15 +55,29 @@ if (-not $cl) {
 }
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+# Generated into this pass's own output directory so it never compiles against
+# a header the Watcom build happened to leave behind.
+. (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
+$null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
+
 $executable = Join-Path $outputDir "v9x-host-tests.exe"
+# Must stay the same set build-host.ps1 compiles. It had drifted: the clock,
+# memory, registry and Matrox modules were missing, so this pass had stopped
+# linking - every run failed at the link step and never ran a test.
 $sourceNames = @(
     "src\common\build.c",
+    "src\common\backend_registry.c",
     "src\common\mode.c",
     "src\common\log.c",
     "src\common\resources.c",
     "src\chipsets\s3\virge\backend.c",
+    "src\chipsets\s3\virge\clocks.c",
+    "src\chipsets\s3\virge\memory.c",
+    "src\chipsets\matrox\millennium2\mga2_backend.c",
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
+    "tests\host\test_family_matrix.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })
@@ -72,6 +86,7 @@ $arguments = @(
     "/W4",
     "/WX",
     "/I$(Join-Path $repoRoot 'include')",
+    "/I$outputDir",
     "/DV9X_BUILD_ID=\`"$BuildId\`"",
     "/Fe$executable"
 ) + $sources
