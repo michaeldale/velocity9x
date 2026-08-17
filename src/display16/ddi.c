@@ -44,6 +44,10 @@ extern void FAR PASCAL V9xDibEndAccess(void);
 extern DWORD FAR PASCAL V9xDibSetPaletteCall(WORD, WORD, LPVOID, LPVOID);
 extern DWORD FAR PASCAL V9xDibSetPaletteTranslateCall(LPVOID, LPVOID);
 extern WORD FAR PASCAL V9xHardwarePresent(void);
+/* enable16.c. V9xHardwarePresent plus the family's view of a miss: a tier-0
+ * family accepts a card its device list does not name. Both call sites below
+ * use this rather than the raw scan so they cannot disagree. */
+extern WORD v9x_hardware_acceptable(void);
 extern WORD FAR PASCAL V9xHardwareEnable(void);
 extern WORD FAR PASCAL V9xHardwareStage(void);
 extern WORD FAR PASCAL V9xHardwareReset(void);
@@ -610,7 +614,7 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         return 0u;
     }
     v9x_boot_trace("enable-start");
-    if (V9xHardwarePresent() == 0u) {
+    if (v9x_hardware_acceptable() == 0u) {
         v9x_boot_trace("fail-hardware-present");
         v9x_serial_write("V9X-DRV enable-fail stage=device-id\r\n");
         return 0u;
@@ -858,7 +862,7 @@ WORD __loadds FAR PASCAL ValidateMode(LPVOID display_info)
     if (mode == 0 || mode->size < sizeof(*mode)) {
         return V9X_VALMODE_NO_WRONG_DRIVER;
     }
-    if (V9xHardwarePresent() == 0u) {
+    if (v9x_hardware_acceptable() == 0u) {
         return V9X_VALMODE_NO_WRONG_DRIVER;
     }
     candidate = v9x_find_mode((WORD)mode->width, (WORD)mode->height,

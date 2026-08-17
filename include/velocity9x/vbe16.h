@@ -16,6 +16,19 @@
 
 #include "velocity9x/vbe_parse.h"
 
+/*
+ * Why the last buffered call gave up. A tier-0 family runs on cards nobody has
+ * tested, so "the aperture step refused" is not enough to act on: a BIOS
+ * reporting an unusable stride and a BIOS call that never completed are
+ * different problems, and only one of them is this driver's fault.
+ */
+#define V9X_VBE_FAIL_NONE          0u
+#define V9X_VBE_FAIL_DOS_BUFFER    1u  /* no real-mode buffer to hand the BIOS */
+#define V9X_VBE_FAIL_DPMI_CALL     2u  /* the simulated interrupt did not run */
+#define V9X_VBE_FAIL_BIOS_STATUS   3u  /* the BIOS answered, but not 004Fh */
+#define V9X_VBE_FAIL_MODE_REJECTED 4u  /* answered, but not a mode we can drive */
+extern unsigned short v9x_vbe_last_failure;
+
 /* 4F02h. mode_flags carries the family's no-clear/linear bits. Non-zero on
  * success. */
 unsigned short v9x_vbe_set_mode(unsigned short mode, unsigned short mode_flags);

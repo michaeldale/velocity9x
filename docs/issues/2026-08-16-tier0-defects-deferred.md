@@ -122,9 +122,38 @@ Code cost: **+34 bytes** on `s3`, `matrox-m2` and `ati` - the shared
 carries the diagnostics check and its two strings. Inside the 2 KiB per-step
 budget.
 
-**Not yet re-measured on hardware.** The original failure was observed on the
-86Box Mach64 VT2 guest; the fix has been built and audited for all four families
-but not re-run there. That re-run is the outstanding verification.
+**Re-measured on the Mach64 VT2 guest, and it took three goes.** Worth
+recording, because each failure was a different allowlist or mechanism and only
+the hardware showed them:
+
+1. `enable16.c` stage 1 alone was not enough. `ddi.c` has **two more** calls to
+   `V9xHardwarePresent` - its own check at the Enable entry point, which is the
+   one that produced the original `fail-hardware-present`, and `ValidateMode`,
+   which rejected every mode and made `V9X16LD.EXE` exit 4. All three now share
+   `v9x_hardware_acceptable()`, because a driver that enables for a card must
+   also validate modes for it.
+2. With that fixed the guest reached **stage 3** rather than stage 1 - the PCI
+   veto was gone - but refused with `fail-hardware-aperture`.
+3. The cause was not the card. The DOS VBE inventory tool
+   (`scripts\build-vbe-inventory.ps1`) run in the guest reports a perfectly good
+   BIOS: VESA 2.0, 4 MiB, and for mode 0101h attributes `00BB`, 640x480x8,
+   memory model 4, **BytesPerScanLine 640** - exactly the family table's pitch -
+   and PhysBasePtr `E6000000`. Every check in `vbe_parse.c` passes on that data.
+
+The failure was the **mechanism**: `VbeDetail=4f01-no-dos-buffer`, meaning
+DPMI 0100h returned failure. Windows' DPMI host does not serve that function in
+this context, which is what Microsoft's own guidance says to expect - Windows
+manages DOS memory and applications are told to use `GlobalDosAlloc`. The
+decision record had already named this as the fallback if the DPMI path
+misbehaved, so the allocation moved into `enable16.c`, one of the six files
+`check-tree` allows `<windows.h>`. DPMI 0300h, the simulated interrupt itself,
+the host does support and is unchanged.
+
+That is also why `VbeDetail` now exists. The stage code is the right
+granularity for the boot-trace contract but the wrong granularity to act on:
+`fail-hardware-aperture` cannot distinguish a BIOS reporting an unusable stride
+from a BIOS call that never ran, and on a tier whose whole purpose is untested
+cards that distinction is the first thing a bug report needs.
 
 The original finding follows.
 
@@ -183,6 +212,41 @@ bug: the script's own scope is `already-associated-driver-only`, and the
 registry association still carried the vbe INF's `MatchingDeviceId` of
 `1234:1111`. Swapping the binary does not re-associate the device. The `ati`
 family has to be installed through its **own** INF.
+
+---
+
+## D4 - tier-0 has no working way to hand the BIOS a buffer
+
+**Open. Measured 2026-08-17 on the `Win98SE-Mach64VT2` guest.**
+
+4F00h and 4F01h take a buffer in ES:DI. The driver runs in 16-bit protected
+mode, so that buffer has to be real-mode addressable and the call has to be
+made through the DPMI host. Getting the buffer is the unsolved part, and both
+mechanisms tried are measured failures on the same guest:
+
+| Mechanism | Result |
+|---|---|
+| DPMI 0100h (allocate DOS memory block) | Returns failure. `VbeDetail=4f01-no-dos-buffer`, tier-0 refuses at stage 3, Windows falls back to VGA. Consistent with Microsoft telling applications to use GlobalDosAlloc because Windows manages DOS memory itself. |
+| `GlobalDosAlloc` from `enable16.c` | **Fatal exception 0D at 031F:000009DE.** The boot trace never advanced past `Stage=libmain`, so it faulted before Enable reached its own trace point. Guest needed a reboot. |
+
+DPMI 0100h is what is currently wired up. It does not work either, but it fails
+cleanly - refusal, VGA fallback, a boot trace saying why - and a driver that
+refuses is worth a great deal more than one that faults.
+
+**Consequence:** tier-0 is inert on any card that needs 4F01h for its aperture,
+which is every card the tier exists for. D3 is genuinely fixed - the driver now
+reaches stage 3 on a card its family does not name, where before it was vetoed
+at stage 1 - but stage 3 is as far as it gets.
+
+**The likely answer is the mini-VDD.** `V9XMINI.VXD` runs at ring 0, where
+neither the DPMI host nor the Win16 global heap is in the way, and it already
+handles VESA DPMS calls (`MiniVDD_VESASupport`). Doing 4F00h/4F01h there and
+handing the parsed result to the 16-bit side would sidestep the whole problem.
+That is a design change, not a patch, and it should not be attempted by
+guessing at a third allocator on a live guest.
+
+**Do not test the next attempt on a guest without a disk snapshot first.** The
+GlobalDosAlloc attempt cost a bluescreen and a reboot on a VM that was in use.
 
 ## Why these are not ATI bugs
 

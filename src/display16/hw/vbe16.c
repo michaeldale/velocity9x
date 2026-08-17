@@ -35,11 +35,11 @@ unsigned short v9x_vbe_set_mode(unsigned short mode, unsigned short mode_flags)
  * be real DOS memory (DPMI 0100h), and the call has to be made by asking the
  * DPMI host to simulate the interrupt in real mode (DPMI 0300h).
  *
- * DPMI 0100h rather than GlobalDosAlloc because this file sits outside the
- * driver's OS boundary: check-tree.ps1 keeps <windows.h> to six files, and
- * widening that to reach one allocator would trade a real architectural line
- * for nothing. INT 31h through #pragma aux is the idiom the mode set already
- * uses, and needs no 32-bit register either.
+ * The buffer itself comes from enable16.c, which is inside the driver's OS
+ * boundary and can call GlobalDosAlloc. Allocating it here with DPMI 0100h
+ * would have kept this file clear of <windows.h>, and was the first cut - but
+ * that function fails under Windows' DPMI host, measured on an 86Box Mach64
+ * VT2. DPMI 0300h, below, the host does support.
  *
  * Parsing the answers is not here. src\common\vbe_parse.c owns that, because
  * "is this block credible and does it describe the mode we just set" is a
@@ -66,26 +66,6 @@ struct v9x_dpmi_real_regs {
 };
 
 /*
- * DPMI 0100h, allocate a DOS memory block. BX is paragraphs; on success AX is
- * the real-mode segment and DX the protected-mode selector.
- *
- * The carry flag is folded into the result branchlessly - sbb/not/and rather
- * than a jump - so the pragma needs no label: a failed call returns zero, and
- * selector zero is never valid.
- */
-static unsigned long v9x_dpmi_alloc_dos_block(unsigned short paragraphs);
-#pragma aux v9x_dpmi_alloc_dos_block =  \
-    "mov ax,0100h"                      \
-    "int 31h"                           \
-    "sbb cx,cx"                         \
-    "not cx"                            \
-    "and ax,cx"                         \
-    "and dx,cx"                         \
-    parm [bx]                           \
-    value [dx ax]                       \
-    modify [ax bx cx dx]
-
-/*
  * DPMI 0300h, simulate a real-mode interrupt. BL is the interrupt number and
  * BH must be zero, so the caller passes the number as the whole of BX. CX is
  * the count of stack words to copy, which is none. ES:DI addresses the
@@ -108,6 +88,39 @@ static unsigned short v9x_dpmi_simulate_int(
  * is what 4F00h may write, and 32 paragraphs is that. */
 #define V9X_VBE_BLOCK_PARAGRAPHS ((unsigned short)32u)
 
+/*
+ * DPMI 0100h, allocate a DOS memory block. BX is paragraphs; on success AX is
+ * the real-mode segment and DX the protected-mode selector.
+ *
+ * The carry flag is folded into the result branchlessly - sbb/not/and rather
+ * than a jump - so the pragma needs no label: a failed call returns zero, and
+ * selector zero is never valid.
+ *
+ * Known to fail under Windows' DPMI host; see the note in enable16.c. It is
+ * kept because it fails cleanly, and the alternative tried so far did not.
+ */
+static unsigned long v9x_dpmi_alloc_dos_block(unsigned short paragraphs);
+#pragma aux v9x_dpmi_alloc_dos_block =  \
+    "mov ax,0100h"                      \
+    "int 31h"                           \
+    "sbb cx,cx"                         \
+    "not cx"                            \
+    "and ax,cx"                         \
+    "and dx,cx"                         \
+    parm [bx]                           \
+    value [dx ax]                       \
+    modify [ax bx cx dx]
+
+/*
+ * Why the last buffered call gave up, for the boot trace.
+ *
+ * "The aperture step refused" is not a useful thing to read in a bug report
+ * from a card nobody has tested: a BIOS that reports a stride we cannot use is
+ * a different problem from a BIOS call that never completed, and only one of
+ * them is the driver's fault. Values are V9X_VBE_FAIL_*.
+ */
+unsigned short v9x_vbe_last_failure = V9X_VBE_FAIL_NONE;
+
 static v9x_u16 v9x_vbe_block_segment = 0u;
 static v9x_u16 v9x_vbe_block_selector = 0u;
 static struct v9x_dpmi_real_regs __far v9x_vbe_regs;
@@ -127,6 +140,7 @@ static v9x_u16 v9x_vbe_ensure_block(void)
     }
     allocation = v9x_dpmi_alloc_dos_block(V9X_VBE_BLOCK_PARAGRAPHS);
     if (allocation == 0ul) {
+        v9x_vbe_last_failure = V9X_VBE_FAIL_DOS_BUFFER;
         return 0u;
     }
     v9x_vbe_block_segment = (v9x_u16)allocation;
@@ -170,9 +184,14 @@ static v9x_u16 v9x_vbe_buffered_call(v9x_u16 function, v9x_u16 argument)
     /* SS:SP left zero asks the DPMI host to supply the real-mode stack. */
 
     if (v9x_dpmi_simulate_int(0x0010u, &v9x_vbe_regs) == 0u) {
+        v9x_vbe_last_failure = V9X_VBE_FAIL_DPMI_CALL;
         return 0u;
     }
-    return v9x_vbe_regs.eax_lo == 0x004fu ? 1u : 0u;
+    if (v9x_vbe_regs.eax_lo != 0x004fu) {
+        v9x_vbe_last_failure = V9X_VBE_FAIL_BIOS_STATUS;
+        return 0u;
+    }
+    return 1u;
 }
 
 unsigned short v9x_vbe_read_controller_info(
@@ -220,7 +239,11 @@ unsigned short v9x_vbe_read_mode_info(unsigned short mode,
     if (v9x_vbe_buffered_call(0x4f01u, mode) == 0u) {
         return 0u;
     }
-    return v9x_vbe_parse_mode_info(block, out);
+    if (v9x_vbe_parse_mode_info(block, out) == 0u) {
+        v9x_vbe_last_failure = V9X_VBE_FAIL_MODE_REJECTED;
+        return 0u;
+    }
+    return 1u;
 }
 
 /*

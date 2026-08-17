@@ -227,7 +227,11 @@ function Get-V9xFamilyVmTarget {
         [string]$ChipId
     )
 
-    $targets = @($Family.Vm.Targets)
+    # Filter the nulls rather than trusting Count: @($null) has one element in
+    # PowerShell, so a family declaring no Vm.Targets - which a single-chip
+    # family is not required to - would fall through to the per-target branch
+    # and dereference $null. vbe was the first family with none.
+    $targets = @($Family.Vm.Targets | Where-Object { $_ })
     if ($targets.Count -eq 0) {
         return [pscustomobject]@{
             ChipId = @(@($Family.Chips) | ForEach-Object { $_.Id })[0]
@@ -262,7 +266,11 @@ function Get-V9xFamilyVmTarget {
 # Every chip a family's mode matrix has to cover.
 function Get-V9xFamilyVmChipIds {
     param([Parameter(Mandatory = $true)]$Family)
-    $targets = @($Family.Vm.Targets)
+    # Filter the nulls rather than trusting Count: @($null) has one element in
+    # PowerShell, so a family declaring no Vm.Targets - which a single-chip
+    # family is not required to - would fall through to the per-target branch
+    # and dereference $null. vbe was the first family with none.
+    $targets = @($Family.Vm.Targets | Where-Object { $_ })
     if ($targets.Count -eq 0) {
         return @(@(@($Family.Chips) | ForEach-Object { $_.Id })[0])
     }

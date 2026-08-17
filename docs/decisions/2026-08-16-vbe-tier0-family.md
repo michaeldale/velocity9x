@@ -37,14 +37,23 @@ in whatever memory happened to live there. The buffer therefore has to be real
 DOS memory, and the call has to go through the DPMI host's
 simulate-real-mode-interrupt service (0300h).
 
-The block comes from DPMI 0100h rather than `GlobalDosAlloc` because
-`check-tree.ps1` confines `<windows.h>` to six files and `vbe16.c` is not one of
-them. Widening a deliberate architectural boundary to reach one allocator is a
-bad trade, and INT 31h through `#pragma aux` is the idiom the file already uses.
-Windows documentation prefers `GlobalDosAlloc` for applications; if the DPMI
-path turns out to misbehave under a real Windows DPMI host, moving the
-allocation into `enable16.c` (which is inside the boundary) is the fallback, not
-widening the list.
+The block was first allocated with DPMI 0100h, to keep `vbe16.c` clear of the
+OS boundary `check-tree.ps1` confines to six files, with this noted as the
+fallback: "if the DPMI path turns out to misbehave under a real Windows DPMI
+host, moving the allocation into `enable16.c` (which is inside the boundary) is
+the fallback, not widening the list."
+
+**It did misbehave, and that is what happened.** Measured on an 86Box Mach64
+VT2: `VbeDetail=4f01-no-dos-buffer`, DPMI 0100h failing outright against an
+otherwise perfectly good VESA 2.0 BIOS. Windows manages DOS memory itself and
+its DPMI host does not serve 0100h here, which is exactly why Microsoft's
+guidance tells applications to use `GlobalDosAlloc`. `v9x_vbe_dos_buffer()` now
+lives in `enable16.c` and calls it; `vbe16.c` keeps the DPMI 0300h simulated
+interrupt, which the host does support.
+
+The lesson worth keeping: this was the one mechanism in the tier-0 work that no
+host test or audit could exercise, it was flagged as such from the start, and it
+was wrong. Nothing short of running it on a guest would have found it.
 
 The block is allocated once and never freed, matching how the driver already
 treats its framebuffer selector.

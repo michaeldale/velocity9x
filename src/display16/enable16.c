@@ -79,6 +79,32 @@ WORD FAR PASCAL V9xHardwareStage(void)
 }
 
 /*
+ * Non-zero when this family will work with whatever the PCI scan found.
+ *
+ * The scan always runs. It is what records which entry matched, and so which
+ * chip's hooks the rest of the sequence calls; only whether a miss is fatal
+ * depends on the family. A family whose code reads chip registers or a PCI BAR
+ * needs the card to be one it names. A tier-0 family does not: it pokes
+ * nothing, takes its aperture from 4F01h and its size from 4F00h, so the id
+ * told it nothing it uses.
+ *
+ * This exists as one function because three call sites ask the same question -
+ * the Enable entry point and ValidateMode in ddi.c, and the staged sequence
+ * below - and they have to agree. They did not: fixing only the staged
+ * sequence left Enable still refusing at ddi.c's own check, and left
+ * ValidateMode rejecting every mode, which is how GDI ends up told that a
+ * driver loaded fine and then refused everything it offered. Measured on an
+ * ATI Mach64 VT2; see docs\issues\2026-08-16-tier0-defects-deferred.md D3.
+ */
+WORD v9x_hardware_acceptable(void)
+{
+    if (V9xHardwarePresent() != 0u) {
+        return 1u;
+    }
+    return v9x_hw16.pci_match_optional != 0u ? 1u : 0u;
+}
+
+/*
  * Stage 3 for a family with no read_aperture hook: ask the BIOS.
  *
  * This is the tier-0 backend. Nothing here is chip-specific, which is the
@@ -92,6 +118,44 @@ WORD FAR PASCAL V9xHardwareStage(void)
  * boot trace instead; adapting would leave a display that looks broken with
  * no failure recorded anywhere.
  */
+/*
+ * The tier-0 sub-reason, beside the coarse stage code.
+ *
+ * v9x_trace_hardware_failure writes "fail-hardware-aperture" for anything that
+ * refuses here, which is the right granularity for the stage contract the
+ * boot-trace tooling matches on but the wrong granularity to act on: a BIOS
+ * that reports a stride we cannot use is a different problem from a BIOS call
+ * that never ran. Separate key, so neither overwrites the other.
+ */
+static void v9x_vbe_trace(const char FAR *detail)
+{
+    WritePrivateProfileString("Velocity9x", "VbeDetail", detail,
+                              "C:\\V9XBOOT.INI");
+}
+
+/*
+ * A real-mode addressable buffer for the buffered VBE calls, as
+ * (selector << 16) | real-mode segment, or 0.
+ *
+ * UNRESOLVED - and deliberately left refusing rather than guessing again.
+ * Both mechanisms tried so far are measured failures on an 86Box Mach64 VT2:
+ *
+ *   - DPMI 0100h returns failure under Windows' DPMI host, which is what
+ *     Microsoft's guidance implies when it tells applications to use
+ *     GlobalDosAlloc instead. Trace: VbeDetail=4f01-no-dos-buffer.
+ *   - GlobalDosAlloc from this path took the guest down with a fatal
+ *     exception 0D before Enable reached its own trace point, so the driver
+ *     did not merely fail, it faulted.
+ *
+ * DPMI 0100h is what is wired up, because failing cleanly is worth more than
+ * crashing: tier-0 refuses at stage 3, Windows falls back to VGA, and the
+ * boot trace says why. The tier is inert on cards needing 4F01h until this is
+ * solved - most likely by doing the call from the mini-VDD at ring 0, where
+ * neither the DPMI host nor the global heap is in the way.
+ *
+ * See docs\issues\2026-08-16-tier0-defects-deferred.md D4.
+ */
+
 static DWORD v9x_vbe_default_aperture(void)
 {
     struct v9x_vbe_mode_summary mode;
@@ -103,14 +167,23 @@ static DWORD v9x_vbe_default_aperture(void)
     DWORD mapped_bytes;
 
     if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        v9x_vbe_trace("no-mode-selected");
         return 0ul;
     }
     /* The bare mode number: 4F01h describes a mode, not a mode plus the
      * family's linear and no-clear request bits. */
     if (v9x_vbe_read_mode_info(v9x_active_vbe_mode, &mode) == 0u) {
+        switch (v9x_vbe_last_failure) {
+        case V9X_VBE_FAIL_DOS_BUFFER:    v9x_vbe_trace("4f01-no-dos-buffer"); break;
+        case V9X_VBE_FAIL_DPMI_CALL:     v9x_vbe_trace("4f01-dpmi-call"); break;
+        case V9X_VBE_FAIL_BIOS_STATUS:   v9x_vbe_trace("4f01-bios-status"); break;
+        case V9X_VBE_FAIL_MODE_REJECTED: v9x_vbe_trace("4f01-mode-rejected"); break;
+        default:                         v9x_vbe_trace("4f01-failed"); break;
+        }
         return 0ul;
     }
     if (v9x_vbe_mode_matches(&mode, width, height, bpp, pitch) == 0u) {
+        v9x_vbe_trace("stride-disagrees");
         return 0ul;
     }
 
@@ -160,6 +233,7 @@ static DWORD v9x_vbe_default_aperture(void)
         }
     }
 
+    v9x_vbe_trace("ok");
     return mode.phys_base;
 }
 
@@ -175,15 +249,7 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     const V9X_HW16_DEVICE *device;
 
     v9x_hardware_stage_code = 1u;
-    /*
-     * Always call it: this is the scan that records which entry matched, and
-     * so decides whose hooks run below. Only whether a miss is fatal depends
-     * on the family. A tier-0 family reads no chip register and gets its
-     * aperture from the BIOS, so an unrecognised card is not a reason to
-     * refuse - the INF already decided what this driver is claimed to support,
-     * and a second veto here is one a Have-Disk install cannot reach.
-     */
-    if (V9xHardwarePresent() == 0u && v9x_hw16.pci_match_optional == 0u) {
+    if (v9x_hardware_acceptable() == 0u) {
         return 0u;
     }
     /* Read after the present check, not before: that is the call that runs the
