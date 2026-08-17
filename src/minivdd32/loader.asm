@@ -12,12 +12,63 @@ include VMM.INC
 include MINIVDD.INC
 .list
 
+; Private device id, so the 16-bit driver can reach the API below through
+; INT 2Fh AX=1684h - the same mechanism runtime.asm already uses to find the
+; master VDD at id 000Ah.
+;
+; The id is not allocated by anyone: no third-party registry exists to ask, and
+; a collision would hand the driver a foreign VxD's entry point. That is why
+; function 0 is a handshake returning a magic value, and why the 16-bit side
+; refuses to use the entry point until it has seen it. A wrong answer is then a
+; clean refusal instead of a call into a stranger.
+V9XMINI_DEVICE_ID   EQU 4F9Ch
+
+; Handshake reply and API contract version. Bump the version when the meaning
+; of any function changes; the 16-bit side checks it.
+V9XMINI_API_MAGIC   EQU 39583956h          ; 'V9X9' little-endian
+V9XMINI_API_VERSION EQU 0001h
+
+; API functions, in the client's AX.
+V9XMINI_FN_HANDSHAKE EQU 0000h
+V9XMINI_FN_CONTROLLER EQU 0001h
+V9XMINI_FN_MODE_INFO EQU 0002h
+
 Declare_Virtual_Device V9XMINI, 1, 0, MiniVDD_Control, \
-                       Undefined_Device_ID, VDD_Init_Order, , ,
+                       V9XMINI_DEVICE_ID, VDD_Init_Order, , MiniVDD_PM_API,
 
 VxD_LOCKED_DATA_SEG
 include V9XBUILD.INC
 public V9xMiniVddBuildId
+
+; The cached VBE answers.
+;
+; 4F00h and 4F01h describe the adapter and its modes, not the mode currently
+; programmed, so they are static for the life of the machine and are collected
+; once at Device_Init. That is deliberate: it keeps the nested-execution BIOS
+; call in init context, where calling the V86 BIOS is the ordinary idiom, and
+; leaves the API a table lookup that cannot fault a display driver.
+;
+; The mode list is the seven standard VESA numbers every tier-0 family
+; publishes. Parallel arrays rather than a struct: indexing is a shift and an
+; add, and nothing here needs the packing rules.
+V9X_VBE_CACHE_COUNT EQU 7
+V9xVbeModeList  dw 0100h, 0101h, 0103h, 0105h, 0111h, 0114h, 0117h
+V9xVbeValid     dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeAttr      dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeBytes     dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeWidth     dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeHeight    dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeBpp       dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeModel     dw V9X_VBE_CACHE_COUNT dup (0)
+V9xVbeBase      dd V9X_VBE_CACHE_COUNT dup (0)
+
+V9xVbeCtrlValid dw 0
+V9xVbeCtrlVer   dw 0
+V9xVbeCtrl64K   dw 0
+
+; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
+; be had. Allocated at init and never freed.
+V9xVbeBufSeg    dw 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -316,9 +367,300 @@ V9xMini_Vesa_Post_Done:
     ret
 EndProc MiniVDD_VESACallPostProcessing
 
+; Protected-mode API, reached from the 16-bit display driver through
+; INT 2Fh AX=1684h BX=V9XMINI_DEVICE_ID.
+;
+; Entry: EBP = Client_Reg_Struc, client AX = function.
+;
+; Every function is a read of the table collected at init. Nothing here calls
+; the BIOS, allocates, or touches a register of the card: the caller is a
+; display driver part-way through GDI initialisation, and the whole reason the
+; queries happen at init is so that this path cannot do anything that might
+; fault one. An unknown function returns AX=0 rather than failing the call.
+BeginProc MiniVDD_PM_API
+
+    movzx   eax, [ebp.Client_AX]
+
+    cmp     ax, V9XMINI_FN_HANDSHAKE
+    je      short V9xMini_Api_Handshake
+    cmp     ax, V9XMINI_FN_CONTROLLER
+    je      short V9xMini_Api_Controller
+    cmp     ax, V9XMINI_FN_MODE_INFO
+    je      short V9xMini_Api_ModeInfo
+
+    ; Unknown function.
+    mov     [ebp.Client_AX], 0
+    ret
+
+; Out: AX=1, EBX=magic, ECX=contract version.
+V9xMini_Api_Handshake:
+    mov     [ebp.Client_AX], 1
+    mov     [ebp.Client_EBX], V9XMINI_API_MAGIC
+    mov     [ebp.Client_ECX], V9XMINI_API_VERSION
+    ret
+
+; Out: AX=1 when 4F00h answered, EBX=VBE version, ECX=TotalMemory in 64 KiB
+;      blocks. AX=0 when the query failed or never ran.
+V9xMini_Api_Controller:
+    mov     ax, V9xVbeCtrlValid
+    mov     [ebp.Client_AX], ax
+    movzx   eax, V9xVbeCtrlVer
+    mov     [ebp.Client_EBX], eax
+    movzx   eax, V9xVbeCtrl64K
+    mov     [ebp.Client_ECX], eax
+    ret
+
+; In:  client CX = VBE mode number.
+; Out: AX=1 when that mode is in the cache and 4F01h answered for it, and then
+;      EBX = PhysBasePtr
+;      ECX = BytesPerScanLine in the low word, ModeAttributes in the high word
+;      EDX = Width in the low word, Height in the high word
+;      ESI = BitsPerPixel in the low word, MemoryModel in the high word
+;      AX=0 otherwise, with the other registers left alone.
+;
+; The 16-bit side rebuilds its own summary from these and applies the same
+; credibility and stride checks it has always applied, in host-tested C. This
+; hands over facts and keeps the judgement where it can be tested.
+V9xMini_Api_ModeInfo:
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    movzx   ecx, [ebp.Client_CX]
+    xor     edi, edi
+V9xMini_Api_Mode_Next:
+    cmp     edi, V9X_VBE_CACHE_COUNT
+    jae     short V9xMini_Api_Mode_Missing
+    mov     ax, V9xVbeModeList[edi*2]
+    cmp     ax, cx
+    je      short V9xMini_Api_Mode_Found
+    inc     edi
+    jmp     short V9xMini_Api_Mode_Next
+
+V9xMini_Api_Mode_Missing:
+    mov     [ebp.Client_AX], 0
+    jmp     short V9xMini_Api_Mode_Done
+
+V9xMini_Api_Mode_Found:
+    cmp     V9xVbeValid[edi*2], 0
+    je      short V9xMini_Api_Mode_Missing
+
+    mov     [ebp.Client_AX], 1
+
+    mov     ebx, V9xVbeBase[edi*4]
+    mov     [ebp.Client_EBX], ebx
+
+    movzx   ecx, V9xVbeAttr[edi*2]
+    shl     ecx, 16
+    movzx   eax, V9xVbeBytes[edi*2]
+    or      ecx, eax
+    mov     [ebp.Client_ECX], ecx
+
+    movzx   edx, V9xVbeHeight[edi*2]
+    shl     edx, 16
+    movzx   eax, V9xVbeWidth[edi*2]
+    or      edx, eax
+    mov     [ebp.Client_EDX], edx
+
+    movzx   esi, V9xVbeModel[edi*2]
+    shl     esi, 16
+    movzx   eax, V9xVbeBpp[edi*2]
+    or      esi, eax
+    mov     [ebp.Client_ESI], esi
+
+V9xMini_Api_Mode_Done:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+EndProc MiniVDD_PM_API
+
 VxD_LOCKED_CODE_ENDS
 
 VxD_ICODE_SEG
+
+; Run one buffered VBE call in V86 mode and leave the BIOS status in AX.
+;
+; In:  AX = VBE function (4F00h or 4F01h), CX = its argument.
+; Out: AX = the BIOS reply, or 0 if there was no buffer to hand it.
+;
+; The buffer has to be addressable by the real-mode BIOS, which is the entire
+; difficulty this routine exists to remove: from ring 3 the driver could get
+; neither a DOS block out of the DPMI host nor a working simulated interrupt.
+; Here there is no DPMI host in the way - the V86 data area is allocated by the
+; VMM and the interrupt runs through nested execution.
+;
+; Client state is saved and restored around the call, because the client
+; registers belong to whatever was running and this borrows them.
+BeginProc V9xMini_Vbe_Call
+
+    cmp     V9xVbeBufSeg, 0
+    jne     short V9xMini_Vbe_Call_Ready
+    xor     eax, eax
+    ret
+
+V9xMini_Vbe_Call_Ready:
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    movzx   ebx, ax                     ; hold the function
+    movzx   edx, cx                     ; hold its argument
+
+    Push_Client_State
+    VMMcall Begin_Nest_Exec
+
+    mov     [ebp.Client_AX], bx
+    mov     [ebp.Client_CX], dx
+    mov     ax, V9xVbeBufSeg
+    mov     [ebp.Client_ES], ax
+    mov     [ebp.Client_DI], 0
+
+    mov     eax, 10h
+    VMMcall Exec_Int
+
+    movzx   ebx, [ebp.Client_AX]        ; reply survives End_Nest_Exec below
+
+    VMMcall End_Nest_Exec
+    Pop_Client_State
+
+    mov     eax, ebx
+
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_Vbe_Call
+
+; Read a word out of the V86 scratch at offset AX, returning it in AX.
+;
+; The scratch sits in the first megabyte, so its ring-0 linear address is the
+; segment shifted left four - no mapping needed.
+BeginProc V9xMini_Vbe_Peek_Word
+    push    edx
+    movzx   edx, V9xVbeBufSeg
+    shl     edx, 4
+    movzx   eax, ax
+    add     edx, eax
+    mov     ax, [edx]
+    pop     edx
+    ret
+EndProc V9xMini_Vbe_Peek_Word
+
+; Collect 4F00h and the seven standard 4F01h answers into the cache.
+;
+; Nothing here is fatal. A BIOS that refuses leaves the entries invalid, the API
+; reports that, and tier-0 refuses at stage 3 exactly as it does today - which
+; is the behaviour this replaces, not a regression on it.
+BeginProc V9xMini_Vbe_Collect
+
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    ; 512 bytes is what 4F00h may write. VMM_ICODE only, hence init.
+    VMMcall _Allocate_Global_V86_Data_Area, <512, 0>
+    test    eax, eax
+    jz      V9xMini_Vbe_Collect_Done
+    shr     eax, 4                      ; linear in the first MiB -> segment
+    mov     V9xVbeBufSeg, ax
+
+    ; 4F00h. Stamp "VBE2" first so a 2.0-aware BIOS fills in the longer block.
+    movzx   edx, V9xVbeBufSeg
+    shl     edx, 4
+    mov     dword ptr [edx], 32454256h  ; 'VBE2'
+    mov     ax, 4F00h
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    jne     short V9xMini_Vbe_Collect_Modes
+
+    ; Accept only a real VESA 2.0-or-later answer, matching vbe_parse.c.
+    mov     ax, 0
+    call    V9xMini_Vbe_Peek_Word
+    cmp     ax, 4556h                   ; 'EV' - first half of "VESA"
+    jne     short V9xMini_Vbe_Collect_Modes
+    mov     ax, 4
+    call    V9xMini_Vbe_Peek_Word
+    cmp     ax, 0200h
+    jb      short V9xMini_Vbe_Collect_Modes
+    mov     V9xVbeCtrlVer, ax
+    mov     ax, 18
+    call    V9xMini_Vbe_Peek_Word
+    test    ax, ax
+    jz      short V9xMini_Vbe_Collect_Modes
+    mov     V9xVbeCtrl64K, ax
+    mov     V9xVbeCtrlValid, 1
+
+V9xMini_Vbe_Collect_Modes:
+    xor     edi, edi
+V9xMini_Vbe_Collect_Next:
+    cmp     edi, V9X_VBE_CACHE_COUNT
+    jae      V9xMini_Vbe_Collect_Done
+
+    mov     ax, 4F01h
+    mov     cx, V9xVbeModeList[edi*2]
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    jne      V9xMini_Vbe_Collect_Skip
+
+    mov     ax, 0                       ; ModeAttributes
+    call    V9xMini_Vbe_Peek_Word
+    mov     V9xVbeAttr[edi*2], ax
+    mov     ax, 16                      ; BytesPerScanLine
+    call    V9xMini_Vbe_Peek_Word
+    mov     V9xVbeBytes[edi*2], ax
+    mov     ax, 18                      ; XResolution
+    call    V9xMini_Vbe_Peek_Word
+    mov     V9xVbeWidth[edi*2], ax
+    mov     ax, 20                      ; YResolution
+    call    V9xMini_Vbe_Peek_Word
+    mov     V9xVbeHeight[edi*2], ax
+    mov     ax, 25                      ; BitsPerPixel, a byte field
+    call    V9xMini_Vbe_Peek_Word
+    and     ax, 00FFh
+    mov     V9xVbeBpp[edi*2], ax
+    mov     ax, 27                      ; MemoryModel, a byte field
+    call    V9xMini_Vbe_Peek_Word
+    and     ax, 00FFh
+    mov     V9xVbeModel[edi*2], ax
+
+    ; PhysBasePtr, two words so this needs no aligned dword read.
+    mov     ax, 40
+    call    V9xMini_Vbe_Peek_Word
+    movzx   ebx, ax
+    mov     ax, 42
+    call    V9xMini_Vbe_Peek_Word
+    movzx   eax, ax
+    shl     eax, 16
+    or      ebx, eax
+    mov     V9xVbeBase[edi*4], ebx
+
+    mov     V9xVbeValid[edi*2], 1
+
+V9xMini_Vbe_Collect_Skip:
+    inc     edi
+    jmp      V9xMini_Vbe_Collect_Next
+
+V9xMini_Vbe_Collect_Done:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_Vbe_Collect
+
 public MiniVDD_Dynamic_Init
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
@@ -355,6 +697,10 @@ V9xMini_Power_Defaults:
     mov     ecx, V9xMiniDefaultsLineLength
     call    V9xMini_Serial_Write
 V9xMini_Init_Succeeded:
+    ; Collect the VBE answers for the tier-0 driver. Deliberately last, and
+    ; deliberately not able to fail the init: an adapter with no usable VESA
+    ; BIOS should still get the DPMS and power callbacks above.
+    call    V9xMini_Vbe_Collect
     xor     eax, eax
     clc
     ret
