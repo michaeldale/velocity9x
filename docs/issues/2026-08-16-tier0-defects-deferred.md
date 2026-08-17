@@ -261,6 +261,18 @@ aperture default it now shares is never reached, because the family supplies
 Results: `build\driver-results\mode-matrix-s3-virge-dx-20260817-120432` and
 `...-s3-trio64-20260817-152007`.
 
+**Re-run after D4, and this one was the load-bearing check.** The mini-VDD is
+shared by every family, so its new init-time BIOS collection runs on the S3
+guests too - which had no reason to want it and everything to lose from it. Both
+matrices were run again against the D4 build: `Win86SE` all six modes
+`enable-ok` with GDI and palette passes (boot counters 254-259,
+`...-s3-virge-dx-20260817-164910`), and `Win98SE-Trio64` the same (120-125,
+`...-s3-trio64-20260817-165403`).
+
+Eighteen modes across three chips on the same build, then: two S3 parts that
+supply `read_aperture` and one card that supplies nothing and is not even in its
+family's device list.
+
 ---
 
 ## D4 - tier-0 has no working way to hand the BIOS a buffer
