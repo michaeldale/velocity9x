@@ -65,6 +65,14 @@ build scripts read instead of hard-coding chip facts. See
 |---|---|---|
 | `s3` | S3 ViRGE/DX 86C375 (`5333:8A01`), S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-s3` |
 | `matrox-m2` | Matrox Millennium II MGA-2164W (`102B:051B`) | `build/matrox-candidate` |
+| `vbe` | QEMU/Bochs std-vga (`1234:1111`) automatically; any VBE 2.0 card by Have-Disk | `build/win98se-vbe` |
+| `ati` | ATI Mach64 VT2 (`1002:5654`), ATI Rage Mobility-M (`1002:4C4D`) | `build/win98se-ati` |
+
+The `ati` family is the first that is **part emulated and part physical**. 86Box
+emulates the Mach64 VT2 but no Rage of any kind, so `rage-mobility-m` carries a
+per-target `Emulator = 'none'` and `run-vm-mode-matrix.ps1` refuses that chip
+with a real-hardware-only error. A green `run-checks` therefore does **not** mean
+the whole `ati` family is green - half of it has no automated coverage at all.
 
 The `s3` package is one binary serving both chips: its INF declares two models,
 and the driver picks the matching device at PCI scan time and calls that chip's

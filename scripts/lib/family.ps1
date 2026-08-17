@@ -184,8 +184,24 @@ function Test-V9xFamilyManifest {
     if ($Family.Vm.ContainsKey('Targets')) {
         $chipIds = @(@($Family.Chips) | ForEach-Object { $_.Id })
         foreach ($vmTarget in @($Family.Vm.Targets)) {
-            Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId', 'Profile', 'Port') `
-                -Context "Family $Id Vm target"
+            # A per-target Emulator overrides the family's, and 'none' means
+            # this chip is real hardware only. That is not hypothetical: the
+            # ati family pairs a Mach64 VT2 that 86Box emulates with a Rage
+            # Mobility that nothing does, and demanding a profile and port for
+            # the Mobility would mean inventing a guest that cannot exist.
+            # Absent the key a target inherits the family emulator, so every
+            # existing manifest behaves exactly as before.
+            $targetEmulator = $Family.Vm.Emulator
+            if ($vmTarget.ContainsKey('Emulator')) {
+                $targetEmulator = $vmTarget.Emulator
+            }
+            if ($targetEmulator -eq 'none') {
+                Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId') `
+                    -Context "Family $Id Vm target"
+            } else {
+                Assert-V9xFamilyKeys -Table $vmTarget -Required @('ChipId', 'Profile', 'Port') `
+                    -Context "Family $Id Vm target"
+            }
             if ($vmTarget.ChipId -notin $chipIds) {
                 throw ("Family $Id declares a VM target for unknown chip " +
                        "'$($vmTarget.ChipId)'.")
@@ -211,7 +227,11 @@ function Get-V9xFamilyVmTarget {
         [string]$ChipId
     )
 
-    $targets = @($Family.Vm.Targets)
+    # Filter the nulls rather than trusting Count: @($null) has one element in
+    # PowerShell, so a family declaring no Vm.Targets - which a single-chip
+    # family is not required to - would fall through to the per-target branch
+    # and dereference $null. vbe was the first family with none.
+    $targets = @($Family.Vm.Targets | Where-Object { $_ })
     if ($targets.Count -eq 0) {
         return [pscustomobject]@{
             ChipId = @(@($Family.Chips) | ForEach-Object { $_.Id })[0]
@@ -231,17 +251,26 @@ function Get-V9xFamilyVmTarget {
         }
         $chosen = $chosen[0]
     }
+    $chosenEmulator = $Family.Vm.Emulator
+    if ($chosen.ContainsKey('Emulator')) {
+        $chosenEmulator = $chosen.Emulator
+    }
     [pscustomobject]@{
         ChipId = $chosen.ChipId
         Profile = $chosen.Profile
         Port = [int]$chosen.Port
+        Emulator = $chosenEmulator
     }
 }
 
 # Every chip a family's mode matrix has to cover.
 function Get-V9xFamilyVmChipIds {
     param([Parameter(Mandatory = $true)]$Family)
-    $targets = @($Family.Vm.Targets)
+    # Filter the nulls rather than trusting Count: @($null) has one element in
+    # PowerShell, so a family declaring no Vm.Targets - which a single-chip
+    # family is not required to - would fall through to the per-target branch
+    # and dereference $null. vbe was the first family with none.
+    $targets = @($Family.Vm.Targets | Where-Object { $_ })
     if ($targets.Count -eq 0) {
         return @(@(@($Family.Chips) | ForEach-Object { $_.Id })[0])
     }

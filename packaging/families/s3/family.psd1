@@ -64,11 +64,17 @@
             # The shared S3 unlock (or/cmp al,13H) is NOT listed here: it lives
             # in s3_regs16.obj, which both chips call, so it is a family-wide
             # required instruction below rather than a per-chip one.
+            # The \b anchors matter. These patterns become forbidden patterns in
+            # every other family's image, so an unanchored 'test\s+al,8' also
+            # matches an unrelated 'test al,80H' and convicts a foreign image of
+            # running the ViRGE's MMIO sequence. That is not hypothetical: the
+            # VBE linear-framebuffer attribute test in src\common\vbe_parse.c
+            # compiles to exactly that, in every family.
             Audit = @{
                 Required = @(
                     'mov\s+ax,53H'
                     'or\s+al,8\b'
-                    'test\s+al,8'
+                    'test\s+al,8\b'
                 )
                 Forbidden = @()
             }
@@ -125,6 +131,9 @@
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            # vbe16 parses 4F00h/4F01h answers through this, so every family
+            # links it even where no hook asks the BIOS anything.
+            @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
             @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }
             @{ Name = 'virge_memory'; Path = 'src\chipsets\s3\virge\memory.c' }

@@ -72,6 +72,40 @@ than the controller's default port.
 | `s3` / `-ChipId virge-dx` | `Win86SE` | 9869 | The Velocity9x bring-up guest. |
 | `s3` / `-ChipId trio64` | `Win98SE-Trio64` | 9871 | A clone of the native-S3 guest, so its agent still reports ComputerName `WIN98-S3NATIVE`. Identify it by port, never by name. |
 | `matrox-m2` | none | - | `Vm.Emulator = 'none'`: no emulator covers the MGA-2164W, so the VM runner refuses with a real-hardware-only error. |
+| `ati` / `-ChipId mach64-vt2` | `Win98SE-Mach64VT2` | 9873 | Cloned from `Win98SE-Native-S3` 2026-08-16, so it too reports ComputerName `WIN98-S3NATIVE`. Identify it by port. |
+| `ati` / `-ChipId rage-mobility-m` | none | - | Per-target `Emulator = 'none'`: 86Box emulates no Rage. Real hardware only, at `10.0.1.22`. |
+
+### Cloning a guest profile - four things that will stop it booting
+
+All four were hit creating `Win98SE-Mach64VT2`, and not one produces a useful
+error message.
+
+1. **86Box asks "This machine might have been moved or copied"** on the first
+   start of a copied profile and blocks on that modal until answered. Until you
+   answer, the window title stays `86Box` instead of the profile name, no VM
+   display appears, no SLiRP port is forwarded and nothing is written into the
+   profile - which together look exactly like a VM that failed to start. Answer
+   **I Copied It**; that is also what regenerates network identity so the clone
+   cannot collide with its source.
+2. **The `uuid` in `86box.cfg` is copied too**, and the Manager's registry at
+   `%LOCALAPPDATA%\86Box\vmm.ini` already maps that UUID to the source
+   directory. Give the clone a fresh UUID and add a matching `vmm.ini` section
+   (`system_name`, `config_file`, `config_dir`; forward slashes in the paths).
+3. **`serial1_device = pipe`** carried over from a guest that used a named pipe
+   for COM1 blocks startup waiting for a pipe client that does not exist. Set it
+   to `file`, and point the COM log at a path of its own so it does not append
+   to the source guest's log.
+4. **`Start-Process -ArgumentList` does not re-quote**, so a VM path containing
+   a space - and `86Box VMs` contains one - is split into two arguments and
+   86Box silently opens something else. Pass one pre-quoted string.
+
+The profiles live in `C:\Users\michael\86Box VMs`, directly under the user
+profile rather than under `Documents`.
+
+After a card change, Windows 98 boots once into 640x480x4 VGA fallback, asks to
+restart, and on the second boot binds its own in-box driver. On the VT2 that is
+`DXATI.INF` / "ATI Graphics Pro Turbo PCI (atim64 - VT)" at 1024x768x16, which
+makes this guest a stock-driver reference as well as an install target.
 
 The stock-driver reference guest `Win98SE-Native-S3` listens on 9870 and is
 named by the S3 manifests as `ReferenceProfile`/`ReferencePort`. It carries the

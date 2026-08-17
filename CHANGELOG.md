@@ -6,8 +6,74 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Known issues
+
+- **16 bpp scanout is wrong on the Mach64 (D5).** With the `vbe` package on the
+  86Box Mach64 VT2, 640x480x8 and 1024x768x8 display correctly and
+  1024x768x16 is shredded — same resolution, different depth, so the fault is in
+  16 bpp handling. Stride is ruled out by measurement: the driver draws at 2048
+  and the card reports scanning at 2048 (1024 at 8 bpp, matching too). The
+  Ironfield numbers below were taken through this, since the game runs
+  640x480x16, and should be re-taken once it is fixed.
+- **A green mode matrix does not mean the display works.** Every check in it is
+  GDI-side — resolution from GDI, `V9XGDI` drawing through GDI, the palette read
+  back through GDI, the screenshot a GDI blit — so all of them share the pitch,
+  base and depth the driver chose and are self-consistent whatever the hardware
+  does. That is how six modes passed on the Mach64 while the monitor showed
+  noise, and an agent framebuffer grab was a perfect desktop at the same moment.
+  Until the suite has one check that does not pass through GDI, treat a pass as
+  "the driver is self-consistent". Both are `D5` in
+  `docs/issues/2026-08-16-tier0-defects-deferred.md`.
+
+## 0.4.0 - 2026-08-17
+
+Tier-0 became real: the generic VBE package now drives a card its own INF does
+not claim, which is what the tier was always for and had never once done.
+
 ### Added
 
+- **VBE queries at ring 0.** `V9XMINI.VXD` gained a private device id (`4F9Ch`)
+  and a protected-mode API, reached through `INT 2Fh AX=1684h` — the mechanism
+  `runtime.asm` already used for the master VDD. It collects 4F00h and the seven
+  standard 4F01h answers once at `Device_Init` under nested execution and serves
+  them from a cache; the 16-bit side reads them through callers in `runtime.asm`,
+  because a VxD entry point needs 32-bit registers. The id is unallocated by
+  anyone, so function 0 is a handshake returning a magic value and the driver
+  refuses the entry point until it sees it — a collision costs a refusal rather
+  than a call into a stranger.
+- Tier-0 forces the scan line length through 4F06h when a family supplies no
+  `post_mode_set`, and refuses if it cannot be made to match. Not the cause of
+  D5, but right on its own merits: the Millennium II has always needed it,
+  because a BIOS can accept a mode set and then scan out at a stride of its own.
+- `VbeDetail` and `VbeCache` keys in `C:\V9XBOOT.INI`, and `DrawPitch`,
+  `VbeScanBytes`, `VbeScanPixels`, `VbeScanBefore` in `C:\V9XHW.INI`. The stage
+  code is the right granularity for the boot-trace contract and the wrong one to
+  act on: it cannot separate a BIOS reporting an unusable stride from a BIOS call
+  that never ran, and on a tier whose purpose is untested cards that is the first
+  thing a bug report needs.
+- The first benchmark against a stock driver, in
+  `docs/decisions/2026-08-17-native-driver-benchmark.md`. Retail S3 `s3v.drv`
+  19 FPS against Velocity9x ViRGE 18 FPS on Ironfield's `BltFast` path — about
+  6% behind, same binary copied between guests so the game is not a variable.
+  Every Ironfield number before this compared Velocity9x with earlier
+  Velocity9x. Tier-0 on the Mach64 measured too: 6 FPS on `BltFast` against the
+  ViRGE engine's 18, which prices the missing `eng_mach64.c`.
+- The `ati` family: ATI Mach64 VT2 (`1002:5654`) and Rage Mobility-M
+  (`1002:4C4D`) in one binary with run-time PCI dispatch, on tier-0. Every
+  `hw16` hook is NULL, so the VBE mode set programs the card and the CPU draws;
+  `EngineType` is `NONE` until `eng_mach64.c` exists. Phase 10 of the
+  multi-chip restructure, against a Gateway Solo 2150.
+- A hardware audit of the Mach64/Rage 2D engine, memory sizing, LCD panel path
+  and errata, drawn from `xf86-video-mach64` (MIT), FreeBE/AF and 86Box's
+  emulation - `docs/decisions/2026-08-16-ati-mach64-hardware-audit.md`. The
+  laptop's panel (LG LP141XA, 1024x768) was decoded out of its own video BIOS,
+  since the internal panel has no EDID.
+- Per-target `Emulator` in a family manifest's `Vm.Targets`. A family can now be
+  part emulated and part physical, which `ati` is: 86Box emulates the VT2 but no
+  Rage, so `rage-mobility-m` is real hardware only and the mode matrix refuses
+  it explicitly instead of resolving to port 0 and failing on a parameter
+  validation error. Absent the key a target inherits the family emulator, so
+  every existing manifest is unchanged.
 - A family matrix generated from the manifests
   (`scripts/lib/family-matrix.ps1`) and `tests/host/test_family_matrix.c`
   asserting the C side against it: every declared PCI ID resolves to a backend,
@@ -24,12 +90,62 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Fixed
 
+- **Tier-0 could not reach an unlisted card at all (D3).** A family carries two
+  allowlists and Have-Disk only satisfies one: the INF's, while
+  `v9x_hw16.devices[]` is compiled into `v9xdisp.drv` and refused at stage 1
+  whatever the INF said. So the route the manifest advertised produced a
+  bound-but-inert driver on every card it existed to serve. `v9x_hw16_ops` gained
+  `pci_match_optional`, set only by `vbe`; the scan still runs, because it
+  decides whose hooks execute, but a miss is no longer fatal for a family that
+  pokes no chip register and takes its aperture from the BIOS. The field sits
+  last in the struct so the strict behaviour is what an initializer that forgets
+  it gets.
+- The same question was being asked in three places and answered differently.
+  `ddi.c` checks `V9xHardwarePresent` at its Enable entry point *and* in
+  `ValidateMode`, and fixing only the staged sequence left Enable refusing at
+  `ddi.c`'s own check and `ValidateMode` rejecting every mode — which is how GDI
+  ends up told a driver loaded and then offered nothing. All three now share
+  `v9x_hardware_acceptable()`.
+- **Ring 3 has no working way to hand the VBE BIOS a buffer (D4).** DPMI 0100h
+  will not allocate a DOS block under Windows' DPMI host, and with a buffer that
+  does work the DPMI 0300h simulated interrupt faults the machine. Both were
+  measured on a guest, twice at the cost of a bluescreen. That code is deleted
+  rather than kept behind a flag — it linked into every family image — and the
+  mini-VDD does the calls instead.
+- `matrox-m2` no longer claims `mov ax,4F06H` as a required pattern. Tier-0 now
+  issues 4F06h from shared `vbe16.c`, so the instruction appears in every image
+  and discriminates nothing, and because one family's `Required` is every other
+  family's `Forbidden` it broke the `ati` build.
+- The ViRGE's `test\s+al,8` pattern is anchored to `test\s+al,8\b`. Unanchored it
+  also matched `test al,80H` — which the VBE linear-framebuffer attribute check
+  compiles to in every family — so the Matrox image stood accused of running the
+  ViRGE's MMIO sequence. These patterns are regexes over disassembly, and the
+  false positive surfaces in a *different* family from the one that owns it.
+- `Get-V9xFamilyVmTarget` and `Get-V9xFamilyVmChipIds` treated
+  `@($Family.Vm.Targets)` as empty when a family declares none, but `@($null)`
+  has one element in PowerShell, so both fell through to the per-target branch
+  and dereferenced `$null`. `vbe` is the first family without targets and the
+  first to hit it — the mode matrix could not resolve it at all.
+- `check-tree.ps1` now requires `packaging/families/vbe/family.psd1`, which
+  phase 9 added without listing, alongside the new `ati` manifest.
 - `scripts/build-host-msvc.ps1` had a stale source list — the clock, memory,
   registry and Matrox modules were missing — so the second-compiler pass failed
   at the link step on every run and never executed a test. It compiles, links
   and runs again, now over the same source set as the Watcom pass.
 - The host build joins the driver and HAL compiles in using `-we`, so a warning
   fails it rather than being reported alongside a successful exit.
+
+### Verified
+
+- Eighteen modes across three chips on one build: `Win86SE` (ViRGE/DX) and
+  `Win98SE-Trio64` six each on the hooked path, and `Win98SE-Mach64VT2` six on
+  tier-0 — a card not in its family's device list, reached by Have-Disk, taking
+  its aperture entirely from the BIOS. The S3 pair were re-run after the
+  mini-VDD change, since its init-time collection runs for every family and
+  those two had a working driver to lose.
+- `V9XHW.INI` on the Mach64 reads `Adapter=Unrecognised card on the generic VBE
+  path` with both ids `unmatched`: the family accepted a card it does not name
+  and says so, rather than publishing the one id its INF claims.
 
 ## 0.3.5 - 2026-08-16
 

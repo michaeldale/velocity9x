@@ -205,6 +205,29 @@ typedef struct v9x_hw16_ops {
                                           const V9X_HW16_MODE *mode,
                                           unsigned short screen_selector,
                                           unsigned short pdevice_flags);
+
+    /*
+     * Non-zero when the enable sequence may proceed even though the PCI scan
+     * matched none of this family's device ids.
+     *
+     * Zero - the default, and what every family with chip-specific code sets -
+     * means the card has to be one this family names, because the code that
+     * follows pokes its registers or reads its BAR and would otherwise be
+     * poking a stranger.
+     *
+     * A tier-0 family sets this. It touches no chip register, takes its
+     * aperture from 4F01h and its memory size from 4F00h, so the PCI identity
+     * tells it nothing it needs. Requiring a match there would add a second,
+     * invisible allowlist behind the INF's, and a Have-Disk install onto an
+     * untested card - the documented route for exactly this situation - would
+     * bind a driver that then refused at stage 1 with only a stage code to say
+     * why. Measured on an ATI Mach64 VT2; see
+     * docs\issues\2026-08-16-tier0-defects-deferred.md D3.
+     *
+     * The INF remains the honest claim of what is supported. This only stops
+     * the driver adding a second veto the INF cannot reach.
+     */
+    unsigned short pci_match_optional;
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

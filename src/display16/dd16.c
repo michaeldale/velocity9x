@@ -92,6 +92,9 @@ extern WORD v9x_dd_screen_selector(void);
 extern WORD v9x_dd_enable_count(void);
 extern WORD v9x_dd_disable_count(void);
 
+/* enable16.c: VBE-reported VRAM, 0 unless the tier-0 path ran. */
+extern DWORD v9x_vbe_vram_bytes;
+
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
 {
     WORD selector;
@@ -147,7 +150,11 @@ static void v9x_dd_refresh_framebuffer(void)
     }
     shared->fb.linear_base = V9xLinearBase();
     shared->fb.physical_base = V9xHardwareBase();
-    shared->fb.vram_bytes = 0x00400000ul;
+    /* Tier-0 learns this from VBE 4F00h; a family with a read_aperture hook
+     * never asks, leaves the variable zero, and keeps the size it always had.
+     * So this reads identically on S3 and Millennium II. */
+    shared->fb.vram_bytes = v9x_vbe_vram_bytes != 0ul ? v9x_vbe_vram_bytes
+                                                      : 0x00400000ul;
     shared->fb.pitch = pitch;
     shared->fb.width = width;
     shared->fb.height = height;

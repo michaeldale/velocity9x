@@ -295,6 +295,39 @@ DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface)
     return address - v9x_hal->fb.linear_base;
 }
 
+/*
+ * Can this family program the display start?
+ *
+ * v9x_set_display_start writes S3 extension register CR69 to carry address
+ * bits 19:16, so it is only correct on a chip that actually has S3-style
+ * scanout. V9X_DD_ENGINE_CAP_FLIP says precisely that, and until now nothing
+ * read it: the two S3 chips declare it, and the matrox-m2, vbe and ati
+ * families declare no capabilities at all.
+ *
+ * Without this gate every family programs CR69 regardless of what silicon it
+ * is talking to. That is a live defect in the shipping tier-0 package, which
+ * writes an S3 extension register on QEMU std-vga, and it would have been an
+ * unaudited register write on an ATI Rage Mobility whose only display is an
+ * internal panel with no recovery path.
+ *
+ * The sibling v9x_in_vblank is deliberately NOT gated. It reads the standard
+ * VGA input-status port 0x3DA, which is valid on every chip this driver will
+ * meet, so gating it would change Matrox behaviour for no safety gain. Only
+ * the CR69 write is chip-specific.
+ *
+ * The eventual home for both is the engine vtable, as
+ * docs\plans\multi-chip-restructure.md anticipates. This is the smaller change
+ * that removes the defect without moving the files.
+ */
+static int v9x_can_set_display_start(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul) {
+        return 0;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+}
+
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 {
     DWORD offset = v9x_surface_offset(data->lpSurfTarg);
@@ -310,6 +343,13 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     }
     if (data->lpSurfCurr != 0 &&
         (data->lpSurfCurr->ddsCaps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul) {
+        /* Decline rather than report a flip that did not happen. A family
+         * with no display-start control cannot move the scanout, and claiming
+         * success would leave the caller believing a frame was presented. */
+        if (!v9x_can_set_display_start()) {
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
         v9x_set_display_start(offset);
     }
     data->ddRVal = V9X_DD_OK;
@@ -404,7 +444,12 @@ DWORD __stdcall V9xHalFlipToGDISurface(V9X_DDHAL_FLIPTOGDIDATA *data)
             v9x_trace_exit(V9X_TRACE_FLIPTOGDI, data->ddRVal);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
-        v9x_set_display_start(0ul);
+        /* Returning to GDI means scanning out from offset 0, which is where a
+         * family that cannot program the display start is already sitting.
+         * Skipping the write is correct rather than merely safe. */
+        if (v9x_can_set_display_start()) {
+            v9x_set_display_start(0ul);
+        }
     }
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_FLIPTOGDI, data->ddRVal);
@@ -432,7 +477,11 @@ DWORD __stdcall V9xHalSetExclusiveMode(
             v9x_trace_exit(V9X_TRACE_SETEXCLUSIVE, data->ddRVal);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
-        v9x_set_display_start(0ul);
+        /* Leaving exclusive mode restores the GDI scanout at offset 0; same
+         * reasoning as V9xHalFlipToGDISurface above. */
+        if (v9x_can_set_display_start()) {
+            v9x_set_display_start(0ul);
+        }
     }
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_SETEXCLUSIVE, data->ddRVal);

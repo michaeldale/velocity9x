@@ -47,8 +47,14 @@
                 # The PCI BAR0 read is a shared chip-agnostic primitive in
                 # runtime.asm now, so its instructions no longer discriminate
                 # between families and are not listed.
+                # 'mov\s+ax,4F06H' was here and had to go. Tier-0 now forces
+                # the scan line length too, from shared vbe16.c, so the
+                # instruction appears in every family image and discriminates
+                # nothing - and because one family's Required is every other
+                # family's Forbidden, claiming it here failed the ati build.
+                # The two patterns left are this chip module's own: the width
+                # and pitch comparison that no other object performs.
                 Required = @(
-                    'mov\s+ax,4F06H'
                     'mov\s+cx,word ptr _v9x_active_width'
                     'cmp\s+cx,word ptr _v9x_active_pitch'
                 )
@@ -73,6 +79,9 @@
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            # vbe16 parses 4F00h/4F01h answers through this, so every family
+            # links it even where no hook asks the BIOS anything.
+            @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

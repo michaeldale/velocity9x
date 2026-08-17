@@ -11,6 +11,10 @@
  * family matrix. It keeps its own failure count and returns it. */
 unsigned int v9x_run_family_matrix_tests(void);
 
+/* tests\host\test_vbe_parse.c: the VBE 4F00h/4F01h result parsers, same
+ * convention. */
+unsigned int v9x_run_vbe_parse_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -550,6 +554,7 @@ int main(void)
     test_components_and_log();
     test_build_identity();
     failures += v9x_run_family_matrix_tests();
+    failures += v9x_run_vbe_parse_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);
