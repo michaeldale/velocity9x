@@ -220,6 +220,28 @@ family has to be installed through its **own** INF.
 
 ---
 
+## S3 regression for D1-D3
+
+All of D1, D2 and D3 changed shared code that links into every family image, so
+the risk worth checking was the hooked path they were not aimed at. Run
+2026-08-17 against the current build on both S3 guests, six modes each:
+
+| Guest | Modes | Result |
+|---|---|---|
+| `Win86SE` (ViRGE/DX, 9869) | 640x480, 800x600, 1024x768 at 8 and 16 bpp | all `enable-ok`, GDI PASS, palette PASS at 8 bpp |
+| `Win98SE-Trio64` (9871) | same six | all `enable-ok`, GDI PASS, palette PASS at 8 bpp |
+
+Both chips from the one binary, which is the claim the S3 family merge exists to
+make. `v9x_hardware_acceptable` leaves the S3 path semantically unchanged -
+`pci_match_optional` is zero, so a PCI miss is still fatal - and the tier-0
+aperture default it now shares is never reached, because the family supplies
+`read_aperture`.
+
+Results: `build\driver-results\mode-matrix-s3-virge-dx-20260817-120432` and
+`...-s3-trio64-20260817-152007`.
+
+---
+
 ## D4 - tier-0 has no working way to hand the BIOS a buffer
 
 **Open. Measured 2026-08-17 on the `Win98SE-Mach64VT2` guest.**
