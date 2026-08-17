@@ -1,16 +1,22 @@
 # Four tier-0 backend defects
 
-Status: **D1, D2 and D3 fixed** (D1/D2 2026-08-16, D3 2026-08-17). **D4 is
-open, and it blocks the tier.** All four live in chip-agnostic code belonging to
-the tier-0 backend rather than in anything ATI-specific; the first three were
-found while designing the ATI Mach64 family, and D4 came out of verifying D3 on
-its guest.
+Status: **all four fixed** (D1/D2 2026-08-16, D3 and D4 2026-08-17). All four
+live in chip-agnostic code belonging to the tier-0 backend rather than in
+anything ATI-specific; the first three were found while designing the ATI Mach64
+family, and D4 came out of verifying D3 on its guest.
 
 D1 and D2 were blocking for stage 4, the first install on the physical laptop.
 
-D4 is the one to read first if you are picking this up: tier-0 reaches stage 3
-on any card now, and cannot get past it, because it has no way to hand the BIOS
-a buffer.
+**What the set adds up to:** tier-0 now drives a card its family does not name.
+Verified on the 86Box Mach64 VT2 with the `vbe` package, whose INF claims only
+QEMU std-vga: D3 removed the second, invisible allowlist that made the
+documented Have-Disk route inert, and D4 gave the tier a working way to ask the
+BIOS where the framebuffer is. Before D3 the driver refused at stage 1 on
+identity; before D4 it refused at stage 3 with no aperture.
+
+D4 is the one to read for method rather than mechanism. Three hypotheses about
+it were wrong, each argued from documentation, and the one that held was settled
+by instrumenting the guest instead.
 
 **Measured effect of the fixes:**
 
@@ -244,7 +250,41 @@ Results: `build\driver-results\mode-matrix-s3-virge-dx-20260817-120432` and
 
 ## D4 - tier-0 has no working way to hand the BIOS a buffer
 
-**Open. Measured 2026-08-17 on the `Win98SE-Mach64VT2` guest.**
+**FIXED 2026-08-17.** The mini-VDD makes the calls at ring 0 now, and tier-0
+drives the Mach64 VT2 end to end - `Stage=enable-ok`, `VbeDetail=ok`, desktop up,
+`VbeVramBytes=4194304` matching what the DOS inventory measured on that BIOS.
+
+Ring 0 was the answer because it replaces **both** broken halves rather than one:
+the VMM allocates the V86 scratch and nested execution runs the interrupt, so no
+DPMI host is involved at any point. `V9XMINI` gained a private device id and a
+protected-mode API, reached through `INT 2Fh AX=1684h` exactly as `runtime.asm`
+already reaches the master VDD, guarded by a magic handshake because the id is
+unallocated and a collision would otherwise hand the driver a stranger's entry
+point. The queries run once at `Device_Init` - 4F00h and 4F01h describe the
+adapter, not the current mode, so they are cacheable - which keeps the BIOS call
+in init context and leaves the API a table lookup that cannot fault a display
+driver mid-initialisation.
+
+**The bug that took three hypotheses.** Every `Client_*` reference is an offset
+off `EBP`, and at `Device_Init` nothing sets `EBP` up: event handlers receive it,
+init code does not. The first version therefore wrote the BIOS request wherever
+`EBP` happened to point, the interrupt ran with whatever registers the VM already
+had, and every call returned nothing usable. `Get_Cur_VM_Handle` plus
+`CB_Client_Pointer` fixes it, with `Begin_Nest_V86_Exec` rather than
+`Begin_Nest_Exec` since this is a V86 BIOS interrupt.
+
+What actually found it was instrumentation, not reasoning. An empty cache has two
+causes whose fixes live in different files, so the API grew a status function and
+the trace grew a `VbeCache` key; the guest printing `s=1829 m=0 c=0` - buffer
+allocated fine, not one usable answer - eliminated the allocation in a single
+boot. Three hypotheses about this defect were wrong before that, and each wrong
+one had been argued from documentation rather than measured. The lesson is cheap
+to state and was expensive to learn: when a mechanism cannot be observed, add the
+observation before adding the next fix.
+
+The original finding and the two ring-3 dead ends follow.
+
+**Originally measured 2026-08-17 on the `Win98SE-Mach64VT2` guest.**
 
 4F00h and 4F01h take a buffer in ES:DI. The driver runs in 16-bit protected
 mode, so that buffer has to be real-mode addressable and the call has to be
