@@ -255,22 +255,32 @@ mechanisms tried are measured failures on the same guest:
 |---|---|
 | DPMI 0100h (allocate DOS memory block) | Returns failure. `VbeDetail=4f01-no-dos-buffer`, tier-0 refuses at stage 3, Windows falls back to VGA. Consistent with Microsoft telling applications to use GlobalDosAlloc because Windows manages DOS memory itself. |
 | `GlobalDosAlloc` called from Enable | **Fatal exception 0D at 031F:000009DE.** Boot trace never advanced past `Stage=libmain`. Guest needed a reboot. |
-| `GlobalDosAlloc` called from `DriverInit` instead | **Fatal exception 0D at 031F:000009DE - the same address.** Tried because the first failure looked like "an allocator that can move the global heap is a bad thing to call inside GDI initialisation", which would have been fixed by allocating earlier. It was not. |
+| `GlobalDosAlloc` called from `DriverInit` instead | **Fatal exception 0D at 031F:000009DE - the same address.** Tried because the first failure looked like a timing problem. It is not: see the correction below, which establishes that this allocator returns normally and the fault is further down. |
 
-**The identical fault address across two different call sites is the finding.**
-Had the fault been at the call site, two builds with the call in different
-functions would fault at different addresses. The same address both times means
-the fault is inside the callee, reached identically from either. The most likely
-reading is that `GlobalDosAlloc` is not correctly resolved for this NE display
-driver at all - a display `.DRV` links against a restricted import set, and a
-call through an unresolved import lands at a fixed bogus address, which is
-exactly the signature seen. That would make this a linkage problem rather than
-a "wrong time to call it" problem, and it means no amount of moving the call
-earlier will help.
+**Correction, 2026-08-17.** This entry first concluded from the shared fault
+address that `GlobalDosAlloc` itself was at fault - probably unresolvable for an
+NE display driver. **That was wrong**, and the guest disproved it on the next
+boot:
 
-The corollary is worth stating too: while DPMI 0100h fails, the allocation never
-succeeds, so the DPMI 0300h call below it has **never once executed** on
-hardware. That path is untested, not proven.
+- The `DriverInit` build is the one installed, and it comes up writing
+  `Stage=libmain`. In that build the allocation happens *before* the libmain
+  trace is written. The trace exists, so `GlobalDosAlloc` returned normally.
+
+So the allocator works. What actually correlates with the fault is the
+allocation **succeeding**, because that is the only condition under which the
+code after it runs at all. Two things are reachable only then:
+
+1. Zeroing the block through the returned protected-mode selector.
+2. The DPMI 0300h simulated interrupt.
+
+Whenever DPMI 0100h is wired up the allocation fails, both are skipped, and
+nothing crashes - which is why the "clean failure" build looks stable. It is not
+that DPMI 0100h is safe; it is that it never gets far enough to run the unsafe
+part. **DPMI 0300h has never successfully executed on hardware in any build.**
+
+The lesson about the shared fault address: it was suggestive, not conclusive,
+and it was read as conclusive. Two builds calling the same faulting helper from
+different places will also fault at one address.
 
 DPMI 0100h is what is currently wired up. It does not work either, but it fails
 cleanly - refusal, VGA fallback, a boot trace saying why - and a driver that
