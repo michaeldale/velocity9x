@@ -32,6 +32,7 @@ V9XMINI_API_VERSION EQU 0001h
 V9XMINI_FN_HANDSHAKE EQU 0000h
 V9XMINI_FN_CONTROLLER EQU 0001h
 V9XMINI_FN_MODE_INFO EQU 0002h
+V9XMINI_FN_STATUS    EQU 0003h
 
 Declare_Virtual_Device V9XMINI, 1, 0, MiniVDD_Control, \
                        V9XMINI_DEVICE_ID, VDD_Init_Order, , MiniVDD_PM_API,
@@ -387,9 +388,47 @@ BeginProc MiniVDD_PM_API
     je      short V9xMini_Api_Controller
     cmp     ax, V9XMINI_FN_MODE_INFO
     je      short V9xMini_Api_ModeInfo
+    cmp     ax, V9XMINI_FN_STATUS
+    je      short V9xMini_Api_Status
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
+    ret
+
+; What the init-time collection actually managed, so a failure can be diagnosed
+; from the guest instead of guessed at from the host.
+;
+; Out: AX=1, EBX = the V86 segment it used (0 if it never got one),
+;      ECX = how many mode entries came back valid, EDX = controller validity.
+V9xMini_Api_Status:
+    push    ecx
+    push    edx
+    push    edi
+
+    mov     [ebp.Client_AX], 1
+    movzx   eax, V9xVbeBufSeg
+    mov     [ebp.Client_EBX], eax
+
+    xor     ecx, ecx
+    xor     edi, edi
+V9xMini_Api_Status_Next:
+    cmp     edi, V9X_VBE_CACHE_COUNT
+    jae     short V9xMini_Api_Status_Done
+    cmp     V9xVbeValid[edi*2], 0
+    je      short V9xMini_Api_Status_Skip
+    inc     ecx
+V9xMini_Api_Status_Skip:
+    inc     edi
+    jmp     short V9xMini_Api_Status_Next
+
+V9xMini_Api_Status_Done:
+    mov     [ebp.Client_ECX], ecx
+    movzx   eax, V9xVbeCtrlValid
+    mov     [ebp.Client_EDX], eax
+
+    pop     edi
+    pop     edx
+    pop     ecx
     ret
 
 ; Out: AX=1, EBX=magic, ECX=contract version.
@@ -496,6 +535,14 @@ VxD_ICODE_SEG
 ;
 ; Client state is saved and restored around the call, because the client
 ; registers belong to whatever was running and this borrows them.
+;
+; EBP has to be loaded from the VM control block first. Every Client_* reference
+; is an offset off EBP, and at Device_Init nothing has set EBP up - it is the
+; event handlers that get it for free. The first version of this routine assumed
+; otherwise and wrote the BIOS request to wherever EBP happened to point, so the
+; interrupt ran with whatever registers the VM already had and every call came
+; back useless. That is what "s=1829 m=0 c=0" in the boot trace meant: a buffer
+; allocated fine, and not one usable answer.
 BeginProc V9xMini_Vbe_Call
 
     cmp     V9xVbeBufSeg, 0
@@ -509,14 +556,18 @@ V9xMini_Vbe_Call_Ready:
     push    edx
     push    esi
     push    edi
+    push    ebp
 
-    movzx   ebx, ax                     ; hold the function
+    movzx   esi, ax                     ; hold the function
     movzx   edx, cx                     ; hold its argument
 
-    Push_Client_State
-    VMMcall Begin_Nest_Exec
+    VMMcall Get_Cur_VM_Handle           ; EBX = the VM to run this in
+    mov     ebp, [ebx.CB_Client_Pointer]
 
-    mov     [ebp.Client_AX], bx
+    Push_Client_State
+    VMMcall Begin_Nest_V86_Exec         ; V86, because this is a BIOS interrupt
+
+    mov     [ebp.Client_AX], si
     mov     [ebp.Client_CX], dx
     mov     ax, V9xVbeBufSeg
     mov     [ebp.Client_ES], ax
@@ -525,13 +576,14 @@ V9xMini_Vbe_Call_Ready:
     mov     eax, 10h
     VMMcall Exec_Int
 
-    movzx   ebx, [ebp.Client_AX]        ; reply survives End_Nest_Exec below
+    movzx   esi, [ebp.Client_AX]        ; reply, before the state is restored
 
     VMMcall End_Nest_Exec
     Pop_Client_State
 
-    mov     eax, ebx
+    mov     eax, esi
 
+    pop     ebp
     pop     edi
     pop     esi
     pop     edx

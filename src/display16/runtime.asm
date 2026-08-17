@@ -39,6 +39,9 @@ EXTRN _v9x_minivdd_bpp:WORD
 EXTRN _v9x_minivdd_model:WORD
 EXTRN _v9x_minivdd_version:WORD
 EXTRN _v9x_minivdd_total64k:WORD
+EXTRN _v9x_minivdd_bufseg:WORD
+EXTRN _v9x_minivdd_modes:WORD
+EXTRN _v9x_minivdd_ctrl:WORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -78,6 +81,7 @@ V9XMINI_API_VERSION    EQU 0001h
 V9XMINI_FN_HANDSHAKE   EQU 0000h
 V9XMINI_FN_CONTROLLER  EQU 0001h
 V9XMINI_FN_MODE_INFO   EQU 0002h
+V9XMINI_FN_STATUS      EQU 0003h
 
 VDD_DEVICE_ID          EQU 000ah
 VDD_DRIVER_REGISTER    EQU 0080h
@@ -321,8 +325,13 @@ V9xMiniApiInitialize ENDP
 
 ; WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode)
 ;
-; Ask the mini-VDD what the BIOS said about one VBE mode. Returns 1 and fills
-; the _v9x_minivdd_* DGROUP variables, or 0 and leaves them alone.
+; Ask the mini-VDD what the BIOS said about one VBE mode.
+;
+; Returns 1 and fills the _v9x_minivdd_* DGROUP variables; 2 when the API
+; answered but has nothing cached for that mode; 0 when there is no usable API
+; at all. Those last two are worth telling apart in the boot trace: one means
+; the VxD is missing or is not ours, the other means it is there and its BIOS
+; query came back empty, and the fixes are in different files.
 ;
 ; This lives in assembly because calling a VxD entry point needs 32-bit
 ; registers and the C in this driver is compiled for 8086. It hands the fields
@@ -347,7 +356,7 @@ V9XMINIVBEMODEINFO PROC FAR
     mov     eax, V9XMINI_FN_MODE_INFO
     call    dword ptr V9xMiniApiEntry
     or      ax, ax
-    jz      short V9xMiniVbeModeInfoFailed
+    jz      short V9xMiniVbeModeInfoNoData
 
     mov     _v9x_minivdd_base, ebx
     mov     _v9x_minivdd_bytes, cx
@@ -361,6 +370,9 @@ V9XMINIVBEMODEINFO PROC FAR
     mov     _v9x_minivdd_model, si
 
     mov     ax, 1
+    jmp     short V9xMiniVbeModeInfoDone
+V9xMiniVbeModeInfoNoData:
+    mov     ax, 2
     jmp     short V9xMiniVbeModeInfoDone
 V9xMiniVbeModeInfoFailed:
     xor     ax, ax
@@ -411,6 +423,47 @@ V9xMiniVbeCtrlDone:
     pop     bx
     retf
 V9XMINIVBECONTROLLER ENDP
+
+; WORD FAR PASCAL V9xMiniVbeStatus(void)
+;
+; Returns 1 and fills _v9x_minivdd_bufseg, _v9x_minivdd_modes and
+; _v9x_minivdd_ctrl with what the mini-VDD's init-time collection achieved, or
+; 0 when there is no usable API. Diagnostic only: it exists so an empty cache
+; can be told apart from a failed allocation without guessing.
+PUBLIC V9XMINIVBESTATUS
+V9XMINIVBESTATUS PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeStatusFailed
+
+    mov     eax, V9XMINI_FN_STATUS
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeStatusFailed
+
+    mov     _v9x_minivdd_bufseg, bx
+    mov     _v9x_minivdd_modes, cx
+    mov     _v9x_minivdd_ctrl, dx
+    mov     ax, 1
+    jmp     short V9xMiniVbeStatusDone
+V9xMiniVbeStatusFailed:
+    xor     ax, ax
+V9xMiniVbeStatusDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XMINIVBESTATUS ENDP
 
 PUBLIC V9XVDDGETDISPLAYCONFIG
 V9XVDDGETDISPLAYCONFIG PROC FAR

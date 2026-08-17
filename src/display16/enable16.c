@@ -90,10 +90,15 @@ WORD v9x_minivdd_bpp = 0u;
 WORD v9x_minivdd_model = 0u;
 WORD v9x_minivdd_version = 0u;
 WORD v9x_minivdd_total64k = 0u;
+/* Diagnostic only: what the mini-VDD's init-time collection achieved. */
+WORD v9x_minivdd_bufseg = 0u;
+WORD v9x_minivdd_modes = 0u;
+WORD v9x_minivdd_ctrl = 0u;
 
 /* runtime.asm: the mini-VDD API, which needs 32-bit registers. */
 extern WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode);
 extern WORD FAR PASCAL V9xMiniVbeController(void);
+extern WORD FAR PASCAL V9xMiniVbeStatus(void);
 
 WORD FAR PASCAL V9xHardwareStage(void)
 {
@@ -149,10 +154,30 @@ WORD v9x_hardware_acceptable(void)
  * that reports a stride we cannot use is a different problem from a BIOS call
  * that never ran. Separate key, so neither overwrites the other.
  */
+static void v9x_write_ini_key(const char FAR *key, const char FAR *value)
+{
+    WritePrivateProfileString("Velocity9x", key, value, "C:\\V9XBOOT.INI");
+}
+
 static void v9x_vbe_trace(const char FAR *detail)
 {
-    WritePrivateProfileString("Velocity9x", "VbeDetail", detail,
-                              "C:\\V9XBOOT.INI");
+    v9x_write_ini_key("VbeDetail", detail);
+}
+
+/* Decimal, appending at "at" and returning the new position. */
+static WORD v9x_append_decimal(char *text, WORD at, WORD value)
+{
+    char digits[6];
+    WORD count = 0u;
+
+    do {
+        digits[count++] = (char)('0' + (value % 10u));
+        value /= 10u;
+    } while (value != 0u && count < 6u);
+    while (count != 0u) {
+        text[at++] = digits[--count];
+    }
+    return at;
 }
 
 /*
@@ -178,6 +203,35 @@ static void v9x_vbe_trace(const char FAR *detail)
  * See docs\issues\2026-08-16-tier0-defects-deferred.md D4.
  */
 
+/*
+ * Record what the mini-VDD's collection achieved, next to the refusal reason.
+ *
+ * An empty cache has two very different causes - it never got a V86 buffer, or
+ * it got one and the BIOS refused every call - and the difference decides
+ * whether the bug is in the allocation or in the nested-execution call. Writing
+ * the three numbers out is how the guest answers that instead of the host
+ * guessing, which this defect has already cost twice.
+ */
+static void v9x_vbe_trace_cache(void)
+{
+    char text[24];
+    WORD at = 0u;
+
+    if (V9xMiniVbeStatus() == 0u) {
+        v9x_write_ini_key("VbeCache", "no-api");
+        return;
+    }
+    /* "seg=NNNNN modes=N ctrl=N", decimal, built by hand: no sprintf here. */
+    text[at++] = 's'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_bufseg);
+    text[at++] = ' '; text[at++] = 'm'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_modes);
+    text[at++] = ' '; text[at++] = 'c'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_ctrl);
+    text[at] = '\0';
+    v9x_write_ini_key("VbeCache", text);
+}
+
 static DWORD v9x_vbe_default_aperture(void)
 {
     struct v9x_vbe_mode_summary mode;
@@ -201,9 +255,18 @@ static DWORD v9x_vbe_default_aperture(void)
      * a DOS block for the buffer, and given a buffer that works the simulated
      * interrupt faults. See D4 in the deferred-defects issue.
      */
-    if (V9xMiniVbeModeInfo(v9x_active_vbe_mode) == 0u) {
-        v9x_vbe_trace("4f01-no-minivdd");
-        return 0ul;
+    {
+        WORD answered = V9xMiniVbeModeInfo(v9x_active_vbe_mode);
+        if (answered != 1u) {
+            /* Two very different faults. "no-api" means the VxD is absent, or
+             * present but not ours, so look at the mini-VDD's load and its id.
+             * "no-mode" means it is ours and answered, but its init-time BIOS
+             * query produced nothing for this mode, so look at the collection. */
+            v9x_vbe_trace(answered == 2u ? "minivdd-no-mode"
+                                         : "minivdd-no-api");
+            v9x_vbe_trace_cache();
+            return 0ul;
+        }
     }
     mode.attributes = v9x_minivdd_attr;
     mode.bytes_per_scan_line = v9x_minivdd_bytes;
