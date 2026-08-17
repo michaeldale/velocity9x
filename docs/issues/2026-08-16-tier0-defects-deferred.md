@@ -254,7 +254,23 @@ mechanisms tried are measured failures on the same guest:
 | Mechanism | Result |
 |---|---|
 | DPMI 0100h (allocate DOS memory block) | Returns failure. `VbeDetail=4f01-no-dos-buffer`, tier-0 refuses at stage 3, Windows falls back to VGA. Consistent with Microsoft telling applications to use GlobalDosAlloc because Windows manages DOS memory itself. |
-| `GlobalDosAlloc` from `enable16.c` | **Fatal exception 0D at 031F:000009DE.** The boot trace never advanced past `Stage=libmain`, so it faulted before Enable reached its own trace point. Guest needed a reboot. |
+| `GlobalDosAlloc` called from Enable | **Fatal exception 0D at 031F:000009DE.** Boot trace never advanced past `Stage=libmain`. Guest needed a reboot. |
+| `GlobalDosAlloc` called from `DriverInit` instead | **Fatal exception 0D at 031F:000009DE - the same address.** Tried because the first failure looked like "an allocator that can move the global heap is a bad thing to call inside GDI initialisation", which would have been fixed by allocating earlier. It was not. |
+
+**The identical fault address across two different call sites is the finding.**
+Had the fault been at the call site, two builds with the call in different
+functions would fault at different addresses. The same address both times means
+the fault is inside the callee, reached identically from either. The most likely
+reading is that `GlobalDosAlloc` is not correctly resolved for this NE display
+driver at all - a display `.DRV` links against a restricted import set, and a
+call through an unresolved import lands at a fixed bogus address, which is
+exactly the signature seen. That would make this a linkage problem rather than
+a "wrong time to call it" problem, and it means no amount of moving the call
+earlier will help.
+
+The corollary is worth stating too: while DPMI 0100h fails, the allocation never
+succeeds, so the DPMI 0300h call below it has **never once executed** on
+hardware. That path is untested, not proven.
 
 DPMI 0100h is what is currently wired up. It does not work either, but it fails
 cleanly - refusal, VGA fallback, a boot trace saying why - and a driver that
@@ -273,7 +289,11 @@ That is a design change, not a patch, and it should not be attempted by
 guessing at a third allocator on a live guest.
 
 **Do not test the next attempt on a guest without a disk snapshot first.** The
-GlobalDosAlloc attempt cost a bluescreen and a reboot on a VM that was in use.
+two GlobalDosAlloc attempts cost two bluescreens on a VM that was in use, and
+the second one was avoidable: it was a variation on a mechanism that had already
+faulted once, deployed on the theory that the timing was the problem. When a
+ring-3 mechanism has already taken a machine down, the next step is to change
+approach, not to retry it from a different line.
 
 ## Why these are not ATI bugs
 
