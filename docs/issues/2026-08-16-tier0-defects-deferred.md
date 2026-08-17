@@ -1,11 +1,16 @@
-# Three tier-0 backend defects
+# Four tier-0 backend defects
 
-Status: **D1, D2 and D3 all fixed 2026-08-16** on this branch, for merge into
-`vbe-tier0`. All three were found while designing the ATI Mach64 family; they
-live in chip-agnostic code belonging to the tier-0 backend rather than in
-anything ATI-specific.
+Status: **D1, D2 and D3 fixed** (D1/D2 2026-08-16, D3 2026-08-17). **D4 is
+open, and it blocks the tier.** All four live in chip-agnostic code belonging to
+the tier-0 backend rather than in anything ATI-specific; the first three were
+found while designing the ATI Mach64 family, and D4 came out of verifying D3 on
+its guest.
 
 D1 and D2 were blocking for stage 4, the first install on the physical laptop.
+
+D4 is the one to read first if you are picking this up: tier-0 reaches stage 3
+on any card now, and cannot get past it, because it has no way to hand the BIOS
+a buffer.
 
 **Measured effect of the fixes:**
 
