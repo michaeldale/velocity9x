@@ -62,6 +62,17 @@ v9x_u16 v9x_vbe_parse_mode_info(
     const v9x_u8 *block, struct v9x_vbe_mode_summary *out);
 
 /*
+ * Is this a mode this driver can drive at all?
+ *
+ * The same judgement v9x_vbe_parse_mode_info applies once it has read a block,
+ * split out so a caller holding a summary from somewhere other than a raw BIOS
+ * block can apply it too - the mini-VDD hands its answers back in registers,
+ * not as 256 bytes. One source of truth for the rule, two ways in.
+ */
+v9x_u16 v9x_vbe_mode_summary_is_drivable(
+    const struct v9x_vbe_mode_summary *summary);
+
+/*
  * The whitelist intersection: the family's static table row and the BIOS
  * answer must describe the same surface. Geometry must match exactly and the
  * effective linear stride must equal the table pitch — GDI and the registry

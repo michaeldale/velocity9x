@@ -81,16 +81,36 @@ v9x_u16 v9x_vbe_parse_controller_info(
     return V9X_TRUE;
 }
 
+v9x_u16 v9x_vbe_mode_summary_is_drivable(
+    const struct v9x_vbe_mode_summary *summary)
+{
+    if (summary == 0) {
+        return V9X_FALSE;
+    }
+    if ((summary->attributes & V9X_VBE_ATTR_SUPPORTED) == 0u) {
+        return V9X_FALSE;
+    }
+    if ((summary->attributes & V9X_VBE_ATTR_LINEAR) == 0u) {
+        return V9X_FALSE;
+    }
+    if (summary->memory_model != V9X_VBE_MODEL_PACKED_PIXEL &&
+        summary->memory_model != V9X_VBE_MODEL_DIRECT_COLOR) {
+        return V9X_FALSE;
+    }
+    if (summary->phys_base < V9X_VBE_MIN_PHYS_BASE) {
+        return V9X_FALSE;
+    }
+    if (summary->width == 0u || summary->height == 0u ||
+        summary->bits_per_pixel == 0u || summary->bytes_per_scan_line == 0u) {
+        return V9X_FALSE;
+    }
+    return V9X_TRUE;
+}
+
 v9x_u16 v9x_vbe_parse_mode_info(
     const v9x_u8 *block, struct v9x_vbe_mode_summary *out)
 {
-    v9x_u16 attributes;
-    v9x_u16 memory_model;
-    v9x_u32 phys_base;
-    v9x_u16 width;
-    v9x_u16 height;
-    v9x_u16 bits_per_pixel;
-    v9x_u16 bytes_per_scan_line;
+    struct v9x_vbe_mode_summary candidate;
 
     if (out == 0) {
         return V9X_FALSE;
@@ -107,43 +127,24 @@ v9x_u16 v9x_vbe_parse_mode_info(
         return V9X_FALSE;
     }
 
-    attributes = v9x_vbe_read_u16(block + V9X_VBE_MI_ATTRIBUTES);
-    if ((attributes & V9X_VBE_ATTR_SUPPORTED) == 0u) {
-        return V9X_FALSE;
-    }
-    if ((attributes & V9X_VBE_ATTR_LINEAR) == 0u) {
-        return V9X_FALSE;
-    }
-
-    memory_model = (v9x_u16)block[V9X_VBE_MI_MEMORY_MODEL];
-    if (memory_model != V9X_VBE_MODEL_PACKED_PIXEL &&
-        memory_model != V9X_VBE_MODEL_DIRECT_COLOR) {
-        return V9X_FALSE;
-    }
-
-    phys_base = v9x_vbe_read_u32(block + V9X_VBE_MI_PHYS_BASE);
-    if (phys_base < V9X_VBE_MIN_PHYS_BASE) {
-        return V9X_FALSE;
-    }
-
-    width = v9x_vbe_read_u16(block + V9X_VBE_MI_WIDTH);
-    height = v9x_vbe_read_u16(block + V9X_VBE_MI_HEIGHT);
-    bits_per_pixel = (v9x_u16)block[V9X_VBE_MI_BITS_PER_PIXEL];
-    bytes_per_scan_line = v9x_vbe_read_u16(block + V9X_VBE_MI_BYTES_PER_SCAN);
-    if (width == 0u || height == 0u || bits_per_pixel == 0u ||
-        bytes_per_scan_line == 0u) {
-        return V9X_FALSE;
-    }
-
-    out->attributes = attributes;
-    out->bytes_per_scan_line = bytes_per_scan_line;
-    out->lin_bytes_per_scan_line =
+    candidate.attributes = v9x_vbe_read_u16(block + V9X_VBE_MI_ATTRIBUTES);
+    candidate.bytes_per_scan_line =
+        v9x_vbe_read_u16(block + V9X_VBE_MI_BYTES_PER_SCAN);
+    candidate.lin_bytes_per_scan_line =
         v9x_vbe_read_u16(block + V9X_VBE_MI_LIN_BYTES_PER_SCAN);
-    out->width = width;
-    out->height = height;
-    out->bits_per_pixel = bits_per_pixel;
-    out->memory_model = memory_model;
-    out->phys_base = phys_base;
+    candidate.width = v9x_vbe_read_u16(block + V9X_VBE_MI_WIDTH);
+    candidate.height = v9x_vbe_read_u16(block + V9X_VBE_MI_HEIGHT);
+    candidate.bits_per_pixel = (v9x_u16)block[V9X_VBE_MI_BITS_PER_PIXEL];
+    candidate.memory_model = (v9x_u16)block[V9X_VBE_MI_MEMORY_MODEL];
+    candidate.phys_base = v9x_vbe_read_u32(block + V9X_VBE_MI_PHYS_BASE);
+
+    /* One rule, applied here and by the mini-VDD path, so the two cannot
+     * drift into accepting different things. */
+    if (v9x_vbe_mode_summary_is_drivable(&candidate) == V9X_FALSE) {
+        return V9X_FALSE;
+    }
+
+    *out = candidate;
     return V9X_TRUE;
 }
 

@@ -73,6 +73,28 @@ DWORD v9x_vbe_vram_bytes = 0ul;
  */
 DWORD v9x_vbe_vram_reported = 0ul;
 
+/*
+ * What the mini-VDD's cached BIOS answers said. Written by the API callers in
+ * runtime.asm, read here.
+ *
+ * These live in C rather than in the assembly so that the assembly declares
+ * them EXTRN and the linker checks the pair agree, which is the same
+ * arrangement as the stage code.
+ */
+DWORD v9x_minivdd_base = 0ul;
+WORD v9x_minivdd_bytes = 0u;
+WORD v9x_minivdd_attr = 0u;
+WORD v9x_minivdd_width = 0u;
+WORD v9x_minivdd_height = 0u;
+WORD v9x_minivdd_bpp = 0u;
+WORD v9x_minivdd_model = 0u;
+WORD v9x_minivdd_version = 0u;
+WORD v9x_minivdd_total64k = 0u;
+
+/* runtime.asm: the mini-VDD API, which needs 32-bit registers. */
+extern WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode);
+extern WORD FAR PASCAL V9xMiniVbeController(void);
+
 WORD FAR PASCAL V9xHardwareStage(void)
 {
     return v9x_hardware_stage_code;
@@ -170,16 +192,34 @@ static DWORD v9x_vbe_default_aperture(void)
         v9x_vbe_trace("no-mode-selected");
         return 0ul;
     }
-    /* The bare mode number: 4F01h describes a mode, not a mode plus the
-     * family's linear and no-clear request bits. */
-    if (v9x_vbe_read_mode_info(v9x_active_vbe_mode, &mode) == 0u) {
-        switch (v9x_vbe_last_failure) {
-        case V9X_VBE_FAIL_DOS_BUFFER:    v9x_vbe_trace("4f01-no-dos-buffer"); break;
-        case V9X_VBE_FAIL_DPMI_CALL:     v9x_vbe_trace("4f01-dpmi-call"); break;
-        case V9X_VBE_FAIL_BIOS_STATUS:   v9x_vbe_trace("4f01-bios-status"); break;
-        case V9X_VBE_FAIL_MODE_REJECTED: v9x_vbe_trace("4f01-mode-rejected"); break;
-        default:                         v9x_vbe_trace("4f01-failed"); break;
-        }
+    /*
+     * The bare mode number: 4F01h describes a mode, not a mode plus the
+     * family's linear and no-clear request bits.
+     *
+     * The answer comes from the mini-VDD, which collected it at ring 0 during
+     * its own init. Ring 3 cannot do this call: the DPMI host will not allocate
+     * a DOS block for the buffer, and given a buffer that works the simulated
+     * interrupt faults. See D4 in the deferred-defects issue.
+     */
+    if (V9xMiniVbeModeInfo(v9x_active_vbe_mode) == 0u) {
+        v9x_vbe_trace("4f01-no-minivdd");
+        return 0ul;
+    }
+    mode.attributes = v9x_minivdd_attr;
+    mode.bytes_per_scan_line = v9x_minivdd_bytes;
+    /* The mini-VDD reports the 2.0 stride only. A VBE 3.0 linear stride would
+     * need its own cache slot; until one exists, say "not reported" rather
+     * than pass this one off as it. */
+    mode.lin_bytes_per_scan_line = 0u;
+    mode.width = v9x_minivdd_width;
+    mode.height = v9x_minivdd_height;
+    mode.bits_per_pixel = v9x_minivdd_bpp;
+    mode.memory_model = v9x_minivdd_model;
+    mode.phys_base = v9x_minivdd_base;
+
+    /* Same judgement the block parser applies, on the same rule. */
+    if (v9x_vbe_mode_summary_is_drivable(&mode) == 0u) {
+        v9x_vbe_trace("4f01-mode-rejected");
         return 0ul;
     }
     if (v9x_vbe_mode_matches(&mode, width, height, bpp, pitch) == 0u) {
@@ -194,8 +234,11 @@ static DWORD v9x_vbe_default_aperture(void)
      * DirectDraw heap runs to linear_base + vram_bytes - 1, and that has to
      * stay inside the mapping however much memory the card claims.
      */
-    if (v9x_vbe_read_controller_info(&controller) != 0u) {
+    if (V9xMiniVbeController() != 0u) {
         DWORD visible_bytes;
+
+        controller.version = v9x_minivdd_version;
+        controller.total_memory_bytes = (DWORD)v9x_minivdd_total64k * 65536ul;
 
         mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
                         (DWORD)v9x_map_pages_lo) + 1ul;

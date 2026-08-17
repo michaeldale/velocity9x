@@ -28,11 +28,26 @@ EXTRN _v9x_map_pages_lo:WORD
 ; 4-7, so the numbered sequence stays one variable.
 EXTRN _v9x_hardware_stage_code:WORD
 EXTRN _v9x_map_physical_base:DWORD
+; What the mini-VDD's cached BIOS answers said, written by the API callers
+; below and read by enable16.c. Defined in C, like the stage code above.
+EXTRN _v9x_minivdd_base:DWORD
+EXTRN _v9x_minivdd_bytes:WORD
+EXTRN _v9x_minivdd_attr:WORD
+EXTRN _v9x_minivdd_width:WORD
+EXTRN _v9x_minivdd_height:WORD
+EXTRN _v9x_minivdd_bpp:WORD
+EXTRN _v9x_minivdd_model:WORD
+EXTRN _v9x_minivdd_version:WORD
+EXTRN _v9x_minivdd_total64k:WORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
 V9xEnableResult   dw 0
 V9xVddEntryPoint dd 0
+; Our own mini-VDD's PM API entry point, and how far we have got with it:
+; 0 = not looked yet, 1 = usable, 2 = looked and refused.
+V9xMiniApiEntry  dd 0
+V9xMiniApiState  dw 0
 V9xVmHandle       dw 0
 V9xVddRegistered dw 0
 V9xHardwareStageCode dw 0
@@ -54,6 +69,15 @@ EXTRN DIB_EndAccess:FAR
 EXTRN DIB_SetPaletteExt:FAR
 EXTRN DIB_SetPaletteTranslateExt:FAR
 EXTRN RESETHIRESMODE:FAR
+
+; Our mini-VDD's private device id and API contract; must match
+; src\minivdd32\loader.asm.
+V9XMINI_DEVICE_ID      EQU 4f9ch
+V9XMINI_API_MAGIC      EQU 39583956h
+V9XMINI_API_VERSION    EQU 0001h
+V9XMINI_FN_HANDSHAKE   EQU 0000h
+V9XMINI_FN_CONTROLLER  EQU 0001h
+V9XMINI_FN_MODE_INFO   EQU 0002h
 
 VDD_DEVICE_ID          EQU 000ah
 VDD_DRIVER_REGISTER    EQU 0080h
@@ -230,6 +254,163 @@ V9xVddInitializeFailed:
     xor     ax, ax
     ret
 V9xVddInitialize ENDP
+
+; Find our mini-VDD's PM API and satisfy ourselves that it is ours.
+;
+; Returns AX=1 when the entry point is usable. The result is latched either way,
+; so a machine without the VxD pays for one INT 2Fh and no more.
+;
+; The handshake is not ceremony. The device id is private and unallocated, so
+; another VxD may already own it; INT 2Fh 1684h would then hand back a stranger's
+; entry point and calling it blind is how you corrupt an unrelated driver. A
+; wrong magic or a newer contract version means refuse and never call again.
+V9xMiniApiInitialize PROC NEAR
+    cmp     V9xMiniApiState, 0
+    je      short V9xMiniApiProbe
+    cmp     V9xMiniApiState, 1
+    je      short V9xMiniApiUsable
+    xor     ax, ax
+    ret
+
+V9xMiniApiProbe:
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    mov     V9xMiniApiState, 2          ; refuse unless everything below passes
+
+    mov     ax, 1684h
+    mov     bx, V9XMINI_DEVICE_ID
+    int     2fh
+    mov     ax, es
+    or      ax, di
+    jz      short V9xMiniApiProbeDone   ; no such VxD loaded
+
+    mov     word ptr V9xMiniApiEntry, di
+    mov     word ptr V9xMiniApiEntry+2, es
+
+    mov     eax, V9XMINI_FN_HANDSHAKE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniApiProbeDone
+    cmp     ebx, V9XMINI_API_MAGIC
+    jne     short V9xMiniApiProbeDone
+    cmp     ecx, V9XMINI_API_VERSION
+    ja      short V9xMiniApiProbeDone   ; contract newer than we understand
+
+    mov     V9xMiniApiState, 1
+
+V9xMiniApiProbeDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    cmp     V9xMiniApiState, 1
+    je      short V9xMiniApiUsable
+    xor     ax, ax
+    ret
+V9xMiniApiUsable:
+    mov     ax, 1
+    ret
+V9xMiniApiInitialize ENDP
+
+; WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode)
+;
+; Ask the mini-VDD what the BIOS said about one VBE mode. Returns 1 and fills
+; the _v9x_minivdd_* DGROUP variables, or 0 and leaves them alone.
+;
+; This lives in assembly because calling a VxD entry point needs 32-bit
+; registers and the C in this driver is compiled for 8086. It hands the fields
+; to C rather than judging them: whether the answer is credible, and whether it
+; matches the family's table, stays in host-tested vbe_parse.c.
+PUBLIC V9XMINIVBEMODEINFO
+V9XMINIVBEMODEINFO PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeModeInfoFailed
+
+    movzx   ecx, word ptr [bp+6]        ; the mode number
+    mov     eax, V9XMINI_FN_MODE_INFO
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeModeInfoFailed
+
+    mov     _v9x_minivdd_base, ebx
+    mov     _v9x_minivdd_bytes, cx
+    shr     ecx, 16
+    mov     _v9x_minivdd_attr, cx
+    mov     _v9x_minivdd_width, dx
+    shr     edx, 16
+    mov     _v9x_minivdd_height, dx
+    mov     _v9x_minivdd_bpp, si
+    shr     esi, 16
+    mov     _v9x_minivdd_model, si
+
+    mov     ax, 1
+    jmp     short V9xMiniVbeModeInfoDone
+V9xMiniVbeModeInfoFailed:
+    xor     ax, ax
+V9xMiniVbeModeInfoDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    ret     2
+V9XMINIVBEMODEINFO ENDP
+
+; WORD FAR PASCAL V9xMiniVbeController(void)
+;
+; Returns 1 and fills _v9x_minivdd_version and _v9x_minivdd_total64k, or 0.
+PUBLIC V9XMINIVBECONTROLLER
+V9XMINIVBECONTROLLER PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeCtrlFailed
+
+    mov     eax, V9XMINI_FN_CONTROLLER
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeCtrlFailed
+
+    mov     _v9x_minivdd_version, bx
+    mov     _v9x_minivdd_total64k, cx
+    mov     ax, 1
+    jmp     short V9xMiniVbeCtrlDone
+V9xMiniVbeCtrlFailed:
+    xor     ax, ax
+V9xMiniVbeCtrlDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XMINIVBECONTROLLER ENDP
 
 PUBLIC V9XVDDGETDISPLAYCONFIG
 V9XVDDGETDISPLAYCONFIG PROC FAR

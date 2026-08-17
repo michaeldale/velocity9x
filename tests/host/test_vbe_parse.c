@@ -210,10 +210,60 @@ static void test_mode_matches(void)
     VCHECK(v9x_vbe_mode_matches(&summary, 640u, 480u, 8u, 640u) == V9X_FALSE);
 }
 
+/*
+ * The drivability rule, exercised directly rather than through a byte block.
+ *
+ * The mini-VDD hands its answers back in registers, so the 16-bit side builds a
+ * summary by hand and applies this rule to it. If the rule only ever ran as part
+ * of block parsing, that second caller would be untested.
+ */
+static void test_mode_summary_is_drivable(void)
+{
+    struct v9x_vbe_mode_summary s;
+
+    /* The Mach64 VT2's real 0101h answer, as the DOS inventory reported it. */
+    s.attributes = 0x00bbu;
+    s.bytes_per_scan_line = 640u;
+    s.lin_bytes_per_scan_line = 0u;
+    s.width = 640u;
+    s.height = 480u;
+    s.bits_per_pixel = 8u;
+    s.memory_model = 4u;
+    s.phys_base = 0xe6000000ul;
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_TRUE);
+
+    s.attributes = 0x003bu;              /* no linear framebuffer */
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.attributes = 0x00bau;              /* not supported in hardware */
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.attributes = 0x00bbu;
+
+    s.memory_model = 3u;                 /* planar */
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.memory_model = 6u;                 /* direct colour is fine */
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_TRUE);
+    s.memory_model = 4u;
+
+    s.phys_base = 0x000a0000ul;          /* inside the first megabyte */
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.phys_base = 0ul;
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.phys_base = 0xe6000000ul;
+
+    s.bytes_per_scan_line = 0u;
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+    s.bytes_per_scan_line = 640u;
+    s.width = 0u;
+    VCHECK(v9x_vbe_mode_summary_is_drivable(&s) == V9X_FALSE);
+
+    VCHECK(v9x_vbe_mode_summary_is_drivable(0) == V9X_FALSE);
+}
+
 unsigned int v9x_run_vbe_parse_tests(void)
 {
     test_controller_info();
     test_mode_info();
     test_mode_matches();
+    test_mode_summary_is_drivable();
     return vbe_failures;
 }
