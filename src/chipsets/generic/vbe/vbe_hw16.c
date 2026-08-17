@@ -28,6 +28,23 @@ extern unsigned long v9x_vbe_vram_reported;
 extern unsigned short v9x_pci_match;
 
 /*
+ * vbe16.c / enable16.c: the scan line length the card reported, the geometry
+ * the driver is drawing with, and what the stride was before tier-0 touched it.
+ *
+ * These are published because a stride disagreement is invisible from inside
+ * the guest: GDI writes and reads through the same number, so a framebuffer
+ * grab looks perfect while the monitor shows shredded output. Only the host
+ * looking at the emulator window can see the difference, and these are the
+ * numbers that let it be diagnosed rather than eyeballed.
+ */
+extern unsigned short v9x_vbe_scan_bytes;
+extern unsigned short v9x_vbe_scan_pixels;
+extern unsigned short v9x_vbe_scan_lines;
+extern unsigned short v9x_vbe_pitch_before;
+extern unsigned short v9x_active_pitch;
+extern unsigned short v9x_active_width;
+
+/*
  * Not static: the per-object audit resolves this symbol by name to prove the
  * family's own table is in the image, the same way each S3 chip module exports
  * its device.
@@ -132,6 +149,18 @@ static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
     } else {
         write("VbeVramBytes", "unavailable");
     }
+
+    /* The stride story, in the order it is worth reading: what the driver draws
+     * with, what the card says it scans with, and what it said before any
+     * correction. A mismatch between the first two is a shredded picture. */
+    v9x_vbe_format_u32(number, (unsigned long)v9x_active_pitch);
+    write("DrawPitch", number);
+    v9x_vbe_format_u32(number, (unsigned long)v9x_vbe_scan_bytes);
+    write("VbeScanBytes", number);
+    v9x_vbe_format_u32(number, (unsigned long)v9x_vbe_scan_pixels);
+    write("VbeScanPixels", number);
+    v9x_vbe_format_u32(number, (unsigned long)v9x_vbe_pitch_before);
+    write("VbeScanBefore", number);
 }
 
 const V9X_HW16_OPS v9x_hw16 = {

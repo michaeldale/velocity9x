@@ -24,4 +24,16 @@
  * success. */
 unsigned short v9x_vbe_set_mode(unsigned short mode, unsigned short mode_flags);
 
+/*
+ * 4F06h, the scan line length: what the card will actually scan the surface out
+ * with, which a mode set does not settle and 4F01h does not report. Registers
+ * only, so unlike the buffered calls these are made from here.
+ */
+extern unsigned short v9x_vbe_scan_bytes;
+extern unsigned short v9x_vbe_scan_pixels;
+extern unsigned short v9x_vbe_scan_lines;
+
+unsigned short v9x_vbe_get_scan_line(void);
+unsigned short v9x_vbe_set_scan_line_pixels(unsigned short pixels);
+
 #endif /* VELOCITY9X_VBE16_H */

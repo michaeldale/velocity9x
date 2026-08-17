@@ -94,6 +94,8 @@ WORD v9x_minivdd_total64k = 0u;
 WORD v9x_minivdd_bufseg = 0u;
 WORD v9x_minivdd_modes = 0u;
 WORD v9x_minivdd_ctrl = 0u;
+/* What the card was scanning at before tier-0 corrected it, for the record. */
+WORD v9x_vbe_pitch_before = 0u;
 
 /* runtime.asm: the mini-VDD API, which needs 32-bit registers. */
 extern WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode);
@@ -230,6 +232,63 @@ static void v9x_vbe_trace_cache(void)
     at = v9x_append_decimal(text, at, v9x_minivdd_ctrl);
     text[at] = '\0';
     v9x_write_ini_key("VbeCache", text);
+}
+
+/*
+ * Stage 9 for a family with no post_mode_set hook: make the card scan the
+ * surface out at the stride we are going to draw with.
+ *
+ * A mode set does not settle this. The BIOS may accept 4F02h and leave the CRTC
+ * scanning at a stride of its own choosing, and 4F01h will not say so - it
+ * reports what the mode is defined as, not what the hardware was left
+ * programmed with. Draw at one stride while the card scans at another and the
+ * picture is shredded while every check inside the driver still agrees with
+ * itself: GDI writes and reads through the same wrong number, so a framebuffer
+ * grab looks perfect and only the monitor disagrees. That is exactly how a
+ * six-mode matrix passed on a Mach64 while the screen was garbage.
+ *
+ * So ask, and if it disagrees, set it and ask again. Refusing on a stride that
+ * cannot be made to match is the same bargain as the rest of tier-0: a legible
+ * stage 9 failure beats a display that looks broken with nothing recorded.
+ *
+ * The Millennium II family has forced this through its own hook since long
+ * before tier-0 existed. This is the chip-agnostic version of the same lesson.
+ */
+static WORD v9x_vbe_default_pitch(void)
+{
+    WORD width;
+    WORD height;
+    WORD bpp;
+    WORD pitch;
+
+    if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        v9x_vbe_trace("pitch-no-mode");
+        return 0u;
+    }
+    if (v9x_vbe_get_scan_line() == 0u) {
+        /* No 4F06h at all. Nothing can be verified, so nothing is claimed:
+         * carry on and let the aperture step decide. Older BIOSes that lack it
+         * generally have not repurposed the stride either. */
+        v9x_vbe_trace("pitch-no-4f06");
+        return 1u;
+    }
+    if (v9x_vbe_scan_bytes == pitch) {
+        return 1u;
+    }
+
+    /* It disagrees. Ask for the geometry width in pixels, which is what the
+     * family's packed pitch was computed from. */
+    v9x_vbe_pitch_before = v9x_vbe_scan_bytes;
+    if (v9x_vbe_set_scan_line_pixels(width) == 0u) {
+        v9x_vbe_trace("pitch-set-refused");
+        return 0u;
+    }
+    if (v9x_vbe_scan_bytes != pitch) {
+        v9x_vbe_trace("pitch-unsettable");
+        return 0u;
+    }
+    v9x_vbe_trace("pitch-corrected");
+    return 1u;
 }
 
 static DWORD v9x_vbe_default_aperture(void)
@@ -371,6 +430,13 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     if (v9x_hw16.post_mode_set != 0) {
         v9x_hardware_stage_code = 9u;
         if (v9x_hw16.post_mode_set() == 0u) {
+            return 0u;
+        }
+    } else if (v9x_hw16.read_aperture == 0) {
+        /* NULL hook, tier-0: use the chip-agnostic default, same rule as the
+         * aperture below. */
+        v9x_hardware_stage_code = 9u;
+        if (v9x_vbe_default_pitch() == 0u) {
             return 0u;
         }
     }

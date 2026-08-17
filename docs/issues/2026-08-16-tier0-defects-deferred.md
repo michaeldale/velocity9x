@@ -1,9 +1,15 @@
-# Four tier-0 backend defects
+# Five tier-0 backend defects
 
-Status: **all four fixed** (D1/D2 2026-08-16, D3 and D4 2026-08-17). All four
-live in chip-agnostic code belonging to the tier-0 backend rather than in
-anything ATI-specific; the first three were found while designing the ATI Mach64
-family, and D4 came out of verifying D3 on its guest.
+Status: **D1-D4 fixed** (D1/D2 2026-08-16, D3 and D4 2026-08-17). **D5 is open
+and it invalidates the claim D4 appeared to establish.** All five live in
+chip-agnostic code belonging to the tier-0 backend rather than in anything
+ATI-specific; the first three were found while designing the ATI Mach64 family,
+D4 came out of verifying D3 on its guest, and D5 out of somebody looking at the
+screen.
+
+**Read D5 before believing the matrix results below.** The six-mode pass on the
+Mach64 was real in the sense that every check passed, and worthless as evidence
+that the display works: the monitor was showing shredded output the whole time.
 
 D1 and D2 were blocking for stage 4, the first install on the physical laptop.
 
@@ -371,6 +377,60 @@ the second one was avoidable: it was a variation on a mechanism that had already
 faulted once, deployed on the theory that the timing was the problem. When a
 ring-3 mechanism has already taken a machine down, the next step is to change
 approach, not to retry it from a different line.
+
+---
+
+## D5 - the matrix passes while the display is garbage
+
+**Open. Seen 2026-08-17 on `Win98SE-Mach64VT2`, by looking at the emulator
+window.**
+
+With the `vbe` package installed and the six-mode matrix reporting `enable-ok`,
+GDI `PASS` and palette `PASS` on every mode, the 86Box window shows the desktop
+shredded: content repeated horizontally several times over, heavy vertical
+striping, unreadable.
+
+**The asymmetry is the whole finding.** A framebuffer grab through the agent, at
+the same moment, is a pixel-perfect 1024x768 desktop. So the content in memory
+is right, the driver and GDI agree with each other, and both disagree with what
+the CRTC actually puts on the monitor.
+
+That is why nothing caught it. Every check in the matrix is GDI-side:
+`ScreenWidth`/`ScreenHeight` come from GDI, `V9XGDI.EXE` draws and verifies
+through GDI, the palette test reads back through GDI, and the screenshot is a
+GDI blit. All of them go through the same pitch, base and depth the driver
+chose, so all of them are self-consistent no matter what the hardware is doing.
+**A suite made entirely of GDI-side checks cannot distinguish a working display
+from a shredded one**, and this one did not.
+
+**Stride is ruled out**, measured rather than assumed. `V9XHW.INI` now publishes
+the numbers, and on the failing 1024x768x16 mode they agree:
+
+| Key | Value |
+|---|---|
+| `DrawPitch` | 2048 |
+| `VbeScanBytes` | 2048 |
+| `VbeScanPixels` | 1024 |
+| `VbeScanBefore` | 0 (no correction was needed) |
+
+The 4F06h enforcement added while chasing this is kept anyway - the Millennium II
+proves some BIOSes do choose their own stride, so verifying it is right even
+though it was not the fault here. It is not a fix for D5 and must not be
+described as one.
+
+**Still to find.** Candidates, none tested: the scanout base differing from the
+LFB the driver writes (4F01h `PhysBasePtr` versus what the CRTC is pointed at);
+the CRTC left in a different depth from the mode that was set; or 86Box's
+`mach64vt2` not honouring VBE linear-framebuffer modes on its scanout path at
+all, which would make this an emulation limit rather than a driver bug. The
+cheapest discriminator is whether 640x480x8 is also wrong - if the simplest
+packed mode is clean and only 16 bpp is shredded, it is depth-related; if both
+are wrong, suspect the base or the emulation.
+
+**And the test gap needs fixing regardless of the cause.** Until the suite has
+one check that does not go through GDI, a green matrix means "the driver is
+self-consistent", not "the display works". That distinction cost a confident
+claim today.
 
 ## Why these are not ATI bugs
 
