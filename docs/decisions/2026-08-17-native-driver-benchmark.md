@@ -52,13 +52,53 @@ shortfall worth acting on. Two things are worth noting before anyone quotes it:
   because `dwSVBCaps` is zero). A comparison on those would measure the HEL and
   the emulator, not this driver.
 
+## Tier-0 on the Mach64, same day, same binary
+
+The `vbe` package on `Win98SE-Mach64VT2`, all three renderer paths:
+
+| Renderer | Tier-0 Mach64 | Velocity9x ViRGE | What it exercises |
+|---|---|---|---|
+| Video + `BltFast` | **6 FPS**, 106 frames | 18 FPS, 310 frames | our `Blt` callback, once per frame |
+| Direct backbuffer | **31 FPS**, 528 frames | 19 FPS | no blit at all; raw writes into VRAM |
+| System RAM | **39 FPS**, 665 frames | 27 FPS | the HEL's system-to-video copy |
+
+Two things fall out of this, and they point in opposite directions.
+
+**The blitter is worth about 3x on the path that matters.** Tier-0 gets 6 FPS
+where the ViRGE's engine gets 18, on identical work. That gap *is* tier-0: no
+acceleration by construction, so `BltFast` lands in `blt_cpu.c` and every byte
+of a 640x480x16 frame crosses the aperture twice. It is the clearest argument
+yet for a native `eng_mach64.c`, and it puts a number on what that would buy.
+
+**But the Mach64 guest is the faster machine on every path that avoids our
+blitter** - 31 against 19, and 39 against 27. Both guests are the same `ym430tx`
+Pentium MMX with 128 MiB, so that is 86Box's `mach64vt2` framebuffer being
+cheaper to write than its `virge_dx_pci` one, not anything about these drivers.
+It also means the 6-versus-18 comparison understates the blitter: on equally
+fast silicon the CPU path would look worse still, and cross-card FPS numbers
+here measure the emulator as much as the driver.
+
+**Caveat that matters more than the numbers.** These runs happened while D5 is
+open, and D5 makes 16 bpp scanout wrong on this guest. Ironfield runs
+640x480x16, so the display was garbled for all three. The throughput figures are
+still real - the game rendered and presented the same work either way, and the
+frame counts are self-consistent - but nobody watching would have called this a
+working benchmark, and the numbers should be re-taken once D5 is fixed before
+they are quoted as tier-0's performance.
+
 ## What this does not cover
 
 The Trio64 has no retail-driver reference guest, so its 16 FPS still has nothing
-to be compared against. Neither does tier-0: the generic VBE path has no
-acceleration at all by construction, so an Ironfield number there would measure
-`blt_cpu.c`, and the 3 FPS already recorded for the CPU copy in
-`2026-08-14-virge-blitter.md` is that measurement in all but name.
+to be compared against.
+
+**The Mach64 has no native comparison yet either, and it is the obvious next
+measurement.** `docs\vm-environment.md` records that after a card change Windows
+binds ATI's own in-box driver on this guest - `DXATI.INF`, "ATI Graphics Pro
+Turbo PCI (atim64 - VT)" at 1024x768x16 - so a stock-driver number for this card
+is obtainable. It needs the display driver swapped back through the GUI and then
+swapped again, on a guest that is snapshotted, so it is work rather than a
+blocker. Until that exists, the 6 FPS above says what tier-0 costs against our
+own accelerated driver on a different card, which is not the same question.
 
 Installing Ironfield put a game directory on the reference guest. Nothing else
 about it changed - it carries no Velocity9x binaries and remains a stock-driver
