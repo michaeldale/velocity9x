@@ -14,6 +14,21 @@ documented Have-Disk route inert, and D4 gave the tier a working way to ask the
 BIOS where the framebuffer is. Before D3 the driver refused at stage 1 on
 identity; before D4 it refused at stage 3 with no aperture.
 
+**Full mode matrix, 2026-08-17**, `vbe` package on `Win98SE-Mach64VT2`:
+
+| Mode | Stage | GDI | Palette |
+|---|---|---|---|
+| 640x480x8 | enable-ok | PASS | PASS |
+| 800x600x8 | enable-ok | PASS | PASS |
+| 1024x768x8 | enable-ok | PASS | PASS |
+| 640x480x16 | enable-ok | PASS | n/a |
+| 800x600x16 | enable-ok | PASS | n/a |
+| 1024x768x16 | enable-ok | PASS | n/a |
+
+Results in `build\driver-results\mode-matrix-vbe-std-vga-20260817-164318`. That
+is the phase 9 exit gate, met on hardware the family does not claim - which is
+the strongest form the claim could take.
+
 D4 is the one to read for method rather than mechanism. Three hypotheses about
 it were wrong, each argued from documentation, and the one that held was settled
 by instrumenting the guest instead.
