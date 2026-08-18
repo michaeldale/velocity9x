@@ -125,11 +125,15 @@ function New-V9xInfText {
         # The volatile CURRENT key is Windows' to create; only remove a stale
         # one left by a previous install.
         'HKR,CURRENT'
-        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display' +
-         '\shellex\PropertySheetHandlers\Velocity9x')
-        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved,' +
-         $script:V9xSettingsPageClsid)
-        ('HKCR,CLSID\' + $script:V9xSettingsPageClsid)
+        # The settings-page registration is deliberately NOT deleted here.
+        # These are the same keys Velocity9x.Registry adds below, and SetupX
+        # applied this DelReg after that AddReg on BARRY: the handler key and
+        # the Approved value were removed by the install that had just written
+        # them, while HKCR\CLSID survived only because Win9x cannot delete a
+        # key that still has a subkey. The result was a machine with the DLL
+        # installed, the CLSID registered, and no tab. Cleaning up after a
+        # future CLSID change - the reason these lines existed - would need the
+        # old CLSID anyway, which these literal paths do not carry.
         ''
         '[Velocity9x.Registry]'
         'HKR,,Ver,,4.0'

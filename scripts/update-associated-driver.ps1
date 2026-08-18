@@ -4,6 +4,9 @@ param(
     # Path to the remote-agent controller (v9xctl.ps1). Set V9X_AGENT_CTL to
     # avoid passing it on every call; the agent lives outside this repository.
     [string]$ControllerPath = $env:V9X_AGENT_CTL,
+    # Remote-agent host. Defaults to the loopback the 86Box guests are reached
+    # on; pass the address of a physical target such as BARRY.
+    [string]$GuestHost = '127.0.0.1',
     # Remote-agent host port. The project runs more than one guest, so the
     # controller default is not always the intended target.
     [ValidateRange(1, 65535)]
@@ -50,6 +53,7 @@ function Invoke-V9xCtlJson {
     param([string]$Operation, [string[]]$OperationArguments = @())
     $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                    $ControllerPath, $Operation, "-Json",
+                   "-EndpointHost", $GuestHost,
                    "-Port", [string]$Port) + $OperationArguments
     $lastFailure = ""
     for ($attempt = 1; $attempt -le 3; ++$attempt) {
