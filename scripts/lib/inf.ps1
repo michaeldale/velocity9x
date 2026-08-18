@@ -166,6 +166,16 @@ function New-V9xInfText {
          '\shellex\PropertySheetHandlers\Velocity9x,,,"{0}"' -f $script:V9xSettingsPageClsid)
         ('HKLM,Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved,' +
          '{0},,"Velocity9x Settings Page"' -f $script:V9xSettingsPageClsid)
+        # The lines above are necessary but not sufficient. Windows 98 validates
+        # a Display property-sheet handler against a Tag DWORD derived from a
+        # per-machine seed, ignores the handler when it does not check out, and
+        # deletes the key - so an INF, which cannot know the seed, can never
+        # register this page on its own. V9xRegisterPage recovers the seed from
+        # a handler Windows has already accepted and writes the Tag. RunOnce
+        # fires it at the first boot after the install, which is also the boot
+        # where the shell first reads the handler list.
+        ('HKLM,Software\Microsoft\Windows\CurrentVersion\RunOnce,V9xSettingsPage,,' +
+         '"rundll32.exe v9xsetp.dll,V9xRegisterPage"')
     )
 
     if ($chips.Count -gt 1) {
@@ -230,6 +240,7 @@ function Assert-V9xInf {
 
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
                   'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
+                  'RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"',
                   "CLSID\$script:V9xSettingsPageClsid\InProcServer32",
                   "DEFAULT,Mode,,`"$DefaultMode`"",
                   'DEFAULT,vdd,,"*vdd,*vflatd"',

@@ -348,6 +348,144 @@ static const struct v9x_factory_vtbl v9x_factory_vtbl_instance = {
 };
 
 /*
+ * Registration.
+ *
+ * An INF cannot register this page on its own. Windows 98 validates every
+ * Display property-sheet handler against a "Tag" DWORD that is specific to
+ * the machine: a handler whose Tag does not check out is ignored, and the
+ * shell removes the key. The value is
+ *
+ *     Tag = seed + w0 + w1
+ *
+ * where the seed is a per-machine constant and w0/w1 are the first eight
+ * characters of the handler's own CLSID text read as two little-endian
+ * DWORDs. Only the sum of w0 and w1 is ever needed, so that is what
+ * v9x_clsid_words returns.
+ *
+ * The seed is not published anywhere, but it is recoverable by inverting the
+ * same expression over any handler Windows has already accepted - Windows
+ * ships two on a stock install, and they agree. Reading it back from a
+ * working neighbour is the whole trick.
+ *
+ * The INF runs this through RunOnce at the first boot after the install:
+ *
+ *     rundll32.exe v9xsetp.dll,V9xRegisterPage
+ */
+#define V9X_HANDLERS_KEY \
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Controls Folder\\Display" \
+    "\\shellex\\PropertySheetHandlers"
+#define V9X_APPROVED_KEY \
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
+#define V9X_PAGE_NAME  "Velocity9x"
+#define V9X_PAGE_TITLE "Velocity9x Settings Page"
+#define V9X_PAGE_CLSID_TEXT "{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"
+
+static DWORD v9x_clsid_words(const char *clsid)
+{
+    DWORD low = 0ul;
+    DWORD high = 0ul;
+    int index;
+
+    for (index = 0; index < 4; ++index) {
+        low |= ((DWORD)(BYTE)clsid[index]) << (index * 8);
+        high |= ((DWORD)(BYTE)clsid[index + 4]) << (index * 8);
+    }
+    return low + high;
+}
+
+static BOOL v9x_page_seed(DWORD *seed)
+{
+    HKEY handlers;
+    DWORD index = 0ul;
+    BOOL found = FALSE;
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_HANDLERS_KEY, 0ul, KEY_READ,
+                      &handlers) != ERROR_SUCCESS) {
+        return FALSE;
+    }
+    while (!found) {
+        char name[128];
+        char clsid[64];
+        HKEY handler;
+        DWORD length = sizeof(name);
+        DWORD type = 0ul;
+        DWORD size;
+        DWORD tag = 0ul;
+
+        if (RegEnumKeyExA(handlers, index, name, &length, 0, 0, 0, 0) !=
+                ERROR_SUCCESS) {
+            break;
+        }
+        ++index;
+        /* Never seed from our own entry: a stale Tag would reproduce itself. */
+        if (lstrcmpiA(name, V9X_PAGE_NAME) == 0) {
+            continue;
+        }
+        if (RegOpenKeyExA(handlers, name, 0ul, KEY_READ, &handler) !=
+                ERROR_SUCCESS) {
+            continue;
+        }
+        size = sizeof(clsid);
+        if (RegQueryValueExA(handler, 0, 0, &type, (BYTE *)clsid, &size) ==
+                ERROR_SUCCESS && type == REG_SZ && size > 8ul) {
+            clsid[sizeof(clsid) - 1] = '\0';
+            size = sizeof(tag);
+            type = 0ul;
+            if (RegQueryValueExA(handler, "Tag", 0, &type, (BYTE *)&tag,
+                                 &size) == ERROR_SUCCESS &&
+                    type == REG_DWORD && size == sizeof(tag)) {
+                *seed = tag - v9x_clsid_words(clsid);
+                found = TRUE;
+            }
+        }
+        RegCloseKey(handler);
+    }
+    RegCloseKey(handlers);
+    return found;
+}
+
+void CALLBACK V9xRegisterPage(HWND owner, HINSTANCE instance, LPSTR command,
+                              int show)
+{
+    DWORD seed = 0ul;
+    DWORD tag;
+    DWORD disposition;
+    HKEY key;
+
+    (void)owner;
+    (void)instance;
+    (void)command;
+    (void)show;
+
+    /* No accepted neighbour means no recoverable seed. Writing a handler
+     * without a valid Tag would leave a key the shell deletes again, so
+     * leave the registry alone instead. */
+    if (!v9x_page_seed(&seed)) {
+        return;
+    }
+    tag = seed + v9x_clsid_words(V9X_PAGE_CLSID_TEXT);
+
+    if (RegCreateKeyExA(HKEY_LOCAL_MACHINE,
+                        V9X_HANDLERS_KEY "\\" V9X_PAGE_NAME, 0ul, 0,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, 0, &key,
+                        &disposition) == ERROR_SUCCESS) {
+        RegSetValueExA(key, 0, 0ul, REG_SZ,
+                       (const BYTE *)V9X_PAGE_CLSID_TEXT,
+                       sizeof(V9X_PAGE_CLSID_TEXT));
+        RegSetValueExA(key, "Tag", 0ul, REG_DWORD, (const BYTE *)&tag,
+                       sizeof(tag));
+        RegCloseKey(key);
+    }
+    if (RegCreateKeyExA(HKEY_LOCAL_MACHINE, V9X_APPROVED_KEY, 0ul, 0,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, 0, &key,
+                        &disposition) == ERROR_SUCCESS) {
+        RegSetValueExA(key, V9X_PAGE_CLSID_TEXT, 0ul, REG_SZ,
+                       (const BYTE *)V9X_PAGE_TITLE, sizeof(V9X_PAGE_TITLE));
+        RegCloseKey(key);
+    }
+}
+
+/*
  * DLL exports.
  */
 LONG WINAPI DllGetClassObject(const V9X_GUID *clsid,
