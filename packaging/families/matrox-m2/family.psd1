@@ -95,6 +95,11 @@
         SkeletonOutput = 'build\win16-ddi-mga2'
         PackageOutput = 'build\matrox-candidate'
         VmStageDirectory = ''
+        # The Millennium II reads the aperture from hardware and never consults
+        # the mini-VDD's 4F9Ch VBE cache, so this family ships the mini-VDD with
+        # the boot-time BIOS collection assembled out (see
+        # docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md).
+        MiniVddVbeCollect = $false
         # Build-time variants beyond the plain family build. The 16-bpp variant
         # adds a define and unlocks mode indices 1 and 2.
         Variants = @(

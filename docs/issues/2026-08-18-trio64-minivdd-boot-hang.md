@@ -1,6 +1,13 @@
 # V9XMINI.VXD hangs the boot on a physical S3 Trio64
 
-Status: **open.** Isolated to `V9XMINI.VXD` on 2026-08-18. The DRV is not
+Status: **root-caused and fixed, 2026-08-18.** The `Device_Init` VBE collection
+allocated its V86 scratch byte-aligned and truncated the address to a real-mode
+segment, so the 'VBE2' stamp and the BIOS wrote outside the buffer. A
+paragraph-aligned, zero-initialised allocation boots clean on the same card, and
+the S3 family additionally ships the mini-VDD with the collection assembled out
+entirely. See "Isolation, round 2" below.
+
+Originally isolated to `V9XMINI.VXD` on 2026-08-18. The DRV is not
 implicated: with the stock `S3.VXD` in the `minivdd` slot the same
 `V9XDISP.DRV` reaches `enable-ok` and drives the card.
 
@@ -119,18 +126,55 @@ the first hardware measurement of that fix, and it lands on the predicted number
   but the post-flip pixel check does not see what it expects. Could be a
   verification-timing artefact in the probe or a real scanout issue. Untriaged.
 
-## Next step
+## Isolation, round 2: the collection is the trigger, alignment is the cause
 
-`BOOTLOG.TXT` is the evidence that would name the failing init. `BootLog=1` was
-added to `MSDOS.SYS` `[Options]` on this machine and produced a **0-byte**
-`C:\BOOTLOG.TXT`, so that switch alone does not work here; the F8 "Logged" boot
-menu option is the route to try, and it needs someone at the keyboard.
+Reading the collection code found the defect before any further boot was spent.
+`V9xMini_Vbe_Collect` allocated its 512-byte V86 scratch with
+`_Allocate_Global_V86_Data_Area, <512, 0>` - flags 0, **byte** alignment - and
+then `shr eax, 4` to make a real-mode segment. On a non-paragraph-aligned
+allocation that segment starts up to 15 bytes *below* the block, so:
 
-Until then the suspect list is led by the 0.4.0 ring-0 VBE collection -
-`Device_Init` gathering 4F00h and the seven standard 4F01h answers under nested
-execution, reached through `INT 2Fh AX=1684h`. It is the newest code in the VxD
-and it had never met a real video BIOS.
+- the ring-0 `'VBE2'` stamp writes into whatever V86 global data precedes the
+  block,
+- every `V9xMini_Vbe_Peek_Word` offset is skewed, and
+- the BIOS, handed `ES:DI` at the truncated segment, can write past the end.
 
-Note that `V9XMINI.VXD` is unchanged in behaviour between 0.4.0 and 0.4.1: every
-file the 0.4.1 fix touched compiles into `V9XDISP.DRV`. This is a pre-existing
-fault that only physical hardware exposed.
+86Box guests evidently received paragraph-aligned blocks; the physical machine
+did not have to.
+
+Two candidate builds, tested on BARRY in sequence, each over two boots with the
+installed 0.4.1 DRV (build `2094b52`) unchanged and ASD confirmed clear:
+
+| `V9XMINI.VXD` build | Collection | Result |
+|---|---|---|
+| `8976898-novbe` | assembled out (`V9X_NO_VBE_COLLECT`) | `enable-ok`, 1024x768x16, both boots |
+| `8976898-vbefix` | kept, `GVDAParaAlign + GVDAZeroInit`, direct-linear stamp | `enable-ok`, 1024x768x16, both boots |
+
+The first result confirms the collection is the only part of the VxD this
+hardware objects to - the rest of `Device_Init` (dispatch-table install, DPMS
+and power callbacks, serial diagnostics) is exonerated. The second pins the
+fault inside the collection to the allocation, since the alignment fix is the
+only behavioural difference from the code that hung.
+
+The fixed collection also now emits bounded serial markers -
+`vbe-collect start`, one `vbe-call fn=/arg=` line per BIOS call, `ret=` after
+each, `vbe-collect done` - so any future hang in it names the exact BIOS call
+on a serial capture.
+
+## Resolution
+
+- **Root cause fixed** in `src\minivdd32\loader.asm`: paragraph-aligned,
+  zero-initialised V86 allocation; the stamp uses the returned linear address.
+- **The S3 family no longer runs the collection at all.** Its chips read the
+  aperture from hardware and never consult the 4F9Ch cache, so the s3 package
+  (and matrox-m2, same reasoning) ships a mini-VDD with the collection
+  assembled out via `Build.MiniVddVbeCollect = $false` in the family manifest.
+  Tier-0 families (`vbe`, `ati`) keep the fixed collection - they have no other
+  way to learn the aperture. Decision record:
+  `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md`.
+- What remains true: `Exec_Int` into the video BIOS has no timeout, so a BIOS
+  that never IRETs would still hang a tier-0 boot; the per-call markers exist
+  to make that failure legible.
+
+For the record, the abandoned route: `BOOTLOG.TXT` via `BootLog=1` in
+`MSDOS.SYS` produced a 0-byte file on this machine and was never needed.

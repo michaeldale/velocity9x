@@ -149,12 +149,21 @@ Build = @{
     SkeletonOutput = 'build\win16-ddi-s3'
     PackageOutput = 'build\win98se-s3'
     VmStageDirectory = 'build\vm-probe\S3'
+    MiniVddVbeCollect = $false
     Variants = @( @{ Id = '8bpp'; Defines = @(); AllowedModeIndexes = @(0); Default = $true } )
 }
 ```
 
 `Sources` is both the compile order and the link order. Reordering it changes
 the linked image, so a reorder needs a golden re-baseline.
+
+`MiniVddVbeCollect` is optional; absent means `$true`. `$false` builds the
+family's `V9XMINI.VXD` with the boot-time VBE collection assembled out
+(`build-minivdd-skeleton.ps1 -DisableVbeCollect`), which is correct for any
+family whose chips have a `read_aperture` hook: such drivers never consult the
+mini-VDD's 4F9Ch cache, and the collection is eight nested BIOS calls at
+`Device_Init` with nothing to show for them. Tier-0 families must leave it on.
+See `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md`.
 
 `Variants` are build-time flavours of one family (the Matrox 8-bpp and 16-bpp
 drops). A family with no variants omits the key.

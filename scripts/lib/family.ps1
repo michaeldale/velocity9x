@@ -128,6 +128,12 @@ function Test-V9xFamilyManifest {
 
     Assert-V9xFamilyKeys -Table $Family.Build -Context "Family $Id Build" -Required @(
         'Sources', 'Defines', 'RuntimeDefines', 'SkeletonOutput', 'PackageOutput')
+    # Optional: absent means the mini-VDD keeps its boot-time VBE collection,
+    # which is what tier-0 families (no read_aperture hook) require.
+    if ($Family.Build.ContainsKey('MiniVddVbeCollect') -and
+        $Family.Build.MiniVddVbeCollect -isnot [bool]) {
+        throw "Family $Id Build.MiniVddVbeCollect must be a boolean when present."
+    }
     $sources = @($Family.Build.Sources)
     if ($sources.Count -eq 0) {
         throw "Family $Id declares no build sources."

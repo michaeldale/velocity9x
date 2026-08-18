@@ -14,6 +14,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $outputDir = Join-Path $repoRoot "build\matrox-candidate"
 
 . (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+$familyManifest = Import-V9xFamily -RepoRoot $repoRoot -Id 'matrox-m2'
 if (-not $BuildId) {
     $BuildId = Get-V9xBuildId -RepoRoot $repoRoot -Fallback "mga2-640x480x8-local"
 }
@@ -35,8 +37,10 @@ $selectedMode = $matroxModes[$ModeIndex]
     -BuildId $BuildId -DdkRoot $DdkRoot -ForceModeIndex $ModeIndex -BootTrace `
     -Family 'matrox-m2' -Variant $(if ($BitsPerPixel -eq 16) { '16bpp' } else { '8bpp' })
 if (-not $PreserveStockMiniVdd) {
+    $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
     & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
-        -BuildId $BuildId -DdkRoot $DdkRoot
+        -BuildId $BuildId -DdkRoot $DdkRoot `
+        -DisableVbeCollect:(-not $miniVddVbeCollect)
 }
 & (Join-Path $PSScriptRoot "build-win16-loader-probe.ps1") `
     -BuildId $BuildId -MatroxMillennium2 -MatroxBitsPerPixel $BitsPerPixel

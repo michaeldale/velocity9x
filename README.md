@@ -5,7 +5,7 @@ A ground-up Windows 9x display driver, written from scratch against the Windows
 driver and now has native support for S3 and ATI chips plus a generic VESA path
 that runs on cards it has never been told about.
 
-**Version 0.4.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.4.2** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **This is an engineering bring-up driver, not a release driver.** It has been
 > developed and tested almost entirely under [86Box](https://86box.net/).

@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$BuildId,
-    [string]$DdkRoot = "C:\98DDK"
+    [string]$DdkRoot = "C:\98DDK",
+    [switch]$DisableVbeCollect
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,7 +37,7 @@ $objectPath = Join-Path $outputDir "loader.obj"
 $vxdPath = Join-Path $outputDir "v9xmini.vxd"
 $mapPath = Join-Path $outputDir "v9xmini.map"
 
-Set-Content -LiteralPath $buildInclude -Encoding Ascii -Value @(
+$buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
     "V9xMiniInitLine db `"V9X-MINI init build=$BuildId`", 13, 10",
     "V9xMiniInitLineLength equ `$ - V9xMiniInitLine",
@@ -49,8 +50,27 @@ Set-Content -LiteralPath $buildInclude -Encoding Ascii -Value @(
     "V9xMiniPowerOffLine db `"V9X-MINI monitor-power low`", 13, 10",
     "V9xMiniPowerOffLineLength equ `$ - V9xMiniPowerOffLine",
     "V9xMiniFailLine db `"V9X-MINI init-fail build=$BuildId`", 13, 10",
-    "V9xMiniFailLineLength equ `$ - V9xMiniFailLine"
+    "V9xMiniFailLineLength equ `$ - V9xMiniFailLine",
+    "V9xMiniVbeStartLine db `"V9X-MINI vbe-collect start build=$BuildId`", 13, 10",
+    "V9xMiniVbeStartLineLength equ `$ - V9xMiniVbeStartLine",
+    "V9xMiniVbeDoneLine db `"V9X-MINI vbe-collect done`", 13, 10",
+    "V9xMiniVbeDoneLineLength equ `$ - V9xMiniVbeDoneLine",
+    "V9xMiniVbeCallLine db `"V9X-MINI vbe-call fn=`"",
+    "V9xMiniVbeCallFnHex db `"0000`"",
+    "db `" arg=`"",
+    "V9xMiniVbeCallArgHex db `"0000`", 13, 10",
+    "V9xMiniVbeCallLineLength equ `$ - V9xMiniVbeCallLine",
+    "V9xMiniVbeCallRetLine db `"V9X-MINI vbe-call ret=`"",
+    "V9xMiniVbeCallRetHex db `"0000`", 13, 10",
+    "V9xMiniVbeCallRetLineLength equ `$ - V9xMiniVbeCallRetLine"
 )
+if ($DisableVbeCollect) {
+    $buildIncludeLines += @(
+        "V9xMiniVbeDisabledLine db `"V9X-MINI vbe-collect disabled build=$BuildId`", 13, 10",
+        "V9xMiniVbeDisabledLineLength equ `$ - V9xMiniVbeDisabledLine"
+    )
+}
+Set-Content -LiteralPath $buildInclude -Encoding Ascii -Value $buildIncludeLines
 Set-Content -LiteralPath $definitionFile -Encoding Ascii -Value @(
     "VXD V9XMINI DYNAMIC",
     "DESCRIPTION 'Velocity9x S3 ViRGE mini-VDD with monitor power management'",
@@ -73,6 +93,9 @@ $assemblerArguments = @(
     "-DMASM6", "-Sg", "-DVGA", "-DVGA31", "-DMINIVDD=1",
     "-I$ddkInclude", "-I$outputDir", "-Fo$objectPath", $sourcePath
 )
+if ($DisableVbeCollect) {
+    $assemblerArguments = @("-DV9X_NO_VBE_COLLECT") + $assemblerArguments
+}
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Windows 98 DDK assembler failed to build the mini-VDD skeleton."
@@ -105,6 +128,14 @@ foreach ($marker in @("velocity9x:$BuildId", "V9X-MINI init",
     if (-not $imageText.Contains($marker)) {
         throw "The mini-VDD output is missing marker $marker."
     }
+}
+$disabledMarker = "V9X-MINI vbe-collect disabled"
+if ($DisableVbeCollect) {
+    if (-not $imageText.Contains($disabledMarker)) {
+        throw "The no-collect mini-VDD is missing its disabled marker."
+    }
+} elseif ($imageText.Contains($disabledMarker)) {
+    throw "A default mini-VDD build must not carry the vbe-collect disabled marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
 if (([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count -ne 4 -or

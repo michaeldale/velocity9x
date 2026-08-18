@@ -522,6 +522,42 @@ VxD_LOCKED_CODE_ENDS
 
 VxD_ICODE_SEG
 
+; Everything down to MiniVDD_Dynamic_Init is the init-time VBE collection. It
+; assembles away under V9X_NO_VBE_COLLECT: the 4F9Ch API above stays, and its
+; zeroed cache is the designed "collection never ran" state it already reports
+; as invalid, so families that never read the cache can ship without ever
+; running the BIOS at boot.
+IFNDEF V9X_NO_VBE_COLLECT
+
+; Render AX as four ASCII hex digits at EDI, for the serial call markers.
+; Preserves everything.
+BeginProc V9xMini_Hex16
+    push    eax
+    push    ebx
+    push    ecx
+    push    edi
+    mov     ebx, eax
+    mov     ecx, 4
+V9xMini_Hex16_Next:
+    rol     bx, 4
+    mov     al, bl
+    and     al, 0Fh
+    add     al, '0'
+    cmp     al, '9'
+    jbe     short V9xMini_Hex16_Store
+    add     al, 'a' - '9' - 1
+V9xMini_Hex16_Store:
+    mov     [edi], al
+    inc     edi
+    dec     ecx
+    jnz     short V9xMini_Hex16_Next
+    pop     edi
+    pop     ecx
+    pop     ebx
+    pop     eax
+    ret
+EndProc V9xMini_Hex16
+
 ; Run one buffered VBE call in V86 mode and leave the BIOS status in AX.
 ;
 ; In:  AX = VBE function (4F00h or 4F01h), CX = its argument.
@@ -561,6 +597,21 @@ V9xMini_Vbe_Call_Ready:
     movzx   esi, ax                     ; hold the function
     movzx   edx, cx                     ; hold its argument
 
+    ; Name the call on the wire before making it. If the BIOS never comes
+    ; back, fn= and arg= are the last line of the boot and identify the
+    ; killer call exactly.
+    mov     eax, esi
+    mov     edi, OFFSET32 V9xMiniVbeCallFnHex
+    call    V9xMini_Hex16
+    mov     eax, edx
+    mov     edi, OFFSET32 V9xMiniVbeCallArgHex
+    call    V9xMini_Hex16
+    push    esi
+    mov     esi, OFFSET32 V9xMiniVbeCallLine
+    mov     ecx, V9xMiniVbeCallLineLength
+    call    V9xMini_Serial_Write
+    pop     esi
+
     VMMcall Get_Cur_VM_Handle           ; EBX = the VM to run this in
     mov     ebp, [ebx.CB_Client_Pointer]
 
@@ -580,6 +631,17 @@ V9xMini_Vbe_Call_Ready:
 
     VMMcall End_Nest_Exec
     Pop_Client_State
+
+    ; Report the reply. "ret=" arriving at all separates "hung in the BIOS"
+    ; from "returned and died later".
+    mov     eax, esi
+    mov     edi, OFFSET32 V9xMiniVbeCallRetHex
+    call    V9xMini_Hex16
+    push    esi
+    mov     esi, OFFSET32 V9xMiniVbeCallRetLine
+    mov     ecx, V9xMiniVbeCallRetLineLength
+    call    V9xMini_Serial_Write
+    pop     esi
 
     mov     eax, esi
 
@@ -620,16 +682,24 @@ BeginProc V9xMini_Vbe_Collect
     push    esi
     push    edi
 
+    mov     esi, OFFSET32 V9xMiniVbeStartLine
+    mov     ecx, V9xMiniVbeStartLineLength
+    call    V9xMini_Serial_Write
+
     ; 512 bytes is what 4F00h may write. VMM_ICODE only, hence init.
-    VMMcall _Allocate_Global_V86_Data_Area, <512, 0>
+    ; Paragraph alignment because the shr below must be exact: a byte-aligned
+    ; block truncates to a segment that starts before the allocation, skewing
+    ; every peek and letting the stamp and the BIOS write outside it.
+    ; Zero-init so a BIOS that answers 004Fh without writing cannot leave
+    ; stale bytes to be read back as answers.
+    VMMcall _Allocate_Global_V86_Data_Area, <512, GVDAParaAlign + GVDAZeroInit>
     test    eax, eax
     jz      V9xMini_Vbe_Collect_Done
-    shr     eax, 4                      ; linear in the first MiB -> segment
+    mov     edx, eax                    ; keep the ring-0 linear for the stamp
+    shr     eax, 4                      ; paragraph-aligned first MiB -> segment
     mov     V9xVbeBufSeg, ax
 
     ; 4F00h. Stamp "VBE2" first so a 2.0-aware BIOS fills in the longer block.
-    movzx   edx, V9xVbeBufSeg
-    shl     edx, 4
     mov     dword ptr [edx], 32454256h  ; 'VBE2'
     mov     ax, 4F00h
     xor     cx, cx
@@ -705,6 +775,9 @@ V9xMini_Vbe_Collect_Skip:
     jmp      V9xMini_Vbe_Collect_Next
 
 V9xMini_Vbe_Collect_Done:
+    mov     esi, OFFSET32 V9xMiniVbeDoneLine
+    mov     ecx, V9xMiniVbeDoneLineLength
+    call    V9xMini_Serial_Write
     pop     edi
     pop     esi
     pop     edx
@@ -712,6 +785,8 @@ V9xMini_Vbe_Collect_Done:
     pop     ebx
     ret
 EndProc V9xMini_Vbe_Collect
+
+ENDIF ; IFNDEF V9X_NO_VBE_COLLECT
 
 public MiniVDD_Dynamic_Init
 BeginProc MiniVDD_Dynamic_Init
@@ -749,10 +824,23 @@ V9xMini_Power_Defaults:
     mov     ecx, V9xMiniDefaultsLineLength
     call    V9xMini_Serial_Write
 V9xMini_Init_Succeeded:
+IFNDEF V9X_NO_VBE_COLLECT
     ; Collect the VBE answers for the tier-0 driver. Deliberately last, and
     ; deliberately not able to fail the init: an adapter with no usable VESA
     ; BIOS should still get the DPMS and power callbacks above.
+    ;
+    ; What cannot be engineered away: Exec_Int runs the real video BIOS and
+    ; has no timeout, so a BIOS that never IRETs hangs the boot. The vbe-call
+    ; markers exist so a serial capture names the exact call.
     call    V9xMini_Vbe_Collect
+ELSE
+    ; Assembled without the collection. Families whose drivers read the
+    ; aperture from hardware never consult the 4F9Ch cache; its zeroed
+    ; entries are the designed "collection never ran" answer.
+    mov     esi, OFFSET32 V9xMiniVbeDisabledLine
+    mov     ecx, V9xMiniVbeDisabledLineLength
+    call    V9xMini_Serial_Write
+ENDIF
     xor     eax, eax
     clc
     ret

@@ -154,6 +154,12 @@
         SkeletonOutput = 'build\win16-ddi-s3'
         PackageOutput = 'build\win98se-s3'
         VmStageDirectory = 'build\vm-probe\S3'
+        # Both S3 chips read the aperture from hardware, so the driver never
+        # consults the mini-VDD's 4F9Ch VBE cache. Boot-time BIOS collection is
+        # all risk and no benefit here, and it hung a physical Trio64 (see
+        # docs\issues\2026-08-18-trio64-minivdd-boot-hang.md), so this family
+        # ships the mini-VDD with the collection assembled out.
+        MiniVddVbeCollect = $false
     }
 
     Audit = @{

@@ -8,22 +8,6 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Known issues
 
-- **`V9XMINI.VXD` hangs the boot on a physical S3 Trio64.** The first run of any
-  Velocity9x family on real hardware rather than 86Box found a boot-time
-  "Windows protection error" on BARRY (2 MiB Trio64, Win98 SE). Isolated to the
-  mini-VDD: the same `V9XDISP.DRV` reaches `enable-ok` and drives the card at
-  1024x768x16 with the stock `S3.VXD` in the `minivdd` slot. The DRV is not
-  implicated and `V9XMINI.VXD` is unchanged in behaviour since 0.4.0, so this is a
-  pre-existing fault that only physical hardware exposed.
-
-  Anything re-testing this must clear **Automatic Skip Driver** first. Windows
-  blacklists the device after the hang (Code 11, "will never attempt to start this
-  device again") and then never calls Enable, so `C:\V9XBOOT.INI` stops at
-  `query-ok` and the desktop comes up through the INF's own `vga.drv` fallback at
-  640x480x4. That is indistinguishable from a reproducible driver fault and is not
-  one. Full write-up in
-  [docs/issues/2026-08-18-trio64-minivdd-boot-hang.md](docs/issues/2026-08-18-trio64-minivdd-boot-hang.md).
-
 - **16 bpp scanout is wrong on the Mach64 (D5).** With the `vbe` package on the
   86Box Mach64 VT2, 640x480x8 and 1024x768x8 display correctly and
   1024x768x16 is shredded — same resolution, different depth, so the fault is in
@@ -40,6 +24,50 @@ build identifier so exact guest-tested binaries remain traceable.
   Until the suite has one check that does not pass through GDI, treat a pass as
   "the driver is self-consistent". Both are `D5` in
   `docs/issues/2026-08-16-tier0-defects-deferred.md`.
+
+## 0.4.2 - 2026-08-18
+
+The mini-VDD's first meeting with a real video BIOS, and the second bug found by
+the same 2 MiB Trio64 in one day. `V9XMINI.VXD` hung the boot on physical
+hardware with a Windows protection error that no 86Box guest had ever produced.
+
+### Fixed
+
+- **The mini-VDD's VBE scratch buffer is paragraph-aligned now.** The boot-time
+  collection allocated its V86 scratch byte-aligned
+  (`_Allocate_Global_V86_Data_Area` with flags 0) and truncated the linear
+  address to a real-mode segment with `shr eax, 4`. On a non-paragraph-aligned
+  block that segment starts up to 15 bytes *below* the allocation - so the
+  ring-0 `'VBE2'` stamp landed in whatever V86 global data preceded the buffer,
+  every result peek was skewed, and the BIOS could write past the end. 86Box
+  happened to hand back aligned blocks; the physical machine did not have to.
+  The allocation now passes `GVDAParaAlign + GVDAZeroInit`, and the stamp uses
+  the returned linear address instead of recomputing it from the truncated
+  segment. Verified on the card that exposed it: two clean boots to
+  `enable-ok` at 1024x768x16 with the full collection running.
+
+### Changed
+
+- **Families that never read the VBE cache no longer run the collection.**
+  `Build.MiniVddVbeCollect = $false` in a family manifest builds that family's
+  `V9XMINI.VXD` with the whole collection assembled out
+  (`V9X_NO_VBE_COLLECT`); the `s3` and `matrox-m2` families set it. Their
+  drivers read the aperture from hardware and never consult the 4F9Ch cache,
+  so for them the collection was eight nested BIOS calls at `Device_Init` with
+  nothing to show - all risk, no benefit. The 4F9Ch API stays in the image
+  and reports the zeroed cache as "collection never ran", exactly the state
+  the 16-bit side is designed to refuse. Also verified on the Trio64: two
+  clean boots. Tier-0 families (`vbe`, `ati`) keep the fixed collection.
+  Decision record:
+  [docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md](docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md).
+- **The collection narrates itself over COM1 now.** `vbe-collect start`, one
+  `vbe-call fn=/arg=` line before every BIOS call, `ret=` after it, and
+  `vbe-collect done` - all bounded writes. `Exec_Int` into a BIOS that never
+  returns cannot be timed out at ring 0, so if a tier-0 machine ever hangs in
+  the collection again, a serial capture now names the exact call. A
+  no-collect build announces itself with `vbe-collect disabled`, and the build
+  script asserts the marker's presence or absence so the variants cannot be
+  mistaken for one another.
 
 ## 0.4.1 - 2026-08-18
 
