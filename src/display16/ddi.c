@@ -52,6 +52,10 @@ extern WORD FAR PASCAL V9xHardwareEnable(void);
 extern WORD FAR PASCAL V9xHardwareStage(void);
 extern WORD FAR PASCAL V9xHardwareReset(void);
 extern DWORD FAR PASCAL V9xHardwareBase(void);
+/* enable16.c: the off-screen heap size, read from the chip on a family with a
+ * read_video_memory hook, from VBE 4F00h at tier-0, and 0 when neither
+ * established one - in which case dd16.c applies its own default. */
+extern DWORD v9x_vbe_vram_bytes;
 extern void FAR PASCAL V9xHardwareDisable(void);
 extern WORD FAR PASCAL V9xVddPreMode(void);
 extern WORD FAR PASCAL V9xVddRegister(void);
@@ -735,7 +739,18 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_active_mode = v9x_selected_mode;
     v9x_serial_write("V9X-DRV lfb=0x");
     v9x_serial_write_hex32(V9xHardwareBase());
-    v9x_serial_write(" bytes=00400000\r\n");
+    /* The figure actually in force, not a literal.
+     *
+     * This printed 00400000 unconditionally, which was true of every card the
+     * driver had run on and is the same 4 MiB assumption that let a 2 MiB
+     * card's over-advertised heap go unnoticed - the checkpoint agreed with the
+     * bug. A checkpoint that cannot disagree with the code is not a checkpoint.
+     *
+     * Documented as 00400000 in the package INSTALL.TXT, which is now wrong for
+     * any card that is not 4 MiB. */
+    v9x_serial_write(" bytes=0x");
+    v9x_serial_write_hex32(v9x_vbe_vram_bytes);
+    v9x_serial_write("\r\n");
     v9x_serial_write_mode("V9X-DRV enable-ok mode=");
     v9x_serial_write(" lfb-mapped\r\n");
     v9x_publish_hardware_diagnostics();

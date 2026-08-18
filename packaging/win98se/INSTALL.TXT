@@ -1,6 +1,7 @@
 VELOCITY9X PHASE 3 MODE-MATRIX BRING-UP - READ FIRST
 
-This package is intentionally limited to PCI VEN_5333 DEV_8A01.
+This package serves the S3 family: VEN_5333 DEV_8A01 (ViRGE/DX) and
+DEV_8811 (Trio32/64), dispatched by PCI id at boot.
 It is an engineering bring-up build, not a release driver.
 V9XSET.EXE is a read-only settings/status panel and is safe to open before
 installation. It exposes no hardware programming controls in this build.
@@ -28,7 +29,8 @@ INSTALL
 3. Expand Display adapters and open the S3/standard PCI display adapter.
 4. Select Driver, Update Driver, then choose a specific driver/location.
 5. Use Have Disk and browse to this package directory.
-6. Select "Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)".
+6. Select the model matching the fitted card: "Velocity9x S3 ViRGE/DX
+   86C375" or "Velocity9x S3 Trio32/64 86C764".
 7. Let Windows copy the driver files, but do not accept a different device ID.
 8. Shut down fully when prompted. Do not use a warm restart for the first test.
 9. Start COM1 capture, then cold-start the VM once.
@@ -39,8 +41,12 @@ V9X-MINI init build=<id>
 V9X-MINI defaults-ok callbacks=0 build=<id>
 V9X-DRV load build=<id>
 V9X-DRV enable-query mode=640x480x8
-V9X-DRV lfb=0x........ bytes=00400000
+V9X-DRV lfb=0x........ bytes=0x........
 V9X-DRV enable-ok mode=640x480x8 lfb-mapped
+
+The bytes figure is the off-screen heap size the driver established: read from
+the chip where the family can (CR36 on both S3 parts), and so 0x00200000 on a
+2 MiB card rather than the 0x00400000 this line used to print unconditionally.
 
 The first boot defaults to 640x480x8. After it passes, Display Properties may
 select 800x600 or 1024x768 at 256 colours, or any of the same resolutions at
