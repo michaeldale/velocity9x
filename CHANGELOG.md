@@ -25,6 +25,52 @@ build identifier so exact guest-tested binaries remain traceable.
   "the driver is self-consistent". Both are `D5` in
   `docs/issues/2026-08-16-tier0-defects-deferred.md`.
 
+## 0.4.1 - 2026-08-18
+
+A bug fix release, found by reading before installing. Preparing to bring up a
+physical S3 Trio64 turned up a 4 MiB video-memory assumption on every native
+family's DirectDraw heap — correct on every card this driver had ever run on,
+and wrong on the 2 MiB card about to be tried.
+
+### Fixed
+
+- **The DirectDraw heap is sized from the chip, not from an assumption.**
+  `dd16.c` sized video memory as `v9x_vbe_vram_bytes ? : 4 MiB`, and only the
+  tier-0 path ever set that variable: a family with a `read_aperture` hook never
+  calls VBE 4F00h, so every native family took the 4 MiB literal. Both S3 parts
+  and the Matrox family are native, and the S3 guests this driver was brought up
+  on hold exactly 4 MiB, so the assumption was invisible — it is only wrong on a
+  card holding less.
+
+  On a 2 MiB Trio64 it over-states off-screen memory by 2 MiB in every mode, and
+  by 5x at 1024x768x16 (512 KiB real, 2.5 MiB advertised). That figure is
+  `dwVidMemTotal`/`dwVidMemFree`, which is what DirectDraw allocates against and
+  what `ddhal_core.c` bounds every blit with, so it does not merely mislead: it
+  grants surfaces past the end of installed VRAM, which an S3 aliases rather
+  than faults on. A documented memory limit would present as corrupted
+  rendering instead of a clean allocation failure.
+
+  `V9X_HW16_OPS` gained a nullable `read_video_memory` hook, and the S3 families
+  supply the CR36 decode they were already reading for diagnostics but never
+  feeding to the heap. The answer goes through the same ceiling-and-floor
+  correction as the tier-0 figure — clamped to what the family maps, floored at
+  what the mode displays — now factored into one helper rather than written once
+  inline. An undecodable size code returns 0 and keeps the old default, so no
+  card that worked before stops working.
+
+  Not a regression fix: no released version behaved differently, and on 4 MiB
+  hardware the corrected figure equals the assumed one. Untested on a 2 MiB card
+  as of this release — the S3 guests are 4 MiB and the physical Trio64 is next.
+
+### Notes
+
+- The ATI and generic VBE families are unaffected: both are tier-0 and were
+  already taking their size from 4F00h. The Matrox Millennium II keeps the 4 MiB
+  default, having no memory-size decode and never having run on its card.
+- CR58[1:0] still selects a 4 MiB linear window on both S3 parts, deliberately
+  unchanged: the window size is what the aperture decodes, not what the heap
+  advertises, and the current value is proven on hardware.
+
 ## 0.4.0 - 2026-08-17
 
 Tier-0 became real: the generic VBE package now drives a card its own INF does

@@ -137,6 +137,9 @@ const V9X_HW16_OPS v9x_hw16 = {
      * which is exactly its BAR0 - so the native read_aperture hook once
      * contemplated as a fallback is not required. */
     0,
+    /* NULL: no Mach64 memory-size register is read at tier-0. The size comes
+     * from 4F00h, clamped to the 16 MiB mapping above. */
+    0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
     0,
     /*

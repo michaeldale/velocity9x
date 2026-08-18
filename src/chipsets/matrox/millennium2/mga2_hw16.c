@@ -177,6 +177,10 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_mga2_publish_diagnostics,
     v9x_mga2_post_mode_set,
     v9x_mga2_read_aperture,
+    /* NULL: no Millennium II memory-size decode has been written, and this
+     * family has never run on its physical card. It keeps dd16.c's 4 MiB
+     * default, which is what it had before the hook existed. */
+    0,
     v9x_mga2_build_screen_pdevice,
     /* The card must be the one we name: the aperture comes from its PCI BAR0,
      * which is only meaningful once the scan has found it. */

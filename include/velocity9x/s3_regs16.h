@@ -28,6 +28,17 @@ void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
 unsigned long v9x_s3_read_aperture(void);
 
 /*
+ * Installed video memory in bytes from CR36, or 0 when the size code is one
+ * this driver does not decode.
+ *
+ * This is the family's read_video_memory hook as well as the source of the
+ * diagnostics figure. Both S3 chips encode the size the same way, so the
+ * reading is shared; what differs between a 2 MiB and a 4 MiB card is the
+ * answer, not the register.
+ */
+unsigned long v9x_s3_read_video_memory(void);
+
+/*
  * Unlock the extended registers, select the 4 MiB aperture in CR58[1:0] with
  * linear addressing in CR58[4], and enable the graphics engine in CR40[0].
  *

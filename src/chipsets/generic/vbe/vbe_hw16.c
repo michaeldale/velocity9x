@@ -181,6 +181,9 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     /* NULL: ask the BIOS through 4F01h. This one hole is the family. */
     0,
+    /* NULL, and necessarily so: this family knows nothing about the card it is
+     * driving. 4F00h is the only source of a memory size here. */
+    0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
     0,
     /* A PCI miss is not fatal here. This family names one id because one is

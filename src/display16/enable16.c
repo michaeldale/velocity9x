@@ -291,6 +291,45 @@ static WORD v9x_vbe_default_pitch(void)
     return 1u;
 }
 
+/*
+ * Turn a claimed video-memory size into one the DirectDraw heap can be built
+ * on, for whichever source claimed it.
+ *
+ * Two callers, and they used to be one: the tier-0 4F00h path below, and the
+ * native read_video_memory hook in V9xHardwareEnable. Both need the same two
+ * corrections applied in the same order, and both corrections exist because
+ * the heap arithmetic in dd16.c is unsigned:
+ *
+ *   fpEnd        = base + vram_bytes - 1
+ *   dwVidMemTotal = vram_bytes - visible_bytes
+ *
+ * Ceiling: clamp to what the family actually maps. The heap has to stay inside
+ * the mapping however much memory the card claims to hold.
+ *
+ * Floor: a source reporting less than the mode it just set actually displays is
+ * wrong, and believing it puts fpEnd before fpStart and underflows
+ * dwVidMemTotal to about 4.29 GB - a heap the size of the address space,
+ * starting past the end of the framebuffer. Flooring at the visible bytes
+ * rather than at a fixed size is the conservative choice: off-screen memory
+ * that has not been proven would hand DirectDraw surfaces aliasing the visible
+ * framebuffer.
+ *
+ * Rounded up to the next 64 KiB by masking rather than complementing, because
+ * ~ on a 16-bit int would not widen the way this needs.
+ */
+static DWORD v9x_vram_usable_bytes(DWORD claimed_bytes, WORD pitch, WORD height)
+{
+    DWORD mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
+                          (DWORD)v9x_map_pages_lo) + 1ul;
+    DWORD visible_bytes = (DWORD)pitch * (DWORD)height;
+    DWORD usable = claimed_bytes > mapped_bytes ? mapped_bytes : claimed_bytes;
+
+    if (usable < visible_bytes) {
+        usable = (visible_bytes + 0xfffful) & 0xffff0000ul;
+    }
+    return usable;
+}
+
 static DWORD v9x_vbe_default_aperture(void)
 {
     struct v9x_vbe_mode_summary mode;
@@ -299,7 +338,6 @@ static DWORD v9x_vbe_default_aperture(void)
     WORD height;
     WORD bpp;
     WORD pitch;
-    DWORD mapped_bytes;
 
     if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
         v9x_vbe_trace("no-mode-selected");
@@ -349,53 +387,18 @@ static DWORD v9x_vbe_default_aperture(void)
         return 0ul;
     }
 
-    /*
-     * VRAM only sizes the off-screen heap, and dd16.c has a floor to fall back
-     * on, so a BIOS with a broken 4F00h costs some off-screen surfaces rather
-     * than the whole enable. Clamped to what the family actually maps: the
-     * DirectDraw heap runs to linear_base + vram_bytes - 1, and that has to
-     * stay inside the mapping however much memory the card claims.
-     */
     if (V9xMiniVbeController() != 0u) {
-        DWORD visible_bytes;
-
         controller.version = v9x_minivdd_version;
         controller.total_memory_bytes = (DWORD)v9x_minivdd_total64k * 65536ul;
 
-        mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
-                        (DWORD)v9x_map_pages_lo) + 1ul;
-        v9x_vbe_vram_reported = controller.total_memory_bytes;
-        v9x_vbe_vram_bytes = controller.total_memory_bytes > mapped_bytes
-                                 ? mapped_bytes
-                                 : controller.total_memory_bytes;
-
         /*
-         * Floor the usable size at what the mode being set actually displays.
-         *
-         * A BIOS that reports less memory than the mode it just accepted is
-         * lying, and believing it corrupts arithmetic downstream rather than
-         * merely losing off-screen surfaces: dd16.c computes the heap as
-         * fpStart = base + visible_bytes and fpEnd = base + vram_bytes - 1, so
-         * an under-report puts fpEnd *before* fpStart, and dwVidMemTotal =
-         * vram_bytes - visible_bytes underflows the DWORD to about 4.29 GB -
-         * a heap the size of the address space, starting past the end of the
-         * framebuffer. ddhal_core.c then bounds-checks every blit against the
-         * same wrong number.
-         *
-         * Flooring at the visible bytes rather than at dd16.c's 4 MiB fallback
-         * is the conservative choice: on an unknown card, believing in
-         * off-screen memory that has not been proven hands DirectDraw surfaces
-         * aliasing the visible framebuffer. Tier-0 draws with the CPU and
-         * barely uses the off-screen heap, so an empty heap costs almost
-         * nothing, whereas a ceiling that is too high costs corruption.
-         *
-         * Rounded up to the next 64 KiB by masking rather than complementing,
-         * because ~ on a 16-bit int would not widen the way this needs.
+         * VRAM only sizes the off-screen heap, and dd16.c has a floor to fall
+         * back on, so a BIOS with a broken 4F00h costs some off-screen surfaces
+         * rather than the whole enable.
          */
-        visible_bytes = (DWORD)pitch * (DWORD)height;
-        if (v9x_vbe_vram_bytes < visible_bytes) {
-            v9x_vbe_vram_bytes = (visible_bytes + 0xfffful) & 0xffff0000ul;
-        }
+        v9x_vbe_vram_reported = controller.total_memory_bytes;
+        v9x_vbe_vram_bytes = v9x_vram_usable_bytes(controller.total_memory_bytes,
+                                                   pitch, height);
     }
 
     v9x_vbe_trace("ok");
@@ -454,6 +457,36 @@ WORD FAR PASCAL V9xHardwareEnable(void)
         v9x_hardware_stage_code = 8u;
         if (device->enable_aperture() == 0u) {
             return 0u;
+        }
+    }
+
+    /*
+     * Size the off-screen heap from the chip, for a family that can read it.
+     *
+     * After the aperture enable, not before: on the S3 families the size code
+     * sits behind the extended-register locks the sequence above has just been
+     * through, and reading it here means the registers are in the state the
+     * rest of the enable left them in.
+     *
+     * Not a failure path. A size code this driver cannot decode returns 0 and
+     * leaves the variable alone, so the family falls back to dd16.c's default
+     * exactly as it did before the hook existed - an undecodable card keeps
+     * working, it just does not get the correction.
+     *
+     * Tier-0 families have no hook here and fill this in from 4F00h during the
+     * aperture read instead, so the two paths cannot fight over the variable.
+     */
+    if (v9x_hw16.read_video_memory != 0) {
+        DWORD claimed = v9x_hw16.read_video_memory();
+        WORD width;
+        WORD height;
+        WORD bpp;
+        WORD pitch;
+
+        if (claimed != 0ul &&
+            v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) != 0u) {
+            v9x_vbe_vram_reported = claimed;
+            v9x_vbe_vram_bytes = v9x_vram_usable_bytes(claimed, pitch, height);
         }
     }
 

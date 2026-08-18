@@ -192,6 +192,27 @@ typedef struct v9x_hw16_ops {
     unsigned long (*read_aperture)(void);
 
     /*
+     * Returns installed video memory in bytes, or 0 if it cannot be decoded.
+     *
+     * NULL means "this family does not know its own memory size". Tier-0 fills
+     * the figure in from VBE 4F00h instead, and a family with neither leaves
+     * dd16.c on its 4 MiB default.
+     *
+     * That default is why this hook exists. A family with a read_aperture hook
+     * never calls 4F00h, so before this hook the DirectDraw heap on every
+     * native family was 4 MiB by assumption - correct on the 4 MiB cards this
+     * driver was brought up on, and a 2x over-advertisement on a 2 MiB S3.
+     * dwVidMemFree is what DirectDraw allocates against and what
+     * ddhal_core.c bounds every blit with, so believing it hands out surfaces
+     * past the end of installed VRAM, where an S3 aliases rather than faults.
+     *
+     * The answer is clamped to the mapping and floored at the visible bytes by
+     * the same helper the tier-0 path uses, so a card that under-reports
+     * cannot underflow the heap arithmetic either way.
+     */
+    unsigned long (*read_video_memory)(void);
+
+    /*
      * Build the screen PDEVICE, returning non-zero on success.
      *
      * NULL uses the DIB Engine's CreateDIBPDevice, which is the proven S3

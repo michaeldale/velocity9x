@@ -66,6 +66,10 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* The mode set needs no follow-up on either chip. */
     0,
     v9x_s3_read_aperture,
+    /* CR36 decodes the installed size on both chips. Without this the heap was
+     * 4 MiB by assumption, which is right on a 4 MiB card and twice the truth
+     * on a 2 MiB Trio64. */
+    v9x_s3_read_video_memory,
     /* CreateDIBPDevice builds the screen PDEVICE on both. */
     0,
     /* The card must be one of ours: CR59/CR5A and the CR58/CR53 pokes below

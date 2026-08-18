@@ -150,9 +150,12 @@ static void v9x_dd_refresh_framebuffer(void)
     }
     shared->fb.linear_base = V9xLinearBase();
     shared->fb.physical_base = V9xHardwareBase();
-    /* Tier-0 learns this from VBE 4F00h; a family with a read_aperture hook
-     * never asks, leaves the variable zero, and keeps the size it always had.
-     * So this reads identically on S3 and Millennium II. */
+    /* Tier-0 learns this from VBE 4F00h, and a family with a read_video_memory
+     * hook from its own chip - CR36 on both S3 parts. The literal is the last
+     * resort for a family with neither, or one whose size code did not decode:
+     * the Millennium II today. It is an assumption, and on a card holding less
+     * than 4 MiB it is an over-advertisement that DirectDraw will allocate
+     * against, so a family that can read the real size should. */
     shared->fb.vram_bytes = v9x_vbe_vram_bytes != 0ul ? v9x_vbe_vram_bytes
                                                       : 0x00400000ul;
     shared->fb.pitch = pitch;

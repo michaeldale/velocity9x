@@ -69,8 +69,12 @@ static void v9x_s3_write_crtc(unsigned short index_port, unsigned char index,
  * unlocked around the read and restored afterwards. Returns 0 when the code
  * is one this driver does not decode, which the caller reports as unavailable
  * rather than guessing a size.
+ *
+ * Two callers now: the diagnostics block below, which reports it, and the
+ * family's read_video_memory hook, which sizes the DirectDraw heap with it.
+ * Both want the same reading, so it stays one function.
  */
-static unsigned long v9x_s3_detect_video_memory(void)
+unsigned long v9x_s3_read_video_memory(void)
 {
     unsigned short index_port = v9x_crtc_index_port();
     unsigned char saved_index = v9x_port_in(index_port);
@@ -204,7 +208,7 @@ void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("Direct3D", device->direct3d);
 
     {
-        unsigned long memory_bytes = v9x_s3_detect_video_memory();
+        unsigned long memory_bytes = v9x_s3_read_video_memory();
 
         if (memory_bytes != 0ul) {
             v9x_format_u32(number, memory_bytes);
