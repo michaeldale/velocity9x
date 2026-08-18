@@ -8,6 +8,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Known issues
 
+- **`V9XMINI.VXD` hangs the boot on a physical S3 Trio64.** The first run of any
+  Velocity9x family on real hardware rather than 86Box found a boot-time
+  "Windows protection error" on BARRY (2 MiB Trio64, Win98 SE). Isolated to the
+  mini-VDD: the same `V9XDISP.DRV` reaches `enable-ok` and drives the card at
+  1024x768x16 with the stock `S3.VXD` in the `minivdd` slot. The DRV is not
+  implicated and `V9XMINI.VXD` is unchanged in behaviour since 0.4.0, so this is a
+  pre-existing fault that only physical hardware exposed.
+
+  Anything re-testing this must clear **Automatic Skip Driver** first. Windows
+  blacklists the device after the hang (Code 11, "will never attempt to start this
+  device again") and then never calls Enable, so `C:\V9XBOOT.INI` stops at
+  `query-ok` and the desktop comes up through the INF's own `vga.drv` fallback at
+  640x480x4. That is indistinguishable from a reproducible driver fault and is not
+  one. Full write-up in
+  [docs/issues/2026-08-18-trio64-minivdd-boot-hang.md](docs/issues/2026-08-18-trio64-minivdd-boot-hang.md).
+
 - **16 bpp scanout is wrong on the Mach64 (D5).** With the `vbe` package on the
   86Box Mach64 VT2, 640x480x8 and 1024x768x8 display correctly and
   1024x768x16 is shredded — same resolution, different depth, so the fault is in
@@ -59,8 +75,20 @@ and wrong on the 2 MiB card about to be tried.
   card that worked before stops working.
 
   Not a regression fix: no released version behaved differently, and on 4 MiB
-  hardware the corrected figure equals the assumed one. Untested on a 2 MiB card
-  as of this release — the S3 guests are 4 MiB and the physical Trio64 is next.
+  hardware the corrected figure equals the assumed one.
+
+  **Verified on a physical 2 MiB S3 Trio64** on 2026-08-18, which is the card the
+  fix was written for. CR36 decodes to `VideoMemoryBytes=2097152`, status `valid`,
+  and `V9XDDP.EXE` at 1024x768x16 reports `GblHalVidMemTotal=0x00080000` —
+  524,288 bytes, exactly `2,097,152 - (2048 x 768)`. The pre-fix 4 MiB literal
+  would have advertised 2,621,440 there, five times the off-screen memory the card
+  holds. First hardware measurement of the fix, and it lands on the predicted
+  number.
+
+  Reaching that measurement needed a workaround unrelated to this fix: the
+  driver's own `V9XMINI.VXD` hangs the boot on this card, and the reading was taken
+  with the stock `S3.VXD` in the `minivdd` slot. See
+  [docs/issues/2026-08-18-trio64-minivdd-boot-hang.md](docs/issues/2026-08-18-trio64-minivdd-boot-hang.md).
 
 ### Notes
 
