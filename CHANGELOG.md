@@ -46,6 +46,25 @@ hardware with a Windows protection error that no 86Box guest had ever produced.
   segment. Verified on the card that exposed it: two clean boots to
   `enable-ok` at 1024x768x16 with the full collection running.
 
+- **Installing the driver now actually installs the Velocity9x tab.** Two
+  separate faults kept it off every machine that was not set up by
+  `update-associated-driver.ps1`. First, `[Velocity9x.Previous]` listed the same
+  three shell keys `[Velocity9x.Registry]` adds, and SetupX applied that DelReg
+  *after* the AddReg: the install deleted its own registration, and
+  `HKCR\CLSID` survived only because Win9x cannot delete a key that still has a
+  subkey — which is exactly the half-registered wreckage found on BARRY.
+  Second, Windows 98 validates a Display property-sheet handler against a `Tag`
+  DWORD built from a per-machine seed, ignores any handler whose Tag does not
+  check out, and deletes the key, so an INF can never register this page by
+  itself. `V9XSETP.DLL` now exports `V9xRegisterPage`, which recovers the seed
+  by inverting that expression over a handler Windows has already accepted (a
+  stock install ships two, and they agree) and writes the handler key, the Tag
+  and the Approved entry. The INF fires it through `RunOnce` at the first boot
+  after the install. Verified on the Trio64: with the registration wiped and
+  the Approved value replaced by a sentinel, the RunOnce boot rewrote both,
+  computed the same Tag the PowerShell path does, and the tab was present on
+  that same boot.
+
 ### Changed
 
 - **Families that never read the VBE cache no longer run the collection.**
