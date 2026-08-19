@@ -7,11 +7,12 @@ that runs on cards it has never been told about.
 
 **Version 0.4.2** — see [CHANGELOG.md](CHANGELOG.md).
 
-> **This is an engineering bring-up driver, not a release driver.** It has been
-> developed and tested almost entirely under [86Box](https://86box.net/).
-> Install it only on a virtual machine you have backed up cold, or on hardware
-> you are willing to recover by hand. Read [docs/INSTALL.md](docs/INSTALL.md)
-> before you install anything.
+> **This is an engineering bring-up driver, not a release driver.** Most of its
+> development and testing happens under [86Box](https://86box.net/); as of
+> 0.4.2 the S3 Trio32/64 target is also verified on a physical card, and every
+> other target remains emulator-only. Install it only on a virtual machine you
+> have backed up cold, or on hardware you are willing to recover by hand. Read
+> [docs/INSTALL.md](docs/INSTALL.md) before you install anything.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
@@ -65,6 +66,32 @@ The Trio32/64 target is intentionally a software-GDI plus DirectDraw baseline.
 The ViRGE-only new-MMIO window, the S3D engine and Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
+
+### Verified on physical hardware
+
+0.4.2 is the first release proven on a real card rather than an emulator. The
+full stack — the driver, its DirectDraw HAL and its own mini-VDD — runs on a
+physical **S3 Trio64 (86C764, 2 MB, Windows 98 SE)**: desktop at 1024x768x16,
+video memory sized from the chip, hardware fills and screen-to-screen blits on
+the 8514/A engine, CRTC page flipping and real vertical-blank services, and the
+Display Properties page reporting the card correctly.
+
+It is also *faster than S3's own Windows 98 driver* on that card. In Ironfield
+RTS at 640x480 fullscreen, against the stock driver on the same machine:
+
+| Presentation path | Velocity9x | Stock S3 |
+|---|---|---|
+| Direct back buffer | **27 FPS** | 25 FPS |
+| Video memory + `BltFast` | **27 FPS** | 23 FPS |
+| System RAM | 20 FPS | 22 FPS |
+| Windowed | 18 FPS | 18 FPS |
+
+Getting there took two bugs that only real silicon exposed: a 4 MiB video-memory
+assumption that is wrong on a 2 MB card, and a mini-VDD that allocated a V86
+scratch buffer without paragraph alignment and then truncated its address to a
+real-mode segment — harmless on every emulated BIOS, a boot-time protection
+error on the physical one. Both are written up in
+[docs/issues/](docs/issues/).
 
 ### Tier-0: how a new card starts
 
