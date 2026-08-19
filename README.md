@@ -1,9 +1,15 @@
 # Velocity9x
 
-A ground-up Windows 9x display driver, written from scratch against the Windows
-98 DDI, DIB Engine, DirectDraw HAL and Direct3D HAL contracts. It began as an S3
-driver and now has native support for S3 and ATI chips plus a generic VESA path
-that runs on cards it has never been told about.
+A replacement display driver for Windows 98, for 1990s PCI graphics cards — S3
+ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic VESA cards it has never been
+told about. It gives a supported card 256-colour and High Color modes up to
+1024x768, a DirectDraw HAL with real page flipping and vertical-blank waits,
+and — on the ViRGE — a hardware Direct3D path.
+
+It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
+HAL and Direct3D HAL contracts, rather than derived from anyone's driver
+sources. It began as an S3 driver and grew the ATI and generic VESA paths
+later.
 
 **Version 0.4.2** — see [CHANGELOG.md](CHANGELOG.md).
 
@@ -16,6 +22,21 @@ that runs on cards it has never been told about.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
+
+## Start here
+
+| If you want to | Go to |
+|---|---|
+| Find out whether your card is supported | [Supported cards](#supported-cards) |
+| Install it on a test VM or machine | [docs/INSTALL.md](docs/INSTALL.md) |
+| Try it on a card that is not listed | [Have an unsupported card?](#have-an-unsupported-card) |
+| See how it compares to S3's own driver | [How it compares](#how-it-compares-to-the-retail-s3-drivers) |
+| Get it onto a machine with no network | [Transfer disk](#transfer-disk) |
+| Recover a machine that will not boot | [packaging/win98se/RECOVER.TXT](packaging/win98se/RECOVER.TXT) |
+| Build it from source | [docs/BUILDING.md](docs/BUILDING.md) |
+| Help add support for your chip | [Helping add native support](#helping-add-native-support) |
+| Understand the design | [docs/specifications/win9x-driver-boundaries.md](docs/specifications/win9x-driver-boundaries.md) |
+| See what changed | [CHANGELOG.md](CHANGELOG.md) |
 
 ## What it does
 
@@ -42,7 +63,7 @@ target gets:
   adapter, PCI ID, installed video memory, active mode and clock, which
   acceleration paths are live, and the driver's own runtime diagnostics.
 
-## Supported chips
+## Supported cards
 
 Cards are grouped into *families*, one built package each. A family's driver
 binary serves every chip in it and picks the right one by PCI id at boot.
@@ -67,7 +88,7 @@ The ViRGE-only new-MMIO window, the S3D engine and Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
 
-### Verified on physical hardware
+### Verified on physical hardware: S3 Trio64
 
 0.4.2 is the first release proven on a real card rather than an emulator. The
 full stack — the driver, its DirectDraw HAL and its own mini-VDD — runs on a
@@ -227,17 +248,6 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
 Real-application results, including where the driver is known to fall short,
 are recorded under [docs/issues](docs/issues).
 
-## Getting started
-
-| Task | Read |
-|---|---|
-| Install on a test VM or machine | [docs/INSTALL.md](docs/INSTALL.md) |
-| Get it onto an offline machine | [Transfer disk](#transfer-disk) below |
-| Recover a machine that will not boot | [packaging/win98se/RECOVER.TXT](packaging/win98se/RECOVER.TXT) |
-| Build from source | [docs/BUILDING.md](docs/BUILDING.md) |
-| Understand the design | [docs/specifications/win9x-driver-boundaries.md](docs/specifications/win9x-driver-boundaries.md) |
-| See what changed | [CHANGELOG.md](CHANGELOG.md) |
-
 ## Transfer disk
 
 For a machine with no network, build a folder that fits one 1.44 MB floppy:
@@ -266,6 +276,53 @@ off the disk. Add `-Zip` if you want an archive for network transfer instead.
 
 Each package carries a `SHA256.TXT`; after copying you can confirm nothing was
 corrupted in transit.
+
+## Common questions
+
+**Will it run on Windows 95 or Windows Me?**
+Treat them as untested rather than supported. Everything here has been built and
+verified against Windows 98, Second Edition is what the packaging targets, and
+there is no INF for 95 or Me.
+
+**Can I get 32-bit colour, or a resolution above 1024x768?**
+No. The driver offers 256 colours and High Color (16-bit) only, at 640x400,
+640x480, 800x600 and 1024x768. 24 and 32 bpp are deliberately not offered — that
+is expected, not a fault.
+
+**Will my Direct3D games work?**
+Most likely not. The Direct3D path is real hardware acceleration through the
+ViRGE's S3D engine, but a narrow slice of the API: pre-transformed and pre-lit
+vertices only, no clipping, backface culling, lines or indexed primitives, and
+no colour-key transparency. It is enough to satisfy an application that asks
+only for what the driver advertises. It is not a general-purpose Direct3D
+device, and there is no Direct3D at all on the Trio32/64, ATI or generic VESA
+targets.
+
+**Will the desktop feel faster than with the card's retail driver?**
+For ordinary window and text drawing, no — there is no GDI acceleration here, so
+that work goes through the DIB Engine on the CPU where a retail driver hands it
+to the 2D engine. DirectDraw is the other way round on the Trio64, where
+measured frame rates beat the stock S3 driver. Both sets of numbers are in
+[How it compares](#how-it-compares-to-the-retail-s3-drivers).
+
+**Can I run this on real hardware, or only in an emulator?**
+One target is verified on real silicon: the S3 Trio64, as of 0.4.2. Every other
+target is emulator-only, and the Matrox Millennium II candidate has never been
+run on its physical card at all. Real hardware is welcome and is how the last
+two bugs were found — just read [docs/INSTALL.md](docs/INSTALL.md) first and have
+a recovery path.
+
+**Do I uninstall the existing display driver first?**
+No — and do not remove the display adapter in Device Manager either, because
+Windows re-detects it and installs Microsoft's in-box driver instead of this
+one. Install over the top with **Have Disk**, per step 6 of
+[docs/INSTALL.md](docs/INSTALL.md).
+
+**My card is not in the table. Is it hopeless?**
+No. Tier-0 needs nothing but a VESA 2.0 BIOS and a linear framebuffer, so try
+the `VBE\` package through Have Disk — see
+[Have an unsupported card?](#have-an-unsupported-card) for how, and for what to
+send back if it refuses.
 
 ## Reporting problems
 
