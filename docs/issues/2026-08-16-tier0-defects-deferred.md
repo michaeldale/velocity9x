@@ -61,6 +61,33 @@ decline a primary flip there rather than report success it could not deliver.
 
 ---
 
+## D5 confirmed directly, 2026-08-20: the monitor really is showing noise
+
+Until now D5 rested on somebody noticing the screen looked wrong while the
+matrix passed. It has now been captured, and the two pictures were taken at the
+same moment on the same guest:
+
+- the agent's `screenshot` at 1024x768x16 on the 86Box Mach64 VT2 - a flawless
+  Win98 desktop, and the `ati` mode matrix passing 6/6 with GDI PASS on every
+  mode and palette PASS on every 8-bpp one;
+- a host-side `PrintWindow` of the 86Box window at that same moment -
+  **shredded vertical noise**, no desktop at all.
+
+So the GDI-side matrix is not merely weak evidence on this card, it is actively
+misleading: it reports a healthy driver while the display shows nothing usable.
+
+Method, since it was thought impossible earlier the same day: `PrintWindow`
+with `PW_RENDERFULLCONTENT` on the 86Box top-level window works, and is
+occlusion-safe. It needs the window **not minimised** - a minimised window has a
+0x0 client rect and yields nothing - which is why a previous attempt failed and
+concluded the technique was unavailable. `CopyFromScreen` is not a substitute:
+on an occluded window it silently captures whatever is in front of it.
+
+Anything claiming a display works on the Mach64 needs a capture of this kind.
+Nothing else on the guest can tell the difference.
+
+---
+
 ## D1 - `set_display_start` writes an S3 extension register on any chip
 
 `src\display32\engines\vga_scanout.c:34-45` programs the display start through
