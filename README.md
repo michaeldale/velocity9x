@@ -12,11 +12,11 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.4.2** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.4.3** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **This is an engineering bring-up driver, not a release driver.** Most of its
 > development and testing happens under [86Box](https://86box.net/); as of
-> 0.4.2 the S3 Trio32/64 target is also verified on a physical card, and every
+> 0.4.3 the S3 Trio32/64 target is also verified on a physical card, and every
 > other target remains emulator-only. Install it only on a virtual machine you
 > have backed up cold, or on hardware you are willing to recover by hand. Read
 > [docs/INSTALL.md](docs/INSTALL.md) before you install anything.
@@ -93,12 +93,14 @@ it. Its bring-up and boundaries are recorded in
 
 ### Verified on physical hardware: S3 Trio64
 
-0.4.2 is the first release proven on a real card rather than an emulator. The
-full stack — the driver, its DirectDraw HAL and its own mini-VDD — runs on a
-physical **S3 Trio64 (86C764, 2 MB, Windows 98 SE)**: desktop at 1024x768x16,
-video memory sized from the chip, hardware fills and screen-to-screen blits on
-the 8514/A engine, CRTC page flipping and real vertical-blank services, and the
-Display Properties page reporting the card correctly.
+0.4.2 was the first release proven on a real card rather than an emulator, and
+0.4.3 adds True Color there. The full stack — the driver, its DirectDraw HAL and
+its own mini-VDD — runs on a physical **S3 Trio64 (86C764, 2 MB, Windows 98
+SE)**: desktop at 1024x768x16, 32-bpp modes at 640x480 and 800x600 with the
+larger ones declined for want of memory, video memory sized from the chip,
+hardware fills and screen-to-screen blits on the 8514/A engine, CRTC page
+flipping and real vertical-blank services, and the Display Properties page
+reporting the card correctly.
 
 It is also *faster than S3's own Windows 98 driver* on that card. In Ironfield
 RTS at 640x480 fullscreen, against the stock driver on the same machine:
