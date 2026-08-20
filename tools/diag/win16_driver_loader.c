@@ -28,12 +28,23 @@ static int v9x_supported_mode(WORD width, WORD height, WORD bits_per_pixel)
     return width == 640u && height == 480u && bits_per_pixel == 8u;
 #endif
 #else
+    /*
+     * A plausibility check on the GDIINFO the driver reports for whatever mode
+     * the registry currently names - not an enumeration of the family's table.
+     * It has to admit every mode any non-Matrox family can be sitting in, so it
+     * is deliberately generous: this listed three resolutions at 8 and 16 bpp
+     * and started failing the moment a guest was left in a 32-bpp or 1280x1024
+     * desktop, which blocked the deploy that would have replaced the driver.
+     */
     int supported_resolution =
+        (width == 640u && height == 400u) ||
         (width == 640u && height == 480u) ||
         (width == 800u && height == 600u) ||
-        (width == 1024u && height == 768u);
+        (width == 1024u && height == 768u) ||
+        (width == 1280u && height == 1024u);
     return supported_resolution &&
-           (bits_per_pixel == 8u || bits_per_pixel == 16u);
+           (bits_per_pixel == 8u || bits_per_pixel == 16u ||
+            bits_per_pixel == 24u || bits_per_pixel == 32u);
 #endif
 }
 
