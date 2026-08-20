@@ -31,10 +31,33 @@ static const V9X_HW16_DEVICE * const v9x_s3_devices[] = {
  * same audited pitches. A table per chip would have been two copies of one
  * fact, and the pair could then disagree.
  */
+/*
+ * Every row here is one a BIOS dump showed, per the Stage 0 gate in
+ * docs\decisions\2026-08-20-vbe-mode-inventory.md. Four S3 BIOSes were
+ * measured - the physical Trio64, the 86Box ViRGE/DX and the 86Box Trio64 -
+ * and two things they said shape this table:
+ *
+ * The high-colour numbers are 32 bpp on all of them, never 24. 0x0112, 0x0115
+ * and 0x0118 each report BitsPerPixel=32 with a scan line of width*4 and a
+ * reserved byte at 8@24. There is no packed 24-bpp mode in any S3 BIOS here,
+ * so this family has no 24-bpp row and should not be given one on the strength
+ * of the VESA numbering.
+ *
+ * The last two rows are listed by the 4 MiB cards and refused by the 2 MiB
+ * physical Trio64, which has not the memory for them. They stay in the shared
+ * table because ValidateMode now measures a mode against the card's own VRAM
+ * and refuses what will not fit, so the row is honest on both.
+ *
+ * Deliberately absent: 1600x1200x8 (0x0120). It fits 2 MiB and the 4 MiB cards
+ * list it, but the physical Trio64's BIOS does not - and a VRAM check catches a
+ * mode too large, not a mode missing, so that row would validate and then fail
+ * at 4F02h. Same for the ViRGE's 320x200 modes.
+ */
 static const V9X_HW16_MODE v9x_s3_modes[] = {
     {  640u, 480u,  8u,  640u, 0x0101u, 254, 127 },
     {  800u, 600u,  8u,  800u, 0x0103u, 318, 159 },
     { 1024u, 768u,  8u, 1024u, 0x0105u, 407, 203 },
+    { 1280u, 1024u, 8u, 1280u, 0x0107u, 508, 254 },
     /* 640x400 is VBE mode 100h, the first mode VESA defined and the default
      * screen size Doom95 asks DirectDraw for. Without it SetDisplayMode fails,
      * the game keeps the 16-bpp desktop mode and writes its 8-bpp frame into
@@ -44,7 +67,11 @@ static const V9X_HW16_MODE v9x_s3_modes[] = {
     {  640u, 400u,  8u,  640u, 0x0100u, 254, 127 },
     {  640u, 480u, 16u, 1280u, 0x0111u, 254, 127 },
     {  800u, 600u, 16u, 1600u, 0x0114u, 318, 159 },
-    { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 }
+    { 1024u, 768u, 16u, 2048u, 0x0117u, 407, 203 },
+    { 1280u, 1024u, 16u, 2560u, 0x011Au, 508, 254 },
+    {  640u, 480u, 32u, 2560u, 0x0112u, 254, 127 },
+    {  800u, 600u, 32u, 3200u, 0x0115u, 318, 159 },
+    { 1024u, 768u, 32u, 4096u, 0x0118u, 407, 203 }
 };
 
 const V9X_HW16_OPS v9x_hw16 = {

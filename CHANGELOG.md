@@ -6,6 +6,74 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Added
+
+- **True Color and 1280x1024 on the S3 targets.** The `s3` package now offers
+  32 bpp at 640x480, 800x600 and 1024x768, and 1280x1024 at 8 and 16 bpp, on
+  top of the modes it already had. Every row was measured first: four S3 BIOSes
+  were dumped — the physical Trio64, the 86Box ViRGE/DX and the 86Box Trio64 —
+  and no row exists for a mode number none of them offers
+  (`docs/decisions/2026-08-20-vbe-mode-inventory.md`).
+
+  **There is no 24-bpp mode, and there will not be one on these cards.** The
+  VESA numbers usually described as 24-bit — 0x112, 0x115, 0x118 — report
+  `BitsPerPixel=32` on all four BIOSes, with a scan line of `width * 4` and a
+  reserved byte at `8@24`. Not one of them has a packed 24-bpp mode anywhere in
+  its list, so the depth those numbers carry is a per-BIOS fact and for the S3
+  family the answer is 32.
+
+  1600x1200x8 is deliberately left out although both 4 MiB cards list it and it
+  would fit a 2 MiB card's memory: the physical Trio64's BIOS does not offer the
+  mode. A VRAM check can refuse a mode that is too large and cannot refuse one
+  that is absent, so the row would have validated and then failed at 4F02h.
+
+- **`ValidateMode` measures a mode against the card, not just the table.** A
+  family table is shared by chips that are not: the 2 MiB physical Trio64 and a
+  4 MiB ViRGE take the same list, and 1024x768x32 needs 3 MiB. Modes that do not
+  fit are now refused rather than accepted and failed at the mode set, which is
+  what lets one shared table carry rows only the larger cards can hold.
+
+- **24- and 32-bpp support through the whole driver.** `v9x_mode_calculate`
+  accepts the depths that divide into whole bytes and still refuses the rest, so
+  the 15-bpp modes every S3 BIOS lists stay refused. The DirectDraw blit
+  callbacks admit the new depths and the CPU fill path gained 3- and 4-byte
+  cases.
+
+### Fixed
+
+- **The DIB engine was told 5:6:5 at every depth above 8 bpp.** The PDEVICE flag
+  fork set `FIVE6FIVE` for anything that was not palettized, which at 24 or
+  32 bpp describes three channels packed into the first two bytes of a pixel.
+  DIBENG.INC defines no flag for the higher depths — the engine takes the layout
+  from `biBitCount` — so the fork now sets neither.
+
+- **CPU colour fills discarded the red channel.** `v9x_cpu_fill` truncated
+  `dwFillColor` to a `WORD`. Latent at 8 and 16 bpp, wrong the moment a deeper
+  mode existed.
+
+- **Both S3 blitters would have corrupted high-colour blits.** Neither had a
+  depth guard: the Trio64 path discarded `bytes_per_pixel` entirely and writes
+  its foreground colour as a single 16-bit word, and the ViRGE encodes depth in
+  its command word but has never run a 24-bpp blit. Both decline above 16 bpp
+  now and the CPU fallback serves those depths. ViRGE S3D at 24 bpp is a
+  recorded follow-up rather than a shipped path.
+
+- **A page flip could shift the whole frame.** `v9x_set_display_start` programs
+  a doubleword offset and silently rounded a byte-granular one down. Impossible
+  at 8, 16 and 32 bpp, where the pixel size divides 4; reachable at 24 bpp. The
+  flip is declined instead.
+
+- **The DirectDraw mode list was a third copy of the mode table**, hardcoded
+  into a HAL that cannot see which family it serves — so the Matrox build, whose
+  family offers one mode, published seven. The 16-bit side owns the list now and
+  the shared block carries a count, which `DriverInit` validates. Capacity is
+  32 modes, measured against the 4096-byte DPMI block it has to fit: 3096 bytes
+  in total, so the allocation is unchanged.
+
+- **`-ForceModeIndex` had a hardcoded range** that went stale whenever a family
+  gained or lost a forced mode. It is checked against the family's own list now,
+  before anything is compiled.
+
 ### Known issues
 
 - **16 bpp scanout is wrong on the Mach64 (D5).** With the `vbe` package on the

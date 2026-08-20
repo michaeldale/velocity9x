@@ -46,10 +46,15 @@
                 @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
                 @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
                 @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 1280; Height = 1024; RefreshRate = 60; VbeMode = '0107' }
                 @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
                 @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
                 @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+                @{ BitsPerPixel = 16; Width = 1280; Height = 1024; RefreshRate = 60; VbeMode = '011A' }
+                @{ BitsPerPixel = 32; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0112' }
+                @{ BitsPerPixel = 32; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0115' }
+                @{ BitsPerPixel = 32; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0118' }
             )
 
             # The object this chip's code compiles into. Both chips are now in
@@ -101,10 +106,15 @@
                 @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
                 @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
                 @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 1280; Height = 1024; RefreshRate = 60; VbeMode = '0107' }
                 @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
                 @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
                 @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+                @{ BitsPerPixel = 16; Width = 1280; Height = 1024; RefreshRate = 60; VbeMode = '011A' }
+                @{ BitsPerPixel = 32; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0112' }
+                @{ BitsPerPixel = 32; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0115' }
+                @{ BitsPerPixel = 32; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0118' }
             )
 
             Objects = @('trio_hw16')
@@ -183,12 +193,16 @@
         DiskName = 'Velocity9x Windows 98SE driver-stage disk'
         ModelsSection = 'Velocity9x.Models'
         DefaultMode = '8,640,480'
-        ForcedModes = @('8,640,480', '8,800,600', '8,1024,768',
-                        '16,640,480', '16,800,600', '16,1024,768')
+        # Indexed by build-active-package.ps1 -ForceModeIndex, which checks the
+        # index against this array's own length rather than a literal range.
+        ForcedModes = @('8,640,480', '8,800,600', '8,1024,768', '8,1280,1024',
+                        '16,640,480', '16,800,600', '16,1024,768',
+                        '16,1280,1024',
+                        '32,640,480', '32,800,600', '32,1024,768')
     }
 
     Package = @{
-        ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
+        ModesSummary = '640x480, 800x600 and 1024x768 at 8/16/32 bpp, 1280x1024 at 8/16 bpp, 640x400 at 8 bpp, 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip + per-chip engine blit)'
     }
 
@@ -208,8 +222,13 @@
         Port = 9869
         ReferenceProfile = 'Win98SE-Native-S3'
         ReferencePort = 9870
-        Modes = @('640x480x8', '800x600x8', '1024x768x8',
-                  '640x480x16', '800x600x16', '1024x768x16')
+        # The mode matrix runs these on both 86Box targets, which are 4 MiB and
+        # can hold every one. The 2 MiB physical Trio64 is not driven by this
+        # list; there 1024x768x32 and 1280x1024x16 are expected to be refused by
+        # ValidateMode, which is its own check rather than a matrix row.
+        Modes = @('640x480x8', '800x600x8', '1024x768x8', '1280x1024x8',
+                  '640x480x16', '800x600x16', '1024x768x16', '1280x1024x16',
+                  '640x480x32', '800x600x32', '1024x768x32')
         # One entry per chip. The phase 8 gate is the mode matrix passing on
         # both of these from the one binary, which is the whole claim of the
         # merge; a single-profile pass would prove only that one of the two

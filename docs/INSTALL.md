@@ -189,7 +189,14 @@ registry-selected mode.
   will not accept 640x400 from the driver, and the ModeX path reports success
   then fails in use. Set such games to 640x480. See
   [issues/2026-08-15-doom95-low-resolution-modes.md](issues/2026-08-15-doom95-low-resolution-modes.md).
-- **24-bpp and 32-bpp are not offered.** This is expected, not a fault.
+- **24-bpp is not offered anywhere, and 32-bpp only on the S3 targets.** Both
+  are expected, not faults. No S3 BIOS measured has a packed 24-bpp mode — the
+  VESA numbers usually called 24-bit report 32 bpp on these cards — and the ATI
+  and generic-VESA targets have had no BIOS dump taken yet, so they stay at
+  8 and 16 bpp.
+- **A 2 MB card refuses the largest S3 modes.** 1024x768 at 32 bpp needs 3 MB
+  and 1280x1024 at 16 bpp needs 2.5 MB, so on a 2 MB Trio64 those are declined
+  rather than offered and failed. Expected.
 - **The cursor is drawn in software.** There is no hardware cursor.
 
 ## What to include in a report

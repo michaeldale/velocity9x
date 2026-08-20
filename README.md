@@ -2,9 +2,10 @@
 
 A replacement display driver for Windows 98, for 1990s PCI graphics cards — S3
 ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic VESA cards it has never been
-told about. It gives a supported card 256-colour and High Color modes up to
-1024x768, a DirectDraw HAL with real page flipping and vertical-blank waits,
-and — on the ViRGE — a hardware Direct3D path.
+told about. It gives a supported card 256-colour, High Color and — on the S3
+targets — True Color modes up to 1280x1024, a DirectDraw HAL with real page
+flipping and vertical-blank waits, and — on the ViRGE — a hardware Direct3D
+path.
 
 It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
 HAL and Direct3D HAL contracts, rather than derived from anyone's driver
@@ -46,8 +47,10 @@ while an unlisted VESA card gets a working unaccelerated desktop. What every
 target gets:
 
 - **Display modes** — 640x480, 800x600 and 1024x768 at 256 colours and High
-  Color (16-bit), plus 640x400 at 256 colours. Resolution *and* colour-depth
-  changes apply live on the ViRGE, without a reboot.
+  Color (16-bit), plus 640x400 at 256 colours. On the S3 targets, also True
+  Color (32-bit) at those three resolutions and 1280x1024 at 256 colours and
+  High Color. Resolution *and* colour-depth changes apply live on the ViRGE,
+  without a reboot.
 - **2D output** — through the system DIB Engine, with the framebuffer mapped
   linearly. GDI drawing itself is not hardware-accelerated.
 - **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory
@@ -73,7 +76,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | PCI ID | `5333:8A01` | `5333:8811` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
 | Status | Primary target | Conservative baseline | Tier-0 bring-up | Tier-0 fallback |
-| Display modes | 640x400x8, 640/800/1024 at 8 and 16 bpp | same | same | same |
+| Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same | 640x400x8, 640/800/1024 at 8 and 16 bpp | same as ATI |
 | Live resolution change | Yes | Yes | Yes | Yes |
 | Live colour-depth change | Yes | Yes | Yes | Yes |
 | DirectDraw surfaces / page flip / vblank | Yes | Yes | Yes | Yes |
@@ -238,7 +241,13 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
   pre-lit vertices, and does no clipping, backface culling, lines or indexed
   primitives. The S3D triangle engine writes native ZRGB1555 into a surface
   described as RGB565, which is an unresolved mismatch.
-- **Fewer modes.** No 24/32-bpp modes, and no resolutions above 1024x768.
+- **Fewer modes.** No 24-bpp modes anywhere: no S3 BIOS measured offers one —
+  the VESA "24-bit" numbers are all 32 bpp on these cards — so there is nothing
+  to drive. The ATI and generic-VESA targets have no high-colour modes above
+  16 bpp at all yet, and nothing goes above 1280x1024.
+- **No hardware acceleration above 16 bpp.** Both S3 blitters decline at 24 and
+  32 bpp and the CPU fallback serves those depths, so DirectDraw fills and blits
+  are software there. Direct3D is 16-bpp only.
 - **DirectDraw low-resolution modes are unreliable.** 640x400 is reachable
   from GDI but not from `SetDisplayMode`, and the 320x200/320x240 ModeX path
   reports success then fails in use. Applications configured for those modes
@@ -285,9 +294,17 @@ verified against Windows 98, Second Edition is what the packaging targets, and
 there is no INF for 95 or Me.
 
 **Can I get 32-bit colour, or a resolution above 1024x768?**
-No. The driver offers 256 colours and High Color (16-bit) only, at 640x400,
-640x480, 800x600 and 1024x768. 24 and 32 bpp are deliberately not offered — that
-is expected, not a fault.
+On the S3 targets, yes: True Color (32-bit) at 640x480, 800x600 and 1024x768,
+and 1280x1024 at 256 colours and High Color. On a 2 MB card the largest of
+those are refused for want of memory, which is expected rather than a fault —
+1024x768 at 32 bpp needs 3 MB.
+
+On the ATI and generic-VESA targets, not yet. Those depend on what the card's
+BIOS reports, and no dump has been taken for them.
+
+24-bpp is offered nowhere, and that is deliberate. No S3 BIOS measured has a
+packed 24-bpp mode at all — the VESA numbers usually described as 24-bit
+(0x112, 0x115, 0x118) all report 32 bpp on these cards.
 
 **Will my Direct3D games work?**
 Most likely not. The Direct3D path is real hardware acceleration through the

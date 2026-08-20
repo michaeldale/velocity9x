@@ -178,8 +178,10 @@ A "Velocity9x" tab also appears in Display Properties showing the detected
 adapter, video memory, active mode and which acceleration paths are live.
 
 Supported modes: 640x400 at 256 colours; 640x480, 800x600 and 1024x768 at
-256 colours and High Color (16 bit). There are no 24-bit or 32-bit modes and
-nothing above 1024x768. That is expected, not a fault.
+256 colours and High Color (16 bit). On the S3 cards, also True Color (32 bit)
+at those three sizes and 1280x1024 at 256 colours and High Color; a 2 MB card
+declines the largest of those for want of memory. There are no 24-bit modes
+anywhere, and nothing above 1280x1024. That is expected, not a fault.
 
 
 5. IF IT DOES NOT BOOT TO A DESKTOP

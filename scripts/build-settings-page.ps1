@@ -1,6 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$BuildId
+    [string]$BuildId,
+    # The family's Package.ModesSummary. The settings page reports the mode list
+    # and cannot derive it: one DLL source serves every family, and the families
+    # no longer offer the same depths. Passing the manifest's own sentence keeps
+    # this from becoming a third place the mode list is written down. Blank
+    # leaves the built-in wording, which is what a standalone build gets.
+    [string]$ModesSummary
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,12 +99,20 @@ $resourceText = Get-Content -LiteralPath $resourceSource -Raw
 $resourceText += "`r`n101 BITMAP `"{0}`"`r`n" -f $logoBitmap.Replace('\', '\\')
 Set-Content -LiteralPath $resourceFile -Encoding Ascii -Value $resourceText
 
+$modeDefines = @()
+if ($ModesSummary) {
+    if ($ModesSummary -match '["\\]') {
+        throw "ModesSummary may not contain quotes or backslashes."
+    }
+    $modeDefines += "-dV9X_MODES_SUMMARY=`"$ModesSummary`""
+}
+
 foreach ($source in $sources) {
     $object = Join-Path $outputDir (
         [IO.Path]::GetFileNameWithoutExtension($source) + ".obj")
     & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-zl" "-s" `
         "-i=$diagDir" "-i=$includeDir" `
-        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+        "-dV9X_BUILD_ID=`"$BuildId`"" @modeDefines "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom failed to compile $source."
     }

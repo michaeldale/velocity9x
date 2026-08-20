@@ -56,8 +56,10 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot `
     -DisableVbeCollect:(-not $miniVddVbeCollect)
-& (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId
+& (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
+    -ModesSummary $familyManifest.Package.ModesSummary
+& (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `
+    -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-gdi-smoke.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-palette-smoke.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-mode-switch.ps1") -BuildId $BuildId
