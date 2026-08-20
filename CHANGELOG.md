@@ -6,6 +6,35 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Added
+
+- **The VGA hardware survey at schema 2, for a card on a bus with no PCI.** The
+  tool we shipped would have come back from a 486 with an S3 Trio on VESA Local
+  Bus nearly empty, because almost everything it collected was reached through
+  PCI. Tier 2 now falls back to identifying an S3 from the card's own identity
+  registers — read with the locks as the BIOS left them, and unlocked only after
+  those reads have already said S3 — dumps the whole extended register file
+  (CR30-CR6F, SR08-SR1F) rather than a list chosen for the PCI parts, and adds
+  the DAC identity by reading only. A new `[Platform]` section records CPU class
+  without assuming CPUID exists, installed RAM three ways, A20 and the memory
+  managers. A third opt-in, `/aperture`, reads the linear window's physical base
+  through `INT 15h AH=87h` and states its own three limits in the report.
+  `scripts/parse-vga-survey.ps1` reads schema 1 and 2 alike, derives the bus,
+  names the S3 chip, decodes CR58 and CR36, and refuses to call an aperture live
+  when its base overlaps RAM. `docs/decisions/2026-08-20-vlb-survey-schema2.md`
+  records the design; **no 486 run has happened yet**, and that note says so
+  rather than implying otherwise.
+
+- **The survey's source-safety gate grew with the tool, and `run-checks` now
+  runs it.** Schema 2 introduced inline assembly, so the gate additionally
+  allowlists every literal port constant at an `inp`/`outp` call site and every
+  raw opcode byte a `#pragma aux` emits, and refuses the VBE setters and the
+  state-changing instructions a pragma could otherwise smuggle in. It is honest
+  in the script about what a regex over source text cannot see.
+  `build-vga-survey.ps1 -GateSelfTest` asserts the gate rejects each of nine
+  deliberately broken copies of the source, needs no compiler, and is now a
+  `run-checks` step rather than a check performed once.
+
 ### Known issues
 
 - **The Mach64's display is wrong at 16 bpp, and its mode matrix passes anyway

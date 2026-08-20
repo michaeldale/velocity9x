@@ -54,15 +54,20 @@ function Get-IniValue {
 
 # Blob sections are offset-keyed hex lines. One rule reassembles config space,
 # the ROM image and EDID alike.
+#
+# -Base is for the schema-2 register banks, whose offsets are register indices
+# rather than positions in a buffer: Chipset.S3/CrtcUnlocked starts at CR30, so
+# -Base 0x30 returns a byte array whose element 0 is CR30.
 function Get-Blob {
-    param($Ini, [string]$Section, [string]$Prefix)
+    param($Ini, [string]$Section, [string]$Prefix, [int]$Base = 0)
 
     if (-not $Ini.Contains($Section)) { return $null }
     $chunks = @{}
     foreach ($key in $Ini[$Section].Keys) {
         if ($key -notlike "$Prefix.*") { continue }
         $offsetText = $key.Substring($Prefix.Length + 1)
-        $offset = [Convert]::ToInt32($offsetText, 16)
+        $offset = [Convert]::ToInt32($offsetText, 16) - $Base
+        if ($offset -lt 0) { continue }
         $chunks[$offset] = $Ini[$Section][$key]
     }
     if ($chunks.Count -eq 0) { return $null }
@@ -163,6 +168,339 @@ function ConvertFrom-Bar {
     }
 }
 
+function Get-HexValue {
+    param([string]$Raw, $Default = $null)
+
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return $Default }
+    try { return [int64][Convert]::ToUInt64($Raw.Trim(), 16) } catch { return $Default }
+}
+
+# ---------------------------------------------------------------------------
+# S3 chip identity
+#
+# CR2D/CR2E hold the same device id the PCI parts publish to configuration
+# space, so this table is the one the driver's own family manifest is keyed on
+# and it is as solid as the PCI ids themselves.
+#
+# CR30 is different, and worth being honest about. It is the only id register
+# the pre-Trio parts have - the 86C801/805 and 86C928 that a VLB card is likely
+# to be - and this project has never seen one. The names below come from
+# documentation, not from measurement, so a chip named only from CR30 is
+# reported as a lead and labelled as one. Being wrong here costs a script edit.
+# ---------------------------------------------------------------------------
+$script:S3DeviceIds = @{
+    '5631' = 'ViRGE (86C325)'
+    '883D' = 'ViRGE/VX (86C988)'
+    '8810' = 'Trio32 (86C732)'
+    '8811' = 'Trio32 or Trio64 (86C732/86C764)'
+    '8812' = 'Aurora64V+ (86C862)'
+    '8813' = 'Trio32 or Trio64 (86C732/86C764)'
+    '8814' = 'Trio64UV+ (86C765)'
+    '8880' = 'Vision868 (86C868)'
+    '88B0' = 'Vision928 (86C928)'
+    '88B1' = 'Vision928 (86C928)'
+    '88C0' = 'Vision864 (86C864)'
+    '88C1' = 'Vision864 (86C864)'
+    '88D0' = 'Vision964 (86C964)'
+    '88D1' = 'Vision964 (86C964)'
+    '88F0' = 'Vision968 (86C968)'
+    '88F1' = 'Vision968 (86C968)'
+    '8901' = 'Trio64V2/DX or /GX (86C775/86C785)'
+    '8902' = 'Plato/PX (86C551)'
+    '8903' = 'Trio3D (86C365)'
+    '8904' = 'Trio3D/2X (86C362)'
+    '8A01' = 'ViRGE/DX or /GX (86C375/86C385)'
+    '8A10' = 'ViRGE/GX2 (86C357)'
+    '8A13' = 'Trio3D/2X (86C362/86C368)'
+    '8A20' = 'Savage3D'
+    '8A22' = 'Savage4'
+    '8C00' = 'ViRGE/MX (86C260)'
+    '8C01' = 'ViRGE/MX (86C260)'
+    '8C03' = 'ViRGE/MX+ (86C280)'
+    '8C10' = 'Savage/MX'
+    '9102' = 'Savage2000'
+}
+
+$script:S3ChipIds = @{
+    0x81 = '86C911'
+    0x82 = '86C911-A or 86C924'
+    0x90 = '86C928'
+    0x91 = '86C928'
+    0x92 = '86C928'
+    0x94 = '86C928'
+    0x95 = '86C928'
+    0xA0 = '86C801 or 86C805'
+    0xA2 = '86C801 or 86C805'
+    0xA5 = '86C801 or 86C805'
+    0xA8 = '86C801 or 86C805'
+    0xB0 = '86C928'
+    0xC0 = 'Vision864 (86C864)'
+    0xC1 = 'Vision864 (86C864)'
+    0xD0 = 'Vision964 (86C964)'
+    0xD1 = 'Vision964 (86C964)'
+    0xE0 = 'Trio32 or Trio64 (86C732/86C764)'
+    0xE1 = 'Trio64V+ or Trio64UV+ (86C765)'
+    0xF0 = 'Vision968 or Trio64V2'
+}
+
+function Get-S3ChipName {
+    param([string]$DeviceIdHigh, [string]$DeviceIdLow, [string]$ChipId,
+          [string]$Source)
+
+    $high = Get-HexValue $DeviceIdHigh
+    $low = Get-HexValue $DeviceIdLow
+    $chip = Get-HexValue $ChipId
+
+    if ($null -ne $high -and $null -ne $low) {
+        $key = "{0:X2}{1:X2}" -f $high, $low
+        if ($script:S3DeviceIds.ContainsKey($key)) {
+            return [pscustomobject]@{
+                Name = $script:S3DeviceIds[$key]; Key = $key
+                From = "CR2D/CR2E"; Source = $Source; Confident = $true
+            }
+        }
+        if ($high -ne 0xFF -and $high -ne 0x00) {
+            return [pscustomobject]@{
+                Name = "unknown S3 device id $key"; Key = $key
+                From = "CR2D/CR2E"; Source = $Source; Confident = $false
+            }
+        }
+    }
+    if ($null -ne $chip -and $script:S3ChipIds.ContainsKey([int]$chip)) {
+        return [pscustomobject]@{
+            Name = $script:S3ChipIds[[int]$chip]
+            Key = "{0:X2}" -f $chip
+            From = "CR30"; Source = $Source; Confident = $false
+        }
+    }
+    return $null
+}
+
+# CR58, the linear address window control. Bits 1-0 are the window size and bit
+# 4 enables linear addressing - the same fields src\chipsets\s3\common\
+# s3_regs16.c writes when it selects a 4 MiB window. Bits 7-5 differ between
+# parts, so they are reported raw rather than named.
+function ConvertFrom-S3Cr58 {
+    param([string]$Raw)
+
+    $value = Get-HexValue $Raw
+    if ($null -eq $value) { return $null }
+    $sizes = @(65536L, 1048576L, 2097152L, 4194304L)
+    return [pscustomobject]@{
+        Raw            = "{0:X2}" -f $value
+        WindowSize     = $sizes[[int]($value -band 0x3)]
+        LinearEnabled  = ((($value -shr 4) -band 1) -ne 0)
+        UpperBits      = "{0:X2}" -f ($value -band 0xE0)
+    }
+}
+
+# CR36 bits 7-5, using the same code table as
+# v9x_s3_virge_decode_memory_size in src\chipsets\s3\virge\memory.c, so the
+# survey and the driver cannot disagree about what a code means.
+function ConvertFrom-S3Cr36 {
+    param([string]$Raw)
+
+    $value = Get-HexValue $Raw
+    if ($null -eq $value) { return $null }
+    $code = ($value -shr 5) -band 0x7
+    $bytes = switch ($code) {
+        0 { 4194304L } 3 { 8388608L } 4 { 2097152L } 6 { 1048576L }
+        7 { 524288L } default { $null }
+    }
+    return [pscustomobject]@{
+        Raw = "{0:X2}" -f $value; Code = $code; Bytes = $bytes
+    }
+}
+
+# ---------------------------------------------------------------------------
+# The bus.
+#
+# Schema 2 adds no [Bus] section, because the report already holds the facts:
+# [PciBios] records whether INT 1Ah AX=B101h answered, and [PciInventory]
+# counts the display-class devices the walk found. Drawing the conclusion is
+# this script's job, which is the whole point of the capture/interpret split -
+# a schema-1 report from an ISA card yields the same verdict without having been
+# re-collected.
+# ---------------------------------------------------------------------------
+function Get-BusVerdict {
+    param($Ini)
+
+    if ((Get-IniValue $Ini "PciBios" "Status") -ne "ok") {
+        $reason = Get-IniValue $Ini "PciBios" "Reason" "unknown"
+        return "non-pci (no PCI BIOS: $reason)"
+    }
+    $count = [int](Get-IniValue $Ini "PciInventory" "DisplayDeviceCount" "0")
+    if ($count -eq 0) {
+        return "pci-bios-present-but-no-pci-display-device (ISA or VLB card)"
+    }
+    return "pci"
+}
+
+# ---------------------------------------------------------------------------
+# Top of installed RAM.
+#
+# Needed for one reason: an aperture window whose base sits at or below it reads
+# back RAM, which looks alive and proves nothing about the card. The three
+# sources are tried best-first and which one answered is reported, because a
+# BIOS that caps AH=88h at 15 MB would otherwise make a 16 MB machine look
+# small enough to clear a window that in fact overlaps it.
+# ---------------------------------------------------------------------------
+function Get-InstalledRam {
+    param($Ini)
+
+    $unknown = [pscustomobject]@{ Bytes = $null; Source = "unknown" }
+    if (-not $Ini.Contains("Platform")) { return $unknown }
+
+    if ((Get-IniValue $Ini "Platform" "Int15E820Status") -eq "ok") {
+        $top = 0L
+        foreach ($key in $Ini["Platform"].Keys) {
+            if ($key -notlike "E820.*") { continue }
+            $fields = $Ini["Platform"][$key] -split ","
+            if ($fields.Count -lt 3) { continue }
+            if ([int](Get-HexValue $fields[2] 0) -ne 1) { continue }
+            $base = Get-HexValue $fields[0] 0
+            $length = Get-HexValue $fields[1] 0
+            if (($base + $length) -gt $top) { $top = $base + $length }
+        }
+        if ($top -gt 0) {
+            return [pscustomobject]@{ Bytes = $top; Source = "INT 15h E820h" }
+        }
+    }
+
+    if ((Get-IniValue $Ini "Platform" "Int15E801Status") -eq "ok") {
+        $kb = [int64](Get-IniValue $Ini "Platform" "Int15E801ConfiguredKB" "0")
+        $blocks = [int64](Get-IniValue $Ini "Platform" "Int15E801Configured64KB" "0")
+        if ($blocks -gt 0) {
+            return [pscustomobject]@{
+                Bytes = 16777216L + ($blocks * 65536L); Source = "INT 15h E801h"
+            }
+        }
+        if ($kb -gt 0) {
+            return [pscustomobject]@{
+                Bytes = 1048576L + ($kb * 1024L); Source = "INT 15h E801h"
+            }
+        }
+    }
+
+    if ((Get-IniValue $Ini "Platform" "Int1588Status") -eq "ok") {
+        $kb = [int64](Get-IniValue $Ini "Platform" "Int1588ExtendedKB" "0")
+        return [pscustomobject]@{
+            Bytes = 1048576L + ($kb * 1024L)
+            Source = "INT 15h AH=88h (capped at 15 MB on many BIOSes)"
+        }
+    }
+    return $unknown
+}
+
+# ---------------------------------------------------------------------------
+# The aperture verdict.
+#
+# The tool reports bytes; deciding what they mean belongs here, and most of that
+# decision is about refusing to over-read a positive. Three ways a live-looking
+# result means nothing:
+#
+#   the window base overlaps installed RAM, so AH=87h returned RAM;
+#   a memory manager emulated AH=87h instead of the BIOS executing it;
+#   no mode was ever set, so a dead window may simply not be switched on yet.
+#
+# The first is disqualifying and produces unreadable-by-this-method. The other
+# two are caveats attached to whatever the verdict is.
+# ---------------------------------------------------------------------------
+function Get-ApertureVerdict {
+    param($Ini, $Ram)
+
+    if (-not $Ini.Contains("Aperture")) {
+        return [pscustomobject]@{
+            Verdict = "absent"; Detail = "no aperture probe in this report"
+            Caveats = @()
+        }
+    }
+
+    $status = Get-IniValue $Ini "Aperture" "Status"
+    $reason = Get-IniValue $Ini "Aperture" "Reason"
+    $caveats = @()
+
+    if ((Get-IniValue $Ini "Aperture" "ProtectedOrV86") -eq "yes" -or
+        (Get-IniValue $Ini "Aperture" "EmsPresent") -eq "yes") {
+        $caveats += ("the CPU was in virtual-8086 mode, so INT 15h AH=87h was " +
+                     "emulated by a memory manager rather than executed by the " +
+                     "BIOS; re-run from a clean boot to confirm")
+    }
+
+    if ($status -ne "ok") {
+        $verdict = "not-measured"
+        if ($reason -eq "aperture-switch-not-given") { $verdict = "not-requested" }
+        $detail = $status
+        if ($reason) { $detail = "$status ($reason)" }
+        return [pscustomobject]@{
+            Verdict = $verdict; Detail = $detail; Caveats = $caveats
+        }
+    }
+
+    $base = Get-HexValue (Get-IniValue $Ini "Aperture" "Base")
+    if ($null -ne $Ram.Bytes -and $null -ne $base -and $base -lt $Ram.Bytes) {
+        return [pscustomobject]@{
+            Verdict = "unreadable-by-this-method"
+            Detail  = ("window base {0:X8} is at or below the top of installed " +
+                       "RAM ({1:N0} bytes, per {2}), so the bytes read are RAM " +
+                       "and say nothing about the card") -f
+                      $base, $Ram.Bytes, $Ram.Source
+            Caveats = $caveats
+        }
+    }
+
+    $data = Get-Blob $Ini "Aperture" "Data"
+    if ($null -eq $data -or $data.Length -eq 0) {
+        return [pscustomobject]@{
+            Verdict = "inconclusive"; Detail = "the probe reported ok but no data"
+            Caveats = $caveats
+        }
+    }
+
+    $distinct = @($data | Sort-Object -Unique)
+    if ($distinct.Count -eq 1 -and ($distinct[0] -eq 0xFF -or $distinct[0] -eq 0x00)) {
+        $caveats += ("no mode was set, and on these parts the window may only " +
+                     "answer once a mode has been set with linear addressing " +
+                     "enabled, so this is suggestive and not conclusive")
+        return [pscustomobject]@{
+            Verdict = "nothing-decodes"
+            Detail  = ("all {0} bytes read back as {1:X2} from base {2:X8}" -f
+                       $data.Length, $distinct[0], $base)
+            Caveats = $caveats
+        }
+    }
+
+    return [pscustomobject]@{
+        Verdict = "window-responds"
+        Detail  = ("{0} bytes from base {1:X8} hold {2} distinct values" -f
+                   $data.Length, $base, $distinct.Count)
+        Caveats = $caveats
+    }
+}
+
+# Where the locked Tier 1 dump and the unlocked Tier 2 dump disagree over the
+# CR30-CR3F range they both cover. A disagreement is not an error - it is the
+# finding that this part's locks gate reads as well as writes, which is exactly
+# what the no-PCI identification depends on not being true.
+function Compare-CrtcBanks {
+    param($Ini)
+
+    $locked = Get-Blob $Ini "VGARegisters" "Crtc"
+    $unlocked = Get-Blob $Ini "Chipset.S3" "CrtcUnlocked" -Base 0x30
+    if ($null -eq $locked -or $null -eq $unlocked) { return @() }
+
+    $differences = @()
+    for ($index = 0x30; $index -le 0x3F; $index++) {
+        if ($index -ge $locked.Length) { break }
+        if (($index - 0x30) -ge $unlocked.Length) { break }
+        if ($locked[$index] -ne $unlocked[$index - 0x30]) {
+            $differences += "CR{0:X2} {1:X2}->{2:X2}" -f
+                $index, $locked[$index], $unlocked[$index - 0x30]
+        }
+    }
+    return $differences
+}
+
 function Read-SurveyReport {
     param([string]$LiteralPath)
 
@@ -173,7 +511,9 @@ function Read-SurveyReport {
         throw "$LiteralPath is not a Velocity9x VGA survey report."
     }
     $schema = Get-IniValue $ini "Report" "SchemaVersion"
-    if ($schema -ne "1") { $problems += "unknown schema version '$schema'" }
+    if (@("1", "2") -notcontains $schema) {
+        $problems += "unknown schema version '$schema'"
+    }
     # Complete is the last key the tool writes. Without it the file was cut off
     # in transit and nothing in it should be trusted wholesale.
     if ((Get-IniValue $ini "Result" "Complete") -ne "yes") {
@@ -184,6 +524,14 @@ function Read-SurveyReport {
     }
     if ((Get-IniValue $ini "Tier2" "Requested") -ne "yes") {
         $problems += "vendor probe declined; no chipset register detail"
+    }
+    # A no-PCI report that could not name the card from its registers either is
+    # the one outcome that needs a follow-up rather than a decode.
+    if ((Get-IniValue $ini "Chipset.Identify" "Accepted") -eq "no") {
+        $problems += ("no PCI and the card's own registers did not identify it " +
+                      "(CR2D=" + (Get-IniValue $ini "Chipset.Identify" "LockedCR2D" "??") +
+                      " CR2E=" + (Get-IniValue $ini "Chipset.Identify" "LockedCR2E" "??") +
+                      " CR30=" + (Get-IniValue $ini "Chipset.Identify" "LockedCR30" "??") + ")")
     }
 
     # The first display-class device is the card of interest.
@@ -204,6 +552,45 @@ function Read-SurveyReport {
                          $(if ($decoded.Prefetchable) { "(pf)" } else { "" })
             }
         }
+    }
+
+    $bus = Get-BusVerdict $ini
+    $ram = Get-InstalledRam $ini
+    $aperture = Get-ApertureVerdict $ini $ram
+    $crtcDifferences = Compare-CrtcBanks $ini
+
+    <#
+      Naming the S3 chip, best source first.
+
+      The unlocked Tier 2 read is authoritative when it exists. Failing that,
+      the Tier 1 CRTC dump already holds CR2D/CR2E/CR30 - it reads the whole
+      0-3Fh bank without unlocking anything - so a report whose tester declined
+      Tier 2 is still identifiable, provided the capture was from real hardware
+      and not from a Windows DOS box where the VDD answers instead of the chip.
+    #>
+    $s3 = $null
+    if ($ini.Contains("Chipset.S3")) {
+        $s3 = Get-S3ChipName -DeviceIdHigh $ini["Chipset.S3"]["DeviceIdHigh"] `
+                             -DeviceIdLow $ini["Chipset.S3"]["DeviceIdLow"] `
+                             -ChipId $ini["Chipset.S3"]["ChipId"] `
+                             -Source "Tier 2 unlocked read"
+    }
+    if ($null -eq $s3 -and
+        (Get-IniValue $ini "VGARegisters" "Trust") -eq "hardware") {
+        $crtc = Get-Blob $ini "VGARegisters" "Crtc"
+        if ($null -ne $crtc -and $crtc.Length -gt 0x30) {
+            $s3 = Get-S3ChipName -DeviceIdHigh ("{0:X2}" -f $crtc[0x2D]) `
+                                 -DeviceIdLow ("{0:X2}" -f $crtc[0x2E]) `
+                                 -ChipId ("{0:X2}" -f $crtc[0x30]) `
+                                 -Source "Tier 1 locked dump"
+        }
+    }
+
+    $cr58 = $null
+    $cr36 = $null
+    if ($ini.Contains("Chipset.S3")) {
+        $cr58 = ConvertFrom-S3Cr58 $ini["Chipset.S3"]["CR58"]
+        $cr36 = ConvertFrom-S3Cr36 $ini["Chipset.S3"]["CR36"]
     }
 
     $romStrings = @()
@@ -236,6 +623,17 @@ function Read-SurveyReport {
         ModeCount    = Get-IniValue $ini "VBEModes" "Count" "0"
         RomStrings   = $romStrings
         Chipset      = @($ini.Keys | Where-Object { $_ -like "Chipset*" }) -join ","
+        Schema       = $schema
+        Bus          = $bus
+        IdentifiedBy = Get-IniValue $ini "Result" "IdentifiedBy" ""
+        S3Chip       = $s3
+        Cr58         = $cr58
+        Cr36         = $cr36
+        Ram          = $ram
+        Aperture     = $aperture
+        CrtcDiffs    = $crtcDifferences
+        CpuClass     = Get-IniValue $ini "Platform" "CpuClass" ""
+        CpuIdVendor  = Get-IniValue $ini "Platform" "CpuIdVendor" ""
         Monitor      = if ($edid -and $edid.Valid) {
             "$($edid.Manufacturer) $($edid.MonitorName)".Trim()
         } else { "" }
@@ -287,16 +685,63 @@ if ($ExtractEdid) {
 
 foreach ($report in $reports) {
     Write-Output ""
-    Write-Output ("=== {0} ===" -f $report.File)
-    Write-Output ("  Card         {0}:{1} rev {2}  class {3}" -f
-        $report.VendorId, $report.DeviceId, $report.Revision, $report.ClassCode)
-    Write-Output ("  Subsystem    {0}" -f $report.SubsystemId)
-    Write-Output ("  Apertures    {0}" -f $report.Bars)
+    Write-Output ("=== {0} (schema {1}) ===" -f $report.File, $report.Schema)
+    Write-Output ("  Bus          {0}" -f $report.Bus)
+    if ($report.VendorId) {
+        Write-Output ("  Card         {0}:{1} rev {2}  class {3}" -f
+            $report.VendorId, $report.DeviceId, $report.Revision, $report.ClassCode)
+        Write-Output ("  Subsystem    {0}" -f $report.SubsystemId)
+        Write-Output ("  BARs         {0}" -f $report.Bars)
+    }
+    if ($report.S3Chip) {
+        $confidence = ""
+        if (-not $report.S3Chip.Confident) {
+            $confidence = "  [unverified - name comes from documentation, not measurement]"
+        }
+        Write-Output ("  Chipset      S3 {0} ({1} = {2}, {3}){4}" -f
+            $report.S3Chip.Name, $report.S3Chip.From, $report.S3Chip.Key,
+            $report.S3Chip.Source, $confidence)
+    }
     Write-Output ("  VBE          v{0}, {1:N0} bytes VRAM, {2} modes" -f
         $report.VbeVersion, [int64]$report.VideoMemory, $report.ModeCount)
     Write-Output ("  OEM string   {0}" -f $report.OemString)
     if ($report.Monitor) { Write-Output ("  Monitor      {0}" -f $report.Monitor) }
     if ($report.Note)    { Write-Output ("  Tester note  {0}" -f $report.Note) }
+    if ($report.Cr36) {
+        $size = "code $($report.Cr36.Code), not decoded"
+        if ($null -ne $report.Cr36.Bytes) {
+            $size = "{0:N0} bytes" -f $report.Cr36.Bytes
+        }
+        Write-Output ("  VRAM (CR36)  {0} = {1}" -f $report.Cr36.Raw, $size)
+    }
+    if ($report.Cr58) {
+        $enabled = "linear addressing OFF"
+        if ($report.Cr58.LinearEnabled) { $enabled = "linear addressing ON" }
+        Write-Output ("  Window       CR58={0} -> {1:N0} byte window, {2} (upper bits {3})" -f
+            $report.Cr58.Raw, $report.Cr58.WindowSize, $enabled, $report.Cr58.UpperBits)
+    }
+    if ($report.Ram.Bytes) {
+        Write-Output ("  RAM          {0:N0} bytes, per {1}" -f
+            $report.Ram.Bytes, $report.Ram.Source)
+    }
+    if ($report.CpuClass) {
+        $cpu = $report.CpuClass
+        if ($report.CpuIdVendor) { $cpu = "$cpu, CPUID $($report.CpuIdVendor)" }
+        Write-Output ("  CPU          {0}" -f $cpu)
+    }
+    if ($report.Aperture.Verdict -ne "absent") {
+        Write-Output ("  Aperture     {0} - {1}" -f
+            $report.Aperture.Verdict, $report.Aperture.Detail)
+        foreach ($caveat in $report.Aperture.Caveats) {
+            Write-Output ("               caveat: {0}" -f $caveat)
+        }
+    }
+    if ($report.CrtcDiffs.Count -gt 0) {
+        Write-Output ("  CR30-CR3F    locked and unlocked reads differ: {0}" -f
+            ($report.CrtcDiffs -join ", "))
+        Write-Output ("               on this part the locks gate reads too, so a")
+        Write-Output ("               locked-read identification cannot be trusted")
+    }
     if ($report.RomStrings.Count -gt 0) {
         Write-Output "  ROM strings:"
         foreach ($s in ($report.RomStrings | Select-Object -First 6)) {
@@ -312,9 +757,17 @@ foreach ($report in $reports) {
 }
 
 if ($Csv) {
-    $rows = $reports | Select-Object File, Date, Build, VendorId, DeviceId,
-        Revision, SubsystemId, ClassCode, VideoMemory, VbeVersion, ModeCount,
-        OemString, Monitor, Windows, Note,
+    $rows = $reports | Select-Object File, Date, Build, Schema, Bus, IdentifiedBy,
+        VendorId, DeviceId, Revision, SubsystemId, ClassCode, VideoMemory,
+        VbeVersion, ModeCount, OemString, Monitor, Windows, Note, CpuClass,
+        @{ n = "S3Chip";     e = { $_.S3Chip.Name } },
+        @{ n = "S3ChipFrom"; e = { $_.S3Chip.From } },
+        @{ n = "Cr36Bytes";  e = { $_.Cr36.Bytes } },
+        @{ n = "Cr58";       e = { $_.Cr58.Raw } },
+        @{ n = "WindowSize"; e = { $_.Cr58.WindowSize } },
+        @{ n = "LinearOn";   e = { $_.Cr58.LinearEnabled } },
+        @{ n = "RamBytes";   e = { $_.Ram.Bytes } },
+        @{ n = "Aperture";   e = { $_.Aperture.Verdict } },
         @{ n = "Problems"; e = { $_.Problems -join "; " } }
     if (Test-Path -LiteralPath $Csv) {
         $rows | Export-Csv -LiteralPath $Csv -NoTypeInformation -Append
@@ -322,5 +775,5 @@ if ($Csv) {
         $rows | Export-Csv -LiteralPath $Csv -NoTypeInformation
     }
     Write-Output ""
-    Write-Output "Appended $($rows.Count) row(s) to $Csv"
+    Write-Output "Appended $(@($rows).Count) row(s) to $Csv"
 }

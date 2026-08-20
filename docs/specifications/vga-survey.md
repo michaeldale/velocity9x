@@ -25,20 +25,28 @@ can see the run worked.
 
 **Tier 1** always runs. It writes no device register except to select an index,
 and restores every index it touches. PCI is read through PCI BIOS function
-`B108h` only; the write functions `B10Bh`/`B10Ch`/`B10Dh`, VBE `4F02h` (set mode)
-and VBE `4F14h` (OEM extension) do not appear in the source, and
-`scripts/build-vga-survey.ps1` fails the build if they ever do. No BAR sizing is
-performed, because determining an aperture size means writing to a BAR on a live
-device.
+`B108h` only; the write functions `B10Bh`/`B10Ch`/`B10Dh`, the VBE setters
+`4F02h` and `4F05h`-`4F0Bh`, and VBE `4F14h` (OEM extension) do not appear in the
+source, and `scripts/build-vga-survey.ps1` fails the build if they ever do. Since
+schema 2 the same gate also holds an allowlist of the literal port constants and
+of the raw opcode bytes inline assembly may emit. No BAR sizing is performed,
+because determining an aperture size means writing to a BAR on a live device.
 
 **Tier 2** is opt-in, and the report records which way the tester answered. It
 writes documented per-vendor unlock keys, reads the registers behind them, and
 restores the originals. It is dispatched on PCI vendor ID, so an unfamiliar card
-is never poked speculatively.
+is never poked speculatively — and where there is no PCI, on the card's own
+locked identity registers instead. See *Identification without PCI* below.
+
+**The aperture probe** is opt-in again, on its own `/aperture` switch, which
+implies `/tier2` because the window base is something only Tier 2 can read.
+`/notier2` still wins over it. It is the only step that reads an address the card
+claims rather than a register the card answers for, and it runs last.
 
 Tier 1 is closed on disk before Tier 2 begins, and Tier 2 reopens the file in
 append mode. If a vendor probe wedges an unknown card, the tester still has a
-complete Tier 1 report.
+complete Tier 1 report. `scripts\build-vga-survey.ps1 -GateSelfTest` asserts the
+source gate rejects each thing the tool must never grow, and needs no compiler.
 
 In practice a declined Tier 2 costs less on S3 parts than it looks. Captures
 from both the ViRGE/DX and Trio64 test machines show CR38 and CR39 already
@@ -56,6 +64,37 @@ switches the register file mode, Tseng because its unlock writes the
 non-indexed CGA and Hercules mode-control ports, and Matrox/nVidia/3dfx/SiS
 because their registers are MMIO that real mode cannot reach.
 
+## Identification without PCI
+
+A VESA Local Bus or ISA machine has no PCI configuration space, so there is no
+vendor ID to dispatch Tier 2 on. `[Chipset.Identify]` records the fallback, and
+the order of operations is the safety property: the identity registers are read
+with the locks exactly as the BIOS left them, and the CR38/CR39 unlock keys are
+written only after those reads have already spelled S3.
+
+| Signal | Key | Accepts alone? |
+|---|---|---|
+| CR2D/CR2E device id, high byte one of six S3 values | `DeviceIdSignal` | yes |
+| CR30 chip id, one of nineteen documented values | `ChipIdSignal` | no |
+| An S3 string in the ROM image at `C000` | `RomSignal` | never alone |
+
+CR30 is the only id register the pre-Trio parts have, but its documented values
+span seven of the sixteen high nibbles, so a CR30-only match is accepted only
+when the ROM also names S3. `Accepted=no` carries
+`Reason=unidentified-non-pci-display`, and `[Chipset]` repeats it under the name
+a schema-1 reader looks for.
+
+All three signals are reported whichever way the decision goes, so a refusal is
+diagnosable from the report rather than being a dead end.
+`WritesBeforeDecision=none` states the ordering property outright: everything
+`[Chipset.Identify]` reports was read, and the unlock happens afterwards, in
+`[Chipset.S3]`.
+
+CR38/CR39 on a non-S3 card mean something else. The read-first ordering shrinks
+that exposure and does not remove it, and on a machine with no PCI the Tier 2
+prompt says out loud that the check is trusting the tester's word about the card
+as much as it is trusting the registers.
+
 ## Formatting rules
 
 - ASCII, one `Key=Value` per line, no spaces around `=`.
@@ -69,6 +108,11 @@ because their registers are MMIO that real mode cannot reach.
   `Config.00=3353018A83000002...`. Offsets are two hex digits for blobs up to
   256 bytes and four for the ROM image. One rule reassembles config space, the
   ROM and EDID alike.
+- In a **register bank** blob the offset is the register index, not a position
+  in a buffer. `Crtc.` and `Seq.` start at index 0, so the two coincide there,
+  but the schema-2 banks do not: `CrtcUnlocked.` starts at `30` and
+  `SeqUnlocked.` at `08`. A reader should never have to add a base back on to
+  know which register a byte came from.
 
 ## Status vocabulary
 
@@ -93,6 +137,7 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 |---|---|
 | `[Report]` | `SchemaVersion`, `Tool`, `Build`, `Access`, `Date`, `Time`, `CommandLine`, `Note` |
 | `[System]` | DOS version, `WindowsPresent`, conventional memory, coarse CPU class |
+| `[Platform]` | schema 2. Refined CPU class and CPUID, installed RAM by `AH=88h`/`E801h`/`E820h`, A20 state, XMS and EMS presence |
 | `[BiosData]` | BIOS data area video fields, INT 10h `AH=1Ah` display combination, `AH=1Bh` functionality block |
 | `[PciBios]` | INT 1Ah `B101h` presence, version, hardware mechanism, last bus |
 | `[PciInventory]` | every PCI function found, one CSV line each, with a `Fields` key naming the columns |
@@ -105,8 +150,10 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 | `[VGARegisters]` | MISC, feature control, DAC state, and `Seq.`/`Crtc.`/`Gdc.`/`Atc.` register banks, plus `Trust` |
 | `[Tier1]` | marks the end of the always-safe capture |
 | `[Tier2]` | `Requested`, `Decision` |
+| `[Chipset.Identify]` | schema 2, non-PCI machines only. The accept signals and the decision |
 | `[Chipset.*]` | vendor probe results, or the reason there are none |
-| `[Result]` | `Status`, `DisplayDeviceCount`, `Complete` |
+| `[Aperture]` | schema 2. The `/aperture` result, its limits, and the memory-manager context |
+| `[Result]` | `Status`, `IdentifiedBy`, `DisplayDeviceCount`, `Complete` |
 
 ### `Trust` on `[VGARegisters]`
 
@@ -114,6 +161,41 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 port I/O and returns per-VM values rather than what the silicon holds. The
 capture is still recorded, but nothing about the chipset may be concluded from
 it, and the parser warns.
+
+### The bus
+
+Schema 2 adds no `[Bus]` section, because the report already holds the facts:
+`[PciBios]` records whether `INT 1Ah AX=B101h` answered, with
+`Reason=int1a-b101-failed` when it did not, and `[PciInventory]` carries
+`DisplayDeviceCount`. Drawing the conclusion is `parse-vga-survey.ps1`'s job,
+which means a schema-1 report from an ISA card yields the same verdict without
+having been re-collected.
+
+### `[Platform]` and the 386 gate
+
+The tool is 8086 code. The AC and ID bit tests that separate 386 from 486 from
+CPUID need 32-bit `PUSHFD`/`POPFD`, so they sit behind a 16-bit pre-check and a
+pre-386 CPU never reaches them. `Cpu386Probe` is that pre-check's answer and is
+the only thing that gates the 32-bit encodings; `CpuClass` may additionally read
+`386-or-later-inferred` with `Cpu386Inference=v86-host-present` when the probe
+said no but a V86 host is present, because `POPF` under a memory manager is
+emulated rather than executed. An inference never enables a 32-bit probe, so a
+report in that state carries no CPUID detail and no `E820` map, and says so.
+
+### `[Aperture]`
+
+`Status=ok` means the block move returned bytes, not that the window is live.
+Four keys qualify it, and a consumer that ignores them will over-read a positive:
+
+| Key | Why it matters |
+|---|---|
+| `Base` | at or below the top of installed RAM, `AH=87h` returns RAM contents; the parser reports `unreadable-by-this-method` |
+| `ProtectedOrV86`, `EmsPresent`, `XmsPresent` | in V86 mode a memory manager emulated `AH=87h` instead of the BIOS — a different code path |
+| `Limitation` | no mode was set, so a dead window may simply not be switched on yet |
+| `Reason` | on `skipped`, why: base zero, base above the 16 MB `AH=87h` limit, or a pre-286 CPU |
+
+`Method=int15h-ah87h-block-move` is a copy *from* the address in question *to* a
+buffer in the tool's own data segment. Nothing is written.
 
 ### `Complete` on `[Result]`
 
@@ -132,5 +214,15 @@ rather than drawing conclusions from a fragment.
 
 ## Versioning
 
-`SchemaVersion` is `1`. Adding a section or a key does not bump it — consumers
+`SchemaVersion` is `2`. Adding a section or a key does not bump it — consumers
 must ignore what they do not recognise. Removing or repurposing a key does.
+
+Schema 2 bumped it for one repurposing: `[Result] Status` used to be `PARTIAL`
+whenever no PCI display device was found, because before schema 2 that left
+nothing in the report identifying the chip. A register-identified card is not a
+partial result, so `Status` now follows the new `IdentifiedBy` key
+(`pci`, `registers`, or `none`) rather than the bus. Everything else schema 2
+added is additive, and `parse-vga-survey.ps1` reads schema 1 and schema 2 alike.
+
+Exit code 2 still means "no PCI display device found", regardless of whether the
+registers went on to name the card.

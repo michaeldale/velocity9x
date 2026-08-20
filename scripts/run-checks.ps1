@@ -42,6 +42,14 @@ Invoke-CheckStep "check-tree" {
     & (Join-Path $PSScriptRoot "check-tree.ps1")
 }
 
+# The survey's source gate is the reason that tool can be handed to a stranger,
+# so it is checked continuously rather than at the moment it was written. This
+# runs the gate against deliberately broken copies of the source and needs no
+# compiler, so it costs a fraction of a second.
+Invoke-CheckStep "vga survey safety gate" {
+    & (Join-Path $PSScriptRoot "build-vga-survey.ps1") -GateSelfTest
+}
+
 if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")
