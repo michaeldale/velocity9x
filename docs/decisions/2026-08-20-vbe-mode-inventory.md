@@ -1,126 +1,188 @@
 # VBE mode inventory per target
 
 Date: 2026-08-20
-Status: **partial - BARRY measured, three targets outstanding**
+Status: **four S3 targets measured; QEMU std-vga outstanding**
 
 Stage 0 of `docs\plans\high-depth-dynamic-modes.md`. The gate it sets is: no
 baseline 24- or 32-bpp row is committed for a (mode number, depth) pair that
-does not appear in a dump from the target that would use it. This record is
-where the dumps land.
+does not appear in a dump from the target that would use it.
 
 Taken with `tools\diag\vbe_inventory_dos.c` (query-only: 4F00h, 4F01h, 4F03h,
 no mode set), which walks the BIOS's own `VideoModePtr` list and additionally
-probes the standard high-colour numbers.
+probes the standard high-colour numbers. Raw dumps alongside this file.
 
-## Targets
+## Targets measured
 
-| Target | Status |
-|---|---|
-| BARRY - physical S3 Trio64 86C764, 2 MiB | **measured 2026-08-20** |
-| 86Box ViRGE/DX 86C375, 4 MiB (`9869`) | outstanding |
-| 86Box Trio64 (`9871`) | outstanding |
-| QEMU std-vga (`vbe` family) | outstanding |
+| Target | Card | VRAM | VBE | Listed | Dump |
+|---|---|---|---|---|---|
+| BARRY, physical | S3 Trio64 86C764 (`5333:8811`) | 2 MiB | **1.2** | 18 | `...-barry.txt` |
+| 86Box `:9869` | S3 ViRGE/DX 86C375 (`5333:8A01`) | 4 MiB | **1.2** | 25 | `...-p9869-virge.txt` |
+| 86Box `:9870` | ViRGE/DX, native S3 driver | 4 MiB | **1.2** | 25 | `...-p9870-virge-native.txt` |
+| 86Box `:9871` | S3 Trio32/64 86C764 (`5333:8811`) | 4 MiB | **1.2** | 22 | `...-p9871-trio64.txt` |
+| QEMU std-vga | - | - | - | - | **outstanding** |
 
-The 86Box and QEMU dumps still gate the `s3` and `vbe` baseline rows. BARRY
-alone cannot settle them: the `s3` family table is shared by the Trio64 and the
-4 MiB ViRGE, and most of what BARRY refuses it refuses for want of memory
-rather than for want of support.
+`:9870` reports a mode list byte-identical to `:9869`, as expected of the same
+emulated card, and is not treated as separate evidence.
 
-## BARRY - physical S3 Trio64, 2 MiB
+## The two findings that matter
 
-Collected through the remote agent's shell (`C:\V9XREMOTE\V9XVBE.EXE`), so
-inside a Windows 98 DOS box rather than from a clean DOS boot. The answers are
-self-consistent with the hardware - 2 MiB reported, pitches exactly
-`width * bytes-per-pixel`, and every refusal explicable by memory - so they are
-taken as the BIOS's own.
+### 1. There is no 24-bpp mode on any S3 target. 0x0112/0x0115/0x0118 are 32 bpp.
 
-```
-Signature=VESA  Version=0102  TotalMemory64K=32  (2 MiB)
-VideoModePtr=C000:534F  ModeListCount=18  terminated=yes  overflow=no
-```
+Every one of them reports `BitsPerPixel=32`, a scan line of exactly `width * 4`,
+and a channel layout of red `8@16`, green `8@8`, blue `8@0` with a reserved byte
+at `8@24`. Four independent BIOSes agree, including a real card and two
+different emulated chips.
 
-| Mode | Geometry | bpp | Model | Attr | Linear? | BytesPerScanLine |
-|---|---|---|---|---|---|---|
-| 0101 | 640x480 | 8 | 4 | 001B | no | 640 |
-| 0103 | 800x600 | 8 | 4 | 001B | no | 800 |
-| 0105 | 1024x768 | 8 | 4 | 001B | no | 1024 |
-| 0107 | 1280x1024 | 8 | 4 | 001B | no | 1280 |
-| 0110 | 640x480 | 15 | 6 | 001B | no | 1280 |
-| 0111 | 640x480 | 16 | 6 | 001B | no | 1280 |
-| 0112 | 640x480 | **32** | 6 | 001B | no | 2560 |
-| 0113 | 800x600 | 15 | 6 | 001B | no | 1600 |
-| 0114 | 800x600 | 16 | 6 | 001B | no | 1600 |
-| 0115 | 800x600 | **32** | 6 | 001B | no | 3200 |
-| 0116 | 1024x768 | 15 | 6 | 001B | no | 2048 |
-| 0117 | 1024x768 | 16 | 6 | 001B | no | 2048 |
-| 0211 | 640x400 | **32** | 6 | 001B | no | 2560 |
-| 0118, 0119, 011A, 011B | - | - | - | - | - | **status 014F, not supported** |
+So the depth those numbers carry is a per-BIOS fact, as suspected - and for the
+whole `s3` family the answer is 32. **No 24-bpp row may be written for `s3` on
+the strength of a VESA number.** The plan's Stage A wording ("24-or-32bpp at
+640x480/800x600/1024x768") resolves to 32 here.
 
-Also listed and correctly ignored: 0102/0104/0106 (4-bpp planar) and
-0109/010A (132-column text, memory model 0).
+Also present and correctly ignored: 15-bpp modes on every target (0x0110,
+0x0113, 0x0116, and 0x0119 on the 4 MiB cards). `v9x_vbe_scan_accept` and
+`v9x_mode_calculate` both refuse them, which is the right answer - the layout
+maths cannot express a depth that is not a whole number of bytes.
 
-### Findings
+### 2. No S3 target reports a linear framebuffer. Dynamic discovery cannot work on any of them.
 
-1. **0x0112 and 0x0115 are 32 bpp on this BIOS, not 24.** This is the question
-   Stage 0 exists to answer, and the answer is unambiguous: `BitsPerPixel=32`,
-   `BytesPerScanLine = width * 4`, and a reserved channel at `8@24` alongside
-   red `8@16`, green `8@8`, blue `8@0`. There is no packed 24-bpp mode anywhere
-   in this BIOS's list. **No 24-bpp baseline row may be written for the `s3`
-   family on the strength of a VESA number.**
+Every mode on every S3 target has attribute `001B` - bit 7 clear -
+`PhysBasePtr = 0` and `LinBytesPerScanLine = 0`. That is exactly what a VBE 1.2
+BIOS should say, because the linear framebuffer and the `PhysBasePtr` field were
+both introduced in VBE 2.0, and all four of these BIOSes report 1.2.
 
-2. **0x0118 is absent, so there is no 1024x768 high-colour row for a 2 MiB
-   card.** 1024x768x32 needs 3 MiB. Consistent with 0x011A (1280x1024x16,
-   2.6 MiB) and 0x0119/0x011B also refusing. The BIOS declines these rather
-   than offering modes it cannot back - which is why the doc's remark that "the
-   2 MB Trio64 never even lists oversized modes" holds.
+Two filters therefore refuse the whole scan, both correctly by their own terms:
 
-3. **1280x1024 at 8 bpp is available** (0x0107, 1.31 MiB) and 1280x1024 at
-   16 bpp is not. A 1280x1024x8 row is justified for the Trio64; the ViRGE dump
-   will say whether the 16-bpp one is.
+- `v9x_vbe_parse_controller_info` requires VBE 2.0 or later, so the controller
+  is rejected before any mode is examined.
+- `v9x_vbe_scan_accept` requires the linear attribute and a physical base above
+  the first megabyte, neither of which a 1.2 BIOS supplies.
 
-4. **0x0211 is an extended number carrying 640x400x32**, above the standard
-   range and therefore invisible to any static table. Small, but it is the first
-   direct evidence that walking the list finds modes enumerating fixed numbers
-   cannot.
+**Consequence: Stage B's dynamic discovery contributes nothing to the `s3`
+family, and Stage D is a no-op rather than a risk.** Flipping
+`MiniVddVbeCollect` to `$true` would run the walk, admit zero modes and fall
+back to the baseline table. The plan already said the architecture tolerates
+`s3` staying baseline-static indefinitely; that is now measured rather than
+assumed, and it is the permanent answer for these cards rather than a soak
+result pending.
 
-5. **The BIOS is VBE 1.2 and reports no linear framebuffer for any mode.**
-   Every mode has attribute bit 7 clear, `PhysBasePtr = 0` and
-   `LinBytesPerScanLine = 0` - expected, because the linear framebuffer and the
-   `PhysBasePtr` field were both introduced in VBE 2.0.
+The remaining value of the dynamic scan rests entirely on QEMU std-vga, whose
+BIOS reports VBE 3.0. That dump is still outstanding and is now the only thing
+that can justify Stage B at all.
 
-## Consequence for Stage D: the `s3` scan cannot contribute on BARRY
+#### The filter is right for tier-0 and wrong for a family with an aperture hook
 
-Two independent refusals, both correct, both before any mode is considered:
+Worth separating, because it is a design question rather than a measurement.
 
-- `v9x_vbe_parse_controller_info` requires VBE 2.0 or later. This BIOS reports
-  1.2, so the controller is rejected outright.
-- `v9x_vbe_scan_accept` requires the linear-framebuffer attribute and a
-  physical base above the first megabyte, neither of which a 1.2 BIOS supplies.
+These modes are perfectly drivable. The driver runs 0x0111/0x0114/0x0117 on
+BARRY today at 1024x768x16, and none of those advertise a linear framebuffer
+either. The `s3` family never asks the BIOS where the aperture is: it reads
+CR59/CR5A through its `read_aperture` hook and enables linear addressing itself
+in CR58 via `v9x_s3_enable_linear_aperture`. The BIOS's opinion about linearity
+is irrelevant to it.
 
-So enabling `MiniVddVbeCollect` for `s3` would yield a scan of zero admitted
-modes on this card, and the family would fall back to its baseline table - which
-is the outcome the plan already said it tolerates indefinitely. Stage D is
-therefore **not blocked but pointless on the Trio64**, and its remaining value
-is whatever the 86Box ViRGE reports. The 8 modes the Trio64 actually drives
-today come from the static table and the family's own CR59/CR5A aperture hook,
-not from VBE, and that does not change.
+So requiring attribute bit 7 and a non-zero `PhysBasePtr` is correct for tier-0,
+which has no other way to find the framebuffer, and is the wrong test for a
+family that supplies its own aperture. If the scan is ever to be useful on
+`s3`, `v9x_vbe_scan_accept` needs to take "the family knows where the aperture
+is" as a parameter and relax those two checks when it holds.
 
-Worth stating plainly, because it is a limit of the design rather than a bug:
-dynamic discovery needs a VBE 2.0 BIOS. On a card whose BIOS predates it the
-driver can still drive high-colour modes - the mode numbers work, and 0x0112
-and 0x0115 are right there in the list - but only from a table someone wrote,
-because the BIOS will not describe a linear surface for them.
+Not changed here. It would widen what the scan admits on cards whose BIOS has
+told us less, which is the opposite of the direction this plan has been taking,
+and there is no evidence yet that it buys anything a static row does not.
+Recorded as the open question it is.
 
-## Still to decide
+## Per-target mode lists
 
-Pending the three outstanding dumps:
+Text and 4-bpp planar modes (memory model 0 and 3) omitted throughout; they are
+listed by every target and refused on memory-model grounds.
 
-- whether `s3` gets 640x480x32 (0x0112) and 800x600x32 (0x0115) rows. BARRY
-  supports both; the ViRGE has to agree before they are shared by the family.
-- whether the ViRGE, at 4 MiB, adds 1024x768x32 (0x0118) - which BARRY would
-  then have to refuse at runtime. The `ValidateMode` VRAM check added in
-  Stage A is what makes that safe: the row can exist for the family and be
-  refused on the card that cannot hold it.
-- whether 1280x1024x8 (0x0107) and x16 (0x011A) are offered on the ViRGE.
-- what QEMU std-vga reports, which is the `vbe` family's baseline and the only
-  target expected to report VBE 3.0 and a linear framebuffer.
+### BARRY - physical Trio64, 2 MiB, 18 listed
+
+| Mode | Geometry | bpp | bytes/scanline |
+|---|---|---|---|
+| 0101 | 640x480 | 8 | 640 |
+| 0103 | 800x600 | 8 | 800 |
+| 0105 | 1024x768 | 8 | 1024 |
+| 0107 | 1280x1024 | 8 | 1280 |
+| 0110 | 640x480 | 15 | 1280 |
+| 0111 | 640x480 | 16 | 1280 |
+| 0112 | 640x480 | **32** | 2560 |
+| 0113 | 800x600 | 15 | 1600 |
+| 0114 | 800x600 | 16 | 1600 |
+| 0115 | 800x600 | **32** | 3200 |
+| 0116 | 1024x768 | 15 | 2048 |
+| 0117 | 1024x768 | 16 | 2048 |
+| 0211 | 640x400 | **32** | 2560 |
+| 0118, 0119, 011A, 011B | | | **014F, not supported** |
+
+`0x0211` is an extended number outside the standard range carrying 640x400x32,
+and **no other target lists it**. It is the only direct evidence so far that
+walking the list finds modes enumerating fixed numbers cannot - and it is on the
+one target where the scan can never run.
+
+The four refusals are all memory: 1024x768x32 needs 3 MiB, 1280x1024x16 needs
+2.5 MiB. The BIOS declines modes it cannot back rather than offering them, which
+is the behaviour the plan assumed.
+
+### ViRGE/DX 4 MiB (`:9869`, `:9870`) - 25 listed
+
+Everything BARRY lists except `0x0211`, plus:
+
+| Mode | Geometry | bpp | bytes/scanline |
+|---|---|---|---|
+| 0100 | 640x400 | 8 | 640 |
+| 010D / 010E / 010F | 320x200 | 15 / 16 / **32** | 640 / 640 / 1280 |
+| 0118 | 1024x768 | **32** | 4096 |
+| 0119 | 1280x1024 | 15 | 2560 |
+| 011A | 1280x1024 | 16 | 2560 |
+| 0120 | 1600x1200 | 8 | 1600 |
+
+### Trio64 4 MiB in 86Box (`:9871`) - 22 listed
+
+The ViRGE list minus the three 320x200 modes (`010D`/`010E`/`010F`). Same
+0x0118, 0x0119, 0x011A and 0x0120 as the ViRGE - so at 4 MiB the emulated
+Trio64 offers what the ViRGE does, and BARRY's shorter list is its 2 MiB and its
+older ROM, not the chip.
+
+## What this justifies for the shared `s3` table
+
+The `s3` family table is one list shared by the ViRGE and both Trio64s, so a row
+has to be judged against the weakest target that will load it - BARRY.
+
+**Safe on every target:**
+
+| Row | Mode | Pitch | Notes |
+|---|---|---|---|
+| 640x480x32 | 0x0112 | 2560 | 1.23 MiB, fits 2 MiB |
+| 800x600x32 | 0x0115 | 3200 | 1.83 MiB, fits 2 MiB |
+| 1280x1024x8 | 0x0107 | 1280 | 1.31 MiB, fits 2 MiB; english 508/254 |
+
+**Safe only because `ValidateMode` now refuses them on a small card** - listed by
+both 4 MiB targets, absent on BARRY purely for want of memory, so the Stage A
+VRAM check is what makes the shared row honest:
+
+| Row | Mode | Pitch | Needs |
+|---|---|---|---|
+| 1024x768x32 | 0x0118 | 4096 | 3 MiB |
+| 1280x1024x16 | 0x011A | 2560 | 2.5 MiB |
+
+**Not safe, and the interesting case:** 1600x1200x8 (`0x0120`, pitch 1600) needs
+1.83 MiB and *would* fit BARRY's 2 MiB - but BARRY's BIOS does not list the mode
+at all. The VRAM check cannot catch this: it is a BIOS-support absence, not a
+memory one, so the row would pass validation and fail at 4F02h, taking the
+staged-failure and VGA-fallback path. Either leave the row out, or accept that
+one target fails a mode it advertises. **Recommendation: leave it out.** The
+same reasoning excludes the ViRGE-only 320x200 modes, which are also a
+ModeX-adjacent path the driver does not otherwise support.
+
+This is the asymmetry worth remembering from Stage 0: a shared family table can
+be protected against a card with too little memory, and cannot be protected
+against a card whose BIOS simply lacks the mode.
+
+## Still outstanding
+
+- **QEMU std-vga**, for the `vbe` family - and now the only target that can
+  justify Stage B, since no S3 BIOS will feed the scan.
+- The 86Box Mach64 VT2, for `ati`. Not reachable in this session; and read D5 in
+  `docs\issues\2026-08-16-tier0-defects-deferred.md` before trusting anything
+  that card renders.
