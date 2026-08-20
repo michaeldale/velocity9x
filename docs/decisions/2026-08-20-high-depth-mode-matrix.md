@@ -37,7 +37,31 @@ have packed three channels into the first two bytes of every 32-bpp pixel, and
 the corruption would be visible *within* the GDI path - so a GDI screenshot
 showing correct colours does test it.
 
-## What this does not establish
+## Confirmed on the real display output, 2026-08-20
+
+The gap this section described is closed. Host-side `PrintWindow` captures of
+the 86Box windows - outside the guest's GDI entirely, so sharing none of the
+driver's assumptions about pitch, base or depth:
+
+| Target | Mode | Real display |
+|---|---|---|
+| ViRGE/DX `:9869` | 1024x768x32 | clean, correct colours and geometry |
+| Trio64 `:9871` | 1024x768x32 | clean |
+| ViRGE/DX `:9869` | 1280x1024x16 | clean, window 1280x1093 |
+
+The driver's own `Surface=` line agreed at each: `pitch=4096 dwb=4096 dds=4096
+debpp=32`, and `pitch=2560 dwb=2560 dds=2560 debpp=16` at 1280x1024.
+
+So 32 bpp and the new 1280x1024 resolution are established on the S3 chips by
+something other than GDI agreeing with itself. That matters because the same
+technique, applied to the Mach64 the same day, showed shredded noise behind a
+GDI capture that looked perfect (D5).
+
+`PrintWindow` needs the 86Box window **not minimised**; a minimised one has a
+0x0 client rect and yields nothing.
+
+## What this still does not establish
+
 
 **Read D5 in `docs\issues\2026-08-16-tier0-defects-deferred.md` before reading
 the table above as proof the display works.** Every check in the matrix is
