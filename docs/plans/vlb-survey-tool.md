@@ -31,9 +31,10 @@ Established by reading the tree, not assumed:
    stage 1 even though every register the driver then wants is present. Only the
    `vbe` family tolerates a miss — and see (4).
 
-3. **Installation has no hardware ID to match.** The INF advertises
-   `PCI\VEN_5333&DEV_8811` and `&DEV_8A01`
-   (`packaging/families/s3/family.psd1`). SetupX cannot bind that to a device
+3. **Installation has no hardware ID to match.** The INF is generated from the
+   family manifest's `VendorId`/`DeviceId` pairs — `5333`/`8A01` and
+   `5333`/`8811` in `packaging/families/s3/family.psd1` — so it advertises
+   `PCI\VEN_5333&DEV_8811` and `&DEV_8A01`. SetupX cannot bind that to a device
    which is not on a bus it enumerates.
 
 4. **Tier-0 is unavailable, so this has to be a native path.** Tier-0 learns the
@@ -69,25 +70,38 @@ Bump `V9X_SURVEY_SCHEMA` from `"1"` to `"2"`. The parser accepts both.
 The core fix. Today the vendor comes from PCI; on VLB it has to come from the
 chip.
 
-- New `[Bus]` section in tier 1: whether a PCI BIOS answered at all
-  (`INT 1Ah AX=B101h`), how many display devices it found, and therefore whether
-  this is a PCI machine. A 486 VLB box reports no PCI BIOS, and that fact alone
-  is worth having in the report.
+- The bus fact is **already captured**: `survey_pci_bios`
+  (`tools/diag/vga_survey_dos.c:441-457`) writes a `[PciBios]` section recording
+  whether `INT 1Ah AX=B101h` answered, with `int1a-b101-failed` when it did not,
+  and the display-device count follows from the walk. No new `[Bus]` section is
+  needed; what schema 2 adds is the *parser* drawing the "this is a non-PCI
+  machine" conclusion from keys the report already holds.
 - `run_tier2` gains a fallback: when the PCI walk found nothing, attempt **S3
-  identification by register**. Unlock with the documented CR38/CR39 keys
-  (`0x48`, `0xA5` — the same pair `tier2_s3` and the driver already use), read
-  CR2D/CR2E, restore, and accept only if the pair is a known S3 device id.
-  Anything else reports `unidentified-non-pci-display` and stops.
-- Guard rails, because this now writes registers on a card we have not yet
-  identified: it stays **tier 2 (opt-in)**, runs only after the tier-1 report is
-  closed on disk, restores CR38/CR39 before reading anything else, and restores
-  the CRTC index last. That is the existing discipline applied one step earlier
-  in the sequence.
+  identification by register — from the locked reads first**. Tier 1 already
+  dumps CR00-CR3F and SR00-SR1F without unlocking anything (`:1075-1076`), and
+  its own comment records that several families leak a usable identity through
+  the lock; on S3 the CR38/CR39 locks gate *writes*, not reads, so CR2D/CR2E
+  and CR30 are expected to read true while still locked. So: read the id
+  locked, and only if it already spells S3, unlock with the documented
+  CR38/CR39 keys (`0x48`, `0xA5` — the same pair `tier2_s3` and the driver use)
+  to cross-check and take the full tier-2 capture. Report both the locked and
+  unlocked id values so a disagreement is visible host-side. Anything else
+  reports `unidentified-non-pci-display` and stops before any write.
+- Accept **CR30 chip ids as well as CR2D/CR2E device ids**. CR2D/CR2E exist on
+  Trio and later; the VLB era skews older (86C801/805, 928, Vision864/868/964,
+  Trio32/64 VLB), and on the oldest of those CR30 is the only id register.
+  `tier2_s3` already reads CR30; the accept set has to include its known
+  values, not just the CR2D/CR2E pairs.
+- Guard rails, for the unlock-confirmation step: it stays **tier 2 (opt-in)**,
+  runs only after the tier-1 report is closed on disk, restores CR38/CR39
+  before reading anything else, and restores the CRTC index last. That is the
+  existing discipline applied one step earlier in the sequence.
 
 The real risk, stated plainly: CR38/CR39 on a non-S3 card mean something else.
-That is mitigated by being opt-in and by writing only that documented pair
-before checking the id — but it is not zero. The tester is telling us they have
-an S3, and the tool should say in its prompt that this is what it is trusting.
+The locked-read-first ordering shrinks it — the unlock writes happen only after
+the locked registers have already answered "S3", so they are a confirmation, not
+a leap — but it is not zero. The tester is telling us they have an S3, and the
+tool should say in its prompt that this is what it is trusting.
 
 ### 2. Dump the whole extended register file, not a hand-picked list
 
@@ -95,13 +109,16 @@ an S3, and the tool should say in its prompt that this is what it is trusting.
 parts. We do not yet know which registers differ on VLB, and finding out must
 not cost another round trip to the tester.
 
-- Dump **CR30-CR6F** and **SR00-SR1F** entire, as two hex blobs, plus the
-  standard CR00-CR2F the tool already captures. All read-only behind the same
-  unlock.
+- Tier 1 already dumps CR00-CR3F and SR00-SR1F **locked**
+  (`vga_survey_dos.c:1075-1076`). What schema 2 adds is the **unlocked**
+  complement in tier 2: CR30-CR6F and SR08-SR1F as hex blobs behind the same
+  CR38/CR39/SR08 unlock `tier2_s3` already performs. Where the locked and
+  unlocked values disagree, that disagreement is itself data — record both.
 - Keep the existing named single-register lines so current parser output does
   not regress.
-- Add the DAC id (the RS2 read sequence at 0x3C6) and the 0x3C2 input-status
-  bits.
+- Add the DAC id (the RS2 hidden-register read sequence — repeated reads of
+  0x3C6). The single 0x3C6 pixel-mask and 0x3C2 input-status reads are already
+  in tier 1 (`:1068-1070`); the repeated-read id sequence is the new piece.
 
 This follows the tool's own philosophy — interpret host-side, so a decoding
 mistake is a script fix rather than a re-ship. The CR5D/CR5E extended-overflow
@@ -133,6 +150,17 @@ Then the one genuinely intrusive addition:
   on our own card.
 - `INT 15h AH=87h` only reaches the first 16 MB. If CR59/CR5A point above that,
   report the base and skip the read with a stated reason rather than pretending.
+- **A false positive the verdict has to rule out:** if the window base sits at
+  or below the top of installed RAM, `AH=87h` returns whatever RAM holds there —
+  a live-looking result that says nothing about the card. The parser must
+  compare the base against the RAM answer from section 4 and report a sub-RAM
+  base as `unreadable-by-this-method`, not as live.
+- **Memory managers change the path.** Under EMM386 the CPU is in V86 mode and
+  `INT 15h AH=87h` is intercepted and emulated by the manager rather than
+  executed by the BIOS. The result is usually still the physical bytes, but it
+  is a different code path, so the report must place the HIMEM/EMM386 facts from
+  section 4 next to the aperture verdict, and the tester instructions should ask
+  for a clean boot (F8, command prompt, no config.sys) for the `/aperture` run.
 
 ### 4. Platform facts a 486 makes relevant
 
@@ -142,7 +170,12 @@ can go.
 - **CPU class without CPUID.** Early 486s have no CPUID. Detect by the
   documented EFLAGS route — the AC bit distinguishes 386 from 486, the ID bit
   says whether CPUID exists — and only execute CPUID after that. Report the
-  class, and the CPUID vendor/family when available.
+  class, and the CPUID vendor/family when available. One build constraint: the
+  tool compiles as 8086 code (`wcl` in `build-vga-survey.ps1` passes no CPU
+  flag), and the AC/ID tests use 32-bit `pushfd`/`popfd`, which are 386-only
+  opcodes. They must sit in inline asm behind a pre-check that separates
+  8086/286/386 by the 16-bit FLAGS high-bit behaviour, so a pre-386 CPU never
+  reaches the 32-bit encodings, and the rest of the tool stays 8086-clean.
 - **Installed RAM**, via `INT 15h AH=88h` and `AX=E801h`, plus `E820h` if the
   BIOS has it. An aperture must not overlap RAM, and on a 4 MB or 8 MB 486 the
   choice of where it can live is narrow.
@@ -179,9 +212,16 @@ Worth writing down so the survey is not over-read:
 
 1. `tools/diag/vga_survey_dos.c` at schema 2, with the sections above.
 2. `scripts/build-vga-survey.ps1`: extend the banned-pattern list to match the
-   new surface. It already bans `0x4f02` and PCI writes; add a ban on any `outp`
-   to a port outside the documented VGA/S3 index ranges. That gate is the reason
-   this tool can be handed to strangers, and it should grow with the tool.
+   new surface. It already bans `0x4f02` and PCI writes. A ban on "any `outp`
+   to a port outside the documented ranges" is not expressible there — the gate
+   is a regex over source text, and most `outp` calls take a variable
+   (`index_port`), so the port value is invisible to it. The enforceable form
+   is: ban any **new literal port constant** outside the audited list the
+   source already uses, and keep all port I/O going through the existing
+   helpers (`read_indexed`/`write_indexed`/`dump_indexed_range`) so every call
+   site stays auditable by eye. That gate is the reason this tool can be handed
+   to strangers, and it should grow with the tool — honestly about what a
+   textual gate can and cannot see.
 3. `scripts/parse-vga-survey.ps1` updated, schema-1 compatible.
 4. A `docs/decisions/` note recording what the 486 run actually returned, shaped
    like `2026-08-20-vbe-mode-inventory.md`, with the raw report committed beside
@@ -195,6 +235,13 @@ Worth writing down so the survey is not over-read:
   Trio64 and confirm the report is a superset of the schema-1 one — identical
   values for every key that existed before. This is the regression check, and it
   needs no 486.
+- **On an emulated 486 VLB machine first.** The `display_device_count == 0`
+  branch has never executed on any target — everything surveyed so far has PCI.
+  86Box can build a 486 VLB machine with an S3 VLB card; run the full tier-1 →
+  tier-2 → `/aperture` sequence there before the tool goes to a stranger. That
+  exercises the no-PCI-BIOS path, the locked-read identification fallback and
+  the aperture probe on a machine we control, where a wedge costs a reboot of an
+  emulator instead of a round trip to a tester.
 - **On the 486 VLB target:** tier 1, then tier 2, then `/aperture`, in that
   order, keeping each report. The ordering *is* the safety property — if a later
   stage wedges the machine, the earlier reports survive on disk.
