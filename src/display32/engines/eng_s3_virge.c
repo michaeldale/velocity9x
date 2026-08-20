@@ -200,6 +200,17 @@ static int v9x_virge_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     int x_positive = 1;
     int y_positive = 1;
 
+    /*
+     * The S3D command word does have a pixel-depth field, and the encoding
+     * below would very likely drive it correctly at 24 bpp - but "very likely"
+     * is not something to ship into a blitter writing over the visible
+     * framebuffer, and no 24-bpp S3D blit has ever been run on this hardware.
+     * Decline until one has been; the CPU path is correct meanwhile.
+     * Recorded as a follow-up in the 24/32-bpp work.
+     */
+    if (bytes_per_pixel > 2ul) {
+        return V9X_BLT_DECLINED;
+    }
     if ((source_pitch & ~V9X_VIRGE_STRIDE_MASK) != 0ul ||
         (destination_pitch & ~V9X_VIRGE_STRIDE_MASK) != 0ul ||
         (source_offset & 7ul) != 0ul || (destination_offset & 7ul) != 0ul ||
@@ -254,6 +265,10 @@ static int v9x_virge_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD height = (DWORD)(data->rDest[3] - data->rDest[1]);
     DWORD command;
 
+    /* Unverified above 16 bpp, exactly as in v9x_virge_copy. */
+    if (bytes_per_pixel > 2ul) {
+        return V9X_BLT_DECLINED;
+    }
     if (!v9x_wait_fifo(8ul, wait)) {
         return V9X_BLT_BUSY;
     }

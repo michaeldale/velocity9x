@@ -232,7 +232,12 @@ function Assert-V9xInf {
                "found: $($actualIds -join ', ').")
     }
 
-    foreach ($forbidden in @('MODES\24', 'MODES\32', 'DDC', 'carddvdd')) {
+    # MODES\24 and MODES\32 were forbidden here while the driver had no 24- or
+    # 32-bpp support and an INF offering them would have advertised a mode
+    # Enable then refused. They are generated from the manifest now, and the
+    # per-chip required-entry check below is what keeps the INF and the
+    # manifest agreeing about which depths exist.
+    foreach ($forbidden in @('DDC', 'carddvdd')) {
         if ($text.IndexOf($forbidden, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
             throw "The generated INF contains out-of-scope entry $forbidden."
         }

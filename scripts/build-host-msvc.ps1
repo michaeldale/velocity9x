@@ -72,6 +72,7 @@ $sourceNames = @(
     "src\common\log.c",
     "src\common\resources.c",
     "src\common\vbe_parse.c",
+    "src\common\vbe_modes.c",
     "src\chipsets\s3\virge\backend.c",
     "src\chipsets\s3\virge\clocks.c",
     "src\chipsets\s3\virge\memory.c",
@@ -81,7 +82,9 @@ $sourceNames = @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
     "tests\host\test_family_matrix.c",
+    "tests\host\test_hw16_modes.c",
     "tests\host\test_vbe_parse.c",
+    "tests\host\test_vbe_modes.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })

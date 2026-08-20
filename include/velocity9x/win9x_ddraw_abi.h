@@ -943,11 +943,24 @@ typedef struct v9x_ddhal_destroydriverdata {
  * V9XHAL.DLL's DriverInit. The 32-bit side owns all content except the
  * framebuffer descriptor, which the 16-bit side refreshes on every enable.
  */
-/* Bumped once for the generalized engine descriptor. A mixed old/new DRV+DLL
- * pair fails safe: DriverInit rejects on the dwSize/abi mismatch and leaves a
- * driverinit-pending trace rather than running against the wrong layout. */
-#define V9X_DD_SHARED_ABI   2026081601ul
-#define V9X_DD_MODE_COUNT            7u
+/* Bumped for the generalized engine descriptor, and again when the mode table
+ * became variable-length. A mixed old/new DRV+DLL pair fails safe: DriverInit
+ * rejects on the dwSize/abi mismatch and leaves a driverinit-pending trace
+ * rather than running against the wrong layout. */
+#define V9X_DD_SHARED_ABI   2026081901ul
+/*
+ * Capacity of modes[], not the number of modes in use - that is mode_count,
+ * which the 16-bit side sets from the family table. The two were the same
+ * number while the table was a fixed seven rows duplicated on both sides.
+ *
+ * 32 is a cap on what DirectDraw is told about rather than on what the display
+ * driver offers: once modes are discovered from the video BIOS a card can list
+ * more than this, and dd16.c takes a subset. At 36 bytes per entry this costs
+ * 1152 bytes of the 4096-byte DPMI block the whole structure has to fit in
+ * (V9X_DD_SHARED_BYTES in src\display16\runtime.asm), which measured at 3096
+ * bytes total - so raising it further is possible but not free.
+ */
+#define V9X_DD_MODE_COUNT           32u
 
 /* fb.flags */
 #define V9X_DD_FB_VALID          0x00000001ul
@@ -1159,6 +1172,9 @@ typedef struct v9x_dd_shared {
     V9X_D3DHAL_CALLBACKS d3d_callbacks;
     V9X_D3D_DIAGNOSTICS d3d_diagnostics;
     V9X_VIDMEM heaps[1];
+    /* How many of modes[] the 16-bit side filled in. Written before DriverInit
+     * runs, which validates it and publishes it as info.dwNumModes. */
+    DWORD mode_count;
     V9X_DDHALMODEINFO modes[V9X_DD_MODE_COUNT];
     V9X_DD_TRACE trace;
 } V9X_DD_SHARED;

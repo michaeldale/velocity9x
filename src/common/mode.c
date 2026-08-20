@@ -30,8 +30,13 @@ v9x_status v9x_mode_calculate(const struct v9x_mode_request *request,
     if (request->width == 0u || request->height == 0u) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* 8, 16, 24 and 32 only. Every one of these divides into whole bytes per
+     * pixel, which is what the pitch arithmetic below assumes; 15bpp and the
+     * other sub-byte depths are refused rather than silently rounded. */
     if (request->bits_per_pixel != 8u &&
-        request->bits_per_pixel != 16u) {
+        request->bits_per_pixel != 16u &&
+        request->bits_per_pixel != 24u &&
+        request->bits_per_pixel != 32u) {
         return V9X_STATUS_UNSUPPORTED;
     }
     if (v9x_is_power_of_two(request->pitch_alignment) == V9X_FALSE) {
@@ -41,9 +46,9 @@ v9x_status v9x_mode_calculate(const struct v9x_mode_request *request,
     bytes_per_pixel = (v9x_u32)(request->bits_per_pixel / 8u);
     raw_pitch = (v9x_u32)request->width * bytes_per_pixel;
     alignment_mask = (v9x_u32)request->pitch_alignment - 1ul;
-    /* With 16-bit width and depths up to 16 bpp this guard cannot trigger;
-     * it protects future wider fields or depths. The reachable overflow
-     * path is the pitch*height check below. */
+    /* With a 16-bit width and depths up to 32 bpp the widest raw_pitch is
+     * 65535*4, so this guard still cannot trigger; it protects future wider
+     * fields. The reachable overflow path is the pitch*height check below. */
     if (raw_pitch > V9X_U32_MAX - alignment_mask) {
         return V9X_STATUS_INTEGER_OVERFLOW;
     }

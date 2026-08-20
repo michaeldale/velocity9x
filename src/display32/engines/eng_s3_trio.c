@@ -70,7 +70,17 @@ static int v9x_trio_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     DWORD destination_y;
     unsigned short command;
 
-    (void)bytes_per_pixel;
+    /*
+     * The 8514/A registers this engine drives carry no pixel-depth field: the
+     * coordinates it is given are pixels, and the hardware multiplies them by
+     * a depth it was told about at mode-set time and that this path never
+     * establishes. It has only ever been exercised at 8 and 16 bpp. Rather
+     * than assume a 24- or 32-bpp mode programs it correctly, decline and let
+     * the CPU copy serve those depths.
+     */
+    if (bytes_per_pixel > 2ul) {
+        return V9X_BLT_DECLINED;
+    }
     if (pitch == 0ul ||
         (DWORD)data->lpDDSrcSurface->lpGbl->lPitch != pitch ||
         (DWORD)data->lpDDDestSurface->lpGbl->lPitch != pitch ||
@@ -125,7 +135,15 @@ static int v9x_trio_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD width;
     DWORD height;
 
-    (void)bytes_per_pixel;
+    /*
+     * Above 16 bpp, decline for the same reason the copy path does - and here
+     * there is a second one visible in the register write below: the
+     * foreground colour goes out as a single 16-bit word, which cannot carry a
+     * 24- or 32-bpp fill colour at all.
+     */
+    if (bytes_per_pixel > 2ul) {
+        return V9X_BLT_DECLINED;
+    }
     /* The engine addresses display memory as one surface at the display
      * pitch, so only display-pitch surfaces starting on a scan line can be
      * expressed as an (x, y) rectangle. */

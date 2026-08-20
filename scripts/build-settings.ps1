@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$BuildId
+    [string]$BuildId,
+    # The family's Package.ModesSummary; see build-settings-page.ps1, which
+    # compiles the same settings_status.c and takes it for the same reason.
+    [string]$ModesSummary
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,13 +84,21 @@ try {
 Set-Content -LiteralPath $resourceFile -Encoding Ascii -Value (
     '101 BITMAP "{0}"' -f $logoBitmap.Replace('\', '\\'))
 
+$modeDefines = @()
+if ($ModesSummary) {
+    if ($ModesSummary -match '["\\]') {
+        throw "ModesSummary may not contain quotes or backslashes."
+    }
+    $modeDefines += "-dV9X_MODES_SUMMARY=`"$ModesSummary`""
+}
+
 $objects = @()
 foreach ($source in $sources) {
     $object = Join-Path $outputDir (
         [IO.Path]::GetFileNameWithoutExtension($source) + ".obj")
     & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
         "-i=$diagDir" "-i=$includeDir" `
-        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+        "-dV9X_BUILD_ID=`"$BuildId`"" @modeDefines "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom failed to compile $source."
     }
@@ -128,7 +139,13 @@ if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or
     throw "The settings utility is not an MZ/PE executable."
 }
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
-foreach ($marker in @($BuildId, "Version: $ProductVersion", "Velocity9x Settings", "1024x768",
+# The mode-list marker follows whatever was compiled in, so the check still
+# proves the supported-modes line reached the image rather than proving that one
+# particular resolution is spelled in the source.
+$modesMarker = if ($ModesSummary) { $ModesSummary }
+               else { "see Display Properties, Settings" }
+foreach ($marker in @($BuildId, "Version: $ProductVersion", "Velocity9x Settings",
+                      $modesMarker,
                       "Core / engine clock",
                        "Run GDI test")) {
     if (-not $imageText.Contains($marker)) {

@@ -17,8 +17,9 @@ param(
     [string]$PackagePath,
     [string]$GuestJob = "C:\V9XREMOTE\JOBS\velocity9x-mode-matrix",
     [string]$ResultsDirectory,
-    [ValidateSet("640x480x8", "800x600x8", "1024x768x8",
-                 "640x480x16", "800x600x16", "1024x768x16")]
+    # Defaults to the family's Vm.Modes and is validated against it below.
+    # Deliberately not a ValidateSet: the families no longer offer the same
+    # modes, and a literal list here went stale the moment one gained a depth.
     [string[]]$Mode,
     [ValidateRange(30, 600)]
     [int]$BootTimeoutSeconds = 180,
@@ -50,8 +51,15 @@ if ($vmTarget.Emulator -eq 'none') {
 if ($Port -eq 0) {
     $Port = $vmTarget.Port
 }
-if (-not $Mode) {
-    $Mode = @($familyManifest.Vm.Modes)
+$declaredModes = @($familyManifest.Vm.Modes)
+if ($Mode) {
+    $unknown = @($Mode | Where-Object { $declaredModes -notcontains $_ })
+    if ($unknown.Count -ne 0) {
+        throw ("Family $Family declares no mode " + ($unknown -join ', ') +
+               "; it offers: " + ($declaredModes -join ', ') + ".")
+    }
+} else {
+    $Mode = $declaredModes
 }
 if (-not $PackagePath) {
     $PackagePath = Join-Path $repoRoot ("build\{0}" -f

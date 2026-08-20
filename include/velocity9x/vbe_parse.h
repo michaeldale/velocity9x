@@ -41,6 +41,24 @@ struct v9x_vbe_mode_summary {
     v9x_u16 bits_per_pixel; /* byte field, widened */
     v9x_u16 memory_model;   /* byte field, widened */
     v9x_u32 phys_base;
+    /*
+     * Direct-colour channel layout, byte fields widened. Size is the channel's
+     * width in bits and position its lowest bit within the pixel, so red
+     * 8@16 / green 8@8 / blue 8@0 is the ordinary 32-bpp arrangement and
+     * 5@11 / 6@5 / 5@0 is 5:6:5.
+     *
+     * The reserved channel is what distinguishes a 32-bpp mode from a packed
+     * 24-bpp one when both report bits_per_pixel = 32, and is where an alpha or
+     * unused byte lives. A palettized mode leaves all six zero.
+     */
+    v9x_u16 red_mask_size;
+    v9x_u16 red_field_position;
+    v9x_u16 green_mask_size;
+    v9x_u16 green_field_position;
+    v9x_u16 blue_mask_size;
+    v9x_u16 blue_field_position;
+    v9x_u16 rsvd_mask_size;
+    v9x_u16 rsvd_field_position;
 };
 
 /*
@@ -83,5 +101,27 @@ v9x_u16 v9x_vbe_mode_summary_is_drivable(
 v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
                              v9x_u16 width, v9x_u16 height,
                              v9x_u16 bits_per_pixel, v9x_u16 pitch);
+
+/*
+ * The channel layout as the three 32-bit masks DirectDraw and the DIB engine
+ * want. V9X_FALSE, with the masks zeroed, for a mode whose layout cannot be
+ * expressed that way.
+ *
+ * Depth decides what "cannot" means:
+ *
+ *   - 8 bpp is palettized. There is no mask; the call refuses.
+ *   - 16 bpp with all six fields zero is taken as 5:6:5 rather than refused.
+ *     A BIOS reporting a packed-pixel 16-bpp mode need not fill the
+ *     direct-colour fields in, and 5:6:5 is the only 16-bpp layout this driver
+ *     programs, so it is the answer rather than a guess.
+ *   - 24 and 32 bpp with all six zero refuse. There is no comparable single
+ *     convention to fall back on, and inventing one is how a scanned mode ends
+ *     up with the channels transposed.
+ *
+ * A size of zero for any of the three colour channels, or a channel that does
+ * not fit inside the pixel, is a refusal at every depth.
+ */
+v9x_u16 v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
+                              v9x_u32 *red, v9x_u32 *green, v9x_u32 *blue);
 
 #endif /* VELOCITY9X_VBE_PARSE_H */

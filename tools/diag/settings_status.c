@@ -11,6 +11,17 @@
 
 #include "settings_status.h"
 
+/*
+ * The family's mode list, supplied at build time from the manifest's
+ * Package.ModesSummary by build-settings-page.ps1. It cannot be derived here:
+ * one source serves every family and the families no longer offer the same
+ * depths. The fallback is for a standalone build with no family to ask, and
+ * says so rather than naming modes that may not exist.
+ */
+#ifndef V9X_MODES_SUMMARY
+#define V9X_MODES_SUMMARY "see Display Properties, Settings"
+#endif
+
 unsigned long v9x_settings_string_length(const char *text)
 {
     unsigned long length = 0ul;
@@ -351,8 +362,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     v9x_append(status->report, sizeof(status->report),
                status->mode_switching);
     v9x_append(status->report, sizeof(status->report),
-        "\r\nSupported modes: 640x400 at 8 bpp; 640x480, 800x600, 1024x768"
-        " at 8/16 bpp"
+        "\r\nSupported modes: " V9X_MODES_SUMMARY
         "\r\nRendering: ");
     v9x_append(status->report, sizeof(status->report), status->rendering);
     v9x_append(status->report, sizeof(status->report), "\r\nDirectDraw: ");

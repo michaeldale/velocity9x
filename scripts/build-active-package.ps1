@@ -2,7 +2,11 @@
 param(
     [string]$BuildId,
     [string]$DdkRoot = "C:\98DDK",
-    [ValidateRange(-1, 5)]
+    # -1 means "use the family's DefaultMode". Any other value indexes the
+    # family's Inf.ForcedModes, so the upper bound is that array's length and
+    # is checked against the manifest once it is loaded rather than restated
+    # here - a literal range silently went wrong whenever a family gained or
+    # lost a forced mode.
     [int]$ForceModeIndex = -1,
     # Boot tracing is on by default: the driver records the furthest lifecycle
     # stage it reached in C:\V9XBOOT.INI, which the settings page reports and
@@ -26,6 +30,15 @@ if ($familyManifest.Inf.Generate -eq $false) {
 }
 $outputDir = Join-Path $repoRoot $familyManifest.Build.PackageOutput
 
+# Before anything is compiled: the index has to be one this family has, and
+# build-win16-ddi-skeleton.ps1 is handed it further down.
+$forcedModes = @($familyManifest.Inf.ForcedModes)
+if ($ForceModeIndex -lt -1 -or $ForceModeIndex -ge $forcedModes.Count) {
+    throw ("-ForceModeIndex must be -1 (the family default) or an index into " +
+           "family $Family's $($forcedModes.Count) forced modes " +
+           "(0..$($forcedModes.Count - 1)); got $ForceModeIndex.")
+}
+
 . (Join-Path $PSScriptRoot "common.ps1")
 $ProductVersion = Get-V9xProductVersion -RepoRoot $repoRoot
 if (-not $BuildId) {
@@ -43,8 +56,10 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot `
     -DisableVbeCollect:(-not $miniVddVbeCollect)
-& (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId
+& (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
+    -ModesSummary $familyManifest.Package.ModesSummary
+& (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `
+    -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-gdi-smoke.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-palette-smoke.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-mode-switch.ps1") -BuildId $BuildId
@@ -66,7 +81,6 @@ $normalRepairSource = Join-Path $repoRoot "packaging\win98se\V9XFIX.BAT"
 # The INF is now generated from the family manifest rather than rewritten out
 # of packaging\win98se\velocity9x.inf, so a family can carry more than one
 # chip. The checked-in INF is retired at phase 8.
-$forcedModes = @($familyManifest.Inf.ForcedModes)
 $defaultMode = if ($ForceModeIndex -ge 0) {
     $forcedModes[$ForceModeIndex]
 } else {

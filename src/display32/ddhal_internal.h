@@ -261,7 +261,9 @@ int v9x_fault_injected(void);
 unsigned char v9x_read_crtc(unsigned char index);
 void v9x_write_crtc(unsigned char index, unsigned char value);
 int v9x_in_vblank(void);
-void v9x_set_display_start(DWORD byte_offset);
+/* Non-zero when the scanout was programmed; 0 when the offset is not a whole
+ * number of doublewords and the registers cannot express it. */
+int v9x_set_display_start(DWORD byte_offset);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
