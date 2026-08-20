@@ -350,7 +350,13 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             data->ddRVal = V9X_DD_OK;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        v9x_set_display_start(offset);
+        /* Same reasoning one step further in: an offset the display-start
+         * registers cannot express is declined rather than rounded, which at
+         * 24 bpp would shift every pixel of the frame. */
+        if (!v9x_set_display_start(offset)) {
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
     }
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -565,6 +571,25 @@ DWORD __stdcall V9xExeBufUnlock(V9X_DDHAL_UNLOCKDATA *data)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
+/*
+ * Depths the blit callbacks will take on at all.
+ *
+ * Widening this past 8 and 16 is not optional once 24/32-bpp modes exist:
+ * DDCAPS_BLT is advertised, so DDHAL_DRIVER_NOTHANDLED reaches the application
+ * as DDERR_UNSUPPORTED rather than falling back to the HEL. A depth that is
+ * offered as a display mode has to have a working blit path, and the CPU
+ * fallbacks in blt_cpu.c are it.
+ *
+ * The engines are a separate question and answer it themselves: both S3
+ * engines decline above 16 bpp, so admitting the depth here routes those blits
+ * to the CPU rather than to a blitter that would corrupt them.
+ */
+static int v9x_depth_is_blittable(DWORD bits_per_pixel)
+{
+    return bits_per_pixel == 8ul || bits_per_pixel == 16ul ||
+           bits_per_pixel == 24ul || bits_per_pixel == 32ul;
+}
+
 static int v9x_fill_rect_valid(const V9X_DDHAL_BLTDATA *data,
                                DWORD bytes_per_pixel,
                                DWORD *offset_out)
@@ -719,8 +744,7 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         ((data->dwFlags & V9X_DDBLT_ROP) != 0ul &&
          data->bltFX.dwROP != V9X_DDROP_SRCCOPY) ||
         v9x_hal == 0 || (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        (v9x_hal->fb.bits_per_pixel != 8ul &&
-         v9x_hal->fb.bits_per_pixel != 16ul)) {
+        !v9x_depth_is_blittable(v9x_hal->fb.bits_per_pixel)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     /* No stretching, mirroring, colour keying or format conversion. */
@@ -784,8 +808,7 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     if ((data->dwFlags & V9X_DDBLT_COLORFILL) == 0ul ||
         (data->dwFlags & ~allowed) != 0ul ||
         v9x_hal == 0 || (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        (v9x_hal->fb.bits_per_pixel != 8ul &&
-         v9x_hal->fb.bits_per_pixel != 16ul)) {
+        !v9x_depth_is_blittable(v9x_hal->fb.bits_per_pixel)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     bytes_per_pixel = v9x_hal->fb.bits_per_pixel >> 3;
@@ -917,63 +940,48 @@ DWORD __stdcall V9xHalWaitForVerticalBlank(
     }
 }
 
-static void v9x_fill_modes(V9X_DD_SHARED *shared)
+/*
+ * How many of shared->modes[] to publish, or 0 to refuse the whole block.
+ *
+ * The mode table used to be a third hardcoded copy of the same seven rows that
+ * the family C table and the INF already stated, compiled into a HAL that
+ * cannot see which family it is running under - so the Matrox build, whose
+ * family offers one mode, published seven. The 16-bit side owns the list now,
+ * because it is the side that knows the family, and this end only checks that
+ * what it was handed fits.
+ */
+static DWORD v9x_published_mode_count(const V9X_DD_SHARED *shared)
 {
-    static const struct {
-        DWORD width;
-        DWORD height;
-        LONG pitch;
-        DWORD bpp;
-    } modes[V9X_DD_MODE_COUNT] = {
-        {  640ul, 480ul,  640l,  8ul },
-        {  800ul, 600ul,  800l,  8ul },
-        { 1024ul, 768ul, 1024l,  8ul },
-        {  640ul, 400ul,  640l,  8ul },
-        {  640ul, 480ul, 1280l, 16ul },
-        {  800ul, 600ul, 1600l, 16ul },
-        { 1024ul, 768ul, 2048l, 16ul }
-    };
-    DWORD index;
-
-    for (index = 0ul; index < V9X_DD_MODE_COUNT; ++index) {
-        V9X_DDHALMODEINFO *mode = &shared->modes[index];
-
-        mode->dwWidth = modes[index].width;
-        mode->dwHeight = modes[index].height;
-        mode->lPitch = modes[index].pitch;
-        mode->dwBPP = modes[index].bpp;
-        mode->wRefreshRate = 60u;
-        if (modes[index].bpp == 8ul) {
-            mode->wFlags = V9X_DDMODEINFO_PALETTIZED;
-            mode->dwRBitMask = 0ul;
-            mode->dwGBitMask = 0ul;
-            mode->dwBBitMask = 0ul;
-        } else {
-            mode->wFlags = 0u;
-            mode->dwRBitMask = 0x0000f800ul;
-            mode->dwGBitMask = 0x000007e0ul;
-            mode->dwBBitMask = 0x0000001ful;
-        }
-        mode->dwAlphaBitMask = 0ul;
+    if (shared->mode_count == 0ul ||
+        shared->mode_count > (DWORD)V9X_DD_MODE_COUNT) {
+        return 0ul;
     }
+    return shared->mode_count;
 }
 
 DWORD __stdcall DriverInit(DWORD context)
 {
     V9X_DD_SHARED *shared = (V9X_DD_SHARED *)context;
+    DWORD mode_count;
 
     if (shared == 0 || shared->dwSize != sizeof(V9X_DD_SHARED) ||
         shared->abi != V9X_DD_SHARED_ABI) {
+        return 0ul;
+    }
+    /* Refuse alongside the dwSize/abi check rather than publishing an empty or
+     * overlong mode list: a DDHALINFO whose dwNumModes does not describe
+     * lpModeInfo is worse than no driver object, and the 16-bit side already
+     * treats a failed DriverInit as driverinit-pending. */
+    mode_count = v9x_published_mode_count(shared);
+    if (mode_count == 0ul) {
         return 0ul;
     }
     v9x_hal = shared;
     SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
-    v9x_fill_modes(shared);
-
     shared->info.dwSize = sizeof(V9X_DDHALINFO);
-    shared->info.dwNumModes = V9X_DD_MODE_COUNT;
+    shared->info.dwNumModes = mode_count;
     shared->info.dwFlags = V9X_DDHALINFO_ISPRIMARYDISPLAY;
     shared->info.dwMonitorFrequency = 60ul;
     /* The 16-bit side stamps the owning selector immediately before

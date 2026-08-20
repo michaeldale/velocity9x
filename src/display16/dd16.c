@@ -95,6 +95,63 @@ extern WORD v9x_dd_disable_count(void);
 /* enable16.c: VBE-reported VRAM, 0 unless the tier-0 path ran. */
 extern DWORD v9x_vbe_vram_bytes;
 
+/*
+ * Publish the family's mode table to DirectDraw.
+ *
+ * This lives on the 16-bit side because this is the side that knows which
+ * family it is: one V9XHAL.DLL ships to all of them, and the table it used to
+ * carry was a hardcoded seven rows that the Matrox build (one mode) and every
+ * future 24/32-bpp row would both have contradicted.
+ *
+ * The masks are stated here rather than taken from the mode table, which has
+ * no mask fields. 8 bpp is palettized and carries none; 16 bpp is 5:6:5, the
+ * only High Color layout the driver sets; 24 and 32 bpp are byte-per-channel
+ * with blue in the low byte, which is how a VBE direct-colour mode is laid out
+ * and what the DIB engine assumes from biBitCount.
+ *
+ * Capacity is bounded: a family listing more rows than the shared block can
+ * carry publishes the first V9X_DD_MODE_COUNT of them and DirectDraw simply
+ * sees fewer modes than GDI does. That cannot happen with any table shipping
+ * today and is why the count is written rather than assumed.
+ */
+static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
+{
+    WORD count = v9x_hw16.mode_count;
+    WORD index;
+
+    if (count > (WORD)V9X_DD_MODE_COUNT) {
+        count = (WORD)V9X_DD_MODE_COUNT;
+    }
+    for (index = 0u; index < count; ++index) {
+        const V9X_HW16_MODE *source = &v9x_hw16.modes[index];
+        V9X_DDHALMODEINFO FAR *mode = &shared->modes[index];
+
+        mode->dwWidth = (DWORD)source->width;
+        mode->dwHeight = (DWORD)source->height;
+        mode->lPitch = (LONG)(DWORD)source->pitch;
+        mode->dwBPP = (DWORD)source->bits_per_pixel;
+        mode->wRefreshRate = 60u;
+        mode->dwAlphaBitMask = 0ul;
+        if (source->bits_per_pixel == 8u) {
+            mode->wFlags = V9X_DDMODEINFO_PALETTIZED;
+            mode->dwRBitMask = 0ul;
+            mode->dwGBitMask = 0ul;
+            mode->dwBBitMask = 0ul;
+        } else if (source->bits_per_pixel == 16u) {
+            mode->wFlags = 0u;
+            mode->dwRBitMask = 0x0000f800ul;
+            mode->dwGBitMask = 0x000007e0ul;
+            mode->dwBBitMask = 0x0000001ful;
+        } else {
+            mode->wFlags = 0u;
+            mode->dwRBitMask = 0x00ff0000ul;
+            mode->dwGBitMask = 0x0000ff00ul;
+            mode->dwBBitMask = 0x000000fful;
+        }
+    }
+    shared->mode_count = (DWORD)count;
+}
+
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
 {
     WORD selector;
@@ -117,6 +174,7 @@ static V9X_DD_SHARED FAR *v9x_dd_block(void)
     }
     v9x_dd_shared->dwSize = sizeof(V9X_DD_SHARED);
     v9x_dd_shared->abi = V9X_DD_SHARED_ABI;
+    v9x_dd_fill_modes(v9x_dd_shared);
     v9x_dd_trace("shared-ready");
     return v9x_dd_shared;
 }
@@ -232,7 +290,7 @@ static void v9x_dd_refresh_info(void)
     info->vmiData.dwDisplayWidth = shared->fb.width;
     info->vmiData.dwDisplayHeight = shared->fb.height;
     info->vmiData.lDisplayPitch = (LONG)shared->fb.pitch;
-    for (index = 0u; index < V9X_DD_MODE_COUNT; ++index) {
+    for (index = 0u; index < (WORD)shared->mode_count; ++index) {
         if (shared->modes[index].dwWidth == shared->fb.width &&
             shared->modes[index].dwHeight == shared->fb.height &&
             shared->modes[index].dwBPP == shared->fb.bits_per_pixel) {
@@ -324,7 +382,7 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
                 sizeof(v9x_dd_palette_callbacks16));
     v9x_dd_copy(&v9x_dd_heap16, &v9x_dd_shared->heaps[0],
                 sizeof(v9x_dd_heap16));
-    for (index = 0u; index < V9X_DD_MODE_COUNT; ++index) {
+    for (index = 0u; index < (WORD)v9x_dd_shared->mode_count; ++index) {
         v9x_dd_copy(&v9x_dd_modes16[index], &v9x_dd_shared->modes[index],
                     sizeof(v9x_dd_modes16[index]));
     }

@@ -33,6 +33,7 @@ function Write-V9xFamilyMatrixHeader {
     $lines.Add("    unsigned short width;")
     $lines.Add("    unsigned short height;")
     $lines.Add("    unsigned short bits_per_pixel;")
+    $lines.Add("    unsigned short vbe_mode;")
     $lines.Add("};")
     $lines.Add("")
     $lines.Add("struct v9x_family_matrix_chip {")
@@ -55,8 +56,11 @@ function Write-V9xFamilyMatrixHeader {
             $modeSymbol = "v9x_family_matrix_modes_$chipIndex"
             $lines.Add("static const struct v9x_family_matrix_mode ${modeSymbol}[] = {")
             foreach ($mode in @($chip.Modes)) {
+                # VbeMode is a four-digit hex string in the manifest ('0111'),
+                # which is how the INF and the C tables both spell it.
                 $lines.Add("    { " + [int]$mode.Width + "u, " + [int]$mode.Height +
-                           "u, " + [int]$mode.BitsPerPixel + "u },")
+                           "u, " + [int]$mode.BitsPerPixel + "u, 0x" +
+                           $mode.VbeMode + "u },")
             }
             $lines.Add("};")
             $lines.Add("")

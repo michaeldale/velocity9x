@@ -56,6 +56,10 @@ extern DWORD FAR PASCAL V9xHardwareBase(void);
  * read_video_memory hook, from VBE 4F00h at tier-0, and 0 when neither
  * established one - in which case dd16.c applies its own default. */
 extern DWORD v9x_vbe_vram_bytes;
+/* enable16.c: the card's total VRAM as claimed by the chip hook or VBE 4F00h,
+ * before any deduction for the visible surface, and 0 when unmeasured. This is
+ * the figure a mode has to fit inside, so it is what ValidateMode tests. */
+extern DWORD v9x_vbe_vram_reported;
 extern void FAR PASCAL V9xHardwareDisable(void);
 extern WORD FAR PASCAL V9xVddPreMode(void);
 extern WORD FAR PASCAL V9xVddRegister(void);
@@ -656,10 +660,18 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         }
         return 0u;
     }
+    /*
+     * Three-way, not two. DIBENG.INC defines exactly two layout flags -
+     * PALETTIZED and FIVE6FIVE ("16 bpp, 565 color format") - and nothing for
+     * 24 or 32 bpp, where the engine takes the layout from biBitCount in the
+     * BITMAPINFO built below. Claiming FIVE6FIVE at those depths, which the
+     * old else-branch did for anything that was not 8 bpp, would tell the
+     * engine to pack three channels into the first two bytes of each pixel.
+     */
     if (v9x_palettized != 0u) {
         (void)V9xDibSetPaletteTranslateCall(0, device_info);
         pdevice_flags |= V9X_DE_PALETTIZED;
-    } else {
+    } else if (v9x_selected_mode->bits_per_pixel == 16u) {
         pdevice_flags |= V9X_DE_FIVE6FIVE;
     }
 
@@ -883,6 +895,26 @@ WORD __loadds FAR PASCAL ValidateMode(LPVOID display_info)
     candidate = v9x_find_mode((WORD)mode->width, (WORD)mode->height,
                               mode->bits_per_pixel);
     if (candidate == 0) {
+        return V9X_VALMODE_NO_NOMEM;
+    }
+    /*
+     * A row being in the table is not the same as the card having the memory
+     * for it. The table is per family, the VRAM is per card: the 2 MiB
+     * physical Trio64 shares its rows with a 4 MiB ViRGE, and 1024x768 at
+     * 24 bpp needs 2.25 MiB. Refuse here rather than letting Enable set a
+     * mode the card cannot scan out.
+     *
+     * v9x_vbe_vram_reported is zero until something has established it, and
+     * zero means "not known" rather than "no memory" - an unmeasured card
+     * keeps the old behaviour of trusting the table.
+     *
+     * NO_NOMEM is also what "not in the table" returns above. The two causes
+     * are different but the answer GDI needs is the same, and the ValidateMode
+     * contract has no code that distinguishes them.
+     */
+    if (v9x_vbe_vram_reported != 0ul &&
+        (DWORD)candidate->pitch * (DWORD)candidate->height >
+            v9x_vbe_vram_reported) {
         return V9X_VALMODE_NO_NOMEM;
     }
     return V9X_VALMODE_YES;

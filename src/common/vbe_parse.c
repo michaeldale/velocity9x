@@ -13,6 +13,14 @@
 #define V9X_VBE_MI_HEIGHT           20u
 #define V9X_VBE_MI_BITS_PER_PIXEL   25u
 #define V9X_VBE_MI_MEMORY_MODEL     27u
+#define V9X_VBE_MI_RED_MASK_SIZE    31u
+#define V9X_VBE_MI_RED_FIELD_POS    32u
+#define V9X_VBE_MI_GREEN_MASK_SIZE  33u
+#define V9X_VBE_MI_GREEN_FIELD_POS  34u
+#define V9X_VBE_MI_BLUE_MASK_SIZE   35u
+#define V9X_VBE_MI_BLUE_FIELD_POS   36u
+#define V9X_VBE_MI_RSVD_MASK_SIZE   37u
+#define V9X_VBE_MI_RSVD_FIELD_POS   38u
 #define V9X_VBE_MI_PHYS_BASE        40u
 #define V9X_VBE_MI_LIN_BYTES_PER_SCAN 50u
 
@@ -123,6 +131,14 @@ v9x_u16 v9x_vbe_parse_mode_info(
     out->bits_per_pixel = 0u;
     out->memory_model = 0u;
     out->phys_base = 0ul;
+    out->red_mask_size = 0u;
+    out->red_field_position = 0u;
+    out->green_mask_size = 0u;
+    out->green_field_position = 0u;
+    out->blue_mask_size = 0u;
+    out->blue_field_position = 0u;
+    out->rsvd_mask_size = 0u;
+    out->rsvd_field_position = 0u;
     if (block == 0) {
         return V9X_FALSE;
     }
@@ -137,6 +153,14 @@ v9x_u16 v9x_vbe_parse_mode_info(
     candidate.bits_per_pixel = (v9x_u16)block[V9X_VBE_MI_BITS_PER_PIXEL];
     candidate.memory_model = (v9x_u16)block[V9X_VBE_MI_MEMORY_MODEL];
     candidate.phys_base = v9x_vbe_read_u32(block + V9X_VBE_MI_PHYS_BASE);
+    candidate.red_mask_size = (v9x_u16)block[V9X_VBE_MI_RED_MASK_SIZE];
+    candidate.red_field_position = (v9x_u16)block[V9X_VBE_MI_RED_FIELD_POS];
+    candidate.green_mask_size = (v9x_u16)block[V9X_VBE_MI_GREEN_MASK_SIZE];
+    candidate.green_field_position = (v9x_u16)block[V9X_VBE_MI_GREEN_FIELD_POS];
+    candidate.blue_mask_size = (v9x_u16)block[V9X_VBE_MI_BLUE_MASK_SIZE];
+    candidate.blue_field_position = (v9x_u16)block[V9X_VBE_MI_BLUE_FIELD_POS];
+    candidate.rsvd_mask_size = (v9x_u16)block[V9X_VBE_MI_RSVD_MASK_SIZE];
+    candidate.rsvd_field_position = (v9x_u16)block[V9X_VBE_MI_RSVD_FIELD_POS];
 
     /* One rule, applied here and by the mini-VDD path, so the two cannot
      * drift into accepting different things. */
@@ -166,4 +190,75 @@ v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
                  ? summary->lin_bytes_per_scan_line
                  : summary->bytes_per_scan_line;
     return stride == pitch ? V9X_TRUE : V9X_FALSE;
+}
+
+/* One channel: size bits starting at position, or 0 when it does not fit. */
+static v9x_u32 v9x_vbe_channel_mask(v9x_u16 size, v9x_u16 position,
+                                    v9x_u16 bits_per_pixel)
+{
+    v9x_u32 mask;
+
+    if (size == 0u || size > 32u || position > 31u ||
+        (v9x_u16)(position + size) > bits_per_pixel) {
+        return 0ul;
+    }
+    /* Build by shifting in ones rather than (1 << size) - 1: size can be 32,
+     * where that shift is undefined. */
+    mask = 0ul;
+    while (size-- != 0u) {
+        mask = (mask << 1) | 1ul;
+    }
+    return mask << position;
+}
+
+v9x_u16 v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
+                              v9x_u32 *red, v9x_u32 *green, v9x_u32 *blue)
+{
+    v9x_u32 r;
+    v9x_u32 g;
+    v9x_u32 b;
+
+    if (red == 0 || green == 0 || blue == 0) {
+        return V9X_FALSE;
+    }
+    *red = 0ul;
+    *green = 0ul;
+    *blue = 0ul;
+    if (summary == 0 || summary->bits_per_pixel == 8u) {
+        return V9X_FALSE;
+    }
+
+    if (summary->red_mask_size == 0u && summary->green_mask_size == 0u &&
+        summary->blue_mask_size == 0u) {
+        /* See the header: only 16 bpp has a single layout worth assuming. */
+        if (summary->bits_per_pixel != 16u) {
+            return V9X_FALSE;
+        }
+        *red = 0x0000f800ul;
+        *green = 0x000007e0ul;
+        *blue = 0x0000001ful;
+        return V9X_TRUE;
+    }
+
+    r = v9x_vbe_channel_mask(summary->red_mask_size,
+                             summary->red_field_position,
+                             summary->bits_per_pixel);
+    g = v9x_vbe_channel_mask(summary->green_mask_size,
+                             summary->green_field_position,
+                             summary->bits_per_pixel);
+    b = v9x_vbe_channel_mask(summary->blue_mask_size,
+                             summary->blue_field_position,
+                             summary->bits_per_pixel);
+    if (r == 0ul || g == 0ul || b == 0ul) {
+        return V9X_FALSE;
+    }
+    /* Channels that share a bit describe no layout any consumer can use. */
+    if ((r & g) != 0ul || (r & b) != 0ul || (g & b) != 0ul) {
+        return V9X_FALSE;
+    }
+
+    *red = r;
+    *green = g;
+    *blue = b;
+    return V9X_TRUE;
 }

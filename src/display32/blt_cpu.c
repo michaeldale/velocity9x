@@ -109,7 +109,12 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD pitch = (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
     DWORD width = (DWORD)(data->rDest[2] - data->rDest[0]);
     DWORD height = (DWORD)(data->rDest[3] - data->rDest[1]);
-    WORD value = (WORD)data->bltFX.dwFillColor;
+    /*
+     * The full dword. At 24 and 32 bpp the fill colour genuinely needs all of
+     * it; truncating to a WORD here, as this used to, silently discarded the
+     * red channel of every high-colour fill.
+     */
+    DWORD colour = data->bltFX.dwFillColor;
     BYTE *row = (BYTE *)v9x_hal->fb.linear_base + offset +
                 (DWORD)data->rDest[1] * pitch +
                 (DWORD)data->rDest[0] * bytes_per_pixel;
@@ -117,10 +122,21 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD pair;
     DWORD blocks;
 
+    /*
+     * The 1- and 2-byte paths write a dword of several pixels at once, so they
+     * need the colour replicated across it first. At 3 and 4 bytes per pixel a
+     * dword is not a whole number of pixels either way, so those paths write a
+     * pixel at a time and use the colour as it stands.
+     */
     if (bytes_per_pixel == 1ul) {
-        value = (WORD)((value & 0x00ffu) | ((value & 0x00ffu) << 8));
+        colour &= 0xfful;
+        pair = colour | (colour << 8) | (colour << 16) | (colour << 24);
+    } else if (bytes_per_pixel == 2ul) {
+        colour &= 0xfffful;
+        pair = colour | (colour << 16);
+    } else {
+        pair = colour;
     }
-    pair = ((DWORD)value << 16) | (DWORD)value;
 
     /* Same reasoning as v9x_copy_row: a full-screen fill is hundreds of
      * thousands of pixels, so write a dword of two pixels once aligned. */
@@ -131,7 +147,7 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
             BYTE *pixel = row;
 
             while (count != 0ul && (((DWORD)pixel) & 3ul) != 0ul) {
-                *pixel++ = (BYTE)value;
+                *pixel++ = (BYTE)colour;
                 --count;
             }
             for (blocks = count >> 2; blocks != 0ul; --blocks) {
@@ -139,13 +155,13 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                 pixel += 4;
             }
             for (count &= 3ul; count != 0ul; --count) {
-                *pixel++ = (BYTE)value;
+                *pixel++ = (BYTE)colour;
             }
-        } else {
+        } else if (bytes_per_pixel == 2ul) {
             WORD *pixel = (WORD *)row;
 
             if (count != 0ul && (((DWORD)pixel) & 3ul) != 0ul) {
-                *pixel++ = value;
+                *pixel++ = (WORD)colour;
                 --count;
             }
             for (blocks = count >> 1; blocks != 0ul; --blocks) {
@@ -153,7 +169,27 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                 pixel += 2;
             }
             if ((count & 1ul) != 0ul) {
-                *pixel = value;
+                *pixel = (WORD)colour;
+            }
+        } else if (bytes_per_pixel == 4ul) {
+            DWORD *pixel = (DWORD *)row;
+
+            while (count-- != 0ul) {
+                *pixel++ = pair;
+            }
+        } else {
+            /*
+             * 24 bpp. An odd pixel stride means no run of pixels ever lines up
+             * with a dword boundary, so there is no wide store to reach for -
+             * three bytes per pixel is the whole of it.
+             */
+            BYTE *pixel = row;
+
+            while (count-- != 0ul) {
+                pixel[0] = (BYTE)(pair & 0xfful);
+                pixel[1] = (BYTE)((pair >> 8) & 0xfful);
+                pixel[2] = (BYTE)((pair >> 16) & 0xfful);
+                pixel += 3;
             }
         }
         row += pitch;

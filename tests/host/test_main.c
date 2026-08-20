@@ -11,9 +11,17 @@
  * family matrix. It keeps its own failure count and returns it. */
 unsigned int v9x_run_family_matrix_tests(void);
 
+/* tests\host\test_hw16_modes.c: the per-family V9X_HW16_MODE tables against
+ * the same generated matrix, same convention. */
+unsigned int v9x_run_hw16_mode_tests(void);
+
 /* tests\host\test_vbe_parse.c: the VBE 4F00h/4F01h result parsers, same
  * convention. */
 unsigned int v9x_run_vbe_parse_tests(void);
+
+/* tests\host\test_vbe_modes.c: runtime mode-table construction from the
+ * family baseline plus the scanned BIOS list, same convention. */
+unsigned int v9x_run_vbe_modes_tests(void);
 
 static unsigned int failures = 0u;
 
@@ -60,7 +68,18 @@ static void test_mode_layout(void)
     CHECK(v9x_mode_calculate(&request, &layout) == V9X_STATUS_OK);
     CHECK(layout.pitch_bytes == 1288ul);
 
+    request.bits_per_pixel = 24u;
+    CHECK(v9x_mode_calculate(&request, &layout) == V9X_STATUS_OK);
+    CHECK(layout.pitch_bytes == 1928ul);
+
     request.bits_per_pixel = 32u;
+    CHECK(v9x_mode_calculate(&request, &layout) == V9X_STATUS_OK);
+    CHECK(layout.pitch_bytes == 2568ul);
+
+    /* The depths that divide into whole bytes are the supported set; 15bpp is
+     * the one a VBE mode list will actually offer and the layout maths cannot
+     * express, so it stays a refusal rather than rounding to 16. */
+    request.bits_per_pixel = 15u;
     CHECK(v9x_mode_calculate(&request, &layout) == V9X_STATUS_UNSUPPORTED);
 
     request.bits_per_pixel = 8u;
@@ -554,7 +573,9 @@ int main(void)
     test_components_and_log();
     test_build_identity();
     failures += v9x_run_family_matrix_tests();
+    failures += v9x_run_hw16_mode_tests();
     failures += v9x_run_vbe_parse_tests();
+    failures += v9x_run_vbe_modes_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);
