@@ -17,6 +17,19 @@ build identifier so exact guest-tested binaries remain traceable.
   `ati` and generic-VESA families have no 24/32-bpp modes. Details and the
   capture method in `docs/issues/2026-08-16-tier0-defects-deferred.md`.
 
+- **A live mode switch does not fully repaint the desktop on the physical
+  Trio64.** After `ChangeDisplaySettingsA` with `CDS_UPDATEREGISTRY` - what
+  Display Properties does - large areas keep the previous mode's framebuffer
+  indefinitely. A reboot into the same mode is clean, and neither emulated S3
+  target reproduces it. Ruled out: the capture race below, a stride fault (the
+  regions that do repaint are correct and the driver's `Surface=` line agrees),
+  and the no-clear flag alone. So the fault is in invalidation after the
+  in-place PDEVICE rebuild. Seen at 800x600x32 and on a live 8 -> 16 switch, so
+  it is probably older than the depths this release added rather than caused by
+  them - but that is not established. The mode matrix cannot see it because it
+  reboots between every mode.
+  `docs/issues/2026-08-20-live-mode-switch-no-repaint-barry.md`.
+
 - **A screenshot taken straight after a mode change can look like a stride
   bug.** On a slow machine the desktop repaint outlasts the capture, so the
   image holds the previous mode's framebuffer being overwritten. This produced a
