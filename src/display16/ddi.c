@@ -178,6 +178,66 @@ static void v9x_port_out(WORD port, BYTE value);
  * order is part of the contract - the file is written by appending - so the
  * hook owns it rather than this function.
  */
+/*
+ * "pitch=N bpp=N dwb=N dds=N w=N h=N debpp=N" into the boot trace.
+ *
+ * pitch/bpp are what the family mode table asked for; dwb/dds/w/h/debpp are
+ * what the DIB Engine settled on for the surface. On the S3 families
+ * CreateDIBPDevice derives the stride itself from the BITMAPINFO, so these can
+ * disagree with the table - and when they do, every other check in the driver
+ * still passes, because GDI draws and reads back through the same deWidthBytes.
+ *
+ * Built by hand with no sprintf, like the rest of the tracing here.
+ */
+static WORD v9x_append_uint(char *text, WORD at, DWORD value)
+{
+    char digits[11];
+    WORD count = 0u;
+
+    do {
+        digits[count++] = (char)('0' + (char)(value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul && count < 11u);
+    while (count != 0u) {
+        text[at++] = digits[--count];
+    }
+    return at;
+}
+
+static WORD v9x_append_field(char *text, WORD at, const char *label,
+                             DWORD value)
+{
+    while (*label != '\0') {
+        text[at++] = *label++;
+    }
+    at = v9x_append_uint(text, at, value);
+    text[at++] = ' ';
+    return at;
+}
+
+static void v9x_trace_surface_layout(void)
+{
+    char text[96];
+    WORD at = 0u;
+
+    if (v9x_driver_pdevice == 0 || v9x_selected_mode == 0) {
+        return;
+    }
+    at = v9x_append_field(text, at, "pitch=", (DWORD)v9x_selected_mode->pitch);
+    at = v9x_append_field(text, at, "bpp=",
+                          (DWORD)v9x_selected_mode->bits_per_pixel);
+    at = v9x_append_field(text, at, "dwb=",
+                          (DWORD)v9x_driver_pdevice->deWidthBytes);
+    at = v9x_append_field(text, at, "dds=", v9x_driver_pdevice->deDeltaScan);
+    at = v9x_append_field(text, at, "w=", (DWORD)v9x_driver_pdevice->deWidth);
+    at = v9x_append_field(text, at, "h=", (DWORD)v9x_driver_pdevice->deHeight);
+    at = v9x_append_field(text, at, "debpp=",
+                          (DWORD)v9x_driver_pdevice->deBitsPixel);
+    text[at - 1u] = '\0';
+    WritePrivateProfileString("Velocity9x", "Surface", (LPCSTR)text,
+                              "C:\\V9XBOOT.INI");
+}
+
 static void v9x_write_hardware_info(const char *key, const char *value)
 {
     if (value == 0) {
@@ -742,6 +802,19 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_driver_pdevice->deBeginAccess = V9xDibBeginAccess;
     v9x_driver_pdevice->deEndAccess = V9xDibEndAccess;
     v9x_driver_pdevice->deVersion = V9X_DE_VERSION;
+    /*
+     * The surface layout the DIB Engine actually settled on, next to the one
+     * the mode table asked for.
+     *
+     * Nothing published these, and their disagreement is invisible to every
+     * other check the driver makes: GDI draws and reads back through the same
+     * deWidthBytes, so a wrong one is self-consistent right up to the point
+     * somebody looks at the screen. That is how the high-colour tiling on the
+     * physical Trio64 went unnoticed through a green mode matrix. Four numbers
+     * in the boot trace are what let the next person compare two cards instead
+     * of guessing between them.
+     */
+    v9x_trace_surface_layout();
     if (v9x_palettized != 0u) {
         v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
     }

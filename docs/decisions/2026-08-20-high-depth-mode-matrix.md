@@ -55,11 +55,17 @@ emulator window.**
 
 Also not covered:
 
-- **The 2 MiB physical Trio64.** Both 86Box targets are 4 MiB and hold every
-  mode. BARRY is where the new `ValidateMode` VRAM check is meant to bite:
-  1024x768x32 (3 MiB) and 1280x1024x16 (2.5 MiB) should be refused there, and
-  1280x1024x8, 640x480x32 and 800x600x32 accepted. Requires a driver install on
-  physical hardware, which is a heavier operation than a VM deploy.
+- **The 2 MiB physical Trio64 - done, 2026-08-20.** The branch driver installs
+  and reaches `enable-ok` on BARRY; 800x600x32, 640x480x32 and 1280x1024x8 all
+  display correctly; and 1024x768x32 (3 MiB) and 1280x1024x16 (2.5 MiB) are
+  refused with `DISP_CHANGE_BADMODE`. So the new `ValidateMode` VRAM check does
+  what it was added for, on the card it was added for.
+
+  Read `docs/issues/2026-08-20-barry-tiling-was-a-screenshot-race.md` before
+  trusting any screenshot taken there. A capture on that machine immediately
+  after a mode change catches the desktop mid-repaint and is indistinguishable
+  from a stride bug; it produced a day of wrong conclusions, including a
+  regression report that had to be withdrawn.
 - **Doom95 at 640x400x8.** The row moved from index 3 to index 4 of the mode
   table when 1280x1024x8 was inserted before it. Nothing reads the table by
   index except `modes[0]`, so this should be inert, but the regression has not

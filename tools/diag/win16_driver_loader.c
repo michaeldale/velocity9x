@@ -150,10 +150,19 @@ int PASCAL WinMain(HINSTANCE instance,
         }
     }
 #endif
+    /*
+     * A geometry no family table has or plausibly will, to prove ValidateMode
+     * is still a whitelist rather than an accept-all.
+     *
+     * This asked about 1280x1024x8 until the S3 families gained that mode, at
+     * which point the probe started failing on a correct driver - and because
+     * update-associated-driver.ps1 runs it as its preflight, that blocked every
+     * deploy. Pick something outside the range any card here can scan out.
+     */
     mode.size = sizeof(mode);
     mode.bits_per_pixel = 8u;
-    mode.width = 1280;
-    mode.height = 1024;
+    mode.width = 2048;
+    mode.height = 1536;
     if (validate_proc(&mode) == 0u) {
         FreeLibrary(driver);
         if (!quiet) {
