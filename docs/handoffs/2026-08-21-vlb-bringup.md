@@ -14,6 +14,9 @@ Related: [the VLB survey plan](../plans/vlb-survey-tool.md),
 [schema 2 and the survey runs](../decisions/2026-08-20-vlb-survey-schema2.md),
 [the aperture answer](../decisions/2026-08-21-vlb-aperture-answered.md).
 
+Section 5 below is now expanded into a concrete implementation plan:
+[the manual-select INF model and the first driver run](../plans/vlb-manual-select-inf.md).
+
 ---
 
 ## 1. The machine, and the one thing about it that trips people up
