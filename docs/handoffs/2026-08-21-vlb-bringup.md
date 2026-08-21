@@ -1,7 +1,8 @@
 # S3 Trio64 VLB bring-up handoff
 
 Date: 2026-08-21
-Branch: `vlb-survey-tool`, 10 commits ahead of `main`, pushed to `origin`.
+Merged to `main` on 2026-08-21 as a fast-forward of 12 commits, the last
+of which is `9949144`.
 Working tree clean at handoff.
 
 Scope: get the Velocity9x display driver running on a physical 486 with an S3
@@ -134,7 +135,7 @@ the end state is provably unchanged across four runs.
 
 ## 4. Where the code is
 
-Ten commits on `vlb-survey-tool`, oldest first:
+Twelve commits, oldest first:
 
 ```
 be8ff43  Survey at schema 2: identify a card on a bus with no PCI
@@ -147,6 +148,8 @@ ed41a70  A VLB aperture probe, because the survey structurally cannot answer thi
 79d17b0  Record the aperture result in the changelog too
 934f7c3  The BIOS's own aperture base works too, so the driver needs no change
 9294274  The S3 family can identify its own silicon when there is no PCI to scan
+a270afe  Handoff for the VLB bring-up, and Win95's own display INF beside it
+9949144  Offer register identification only where there is no PCI at all
 ```
 
 ### The tools
