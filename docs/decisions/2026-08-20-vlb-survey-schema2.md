@@ -1,9 +1,9 @@
 # The survey at schema 2: what a VLB machine forced, and what it has not yet said
 
 Date: 2026-08-20, measured 2026-08-21
-Status: **run on the 486. The card is identified and the platform is mapped; the
-aperture question the run existed to settle is still open, for a reason the tool
-predicted**
+Status: **run on the 486, four times. The card is identified, the platform is
+mapped, and tier-0 is closed off on it by measurement. The aperture question the
+run existed to settle is still open, for a reason the tool predicted**
 
 Stage 1 of `docs\plans\vlb-survey-tool.md`. The card in hand is an S3 Trio on
 VESA Local Bus in a 486, and the survey we shipped would have come back from it
@@ -187,11 +187,12 @@ check, not a ceremony.
 Three reports, committed beside this file, taken in the order the safety property
 requires. Build `be8ff43`.
 
-| Run | Command | Report |
-|---|---|---|
-| 1 | `/notier2 /rom` | `...-486-trio64-tier1.ini` |
-| 2 | `/tier2 /rom` | `...-486-trio64-tier2.ini` |
-| 3 | `/aperture /rom` | `...-486-trio64-aperture.ini` |
+| Run | Command | Boot | Report |
+|---|---|---|---|
+| 1 | `/notier2 /rom` | HIMEM, EMM386, S3VBE | `...-486-trio64-tier1.ini` |
+| 2 | `/tier2 /rom` | HIMEM, EMM386, S3VBE | `...-486-trio64-tier2.ini` |
+| 3 | `/aperture /rom` | HIMEM, EMM386, S3VBE | `...-486-trio64-aperture.ini` |
+| 4 | `/aperture /rom` | **clean (F5), nothing loaded** | `...-486-trio64-clean.ini` |
 
 **The machine.** Intel 486, CPUID signature `00000480` (family 4, model 8),
 DOS 6.22, no Windows. No PCI BIOS: `INT 1Ah AX=B101h` failed, so the
@@ -278,9 +279,10 @@ reasoning is worth keeping because it is the reasoning a future report will need
 The full 32 KB ROM was dumped and searched: `S3 Inc` and `Vision864` are present
 as plaintext and `OemString=S3 Incorporated. Vision864` matches that plaintext
 exactly, so the OEM string provably came from the ROM - while `VESA`, `VBE/Core`
-and `Dietmar Meschede` appear nowhere in it. The card's own VBE version is
-therefore still unmeasured, and **the plan's premise stands unchallenged**: no S3
-ROM has yet been seen reporting anything but VBE 1.2.
+and `Dietmar Meschede` appear nowhere in it. Run 4 then measured the card's own
+VBE directly, with nothing loaded - see below. **The plan's premise holds**: no
+S3 ROM has been seen reporting anything but VBE 1.2, and that now includes a VLB
+one.
 
 `Int10Vector` and `Int42Vector` were added to `[BiosData]` because of this. A
 segment inside C000-C7FF is the ROM answering for itself; anything else is
@@ -343,6 +345,65 @@ this chip, recorded so the next reader does not re-investigate it.
 
 `EDID` is unsupported: `4F15h` returned `4F00`. Expected of a 1995 board.
 
+### 8. Run 4, clean boot: the card's own BIOS, measured
+
+Nothing loaded - no HIMEM, no EMM386, no S3VBE. `ProtectedOrV86=no`,
+`MachineStatusWord=0010`, `XmsPresent=no`, `EmsPresent=no`. This is the run that
+turns several of the inferences above into measurements.
+
+**The card's ROM reports VBE 1.02, with no linear framebuffer on any mode.**
+`Version=0102`, `OemSoftwareRev=0000`, no OEM vendor or product strings at all -
+a VBE 1.2 BIOS ignores the `VBE2` request, which is exactly what happened. All 18
+modes carry attribute `001B`, `001F` or `000F`: **bit 7 clear on every one**, with
+`PhysBase=00000000` and `LinearPitch=0` throughout.
+
+`ModeListPointer=C000534F` is the proof that this is the ROM answering for
+itself - the mode list lives inside the option ROM segment. Under S3VBE the same
+key read `0DC62612`, a low-RAM address. That single field would have identified
+the hook without the string archaeology, and it is a better tell than the
+`Int10Vector` key added for the purpose.
+
+So **tier-0 is closed off on this card by measurement, not inference.** The
+`vbe` family's requirements - VBE 2.0 or later, the linear attribute, and a
+physical base above the first megabyte - are all three unmet. That is the finding
+the plan wanted from this run, and it now reads the same way as
+`2026-08-20-vbe-mode-inventory.md` did for the four PCI S3 targets.
+
+**S3VBE adds linear addressing; it does not pass it through.** The 18 native
+modes appear under S3VBE with identical numbers, geometry and pitches - and
+attribute `009B` instead of `001B`, with `PhysBase=04000000`. S3VBE is setting
+bit 7 and inventing a physical base on modes whose ROM says neither exists. (It
+also adds six low-resolution modes of its own: `0163`-`0166`, `014F`, `012D`.)
+
+That is close to an existence proof for the thing the driver would need to do:
+software *can* put this card into a linear mode on this machine, by programming
+the aperture itself rather than by asking the BIOS for one. What it does not
+prove is that the 486 decodes the address S3VBE picks.
+
+**32 MiB of RAM.** `Int1588ExtendedKB=31744`, so 32 MiB total, and with EMM386
+out of the path the figure is real. Both candidate window bases are clear of it -
+S3VBE's 64 MiB by a factor of two, the BIOS's 2 GiB by a wide margin - so neither
+would have produced the RAM false positive. The check now has a number to work
+with on any future run.
+
+**The window registers are identical clean and dirty: CR58/CR59/CR5A = `03`/`7F`/`00`.**
+So `0x7F000000` with linear addressing disabled is genuinely the state the video
+BIOS leaves behind, and S3VBE does not touch it merely by being resident. Its
+`0x04000000` must therefore be programmed at mode-set time, which sharpens the
+outstanding test rather than changing it.
+
+**Two confounds ruled out.** The Tier 1 CRTC bank is byte-identical across all
+four runs, including this one with no memory manager in the path - so none of the
+earlier register readings were EMM386 artifacts, and the V86 caveat the parser
+attaches does not reach port I/O. And CR38/CR39 read `59`/`BD` on a clean boot
+too, so that unexpected lock state is the video BIOS's own doing and not
+something a TSR left behind.
+
+**A20 detection validated in both directions.** `A20State=wrapped` here with no
+HIMEM, `enabled` in the three runs with HIMEM loaded. The read-only
+interrupt-vector-alias comparison gets both cases right on real hardware, which
+is the first time it has been exercised either way.
+
 ## Still outstanding
 
 1. **Read the window - at whichever address it really lives.** The question the
@@ -352,18 +413,21 @@ this chip, recorded so the next reader does not re-investigate it.
    address above 16 MiB - unreal mode or DPMI - and its own safety argument.
    Everything else here is legwork; this decides whether VLB support is
    possible.
-2. **Re-run from a genuinely clean boot** (F5, no CONFIG.SYS at all - F8 with
-   command-prompt-only still ran CONFIG.SYS on this machine). Two things come
-   from it: real `AH=88h`/`E801h` memory figures with EMM386 out of the path,
-   and the card's **native** ROM VBE version with S3VBE unloaded. The second is
-   what puts "no S3 BIOS offers a linear framebuffer" in writing from
-   measurement rather than from inference, which is what the plan asked for and
-   what closes off tier-0 for this family properly.
-3. **The schema-2 regression on the PCI targets** - 86Box ViRGE `:9869` and
+2. ~~Re-run from a clean boot.~~ **Done - run 4.** Left in the list as a note
+   that F5 is what a clean boot needs on this machine; F8 with
+   command-prompt-only still ran CONFIG.SYS.
+3. **Does S3VBE move the window, and to where?** Set a linear VBE mode through
+   S3VBE, then read CR59/CR5A. `04`/`00` would mean S3VBE reprograms the base at
+   mode-set time and would tell us where a VLB driver should put its own window -
+   which matters because `v9x_s3_enable_linear_aperture` sets size and enable and
+   leaves the base alone, and there is no host bridge here to have routed one.
+   Cheap, and it needs a bring-up probe rather than the survey.
+
+4. **The schema-2 regression on the PCI targets** - 86Box ViRGE `:9869` and
    Trio64 `:9871` - confirming the report is a superset of the schema-1 one.
    Still not done, still needs no 486, and it is the check that would catch a
    schema-2 change having broken something that used to work.
-4. **An emulated 486 VLB machine** in 86Box, which the plan wanted ahead of the
+5. **An emulated 486 VLB machine** in 86Box, which the plan wanted ahead of the
    real card and which the real card has now overtaken. Still worth building: it
    is where a probe that writes to CR58 can be tried without risking the only
    physical card.

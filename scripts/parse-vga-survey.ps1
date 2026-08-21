@@ -322,6 +322,41 @@ function ConvertFrom-S3Cr36 {
 # a schema-1 report from an ISA card yields the same verdict without having been
 # re-collected.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Who is answering VBE.
+#
+# Measured on the 486 VLB machine of 2026-08-21, which reported VBE 2.00 with a
+# linear framebuffer from a card whose own ROM offers neither: an S3VBE 3.18 TSR
+# was resident. The tell is in a field the report already carried.
+# `VideoModePtr` is a far pointer, and the card's own BIOS returns one into its
+# own option ROM - `C000534F` there. Under the TSR the same key read `0DC62612`,
+# a low-RAM address.
+#
+# So the segment of that pointer says whose VBE this is, and everything the [VBE]
+# and [VBEModes] sections describe belongs to whoever it names - which decides
+# whether a linear-framebuffer attribute is a fact about the card or a promise
+# made by software. `Int10Vector` says the same thing and was added for it, but
+# this works on every schema-2 report including those taken before it existed.
+# ---------------------------------------------------------------------------
+function Get-VbeProvider {
+    param($Ini)
+
+    $pointer = Get-HexValue (Get-IniValue $Ini "VBEModes" "ModeListPointer")
+    if ($null -eq $pointer -or $pointer -eq 0) { return $null }
+    $segment = ($pointer -shr 16) -band 0xFFFF
+    if ($segment -ge 0xC000 -and $segment -le 0xC7FF) {
+        return [pscustomobject]@{
+            Owner = "the card's option ROM"; Segment = "{0:X4}" -f $segment
+            IsRom = $true
+        }
+    }
+    return [pscustomobject]@{
+        Owner = "something other than the card's ROM (a TSR or a shadow copy)"
+        Segment = "{0:X4}" -f $segment
+        IsRom = $false
+    }
+}
+
 function Get-BusVerdict {
     param($Ini)
 
@@ -589,6 +624,7 @@ function Read-SurveyReport {
 
     $bus = Get-BusVerdict $ini
     $ram = Get-InstalledRam $ini
+    $vbeProvider = Get-VbeProvider $ini
 
     <#
       The option ROM's PCI Data Structure, as an identification route that needs
@@ -680,6 +716,7 @@ function Read-SurveyReport {
         Schema       = $schema
         Bus          = $bus
         RomPciId     = $pcir
+        VbeProvider  = $vbeProvider
         IdentifiedBy = Get-IniValue $ini "Result" "IdentifiedBy" ""
         S3Chip       = $s3
         Cr58         = $cr58
@@ -766,6 +803,15 @@ foreach ($report in $reports) {
     }
     Write-Output ("  VBE          v{0}, {1:N0} bytes VRAM, {2} modes" -f
         $report.VbeVersion, [int64]$report.VideoMemory, $report.ModeCount)
+    if ($report.VbeProvider) {
+        Write-Output ("  VBE from     {0} (mode list at segment {1})" -f
+            $report.VbeProvider.Owner, $report.VbeProvider.Segment)
+        if (-not $report.VbeProvider.IsRom) {
+            Write-Output ("               so everything the VBE section claims - " +
+                          "including any linear framebuffer - is that software's")
+            Write-Output ("               promise, not a property of the card")
+        }
+    }
     Write-Output ("  OEM string   {0}" -f $report.OemString)
     if ($report.Monitor) { Write-Output ("  Monitor      {0}" -f $report.Monitor) }
     if ($report.Note)    { Write-Output ("  Tester note  {0}" -f $report.Note) }
@@ -830,6 +876,7 @@ if ($Csv) {
         @{ n = "LinearOn";   e = { $_.Cr58.LinearEnabled } },
         @{ n = "RamBytes";   e = { $_.Ram.Bytes } },
         @{ n = "Aperture";   e = { $_.Aperture.Verdict } },
+        @{ n = "VbeFromRom"; e = { $_.VbeProvider.IsRom } },
         @{ n = "Problems"; e = { $_.Problems -join "; " } }
     if (Test-Path -LiteralPath $Csv) {
         $rows | Export-Csv -LiteralPath $Csv -NoTypeInformation -Append

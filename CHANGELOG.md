@@ -49,9 +49,18 @@ build identifier so exact guest-tested binaries remain traceable.
   framebuffer and the plan's premise stands. It advertises that framebuffer at
   64 MB where the card's registers say 2 GB, which is the most useful thing to
   come out of the run: a VLB driver may have to program the window base rather
-  than read it, since there is no host bridge to have routed one. Full account
-  and the three raw reports in
-  `docs/decisions/2026-08-20-vlb-survey-schema2.md`.
+  than read it, since there is no host bridge to have routed one.
+
+  A fourth run from a clean boot then measured the card's own BIOS with nothing
+  loaded: **VBE 1.02, and bit 7 clear on all 18 modes with `PhysBasePtr` zero
+  throughout**. So tier-0 is closed off on this card by measurement rather than
+  inference, the premise now holds for a VLB S3 as well as the four PCI ones, and
+  S3VBE is *adding* linear addressing to modes whose ROM offers none rather than
+  passing it through. It also gave the real memory figure EMM386 had been hiding
+  (32 MiB), confirmed CR58/CR59/CR5A read the same clean as dirty, and ruled out
+  two confounds - none of the register readings were EMM386 artifacts, and the
+  unexpected `59`/`BD` lock state is the video BIOS's own. Full account and the
+  four raw reports in `docs/decisions/2026-08-20-vlb-survey-schema2.md`.
 
 ### Fixed
 
@@ -68,6 +77,15 @@ build identifier so exact guest-tested binaries remain traceable.
   a `PhysBasePtr` contradicting the card's own aperture registers - and the
   report had no way to distinguish the ROM from a resident hook. `[BiosData]`
   now carries the INT 10h and INT 42h vectors, so it can.
+
+- **The report could not say whose VBE it was describing, and the answer was
+  already in it.** `[VBEModes] ModeListPointer` is a far pointer, and its segment
+  names the provider: the 486 VLB card's own BIOS returns `C000534F`, into its own
+  option ROM, while the S3VBE TSR on the same machine returned `0DC62612` in low
+  RAM. The parser now derives and prints that, and says plainly that a
+  linear-framebuffer attribute from a non-ROM provider is software's promise
+  rather than a property of the card. It works on every schema-2 report,
+  including ones taken before the `Int10Vector` key existed.
 
 - **A non-PCI card's own ROM can name it, and the parser now looks.** The VLB
   Stealth 64's option ROM carries a valid `PCIR` header reporting `5333:8811`,

@@ -196,6 +196,21 @@ said no but a V86 host is present, because `POPF` under a memory manager is
 emulated rather than executed. An inference never enables a 32-bit probe, so a
 report in that state carries no CPUID detail and no `E820` map, and says so.
 
+### Who is answering VBE
+
+`[VBEModes] ModeListPointer` is the far pointer the controller-info block
+returned, and its **segment names whose VBE this is**. The card's own BIOS
+returns a pointer into its own option ROM: `C000534F` on the 486 VLB Trio64
+measured 2026-08-21. With an S3VBE 3.18 TSR resident, the same machine returned
+`0DC62612` - low RAM.
+
+That matters more than it looks. Everything `[VBE]` and `[VBEModes]` describe
+belongs to whoever that segment names, so a linear-framebuffer attribute from a
+non-ROM provider is a promise made by software, not a property of the card. On
+that machine the ROM offered VBE 1.02 with bit 7 clear on all 18 modes, and the
+TSR offered VBE 2.00 with bit 7 set and a `PhysBasePtr` that disagreed with the
+card's own CR59/CR5A. `parse-vga-survey.ps1` derives and prints this.
+
 ### `Int10Vector` on `[BiosData]`
 
 Who answered every INT 10h call in the report. A segment inside `C000`-`C7FF` is
