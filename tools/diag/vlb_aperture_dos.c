@@ -452,6 +452,29 @@ static void s3_relock(unsigned index_port)
     write_indexed(index_port, 0x38u, saved_lock1);
 }
 
+/*
+ * Is the extended bank actually readable?
+ *
+ * Measured 2026-08-21, the hard way. When the bank is locked on this card every
+ * register in it reads back the same constant - 42h on the run that found it -
+ * so CR58, CR59 and CR5A all agreed and the base they described was 42420000h,
+ * an address that exists nowhere. Three probes were spent on it before the
+ * pattern was obvious.
+ *
+ * Three registers reading identically is not proof of a lock, but on a card
+ * whose window is at 7F000000h with a size code of 3 it is close enough to
+ * refuse to proceed on. The cost of a false alarm is a re-run; the cost of
+ * missing it is a report full of confident readings of nothing.
+ */
+static int extended_bank_readable(unsigned index_port)
+{
+    unsigned char cr58 = read_indexed(index_port, 0x58u);
+    unsigned char cr59 = read_indexed(index_port, 0x59u);
+    unsigned char cr5a = read_indexed(index_port, 0x5au);
+
+    return !(cr58 == cr59 && cr59 == cr5a);
+}
+
 /* ------------------------------------------------------------------ */
 /* A20                                                                 */
 /* ------------------------------------------------------------------ */
@@ -997,14 +1020,24 @@ int main(int argc, char **argv)
                top_of_ram != 0ul ? "int15h-ah88h" : "unknown");
     }
 
+    /*
+     * The 486 measured on 2026-08-21 has no INT 15h AX=2402h, so this reports
+     * unknown and nothing is changed. That is the right outcome rather than a
+     * gap: A20 masks physical address bit 20, and no address this probe reads
+     * has that bit set, so the state is recorded for the record and not acted
+     * on unless the BIOS both answers and says it is off.
+     */
     wr_section("A20");
     a20_before = a20_query();
-    fprintf(report, "Before=%s\n",
-            a20_before < 0 ? "unknown" : (a20_before ? "enabled" : "disabled"));
+    wr_str("Query", a20_before < 0 ? "unsupported-by-this-bios" : "ok");
+    if (a20_before >= 0) {
+        wr_str("Before", a20_before ? "enabled" : "disabled");
+    }
     if (a20_before == 0) {
         wr_str("EnableAttempted", a20_set(1) ? "ok" : "failed");
+        wr_str("After", a20_query() > 0 ? "enabled" : "disabled");
     }
-    fprintf(report, "After=%d\n", a20_query());
+    wr_str("MattersHere", "no-probed-address-has-bit-20-set");
 
     wr_section("UnrealMode");
     build_gdt();
@@ -1043,6 +1076,45 @@ int main(int argc, char **argv)
         goto finish;
     }
 
+    /*
+     * A BIOS mode set closes the extended register lock behind itself.
+     *
+     * This card's own ROM does; an S3VBE TSR standing in front of it does not,
+     * and leaves CR38 reading 48h afterwards. That difference cost three runs:
+     * every window register read after the ROM's mode set came back 42h, the
+     * probe assembled a base of 42420000h out of them, and the CR58 write that
+     * was supposed to enable linear addressing went through a closed lock and
+     * did nothing - which the report then blamed on the card not honouring a
+     * read-back.
+     *
+     * So the lock is re-opened here, after the mode set and before anything
+     * touches the window, and the state either side of it is recorded rather
+     * than assumed. The driver already unlocks before every extended access for
+     * the same reason; nothing about that needs to change.
+     */
+    if (want_pattern) {
+        wr_section("Chipset.S3.AfterModeSet");
+        wr_x8("CR38", read_indexed(index_port, 0x38u));
+        wr_x8("CR39", read_indexed(index_port, 0x39u));
+        wr_str("BankReadableBeforeReunlock",
+               extended_bank_readable(index_port) ? "yes" : "no");
+        write_indexed(index_port, 0x38u, 0x48u);
+        write_indexed(index_port, 0x39u, 0xa5u);
+        wr_str("BankReadableAfterReunlock",
+               extended_bank_readable(index_port) ? "yes" : "no");
+        report_window_registers(index_port, "AfterModeSet");
+        if (!extended_bank_readable(index_port)) {
+            wr_status("failed");
+            wr_str("Reason", "extended-bank-still-unreadable-after-reunlock");
+            puts("");
+            puts("The card's extended registers will not read back after the");
+            puts("mode set, so the window's address cannot be trusted and");
+            puts("nothing was probed. This is a tool problem, not a result.");
+            goto finish;
+        }
+        wr_status("ok");
+    }
+
     /* Committed to disk before anything touches the window registers. */
     fflush(report);
 
@@ -1062,8 +1134,19 @@ int main(int argc, char **argv)
     if (want_relocate || want_enable) {
         wr_section("Chipset.S3.After");
         report_window_registers(index_port, "AfterWrite");
-        wr_str("Cr58ReadBackHonoured",
-               (read_indexed(index_port, 0x58u) & 0x13u) == 0x13u ? "yes" : "no");
+        /*
+         * Only a meaningful answer when the bank reads back at all. Reported as
+         * a lock problem otherwise, because a locked bank returning a constant
+         * would otherwise be recorded as the card refusing the write - and that
+         * is a claim about the hardware which would be false.
+         */
+        if (extended_bank_readable(index_port)) {
+            wr_str("Cr58ReadBackHonoured",
+                   (read_indexed(index_port, 0x58u) & 0x13u) == 0x13u
+                       ? "yes" : "no");
+        } else {
+            wr_str("Cr58ReadBackHonoured", "unknown-bank-not-readable");
+        }
         fflush(report);
     }
 
