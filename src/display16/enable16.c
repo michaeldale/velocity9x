@@ -129,9 +129,30 @@ WORD FAR PASCAL V9xHardwareStage(void)
  * driver loaded fine and then refused everything it offered. Measured on an
  * ATI Mach64 VT2; see docs\issues\2026-08-16-tier0-defects-deferred.md D3.
  */
+/*
+ * Why the last call refused, or 0 when it accepted.
+ *
+ * ValidateMode gates every mode on this function's answer and, until this
+ * existed, recorded nothing when the answer was no - so a driver that loaded
+ * cleanly and then rejected its whole mode list left a boot trace reading
+ * `libmain` and no way to tell which half of the check had failed. GDI asks
+ * ValidateMode before it ever calls Enable, so the Enable path's
+ * fail-hardware-* stages never run in that case and cannot say either.
+ *
+ *   1  no identify_without_pci hook, so the PCI scan was the only route
+ *   2  the hook exists but a PCI BIOS is present, so it was not offered
+ *   3  no PCI BIOS, the hook ran and did not recognise the card
+ *
+ * Numbered rather than named to match v9x_hardware_stage_code above, which the
+ * assembly half also writes. Measured on the 486 VLB Trio64; see
+ * docs\handoffs\2026-08-21-vlb-first-driver-run.md.
+ */
+WORD v9x_identify_reason = 0u;
+
 WORD v9x_hardware_acceptable(void)
 {
     if (V9xHardwarePresent() != 0u) {
+        v9x_identify_reason = 0u;
         return 1u;
     }
     /*
@@ -151,12 +172,21 @@ WORD v9x_hardware_acceptable(void)
      * the identification is not offered there at all, and the family's
      * pci_match_optional flag decides as it always did.
      */
-    if (v9x_hw16.identify_without_pci != 0 && V9xPciBiosPresent() == 0u) {
-        if (v9x_hw16.identify_without_pci() < v9x_hw16.device_count) {
-            return 1u;
-        }
+    if (v9x_hw16.identify_without_pci == 0) {
+        v9x_identify_reason = 1u;
+    } else if (V9xPciBiosPresent() != 0u) {
+        v9x_identify_reason = 2u;
+    } else if (v9x_hw16.identify_without_pci() < v9x_hw16.device_count) {
+        v9x_identify_reason = 0u;
+        return 1u;
+    } else {
+        v9x_identify_reason = 3u;
     }
-    return v9x_hw16.pci_match_optional != 0u ? 1u : 0u;
+    if (v9x_hw16.pci_match_optional != 0u) {
+        v9x_identify_reason = 0u;
+        return 1u;
+    }
+    return 0u;
 }
 
 /*

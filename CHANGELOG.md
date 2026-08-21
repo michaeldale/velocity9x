@@ -6,6 +6,37 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Fixed
+
+- **A driver that refuses every mode now says why.** `ValidateMode` gates every
+  mode on `v9x_hardware_acceptable`, and GDI asks it before it ever calls
+  Enable — so when the answer is no, Windows is told a cleanly loaded driver
+  supports nothing, falls back to the INF's 4-bpp `vga.drv` row, and the Enable
+  path's ten `fail-hardware-*` stages never run to record it. On the 486 VLB
+  Trio64 that produced a VGA desktop and a boot trace reading nothing but
+  `libmain`, and finding out why took a hand-loaded DRV, a registry export and
+  a survey re-read. `v9x_hardware_acceptable` now records which condition
+  refused, and `ValidateMode` writes it: `fail-validate-no-identify-hook`,
+  `fail-validate-pci-bios-present` (the hook exists but a PCI BIOS is present,
+  so it was never offered), or `fail-validate-identify-declined` (no PCI BIOS,
+  the hook ran and did not recognise the card). The accept path is byte-for-byte
+  the same set of decisions in the same order; only the reason is new. The write
+  is guarded on `v9x_ever_enabled` like the `query-ok` write, because Windows
+  disables and re-enables the display during startup and a late query must not
+  overwrite the marker of a driver that came up.
+
+  On the 486 this distinguishes the two remaining candidates for the VLB
+  failure on one boot, which is what it was built for.
+
+- **A manifest comment that claimed a refusal the code cannot make.** The s3
+  `Vm.Modes` note said a 2 MiB Trio64 has 1024x768x32 and 1280x1024x16 refused
+  by `ValidateMode`. It does not: that test reads `v9x_vbe_vram_reported`, which
+  `enable16.c` assigns only on the tier-0 VBE path, and this family has a
+  `read_aperture` hook — so the figure is permanently zero for this binary and
+  the test is inert. `Inf.ManualSelect`'s pruned list is the only thing keeping
+  those two modes off a 2 MiB card, which makes it load-bearing rather than a
+  belt-and-braces duplicate.
+
 ### Added
 
 - **An INF model with no hardware ID, so the S3 driver can be installed on a

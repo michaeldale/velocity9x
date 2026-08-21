@@ -60,6 +60,10 @@ extern DWORD v9x_vbe_vram_bytes;
  * before any deduction for the visible surface, and 0 when unmeasured. This is
  * the figure a mode has to fit inside, so it is what ValidateMode tests. */
 extern DWORD v9x_vbe_vram_reported;
+/* enable16.c: why v9x_hardware_acceptable last refused, or 0 when it accepted.
+ * 1 no identify hook, 2 hook skipped because a PCI BIOS is present, 3 hook ran
+ * and declined. Numbered to match v9x_hardware_stage_code. */
+extern WORD v9x_identify_reason;
 extern void FAR PASCAL V9xHardwareDisable(void);
 extern WORD FAR PASCAL V9xVddPreMode(void);
 extern WORD FAR PASCAL V9xVddRegister(void);
@@ -159,9 +163,30 @@ static void v9x_trace_hardware_failure(void)
     default: v9x_boot_trace("fail-hardware-unknown"); break;
     }
 }
+
+/*
+ * The same refusal seen from ValidateMode, which is a different and earlier
+ * place than the Enable path above.
+ *
+ * GDI asks ValidateMode about every mode before it ever calls Enable, so a
+ * hardware answer of "no" rejects the whole list and Windows falls back to the
+ * INF's 4-bpp vga.drv row - and the fail-hardware-* stages, which only the
+ * Enable path writes, never run. That is how a 486 came up on VGA with nothing
+ * in the trace but `libmain`.
+ */
+static void v9x_trace_validate_hardware_failure(void)
+{
+    switch (v9x_identify_reason) {
+    case 1u: v9x_boot_trace("fail-validate-no-identify-hook"); break;
+    case 2u: v9x_boot_trace("fail-validate-pci-bios-present"); break;
+    case 3u: v9x_boot_trace("fail-validate-identify-declined"); break;
+    default: v9x_boot_trace("fail-validate-hardware"); break;
+    }
+}
 #else
 #define v9x_boot_trace(stage) ((void)0)
 #define v9x_trace_hardware_failure() ((void)0)
+#define v9x_trace_validate_hardware_failure() ((void)0)
 #endif
 
 static BYTE v9x_port_in(WORD port);
@@ -963,6 +988,12 @@ WORD __loadds FAR PASCAL ValidateMode(LPVOID display_info)
         return V9X_VALMODE_NO_WRONG_DRIVER;
     }
     if (v9x_hardware_acceptable() == 0u) {
+        /* Guarded like the query-ok write: Windows disables and re-enables the
+         * display during startup, so a ValidateMode call arriving after a
+         * successful bring-up must not rewrite that marker with a failure. */
+        if (v9x_ever_enabled == 0u) {
+            v9x_trace_validate_hardware_failure();
+        }
         return V9X_VALMODE_NO_WRONG_DRIVER;
     }
     candidate = v9x_find_mode((WORD)mode->width, (WORD)mode->height,

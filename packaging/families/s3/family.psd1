@@ -245,8 +245,16 @@
         ReferencePort = 9870
         # The mode matrix runs these on both 86Box targets, which are 4 MiB and
         # can hold every one. The 2 MiB physical Trio64 is not driven by this
-        # list; there 1024x768x32 and 1280x1024x16 are expected to be refused by
-        # ValidateMode, which is its own check rather than a matrix row.
+        # list.
+        #
+        # It used to say those two oversized rows would be refused by
+        # ValidateMode on the 2 MiB card. They are not, and cannot be:
+        # ValidateMode's memory test reads v9x_vbe_vram_reported, which
+        # enable16.c assigns only on the tier-0 VBE path, and this family has a
+        # read_aperture hook - so for this binary the figure is permanently zero
+        # and the test is inert. Inf.ManualSelect's pruned list is what actually
+        # keeps 1024x768x32 and 1280x1024x16 off a 2 MiB card, which makes it
+        # load-bearing rather than a duplicate of a runtime refusal.
         Modes = @('640x480x8', '800x600x8', '1024x768x8', '1280x1024x8',
                   '640x480x16', '800x600x16', '1024x768x16', '1280x1024x16',
                   '640x480x32', '800x600x32', '1024x768x32')
