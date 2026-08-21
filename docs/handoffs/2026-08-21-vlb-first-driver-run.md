@@ -226,19 +226,36 @@ a 2 MiB card and two modes it cannot scan out.
 
 Added 2026-08-22:
 
-* **The agent still has no working autostart.** The documented
-  `RunServices` registration is now installed and verified present in the
-  registry:
-  `"V9xRemoteAgent"="C:\V9XREMOTE\V9XAGNT.EXE -service"`. A verification
-  reboot did **not** bring the agent back (13 minutes, ICMP up, `486VLB<03>`
-  registered, port 9869 refused). So `RunServices` alone does not do it here -
-  either 4.00.950 does not act on the key, or it fires before Winsock can bind
-  and the agent exits. `AGENT.LOG` will say which, but reading it needs the
-  agent, so it takes one hand-started session. The likely durable fix is a
-  shell-time launch as well - `WIN.INI` `[windows] run=` or a StartUp shortcut -
-  since that runs when the network stack is definitely up. Keep the
-  `RunServices` entry regardless: it is the only one that can survive a boot
-  with no shell.
+* **The agent still has no working autostart, and neither registry mechanism
+  starts it.** Both were tried and both failed, each verified present in the
+  registry before its own reboot:
+  * `RunServices` - no agent after 13 minutes. **This is also the likely cause
+    of the fatal-exception-0E screen Michael saw** (`0137:BFF765A8`, and
+    `BFF7xxxx` is KERNEL32's range on Win9x). The screen says "press any key to
+    terminate the current application", which is a recoverable ring-3 fault,
+    not a halt - so the boot continued to a desktop afterwards, which is
+    exactly what happened. `AGENT.LOG` shows **no `agent-start` line near any
+    boot**, consistent with the process faulting before it opens the log.
+    Now neutralised (see below).
+  * `Run` - also no agent, logon confirmed complete throughout by
+    `486VLB<03>`. So the mechanism is not the problem.
+  * **Working directory is ruled out.** Michael always starts it after
+    `cd v9xremote`, but every path in the agent is absolute - `v9x_root`,
+    `v9x_config_path`, `v9x_log_path`, `v9x_temp_root`, `v9x_jobs_root`,
+    the screenshot helper and its capture files, all literal
+    `C:\V9XREMOTE\...`. It cannot be cwd-dependent.
+
+  What is left is why `V9XAGNT.EXE` faults when the *shell or the service
+  loader* launches it but not when it is started from a DOS box. That needs the
+  agent up to investigate, so it takes one more hand-started session.
+
+* **Two Win95 bugs in the agent's own packaging, found here.** `REGEDIT.EXE` on
+  4.00.950 silently ignores both deletion forms in a `REGEDIT4` file: neither
+  `"value"=-` nor `[-HKEY...\Key]` removes anything, and both exit 0. So
+  `REMOVE.REG` and `UNINSTALL.BAT` do not uninstall on Windows 95 - they report
+  success and leave the entry running. A `.REG` import there can only add or
+  set. The workaround used for `RunServices` was to set the value to an empty
+  string, which Windows reads, fails to launch, and skips.
 * **Distinguishing the two `v9x_hardware_acceptable` candidates** in section
   4a. The stage-code diagnostic is the cheap way and pays for itself.
 * The manifest comment corrected in section 4a.
