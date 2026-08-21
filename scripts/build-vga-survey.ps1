@@ -265,8 +265,14 @@ the one thing no register can tell us.
 
 If we have asked for /aperture, run it like this:
 
-   1. Reboot, hold F8, and choose "Command prompt only". No CONFIG.SYS, no
-      HIMEM, no EMM386. The reading is more trustworthy without them.
+   1. Reboot and press F5 when you see "Starting MS-DOS". That skips
+      CONFIG.SYS and AUTOEXEC.BAT completely - no HIMEM, no EMM386, and no
+      VESA/VBE TSR. The reading is only trustworthy without them.
+
+      Use F5, not F8. F8 offers to run CONFIG.SYS line by line, and
+      "Command prompt only" on some setups still runs it - we have measured a
+      machine where it did, and the report showed EMM386 loaded.
+
    2. V9XSURV /aperture /rom /out:C:\V9XAPER.INI
    3. Send both reports - the ordinary one and this one.
 
