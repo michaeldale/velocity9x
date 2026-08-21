@@ -1,9 +1,10 @@
-# The VLB linear aperture works, at 64 MiB, and the BIOS's own address is still untested
+# The VLB linear aperture works, at both addresses, and the driver already does enough
 
 Date: 2026-08-21
-Status: **answered in the affirmative. VLB linear framebuffer support is
-possible. Three of the five runs were invalidated by a bug in the probe and say
-nothing.**
+Status: **answered. The aperture works at both candidate addresses, including
+the one the BIOS chose, so the driver needs less change than this note first
+predicted. Runs 2-4 were invalidated by a bug in the probe; runs 6 and 7 replace
+them.**
 
 Follows `docs/decisions/2026-08-20-vlb-survey-schema2.md`, which took the survey
 as far as a read-only tool could and left one question: does a 486 with a VESA
@@ -11,12 +12,37 @@ Local Bus card decode anything at the address the card's linear window claims?
 Both candidate addresses were above the 16 MiB ceiling of `INT 15h AH=87h`, so
 the survey could not reach either.
 
-`tools/diag/vlb_aperture_dos.c` reaches them through unreal mode. Five runs,
-committed beside this file as `...-vlb-aperture-486-trio64-ap[1-5].ini`.
+`tools/diag/vlb_aperture_dos.c` reaches them through unreal mode. Seven runs,
+committed beside this file as `...-vlb-aperture-486-trio64-ap[1-7].ini`. Runs 1
+and 5 to 7 carry the findings; 2 to 4 are kept because they are what exposed the
+bug described below, and because a report that measured nothing is worth being
+able to recognise later.
 
 ## The answer
 
-**Yes.** With S3VBE 3.18 resident and a linear framebuffer mode requested
+**Yes, at both addresses.** Runs 6 and 7, with the probe's lock bug fixed, found
+the marker at each of them by the strongest test the tool has - the banked
+cross-check, where the marker goes into video memory through the A0000h window
+and comes back out at the linear base, proving the two are the same memory.
+
+| Run | Base | How it got there | Result |
+|---|---|---|---|
+| 1 | `7F000000` | as the BIOS left it, linear addressing **off** | all `FF` |
+| 6 | `7F000000` | CR58[4] set by us | **marker found** |
+| 7 | `04000000` | CR59/CR5A written by us, then CR58[4] | **marker found** |
+| 5 | `04000000` | S3VBE placed it, linear mode | round trip ok |
+
+Runs 1 and 6 are the same address with one bit changed between them, and they
+give opposite answers. That is as clean a control as this hardware affords: `FF`
+with the window disabled, the marker with it enabled.
+
+`Cr58ReadBackHonoured=yes` in both runs 6 and 7. **CR58 does read back what is
+written to it on this card.** The `no` that runs 3 and 4 reported was entirely
+the locked bank, as suspected, and it is now contradicted twice.
+
+### The earlier evidence, from run 5
+
+With S3VBE 3.18 resident and a linear framebuffer mode requested
 (`4101h` = mode `101h` with bit 14 set), on the 486 VLB Trio64:
 
 | Key | Value |
@@ -64,9 +90,20 @@ card's BIOS leaves the window at `0x7F000000` with linear addressing disabled -
 runs 1 through 4 all read `CR58`/`CR59`/`CR5A` = `03`/`7F`/`00` before any mode
 set. S3VBE reprograms CR59/CR5A to `04`/`00` when it sets a linear mode.
 
-`0x04000000` needs address line A26. `0x7F000000` needs A31. On a 486 VLB board
-the first is ordinary and the second is not, which is almost certainly why the
-author of S3VBE stopped using a fixed address in 1996.
+`0x04000000` needs address line A26 and `0x7F000000` needs A31, and this note
+originally reasoned from that to a prediction that the second would fail. **It
+does not, and the reasoning was wrong.**
+
+The error was applying a PCI-shaped model to a bus that is not PCI. On PCI the
+host bridge has to be persuaded to route a range to the card, so a high address
+is a question about the bridge. VESA Local Bus is the 486's own local bus brought
+out to a slot: the card sees A31-A2 directly from the CPU and decodes them
+itself. Nothing has to route anything. All the chipset has to do is *not* claim
+the same range, which at either of these addresses it does not.
+
+So S3VBE's relocation to 64 MiB is its own preference, not a necessity - and why
+its author replaced a fixed address with a computed one in 1996 remains unknown.
+Some board somewhere presumably needed it.
 
 ## Three runs measured nothing, because of a bug in the probe
 
@@ -99,45 +136,56 @@ Fixed three ways:
 - `Cr58ReadBackHonoured` now reports `unknown-bank-not-readable` rather than
   `no` when the bank is unreadable.
 
-**Runs 2, 3 and 4 need repeating.** Nothing in them speaks to `0x7F000000`.
+Runs 6 and 7 are the repeat, with the fix in place, and they are where the
+answer above comes from. Nothing in runs 2 to 4 speaks to any address.
 
 An S3VBE-shaped consolation: in run 5 the lock was still open afterwards
 (`CR38` read `48h`), because S3VBE unlocks and does not re-lock. That is why run
 5 escaped the bug entirely, and it is the difference that made the pattern
 obvious once all five reports were laid side by side.
 
-## What this means for the driver
+## What this means for the driver: less than expected
 
 `v9x_s3_read_aperture` returns whatever CR59/CR5A hold, and
 `v9x_s3_enable_linear_aperture` sets the size and enable bits in CR58 and leaves
-the base alone. On the PCI parts that is correct: the host bridge has already
-routed a base. On VLB there is no host bridge, and the base the BIOS leaves
-behind is one that needs A31.
+the base alone. This note previously predicted that would have to change - that a
+non-PCI machine would need the driver to *place* the window rather than accept
+it. **Run 6 shows it does not.** The base the BIOS leaves behind works, once
+CR58[4] is set, which is exactly and only what the driver already does.
 
-So the likely change is that the S3 family's aperture hook has to **place** the
-window on a non-PCI machine rather than accept it. `0x04000000` is a working
-value on this board, arrived at independently by S3VBE and confirmed by
-measurement. Whether it is the right general rule - and what it should be derived
-from, since S3VBE derives it rather than fixing it - is not established by one
-board.
+So on this card the existing aperture path is sufficient as written. Three
+specific worries are now closed:
 
-Two things do *not* need changing, and it is worth saying so:
+- **The read-back guard passes.** `Cr58ReadBackHonoured=yes`. The guard in
+  `v9x_s3_enable_linear_aperture` that requires the `13h` bits to have stuck will
+  not reject this card.
+- **The base passes the range check.** `0x7F000000` is inside
+  `v9x_s3_read_aperture`'s accepted window of `0x01000000` to `0xffc00000`.
+- **The lock cannot bite.** The card's ROM closes the extended bank behind every
+  mode set - measured three times now, `BankReadableBeforeReunlock=no` in runs 6
+  and 7 - but the driver unlocks before each extended access in both functions,
+  so it never reads a locked bank. This broke the probe precisely because the
+  probe was the thing that did not do what the driver already does.
 
-- The driver already unlocks before every extended-register access, in both
-  `v9x_s3_read_aperture` and `v9x_s3_enable_linear_aperture`. The lock-after-mode-set
-  behaviour that broke the probe cannot break the driver.
-- `v9x_s3_enable_linear_aperture`'s read-back guard is not known to be a problem.
-  The evidence that suggested it might be was the artefact described above.
+The ability to relocate is worth keeping in mind rather than building: run 7
+proves CR59/CR5A accept a new base and the window follows it, so if a board
+turns up where something else claims the BIOS's choice, the fix exists. It is not
+needed here.
 
 ## Still outstanding
 
-1. **Re-run 2, 3 and 4 with the fixed probe.** The specific question is whether
-   `0x7F000000` - the address the driver would use today - decodes at all. If it
-   does not, placing the window is not an optimisation but a requirement.
-2. **Look at the screen during a `/pattern /linear` run.** 32 coloured pixels in
-   the top-left corner is the last independent confirmation available, and it is
-   free.
-3. **Whether `0x04000000` is a rule or a coincidence.** One board. S3VBE computes
-   its answer; we should understand from what before copying the number.
+1. ~~Re-run 2, 3 and 4.~~ **Done - runs 6 and 7.** `0x7F000000` decodes.
+2. **Look at the screen during a `/pattern` run.** 32 coloured pixels in the
+   top-left corner is the last independent confirmation available and it is free.
+   Not needed for the verdict - the banked cross-check already establishes the
+   aperture is the framebuffer - but it would close the loop with an observation
+   that depends on none of this tool's machinery.
+3. **A build.** The survey and the probe have said everything they can. What is
+   untested is the driver itself on this card: whether its DPMI mapping reaches
+   the window from protected mode, whether the 8514/A blitter behaves the same on
+   the VLB part, and the install path - a VLB card has no PCI hardware ID, so the
+   generated INF has nothing for SetupX to bind and needs a different binding
+   entirely. None of those are survey questions.
 4. **The schema-2 survey regression on the 86Box PCI targets.** Still outstanding
-   from the previous note, still needs no 486.
+   from the previous note, still needs no 486, and now the only host-side item
+   left.

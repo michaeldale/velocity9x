@@ -92,26 +92,30 @@ build identifier so exact guest-tested binaries remain traceable.
   because Diamond shipped one image for both bus variants. That is a read-only
   identification route needing no bus at all.
 
-- **The VLB linear aperture works, and VLB support is therefore possible.** A
-  32-byte marker written through unreal mode at `0x04000000` on the 486 VLB
-  Trio64 read back unchanged - at twice the machine's 32 MiB of RAM, so it cannot
-  be RAM, and the address held zeroes rather than `FF` beforehand because S3VBE
-  had just cleared the framebuffer. S3VBE reached the same address independently
-  and had programmed CR59/CR5A to match. The card's BIOS meanwhile parks the
-  window at `0x7F000000` with linear addressing off, which needs address line
-  A31 where `0x04000000` needs A26 - so the S3 family's aperture hook probably
-  has to *place* the window on a non-PCI machine rather than accept the one it
-  finds. `tools/diag/vlb_aperture_dos.c` is the probe; it sets modes and writes
-  the card, so it is not the survey and never goes to a tester.
+- **The VLB linear aperture works, at both candidate addresses, and the driver
+  already does enough.** A 32-byte marker written into video memory through the
+  banked `A0000h` window came back out at the linear base on the 486 VLB Trio64 -
+  at `0x7F000000`, the address the card's BIOS chose, and again at `0x04000000`
+  after relocating there. The same address read all `FF` with linear addressing
+  disabled and the marker with it enabled, one bit apart, which is as clean a
+  control as the hardware affords. So VLB linear framebuffer support is possible,
+  `Cr58ReadBackHonoured=yes` clears the read-back guard in
+  `v9x_s3_enable_linear_aperture`, and the prediction that a non-PCI machine
+  would need the driver to *place* the window rather than accept it was wrong:
+  VESA Local Bus is the CPU's own bus brought out to a slot, so the card decodes
+  A31-A2 itself and there is no host bridge to persuade. Relocation works if a
+  board ever needs it. `tools/diag/vlb_aperture_dos.c` is the probe; it sets
+  modes and writes the card, so it is not the survey and never goes to a tester.
   `docs/decisions/2026-08-21-vlb-aperture-answered.md`.
 
   **Three of the five runs measured nothing**, because the card's ROM closes the
   extended register lock behind a mode set and the probe did not re-open it: the
   window registers all read back `42h`, the base computed from them was
   `0x42420000`, and a `Cr58ReadBackHonoured=no` line looked like a finding about
-  the card when it was a bug in the tool. Fixed, and the probe now refuses to
-  proceed when CR58, CR59 and CR5A read identically. The driver is unaffected -
-  it already unlocks before every extended access.
+  the card when it was a bug in the tool. Fixed, re-run as runs 6 and 7, and the
+  probe now refuses to proceed when CR58, CR59 and CR5A read identically. The
+  driver is unaffected - it already unlocks before every extended access, which
+  is precisely what the probe was not doing.
 
 ### Known issues
 
