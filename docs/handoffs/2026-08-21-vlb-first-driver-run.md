@@ -40,6 +40,33 @@ Baseline recorded before touching anything: `C:\V9XHW.INI` and
 `C:\V9XBOOT.INI` both absent, desktop up at 800x600x8 on Win95's own
 `s3.drv`, `display.drv=pnpdrvr.drv` in `SYSTEM.INI`.
 
+## 1a. Correction to section 2, made 2026-08-22
+
+**Section 2 below drew the wrong conclusion, and it is left standing as written
+so the reasoning can be checked.** It reads "Windows running with no shell". It
+was not. The machine boots to a working desktop every time.
+
+Two independent problems produced one symptom:
+
+* **The agent has never had an autostart.** Not in the StartUp group (empty),
+  not in `Run` (only `SysTray`), and the `RunServices` key the agent's own
+  `INSTALL.BAT` creates **did not exist at all** - `C:\V9XREMOTE` holds only
+  `V9XAGNT.EXE`, `V9XSHOT.EXE` and `AGENT.INI`, so that installer never ran
+  there. Every previous session's agent was started by hand. So the agent never
+  survives *any* reboot, driver or no driver, and from outside that is
+  indistinguishable from a machine that never reached the shell.
+* **The driver fell back to VGA silently**, which needs no reboot to diagnose
+  and never blanked anything.
+
+What proves the desktop comes up: NetBIOS name `486VLB<03>` is registered, and
+that is the Messenger name, registered after logon. Section 2 had that evidence
+in hand and read it as "net init got far" when it actually means "logon
+completed".
+
+The lesson worth keeping: on this machine, agent-absent says nothing about how
+far Windows booted. Check `486VLB<03>` before concluding anything about the
+shell.
+
 ## 2. Where it stopped
 
 The reboot did not come back.
@@ -112,6 +139,79 @@ Nothing here is automatable from a session.
    `C:\V9XHW.INI`, confirm Display Settings offers the 10-mode list, and land
    one mode change.
 
+## 4a. Why the driver does not work, established 2026-08-22
+
+The chain is closed except for one measurement. Nothing here is guesswork
+unless it says so.
+
+**Symptom.** The desktop runs at 640x480 in **4 bpp** (`SourceBitsPerPixel=4`
+from the agent's own capture). That is the `MODES\4\640,480 -> vga.drv` entry
+our INF installs. Our DRV is loaded but drives nothing. `V9XBOOT.INI` reads
+`Stage=libmain`, and `v9x_boot_trace` is last-write-wins, so nothing after
+LibMain ran that boot.
+
+**The DRV itself is fine on Win95.** Loaded by hand with `V9X16LD.EXE`, the
+boot trace advances `libmain -> query-start -> query-mode-selected ->
+query-ok`. The DIB Engine/GDIINFO inquiry works on 4.00.950.
+
+**Where it dies.** `V9X16LD` then reports *"A supported mode was rejected"* -
+its return 4, the `ValidateMode` loop over 640x480, 800x600 and 1024x768 at 8
+and 16 bpp. `ValidateMode` (`ddi.c:956`) has exactly three rejection paths, and
+two are eliminated:
+
+* *Not in the table* - no: 640x480x8 is in the s3 table.
+* *Out of memory* - **cannot fire for this family at all.**
+  `v9x_vbe_vram_reported` is assigned only at `enable16.c:425` and `:514`, both
+  inside the tier-0 VBE path, and the declaration comment says so outright:
+  "Only the tier-0 path fills this in: a family with a `read_aperture` hook
+  knows its own memory size and never calls 4F00h." The s3 family has that
+  hook, so the value is permanently 0 and the check is inert.
+* Therefore: **`v9x_hardware_acceptable()` is returning 0.**
+
+That single fact explains everything observed. `ValidateMode` answers
+`NO_WRONG_DRIVER` to *every* mode, so GDI is told a driver that loaded cleanly
+supports nothing, never calls Enable, and uses the 4 bpp VGA row instead - and
+the trace stays at `libmain` because `ValidateMode` writes no stage.
+
+**Which half of `v9x_hardware_acceptable` (`enable16.c:132`).** On this machine
+`V9xHardwarePresent()` is 0 (no PCI to scan) and `pci_match_optional` is 0 for
+s3, so the answer rests entirely on the `identify_without_pci` branch. The hook
+*is* wired (`s3_hw16.c`, last field). Two candidates remain, and they are
+**not yet distinguished**:
+
+1. `V9xPciBiosPresent()` returns non-zero under Win95, so the branch is skipped
+   before the hook is ever called. It is `INT 1Ah AX=B101h`
+   (`runtime.asm:721`), and under Windows that interrupt is not the BIOS's
+   alone. The DOS survey recorded `[PciBios] Reason=int1a-b101-failed`, so it
+   is 0 *in DOS* - including in V86 with EMM386 loaded - but that is not a
+   measurement of the Win95 Win16 context.
+2. The hook runs and its CR2D/CR2E read does not return `88h/11h` under
+   Windows. The survey read exactly `LockedCR2D=88 LockedCR2E=11` from DOS,
+   and `0x8811` is in this binary's device list, so the logic is right on this
+   card. But a Win16 DRV that is not the display owner does port I/O through
+   Win95's VDD, which virtualises VGA register access - so the DOS measurement
+   does not carry over. Note this is `identify_without_pci`'s **first ever
+   execution on real hardware**; everything before it was host tests and PCI
+   guests where `V9xHardwarePresent()` answered 1 and this path never ran.
+
+**The diagnostic gap that made this expensive, and worth fixing.**
+`ValidateMode`'s hardware rejection is silent. `v9x_trace_hardware_failure()`
+already exists and maps `V9xHardwareStage()` onto ten specific
+`fail-hardware-*` stages, but it is only called from the Enable path
+(`ddi.c:686`), and `v9x_hardware_acceptable()` sets no stage code of its own.
+Give it one - "no PCI BIOS and the hook declined" versus "PCI BIOS present and
+nothing matched" - and have `ValidateMode` write it, and this entire
+investigation becomes one read of `V9XBOOT.INI`. It also distinguishes
+candidates 1 and 2 above on the next boot, for free.
+
+**A stale claim in the manifest, found on the way.**
+`packaging/families/s3/family.psd1`'s `Vm.Modes` comment says that on the 2 MiB
+physical Trio64 "1024x768x32 and 1280x1024x16 are expected to be refused by
+ValidateMode". They are not and cannot be: the memory check is inert for this
+family, as above. Which means Part A's INF-level pruning is not a belt-and-
+braces duplicate of a runtime refusal - it is the only thing standing between
+a 2 MiB card and two modes it cannot scan out.
+
 ## 5. What is still open
 
 * The three questions of the plan's step 5 are all still unanswered: whether
@@ -123,3 +223,22 @@ Nothing here is automatable from a session.
   Win95's `s3.drv`, that is the first thing to re-test - cold.
 * The schema-2 survey regression on the 86Box PCI targets, unchanged and
   independent of all of this.
+
+Added 2026-08-22:
+
+* **The agent still has no working autostart.** The documented
+  `RunServices` registration is now installed and verified present in the
+  registry:
+  `"V9xRemoteAgent"="C:\V9XREMOTE\V9XAGNT.EXE -service"`. A verification
+  reboot did **not** bring the agent back (13 minutes, ICMP up, `486VLB<03>`
+  registered, port 9869 refused). So `RunServices` alone does not do it here -
+  either 4.00.950 does not act on the key, or it fires before Winsock can bind
+  and the agent exits. `AGENT.LOG` will say which, but reading it needs the
+  agent, so it takes one hand-started session. The likely durable fix is a
+  shell-time launch as well - `WIN.INI` `[windows] run=` or a StartUp shortcut -
+  since that runs when the network stack is definitely up. Keep the
+  `RunServices` entry regardless: it is the only one that can survive a boot
+  with no shell.
+* **Distinguishing the two `v9x_hardware_acceptable` candidates** in section
+  4a. The stage-code diagnostic is the cheap way and pays for itself.
+* The manifest comment corrected in section 4a.
