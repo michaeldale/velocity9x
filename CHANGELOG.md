@@ -47,6 +47,15 @@ build identifier so exact guest-tested binaries remain traceable.
   package `MANIFEST.TXT` now all say what to do when the Details page shows no
   PCI ID at all.
 
+  Driven onto the physical 486 the same day, and the model half worked on the
+  first attempt: Win95 4.00.950's Have Disk list offered
+  `Velocity9x S3 (VLB manual select)` on a machine with no PCI bus, and
+  accepting it rewrote the device to `v9xdisp.drv,*vdd,*vflatd,v9xmini.vxd`.
+  The boot after it did not reach the shell — the machine answers ICMP and
+  NetBIOS but the agent never came back, so nothing remote can read the stage
+  code. `docs/handoffs/2026-08-21-vlb-first-driver-run.md` records what was
+  proven, what stopped, and what has to happen at the keyboard.
+
 - **The VGA hardware survey at schema 2, for a card on a bus with no PCI.** The
   tool we shipped would have come back from a 486 with an S3 Trio on VESA Local
   Bus nearly empty, because almost everything it collected was reached through
