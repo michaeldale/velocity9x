@@ -64,6 +64,12 @@ extern DWORD v9x_vbe_vram_reported;
  * 1 no identify hook, 2 hook skipped because a PCI BIOS is present, 3 hook ran
  * and declined. Numbered to match v9x_hardware_stage_code. */
 extern WORD v9x_identify_reason;
+/* enable16.c: what the family's identify hook last saw. Family-defined; for s3
+ * the CR2D/CR2E id, the CRTC index port used, and the CR38/CR39 locks. */
+extern WORD v9x_identify_read;
+extern WORD v9x_identify_locked_read;
+extern WORD v9x_identify_port;
+extern WORD v9x_identify_locks;
 extern void FAR PASCAL V9xHardwareDisable(void);
 extern WORD FAR PASCAL V9xVddPreMode(void);
 extern WORD FAR PASCAL V9xVddRegister(void);
@@ -174,12 +180,34 @@ static void v9x_trace_hardware_failure(void)
  * Enable path writes, never run. That is how a 486 came up on VGA with nothing
  * in the trace but `libmain`.
  */
+static void v9x_boot_trace_hex16(const char FAR *key, WORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[5];
+    short shift;
+
+    for (shift = 12; shift >= 0; shift -= 4) {
+        text[(12 - shift) / 4] = digits[(WORD)(value >> shift) & 0x000fu];
+    }
+    text[4] = '\0';
+    WritePrivateProfileString("Velocity9x", key, text, "C:\\V9XBOOT.INI");
+}
+
 static void v9x_trace_validate_hardware_failure(void)
 {
     switch (v9x_identify_reason) {
     case 1u: v9x_boot_trace("fail-validate-no-identify-hook"); break;
     case 2u: v9x_boot_trace("fail-validate-pci-bios-present"); break;
-    case 3u: v9x_boot_trace("fail-validate-identify-declined"); break;
+    case 3u:
+        v9x_boot_trace("fail-validate-identify-declined");
+        /* Which is only half an answer on its own - see the globals in
+         * enable16.c. These say whether the hook read an id at all, through
+         * which CRTC pair, and how it found the extended-register locks. */
+        v9x_boot_trace_hex16("IdentifyRead", v9x_identify_read);
+        v9x_boot_trace_hex16("IdentifyLockedRead", v9x_identify_locked_read);
+        v9x_boot_trace_hex16("IdentifyPort", v9x_identify_port);
+        v9x_boot_trace_hex16("IdentifyLocks", v9x_identify_locks);
+        break;
     default: v9x_boot_trace("fail-validate-hardware"); break;
     }
 }

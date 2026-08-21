@@ -149,6 +149,27 @@ WORD FAR PASCAL V9xHardwareStage(void)
  */
 WORD v9x_identify_reason = 0u;
 
+/*
+ * What a family's identify_without_pci hook last saw, reported by the trace
+ * when reason 3 says the hook ran and declined. Knowing it declined is not
+ * enough to fix anything: the s3 hook reads an id the DOS survey had already
+ * measured as 88h/11h on the same card, so the interesting question is what it
+ * reads instead under Windows.
+ *
+ * All three are family-defined. The s3 hook fills them with the id it read
+ * from CR2D/CR2E, the CRTC index port it read through - a mono 3B4h here would
+ * itself be the bug - and the CR38/CR39 lock bytes as it found them, which
+ * says whether something re-locked the extended registers after POST.
+ *
+ * Owned here rather than by the chipset so ddi.c can report them without
+ * depending on any one family, the same way ddi.c owns v9x_pci_device and the
+ * chipset objects extern-declare it.
+ */
+WORD v9x_identify_read = 0u;
+WORD v9x_identify_locked_read = 0u;
+WORD v9x_identify_port = 0u;
+WORD v9x_identify_locks = 0u;
+
 WORD v9x_hardware_acceptable(void)
 {
     if (V9xHardwarePresent() != 0u) {

@@ -8,6 +8,32 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Fixed
 
+- **`identify_without_pci` now unlocks the S3 extended registers before reading
+  the chip id, which is what stopped the driver working on the 486.** It was the
+  only S3 register accessor in `s3_regs16.c` that did not, and the comment
+  justifying that cited a real measurement: on this very card the video BIOS
+  leaves CR38/CR39 holding `59h/BDh` rather than the unlock keys, and CR2D/CR2E
+  read `88h/11h` anyway — so "the locks gate writes, not reads". That
+  generalised one lock state into a rule. Under Windows the state is different
+  and the rule is false: measured from `ValidateMode` on the 486 with the
+  desktop on the fallback `vga.drv`, CR38/CR39 read `96h/52h` and **CR2D/CR2E
+  both read `5Ah`**. Those are read-only chip-id registers and cannot have
+  changed, so the lock state was the only variable.
+
+  The consequence was the whole failure: the id did not match, so
+  `v9x_hardware_acceptable` refused, so `ValidateMode` rejected every mode, so
+  GDI never called Enable and Windows fell back to the INF's 4-bpp `vga.drv`
+  row — a driver that loaded cleanly and then declined everything it advertised,
+  which is the D3 shape the plan set out to avoid. With the unlock in place
+  `V9X16LD.EXE` reports *"passed its DIB Engine inquiry and all six mode
+  validations"* on the same machine in the same state, the only change being the
+  unlock.
+
+  The cost is that identification now writes two registers on a card it has not
+  yet identified. That is the bet `v9x_s3_read_video_memory` already makes in
+  the same file: CRTC 38h/39h are S3 extensions plain VGA does not implement,
+  and both are saved and restored.
+
 - **A driver that refuses every mode now says why.** `ValidateMode` gates every
   mode on `v9x_hardware_acceptable`, and GDI asks it before it ever calls
   Enable — so when the answer is no, Windows is told a cleanly loaded driver

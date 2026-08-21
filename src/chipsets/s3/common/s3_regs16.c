@@ -135,13 +135,26 @@ static void v9x_s3_unlock_extended(void)
  * V9xFindPciDevice would have set it. Nothing downstream needs to know which
  * route found the card.
  *
- * Two properties make this safe enough to gate the whole enable sequence on:
+ * It unlocks CR38/CR39 around the read and restores them, exactly as
+ * v9x_s3_read_video_memory does for CR36.
  *
- *   It reads and does not write. No unlock, so nothing is poked on a card that
- *   turns out not to be an S3. Measured on the 486 VLB Trio64 on 2026-08-21:
- *   the video BIOS leaves CR38/CR39 holding 59h/BDh rather than the unlock
- *   keys, and CR2D/CR2E read 88h/11h regardless - on these parts the locks gate
- *   writes, not reads.
+ * It did not, once. The claim was that "the locks gate writes, not reads",
+ * measured on this very card on 2026-08-21: the video BIOS left CR38/CR39
+ * holding 59h/BDh, not the unlock keys, and CR2D/CR2E read 88h/11h anyway. That
+ * generalised one lock state into a rule, and under Windows the state is
+ * different and the rule is false. Measured from ValidateMode on the 486 on
+ * 2026-08-22, with the desktop on the fallback vga.drv: CR38/CR39 read 96h/52h
+ * and CR2D/CR2E both read 5Ah, so the identification declined, ValidateMode
+ * refused every mode, and GDI never called Enable. CR2D/CR2E are read-only chip
+ * ids and cannot have changed - the lock state is the only variable.
+ *
+ * So the unlock is not optional, and the cost is that this function now writes
+ * two registers on a card it has not yet identified. That is the same bet
+ * read_video_memory already makes in this file: CRTC indices 38h and 39h are
+ * S3 extensions that plain VGA does not implement, and both are saved and put
+ * back.
+ *
+ * One property still makes this safe enough to gate the whole enable sequence:
  *
  *   It accepts only ids this family already names. Two values out of 65536 for
  *   the s3 binary, which is a far narrower claim than the survey's exploratory
@@ -163,20 +176,50 @@ extern unsigned short v9x_pci_device[];
 extern unsigned short v9x_pci_count;
 extern unsigned short v9x_pci_match;
 
+/*
+ * Owned by src\display16\enable16.c, same reasoning as the three above: what
+ * this hook saw, so the boot trace can report it when the hook declines.
+ * Filled unconditionally, because a successful read is worth reporting too.
+ * Still reads only - the lock bytes are read and left alone.
+ */
+extern unsigned short v9x_identify_read;
+extern unsigned short v9x_identify_locked_read;
+extern unsigned short v9x_identify_port;
+extern unsigned short v9x_identify_locks;
+
 unsigned short v9x_s3_identify_without_pci(void)
 {
     unsigned short index_port = v9x_crtc_index_port();
     unsigned char saved_index = v9x_port_in(index_port);
+    unsigned char saved_lock1;
+    unsigned char saved_lock2;
     unsigned char high;
     unsigned char low;
     unsigned short device_id;
     unsigned short index;
 
+    /* The locks as whatever ran before us left them, and what the id reads
+     * through them - both recorded so the trace can show the difference the
+     * unlock makes rather than only its result. */
+    saved_lock1 = v9x_s3_read_crtc(index_port, 0x38u);
+    saved_lock2 = v9x_s3_read_crtc(index_port, 0x39u);
+    v9x_identify_locks = (unsigned short)
+        (((unsigned short)saved_lock1 << 8) | saved_lock2);
+    v9x_identify_locked_read = (unsigned short)
+        (((unsigned short)v9x_s3_read_crtc(index_port, 0x2du) << 8) |
+         v9x_s3_read_crtc(index_port, 0x2eu));
+
+    v9x_s3_write_crtc(index_port, 0x38u, 0x48u);
+    v9x_s3_write_crtc(index_port, 0x39u, 0xa5u);
     high = v9x_s3_read_crtc(index_port, 0x2du);
     low = v9x_s3_read_crtc(index_port, 0x2eu);
+    v9x_s3_write_crtc(index_port, 0x39u, saved_lock2);
+    v9x_s3_write_crtc(index_port, 0x38u, saved_lock1);
     v9x_port_out(index_port, saved_index);
 
     device_id = (unsigned short)(((unsigned short)high << 8) | low);
+    v9x_identify_read = device_id;
+    v9x_identify_port = index_port;
     if (device_id == 0x0000u || device_id == 0xffffu) {
         return 0xffffu;
     }
