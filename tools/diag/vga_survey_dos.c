@@ -829,6 +829,24 @@ static void survey_bios_data(void)
     wr_x8("DisplayCombination", bda[0x8a]);
     wr_x32("SaveTablePointer", v9x_u32_far(&bda[0xa8]));
 
+    /*
+     * Who owns INT 10h.
+     *
+     * Added after the 486 VLB run of 2026-08-21, which reported VBE 2.00 from a
+     * machine whose card ROM contains no VBE strings in plaintext - and the
+     * report had no way to say whether that answer came from the ROM or from
+     * something resident that had hooked the vector. It does now: a segment
+     * inside C000-C7FF is the video BIOS answering for itself, and anything else
+     * is a TSR, a memory manager or a shadow copy in between. INT 42h is where a
+     * hooker conventionally leaves the original handler.
+     *
+     * Two far reads of the vector table. Nothing is called.
+     */
+    wr_x32("Int10Vector", v9x_u32_far((const unsigned char far *)
+                                      MK_FP(0x0000u, 0x10u * 4u)));
+    wr_x32("Int42Vector", v9x_u32_far((const unsigned char far *)
+                                      MK_FP(0x0000u, 0x42u * 4u)));
+
     /* INT 10h AH=1Ah, display combination code. Query subfunction only. */
     memset(&input, 0, sizeof(input));
     input.x.ax = 0x1a00u;

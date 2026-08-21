@@ -22,8 +22,7 @@ build identifier so exact guest-tested binaries remain traceable.
   `scripts/parse-vga-survey.ps1` reads schema 1 and 2 alike, derives the bus,
   names the S3 chip, decodes CR58 and CR36, and refuses to call an aperture live
   when its base overlaps RAM. `docs/decisions/2026-08-20-vlb-survey-schema2.md`
-  records the design; **no 486 run has happened yet**, and that note says so
-  rather than implying otherwise.
+  records the design and, below it, what the 486 actually returned.
 
 - **The survey's source-safety gate grew with the tool, and `run-checks` now
   runs it.** Schema 2 introduced inline assembly, so the gate additionally
@@ -34,6 +33,40 @@ build identifier so exact guest-tested binaries remain traceable.
   `build-vga-survey.ps1 -GateSelfTest` asserts the gate rejects each of nine
   deliberately broken copies of the source, needs no compiler, and is now a
   `run-checks` step rather than a check performed once.
+
+- **The 486 VLB run happened, and the aperture question is still open.** An S3
+  Trio64 on a Diamond Stealth 64 DRAM in a 486: the no-PCI branch executed for
+  the first time on any target, the locked-read identification named the card,
+  and the register restore is proven byte-identical across three runs. Two
+  premises were corrected by it. The locks gate writes rather than reads - this
+  card holds `59`/`BD` in CR38/CR39, not the `48`/`A5` the PCI parts show, and
+  identified itself anyway - and CR38/CR39 turn out to be key latches that do
+  not read back what is written. The window sits at `0x7F000000` with linear
+  addressing disabled, which is above what `INT 15h AH=87h` can reach, so
+  **whether the 486 decodes anything there is still unknown** and needs a probe
+  that can address above 16 MB. Full account and the three raw reports in
+  `docs/decisions/2026-08-20-vlb-survey-schema2.md`.
+
+### Fixed
+
+- **The parser reported 1 MB of RAM when a memory manager was hiding it.**
+  EMM386 answers `INT 15h AH=88h` with 0 KB, which the parser turned into
+  "1 MB installed" - and that figure is what the aperture probe's window base is
+  compared against, so a wrong small answer silently disabled the check that
+  turns a false positive into a negative. It now reports the figure as unknown,
+  says which call declined to answer, and attaches a caveat to any positive
+  aperture result it could not check.
+
+- **The survey could not say whose INT 10h answered.** The 486 run reported VBE
+  2.00 from a machine whose card ROM contains no VBE strings in plaintext, with
+  a `PhysBasePtr` contradicting the card's own aperture registers - and the
+  report had no way to distinguish the ROM from a resident hook. `[BiosData]`
+  now carries the INT 10h and INT 42h vectors, so it can.
+
+- **A non-PCI card's own ROM can name it, and the parser now looks.** The VLB
+  Stealth 64's option ROM carries a valid `PCIR` header reporting `5333:8811`,
+  because Diamond shipped one image for both bus variants. That is a read-only
+  identification route needing no bus at all.
 
 ### Known issues
 

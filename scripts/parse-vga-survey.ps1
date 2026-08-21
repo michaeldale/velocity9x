@@ -384,6 +384,20 @@ function Get-InstalledRam {
 
     if ((Get-IniValue $Ini "Platform" "Int1588Status") -eq "ok") {
         $kb = [int64](Get-IniValue $Ini "Platform" "Int1588ExtendedKB" "0")
+        # Measured on the 486 VLB run of 2026-08-21: with EMM386 resident,
+        # AH=88h answers 0 KB, because a memory manager hides extended memory
+        # from the call that other allocators would use to claim it. Returning
+        # "1 MB installed" from that is not a small error - it is the figure the
+        # aperture false-positive check compares a window base against, so a
+        # wrong small answer silently disables the check. Nothing is better.
+        if ($kb -eq 0) {
+            $why = "INT 15h AH=88h answered 0 KB"
+            if ((Get-IniValue $Ini "Platform" "EmsPresent") -eq "yes" -or
+                (Get-IniValue $Ini "Platform" "XmsPresent") -eq "yes") {
+                $why += " with a memory manager resident, which intercepts it"
+            }
+            return [pscustomobject]@{ Bytes = $null; Source = $why }
+        }
         return [pscustomobject]@{
             Bytes = 1048576L + ($kb * 1024L)
             Source = "INT 15h AH=88h (capped at 15 MB on many BIOSes)"
@@ -438,6 +452,15 @@ function Get-ApertureVerdict {
     }
 
     $base = Get-HexValue (Get-IniValue $Ini "Aperture" "Base")
+    if ($null -eq $Ram.Bytes) {
+        # The sub-RAM test is the one that turns a false positive into a
+        # negative. Without a RAM figure it cannot run, and saying so is the
+        # difference between an unchecked result and a checked one.
+        $caveats += ("the window base could not be compared against installed " +
+                     "RAM, because that is unknown ($($Ram.Source)) - a " +
+                     "positive result here has NOT been checked for reading " +
+                     "RAM instead of the card")
+    }
     if ($null -ne $Ram.Bytes -and $null -ne $base -and $base -lt $Ram.Bytes) {
         return [pscustomobject]@{
             Verdict = "unreadable-by-this-method"
@@ -522,6 +545,16 @@ function Read-SurveyReport {
     if ((Get-IniValue $ini "VGARegisters" "Trust") -eq "virtualized") {
         $problems += "VGA registers captured under Windows; not hardware values"
     }
+    # A V86 host is not the same problem as Windows - EMM386 does not trap the
+    # VGA ports, so the register dump is still the chip's - but it demonstrably
+    # does trap INT 15h, so the memory figures and the aperture probe's path are
+    # its, not the BIOS's. Worth saying, without crying wolf about the registers.
+    if ((Get-IniValue $ini "Platform" "ProtectedOrV86") -eq "yes" -and
+        (Get-IniValue $ini "System" "WindowsPresent") -ne "yes") {
+        $problems += ("captured in virtual-8086 mode under a memory manager: " +
+                      "the register reads are still the chip's, but every INT " +
+                      "service in this report went through the manager first")
+    }
     if ((Get-IniValue $ini "Tier2" "Requested") -ne "yes") {
         $problems += "vendor probe declined; no chipset register detail"
     }
@@ -556,6 +589,27 @@ function Read-SurveyReport {
 
     $bus = Get-BusVerdict $ini
     $ram = Get-InstalledRam $ini
+
+    <#
+      The option ROM's PCI Data Structure, as an identification route that needs
+      no bus at all.
+
+      Found on the 486 VLB run of 2026-08-21: a Diamond Stealth 64 DRAM on VESA
+      Local Bus carries a valid `PCIR` header reporting 5333:8811, because
+      Diamond shipped one BIOS image for both the PCI and the VLB variant of the
+      board. So a card with no PCI to scan can still publish its PCI identity,
+      out of its own ROM, to a purely read-only probe. That is worth checking
+      before concluding a non-PCI card is unidentifiable - and it corroborates
+      or contradicts the register read independently of it.
+    #>
+    $pcir = $null
+    if ((Get-IniValue $ini "VideoBios" "PcirStatus") -eq "ok") {
+        $pcirVendor = Get-IniValue $ini "VideoBios" "PcirVendorId"
+        $pcirDevice = Get-IniValue $ini "VideoBios" "PcirDeviceId"
+        if ($pcirVendor -and $pcirVendor -ne "FFFF" -and $pcirVendor -ne "0000") {
+            $pcir = "$pcirVendor`:$pcirDevice"
+        }
+    }
     $aperture = Get-ApertureVerdict $ini $ram
     $crtcDifferences = Compare-CrtcBanks $ini
 
@@ -625,6 +679,7 @@ function Read-SurveyReport {
         Chipset      = @($ini.Keys | Where-Object { $_ -like "Chipset*" }) -join ","
         Schema       = $schema
         Bus          = $bus
+        RomPciId     = $pcir
         IdentifiedBy = Get-IniValue $ini "Result" "IdentifiedBy" ""
         S3Chip       = $s3
         Cr58         = $cr58
@@ -692,6 +747,13 @@ foreach ($report in $reports) {
             $report.VendorId, $report.DeviceId, $report.Revision, $report.ClassCode)
         Write-Output ("  Subsystem    {0}" -f $report.SubsystemId)
         Write-Output ("  BARs         {0}" -f $report.Bars)
+    }
+    if ($report.RomPciId) {
+        $note = ""
+        if (-not $report.VendorId) {
+            $note = "  [from the ROM's own PCIR header, no bus scan involved]"
+        }
+        Write-Output ("  ROM PCI id   {0}{1}" -f $report.RomPciId, $note)
     }
     if ($report.S3Chip) {
         $confidence = ""

@@ -1,8 +1,9 @@
 # The survey at schema 2: what a VLB machine forced, and what it has not yet said
 
-Date: 2026-08-20
-Status: **built and host-verified; no 486 VLB run yet — the measurement section
-below is deliberately empty**
+Date: 2026-08-20, measured 2026-08-21
+Status: **run on the 486. The card is identified and the platform is mapped; the
+aperture question the run existed to settle is still open, for a reason the tool
+predicted**
 
 Stage 1 of `docs\plans\vlb-survey-tool.md`. The card in hand is an S3 Trio on
 VESA Local Bus in a 486, and the survey we shipped would have come back from it
@@ -173,55 +174,179 @@ check, not a ceremony.
 
 ## What has been verified, and how
 
-Host-side only. No hardware or emulator has run schema 2.
-
 | Check | Result |
 |---|---|
 | `build-vga-survey.ps1 -GateSelfTest` | 9 of 9 mutations rejected, clean source accepted |
 | `build-vga-survey.ps1` | builds clean at `-0 -wx`, no warnings |
 | `run-checks` | green, with the gate self-test now a step in it |
+| every 386-only encoding confined to its gated function | confirmed by disassembling the object: `platform_cpu` and `platform_e820`, nowhere else |
+| parser over hand-built schema-1 and schema-2 reports | every new branch exercised |
 
-`parse-vga-survey.ps1` was then run over hand-built schema-1 and schema-2
-reports, which between them exercise every branch the parser gained:
+## The 486 run, 2026-08-21
 
-- the PCI and the non-PCI bus verdicts;
-- identification from CR2D/CR2E, and from CR30 alone with ROM corroboration
-  (which correctly comes back labelled unverified);
-- identification from the Tier 1 locked dump when Tier 2 was declined;
-- `nothing-decodes`, `unreadable-by-this-method` for a base inside RAM, and
-  `not-requested`;
-- the V86 caveat, attached from the memory-manager keys;
-- the locked-versus-unlocked CR30-CR3F disagreement.
+Three reports, committed beside this file, taken in the order the safety property
+requires. Build `be8ff43`.
 
-Those inputs were written by hand to drive the branches. **They are not captures
-and are not committed**, precisely so that nothing under `docs\decisions\` can
-later be mistaken for a measurement.
+| Run | Command | Report |
+|---|---|---|
+| 1 | `/notier2 /rom` | `...-486-trio64-tier1.ini` |
+| 2 | `/tier2 /rom` | `...-486-trio64-tier2.ini` |
+| 3 | `/aperture /rom` | `...-486-trio64-aperture.ini` |
 
-## What has not been measured
+**The machine.** Intel 486, CPUID signature `00000480` (family 4, model 8),
+DOS 6.22, no Windows. No PCI BIOS: `INT 1Ah AX=B101h` failed, so the
+`display_device_count == 0` branch executed for the first time on any target.
 
-Nothing here. This section is where the results go, and it is empty on purpose.
+**The card.** S3 Trio64. CR2D/CR2E `88`/`11`, CR30 `E1`, revision `02`, and the
+ROM at C000 is a Diamond Stealth 64 DRAM BIOS v2.02 dated 01/19/95, 32 KB,
+checksum ok. CR36 `99` decodes to 2 MiB and VBE independently reports 2 MiB, so
+the memory decode agrees with the BIOS on a third chip.
 
-The plan's verification sequence, in order, none of it done:
+### 1. The locked-read identification worked, and it was not redundant
 
-1. **Regression on PCI hardware we already have.** Run schema 2 on the 86Box
-   ViRGE (`:9869`) and Trio64 (`:9871`) and confirm the report is a superset of
-   the schema-1 one — identical values for every key that existed before. This
-   needs no 486 and should come first.
-2. **An emulated 486 VLB machine.** The `display_device_count == 0` branch has
-   never executed on any target; everything surveyed so far has PCI. Build a
-   486 VLB machine with an S3 VLB card in 86Box and run tier 1 → tier 2 →
-   `/aperture` there, where a wedge costs an emulator reboot rather than a round
-   trip to a tester.
-3. **The 486 VLB target itself.** Tier 1, then tier 2, then `/aperture`, in that
-   order, keeping every report. The ordering *is* the safety property: if a
-   later stage wedges the machine, the earlier reports survive on disk.
+This is the finding that justifies the whole ordering, and it is stronger than
+expected.
 
-Raw reports get committed beside this file when they exist, named the way the
-VBE inventory dumps are, and the tables above filled in from them.
+`LockedCR38=59`, `LockedCR39=BD`. **Not `48`/`A5`.** Both PCI S3 test machines
+show `48`/`A5` sitting in those registers before the survey runs, which is why
+`vga-survey.md` used to say a declined Tier 2 costs little on S3 parts *because
+the video BIOS leaves the extended bank unlocked at POST*. This BIOS does not
+leave it unlocked - and the locked read of CR2D/CR2E/CR30 returned the true
+`88`/`11`/`E1` anyway.
 
-Two lessons from 2026-08-20 apply to surveys as much as to screenshots: read the
-whole report before drawing a conclusion from any single field, and a value that
-agrees with what we expected is not thereby correct.
+So the premise the fallback was built on is now measured rather than assumed: on
+S3 the CR38/CR39 locks gate **writes, not reads**. Run 1, which unlocked nothing
+at all, is enough to name the card - the parser identifies it from the Tier 1
+locked dump alone. That reasoning has been corrected in the spec, which had the
+right conclusion for the wrong reason.
+
+The locked and unlocked reads agree exactly, and the parser found no
+disagreement anywhere in the CR30-CR3F range the two dumps share.
+
+### 2. CR38 and CR39 do not read back what is written to them
+
+Writing `48` to CR38 and reading it back inside the unlocked window returns
+`5B`, not `48`. Two locked reads of CR38 in the same run returned `59` and `5B`.
+CR39 reads `BD` whether or not `A5` has just been written to it.
+
+So they are key latches, and Tier 2's "save CR38/CR39 and put them back"
+restores a value that was never really in them. The discipline still delivered
+its outcome, and this is provable rather than hopeful: **run 1's Tier 1 CRTC bank
+is byte-for-byte identical to run 3's**, across a run 2 that unlocked and
+re-locked in between. The machine ended where it started. But the mechanism is
+not the one the code's comment assumes, and the next person reading that code
+should know it.
+
+### 3. The linear window is configured and switched off
+
+`CR58=03`: window size code 3 (4 MiB), and **bit 4 clear - linear addressing is
+disabled**. `CR59`/`CR5A` = `7F`/`00`, so the window is positioned at
+`0x7F000000`, just under 2 GiB.
+
+That is a coherent picture: the BIOS has placed and sized a 4 MiB window and left
+it disabled, which is exactly what the driver's `v9x_s3_enable_linear_aperture`
+exists to turn on.
+
+### 4. The aperture question is still open, for the reason the tool predicted
+
+`0x7F000000` is above 16 MiB, and `INT 15h AH=87h` has a 24-bit descriptor base.
+The probe reported the base and skipped the read:
+`Reason=base-above-int15h-ah87h-16mb-limit`.
+
+The limitation was written into the tool before the run and it is the first thing
+the run hit. **Whether the 486 chipset decodes anything at `0x7F000000` remains
+unknown**, and no amount of re-running this tool will answer it - `AH=87h` cannot
+reach there. Settling it needs a probe that can address above 16 MiB, which means
+unreal mode or DPMI, which means a different tool with a different safety
+argument. That is now the top of the VLB work, not a footnote.
+
+### 5. VBE reports 2.00 - and the plan's premise about that is not simply wrong
+
+The plan said tier-0 was closed off because every S3 BIOS measured reports VBE
+1.2, and "a VLB board's BIOS will be older, not newer". This machine reports
+**VBE 2.00**, with `OemVendorName=Dietmar Meschede` and
+`OemProductName=S3 VBE/Core 2.0`, and every graphics mode carries attribute
+`009B` - bit 7 set, linear framebuffer available - with `PhysBase=04000000`.
+
+Before treating that as tier-0 becoming available, three things in the same
+report argue against it:
+
+- **The card's own ROM does not contain those strings.** The full 32 KB image was
+  dumped and searched: `S3 Inc` and `Vision864` are present as plaintext, and
+  `OemString=S3 Incorporated. Vision864` matches that plaintext exactly - so the
+  OEM string provably comes from the ROM. `VESA`, `VBE/Core` and
+  `Dietmar Meschede` are **not** in it as plaintext. Either the VBE 2.0 core
+  lives in one of the ROM's compressed-looking regions, or something resident
+  hooked INT 10h. The report had no way to tell, and the machine was running
+  HIMEM and EMM386, so a TSR is entirely plausible.
+- **`PhysBase` contradicts the hardware.** The BIOS claims `0x04000000`; CR59/CR5A
+  say `0x7F000000`. One of them is wrong about where the window is, and the
+  registers are the ones the silicon obeys.
+- **`LinearPitch=0` on every mode**, which a real VBE 2.0 linear mode should
+  fill in.
+
+So: **do not build anything on this VBE 2.0 yet.** What the run establishes is
+that the machine has a VBE 2.0 provider, not that the card does. The tool now
+records the INT 10h and INT 42h vectors, which settles that class of question
+directly - a segment inside C000-C7FF is the ROM answering for itself, anything
+else is something in between. That was added because this run needed it and could
+not answer it.
+
+### 6. The clean boot did not happen, and it cost a real check
+
+`ProtectedOrV86=yes`, `MachineStatusWord=0011`, XMS 3.00, EMS 4.0 at segment
+`029E`. All three runs were under HIMEM and EMM386 in virtual-8086 mode.
+
+The visible consequence: `Int1588ExtendedKB=0`, with E801h and E820h both
+unsupported. EMM386 hides extended memory from `AH=88h`, so the report carries no
+usable RAM figure at all - and that figure is what the aperture false-positive
+check compares a window base against. The parser was reporting "1,048,576 bytes"
+from `1 MB + 0 KB`, which is not a small error: a wrong small answer silently
+disables the check. Fixed, and it now says the figure is unknown and why, and
+attaches a caveat to any positive aperture result it could not check.
+
+It did not matter here, because the base is above 16 MiB and no read happened.
+It would have mattered on a card with a low window.
+
+### 7. Two smaller findings worth keeping
+
+**A VLB card can publish a PCI id.** The ROM carries a valid `PCIR` structure
+reporting `5333:8811`, because Diamond shipped one BIOS image for both the PCI
+and the VLB variant of the board. That is a completely read-only identification
+route needing no bus at all, and the parser now uses it - it corroborated the
+register read here, and on a card whose registers are ambiguous it may be the
+only thing that names it.
+
+**The DAC probe found nothing, correctly.** All six reads of 3C6h returned `FF`.
+The Trio64 integrates its DAC, so there is no separate part with a hidden
+identity register to find. A negative result from a probe that cannot succeed on
+this chip, recorded so the next reader does not re-investigate it.
+
+`EDID` is unsupported: `4F15h` returned `4F00`. Expected of a 1995 board.
+
+## Still outstanding
+
+1. **Read `0x7F000000`.** The question the survey existed to answer. Needs a
+   probe that can address above 16 MiB - unreal mode or DPMI - and its own
+   safety argument. Everything else here is legwork; this decides whether VLB
+   support is possible.
+2. **Re-run from a genuinely clean boot** (F5, no CONFIG.SYS at all, not F8).
+   That gets real `AH=88h` figures, and with the new `Int10Vector` key it settles
+   whether the VBE 2.0 is the card's or a TSR's.
+3. **The schema-2 regression on the PCI targets** - 86Box ViRGE `:9869` and
+   Trio64 `:9871` - confirming the report is a superset of the schema-1 one.
+   Still not done, still needs no 486, and it is the check that would catch a
+   schema-2 change having broken something that used to work.
+4. **An emulated 486 VLB machine** in 86Box, which the plan wanted ahead of the
+   real card and which the real card has now overtaken. Still worth building: it
+   is where a probe that writes to CR58 can be tried without risking the only
+   physical card.
+
+Two lessons from 2026-08-20 applied here and earned their place. Reading the
+whole report is what turned "VBE 2.00, tier-0 is back" into "something on this
+machine reports VBE 2.00 and its own numbers contradict the hardware". And a
+value that agrees with what we expected is not thereby correct - CR58's window
+size looked right, and the enable bit next to it was clear.
 
 ## What this schema does not decide
 

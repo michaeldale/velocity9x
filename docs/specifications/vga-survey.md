@@ -48,12 +48,26 @@ append mode. If a vendor probe wedges an unknown card, the tester still has a
 complete Tier 1 report. `scripts\build-vga-survey.ps1 -GateSelfTest` asserts the
 source gate rejects each thing the tool must never grow, and needs no compiler.
 
-In practice a declined Tier 2 costs less on S3 parts than it looks. Captures
-from both the ViRGE/DX and Trio64 test machines show CR38 and CR39 already
-holding `48`/`A5` before the survey runs — the video BIOS leaves the extended
-bank unlocked at POST — so the Tier 1 register dump, which unlocks nothing,
-already carries CR2D/CR2E (device ID), CR30 (chip ID) and CR36 (memory size).
-Do not assume this of an unfamiliar card, but do read a Tier 2-declined S3
+In practice a declined Tier 2 costs less on S3 parts than it looks: the Tier 1
+register dump, which unlocks nothing, already carries CR2D/CR2E (device ID),
+CR30 (chip ID) and CR36 (memory size).
+
+The reason is not the one first recorded here. The ViRGE/DX and Trio64 test
+machines both show CR38/CR39 already holding `48`/`A5` before the survey runs,
+which looked like the explanation — the video BIOS leaving the bank unlocked at
+POST. The 486 VLB Trio64 measured on 2026-08-21 holds `59`/`BD` in those
+registers instead, and its locked Tier 1 dump still returned the true
+CR2D/CR2E/CR30. So the actual reason is that **on S3 these locks gate writes,
+not reads**, which is a much better property to be relying on. See
+`docs/decisions/2026-08-20-vlb-survey-schema2.md`.
+
+On that same part, writing `48` to CR38 and reading it back returns neither `48`
+nor the value read before the write: CR38 and CR39 are key latches whose read
+is not their written value. Tier 2 still saves and restores them, and the end
+state is provably unchanged — the Tier 1 bank before any unlock is byte-identical
+to the one after — but do not read that restore as having put a real value back.
+
+Do not assume any of this of an unfamiliar card. Do read a Tier 2-declined S3
 report before asking the tester to run it again.
 
 Implemented Tier 2 families: S3 (`5333`, CR38/CR39 and SR08 unlock) and Cirrus
@@ -138,7 +152,7 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 | `[Report]` | `SchemaVersion`, `Tool`, `Build`, `Access`, `Date`, `Time`, `CommandLine`, `Note` |
 | `[System]` | DOS version, `WindowsPresent`, conventional memory, coarse CPU class |
 | `[Platform]` | schema 2. Refined CPU class and CPUID, installed RAM by `AH=88h`/`E801h`/`E820h`, A20 state, XMS and EMS presence |
-| `[BiosData]` | BIOS data area video fields, INT 10h `AH=1Ah` display combination, `AH=1Bh` functionality block |
+| `[BiosData]` | BIOS data area video fields, the INT 10h and 42h vectors, INT 10h `AH=1Ah` display combination, `AH=1Bh` functionality block |
 | `[PciBios]` | INT 1Ah `B101h` presence, version, hardware mechanism, last bus |
 | `[PciInventory]` | every PCI function found, one CSV line each, with a `Fields` key naming the columns |
 | `[PciDevice.N]` | one per display-class device: decoded header fields plus the full 256-byte `Config.` blob |
@@ -181,6 +195,14 @@ the only thing that gates the 32-bit encodings; `CpuClass` may additionally read
 said no but a V86 host is present, because `POPF` under a memory manager is
 emulated rather than executed. An inference never enables a 32-bit probe, so a
 report in that state carries no CPUID detail and no `E820` map, and says so.
+
+### `Int10Vector` on `[BiosData]`
+
+Who answered every INT 10h call in the report. A segment inside `C000`-`C7FF` is
+the video BIOS answering for itself; anything else is a TSR, a memory manager or
+a shadow copy in between, and the VBE section then describes that thing rather
+than the card. `Int42Vector` is where a hooker conventionally leaves the original
+handler. Both are read from the vector table; neither is called.
 
 ### `[Aperture]`
 
