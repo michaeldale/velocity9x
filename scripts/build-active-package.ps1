@@ -89,6 +89,14 @@ $defaultMode = if ($ForceModeIndex -ge 0) {
 $infLines = @(New-V9xInfText -Family $familyManifest -DefaultMode $defaultMode)
 Assert-V9xInf -Lines $infLines -Family $familyManifest -DefaultMode $defaultMode
 $expectedHardwareIds = @(Get-V9xFamilyHardwareIds -Family $familyManifest)
+# "only" stops being true once the INF carries an ID-less manual-select model,
+# which is the whole point of one: it installs where no PCI ID matches.
+$manualTargetNote = if ($familyManifest.Inf.ContainsKey('ManualSelect')) {
+    ", or no PCI bus at all via the manual-select model " +
+    "`"$($familyManifest.Inf.ManualSelect.Description)`""
+} else {
+    " only"
+}
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 Remove-Item -LiteralPath (Join-Path $outputDir "V9XFIX.INF") -Force `
@@ -140,7 +148,7 @@ $manifest = @(
     "Velocity9x active display bring-up package",
     "Version: $ProductVersion",
     "Build: $BuildId",
-    "Target: Windows 98SE, $($expectedHardwareIds -join ', ') only",
+    "Target: Windows 98SE, $($expectedHardwareIds -join ', ')$manualTargetNote",
     "Modes: $($familyManifest.Package.ModesSummary)",
     "Forced diagnostic mode index: $ForceModeIndex (-1 means registry-selected)",
     "Boot trace: $traceEnabled (writes C:\\V9XBOOT.INI)",

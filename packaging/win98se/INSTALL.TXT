@@ -31,6 +31,15 @@ INSTALL
 5. Use Have Disk and browse to this package directory.
 6. Select the model matching the fitted card: "Velocity9x S3 ViRGE/DX
    86C375" or "Velocity9x S3 Trio32/64 86C764".
+   On a machine with no PCI bus at all - an S3 on VESA Local Bus in a 486,
+   which Windows enumerates from the root as *PNP0913 - neither of those can
+   match, because there is no PCI device for Windows to match them against.
+   Pick "Velocity9x S3 (VLB manual select)" instead. It carries no hardware
+   ID, so it is offered for any display device and it is yours to choose
+   correctly; the driver identifies the chip itself at boot from the card's
+   own S3 identity registers. That entry offers only the modes that fit a
+   2 MB card, so 1280x1024 in High Color and 1024x768 in True Color are
+   absent from it by design.
 7. Let Windows copy the driver files, but do not accept a different device ID.
 8. Shut down fully when prompted. Do not use a warm restart for the first test.
 9. Start COM1 capture, then cold-start the VM once.

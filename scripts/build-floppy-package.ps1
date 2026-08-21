@@ -103,11 +103,25 @@ function Format-V9xParagraph {
     $lines -join "`n"
 }
 
+# A family with a manual-select model can be installed on a card that shows no
+# PCI hardware ID at all, so on this disk the "none of these means no" sentence
+# is only true when no such model is on it.
+$manualSelectFolders = @($floppyFamilies |
+    Where-Object { $_.Inf -is [hashtable] -and $_.Inf.ContainsKey('ManualSelect') } |
+    ForEach-Object { $_.Floppy.Folder })
+$noMatchSentence = if ($manualSelectFolders.Count -eq 0) {
+    "If it shows none of those, this driver does not support your card and " +
+    "the install will refuse to match it."
+} else {
+    "If it shows none of those - a VESA Local Bus card in a machine with no " +
+    "PCI bus has no PCI hardware ID to show - then only the manual-select " +
+    "entry in " + ($manualSelectFolders -join " or ") + " can install, and " +
+    "only if that really is the chip you have. Everything else here will " +
+    "refuse to match your card."
+}
 $hardwareIdSentence = Format-V9xParagraph -Text (
     "and read the hardware ID. It will contain " +
-    ($hardwareIdWords -join " or ") +
-    ". If it shows neither, this driver does not support your card and the " +
-    "install will refuse to match it.")
+    ($hardwareIdWords -join " or ") + ". " + $noMatchSentence)
 
 $readme = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER

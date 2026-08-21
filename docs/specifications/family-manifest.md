@@ -185,6 +185,95 @@ that set equality is what lets a family carry more than one chip.
 A family that installs by guarded file replacement sets `Generate = $false` and
 supplies no other INF keys.
 
+### Inf.ManualSelect
+
+Optional. It adds one more models line, with **no hardware ID field at all**:
+
+```powershell
+Inf = @{
+    # ... Provider, Manufacturer, DiskName, DefaultMode, ForcedModes
+    ManualSelect = @{
+        Description = 'Velocity9x S3 (VLB manual select)'
+        VideoMemoryBytes = 2097152
+    }
+}
+```
+
+```
+"Velocity9x S3 (VLB manual select)"=Velocity9x.Install.Manual
+```
+
+That is Windows' own pattern for a manual-select display model - `MSDISP.INF`
+carries eight of them - and it is the only way to reach a card on a bus Windows
+does not enumerate. The case it was written for is the 486: an S3 Trio64 on
+VESA Local Bus, root-enumerated by Win95 as `*PNP0913`, on a machine with no
+PCI bus for SetupX to match a `PCI\VEN_` model against. The display class
+permits the override, so the entry installs over a device whose real ID nothing
+in the INF claims, and `identify_without_pci` picks the chip at Enable.
+
+Binding `*PNP0913` instead would be wrong: that ID covers every S3 801/805/928
+card Win95's `DETECTS3801` finds, and claiming it would offer this driver for
+parts it has no code for.
+
+| Key | Meaning |
+| --- | --- |
+| `Description` | The entry as it appears in the Have Disk list. |
+| `VideoMemoryBytes` | The VRAM the *physical* card has, which narrows the mode list. |
+
+`Description` is emitted inline and double-quoted, matching the per-chip model
+lines. It may not contain `,`, `=` or `%` - the first two are SetupX field
+separators and the third would read as a `%token%` the INF never resolves - nor
+`DDC` or `carddvdd`, which `Assert-V9xInf` forbids anywhere in a generated INF.
+`Get-V9xFamilies` additionally requires it to be unique across every family's
+manual descriptions *and* every chip's `DeviceDesc`: it is the only thing
+distinguishing the entry, with no hardware ID to fall back on, so a duplicate
+would make the pick a coin toss for a human the way a duplicate PCI ID does for
+Windows.
+
+**The MODES list is derived, never declared.** `Get-V9xFamilyManualSelectModes`
+returns the intersection of every chip's `Modes`, in the first chip's order,
+narrowed to those where `width * height * bpp/8 <= VideoMemoryBytes`. The
+intersection is because a model with no hardware ID can be picked over any card
+in the family, so it may only offer what all of them serve; the fit is exact
+rather than approximate because `test_mode_pitches_are_packed`
+(`tests\host\test_hw16_modes.c`) proves every mode is packed linear. Modes are
+pruned here rather than refused at Enable, where the failure is a black screen
+and a stage code at the next boot. The 2 MiB S3 card drops two of the twelve
+rows its chips declare against 4 MiB: 16bpp 1280x1024 (2.5 MiB) and 32bpp
+1024x768 (3 MiB).
+
+The generated model gets its own `[Velocity9x.Install.Manual]` and
+`[Velocity9x.Registry.Manual]`, and AddRegs the shared `Velocity9x.Registry`
+alongside its own. Declaring `ManualSelect` therefore also forces per-chip
+registry sections even in a single-chip family, so no chip's full list leaks
+into the shared section the manual model reads.
+
+`Generate = $false` and `ManualSelect` are incompatible: a family with no
+models section has nowhere to put the model.
+
+What pins all of this, beyond the schema checks above:
+
+* the hardware-ID set equality is unaffected - an ID-less line contributes no
+  `PCI\VEN_` match, so it passes by construction;
+* every line in the models section must be either a `PCI\VEN_...&DEV_...`
+  model or, when `ManualSelect` is declared, the one literal manual line. Any
+  accidental second ID-less model fails the build, and a family that declares
+  none may not mention `Velocity9x.Install.Manual` at all;
+* `[Velocity9x.Registry.Manual]` must hold exactly the derived `MODES` list and
+  nothing else, so a pruned mode cannot reappear;
+* the effective default mode - `Inf.DefaultMode`, or whatever
+  `build-active-package.ps1 -ForceModeIndex` overrides it with - must be one
+  the manual model advertises, because `DEFAULT,Mode` is written by the shared
+  registry section this model also AddRegs. A forced index outside the derived
+  list is refused at build time rather than shipped.
+
+There is deliberately no host test and no family-matrix row for the pruned
+list. A pseudo-row would break `test_mode_tables_match_manifests`, which
+insists every matrix row equals the family's hand-written C table row for row,
+and C-side servability of every member mode is already proven at the chips'
+declared VRAM by `test_advertised_modes_are_servable`. The 2 MiB packed fit is
+the only new claim, and the assertions above are what hold it.
+
 ## Vm
 
 ```powershell

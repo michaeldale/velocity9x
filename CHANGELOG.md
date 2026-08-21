@@ -8,6 +8,45 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Added
 
+- **An INF model with no hardware ID, so the S3 driver can be installed on a
+  486.** The driver was already capable on VESA Local Bus and still not
+  installable: every model the INF advertised was a `PCI\VEN_5333&DEV_xxxx`, and
+  SetupX cannot bind one of those on a bus it does not enumerate — the 486's
+  Win95 guest root-enumerates the card as `*PNP0913`. A family manifest may now
+  declare `Inf.ManualSelect`, which emits one more models line carrying no
+  hardware ID field at all. That is Windows' own pattern for a manual-select
+  display model (`MSDISP.INF` has eight of them) and the display class permits
+  the override, so the entry installs over a device whose real ID nothing in the
+  INF claims; `identify_without_pci` then picks the chip at Enable from the
+  card's own identity registers. It deliberately does *not* bind `*PNP0913`,
+  which covers every S3 801/805/928 card `DETECTS3801` finds and for which this
+  driver has no code. No C source changed: the driver side was already complete
+  and the runtime reads real VRAM from CR36, so the heap sizes itself.
+
+  The model's mode list is derived rather than declared — the intersection of
+  every chip's modes, narrowed to those that fit the VRAM the *physical* card
+  has, computed exactly because every S3 mode is proven packed linear. The 2 MiB
+  VLB Trio64 therefore gets 10 of the 12 modes the chips declare against 4 MiB;
+  16bpp 1280x1024 and 32bpp 1024x768 are pruned before the install instead of
+  refused at Enable, where the symptom would be a black screen and a stage code
+  at the next boot. One helper, `Get-V9xFamilyManualSelectModes`, serves both the
+  emitter and the assertions, so they cannot disagree about the list.
+
+  What holds it: the models section must contain nothing but PCI models and, at
+  most, the one declared manual line, so an accidental second ID-less model
+  fails the build; `[Velocity9x.Registry.Manual]` must be exactly the derived
+  list and nothing else; the description may not carry a SetupX field separator
+  and must be unique across every family's manual descriptions and every chip's
+  `DeviceDesc`, since it is all a human has to pick by; and the effective
+  default mode must be one the model advertises. That last check also refuses a
+  `-ForceModeIndex` that names a mode outside the derived list — for the s3
+  family, indexes 7 (`16,1280,1024`) and 10 (`32,1024,768`) can no longer be
+  built, because `DEFAULT,Mode` is written by the shared registry section the
+  manual model also reads. `docs/specifications/family-manifest.md` documents
+  the key; `INSTALL.TXT`, the floppy README's hardware-ID sentence and the
+  package `MANIFEST.TXT` now all say what to do when the Details page shows no
+  PCI ID at all.
+
 - **The VGA hardware survey at schema 2, for a card on a bus with no PCI.** The
   tool we shipped would have come back from a 486 with an S3 Trio on VESA Local
   Bus nearly empty, because almost everything it collected was reached through

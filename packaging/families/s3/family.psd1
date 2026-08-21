@@ -199,6 +199,24 @@
                         '16,640,480', '16,800,600', '16,1024,768',
                         '16,1280,1024',
                         '32,640,480', '32,800,600', '32,1024,768')
+        # A second models line with no hardware ID at all, pickable only by hand
+        # from Have Disk. It exists for the 486: a Trio64 on VESA Local Bus,
+        # root-enumerated by Win95 as *PNP0913, on a machine with no PCI bus for
+        # SetupX to match a PCI\VEN_ model against. Deliberately not bound to
+        # *PNP0913 either - that ID covers every S3 801/805/928 card DETECTS3801
+        # finds, and this driver has code for none of them.
+        #
+        # identify_without_pci picks the chip at Enable, so the model needs no
+        # PCI id; VideoMemoryBytes is what the physical card has, and it is why
+        # the derived mode list is a subset. The two rows the chips declare
+        # against 4 MiB that a 2 MiB card cannot hold - 16bpp 1280x1024 at
+        # 2.5 MiB and 32bpp 1024x768 at 3 MiB, see the Vm.Modes comment below -
+        # are pruned here rather than refused at the next boot with only a stage
+        # code to show for it.
+        ManualSelect = @{
+            Description = 'Velocity9x S3 (VLB manual select)'
+            VideoMemoryBytes = 2097152
+        }
     }
 
     Package = @{
@@ -210,7 +228,10 @@
         Include = $true
         Folder = 'S3'
         Order = 1
-        HardwareIdHint = 'PCI 5333:8A01, 5333:8811'
+        # Hand-written display string, printed into the floppy README's chip
+        # table at column 35 - keep it inside 38 characters (see the 73-column
+        # wrap at build-floppy-package.ps1:75).
+        HardwareIdHint = 'PCI 5333:8A01/8811, or VLB by hand'
     }
 
     Vm = @{

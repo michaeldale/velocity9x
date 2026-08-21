@@ -172,6 +172,71 @@ function Test-V9xFamilyManifest {
 
     Assert-V9xFamilyKeys -Table $Family.Audit -Context "Family $Id Audit" -Required @(
         'RequiredInstructions', 'ForbiddenInstructions', 'RequiredMapSymbols')
+
+    # Inf.ManualSelect is optional: a second models line with no hardware ID at
+    # all, pickable only by hand from Have Disk. It exists for a card on a bus
+    # Windows does not enumerate - the 486's VLB Trio64, root-enumerated as
+    # *PNP0913 with no PCI bus to scan - where a PCI\VEN_ model can never bind.
+    # The guard is deliberately outside a Generate = $false family's path:
+    # matrox-m2 declares nothing here and is untouched.
+    if ($Family.Inf -is [hashtable] -and $Family.Inf.ContainsKey('ManualSelect')) {
+        $manual = $Family.Inf.ManualSelect
+        Assert-V9xFamilyKeys -Table $manual -Required @('Description', 'VideoMemoryBytes') `
+            -Context "Family $Id Inf.ManualSelect"
+        if ($Family.Inf.Generate -eq $false) {
+            throw ("Family $Id declares Inf.ManualSelect but Inf.Generate is " +
+                   "false; a family that installs by guarded file replacement " +
+                   "emits no models section for the model to sit in.")
+        }
+        if (-not $manual.Description) {
+            throw "Family $Id Inf.ManualSelect declares an empty Description."
+        }
+        # The description is emitted inline and double-quoted into a SetupX
+        # model line, so these three characters would corrupt the line itself: a
+        # comma opens the hardware-ID field this model must not have, an equals
+        # sign splits the model name from its install section, and a per cent
+        # sign would be read as a %token% Assert-V9xInf then reports unresolved.
+        foreach ($bad in @(',', '=', '%')) {
+            if ($manual.Description.Contains($bad)) {
+                throw ("Family $Id Inf.ManualSelect Description may not contain " +
+                       "'$bad'; it is emitted inline into a SetupX model line.")
+            }
+        }
+        # Assert-V9xInf's forbidden-substring list, applied here so the failure
+        # names the manifest key rather than the generated text.
+        foreach ($bad in @('DDC', 'carddvdd')) {
+            if ($manual.Description.IndexOf($bad, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                throw ("Family $Id Inf.ManualSelect Description contains '$bad', " +
+                       "which Assert-V9xInf forbids anywhere in a generated INF.")
+            }
+        }
+        if ($manual.VideoMemoryBytes -isnot [int] -and
+            $manual.VideoMemoryBytes -isnot [long]) {
+            throw ("Family $Id Inf.ManualSelect VideoMemoryBytes must be an " +
+                   "integer; got '$($manual.VideoMemoryBytes)'.")
+        }
+        if ([int64]$manual.VideoMemoryBytes -le 0) {
+            throw ("Family $Id Inf.ManualSelect declares " +
+                   "VideoMemoryBytes = $($manual.VideoMemoryBytes).")
+        }
+        $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
+        if ($manualModes.Count -eq 0) {
+            throw ("Family $Id Inf.ManualSelect leaves no modes: no mode every " +
+                   "chip serves fits $($manual.VideoMemoryBytes) bytes.")
+        }
+        # The manual model AddRegs the shared Velocity9x.Registry, which is
+        # where DEFAULT,Mode is written - so a default the manual MODES section
+        # does not advertise would boot this model into an unlisted mode.
+        $defaults = @($manualModes | Where-Object {
+            ('{0},{1},{2}' -f $_.BitsPerPixel, $_.Width, $_.Height) -eq $Family.Inf.DefaultMode
+        })
+        if ($defaults.Count -eq 0) {
+            throw ("Family $Id Inf.DefaultMode '$($Family.Inf.DefaultMode)' is " +
+                   "not one of the $($manualModes.Count) modes its " +
+                   "manual-select model advertises.")
+        }
+    }
+
     Assert-V9xFamilyKeys -Table $Family.Floppy -Context "Family $Id Floppy" -Required @(
         'Include', 'Folder')
     if ($Family.Floppy.Include -and -not $Family.Floppy.Folder) {
@@ -321,6 +386,33 @@ function Get-V9xFamilies {
             $owners[$key] = $family.Id
         }
     }
+
+    # A manual-select description may name exactly one model, for the same
+    # reason: it is the only thing distinguishing that entry in the Have Disk
+    # list, and it has no hardware ID to fall back on. Two identical entries
+    # there - or one colliding with a chip's own DeviceDesc - would make the
+    # pick a coin toss for a human instead of for Windows.
+    $descriptions = @{}
+    foreach ($family in $families) {
+        foreach ($chip in @($family.Chips)) {
+            # First writer wins the name; the manual loop below is what reports.
+            if (-not $descriptions.ContainsKey($chip.DeviceDesc)) {
+                $descriptions[$chip.DeviceDesc] = "family '$($family.Id)' chip '$($chip.Id)'"
+            }
+        }
+    }
+    foreach ($family in $families) {
+        if ($family.Inf -isnot [hashtable] -or -not $family.Inf.ContainsKey('ManualSelect')) {
+            continue
+        }
+        $description = $family.Inf.ManualSelect.Description
+        if ($descriptions.ContainsKey($description)) {
+            throw ("Manual-select model description '$description' in family " +
+                   "'$($family.Id)' is already used by " +
+                   "$($descriptions[$description]).")
+        }
+        $descriptions[$description] = "family '$($family.Id)' manual-select model"
+    }
     $families
 }
 
@@ -380,5 +472,54 @@ function Get-V9xFamilyModeRegistryEntries {
             Key = "MODES\{0}\{1},{2}" -f $_.BitsPerPixel, $_.Width, $_.Height
             RefreshRate = $_.RefreshRate
         }
+    })
+}
+
+# The identity of a mode for set comparison: the four fields the manifest
+# schema requires of every mode entry.
+function Get-V9xModeKey {
+    param([Parameter(Mandatory = $true)]$Mode)
+    '{0},{1},{2},{3}' -f $Mode.BitsPerPixel, $Mode.Width, $Mode.Height,
+        $Mode.RefreshRate
+}
+
+# The mode list a family's manual-select INF model advertises, or @() when the
+# family declares no Inf.ManualSelect.
+#
+# The list is derived, never declared, and both the emitter and Assert-V9xInf
+# call this one helper so they cannot disagree about it. Two narrowings apply:
+#
+#   * the intersection of every chip's Modes, in the first chip's order. A
+#     model line with no hardware ID can be picked over any card in the family,
+#     so it may only offer what every chip in the family serves.
+#   * only modes that fit ManualSelect.VideoMemoryBytes. The arithmetic is
+#     exact rather than approximate because test_mode_pitches_are_packed
+#     (tests\host\test_hw16_modes.c) already proves every s3 mode is packed
+#     linear, so width * height * bpp/8 is the whole frame. A registry mode the
+#     driver refuses at Enable fails at the next boot with only a stage code -
+#     the fit is checked here, before the install, instead.
+function Get-V9xFamilyManualSelectModes {
+    param([Parameter(Mandatory = $true)]$Family)
+
+    if ($Family.Inf -isnot [hashtable] -or -not $Family.Inf.ContainsKey('ManualSelect')) {
+        return @()
+    }
+    $budget = [int64]$Family.Inf.ManualSelect.VideoMemoryBytes
+    $chips = @($Family.Chips)
+    $keySets = @($chips | ForEach-Object {
+        $set = @{}
+        foreach ($mode in @($_.Modes)) {
+            $set[(Get-V9xModeKey -Mode $mode)] = $true
+        }
+        $set
+    })
+    @(@($chips[0].Modes) | Where-Object {
+        $key = Get-V9xModeKey -Mode $_
+        $shared = $true
+        foreach ($set in $keySets) {
+            if (-not $set.ContainsKey($key)) { $shared = $false }
+        }
+        $bytes = [int64]$_.Width * [int64]$_.Height * [int64]$_.BitsPerPixel / 8
+        $shared -and $bytes -le $budget
     })
 }

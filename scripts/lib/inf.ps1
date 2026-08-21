@@ -33,6 +33,27 @@ function Get-V9xInfModeLines {
     })
 }
 
+# The non-blank lines of one INF section, without its header. Used by the
+# assertions below, which have to reason about what a section does and does not
+# contain rather than only about substrings of the whole text.
+function Get-V9xInfSectionBody {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines,
+        [Parameter(Mandatory = $true)][string]$Section
+    )
+
+    $body = @()
+    $inSection = $false
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*\[(.+)\]\s*$') {
+            $inSection = ($matches[1] -eq $Section)
+            continue
+        }
+        if ($inSection -and $line.Trim()) { $body += $line }
+    }
+    $body
+}
+
 function New-V9xInfText {
     param(
         [Parameter(Mandatory = $true)]$Family,
@@ -44,6 +65,19 @@ function New-V9xInfText {
     $models = $inf.ModelsSection
     if (-not $models) { $models = 'Velocity9x.Models' }
 
+    # The optional manual-select model: one models line with no hardware ID,
+    # for a card on a bus Windows does not enumerate. See the manifest spec.
+    $manual = $null
+    $manualModes = @()
+    if ($inf.ContainsKey('ManualSelect')) {
+        $manual = $inf.ManualSelect
+        $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
+    }
+    # A family with a manual model gets per-chip registry sections even at one
+    # chip: the manual model AddRegs the shared section too, so a chip's full
+    # list inlined there would leak modes the manual model must not offer.
+    $perChipRegistry = ($chips.Count -gt 1 -or $manual)
+
     # The header used to name one hardcoded adapter, which stopped being true
     # the moment a family carried two chips. It is generated from the manifest
     # now, so it cannot drift from the models below.
@@ -52,6 +86,9 @@ function New-V9xInfText {
         ('; Family {0}: {1}' -f $Family.Id, $Family.DisplayName)
     ) + @($chips | ForEach-Object {
         '; Supported adapter: {0}, PCI {1}:{2}' -f $_.Name, $_.VendorId, $_.DeviceId
+    }) + @(if ($manual) {
+        '; Manual-select model, no hardware ID: {0} ({1} modes within {2} bytes)' -f
+            $manual.Description, $manualModes.Count, $manual.VideoMemoryBytes
     }) + @(
         ''
         '[Version]'
@@ -93,9 +130,18 @@ function New-V9xInfText {
             $chip.VendorId, $chip.DeviceId
     }
 
+    # The manual model line carries no third field at all. That is Windows' own
+    # pattern for a manual-select display model - MSDISP.INF has eight of them -
+    # and it is what lets SetupX offer this entry over a device whose real
+    # hardware ID nothing here claims. Deliberately not %token%: an unresolved
+    # token is what Assert-V9xInf looks for.
+    if ($manual) {
+        $lines += '"{0}"=Velocity9x.Install.Manual' -f $manual.Description
+    }
+
     foreach ($chip in $chips) {
         $section = $installSections[$chip.Id]
-        $addReg = if ($chips.Count -eq 1) {
+        $addReg = if (-not $perChipRegistry) {
             'AddReg=Velocity9x.Registry'
         } else {
             'AddReg=Velocity9x.Registry,Velocity9x.Registry.{0}' -f $chip.Id
@@ -106,6 +152,16 @@ function New-V9xInfText {
             'CopyFiles=Velocity9x.Copy'
             'DelReg=Velocity9x.Previous'
             $addReg
+        )
+    }
+
+    if ($manual) {
+        $lines += @(
+            ''
+            '[Velocity9x.Install.Manual]'
+            'CopyFiles=Velocity9x.Copy'
+            'DelReg=Velocity9x.Previous'
+            'AddReg=Velocity9x.Registry,Velocity9x.Registry.Manual'
         )
     }
 
@@ -153,7 +209,7 @@ function New-V9xInfText {
 
     # Per-chip MODES capability. A single-chip family writes them straight
     # into the shared registry section, exactly as the rewrite did.
-    if ($chips.Count -eq 1) {
+    if (-not $perChipRegistry) {
         $lines += Get-V9xInfModeLines -Modes $chips[0].Modes
     }
 
@@ -178,7 +234,7 @@ function New-V9xInfText {
          '"rundll32.exe v9xsetp.dll,V9xRegisterPage"')
     )
 
-    if ($chips.Count -gt 1) {
+    if ($perChipRegistry) {
         foreach ($chip in $chips) {
             $lines += @(
                 ''
@@ -186,6 +242,18 @@ function New-V9xInfText {
             )
             $lines += Get-V9xInfModeLines -Modes $chip.Modes
         }
+    }
+
+    # The manual model's own MODES list: derived, not declared. It is the
+    # intersection of every chip's modes narrowed to what fits the VRAM the
+    # manifest says this card has, so it never offers a mode Enable would go on
+    # to refuse.
+    if ($manual) {
+        $lines += @(
+            ''
+            '[Velocity9x.Registry.Manual]'
+        )
+        $lines += Get-V9xInfModeLines -Modes $manualModes
     }
 
     $lines += @(
@@ -199,6 +267,8 @@ function New-V9xInfText {
         # not there.
     ) + @($chips | ForEach-Object {
         'DeviceDesc.{0}="{1}"' -f $_.Id, $_.DeviceDesc
+    }) + @(if ($manual) {
+        'DeviceDesc.manual="{0}"' -f $manual.Description
     }) + @(
         ('DiskName="{0}"' -f $inf.DiskName)
     )
@@ -264,5 +334,85 @@ function Assert-V9xInf {
     }
     if ($text -match '(?im)^HKR,CURRENT,') {
         throw "The generated INF must let Windows create the volatile CURRENT display key."
+    }
+
+    # The hardware-ID set equality above passes a no-ID model line by
+    # construction: it contributes no PCI\VEN_ match. What follows is the
+    # positive half - exactly one ID-less slot, only where declared, and its
+    # MODES list exactly the derived one.
+    $modelsSection = $Family.Inf.ModelsSection
+    if (-not $modelsSection) { $modelsSection = 'Velocity9x.Models' }
+    $manual = $null
+    $manualLine = $null
+    if ($Family.Inf -is [hashtable] -and $Family.Inf.ContainsKey('ManualSelect')) {
+        $manual = $Family.Inf.ManualSelect
+        $manualLine = '"{0}"=Velocity9x.Install.Manual' -f $manual.Description
+    }
+
+    $idLess = 0
+    foreach ($line in (Get-V9xInfSectionBody -Lines $Lines -Section $modelsSection)) {
+        if ($line -match '^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}$') {
+            continue
+        }
+        if ($manualLine -and $line -eq $manualLine) {
+            $idLess++
+            continue
+        }
+        throw ("The generated INF models section carries a line that is neither " +
+               "a PCI model nor family $($Family.Id)'s declared manual-select " +
+               "model: '$line'.")
+    }
+    if (-not $manual) {
+        if ($text -match 'Velocity9x\.Install\.Manual') {
+            throw ("The generated INF names Velocity9x.Install.Manual but " +
+                   "family $($Family.Id) declares no Inf.ManualSelect.")
+        }
+        return
+    }
+    if ($idLess -ne 1) {
+        throw ("The generated INF has $idLess manual-select model line(s); " +
+               "family $($Family.Id) declares exactly one.")
+    }
+
+    $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
+    $expectedModes = @($manualModes | ForEach-Object {
+            'MODES\{0}\{1},{2}' -f $_.BitsPerPixel, $_.Width, $_.Height
+        } | Sort-Object -Unique)
+    $manualBody = @(Get-V9xInfSectionBody -Lines $Lines `
+        -Section 'Velocity9x.Registry.Manual')
+    # [regex]::Match rather than -match: $Matches set inside a ForEach-Object
+    # block is not what the block reads back, so the -match form silently
+    # returned this function's previous match ten times over.
+    $actualModes = @(@($manualBody | ForEach-Object {
+            $found = [regex]::Match($_, 'MODES\\[0-9]+\\[0-9]+,[0-9]+')
+            if ($found.Success) { $found.Value }
+        }) | Sort-Object -Unique)
+    $difference = @(Compare-Object -ReferenceObject $expectedModes `
+        -DifferenceObject $actualModes)
+    if ($difference.Count -ne 0) {
+        throw ("The generated INF's manual-select MODES list does not match the " +
+               "modes derived for family $($Family.Id). Expected: " +
+               "$($expectedModes -join ', '); found: $($actualModes -join ', ').")
+    }
+    if ($manualBody.Count -ne $actualModes.Count) {
+        throw ("The generated INF's [Velocity9x.Registry.Manual] carries " +
+               "$($manualBody.Count) line(s) for $($actualModes.Count) modes; " +
+               "it may contain nothing else.")
+    }
+    $manualInstall = @(Get-V9xInfSectionBody -Lines $Lines `
+        -Section 'Velocity9x.Install.Manual')
+    if ('AddReg=Velocity9x.Registry,Velocity9x.Registry.Manual' -notin $manualInstall) {
+        throw ("The generated INF's [Velocity9x.Install.Manual] must AddReg both " +
+               "Velocity9x.Registry and Velocity9x.Registry.Manual; it carries: " +
+               "$($manualInstall -join ' / ').")
+    }
+    # DEFAULT,Mode is written by the shared registry section the manual model
+    # also AddRegs, so it has to be a mode the manual MODES list advertises.
+    # Test-V9xFamilyManifest checks the manifest's own DefaultMode; this catches
+    # a -ForceModeIndex override, which the manifest cannot see.
+    if ($DefaultMode -notin @($manualModes |
+            ForEach-Object { '{0},{1},{2}' -f $_.BitsPerPixel, $_.Width, $_.Height })) {
+        throw ("The generated INF defaults to mode '$DefaultMode', which family " +
+               "$($Family.Id)'s manual-select model does not advertise.")
     }
 }
