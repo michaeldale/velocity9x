@@ -51,6 +51,20 @@ unsigned long v9x_s3_read_video_memory(void);
  */
 unsigned short v9x_s3_enable_linear_aperture(void);
 
+/*
+ * Identify an S3 from CR2D/CR2E when the PCI scan found nothing.
+ *
+ * The family's identify_without_pci hook. CR2D/CR2E carry the same device id
+ * S3 publishes to PCI configuration space, so this reads the identity off the
+ * chip and matches it against the family's own device list, setting
+ * v9x_pci_match on success. Returns the matched index, or 0xFFFF.
+ *
+ * Reads only - no unlock, no writes. Measured on a 486 VLB Trio64 where the
+ * video BIOS leaves the extended bank locked and the id reads true anyway,
+ * because on these parts the CR38/CR39 locks gate writes rather than reads.
+ */
+unsigned short v9x_s3_identify_without_pci(void);
+
 /* CRTC access for a chip module following up on the shared sequence. */
 unsigned char v9x_s3_crtc_read(unsigned char index);
 void v9x_s3_crtc_write(unsigned char index, unsigned char value);

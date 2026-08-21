@@ -64,6 +64,10 @@ void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
 
 unsigned long v9x_s3_read_aperture(void) { return 0ul; }
 unsigned long v9x_s3_read_video_memory(void) { return 0ul; }
+/* Port I/O, so it cannot run here; the family table only needs the symbol. The
+ * behaviour this stands in for is asserted in test_family_matrix.c against the
+ * manifest instead. */
+unsigned short v9x_s3_identify_without_pci(void) { return 0xffffu; }
 
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
@@ -209,11 +213,43 @@ static void test_first_mode_is_the_fallback(void)
     }
 }
 
+/*
+ * The two ways a family can survive a PCI scan that matched nothing are
+ * alternatives, not layers.
+ *
+ * pci_match_optional says "proceed without knowing which card this is", and a
+ * tier-0 family can afford that because it touches no chip register.
+ * identify_without_pci says "find out another way", and a family with
+ * chip-specific pokes needs that narrower answer instead. Setting both would
+ * make the identification pointless - the tolerance would accept the card
+ * whatever the hook concluded - which is a quiet way to lose a safety property
+ * while appearing to add one.
+ *
+ * A hook with no devices to match against can never succeed, so that pairing is
+ * refused too.
+ */
+static void test_pci_miss_strategies_are_exclusive(void)
+{
+    unsigned int table_index;
+
+    for (table_index = 0u; table_index < V9X_HW16_TABLE_COUNT; ++table_index) {
+        const V9X_HW16_OPS *ops = v9x_hw16_tables[table_index].ops;
+
+        HCHECK(ops->family_id,
+               !(ops->pci_match_optional != 0u &&
+                 ops->identify_without_pci != 0));
+        if (ops->identify_without_pci != 0) {
+            HCHECK(ops->family_id, ops->device_count != 0u);
+        }
+    }
+}
+
 unsigned int v9x_run_hw16_mode_tests(void)
 {
     hw16_failures = 0u;
     test_mode_tables_match_manifests();
     test_mode_pitches_are_packed();
     test_first_mode_is_the_fallback();
+    test_pci_miss_strategies_are_exclusive();
     return hw16_failures;
 }

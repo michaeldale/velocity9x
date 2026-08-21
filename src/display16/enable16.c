@@ -130,6 +130,18 @@ WORD v9x_hardware_acceptable(void)
     if (V9xHardwarePresent() != 0u) {
         return 1u;
     }
+    /*
+     * No PCI match. Before giving up, let a family that can identify its own
+     * silicon do so - the VESA Local Bus case, where there is no configuration
+     * space to have matched in the first place. The hook sets v9x_pci_match
+     * itself when it succeeds, so everything downstream that asks "which chip"
+     * gets the same answer it would have got from the scan.
+     */
+    if (v9x_hw16.identify_without_pci != 0) {
+        if (v9x_hw16.identify_without_pci() < v9x_hw16.device_count) {
+            return 1u;
+        }
+    }
     return v9x_hw16.pci_match_optional != 0u ? 1u : 0u;
 }
 

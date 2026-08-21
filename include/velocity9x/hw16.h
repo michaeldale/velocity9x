@@ -249,6 +249,35 @@ typedef struct v9x_hw16_ops {
      * the driver adding a second veto the INF cannot reach.
      */
     unsigned short pci_match_optional;
+
+    /*
+     * Identify the card without PCI, returning a device index or 0xFFFF.
+     *
+     * For the machine PCI cannot describe: a VESA Local Bus or ISA card, where
+     * there is no configuration space to scan and so nothing for
+     * V9xFindPciDevice to match. pci_match_optional above says "proceed without
+     * knowing"; this says "find out another way", which is a different and much
+     * narrower claim.
+     *
+     * A family supplies it when its silicon publishes its own identity. The S3
+     * parts do: CR2D/CR2E hold the same 16-bit device id the PCI parts put in
+     * configuration space, so the hook reads the id off the chip instead of off
+     * the bus and the answer feeds the same v9x_pci_match the scan would have
+     * set - which is what lets every per-chip dispatch downstream work
+     * unchanged.
+     *
+     * Reads only, and returns 0xFFFF unless the id is one this family already
+     * names. That is the whole safety argument: it is not a licence to run on
+     * an unrecognised card, it is a second route to the same recognition, and a
+     * card that does not answer with one of the family's own device ids is
+     * refused exactly as the PCI scan would have refused it.
+     *
+     * Measured on a 486 VLB Trio64 on 2026-08-21: CR2D/CR2E read 88h/11h with
+     * the extended bank exactly as the BIOS left it, which is the 8811 the s3
+     * manifest lists. See docs\decisions6-08-20-vlb-survey-schema2.md for
+     * why a locked read is trustworthy on these parts.
+     */
+    unsigned short (*identify_without_pci)(void);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

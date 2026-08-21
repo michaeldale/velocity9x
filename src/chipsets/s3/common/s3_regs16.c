@@ -125,6 +125,71 @@ static void v9x_s3_unlock_extended(void)
     v9x_s3_crtc_write(0x39u, 0xa5u);
 }
 
+/*
+ * The identity a VESA Local Bus card cannot publish to a bus it is not on.
+ *
+ * CR2D and CR2E hold the same 16-bit device id the PCI parts put in
+ * configuration space - CR2D the high byte, CR2E the low - so on a machine with
+ * no PCI the chip can still be asked directly. The answer is matched against
+ * v9x_pci_device, the family's own list, and v9x_pci_match is set exactly as
+ * V9xFindPciDevice would have set it. Nothing downstream needs to know which
+ * route found the card.
+ *
+ * Two properties make this safe enough to gate the whole enable sequence on:
+ *
+ *   It reads and does not write. No unlock, so nothing is poked on a card that
+ *   turns out not to be an S3. Measured on the 486 VLB Trio64 on 2026-08-21:
+ *   the video BIOS leaves CR38/CR39 holding 59h/BDh rather than the unlock
+ *   keys, and CR2D/CR2E read 88h/11h regardless - on these parts the locks gate
+ *   writes, not reads.
+ *
+ *   It accepts only ids this family already names. Two values out of 65536 for
+ *   the s3 binary, which is a far narrower claim than the survey's exploratory
+ *   accept set needed to be. A card whose CR2D/CR2E do not spell one of ours is
+ *   refused, exactly as the PCI scan refuses it.
+ *
+ * The colour/mono CRTC pair is derived from the MISC output register here
+ * rather than assumed to be 3D4h, because this runs before any mode set - the
+ * fixed pair the aperture reads use is right only once the card is in a
+ * graphics mode.
+ */
+/*
+ * The PCI identity table and the match index, both owned by
+ * src\display16\ddi.c. Declared rather than included because this object is
+ * chipset code and must not acquire a dependency on the display16 headers -
+ * see the OS-boundary check in scripts\check-tree.ps1.
+ */
+extern unsigned short v9x_pci_device[];
+extern unsigned short v9x_pci_count;
+extern unsigned short v9x_pci_match;
+
+unsigned short v9x_s3_identify_without_pci(void)
+{
+    unsigned short index_port = v9x_crtc_index_port();
+    unsigned char saved_index = v9x_port_in(index_port);
+    unsigned char high;
+    unsigned char low;
+    unsigned short device_id;
+    unsigned short index;
+
+    high = v9x_s3_read_crtc(index_port, 0x2du);
+    low = v9x_s3_read_crtc(index_port, 0x2eu);
+    v9x_port_out(index_port, saved_index);
+
+    device_id = (unsigned short)(((unsigned short)high << 8) | low);
+    if (device_id == 0x0000u || device_id == 0xffffu) {
+        return 0xffffu;
+    }
+
+    for (index = 0u; index < v9x_pci_count; ++index) {
+        if (v9x_pci_device[index] == device_id) {
+            v9x_pci_match = index;
+            return index;
+        }
+    }
+    return 0xffffu;
+}
+
 unsigned long v9x_s3_read_aperture(void)
 {
     unsigned short high;

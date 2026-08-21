@@ -100,6 +100,16 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* CreateDIBPDevice builds the screen PDEVICE on both. */
     0,
     /* The card must be one of ours: CR59/CR5A and the CR58/CR53 pokes below
-     * are S3 registers and mean something else on anything not S3. */
-    0u
+     * are S3 registers and mean something else on anything not S3. This stays
+     * zero - it is the "proceed without knowing" flag, and this family never
+     * should. What it gains instead is a second way to know. */
+    0u,
+    /*
+     * On a VESA Local Bus machine there is no configuration space for the scan
+     * to have matched, so the identity comes off the chip: CR2D/CR2E hold the
+     * same device id the PCI parts publish. Reads only, and accepts only the
+     * two ids this binary already names, so the register pokes above still run
+     * on nothing but a card this family recognises.
+     */
+    v9x_s3_identify_without_pci
 };
