@@ -44,7 +44,13 @@ build identifier so exact guest-tested binaries remain traceable.
   not read back what is written. The window sits at `0x7F000000` with linear
   addressing disabled, which is above what `INT 15h AH=87h` can reach, so
   **whether the 486 decodes anything there is still unknown** and needs a probe
-  that can address above 16 MB. Full account and the three raw reports in
+  that can address above 16 MB. The VBE 2.00 the reports show is S3VBE 3.18, a
+  resident TSR, not the card - so no S3 ROM has yet been seen offering a linear
+  framebuffer and the plan's premise stands. It advertises that framebuffer at
+  64 MB where the card's registers say 2 GB, which is the most useful thing to
+  come out of the run: a VLB driver may have to program the window base rather
+  than read it, since there is no host bridge to have routed one. Full account
+  and the three raw reports in
   `docs/decisions/2026-08-20-vlb-survey-schema2.md`.
 
 ### Fixed

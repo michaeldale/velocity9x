@@ -260,37 +260,56 @@ reach there. Settling it needs a probe that can address above 16 MiB, which mean
 unreal mode or DPMI, which means a different tool with a different safety
 argument. That is now the top of the VLB work, not a footnote.
 
-### 5. VBE reports 2.00 - and the plan's premise about that is not simply wrong
+### 5. The VBE 2.00 was a TSR, not the card - and it moved the window
 
 The plan said tier-0 was closed off because every S3 BIOS measured reports VBE
-1.2, and "a VLB board's BIOS will be older, not newer". This machine reports
-**VBE 2.00**, with `OemVendorName=Dietmar Meschede` and
-`OemProductName=S3 VBE/Core 2.0`, and every graphics mode carries attribute
+1.2, and "a VLB board's BIOS will be older, not newer". This machine reported
+**VBE 2.00**, with `OemVendorName=Dietmar Meschede`,
+`OemProductName=S3 VBE/Core 2.0`, and every graphics mode carrying attribute
 `009B` - bit 7 set, linear framebuffer available - with `PhysBase=04000000`.
 
-Before treating that as tier-0 becoming available, three things in the same
-report argue against it:
+**Resolved: that is S3VBE 3.18, a third-party VBE 2.0 TSR, resident on the
+machine.** Michael identified it directly, and the documentation confirms it -
+"Copyright (c) 1994,97 Dietmar Meschede", supporting Vision864 through ViRGE/GX -
+matching `OemVendorName` byte for byte.
 
-- **The card's own ROM does not contain those strings.** The full 32 KB image was
-  dumped and searched: `S3 Inc` and `Vision864` are present as plaintext, and
-  `OemString=S3 Incorporated. Vision864` matches that plaintext exactly - so the
-  OEM string provably comes from the ROM. `VESA`, `VBE/Core` and
-  `Dietmar Meschede` are **not** in it as plaintext. Either the VBE 2.0 core
-  lives in one of the ROM's compressed-looking regions, or something resident
-  hooked INT 10h. The report had no way to tell, and the machine was running
-  HIMEM and EMM386, so a TSR is entirely plausible.
-- **`PhysBase` contradicts the hardware.** The BIOS claims `0x04000000`; CR59/CR5A
-  say `0x7F000000`. One of them is wrong about where the window is, and the
-  registers are the ones the silicon obeys.
-- **`LinearPitch=0` on every mode**, which a real VBE 2.0 linear mode should
-  fill in.
+The report already argued for that conclusion before it was confirmed, and the
+reasoning is worth keeping because it is the reasoning a future report will need.
+The full 32 KB ROM was dumped and searched: `S3 Inc` and `Vision864` are present
+as plaintext and `OemString=S3 Incorporated. Vision864` matches that plaintext
+exactly, so the OEM string provably came from the ROM - while `VESA`, `VBE/Core`
+and `Dietmar Meschede` appear nowhere in it. The card's own VBE version is
+therefore still unmeasured, and **the plan's premise stands unchallenged**: no S3
+ROM has yet been seen reporting anything but VBE 1.2.
 
-So: **do not build anything on this VBE 2.0 yet.** What the run establishes is
-that the machine has a VBE 2.0 provider, not that the card does. The tool now
-records the INT 10h and INT 42h vectors, which settles that class of question
-directly - a segment inside C000-C7FF is the ROM answering for itself, anything
-else is something in between. That was added because this run needed it and could
-not answer it.
+`Int10Vector` and `Int42Vector` were added to `[BiosData]` because of this. A
+segment inside C000-C7FF is the ROM answering for itself; anything else is
+something in between. The next report of this shape settles it without needing
+the tester to know what they have loaded.
+
+**The lead this leaves behind is worth more than the puzzle was.** S3VBE
+advertises the linear framebuffer at `0x04000000` - 64 MiB - while the card's own
+CR59/CR5A hold `0x7F000000`, just under 2 GiB. Those cannot both describe where
+the window is, and S3VBE is a program that actually drives linear modes on these
+chips rather than merely parking a default. Two things follow:
+
+- **64 MiB is a far more plausible address for a 486 VLB board to decode than
+  2 GiB.** The first needs A26; the second needs A31. The BIOS's `0x7F000000` may
+  simply be a parking spot that nothing on this machine answers at, which would
+  make a negative aperture result at that address expected rather than
+  informative.
+- **A VLB driver may have to *program* the window base, not just enable it.**
+  `v9x_s3_enable_linear_aperture` today sets the size and enable bits in CR58 and
+  leaves CR59/CR5A alone, and `v9x_s3_read_aperture` takes whatever base it finds
+  - which on the PCI parts is a base the host bridge has already routed. There is
+  no host bridge here. If S3VBE has to move the window to make linear addressing
+  work, so will we.
+
+Neither is established. Both are testable, and the test does not need the
+survey: set a linear VBE mode through S3VBE and read CR59/CR5A afterwards. If
+they read `04`/`00` rather than `7F`/`00`, S3VBE moves the window and we know
+where to. That is a bring-up probe on our own machine, not something to hand to
+a stranger.
 
 ### 6. The clean boot did not happen, and it cost a real check
 
@@ -326,13 +345,20 @@ this chip, recorded so the next reader does not re-investigate it.
 
 ## Still outstanding
 
-1. **Read `0x7F000000`.** The question the survey existed to answer. Needs a
-   probe that can address above 16 MiB - unreal mode or DPMI - and its own
-   safety argument. Everything else here is legwork; this decides whether VLB
-   support is possible.
-2. **Re-run from a genuinely clean boot** (F5, no CONFIG.SYS at all, not F8).
-   That gets real `AH=88h` figures, and with the new `Int10Vector` key it settles
-   whether the VBE 2.0 is the card's or a TSR's.
+1. **Read the window - at whichever address it really lives.** The question the
+   survey existed to answer. Both candidates, the BIOS's `0x7F000000` and
+   S3VBE's `0x04000000`, are above the 16 MiB ceiling of `INT 15h AH=87h`, so
+   **no further run of this tool can answer it**. It needs a probe that can
+   address above 16 MiB - unreal mode or DPMI - and its own safety argument.
+   Everything else here is legwork; this decides whether VLB support is
+   possible.
+2. **Re-run from a genuinely clean boot** (F5, no CONFIG.SYS at all - F8 with
+   command-prompt-only still ran CONFIG.SYS on this machine). Two things come
+   from it: real `AH=88h`/`E801h` memory figures with EMM386 out of the path,
+   and the card's **native** ROM VBE version with S3VBE unloaded. The second is
+   what puts "no S3 BIOS offers a linear framebuffer" in writing from
+   measurement rather than from inference, which is what the plan asked for and
+   what closes off tier-0 for this family properly.
 3. **The schema-2 regression on the PCI targets** - 86Box ViRGE `:9869` and
    Trio64 `:9871` - confirming the report is a superset of the schema-1 one.
    Still not done, still needs no 486, and it is the check that would catch a
