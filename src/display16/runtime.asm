@@ -705,6 +705,43 @@ V9xFindPciDeviceFailed:
     ret
 V9xFindPciDevice ENDP
 
+; Is there a PCI BIOS at all? Returns 1 when INT 1Ah AX=B101h answers.
+;
+; V9xFindPciDevice cannot tell "this machine has no PCI" from "this machine has
+; PCI and none of our cards are in it": B102h fails the same way for both, and
+; both land on V9xFindPciDeviceFailed. Those two situations want opposite
+; responses. The first is a VESA Local Bus or ISA machine, where a family that
+; can identify its own silicon should be allowed to try. The second is our
+; package bound to somebody else's card, where reading that card's extended
+; registers is exactly what should not happen.
+;
+; So the distinction is made here rather than inferred. CF clear with AH zero is
+; the documented presence answer; the 'PCI ' signature B101h also returns lands
+; in EDX, which is not needed for a yes/no.
+PUBLIC V9XPCIBIOSPRESENT
+V9XPCIBIOSPRESENT PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    mov     ax, 0b101h
+    xor     si, si
+    int     1ah
+    jc      short V9xPciBiosAbsent
+    or      ah, ah
+    jne     short V9xPciBiosAbsent
+    mov     ax, 1
+    jmp     short V9xPciBiosDone
+V9xPciBiosAbsent:
+    xor     ax, ax
+V9xPciBiosDone:
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XPCIBIOSPRESENT ENDP
+
 PUBLIC V9XHARDWAREPRESENT
 V9XHARDWAREPRESENT PROC FAR
     push    bx

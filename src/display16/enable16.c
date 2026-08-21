@@ -42,6 +42,10 @@ extern WORD v9x_selected_mode_geometry(WORD FAR *width, WORD FAR *height,
 
 /* Chip-agnostic primitives that remain in runtime.asm. */
 extern WORD FAR PASCAL V9xHardwarePresent(void);
+/* runtime.asm: INT 1Ah AX=B101h, so a family's register identification can be
+ * offered to a machine with no PCI without also offering it a foreign card that
+ * happens to be on a PCI bus. */
+extern WORD FAR PASCAL V9xPciBiosPresent(void);
 extern WORD FAR PASCAL V9xMapAperture(void);
 
 /*
@@ -131,13 +135,23 @@ WORD v9x_hardware_acceptable(void)
         return 1u;
     }
     /*
-     * No PCI match. Before giving up, let a family that can identify its own
-     * silicon do so - the VESA Local Bus case, where there is no configuration
-     * space to have matched in the first place. The hook sets v9x_pci_match
-     * itself when it succeeds, so everything downstream that asks "which chip"
-     * gets the same answer it would have got from the scan.
+     * No PCI match. Two different situations reach here and they want opposite
+     * answers.
+     *
+     * A machine with no PCI BIOS is a VESA Local Bus or ISA one: there was no
+     * configuration space for the scan to have matched in, so a family that can
+     * identify its own silicon should be allowed to try, and the hook sets
+     * v9x_pci_match itself so everything downstream that asks "which chip" gets
+     * the same answer the scan would have given.
+     *
+     * A machine that *has* a PCI BIOS and still did not match is our package
+     * bound to somebody else's card. Reading that card's extended registers is
+     * the one thing not to do - the hook is a narrow second route to
+     * recognising our own hardware, not a licence to probe a stranger's - so
+     * the identification is not offered there at all, and the family's
+     * pci_match_optional flag decides as it always did.
      */
-    if (v9x_hw16.identify_without_pci != 0) {
+    if (v9x_hw16.identify_without_pci != 0 && V9xPciBiosPresent() == 0u) {
         if (v9x_hw16.identify_without_pci() < v9x_hw16.device_count) {
             return 1u;
         }

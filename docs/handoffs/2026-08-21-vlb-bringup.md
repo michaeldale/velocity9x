@@ -176,6 +176,13 @@ matches against `v9x_pci_device`, and sets `v9x_pci_match` exactly as
 Reads only; accepts only ids the family already names (two of 65536). A host
 test asserts the two strategies are mutually exclusive.
 
+It is called **only when there is no PCI BIOS at all** (`V9xPciBiosPresent`,
+`INT 1Ah AX=B101h`). `V9xFindPciDevice` cannot tell "no PCI on this machine"
+from "PCI present, none of our cards in it" - `B102h` fails identically for both
+- and those want opposite answers. The first is the VLB case. The second is this
+package bound to somebody else's card, where reading that card's extended
+registers is the one thing not to do.
+
 ---
 
 ## 5. The plan

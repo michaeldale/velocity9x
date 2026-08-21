@@ -259,6 +259,11 @@ typedef struct v9x_hw16_ops {
      * knowing"; this says "find out another way", which is a different and much
      * narrower claim.
      *
+     * Called only when there is no PCI BIOS at all, which is the situation it
+     * is for. A machine that has one and still did not match is this package
+     * bound to somebody else's card, and reading a stranger's extended
+     * registers is exactly what this must not become.
+     *
      * A family supplies it when its silicon publishes its own identity. The S3
      * parts do: CR2D/CR2E hold the same 16-bit device id the PCI parts put in
      * configuration space, so the hook reads the id off the chip instead of off
