@@ -1,0 +1,1585 @@
+; MSDISP.INF
+; - Installs core display support files, etc.
+; - Includes drivers for detected & PnP devices
+
+[version]
+LayoutFile=layout.inf
+signature="$CHICAGO$"
+Class=Display
+Provider=%MS%
+SetupClass=BASE
+
+[DestinationDirs]
+DefaultDestDir  =11		;LDID_SYS
+CpqIni.Copy     =10		;LDID_WIN
+VMM32.Copy      =22         	;LDID_VMM32
+ATI.RenFiles    =10		;LDID_WIN
+Compaq.RenFiles =11		;LDID_SYS
+Orchid.RenFiles =11		;LDID_SYS
+Chips.RenFiles  =11		;LDID_SYS
+NCR.RenFiles    =11		;LDID_SYS
+
+
+; Base Install Sections 
+; ---------------------------------------------------------
+[BaseWinOptions]
+DisplayBase
+
+[DisplayBase]
+CopyFiles=System.Copy, VMM32.Copy
+UpdateInis=VMM32.Ini
+addreg=VMM32.Reg
+RenFiles=NCR.RenFiles
+
+[System.Copy]
+vga.drv
+framebuf.drv
+vgafull.3gr
+
+[VMM32.Copy]
+vdd.vxd
+vflatd.vxd
+
+[VMM32.Ini]
+wininit.ini, CombineVxDs,,"%22%\vdd.vxd=%11%\vmm32.vxd"
+wininit.ini, CombineVxDs,,"%22%\vflatd.vxd=%11%\vmm32.vxd"
+
+[VMM32.Reg]
+HKLM,System\CurrentControlSet\Control\VMM32Files,vdd.vxd,1,
+HKLM,System\CurrentControlSet\Control\VMM32Files,vflatd.vxd,1,
+
+[NCR.RenFiles]
+skyeagle.cp0,skyeagle.cpl
+
+[SysCfgClasses]
+Display,%*PNP0900.DeviceDesc%,ROOT,,%Display.SetupClassName%
+			;Default to VGA if detection fails or no
+			;display is detected or if setup /i is run
+
+[Modules]
+MSDispDetect=MSDISP.DLL
+
+[MSDispDetect]
+0=display,msdisp.inf
+
+; The section below has to be empty. The Class classinstaller
+; relays on it. Dont add anything to this section.
+[EmptySection]
+
+
+; Incompatible driver list: Forces Win3.1 upgrades to VGA 
+; if one of these drivers is installed.
+; ---------------------------------------------------------
+[display.update.force]
+vgamono.drv,*,*	; Win3.x VGA mono driver
+*,vddagx.386,*		; IIT AGX (e.g. Hercules Graphite)
+agx.drv,*,*
+agx16.drv,*,*
+agx64024.drv,*,*
+agx80016.drv,*,*
+agx80024.drv,*,*
+agx1280.drv,*,*
+wspdsf.drv,*,*		; IBM ThinkPad 486/50
+vgap.drv,*,*		; Pen Windows 3.1 VGA driver
+sspro16.drv,*,* 	; SpeedStar Pro 16 colors
+p9100_16.drv,*,*	; Weitek 9100 16bpp
+*,v98032.386,*		; Appian Renegade
+98032_08.drv,*,*
+98032_16.drv,*,*
+commdis.drv,*,*	; CPS Commute display driver replacement
+rgdi.drv,*,*		; Appian RGDI
+*,rgdi.386,*
+oakvga.drv,*,*		; Oak Spitfire
+gogh480.drv,*,*	; Toshiba 
+t19v480.drv,*,*
+avga6256.drv,*,*	; AVGA2
+avga8256.drv,*,*
+tliw32p8.drv,*,*	; Tseng W32p - require dva.386
+tliw32p3.drv,*,*	; (Needed in case of misdetection)
+tliw32p6.drv,*,*
+tliw32p1.drv,*,*
+hires32.drv,*,*		; Media Vision ProGraphics 1280
+pro1280.drv,*,*
+*,vddark.386,*		; ARK Logic
+
+; Win3.1 drivers that should *not* be updated by Win95:
+; ---------------------------------------------------------
+[display.update.fail]
+i128.drv,*,*		; Number Nine Imagine 128
+*,vddi128.386,*
+
+
+; Install class "Display"
+; ---------------------------------------------------------
+[ClassInstall]
+AddReg=ClassAddReg
+DelReg=ClassDelReg
+
+[ClassAddReg]
+HKR,,,,%ClassName%
+HKR,,Installer,,"SetupX.Dll, Display_ClassInstaller"
+HKR,,Icon,,"-1"
+
+[ClassDelReg]
+HKLM,System\CurrentControlSet\Services\Class\Display,EnumPropPages
+
+
+; Device IDs to exclude from Setup pick list
+; ---------------------------------------------------------
+[ControlFlags]
+ExcludeFromSelect=*PNP0917			; Special ID
+ExcludeFromSelect=*ATI4402			; ATI EISA mach32
+ExcludeFromSelect=PCI\VEN_1005&DEV_2301		; Avance Logic PCI
+ExcludeFromSelect=PCI\VEN_100E&DEV_9001		; Weitek P9000
+ExcludeFromSelect=PCI\VEN_100E&DEV_9100		; Weitek P9100
+ExcludeFromSelect=PCI\VEN_EDD8&DEV_A091		; ARK Logic
+ExcludeFromSelect=NullId1,NullId2,NullId3,NullId4	; Unsupported PCI adapters
+
+
+; Manufacturers
+; ---------------------------------------------------------
+[Manufacturer]
+%Std%    =Mfg.Std
+%Actix%  =Mfg.Actix
+%ARK%    =Mfg.ARK
+%ATI%    =Mfg.ATI
+%Avance% =Mfg.Avance
+%Boca%   =Mfg.Boca
+%Cardinal%=Mfg.Cardinal
+%Chips%  =Mfg.Chips
+%Cirrus% =Mfg.Cirrus
+%Compaq% =Mfg.Compaq
+%Diamond%=Mfg.Diamond
+%DEC%    =Mfg.DEC
+%DFI%    =Mfg.DFI
+%ELSA%   =Mfg.ELSA
+%Genoa%  =Mfg.Genoa
+%Herc%   =Mfg.Herc
+%IBM%    =Mfg.IBM
+%IIT%    =Mfg.IIT
+%Matrox% =Mfg.Matrox
+%Number9%=Mfg.Number9
+%Oak%    =Mfg.Oak
+%Orchid% =Mfg.Orchid
+%Paradise%=Mfg.Paradise
+%S3%     =Mfg.S3
+%Spider% =Mfg.Spider
+%STB%    =Mfg.STB
+%Trident%=Mfg.Trident
+%Tseng%  =Mfg.Tseng
+%WD%     =Mfg.WD
+%Weitek% =Mfg.Weitek
+%Video7% =Mfg.Video7
+%VidLog% =Mfg.VideoLogic
+
+
+; Driver Sections
+; ---------------------------------------------------------
+
+[Mfg.Std]
+%*PNP0900.DeviceDesc%=VGA,*PNP0900	; Standard Graphics Adapter (VGA)
+%*PNP0917.DeviceDesc%=VGA,*PNP0917	; VGA
+%SuperVGA.DriverDesc%=SVGA		; Super VGA
+
+[Mfg.Actix]
+%GE32i%=S3,, *PNP0913
+%GE32VL%=S3,, *PNP0913
+%GE64%=S3,, *PNP0913
+%GEUltra64%=S3,, *PNP0913
+%GEUltraPlus%=S3,, *PNP0913
+%GEUltraVL%=S3,, *PNP0913
+%ProSTAR%=CirrusMemMap,, *PNP0914
+%ProSTAR64%=CirrusMemMap,, *PNP0914
+
+[Mfg.ARK]
+%PCI\VEN_EDD8&DEV_A091.DeviceDesc%=UNSUPPORTED,NullId3,PCI\VEN_EDD8&DEV_A091
+
+[Mfg.ATI]
+%*PNP090D.DeviceDesc%=ATIVGA, *PNP090D
+%*PNP090B.DeviceDesc%=ATI8, *PNP090B, *PNP090A
+%*PNP090A.DeviceDesc%=ATI32, *PNP090A
+%*ATI4402.DeviceDesc%=ATI32, *ATI4402
+%PCI\VEN_1002&DEV_4158.DeviceDesc%=ATI32, PCI\VEN_1002&DEV_4158
+%*PNP0916.DeviceDesc%=ATI64, *PNP0916
+%PCI\VEN_1002&DEV_4758.DeviceDesc%=ATI64, PCI\VEN_1002&DEV_4758
+%PCI\VEN_1002&DEV_4358.DeviceDesc%=ATI64, PCI\VEN_1002&DEV_4358
+%PCI\VEN_1002&DEV_4354.DeviceDesc%=ATI64, PCI\VEN_1002&DEV_4354
+%8514Ultra%=ATI8,, *PNP090B
+%GraphVantage%=ATI8,, *PNP090B
+%GraphWonder%=ATI32,, *PNP090A
+%GraphXPress%=ATI64,, *PNP0916
+%WinTurbo%=ATI64,, *PNP0916
+
+[Mfg.Avance]
+%PCI\VEN_1005&DEV_2301.DeviceDesc%=UNSUPPORTED,NullId4,PCI\VEN_1005&DEV_2301
+
+[Mfg.Boca]
+%Vortek%=AGX
+%Voyager%=ChipsAcc,, *PNP0931
+%BocaSVGA%=Cirrus,, *PNP0905
+%SuperX%=Cirrus,, *PNP0905
+
+[Mfg.Cardinal]
+%VidColor%=Cirrus,, *PNP0905
+%VidSpect%=Cirrus,, *PNP0905
+
+[Mfg.Chips]
+%*PNP0930.DeviceDesc%=ChipsSVGA, *PNP0930, *PNP0931	; Super VGA
+%*PNP0931.DeviceDesc%=ChipsAcc, *PNP0931		; Accelerator
+%PCI\VEN_102C&DEV_00D8.DeviceDesc%=ChipsAcc,PCI\VEN_102C&DEV_00D8
+%PCI\VEN_102C&DEV_00B8.DeviceDesc%=ChipsAcc,PCI\VEN_102C&DEV_00B8
+%PCI\VEN_102C&DEV_00DC.DeviceDesc%=ChipsAcc,PCI\VEN_102C&DEV_00DC
+
+[Mfg.Cirrus]
+%*PNP0905.DeviceDesc%=Cirrus, *PNP0905		; Cirrus Logic
+%*PNP0905.DeviceDesc%=Cirrus, *PNP0904		; Cirrus Logic laptop
+%PCI\VEN_1013&DEV_1200.DeviceDesc%=Cirrus, PCI\VEN_1013&DEV_1200
+%PCI\VEN_1013&DEV_1202.DeviceDesc%=Cirrus, PCI\VEN_1013&DEV_1202
+%*PNP0914.DeviceDesc%=CirrusMemMap, *PNP0914	; Cirrus memory mapped
+%PCI\VEN_1013&DEV_00A8.DeviceDesc%=CirrusMemMap, PCI\VEN_1013&DEV_00A8
+%PCI\VEN_1013&DEV_00A0.DeviceDesc%=CirrusMemMap, PCI\VEN_1013&DEV_00A0
+
+[Mfg.Compaq]
+%*PNP0915.DeviceDesc%=CpqAVGA, *PNP0915		; Advanced VGA
+%*CPQ3001.DeviceDesc%=CpqAVGA, *CPQ3001		; EISA Advanced VGA
+%*CPQA0DF.DeviceDesc%=WD,      *CPQA0DF		; Notebook
+%*PNP0910.DeviceDesc%=QVision, *PNP0910		; QVision
+%*CPQ3011.DeviceDesc%=QVision, *CPQ3011		; QVision 1024/E
+%*CPQ3111.DeviceDesc%=QVision, *CPQ3111		; QVision 1024/E
+%*CPQ3112.DeviceDesc%=QVision, *CPQ3112		; QVision 1280/E
+%*CPQ3122.DeviceDesc%=QVision, *CPQ3122		; QVision 1280/I
+%*PNP0919.DeviceDesc%=MGA,     *PNP0919		; QVision 2000 (Matrox MGA)
+%PCI\VEN_0E11&DEV_3032.DeviceDesc%=QVision, PCI\VEN_0E11&DEV_3032
+%PCI\VEN_0E11&DEV_3033.DeviceDesc%=QVision, PCI\VEN_0E11&DEV_3033
+%PCI\VEN_0E11&DEV_3034.DeviceDesc%=VGA,,    PCI\VEN_0E11&DEV_3034
+
+[Mfg.Diamond]
+%Stealth%=S3911,, *PNP0909
+%Stealth24%=S3,,  *PNP0913
+%StealthPro%=S3,, *PNP0913
+%Stealth32%=TsengW32,, *PNP0912
+%Stealth64%=S3,, *PNP0913
+%Stealth64V%=S3,, *PNP0913
+%StealthSE%=S3,, *PNP0913
+%SpeedStar%=ET4000,, *PNP0906
+%SpeedStar24%=ET4000,, *PNP0906
+%SpeedStar24X%=WD,, *PNP0907
+%SpeedStarPro%=Cirrus,, *PNP0905
+%SpeedStarProSE%=CirrusMemMap,, *PNP0914
+%SpeedStar64%=CirrusMemMap,, *PNP0914
+
+[Mfg.DEC]
+%PC76H-EA%=S3,, *PNP0913
+%PC76H-EB%=S3,, *PNP0913
+%PC76H-EC%=S3,, *PNP0913
+%PCXAG-AJ%=S3,, *PNP0913
+%PCXAG-AK%=S3,, *PNP0913
+%PCXAG-AN%=S3,, *PNP0913
+
+[Mfg.DFI]
+%WG1000%=Cirrus,, *PNP0905
+%WG1000VLPlus%=Cirrus,, *PNP0905
+%WG1000VL4%=Cirrus,, *PNP0905
+%WG3000P%=S3,, *PNP0913
+%WG5000%=TsengW32,, *PNP0912
+%WG6000%=WD,, *PNP0907
+
+[Mfg.ELSA]
+%WIN1000%=S3,, *PNP0913
+%WIN1000AVI%=S3,, *PNP0913
+%WIN1000PRO%=S3,, *PNP0913
+%WIN1000TRI%=S3,, *PNP0913
+%WIN1280%=ChipsAcc,, *PNP0931
+%WIN2000%=S3,, *PNP0913
+%WIN2000PRO%=S3,, *PNP0913
+%WIN2-1280%=ChipsAcc,, *PNP0913
+
+[Mfg.Genoa]
+%DVW1000%=CirrusMemMap,, *PNP0914
+%Phantom32%=TsengW32,, *PNP0912
+%Phantom64%=S3,, *PNP0913
+%WinVGA24%=Cirrus,, *PNP0905
+%WinVGA64%=CirrusMemMap,, *PNP0914
+
+[Mfg.IBM]
+%*PNP090C.DeviceDesc%=XGA,  *PNP090C
+%*PNP0911.DeviceDesc%=XGA2, *PNP0911
+%TP755CX%=TP755CX,MSDisp_TP755CX, *PNP0907
+
+[Mfg.IIT]
+%AGX.Desc%=AGX
+
+[Mfg.Herc]
+%Dynamite%=TsengW32,, *PNP0912
+%DynamitePro%=TsengW32,, *PNP0912
+%Graphite%=AGX
+%GraphitePower%=AGX
+%GraphitePro%=AGX
+%Graphite64%=S3,,*PNP0913
+%GraphiteTerm64%=S3,, *PNP0913
+%GraphiteTermPro%=S3,, *PNP0913
+
+[Mfg.Matrox]
+%*PNP0918.DeviceDesc%=MGA, *PNP0918
+%PCI\VEN_102B&DEV_0518.DeviceDesc%=MGA, PCI\VEN_102B&DEV_0518
+%PCI\VEN_102B&DEV_0D10.DeviceDesc%=MGA, PCI\VEN_102B&DEV_0D10
+%ImpLite%=MGA,, *PNP0918
+%ImpPlus%=MGA,, *PNP0918
+%ImpPlus220%=MGA,, *PNP0918
+%UltPlus%=MGA,, *PNP0918
+%UltPlus200%=MGA,, *PNP0918
+
+[Mfg.Number9]
+%GXE%=S3,, *PNP0913
+%GXE64%=S3,, *PNP0913
+%GXE64Pro%=S3,, *PNP0913
+%Vision330%=S3,, *PNP0913
+%Motion531%=S3,, *PNP0913
+%Motion771%=S3,, *PNP0913
+%FlashPoint32%=CirrusMemMap,, *PNP0914
+%FlashPoint64%=CirrusMemMap,, *PNP0914
+%PCI\VEN_105D&DEV_2309.DeviceDesc%=Imagine128,PCI\VEN_105D&DEV_2309, *PNP0905
+
+[Mfg.Oak]
+%*PNP090F.DeviceDesc%=Oak, *PNP090F
+
+[Mfg.Orchid]
+%ProDesII%=ET4000,, *PNP0906
+%Celsius%=AGX
+%FH1280Plus%=S3,, *PNP0913
+%FHPro64%=S3,, *PNP0913
+%FHVA%=S3,, *PNP0913
+%Kelvin64%=CirrusMemMap,, *PNP0914
+%KelvinEZ%=CirrusMemMap,, *PNP0914
+
+[Mfg.Paradise]
+%PortsOCall%=WD,, *PNP0907
+%AccelVL%=WD,, *PNP0907
+%Bahamas%=S3,, *PNP0913
+%Barbados%=S3,, *PNP0913
+%ParaSVGA%=WD,, *PNP0907
+%ParaAccPro%=AGX
+
+[Mfg.S3]
+%*PNP0909.DeviceDesc%=S3911, *PNP0909	; S3 911/924
+%*PNP0913.DeviceDesc%=S3, *PNP0913	; S3 801/805/924
+%PCI\VEN_5333&DEV_8810.DeviceDesc%=S3, PCI\VEN_5333&DEV_8810
+%PCI\VEN_5333&DEV_8811.DeviceDesc%=S3, PCI\VEN_5333&DEV_8811
+%PCI\VEN_5333&DEV_88B0.DeviceDesc%=S3, PCI\VEN_5333&DEV_88B0
+%PCI\VEN_5333&DEV_88C0.DeviceDesc%=S3, PCI\VEN_5333&DEV_88C0
+%PCI\VEN_5333&DEV_88C1.DeviceDesc%=S3, PCI\VEN_5333&DEV_88C1
+%PCI\VEN_5333&DEV_88D0.DeviceDesc%=S3, PCI\VEN_5333&DEV_88D0
+%PCI\VEN_5333&DEV_88D1.DeviceDesc%=S3, PCI\VEN_5333&DEV_88D1
+%PCI\VEN_5333&DEV_8880.DeviceDesc%=S3, PCI\VEN_5333&DEV_8880
+%PCI\VEN_5333&DEV_88F0.DeviceDesc%=S3, PCI\VEN_5333&DEV_88F0
+
+[Mfg.Spider]
+%Spi32VLB%=Cirrus,, *PNP0905
+%Spi32Pls%=Cirrus,, *PNP0905
+%Spi64%=Cirrus,, *PNP0905
+%Tarantula64%=S3,, *PNP0913
+
+[Mfg.STB]
+%ErgoMCX%=TsengW32,, *PNP0912
+%Horizon%=Cirrus,, *PNP0905
+%HorizonPlus%=CirrusMemMap,, *PNP0914
+%Lightspeed%=TsengW32,, *PNP0912
+%MVP-2X%=TsengW32,, *PNP0912
+%MVP-4X%=TsengW32,, *PNP0912
+%Nitro%=CirrusMemMap,, *PNP0914
+%Pegasus%=S3,, *PNP0913
+%PGraphPro%=S3,, *PNP0913
+%PGraphVL24%=S3,, *PNP0913
+
+[Mfg.Trident]
+%*PNP0903.DeviceDesc%=Trident, *PNP0903
+%PCI\VEN_1023&DEV_9420.DeviceDesc%=Trident, PCI\VEN_1023&DEV_9420
+
+[Mfg.Tseng]
+%*PNP0906.DeviceDesc%=ET4000, *PNP0906, *PNP0912, *PNP091A
+%*PNP0912.DeviceDesc%=TsengW32, *PNP0912
+%PCI\VEN_100C&DEV_3202.DeviceDesc%=TSENGW32, PCI\VEN_100C&DEV_3202
+%PCI\VEN_100C&DEV_3206.DeviceDesc%=TSENGW32, PCI\VEN_100C&DEV_3206
+%PCI\VEN_100C&DEV_3207.DeviceDesc%=TSENGW32, PCI\VEN_100C&DEV_3207
+
+[Mfg.WD]
+%*PNP0907.DeviceDesc%=WD, *PNP0907
+%*PNP0907.DeviceDesc%=WD, *PNP0908
+%WD512%=WD512,, *PNP0907, *PNP0908
+
+[Mfg.Weitek]
+%PCI\VEN_100E&DEV_9001.DeviceDesc%=UNSUPPORTED,NullId1,PCI\VEN_100E&DEV_9001
+%PCI\VEN_100E&DEV_9100.DeviceDesc%=UNSUPPORTED,NullId2,PCI\VEN_100E&DEV_9100
+
+[Mfg.Video7]
+%*PNP0901.DeviceDesc%=Video7, *PNP0901	; Video Seven
+
+[Mfg.VideoLogic]
+%928Movie%=928Movie,, *PNP0913
+
+
+; Install Sections
+; ---------------------------------------------------------
+
+; -------------- Unsupported
+
+[UNSUPPORTED]
+HKR,,DevLoader,,*configmg
+
+[UNSUPPORTED.PosDup]
+*PNP0900
+
+
+; -------------- Obsolete utility removal sections
+
+[Diamond.Ini]
+control.ini, MMCPL,"TurboWin=*TURBOWIN.DLL",,1
+
+[Diamond.IniFields]
+win.ini, windows, load, *dcshkey.exe,,1
+
+[Orchid.RenFiles]
+orchid.cp0,  orchid.cpl
+orchidf.cp0, orchidf.cpl
+
+[STB.IniFields]
+win.ini, windows, load, *stbvisn.exe,,1
+
+
+; -------------- Standard Graphics Adapter (VGA)
+
+[VGA]
+CopyFiles=VGA.Copy
+DelReg=Prev.DelReg
+AddReg=VGA.AddReg
+LogConfig=VGA.LogConfig 
+
+[VGA.Copy]
+vga.drv
+
+[Prev.DelReg]
+HKR,,Ver
+HKR,,DevLoader
+HKR,DEFAULT
+HKR,MODES
+HKR,CURRENT
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\DriverPages"
+
+[VGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,vga.drv
+HKR,DEFAULT,vdd,,*vdd
+HKR,"MODES\1\640,480",drv,,framebuf.drv
+HKR,"MODES\1\640,480",vdd,,"*vdd,*vflatd"
+HKR,"MODES\4\640,480"
+
+[VGA.LogConfig]
+ConfigPriority=HARDWIRED
+IOConfig=3B0-3BB
+IOConfig=3C0-3DF
+MemConfig=A0000-AFFFF
+MemConfig=B8000-BFFFF
+MemConfig=C0000-C7FFF,D0000-D7FFF,E0000-E5FFF,E0000-E7FFF
+
+[VGA.PosDup]
+*PNP0900
+
+; -------------- Super VGA
+[SVGA]
+CopyFiles=SVGA.Copy
+DelReg=Prev.DelReg
+AddReg=SVGA.AddReg
+LogConfig=VGA.LogConfig
+
+[SVGA.Copy]
+framebuf.drv
+supervga.drv
+
+[SVGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\24\640,480"
+
+; -------------- Video Seven
+[Video7]
+CopyFiles=Video7.Copy
+DelReg=Prev.DelReg
+AddReg=Video7.AddReg
+LogConfig=VGA.LogConfig
+
+[Video7.Copy]
+framebuf.drv
+video7.vxd
+supervga.drv
+
+[Video7.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,video7.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+
+; -------------- ATI VGA Wonder
+[ATIVGA]
+CopyFiles=ATIVGA.Copy
+DelReg=Prev.DelReg
+AddReg=ATIVGA.AddReg
+LogConfig=VGA.LogConfig
+
+[ATIVGA.Copy]
+framebuf.drv
+ati.vxd
+supervga.drv
+
+[ATIVGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,ati.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\24\640,480"
+
+; -------------- ATI mach8
+[ATI8]
+CopyFiles=ATI8.Copy
+DelReg=Prev.DelReg
+AddReg=ATI8.AddReg
+UpdateCfgSys=ATI.UpdateConfigSys
+RenFiles=ATI.RenFiles
+LogConfig=VGA.LogConfig
+
+[ATI8.Copy]
+atim8.drv
+ati.vxd
+
+[ATI8.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,atim8.drv
+HKR,DEFAULT,vdd,,*vdd
+HKR,DEFAULT,minivdd,,ati.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\800,600"
+HKR,"MODES\4\1024,768"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+
+[ATI.UpdateConfigSys]
+DevDelete=rambios.sys
+
+[ATI.RenFiles]
+mach.gr0, mach.grp
+mxxpanel.gr0, mxxpanel.grp
+m32panel.gr0, m32panel.grp
+machxx.gr0, machxx.grp
+mach8.gr0, mach8.grp
+atiutil.gr0, atiutil.grp
+atidesk.gr0, atidesk.grp
+dellvid.gr0, dellvid.grp
+
+; -------------- ATI mach32
+[ATI32]
+CopyFiles=ATI32.Copy
+DelReg=Prev.DelReg
+AddReg=ATI32.AddReg
+UpdateInis=ATI32.Ini
+UpdateCfgSys=ATI.UpdateConfigSys
+RenFiles=ATI.RenFiles
+LogConfig=VGA.LogConfig
+
+[ATI32.Copy]
+atim32.drv
+ati.vxd
+atim8.drv
+supervga.drv
+
+[ATI32.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,atim32.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,ati.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\1024,768",drv,,atim8.drv
+HKR,"MODES\4\1280,1024",drv,,atim8.drv
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+
+[ATI32.Ini]
+system.ini,386Enh,"device=mach.386"
+system.ini,386Enh,"device=mach32.386"
+
+[ATI32.PosDup]
+*PNP090A
+
+; -------------- ATI mach64
+[ATI64]
+CopyFiles=ATI64.Copy
+DelReg=Prev.DelReg
+AddReg=ATI64.AddReg
+RenFiles=ATI.RenFiles
+LogConfig=VGA.LogConfig
+
+[ATI64.Copy]
+atim64.drv
+ati.vxd
+
+[ATI64.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,atim64.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,ati.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600"
+HKR,"MODES\4\1024,768"
+HKR,"MODES\4\1280,1024"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+HKR,"MODES\24\1024,768"
+HKR,"MODES\24\1280,1024"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\1024,768"
+
+[ATI64.PosDup]
+*PNP0916
+
+; -------------- Chips & Technologies SVGA
+[ChipsSVGA]
+CopyFiles=Chips.Copy
+DelReg=Prev.DelReg
+AddReg=ChipsSVGA.AddReg
+RenFiles=Chips.RenFiles
+LogConfig=VGA.LogConfig
+
+[Chips.Copy]
+chips.drv
+chips.vxd
+framebuf.drv
+supervga.drv
+
+[ChipsSVGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,chips.vxd
+HKR,DEFAULT,ExtModeSwitch,,0
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+
+[Chips.RenFiles]
+chipscpl.cp0, chipscpl.cpl
+
+[ChipsSVGA.PosDup]
+*PNP0930, *PNP0931
+
+; -------------- Chips & Technologies Accelerator
+[ChipsAcc]
+CopyFiles=Chips.Copy
+DelReg=Prev.DelReg
+AddReg=ChipsAcc.AddReg
+RenFiles=Chips.RenFiles
+LogConfig=VGA.LogConfig
+
+[ChipsAcc.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,chips.drv
+;HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,chips.vxd
+HKR,DEFAULT,ExtModeSwitch,,0
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+
+[ChipsAcc.PosDup]
+*PNP0930, *PNP0931
+
+; -------------- Cirrus Logic
+[Cirrus]
+CopyFiles=Cirrus.Copy
+DelReg=Prev.DelReg
+AddReg=Cirrus.AddReg
+UpdateInis=Diamond.Ini
+UpdateIniFields=Diamond.IniFields, STB.IniFields
+LogConfig=VGA.LogConfig
+
+[Cirrus.Copy]
+cirrus.drv
+cirrus.vxd
+supervga.drv
+
+[Cirrus.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,cirrus.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,cirrus.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+
+[Cirrus.PosDup]
+*PNP0905, *PNP0914
+
+; -------------- Cirrus Logic memory mapped
+[CirrusMemMap]
+CopyFiles=CirrusMemMap.Copy
+DelReg=Prev.DelReg
+AddReg=CirrusMemMap.AddReg
+UpdateInis=Diamond.Ini
+UpdateIniFields=Diamond.IniFields, STB.IniFields
+LogConfig=VGA.LogConfig
+
+[CirrusMemMap.Copy]
+cirrusmm.drv
+cirrus.vxd
+supervga.drv
+
+[CirrusMemMap.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,cirrusmm.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,cirrus.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+HKR,"MODES\24\1024,768"
+HKR,"MODES\24\1280,1024"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\1024,768"
+
+[CirrusMemMap.PosDup]
+*PNP0905,*PNP0914
+
+; -------------- Compaq QVision
+[QVision]
+CopyFiles=Compaq.Copy, CpqIni.Copy
+DelReg=Prev.DelReg
+AddReg=QVision.AddReg
+UpdateInis=Compaq.Ini
+RenFiles=Compaq.RenFiles
+LogConfig=VGA.LogConfig
+
+[Compaq.Copy]
+compaq.drv
+compaq.vxd
+supervga.drv
+
+[CpqIni.Copy]	; INI files for Windows directory
+cpqmon.ini
+cpqmode.ini
+
+[QVision.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,compaq.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,compaq.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\1024,768"
+HKR,"MODES\4\1280,1024"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+;HKR,"MODES\32\640,400"
+HKR,"MODES\32\640,480"
+
+[Compaq.Ini]
+system.ini,386Enh,"device=cpqflat.exe"
+compaq.ini,display,,"Version=Bulls.AH"
+
+[Compaq.RenFiles]
+cpqsetup.cp0, cpqsetup.cpl
+
+[QVision.PosDup]
+*PNP0910,*PNP0900
+
+; -------------- Compaq Advanced VGA
+[CpqAVGA]
+CopyFiles=Compaq.Copy, CpqIni.Copy
+DelReg=Prev.DelReg
+AddReg=CpqAVGA.AddReg
+UpdateInis=Compaq.Ini
+RenFiles=Compaq.RenFiles
+LogConfig=VGA.LogConfig
+
+[CpqAVGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,compaq.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,compaq.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+
+[CpqAVGA.PosDup]
+*PNP0915
+
+; -------------- Matrox MGA
+[MGA]
+CopyFiles=MGA.Copy
+DelReg=Prev.DelReg
+AddReg=MGA.AddReg
+UpdateIniFields=MGA.UpdateIniFields
+LogConfig=VGA.LogConfig
+
+[MGA.Copy]
+mga.drv
+sxciext.dll
+mga.vxd
+
+[MGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,mga.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,mga.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1152,882"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\8\1600,1200"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1152,882"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\16\1600,1200"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\1024,768"
+HKR,"MODES\32\1152,882"
+
+[MGA.UpdateIniFields]
+win.ini, windows, load, *mgactrl.exe,,1
+win.ini, windows, load, *mgapanel.exe,,1
+
+[MGA.PosDup]
+*PNP0900, *PNP0917, *PNP0918, *PNP0919
+
+; -------------- Oak Technology
+[Oak]
+CopyFiles=Oak.Copy
+DelReg=Prev.DelReg
+AddReg=Oak.AddReg
+LogConfig=VGA.LogConfig
+
+[Oak.Copy]
+framebuf.drv
+oak.vxd
+supervga.drv
+
+[Oak.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,oak.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+
+; -------------- S3 911/924
+[S3911]
+CopyFiles=S3.Copy
+DelReg=Prev.DelReg
+AddReg=S3911.AddReg
+UpdateIniFields=Diamond.IniFields
+LogConfig=VGA.LogConfig
+
+[S3.Copy]
+s3.drv
+s3.vxd
+supervga.drv
+
+[S3911.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,s3.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,s3.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+
+; -------------- S3 801/805/924
+[S3]
+CopyFiles=S3.Copy
+DelReg=Prev.DelReg
+AddReg=S3.AddReg
+LogConfig=VGA.LogConfig
+UpdateIniFields=Diamond.IniFields, STB.IniFields
+RenFiles=Orchid.RenFiles
+
+[S3.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,s3.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,s3.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600"
+HKR,"MODES\4\1024,768"
+HKR,"MODES\4\1280,1024"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\8\1600,1200"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+HKR,"MODES\24\1024,768"
+HKR,"MODES\24\1280,1024"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\1024,768"
+HKR,"MODES\32\1280,1024"
+
+[S3.PosDup]
+*PNP0913
+
+; -------------- Trident
+[Trident]
+CopyFiles=Trident.Copy
+DelReg=Prev.DelReg
+AddReg=Trident.AddReg
+LogConfig=VGA.LogConfig
+
+[Trident.Copy]
+framebuf.drv
+supervga.drv
+
+[Trident.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+
+[Trident.PosDup]
+*PNP0903
+
+; -------------- Tseng ET4000
+[ET4000]
+CopyFiles=ET4000.Copy
+DelReg=Prev.DelReg
+AddReg=ET4000.AddReg
+LogConfig=VGA.LogConfig
+
+[ET4000.Copy]
+framebuf.drv
+tseng.vxd
+supervga.drv
+
+[ET4000.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,framebuf.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,tseng.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\24\640,480"
+
+; -------------- Tseng W32/W32i/W32p
+[TsengW32]
+CopyFiles=TsengW32.Copy
+DelReg=Prev.DelReg
+AddReg=TsengW32.AddReg
+UpdateIniFields=Diamond.IniFields
+LogConfig=VGA.LogConfig
+
+[TsengW32.Copy]
+tseng.drv
+tseng.vxd
+supervga.drv
+
+[TsengW32.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,tseng.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,tseng.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+
+[TsengW32.PosDup]
+*PNP0912
+
+; -------------- Western Digital
+[WD]
+CopyFiles=WD.Copy
+DelReg=Prev.DelReg
+AddReg=WD.AddReg
+LogConfig=VGA.LogConfig
+UpdateInis=WD.Ini
+
+[WD512]
+CopyFiles=WD.Copy
+DelReg=Prev.DelReg
+AddReg=WD.AddReg
+LogConfig=VGA.LogConfig
+UpdateInis=WD512.Ini
+
+[WD.Ini]
+system.ini,display,"VideoMemorySize="
+system.ini,display,"BigPanel="
+
+[WD512.Ini]
+system.ini,display,,"VideoMemorySize=512"
+
+[WD.Copy]
+wd.drv
+wd.vxd
+supervga.drv
+
+[WD.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,wd.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,wd.vxd
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\800,600",drv,,supervga.drv
+HKR,"MODES\4\800,600",vdd,,*vdd
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\800,600"
+
+[WD.PosDup]
+*PNP0907
+
+; -------------- XGA
+[XGA]
+CopyFiles=XGA.Copy
+DelReg=Prev.DelReg
+AddReg=XGA.AddReg
+UpdateInis=XGA.Ini
+LogConfig=VGA.LogConfig
+
+[XGA.Copy]
+xga.drv
+xga.vxd
+
+[XGA.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"4,640,480"
+HKR,DEFAULT,drv,,xga.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,xga.vxd
+HKR,DEFAULT,ExtModeSwitch,,0
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\1024,768"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+
+[XGA.Ini]
+%31%\msdos.sys,options,,"logo=0"
+
+; -------------- XGA/2
+[XGA2]
+CopyFiles=XGA.Copy
+DelReg=Prev.DelReg
+AddReg=XGA2.AddReg
+UpdateInis=XGA.Ini
+LogConfig=VGA.LogConfig
+
+[XGA2.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,xga.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,xga.vxd
+HKR,DEFAULT,RefreshRate,,-1
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\640,480"
+HKR,"MODES\4\1024,768"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\8\1280,1024"
+HKR,"MODES\16\640,480"
+
+; -------------- IIT AGX
+[AGX]
+CopyFiles=XGA.Copy	; Uses XGA driver
+DelReg=Prev.DelReg
+AddReg=AGX.AddReg
+
+[AGX.AddReg]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,xga.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,xga.vxd
+HKR,DEFAULT,RefreshRate,,-1
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKR,"MODES\4\1024,768"
+HKR,"MODES\8\640,480"
+HKR,"MODES\8\800,600"
+HKR,"MODES\8\1024,768"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\1024,768"
+
+; -------------- Video Logic 928Movie
+[928Movie]
+CopyFiles=S3.Copy
+DelReg=Prev.DelReg
+AddReg=S3.AddReg
+LogConfig=VGA.LogConfig
+UpdateInis=928Movie.Ini
+
+[928Movie.Ini]
+system.ini,display,,"928Movie=1"
+
+; -------------- IBM ThinkPad 755cx
+[TP755CX]
+CopyFiles=WD.Copy
+DelReg=Prev.DelReg
+AddReg=WD.AddReg
+LogConfig=VGA.LogConfig
+UpdateInis=TP755CX.Ini
+
+[TP755CX.Ini]
+system.ini,display,"VideoMemorySize="
+system.ini,display,,"BigPanel=1"
+system.ini,display,,"SWCursor=1"
+
+[TP755CX.PosDup]
+*PNP0907
+
+; -------------- Number Nine Imagine 128
+[Imagine128]
+CopyFiles=Cirrus.Copy
+DelReg=Prev.DelReg
+AddReg=Cirrus.AddReg
+UpdateInis=Imagine128.Ini
+
+[Imagine128.Ini]
+system.ini,display,,"SWCursor=1"
+
+[Imagine128.PosDup]
+*PNP0905, *PNP0914
+
+
+; User visible strings
+; ---------------------------------------------------------
+[Strings]
+ClassName="Display adapters"
+Display.SetupClassName="Display"
+MS="Microsoft"
+
+SuperVGA.DriverDesc="Super VGA"
+UNSUPPORTED.DriverDesc="(Windows 3.1 driver in use)"
+
+Std="(Standard display types)"
+Actix="Actix Systems"
+ARK="ARK Logic"
+ATI="ATI Technologies"
+Avance="Avance Logic"
+Boca="Boca Research"
+Cardinal="Cardinal Technologies"
+Cirrus="Cirrus Logic"
+Chips="Chips & Technologies"
+Compaq="Compaq"
+Diamond="Diamond Multimedia Systems"
+DEC="Digital Equipment Corp."
+DFI="DFI"
+ELSA="ELSA"
+Genoa="Genoa Systems"
+IBM="IBM"
+IIT="IIT"
+Herc="Hercules Computer Technology"
+Matrox="Matrox Graphics"
+Number9="Number Nine Visual Technology"
+Oak="Oak Technology"
+Orchid="Orchid Technology"
+Paradise="Paradise"
+S3="S3"
+Spider="Spider Graphics"
+STB="STB Systems"
+Trident="Trident Microsystems"
+Tseng="Tseng Labs"
+WD="Western Digital"
+Weitek="Weitek"
+Video7="Video Seven"
+VidLog="Video Logic"
+
+*PNP0900.DeviceDesc="Standard Display Adapter (VGA)"
+*PNP0901.DeviceDesc="Video Seven VRAM/VRAM II/1024i"
+*PNP0903.DeviceDesc="Trident Super VGA"
+*PNP0904.DeviceDesc="Cirrus Logic"
+*PNP0905.DeviceDesc="Cirrus Logic"
+*PNP0906.DeviceDesc="Tseng Labs ET4000"
+*PNP0907.DeviceDesc="Western Digital"
+*PNP0908.DeviceDesc="Western Digital"
+*PNP0909.DeviceDesc="S3 911/924"
+*PNP090A.DeviceDesc="ATI Graphics Ultra Pro (mach32)"
+*PNP090B.DeviceDesc="ATI Graphics Ultra (mach8)"
+*PNP090C.DeviceDesc="IBM XGA"
+*PNP090D.DeviceDesc="ATI VGA Wonder"
+*PNP090F.DeviceDesc="Oak Technology Super VGA"
+*PNP0910.DeviceDesc="Compaq QVision"
+*PNP0911.DeviceDesc="IBM XGA/2"
+*PNP0912.DeviceDesc="Tseng Labs ET4000/W32"
+*PNP0913.DeviceDesc="S3"
+*PNP0914.DeviceDesc="Cirrus Logic 5429/30/34"
+*PNP0915.DeviceDesc="Compaq Advanced VGA (AVGA)"
+*PNP0916.DeviceDesc="ATI Graphics Pro Turbo (mach64)"
+*PNP0917.DeviceDesc="VGA" ; Really means, nothing detected at all!
+*PNP0918.DeviceDesc="Matrox MGA Ultima/Impression"
+*PNP0919.DeviceDesc="Compaq QVision 2000/2000+ (MGA)"
+*PNP091A.DeviceDesc="Tseng Labs ET4000"
+*PNP0930.DeviceDesc="Chips & Tech. Super VGA"
+*PNP0931.DeviceDesc="Chips & Tech. Accelerator"
+*PNP0940.DeviceDesc="NCR (77C22E)"
+*PNP0941.DeviceDesc="NCR (77C32BLT)"
+
+*ATI4402.DeviceDesc="ATI Graphics Ultra Pro EISA (mach32)" 
+
+*CPQ3001.DeviceDesc="Compaq EISA Advanced VGA (AVGA)"
+*CPQ3011.DeviceDesc="Compaq QVision 1024/E"
+*CPQ3111.DeviceDesc="Compaq QVision 1024/E"
+*CPQ3112.DeviceDesc="Compaq QVision 1280/E"
+*CPQ3122.DeviceDesc="Compaq QVision 1280/I"
+*CPQA0DF.DeviceDesc="Compaq Notebook Display (WD)"
+
+PCI\VEN_0E11&DEV_3032.DeviceDesc="Compaq QVision PCI"
+PCI\VEN_0E11&DEV_3033.DeviceDesc="Compaq QVision PCI"
+PCI\VEN_0E11&DEV_3034.DeviceDesc="Compaq QVision PCI"
+PCI\VEN_1002&DEV_4158.DeviceDesc="ATI Graphics Ultra Pro PCI (mach32)"
+PCI\VEN_1002&DEV_4758.DeviceDesc="ATI Graphics Pro Turbo PCI (mach64)"
+PCI\VEN_1002&DEV_4358.DeviceDesc="ATI Graphics Pro Turbo PCI (mach64)"
+PCI\VEN_1002&DEV_4354.DeviceDesc="ATI Graphics Pro Turbo PCI (mach64)"
+PCI\VEN_1005&DEV_2301.DeviceDesc="Avance Logic 2301 PCI"
+PCI\VEN_100C&DEV_3202.DeviceDesc="Tseng Labs ET4000/W32 PCI"
+PCI\VEN_100C&DEV_3206.DeviceDesc="Tseng Labs ET4000/W32 PCI"
+PCI\VEN_100C&DEV_3207.DeviceDesc="Tseng Labs ET4000/W32 PCI"
+PCI\VEN_100E&DEV_9001.DeviceDesc="Weitek Power 9000"
+PCI\VEN_100E&DEV_9100.DeviceDesc="Weitek Power 9100"
+PCI\VEN_1013&DEV_00A8.DeviceDesc="Cirrus Logic PCI"
+PCI\VEN_1013&DEV_00A0.DeviceDesc="Cirrus Logic 5430 PCI"
+PCI\VEN_1013&DEV_1200.DeviceDesc="Cirrus Logic 7542 PCI"
+PCI\VEN_1013&DEV_1202.DeviceDesc="Cirrus Logic 7543 PCI"
+PCI\VEN_1023&DEV_9420.DeviceDesc="Trident 9420 PCI"
+PCI\VEN_102B&DEV_0518.DeviceDesc="Matrox MGA Ultima/Impression PCI"
+PCI\VEN_102B&DEV_0D10.DeviceDesc="Matrox MGA Ultima/Impression PCI"
+PCI\VEN_5333&DEV_8810.DeviceDesc="S3 Trio32 PCI"
+PCI\VEN_5333&DEV_8811.DeviceDesc="S3 Trio32/64 PCI"
+PCI\VEN_5333&DEV_88B0.DeviceDesc="S3 928 PCI"
+PCI\VEN_5333&DEV_88C0.DeviceDesc="S3 Vision864 PCI"
+PCI\VEN_5333&DEV_88C1.DeviceDesc="S3 Vision864 PCI"
+PCI\VEN_5333&DEV_88D0.DeviceDesc="S3 Vision964 PCI"
+PCI\VEN_5333&DEV_88D1.DeviceDesc="S3 Vision964 PCI"
+PCI\VEN_5333&DEV_8880.DeviceDesc="S3 Vision868 PCI"
+PCI\VEN_5333&DEV_88F0.DeviceDesc="S3 Vision968 PCI"
+PCI\VEN_102C&DEV_00D8.DeviceDesc="Chips & Technologies 65545 PCI"
+PCI\VEN_102C&DEV_00B8.DeviceDesc="Chips & Technologies 64310 PCI"
+PCI\VEN_102C&DEV_00DC.DeviceDesc="Chips & Technologies 65548 PCI"
+PCI\VEN_EDD8&DEV_A091.DeviceDesc="ARK Logic PCI"
+PCI\VEN_105D&DEV_2309.DeviceDesc="Number Nine Imagine 128 (Cirrus Logic)"
+
+GE32i="Actix GraphicsEngine 32I VL (S3)"
+GE32VL="Actix GraphicsEngine 32VL Plus (S3)"
+GE64="Actix GraphicsEngine 64 (S3)"
+GEUltra64="Actix GraphicsEngine Ultra 64 (S3)"
+GEUltraPlus="Actix GraphicsEngine Ultra Plus (S3)"
+GEUltraVL="Actix GraphicsEngine Ultra VL Plus (S3)"
+ProSTAR="Actix ProSTAR (Cirrus Logic)"
+ProSTAR64="Actix ProSTAR 64 (Cirrus Logic)"
+
+8514Ultra="ATI 8514-Ultra (mach8)"
+GraphVantage="ATI Graphics Vantage (mach8)"
+GraphWonder="ATI Graphics Wonder (mach32)"
+GraphXPress="ATI Graphics Xpression (mach64)"
+WinTurbo="ATI WinTurbo (mach64)"
+
+Vortek="Boca Vortek (IIT)"
+Voyager="Boca Voyager (C&T)"
+BocaSVGA="Boca SuperVGA (Cirrus Logic)"
+SuperX="Boca SuperX (Cirrus Logic)"
+
+VidColor="Cardinal VIDEOcolor (Cirrus Logic)"
+VidSpect="Cardinal VIDEOspectrum (Cirrus Logic)"
+
+Stealth="Diamond Stealth VRAM (S3)"
+Stealth24="Diamond Stealth 24 (S3)"
+StealthPro="Diamond Stealth Pro (S3)"
+Stealth32="Diamond Stealth 32 (Tseng)"
+Stealth64="Diamond Stealth 64 (S3)"
+Stealth64V="Diamond Stealth 64 Video (S3)"
+StealthSE="Diamond Stealth SE (S3)"
+SpeedStar="Diamond SpeedStar (Tseng)"
+SpeedStar24="Diamond SpeedStar 24 (Tseng)"
+SpeedStar24X="Diamond SpeedStar 24X (WD)"
+SpeedStarPro="Diamond SpeedStar Pro (Cirrus Logic)"
+SpeedStarProSE="Diamond SpeedStar Pro SE (Cirrus Logic)"
+SpeedStar64="Diamond SpeedStar 64 (Cirrus Logic)"
+
+PC76H-EA="DEC PC76H-EA (S3)"
+PC76H-EB="DEC PC76H-EB (S3)"
+PC76H-EC="DEC PC76H-EC (S3)"
+PCXAG-AJ="DEC PCXAG-AJ (S3)"
+PCXAG-AK="DEC PCXAG-AK (S3)"
+PCXAG-AN="DEC PCXAG-AN (S3)"
+
+WG1000="DFI WG-1000 (Cirrus Logic)"
+WG1000VLPlus="DFI WG-1000VL Plus (Cirrus Logic)"
+WG1000VL4="DFI WG-1000VL/4 Plus (Cirrus Logic)"
+WG3000P="DFI WG-3000P (S3)"
+WG5000="DFI WG-5000 (Tseng)"
+WG6000="DFI WG-6000VL (WD)"
+
+WIN1000="ELSA WINNER 1000 VL (S3)"
+WIN1000AVI="ELSA WINNER 1000AVI (S3)"
+WIN1000PRO="ELSA WINNER 1000PRO (S3)"
+WIN1000TRI="ELSA WINNER 1000Trio (S3)"
+WIN1280="ELSA WINNER 1280 (C&T)"
+WIN2000="ELSA WINNER 2000 VL (S3)"
+WIN2000PRO="ELSA WINNER 2000PRO (S3)"
+WIN2-1280="ELSA WINNER/2-1280 (C&T)"
+
+DVW1000="Genoa Digital Video Wizard 1000 (Cirrus Logic)"
+Phantom32="Genoa Phantom 32I (Tseng)"
+Phantom64="Genoa Phantom 64 (S3)"
+WinVGA24="Genoa WindowsVGA 24 Turbo (Cirrus Logic)"
+WinVGA64="Genoa WindowsVGA 64 Turbo (Cirrus Logic)"
+
+Dynamite="Hercules Dynamite (Tseng)"
+DynamitePro="Hercules Dynamite Pro (Tseng)"
+Graphite="Hercules Graphite (IIT)"
+GraphitePower="Hercules Graphite Power (IIT)"
+GraphitePro="Hercules Graphite Pro (IIT)"
+Graphite64="Hercules Graphite 64 (S3)"
+GraphiteTerm64="Hercules Graphite Terminator 64 (S3)"
+GraphiteTermPro="Hercules Graphite Terminator Pro (S3)"
+
+TP755CX="IBM ThinkPad 755cx (WD)"
+
+AGX.Desc="IIT AGX"
+
+ImpLite="Matrox MGA Impression Lite"
+ImpPlus="Matrox MGA Impression Plus"
+ImpPlus220="Matrox MGA Impression Plus 220"
+UltPlus="Matrox MGA Ultima Plus"
+UltPlus200="Matrox MGA Ultima Plus 200"
+
+GXE="Number Nine GXE (S3)"
+GXE64="Number Nine GXE64 (S3)"
+GXE64Pro="Number Nine GXE64 Pro (S3)"
+Vision330="Number Nine 9FX Vision 330 (S3)"
+Motion531="Number Nine 9FX Motion 531 (S3)"
+Motion771="Number Nine 9FX Motion 771 (S3)"
+FlashPoint32="Number Nine FlashPoint 32 (Cirrus Logic)"
+FlashPoint64="Number Nine FlashPoint 64 (Cirrus Logic)"
+
+Celsius="Orchid Celsius (IIT)"
+FH1280Plus="Orchid Fahrenheit 1280 Plus (S3)"
+FHPro64="Orchid Fahrenheit Pro 64 (S3)"
+FHVA="Orchid Fahrenheit VA (S3)"
+Kelvin64="Orchid Kelvin 64 (Cirrus Logic)"
+KelvinEZ="Orchid Kelvin EZ (Cirrus Logic)"
+ProDesII="Orchid ProDesigner II (Tseng)"
+
+PortsOCall="Paradise Accelerator Ports O'Call (WD)"
+AccelVL="Paradise Accelerator VL Plus (WD)"
+Bahamas="Paradise Bahamas (S3)"
+Barbados="Paradise Barbados 64 (S3)"
+ParaSVGA="Paradise Super VGA (WD)"
+ParaAccPro="Paradise Accelerator Pro (IIT)"
+
+Spi32VLB="Spider 32 VLB (Cirrus Logic)"
+Spi32Pls="Spider 32Plus VLB (Cirrus Logic)"
+Spi64="Spider 64 (Cirrus Logic)"
+Tarantula64="Spider Tarantula 64 (S3)"
+
+ErgoMCX="STB Ergo MCX (Tseng)"
+Horizon="STB Horizon (Cirrus Logic)"
+HorizonPlus="STB Horizon Plus (Cirrus Logic)"
+LightSpeed="STB LightSpeed (Tseng)"
+MVP-2X="STB MVP-2X (Tseng)"
+MVP-4X="STB MVP-4X (Tseng)"
+Nitro="STB Nitro (Cirrus Logic)"
+Pegasus="STB Pegasus (S3)"
+PGraphPro="STB PowerGraph Pro (S3)"
+PGraphVL24="STB PowerGraph VL-24 (S3)"
+
+928Movie="Video Logic 928Movie (S3)"
+
+WD512="Western Digital (512K)"
