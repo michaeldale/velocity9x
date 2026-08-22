@@ -219,6 +219,22 @@ function Test-V9xFamilyManifest {
             throw ("Family $Id Inf.ManualSelect declares " +
                    "VideoMemoryBytes = $($manual.VideoMemoryBytes).")
         }
+        # Optional. Emitted in the compatible-id field so a device the
+        # enumerator detects for itself can be re-bound to this model after a
+        # reboot; without one, Windows re-enumerates and reports the device as
+        # not present. Deliberately not the hardware-id field, which would rank
+        # it level with an exact match.
+        if ($manual.ContainsKey('CompatibleId')) {
+            if (-not $manual.CompatibleId) {
+                throw "Family $Id Inf.ManualSelect declares an empty CompatibleId."
+            }
+            # One id, no field separators, and no %token% - the same three
+            # characters the description may not carry, for the same reason.
+            if ($manual.CompatibleId -notmatch '^\*?[A-Za-z0-9_.\\&-]+$') {
+                throw ("Family $Id Inf.ManualSelect CompatibleId " +
+                       "'$($manual.CompatibleId)' is not a single device id.")
+            }
+        }
         $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
         if ($manualModes.Count -eq 0) {
             throw ("Family $Id Inf.ManualSelect leaves no modes: no mode every " +

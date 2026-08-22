@@ -36,6 +36,26 @@ function Get-V9xInfModeLines {
 # The non-blank lines of one INF section, without its header. Used by the
 # assertions below, which have to reason about what a section does and does not
 # contain rather than only about substrings of the whole text.
+# The manual-select model line, or $null when the family declares none. One
+# definition so the emitter and Assert-V9xInf cannot disagree about it.
+#
+# No hardware id in either form: with a CompatibleId the second field is left
+# empty and the id goes in the third, which is what every S3 model in Win95's
+# MSDISP.INF does for a device the enumerator detects itself.
+function Get-V9xInfManualModelLine {
+    param([Parameter(Mandatory = $true)]$Family)
+
+    if ($Family.Inf -isnot [hashtable] -or -not $Family.Inf.ContainsKey('ManualSelect')) {
+        return $null
+    }
+    $manual = $Family.Inf.ManualSelect
+    if ($manual.CompatibleId) {
+        return '"{0}"=Velocity9x.Install.Manual,, {1}' -f $manual.Description,
+            $manual.CompatibleId
+    }
+    '"{0}"=Velocity9x.Install.Manual' -f $manual.Description
+}
+
 function Get-V9xInfSectionBody {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines,
@@ -130,13 +150,15 @@ function New-V9xInfText {
             $chip.VendorId, $chip.DeviceId
     }
 
-    # The manual model line carries no third field at all. That is Windows' own
-    # pattern for a manual-select display model - MSDISP.INF has eight of them -
-    # and it is what lets SetupX offer this entry over a device whose real
-    # hardware ID nothing here claims. Deliberately not %token%: an unresolved
-    # token is what Assert-V9xInf looks for.
+    # The manual model line carries no hardware id, which is Windows' own
+    # pattern for a manual-select display model and what lets SetupX offer this
+    # entry over a device nothing here claims by hardware id. With a
+    # CompatibleId the id goes in the third field and the second is left empty,
+    # so a device the enumerator detects itself can be re-bound to this model
+    # after a reboot. Deliberately not %token%: an unresolved token is what
+    # Assert-V9xInf looks for.
     if ($manual) {
-        $lines += '"{0}"=Velocity9x.Install.Manual' -f $manual.Description
+        $lines += Get-V9xInfManualModelLine -Family $Family
     }
 
     foreach ($chip in $chips) {
@@ -372,7 +394,7 @@ function Assert-V9xInf {
     $manualLine = $null
     if ($Family.Inf -is [hashtable] -and $Family.Inf.ContainsKey('ManualSelect')) {
         $manual = $Family.Inf.ManualSelect
-        $manualLine = '"{0}"=Velocity9x.Install.Manual' -f $manual.Description
+        $manualLine = Get-V9xInfManualModelLine -Family $Family
     }
 
     $idLess = 0
@@ -400,6 +422,17 @@ function Assert-V9xInf {
     if ($idLess -ne 1) {
         throw ("The generated INF has $idLess manual-select model line(s); " +
                "family $($Family.Id) declares exactly one.")
+    }
+    # A CompatibleId belongs in the third field with the second left empty. In
+    # the hardware-id field the same string would rank level with an exact
+    # match, which is the thing this model must never do - it is chosen by hand,
+    # and the chip check that can actually refuse a stranger's card lives in
+    # identify_without_pci, not here.
+    if ($manual.CompatibleId -and
+        $manualLine -notmatch '^"[^"]+"=\S+,,\s\S+$') {
+        throw ("The generated INF's manual-select model must carry its " +
+               "CompatibleId in the compatible-id field with the hardware-id " +
+               "field empty; got '$manualLine'.")
     }
 
     $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
