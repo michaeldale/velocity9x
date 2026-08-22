@@ -98,6 +98,24 @@ function New-V9xInfText {
     # list inlined there would leak modes the manual model must not offer.
     $perChipRegistry = ($chips.Count -gt 1 -or $manual)
 
+    # ManualSelect.MiniVdd = $false moves DEFAULT,minivdd out of the shared
+    # registry section and into the per-chip ones, so the manual model - which
+    # AddRegs the shared section - ends up with no mini-VDD at all.
+    #
+    # A Win9x display devnode is started by the VDD loading the mini-VDD named
+    # there. On the 486's Win95 4.00.950 ours does not load, so the devnode
+    # never reached DN_STARTED, Device Manager reported Code 24, Display
+    # Properties then offered no modes, and the desktop stayed on the 4-bpp
+    # vga.drv row. Measured on 2026-08-22: clearing that one value took the
+    # devnode to Problem 0 and the driver to enable-ok.
+    #
+    # Done by omission rather than by writing an empty value after the shared
+    # section, so it does not depend on SetupX applying AddReg sections
+    # left to right. The per-chip sections are guaranteed to exist here because
+    # declaring ManualSelect forces them above.
+    $manualMiniVdd = -not ($manual -and $manual.ContainsKey('MiniVdd') -and
+                           $manual.MiniVdd -eq $false)
+
     # The header used to name one hardcoded adapter, which stopped being true
     # the moment a family carried two chips. It is generated from the manifest
     # now, so it cannot drift from the models below.
@@ -229,7 +247,9 @@ function New-V9xInfText {
         'HKR,DEFAULT,drv,,v9xdisp.drv'
         'HKR,DEFAULT,drv2,,v9xdisp.drv'
         'HKR,DEFAULT,vdd,,"*vdd,*vflatd"'
+    ) + @(if ($manualMiniVdd) {
         'HKR,DEFAULT,minivdd,,v9xmini.vxd'
+    }) + @(
         'HKR,DEFAULT,RefreshRate,,0'
         'HKR,DEFAULT,PCIRebalance,,1'
         'HKR,DEFAULT,ExtModeSwitch,,0'
@@ -271,6 +291,12 @@ function New-V9xInfText {
                 ''
                 ('[Velocity9x.Registry.{0}]' -f $chip.Id)
             )
+            # Where the mini-VDD lands when the manual model must not have one.
+            # A PCI model reaches this section and gets it; the manual model
+            # never AddRegs any per-chip section, so it does not.
+            if (-not $manualMiniVdd) {
+                $lines += 'HKR,DEFAULT,minivdd,,v9xmini.vxd'
+            }
             $lines += Get-V9xInfModeLines -Modes $chip.Modes
         }
     }
@@ -475,6 +501,36 @@ function Assert-V9xInf {
                "has no bus to report its resources. It carries: " +
                "$($manualInstall -join ' / ').")
     }
+    # When the manual model must have no mini-VDD, the value has to be absent
+    # from both sections it AddRegs, and present in every per-chip section so
+    # the PCI models keep theirs. Checked positively in both directions: a
+    # mini-VDD leaking back into the shared section is the exact regression that
+    # put a Win95 devnode into Code 24.
+    if ($manual.ContainsKey('MiniVdd') -and $manual.MiniVdd -eq $false) {
+        foreach ($section in @('Velocity9x.Registry', 'Velocity9x.Registry.Manual')) {
+            $body = @(Get-V9xInfSectionBody -Lines $Lines -Section $section)
+            if (@($body | Where-Object { $_ -match 'DEFAULT,minivdd' }).Count -ne 0) {
+                throw ("Family $($Family.Id) declares ManualSelect.MiniVdd " +
+                       "false, so [$section] must not set DEFAULT,minivdd - the " +
+                       "manual model AddRegs it and would get a mini-VDD.")
+            }
+        }
+        foreach ($chip in @($Family.Chips)) {
+            $body = @(Get-V9xInfSectionBody -Lines $Lines `
+                -Section ('Velocity9x.Registry.{0}' -f $chip.Id))
+            if ('HKR,DEFAULT,minivdd,,v9xmini.vxd' -notin $body) {
+                throw ("Family $($Family.Id) moved DEFAULT,minivdd out of the " +
+                       "shared section, so [Velocity9x.Registry.$($chip.Id)] " +
+                       "must set it; otherwise that chip's own model loses it too.")
+            }
+        }
+    } elseif (@(Get-V9xInfSectionBody -Lines $Lines -Section 'Velocity9x.Registry' |
+                Where-Object { $_ -match 'DEFAULT,minivdd' }).Count -eq 0) {
+        throw ("The generated INF's [Velocity9x.Registry] must set " +
+               "DEFAULT,minivdd unless the family declares " +
+               "ManualSelect.MiniVdd = `$false.")
+    }
+
     $logConfig = @(Get-V9xInfSectionBody -Lines $Lines -Section 'Velocity9x.LogConfig')
     if ($logConfig -notcontains 'ConfigPriority=HARDWIRED' -or
         @($logConfig | Where-Object { $_ -like 'IOConfig=*' }).Count -eq 0 -or

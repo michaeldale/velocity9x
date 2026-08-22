@@ -235,6 +235,15 @@ function Test-V9xFamilyManifest {
                        "'$($manual.CompatibleId)' is not a single device id.")
             }
         }
+        # Optional, default true. False moves DEFAULT,minivdd into the per-chip
+        # registry sections so the manual model - which AddRegs only the shared
+        # one - gets no mini-VDD. A Win9x display devnode is started by the VDD
+        # loading the mini-VDD named there, so one that does not load leaves the
+        # devnode short of DN_STARTED and Windows calls the device absent.
+        if ($manual.ContainsKey('MiniVdd') -and $manual.MiniVdd -isnot [bool]) {
+            throw ("Family $Id Inf.ManualSelect MiniVdd must be a boolean when " +
+                   "present; got '$($manual.MiniVdd)'.")
+        }
         $manualModes = @(Get-V9xFamilyManualSelectModes -Family $Family)
         if ($manualModes.Count -eq 0) {
             throw ("Family $Id Inf.ManualSelect leaves no modes: no mode every " +

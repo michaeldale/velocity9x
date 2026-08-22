@@ -219,6 +219,31 @@ parts it has no code for.
 | --- | --- |
 | `Description` | The entry as it appears in the Have Disk list. |
 | `VideoMemoryBytes` | The VRAM the *physical* card has, which narrows the mode list. |
+| `CompatibleId` | Optional. Emitted in the compatible-ID field, hardware-ID field left empty. |
+| `MiniVdd` | Optional, default `$true`. `$false` gives this model no mini-VDD. |
+
+`MiniVdd = $false` moves `HKR,DEFAULT,minivdd` out of the shared
+`[Velocity9x.Registry]` and into each `[Velocity9x.Registry.<chip>]`. The manual
+model AddRegs only the shared section plus its own, so it ends up with no
+mini-VDD, while every PCI model still gets one. It is done by omission rather
+than by writing an empty value afterwards, so it does not depend on SetupX
+applying `AddReg` sections left to right; the per-chip sections are always
+present because declaring `ManualSelect` forces them.
+
+Why it exists: a Win9x display devnode is started by the VDD loading the
+mini-VDD named there. On the 486's Win95 4.00.950 `v9xmini.vxd` does not load,
+so the devnode never reached `DN_STARTED`, Device Manager reported **Code 24**,
+Display Properties then offered no modes at all, and the desktop stayed on the
+4-bpp `vga.drv` row — a driver that was working perfectly underneath and never
+being asked to enable. Clearing that one value took the devnode to `Problem 0`
+and the driver to `enable-ok`. Measured 2026-08-22; see
+[the handover](../handoffs/2026-08-22-vlb-manual-select-handover.md).
+
+What it costs is the mini-VDD's DPMS and mode-save callbacks, not the
+framebuffer: a family setting this should have chips that read their own
+aperture. `Assert-V9xInf` checks both directions — the value absent from the two
+sections the manual model reads, and present in every per-chip section so no
+PCI model loses it.
 
 `Description` is emitted inline and double-quoted, matching the per-chip model
 lines. It may not contain `,`, `=` or `%` - the first two are SetupX field

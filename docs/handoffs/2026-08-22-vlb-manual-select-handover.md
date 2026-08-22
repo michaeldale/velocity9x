@@ -353,13 +353,17 @@ Every earlier symptom hangs off that one failure.
 
 Two things this is **not**:
 
-* It is **not a shippable fix.** The working machine is a hand-edited registry;
-  the INF still writes `minivdd=v9xmini.vxd`, so any reinstall reintroduces the
-  fault. The real fix is either to make the mini-VDD load on Win95 or to stop
-  the manual-select install writing one. Note this family already builds it with
-  `MiniVddVbeCollect = $false` and its chips read the aperture directly, so it
-  may not need a mini-VDD at all — which would make "omit it" both correct and
-  simpler than "fix it".
+* ~~It is **not a shippable fix.**~~ **Now shipped.**
+  `Inf.ManualSelect.MiniVdd = $false` moves `HKR,DEFAULT,minivdd` out of the
+  shared registry section into the per-chip ones, so the manual model gets no
+  mini-VDD while every PCI model keeps one — the Win98SE targets are unchanged,
+  checked in the emitted `ati` and `vbe` INFs too. By omission rather than an
+  empty value written afterwards, so it does not depend on SetupX applying
+  `AddReg` left to right. Re-verified on the 486 **from a clean Have Disk
+  install with no hand edits**: `minivdd` absent from `DEFAULT` entirely,
+  `Problem 0x00000000`, `Status 0x0ACF`, `Stage=enable-ok`, `V9XHW.INI` correct.
+  Five new negative tests cover leaking it back into either section the manual
+  model reads, dropping it from a chip section, and a non-boolean declaration.
 * It is **not yet a diagnosis of why** the mini-VDD fails to load. Nothing has
   looked at that. A logged `BOOTLOG.TXT` would show it outright and is now the
   single highest-value piece of evidence outstanding.

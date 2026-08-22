@@ -236,6 +236,25 @@
             # card that is not ours stays where it can actually be checked:
             # identify_without_pci accepts only 8811 and 8A01.
             CompatibleId = '*PNP0913'
+            # No mini-VDD for this model. Measured on the 486 on 2026-08-22:
+            # with DEFAULT,minivdd naming v9xmini.vxd the devnode never reached
+            # DN_STARTED on Win95 4.00.950, Device Manager reported Code 24,
+            # Display Properties then offered no modes at all, and the desktop
+            # stayed on the 4-bpp vga.drv fallback row. Clearing that one value
+            # took the devnode to Problem 0 and the driver to enable-ok, with
+            # V9XHW.INI naming the Trio64 and reading its 2 MiB correctly.
+            #
+            # Scoped to this model rather than the family: the PCI models are
+            # validated on Win98SE *with* the mini-VDD, so they keep it via the
+            # per-chip registry sections. Both S3 chips read the aperture
+            # directly and this family already builds the mini-VDD with
+            # MiniVddVbeCollect = $false, so what is lost here is its DPMS and
+            # mode-save callbacks, not the framebuffer.
+            #
+            # Why it fails to load on Win95 is still unknown - a logged
+            # BOOTLOG.TXT would say - so this is the measured configuration
+            # rather than a diagnosis.
+            MiniVdd = $false
         }
     }
 

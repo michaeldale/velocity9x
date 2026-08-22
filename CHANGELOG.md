@@ -8,6 +8,38 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Fixed
 
+- **The manual-select model no longer names a mini-VDD, which is what stopped
+  the driver working on the 486.** A Win9x display devnode is started by the VDD
+  loading the mini-VDD named in `DEFAULT\minivdd`. On Win95 4.00.950
+  `v9xmini.vxd` does not load, so the devnode never reached `DN_STARTED`, Device
+  Manager reported **Code 24** — "this device is not present" — Display
+  Properties then offered no modes at all, and the desktop sat on the 4-bpp
+  `vga.drv` fallback row. The driver underneath was fine the whole time; it was
+  simply never asked to enable, which is why it presented as a driver fault for
+  so long.
+
+  `Inf.ManualSelect.MiniVdd = $false` moves `HKR,DEFAULT,minivdd` out of the
+  shared registry section and into the per-chip ones. The manual model AddRegs
+  only the shared section plus its own, so it gets no mini-VDD; every PCI model
+  still gets one from its chip section, so the Win98SE targets are unchanged —
+  verified in the emitted `ati` and `vbe` INFs as well. Done by omission rather
+  than by writing an empty value afterwards, so it does not rely on SetupX
+  applying `AddReg` sections left to right.
+
+  **Measured end to end on the 486 from a clean install with no hand edits:**
+  `Problem` `0x18` → `0x00000000`, `Status` `0x0EE7` → `0x0ACF` with
+  `DN_STARTED` set, `V9XBOOT.INI` reading `Stage=enable-ok` with a 640x480x8
+  surface, and `V9XHW.INI` written for the first time naming
+  `S3 Trio32/64 86C764`, `5333:8811`, `VideoMemoryBytes=2097152` valid and the
+  clock valid at 59957 kHz. So `identify_without_pci` names the chip on a bus
+  with no PCI, the aperture maps from protected mode, and a mode set lands.
+
+  What it costs is the mini-VDD's DPMS and mode-save callbacks, not the
+  framebuffer — both S3 chips read their aperture directly and this family
+  already builds the mini-VDD with `MiniVddVbeCollect = $false`. **Why it fails
+  to load on Win95 is still undiagnosed**; a logged `BOOTLOG.TXT` would say, and
+  this is the measured configuration rather than an explanation.
+
 - **The manual-select model now declares its resources, without which Windows
   reports the device as not present.** A PCI model needs none: the bus reports
   what the card decodes and the Configuration Manager builds the devnode's
