@@ -1,205 +1,377 @@
-# ViRGE on VESA Local Bus, by way of old MMIO
+# ViRGE 325 on VESA Local Bus, through old MMIO
 
-## Context
+Date: 2026-08-22
+Status: revised plan; implementation has not started
 
-[The Vogons MK-765VL thread](https://www.vogons.org/viewtopic.php?t=76647) spends
-six years failing to make an S3 ViRGE work on VESA Local Bus, and the reason it
-gives is one this driver is currently on the wrong side of. mkarcher's reply 206
-states it plainly: a ViRGE in VL mode receives only A2 to A22, an 8 MiB window,
-and SAUP1/SAUP2 select which 8 MiB it is. The "new MMIO" window every retail
-ViRGE driver uses sits at the linear base plus 16 MiB and is therefore
-unreachable. Madao's reply 205 draws the same line: the Trio64V+ works on VL
-because its drivers use old MMIO, and the ViRGE does not because its drivers use
-new MMIO.
+## Outcome
 
-Velocity9x is exactly that driver. [virge_hw16.c:52](../../src/chipsets/s3/virge/virge_hw16.c:52)
-hardcodes the control window:
+Make Velocity9x's existing ViRGE DirectDraw fill and screen-to-screen BitBLT
+path reachable on a VESA Local Bus ViRGE 325. Keep PCI ViRGE/DX on new MMIO,
+select old MMIO only when the S3 chip was identified through the no-PCI register
+path, and do not advertise Direct3D on that path.
 
-    *control_linear_base = framebuffer_linear_base + 0x01000000ul;
+There are two hard gates before a VLB emulator or physical board is useful:
 
-opened with CR53[3] at [virge_hw16.c:33](../../src/chipsets/s3/virge/virge_hw16.c:33),
-and every S3D register access in
-[eng_s3_virge.c:35-46](../../src/display32/engines/eng_s3_virge.c:35) reaches the
-chip through `control_linear_base + offset` and through nothing else. That single
-addend is the whole of the incompatibility. By contrast
-[eng_s3_trio.c:32](../../src/display32/engines/eng_s3_trio.c:32) drives the
-8514/A engine with `inpw`/`outpw` alone, which is why the Trio64 target is the
-one already running on the 486.
+1. Velocity9x must recognise the **86C325 (`5333:5631`)** used by the MK-765VL
+   experiment. It currently recognises only the ViRGE/DX 86C375
+   (`5333:8A01`).
+2. Physical `0xA0000` must be turned into a valid flat linear address for
+   `V9XHAL.DLL`. Writing the physical address directly into
+   `control_linear_base` is not a mapping and must not be treated as one.
 
-The favourable half of this is that the engine layer is bus-agnostic as written.
-It takes a base and adds offsets. Point the base somewhere else and it does not
-care.
+The plan stops at either gate if it fails. It does not use a VLB emulator to
+paper over an unsupported chip or an unproved Windows mapping mechanism.
 
-## What is already true, and what is not
+## Why old MMIO is the right interface
 
-| Piece | State | Evidence |
+The current driver enables new MMIO with CR53[3] and publishes the control
+window as the framebuffer's mapped linear base plus 16 MiB
+([virge_hw16.c:26-53](../../src/chipsets/s3/virge/virge_hw16.c)). Every S3D
+access then adds an unchanged register offset to that flat base
+([eng_s3_virge.c:35-46](../../src/display32/engines/eng_s3_virge.c)).
+
+That is a PCI layout. In VL mode the ViRGE receives A2 through A22 and external
+SAUP1/SAUP2 decoding selects its primary and secondary 8 MiB spaces. It cannot
+distinguish the LFB from a control window 16 MiB above it. The detailed account
+is in [mkarcher's reply 206](https://www.vogons.org/viewtopic.php?start=200&t=76647),
+and reply 208 notes that a new-MMIO driver can usually be ported by changing
+the enable and base-address setup.
+
+The primary source is stronger than either that thread or an emulator: section
+15.1 of the
+[S3 ViRGE databook](https://www.dosdays.co.uk/media/s3/ViRGE/S3_ViRGE_325_Register_Documentation.PDF)
+states that new MMIO is PCI-only and defines the old-MMIO forms exactly:
+
+| CR53[4:3] | Mode |
+| --- | --- |
+| `00b` | MMIO disabled; the VL power-on state |
+| `01b` | new MMIO only |
+| `10b` | old MMIO only |
+| `11b` | both |
+
+With old MMIO selected, CR53[5] chooses one of these layouts:
+
+| CR53[5] | Physical decode | Software base that preserves current offsets |
 | --- | --- | --- |
-| VLB, Trio64 | Aperture proven at `0x7F000000` and `0x04000000` on the real 486 | [aperture decision](../decisions/2026-08-21-vlb-aperture-answered.md) |
-| VLB, install path | Manual-select INF installs; devnode will not start, Code 24 | [manual-select handover](../handoffs/2026-08-22-vlb-manual-select-handover.md) |
-| ViRGE backend | Complete, PCI only | [virge_hw16.c](../../src/chipsets/s3/virge/virge_hw16.c) |
-| S3D used for 2D | **Already built.** Hardware fill and screen-to-screen BitBLT | [eng_s3_virge.c](../../src/display32/engines/eng_s3_virge.c) |
-| Old MMIO | Not implemented anywhere in the tree | grep: only CR53[3] appears |
+| `0` | `0xA0000-0xAFFFF` | mapped linear address of `0xA0000` |
+| `1` | `0xB8000-0xBFFFF` | mapped linear address of `0xB8000` **minus `0x8000`** |
 
-So "S3D for 2D" is not new work. The ViRGE has no legacy 8514/A engine and does
-its 2D through the S3D core, which this driver already does on PCI; thread
-replies 352 and 353 restate the same architecture. The task is to make that
-existing path reachable over a bus that cannot see 16 MiB up.
+The bias in the second row is load-bearing. `SUBSYS_STAT` remains register
+offset `0x8504`; in the B-window form it must land at physical `0xB8504`, not
+at `0xC0504`. All register offsets the current 2D backend uses are between
+`0x8504` and `0xA50C`, so both old-MMIO forms can serve it without changing
+the engine code. The A-window's lower 32 KiB is the image-transfer area; the
+B-window omits that area, which Velocity9x does not use.
 
-## The finding this plan rests on
+The vendored 86Box model agrees with the databook: CR53[4] enables its old-MMIO
+mapping, CR53[5] chooses `0xA0000`/64 KiB or `0xB8000`/32 KiB, and both mappings
+feed the same handler
+([vid_s3_virge.c:1290-1305](../../build/reference/86box/src/video/vid_s3_virge.c)).
+That agreement makes 86Box a useful test oracle, not the source of the hardware
+contract.
 
-Checked against the vendored 86Box ViRGE model rather than from memory.
-[vid_s3_virge.c:1290-1297](../../build/reference/86box/src/video/vid_s3_virge.c:1290):
+## What is true now
 
-    if ((svga->crtc[0x53] & 0x10) || (virge->advfunc_cntl & 0x20)) { /*Old MMIO*/
-        mem_mapping_disable(&svga->mapping);
-        if (svga->crtc[0x53] & 0x20)
-            mem_mapping_set_addr(&virge->mmio_mapping, 0xb8000, 0x8000);
-        else
-            mem_mapping_set_addr(&virge->mmio_mapping, 0xa0000, 0x10000);
-    }
+| Piece | State | Consequence |
+| --- | --- | --- |
+| VLB install | **Working.** The manual model installs without a mini-VDD, the devnode reaches Problem 0 / `DN_STARTED`, and the Trio64 reaches `enable-ok` | Code 24 is no longer a stage or blocker; see the [handover](../handoffs/2026-08-22-vlb-manual-select-handover.md) |
+| VLB LFB | Proven at `0x7F000000` and `0x04000000` on the physical 486 | Keep trusting CR59/CR5A; see the [aperture decision](../decisions/2026-08-21-vlb-aperture-answered.md) |
+| ViRGE device support | ViRGE/DX 375 only | A ViRGE 325 would be rejected by `v9x_s3_identify_without_pci` before MMIO setup |
+| ViRGE acceleration | DirectDraw hardware solid fill and screen copy; Direct3D on PCI | This is not accelerated GDI, and the VLB goal must not be described as such |
+| Old MMIO | Not implemented | Only the CR53[3] new-MMIO signature exists in the tree |
+| Framebuffer mapping | One DPMI 0800h mapping and one persistent screen selector | Old MMIO needs a second flat mapping; it is not inside the high LFB mapping |
 
-Both windows feed the same handler, and that handler decodes on `addr & 0xfffc`
-([vid_s3_virge.c:2107](../../build/reference/86box/src/video/vid_s3_virge.c:2107)).
-Two consequences carry this plan:
-
-1. **Old MMIO reaches the entire ViRGE register map.** The S3D 2D block at
-   `0xA000` to `0xA4FF` and the 3D blocks at `0xB000` and above are all at or
-   above offset `0x8000`, so they land inside either window. Register offsets are
-   identical between the two MMIO forms.
-2. **`0xA0000` is in the low megabyte,** which a VL card decodes unconditionally
-   inside its 8 MiB reach. No aperture placement question arises at all.
-
-Enable is CR53[4], with CR53[5] choosing `0xB8000`/32 KiB over `0xA0000`/64 KiB.
-`advfunc_cntl` bit 5 (port `4AE8h`) is a second enable path that touches no
-extended CRTC register, worth keeping in reserve if the CR53 write proves
-awkward under a locked bank.
-
-**The cost:** old MMIO disables the `0xA0000` VGA banked window while it is on.
-The driver runs its framebuffer through the linear aperture so the desktop does
-not care, but the mini-VDD V86 paths and the banked cross-check in the aperture
-probe both use that window today. Stage 2 must establish which of them break.
-
-This is a model of a PCI part. It is a strong indication about the register map
-and no evidence at all about VL silicon behaviour.
+The old plan's mini-VDD casualty is not a present blocker. The manual VLB model
+deliberately installs no mini-VDD, and the S3 mini-VDD builds its VBE collection
+out. The transition that matters is full-screen DOS / `ResetHiResMode`: a VBE
+mode set happens first and the chip hook must then re-establish old MMIO, just
+as it re-establishes new MMIO today.
 
 ## Design decisions
 
-- **A third `fill_engine` variant, not a branch inside the ViRGE one.** The
-  family already separates per-chip hooks this way
-  ([s3_hw16.c:85-95](../../src/chipsets/s3/s3_hw16.c:85),
-  [trio_hw16.c:46-48](../../src/chipsets/s3/trio64/trio_hw16.c:46)) and the
-  per-object audit asserts on which code lands in which object. Old MMIO gets its
-  own hook and its own audited signature.
-- **`eng_s3_virge.c` is not modified.** If the stage 2 work needs to touch it,
-  the premise of this plan is wrong and that is worth stopping over.
-- **Old MMIO is exercised on PCI first.** It works on PCI ViRGE too, so it can be
-  proved in 86Box today against a target that already runs. Nothing about stage 2
-  needs a 486 or a card that does not exist.
-- **`0xA0000`/64 KiB is the default,** `0xB8000`/32 KiB the fallback. The 64 KiB
-  form maps offset zero and needs no offset arithmetic.
-- **No 3D on VL in scope.** D3D stays a PCI capability. 2D through S3D is the
-  goal; the D3D path may follow the same base for free, but it is not claimed.
+### Select by the route that identified the card
 
-## Stage 1 - Code 24
+Do not probe new MMIO and fall back on VLB. A read from an undecoded high range
+does not reliably identify a bus, and the accepted hardware path already knows
+the answer:
 
-Nothing here reaches Enable on VL until the devnode starts. Per the handover,
-three attempted fixes did not move it and the stock-driver control that
-distinguishes a causal fault from ordinary `DetFunc` state has not been run.
-That control is the next step, and it is a prerequisite for stages 3 and 4 but
-not for stage 2.
+- a successful `V9xHardwarePresent` result is a PCI configuration-space match;
+- a successful `identify_without_pci` result occurred only after the PCI BIOS
+  was absent and is the register-identified VLB/ISA route.
 
-This stage is scoped by the existing handover, not re-specified here.
+Record that distinction as an explicit access-path enum or getter when
+`v9x_hardware_acceptable` accepts the card. Do not infer it later from
+`v9x_pci_match`: the no-PCI identifier deliberately writes the same device
+index as the PCI scan.
 
-## Stage 2 - the old-MMIO variant, proved on PCI
+This deliberately supports the present 486, which has no PCI BIOS. It does not
+make a VLB ViRGE safe to identify in a mixed PCI/VLB machine: the current safety
+rule refuses extended-register probing whenever a PCI BIOS exists but no PCI
+device matched. Supporting that topology needs an authoritative way to identify
+the non-PCI adapter and is outside this plan.
 
-Independent of the 486 and independently useful: it gives every ViRGE a fallback
-for when the new-MMIO window cannot be mapped.
+The ViRGE object may contain a small dispatcher, but the PCI-new and
+register-old implementations remain separate leaf functions. The per-object
+audit can then require both exact CR53 masks while still proving neither
+sequence appears in `trio_hw16.obj`.
 
-1. Add `v9x_virge_enable_aperture_oldmmio` beside
-   [the existing one](../../src/chipsets/s3/virge/virge_hw16.c:26): the shared S3
-   linear-aperture sequence, then CR53[4] set and read back, with the same
-   read-back guard discipline the CR53[3] path uses.
-2. Add `v9x_virge_fill_engine_oldmmio`: `control_linear_base = 0x000A0000`,
-   `mapped_aperture_bytes = 0x00010000`.
-3. Select between them. Preference order is a decision to take with measurements
-   in hand, not now; the shape is a device-list entry or a runtime probe that
-   tries new MMIO and falls back.
-4. Prove on the 86Box PCI ViRGE target: fills and blits still land on the engine,
-   `SUBSYS_STAT` at `0x8504` still reads, the DirectDraw regression stays green.
-5. Establish what breaks with the `0xA0000` window closed. Specifically the
-   mini-VDD V86 scratch path and the aperture probe's banked cross-check.
-6. Audit signature for the new object, in the pattern of
-   [the family merge decision](../decisions/2026-08-16-s3-family-merge.md).
+### Map control memory; do not publish a physical literal
 
-**Exit:** a PCI ViRGE running its full 2D path with the control window at
-`0xA0000`, and a written answer on the VGA-window casualties.
+Add a second persistent physical mapping for an independently located control
+window. For the old-MMIO path it maps physical `0xA0000` for 64 KiB and stores
+the DPMI-returned flat address. The mapping is established before CR53 exposes
+old MMIO, so a mapping failure leaves the legacy VGA decode unchanged.
 
-## Stage 3 - a VLB ViRGE in 86Box
+The mapping has no DIB Engine selector and must not disturb
+`V9xScreenSelector`. The 32-bit HAL needs only the flat address. Keep the
+mapping for the driver's lifetime, matching the framebuffer mapping's existing
+stability rule across Disable/Enable cycles.
 
-There is no such device to test against and none to buy. Every ViRGE in 86Box is
-`DEVICE_PCI` or AGP ([vid_s3_virge.c:6823](../../build/reference/86box/src/video/vid_s3_virge.c:6823)
-onward), while `vid_s3.c` carries a dozen `DEVICE_VLB` Trio and Vision entries
-and a `s3->vlb` flag at [vid_s3.c:11017](../../build/reference/86box/src/video/vid_s3.c:11017)
-to model from.
+Extend `fill_engine_descriptor` to receive the independently mapped control
+linear address explicitly. On PCI it continues to derive LFB-linear + 16 MiB;
+on the register path it uses the returned low-memory mapping. No chipset hook
+may write `0xA0000` directly into `control_linear_base`.
 
-The patch: derive a VL device from `s3_virge_dx_pci_device`, flag it
-`DEVICE_VLB`, suppress PCI config space, clamp the decode to A2 to A22 so
-anything above 8 MiB does not answer, and model SAUP1/SAUP2 as the selector
-between the low 8 MiB and the LFB 8 MiB. The old-MMIO path already exists in
-that file and needs nothing.
+Append new failure stages for the control mapping; do not renumber the existing
+published stage codes. Diagnostics must state the access path, MMIO mode,
+physical control window, and mapping status.
 
-This is a test platform for hardware nobody has. It will not reproduce the
-silicon bugs in stage 4, which is the point at which it stops being useful.
+### Program one MMIO mode, exactly
 
-**Exit:** stage 2's driver runs 2D through S3D on an emulated VL ViRGE, with
-new MMIO demonstrably unreachable on the same device.
+For PCI, write CR53[4:3] as `01b`. For VLB, write it as `10b`. Preserve
+unrelated CR53 bits, choose CR53[5] deliberately, and read back the complete
+three-bit field. Merely OR'ing bit 4 would leave the PCI power-on bit 3 set and
+test both modes at once.
 
-## Stage 4 - real hardware, only if 1 to 3 are clean
+Do not use `ADVFUNC_CNTL` bit 5 as an automatic fallback. CR53 is documented,
+already covered by the extended-register unlock path, and can be verified by
+readback. A second enable mechanism would add state without solving the flat
+mapping gate.
 
-Requires an MK-765VL built from [Madao's published design](https://github.com/matt1187/765VL),
-a donor ViRGE 325, and mkarcher's SAUP2 delay modification from reply 155: a
-74ACT74 or 74F74 flip-flop delaying SAUP2 by one VL clock, run in 1 WS late
-decode, which forfeits 0WS operation.
+### Keep the engine backend unchanged and narrow capability
 
-What the thread says is waiting there, none of it addressable in a driver:
+`eng_s3_virge.c` remains unchanged. If old MMIO requires different S3D
+register offsets or command ordering, stop and record that the premise failed.
 
-- VL access patterns that corrupt ViRGE control registers or fire spurious
-  busmaster DMA and lock the local bus (reply 155)
-- Madao's "ghost write" characterisation and his verdict of a disappointed
-  adventure (reply 227)
-- VESA mode initialisation clearing video memory through the acceleration
-  engine, so the broken path is hit before any driver runs (reply 203)
+The register-identified old-MMIO descriptor publishes solid fill, screen copy,
+flip and vblank, but clears `V9X_DD_ENGINE_CAP_D3D`. This makes "Direct3D is out
+of scope" true in the exported HAL rather than merely true in prose. PCI keeps
+its present capability set and D3D regression.
 
-Two people with the hardware, the datasheets and six years did not get past
-this. Stage 4 is a research bet, and stages 1 to 3 are worth doing whether or
-not it is ever taken.
+The manifest's per-chip caps continue to describe the PCI baseline. Add a
+separate access-path test for the runtime VLB cap reduction, and make
+`V9XHW.INI` derive its Direct3D statement from the effective descriptor rather
+than the device entry's current static `hardware-s3d` string.
 
-## File-level changes
+Use `0xA0000`/64 KiB first because it preserves the current offsets without a
+bias. Treat `0xB8000`/32 KiB as a measured fallback. If it is needed, map only
+the physical 32 KiB and publish a logical base biased by `-0x8000`; add a test
+that `base + 0x8504` resolves to the mapped address plus `0x0504`.
 
-Stage 2:
+## Stage 0 - support the chip that the board uses
 
-- `src/chipsets/s3/virge/virge_hw16.c` - the two new hooks
-- `include/velocity9x/s3_regs16.h` - CR53[4] and CR53[5] constants
-- `src/chipsets/s3/s3_hw16.c` - device-list wiring for the selection
-- `scripts/audit-family-binary.ps1` and the family manifest - new object signature
-- `docs/decisions/` - the stage 2 result, in the house pattern
-- `CHANGELOG.md`
+The published MK-765VL experiment uses a pin-compatible ViRGE 325, whose chip
+ID is `5631`. The current `v9x_virge_device` is a ViRGE/DX 375 and publishes
+`8A01`. Old MMIO is common to them, but identity, BIOS modes and validation
+must not be conflated.
 
-Stage 3 touches only vendored 86Box source and is not shipped.
+1. Inventory the 86Box PCI ViRGE 325 BIOS with the existing VBE inventory tool.
+2. Add a conservative `5333:5631` device entry, manifest chip, backend probe
+   identity and host tests. Reuse the S3D engine type only after checking every
+   register used by `eng_s3_virge.c` against the 325 databook.
+3. Give the 325 its own declared mode list from the inventory. Do not copy the
+   DX list by assumption; the manual model's mode intersection will change when
+   a third S3 chip is added.
+4. Add a PCI 325 86Box target and prove the ordinary new-MMIO mode matrix,
+   DirectDraw fill/blit, status validation, mode switching and DOS-box return.
+5. Factor the ID-to-device-index match so a host test confirms CR2D/CR2E
+   `56/31` selects the same entry that the PCI scan selects for `5631`; keep
+   the actual port-I/O sequence covered by the 16-bit build and VM test.
 
-Not modified in any stage: `src/display32/engines/eng_s3_virge.c`.
+**Exit:** one S3 package supports both ViRGE 325 and ViRGE/DX on PCI, the 325
+mode/capability claims are measured, and no VLB-specific code is involved.
 
-## Open items
+## Stage 1 - prove the low-memory flat mapping on PCI
 
-1. **Selection policy.** Static per device id, or probe new MMIO and fall back.
-   Decide with stage 2 measurements.
-2. **The VGA window casualties.** Unknown until stage 2 measures them, and the
-   answer may push the default to the `0xB8000` form.
-3. **`advfunc_cntl` as the enable.** Untried. Reserve.
-4. **The Windows 98 DDK.** Thread reply 329 reports it ships full S3 ViRGE
-   modesetting and Direct3D source. Not a dependency and not a source this
-   driver derives from, but worth knowing what it says about old MMIO before
-   stage 4.
-5. **Whether stage 4 is ever worth funding.** Revisit after stage 3, with a
-   working emulated VL ViRGE in hand and a better idea of what the silicon has
-   to get right.
+This is a disposable or diagnostic-only spike against the now-working PCI 325.
+It answers the highest-risk Windows question before the shared ABI or hardware
+table is expanded.
+
+1. Attempt DPMI 0800h for physical `0xA0000`, length `0x10000`, while retaining
+   the normal high LFB mapping. Record carry, returned flat address and failure
+   stage. Do not assume low physical memory is identity mapped.
+2. Read a stable idle `SUBSYS_STAT` through new MMIO, program CR53 old-only,
+   and read the same register repeatedly through the mapped A-window. Restore
+   new-only before leaving the probe.
+3. At 8 or 16 bpp, run one guarded fill and one guarded screen copy through the
+   old base, then verify the pixels through the LFB. Do not run D3D; the current
+   2D backend deliberately declines depths above 16 bpp.
+4. Exercise VBE re-entry / `ResetHiResMode` and show that the mapping remains
+   valid while CR53 is re-established after the BIOS call.
+
+If DPMI 0800h refuses the low range, stop. The next plan must choose and prove a
+Windows-specific mapping service, likely through a loadable mini-VDD/VxD or a
+documented VMM service. An identity pointer is not the fallback, and the
+current Win95 manual model cannot silently acquire a mini-VDD that is known not
+to load there.
+
+**Exit:** a recorded, repeatable flat mapping of the old-MMIO window and a PCI
+325 executing the existing 2D commands through it.
+
+## Stage 2 - integrate the deterministic old-MMIO transport
+
+1. Add the explicit PCI-vs-register access-path state at the point hardware is
+   accepted, with host tests for both routes and for a refused foreign card.
+2. Add the independent control-window descriptor and DPMI mapping helper. Map
+   it before the existing chip enable, retain it across Disable/Enable, and
+   leave the framebuffer selector/reuse rules unchanged.
+3. Split the ViRGE aperture leaf functions:
+   - PCI: shared S3 LFB enable, CR53 new-only, existing descriptor and full caps;
+   - register path: shared S3 LFB enable, CR53 old-only at A0000, mapped control
+     descriptor and no D3D cap.
+4. On every reset path, run VBE mode entry first and then reapply the selected
+   CR53 mode. Validate status again before the next accelerated operation, as
+   the HAL already does after Enable/ReEnable.
+5. Publish `AccessPath`, `MmioMode`, `ControlPhysicalBase`,
+   `ControlMappingStatus` and the effective Direct3D state in the S3
+   diagnostics.
+6. Extend the binary audit with anchored exact-mask signatures. Keep the
+   sibling rule: neither old nor new ViRGE CR53 code may appear in the Trio
+   object.
+
+Run the complete existing PCI DX and Trio64 matrices. The DX must remain on new
+MMIO with D3D; Trio64 output and signatures must be unchanged. Re-run the PCI
+325 old-MMIO forced test from Stage 1 through the integrated path.
+
+**Exit:** one package deterministically selects new MMIO for PCI ViRGE and old
+MMIO for register-identified ViRGE, with no runtime probe and no engine-source
+change.
+
+## Stage 3 - model a ViRGE 325 VLB board in 86Box
+
+This is more than changing `DEVICE_PCI` to `DEVICE_VLB`. The current ViRGE
+model always registers PCI configuration space, gates all mappings on PCI
+command-memory-enable, raises PCI interrupts, starts CR53 in the PCI new-MMIO
+state, and disables the legacy ROM mapping until PCI enables it.
+
+Add a bus kind to `virge_t` and a 325 VLB device with these behaviours:
+
+- no `pci_add_card`, PCI config callbacks or PCI IRQ calls;
+- the VGA I/O and ROM decode enabled as legacy resources;
+- 2 MiB VRAM, VLB timing, and CR2D/CR2E = `56/31`;
+- a fixed external secondary decode for the LFB, with CR59/CR5A initialised to
+  the same address and writes unable to move the board decoder;
+- a primary low decode for VGA and old MMIO;
+- new-MMIO mapping disabled in VLB mode regardless of CR53[3], so LFB + 16 MiB
+  reads as undecoded while the same model's PCI form responds there;
+- old MMIO implemented by the existing common handler at A0000/B8000.
+
+Use a VLB machine with no PCI BIOS so the driver's register access path is
+actually exercised. The test ROM must be a ViRGE 325 ROM suitable for VL mode;
+do not call a PCI ROM representative without documenting why its feature-pin
+initialisation is irrelevant to the emulator.
+
+This model deliberately does **not** simulate the ViRGE's broken VL transaction
+patterns, SAUP timing corruption or accidental DMA activation. It proves
+address selection, identification and driver sequencing only.
+
+**Exit:** the integrated driver reaches `enable-ok`, reports old MMIO and no
+D3D, passes guarded DirectDraw fill/blit, survives DOS-box return, and reads
+`0xFFFFFFFF` at the new-MMIO candidate on the same emulated board.
+
+## Stage 4 - physical ViRGE 325, only after Stages 0-3
+
+Required hardware and firmware:
+
+- an MK-765VL-class board and a ViRGE 325, not a ViRGE/DX standing in for it;
+- a VL-correct ViRGE ROM whose mode list was inventoried in Stage 0;
+- 1 WS late decode and mkarcher's one-VL-clock SAUP2 delay, using 74ACT74 or
+  74F74 as described in
+  [reply 155](https://www.vogons.org/viewtopic.php?start=140&t=76647);
+- a repeatable hard-reset recovery path, because the known failure mode is a
+  locked local bus.
+
+Bring-up order is deliberately narrow:
+
+1. DOS POST and unaccelerated VBE/LFB baseline.
+2. Windows desktop through the LFB with the old-MMIO capability disabled.
+3. Enable old MMIO and perform read-only status sampling.
+4. One small off-screen solid fill, verify through the LFB, then one small
+   screen copy.
+5. The DirectDraw regression and DOS-box return; no Direct3D and no command DMA.
+
+Use the driver's no-clear VBE mode flag so its own mode entry does not ask the
+BIOS to clear the framebuffer through an engine path. A ROM may still use the
+engine during POST or other mode transitions, so the ROM behaviour is part of
+the hardware gate, not something the Windows driver can assume away.
+
+The thread records two distinct hazards that the emulator cannot validate:
+
+- valid VL access patterns can corrupt control registers or accidentally start
+  unsupported bus-master DMA and lock the bus (reply 155);
+- the interface has driver-workaround sequences beyond merely selecting old
+  MMIO (replies 203, 205, 206 and 208).
+
+Do not invent those sequences. If the delayed-SAUP2 board still fails, capture
+or document the known patched-driver sequence before planning a software
+workaround. A hang here rejects the physical acceleration claim; it does not
+invalidate the PCI old-MMIO transport or emulator work.
+
+**Exit:** guarded physical fills and copies complete repeatedly, pixel results
+match, mode/DOS transitions recover, and no bus lock or DMA activation occurs.
+
+## Validation matrix
+
+| Target | MMIO | Required result |
+| --- | --- | --- |
+| PCI ViRGE/DX 375 | new only | Existing full mode matrix, DirectDraw and D3D unchanged |
+| PCI ViRGE 325 | new only | New chip-support baseline |
+| PCI ViRGE 325, forced test | old A-window | Status, fill, copy and reset proof; no D3D |
+| PCI Trio64 | none / port engine | Existing matrix and object audit unchanged |
+| Physical Trio64 VLB | existing port engine | Manual install, `enable-ok`, modes and reset regression unchanged |
+| Emulated ViRGE 325 VLB | old A-window | New MMIO absent; fill/copy and reset pass; no D3D |
+| Physical ViRGE 325 VLB | old A-window | Guarded hardware exit criteria above |
+
+## Expected file-level changes
+
+Stage 0:
+
+- `include/velocity9x/s3_virge.h` and `src/chipsets/s3/virge/backend.c` - 5631
+  identity and host backend support
+- `src/chipsets/s3/virge/virge_hw16.c` and `src/chipsets/s3/s3_hw16.c` - 325
+  device entry
+- `packaging/families/s3/family.psd1` - chip, modes, symbols and PCI VM target
+- host identity/backend/family tests and a 325 VBE inventory decision
+
+Stages 1-2:
+
+- `src/display16/runtime.asm` - independent flat physical mapping primitive and
+  accessor; no DIB selector
+- `src/display16/enable16.c` and `src/display16/dd16.c` - access-path state,
+  mapping order, appended failure stages and descriptor plumbing
+- `include/velocity9x/hw16.h` and `include/velocity9x/win9x_ddraw_abi.h` -
+  control-window contract and clarified addressable-offset semantics
+- `src/chipsets/s3/virge/virge_hw16.c` - exact old/new CR53 leaves and
+  capability split
+- S3 diagnostics, manifest audit, `CHANGELOG.md`, tests and a stage decision
+
+Stage 3 changes only the vendored/local 86Box test platform and its profile; it
+is not part of the shipped driver.
+
+Not modified in Stages 0-3:
+`src/display32/engines/eng_s3_virge.c` and the ViRGE command/register constants.
+
+## Open questions, in decision order
+
+1. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
+   the high framebuffer mapping remains live?
+2. Which measured VBE modes and memory configuration are honest for the 2 MiB
+   ViRGE 325 ROM used by the emulator and eventual board?
+3. Does the A-window survive all PCI reset/mode transitions without needing the
+   B-window fallback?
+4. Which VL-correct ViRGE ROM is available for redistribution or local testing?
+5. After the documented SAUP2 hardware delay, are additional software access
+   sequences still required for the two DirectDraw operations Velocity9x uses?
+
+Questions 4 and 5 do not block Stages 0-2. Question 1 blocks all integrated
+old-MMIO work; question 2 blocks claiming support for the actual physical chip.
