@@ -1,5 +1,12 @@
 # The first Velocity9x driver run on the 486, and where it stopped
 
+> **Superseded by
+> [the 2026-08-22 handover](2026-08-22-vlb-manual-select-handover.md).** This
+> file was written and then corrected as the session went, so it contains
+> conclusions that were later disproved — kept for the reasoning trail, and
+> because two of the wrong turns are worth not repeating. Where the two
+> disagree, the handover is right.
+
 Date: 2026-08-21
 Branch: `vlb-manual-select-inf`
 Machine state at handoff: **486VLB is powered, on the network, and not
