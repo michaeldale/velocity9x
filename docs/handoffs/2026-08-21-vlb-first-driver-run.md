@@ -249,6 +249,25 @@ Added 2026-08-22:
   loader* launches it but not when it is started from a DOS box. That needs the
   agent up to investigate, so it takes one more hand-started session.
 
+* **Why neither autostart key fired, resolved 2026-08-22: the machine never
+  reached the shell.** It stops at a logon prompt every boot, so `Run` never
+  runs - and `RunServices`, which does run before the shell, is the one that
+  faulted. The mechanisms were never the problem.
+
+  `HKLM\Network\Logon` had `PrimaryProvider="Microsoft Network"`, i.e. Client
+  for Microsoft Networks as the Primary Network Logon, which always prompts.
+  Changed to Windows Logon through the Network applet rather than by writing
+  the registry directly, because the value Windows writes for it is the **empty
+  string** - `PrimaryProvider=""` - which is not a thing to guess. `UserProfiles`
+  is absent, so profiles are off.
+
+  That leaves the Windows password for `Michael Dale` as the last gate, and a
+  `MICHAELD.PWL` exists. Its state cannot be read remotely and passwords are
+  not something to automate: blanking it is Control Panel, Passwords, Change
+  Windows Password, leaving the new password empty. Once boots reach the
+  desktop unattended, the `Run` entry already installed should finally fire and
+  the autostart problem closes with it.
+
 * **Two Win95 bugs in the agent's own packaging, found here.** `REGEDIT.EXE` on
   4.00.950 silently ignores both deletion forms in a `REGEDIT4` file: neither
   `"value"=-` nor `[-HKEY...\Key]` removes anything, and both exit 0. So
