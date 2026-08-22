@@ -4,9 +4,33 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.4.4
+
+The S3 driver runs on a second physical machine, and the first with no PCI bus:
+a 486 with an S3 Trio64 on VESA Local Bus under Windows 95 4.00.950. Getting
+there took a manual-select INF model, three real bugs and one Win95 INF-syntax
+trap, all below.
 
 ### Fixed
+
+- **The Velocity9x tab never appeared in Display Properties on Windows 95,
+  because two AddReg lines were silently doing nothing.** Both key paths contain
+  a space — `Controls Folder` and `Shell Extensions` — and Win95's SetupX will
+  not parse an unquoted AddReg key path that does. It fails without a word: on
+  the 486 every other line of the same section applied, including the `HKCR`
+  ones beside them, while these two created no keys at all, so the property
+  sheet handler was never registered and there was nothing to explain why. The
+  `Controls Folder` key on that machine has a complete
+  `Joystick\shellex\PropertySheetHandlers` structure, which is what proved the
+  mechanism and the path shape were fine and the syntax was not. Both paths are
+  now quoted, as Windows' own `MSDISP.INF` quotes the same key. Win98's SetupX is
+  more forgiving, which is why this survived until a Win95 machine met it.
+
+  Verified on the 486: both keys created with the right values by a clean
+  install, and after a reboot the **Velocity9x tab appears** between Appearance
+  and Settings, reporting `S3 Trio32/64 86C764`, `5333:8811`, 2 MB, 640x480x8,
+  a 59.957 MHz clock shared with memory, and *"Driver / framebuffer: Active -
+  linear aperture mapped"*.
 
 - **The manual-select model no longer names a mini-VDD, which is what stopped
   the driver working on the 486.** A Win9x display devnode is started by the VDD

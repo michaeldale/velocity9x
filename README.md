@@ -1,25 +1,27 @@
 # Velocity9x
 
-A replacement display driver for Windows 98, for 1990s PCI graphics cards — S3
-ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic VESA cards it has never been
-told about. It gives a supported card 256-colour, High Color and — on the S3
-targets — True Color modes up to 1280x1024, a DirectDraw HAL with real page
-flipping and vertical-blank waits, and — on the ViRGE — a hardware Direct3D
-path.
+A replacement display driver for Windows 9x, for 1990s PCI and VESA Local
+Bus graphics cards — S3 ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic
+VESA cards it has never been told about. It gives a supported card
+256-colour, High Color and — on the S3 targets — True Color modes up to
+1280x1024, a DirectDraw HAL with real page flipping and vertical-blank
+waits, and — on the ViRGE — a hardware Direct3D path.
 
 It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
 HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.4.3** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.4.4** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **This is an engineering bring-up driver, not a release driver.** Most of its
 > development and testing happens under [86Box](https://86box.net/); as of
-> 0.4.3 the S3 Trio32/64 target is also verified on a physical card, and every
-> other target remains emulator-only. Install it only on a virtual machine you
-> have backed up cold, or on hardware you are willing to recover by hand. Read
-> [docs/INSTALL.md](docs/INSTALL.md) before you install anything.
+> 0.4.4 the S3 Trio32/64 target is verified on two physical machines - a PCI
+> card under Windows 98 SE and a VESA Local Bus card under Windows 95 - and
+> every other target remains emulator-only. Install it only on a virtual
+> machine you have backed up cold, or on hardware you are willing to recover
+> by hand. Read [docs/INSTALL.md](docs/INSTALL.md) before you install
+> anything.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
@@ -91,7 +93,7 @@ The ViRGE-only new-MMIO window, the S3D engine and Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
 
-### Verified on physical hardware: S3 Trio64
+### Verified on physical hardware: S3 Trio64 on PCI
 
 0.4.2 was the first release proven on a real card rather than an emulator, and
 0.4.3 adds True Color there. The full stack — the driver, its DirectDraw HAL and
@@ -118,6 +120,27 @@ scratch buffer without paragraph alignment and then truncated its address to a
 real-mode segment — harmless on every emulated BIOS, a boot-time protection
 error on the physical one. Both are written up in
 [docs/issues/](docs/issues/).
+
+### Verified on physical hardware: S3 Trio64 on VESA Local Bus, under Windows 95
+
+0.4.4 adds a second physical machine and the project's first non-PCI one: a
+**486 with an S3 Trio64 on VESA Local Bus, running Windows 95 4.00.950**. There
+is no PCI bus for Windows to enumerate, so the driver is installed by hand from
+a model that claims no hardware ID, and it identifies the chip by reading the
+S3's own identity registers instead of configuration space. It comes up at
+640x480x8 with the linear aperture mapped at `0x7F000000`, sizes its 2 MB from
+the chip, and offers only the modes that fit that much memory.
+
+Three things had to be true at once, and each was its own bug: the identity
+registers must be read with the extended-register locks open, because the value
+they return through a closed lock is plausible and wrong; the INF must offer a
+model with no hardware ID at all, because SetupX cannot bind a `PCI\VEN_` model
+on a bus it does not enumerate; and the model must name no mini-VDD, because
+ours does not load on Win95 and a display devnode whose mini-VDD fails to load
+is a device Windows reports as absent — leaving a working driver that Windows
+never asks to enable. The investigation, including the wrong turns, is in
+[docs/handoffs/2026-08-22-vlb-manual-select-handover.md](docs/handoffs/2026-08-22-vlb-manual-select-handover.md).
+
 
 ### Tier-0: how a new card starts
 

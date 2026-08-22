@@ -269,9 +269,17 @@ function New-V9xInfText {
         ('HKCR,CLSID\{0}\InProcServer32,,,"v9xsetp.dll"' -f $script:V9xSettingsPageClsid)
         ('HKCR,CLSID\{0}\InProcServer32,ThreadingModel,,"Apartment"' -f
          $script:V9xSettingsPageClsid)
-        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display' +
-         '\shellex\PropertySheetHandlers\Velocity9x,,,"{0}"' -f $script:V9xSettingsPageClsid)
-        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved,' +
+        # Both key paths are quoted because both contain a space, and Win95's
+        # SetupX will not parse an unquoted AddReg key path that does. It fails
+        # silently: on the 486 every other line of this section applied - the
+        # HKCR ones next to it included, which have no spaces - while these two
+        # created nothing at all, so the Velocity9x tab never appeared and there
+        # was no error to say why. Win98's SetupX is more forgiving, which is
+        # why this survived until a Win95 machine met it. Windows' own
+        # MSDISP.INF quotes the same key for the same reason.
+        ('HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display' +
+         '\shellex\PropertySheetHandlers\Velocity9x",,,"{0}"' -f $script:V9xSettingsPageClsid)
+        ('HKLM,"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved",' +
          '{0},,"Velocity9x Settings Page"' -f $script:V9xSettingsPageClsid)
         # The lines above are necessary but not sufficient. Windows 98 validates
         # a Display property-sheet handler against a Tag DWORD derived from a
