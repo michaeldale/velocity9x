@@ -317,6 +317,63 @@ A logged `BOOTLOG.TXT` would answer it outright by showing whether
 `v9xmini.vxd` loads, and remains the better evidence if someone is at the
 keyboard.
 
+### RESULT: the mini-VDD was the cause, and the driver runs
+
+The one-value experiment landed. With `Display\0000\DEFAULT\minivdd` set to an
+empty string and nothing else changed:
+
+```
+Problem     = 0x00000000          (was 0x18)
+Status      = 0x0ACF              DN_STARTED set   (was 0x0EE7, clear)
+screen      = 640x480 at 8 bpp    (was 4 bpp)
+V9XBOOT.INI = Stage=enable-ok
+              Surface=pitch=640 bpp=8 dwb=640 dds=640 w=640 h=480 debpp=8
+```
+
+**`C:\V9XHW.INI` exists for the first time**, and every field in it is right:
+
+```
+Adapter=S3 Trio32/64 86C764     VendorId=5333  DeviceId=8811
+VideoMemoryBytes=2097152        VideoMemoryStatus=valid
+ClockStatus=valid               CoreClockKHz=59957  MemoryClockKHz=59957
+```
+
+So all three of the plan's Part B questions are answered yes:
+`identify_without_pci` fires and names the chip correctly on a bus with no PCI,
+the aperture maps from protected mode, and a mode set lands. Display Properties
+offers exactly our INF's depths — 16 Color, 256 Color, High Color (16 bit),
+True Color (32 bit), no 24-bit — with a working resolution slider and no error
+dialog.
+
+**`v9xmini.vxd` is what stopped the devnode starting.** A Win9x display devnode
+starts by way of the VDD loading the mini-VDD named in `DEFAULT\minivdd`; ours
+does not load on Win95 4.00.950, so `DN_STARTED` never set, so Problem 24, so
+Display Properties offered nothing, so the desktop stayed on the 4-bpp fallback.
+Every earlier symptom hangs off that one failure.
+
+Two things this is **not**:
+
+* It is **not a shippable fix.** The working machine is a hand-edited registry;
+  the INF still writes `minivdd=v9xmini.vxd`, so any reinstall reintroduces the
+  fault. The real fix is either to make the mini-VDD load on Win95 or to stop
+  the manual-select install writing one. Note this family already builds it with
+  `MiniVddVbeCollect = $false` and its chips read the aperture directly, so it
+  may not need a mini-VDD at all — which would make "omit it" both correct and
+  simpler than "fix it".
+* It is **not yet a diagnosis of why** the mini-VDD fails to load. Nothing has
+  looked at that. A logged `BOOTLOG.TXT` would show it outright and is now the
+  single highest-value piece of evidence outstanding.
+
+**Also outstanding: the mode change does not persist.** Selecting 800x600 at 256
+colours and clicking Apply dropped the agent connection — so something happened
+— but the desktop returned to 640x480, and `Surface=` still reported 640x480. A
+reboot did not carry it either. Win95 4.00.950 predates the live mode switching
+this family's `ModeSwitching = live-any-depth` was validated against on Win98SE,
+so a restart being required is expected; a restart *not* working is not. Suspect
+the hardware-profile mode store (`HKLM\Config\...\Display\Settings`) against our
+`DEFAULT\Mode`, and note the 4-bpp `MODES\4\640,480` row is still a candidate
+target for anything that falls back.
+
 ### 5.5 Exit criteria and branch cleanup
 
 A working desktop requires all of the original Part B evidence, not merely the
