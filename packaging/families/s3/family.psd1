@@ -216,26 +216,19 @@
         ManualSelect = @{
             Description = 'Velocity9x S3 (VLB manual select)'
             VideoMemoryBytes = 2097152
-            # Emitted in the compatible-id field, with the hardware-id field
-            # left empty - the shape every S3 model in Win95's MSDISP.INF uses
-            # for this device (`%GE64%=S3,, *PNP0913`).
+            # No CompatibleId. The emitter supports one - see the manifest spec -
+            # and this family briefly declared `*PNP0913` as a diagnostic, on the
+            # theory that a model claiming no id could not be re-bound when the
+            # Configuration Manager re-enumerates a DetFunc-detected device. It
+            # was wrong. Binding it did make Windows filter Have Disk's
+            # compatible list down to this model alone, so the id matched, but
+            # Problem 24 survived it unchanged. The stock-driver control then
+            # showed the two devnodes structurally identical, and the cause was
+            # DEFAULT,minivdd below.
             #
-            # The plan forbade claiming this id, and its reason still stands:
-            # *PNP0913 is what DETECTS3801 hangs on every S3 801/805/928 board,
-            # and this driver has code for none of them. What overruled it is
-            # that a model claiming nothing cannot be re-bound. Windows detects
-            # this device through DetFunc, and on the boot after the install the
-            # Configuration Manager re-enumerates it, finds no driver claiming
-            # the id, and reports Problem 24 - device not there - with the
-            # driver loaded and the device never started. The install looked
-            # fine every time because SetupX sets the association directly; it
-            # was always the next boot that lost it.
-            #
-            # Compatible-id rather than hardware-id keeps this ranked below any
-            # exact match, which is the most the INF can do. The refusal for a
-            # card that is not ours stays where it can actually be checked:
-            # identify_without_pci accepts only 8811 and 8A01.
-            CompatibleId = '*PNP0913'
+            # So the plan's original refusal stands on its own terms: *PNP0913 is
+            # what DETECTS3801 hangs on every S3 801/805/928 board, this driver
+            # has code for none of them, and nothing here needs the claim.
             # No mini-VDD for this model. Measured on the 486 on 2026-08-22:
             # with DEFAULT,minivdd naming v9xmini.vxd the devnode never reached
             # DN_STARTED on Win95 4.00.950, Device Manager reported Code 24,
