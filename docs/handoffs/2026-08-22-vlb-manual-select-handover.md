@@ -1,8 +1,10 @@
 # VLB manual-select handover: the model installs, the devnode will not start
 
 Date: 2026-08-22
-Branch: `vlb-manual-select-inf`, 10 commits, `716420d`..`a1709d0`, not merged.
-Working tree clean. `run-checks` green across all four families.
+Branch: `vlb-manual-select-inf`, 11 commits ahead of `main`,
+`716420d`..`98226ff` inclusive, not merged.
+No other tracked changes at handoff; `.claude/` is intentionally untracked.
+`run-checks` green across all four families.
 Machine: **486VLB is healthy** — desktop up, agent reachable, boots unattended.
 
 Supersedes the running notes in
@@ -11,21 +13,23 @@ written and corrected as the session went and is kept only for the reasoning
 trail. Where the two disagree, this one is right.
 
 Scope: [the manual-select INF plan](../plans/vlb-manual-select-inf.md), both
-parts. Part A is done. Part B got the driver installed, proved it correct, and
-stopped one step short of a working desktop.
+parts. Part A is done. Part B got the driver installed, proved its pre-Enable
+inquiry and mode-validation paths correct, and stopped before Windows started
+the devnode and called Enable.
 
 ---
 
 ## 1. The one-paragraph version
 
-The INF work is finished and validated on real hardware, and the driver itself
-is now correct on Win95 — loaded by hand it passes its DIB Engine inquiry and
-all six mode validations. What blocks a working desktop is not the driver: it
-is the Win95 devnode, which reports **Code 24, `CM_PROB_DEVICE_NOT_THERE`**, and
-while it does, Display Properties offers no modes at all, so the desktop stays
-pinned on the 4-bpp `vga.drv` fallback row our own INF supplies. Three fixes
-were tried against Code 24 and none moved it. Section 5 has the three
-untried options and what each risks.
+The INF work is finished and validated on real hardware. Loaded by hand, the
+driver passes its DIB Engine inquiry and all six mode validations, but its
+Enable, aperture-map and real mode-set paths remain unproved on Win95. At boot
+Windows does not start the display devnode: it reports **Code 24,
+`CM_PROB_DEVICE_NOT_THERE`**, Display Properties offers no modes, and the
+desktop stays pinned on the 4-bpp `vga.drv` fallback row our own INF supplies.
+Code 24 is correlated with the failure, not yet proved to cause it. Three
+attempted fixes did not move it. Section 5 starts with the stock-driver control
+that distinguishes a causal fault from normal `DetFunc` display-devnode state.
 
 ## 2. What is done, and what proves it
 
@@ -37,7 +41,7 @@ untried options and what each risks.
 | A model with no hardware ID is offered on a machine with no PCI bus | Have Disk on Win95 4.00.950 listed `Velocity9x S3 (VLB manual select)` and it installed |
 | The pruned 2 MiB mode list is what lands | Registry `MODES\16` has no `1280,1024`; `MODES\32` has no `1024,768` |
 | The install writes our driver | `Display\0000`: `InfSection=Velocity9x.Install.Manual`, `DEFAULT\drv=v9xdisp.drv`, `minivdd=v9xmini.vxd` |
-| The compatible ID binds | With `,, *PNP0913`, "show compatible devices" filtered three models to ours alone |
+| The compatible ID binds | With `,, *PNP0913`, "show compatible devices" filtered three models to ours alone. This is diagnostic-only: it did not fix Code 24 and should not merge unless later evidence proves it necessary |
 
 Also in: `Get-V9xFamilyManualSelectModes` as the single source of the derived
 list, schema validation for the whole `ManualSelect` block, cross-family
@@ -115,32 +119,89 @@ remedy. On a 486 that is a full redetect of every device including sound and
 network — out of proportion to one display devnode, and not something to run
 unattended on the only 486. It was opened, identified, and cancelled.
 
-## 5. What to try next, in the order I would try it
+## 5. What to try next, in order
 
-1. **`ForcedConfig` on the devnode.** Win9x pins resources for a legacy device
-   the Configuration Manager will not start on its own by writing a forced
-   configuration and setting `ConfigFlags` bit 1
-   (`CONFIGFLAG_NETWORK_CARD`/forced-config semantics vary by release, so read
-   the existing `LogConfig` subkey's format first and mirror it). This is the
-   mechanism aimed exactly at "device is really there, CM disagrees", it is a
-   registry-only change, and it does not risk the driver association.
-2. **Remove the display adapter in Device Manager and let it redetect.** What
-   `RECOVER.TXT` prescribes, and with the compatible ID in place the redetect
-   has a real chance of binding our model. **Risk:** it may come back on
-   Windows' own `S3.DRV`, since `MSDISP.INF` claims `*PNP0913` for six models
-   and is the in-box INF. Recoverable by reinstalling from `C:\V9XPKG`, so this
-   is a decision rather than a danger.
-3. **Ask whether Code 24 predates all of this.** Nobody looked at Device
-   Manager before the first install — the pre-install evidence is a working
-   800x600x8 desktop on Win95's `s3.drv` and a Display Properties Settings tab
-   with no error. If Win95's own S3 driver ran *with* the devnode at Code 24,
-   then Code 24 is normal for a `DetFunc` display devnode here and the real
-   question is only why Windows will not offer modes. Testing that means
-   putting `s3.drv` back for one boot and reading `Problem`. It is the cheapest
-   experiment on this list and it could invalidate items 1 and 2.
+Michael has confirmed that the 486 is available. Make one state change per
+reboot and stop at each decision point below.
 
-Do item 3 first if the machine is free. It is one reinstall and one reboot, and
-it tells you whether you are chasing a fault or a normal state.
+### 5.1 Capture a reversible baseline
+
+Before changing the installed driver, export or otherwise capture:
+
+* the active `Display\0000` key, including `InfPath`, `InfSection`, driver
+  filenames and all `MODES` rows;
+* `ROOT\*PNP0913\0000`, including `Driver`, `ConfigFlags`, `LogConfig` and any
+  hardware-profile state;
+* the dynamic Config Manager `Problem`, `Status` and `Allocation`;
+* the current Display Properties state and screen depth;
+* the exact recovery route back to `C:\V9XPKG`.
+
+Prime `C:\V9XBOOT.INI` with the sentinel immediately before every reboot. Do
+not infer the live INF from the newest `OEM<n>.INF`; read `Display\0000\InfPath`.
+
+### 5.2 Run the stock-driver control first
+
+Temporarily put Win95's in-box `s3.drv` back on the **same detected devnode**,
+perform one proven reboot, then capture the same evidence again. Confirm both
+the Config Manager state and whether the known pre-install 800x600x8 desktop,
+mode slider and error-free Settings tab return.
+
+The result decides the rest of the investigation:
+
+* **Stock S3 works and still reports Code 24:** Code 24 is normal here, not the
+  cause. Do not try `ForcedConfig` or remove-and-redetect. Diff the working
+  stock `Display\0000`, mode-selection and driver-loading state against
+  Velocity9x and investigate why Windows offers no Velocity9x modes.
+* **Stock S3 works and Code 24 clears:** Code 24 is material. Focus on the
+  Velocity9x association/start transition, then continue to section 5.3.
+* **Stock S3 also fails:** stop. The control is invalid or the machine state
+  has changed independently; recover the known-good stock display before
+  making another Velocity9x change.
+
+After collecting the control, reinstall Velocity9x from `C:\V9XPKG` only when
+the selected branch requires it, and capture the new live `InfPath`.
+
+### 5.3 Remove and redetect only if the control implicates Code 24
+
+Remove only the display adapter in Device Manager and let Windows redetect it;
+do not run the full Add New Hardware Wizard. This is the route `RECOVER.TXT`
+already uses. The compatible `*PNP0913` ID gives the diagnostic package a
+chance to rebind, but Windows may select its own `S3.DRV` because `MSDISP.INF`
+claims the same ID for six models. Recover by reinstalling from `C:\V9XPKG`.
+
+Record which INF and model redetection selected before manually overriding it.
+If the devnode starts, skip section 5.4 and go straight to the exit criteria in
+section 5.5.
+
+### 5.4 Treat `ForcedConfig` as a last, gated experiment
+
+Do not set an assumed `ConfigFlags` "bit 1", and do not synthesize a
+`ForcedConfig` blob by copying `LogConfig`. Before this experiment, obtain the
+exact Win95 definitions and logical-configuration format from an authoritative
+Win95 source, or make Win95 create a forced configuration through its own UI
+and diff the registry. The flag names and meanings vary across Windows
+releases, and an incorrect bit can disable or otherwise change the devnode.
+
+If the format is established, export the complete affected registry state,
+make one reversible forced-configuration change, reboot once, and compare
+`Problem`, `Status`, `Allocation` and driver-load evidence with the baseline.
+
+### 5.5 Exit criteria and branch cleanup
+
+A working desktop requires all of the original Part B evidence, not merely the
+absence of Code 24:
+
+* `V9XBOOT.INI` advances beyond the sentinel and records the real driver path;
+* `V9XHW.INI` records the identified S3 chip and aperture diagnostics;
+* the devnode is started, or a measured stock control has proved that its
+  status is not the gating condition;
+* Display Properties offers the 2 MiB-safe list and one selected Velocity9x
+  mode lands successfully.
+
+Before merging, remove the broad `*PNP0913` compatible binding from `a1709d0`
+unless the experiments prove that it is necessary and the unsupported
+801/805/928 match risk is explicitly accepted. Re-run the four-family checks
+after any source or INF change; no re-run is needed for this handoff edit.
 
 ## 6. Gotchas this session paid for
 
