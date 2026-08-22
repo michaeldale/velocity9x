@@ -207,6 +207,63 @@ If the format is established, export the complete affected registry state,
 make one reversible forced-configuration change, reboot once, and compare
 `Problem`, `Status`, `Allocation` and driver-load evidence with the baseline.
 
+### 5.1 and 5.2 as executed, 2026-08-22
+
+**5.1 done.** Baseline captured to the host and to `C:\V9XBASE` on the guest:
+`BASE-CLASS.TXT`, `BASE-ENUM.TXT`, `BASE-DYN.TXT`, plus `SYSTEM.INI`, a
+screenshot and the package inventory. Findings that matter:
+
+* **`SYSTEM.INI [boot] display.drv=pnpdrvr.drv`, unchanged, `*DisplayFallback=0`.**
+  So section 3's reading survives the check 5.1 demanded: the 4-bpp desktop is
+  *not* SYSTEM.INI having been reset to `vga.drv`, and the registry path really
+  is involved.
+* Live INF read from `Display\0000\InfPath`, not inferred: **`OEM2.INF`**.
+* The devnode's `LogConfig\0` blob decodes to our full resource set — both
+  register windows, both apertures, all four ROM alternatives — so the INF's
+  `LogConfig` did apply. It is also visibly a *different* structure from
+  `BootConfig`, which is concrete support for 5.4's warning not to synthesize
+  one by copying the other.
+* Recovery route verified: `C:\V9XPKG`, 22 files, INF 4135 bytes. Win95 source
+  cabs confirmed present: **19 `.CAB` files in `C:\WIN95`**.
+* Still missing: a logged-boot `BOOTLOG.TXT`. Needs the boot menu, so it stays
+  a keyboard request.
+
+**New evidence found while picking the control model.** In `MSDISP.INF` the
+in-box entry that actually covers this device puts the ID in the
+**hardware-ID** field:
+
+```
+%*PNP0913.DeviceDesc%=S3, *PNP0913      ; Mfg.S3 - hardware-id position
+%GE64%=S3,, *PNP0913                    ; Mfg.Actix - compatible position
+```
+
+`a1709d0` used the compatible position. That is weaker than what Windows itself
+uses for this devnode, and is a candidate explanation for a binding that
+satisfies the Have Disk filter but not the devnode start. It does not license
+moving ours to the hardware-ID field — that is the strongest possible claim on
+every 801/805/928 board and is exactly what the plan forbade — but it belongs in
+the record.
+
+**5.2 started, and incomplete.** Stock `s3.drv` was installed on the same
+devnode and verified before rebooting: Adapter Type `S3`, Manufacturer `S3`,
+Current Files `s3.drv,*vdd,*vflatd,s3.vxd` — the 2026-08-21 baseline exactly. No
+source-file prompt appeared. The sentinel was primed and a proven reboot issued.
+
+**The machine did not come back.** ICMP answers and `486VLB<03>` is registered,
+so it booted and reached logon, but the agent is absent after ~19 minutes and
+the control's `Problem`/`Status` could not be read. Nothing further was changed,
+per this section's third branch.
+
+Two things follow for whoever picks this up:
+
+* **The 486 is currently on Win95's own S3 driver**, which is the known-good
+  configuration — a safer state than it was in, not a worse one. The route back
+  to Velocity9x is Have Disk from `C:\V9XPKG`.
+* **Why the agent did not return is now itself unknown**, and it is the second
+  time a driver-change boot has swallowed it. It may be a modal dialog at
+  logon, as the "not configured properly" one was. Someone has to look at the
+  screen; that single observation unblocks both the control and the question.
+
 ### 5.5 Exit criteria and branch cleanup
 
 A working desktop requires all of the original Part B evidence, not merely the
