@@ -1,7 +1,9 @@
 # ViRGE 325 on VESA Local Bus, through old MMIO
 
 Date: 2026-08-22
-Status: revised plan; implementation has not started
+Status: revised plan; implementation has not started. Stage 4 is re-weighted
+to expected-to-fail pending the answers in "Secondhand report of mkarcher's
+own attempt" below; Stages 0-3 are unaffected.
 
 ## Outcome
 
@@ -69,6 +71,41 @@ feed the same handler
 ([vid_s3_virge.c:1290-1305](../../build/reference/86box/src/video/vid_s3_virge.c)).
 That agreement makes 86Box a useful test oracle, not the source of the hardware
 contract.
+
+## Secondhand report of mkarcher's own attempt
+
+Received 2026-08-22, relayed by a correspondent who knows mkarcher — the same
+person whose Vogons replies 155, 206 and 208 this plan is built on:
+
+- mkarcher tried to work around the MMIO issue for his own VLB ViRGE 325 and
+  failed, including an attempt with a CPLD — a stronger hardware workaround
+  than the single-flip-flop SAUP2 delay this plan's Stage 4 specifies.
+- He concluded S3 had good reason not to ship a VLB ViRGE; every ViRGE after
+  the 325 dropped the VL interface entirely.
+- The 325 "works flawless as framebuffer device in VLB mode"; the MMIO issue
+  is specifically what stopped his accelerated Windows driver attempts.
+- He did get Terminal Velocity's S3D acceleration working on the VLB 325 by
+  avoiding MMIO in that special case.
+
+Consequences for this plan:
+
+- The failure is localised to memory-mapped register-window transactions, not
+  the S3D engine and not the LFB. The unaccelerated VLB desktop path and the
+  LFB work remain validated.
+- Stage 4's fallback ("capture or document the known patched-driver sequence")
+  is now known to have no known answer: the inventor of the workaround has no
+  working sequence. Stage 4 is expected to fail as written.
+- It is not known whether his failed attempts exercised the **old-MMIO
+  A-window** specifically, or only new-MMIO porting. If old MMIO itself failed
+  on VL, this plan's central physical-hardware premise is dead; if he never
+  fully tried it, it remains open. This is now open question 1.
+- Terminal Velocity drove S3D without MMIO at all, which implies a non-MMIO
+  transport (plausibly the command-list fetch path this plan currently
+  forbids). Knowing exactly what mechanism he used, and whether it is sane for
+  the two Windows 2D operations Velocity9x needs, is now open question 2.
+
+Do not buy or build Stage 4 hardware before both questions are answered,
+directly or via the Vogons thread.
 
 ## What is true now
 
@@ -279,7 +316,14 @@ address selection, identification and driver sequencing only.
 D3D, passes guarded DirectDraw fill/blit, survives DOS-box return, and reads
 `0xFFFFFFFF` at the new-MMIO candidate on the same emulated board.
 
-## Stage 4 - physical ViRGE 325, only after Stages 0-3
+## Stage 4 - physical ViRGE 325, only after Stages 0-3 and the mkarcher answers
+
+This stage is **expected to fail as written**: the secondhand report above
+says the author of the SAUP2 workaround could not make an accelerated Windows
+driver work on his own VLB 325, even with a CPLD. It stays in the plan because
+the failure mode is not yet localised to the old-MMIO A-window, and because a
+negative result here is bounded — it rejects only the physical acceleration
+claim. Do not start it before open questions 1 and 2 are answered.
 
 Required hardware and firmware:
 
@@ -312,10 +356,13 @@ The thread records two distinct hazards that the emulator cannot validate:
 - the interface has driver-workaround sequences beyond merely selecting old
   MMIO (replies 203, 205, 206 and 208).
 
-Do not invent those sequences. If the delayed-SAUP2 board still fails, capture
-or document the known patched-driver sequence before planning a software
-workaround. A hang here rejects the physical acceleration claim; it does not
-invalidate the PCI old-MMIO transport or emulator work.
+Do not invent those sequences. The secondhand report above says no working
+patched-driver sequence is known to exist — mkarcher himself failed with
+hardware workarounds up to a CPLD. If the delayed-SAUP2 board fails, that is
+the expected outcome; record the exact failure signature (which access, which
+register window, read or write) rather than iterating on workarounds. A hang
+here rejects the physical acceleration claim; it does not invalidate the PCI
+old-MMIO transport or emulator work.
 
 **Exit:** guarded physical fills and copies complete repeatedly, pixel results
 match, mode/DOS transitions recover, and no bus lock or DMA activation occurs.
@@ -363,15 +410,23 @@ Not modified in Stages 0-3:
 
 ## Open questions, in decision order
 
-1. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
+1. Did mkarcher's failed accelerated-driver attempts exercise the old-MMIO
+   A-window specifically, and what exactly failed — reads, writes, bursts,
+   byte enables? If old MMIO itself fails on VL, Stage 4 is dead and this plan
+   ends at the emulator.
+2. What non-MMIO mechanism did Terminal Velocity use to drive S3D on the VLB
+   325, and is that mechanism usable from the Win9x 2D backend for solid fill
+   and screen copy? (The command-list fetch path is currently forbidden by
+   this plan; a measured answer could reopen it as a separate plan.)
+3. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
    the high framebuffer mapping remains live?
-2. Which measured VBE modes and memory configuration are honest for the 2 MiB
+4. Which measured VBE modes and memory configuration are honest for the 2 MiB
    ViRGE 325 ROM used by the emulator and eventual board?
-3. Does the A-window survive all PCI reset/mode transitions without needing the
+5. Does the A-window survive all PCI reset/mode transitions without needing the
    B-window fallback?
-4. Which VL-correct ViRGE ROM is available for redistribution or local testing?
-5. After the documented SAUP2 hardware delay, are additional software access
-   sequences still required for the two DirectDraw operations Velocity9x uses?
+6. Which VL-correct ViRGE ROM is available for redistribution or local testing?
 
-Questions 4 and 5 do not block Stages 0-2. Question 1 blocks all integrated
-old-MMIO work; question 2 blocks claiming support for the actual physical chip.
+Questions 1 and 2 block Stage 4 only; ask mkarcher directly or via the Vogons
+thread before acquiring hardware. Question 3 blocks all integrated old-MMIO
+work; question 4 blocks claiming support for the actual physical chip.
+Question 6 does not block Stages 0-2.
