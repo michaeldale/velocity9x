@@ -212,6 +212,65 @@ family, as above. Which means Part A's INF-level pruning is not a belt-and-
 braces duplicate of a runtime refusal - it is the only thing standing between
 a 2 MiB card and two modes it cannot scan out.
 
+## 4b. Code 24, and what it is not — 2026-08-22
+
+The driver is now correct as far as anything can test it off the devnode:
+`V9X16LD.EXE` passes the DIB Engine inquiry and all six mode validations after
+the register-unlock fix. But at boot it still reaches only `libmain`, the
+desktop stays on the 4-bpp `vga.drv` row, and Device Manager reports **Code
+24**. Windows also puts up "your display adapter is not configured properly" at
+logon, and *that* dialog — not the password — is what was blocking unattended
+boots.
+
+Authoritative state, from `HKEY_DYN_DATA\Config Manager\Enum`:
+
+```
+HardWareKey = "ROOT\*PNP0913\0000"
+Problem     = 0x18   (24, CM_PROB_DEVICE_NOT_THERE)
+Status      = 0x0EE7
+Allocation  = ...3B0-3BB, 3C0-3DF, A0000-AFFFF, B8000-BFFFF...
+```
+
+`0x0EE7` has `DN_DRIVER_LOADED` set and **`DN_STARTED` clear**, with
+`DN_HAS_PROBLEM`. The driver loads; the device never starts. That is exactly
+what `Stage=libmain` means from the other side.
+
+**Two hypotheses tested and eliminated, so nobody repeats them:**
+
+1. *Missing resources.* Was the reason for adding `LogConfig`, and the
+   `LogConfig` is real — `OEM1.INF` carries it and the class key's `InfPath`
+   points there. But the devnode had an `Allocation` with the VGA ranges
+   **before** that change, because `DETECTS3801` supplies a `BootConfig` for
+   what it detects. So the `LogConfig` is correct and worth keeping — Windows
+   gives every display model one — but it was never the cause.
+2. *Stale `InfName`.* The devnode recorded `InfName="MSDISP.INF"` while its
+   `DeviceDesc` was ours, which looked like Windows being unable to find our
+   description in its own INF. Set to `OEM1.INF` by hand and rebooted: Problem
+   stayed `0x18`. Eliminated. The value was left at `OEM1.INF` since it matches
+   the class key and is right regardless.
+
+**Watch for this trap:** re-running the install does **not** overwrite the
+previous `OEM<n>.INF`. SetupX wrote a second file, so `C:\WINDOWS\INF` now
+holds `OEM0.INF` (3899 bytes, no `LogConfig`) and `OEM1.INF` (4124, with it).
+Always check `Display\0000\InfPath` to see which one is live before concluding
+anything about what is installed.
+
+**What is left.** The one substantial difference remaining between our INF and
+Windows' own is the model line. Every S3 model in `MSDISP.INF` that covers this
+device binds the ID in the **compatible-ID** field with the hardware-ID field
+empty — `%GE64%=S3,, *PNP0913` — and the ID-less `SVGA` model exists only
+alongside those. Ours claims nothing, so when the Configuration Manager
+re-enumerates a `DetFunc`-detected `*PNP0913` at boot, there is nothing to
+re-bind it to, and a device it cannot bind is a device that is not there. The
+install works immediately because SetupX sets the association directly; it is
+the *next* boot that loses it, which is precisely the observed pattern.
+
+Testing that means binding `*PNP0913`, which
+[the plan](../plans/vlb-manual-select-inf.md) explicitly forbade, for a reason
+that still holds: it covers every S3 801/805/928 card `DETECTS3801` finds and
+this driver has code for none of them. Not a decision to take quietly — see
+section 5.
+
 ## 5. What is still open
 
 * The three questions of the plan's step 5 are all still unanswered: whether
