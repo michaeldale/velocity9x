@@ -37,7 +37,9 @@ SAUP1/SAUP2 decoding selects its primary and secondary 8 MiB spaces. It cannot
 distinguish the LFB from a control window 16 MiB above it. The detailed account
 is in [mkarcher's reply 206](https://www.vogons.org/viewtopic.php?start=200&t=76647),
 and reply 208 notes that a new-MMIO driver can usually be ported by changing
-the enable and base-address setup.
+the enable and base-address setup — while warning in the same post that the
+port is where the ViRGE's broken VL bus interface issues begin (see the
+secondhand-report section below).
 
 The primary source is stronger than either that thread or an emulator: section
 15.1 of the
@@ -89,20 +91,41 @@ person whose Vogons replies 155, 206 and 208 this plan is built on:
 
 Consequences for this plan:
 
-- The failure is localised to memory-mapped register-window transactions, not
-  the S3D engine and not the LFB. The unaccelerated VLB desktop path and the
+Re-reading the thread against this report (verified 2026-08-22) sharpens what
+"the MMIO issue" is. mkarcher never claims the old-MMIO window *decode* is
+broken. In reply 208 he calls the new-to-old-MMIO driver port essentially a
+single-location patch — and immediately adds that this is where the issues
+with the ViRGE's broken VL bus interface start. Reply 206 says the problems go
+far beyond new MMIO being unavailable in VL mode. Reply 155 states the
+hardware defect: certain **valid** VL access patterns corrupt vital control
+registers, can lock the VL bus, and can accidentally activate the bus-master
+DMA engine; 1WS late decode plus the SAUP2 delay is his partial workaround.
+So the failed attempts were almost certainly already old-MMIO ports — the
+window is not the variable; the bus interface's transaction handling is.
+
+Consequences for this plan:
+
+- The failure is in the VL bus interface's handling of the access patterns
+  that MMIO engine use generates, not in the S3D engine, the LFB, or the
+  choice of A- versus B-window. The unaccelerated VLB desktop path and the
   LFB work remain validated.
 - Stage 4's fallback ("capture or document the known patched-driver sequence")
   is now known to have no known answer: the inventor of the workaround has no
-  working sequence. Stage 4 is expected to fail as written.
-- It is not known whether his failed attempts exercised the **old-MMIO
-  A-window** specifically, or only new-MMIO porting. If old MMIO itself failed
-  on VL, this plan's central physical-hardware premise is dead; if he never
-  fully tried it, it remains open. This is now open question 1.
-- Terminal Velocity drove S3D without MMIO at all, which implies a non-MMIO
-  transport (plausibly the command-list fetch path this plan currently
-  forbids). Knowing exactly what mechanism he used, and whether it is sane for
-  the two Windows 2D operations Velocity9x needs, is now open question 2.
+  working sequence even with a CPLD. Stage 4 is expected to fail as written.
+- The discriminating unknown is **which access patterns trigger the
+  corruption** — reads versus writes, back-to-back cycles, cycle timing — and
+  mkarcher may know precisely. This is now open question 1.
+- Terminal Velocity drove S3D while avoiding MMIO, so *some* way of feeding
+  the engine survives the broken interface — plausibly the command-list fetch
+  path this plan currently forbids, which would touch MMIO only sparsely for
+  setup instead of hammering the register window per operation. Knowing
+  exactly what mechanism he used, and whether it is sane for the two Windows
+  2D operations Velocity9x needs, is now open question 2.
+- Nothing near the engine may be assumed safe merely because it avoids MMIO:
+  "valid access patterns corrupt control registers" is a bus-interface claim.
+  CRTC port I/O demonstrably works (the framebuffer desktop works), so flip
+  and vblank via ports remain the best-supported reduced tier, but they get
+  measured, not assumed.
 
 Do not buy or build Stage 4 hardware before both questions are answered,
 directly or via the Vogons thread.
@@ -320,10 +343,12 @@ D3D, passes guarded DirectDraw fill/blit, survives DOS-box return, and reads
 
 This stage is **expected to fail as written**: the secondhand report above
 says the author of the SAUP2 workaround could not make an accelerated Windows
-driver work on his own VLB 325, even with a CPLD. It stays in the plan because
-the failure mode is not yet localised to the old-MMIO A-window, and because a
-negative result here is bounded — it rejects only the physical acceleration
-claim. Do not start it before open questions 1 and 2 are answered.
+driver work on his own VLB 325, even with a CPLD, and the thread localises the
+defect to the VL bus interface's transaction handling rather than to any
+particular MMIO window. It stays in the plan only because the triggering
+access patterns are not yet characterised, and because a negative result here
+is bounded — it rejects only the physical acceleration claim. Do not start it
+before open questions 1 and 2 are answered.
 
 Required hardware and firmware:
 
@@ -410,14 +435,19 @@ Not modified in Stages 0-3:
 
 ## Open questions, in decision order
 
-1. Did mkarcher's failed accelerated-driver attempts exercise the old-MMIO
-   A-window specifically, and what exactly failed — reads, writes, bursts,
-   byte enables? If old MMIO itself fails on VL, Stage 4 is dead and this plan
-   ends at the emulator.
-2. What non-MMIO mechanism did Terminal Velocity use to drive S3D on the VLB
-   325, and is that mechanism usable from the Win9x 2D backend for solid fill
-   and screen copy? (The command-list fetch path is currently forbidden by
-   this plan; a measured answer could reopen it as a separate plan.)
+1. Which VL access patterns trigger the reply-155 corruption — reads versus
+   writes, back-to-back cycles, specific timing — and are the two DirectDraw
+   operations' MMIO patterns inside or outside the triggering set? mkarcher
+   may know precisely; ask before designing anything. If ordinary old-MMIO
+   register access is inside the set, Stage 4 is dead and this plan ends at
+   the emulator.
+2. What mechanism did Terminal Velocity use to drive S3D on the VLB 325 while
+   avoiding MMIO, and is that mechanism usable from the Win9x 2D backend for
+   solid fill and screen copy? (Plausibly the command-list fetch path this
+   plan currently forbids, with sparse MMIO setup writes; a measured answer
+   could reopen it as a separate plan. The instrumented-86Box Terminal
+   Velocity run can characterise the default S3D library behaviour without
+   hardware.)
 3. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
    the high framebuffer mapping remains live?
 4. Which measured VBE modes and memory configuration are honest for the 2 MiB
