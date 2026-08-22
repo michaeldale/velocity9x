@@ -89,7 +89,14 @@ person whose Vogons replies 155, 206 and 208 this plan is built on:
 - He did get Terminal Velocity's S3D acceleration working on the VLB 325 by
   avoiding MMIO in that special case.
 
-Consequences for this plan:
+A follow-up on 2026-08-23, answering "which access patterns trigger it":
+
+- The corruption "especially approaches on switching a Windows 9x DOS window
+  from text mode to graphics mode and vice versa - but not only!"
+- The graphics-to-text return is the harder case, and even there no reliable
+  reproduction pattern was found.
+- "We currently cannot tell more about it." Further asking is exhausted; the
+  remaining instruments are measurement and hardware.
 
 Re-reading the thread against this report (verified 2026-08-22) sharpens what
 "the MMIO issue" is. mkarcher never claims the old-MMIO window *decode* is
@@ -112,9 +119,19 @@ Consequences for this plan:
 - Stage 4's fallback ("capture or document the known patched-driver sequence")
   is now known to have no known answer: the inventor of the workaround has no
   working sequence even with a CPLD. Stage 4 is expected to fail as written.
-- The discriminating unknown is **which access patterns trigger the
-  corruption** — reads versus writes, back-to-back cycles, cycle timing — and
-  mkarcher may know precisely. This is now open question 1.
+- The failures cluster on **Win9x DOS-box text/graphics mode transitions**,
+  worst on the return to text, with no reliable reproduction pattern and no
+  further detail available. This is the answer to the old open question 1, and
+  it lands on the transition this plan already identified as the one that
+  matters (`ResetHiResMode` / full-screen DOS). Two supporting observations:
+  the old-MMIO A-window shares physical addresses with VGA graphics-mode
+  memory, which is exactly what a DOS-box mode set re-decodes and what BIOS
+  mode-set traffic hammers; and the framebuffer-only configuration survives
+  the same transitions, so the fault needs the MMIO/acceleration
+  configuration to be active when the transition happens.
+- Because no pattern was isolated, "not only" must be read as *the trigger set
+  is unbounded*. No software sequence may be presented as a fix, and Stage 4
+  stays expected-to-fail regardless of how well the mitigation below works.
 - Terminal Velocity drove S3D while avoiding MMIO, so *some* way of feeding
   the engine survives the broken interface — plausibly the command-list fetch
   path this plan currently forbids, which would touch MMIO only sparsely for
@@ -207,6 +224,30 @@ Do not use `ADVFUNC_CNTL` bit 5 as an automatic fallback. CR53 is documented,
 already covered by the extended-register unlock path, and can be verified by
 readback. A second enable mechanism would add state without solving the flat
 mapping gate.
+
+### On the register path, do not leave old MMIO enabled at rest
+
+The 2026-08-23 follow-up puts the failures on DOS-box text/graphics
+transitions while the acceleration configuration is live. The A-window at
+`0xA0000` overlaps VGA graphics-mode memory, which those transitions
+re-decode, so a plausible mitigation is to keep old MMIO exposed only while
+the driver is actually issuing S3D commands: set CR53[4:3] to `10b` before a
+batch of accelerated operations, restore `00b` after the batch has drained
+and status is idle. Velocity9x issues only fills and screen copies, so the
+per-batch CR53 cost is affordable and the window is closed whenever a DOS box,
+a VBE mode set or `ResetHiResMode` can occur.
+
+Treat this as a **hypothesis to measure on the register path only**, not as a
+fix and not as a reason to advance Stage 4's odds. Nothing about the reported
+failure was reproducible, "but not only" leaves the trigger set unbounded, and
+a mitigation that merely narrows a window cannot be shown correct by passing
+tests. PCI keeps its current always-enabled new-MMIO behaviour; do not
+introduce batch bracketing there, where it would add state and risk to a
+working path.
+
+If bracketing is implemented, the enable and disable must be the same exact
+CR53 leaf functions the binary audit already covers, and the diagnostics must
+report whether the window is currently open.
 
 ### Keep the engine backend unchanged and narrow capability
 
@@ -339,16 +380,21 @@ address selection, identification and driver sequencing only.
 D3D, passes guarded DirectDraw fill/blit, survives DOS-box return, and reads
 `0xFFFFFFFF` at the new-MMIO candidate on the same emulated board.
 
-## Stage 4 - physical ViRGE 325, only after Stages 0-3 and the mkarcher answers
+## Stage 4 - physical ViRGE 325, only after Stages 0-3
 
 This stage is **expected to fail as written**: the secondhand report above
 says the author of the SAUP2 workaround could not make an accelerated Windows
 driver work on his own VLB 325, even with a CPLD, and the thread localises the
 defect to the VL bus interface's transaction handling rather than to any
-particular MMIO window. It stays in the plan only because the triggering
-access patterns are not yet characterised, and because a negative result here
-is bounded — it rejects only the physical acceleration claim. Do not start it
-before open questions 1 and 2 are answered.
+particular MMIO window. It stays in the plan because the reported failures
+cluster on a specific transition this driver controls the sequencing of, and
+because a negative result here is bounded — it rejects only the physical
+acceleration claim.
+
+The gating question is no longer answerable by asking; the original
+investigator has said as much. Run the Terminal Velocity measurement (open
+question 1) before acquiring hardware, because a working non-MMIO transport
+would change what this stage should even attempt.
 
 Required hardware and firmware:
 
@@ -368,6 +414,16 @@ Bring-up order is deliberately narrow:
 4. One small off-screen solid fill, verify through the LFB, then one small
    screen copy.
 5. The DirectDraw regression and DOS-box return; no Direct3D and no command DMA.
+
+Because the 2026-08-23 follow-up puts the failures on DOS-box text/graphics
+transitions, promote that transition from a late regression item to a measured
+step of its own: after step 3, with old MMIO enabled but no accelerated
+operation yet issued, cycle a DOS box into graphics mode and back repeatedly
+and check the control registers and bus for the reply-155 symptoms. Run the
+same cycling again after step 4, and once more with the batch bracketing from
+the design decisions enabled, recording each result separately. If read-only
+status sampling already survives the cycling but a fill does not, that
+distinction is the most useful finding this stage can produce.
 
 Use the driver's no-clear VBE mode flag so its own mode entry does not ask the
 BIOS to clear the framebuffer through an engine path. A ROM may still use the
@@ -435,28 +491,37 @@ Not modified in Stages 0-3:
 
 ## Open questions, in decision order
 
-1. Which VL access patterns trigger the reply-155 corruption — reads versus
-   writes, back-to-back cycles, specific timing — and are the two DirectDraw
-   operations' MMIO patterns inside or outside the triggering set? mkarcher
-   may know precisely; ask before designing anything. If ordinary old-MMIO
-   register access is inside the set, Stage 4 is dead and this plan ends at
-   the emulator.
-2. What mechanism did Terminal Velocity use to drive S3D on the VLB 325 while
+**Answered, 2026-08-23:** which access patterns trigger the reply-155
+corruption. Answer: no isolated pattern, but the failures cluster on Win9x
+DOS-box text/graphics mode transitions with the acceleration configuration
+live, worst on the return to text, and explicitly "not only" there. No further
+detail is available from the original investigator, so this question cannot be
+refined by asking again — only by measurement. It does not by itself kill
+Stage 4, because ordinary old-MMIO register access away from a mode transition
+was never reported as failing; it does mean the mode transition is the gate,
+which is why Stage 4's bring-up now measures the DOS-box cycle before and
+after the first accelerated operation.
+
+1. What mechanism did Terminal Velocity use to drive S3D on the VLB 325 while
    avoiding MMIO, and is that mechanism usable from the Win9x 2D backend for
    solid fill and screen copy? (Plausibly the command-list fetch path this
    plan currently forbids, with sparse MMIO setup writes; a measured answer
    could reopen it as a separate plan. The instrumented-86Box Terminal
    Velocity run can characterise the default S3D library behaviour without
    hardware.)
-3. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
+2. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
    the high framebuffer mapping remains live?
+3. Does closing the old-MMIO window outside accelerated batches survive the
+   DOS-box transition cycle where leaving it open does not? Measurable on the
+   emulator for sequencing and on hardware for the actual defect.
 4. Which measured VBE modes and memory configuration are honest for the 2 MiB
    ViRGE 325 ROM used by the emulator and eventual board?
 5. Does the A-window survive all PCI reset/mode transitions without needing the
    B-window fallback?
 6. Which VL-correct ViRGE ROM is available for redistribution or local testing?
 
-Questions 1 and 2 block Stage 4 only; ask mkarcher directly or via the Vogons
-thread before acquiring hardware. Question 3 blocks all integrated old-MMIO
-work; question 4 blocks claiming support for the actual physical chip.
-Question 6 does not block Stages 0-2.
+Question 1 blocks Stage 4 only and is now answerable by emulator measurement
+rather than by asking. Question 2 blocks all integrated old-MMIO work.
+Question 3 is a Stage 4 experiment, not a prerequisite. Question 4 blocks
+claiming support for the actual physical chip. Question 6 does not block
+Stages 0-2.
