@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.4.4
+## 0.4.4 - 2026-08-22
 
 The S3 driver runs on a second physical machine, and the first with no PCI bus:
 a 486 with an S3 Trio64 on VESA Local Bus under Windows 95 4.00.950. Getting
