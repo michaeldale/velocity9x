@@ -1,8 +1,9 @@
 # VLB manual-select handover: the model installs, the devnode will not start
 
 Date: 2026-08-22
-Branch: `vlb-manual-select-inf`, 11 commits ahead of `main`,
-`716420d`..`98226ff` inclusive, not merged.
+Branch: `vlb-manual-select-inf`, `716420d` through the branch tip, not merged
+(12 commits at this update; `018e536` is titled "Update plan." but actually
+revised this handover).
 No other tracked changes at handoff; `.claude/` is intentionally untracked.
 `run-checks` green across all four families.
 Machine: **486VLB is healthy** — desktop up, agent reachable, boots unattended.
@@ -82,6 +83,9 @@ that reconnected with its own token.
 
 ## 3. Where it actually stands, with numbers
 
+Captured after the `a1709d0` reboot, the branch's last — the same boot section
+4.3 describes, on which the DRV was not loaded at all.
+
 ```
 V9XBOOT.INI      Stage=SENTINEL         (the DRV was not loaded at all)
 V9XHW.INI        absent                 (never written; that happens at Enable)
@@ -134,6 +138,14 @@ Before changing the installed driver, export or otherwise capture:
   hardware-profile state;
 * the dynamic Config Manager `Problem`, `Status` and `Allocation`;
 * the current Display Properties state and screen depth;
+* `SYSTEM.INI [boot]`, in particular `display.drv=` — the 2026-08-21 baseline
+  read `pnpdrvr.drv`; if anything since has reset it to `vga.drv`, that alone
+  produces the 4-bpp desktop with no devnode involvement at all, and section
+  3's "our MODES\4 row" reading would be an unproven inference;
+* `C:\BOOTLOG.TXT` from a logged boot, which separates "the DRV load was never
+  attempted" from "attempted and failed" — the sentinel alone cannot tell a
+  load that was skipped from one that died before stage 1. A logged boot needs
+  the boot menu, so it is a request to Michael at the keyboard;
 * the exact recovery route back to `C:\V9XPKG`.
 
 Prime `C:\V9XBOOT.INI` with the sentinel immediately before every reboot. Do
@@ -145,6 +157,15 @@ Temporarily put Win95's in-box `s3.drv` back on the **same detected devnode**,
 perform one proven reboot, then capture the same evidence again. Confirm both
 the Config Manager state and whether the known pre-install 800x600x8 desktop,
 mode slider and error-free Settings tab return.
+
+Two things to know before starting. The 2026-08-21 baseline never recorded the
+stock devnode's `Problem`/`Status` — that missing datum is why this control
+needs a reboot at all. Michael recalls Device Manager was clean under stock
+`s3.drv` before the first install (recollection, not a captured record), which
+leans toward Code 24 being material; run the control anyway and make it a
+record. The route back is Change Driver against `MSDISP.INF`, which may prompt
+for the Win95 source files: **the cabs are on the 486 at `C:\WIN95`**, so the
+prompt is answerable remotely.
 
 The result decides the rest of the investigation:
 
@@ -245,5 +266,5 @@ after any source or INF change; no re-run is needed for this handoff edit.
   are the pruned rows. Those packages were never coherent — `DEFAULT,Mode` is
   written by the shared registry section the manual model also reads — but it is
   two fewer diagnostic builds.
-* The 486 has a `[DX7]` directory and `DX7A.EXE` at the root that nobody in
-  this session put there. DirectX was **not** installed, per the plan.
+* The 486 has a `[DX7]` directory and `DX7A.EXE` at the root. Michael put them
+  there; they are expected. DirectX was **not** installed, per the plan.

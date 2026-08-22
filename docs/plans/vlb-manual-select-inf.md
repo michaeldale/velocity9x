@@ -19,7 +19,11 @@ ID field, install section entirely ordinary). Manual-select only, installable
 over a device that has an ID because the display class permits the override.
 **Do not bind `*PNP0913`** — it covers every S3 801/805/928 card `DETECTS3801`
 finds, and we have code for none of them; claiming it reproduces the Mach64 D3
-failure exactly.
+failure exactly. (Deviation: `a1709d0` binds it as a *compatible* ID, as a
+diagnostic against Code 24. It did not fix it. The
+[handover](../handoffs/2026-08-22-vlb-manual-select-handover.md), section 5.5,
+requires removing the binding before merge unless the experiments prove it
+necessary.)
 
 Decisions taken for this plan:
 
