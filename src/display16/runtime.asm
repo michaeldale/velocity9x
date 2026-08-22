@@ -32,16 +32,29 @@ EXTRN _v9x_map_physical_base:DWORD
 ; below and read by enable16.c. Defined in C, like the stage code above.
 EXTRN _v9x_minivdd_base:DWORD
 EXTRN _v9x_minivdd_bytes:WORD
+EXTRN _v9x_minivdd_lin_bytes:WORD
 EXTRN _v9x_minivdd_attr:WORD
+EXTRN _v9x_minivdd_mode_number:WORD
 EXTRN _v9x_minivdd_width:WORD
 EXTRN _v9x_minivdd_height:WORD
 EXTRN _v9x_minivdd_bpp:WORD
+EXTRN _v9x_minivdd_significant:WORD
 EXTRN _v9x_minivdd_model:WORD
+EXTRN _v9x_minivdd_record_flags:WORD
+EXTRN _v9x_minivdd_red:WORD
+EXTRN _v9x_minivdd_green:WORD
+EXTRN _v9x_minivdd_blue:WORD
+EXTRN _v9x_minivdd_rsvd:WORD
 EXTRN _v9x_minivdd_version:WORD
 EXTRN _v9x_minivdd_total64k:WORD
+EXTRN _v9x_minivdd_capabilities:DWORD
+EXTRN _v9x_minivdd_oem_revision:WORD
 EXTRN _v9x_minivdd_bufseg:WORD
-EXTRN _v9x_minivdd_modes:WORD
-EXTRN _v9x_minivdd_ctrl:WORD
+EXTRN _v9x_minivdd_listed:WORD
+EXTRN _v9x_minivdd_queried:WORD
+EXTRN _v9x_minivdd_cached:WORD
+EXTRN _v9x_minivdd_probed:WORD
+EXTRN _v9x_minivdd_status:WORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -264,7 +277,8 @@ V9xVddInitialize ENDP
 ; The handshake is not ceremony. The device id is private and unallocated, so
 ; another VxD may already own it; INT 2Fh 1684h would then hand back a stranger's
 ; entry point and calling it blind is how you corrupt an unrelated driver. A
-; wrong magic or a newer contract version means refuse and never call again.
+; wrong magic or any contract version other than this package's v2 means refuse
+; and never call again. The DRV and VxD ship as one mandatory pair.
 V9xMiniApiInitialize PROC NEAR
     cmp     V9xMiniApiState, 0
     je      short V9xMiniApiProbe
@@ -300,7 +314,7 @@ V9xMiniApiProbe:
     cmp     ebx, V9XMINI_API_MAGIC
     jne     short V9xMiniApiProbeDone
     cmp     ecx, V9XMINI_API_VERSION
-    ja      short V9xMiniApiProbeDone   ; contract newer than we understand
+    jne     short V9xMiniApiProbeDone  ; v2 package pairs are mandatory
 
     mov     V9xMiniApiState, 1
 
@@ -407,6 +421,8 @@ V9XMINIVBECONTROLLER PROC FAR
 
     mov     _v9x_minivdd_version, bx
     mov     _v9x_minivdd_total64k, cx
+    mov     _v9x_minivdd_capabilities, edx
+    mov     _v9x_minivdd_oem_revision, si
     mov     ax, 1
     jmp     short V9xMiniVbeCtrlDone
 V9xMiniVbeCtrlFailed:
@@ -423,8 +439,8 @@ V9XMINIVBECONTROLLER ENDP
 
 ; WORD FAR PASCAL V9xMiniVbeStatus(void)
 ;
-; Returns 1 and fills _v9x_minivdd_bufseg, _v9x_minivdd_modes and
-; _v9x_minivdd_ctrl with what the mini-VDD's init-time collection achieved, or
+; Returns 1 and fills the bounded count/status globals with what the mini-VDD's
+; init-time collection achieved, or
 ; 0 when there is no usable API. Diagnostic only: it exists so an empty cache
 ; can be told apart from a failed allocation without guessing.
 PUBLIC V9XMINIVBESTATUS
@@ -446,8 +462,13 @@ V9XMINIVBESTATUS PROC FAR
     jz      short V9xMiniVbeStatusFailed
 
     mov     _v9x_minivdd_bufseg, bx
-    mov     _v9x_minivdd_modes, cx
-    mov     _v9x_minivdd_ctrl, dx
+    mov     _v9x_minivdd_listed, cx
+    shr     ecx, 16
+    mov     _v9x_minivdd_queried, cx
+    mov     _v9x_minivdd_cached, dx
+    shr     edx, 16
+    mov     _v9x_minivdd_probed, dx
+    mov     _v9x_minivdd_status, si
     mov     ax, 1
     jmp     short V9xMiniVbeStatusDone
 V9xMiniVbeStatusFailed:
@@ -461,6 +482,96 @@ V9xMiniVbeStatusDone:
     pop     bx
     retf
 V9XMINIVBESTATUS ENDP
+
+; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)
+PUBLIC V9XMINIVBEMODEAT
+V9XMINIVBEMODEAT PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeModeAtFailed
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_MODE_AT
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeModeAtFailed
+    mov     _v9x_minivdd_base, ebx
+    mov     _v9x_minivdd_bytes, cx
+    shr     ecx, 16
+    mov     _v9x_minivdd_lin_bytes, cx
+    mov     _v9x_minivdd_width, dx
+    shr     edx, 16
+    mov     _v9x_minivdd_height, dx
+    mov     _v9x_minivdd_bpp, si
+    shr     esi, 16
+    mov     _v9x_minivdd_significant, si
+    mov     _v9x_minivdd_mode_number, di
+    shr     edi, 16
+    mov     _v9x_minivdd_attr, di
+    mov     ax, 1
+    jmp     short V9xMiniVbeModeAtDone
+V9xMiniVbeModeAtFailed:
+    xor     ax, ax
+V9xMiniVbeModeAtDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    ret     2
+V9XMINIVBEMODEAT ENDP
+
+; WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index)
+PUBLIC V9XMINIVBEMODEMASKS
+V9XMINIVBEMODEMASKS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeModeMasksFailed
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_MODE_MASKS
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeModeMasksFailed
+    mov     _v9x_minivdd_red, bx
+    shr     ebx, 16
+    mov     _v9x_minivdd_green, bx
+    mov     _v9x_minivdd_blue, cx
+    shr     ecx, 16
+    mov     _v9x_minivdd_rsvd, cx
+    mov     _v9x_minivdd_model, dx
+    shr     edx, 16
+    mov     _v9x_minivdd_record_flags, dx
+    mov     ax, 1
+    jmp     short V9xMiniVbeModeMasksDone
+V9xMiniVbeModeMasksFailed:
+    xor     ax, ax
+V9xMiniVbeModeMasksDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    ret     2
+V9XMINIVBEMODEMASKS ENDP
 
 PUBLIC V9XVDDGETDISPLAYCONFIG
 V9XVDDGETDISPLAYCONFIG PROC FAR

@@ -22,10 +22,10 @@
 
 #include "velocity9x/types.h"
 
-/* Contract versions. v1 is the shipping API; v2 adds indexed enumeration, the
- * VBE 3 linear stride and colour fields, and EDID chunks. A display driver
- * refuses a contract newer than the one it was built against rather than
- * guessing at a register layout. */
+/* Contract versions. v1 is retained as history; v2 is the exact-match packaged
+ * API and adds indexed enumeration, VBE 3 linear stride and colour fields, and
+ * EDID chunks. A display driver refuses any other contract rather than guessing
+ * at a register layout. */
 #define V9X_VBE_API_V1 ((v9x_u16)1u)
 #define V9X_VBE_API_V2 ((v9x_u16)2u)
 
@@ -78,6 +78,7 @@
 #define V9X_VBE_ST_EDID_NO_DDC    ((v9x_u16)0x0200u)
 #define V9X_VBE_ST_EDID_FAILED    ((v9x_u16)0x0400u)
 #define V9X_VBE_ST_COLLECT_OFF    ((v9x_u16)0x0800u)
+#define V9X_VBE_ST_QUERY_LIMIT    ((v9x_u16)0x1000u)
 
 /*
  * How many cached records a consumer may read, given the reported status and

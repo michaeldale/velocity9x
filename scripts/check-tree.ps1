@@ -176,6 +176,17 @@ foreach ($family in $families) {
     }
 }
 
+# Stage 1 rolls the no-timeout many-mode walk out to the QEMU VBE package only.
+# A missing manifest key means enabled, so assert the positive set explicitly;
+# otherwise a newly added family would acquire boot-time BIOS calls by default.
+$collectFamilies = @($families | Where-Object {
+    $_.Build.MiniVddVbeCollect -ne $false
+} | ForEach-Object { $_.Id })
+if ($collectFamilies.Count -ne 1 -or $collectFamilies[0] -ne 'vbe') {
+    throw ("Stage-1 mini-VDD collection must be enabled only for vbe; enabled: " +
+           ($collectFamilies -join ', '))
+}
+
 # The mini-VDD API contract is written twice - once for the two assemblers
 # (include\asm\V9XMAPI.INC) and once for their C consumers
 # (include\velocity9x\vbe_cache.h) - because no assembler here reads C and no
@@ -255,7 +266,7 @@ foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_MODE_LIST_MAX',
                         'V9X_VBE_BASELINE_PROBE_MAX', 'V9X_VBE_EDID_BYTES',
                         'V9X_VBE_EDID_CHUNKS', 'V9X_VBE_RF_ORIGIN_LIST',
                         'V9X_VBE_RF_ORIGIN_PROBE', 'V9X_VBE_ST_LIST_VALID',
-                        'V9X_VBE_ST_COLLECT_OFF')) {
+                        'V9X_VBE_ST_COLLECT_OFF', 'V9X_VBE_ST_QUERY_LIMIT')) {
     if (-not $cValues.ContainsKey($required)) {
         throw "vbe_cache.h no longer defines $required."
     }
@@ -301,8 +312,8 @@ if ($cValues['V9X_VBE_CACHE_MAX'] -gt $modeTableMax) {
 # Both assembly users must reach these numbers through the shared include, and
 # neither may shadow one with a local EQU. The forbidden set is exactly what the
 # include defines, so adding a constant there extends this check by itself. A
-# private constant that merely looks similar - loader.asm's V9X_VBE_CACHE_COUNT,
-# the length of its own v1 mode list - is not in the set and is not the target.
+# private constant that merely looks similar - loader.asm's cautious Stage-1
+# query clamp, for example - is not in the set and is not the target.
 foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm")) {
     $asmText = Get-Content -LiteralPath (Join-Path $repoRoot $asmUser) -Raw
     if ($asmText -notmatch '(?m)^\s*include\s+V9XMAPI\.INC\s*$') {
@@ -314,6 +325,31 @@ foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm"))
                    "only in include\asm\V9XMAPI.INC.")
         }
     }
+}
+
+# Stage 1 is an exact v2 package pair. Reverting only the advertised version
+# would make the indexed implementation unreachable while all layouts still
+# agreed numerically, so assert the selected version as well as the constants.
+if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V2']) {
+    throw "V9XMINI_API_VERSION must advertise the implemented v2 contract."
+}
+$miniSource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
+if ($miniSource -notmatch '(?m)^\s*include\s+V9XPROBE\.INC\s*$') {
+    throw "loader.asm does not consume the generated baseline rescue list."
+}
+if ($miniSource -match '\bV9xVbeModeList\b|\bV9X_VBE_CACHE_COUNT\b') {
+    throw "loader.asm still contains the removed fixed v1 mode cache."
+}
+$queryClampMatch = [regex]::Match(
+    $miniSource, '(?m)^\s*V9X_STAGE1_QUERY_MAX\s+EQU\s+([0-9]+)\s*$')
+if (-not $queryClampMatch.Success) {
+    throw "loader.asm does not define its explicit Stage-1 BIOS-call clamp."
+}
+$queryClamp = [int]$queryClampMatch.Groups[1].Value
+if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) {
+    throw ("loader.asm Stage-1 query clamp $queryClamp is outside the shared " +
+           "V9X_VBE_MODE_QUERY_MAX bound.")
 }
 
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +

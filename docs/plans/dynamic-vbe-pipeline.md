@@ -753,6 +753,21 @@ What it establishes:
 
 ### Stage 1 - bounded mini-VDD enumeration, diagnostic only
 
+Implementation status (2026-08-23): the host/build half is implemented on the
+`dynamic-vbe-stage0` working branch. The mini-VDD now stages `VideoModePtr`
+before any `4F01h`, advertises the exact v2 contract, fills separate 64-record
+list and 16-record rescue caches, consumes the manifest-generated rescue list,
+and exposes controller/status/indexed record operations. The Win16 side dumps
+the bounded controller, status and record facts to `C:\V9XBOOT.INI` while all
+rendering remains on the static family table. The first drop clamps list-derived
+BIOS queries to 96 (enough for QEMU's measured 93 entries) and reports that
+truncation explicitly. Collection is enabled only for `vbe`; ATI, S3 and Matrox
+assemble it out. Local tree, dual-compiler host and all-family package gates are
+green. The QEMU guest comparison below is still the exit gate and has not been
+run, so Stage 1 is not yet complete. The diagnostic storage raises the Win16
+DGROUP image to 2272 bytes; with the 1024-byte local heap the audited occupancy
+is 3296 of the 32768-byte limit, before Stage 2's runtime tables are added.
+
 - Replace the fixed seven-number loop with the bounded `VideoModePtr` staging
   walk.
 - Clear scratch before every query and require `AX=004Fh` before reading it.

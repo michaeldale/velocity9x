@@ -64,6 +64,8 @@ static void test_usable_count(void)
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_FAILED), 5u) == 5u);
     CCHECK(v9x_vbe_scan_usable_count(
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_CACHE_FULL), 64u) == 64u);
+    CCHECK(v9x_vbe_scan_usable_count(
+               (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_LIMIT), 40u) == 40u);
 }
 
 static void test_may_contradict(void)
@@ -108,6 +110,8 @@ static void test_may_contradict(void)
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_CACHE_FULL)) == V9X_FALSE);
     CCHECK(v9x_vbe_scan_may_contradict(
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_FAILED)) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict(
+               (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_LIMIT)) == V9X_FALSE);
 
     /*
      * EDID state is orthogonal. A monitor with no DDC must not be able to cost

@@ -64,7 +64,7 @@ v9x_u16 v9x_vbe_scan_may_contradict(v9x_u16 status)
     }
     if ((status & (V9X_VBE_ST_LIST_OVERFLOW | V9X_VBE_ST_LIST_UNREACHED |
                    V9X_VBE_ST_LIST_FLAGGED | V9X_VBE_ST_CACHE_FULL |
-                   V9X_VBE_ST_QUERY_FAILED)) != 0u) {
+                   V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_LIMIT)) != 0u) {
         return V9X_FALSE;
     }
     return V9X_TRUE;

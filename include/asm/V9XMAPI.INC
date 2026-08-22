@@ -38,18 +38,16 @@ V9XMINI_API_MAGIC   EQU 39583956h
 
 ; The contract versions this project has defined.
 ;
-; v1 is the shipping contract: controller information, one mode looked up by
-; VBE number, and a status word. Its cache is seven hand-written mode numbers.
+; v1 was the Stage-0 contract: controller information, one mode looked up by
+; VBE number, and a status word. Its cache was seven hand-written mode numbers.
 ;
 ; v2 adds indexed enumeration of a bounded scan cache, the VBE 3 linear stride
 ; and colour fields, the packed record below, and EDID block 0 in register-only
-; chunks. It is defined here ahead of its implementation so both sides can be
-; written against one set of numbers; V9XMINI_API_VERSION is what the code
-; currently implements and advertises, and Stage 1 of
-; docs\plans\dynamic-vbe-pipeline.md moves it to V9XMINI_API_V2.
+; chunks. V9XMINI_API_VERSION is what both packaged binaries implement and
+; advertise; Stage 1 makes v2 an exact-match package-pair contract.
 V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
-V9XMINI_API_VERSION EQU V9XMINI_API_V1
+V9XMINI_API_VERSION EQU V9XMINI_API_V2
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
@@ -227,8 +225,9 @@ V9X_VBE_ST_LIST_OVERFLOW  EQU 0008h  ; hit V9X_VBE_MODE_LIST_MAX first
 V9X_VBE_ST_LIST_FLAGGED   EQU 0010h  ; a listed value carried set-mode flag bits
 V9X_VBE_ST_LIST_UNREACHED EQU 0020h  ; VideoModePtr null or not addressable
 V9X_VBE_ST_CACHE_FULL     EQU 0040h  ; more admissible records than cache slots
-V9X_VBE_ST_QUERY_FAILED   EQU 0080h  ; at least one 4F01h did not answer 004Fh
+V9X_VBE_ST_QUERY_FAILED   EQU 0080h  ; a listed 4F01h did not answer 004Fh
 V9X_VBE_ST_EDID_VALID     EQU 0100h  ; a 128-byte block 0 was collected
 V9X_VBE_ST_EDID_NO_DDC    EQU 0200h  ; 4F15h reported no DDC support
 V9X_VBE_ST_EDID_FAILED    EQU 0400h  ; DDC claimed, read refused
 V9X_VBE_ST_COLLECT_OFF    EQU 0800h  ; assembled without collection at all
+V9X_VBE_ST_QUERY_LIMIT    EQU 1000h  ; first-drop BIOS-call clamp stopped queries

@@ -68,7 +68,28 @@ $buildIncludeLines = @(
     "V9xMiniVbeCallLineLength equ `$ - V9xMiniVbeCallLine",
     "V9xMiniVbeCallRetLine db `"V9X-MINI vbe-call ret=`"",
     "V9xMiniVbeCallRetHex db `"0000`", 13, 10",
-    "V9xMiniVbeCallRetLineLength equ `$ - V9xMiniVbeCallRetLine"
+    "V9xMiniVbeCallRetLineLength equ `$ - V9xMiniVbeCallRetLine",
+    "V9xMiniVbeStatusLine db `"V9X-MINI vbe-status ptr=`"",
+    "V9xMiniVbeStatusPtrSegHex db `"0000`"",
+    "db `":`"",
+    "V9xMiniVbeStatusPtrOffHex db `"0000`"",
+    "db `" self=`"",
+    "V9xMiniVbeStatusPtrSelfHex db `"0000`"",
+    "db `" listed=`"",
+    "V9xMiniVbeStatusListedHex db `"0000`"",
+    "db `" queried=`"",
+    "V9xMiniVbeStatusQueriedHex db `"0000`"",
+    "db `" cached=`"",
+    "V9xMiniVbeStatusCachedHex db `"0000`"",
+    "db `" failed=`"",
+    "V9xMiniVbeStatusFailedHex db `"0000`"",
+    "db `" overflow=`"",
+    "V9xMiniVbeStatusOverflowHex db `"0000`"",
+    "db `" probed=`"",
+    "V9xMiniVbeStatusProbedHex db `"0000`"",
+    "db `" flags=`"",
+    "V9xMiniVbeStatusFlagsHex db `"0000`", 13, 10",
+    "V9xMiniVbeStatusLineLength equ `$ - V9xMiniVbeStatusLine"
 )
 if ($DisableVbeCollect) {
     $buildIncludeLines += @(

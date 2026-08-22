@@ -122,6 +122,10 @@
     )
 
     Build = @{
+        # Stage 1's many-mode BIOS walk rolls out to QEMU VBE first. ATI keeps
+        # the mini-VDD for power callbacks but assembles collection out until
+        # its own guest/physical inventory gate is ready.
+        MiniVddVbeCollect = $false
         # Compile order is link order. Reordering changes the image.
         # One object per chip, then the family table that points at both -
         # the split the per-object audit layer needs to tell them apart.
