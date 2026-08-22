@@ -301,6 +301,16 @@ labels actually name.
 Prefer the VBE OEM strings: they arrive through a path that already exists and
 is already ring-0, and they are what the BIOS asserts about itself.
 
+**Measured, and the preference does not survive it.** The 945GM survey of
+2026-08-23 has `OemSoftwareRev=0100`, `Capabilities=00000001` and
+`OemProductRev` = *Hardware Version 0.0*, none of which names a build. The
+string that does - *Build Number: 1585 PC 14.34 01/08/2008* - is in the ROM
+image at C000h, which is where Gona's row labels come from in the first place.
+One BIOS is not a rule, and Intel integrated graphics may be unusually terse
+here, but on the only sample this project has measured the ROM image is the
+informative source and the VBE strings are not. Carry the cheap fields because
+they cost nothing; do not expect them to attribute a report.
+
 **Partly landed (2026-08-23), through the dynamic-VBE pipeline's Stage 0.**
 `struct v9x_vbe_controller_summary` now carries `capabilities` and
 `oem_software_rev`, both fixed-offset VbeInfoBlock fields needing no pointer

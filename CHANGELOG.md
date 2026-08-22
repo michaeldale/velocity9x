@@ -121,6 +121,22 @@ builds is the same image as before, which is the stage's own exit condition.
   staging copy the mode list gets — which is a second reason that block is
   copied before any `4F01h` call can overwrite it.
 
+- **Two host fixtures built from real BIOS captures rather than invented
+  values.** `test_gma950_survey` transcribes the 945GM netbook survey - attributes
+  `009B`, aperture `D0000000`, both stride fields, the reported channel sizes and
+  positions - and pins what the panel-filtered case does: six live modes, two of
+  them updating baseline rows in place, four appended, and the five dead standard
+  rows still in storage. `test_qemu_stdvga_list` does the same for the QEMU
+  std-vga list captured on 2026-08-23.
+
+  The QEMU one turned up two things no hand-built fixture had: mode `0013h` and
+  mode `0146h` both describe 320x200x8, so duplicate geometry at one depth is
+  real BIOS behaviour the merge has to collapse; and 48 admitted rows against 32
+  DirectDraw slots means the subset fills 28 slots with 8- and 16-bpp rows and
+  has four left for high colour, so an ordinary **1024x768x32 desktop is absent
+  from the ordinary selection**. That makes "guarantee the current desktop row is
+  present" a requirement with a test behind it rather than a sentence in a plan.
+
 ### Changed
 
 - **24-bpp modes are refused by mode admission.** They divide into whole bytes
@@ -154,6 +170,31 @@ builds is the same image as before, which is the stage's own exit condition.
   disproportionately the high-resolution ones where real BIOSes run 87 Hz and
   above; fixing it is deliberately out of scope, because anything ending in *and
   then set a refresh rate* can put a mode on the only monitor a machine has.
+
+- **Stage 0's outstanding evidence is captured, and it changed a rule from
+  precaution to requirement.** The plan said "some BIOSes point `VideoModePtr`
+  into the controller buffer"; the first target is one of them. Two DOS programs
+  run on the QEMU std-vga guest reported different mode-list pointers -
+  `0E38:25F8` and `0B46:06D4`, both low DOS RAM, neither near the C000h ROM - and
+  a pointer that moves with the caller is a pointer into the caller's own 4F00h
+  block. Without the staging copy, the Stage 1 walk would read its mode numbers
+  out of a block the first `4F01h` had already overwritten, on the package this
+  rolls out to first.
+
+  The same capture confirms 19 of the 93 listed modes are 24 bpp, which settles
+  that rejection with evidence instead of reasoning; that 49 admitted rows sit
+  inside the 64-row table, so the cache-full flag will not fire there; and that
+  QEMU serves a valid EDID (1.4, preferred timing 1280x800, a geometry the list
+  also admits), so Stage 5's exact-match path can be built without waiting on
+  physical panel hardware. Captures and method are in
+  `personal/v9x-qemu-stdvga/`.
+
+  On BIOS identity the second sample agrees with the first and against the
+  earlier preference: SeaBIOS reports `OemSoftwareRev=0000` where the netbook
+  reports `0100`, and neither names a build. The informative source is a string
+  in both cases, but a different one each time - the ROM build stamp on the Intel
+  part, the VBE OEM strings on SeaBIOS - which argues for reading both eventually
+  rather than preferring either now.
 
 ## 0.4.4 - 2026-08-22
 

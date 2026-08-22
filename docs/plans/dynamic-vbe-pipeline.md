@@ -198,6 +198,16 @@ Copy the complete bounded list to staging storage before making any `4F01h`
 call. Some BIOSes point `VideoModePtr` into the controller buffer, which the
 mode-information calls will reuse and overwrite.
 
+**The first target is one of them.** Two DOS programs were run on the QEMU
+std-vga guest on 2026-08-23, and each reported a different mode-list pointer -
+`0E38:25F8` from the survey, `0B46:06D4` from the inventory - both in low DOS
+RAM and neither anywhere near the C000h ROM. A pointer that moves with the
+caller is a pointer into the caller's own buffer, so on SeaBIOS the mode list
+lives inside the block `4F01h` rebuilds. Without the staging copy the walk would
+read its mode numbers out of a block the first mode query had already
+overwritten, and it would do so on the package this pipeline rolls out to first.
+The captures are in `personal/v9x-qemu-stdvga/`.
+
 An unterminated or invalid list sets a diagnostic reason and contributes zero
 dynamic records. The static table remains available.
 
@@ -282,11 +292,28 @@ The API needs these operations:
   `Capabilities` bits and `OemSoftwareRev`. The last two are identification,
   not policy: nothing in this driver behaves differently on a capability bit,
   and the revision exists because defects track the BIOS rather than the chip.
-  Both are fixed-offset fields, so neither costs a pointer dereference. The OEM
-  strings would say more and are deliberately not in v2: they are far pointers
-  into the controller block and would need the same bounded staging copy the
-  mode list gets, which is a second reason to keep the block copied before any
-  `4F01h` call overwrites it.
+  Both are fixed-offset fields, so neither costs a pointer dereference.
+
+  What they are worth is now measured rather than assumed, and on two samples
+  the answer is sobering. The 945GM netbook reports `OemSoftwareRev=0100` with
+  `OemProductRev` reading *Hardware Version 0.0*; QEMU's SeaBIOS reports
+  `OemSoftwareRev=0000`. Neither number identifies a build. What does identify
+  one is a string: *Build Number: 1585 PC 14.34 01/08/2008* in the netbook's ROM
+  image at C000h, and *SeaBIOS VBE(C) 2011* / *SeaBIOS Developers* in QEMU's OEM
+  strings. So the revision field is the cheap half of an identity that is no
+  identity at all on either sample so far, and it is still worth carrying: a
+  report that says `OemSoftwareRev=0000` at least distinguishes a BIOS that
+  declines to identify itself from one nobody asked. The informative source
+  differs by vendor - ROM strings on the Intel part, VBE OEM strings on
+  SeaBIOS - which is an argument for eventually reading both, not for preferring
+  one.
+
+  The OEM strings are deliberately not in v2 either. They are far pointers into
+  the controller block, so they need the same bounded staging copy the mode list
+  gets - a second reason to keep that block copied before any `4F01h` call can
+  overwrite it - and on the evidence above they would not have answered the
+  question anyway. Reading the ROM build string is the option that would, and it
+  is a separate piece of work with its own bounds to argue about.
 - `STATUS`: list state, listed/query/cached counts, baseline-probe count,
   truncation/failure flags and EDID state.
 - `MODE_AT(index)`: mode number, attributes, geometry, both strides, physical
@@ -695,11 +722,34 @@ the VBE 2/VBE 3 mask sets, stale scratch, the depth pairs, and what a reported
 count and status permit. 24 bpp is refused by admission, per the decision
 recorded below.
 
-Outstanding for this stage: capture the QEMU std-vga `4F00h` list, `4F01h`
-records and EDID with `vbe_inventory_dos`, and record whether that BIOS's
-mode-list pointer lands in ROM or in the controller buffer. That last fact is
-the one Stage 1's staging copy exists for, and it cannot be inferred from the
-GMA950 survey.
+The QEMU std-vga capture is done too, as of 2026-08-23, so this stage is
+complete. The guest was booted to a real-mode DOS prompt and both DOS tools were
+run from a floppy; `personal/v9x-qemu-stdvga/` holds the results and the method.
+What it establishes:
+
+- **The mode-list pointer lands in the caller's buffer**, proved by two programs
+  getting two different pointers. Stage 1's staging copy is mandatory on the
+  first target, not defensive.
+- **93 modes listed and properly terminated**, of which 49 pass admission - 9 at
+  8 bpp, 20 at 16, 20 at 32. That is comfortably inside the 64-row table, so the
+  cache-full flag will not fire here and baseline hiding stays enabled.
+- **19 of the refusals are 24-bpp modes**, which settles the amendment above
+  with evidence rather than reasoning: this depth would have arrived in Stage 2's
+  exit gate on the first target. Seven more are 15-bpp and eighteen have no
+  linear framebuffer.
+- **48 rows against 32 DirectDraw slots.** The subset fills 28 slots with 8- and
+  16-bpp rows and has four left for high colour, so an ordinary 1024x768x32
+  desktop is absent from the ordinary selection. The active-row substitution
+  rule is therefore load-bearing on this target; both facts are pinned by
+  `test_qemu_stdvga_list` in `tests/host/test_vbe_modes.c`.
+- **Mode `0013h` and mode `0146h` both describe 320x200x8**, so duplicate
+  geometry at one depth is a real BIOS behaviour and not a hypothetical the
+  merge has to guard against.
+- **EDID is present and valid** - EDID 1.4, "QEMU Monitor", preferred timing
+  1280x800 - and 1280x800 is among the admitted geometries. Stage 5's
+  exact-match path can therefore be built and tested here rather than waiting on
+  the netbook's panel.
+- `Capabilities=00000001` and `OemSoftwareRev=0000`.
 
 ### Stage 1 - bounded mini-VDD enumeration, diagnostic only
 

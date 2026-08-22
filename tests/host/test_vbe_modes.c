@@ -380,6 +380,351 @@ static void test_24bpp_is_omitted_not_fatal(void)
     }
 }
 
+/*
+ * The GMA950 survey, as the mini-VDD would hand it over.
+ *
+ * Every field below is transcribed from a DOS survey of MICHAEL-NETBOOK
+ * (HP Mini 110, 945GSE, PCI 8086:27AE, fixed 1024x576 LVDS panel) rather than
+ * invented: attributes 009B, memory model 4 for the palettized mode and 6 for
+ * the direct-colour ones, the aperture at D0000000, the strides the BIOS
+ * reports in both the legacy and the linear field, and the channel sizes and
+ * positions it reports for each depth.
+ *
+ * This is the machine that motivated the dynamic pipeline, and it is the one
+ * case where the interesting answer is what the BIOS does *not* offer. Of the
+ * 36 numbers in its mode list, six answer 4F01h with anything at all - the
+ * three Intel OEM modes at the panel's native 1024x576, and three at 640x480 -
+ * while five of the seven standard numbers the family baseline is built from
+ * either answer with zero geometry or are absent from the list entirely.
+ *
+ * What this fixture pins is the admission half of that: the six live modes are
+ * accepted, two of them update baseline rows in place rather than appending,
+ * and the masks that arrive are the ones the BIOS reported rather than the
+ * canonical ones the depth would imply. Hiding the five contradicted baseline
+ * rows is the publication half and is not implemented yet.
+ */
+static void make_gma950_entry(struct v9x_vbe_scan_entry *entry, v9x_u16 number,
+                              v9x_u16 width, v9x_u16 height, v9x_u16 bpp,
+                              v9x_u16 stride)
+{
+    memset(entry, 0, sizeof(*entry));
+    entry->mode_number = number;
+    entry->summary.attributes = 0x009bu;
+    entry->summary.width = width;
+    entry->summary.height = height;
+    entry->summary.bits_per_pixel = bpp;
+    entry->summary.bytes_per_scan_line = stride;
+    entry->summary.lin_bytes_per_scan_line = stride;
+    entry->summary.phys_base = 0xd0000000ul;
+    entry->summary.mask_flags = V9X_VBE_RF_LIN_STRIDE;
+    if (bpp == 8u) {
+        entry->summary.memory_model = 4u;
+    } else {
+        entry->summary.memory_model = 6u;
+        entry->summary.mask_flags =
+            (v9x_u16)(entry->summary.mask_flags | V9X_VBE_RF_MASKS_LINEAR);
+        if (bpp == 16u) {
+            entry->summary.red_mask_size = 5u;
+            entry->summary.red_field_position = 11u;
+            entry->summary.green_mask_size = 6u;
+            entry->summary.green_field_position = 5u;
+            entry->summary.blue_mask_size = 5u;
+            entry->summary.blue_field_position = 0u;
+        } else {
+            entry->summary.red_mask_size = 8u;
+            entry->summary.red_field_position = 16u;
+            entry->summary.green_mask_size = 8u;
+            entry->summary.green_field_position = 8u;
+            entry->summary.blue_mask_size = 8u;
+            entry->summary.blue_field_position = 0u;
+        }
+    }
+    entry->summary.significant_depth =
+        v9x_vbe_summary_significant_depth(&entry->summary);
+}
+
+static void test_gma950_survey(void)
+{
+    struct v9x_vbe_scan_entry scanned[6];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u16 count;
+    v9x_u16 dropped = 0xffffu;
+    v9x_u16 index;
+    v9x_u16 seen_576;
+
+    /* In the order the BIOS lists them: the OEM block first, the standard
+     * numbers last. Nothing downstream may depend on that order, which is
+     * part of what this checks. */
+    make_gma950_entry(&scanned[0], 0x0160u, 1024u, 576u, 8u, 1024u);
+    make_gma950_entry(&scanned[1], 0x0161u, 1024u, 576u, 16u, 2048u);
+    make_gma950_entry(&scanned[2], 0x0162u, 1024u, 576u, 32u, 4096u);
+    make_gma950_entry(&scanned[3], 0x0112u, 640u, 480u, 32u, 2560u);
+    make_gma950_entry(&scanned[4], 0x0101u, 640u, 480u, 8u, 640u);
+    make_gma950_entry(&scanned[5], 0x0111u, 640u, 480u, 16u, 1280u);
+
+    /* The derived depths, before anything is merged. 8 bpp is palettized, the
+     * 5:6:5 mode has no bits to spare, and the 32-bpp modes carry 24 colour
+     * bits in a 32-bit pixel. */
+    MODECHECK(scanned[0].summary.significant_depth == 8u);
+    MODECHECK(scanned[1].summary.significant_depth == 16u);
+    MODECHECK(scanned[2].summary.significant_depth == 24u);
+    MODECHECK(scanned[3].summary.significant_depth == 24u);
+
+    /* 4F00h reports 123 blocks of 64 KiB on this machine - 7.69 MiB, less than
+     * the 8 MiB the host bridge says is stolen, and the smaller figure is the
+     * one admission must use. */
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 6u,
+                                     123ul * 65536ul,
+                                     table, masks, V9X_MODE_TABLE_MAX,
+                                     &dropped);
+
+    /* Four new rows: 1024x576 at three depths and 640x480x32. The other two
+     * scanned modes match baseline rows and update them in place. */
+    MODECHECK(count == (v9x_u16)(BASELINE_SEVEN_COUNT + 4u));
+    MODECHECK(dropped == 0u);
+
+    /* Row zero is 640x480x8, and it is alive here - the BIOS lists 0101h and
+     * answers for it - so the fallback row is unchanged. */
+    MODECHECK(table[0].width == 640u && table[0].height == 480u);
+    MODECHECK(table[0].bits_per_pixel == 8u);
+    MODECHECK(table[0].vbe_mode == 0x0101u);
+    MODECHECK(table[0].pitch == 640u);
+
+    /* The 640x480x16 baseline row keeps its position and takes the BIOS's
+     * reported stride and mode number. */
+    MODECHECK(table[4].bits_per_pixel == 16u);
+    MODECHECK(table[4].vbe_mode == 0x0111u);
+    MODECHECK(table[4].pitch == 1280u);
+    MODECHECK(masks[4].red == 0x0000f800ul);
+    MODECHECK(masks[4].green == 0x000007e0ul);
+    MODECHECK(masks[4].blue == 0x0000001ful);
+
+    /* The 640x400 Doom95 row and the 800x600 and 1024x768 rows are still in
+     * the table, untouched, because a baseline row is never removed. They are
+     * also exactly the rows this BIOS cannot set, which is what the
+     * publication flag will hide once it exists. */
+    MODECHECK(table[3].width == 640u && table[3].height == 400u);
+    MODECHECK(table[3].vbe_mode == 0x0100u);
+    MODECHECK(table[1].width == 800u && table[1].vbe_mode == 0x0103u);
+    MODECHECK(table[2].width == 1024u && table[2].height == 768u);
+    MODECHECK(table[6].width == 1024u && table[6].height == 768u);
+
+    /* All three native-panel rows landed, with the strides and masks the BIOS
+     * reported. 1024x576x32 is 2.25 MiB, so nothing is dropped for VRAM on a
+     * machine that reports 7.69. */
+    seen_576 = 0u;
+    for (index = 0u; index < count; ++index) {
+        if (table[index].width != 1024u || table[index].height != 576u) {
+            continue;
+        }
+        ++seen_576;
+        switch (table[index].bits_per_pixel) {
+        case 8u:
+            MODECHECK(table[index].vbe_mode == 0x0160u);
+            MODECHECK(table[index].pitch == 1024u);
+            MODECHECK(masks[index].red == 0ul);
+            MODECHECK(masks[index].green == 0ul);
+            MODECHECK(masks[index].blue == 0ul);
+            break;
+        case 16u:
+            MODECHECK(table[index].vbe_mode == 0x0161u);
+            MODECHECK(table[index].pitch == 2048u);
+            MODECHECK(masks[index].red == 0x0000f800ul);
+            break;
+        case 32u:
+            MODECHECK(table[index].vbe_mode == 0x0162u);
+            MODECHECK(table[index].pitch == 4096u);
+            MODECHECK(masks[index].red == 0x00ff0000ul);
+            MODECHECK(masks[index].green == 0x0000ff00ul);
+            MODECHECK(masks[index].blue == 0x000000fful);
+            break;
+        default:
+            MODECHECK(0);
+            break;
+        }
+        /* The GDIINFO dimensions come from the width, and 1024 is 407/203
+         * whatever the height is. */
+        MODECHECK(table[index].english_low == 407);
+        MODECHECK(table[index].english_high == 203);
+    }
+    MODECHECK(seen_576 == 3u);
+
+    /*
+     * And the panel's own limit, which is the whole reason this machine is the
+     * fixture: 1024x768 is in the baseline table and this BIOS cannot set it,
+     * but nothing in the scan says so - the mode simply is not among the
+     * records. Admission cannot infer a refusal from an absence, which is why
+     * hiding is a separate decision made against a scan known to be complete.
+     */
+    for (index = 0u; index < 6u; ++index) {
+        MODECHECK(scanned[index].summary.height <= 576u);
+    }
+}
+
+/*
+ * The QEMU std-vga mode list, from a DOS capture of the guest this family
+ * ships for (SeaBIOS VBE, VBE 3.0, 16 MiB reported, 93 modes listed and
+ * terminated).
+ *
+ * Only the modes that survive admission are listed below - the capture's other
+ * 44 rows are 18 without a linear framebuffer, 19 at 24 bpp and 7 at 15 bpp,
+ * each of which has its own test above. What these 49 rows are here for is the
+ * pressure they put on the *published* lists, which no hand-built fixture had
+ * reproduced: 48 distinct geometries and depths against 64 table rows and 32
+ * DirectDraw slots.
+ *
+ * Two facts fall out, and both are load-bearing rather than incidental:
+ *
+ *   - mode 0013h and mode 0146h both describe 320x200x8, so a real BIOS list
+ *     contains duplicate geometry at the same depth and the merge has to
+ *     collapse it;
+ *   - the DirectDraw subset fills 28 of its 32 slots with 8- and 16-bpp rows,
+ *     leaving four for high colour, so an ordinary 1024x768x32 desktop is *not*
+ *     in the ordinary subset. That is what makes "guarantee the current desktop
+ *     row is present" a requirement and not a nicety.
+ *
+ * The pitch is width * bytes-per-pixel throughout, which is what the capture
+ * reports for every one of these modes.
+ */
+struct qemu_row {
+    v9x_u16 mode;
+    v9x_u16 width;
+    v9x_u16 height;
+    v9x_u16 bpp;
+};
+
+static const struct qemu_row qemu_stdvga[] = {
+    /* 8 bpp: nine rows, two of them the same 320x200. */
+    { 0x0100u,  640u,  400u,  8u }, { 0x0101u,  640u,  480u,  8u },
+    { 0x0103u,  800u,  600u,  8u }, { 0x0105u, 1024u,  768u,  8u },
+    { 0x0107u, 1280u, 1024u,  8u }, { 0x011Cu, 1600u, 1200u,  8u },
+    { 0x0146u,  320u,  200u,  8u }, { 0x0148u, 1152u,  864u,  8u },
+    { 0x0013u,  320u,  200u,  8u },
+    /* 16 bpp: twenty rows. */
+    { 0x010Eu,  320u,  200u, 16u }, { 0x0111u,  640u,  480u, 16u },
+    { 0x0114u,  800u,  600u, 16u }, { 0x0117u, 1024u,  768u, 16u },
+    { 0x011Au, 1280u, 1024u, 16u }, { 0x011Eu, 1600u, 1200u, 16u },
+    { 0x014Au, 1152u,  864u, 16u }, { 0x0175u, 1280u,  768u, 16u },
+    { 0x0178u, 1280u,  800u, 16u }, { 0x017Bu, 1280u,  960u, 16u },
+    { 0x017Eu, 1440u,  900u, 16u }, { 0x0181u, 1400u, 1050u, 16u },
+    { 0x0184u, 1680u, 1050u, 16u }, { 0x0187u, 1920u, 1200u, 16u },
+    { 0x018Au, 2560u, 1600u, 16u }, { 0x018Du, 1280u,  720u, 16u },
+    { 0x0190u, 1920u, 1080u, 16u }, { 0x0193u, 1600u,  900u, 16u },
+    { 0x0196u, 2560u, 1440u, 16u }, { 0x0199u, 3840u, 2160u, 16u },
+    /* 32 bpp: twenty rows. */
+    { 0x0140u,  320u,  200u, 32u }, { 0x0141u,  640u,  400u, 32u },
+    { 0x0142u,  640u,  480u, 32u }, { 0x0143u,  800u,  600u, 32u },
+    { 0x0144u, 1024u,  768u, 32u }, { 0x0145u, 1280u, 1024u, 32u },
+    { 0x0147u, 1600u, 1200u, 32u }, { 0x014Cu, 1152u,  864u, 32u },
+    { 0x0177u, 1280u,  768u, 32u }, { 0x017Au, 1280u,  800u, 32u },
+    { 0x017Du, 1280u,  960u, 32u }, { 0x0180u, 1440u,  900u, 32u },
+    { 0x0183u, 1400u, 1050u, 32u }, { 0x0186u, 1680u, 1050u, 32u },
+    { 0x0189u, 1920u, 1200u, 32u }, { 0x018Cu, 2560u, 1600u, 32u },
+    { 0x018Fu, 1280u,  720u, 32u }, { 0x0192u, 1920u, 1080u, 32u },
+    { 0x0195u, 1600u,  900u, 32u }, { 0x0198u, 2560u, 1440u, 32u }
+};
+#define QEMU_STDVGA_COUNT \
+    ((v9x_u16)(sizeof(qemu_stdvga) / sizeof(qemu_stdvga[0])))
+
+/* V9X_DD_MODE_COUNT, mirrored rather than included: it lives in
+ * include\velocity9x\win9x_ddraw_abi.h, which is a Windows-facing header the
+ * host suite deliberately stays out of. The build checks assert the ABI's own
+ * value; what this pins is the arithmetic that value forces on this list. */
+#define QEMU_DD_SLOTS ((v9x_u16)32u)
+
+static void test_qemu_stdvga_list(void)
+{
+    struct v9x_vbe_scan_entry scanned[QEMU_STDVGA_COUNT];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u16 indices[QEMU_DD_SLOTS];
+    v9x_u16 count;
+    v9x_u16 chosen;
+    v9x_u16 dropped = 0xffffu;
+    v9x_u16 index;
+    v9x_u16 low_depth;
+    v9x_u16 desktop_1024x768x32;
+
+    for (index = 0u; index < QEMU_STDVGA_COUNT; ++index) {
+        make_entry(&scanned[index], qemu_stdvga[index].mode,
+                   qemu_stdvga[index].width, qemu_stdvga[index].height,
+                   qemu_stdvga[index].bpp,
+                   (v9x_u16)(qemu_stdvga[index].width *
+                             (qemu_stdvga[index].bpp / 8u)));
+    }
+
+    /* 16 MiB, as 4F00h reports on this guest. 3840x2160 at 16 bpp needs
+     * 15.8 MiB of it and is admitted; the same geometry at 32 bpp is not in
+     * the list at all, which is the BIOS being sensible rather than us. */
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, QEMU_STDVGA_COUNT,
+                                     256ul * 65536ul,
+                                     table, masks, V9X_MODE_TABLE_MAX,
+                                     &dropped);
+
+    /* 49 scanned rows, one a duplicate geometry, seven matching baseline rows
+     * in place: 48 rows, and room to spare in a 64-row table. */
+    MODECHECK(count == 48u);
+    MODECHECK(dropped == 0u);
+
+    /* Every baseline row was corroborated, so none of them is contradicted on
+     * this target and row zero keeps its place and its mode number. */
+    MODECHECK(table[0].vbe_mode == 0x0101u);
+    MODECHECK(table[3].width == 640u && table[3].height == 400u);
+    MODECHECK(table[3].vbe_mode == 0x0100u);
+
+    /* The duplicate collapsed: exactly one 320x200x8 row. */
+    {
+        v9x_u16 seen = 0u;
+        for (index = 0u; index < count; ++index) {
+            if (table[index].width == 320u && table[index].height == 200u &&
+                table[index].bits_per_pixel == 8u) {
+                ++seen;
+            }
+        }
+        MODECHECK(seen == 1u);
+    }
+
+    /* No 24-bpp row reached the table from a list that offered nineteen. */
+    for (index = 0u; index < count; ++index) {
+        MODECHECK(table[index].bits_per_pixel != 24u);
+        MODECHECK(table[index].bits_per_pixel != 15u);
+    }
+
+    /*
+     * DirectDraw now has to choose, which on this target it has never had to
+     * do in a test before: 48 rows into 32 slots.
+     */
+    chosen = v9x_vbe_dd_subset(table, count, indices, QEMU_DD_SLOTS);
+    MODECHECK(chosen == QEMU_DD_SLOTS);
+
+    low_depth = 0u;
+    desktop_1024x768x32 = 0u;
+    for (index = 0u; index < chosen; ++index) {
+        const V9X_HW16_MODE *row = &table[indices[index]];
+        if (row->bits_per_pixel == 8u || row->bits_per_pixel == 16u) {
+            ++low_depth;
+        }
+        if (row->width == 1024u && row->height == 768u &&
+            row->bits_per_pixel == 32u) {
+            desktop_1024x768x32 = 1u;
+        }
+    }
+    /* Twenty-eight 8- and 16-bpp rows take priority, leaving four slots. */
+    MODECHECK(low_depth == 28u);
+    /*
+     * And this is the finding: an ordinary 1024x768x32 desktop does not make
+     * the cut, because four smaller high-colour modes come first. Nothing is
+     * wrong with the subset policy - the list is simply longer than the block.
+     * It is why dd16.c must substitute the active row rather than trust the
+     * ordinary selection, and why that rule needs its own test rather than a
+     * comment.
+     */
+    MODECHECK(desktop_1024x768x32 == 0u);
+}
+
 /* More accepted modes than the table can hold: keep what fits, count the rest,
  * and do not write past the end. */
 static void test_overflow_is_bounded(void)
@@ -522,6 +867,8 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_qemu_shaped_list();
     test_scan_corrects_the_baseline();
     test_24bpp_is_omitted_not_fatal();
+    test_gma950_survey();
+    test_qemu_stdvga_list();
     test_overflow_is_bounded();
     test_dd_subset();
     test_masks_to_bits();
