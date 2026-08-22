@@ -264,6 +264,59 @@ Two things follow for whoever picks this up:
   logon, as the "not configured properly" one was. Someone has to look at the
   screen; that single observation unblocks both the control and the question.
 
+### 5.2 result: Code 24 is material, and the diff narrows it to two values
+
+The control completed on the boot after the one that swallowed the agent.
+**Stock `s3.drv` works and Code 24 clears**, which is 5.2's second branch.
+
+| | stock `s3.drv` | Velocity9x |
+| --- | --- | --- |
+| `Problem` | **`0x00000000`** | `0x18` (24) |
+| `Status` | `0x0ACF` — `DN_STARTED` **set**, `DN_HAS_PROBLEM` clear | `0x0EE7` — `DN_STARTED` **clear**, `DN_HAS_PROBLEM` set, `DN_NEED_TO_ENUM` set |
+| screen | 640x480 at **8 bpp** | 640x480 at 4 bpp |
+| `V9XBOOT.INI` | `SENTINEL` (correctly not loaded) | `SENTINEL` / `libmain` |
+
+So Code 24 is not normal here and it is not cosmetic. The device starts under
+the in-box driver and does not under ours.
+
+**The devnode is not where the difference lives.** Stock and Velocity9x devnodes
+are structurally identical — same `HardwareID`, `DetFunc`, `DetFlags`, `Driver`,
+`ConfigFlags=0`, and both carry a `LogConfig` subkey whose blob begins
+identically. Only `DeviceDesc` and `Mfg` differ. That rules out a whole class of
+theories, including everything section 5.4 was written to gate.
+
+**The difference is in `Display\0000\DEFAULT`, and it is two values:**
+
+```
+stock                          Velocity9x
+minivdd = s3.vxd               minivdd = v9xmini.vxd
+CHIPID  = hex:11,00,00,00,00,00   (absent)
+```
+
+Everything else there is the same or ours-only-and-harmless (`drv2`,
+`RefreshRate`, `PCIRebalance`, `ExtModeSwitch`).
+
+**`minivdd` is the leading candidate.** A Win9x display devnode starts by way of
+the VDD loading the mini-VDD named here; if `v9xmini.vxd` fails to load or fails
+its init, the device does not start, which is precisely `DN_STARTED` clear with
+Problem 24. This family's mini-VDD also has form on this exact class of card:
+`Build.MiniVddVbeCollect = $false` exists only because boot-time VBE collection
+hung a physical Trio64 (`docs/issues/2026-08-18-trio64-minivdd-boot-hang.md`).
+
+`CHIPID` is the weaker candidate — `0x11` is the Trio64's id byte, written by
+Win95's own S3 detection, and read by `s3.drv`. Our driver identifies the chip
+itself, so it should not need it; but nothing has proved the *class installer*
+does not.
+
+**Next, and cheap:** reinstall Velocity9x, set `DEFAULT\minivdd` to an empty
+string, and take one reboot. Every other value is then identical to a
+configuration already measured at Problem 24 twice, so if Problem clears the
+mini-VDD is the cause. It is registry-only and reversible, and it needs no
+guesses about undocumented flag bits — which is what 5.4 was protecting against.
+A logged `BOOTLOG.TXT` would answer it outright by showing whether
+`v9xmini.vxd` loads, and remains the better evidence if someone is at the
+keyboard.
+
 ### 5.5 Exit criteria and branch cleanup
 
 A working desktop requires all of the original Part B evidence, not merely the
