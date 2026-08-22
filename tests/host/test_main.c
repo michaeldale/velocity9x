@@ -23,6 +23,10 @@ unsigned int v9x_run_vbe_parse_tests(void);
  * family baseline plus the scanned BIOS list, same convention. */
 unsigned int v9x_run_vbe_modes_tests(void);
 
+/* tests\host\test_vbe_cache.c: what the mini-VDD's reported counts and status
+ * flags permit a consumer to believe, same convention. */
+unsigned int v9x_run_vbe_cache_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -576,6 +580,7 @@ int main(void)
     failures += v9x_run_hw16_mode_tests();
     failures += v9x_run_vbe_parse_tests();
     failures += v9x_run_vbe_modes_tests();
+    failures += v9x_run_vbe_cache_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

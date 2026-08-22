@@ -25,7 +25,16 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputDir,
     [Parameter(Mandatory = $true)][string]$BuildId,
     [switch]$BootTrace,
-    [string]$DriverName = "v9xdisp"
+    [string]$DriverName = "v9xdisp",
+    # DGROUP budget, in bytes. A Win16 automatic data segment cannot exceed
+    # 64 KiB, and DGROUP has to hold the driver's static data, its local heap
+    # and its stack at run time - so the gate is set at half the hard limit
+    # rather than at it. The dynamic-VBE runtime mode table is the first thing
+    # in this driver's history to want kilobytes of DGROUP rather than bytes
+    # (64 rows: 896 bytes of V9X_HW16_MODE, 768 of colour masks, 64 of
+    # publication flags = 1728), which is why the number is now asserted at
+    # every build instead of being watched by hand.
+    [int]$DgroupBudgetBytes = 32768
 )
 
 $ErrorActionPreference = "Stop"
@@ -102,6 +111,36 @@ if ($image -notmatch "(?m)^DISPLAY\s+unknown ordinal 0000$") {
 }
 
 $mapText = Get-Content -LiteralPath $mapPath -Raw
+
+# DGROUP occupancy, from the linker's own group table. Reported on every build
+# so growth is visible in the log before it is a failure, and asserted so a
+# table that outgrows the segment fails here rather than at boot on hardware,
+# where an over-full automatic data segment is not a diagnosable symptom.
+if ($mapText -notmatch '(?m)^DGROUP\s+[0-9A-Fa-f]{4}:[0-9A-Fa-f]+\s+([0-9A-Fa-f]+)\s*$') {
+    throw "The $($target.Id) map has no DGROUP group entry to size."
+}
+$dgroupBytes = [Convert]::ToInt32($Matches[1], 16)
+# The local heap is declared in the link file, not the map, and it comes out of
+# the same 64 KiB. Read it back rather than assuming the current 1024.
+$linkFile = Join-Path $OutputDir "$DriverName.lnk"
+$heapBytes = 0
+if (Test-Path -LiteralPath $linkFile) {
+    foreach ($line in (Get-Content -LiteralPath $linkFile)) {
+        if ($line -match '^\s*option\s+heapsize\s*=\s*([0-9]+)\s*$') {
+            $heapBytes = [int]$Matches[1]
+        }
+    }
+}
+$dgroupTotal = $dgroupBytes + $heapBytes
+if ($dgroupTotal -gt $DgroupBudgetBytes) {
+    throw ("The $($target.Id) driver's DGROUP is $dgroupBytes bytes plus a " +
+           "$heapBytes-byte local heap = $dgroupTotal, over the " +
+           "$DgroupBudgetBytes-byte budget. The Win16 automatic data segment " +
+           "hard limit is 65536 including the stack; move new static data out " +
+           "of DGROUP rather than raising this.")
+}
+$dgroupSummary = ("DGROUP $dgroupBytes + heap $heapBytes = $dgroupTotal of " +
+                  "$DgroupBudgetBytes budget")
 if ($mapText -notmatch "(?m)^.*DriverInit.*$") {
     throw "The Win16 DDI map is missing the DriverInit entry point."
 }
@@ -292,4 +331,4 @@ Write-Output ("Audited $($target.Id) image: $($requiredPatterns.Count) required 
               "and $($forbiddenPatterns.Count) forbidden signatures, " +
               "$perChipObjects per-chip object(s), " +
               "$(@($requiredSymbols | Where-Object { $_ }).Count) required and " +
-              "$($foreignSymbols.Count) forbidden map symbol(s).")
+              "$($foreignSymbols.Count) forbidden map symbol(s); $dgroupSummary.")

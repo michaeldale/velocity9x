@@ -259,6 +259,15 @@ on S3 parts, with the reason recorded, so the pipeline's reason codes can say
 "declined: S3 360-wide FIFO defect" rather than admitting a mode that will fail
 on the glass. This is cheap to state now and expensive to rediscover later.
 
+**Specified (2026-08-23).** `docs\plans\dynamic-vbe-pipeline.md` now defines the
+mechanism this needs: a known-defect reason code and an optional per-family
+distrust predicate applied after the generic admission rules, which may only
+refuse and never admit. One correction to the shape proposed above - it is
+scoped to the family rather than expressed as a general geometry rule, because a
+blanket "width must be a multiple of 8" would reject the ordinary 1366-wide
+panel. Unimplemented; S3 collection is disabled at build time, so the first
+entry ships unexercised.
+
 ### S4 - the palette DAC width is never asserted
 
 `flight +badpaldac`, `6bitDAC` and `VESAFIX -6` are all one defect: an
@@ -287,12 +296,21 @@ equivalent - the VBE OEM strings via 4F00h (`OemStringPtr`,
 `OemVendorNamePtr`, `OemProductNamePtr`, `OemProductRevPtr`, and
 `OemSoftwareRev`), which the mini-VDD already fetches at `Device_Init` for the
 controller block, versus the BIOS ROM image at C000h, which is what Gona's row
-labels actually name. `struct v9x_vbe_controller_summary`
-(`include\velocity9x\vbe_parse.h:26`) currently keeps only `version` and
-`total_memory_bytes`, so whichever is chosen, the summary has to carry it.
+labels actually name.
 
 Prefer the VBE OEM strings: they arrive through a path that already exists and
 is already ring-0, and they are what the BIOS asserts about itself.
+
+**Partly landed (2026-08-23), through the dynamic-VBE pipeline's Stage 0.**
+`struct v9x_vbe_controller_summary` now carries `capabilities` and
+`oem_software_rev`, both fixed-offset VbeInfoBlock fields needing no pointer
+dereference, parsed and host-tested; the mini-VDD API v2 contract carries them
+in the `CONTROLLER` registers; and `vbe_inventory_dos` records them, so the
+outstanding QEMU capture will include them. What remains of S5 is the publishing
+end - `V9XHW.INI` and the settings page - and the OEM *strings*, which are far
+pointers into the controller block and need the same bounded staging copy the
+mode list gets. T0-8 stays open until the strings or the revision reach
+`V9XHW.INI`.
 
 ### S6 - the pedestal bit
 
@@ -411,7 +429,9 @@ modes as 15. `docs\plans\dynamic-vbe-pipeline.md` **rejects 15-bpp storage and
 5:5:5 with a reason code, on purpose**, and this corpus is not an argument to
 reverse that: a DOS shim converting mode reports for one game says nothing about
 what a Windows display driver should enumerate. Recorded so that the X-Men column
-is not mistaken for evidence against a decision already taken.
+is not mistaken for evidence against a decision already taken. The same plan now
+also rejects 24-bpp packed RGB, for an unrelated reason of its own - `display16`
+has never drawn a 24-bpp surface - so the admitted set is 8, 16 and 32.
 
 **Banked VBE modes.** S3VBEFIX's banked-mode booster and the `Chris' 3d SVGA
 Benchmark` column both concern banked access. We drive linear modes; the future

@@ -38,6 +38,68 @@ The repository is part-way to this design:
 - Mini-VDD VBE collection is build-gated per family. It is enabled where the
   VBE cache is required and disabled for families for which the boot-time BIOS
   calls are all risk and no benefit. That gate remains.
+- Dynamic discovery is Windows 98-family only by construction. Every record in
+  this pipeline reaches the display driver through the mini-VDD, and the VLB
+  manual-select work
+  (`docs/handoffs/2026-08-22-vlb-manual-select-handover.md`) established that
+  naming `v9xmini.vxd` on Win95 4.00.950 stops the display devnode starting
+  (Code 24), so that model deliberately names no mini-VDD at all. Win95
+  therefore keeps the static family table by design; it is not a gap this plan
+  closes. "No mini-VDD" is the expected diagnostic there, not a defect, and the
+  diagnostics must distinguish it from a Win98 mini-VDD that failed to load.
+
+## What the BIOS evidence says about this design
+
+`docs\specifications\dos-vbe-conformance.md` reads Gona's DOS compatibility
+matrices - about 210 cards, keyed to individual video BIOS revisions, measured on
+real hardware over a decade - into this repository. This plan is built on asking
+the BIOS what it supports and believing the answer, so that corpus is the closest
+thing available to an adversarial review of it. Five findings change something
+here.
+
+**Newer BIOS is not safer.** On the same silicon, the VBE 2.0 S3 BIOSes are worse
+than the VBE 1.2 ones: on both a ViRGE/DX and a Trio64V2/DX, moving to a 2.0
+reference BIOS turns a Pinball Illusions drawing fault into a hang, stops the
+8x14 text font being restored, and on the newest two breaks Quake's 360-wide
+modes. The cleanest ViRGE/DX in the table is a VBE 1.2 board. Nothing in this
+plan may treat a higher reported version as evidence of higher quality; the
+version gate exists because VBE 2.0 is where the linear framebuffer is defined,
+and for no other reason. It follows that a mode this pipeline admits is a
+candidate, not a fact - which is the argument for the scan-contradicted-baseline
+machinery being conservative in exactly one direction, and for the capture-based
+verification below.
+
+**Defects track the BIOS revision, not the chip.** The corpus reached this the
+hard way: a BIOS swapped between two cards took the fault with it, and Commander
+Keen breaks on ELSA, miro, SPEA and Number Nine boards while Canopus and Diamond
+boards of the same chip pass. This driver has recorded chip identity and no BIOS
+identity at all, so a report from an untested card could not be attributed to the
+one variable that predicts behaviour. The controller contract therefore carries
+`Capabilities` and `OemSoftwareRev`, and the inventory publishes them.
+
+**The BIOS-reported memory size is wrong in both directions.** This plan already
+allows for under-reporting, from the Rage Mobility. The corpus supplies the
+other direction - a 4 MiB ViRGE that a DOS client can only use if told it has
+2 MiB, and a game failing with `run out of memory trying to allocate 0 bytes`
+on someone else's arithmetic. The VRAM figure is an upper bound that may be a
+fiction in either direction, so both the raw report and the usable figure are
+published rather than only the one the fit check used.
+
+**Some listed modes do not work, and the BIOS lists them anyway.** The newest S3
+BIOSes list 360-wide modes that need a TSR to work at all, attributed to a
+primary-stream FIFO fetch defect; the VBE 1.2 BIOSes of the same two chips need
+nothing. Today this costs nothing because every family table is hand-audited.
+This plan removes that premise, so admission needs a place to put a
+family-specific distrust rule, and the reason codes need to be able to say
+"declined, known defect" rather than silently admitting a mode that fails on the
+glass.
+
+**A green test matrix can mean nothing.** Deferred defect D5 is the precedent: a
+six-mode matrix reported GDI `PASS` on every cell while the monitor showed
+shredded noise, because every check went through the pitch, base and depth the
+driver had itself chosen. Gona's method is the opposite - a fixed corpus run on
+real cards, scored by what appeared on the glass. Every mode this pipeline newly
+admits must be verified by capture, not by asking GDI whether GDI is happy.
 
 ## Non-negotiable invariants
 
@@ -92,7 +154,7 @@ VBE 4F00h
 VBE 4F15h EDID block 0
   -> header + checksum + descriptor validation
   -> preferred width/height hint
-  -> exact match in the accepted runtime table, or no hint
+  -> exact match in the published runtime table, or no hint
 ```
 
 ## Data contracts
@@ -111,6 +173,16 @@ boot delay or overwrite:
 - `V9X_MODE_TABLE_MAX = 64` accepted GDI rows, which already exists.
 - `V9X_DD_MODE_COUNT = 32` DirectDraw rows, which already exists.
 
+The VRAM figure the fit check uses is a BIOS report, and the evidence is that it
+can be wrong in either direction - under-reported on the Rage Mobility, and
+over-reported on ViRGE boards a DOS client could only use once told they had half
+the memory they claimed. The pipeline does not try to correct it: it clamps
+admission to what was reported, and publishes the raw report and the usable
+figure separately in the inventory so a wrong one is identifiable rather than
+merely fatal. A reported size that cannot hold the family's own baseline row zero
+is the one case worth calling out in diagnostics, because on that machine every
+dynamic row is suspect too.
+
 The mode list is valid only when all of the following hold:
 
 - `4F00h` returns `AX=004Fh` and a `VESA` signature.
@@ -128,6 +200,17 @@ mode-information calls will reuse and overwrite.
 
 An unterminated or invalid list sets a diagnostic reason and contributes zero
 dynamic records. The static table remains available.
+
+Considered alternative, not adopted for the first implementation: skip an
+individual malformed list entry and count it, rather than invalidating the whole
+list. Whole-list invalidation is the conservative-fail default and is what
+Stage 1 ships, but it does mean one listed value with a stray high flag bit
+costs a machine every discovered mode. Both answers keep every bound, so this is
+a judgement about which failure is worse on real BIOSes. If field evidence shows
+otherwise-sound BIOSes with isolated malformed entries, switch to skip-and-count
+with a per-entry reason and a skipped-entry count in the status block; the
+whole-list rules above then narrow to signature, pointer, addressability and
+terminator failures.
 
 The static LFB path still needs `4F01h` data for its active baseline mode,
 especially `PhysBasePtr`. Generate a bounded baseline mode-number include from
@@ -195,7 +278,15 @@ index out of range and a valid empty cache.
 The API needs these operations:
 
 - `HANDSHAKE`: magic and exact contract version.
-- `CONTROLLER`: VBE version, total-memory blocks and controller-valid flags.
+- `CONTROLLER`: VBE version, total-memory blocks, controller-valid flags, the
+  `Capabilities` bits and `OemSoftwareRev`. The last two are identification,
+  not policy: nothing in this driver behaves differently on a capability bit,
+  and the revision exists because defects track the BIOS rather than the chip.
+  Both are fixed-offset fields, so neither costs a pointer dereference. The OEM
+  strings would say more and are deliberately not in v2: they are far pointers
+  into the controller block and would need the same bounded staging copy the
+  mode list gets, which is a second reason to keep the block copied before any
+  `4F01h` call overwrites it.
 - `STATUS`: list state, listed/query/cached counts, baseline-probe count,
   truncation/failure flags and EDID state.
 - `MODE_AT(index)`: mode number, attributes, geometry, both strides, physical
@@ -218,7 +309,9 @@ storage:
 
 - `V9X_HW16_MODE v9x_runtime_modes[V9X_MODE_TABLE_MAX]`;
 - `struct v9x_mode_masks v9x_runtime_masks[V9X_MODE_TABLE_MAX]`;
-- a validated runtime count;
+- one publication byte per row, carrying published/hidden plus the hide reason;
+- a validated runtime count and a published count;
+- the index of the first published row, which is the fallback row;
 - the preferred-row index, or `FFFFh`;
 - scan and drop diagnostics.
 
@@ -235,39 +328,145 @@ Initialization has one transaction boundary:
 3. Enumerate at most 64 cache records into bounded scan storage.
 4. Call `v9x_vbe_build_mode_table` with the reported VRAM size.
 5. Validate the output count and every output row again.
-6. Commit the runtime count only after all steps succeed.
+6. Compute the publication flag for every row, then the published count and the
+   first published row.
+7. Commit the runtime count, publication flags and published count only after
+   all steps succeed.
 
-Any failure before step 6 leaves the already-copied baseline table committed.
-The existing order of baseline rows is preserved: row zero remains the safe
-boot fallback, and the low-resolution Doom95 row is not moved. A scanned row
-matching `(width,height,storage_depth)` updates the baseline row's BIOS mode,
-effective pitch and colour masks. New rows are appended deterministically.
+Any failure before step 7 leaves the already-copied baseline table committed
+with every row published, which is exactly today's behavior. The existing order
+of baseline rows is preserved: row zero remains the first row, and the
+low-resolution Doom95 row is not moved. A scanned row matching
+`(width,height,storage_depth)` updates the baseline row's BIOS mode, effective
+pitch and colour masks. New rows are appended deterministically.
 
 Extend the host-tested admission result from a boolean to a reason code so the
 guest inventory can say why a BIOS record was rejected. Required reasons
 include unsupported, non-linear, invalid physical base, wrong memory model,
 unsupported storage depth, unsupported colour layout, zero/short stride,
-geometry limit, VRAM overflow, duplicate and table full.
+geometry limit, VRAM overflow, duplicate, table full and known-defect.
+
+The last of those is the one this plan would not have had without the BIOS
+evidence. Some BIOSes list modes that do not work, and the family is what knows
+which: the newest S3 reference BIOSes list 360-wide modes that need a resident
+patch to draw correctly, attributed to a primary-stream FIFO fetch defect, while
+the VBE 1.2 BIOSes of the same chips are clean. Admission therefore takes an
+optional per-family distrust predicate, applied after the generic rules and
+before the table is written, whose refusals carry the known-defect reason and a
+family-supplied detail string so the inventory can say *declined: S3 360-wide
+FIFO defect* rather than leaving a working-looking mode to fail on the glass.
+
+Two boundaries on it. The predicate may only refuse - it can never admit a mode
+the generic rules rejected, so a family cannot use it to widen policy. And it is
+a rule about a family's silicon or its BIOS, not about geometry in general: a
+blanket "width must be a multiple of 8" would reject 1366-wide panels, which are
+ordinary and fine. S3 is the first and currently only entry, and S3 collection is
+disabled at build time anyway, so the rule ships unexercised on purpose - stated
+now because it is cheap to state and expensive to rediscover.
 
 Initial colour-layout policy is intentionally narrower than what VBE can
 describe:
 
 - 8 bpp is palettized;
 - 16 bpp must be RGB 5:6:5;
-- 24 bpp must be packed RGB 8:8:8;
 - 32 bpp must be XRGB 8:8:8 with 24 significant colour bits;
-- 5:5:5 in 16 storage bits and unusual channel orderings remain rejected until
-  both DIB Engine and DirectDraw behavior are implemented and tested for them.
+- 24-bpp packed RGB 8:8:8, 5:5:5 in 16 storage bits and unusual channel
+  orderings remain rejected until both DIB Engine and DirectDraw behavior are
+  implemented and tested for them.
+
+The 5:5:5 rejection has an argument against it in the DOS record, and it does
+not survive inspection: a 32,768-colour game exists, and DOS answered it with a
+224-byte resident that reports 16-bpp modes as 15. What a shim did to satisfy one
+application says nothing about what a display driver should enumerate to every
+application, so the corpus is recorded as not being evidence here rather than
+left to be mistaken for it later.
 
 This prevents the DirectDraw masks from describing one surface while the DIB
 Engine draws another.
+
+24 bpp is a deliberate rejection rather than an oversight, and admitting it
+would quietly make this project a depth bring-up as well. `display16` has never
+run a 24-bpp mode: no family baseline table contains a 24-bpp row, `ddi.c`
+splits three ways on 8/16/else, and the DIB Engine notes there record that there
+is no surface flag for 24 or 32 at all - the depth is inferred from
+`biBitCount`. QEMU std-vga does publish 24-bpp modes, so this would land in the
+Stage 2 exit gate immediately rather than as a corner case.
+
+The rejection is layered so nothing downstream has to guess:
+
+- ring 0 keeps its coarse 8/16/24/32 storage-depth filter unchanged, because
+  that filter exists only to keep text and planar modes out of the cache, and
+  policy does not live there (invariant 2);
+- the shared parser still derives storage and significant depth for a 24-bpp
+  record - the derivation table above and its 24/24 host cases stay - so
+  admission rejects a fully parsed record rather than a blind one;
+- admission rejects it with the unsupported-storage-depth reason, so the
+  inventory and the settings report say precisely why the mode is absent.
+
+24-bpp support - DIB Engine layout, blits, flips, DirectDraw masks and a mode
+matrix - is a named follow-up, out of scope here. No stage in this plan carries
+24 bpp in an exit gate.
+
+#### Hiding scan-contradicted baseline rows
+
+Baseline rows are never removed. Invariant 1 stays literal - the table a failed
+transaction falls back to must still be there, whole - but a baseline row the
+scan has proved dead must not be offered to the user either.
+
+This is not hypothetical on the hardware that motivated the work. In the GMA950
+survey (`personal/v9x-intel950/V9XINTL.TXT`), five of the generic family's seven
+baseline rows are dead: `0100h`, the 640x400 Doom95 row, is not in the BIOS mode
+list at all, and `0103h`, `0105h`, `0114h` and `0117h` are listed but answer
+`4F01h` with `Attributes=0000` and zero geometry. Without hiding, GDI,
+DirectDraw and the native Settings page would offer 800x600 and 1024x768 on a
+576-line panel forever, and every user selection would take the staged-failure
+and previous-mode-restore path.
+
+A row is **scan-contradicted** when the list walk was valid and complete and
+either its `(width,height,storage_depth)` appears in no admitted scan record, or
+its own BIOS mode number was queried and refused. Such a row keeps its storage
+slot, its order and its masks, and is excluded from publication:
+
+- `ValidateMode` fails it;
+- requested-mode selection, `v9x_find_mode`, `Enable` and `ReEnable` skip it;
+- the DirectDraw subset never selects it;
+- the inventory records it as a hidden row rather than emitting it as a mode.
+
+Three conditions bound the exclusion:
+
+1. **It requires a trustworthy scan.** Hiding applies only after the full
+   mode-list validity gate passes and the cache is neither truncated nor
+   overflowed. An absent, wrong-version, disabled, invalid or truncated scan
+   publishes every baseline row exactly as today. So does a valid but empty
+   cache: an empty cache contradicts nothing.
+2. **Fallback follows publication.** Wherever this design says "baseline row
+   zero", the implementation uses the first published row. Row zero stays in
+   storage as the last-resort recovery target, and if a defect ever left nothing
+   published, the commit is rejected and the baseline table stands with every
+   row published. On the GMA950, row zero (640x480x8, `0101h`) is alive, so
+   fallback selection there is unchanged.
+3. **Hiding is a publication decision, not a registry one.** The inventory
+   reports each hidden row with reason `scan-contradicted`, which tells the
+   synchronizer not to create a dynamic key for that geometry. The synchronizer
+   still never touches the INF baseline key for it - invariant 7 is unchanged,
+   and reinstalling a baseline package still restores a fully populated static
+   list.
+
+One consequence is worth stating plainly: on a machine like the GMA950 netbook,
+hiding `0100h` means the 640x400 row Doom95 prefers is not offered there at all.
+That is the BIOS's filtering, not ours - the mode cannot be set on that panel by
+any means available to this driver - and offering a mode that always fails is
+worse for the same user. Machines whose BIOS still lists `0100h` keep it.
+
+The cost of the decision is one flag byte per row and one more rule every
+publication path has to honour; the host tests below pin each path.
 
 ## Publication paths
 
 ### GDI and mode switching
 
 Repoint `ddi.c` mode access through the runtime table module. The following
-must all use the same table and count:
+must all use the same table, the same count and the same publication flags:
 
 - initial requested-mode selection;
 - `v9x_find_mode`;
@@ -276,10 +475,12 @@ must all use the same table and count:
 - active geometry and pitch publication;
 - the existing VRAM fit check.
 
-The registry-selected mode always wins when it is in the runtime table. If the
-selection is absent, use an accepted EDID geometry at the requested storage
-depth. If that is absent too, use baseline row zero. Do not change a working
-mode merely because a new monitor has a different EDID.
+The registry-selected mode always wins when it is in the runtime table and
+published. If the selection is absent or hidden, use an accepted EDID geometry
+at the requested storage depth. If that is absent too, use the first published
+row - which is baseline row zero in every case except a scan that contradicts
+it. Do not change a working mode merely because a new monitor has a different
+EDID.
 
 Mode entry remains the existing VBE `4F02h` sequence. A dynamically discovered
 row must pass the same post-set pitch verification and aperture checks as a
@@ -291,6 +492,10 @@ restore paths; it is not silently quarantined during this project.
 Change `dd16.c` to source rows and masks from `modes16.c`, not from
 `v9x_hw16.modes` and depth-based constants. Use `v9x_vbe_dd_subset` when the
 runtime table has more than 32 rows.
+
+The subset is drawn from published rows only. A hidden baseline row is invisible
+to DirectDraw, so its list can never advertise a geometry GDI would refuse to
+validate.
 
 DirectDraw publication must guarantee that the current desktop row is present.
 If the ordinary subset omitted it, replace the lowest-priority selected row
@@ -307,6 +512,22 @@ For every published row:
 - refresh remains the adapter-default/current 60 Hz convention; this project
   does not create refresh variants.
 
+That last line is a known falsehood being deliberately carried forward, and this
+plan makes it worse before anything makes it better: `dd16.c` publishes a
+constant 60, while the corpus records S3 and ATI BIOSes running 87 Hz, 97 Hz,
+120 Hz, 140 Hz and 154 Hz at 1024x768 and above, with the single most common
+remedy in the whole table being a refresh-rate fixer at exactly those
+resolutions. The modes this pipeline adds are disproportionately the high ones,
+so the number is a false statement about more modes than before, and on an LCD
+it is a false statement about a mode the panel may refuse outright.
+
+Fixing it is out of scope here and must not be smuggled in, because anything
+that ends in *and then set a refresh rate* can put a mode on the only monitor a
+machine has. What is in scope is not making it worse: the inventory records that
+the published rate is a convention rather than a measurement, so the eventual
+choice between deriving the figure from the CRTC and publishing "unknown" is
+made against a driver that admits which one it is doing.
+
 The shared structure already has dynamic count and capacity fields, so no
 DirectDraw ABI bump is required unless implementation work changes its layout.
 If layout changes, bump `V9X_DD_SHARED_ABI` and keep old/new pair tests.
@@ -322,24 +543,45 @@ The inventory file should contain:
 
 - schema and build ID;
 - family ID and detected PCI identity where available;
+- BIOS identity: `OemSoftwareRev` and the capability bits, or an explicit
+  unavailable. Without it every other line in the file is attributed to a chip
+  when the evidence says the BIOS is the variable;
+- the raw reported VRAM figure and the usable figure, separately, and whether
+  the published refresh rate is a measurement or the 60 Hz convention - it is
+  currently always the convention;
 - a generation value and final `Complete=1` sentinel;
 - scan state and controller/cache counts;
-- runtime count, dropped count and rejection counts;
+- runtime count, published count, dropped count and rejection counts;
 - preferred geometry and whether it matched;
-- one row per mode: mode number, width, height, storage/significant depth,
-  pitch, masks and baseline/dynamic flags.
+- one row per published mode: mode number, width, height, storage/significant
+  depth, pitch, masks and baseline/dynamic flags;
+- one entry per hidden row: geometry, storage depth and hide reason, of which
+  `scan-contradicted` is the only reason this project defines.
 
 Write `Complete=0` before replacing rows and write `Complete=1` last. The
 synchronizer rejects a missing sentinel, unknown schema, duplicate row,
 out-of-range count, malformed number, unsupported depth, mask mismatch or a
 row whose visible bytes overflow. An invalid inventory causes no registry
-change.
+change. A hidden-row entry is neither created nor pruned: it means "do not add
+a dynamic key for this geometry", never "delete the baseline key for it".
 
-Add an INF marker to the Velocity9x display devnode and a persistent command:
+Add an INF marker to the Velocity9x display devnode and a persistent per-boot
+command:
 
 ```text
-rundll32.exe v9xsetp.dll,V9xSyncModes
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xSyncModes,,
+    "rundll32.exe v9xsetp.dll,V9xSyncModes"
 ```
+
+This must be `Run`, not `RunOnce`. The existing rundll32 precedent in
+`scripts/lib/inf.ps1` is `RunOnce` for a reason of its own: `V9xRegisterPage`
+writes the Display property-sheet Tag once, at the first boot after the install.
+The mode synchronizer is the opposite case - the inventory changes whenever the
+card, the panel or the BIOS-visible mode set changes - so it must re-run every
+boot and be idempotent when nothing changed. Add the `Run` line to the INF
+generator's required-entry assertions beside the existing
+`RunOnce,V9xSettingsPage` entry, so a scan-enabled family cannot ship without it
+and the two entries cannot be mistaken for one another.
 
 The synchronizer must uniquely identify a marked Velocity9x display instance
 using the marker, family and hardware identity before writing. Zero or multiple
@@ -363,6 +605,15 @@ Add a dry-run/report mode that writes intended add/keep/delete operations to a
 diagnostic INI without mutating the registry. Installation must still ship a
 complete static mode list, so first boot, Safe Mode and synchronizer failure all
 retain today's usable baseline.
+
+Stated freshness expectation: the inventory is written when the driver
+initializes and the synchronizer runs at logon, so the native Settings page
+reflects the mode set as of the current boot. A mode set that changes within a
+session is usable through GDI and DirectDraw immediately, but the native page
+does not learn about it until the next logon. That is accepted; the alternative
+is a resident agent writing the display registry behind the shell's back. The
+settings report shows the inventory generation the registry was last
+synchronized against, so a stale page is identifiable rather than mysterious.
 
 ## EDID design
 
@@ -399,7 +650,8 @@ The resulting geometry is a hint only:
 - it never admits a VBE record;
 - it never removes a VBE record;
 - it never changes storage depth;
-- it is ignored unless an exact width/height row exists in the accepted table;
+- it is ignored unless an exact width/height row exists in the runtime table
+  and is published;
 - an explicit valid registry mode always wins;
 - invalid header, checksum, descriptor or no exact match behaves exactly like
   no EDID.
@@ -427,6 +679,27 @@ Each stage is independently buildable and has a rollback point.
   VBE 3 masks and malformed EDID.
 
 Exit gate: contracts and fixtures are reviewed; no product behavior changes.
+
+Status (2026-08-23): everything above is done except the QEMU std-vga capture,
+which needs a DOS boot image this workstation does not have. Landed:
+`include\asm\V9XMAPI.INC` as the single contract for both assemblers, with the
+API v2 function numbers, the four bounds, the packed 32-byte record layout and
+the record/status flags; `include\velocity9x\vbe_cache.h` as its C mirror, with
+`check-tree.ps1` asserting the two agree and that neither assembly user defines
+a shared constant locally; the manifest-generated rescue-probe include, whose
+output for both scan-enabled families is byte-for-byte the seven numbers
+`loader.asm` hard-codes today; the DGROUP budget gate, which reports 2014 bytes
+plus a 1024-byte heap against a 32 KiB budget; the VBE 3 linear colour fields
+with mask-source flags and derived significant depth; and the host fixtures for
+the VBE 2/VBE 3 mask sets, stale scratch, the depth pairs, and what a reported
+count and status permit. 24 bpp is refused by admission, per the decision
+recorded below.
+
+Outstanding for this stage: capture the QEMU std-vga `4F00h` list, `4F01h`
+records and EDID with `vbe_inventory_dos`, and record whether that BIOS's
+mode-list pointer lands in ROM or in the controller buffer. That last fact is
+the one Stage 1's staging copy exists for, and it cannot be inferred from the
+GMA950 survey.
 
 ### Stage 1 - bounded mini-VDD enumeration, diagnostic only
 
@@ -456,12 +729,19 @@ or truncated fixtures yield a valid baseline boot and an explicit reason.
 - Derive significant depth and effective VBE 3 masks in the shared parser.
 - Add admission reason codes and deterministic duplicate selection.
 - Build and transactionally commit the runtime table during driver load.
-- Repoint every GDI lookup and mode-switch path to it.
-- Emit the complete inventory file after successful initialization/enable.
+- Compute publication flags, hiding scan-contradicted baseline rows only behind
+  the full validity gate.
+- Repoint every GDI lookup, mode-switch and fallback path to the runtime table
+  and its publication flags.
+- Emit the complete inventory file, including hidden-row entries, after
+  successful initialization/enable.
 
 Exit gate: OEM/nonstandard QEMU modes pass `ValidateMode`, enable cleanly and
-survive live same-depth switching; a scan-disabled or invalid-scan build is
-byte-for-behavior equivalent to the static baseline path.
+survive live same-depth switching; scan-contradicted baseline rows fail
+`ValidateMode` and appear as hidden entries in the inventory while remaining in
+storage; a scan-disabled or invalid-scan build is byte-for-behavior equivalent
+to the static baseline path, publishing every baseline row. The 945GM netbook
+wave 1 gate in the verification matrix belongs to this stage.
 
 ### Stage 3 - DirectDraw publication
 
@@ -469,10 +749,12 @@ byte-for-behavior equivalent to the static baseline path.
 - Guarantee inclusion of the active desktop row.
 - Verify the 32-bit HAL rejects zero/over-capacity counts.
 - Exercise mode enumeration, `SetDisplayMode`, primary creation, CPU blits,
-  flips and `RestoreDisplayMode` at every newly published depth.
+  flips and `RestoreDisplayMode` at every newly published depth: 8, 16 and 32
+  bpp. 24 bpp is rejected by admission policy and must not appear at all.
 
-Exit gate: DirectDraw's list is a subset of GDI's list, contains no duplicate
-geometry/depth rows and describes pitch/masks exactly as the active surface.
+Exit gate: DirectDraw's list is a subset of GDI's *published* list, contains no
+duplicate geometry/depth rows, contains no hidden baseline geometry and
+describes pitch/masks exactly as the active surface.
 
 ### Stage 4 - native Display Properties synchronization
 
@@ -480,31 +762,38 @@ geometry/depth rows and describes pitch/masks exactly as the active surface.
   INFs for scan-enabled families.
 - Implement inventory validation, unique-devnode matching and dry-run output.
 - Add marked-key creation and ownership-safe pruning.
-- Update the settings report to show runtime modes, scan state and drop reasons.
+- Update the settings report to show runtime modes, hidden baseline rows, scan
+  state, drop reasons and the generation last synchronized.
 - Test first boot, ordinary reboot, monitor/card change, missing inventory,
-  corrupt inventory, ambiguous devnodes and removal of a formerly selected
-  dynamic row.
+  corrupt inventory, ambiguous devnodes, removal of a formerly selected dynamic
+  row, and a baseline geometry that becomes scan-contradicted: its INF key
+  survives untouched, no dynamic key is created for it, and a `DEFAULT\Mode`
+  naming it is replaced by a published row.
 
-Exit gate: after boot, native Display Properties offers exactly the accepted
-runtime geometries plus the permanent VGA fallback; disabling or breaking the
-synchronizer leaves the static package modes usable.
+Exit gate: after boot, native Display Properties offers exactly the published
+runtime geometries plus the permanent VGA fallback, and no hidden geometry;
+disabling or breaking the synchronizer leaves the static package modes usable.
 
 ### Stage 5 - EDID preferred hint
 
 - Add bounded `4F15h` collection and API chunk access.
 - Add the host-tested EDID parser and negative corpus.
-- Match preferred geometry against the committed runtime table.
+- Match preferred geometry against the published rows of the committed runtime
+  table.
 - Apply the configured-mode, same-depth EDID, baseline fallback order.
 - Publish recommendation and reason to the inventory/settings page.
 
 Exit gate: a valid exact-match EDID is reported and used only on fallback; bad
 checksum, unavailable DDC, nonmatching geometry and monitor changes never
-remove modes or override a valid user selection.
+remove modes or override a valid user selection. The 945GM netbook wave 2 gate
+in the verification matrix belongs to this stage; it is the only target in the
+matrix with a real panel EDID.
 
 ### Stage 6 - family rollout and cleanup
 
 - Enable the consumer for `vbe`, then ATI after its own guest/physical mode
-  inventory agrees.
+  inventory agrees, then the Intel GMA target once a family actually binds that
+  devnode and its two netbook waves pass.
 - Keep S3 and Matrox collection disabled unless a separate decision proves a
   benefit that outweighs boot-time BIOS risk.
 - Remove the v1/fixed-list compatibility code after package-pair and rollback
@@ -549,13 +838,24 @@ scrolling, survives mode changes and is acceptably fast on target-era CPUs.
 
 ### Host tests
 
-- Controller and mode parsing for VBE 2 and VBE 3 records.
+- Controller and mode parsing for VBE 2 and VBE 3 records, including the
+  capability bits and `OemSoftwareRev`: present, absent, and a controller that
+  denies being VGA-compatible, none of which may refuse an otherwise credible
+  block.
 - Linear-stride precedence and legacy-mask fallback.
 - Storage/significant depth derivation, including 16/16, 24/24 and 32/24.
-- Rejection of 15-bpp storage, 5:5:5, overlapping/out-of-range channels,
-  noncanonical channel order, zero/short pitch and VRAM overflow.
+- Rejection of 15-bpp storage, 5:5:5, 24-bpp packed RGB 8:8:8,
+  overlapping/out-of-range channels, noncanonical channel order, zero/short
+  pitch and VRAM overflow, each with its own reason code.
 - Baseline-only transaction, duplicate update, stable sort and 64-row overflow.
-- DirectDraw 32-row selection, active-row inclusion and exact mask propagation.
+- Publication flags: a scan-contradicted baseline row is hidden while remaining
+  in storage; a hidden row zero moves fallback selection to the first published
+  row; an absent, invalid, truncated or valid-but-empty scan publishes every
+  baseline row; a scanned row that updates a baseline row leaves it published.
+- The GMA950 fixture end to end: the survey's listed modes admit 640x480 and
+  1024x576 at 8/16/32 and hide `0100h`, `0103h`, `0105h`, `0114h` and `0117h`.
+- DirectDraw 32-row selection over published rows only, active-row inclusion and
+  exact mask propagation.
 - EDID header, checksum, version, DTD arithmetic, no-DTD, interlaced and
   nonmatching geometry cases.
 - Inventory parser/diff logic with fake registry operations: add, keep, prune,
@@ -578,9 +878,26 @@ scrolling, survives mode changes and is acceptably fast on target-era CPUs.
 - Mini-VDD dump equals the DOS `4F00h` inventory.
 - More than the original seven modes appear when the BIOS lists them.
 - Every accepted mode: boot or switch, GDI smoke, real display capture and
-  pitch verification.
+  pitch verification. The capture is the oracle, not a supplement: deferred
+  defect D5 was a six-mode matrix reporting `PASS` on every cell while the
+  monitor showed shredded noise, because every check went through the pitch,
+  base and depth the driver had chosen. A newly admitted dynamic mode has no
+  hand-audited row behind it, so it is exactly the case that precedent applies
+  to.
+- A mode-set that fails at `4F02h` on a dynamically discovered row leaves the
+  previous mode intact and reports failure, through the existing fault-injection
+  mechanism. The corpus is full of the alternative - `crash`, `black screen`,
+  `no signal`, and one chip where two BIOS revisions differ by whether a mode
+  draws wrongly or hangs.
+- Text mode returns intact after a dynamically discovered mode is set and
+  released, 8x14 font included. Every VBE 2.0 S3 BIOS in the corpus needs a
+  resident fixer for that font and none of the VBE 1.2 ones do, so it is a
+  BIOS-dependent path this pipeline newly exercises with modes nobody audited.
+- The reported and usable VRAM figures are both published, and disagree in the
+  expected direction for the target.
 - DirectDraw enumeration is the expected subset; set/restore and CPU
-  fill/copy/flip tests pass at 8/16/24/32 as available.
+  fill/copy/flip tests pass at 8/16/32 as available. The BIOS's 24-bpp modes are
+  rejected, and the inventory says so by reason.
 - Native Display Properties mirrors the runtime inventory after synchronization.
 - EDID exact match, bad-checksum fault injection and no-DDC fallback.
 
@@ -591,9 +908,60 @@ scrolling, survives mode changes and is acceptably fast on target-era CPUs.
   baseline must remain available and dynamic admission must fail conservative.
 - No-EDID panel and `4F15h` refusal both take the static fallback unchanged.
 
+### 945GM netbook (Intel GMA 950)
+
+QEMU's Bochs VBE publishes the standard mode numbers, unfiltered, so it cannot
+exercise the case that motivated this work: a panel-filtered mode list, OEM-only
+mode numbers, a `VideoModePtr` that may land in the controller buffer, and a
+real panel EDID. MICHAEL-NETBOOK is the physical target for that - HP Mini 110,
+945GSE/GMA 950, IGD `8086:27AE` rev 03, fixed 1024x576 LVDS panel (AUO
+B101AW01 V2) - and its DOS survey is the fixture the guest results are compared
+against: `personal/v9x-intel950/V9XINTL.TXT`, VBE 3.0, `ModeListCount=36`,
+`TotalMemory64K=123`, LFB at `D0000000`.
+
+Prerequisite: a scan-enabled package must actually bind that devnode. The `vbe`
+family manifest today claims only `1234:1111`, so this gate needs either the
+in-flight `intel-gma` family or an added chip entry / manual-select install of
+the generic package. Enabling the netbook is not a licence to widen the generic
+family's hardware IDs by accident.
+
+Wave 1, an exit gate for Stage 2:
+
+- the mini-VDD dump matches the DOS survey record-for-record, including the
+  entries that answer `4F01h` with `Attributes=0000`;
+- 1024x576 is admitted at 8, 16 and 32 bpp (`0160h`, `0161h`, `0162h`) and
+  640x480 at 8, 16 and 32 bpp (`0101h`, `0111h`, `0112h`);
+- the five contradicted baseline rows are hidden: absent from `ValidateMode`,
+  from mode selection and from the DirectDraw subset, present in the inventory
+  as hidden with reason `scan-contradicted`, and still in runtime storage;
+- 1024x576 enables at the panel's native geometry with verified pitch, and
+  fallback still lands on row zero, which is alive here.
+
+Wave 2, an exit gate for Stage 5:
+
+- the panel EDID parses (block 0 checksum valid, preferred detailed timing
+  1024x576 at a 54.20 MHz pixel clock) and its geometry matches the admitted
+  1024x576 row;
+- the hint is used only on fallback: an explicit valid registry selection still
+  wins, and a fault-injected bad checksum behaves exactly like no EDID.
+
+Practical notes. Drive the machine through the Velocity9x agent rather than
+interactively. The Win98 install constraints recorded for this box apply
+(`MaxPhysPage=40000` and `MaxFileCache=262144` set before first boot for its
+2 GB of RAM, Win98 on a swapped scratch disk with the Win10 disk shelved intact,
+ICH7-M in legacy IDE mode). Note the two memory figures disagree by design: the
+host bridge GGC reports 8 MiB stolen while `4F00h` reports 7.69 MiB, and the
+VRAM fit check must use the `4F00h` figure. Even so 1024x576x32 needs 2.25 MiB,
+so nothing on this machine is dropped for VRAM and a drop for that reason is a
+defect in the fit check, not a hardware limit.
+
 ### Regression targets
 
 - S3 and Matrox packages show no new `Exec_Int 10h` collection calls.
+- The VLB 486's Trio64 reports VBE 1.2, per the conformance corpus. Even with
+  collection enabled on that family, the version gate refuses the list and the
+  static table stands - the designed outcome, and worth asserting once rather
+  than assuming, since it is the only VBE 1.2 target this project can reach.
 - S3 8/16/32 mode matrix, Doom95 640x400, DirectDraw and ViRGE D3D remain
   unchanged.
 - Physical 2 MiB Trio64 continues to reject rows that do not fit VRAM.
@@ -604,12 +972,19 @@ scrolling, survives mode changes and is acceptably fast on target-era CPUs.
 The following facts must be available without a debugger:
 
 - mini-VDD API version and build pair status;
-- controller valid/version/VRAM;
+- controller valid/version/VRAM, with the raw reported figure kept beside the
+  usable one;
+- BIOS identity: `OemSoftwareRev` and the capability bits, including whether the
+  controller claims not to be VGA-compatible - which every text-mode restore and
+  Safe Mode fallback here assumes it is;
 - mode-list pointer state, terminator state and listed/query/cache counts;
 - last BIOS function and argument before a hang, using the existing serial
   pre-call marker;
 - per-reason rejected and dropped counts;
-- runtime GDI count and DirectDraw count;
+- runtime GDI count, published count, hidden baseline count and DirectDraw
+  count, plus the geometry of each hidden row;
+- whether a mini-VDD is absent because the OS is Win95, which is expected, or
+  because a Win98 mini-VDD failed to load, which is a defect;
 - EDID unavailable/header/checksum/descriptor/match state;
 - registry sync target, generation, add/keep/delete counts and no-op reason.
 
@@ -621,6 +996,8 @@ tool's privacy warning.
 
 - Stage 1 can ship with enumeration diagnostic-only.
 - Stage 2 can be disabled at the display side, leaving the static table.
+- Publication can be forced all-published at the display side, restoring
+  today's offer-every-baseline-row behavior without reverting the runtime table.
 - Stages 4 and 5 are additive; absent or invalid inventory/EDID is a no-op.
 - Setting `MiniVddVbeCollect=$false` removes boot-time VBE/EDID calls for a
   family at build time.
@@ -667,11 +1044,22 @@ The pipeline is complete when all of the following are true:
   significant depth survive the mini-VDD API unchanged;
 - one committed runtime table drives GDI validation, mode entry, live switching
   and DirectDraw publication;
-- native Display Properties mirrors that table without taking ownership of
-  baseline or foreign registry keys;
-- EDID can recommend only an already accepted geometry and every invalid or
+- no scan-contradicted baseline row is offered by GDI, DirectDraw or the native
+  Settings page, while every baseline row remains in runtime storage and in its
+  INF registry key for fallback and recovery;
+- 24 bpp is rejected on every path with a recorded reason, and remains a named
+  follow-up rather than an accidental dependency of this project;
+- native Display Properties mirrors that table's published rows without taking
+  ownership of baseline or foreign registry keys;
+- EDID can recommend only an already published geometry and every invalid or
   absent EDID case is indistinguishable from the current safe fallback;
 - scan-disabled families execute no new video-BIOS calls;
-- host, QEMU and required physical tests pass with release diagnostics captured;
+- the diagnostics name the video BIOS, not only the chip, so a report from an
+  untested card can be attributed to the variable the evidence says predicts
+  behaviour;
+- every newly admitted mode has been verified by capture rather than by GDI
+  agreeing with itself;
+- host, QEMU and the required physical gates pass with release diagnostics
+  captured: ATI Rage Mobility, and the 945GM netbook waves 1 and 2;
 - banked support remains a separate, GDI-only family decision rather than a
   condition in the LFB fast path.

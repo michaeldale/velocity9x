@@ -3,7 +3,10 @@
 /* VbeInfoBlock offsets (VBE 2.0+). */
 #define V9X_VBE_CI_SIGNATURE     0u
 #define V9X_VBE_CI_VERSION       4u
+#define V9X_VBE_CI_CAPABILITIES 10u
 #define V9X_VBE_CI_TOTAL_MEMORY 18u
+/* VBE 2.0 and later only, which is the floor this driver requires anyway. */
+#define V9X_VBE_CI_OEM_SOFTWARE_REV 20u
 
 /* ModeInfoBlock offsets. Proven against real BIOSes by the DOS inventory tool
  * in tools\diag\vbe_inventory_dos.c, which dumps exactly these fields. */
@@ -23,6 +26,19 @@
 #define V9X_VBE_MI_RSVD_FIELD_POS   38u
 #define V9X_VBE_MI_PHYS_BASE        40u
 #define V9X_VBE_MI_LIN_BYTES_PER_SCAN 50u
+
+/* VBE 3.0 added a second copy of the channel layout, for the linear
+ * framebuffer specifically. A VBE 2 BIOS writes none of these bytes, which is
+ * why the block has to be zeroed before the call: zero here has to mean "not
+ * reported" rather than "whatever the last mode left behind". */
+#define V9X_VBE_MI_LIN_RED_MASK_SIZE   54u
+#define V9X_VBE_MI_LIN_RED_FIELD_POS   55u
+#define V9X_VBE_MI_LIN_GREEN_MASK_SIZE 56u
+#define V9X_VBE_MI_LIN_GREEN_FIELD_POS 57u
+#define V9X_VBE_MI_LIN_BLUE_MASK_SIZE  58u
+#define V9X_VBE_MI_LIN_BLUE_FIELD_POS  59u
+#define V9X_VBE_MI_LIN_RSVD_MASK_SIZE  60u
+#define V9X_VBE_MI_LIN_RSVD_FIELD_POS  61u
 
 /* ModeAttributes bits this driver cares about. */
 #define V9X_VBE_ATTR_SUPPORTED ((v9x_u16)0x0001u)
@@ -50,6 +66,73 @@ static v9x_u32 v9x_vbe_read_u32(const v9x_u8 *data)
            ((v9x_u32)data[3] << 24);
 }
 
+void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out)
+{
+    if (out == 0) {
+        return;
+    }
+    out->attributes = 0u;
+    out->bytes_per_scan_line = 0u;
+    out->lin_bytes_per_scan_line = 0u;
+    out->width = 0u;
+    out->height = 0u;
+    out->bits_per_pixel = 0u;
+    out->significant_depth = 0u;
+    out->mask_flags = 0u;
+    out->memory_model = 0u;
+    out->phys_base = 0ul;
+    out->red_mask_size = 0u;
+    out->red_field_position = 0u;
+    out->green_mask_size = 0u;
+    out->green_field_position = 0u;
+    out->blue_mask_size = 0u;
+    out->blue_field_position = 0u;
+    out->rsvd_mask_size = 0u;
+    out->rsvd_field_position = 0u;
+}
+
+v9x_u16 v9x_vbe_summary_significant_depth(
+    const struct v9x_vbe_mode_summary *summary)
+{
+    v9x_u16 total;
+
+    if (summary == 0 || summary->bits_per_pixel == 0u) {
+        return 0u;
+    }
+    /* An 8-bpp mode is palettized: the byte is an index into a LUT rather than
+     * three channels, and all eight bits of it are significant. */
+    if (summary->bits_per_pixel == 8u) {
+        return 8u;
+    }
+    if (summary->red_mask_size == 0u && summary->green_mask_size == 0u &&
+        summary->blue_mask_size == 0u) {
+        /* The one assumption this file makes, and it is made in exactly one
+         * other place: v9x_vbe_masks_to_bits reads all-zero 16-bpp channels as
+         * 5:6:5. The two have to agree or a mode would be admitted with 16
+         * significant bits and drawn with some other number. */
+        return summary->bits_per_pixel == 16u ? 16u : 0u;
+    }
+    total = (v9x_u16)(summary->red_mask_size + summary->green_mask_size +
+                      summary->blue_mask_size);
+    /* Nothing may claim more colour bits than the pixel has room for. */
+    if (total > summary->bits_per_pixel) {
+        return 0u;
+    }
+    return total;
+}
+
+void v9x_vbe_controller_summary_clear(
+    struct v9x_vbe_controller_summary *out)
+{
+    if (out == 0) {
+        return;
+    }
+    out->version = 0u;
+    out->total_memory_bytes = 0ul;
+    out->capabilities = 0ul;
+    out->oem_software_rev = 0u;
+}
+
 v9x_u16 v9x_vbe_parse_controller_info(
     const v9x_u8 *block, struct v9x_vbe_controller_summary *out)
 {
@@ -59,8 +142,7 @@ v9x_u16 v9x_vbe_parse_controller_info(
     if (out == 0) {
         return V9X_FALSE;
     }
-    out->version = 0u;
-    out->total_memory_bytes = 0ul;
+    v9x_vbe_controller_summary_clear(out);
     if (block == 0) {
         return V9X_FALSE;
     }
@@ -86,6 +168,15 @@ v9x_u16 v9x_vbe_parse_controller_info(
 
     out->version = version;
     out->total_memory_bytes = (v9x_u32)blocks_of_64k * 65536ul;
+    /*
+     * Neither of these can fail the block: a BIOS reporting zero capabilities
+     * and no revision is describing itself sparsely, not incredibly, and
+     * refusing the controller over a diagnostic field would cost the driver its
+     * aperture for nothing.
+     */
+    out->capabilities = v9x_vbe_read_u32(block + V9X_VBE_CI_CAPABILITIES);
+    out->oem_software_rev =
+        v9x_vbe_read_u16(block + V9X_VBE_CI_OEM_SOFTWARE_REV);
     return V9X_TRUE;
 }
 
@@ -123,26 +214,12 @@ v9x_u16 v9x_vbe_parse_mode_info(
     if (out == 0) {
         return V9X_FALSE;
     }
-    out->attributes = 0u;
-    out->bytes_per_scan_line = 0u;
-    out->lin_bytes_per_scan_line = 0u;
-    out->width = 0u;
-    out->height = 0u;
-    out->bits_per_pixel = 0u;
-    out->memory_model = 0u;
-    out->phys_base = 0ul;
-    out->red_mask_size = 0u;
-    out->red_field_position = 0u;
-    out->green_mask_size = 0u;
-    out->green_field_position = 0u;
-    out->blue_mask_size = 0u;
-    out->blue_field_position = 0u;
-    out->rsvd_mask_size = 0u;
-    out->rsvd_field_position = 0u;
+    v9x_vbe_mode_summary_clear(out);
     if (block == 0) {
         return V9X_FALSE;
     }
 
+    v9x_vbe_mode_summary_clear(&candidate);
     candidate.attributes = v9x_vbe_read_u16(block + V9X_VBE_MI_ATTRIBUTES);
     candidate.bytes_per_scan_line =
         v9x_vbe_read_u16(block + V9X_VBE_MI_BYTES_PER_SCAN);
@@ -161,6 +238,58 @@ v9x_u16 v9x_vbe_parse_mode_info(
     candidate.blue_field_position = (v9x_u16)block[V9X_VBE_MI_BLUE_FIELD_POS];
     candidate.rsvd_mask_size = (v9x_u16)block[V9X_VBE_MI_RSVD_MASK_SIZE];
     candidate.rsvd_field_position = (v9x_u16)block[V9X_VBE_MI_RSVD_FIELD_POS];
+
+    /*
+     * The VBE 3 linear channel layout replaces the legacy one when the BIOS
+     * reports it. "Reports it" means any of the eight bytes is non-zero: a
+     * BIOS that fills in the linear set at all fills in the whole set, and a
+     * VBE 2 BIOS writes none of it into a block the caller zeroed.
+     *
+     * The reserved pair is copied even though DirectDraw publishes
+     * dwAlphaBitMask = 0. It is what separates XRGB 8:8:8:8 from packed
+     * 8:8:8 when both report 32 bits per pixel, so dropping it would lose the
+     * distinction the significant depth exists to make.
+     */
+    if (block[V9X_VBE_MI_LIN_RED_MASK_SIZE] != 0u ||
+        block[V9X_VBE_MI_LIN_RED_FIELD_POS] != 0u ||
+        block[V9X_VBE_MI_LIN_GREEN_MASK_SIZE] != 0u ||
+        block[V9X_VBE_MI_LIN_GREEN_FIELD_POS] != 0u ||
+        block[V9X_VBE_MI_LIN_BLUE_MASK_SIZE] != 0u ||
+        block[V9X_VBE_MI_LIN_BLUE_FIELD_POS] != 0u ||
+        block[V9X_VBE_MI_LIN_RSVD_MASK_SIZE] != 0u ||
+        block[V9X_VBE_MI_LIN_RSVD_FIELD_POS] != 0u) {
+        candidate.red_mask_size =
+            (v9x_u16)block[V9X_VBE_MI_LIN_RED_MASK_SIZE];
+        candidate.red_field_position =
+            (v9x_u16)block[V9X_VBE_MI_LIN_RED_FIELD_POS];
+        candidate.green_mask_size =
+            (v9x_u16)block[V9X_VBE_MI_LIN_GREEN_MASK_SIZE];
+        candidate.green_field_position =
+            (v9x_u16)block[V9X_VBE_MI_LIN_GREEN_FIELD_POS];
+        candidate.blue_mask_size =
+            (v9x_u16)block[V9X_VBE_MI_LIN_BLUE_MASK_SIZE];
+        candidate.blue_field_position =
+            (v9x_u16)block[V9X_VBE_MI_LIN_BLUE_FIELD_POS];
+        candidate.rsvd_mask_size =
+            (v9x_u16)block[V9X_VBE_MI_LIN_RSVD_MASK_SIZE];
+        candidate.rsvd_field_position =
+            (v9x_u16)block[V9X_VBE_MI_LIN_RSVD_FIELD_POS];
+        candidate.mask_flags = V9X_VBE_RF_MASKS_LINEAR;
+    } else if (candidate.red_mask_size != 0u ||
+               candidate.green_mask_size != 0u ||
+               candidate.blue_mask_size != 0u ||
+               candidate.rsvd_mask_size != 0u) {
+        candidate.mask_flags = V9X_VBE_RF_MASKS_LEGACY;
+    }
+    /* A palettized mode reports no channels at all and keeps mask_flags zero;
+     * so does the 16-bpp all-zero case, where 5:6:5 is this driver's
+     * convention rather than something the BIOS said. */
+    if (candidate.lin_bytes_per_scan_line != 0u) {
+        candidate.mask_flags =
+            (v9x_u16)(candidate.mask_flags | V9X_VBE_RF_LIN_STRIDE);
+    }
+    candidate.significant_depth =
+        v9x_vbe_summary_significant_depth(&candidate);
 
     /* One rule, applied here and by the mini-VDD path, so the two cannot
      * drift into accepting different things. */

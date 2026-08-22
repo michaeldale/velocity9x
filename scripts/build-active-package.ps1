@@ -54,7 +54,7 @@ $traceEnabled = -not $NoBootTrace
     -BootTrace:$traceEnabled -Family $Family
 $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
-    -BuildId $BuildId -DdkRoot $DdkRoot `
+    -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
     -DisableVbeCollect:(-not $miniVddVbeCollect)
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary

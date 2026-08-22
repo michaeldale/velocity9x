@@ -165,6 +165,15 @@ mini-VDD's 4F9Ch cache, and the collection is eight nested BIOS calls at
 `Device_Init` with nothing to show for them. Tier-0 families must leave it on.
 See `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md`.
 
+When collection is on, each chip mode's `VbeMode` is also a build input to the
+mini-VDD: `build-minivdd-skeleton.ps1 -Family <id>` generates the bounded
+rescue-probe list from the family's distinct mode numbers, deduplicated across
+chips, so a mode with no `VbeMode` or one that is not four hex digits fails the
+build. The reserved capacity is `V9X_VBE_BASELINE_PROBE_MAX` in
+`include\asm\V9XMAPI.INC`; a family needing more probes than that is a decision
+to raise the capacity in both halves of the contract, never to truncate the
+list. A family with collection off contributes no probes.
+
 `Variants` are build-time flavours of one family (the Matrox 8-bpp and 16-bpp
 drops). A family with no variants omits the key.
 

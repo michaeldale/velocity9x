@@ -125,7 +125,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $runtimeSource = Join-Path $repoRoot "src\display16\runtime.asm"
 $runtimeObject = Join-Path $outputDir "runtime.obj"
-$runtimeAssemblerArguments = @("-zq", "-fo=$runtimeObject")
+# -i= is where wasm looks for V9XMAPI.INC, the mini-VDD API contract shared
+# with src\minivdd32\loader.asm.
+$runtimeAssemblerArguments = @(
+    "-zq", "-i=$(Join-Path $repoRoot 'include\asm')", "-fo=$runtimeObject")
 foreach ($define in $familyRuntimeDefines) {
     $runtimeAssemblerArguments += "-d$define"
 }

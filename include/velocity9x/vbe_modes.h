@@ -65,8 +65,11 @@ void v9x_mode_english(v9x_u16 width, short *low, short *high);
  * Stricter than v9x_vbe_mode_summary_is_drivable, which asks only whether a
  * mode could be driven at all. On top of that:
  *
- *   - the depth must divide into whole bytes (8, 16, 24, 32). A BIOS listing
- *     15-bpp modes is ordinary and none of them can be laid out.
+ *   - the storage depth must be 8, 16 or 32. A BIOS listing 15-bpp modes is
+ *     ordinary and none of them can be laid out; 24 bpp divides into whole
+ *     bytes and is refused anyway, because nothing in display16 has ever drawn
+ *     one and offering a mode the blitters cannot draw is worse than not
+ *     offering it.
  *   - the effective stride - the VBE 3.0 linear one where reported, otherwise
  *     BytesPerScanLine - must be non-zero and fit the 16-bit pitch field.
  *   - the whole visible surface must fit the card's memory. vram_bytes of 0

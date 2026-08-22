@@ -73,15 +73,12 @@ EXTRN DIB_SetPaletteExt:FAR
 EXTRN DIB_SetPaletteTranslateExt:FAR
 EXTRN RESETHIRESMODE:FAR
 
-; Our mini-VDD's private device id and API contract; must match
-; src\minivdd32\loader.asm.
-V9XMINI_DEVICE_ID      EQU 4f9ch
-V9XMINI_API_MAGIC      EQU 39583956h
-V9XMINI_API_VERSION    EQU 0001h
-V9XMINI_FN_HANDSHAKE   EQU 0000h
-V9XMINI_FN_CONTROLLER  EQU 0001h
-V9XMINI_FN_MODE_INFO   EQU 0002h
-V9XMINI_FN_STATUS      EQU 0003h
+; Our mini-VDD's private device id and API contract. Shared verbatim with
+; src\minivdd32\loader.asm rather than copied from it: a driver reading a field
+; from an offset the mini-VDD does not write assembles, links and installs
+; cleanly, and then misreads the BIOS answers at boot with nothing pointing
+; here.
+include V9XMAPI.INC
 
 VDD_DEVICE_ID          EQU 000ah
 VDD_DRIVER_REGISTER    EQU 0080h

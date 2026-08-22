@@ -12,27 +12,11 @@ include VMM.INC
 include MINIVDD.INC
 .list
 
-; Private device id, so the 16-bit driver can reach the API below through
-; INT 2Fh AX=1684h - the same mechanism runtime.asm already uses to find the
-; master VDD at id 000Ah.
-;
-; The id is not allocated by anyone: no third-party registry exists to ask, and
-; a collision would hand the driver a foreign VxD's entry point. That is why
-; function 0 is a handshake returning a magic value, and why the 16-bit side
-; refuses to use the entry point until it has seen it. A wrong answer is then a
-; clean refusal instead of a call into a stranger.
-V9XMINI_DEVICE_ID   EQU 4F9Ch
-
-; Handshake reply and API contract version. Bump the version when the meaning
-; of any function changes; the 16-bit side checks it.
-V9XMINI_API_MAGIC   EQU 39583956h          ; 'V9X9' little-endian
-V9XMINI_API_VERSION EQU 0001h
-
-; API functions, in the client's AX.
-V9XMINI_FN_HANDSHAKE EQU 0000h
-V9XMINI_FN_CONTROLLER EQU 0001h
-V9XMINI_FN_MODE_INFO EQU 0002h
-V9XMINI_FN_STATUS    EQU 0003h
+; The device id, handshake magic, contract version, function numbers, cache
+; bounds and packed record layout of the API below. Shared verbatim with
+; src\display16\runtime.asm, which is the only other program that knows any of
+; these numbers; the include itself says why it is included rather than copied.
+include V9XMAPI.INC
 
 Declare_Virtual_Device V9XMINI, 1, 0, MiniVDD_Control, \
                        V9XMINI_DEVICE_ID, VDD_Init_Order, , MiniVDD_PM_API,

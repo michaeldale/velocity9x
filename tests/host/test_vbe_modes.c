@@ -99,10 +99,17 @@ static void test_accept_admits_a_good_mode(void)
 {
     struct v9x_vbe_scan_entry entry;
 
-    make_entry(&entry, 0x0118u, 1024u, 768u, 24u, 3072u);
+    make_entry(&entry, 0x0118u, 1024u, 768u, 32u, 4096u);
     MODECHECK(v9x_vbe_scan_accept(&entry, 4ul * 1024ul * 1024ul) == V9X_TRUE);
     /* Unknown VRAM skips the memory test rather than refusing. */
     MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_TRUE);
+
+    /* The other two admitted depths, at the geometry a panel-filtered BIOS
+     * offers rather than the standard one. */
+    make_entry(&entry, 0x0160u, 1024u, 576u, 8u, 1024u);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 4ul * 1024ul * 1024ul) == V9X_TRUE);
+    make_entry(&entry, 0x0161u, 1024u, 576u, 16u, 2048u);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 4ul * 1024ul * 1024ul) == V9X_TRUE);
 }
 
 static void test_accept_refuses_the_pathological(void)
@@ -125,6 +132,17 @@ static void test_accept_refuses_the_pathological(void)
     entry.summary.bits_per_pixel = 15u;
     MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
 
+    /*
+     * 24 bpp, refused for a different reason: the mode is perfectly well
+     * described - packed RGB 8:8:8, a stride that covers it, room on the card -
+     * and this driver has simply never drawn one. QEMU std-vga publishes these,
+     * so the refusal is exercised on the first target rather than in theory.
+     */
+    make_entry(&entry, 0x0118u, 1024u, 768u, 24u, 3072u);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 8ul * 1024ul * 1024ul) == V9X_FALSE);
+    make_entry(&entry, 0x0112u, 640u, 480u, 24u, 1920u);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
+
     /* A stride past the 16-bit pitch field. 4095 wide at 32 bpp is 16380,
      * which fits; the refusal has to come from the reported stride. */
     make_entry(&entry, 0x0140u, 2048u, 1536u, 32u, 8192u);
@@ -133,12 +151,12 @@ static void test_accept_refuses_the_pathological(void)
     MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
 
     /* A stride narrower than the pixels it must hold. */
-    make_entry(&entry, 0x0118u, 1024u, 768u, 24u, 1024u);
+    make_entry(&entry, 0x0118u, 1024u, 768u, 32u, 1024u);
     MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
 
-    /* Bigger than the card. 1024x768x24 needs 2.25 MiB; a 2 MiB Trio64
-     * refuses it here rather than offering it and failing the mode set. */
-    make_entry(&entry, 0x0118u, 1024u, 768u, 24u, 3072u);
+    /* Bigger than the card. 1024x768x32 needs 3 MiB; a 2 MiB Trio64 refuses
+     * it here rather than offering it and failing the mode set. */
+    make_entry(&entry, 0x0118u, 1024u, 768u, 32u, 4096u);
     MODECHECK(v9x_vbe_scan_accept(&entry, 2ul * 1024ul * 1024ul) == V9X_FALSE);
     MODECHECK(v9x_vbe_scan_accept(&entry, 4ul * 1024ul * 1024ul) == V9X_TRUE);
 
@@ -310,9 +328,9 @@ static void test_scan_corrects_the_baseline(void)
     /* Same geometry and depth as baseline row 6 (1024x768x16), but the BIOS
      * reports a padded stride and a different mode number. */
     make_entry(&scanned[0], 0x0217u, 1024u, 768u, 16u, 2560u);
-    /* And a 24-bpp mode carrying the number a baseline row might have claimed
-     * was 32 bpp. It is a different depth, so it is a new row, not an update. */
-    make_entry(&scanned[1], 0x0118u, 1024u, 768u, 24u, 3072u);
+    /* And a 32-bpp mode at the same geometry. It is a different depth, so it
+     * is a new row, not an update. */
+    make_entry(&scanned[1], 0x0118u, 1024u, 768u, 32u, 4096u);
 
     count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
                                      scanned, 2u, 8ul * 1024ul * 1024ul,
@@ -321,12 +339,45 @@ static void test_scan_corrects_the_baseline(void)
     MODECHECK(table[6].width == 1024u && table[6].bits_per_pixel == 16u);
     MODECHECK(table[6].pitch == 2560u);
     MODECHECK(table[6].vbe_mode == 0x0217u);
-    /* The new 24-bpp row landed with the BIOS's own masks. */
-    MODECHECK(table[7].bits_per_pixel == 24u);
-    MODECHECK(table[7].pitch == 3072u);
+    /* The new 32-bpp row landed with the BIOS's own masks. */
+    MODECHECK(table[7].bits_per_pixel == 32u);
+    MODECHECK(table[7].pitch == 4096u);
     MODECHECK(masks[7].red == 0x00ff0000ul);
     MODECHECK(masks[7].green == 0x0000ff00ul);
     MODECHECK(masks[7].blue == 0x000000fful);
+}
+
+/*
+ * A BIOS that offers 24 bpp alongside the depths this driver draws contributes
+ * only the drawable ones. This is the QEMU std-vga shape, and the reason 24 bpp
+ * had to be settled before the runtime table was wired to GDI: the refusal has
+ * to be a quiet omission from the table, not a failure of the build.
+ */
+static void test_24bpp_is_omitted_not_fatal(void)
+{
+    struct v9x_vbe_scan_entry scanned[3];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u16 count;
+    v9x_u16 dropped = 0xffffu;
+
+    make_entry(&scanned[0], 0x0160u, 1024u, 576u, 8u, 1024u);
+    make_entry(&scanned[1], 0x0165u, 1024u, 576u, 24u, 3072u);
+    make_entry(&scanned[2], 0x0162u, 1024u, 576u, 32u, 4096u);
+
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 3u, 8ul * 1024ul * 1024ul,
+                                     table, masks, V9X_MODE_TABLE_MAX,
+                                     &dropped);
+    /* Two new rows, not three, and nothing was dropped for want of room. */
+    MODECHECK(count == (v9x_u16)(BASELINE_SEVEN_COUNT + 2u));
+    MODECHECK(dropped == 0u);
+    {
+        v9x_u16 index;
+        for (index = 0u; index < count; ++index) {
+            MODECHECK(table[index].bits_per_pixel != 24u);
+        }
+    }
 }
 
 /* More accepted modes than the table can hold: keep what fits, count the rest,
@@ -470,6 +521,7 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_baseline_only();
     test_qemu_shaped_list();
     test_scan_corrects_the_baseline();
+    test_24bpp_is_omitted_not_fatal();
     test_overflow_is_bounded();
     test_dd_subset();
     test_masks_to_bits();

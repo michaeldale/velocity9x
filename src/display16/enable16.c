@@ -442,17 +442,26 @@ static DWORD v9x_vbe_default_aperture(void)
             return 0ul;
         }
     }
+    /* Registers, not a BIOS block, so start from a defined summary: the API
+     * reports a subset of the fields and the rest must read as "not reported"
+     * rather than as whatever was on the stack. */
+    v9x_vbe_mode_summary_clear(&mode);
     mode.attributes = v9x_minivdd_attr;
     mode.bytes_per_scan_line = v9x_minivdd_bytes;
-    /* The mini-VDD reports the 2.0 stride only. A VBE 3.0 linear stride would
-     * need its own cache slot; until one exists, say "not reported" rather
-     * than pass this one off as it. */
+    /* The v1 API reports the 2.0 stride and no colour fields at all. A VBE 3.0
+     * linear stride and the linear channel layout need their own cache slots;
+     * until the v2 contract lands, say "not reported" rather than pass these
+     * off as reported. v9x_vbe_mode_summary_clear has already done so - the
+     * assignment stays for the reader. */
     mode.lin_bytes_per_scan_line = 0u;
     mode.width = v9x_minivdd_width;
     mode.height = v9x_minivdd_height;
     mode.bits_per_pixel = v9x_minivdd_bpp;
     mode.memory_model = v9x_minivdd_model;
     mode.phys_base = v9x_minivdd_base;
+    /* Derivable from what the API did report, and only from the depth here:
+     * with no channel fields, this is the palettized or 5:6:5 answer. */
+    mode.significant_depth = v9x_vbe_summary_significant_depth(&mode);
 
     /* Same judgement the block parser applies, on the same rule. */
     if (v9x_vbe_mode_summary_is_drivable(&mode) == 0u) {
@@ -465,6 +474,10 @@ static DWORD v9x_vbe_default_aperture(void)
     }
 
     if (V9xMiniVbeController() != 0u) {
+        /* Registers again, so the same rule as the mode summary above: start
+         * defined, because the v1 API reports neither the capability bits nor
+         * the BIOS revision. */
+        v9x_vbe_controller_summary_clear(&controller);
         controller.version = v9x_minivdd_version;
         controller.total_memory_bytes = (DWORD)v9x_minivdd_total64k * 65536ul;
 

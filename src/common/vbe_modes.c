@@ -3,7 +3,12 @@
 /* Canonical masks for a baseline row, whose depth is all the driver knows
  * about it: 8 bpp is palettized, 16 bpp is the 5:6:5 the driver programs, and
  * 24/32 bpp is byte-per-channel with blue in the low byte. A scanned row
- * overwrites these with what the BIOS reported. */
+ * overwrites these with what the BIOS reported.
+ *
+ * The 24-bpp arm can only be reached by a family baseline row, since admission
+ * refuses scanned 24-bpp modes, and no family ships one. It stays so that the
+ * function is total over the depths a row can name rather than silently
+ * palettizing one. */
 static void v9x_canonical_masks(v9x_u16 bits_per_pixel,
                                 struct v9x_mode_masks *out)
 {
@@ -61,8 +66,20 @@ v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
     if (v9x_vbe_mode_summary_is_drivable(summary) == V9X_FALSE) {
         return V9X_FALSE;
     }
+    /*
+     * The depths this driver can lay out: 8, 16 and 32.
+     *
+     * 24 is missing on purpose. It divides into whole bytes and the parser
+     * derives its depths perfectly well, but display16 has never drawn a
+     * 24-bpp surface - no family baseline table has such a row, ddi.c splits
+     * three ways on 8/16/else, and the DIB Engine has no 24/32 surface flag to
+     * set. Admitting one here would offer a mode the blitters cannot draw,
+     * which is worse than not offering it, so 24-bpp bring-up is its own piece
+     * of work. QEMU std-vga publishes 24-bpp modes, so this is the common case
+     * rather than a corner: see docs\plans\dynamic-vbe-pipeline.md.
+     */
     if (summary->bits_per_pixel != 8u && summary->bits_per_pixel != 16u &&
-        summary->bits_per_pixel != 24u && summary->bits_per_pixel != 32u) {
+        summary->bits_per_pixel != 32u) {
         return V9X_FALSE;
     }
     if (summary->width > V9X_MODE_MAX_DIMENSION ||
