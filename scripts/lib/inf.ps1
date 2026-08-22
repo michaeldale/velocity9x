@@ -162,6 +162,15 @@ function New-V9xInfText {
             'CopyFiles=Velocity9x.Copy'
             'DelReg=Velocity9x.Previous'
             'AddReg=Velocity9x.Registry,Velocity9x.Registry.Manual'
+            # The resources the Configuration Manager cannot discover for
+            # itself. A PCI model needs none of this: the bus reports what the
+            # card decodes. A model with no hardware ID sits on a device the
+            # enumerator only knows exists, so with nothing declared here the
+            # devnode has no resources and Device Manager reports it as not
+            # present - code 24, measured on the 486 on 2026-08-22. Every
+            # display model in Win95's own MSDISP.INF carries this, all twenty
+            # of them, pointing at one shared VGA.LogConfig.
+            'LogConfig=Velocity9x.LogConfig'
         )
     }
 
@@ -254,6 +263,23 @@ function New-V9xInfText {
             '[Velocity9x.Registry.Manual]'
         )
         $lines += Get-V9xInfModeLines -Modes $manualModes
+        # The standard VGA resource map, copied from the VGA.LogConfig every
+        # model in MSDISP.INF shares: the two register windows, the A0000 and
+        # B8000 apertures, and the alternatives the option ROM may occupy. The
+        # linear framebuffer is deliberately absent, exactly as it is there -
+        # S3 models with linear apertures use this same section, and on this
+        # card the aperture sits at 0x7F000000, far above anything the
+        # Configuration Manager arbitrates.
+        $lines += @(
+            ''
+            '[Velocity9x.LogConfig]'
+            'ConfigPriority=HARDWIRED'
+            'IOConfig=3B0-3BB'
+            'IOConfig=3C0-3DF'
+            'MemConfig=A0000-AFFFF'
+            'MemConfig=B8000-BFFFF'
+            'MemConfig=C0000-C7FFF,D0000-D7FFF,E0000-E5FFF,E0000-E7FFF'
+        )
     }
 
     $lines += @(
@@ -363,9 +389,11 @@ function Assert-V9xInf {
                "model: '$line'.")
     }
     if (-not $manual) {
-        if ($text -match 'Velocity9x\.Install\.Manual') {
-            throw ("The generated INF names Velocity9x.Install.Manual but " +
-                   "family $($Family.Id) declares no Inf.ManualSelect.")
+        foreach ($absent in @('Velocity9x.Install.Manual', 'Velocity9x.LogConfig')) {
+            if ($text -match [regex]::Escape($absent)) {
+                throw ("The generated INF names $absent but family " +
+                       "$($Family.Id) declares no Inf.ManualSelect.")
+            }
         }
         return
     }
@@ -405,6 +433,22 @@ function Assert-V9xInf {
         throw ("The generated INF's [Velocity9x.Install.Manual] must AddReg both " +
                "Velocity9x.Registry and Velocity9x.Registry.Manual; it carries: " +
                "$($manualInstall -join ' / ').")
+    }
+    # Without this the devnode gets no resources and Device Manager reports the
+    # device as not present, which is a working driver nobody can reach.
+    if ('LogConfig=Velocity9x.LogConfig' -notin $manualInstall) {
+        throw ("The generated INF's [Velocity9x.Install.Manual] must declare " +
+               "LogConfig=Velocity9x.LogConfig; a model with no hardware ID " +
+               "has no bus to report its resources. It carries: " +
+               "$($manualInstall -join ' / ').")
+    }
+    $logConfig = @(Get-V9xInfSectionBody -Lines $Lines -Section 'Velocity9x.LogConfig')
+    if ($logConfig -notcontains 'ConfigPriority=HARDWIRED' -or
+        @($logConfig | Where-Object { $_ -like 'IOConfig=*' }).Count -eq 0 -or
+        @($logConfig | Where-Object { $_ -like 'MemConfig=*' }).Count -eq 0) {
+        throw ("The generated INF's [Velocity9x.LogConfig] must declare " +
+               "ConfigPriority plus at least one IOConfig and one MemConfig; " +
+               "it carries: $($logConfig -join ' / ').")
     }
     # DEFAULT,Mode is written by the shared registry section the manual model
     # also AddRegs, so it has to be a mode the manual MODES list advertises.

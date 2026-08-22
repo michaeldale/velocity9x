@@ -8,6 +8,33 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Fixed
 
+- **The manual-select model now declares its resources, without which Windows
+  reports the device as not present.** A PCI model needs none: the bus reports
+  what the card decodes and the Configuration Manager builds the devnode's
+  resource list from it. A model with no hardware ID sits on a device the
+  enumerator only knows exists, so with nothing declared the devnode has no
+  resources at all — Device Manager gives **Code 24**, "this device is not
+  present, not working properly, or does not have all the drivers installed",
+  and Display Properties refuses with "your display adapter is not configured
+  properly". The driver loads and runs perfectly well in that state; it is
+  simply never asked to enable, so it presents as a driver fault and is not one.
+
+  The fix is the `LogConfig` every display model in Win95's own `MSDISP.INF`
+  carries — all twenty share one `VGA.LogConfig` — emitted here as
+  `[Velocity9x.LogConfig]` with the standard VGA register windows and
+  apertures. Only the manual-select install section references it; the PCI
+  models are left alone, because on a bus that enumerates them a HARDWIRED
+  config would be asserting what the bus already knows. The linear framebuffer
+  is deliberately not declared, exactly as `MSDISP.INF` does not declare it for
+  its own S3 models with linear apertures.
+
+  `Assert-V9xInf` now requires the reference and a section with
+  `ConfigPriority` plus at least one `IOConfig` and one `MemConfig`, and
+  requires a family with no `ManualSelect` never to mention it. Note that
+  `LogConfig` is applied by SetupX at install time, so changing it means
+  re-running the install — swapping the driver files does not revisit the
+  devnode.
+
 - **`identify_without_pci` now unlocks the S3 extended registers before reading
   the chip id, which is what stopped the driver working on the 486.** It was the
   only S3 register accessor in `s3_regs16.c` that did not, and the comment

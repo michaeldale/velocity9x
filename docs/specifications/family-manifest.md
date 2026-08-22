@@ -248,6 +248,42 @@ alongside its own. Declaring `ManualSelect` therefore also forces per-chip
 registry sections even in a single-chip family, so no chip's full list leaks
 into the shared section the manual model reads.
 
+It also gets a `LogConfig=Velocity9x.LogConfig`, and that is not optional. A
+PCI model needs no such thing: the bus reports what the card decodes, and the
+Configuration Manager builds the devnode's resource list from it. A model with
+no hardware ID sits on a device the enumerator only knows exists, so unless the
+INF states the resources, the devnode has none — and Device Manager reports
+**"This device is not present, not working properly, or does not have all the
+drivers installed. (Code 24)"**, while Display Properties refuses with "your
+display adapter is not configured properly". The driver loads and runs in that
+state; it is simply never asked to enable, so the symptom looks like a driver
+fault and is not one. Measured on the 486 on 2026-08-22.
+
+The emitted section is the standard VGA resource map, and it is what every
+display model in Win95's own `MSDISP.INF` uses — all twenty of them share one
+`VGA.LogConfig`:
+
+```
+[Velocity9x.LogConfig]
+ConfigPriority=HARDWIRED
+IOConfig=3B0-3BB
+IOConfig=3C0-3DF
+MemConfig=A0000-AFFFF
+MemConfig=B8000-BFFFF
+MemConfig=C0000-C7FFF,D0000-D7FFF,E0000-E5FFF,E0000-E7FFF
+```
+
+The linear framebuffer is deliberately not declared, exactly as it is not
+there: `MSDISP.INF`'s own S3 models have linear apertures and use this same
+section, and on the 486 the aperture sits at `0x7F000000`, far above anything
+the Configuration Manager arbitrates. `Assert-V9xInf` requires the reference
+and a section carrying `ConfigPriority` with at least one `IOConfig` and one
+`MemConfig`; a family declaring no `ManualSelect` must not mention it at all.
+
+`LogConfig` is applied by SetupX when the model is installed, so changing it
+means re-running the install — replacing the driver files on disk does not
+revisit the devnode.
+
 `Generate = $false` and `ManualSelect` are incompatible: a family with no
 models section has nowhere to put the model.
 
