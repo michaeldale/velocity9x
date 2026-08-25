@@ -103,11 +103,31 @@ depths, primary/blits/flips/restore clean, exact pitch and 5:6:5 masks.
 33 modes against the driver's 32 (DDRAW-side merge, recorded in the plan).
 The guest runs the stage3 build and was left at 800x600x16.
 
+## Stage 4 addendum (2026-08-26)
+
+Stage 4 is done in the following commit: `V9xSyncModes` in `v9xsetp.dll`
+(new `tools/diag/settings_syncmodes.c`), the INF `V9xFamily` marker and
+per-boot `Run,V9xSyncModes` entry, all guest-verified — 39 dynamic keys
+created and stamped, idempotent second boot, stamped-orphan prune with an
+unstamped key untouched, `Complete=0` no-op, and the native Settings slider
+offering up to 1920x1200. Reports in `build\vm-clean\stage4-v9xsync*.ini`.
+
+Two operational gotchas learned here: the guest agent's `exec` of
+`RUNDLL32` returns before the run finishes (use the `shell` action instead),
+and `C:\V9XSYNC.INI` reads within a few seconds of a run can catch the Win9x
+profile cache mid-flush — re-read before diagnosing a "truncated" report.
+
+The guest driver was installed from the pre-Stage-4 INF, so the marker and
+Run entry were applied by hand (`scratchpad syncmark.reg` equivalent); a
+fresh Have Disk install from the current package writes both itself.
+
 ## Known items and next steps
 
-1. ~~Stage 3 — DirectDraw publication~~ — done, see addendum above. Next is
-   Stage 4 (native Display Properties synchronization via `v9xsetp.dll`'s
-   `V9xSyncModes`) per the plan.
+1. ~~Stage 3 — DirectDraw publication~~ — done, see addendum above.
+2. ~~Stage 4 — Display Properties synchronization~~ — done, see addendum.
+   Next per the plan: Stage 5 (EDID collection and preferred-mode
+   selection), plus the GMA950 netbook wave for real scan-contradiction
+   hiding.
 2. **Hiding on real hardware**: the GMA950 netbook (MICHAEL-NETBOOK) is the
    machine whose scan will actually contradict baseline rows; the host tests
    pin the rule until then.

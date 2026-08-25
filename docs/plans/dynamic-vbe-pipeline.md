@@ -861,6 +861,27 @@ describes pitch/masks exactly as the active surface.
 
 ### Stage 4 - native Display Properties synchronization
 
+Implementation status (2026-08-26): implemented and guest-verified on the
+local QEMU 4.2 std-vga VM. `tools/diag/settings_syncmodes.c` exports
+`V9xSyncModes` from `v9xsetp.dll`; the INF generator emits the
+`HKR,,V9xFamily` marker and the per-boot `Run,V9xSyncModes` entry beside the
+one-shot `RunOnce,V9xSettingsPage`, with both in the required-entry
+assertions. Guest evidence (`build\vm-clean\stage4-v9xsync*.ini`): the boot
+run created all 39 dynamic `MODES` keys stamped `V9xDynamic=1` plus the
+generation (7 baseline keeps); the next boot was a pure 46-keep no-change
+run; a planted stamped orphan key was pruned while a planted unstamped key
+was left alone; a `Complete=0` inventory produced
+`Status=no-op / Reason=inventory-missing-or-incomplete` with no registry
+change; and the native Display Properties Settings slider then offered the
+dynamic geometries up to 1920x1200 at High Color. EDID preference in the
+`DEFAULT\Mode` replacement is deferred with EDID itself; the replacement
+currently prefers the first published row at the requested depth, which is
+the family baseline by table order. Operational notes: the report file is
+written through the Win9x profile cache, so reading it within a few seconds
+of the run can catch a partial flush - re-read before diagnosing; and the
+remote agent's `exec` of rundll32 returns before the run completes, so use
+its `shell` action when driving the synchronizer by hand.
+
 - Add the device marker and persistent `V9xSyncModes` command to generated
   INFs for scan-enabled families.
 - Implement inventory validation, unique-devnode matching and dry-run output.

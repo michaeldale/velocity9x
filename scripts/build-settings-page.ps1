@@ -59,7 +59,8 @@ $diagDir = Join-Path $repoRoot "tools\diag"
 $includeDir = Join-Path $repoRoot "include"
 $sources = @(
     (Join-Path $diagDir "settings_propsheet.c"),
-    (Join-Path $diagDir "settings_status.c")
+    (Join-Path $diagDir "settings_status.c"),
+    (Join-Path $diagDir "settings_syncmodes.c")
 )
 $objects = @()
 $library = Join-Path $outputDir "v9xsetp.dll"
@@ -133,6 +134,7 @@ $linkLines = @(
     # Undecorated, because rundll32 looks the name up exactly as the INF's
     # RunOnce command line spells it.
     "export V9xRegisterPage='_V9xRegisterPage@16'",
+    "export V9xSyncModes='_V9xSyncModes@16'",
     "name '$library'"
 )
 $linkLines += $objects | ForEach-Object { "file '$_'" }
@@ -171,7 +173,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom could not inspect the settings page."
 }
 foreach ($export in @("DllGetClassObject", "DllCanUnloadNow",
-                      "V9xRegisterPage")) {
+                      "V9xRegisterPage", "V9xSyncModes")) {
     if ($dumpText -notmatch [regex]::Escape($export)) {
         throw "The settings page does not export $export."
     }

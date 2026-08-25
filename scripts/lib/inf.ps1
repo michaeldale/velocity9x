@@ -254,6 +254,10 @@ function New-V9xInfText {
         '[Velocity9x.Registry]'
         'HKR,,Ver,,4.0'
         'HKR,,DevLoader,,*vdd'
+        # The synchronizer's marker: V9xSyncModes writes only to the display
+        # class instance whose V9xFamily matches the inventory's family, and
+        # refuses when zero or several instances carry it.
+        ('HKR,,V9xFamily,,"{0}"' -f $Family.Id)
         ('HKR,DEFAULT,Mode,,"{0}"' -f $DefaultMode)
         'HKR,DEFAULT,drv,,v9xdisp.drv'
         'HKR,DEFAULT,drv2,,v9xdisp.drv'
@@ -302,6 +306,14 @@ function New-V9xInfText {
         # where the shell first reads the handler list.
         ('HKLM,Software\Microsoft\Windows\CurrentVersion\RunOnce,V9xSettingsPage,,' +
          '"rundll32.exe v9xsetp.dll,V9xRegisterPage"')
+        # Run, not RunOnce, and the two must not be mistaken for each other:
+        # V9xRegisterPage writes the property-sheet Tag once, at the first
+        # boot after the install, while the mode synchronizer must re-run
+        # every boot - the inventory changes whenever the card, the panel or
+        # the BIOS-visible mode set changes - and is idempotent when nothing
+        # did.
+        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xSyncModes,,' +
+         '"rundll32.exe v9xsetp.dll,V9xSyncModes"')
     )
 
     if ($perChipRegistry) {
@@ -409,6 +421,8 @@ function Assert-V9xInf {
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
                   'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
                   'RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"',
+                  'Run,V9xSyncModes,,"rundll32.exe v9xsetp.dll,V9xSyncModes"',
+                  ('V9xFamily,,"{0}"' -f $Family.Id),
                   "CLSID\$script:V9xSettingsPageClsid\InProcServer32",
                   "DEFAULT,Mode,,`"$DefaultMode`"",
                   'DEFAULT,vdd,,"*vdd,*vflatd"',

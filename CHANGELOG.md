@@ -81,6 +81,32 @@ Stage 3 - DirectDraw publication (2026-08-26):
   flips and RestoreDisplayMode - with the published list matching the runtime
   table order exactly and no 24-bpp row anywhere.
 
+Stage 4 - native Display Properties synchronization (2026-08-26):
+
+- **`V9xSyncModes` in `v9xsetp.dll`** mirrors the validated inventory
+  (`C:\V9XMODES.INI`) into the display class instance's `MODES` registry
+  tree, which is what the native Settings page enumerates. It refuses whole
+  on any invalid inventory (torn, unknown schema, malformed or duplicate
+  rows, out-of-range counts), targets only the class instance the INF marked
+  with `V9xFamily` (zero or several marks, or a mark no `HKLM\Enum` devnode
+  points at, is a recorded no-op), creates missing
+  `MODES\<depth>\<width>,<height>` keys stamped `V9xDynamic=1` plus the
+  generation, prunes only keys carrying that stamp when the current
+  inventory no longer publishes their geometry - INF baseline keys,
+  `MODES\4` and anything unstamped are never touched - repoints a
+  `DEFAULT\Mode` naming a vanished row at a published row of the same depth,
+  and writes every run's outcome (or the word "report" as a dry run) to
+  `C:\V9XSYNC.INI`.
+- **The generated INF carries the marker and the per-boot command**:
+  `HKR,,V9xFamily` on the devnode and `Run,V9xSyncModes` beside the one-shot
+  `RunOnce,V9xSettingsPage`, both under required-entry assertions so a
+  scan-enabled family cannot ship without them.
+- Guest-verified: first boot created all 39 dynamic keys (7 baseline keeps),
+  the next boot was a pure no-change run, a planted stamped orphan was
+  pruned while an unstamped neighbour survived, a `Complete=0` inventory was
+  a recorded no-op, and the native Settings slider then offered the dynamic
+  geometries up to 1920x1200 at High Color.
+
 Stage 0 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md):
 contracts and fixtures only. No driver behaviour changes — every image this
 builds is the same image as before, which is the stage's own exit condition.
