@@ -211,3 +211,69 @@ Before adding this handoff, the only visible untracked path was the pre-existing
 `.claude\` directory. The Stage 1 implementation itself is clean and committed
 as `43fcb3a`. This handoff is intentionally left for the next session to review
 and commit.
+
+## 2026-08-25 addendum
+
+This handoff was committed as `b933c45` at 9:31 AM on 2026-08-23. An
+undocumented session continued the same day (roughly 10 AM to 7:52 PM) after
+the commit. This addendum corrects the stale state above and replaces the
+"Exact next action" section. The plan of record remains the NIC-plus-agent
+path; the evening session's DOS/offline work is recorded below as a
+side-track, not the plan.
+
+### State corrections
+
+- QEMU is **no longer running**. The "Current live state" section above
+  (open Network dialog, PID 67040, live HMP on 55559) is historical; ports
+  55559 and 9872 are closed.
+- The overlay `win98-clean-agent061b.qcow2` was last written at **7:13 PM on
+  2026-08-23** — the guest was booted again after this handoff was committed.
+  Whether the Realtek adapter install was completed is unknown. Treat the
+  guest's network state as unverified until proven by an agent ping.
+- `build\vm-clean\stage1-com1.log` is 0 bytes (QEMU truncates the serial log
+  on every launch).
+
+### Undocumented evening-session artifacts
+
+All in `build\vm-clean` unless noted. These belong to a DOS-boot / offline
+qcow2-extraction side-track that stopped mid-effort:
+
+- `launch-stage1.ps1` — the cold-launch command above plus `-S` (starts
+  paused; resume with HMP `c`). Prefer this launcher from now on.
+- `boot-dos.ps1` — resumes the paused VM, fires F8 across the boot-sector
+  window, then picks startup-menu option 7 (Command prompt only).
+- `hmp-keys.ps1` / `hmp-screen.ps1` — HMP sendkey helper and a text-mode
+  screen reader (dumps CGA memory at 0xB8000 via `xp`).
+- `canary-dos.ps1` plus `build\vm-transfer-stage1-agent\TMP\OLDMARK.TXT` —
+  DOS-prompt canary (the guest deletes the marker through vvfat). The marker
+  **still exists**, so a DOS prompt was never confirmed.
+- `build\vm-transfer-stage1-agent\TMP\EXPORT.BAT` — a registry-export job.
+  It is **broken**: the file is a single line containing literal `\r\n`
+  text instead of real line breaks, and no `EXPORT.DONE` or `.REG` outputs
+  exist, so it never ran. Fix or delete it before any future DOS attempt.
+- `fatqcow2.js` — offline qcow2-chain + FAT32 reader (`dump`/`voff`
+  commands, plus an untested 4K shadow-write helper). No `.out` dumps were
+  produced.
+
+### Revised next actions (replaces "Exact next action")
+
+1. Cold-launch with `build\vm-clean\launch-stage1.ps1` (or the command
+   above), resume with HMP `c`, and let Windows boot normally.
+2. **Verify before configuring**: run the `v9xctl.ps1 ping` check from the
+   "Exact next action" section first. If the agent answers on
+   `127.0.0.1:9872`, the NIC install was completed in the untracked evening
+   session — skip the Network-dialog work entirely.
+3. If the ping fails, complete original steps 1–6: add the Realtek
+   RTL8029(AS) adapter, use copy source `D:\SETUP\WIN98`, confirm the TCP/IP
+   binding, and shut down cleanly — never warm `system_reset`.
+4. Then continue at "After the agent responds" unchanged: agent-driven
+   `V9XSTAGE.EXE` and driver install, cold boot with serial capture,
+   retrieve `C:\V9XBOOT.INI`, and compare against the QEMU DOS inventory
+   fixture — the still-unfulfilled Stage 1 exit gate.
+
+### Housekeeping
+
+- `build\vm-clean\setup-source.raw` (8 GiB) is still present and remains
+  deletable once the network install is confirmed.
+- `TMP\OLDMARK.TXT` and the broken `EXPORT.BAT` can be removed from the
+  transfer tree when next safe (VM shut down, transfer disk unmounted).
