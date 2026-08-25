@@ -121,13 +121,26 @@ The guest driver was installed from the pre-Stage-4 INF, so the marker and
 Run entry were applied by hand (`scratchpad syncmark.reg` equivalent); a
 fresh Have Disk install from the current package writes both itself.
 
+## Stage 5 addendum (2026-08-26)
+
+Stage 5 is done in the following commit: mini-VDD `4F15h` EDID collection
+plus the register-only `EDID_CHUNK` API, the Win16 thunk, the host-tested
+parser (`src/common/edid.c` + `tests/host/test_edid.c`), the configured →
+EDID-at-depth → first-published selection order, and `Edid=` /
+`Recommendation=` inventory lines. Guest-verified: `f=0147` (EDID_VALID),
+EDID 1.4 preferred 1024x768, configured mode never overridden, and a bogus
+configured mode fell back to 1024x768 on the next cold boot. Note: the DOS
+survey recorded preferred 1280x800 on this guest in 2023-08; QEMU's
+generated EDID varies, so the preference is re-read every boot.
+
 ## Known items and next steps
 
 1. ~~Stage 3 — DirectDraw publication~~ — done, see addendum above.
 2. ~~Stage 4 — Display Properties synchronization~~ — done, see addendum.
-   Next per the plan: Stage 5 (EDID collection and preferred-mode
-   selection), plus the GMA950 netbook wave for real scan-contradiction
-   hiding.
+3. ~~Stage 5 — EDID preferred hint~~ — done, see addendum. Remaining in the
+   pipeline: Stage 6 (family rollout and cleanup), the GMA950 netbook waves
+   (real scan-contradiction hiding, real panel EDID), and re-pushing a
+   regenerated package to the UTM guest.
 2. **Hiding on real hardware**: the GMA950 netbook (MICHAEL-NETBOOK) is the
    machine whose scan will actually contradict baseline rows; the host tests
    pin the rule until then.

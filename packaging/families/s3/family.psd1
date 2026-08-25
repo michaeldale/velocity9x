@@ -145,6 +145,7 @@
             # links it even where no hook asks the BIOS anything.
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
+            @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
             @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }

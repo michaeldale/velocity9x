@@ -107,6 +107,31 @@ Stage 4 - native Display Properties synchronization (2026-08-26):
   a recorded no-op, and the native Settings slider then offered the dynamic
   geometries up to 1920x1200 at High Color.
 
+Stage 5 - EDID preferred hint (2026-08-26):
+
+- **The mini-VDD collects EDID block 0 through `4F15h`** at init, after the
+  mode scan so a hung DDC read cannot cost the mode table: a BL=00h
+  capability probe, then BL=01h into the cleared V86 scratch, accepted only
+  on `AX=004Fh`. The three EDID status bits (valid / no-DDC / read-failed)
+  are the whole outcome and never affect mode-scan validity. The
+  `EDID_CHUNK` API function now serves the cached block in register-only
+  16-byte chunks, and `V9xMini_Vbe_Call` gained a client-BX input for the
+  subfunction.
+- **A host-tested EDID parser** (`src/common/edid.c`) accepts only a
+  header-and-checksum-true 1.x block whose first detailed timing is a
+  non-interlaced timing with nonzero geometry; the negative corpus covers
+  the all-zero block a lying BIOS produces, a flipped checksum byte,
+  version 2, descriptor-first slots and interlaced preferred timings.
+- **Selection order**: the configured mode always wins when it resolves;
+  only when it is absent or hidden does the published row matching the
+  panel's EDID geometry at the requested depth stand in, ahead of the
+  first-published-row fallback. The inventory carries `Edid=` and
+  `Recommendation=` lines with reasons.
+- Guest-verified: boot status gained the EDID_VALID bit, the block parsed as
+  EDID 1.4 preferred 1024x768, the desktop stayed on the configured
+  800x600x16, and a deliberately nonexistent configured mode fell back to
+  1024x768 on the next boot.
+
 Stage 0 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md):
 contracts and fixtures only. No driver behaviour changes — every image this
 builds is the same image as before, which is the stage's own exit condition.

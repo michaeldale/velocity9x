@@ -55,6 +55,11 @@ EXTRN _v9x_minivdd_queried:WORD
 EXTRN _v9x_minivdd_cached:WORD
 EXTRN _v9x_minivdd_probed:WORD
 EXTRN _v9x_minivdd_status:WORD
+; One 16-byte EDID chunk, as the four dwords the API hands back.
+EXTRN _v9x_minivdd_edid0:DWORD
+EXTRN _v9x_minivdd_edid1:DWORD
+EXTRN _v9x_minivdd_edid2:DWORD
+EXTRN _v9x_minivdd_edid3:DWORD
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -572,6 +577,48 @@ V9xMiniVbeModeMasksDone:
     pop     bp
     ret     2
 V9XMINIVBEMODEMASKS ENDP
+
+; WORD FAR PASCAL V9xMiniVbeEdidChunk(WORD index)
+;
+; One 16-byte slice of the mini-VDD's cached EDID block 0 into the four
+; _v9x_minivdd_edidN dwords, low byte of EBX first. 0 when no valid block was
+; collected or the index is out of range.
+PUBLIC V9XMINIVBEEDIDCHUNK
+V9XMINIVBEEDIDCHUNK PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniVbeEdidChunkFailed
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_EDID_CHUNK
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniVbeEdidChunkFailed
+    mov     _v9x_minivdd_edid0, ebx
+    mov     _v9x_minivdd_edid1, ecx
+    mov     _v9x_minivdd_edid2, edx
+    mov     _v9x_minivdd_edid3, esi
+    mov     ax, 1
+    jmp     short V9xMiniVbeEdidChunkDone
+V9xMiniVbeEdidChunkFailed:
+    xor     ax, ax
+V9xMiniVbeEdidChunkDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    ret     2
+V9XMINIVBEEDIDCHUNK ENDP
 
 PUBLIC V9XVDDGETDISPLAYCONFIG
 V9XVDDGETDISPLAYCONFIG PROC FAR

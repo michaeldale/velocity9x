@@ -45,6 +45,10 @@ public V9xMiniVddBuildId
 V9xVbeListStage dw V9X_VBE_MODE_LIST_MAX dup (0)
 V9xVbeCache     db V9X_VBE_CACHE_BYTES dup (0)
 V9xVbeProbeCache db V9X_VBE_PROBE_BYTES dup (0)
+; EDID block 0, collected once through 4F15h at init after the mode scan and
+; served back in register-only 16-byte chunks. Meaningful only while
+; V9X_VBE_ST_EDID_VALID is set in V9xVbeStatus.
+V9xVbeEdid      db V9X_VBE_EDID_BYTES dup (0)
 
 IFNDEF V9X_NO_VBE_COLLECT
 include V9XPROBE.INC
@@ -74,6 +78,9 @@ V9xVbeListSelf  dw 0
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
 ; be had. Allocated at init and never freed.
 V9xVbeBufSeg    dw 0
+; The client BX for the next V9xMini_Vbe_Call. Parked here because EBX is
+; taken by Get_Cur_VM_Handle inside the call itself.
+V9xVbeCallBx    dw 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -399,7 +406,7 @@ BeginProc MiniVDD_PM_API
     cmp     ax, V9XMINI_FN_MODE_MASKS
     je      V9xMini_Api_ModeMasks
     cmp     ax, V9XMINI_FN_EDID_CHUNK
-    je      V9xMini_Api_NoData
+    je      V9xMini_Api_EdidChunk
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -601,6 +608,33 @@ V9xMini_Api_ModeMasks_Done:
     pop     ebx
     ret
 
+; One 16-byte slice of the cached EDID block, registers only. See
+; V9XMAPI.INC for the register map. No caller pointer crosses in either
+; direction, and an index past the block or a boot with no valid block both
+; answer AX=0 exactly like an unknown function.
+V9xMini_Api_EdidChunk:
+    test    V9xVbeStatus, V9X_VBE_ST_EDID_VALID
+    jz      short V9xMini_Api_NoData
+    push    ecx
+    movzx   ecx, [ebp.Client_CX]
+    cmp     ecx, V9X_VBE_EDID_CHUNKS
+    jae     short V9xMini_Api_EdidChunk_Missing
+    shl     ecx, 4
+    add     ecx, OFFSET32 V9xVbeEdid
+    mov     [ebp.Client_AX], 1
+    mov     eax, [ecx]
+    mov     [ebp.Client_EBX], eax
+    mov     eax, [ecx+4]
+    mov     [ebp.Client_ECX], eax
+    mov     eax, [ecx+8]
+    mov     [ebp.Client_EDX], eax
+    mov     eax, [ecx+12]
+    mov     [ebp.Client_ESI], eax
+    pop     ecx
+    ret
+V9xMini_Api_EdidChunk_Missing:
+    pop     ecx
+
 V9xMini_Api_NoData:
     mov     [ebp.Client_AX], 0
     ret
@@ -648,7 +682,10 @@ EndProc V9xMini_Hex16
 
 ; Run one buffered VBE call in V86 mode and leave the BIOS status in AX.
 ;
-; In:  AX = VBE function (4F00h or 4F01h), CX = its argument.
+; In:  AX = VBE function (4F00h, 4F01h or 4F15h), CX = its argument,
+;      BX = the client BX (4F15h's subfunction in BL; the earlier functions
+;      ignore it and pass 0). Client DX is always 0 - for 4F15h that selects
+;      EDID block zero, and 4F00h/4F01h ignore it.
 ; Out: AX = the BIOS reply, or 0 if there was no buffer to hand it.
 ;
 ; The buffer has to be addressable by the real-mode BIOS, which is the entire
@@ -684,6 +721,7 @@ V9xMini_Vbe_Call_Ready:
 
     movzx   esi, ax                     ; hold the function
     movzx   edx, cx                     ; hold its argument
+    mov     V9xVbeCallBx, bx            ; hold the client BX (see above)
 
     ; Name the call on the wire before making it. If the BIOS never comes
     ; back, fn= and arg= are the last line of the boot and identify the
@@ -708,6 +746,9 @@ V9xMini_Vbe_Call_Ready:
 
     mov     [ebp.Client_AX], si
     mov     [ebp.Client_CX], dx
+    mov     ax, V9xVbeCallBx
+    mov     [ebp.Client_BX], ax
+    mov     [ebp.Client_DX], 0
     mov     ax, V9xVbeBufSeg
     mov     [ebp.Client_ES], ax
     mov     [ebp.Client_DI], 0
@@ -792,6 +833,7 @@ BeginProc V9xMini_Vbe_Query_Record
 
     call    V9xMini_Vbe_Clear_Scratch
     mov     ax, 4F01h
+    xor     bx, bx
     call    V9xMini_Vbe_Call
     cmp     ax, 004Fh
     je      short V9xMini_Vbe_Query_Record_Answered
@@ -922,6 +964,7 @@ BeginProc V9xMini_Vbe_Collect
     ; 4F00h. Stamp "VBE2" first so a 2.0-aware BIOS fills in the longer block.
     mov     dword ptr [edx], 32454256h  ; 'VBE2'
     mov     ax, 4F00h
+    xor     bx, bx
     xor     cx, cx
     call    V9xMini_Vbe_Call
     cmp     ax, 004Fh
@@ -1057,7 +1100,7 @@ V9xMini_Vbe_Collect_Probes:
     xor     esi, esi
 V9xMini_Vbe_Collect_Probe_Next:
     cmp     esi, V9xVbeProbeCount
-    jae     V9xMini_Vbe_Collect_Done
+    jae     V9xMini_Vbe_Collect_Edid
     mov     cx, V9xVbeProbeList[esi*2]
 
     ; A list-derived answer already satisfies by-mode lookup.
@@ -1085,6 +1128,45 @@ V9xMini_Vbe_Collect_Probe_Query:
 V9xMini_Vbe_Collect_Probe_Skip:
     inc     esi
     jmp     V9xMini_Vbe_Collect_Probe_Next
+
+; EDID block 0 through 4F15h, after mode collection so a hung DDC read cannot
+; cost the mode table. DDC failure is non-fatal and never changes mode-scan
+; validity: the three EDID status bits are the whole story.
+;
+; BL=00h asks whether DDC is supported at all; a BIOS that refuses it gets
+; the no-DDC bit and no read attempt. BL=01h reads block CX=0 into ES:DI -
+; the same 512-byte scratch, cleared first so a lying BIOS that answers 004Fh
+; without writing produces 128 zero bytes, which the host-tested parser
+; refuses on the header. Client DX is zero (block zero) by V9xMini_Vbe_Call.
+V9xMini_Vbe_Collect_Edid:
+    mov     ax, 4F15h
+    xor     bx, bx                      ; BL=00h: DDC capability probe
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    je      short V9xMini_Vbe_Collect_Edid_Read
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_NO_DDC
+    jmp     V9xMini_Vbe_Collect_Done
+
+V9xMini_Vbe_Collect_Edid_Read:
+    call    V9xMini_Vbe_Clear_Scratch
+    mov     ax, 4F15h
+    mov     bx, 1                       ; BL=01h: read EDID
+    xor     cx, cx                      ; controller unit 0
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    je      short V9xMini_Vbe_Collect_Edid_Copy
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_FAILED
+    jmp     V9xMini_Vbe_Collect_Done
+
+V9xMini_Vbe_Collect_Edid_Copy:
+    movzx   esi, V9xVbeBufSeg
+    shl     esi, 4
+    mov     edi, OFFSET32 V9xVbeEdid
+    mov     ecx, V9X_VBE_EDID_BYTES / 4
+    cld
+    rep movsd
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_VALID
 
 V9xMini_Vbe_Collect_Done:
     mov     ax, V9xVbeListSeg

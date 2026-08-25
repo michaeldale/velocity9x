@@ -91,6 +91,7 @@ extern WORD v9x_runtime_first;
 extern void v9x_modes16_init(void);
 extern WORD v9x_modes16_is_published(WORD index);
 extern void v9x_modes16_write_inventory(void);
+extern const V9X_HW16_MODE *v9x_modes16_edid_mode(WORD bits_per_pixel);
 #define v9x_modes      (v9x_runtime_modes)
 #define V9X_MODE_COUNT (v9x_runtime_count)
 
@@ -459,6 +460,14 @@ static void v9x_select_requested_mode(void)
     if (V9xVddGetDisplayConfig(&display_info) != 0u) {
         requested = v9x_find_mode(display_info.width, display_info.height,
                                   display_info.bits_per_pixel);
+        /* The configured mode always wins when it resolves. Only when it is
+         * absent or hidden may the panel's EDID preference stand in, at the
+         * same storage depth - a monitor change never overrides a valid
+         * selection, and EDID never invents a row v9x_find_mode could not
+         * have returned itself. */
+        if (requested == 0) {
+            requested = v9x_modes16_edid_mode(display_info.bits_per_pixel);
+        }
         if (display_info.dpi >= 72u && display_info.dpi <= 200u) {
             v9x_dpi = display_info.dpi;
         }

@@ -21,6 +21,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/vbe_cache.h"
+#include "velocity9x/edid.h"
 
 /* The mini-VDD API v2 scalars and thunks, owned by enable16.c/runtime.asm. */
 extern DWORD v9x_minivdd_base;
@@ -45,6 +46,11 @@ extern WORD FAR PASCAL V9xMiniVbeController(void);
 extern WORD FAR PASCAL V9xMiniVbeStatus(void);
 extern WORD FAR PASCAL V9xMiniVbeModeAt(WORD index);
 extern WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index);
+extern WORD FAR PASCAL V9xMiniVbeEdidChunk(WORD index);
+extern DWORD v9x_minivdd_edid0;
+extern DWORD v9x_minivdd_edid1;
+extern DWORD v9x_minivdd_edid2;
+extern DWORD v9x_minivdd_edid3;
 
 /*
  * The committed table. ddi.c's v9x_modes/V9X_MODE_COUNT macros point here, so
@@ -75,6 +81,11 @@ WORD v9x_runtime_reasons[V9X_VBE_ADMIT_REASON_COUNT];
 WORD v9x_runtime_scan_state = 0u;
 /* VRAM as 4F00h reported it, for the inventory's raw figure. */
 DWORD v9x_runtime_vram_reported = 0ul;
+/* The panel's parsed EDID preference: non-zero when the mini-VDD collected a
+ * valid block 0 whose preferred timing this parser accepts. A hint only - it
+ * never adds a mode, removes one, or overrides a valid user selection. */
+WORD v9x_edid_state = 0u;
+static struct v9x_edid_summary v9x_edid;
 
 /* Bounded staging, so a failure mid-build never touches the committed table.
  * Static rather than stack: the Win16 stack cannot hold 64 rows. */
@@ -167,6 +178,31 @@ static WORD v9x_modes16_rows_sane(const V9X_HW16_MODE *table, WORD count)
     return 1u;
 }
 
+/* Read and parse the mini-VDD's cached EDID block. Runs after the table
+ * commit and cannot affect it: DDC failure is non-fatal by design, and a
+ * refusal here only clears the preference. */
+static void v9x_modes16_read_edid(void)
+{
+    static v9x_u8 block[V9X_EDID_BLOCK_BYTES];
+    WORD chunk;
+
+    v9x_edid_state = 0u;
+    for (chunk = 0u; chunk < (WORD)(V9X_EDID_BLOCK_BYTES / 16u); ++chunk) {
+        DWORD *slice = (DWORD *)&block[chunk * 16u];
+
+        if (V9xMiniVbeEdidChunk(chunk) == 0u) {
+            return;
+        }
+        slice[0] = v9x_minivdd_edid0;
+        slice[1] = v9x_minivdd_edid1;
+        slice[2] = v9x_minivdd_edid2;
+        slice[3] = v9x_minivdd_edid3;
+    }
+    if (v9x_edid_parse(block, &v9x_edid) == V9X_TRUE) {
+        v9x_edid_state = 1u;
+    }
+}
+
 void v9x_modes16_init(void)
 {
     WORD index;
@@ -178,6 +214,7 @@ void v9x_modes16_init(void)
 
     /* Step 1: the fallback state is committed before anything can fail. */
     v9x_modes16_commit_baseline();
+    v9x_modes16_read_edid();
     v9x_scan_count = 0u;
     v9x_runtime_dropped = 0u;
     for (index = 0u; index < V9X_VBE_ADMIT_REASON_COUNT; ++index) {
@@ -270,6 +307,31 @@ WORD v9x_modes16_is_published(WORD index)
     return (v9x_runtime_publication[index] & V9X_MODE_PUB_PUBLISHED) != 0u
                ? 1u
                : 0u;
+}
+
+/*
+ * The published row matching the panel's EDID-preferred geometry at the
+ * requested storage depth, or null. This is the fallback half of the
+ * selection order - configured mode first, this second, first published row
+ * last - so it can only ever be consulted after the configured mode failed
+ * to resolve, and a monitor change can never override a valid selection.
+ */
+const V9X_HW16_MODE *v9x_modes16_edid_mode(WORD bits_per_pixel)
+{
+    WORD index;
+
+    if (v9x_edid_state == 0u) {
+        return 0;
+    }
+    for (index = 0u; index < v9x_runtime_count; ++index) {
+        if (v9x_modes16_is_published(index) != 0u &&
+            v9x_runtime_modes[index].width == v9x_edid.preferred_width &&
+            v9x_runtime_modes[index].height == v9x_edid.preferred_height &&
+            v9x_runtime_modes[index].bits_per_pixel == bits_per_pixel) {
+            return &v9x_runtime_modes[index];
+        }
+    }
+    return 0;
 }
 
 /*
@@ -407,6 +469,47 @@ void v9x_modes16_write_inventory(void)
     /* The published rate is the 60 Hz convention, not a measurement, and the
      * file says so rather than leaving the number to be believed. */
     v9x_inv_write("RefreshRate", "convention-60");
+
+    /* The panel's preference and what this driver recommends from it: a
+     * report, never an action. The recommendation names a published geometry
+     * or says why there is none. */
+    if (v9x_edid_state != 0u) {
+        WORD match = 0u;
+
+        at = 0u;
+        at = v9x_inv_literal(text, at, "v=");
+        at = v9x_inv_hex16(text, at, v9x_edid.version);
+        at = v9x_inv_literal(text, at, " preferred=");
+        at = v9x_inv_decimal(text, at, v9x_edid.preferred_width);
+        text[at++] = 'x';
+        at = v9x_inv_decimal(text, at, v9x_edid.preferred_height);
+        at = v9x_inv_literal(text, at, " ext=");
+        at = v9x_inv_decimal(text, at, v9x_edid.extension_count);
+        text[at] = '\0';
+        v9x_inv_write("Edid", text);
+
+        for (index = 0u; index < v9x_runtime_count; ++index) {
+            if (v9x_modes16_is_published(index) != 0u &&
+                v9x_runtime_modes[index].width == v9x_edid.preferred_width &&
+                v9x_runtime_modes[index].height ==
+                    v9x_edid.preferred_height) {
+                match = 1u;
+                break;
+            }
+        }
+        at = 0u;
+        at = v9x_inv_decimal(text, at, v9x_edid.preferred_width);
+        text[at++] = 'x';
+        at = v9x_inv_decimal(text, at, v9x_edid.preferred_height);
+        at = v9x_inv_literal(text, at, match != 0u
+                                           ? " reason=edid-preferred"
+                                           : " reason=edid-unpublished");
+        text[at] = '\0';
+        v9x_inv_write("Recommendation", text);
+    } else {
+        v9x_inv_write("Edid", "none");
+        v9x_inv_write("Recommendation", "none reason=no-edid");
+    }
 
     at = 0u;
     at = v9x_inv_literal(text, at, "state=");

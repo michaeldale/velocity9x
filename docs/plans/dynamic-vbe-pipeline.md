@@ -900,6 +900,31 @@ disabling or breaking the synchronizer leaves the static package modes usable.
 
 ### Stage 5 - EDID preferred hint
 
+Implementation status (2026-08-26): implemented and guest-verified on the
+local QEMU 4.2 std-vga VM. The mini-VDD collects EDID block 0 through `4F15h`
+after the mode scan (BL=00h capability probe, then BL=01h into the cleared
+scratch; the three EDID status bits are the whole outcome and never affect
+mode-scan validity) and serves it back through the register-only
+`EDID_CHUNK` API; `V9xMini_Vbe_Call` gained a client-BX input for the
+subfunction. The host-tested parser (`include/velocity9x/edid.h`,
+`src/common/edid.c`, `tests/host/test_edid.c`) accepts only a
+header-and-checksum-true 1.x block whose first detailed timing is a
+non-interlaced timing with nonzero geometry; the negative corpus covers the
+zeroed block a lying BIOS produces, a flipped checksum byte, version 2,
+descriptor-first and interlaced cases. Selection order in
+`v9x_select_requested_mode` is configured mode, then the published row
+matching the EDID geometry at the requested depth, then the first published
+row. The inventory carries `Edid=` and `Recommendation=` lines with reasons.
+Guest evidence: boot status `f=0147` (EDID_VALID), parsed as EDID 1.4
+preferred 1024x768 with one extension advertised; the desktop stayed on the
+configured 800x600x16 (EDID never overrides a valid selection), and with the
+configured mode deliberately set to a nonexistent 1111x999 the next boot
+came up at 1024x768 - the fallback path, exercised end to end. Note the DOS
+survey of 2026-08-23 recorded preferred 1280x800 on this guest; QEMU's
+generated EDID evidently varies, which is itself a reason the preference is
+re-read every boot rather than remembered. The 945GM netbook wave 2 (real
+panel EDID) remains open.
+
 - Add bounded `4F15h` collection and API chunk access.
 - Add the host-tested EDID parser and negative corpus.
 - Match preferred geometry against the published rows of the committed runtime

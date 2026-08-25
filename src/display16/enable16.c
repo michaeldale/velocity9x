@@ -112,6 +112,11 @@ WORD v9x_minivdd_queried = 0u;
 WORD v9x_minivdd_cached = 0u;
 WORD v9x_minivdd_probed = 0u;
 WORD v9x_minivdd_status = 0u;
+/* One 16-byte EDID chunk, as the four dwords the API hands back. */
+DWORD v9x_minivdd_edid0 = 0ul;
+DWORD v9x_minivdd_edid1 = 0ul;
+DWORD v9x_minivdd_edid2 = 0ul;
+DWORD v9x_minivdd_edid3 = 0ul;
 /* What the card was scanning at before tier-0 corrected it, for the record. */
 WORD v9x_vbe_pitch_before = 0u;
 
