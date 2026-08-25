@@ -43,6 +43,12 @@ its MODES capability, and its instruction signatures.
     Name = 'S3 ViRGE/DX 86C375'
     VendorId = '5333'          # four uppercase hex digits
     DeviceId = '8A01'
+    # Optional: eight uppercase hex digits (SSID+SVID as Windows prints it).
+    # When present, the generated INF model line leads with the
+    # SUBSYS-qualified hardware id and keeps the bare VEN&DEV id as the
+    # compatible id, because Win98 Have Disk matches HardwareIDs (always
+    # SUBSYS-qualified on PCI) and does not always consult CompatibleIDs.
+    # SubsystemId = '1200102B'
     DeviceDesc = 'Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)'
     Adapter = 'S3 ViRGE/DX 86C375'   # as written to C:\V9XHW.INI
     Modes = @(
@@ -164,6 +170,15 @@ family whose chips have a `read_aperture` hook: such drivers never consult the
 mini-VDD's 4F9Ch cache, and the collection is eight nested BIOS calls at
 `Device_Init` with nothing to show for them. Tier-0 families must leave it on.
 See `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md`.
+
+When collection is on, each chip mode's `VbeMode` is also a build input to the
+mini-VDD: `build-minivdd-skeleton.ps1 -Family <id>` generates the bounded
+rescue-probe list from the family's distinct mode numbers, deduplicated across
+chips, so a mode with no `VbeMode` or one that is not four hex digits fails the
+build. The reserved capacity is `V9X_VBE_BASELINE_PROBE_MAX` in
+`include\asm\V9XMAPI.INC`; a family needing more probes than that is a decision
+to raise the capacity in both halves of the contract, never to truncate the
+list. A family with collection off contributes no probes.
 
 `Variants` are build-time flavours of one family (the Matrox 8-bpp and 16-bpp
 drops). A family with no variants omits the key.

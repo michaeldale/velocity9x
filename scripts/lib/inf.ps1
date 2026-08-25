@@ -164,8 +164,19 @@ function New-V9xInfText {
             'Velocity9x.Install.{0}' -f $chip.Id
         }
         $installSections[$chip.Id] = $section
-        $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $chip.DeviceDesc, $section,
-            $chip.VendorId, $chip.DeviceId
+        # Windows 98's Have Disk matches model lines against the devnode's
+        # HardwareIDs, which on real machines are SUBSYS-qualified; the bare
+        # VEN&DEV id lives only in CompatibleIDs and is not always consulted.
+        # A chip that declares SubsystemId therefore leads with the qualified
+        # id and keeps the bare id as the compatible-id field.
+        if ($chip.SubsystemId) {
+            $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}&SUBSYS_{4},PCI\VEN_{2}&DEV_{3}' -f
+                $chip.DeviceDesc, $section, $chip.VendorId, $chip.DeviceId,
+                $chip.SubsystemId
+        } else {
+            $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $chip.DeviceDesc, $section,
+                $chip.VendorId, $chip.DeviceId
+        }
     }
 
     # The manual model line carries no hardware id, which is Windows' own
@@ -243,6 +254,15 @@ function New-V9xInfText {
         '[Velocity9x.Registry]'
         'HKR,,Ver,,4.0'
         'HKR,,DevLoader,,*vdd'
+    ) + @(if ($Family.Build.MiniVddVbeCollect -ne $false) {
+        # The synchronizer's marker: V9xSyncModes writes only to the display
+        # class instance whose V9xFamily matches the inventory's family, and
+        # refuses when zero or several instances carry it. Scan-enabled
+        # families only, like the Run entry below: a family that assembles
+        # collection out publishes exactly its INF baseline and gets no
+        # per-boot synchronizer to keep that true.
+        ('HKR,,V9xFamily,,"{0}"' -f $Family.Id)
+    }) + @(
         ('HKR,DEFAULT,Mode,,"{0}"' -f $DefaultMode)
         'HKR,DEFAULT,drv,,v9xdisp.drv'
         'HKR,DEFAULT,drv2,,v9xdisp.drv'
@@ -291,7 +311,17 @@ function New-V9xInfText {
         # where the shell first reads the handler list.
         ('HKLM,Software\Microsoft\Windows\CurrentVersion\RunOnce,V9xSettingsPage,,' +
          '"rundll32.exe v9xsetp.dll,V9xRegisterPage"')
-    )
+    ) + @(if ($Family.Build.MiniVddVbeCollect -ne $false) {
+        # Run, not RunOnce, and the two must not be mistaken for each other:
+        # V9xRegisterPage writes the property-sheet Tag once, at the first
+        # boot after the install, while the mode synchronizer must re-run
+        # every boot - the inventory changes whenever the card, the panel or
+        # the BIOS-visible mode set changes - and is idempotent when nothing
+        # did. Only scan-enabled families receive this entry: a disabled
+        # family's mode list is its INF, already in the registry.
+        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xSyncModes,,' +
+         '"rundll32.exe v9xsetp.dll,V9xSyncModes"')
+    })
 
     if ($perChipRegistry) {
         foreach ($chip in $chips) {
@@ -395,6 +425,22 @@ function Assert-V9xInf {
         }
     }
 
+    # The synchronizer entry and its devnode marker are asserted present for
+    # scan-enabled families and asserted absent otherwise, so a disabled
+    # family can neither gain a per-boot process nor lose the pair silently.
+    if ($Family.Build.MiniVddVbeCollect -ne $false) {
+        foreach ($syncEntry in @(
+                'Run,V9xSyncModes,,"rundll32.exe v9xsetp.dll,V9xSyncModes"',
+                ('V9xFamily,,"{0}"' -f $Family.Id))) {
+            if ($text.IndexOf($syncEntry, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                throw "The generated INF is missing required entry $syncEntry."
+            }
+        }
+    } elseif ($text -match 'V9xSyncModes|V9xFamily') {
+        throw ("The generated INF carries the mode synchronizer for family " +
+               "$($Family.Id), which assembles VBE collection out.")
+    }
+
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
                   'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
                   'RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"',
@@ -433,7 +479,8 @@ function Assert-V9xInf {
 
     $idLess = 0
     foreach ($line in (Get-V9xInfSectionBody -Lines $Lines -Section $modelsSection)) {
-        if ($line -match '^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}$') {
+        if ($line -match ('^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}' +
+                          '(&SUBSYS_[0-9A-Fa-f]{8},PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4})?$')) {
             continue
         }
         if ($manualLine -and $line -eq $manualLine) {

@@ -192,6 +192,18 @@ int main(void)
         fprintf(report, "Signature=%.4s\n", controller_info);
         fprintf(report, "Version=%04X\n", v9x_u16(controller_info + 4));
         fprintf(report, "TotalMemory64K=%u\n", v9x_u16(controller_info + 18));
+        /*
+         * Capabilities and the BIOS's own revision number, both at fixed
+         * offsets. Recorded because the DOS conformance corpus found that
+         * defects track the BIOS revision rather than the chip, so a capture
+         * that names only the chip cannot be compared with anyone else's - and
+         * because capability bit 0 is the switchable-DAC claim behind a whole
+         * class of DOS-era colour faults. No pointer is followed for these; the
+         * OEM strings are far pointers and are left to the survey tool.
+         */
+        fprintf(report, "Capabilities=%08lX\n",
+                (unsigned long)v9x_u32(controller_info + 10));
+        fprintf(report, "OemSoftwareRev=%04X\n", v9x_u16(controller_info + 20));
         video_mode_ptr = v9x_u32(controller_info + 14);
     }
 

@@ -1,4 +1,4 @@
-# Velocity9x family manifest: S3.
+﻿# Velocity9x family manifest: S3.
 #
 # Data only. Loaded with Import-PowerShellDataFile, which is built into
 # PowerShell 5.1 and evaluates no code, so the regex audit patterns below need
@@ -144,6 +144,9 @@
             # vbe16 parses 4F00h/4F01h answers through this, so every family
             # links it even where no hook asks the BIOS anything.
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
+            @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
+            @{ Name = 'edid'; Path = 'src\common\edid.c' }
+            @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
             @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }
             @{ Name = 'virge_memory'; Path = 'src\chipsets\s3\virge\memory.c' }

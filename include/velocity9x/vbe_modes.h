@@ -49,6 +49,49 @@ struct v9x_vbe_scan_entry {
 };
 
 /*
+ * Why a scanned record was refused admission - or that it was not.
+ *
+ * The values exist so the guest inventory can say *why* a BIOS record is
+ * absent rather than leaving it to be rediscovered with a debugger. The first
+ * block mirrors v9x_vbe_scan_accept's rules in the order it applies them; the
+ * last three are outcomes only v9x_vbe_build_mode_table_ex can produce, since
+ * a record is a duplicate or squeezed out only relative to a table.
+ */
+#define V9X_VBE_ADMIT_OK           ((v9x_u16)0u)
+#define V9X_VBE_ADMIT_UNSUPPORTED  ((v9x_u16)1u)  /* absent, attr bit 0 clear,
+                                                     or degenerate geometry */
+#define V9X_VBE_ADMIT_NON_LINEAR   ((v9x_u16)2u)  /* no linear framebuffer */
+#define V9X_VBE_ADMIT_MEMORY_MODEL ((v9x_u16)3u)  /* not packed/direct-colour */
+#define V9X_VBE_ADMIT_PHYS_BASE    ((v9x_u16)4u)  /* aperture below 1 MiB */
+#define V9X_VBE_ADMIT_DEPTH        ((v9x_u16)5u)  /* storage depth not 8/16/32 */
+#define V9X_VBE_ADMIT_LAYOUT       ((v9x_u16)6u)  /* colour layout inexpressible */
+#define V9X_VBE_ADMIT_STRIDE       ((v9x_u16)7u)  /* zero or short stride */
+#define V9X_VBE_ADMIT_GEOMETRY     ((v9x_u16)8u)  /* beyond MAX_DIMENSION */
+#define V9X_VBE_ADMIT_VRAM         ((v9x_u16)9u)  /* surface exceeds the card */
+#define V9X_VBE_ADMIT_DUPLICATE    ((v9x_u16)10u) /* merged into an existing row */
+#define V9X_VBE_ADMIT_TABLE_FULL   ((v9x_u16)11u) /* accepted, no room */
+#define V9X_VBE_ADMIT_KNOWN_DEFECT ((v9x_u16)12u) /* family distrust refusal */
+#define V9X_VBE_ADMIT_REASON_COUNT ((v9x_u16)13u)
+
+/*
+ * A family's distrust predicate: V9X_TRUE refuses a record the generic rules
+ * accepted, with the known-defect reason. It may only refuse - a predicate
+ * cannot admit what the generic rules rejected, so a family cannot use it to
+ * widen policy. It exists for BIOS defect classes a family knows about (the
+ * S3 360-wide FIFO fetch defect is the motivating case); it is not a place
+ * for geometry rules in general. Null means no predicate.
+ */
+typedef v9x_u16 (*v9x_vbe_distrust_fn)(const struct v9x_vbe_scan_entry *entry);
+
+/* Per-row publication byte. A row with the PUBLISHED bit clear stays in
+ * storage but is offered to nothing: ValidateMode fails it, mode selection
+ * skips it, DirectDraw never lists it, and the inventory reports it as hidden
+ * with the reason bits below. Scan-contradicted is the only hide reason this
+ * project defines. */
+#define V9X_MODE_PUB_PUBLISHED ((v9x_u8)0x01u)
+#define V9X_MODE_PUB_HIDE_SCAN ((v9x_u8)0x02u)
+
+/*
  * The English (logical-inch) GDIINFO dimensions for a width.
  *
  * low = ceil(width * 254 / 640), high = low / 2. This is the formula the
@@ -65,8 +108,11 @@ void v9x_mode_english(v9x_u16 width, short *low, short *high);
  * Stricter than v9x_vbe_mode_summary_is_drivable, which asks only whether a
  * mode could be driven at all. On top of that:
  *
- *   - the depth must divide into whole bytes (8, 16, 24, 32). A BIOS listing
- *     15-bpp modes is ordinary and none of them can be laid out.
+ *   - the storage depth must be 8, 16 or 32. A BIOS listing 15-bpp modes is
+ *     ordinary and none of them can be laid out; 24 bpp divides into whole
+ *     bytes and is refused anyway, because nothing in display16 has ever drawn
+ *     one and offering a mode the blitters cannot draw is worse than not
+ *     offering it.
  *   - the effective stride - the VBE 3.0 linear one where reported, otherwise
  *     BytesPerScanLine - must be non-zero and fit the 16-bit pitch field.
  *   - the whole visible surface must fit the card's memory. vram_bytes of 0
@@ -77,6 +123,15 @@ void v9x_mode_english(v9x_u16 width, short *low, short *high);
  */
 v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
                             v9x_u32 vram_bytes);
+
+/*
+ * The same judgement as v9x_vbe_scan_accept, answered as a reason code:
+ * V9X_VBE_ADMIT_OK, or the first rule the record failed. The two functions
+ * apply one rule set - accept is admit == OK by definition - and the host
+ * suite pins that equivalence.
+ */
+v9x_u16 v9x_vbe_scan_admit(const struct v9x_vbe_scan_entry *entry,
+                           v9x_u32 vram_bytes);
 
 /*
  * Merge the family's baseline rows with the scanned ones into table/masks.
@@ -106,6 +161,48 @@ v9x_u16 v9x_vbe_build_mode_table(
     v9x_u16 capacity, v9x_u16 *dropped);
 
 /*
+ * v9x_vbe_build_mode_table with the two additions Stage 2 needs and nothing
+ * else changed: an optional family distrust predicate, applied after the
+ * generic admission rules and before a record can touch the table, and an
+ * optional per-reason rejection tally for the inventory -
+ * reason_counts[V9X_VBE_ADMIT_REASON_COUNT], zeroed here, one increment per
+ * scanned record (OK counts the admitted ones). The base function is exactly
+ * this one with both extras absent.
+ */
+v9x_u16 v9x_vbe_build_mode_table_ex(
+    const V9X_HW16_MODE *baseline, v9x_u16 baseline_count,
+    const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
+    v9x_u32 vram_bytes, v9x_vbe_distrust_fn distrust,
+    V9X_HW16_MODE *table, struct v9x_mode_masks *masks,
+    v9x_u16 capacity, v9x_u16 *dropped, v9x_u16 *reason_counts);
+
+/*
+ * Publication flags for a built table: which rows may be offered.
+ *
+ * Fills publication[0..count) and returns the published count;
+ * *first_published, when non-null, receives the index of the first published
+ * row - the fallback row wherever the design says "baseline row zero".
+ *
+ * Every appended (dynamic) row is published: it exists because an admitted
+ * scan record produced it. A baseline row - index below baseline_rows - is
+ * hidden with V9X_MODE_PUB_HIDE_SCAN only when the caller vouches for the
+ * scan (scan_trustworthy, meaning the full mode-list validity gate passed and
+ * the cache is neither truncated nor overflowed), the scan is non-empty, and
+ * no admitted scan record matches the row's (width, height, storage depth).
+ * An untrustworthy, absent or empty scan publishes every row exactly as
+ * today: an empty cache contradicts nothing.
+ *
+ * If hiding would leave nothing published - a defect, since a trustworthy
+ * scan that admits nothing is contradictory - every row is published instead
+ * and the caller's table stands whole.
+ */
+v9x_u16 v9x_vbe_publish_rows(
+    const V9X_HW16_MODE *table, v9x_u16 count, v9x_u16 baseline_rows,
+    const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
+    v9x_u32 vram_bytes, v9x_u16 scan_trustworthy,
+    v9x_u8 *publication, v9x_u16 *first_published);
+
+/*
  * Choose which rows to publish to DirectDraw, whose shared block holds fewer
  * than the table can.
  *
@@ -114,8 +211,14 @@ v9x_u16 v9x_vbe_build_mode_table(
  * ask for and what the driver accelerates; then 24 and 32 bpp by ascending
  * pixel area, so if the list has to be cut it keeps the modes most likely to be
  * usable. Stops at capacity.
+ *
+ * publication, when non-null, is the per-row byte array v9x_vbe_publish_rows
+ * filled: a row without the PUBLISHED bit is never selected, so DirectDraw's
+ * list can never advertise a geometry GDI would refuse to validate. Null means
+ * every row is published, which is the pre-publication behaviour.
  */
 v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
+                          const v9x_u8 *publication,
                           v9x_u16 *indices, v9x_u16 capacity);
 
 #endif /* VELOCITY9X_VBE_MODES_H */

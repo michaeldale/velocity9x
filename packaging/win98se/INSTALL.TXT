@@ -1,7 +1,6 @@
-VELOCITY9X PHASE 3 MODE-MATRIX BRING-UP - READ FIRST
+VELOCITY9X BRING-UP PACKAGE - READ FIRST
 
-This package serves the S3 family: VEN_5333 DEV_8A01 (ViRGE/DX) and
-DEV_8811 (Trio32/64), dispatched by PCI id at boot.
+@FAMILY_SUMMARY@
 It is an engineering bring-up build, not a release driver.
 V9XSET.EXE is a read-only settings/status panel and is safe to open before
 installation. It exposes no hardware programming controls in this build.
@@ -17,29 +16,19 @@ bring-up build is too unstable to update through Display Properties.
 PREREQUISITES
 
 1. Shut down Windows 98 completely.
-2. Make a cold copy of the active 86Box hard-disk image and NVR/CMOS files.
+2. Make a cold copy of the active VM hard-disk image and NVR/CMOS files.
 3. Confirm the VM can boot the existing Standard PCI Graphics Adapter (VGA).
-4. Configure COM1 as the named-pipe server velocity9x-com1 and start capture.
-5. Mount this package directory as the 86Box folder CD-ROM.
+4. Configure COM1 capture on the host and start it.
+5. Mount this package directory as the VM's folder CD-ROM (or copy it in).
 
 INSTALL
 
 1. Boot Windows 98 normally.
 2. Open Control Panel, System, Device Manager.
-3. Expand Display adapters and open the S3/standard PCI display adapter.
+3. Expand Display adapters and open the fitted display adapter.
 4. Select Driver, Update Driver, then choose a specific driver/location.
 5. Use Have Disk and browse to this package directory.
-6. Select the model matching the fitted card: "Velocity9x S3 ViRGE/DX
-   86C375" or "Velocity9x S3 Trio32/64 86C764".
-   On a machine with no PCI bus at all - an S3 on VESA Local Bus in a 486,
-   which Windows enumerates from the root as *PNP0913 - neither of those can
-   match, because there is no PCI device for Windows to match them against.
-   Pick "Velocity9x S3 (VLB manual select)" instead. It carries no hardware
-   ID, so it is offered for any display device and it is yours to choose
-   correctly; the driver identifies the chip itself at boot from the card's
-   own S3 identity registers. That entry offers only the modes that fit a
-   2 MB card, so 1280x1024 in High Color and 1024x768 in True Color are
-   absent from it by design.
+@MODEL_SELECTION@
 7. Let Windows copy the driver files, but do not accept a different device ID.
 8. Shut down fully when prompted. Do not use a warm restart for the first test.
 9. Start COM1 capture, then cold-start the VM once.
@@ -49,20 +38,15 @@ EXPECTED SERIAL CHECKPOINTS
 V9X-MINI init build=<id>
 V9X-MINI defaults-ok callbacks=0 build=<id>
 V9X-DRV load build=<id>
-V9X-DRV enable-query mode=640x480x8
+V9X-DRV enable-query mode=@DEFAULT_MODE@
 V9X-DRV lfb=0x........ bytes=0x........
-V9X-DRV enable-ok mode=640x480x8 lfb-mapped
+V9X-DRV enable-ok mode=@DEFAULT_MODE@ lfb-mapped
 
-The bytes figure is the off-screen heap size the driver established: read from
-the chip where the family can (CR36 on both S3 parts), and so 0x00200000 on a
-2 MiB card rather than the 0x00400000 this line used to print unconditionally.
+The bytes figure is the off-screen heap size the driver established: read
+from the chip where the family can, and from the VBE 4F00h report where it
+cannot, so it states the card's real memory rather than an assumed 4 MiB.
 
-The first boot defaults to 640x480x8. After it passes, Display Properties may
-select 800x600 or 1024x768 at 256 colours, or any of the same resolutions at
-High Color (16 bit). 640x400 is also offered at 256 colours.
-
-Resolution and colour-depth changes both apply live, without a reboot, on
-both the S3 ViRGE/DX and the S3 Trio32/64 targets.
+@MODES_AFTER_FIRST_BOOT@
 
 V9XMSW.EXE exercises live switching: /set:WxHxB, /cycle:N for resolution and
 /depth:N to alternate 8 and 16 bpp.

@@ -1,4 +1,4 @@
-# Velocity9x family manifest: VBE tier-0.
+﻿# Velocity9x family manifest: VBE tier-0.
 #
 # The chip-agnostic package. Its 16-bit table supplies no hardware hooks at
 # all, so every one of them takes the VBE default: 4F02h sets the mode, 4F01h
@@ -24,6 +24,10 @@
             Name = 'QEMU/Bochs VBE std-vga'
             VendorId = '1234'
             DeviceId = '1111'
+            # QEMU stamps its std-vga with the Red Hat subsystem 1af4:1100 on
+            # every observed host (QEMU 4.2 Windows, UTM/QEMU on macOS). Win98
+            # Have Disk matches HardwareIDs, which carry this SUBSYS.
+            SubsystemId = '11001AF4'
             DeviceDesc = 'Velocity9x VBE-generic display (QEMU std-vga)'
             Adapter = 'QEMU/Bochs VBE (generic VESA linear framebuffer)'
             ClockDetector = 'vbe-generic-unavailable-v1'
@@ -86,6 +90,9 @@
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
+            @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
+            @{ Name = 'edid'; Path = 'src\common\edid.c' }
+            @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vbe_hw16'; Path = 'src\chipsets\generic\vbe\vbe_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

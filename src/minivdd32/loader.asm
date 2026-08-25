@@ -12,27 +12,16 @@ include VMM.INC
 include MINIVDD.INC
 .list
 
-; Private device id, so the 16-bit driver can reach the API below through
-; INT 2Fh AX=1684h - the same mechanism runtime.asm already uses to find the
-; master VDD at id 000Ah.
-;
-; The id is not allocated by anyone: no third-party registry exists to ask, and
-; a collision would hand the driver a foreign VxD's entry point. That is why
-; function 0 is a handshake returning a magic value, and why the 16-bit side
-; refuses to use the entry point until it has seen it. A wrong answer is then a
-; clean refusal instead of a call into a stranger.
-V9XMINI_DEVICE_ID   EQU 4F9Ch
+; The device id, handshake magic, contract version, function numbers, cache
+; bounds and packed record layout of the API below. Shared verbatim with
+; src\display16\runtime.asm, which is the only other program that knows any of
+; these numbers; the include itself says why it is included rather than copied.
+include V9XMAPI.INC
 
-; Handshake reply and API contract version. Bump the version when the meaning
-; of any function changes; the 16-bit side checks it.
-V9XMINI_API_MAGIC   EQU 39583956h          ; 'V9X9' little-endian
-V9XMINI_API_VERSION EQU 0001h
-
-; API functions, in the client's AX.
-V9XMINI_FN_HANDSHAKE EQU 0000h
-V9XMINI_FN_CONTROLLER EQU 0001h
-V9XMINI_FN_MODE_INFO EQU 0002h
-V9XMINI_FN_STATUS    EQU 0003h
+; Stage 1 deliberately makes fewer no-timeout BIOS calls than the frozen ABI
+; maximum permits. QEMU's measured 93-entry list still fits; later rollout can
+; raise this toward V9X_VBE_MODE_QUERY_MAX after the guest gate is stable.
+V9X_STAGE1_QUERY_MAX EQU 96
 
 Declare_Virtual_Device V9XMINI, 1, 0, MiniVDD_Control, \
                        V9XMINI_DEVICE_ID, VDD_Init_Order, , MiniVDD_PM_API,
@@ -49,27 +38,49 @@ public V9xMiniVddBuildId
 ; call in init context, where calling the V86 BIOS is the ordinary idiom, and
 ; leaves the API a table lookup that cannot fault a display driver.
 ;
-; The mode list is the seven standard VESA numbers every tier-0 family
-; publishes. Parallel arrays rather than a struct: indexing is a shift and an
-; add, and nothing here needs the packing rules.
-V9X_VBE_CACHE_COUNT EQU 7
-V9xVbeModeList  dw 0100h, 0101h, 0103h, 0105h, 0111h, 0114h, 0117h
-V9xVbeValid     dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeAttr      dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeBytes     dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeWidth     dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeHeight    dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeBpp       dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeModel     dw V9X_VBE_CACHE_COUNT dup (0)
-V9xVbeBase      dd V9X_VBE_CACHE_COUNT dup (0)
+; Stage 1 keeps list-derived records separate from the generated baseline
+; rescue probes. Indexed enumeration can see only the first cache; by-mode
+; lookup searches both so an unusable BIOS list cannot take the static LFB
+; path's aperture answer away.
+V9xVbeListStage dw V9X_VBE_MODE_LIST_MAX dup (0)
+V9xVbeCache     db V9X_VBE_CACHE_BYTES dup (0)
+V9xVbeProbeCache db V9X_VBE_PROBE_BYTES dup (0)
+; EDID block 0, collected once through 4F15h at init after the mode scan and
+; served back in register-only 16-byte chunks. Meaningful only while
+; V9X_VBE_ST_EDID_VALID is set in V9xVbeStatus.
+V9xVbeEdid      db V9X_VBE_EDID_BYTES dup (0)
+
+IFNDEF V9X_NO_VBE_COLLECT
+include V9XPROBE.INC
+ENDIF
+
+V9xVbeListed    dw 0
+V9xVbeQueried   dw 0
+V9xVbeCached    dw 0
+V9xVbeProbed    dw 0
+V9xVbeFailed    dw 0
+V9xVbeOverflow  dw 0
+IFDEF V9X_NO_VBE_COLLECT
+V9xVbeStatus    dw V9X_VBE_ST_COLLECT_OFF
+ELSE
+V9xVbeStatus    dw 0
+ENDIF
 
 V9xVbeCtrlValid dw 0
 V9xVbeCtrlVer   dw 0
 V9xVbeCtrl64K   dw 0
+V9xVbeCtrlCaps  dd 0
+V9xVbeCtrlOemRev dw 0
+V9xVbeListOff   dw 0
+V9xVbeListSeg   dw 0
+V9xVbeListSelf  dw 0
 
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
 ; be had. Allocated at init and never freed.
 V9xVbeBufSeg    dw 0
+; The client BX for the next V9xMini_Vbe_Call. Parked here because EBX is
+; taken by Get_Cur_VM_Handle inside the call itself.
+V9xVbeCallBx    dw 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -383,13 +394,19 @@ BeginProc MiniVDD_PM_API
     movzx   eax, [ebp.Client_AX]
 
     cmp     ax, V9XMINI_FN_HANDSHAKE
-    je      short V9xMini_Api_Handshake
+    je      V9xMini_Api_Handshake
     cmp     ax, V9XMINI_FN_CONTROLLER
-    je      short V9xMini_Api_Controller
+    je      V9xMini_Api_Controller
     cmp     ax, V9XMINI_FN_MODE_INFO
-    je      short V9xMini_Api_ModeInfo
+    je      V9xMini_Api_ModeInfo
     cmp     ax, V9XMINI_FN_STATUS
-    je      short V9xMini_Api_Status
+    je      V9xMini_Api_Status
+    cmp     ax, V9XMINI_FN_MODE_AT
+    je      V9xMini_Api_ModeAt
+    cmp     ax, V9XMINI_FN_MODE_MASKS
+    je      V9xMini_Api_ModeMasks
+    cmp     ax, V9XMINI_FN_EDID_CHUNK
+    je      V9xMini_Api_EdidChunk
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -398,35 +415,25 @@ BeginProc MiniVDD_PM_API
 ; What the init-time collection actually managed, so a failure can be diagnosed
 ; from the guest instead of guessed at from the host.
 ;
-; Out: AX=1, EBX = the V86 segment it used (0 if it never got one),
-;      ECX = how many mode entries came back valid, EDX = controller validity.
+; See V9XMAPI.INC for the packed counts and flags.
 V9xMini_Api_Status:
     push    ecx
     push    edx
-    push    edi
-
+    push    esi
     mov     [ebp.Client_AX], 1
     movzx   eax, V9xVbeBufSeg
     mov     [ebp.Client_EBX], eax
-
-    xor     ecx, ecx
-    xor     edi, edi
-V9xMini_Api_Status_Next:
-    cmp     edi, V9X_VBE_CACHE_COUNT
-    jae     short V9xMini_Api_Status_Done
-    cmp     V9xVbeValid[edi*2], 0
-    je      short V9xMini_Api_Status_Skip
-    inc     ecx
-V9xMini_Api_Status_Skip:
-    inc     edi
-    jmp     short V9xMini_Api_Status_Next
-
-V9xMini_Api_Status_Done:
+    movzx   ecx, V9xVbeQueried
+    shl     ecx, 16
+    mov     cx, V9xVbeListed
     mov     [ebp.Client_ECX], ecx
-    movzx   eax, V9xVbeCtrlValid
-    mov     [ebp.Client_EDX], eax
-
-    pop     edi
+    movzx   edx, V9xVbeProbed
+    shl     edx, 16
+    mov     dx, V9xVbeCached
+    mov     [ebp.Client_EDX], edx
+    movzx   esi, V9xVbeStatus
+    mov     [ebp.Client_ESI], esi
+    pop     esi
     pop     edx
     pop     ecx
     ret
@@ -441,12 +448,20 @@ V9xMini_Api_Handshake:
 ; Out: AX=1 when 4F00h answered, EBX=VBE version, ECX=TotalMemory in 64 KiB
 ;      blocks. AX=0 when the query failed or never ran.
 V9xMini_Api_Controller:
-    mov     ax, V9xVbeCtrlValid
-    mov     [ebp.Client_AX], ax
+    cmp     V9xVbeCtrlValid, 0
+    je      short V9xMini_Api_Controller_Missing
+    mov     [ebp.Client_AX], 1
     movzx   eax, V9xVbeCtrlVer
     mov     [ebp.Client_EBX], eax
     movzx   eax, V9xVbeCtrl64K
     mov     [ebp.Client_ECX], eax
+    mov     eax, V9xVbeCtrlCaps
+    mov     [ebp.Client_EDX], eax
+    movzx   eax, V9xVbeCtrlOemRev
+    mov     [ebp.Client_ESI], eax
+    ret
+V9xMini_Api_Controller_Missing:
+    mov     [ebp.Client_AX], 0
     ret
 
 ; In:  client CX = VBE mode number.
@@ -468,45 +483,48 @@ V9xMini_Api_ModeInfo:
     push    edi
 
     movzx   ecx, [ebp.Client_CX]
-    xor     edi, edi
-V9xMini_Api_Mode_Next:
-    cmp     edi, V9X_VBE_CACHE_COUNT
-    jae     short V9xMini_Api_Mode_Missing
-    mov     ax, V9xVbeModeList[edi*2]
-    cmp     ax, cx
+    movzx   edx, V9xVbeCached
+    mov     edi, OFFSET32 V9xVbeCache
+V9xMini_Api_Mode_Cache_Next:
+    test    edx, edx
+    jz      short V9xMini_Api_Mode_Probe_Start
+    cmp     word ptr [edi+V9X_VBE_REC_MODE_NUMBER], cx
     je      short V9xMini_Api_Mode_Found
-    inc     edi
-    jmp     short V9xMini_Api_Mode_Next
+    add     edi, V9X_VBE_REC_BYTES
+    dec     edx
+    jmp     short V9xMini_Api_Mode_Cache_Next
+
+V9xMini_Api_Mode_Probe_Start:
+    movzx   edx, V9xVbeProbed
+    mov     edi, OFFSET32 V9xVbeProbeCache
+V9xMini_Api_Mode_Probe_Next:
+    test    edx, edx
+    jz      short V9xMini_Api_Mode_Missing
+    cmp     word ptr [edi+V9X_VBE_REC_MODE_NUMBER], cx
+    je      short V9xMini_Api_Mode_Found
+    add     edi, V9X_VBE_REC_BYTES
+    dec     edx
+    jmp     short V9xMini_Api_Mode_Probe_Next
 
 V9xMini_Api_Mode_Missing:
     mov     [ebp.Client_AX], 0
     jmp     short V9xMini_Api_Mode_Done
 
 V9xMini_Api_Mode_Found:
-    cmp     V9xVbeValid[edi*2], 0
-    je      short V9xMini_Api_Mode_Missing
-
     mov     [ebp.Client_AX], 1
-
-    mov     ebx, V9xVbeBase[edi*4]
+    mov     ebx, dword ptr [edi+V9X_VBE_REC_PHYS_BASE]
     mov     [ebp.Client_EBX], ebx
-
-    movzx   ecx, V9xVbeAttr[edi*2]
+    movzx   ecx, word ptr [edi+V9X_VBE_REC_ATTRIBUTES]
     shl     ecx, 16
-    movzx   eax, V9xVbeBytes[edi*2]
-    or      ecx, eax
+    mov     cx, word ptr [edi+V9X_VBE_REC_BYTES_PER_LINE]
     mov     [ebp.Client_ECX], ecx
-
-    movzx   edx, V9xVbeHeight[edi*2]
+    movzx   edx, word ptr [edi+V9X_VBE_REC_HEIGHT]
     shl     edx, 16
-    movzx   eax, V9xVbeWidth[edi*2]
-    or      edx, eax
+    mov     dx, word ptr [edi+V9X_VBE_REC_WIDTH]
     mov     [ebp.Client_EDX], edx
-
-    movzx   esi, V9xVbeModel[edi*2]
+    movzx   esi, word ptr [edi+V9X_VBE_REC_MEMORY_MODEL]
     shl     esi, 16
-    movzx   eax, V9xVbeBpp[edi*2]
-    or      esi, eax
+    mov     si, word ptr [edi+V9X_VBE_REC_STORAGE_DEPTH]
     mov     [ebp.Client_ESI], esi
 
 V9xMini_Api_Mode_Done:
@@ -515,6 +533,110 @@ V9xMini_Api_Mode_Done:
     pop     edx
     pop     ecx
     pop     ebx
+    ret
+
+; Indexed list-derived record facts. Rescue probes are intentionally absent.
+V9xMini_Api_ModeAt:
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    movzx   edi, [ebp.Client_CX]
+    movzx   eax, V9xVbeCached
+    cmp     edi, eax
+    jae     short V9xMini_Api_ModeAt_Missing
+    shl     edi, V9X_VBE_REC_SHIFT
+    add     edi, OFFSET32 V9xVbeCache
+    mov     [ebp.Client_AX], 1
+    mov     ebx, dword ptr [edi+V9X_VBE_REC_PHYS_BASE]
+    mov     [ebp.Client_EBX], ebx
+    movzx   ecx, word ptr [edi+V9X_VBE_REC_LIN_BYTES]
+    shl     ecx, 16
+    mov     cx, word ptr [edi+V9X_VBE_REC_BYTES_PER_LINE]
+    mov     [ebp.Client_ECX], ecx
+    movzx   edx, word ptr [edi+V9X_VBE_REC_HEIGHT]
+    shl     edx, 16
+    mov     dx, word ptr [edi+V9X_VBE_REC_WIDTH]
+    mov     [ebp.Client_EDX], edx
+    movzx   esi, word ptr [edi+V9X_VBE_REC_SIGNIF_DEPTH]
+    shl     esi, 16
+    mov     si, word ptr [edi+V9X_VBE_REC_STORAGE_DEPTH]
+    mov     [ebp.Client_ESI], esi
+    movzx   eax, word ptr [edi+V9X_VBE_REC_ATTRIBUTES]
+    shl     eax, 16
+    mov     ax, word ptr [edi+V9X_VBE_REC_MODE_NUMBER]
+    mov     [ebp.Client_EDI], eax
+    jmp     short V9xMini_Api_ModeAt_Done
+V9xMini_Api_ModeAt_Missing:
+    mov     [ebp.Client_AX], 0
+V9xMini_Api_ModeAt_Done:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+
+V9xMini_Api_ModeMasks:
+    push    ebx
+    push    ecx
+    push    edx
+    push    edi
+    movzx   edi, [ebp.Client_CX]
+    movzx   eax, V9xVbeCached
+    cmp     edi, eax
+    jae     short V9xMini_Api_ModeMasks_Missing
+    shl     edi, V9X_VBE_REC_SHIFT
+    add     edi, OFFSET32 V9xVbeCache
+    mov     [ebp.Client_AX], 1
+    mov     ebx, dword ptr [edi+V9X_VBE_REC_RED]
+    mov     [ebp.Client_EBX], ebx
+    mov     ecx, dword ptr [edi+V9X_VBE_REC_BLUE]
+    mov     [ebp.Client_ECX], ecx
+    movzx   edx, word ptr [edi+V9X_VBE_REC_FLAGS]
+    shl     edx, 16
+    mov     dx, word ptr [edi+V9X_VBE_REC_MEMORY_MODEL]
+    mov     [ebp.Client_EDX], edx
+    jmp     short V9xMini_Api_ModeMasks_Done
+V9xMini_Api_ModeMasks_Missing:
+    mov     [ebp.Client_AX], 0
+V9xMini_Api_ModeMasks_Done:
+    pop     edi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+
+; One 16-byte slice of the cached EDID block, registers only. See
+; V9XMAPI.INC for the register map. No caller pointer crosses in either
+; direction, and an index past the block or a boot with no valid block both
+; answer AX=0 exactly like an unknown function.
+V9xMini_Api_EdidChunk:
+    test    V9xVbeStatus, V9X_VBE_ST_EDID_VALID
+    jz      short V9xMini_Api_NoData
+    push    ecx
+    movzx   ecx, [ebp.Client_CX]
+    cmp     ecx, V9X_VBE_EDID_CHUNKS
+    jae     short V9xMini_Api_EdidChunk_Missing
+    shl     ecx, 4
+    add     ecx, OFFSET32 V9xVbeEdid
+    mov     [ebp.Client_AX], 1
+    mov     eax, [ecx]
+    mov     [ebp.Client_EBX], eax
+    mov     eax, [ecx+4]
+    mov     [ebp.Client_ECX], eax
+    mov     eax, [ecx+8]
+    mov     [ebp.Client_EDX], eax
+    mov     eax, [ecx+12]
+    mov     [ebp.Client_ESI], eax
+    pop     ecx
+    ret
+V9xMini_Api_EdidChunk_Missing:
+    pop     ecx
+
+V9xMini_Api_NoData:
+    mov     [ebp.Client_AX], 0
     ret
 EndProc MiniVDD_PM_API
 
@@ -560,7 +682,10 @@ EndProc V9xMini_Hex16
 
 ; Run one buffered VBE call in V86 mode and leave the BIOS status in AX.
 ;
-; In:  AX = VBE function (4F00h or 4F01h), CX = its argument.
+; In:  AX = VBE function (4F00h, 4F01h or 4F15h), CX = its argument,
+;      BX = the client BX (4F15h's subfunction in BL; the earlier functions
+;      ignore it and pass 0). Client DX is always 0 - for 4F15h that selects
+;      EDID block zero, and 4F00h/4F01h ignore it.
 ; Out: AX = the BIOS reply, or 0 if there was no buffer to hand it.
 ;
 ; The buffer has to be addressable by the real-mode BIOS, which is the entire
@@ -596,6 +721,7 @@ V9xMini_Vbe_Call_Ready:
 
     movzx   esi, ax                     ; hold the function
     movzx   edx, cx                     ; hold its argument
+    mov     V9xVbeCallBx, bx            ; hold the client BX (see above)
 
     ; Name the call on the wire before making it. If the BIOS never comes
     ; back, fn= and arg= are the last line of the boot and identify the
@@ -620,6 +746,9 @@ V9xMini_Vbe_Call_Ready:
 
     mov     [ebp.Client_AX], si
     mov     [ebp.Client_CX], dx
+    mov     ax, V9xVbeCallBx
+    mov     [ebp.Client_BX], ax
+    mov     [ebp.Client_DX], 0
     mov     ax, V9xVbeBufSeg
     mov     [ebp.Client_ES], ax
     mov     [ebp.Client_DI], 0
@@ -669,11 +798,144 @@ BeginProc V9xMini_Vbe_Peek_Word
     ret
 EndProc V9xMini_Vbe_Peek_Word
 
-; Collect 4F00h and the seven standard 4F01h answers into the cache.
+; Zero all 512 bytes before a 4F01h call. A failed BIOS call must not turn the
+; preceding mode's bytes into a second record.
+BeginProc V9xMini_Vbe_Clear_Scratch
+    push    eax
+    push    ecx
+    push    edi
+    movzx   edi, V9xVbeBufSeg
+    shl     edi, 4
+    xor     eax, eax
+    mov     ecx, 128
+    cld
+    rep stosd
+    pop     edi
+    pop     ecx
+    pop     eax
+    ret
+EndProc V9xMini_Vbe_Clear_Scratch
+
+; Query one mode into a packed cache record.
 ;
-; Nothing here is fatal. A BIOS that refuses leaves the entries invalid, the API
-; reports that, and tier-0 refuses at stage 3 exactly as it does today - which
-; is the behaviour this replaces, not a regression on it.
+; In: CX = bare VBE mode number, DX = V9X_VBE_RF_ORIGIN_*, EDI = destination.
+; Out: AX=1 when a bounded record was written, AX=0 otherwise.
+;
+; Ring 0 performs only the cheap shape filter from the plan. Attributes, linear
+; capability, layout and VRAM remain facts for the host-tested C policy; in
+; particular an Attributes=0 answer is retained for contradiction diagnostics.
+BeginProc V9xMini_Vbe_Query_Record
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    call    V9xMini_Vbe_Clear_Scratch
+    mov     ax, 4F01h
+    xor     bx, bx
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    je      short V9xMini_Vbe_Query_Record_Answered
+    test    dx, V9X_VBE_RF_ORIGIN_LIST
+    jz      short V9xMini_Vbe_Query_Record_Bios_Failed
+    or      V9xVbeStatus, V9X_VBE_ST_QUERY_FAILED
+V9xMini_Vbe_Query_Record_Bios_Failed:
+    inc     V9xVbeFailed
+    jmp     V9xMini_Vbe_Query_Record_Reject_Done
+
+V9xMini_Vbe_Query_Record_Answered:
+    movzx   esi, V9xVbeBufSeg
+    shl     esi, 4
+    cmp     word ptr [esi+18], 0        ; XResolution
+    je      V9xMini_Vbe_Query_Record_Reject
+    cmp     word ptr [esi+20], 0        ; YResolution
+    je      V9xMini_Vbe_Query_Record_Reject
+    mov     al, byte ptr [esi+25]       ; BitsPerPixel
+    cmp     al, 8
+    je      short V9xMini_Vbe_Query_Record_Depth_Ok
+    cmp     al, 16
+    je      short V9xMini_Vbe_Query_Record_Depth_Ok
+    cmp     al, 24
+    je      short V9xMini_Vbe_Query_Record_Depth_Ok
+    cmp     al, 32
+    jne     V9xMini_Vbe_Query_Record_Reject
+V9xMini_Vbe_Query_Record_Depth_Ok:
+    mov     al, byte ptr [esi+27]       ; MemoryModel
+    cmp     al, 4                       ; packed pixel
+    je      short V9xMini_Vbe_Query_Record_Model_Ok
+    cmp     al, 6                       ; direct colour
+    jne     V9xMini_Vbe_Query_Record_Reject
+V9xMini_Vbe_Query_Record_Model_Ok:
+    mov     word ptr [edi+V9X_VBE_REC_MODE_NUMBER], cx
+    mov     ax, word ptr [esi+0]
+    mov     word ptr [edi+V9X_VBE_REC_ATTRIBUTES], ax
+    mov     ax, word ptr [esi+16]
+    mov     word ptr [edi+V9X_VBE_REC_BYTES_PER_LINE], ax
+    mov     ax, word ptr [esi+50]
+    mov     word ptr [edi+V9X_VBE_REC_LIN_BYTES], ax
+    mov     ax, word ptr [esi+18]
+    mov     word ptr [edi+V9X_VBE_REC_WIDTH], ax
+    mov     ax, word ptr [esi+20]
+    mov     word ptr [edi+V9X_VBE_REC_HEIGHT], ax
+    movzx   ax, byte ptr [esi+27]
+    mov     word ptr [edi+V9X_VBE_REC_MEMORY_MODEL], ax
+    movzx   ax, byte ptr [esi+25]
+    mov     word ptr [edi+V9X_VBE_REC_STORAGE_DEPTH], ax
+    mov     word ptr [edi+V9X_VBE_REC_SIGNIF_DEPTH], 0
+    mov     bx, dx
+    cmp     word ptr [esi+50], 0
+    je      short V9xMini_Vbe_Query_Record_No_Lin_Stride
+    or      bx, V9X_VBE_RF_LIN_STRIDE
+V9xMini_Vbe_Query_Record_No_Lin_Stride:
+    mov     eax, dword ptr [esi+40]
+    mov     dword ptr [edi+V9X_VBE_REC_PHYS_BASE], eax
+
+    ; VBE 3 linear colour fields win when any was actually supplied. A VBE 3
+    ; BIOS that leaves all eight zero falls back to the legacy set.
+    cmp     V9xVbeCtrlVer, 0300h
+    jb      short V9xMini_Vbe_Query_Record_Legacy_Masks
+    mov     eax, dword ptr [esi+54]
+    or      eax, dword ptr [esi+58]
+    jz      short V9xMini_Vbe_Query_Record_Legacy_Masks
+    mov     eax, dword ptr [esi+54]
+    mov     dword ptr [edi+V9X_VBE_REC_RED], eax
+    mov     eax, dword ptr [esi+58]
+    mov     dword ptr [edi+V9X_VBE_REC_BLUE], eax
+    or      bx, V9X_VBE_RF_MASKS_LINEAR
+    jmp     short V9xMini_Vbe_Query_Record_Masks_Done
+V9xMini_Vbe_Query_Record_Legacy_Masks:
+    mov     eax, dword ptr [esi+31]
+    mov     dword ptr [edi+V9X_VBE_REC_RED], eax
+    mov     eax, dword ptr [esi+35]
+    mov     dword ptr [edi+V9X_VBE_REC_BLUE], eax
+    or      bx, V9X_VBE_RF_MASKS_LEGACY
+V9xMini_Vbe_Query_Record_Masks_Done:
+    mov     word ptr [edi+V9X_VBE_REC_FLAGS], bx
+
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    mov     ax, 1
+    ret
+
+V9xMini_Vbe_Query_Record_Reject:
+    inc     V9xVbeFailed
+V9xMini_Vbe_Query_Record_Reject_Done:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    xor     ax, ax
+    ret
+EndProc V9xMini_Vbe_Query_Record
+
+; Collect 4F00h, stage its complete bounded VideoModePtr list before any 4F01h
+; can overwrite the controller block, then fill the dynamic and rescue caches.
+; Nothing here is fatal: every failure leaves the static family table intact.
 BeginProc V9xMini_Vbe_Collect
 
     push    ebx
@@ -702,79 +964,244 @@ BeginProc V9xMini_Vbe_Collect
     ; 4F00h. Stamp "VBE2" first so a 2.0-aware BIOS fills in the longer block.
     mov     dword ptr [edx], 32454256h  ; 'VBE2'
     mov     ax, 4F00h
+    xor     bx, bx
     xor     cx, cx
     call    V9xMini_Vbe_Call
     cmp     ax, 004Fh
-    jne     short V9xMini_Vbe_Collect_Modes
+    jne     V9xMini_Vbe_Collect_Done
 
     ; Accept only a real VESA 2.0-or-later answer, matching vbe_parse.c.
     mov     ax, 0
     call    V9xMini_Vbe_Peek_Word
     cmp     ax, 4556h                   ; 'EV' - first half of "VESA"
-    jne     short V9xMini_Vbe_Collect_Modes
+    jne     V9xMini_Vbe_Collect_Done
+    mov     ax, 2
+    call    V9xMini_Vbe_Peek_Word
+    cmp     ax, 4153h                   ; 'SA' - second half of "VESA"
+    jne     V9xMini_Vbe_Collect_Done
     mov     ax, 4
     call    V9xMini_Vbe_Peek_Word
     cmp     ax, 0200h
-    jb      short V9xMini_Vbe_Collect_Modes
+    jb      V9xMini_Vbe_Collect_Done
     mov     V9xVbeCtrlVer, ax
     mov     ax, 18
     call    V9xMini_Vbe_Peek_Word
     test    ax, ax
-    jz      short V9xMini_Vbe_Collect_Modes
+    jz      V9xMini_Vbe_Collect_Done
     mov     V9xVbeCtrl64K, ax
     mov     V9xVbeCtrlValid, 1
+    or      V9xVbeStatus, V9X_VBE_ST_CTRL_VALID
+    mov     eax, dword ptr [edx+10]
+    mov     V9xVbeCtrlCaps, eax
+    mov     ax, word ptr [edx+20]
+    mov     V9xVbeCtrlOemRev, ax
 
-V9xMini_Vbe_Collect_Modes:
+    ; Resolve VideoModePtr as segment:offset and reject any word that would
+    ; cross the first-megabyte boundary. Null and unreachable pointers are
+    ; diagnostics, not invitations to query the rescue list as enumeration.
+    movzx   eax, word ptr [edx+16]      ; segment
+    movzx   esi, word ptr [edx+14]      ; offset
+    mov     V9xVbeListSeg, ax
+    mov     V9xVbeListOff, si
+    mov     ebx, eax
+    or      ebx, esi
+    jz      V9xMini_Vbe_Collect_List_Unreached
+    shl     eax, 4
+    add     esi, eax
+    movzx   ebx, V9xVbeBufSeg
+    shl     ebx, 4
+    cmp     esi, ebx
+    jb      short V9xMini_Vbe_Collect_List_Classified
+    add     ebx, 512
+    cmp     esi, ebx
+    jae     short V9xMini_Vbe_Collect_List_Classified
+    mov     V9xVbeListSelf, 1
+V9xMini_Vbe_Collect_List_Classified:
     xor     edi, edi
-V9xMini_Vbe_Collect_Next:
-    cmp     edi, V9X_VBE_CACHE_COUNT
-    jae      V9xMini_Vbe_Collect_Done
+V9xMini_Vbe_Collect_Stage_Next:
+    cmp     edi, V9X_VBE_MODE_LIST_MAX
+    jae     V9xMini_Vbe_Collect_List_Overflow
+    cmp     esi, 000ffffeh
+    ja      V9xMini_Vbe_Collect_List_Unreached
+    mov     ax, word ptr [esi]
+    cmp     ax, 0ffffh
+    je      V9xMini_Vbe_Collect_List_Terminated
+    test    ax, 0c000h
+    jnz     V9xMini_Vbe_Collect_List_Flagged
+    mov     V9xVbeListStage[edi*2], ax
+    inc     edi
+    inc     V9xVbeListed
+    add     esi, 2
+    jmp     V9xMini_Vbe_Collect_Stage_Next
 
-    mov     ax, 4F01h
-    mov     cx, V9xVbeModeList[edi*2]
+V9xMini_Vbe_Collect_List_Unreached:
+    or      V9xVbeStatus, V9X_VBE_ST_LIST_UNREACHED
+    jmp     V9xMini_Vbe_Collect_Probes
+V9xMini_Vbe_Collect_List_Overflow:
+    or      V9xVbeStatus, V9X_VBE_ST_LIST_OVERFLOW
+    jmp     V9xMini_Vbe_Collect_Probes
+V9xMini_Vbe_Collect_List_Flagged:
+    or      V9xVbeStatus, V9X_VBE_ST_LIST_FLAGGED
+    jmp     V9xMini_Vbe_Collect_Probes
+V9xMini_Vbe_Collect_List_Terminated:
+    or      V9xVbeStatus, V9X_VBE_ST_LIST_TERM + V9X_VBE_ST_LIST_VALID
+
+    xor     edi, edi                   ; staged-list index
+V9xMini_Vbe_Collect_List_Next:
+    cmp     di, V9xVbeListed
+    jae     V9xMini_Vbe_Collect_Probes
+    cmp     V9xVbeQueried, V9X_STAGE1_QUERY_MAX
+    jae     V9xMini_Vbe_Collect_Query_Limit
+    cmp     V9xVbeCached, V9X_VBE_CACHE_MAX
+    jae     V9xMini_Vbe_Collect_Cache_Full
+
+    ; Duplicate mode numbers are ignored after their first appearance.
+    xor     ebx, ebx
+    mov     ax, V9xVbeListStage[edi*2]
+V9xMini_Vbe_Collect_Duplicate_Next:
+    cmp     ebx, edi
+    jae     short V9xMini_Vbe_Collect_Query_List_Mode
+    cmp     ax, V9xVbeListStage[ebx*2]
+    je      V9xMini_Vbe_Collect_List_Skip
+    inc     ebx
+    jmp     short V9xMini_Vbe_Collect_Duplicate_Next
+
+V9xMini_Vbe_Collect_Query_List_Mode:
+    mov     cx, ax
+    movzx   eax, V9xVbeCached
+    shl     eax, V9X_VBE_REC_SHIFT
+    add     eax, OFFSET32 V9xVbeCache
+    push    edi
+    mov     edi, eax
+    mov     dx, V9X_VBE_RF_ORIGIN_LIST
+    inc     V9xVbeQueried
+    call    V9xMini_Vbe_Query_Record
+    pop     edi
+    or      ax, ax
+    jz      short V9xMini_Vbe_Collect_List_Skip
+    inc     V9xVbeCached
+V9xMini_Vbe_Collect_List_Skip:
+    inc     edi
+    jmp     V9xMini_Vbe_Collect_List_Next
+
+V9xMini_Vbe_Collect_Query_Limit:
+    or      V9xVbeStatus, V9X_VBE_ST_QUERY_LIMIT
+    mov     ax, V9xVbeListed
+    sub     ax, di
+    add     V9xVbeOverflow, ax
+    jmp     short V9xMini_Vbe_Collect_Probes
+V9xMini_Vbe_Collect_Cache_Full:
+    or      V9xVbeStatus, V9X_VBE_ST_CACHE_FULL
+    mov     ax, V9xVbeListed
+    sub     ax, di
+    add     V9xVbeOverflow, ax
+
+V9xMini_Vbe_Collect_Probes:
+    xor     esi, esi
+V9xMini_Vbe_Collect_Probe_Next:
+    cmp     esi, V9xVbeProbeCount
+    jae     V9xMini_Vbe_Collect_Edid
+    mov     cx, V9xVbeProbeList[esi*2]
+
+    ; A list-derived answer already satisfies by-mode lookup.
+    movzx   edx, V9xVbeCached
+    mov     edi, OFFSET32 V9xVbeCache
+V9xMini_Vbe_Collect_Probe_Find:
+    test    edx, edx
+    jz      short V9xMini_Vbe_Collect_Probe_Query
+    cmp     word ptr [edi+V9X_VBE_REC_MODE_NUMBER], cx
+    je      short V9xMini_Vbe_Collect_Probe_Skip
+    add     edi, V9X_VBE_REC_BYTES
+    dec     edx
+    jmp     short V9xMini_Vbe_Collect_Probe_Find
+
+V9xMini_Vbe_Collect_Probe_Query:
+    movzx   eax, V9xVbeProbed
+    shl     eax, V9X_VBE_REC_SHIFT
+    add     eax, OFFSET32 V9xVbeProbeCache
+    mov     edi, eax
+    mov     dx, V9X_VBE_RF_ORIGIN_PROBE
+    call    V9xMini_Vbe_Query_Record
+    or      ax, ax
+    jz      short V9xMini_Vbe_Collect_Probe_Skip
+    inc     V9xVbeProbed
+V9xMini_Vbe_Collect_Probe_Skip:
+    inc     esi
+    jmp     V9xMini_Vbe_Collect_Probe_Next
+
+; EDID block 0 through 4F15h, after mode collection so a hung DDC read cannot
+; cost the mode table. DDC failure is non-fatal and never changes mode-scan
+; validity: the three EDID status bits are the whole story.
+;
+; BL=00h asks whether DDC is supported at all; a BIOS that refuses it gets
+; the no-DDC bit and no read attempt. BL=01h reads block CX=0 into ES:DI -
+; the same 512-byte scratch, cleared first so a lying BIOS that answers 004Fh
+; without writing produces 128 zero bytes, which the host-tested parser
+; refuses on the header. Client DX is zero (block zero) by V9xMini_Vbe_Call.
+V9xMini_Vbe_Collect_Edid:
+    mov     ax, 4F15h
+    xor     bx, bx                      ; BL=00h: DDC capability probe
+    xor     cx, cx
     call    V9xMini_Vbe_Call
     cmp     ax, 004Fh
-    jne      V9xMini_Vbe_Collect_Skip
+    je      short V9xMini_Vbe_Collect_Edid_Read
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_NO_DDC
+    jmp     V9xMini_Vbe_Collect_Done
 
-    mov     ax, 0                       ; ModeAttributes
-    call    V9xMini_Vbe_Peek_Word
-    mov     V9xVbeAttr[edi*2], ax
-    mov     ax, 16                      ; BytesPerScanLine
-    call    V9xMini_Vbe_Peek_Word
-    mov     V9xVbeBytes[edi*2], ax
-    mov     ax, 18                      ; XResolution
-    call    V9xMini_Vbe_Peek_Word
-    mov     V9xVbeWidth[edi*2], ax
-    mov     ax, 20                      ; YResolution
-    call    V9xMini_Vbe_Peek_Word
-    mov     V9xVbeHeight[edi*2], ax
-    mov     ax, 25                      ; BitsPerPixel, a byte field
-    call    V9xMini_Vbe_Peek_Word
-    and     ax, 00FFh
-    mov     V9xVbeBpp[edi*2], ax
-    mov     ax, 27                      ; MemoryModel, a byte field
-    call    V9xMini_Vbe_Peek_Word
-    and     ax, 00FFh
-    mov     V9xVbeModel[edi*2], ax
+V9xMini_Vbe_Collect_Edid_Read:
+    call    V9xMini_Vbe_Clear_Scratch
+    mov     ax, 4F15h
+    mov     bx, 1                       ; BL=01h: read EDID
+    xor     cx, cx                      ; controller unit 0
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    je      short V9xMini_Vbe_Collect_Edid_Copy
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_FAILED
+    jmp     V9xMini_Vbe_Collect_Done
 
-    ; PhysBasePtr, two words so this needs no aligned dword read.
-    mov     ax, 40
-    call    V9xMini_Vbe_Peek_Word
-    movzx   ebx, ax
-    mov     ax, 42
-    call    V9xMini_Vbe_Peek_Word
-    movzx   eax, ax
-    shl     eax, 16
-    or      ebx, eax
-    mov     V9xVbeBase[edi*4], ebx
-
-    mov     V9xVbeValid[edi*2], 1
-
-V9xMini_Vbe_Collect_Skip:
-    inc     edi
-    jmp      V9xMini_Vbe_Collect_Next
+V9xMini_Vbe_Collect_Edid_Copy:
+    movzx   esi, V9xVbeBufSeg
+    shl     esi, 4
+    mov     edi, OFFSET32 V9xVbeEdid
+    mov     ecx, V9X_VBE_EDID_BYTES / 4
+    cld
+    rep movsd
+    or      V9xVbeStatus, V9X_VBE_ST_EDID_VALID
 
 V9xMini_Vbe_Collect_Done:
+    mov     ax, V9xVbeListSeg
+    mov     edi, OFFSET32 V9xMiniVbeStatusPtrSegHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeListOff
+    mov     edi, OFFSET32 V9xMiniVbeStatusPtrOffHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeListSelf
+    mov     edi, OFFSET32 V9xMiniVbeStatusPtrSelfHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeListed
+    mov     edi, OFFSET32 V9xMiniVbeStatusListedHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeQueried
+    mov     edi, OFFSET32 V9xMiniVbeStatusQueriedHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeCached
+    mov     edi, OFFSET32 V9xMiniVbeStatusCachedHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeFailed
+    mov     edi, OFFSET32 V9xMiniVbeStatusFailedHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeOverflow
+    mov     edi, OFFSET32 V9xMiniVbeStatusOverflowHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeProbed
+    mov     edi, OFFSET32 V9xMiniVbeStatusProbedHex
+    call    V9xMini_Hex16
+    mov     ax, V9xVbeStatus
+    mov     edi, OFFSET32 V9xMiniVbeStatusFlagsHex
+    call    V9xMini_Hex16
+    mov     esi, OFFSET32 V9xMiniVbeStatusLine
+    mov     ecx, V9xMiniVbeStatusLineLength
+    call    V9xMini_Serial_Write
     mov     esi, OFFSET32 V9xMiniVbeDoneLine
     mov     ecx, V9xMiniVbeDoneLineLength
     call    V9xMini_Serial_Write

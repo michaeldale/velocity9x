@@ -159,6 +159,11 @@ master VDD table and installs audited legacy-VESA and Windows 98 monitor-power
 callbacks; the driver advertises D0 only, because the legacy BIOS resume path
 does not reliably restore the active framebuffer.
 
+`build-minivdd-skeleton.ps1` also generates the mini-VDD's rescue-probe mode
+list from a family manifest, so it takes `-Family <id>`. The image is otherwise
+family-independent, and a standalone run defaults to `vbe` and says which family
+it used; `build-active-package.ps1` passes the family it is packaging.
+
 ## The probe folder CD
 
 ```powershell

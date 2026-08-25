@@ -39,7 +39,7 @@ $selectedMode = $matroxModes[$ModeIndex]
 if (-not $PreserveStockMiniVdd) {
     $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
     & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
-        -BuildId $BuildId -DdkRoot $DdkRoot `
+        -BuildId $BuildId -DdkRoot $DdkRoot -Family 'matrox-m2' `
         -DisableVbeCollect:(-not $miniVddVbeCollect)
 }
 & (Join-Path $PSScriptRoot "build-win16-loader-probe.ps1") `

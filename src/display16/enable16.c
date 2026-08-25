@@ -30,6 +30,7 @@
 
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe16.h"
+#include "velocity9x/vbe_cache.h"
 
 extern WORD v9x_active_vbe_mode;
 extern WORD v9x_vbe_mode_flags;
@@ -87,17 +88,35 @@ DWORD v9x_vbe_vram_reported = 0ul;
  */
 DWORD v9x_minivdd_base = 0ul;
 WORD v9x_minivdd_bytes = 0u;
+WORD v9x_minivdd_lin_bytes = 0u;
 WORD v9x_minivdd_attr = 0u;
+WORD v9x_minivdd_mode_number = 0u;
 WORD v9x_minivdd_width = 0u;
 WORD v9x_minivdd_height = 0u;
 WORD v9x_minivdd_bpp = 0u;
+WORD v9x_minivdd_significant = 0u;
 WORD v9x_minivdd_model = 0u;
+WORD v9x_minivdd_record_flags = 0u;
+WORD v9x_minivdd_red = 0u;
+WORD v9x_minivdd_green = 0u;
+WORD v9x_minivdd_blue = 0u;
+WORD v9x_minivdd_rsvd = 0u;
 WORD v9x_minivdd_version = 0u;
 WORD v9x_minivdd_total64k = 0u;
+DWORD v9x_minivdd_capabilities = 0ul;
+WORD v9x_minivdd_oem_revision = 0u;
 /* Diagnostic only: what the mini-VDD's init-time collection achieved. */
 WORD v9x_minivdd_bufseg = 0u;
-WORD v9x_minivdd_modes = 0u;
-WORD v9x_minivdd_ctrl = 0u;
+WORD v9x_minivdd_listed = 0u;
+WORD v9x_minivdd_queried = 0u;
+WORD v9x_minivdd_cached = 0u;
+WORD v9x_minivdd_probed = 0u;
+WORD v9x_minivdd_status = 0u;
+/* One 16-byte EDID chunk, as the four dwords the API hands back. */
+DWORD v9x_minivdd_edid0 = 0ul;
+DWORD v9x_minivdd_edid1 = 0ul;
+DWORD v9x_minivdd_edid2 = 0ul;
+DWORD v9x_minivdd_edid3 = 0ul;
 /* What the card was scanning at before tier-0 corrected it, for the record. */
 WORD v9x_vbe_pitch_before = 0u;
 
@@ -105,6 +124,8 @@ WORD v9x_vbe_pitch_before = 0u;
 extern WORD FAR PASCAL V9xMiniVbeModeInfo(WORD mode);
 extern WORD FAR PASCAL V9xMiniVbeController(void);
 extern WORD FAR PASCAL V9xMiniVbeStatus(void);
+extern WORD FAR PASCAL V9xMiniVbeModeAt(WORD index);
+extern WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index);
 
 WORD FAR PASCAL V9xHardwareStage(void)
 {
@@ -259,6 +280,83 @@ static WORD v9x_append_decimal(char *text, WORD at, WORD value)
     return at;
 }
 
+static WORD v9x_append_hex16(char *text, WORD at, WORD value)
+{
+    static const char digits[] = "0123456789abcdef";
+
+    text[at++] = digits[(value >> 12) & 0x0fu];
+    text[at++] = digits[(value >> 8) & 0x0fu];
+    text[at++] = digits[(value >> 4) & 0x0fu];
+    text[at++] = digits[value & 0x0fu];
+    return at;
+}
+
+static WORD v9x_append_hex32(char *text, WORD at, DWORD value)
+{
+    at = v9x_append_hex16(text, at, (WORD)(value >> 16));
+    return v9x_append_hex16(text, at, (WORD)value);
+}
+
+static void v9x_vbe_mode_key(char *key, WORD index)
+{
+    static const char digits[] = "0123456789abcdef";
+    WORD at = 0u;
+
+    key[at++] = 'V'; key[at++] = 'b'; key[at++] = 'e'; key[at++] = 'M';
+    key[at++] = 'o'; key[at++] = 'd'; key[at++] = 'e';
+    key[at++] = digits[(index >> 4) & 0x0fu];
+    key[at++] = digits[index & 0x0fu];
+    key[at] = '\0';
+}
+
+/* One API-v2 record, kept diagnostic-only during Stage 1. */
+static void v9x_vbe_trace_record(WORD index)
+{
+    static char key[10];
+    static char text[128];
+    WORD at = 0u;
+
+    if (V9xMiniVbeModeAt(index) == 0u ||
+        V9xMiniVbeModeMasks(index) == 0u) {
+        return;
+    }
+    v9x_vbe_mode_key(key, index);
+    text[at++] = 'm'; text[at++] = '=';
+    at = v9x_append_hex16(text, at, v9x_minivdd_mode_number);
+    text[at++] = ' '; text[at++] = 'a'; text[at++] = '=';
+    at = v9x_append_hex16(text, at, v9x_minivdd_attr);
+    text[at++] = ' '; text[at++] = 'g'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_width);
+    text[at++] = 'x';
+    at = v9x_append_decimal(text, at, v9x_minivdd_height);
+    text[at++] = 'x';
+    at = v9x_append_decimal(text, at, v9x_minivdd_bpp);
+    text[at++] = ' '; text[at++] = 's'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_bytes);
+    text[at++] = '/';
+    at = v9x_append_decimal(text, at, v9x_minivdd_lin_bytes);
+    text[at++] = ' '; text[at++] = 'b'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, v9x_minivdd_base);
+    text[at++] = ' '; text[at++] = 'm'; text[at++] = 'm'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_model);
+    text[at++] = ' '; text[at++] = 's'; text[at++] = 'i'; text[at++] = 'g';
+    text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_significant);
+    text[at++] = ' '; text[at++] = 'r'; text[at++] = 'g'; text[at++] = 'b';
+    text[at++] = '=';
+    at = v9x_append_hex16(text, at, v9x_minivdd_red);
+    text[at++] = ',';
+    at = v9x_append_hex16(text, at, v9x_minivdd_green);
+    text[at++] = ',';
+    at = v9x_append_hex16(text, at, v9x_minivdd_blue);
+    text[at++] = ',';
+    at = v9x_append_hex16(text, at, v9x_minivdd_rsvd);
+    text[at++] = ' '; text[at++] = 'f'; text[at++] = '=';
+    at = v9x_append_hex16(text, at, v9x_minivdd_record_flags);
+    text[at] = '\0';
+    v9x_write_ini_key(key, text);
+}
+
 /*
  * A real-mode addressable buffer for the buffered VBE calls, as
  * (selector << 16) | real-mode segment, or 0.
@@ -293,22 +391,75 @@ static WORD v9x_append_decimal(char *text, WORD at, WORD value)
  */
 static void v9x_vbe_trace_cache(void)
 {
-    char text[24];
+    static char text[80];
+    static char key[10];
+    static WORD traced = 0u;
     WORD at = 0u;
+    WORD count;
+    WORD index;
+
+    if (traced != 0u) {
+        return;
+    }
+    traced = 1u;
+
+    /* Clear the previous boot's generation even when this boot has no API. */
+    WritePrivateProfileString("Velocity9x", "VbeController", 0,
+                              "C:\\V9XBOOT.INI");
+    for (index = 0u; index < V9X_VBE_CACHE_MAX; ++index) {
+        v9x_vbe_mode_key(key, index);
+        WritePrivateProfileString("Velocity9x", key, 0,
+                                  "C:\\V9XBOOT.INI");
+    }
 
     if (V9xMiniVbeStatus() == 0u) {
         v9x_write_ini_key("VbeCache", "no-api");
         return;
     }
-    /* "seg=NNNNN modes=N ctrl=N", decimal, built by hand: no sprintf here. */
+    /* Bounded v2 counts plus the exact status bits, built without sprintf. */
     text[at++] = 's'; text[at++] = '=';
     at = v9x_append_decimal(text, at, v9x_minivdd_bufseg);
-    text[at++] = ' '; text[at++] = 'm'; text[at++] = '=';
-    at = v9x_append_decimal(text, at, v9x_minivdd_modes);
+    text[at++] = ' '; text[at++] = 'l'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_listed);
+    text[at++] = ' '; text[at++] = 'q'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_queried);
     text[at++] = ' '; text[at++] = 'c'; text[at++] = '=';
-    at = v9x_append_decimal(text, at, v9x_minivdd_ctrl);
+    at = v9x_append_decimal(text, at, v9x_minivdd_cached);
+    text[at++] = ' '; text[at++] = 'p'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, v9x_minivdd_probed);
+    text[at++] = ' '; text[at++] = 'f'; text[at++] = '=';
+    at = v9x_append_hex16(text, at, v9x_minivdd_status);
     text[at] = '\0';
     v9x_write_ini_key("VbeCache", text);
+
+    if (V9xMiniVbeController() != 0u) {
+        at = 0u;
+        text[at++] = 'v'; text[at++] = '=';
+        at = v9x_append_hex16(text, at, v9x_minivdd_version);
+        text[at++] = ' '; text[at++] = 'm'; text[at++] = 'e'; text[at++] = 'm';
+        text[at++] = '=';
+        at = v9x_append_decimal(text, at, v9x_minivdd_total64k);
+        text[at++] = ' '; text[at++] = 'c'; text[at++] = 'a'; text[at++] = 'p';
+        text[at++] = 's'; text[at++] = '=';
+        at = v9x_append_hex32(text, at, v9x_minivdd_capabilities);
+        text[at++] = ' '; text[at++] = 'r'; text[at++] = 'e'; text[at++] = 'v';
+        text[at++] = '=';
+        at = v9x_append_hex16(text, at, v9x_minivdd_oem_revision);
+        text[at] = '\0';
+        v9x_write_ini_key("VbeController", text);
+    }
+
+    if ((v9x_minivdd_status & (V9X_VBE_ST_CTRL_VALID |
+                               V9X_VBE_ST_LIST_VALID)) ==
+        (V9X_VBE_ST_CTRL_VALID | V9X_VBE_ST_LIST_VALID)) {
+        count = v9x_minivdd_cached > V9X_VBE_CACHE_MAX
+                    ? V9X_VBE_CACHE_MAX : v9x_minivdd_cached;
+    } else {
+        count = 0u;
+    }
+    for (index = 0u; index < count; ++index) {
+        v9x_vbe_trace_record(index);
+    }
 }
 
 /*
@@ -420,6 +571,7 @@ static DWORD v9x_vbe_default_aperture(void)
         v9x_vbe_trace("no-mode-selected");
         return 0ul;
     }
+    v9x_vbe_trace_cache();
     /*
      * The bare mode number: 4F01h describes a mode, not a mode plus the
      * family's linear and no-clear request bits.
@@ -442,17 +594,24 @@ static DWORD v9x_vbe_default_aperture(void)
             return 0ul;
         }
     }
+    /* Registers, not a BIOS block, so start from a defined summary: the API
+     * reports a subset of the fields and the rest must read as "not reported"
+     * rather than as whatever was on the stack. */
+    v9x_vbe_mode_summary_clear(&mode);
     mode.attributes = v9x_minivdd_attr;
     mode.bytes_per_scan_line = v9x_minivdd_bytes;
-    /* The mini-VDD reports the 2.0 stride only. A VBE 3.0 linear stride would
-     * need its own cache slot; until one exists, say "not reported" rather
-     * than pass this one off as it. */
+    /* The retained by-mode operation deliberately keeps its v1 register shape:
+     * active static-table lookup needs the legacy stride and aperture only.
+     * Indexed v2 diagnostics carry the linear stride and channel layout. */
     mode.lin_bytes_per_scan_line = 0u;
     mode.width = v9x_minivdd_width;
     mode.height = v9x_minivdd_height;
     mode.bits_per_pixel = v9x_minivdd_bpp;
     mode.memory_model = v9x_minivdd_model;
     mode.phys_base = v9x_minivdd_base;
+    /* Derivable from what the API did report, and only from the depth here:
+     * with no channel fields, this is the palettized or 5:6:5 answer. */
+    mode.significant_depth = v9x_vbe_summary_significant_depth(&mode);
 
     /* Same judgement the block parser applies, on the same rule. */
     if (v9x_vbe_mode_summary_is_drivable(&mode) == 0u) {
@@ -465,8 +624,12 @@ static DWORD v9x_vbe_default_aperture(void)
     }
 
     if (V9xMiniVbeController() != 0u) {
+        /* Registers again, so start defined before copying all v2 fields. */
+        v9x_vbe_controller_summary_clear(&controller);
         controller.version = v9x_minivdd_version;
         controller.total_memory_bytes = (DWORD)v9x_minivdd_total64k * 65536ul;
+        controller.capabilities = v9x_minivdd_capabilities;
+        controller.oem_software_rev = v9x_minivdd_oem_revision;
 
         /*
          * VRAM only sizes the off-screen heap, and dd16.c has a floor to fall
