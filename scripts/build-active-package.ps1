@@ -134,8 +134,61 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\driver-stage-probe\v9xstage.e
     -Destination (Join-Path $outputDir "V9XSTAGE.EXE") -Force
 Set-Content -LiteralPath (Join-Path $outputDir "VELOCITY9X.INF") `
     -Value $infLines -Encoding Ascii
-Copy-Item -LiteralPath $installSource `
-    -Destination (Join-Path $outputDir "INSTALL.TXT") -Force
+# INSTALL.TXT is a template: the family summary, the model-selection step and
+# the after-first-boot mode wording all come from the manifest, so one file
+# cannot describe another family's package (the vbe package shipped S3
+# wording for two weeks before this).
+$familySummaryLines = @(
+    ("This package serves the {0} family." -f $familyManifest.DisplayName)
+    $familyManifest.Description
+    ("Hardware: {0}." -f $familyManifest.Floppy.HardwareIdHint)
+)
+$modelLines = @('6. Select the model matching the fitted card:')
+foreach ($chip in @($familyManifest.Chips)) {
+    $modelLines += ('   "{0}"' -f $chip.DeviceDesc)
+}
+if ($familyManifest.Inf.ContainsKey('ManualSelect')) {
+    $modelLines += @(
+        ('   On a machine with no PCI bus at all, none of those can match,')
+        ('   because there is no PCI device for Windows to match them')
+        ('   against. Pick "{0}" instead. It carries' -f
+            $familyManifest.Inf.ManualSelect.Description)
+        ('   no hardware ID, so it is offered for any display device and it')
+        ('   is yours to choose correctly; the driver identifies the chip')
+        ('   itself at boot.')
+    )
+}
+$defaultModeParts = $defaultMode -split ','
+$defaultModeText = '{0}x{1}x{2}' -f $defaultModeParts[1], $defaultModeParts[2],
+    $defaultModeParts[0]
+$modesLines = @(
+    ("The first boot uses the configured or default mode ({0} unless" -f
+        $defaultModeText)
+    'the registry says otherwise). After it passes, Display Properties offers:'
+    $familyManifest.Package.ModesSummary
+)
+if ($miniVddVbeCollect) {
+    $modesLines += @(
+        ''
+        'This family also discovers the modes the video BIOS itself reports:'
+        'after the first successful boot the driver merges them into its'
+        'runtime table, writes the validated inventory C:\V9XMODES.INI, and'
+        'the per-boot synchronizer mirrors it into Display Properties, so the'
+        'offered list grows past the baseline above on capable cards. The'
+        'panel EDID, where readable, selects the fallback mode; it never'
+        'overrides a mode you chose.'
+    )
+}
+$installLines = Get-Content -LiteralPath $installSource | ForEach-Object {
+    switch ($_) {
+        '@FAMILY_SUMMARY@' { $familySummaryLines }
+        '@MODEL_SELECTION@' { $modelLines }
+        '@MODES_AFTER_FIRST_BOOT@' { $modesLines }
+        default { $_ -replace '@DEFAULT_MODE@', $defaultModeText }
+    }
+}
+Set-Content -LiteralPath (Join-Path $outputDir "INSTALL.TXT") `
+    -Value $installLines -Encoding Ascii
 Copy-Item -LiteralPath $recoverSource `
     -Destination (Join-Path $outputDir "RECOVER.TXT") -Force
 Copy-Item -LiteralPath $firstBootSource `

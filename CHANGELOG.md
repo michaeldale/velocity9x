@@ -132,6 +132,23 @@ Stage 5 - EDID preferred hint (2026-08-26):
   800x600x16, and a deliberately nonexistent configured mode fell back to
   1024x768 on the next boot.
 
+Stage 6 - rollout and cleanup, the workstation half (2026-08-26):
+
+- **`INSTALL.TXT` is generated per family.** The checked-in file is now a
+  template; the family summary, the model-selection step (with the
+  manual-select paragraph only where the family declares one), the default
+  mode in the serial checkpoints and the after-first-boot mode wording all
+  come from the manifest, and the dynamic-discovery/EDID paragraph is
+  emitted only for scan-enabled families. Ends the S3-worded INSTALL.TXT
+  shipping inside every family's package.
+- README and docs/INSTALL.md describe the dynamic mode pipeline: what the
+  generic VESA family discovers, where the inventory and synchronizer
+  reports live, and that a broken BIOS list simply keeps the baseline.
+- Recorded in the plan: no v1 compatibility path remains to remove (exact v2
+  handshake, generated rescue probes, and by-mode lookup is a v2 operation),
+  and ATI/Intel-GMA enablement stays hardware-blocked on its own gates
+  rather than being faked here.
+
 Stage 0 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md):
 contracts and fixtures only. No driver behaviour changes — every image this
 builds is the same image as before, which is the stage's own exit condition.

@@ -52,7 +52,12 @@ target gets:
   Color (16-bit), plus 640x400 at 256 colours. On the S3 targets, also True
   Color (32-bit) at those three resolutions and 1280x1024 at 256 colours and
   High Color. Resolution *and* colour-depth changes apply live on the ViRGE,
-  without a reboot.
+  without a reboot. The generic VESA family additionally asks the video BIOS
+  which modes it really has, every boot, and merges the drivable ones into
+  its runtime table — widescreen and True Color modes the baseline list never
+  named appear in Display Properties automatically, the panel's EDID picks
+  the fallback mode when the configured one is gone, and a card whose BIOS
+  list is broken simply keeps the baseline modes.
 - **2D output** — through the system DIB Engine, with the framebuffer mapped
   linearly. GDI drawing itself is not hardware-accelerated.
 - **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory

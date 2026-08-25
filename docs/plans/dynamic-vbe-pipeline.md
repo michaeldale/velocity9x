@@ -940,6 +940,32 @@ matrix with a real panel EDID.
 
 ### Stage 6 - family rollout and cleanup
 
+Implementation status (2026-08-26): the parts this workstation can do are
+done; the rest is explicitly hardware-blocked.
+
+- Done: the consumer is enabled for `vbe` and guest-verified end to end
+  (Stages 1-5 above). S3 and Matrox keep `MiniVddVbeCollect = $false`, and
+  `build-minivdd-skeleton.ps1` already audits both directions of the
+  disabled marker. `INSTALL.TXT` is now generated per family from the
+  manifest - summary, model-selection step, default mode and the
+  after-first-boot mode wording, with the dynamic-discovery and EDID
+  paragraph emitted only for scan-enabled families - ending the S3-worded
+  file shipping in every package. README and docs/INSTALL.md describe the
+  dynamic pipeline. The regenerated package (SUBSYS-qualified INF, Stage 4
+  marker and Run entry) is pushed to both test guests.
+- On the v1/fixed-list cleanup: there is no v1 compatibility path left to
+  remove. The handshake requires the exact v2 contract, the seven
+  hand-written rescue numbers were replaced by the manifest-generated
+  probe include in Stage 0, and the retained by-mode MODE_INFO lookup is
+  not compatibility - it is the active aperture-discovery operation v2
+  itself specifies. `V9XMINI_API_V1` remains as a named historical constant
+  under the check-tree contract assertions.
+- Hardware-blocked, deliberately not faked: ATI enablement waits on its own
+  guest/physical mode-inventory agreement; the Intel GMA target waits on a
+  family that binds that devnode plus the two netbook waves (real
+  scan-contradiction hiding, real panel EDID). Those are the remaining exit
+  gates of this stage.
+
 - Enable the consumer for `vbe`, then ATI after its own guest/physical mode
   inventory agrees, then the Intel GMA target once a family actually binds that
   devnode and its two netbook waves pass.

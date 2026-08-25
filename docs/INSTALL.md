@@ -140,10 +140,18 @@ V9XMSW.EXE /cursor             add cursor agitation around every switch
 
 Results are written to `C:\V9XMSW.INI`.
 
-The full matrix is 640x480, 800x600 and 1024x768 at both 8 and 16 bpp, plus
-640x400 at 8 bpp. On the ViRGE, resolution and colour-depth changes both apply
-live. On the Trio64, live depth switching is built but unverified — accept a
-restart prompt if Windows shows one.
+The baseline matrix is 640x480, 800x600 and 1024x768 at both 8 and 16 bpp,
+plus 640x400 at 8 bpp. On the ViRGE, resolution and colour-depth changes both
+apply live. On the Trio64, live depth switching is built but unverified —
+accept a restart prompt if Windows shows one.
+
+On the generic VESA (`vbe`) package the list does not stop there: the driver
+reads the video BIOS's own mode list at boot, merges the drivable rows into
+its runtime table, and mirrors them into Display Properties on the next
+logon. Expect widescreen and 32-bit entries the baseline never named — on
+QEMU std-vga, 46 modes. `C:\V9XMODES.INI` is the validated inventory of what
+this boot offers and why anything was refused, and `C:\V9XSYNC.INI` records
+what the Display Properties synchronizer did about it.
 
 Run `V9XPAL.EXE` in an 8-bpp mode to check palette animation and readback, and
 `V9XGDI.EXE /auto` after each switch.
