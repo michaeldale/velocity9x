@@ -15,13 +15,15 @@ later.
 **Version 0.5.0** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **This is an engineering bring-up driver, not a release driver.** Most of its
-> development and testing happens under [86Box](https://86box.net/); as of
-> 0.4.4 the S3 Trio32/64 target is verified on two physical machines - a PCI
-> card under Windows 98 SE and a VESA Local Bus card under Windows 95 - and
-> every other target remains emulator-only. Install it only on a virtual
-> machine you have backed up cold, or on hardware you are willing to recover
-> by hand. Read [docs/INSTALL.md](docs/INSTALL.md) before you install
-> anything.
+> development and testing happens under [86Box](https://86box.net/) and QEMU;
+> the S3 Trio32/64 target is verified on two physical machines - a PCI card
+> under Windows 98 SE and a VESA Local Bus card under Windows 95 - and every
+> other target remains emulator-only. 0.5.0's dynamic mode discovery is
+> verified on two QEMU-based Windows 98 SE guests and is enabled only for the
+> generic VESA family; the S3, ATI and Matrox packages keep their static mode
+> lists and make no new BIOS calls. Install it only on a virtual machine you
+> have backed up cold, or on hardware you are willing to recover by hand.
+> Read [docs/INSTALL.md](docs/INSTALL.md) before you install anything.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
