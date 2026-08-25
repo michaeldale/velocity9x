@@ -78,10 +78,21 @@ extern void FAR PASCAL V9xVddPostMode(void);
 extern void FAR PASCAL V9xVddUnregister(void);
 extern WORD FAR PASCAL V9xVddGetDisplayConfig(V9X_DISPLAY_INFO FAR *);
 
-/* The mode table, the PCI identity and the C:\V9XHW.INI strings are family
- * data now, supplied by the statically linked v9x_hw16 table. */
-#define v9x_modes      (v9x_hw16.modes)
-#define V9X_MODE_COUNT (v9x_hw16.mode_count)
+/* The PCI identity and the C:\V9XHW.INI strings are family data, supplied by
+ * the statically linked v9x_hw16 table. The mode table is not any more: GDI
+ * reads the runtime table modes16.c commits at load - the family baseline,
+ * merged with the BIOS's own list where the mini-VDD scan produced a valid
+ * one, with per-row publication flags. Every consumer below reads the same
+ * rows, the same count and the same flags through these two macros plus
+ * v9x_modes16_is_published. */
+extern V9X_HW16_MODE v9x_runtime_modes[];
+extern WORD v9x_runtime_count;
+extern WORD v9x_runtime_first;
+extern void v9x_modes16_init(void);
+extern WORD v9x_modes16_is_published(WORD index);
+extern void v9x_modes16_write_inventory(void);
+#define v9x_modes      (v9x_runtime_modes)
+#define V9X_MODE_COUNT (v9x_runtime_count)
 
 V9X_DIB_ENGINE FAR *v9x_driver_pdevice;
 /* These four are read by runtime.asm. LibMain applies the family's first mode
@@ -404,6 +415,13 @@ static const V9X_HW16_MODE *v9x_find_mode(WORD width,
     WORD index;
 
     for (index = 0u; index < V9X_MODE_COUNT; ++index) {
+        /* A hidden row keeps its slot but is offered to nothing: this is the
+         * one lookup ValidateMode, requested-mode selection, Enable and
+         * ReEnable all go through, so refusing it here is what makes a
+         * scan-contradicted baseline row invisible everywhere at once. */
+        if (v9x_modes16_is_published(index) == 0u) {
+            continue;
+        }
         if (v9x_modes[index].width == width &&
             v9x_modes[index].height == height &&
             v9x_modes[index].bits_per_pixel == bits_per_pixel) {
@@ -447,7 +465,10 @@ static void v9x_select_requested_mode(void)
     }
 #endif
     if (requested == 0) {
-        requested = &v9x_modes[0];
+        /* Fallback follows publication: the first published row, which is
+         * baseline row zero everywhere except a machine whose scan
+         * contradicts it. */
+        requested = &v9x_modes[v9x_runtime_first];
     }
     v9x_apply_mode(requested);
 }
@@ -534,7 +555,12 @@ void v9x_display_boot_log(void)
     v9x_vbe_mode_flags = v9x_hw16.vbe_mode_flags;
     v9x_map_pages_hi = v9x_hw16.map_pages_hi;
     v9x_map_pages_lo = v9x_hw16.map_pages_lo;
-    v9x_apply_mode(&v9x_hw16.modes[0]);
+    /* Build the runtime table before the first v9x_apply_mode and before any
+     * DDI entry point can run. Its transaction falls back to the baseline
+     * table with every row published, so this line cannot make load worse
+     * than the static path it replaces. */
+    v9x_modes16_init();
+    v9x_apply_mode(&v9x_modes[v9x_runtime_first]);
     v9x_serial_write("V9X-DRV load build=" V9X_BUILD_ID "\r\n");
     /* Boot-capture evidence shows ring-3 serial writes from LibMain do not
      * normally reach the host log. The INI marker is strong load evidence,
@@ -901,6 +927,10 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         (void)V9xDdCreateDriverObject(1u);
     }
     v9x_boot_trace("enable-ok");
+    /* The validated inventory is written only after a successful enable: a
+     * boot that never reached the desktop must not leave a Complete=1 file
+     * describing modes nothing verified. */
+    v9x_modes16_write_inventory();
     return 1u;
 }
 

@@ -6,6 +6,64 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+Stages 1 and 2 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md)
+are guest-verified. Stage 1's exit gate passed on 2026-08-25 on two Windows 98 SE
+guests — the fresh local QEMU 4.2 std-vga VM and a UTM (Apple Silicon QEMU) VM —
+with `C:\V9XBOOT.INI` matching the DOS inventory fixture record-for-record: all
+64 cached records identical in mode, attributes, geometry, depth, memory model,
+pitch, base and RGB masks, in BIOS list order, with every absent record explained
+(legacy/planar, 15-bpp policy, and the 64-record cap reported in the status
+flags).
+
+Stage 2 — the runtime mode table consumed by GDI:
+
+### Added
+
+- **Admission reason codes** (`v9x_vbe_scan_admit`): every refusal names the
+  rule it failed — unsupported, non-linear, memory model, physical base, depth,
+  colour layout, stride, geometry, VRAM, duplicate, table-full and
+  known-defect — so the guest inventory says why a BIOS record is absent.
+  `v9x_vbe_build_mode_table_ex` adds the optional refuse-only family distrust
+  predicate and a per-reason rejection tally; the original builder is now a
+  wrapper over it.
+- **Publication flags** (`v9x_vbe_publish_rows`): a baseline row a trustworthy
+  scan contradicts keeps its storage slot and is offered to nothing. Hiding
+  requires the full validity gate — a terminated list and a cache that is
+  neither truncated nor overflowed — an empty cache contradicts nothing, the
+  fallback row is the first *published* row, and a scan that would hide
+  everything publishes everything instead. Host tests pin the GMA950-shaped
+  case, the fallback movement and both publish-all paths.
+- **`src/display16/modes16.c`**: the runtime table in fixed DGROUP storage
+  (64 rows, masks, publication bytes), built transactionally at driver load —
+  baseline committed first, mini-VDD API v2 records read into bounded staging,
+  merged, validated and committed all-or-nothing, so a missing mini-VDD, an
+  invalid scan or any mid-build refusal lands on exactly the static table with
+  every row published. Also writes the validated mode inventory
+  `C:\V9XMODES.INI` after a successful enable, with the `Complete=0/1` sentinel
+  discipline, BIOS identity, raw-vs-usable VRAM, the 60 Hz-is-a-convention
+  admission, scan state and counts, per-reason tallies, and one line per
+  published row plus one per hidden row.
+
+### Changed
+
+- **`ddi.c` reads the runtime table.** `v9x_modes`/`V9X_MODE_COUNT` repoint to
+  `modes16.c`'s committed table; `v9x_find_mode` skips unpublished rows, which
+  makes ValidateMode, Enable, ReEnable and requested-mode selection refuse a
+  hidden row through the one lookup they share; the load-time and
+  requested-mode fallbacks follow publication rather than assuming row zero.
+  All four families link the new objects; a non-scanning family commits a
+  byte-identical baseline table.
+- **The generated INF leads with the SUBSYS-qualified hardware id** when a
+  chip declares `SubsystemId` (the vbe std-vga declares QEMU's `11001AF4`),
+  keeping the bare id as the compatible id: Win98's Have Disk matches
+  HardwareIDs, which are always SUBSYS-qualified on PCI, and refused the bare
+  id on a UTM guest.
+
+Guest-verified on the local QEMU VM: 46 rows (7 baseline + 39 dynamic), all
+published, reason tally accounting for all 64 cached records; live switches
+into dynamic 1152x864x16 and 1280x800x16 and back to baseline 800x600x16, with
+the GDI framebuffer test passing at the dynamic mode.
+
 Stage 0 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md):
 contracts and fixtures only. No driver behaviour changes — every image this
 builds is the same image as before, which is the stage's own exit condition.

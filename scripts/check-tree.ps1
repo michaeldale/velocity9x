@@ -134,6 +134,10 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\ddi.c"),
     (Join-Path $repoRoot "src\display16\dd16.c"),
     (Join-Path $repoRoot "src\display16\enable16.c"),
+    # The runtime mode table writes the validated inventory file
+    # (C:\V9XMODES.INI) through WritePrivateProfileString; the table logic
+    # itself stays in src\common\vbe_modes.c, which remains OS-free.
+    (Join-Path $repoRoot "src\display16\modes16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only

@@ -309,6 +309,72 @@ The next investigation should explain why the root fallback display devnode and
 to `Display\0001`. Do not repeatedly boot or reinstall before studying the
 registry exports and `BOOTLOG-stage1.TXT`.
 
+## Resolution addendum — same day, later session
+
+The "Current unresolved display state" above is resolved. Root cause: the root
+fallback devnode `ROOT\*PNP0900\0000` (Standard Display Adapter (VGA),
+`Display\0000`) started at every boot, held the VGA I/O ranges, and left the
+PCI Velocity9x devnode with runtime **Problem 12 (resource conflict)** in
+`HKEY_DYN_DATA\Config Manager\Enum`. Windows normally deletes that root
+devnode when a PCI display driver is installed; here it survived.
+
+What did not work:
+
+- Device Manager -> Remove on the root devnode: the Confirm Device Removal
+  dialog reproducibly ignored both mouse clicks and Enter (three attempts,
+  one of which left the shell unstable and required a cold boot).
+- Setting `ConfigFlags=1` (CONFIGFLAG_DISABLED) via a `.REG` import: the
+  devnode did report Problem 22 (disabled) on the next boot, but its boot
+  allocation was retained and the PCI devnode still had Problem 12.
+
+What worked — real-mode registry deletion via AUTOEXEC.BAT:
+
+```bat
+@ECHO OFF
+IF NOT EXIST C:\DELPNP.FLG GOTO SKIP
+C:\WINDOWS\REGEDIT /D HKEY_LOCAL_MACHINE\Enum\Root\*PNP0900
+DEL C:\DELPNP.FLG
+:SKIP
+```
+
+with `C:\DELPNP.FLG` created as the one-shot trigger. Real-mode REGEDIT /D
+deletes Enum keys that protected-mode regedit refuses. After the next cold
+boot the key was gone (verified by a failed export), the flag was consumed,
+and the guard block in `C:\AUTOEXEC.BAT` is now inert (it can be removed at
+leisure).
+
+Result on the following boot:
+
+- `C:\V9XBOOT.INI`: `Stage=enable-ok`,
+  `VbeCache=s=1835 l=92 q=74 c=64 p=0 f=0047`, `VbeController` and 64
+  `VbeModeNN` records, `VbeDetail=ok`.
+- The desktop runs on the Velocity9x driver at 640x480x8 (agent screenshot
+  source depth 8 bpp).
+- **Stage 1 exit gate comparison: PASS.** All 64 guest records match the DOS
+  inventory fixture (`personal/v9x-qemu-stdvga/QSTDVGA.INI`) exactly — mode,
+  attributes, geometry, bpp, memory model, LFB pitch, base `FD000000`, RGB
+  masks — with BIOS list order preserved. The 29 absent DOS records are the
+  legacy text/planar modes, the banked 4-bpp VESA modes, the seven 15-bpp
+  modes plus mode 0013, and the tail dropped at the 64-record cache cap with
+  the overflow reported in the flags. One footnote: the mini-VDD reports
+  `l=92` listed where the DOS tool counted 93; every record still matches.
+- `V9XGDI.EXE` PASS: "display writes, BitBlt and pixel readback are
+  coherent", color bars correct. (First shell paint after the driver took
+  over showed artifacts in the Welcome window's dithered watermark; the GDI
+  test passes, so treat that as a Welcome-bitmap rendering quirk to keep an
+  eye on, not a framebuffer fault.)
+- The same gate had already passed earlier the same day on the UTM (Mac)
+  Win98 VM at 10.0.1.250:9869, whose SeaBIOS lists 93 modes — same 64
+  records, zero mismatches.
+
+Note for the packaging backlog: Win98's Have Disk refused the generated INF's
+bare `PCI\VEN_1234&DEV_1111` id on the UTM machine (HardwareIDs carry
+`SUBSYS_11001AF4&REV_02`); the guest copy there was hand-patched. The INF
+generator should emit the SUBSYS-qualified id plus the bare id.
+
+Stage 1 is complete on both guests. Next: Stage 2 (runtime table consumed by
+GDI) per `docs\plans\dynamic-vbe-pipeline.md`.
+
 ## Operational cautions
 
 - Never use guest Restart or QEMU `system_reset`. Warm restarts repeatedly hang

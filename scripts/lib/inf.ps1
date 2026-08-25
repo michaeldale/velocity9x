@@ -164,8 +164,19 @@ function New-V9xInfText {
             'Velocity9x.Install.{0}' -f $chip.Id
         }
         $installSections[$chip.Id] = $section
-        $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $chip.DeviceDesc, $section,
-            $chip.VendorId, $chip.DeviceId
+        # Windows 98's Have Disk matches model lines against the devnode's
+        # HardwareIDs, which on real machines are SUBSYS-qualified; the bare
+        # VEN&DEV id lives only in CompatibleIDs and is not always consulted.
+        # A chip that declares SubsystemId therefore leads with the qualified
+        # id and keeps the bare id as the compatible-id field.
+        if ($chip.SubsystemId) {
+            $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}&SUBSYS_{4},PCI\VEN_{2}&DEV_{3}' -f
+                $chip.DeviceDesc, $section, $chip.VendorId, $chip.DeviceId,
+                $chip.SubsystemId
+        } else {
+            $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $chip.DeviceDesc, $section,
+                $chip.VendorId, $chip.DeviceId
+        }
     }
 
     # The manual model line carries no hardware id, which is Windows' own
@@ -433,7 +444,8 @@ function Assert-V9xInf {
 
     $idLess = 0
     foreach ($line in (Get-V9xInfSectionBody -Lines $Lines -Section $modelsSection)) {
-        if ($line -match '^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}$') {
+        if ($line -match ('^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}' +
+                          '(&SUBSYS_[0-9A-Fa-f]{8},PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4})?$')) {
             continue
         }
         if ($manualLine -and $line -eq $manualLine) {

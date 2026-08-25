@@ -49,8 +49,8 @@ static v9x_u16 v9x_effective_stride(const struct v9x_vbe_mode_summary *summary)
                : summary->bytes_per_scan_line;
 }
 
-v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
-                            v9x_u32 vram_bytes)
+v9x_u16 v9x_vbe_scan_admit(const struct v9x_vbe_scan_entry *entry,
+                           v9x_u32 vram_bytes)
 {
     const struct v9x_vbe_mode_summary *summary;
     v9x_u16 stride;
@@ -60,11 +60,29 @@ v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
     v9x_u32 blue;
 
     if (entry == 0) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_UNSUPPORTED;
     }
     summary = &entry->summary;
-    if (v9x_vbe_mode_summary_is_drivable(summary) == V9X_FALSE) {
-        return V9X_FALSE;
+    /*
+     * The drivability rules, decomposed so a refusal names the rule. The
+     * fields and order are v9x_vbe_mode_summary_is_drivable's, and the host
+     * suite pins admit == OK exactly where is_drivable and the rules below
+     * all pass, so the two cannot drift apart silently.
+     */
+    if ((summary->attributes & V9X_VBE_ATTR_SUPPORTED) == 0u ||
+        summary->width == 0u || summary->height == 0u ||
+        summary->bits_per_pixel == 0u || summary->bytes_per_scan_line == 0u) {
+        return V9X_VBE_ADMIT_UNSUPPORTED;
+    }
+    if ((summary->attributes & V9X_VBE_ATTR_LINEAR) == 0u) {
+        return V9X_VBE_ADMIT_NON_LINEAR;
+    }
+    if (summary->memory_model != V9X_VBE_MODEL_PACKED_PIXEL &&
+        summary->memory_model != V9X_VBE_MODEL_DIRECT_COLOR) {
+        return V9X_VBE_ADMIT_MEMORY_MODEL;
+    }
+    if (summary->phys_base < V9X_VBE_MIN_PHYS_BASE) {
+        return V9X_VBE_ADMIT_PHYS_BASE;
     }
     /*
      * The depths this driver can lay out: 8, 16 and 32.
@@ -80,16 +98,16 @@ v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
      */
     if (summary->bits_per_pixel != 8u && summary->bits_per_pixel != 16u &&
         summary->bits_per_pixel != 32u) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_DEPTH;
     }
     if (summary->width > V9X_MODE_MAX_DIMENSION ||
         summary->height > V9X_MODE_MAX_DIMENSION) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_GEOMETRY;
     }
 
     stride = v9x_effective_stride(summary);
     if (stride == 0u) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_STRIDE;
     }
     /*
      * The stride has to cover the pixels. A BIOS reporting a stride narrower
@@ -98,22 +116,30 @@ v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
      */
     if ((v9x_u32)stride <
         (v9x_u32)summary->width * (v9x_u32)(summary->bits_per_pixel / 8u)) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_STRIDE;
     }
 
     /* stride is already 16-bit, so only the product can overflow. */
     visible = (v9x_u32)stride * (v9x_u32)summary->height;
     if (vram_bytes != 0ul && visible > vram_bytes) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_VRAM;
     }
 
     /* 8 bpp is palettized and has no mask to express; every other depth must
      * have one, or the row could not be published to DirectDraw. */
     if (summary->bits_per_pixel != 8u &&
         v9x_vbe_masks_to_bits(summary, &red, &green, &blue) == V9X_FALSE) {
-        return V9X_FALSE;
+        return V9X_VBE_ADMIT_LAYOUT;
     }
-    return V9X_TRUE;
+    return V9X_VBE_ADMIT_OK;
+}
+
+v9x_u16 v9x_vbe_scan_accept(const struct v9x_vbe_scan_entry *entry,
+                            v9x_u32 vram_bytes)
+{
+    return v9x_vbe_scan_admit(entry, vram_bytes) == V9X_VBE_ADMIT_OK
+               ? V9X_TRUE
+               : V9X_FALSE;
 }
 
 /* Fill one table row and its masks from a scanned mode. */
@@ -165,12 +191,32 @@ static v9x_u16 v9x_row_precedes(const V9X_HW16_MODE *a,
     return a->height < b->height ? V9X_TRUE : V9X_FALSE;
 }
 
+/* Tally one admission outcome, when the caller asked for tallies at all. */
+static void v9x_count_reason(v9x_u16 *reason_counts, v9x_u16 reason)
+{
+    if (reason_counts != 0 && reason < V9X_VBE_ADMIT_REASON_COUNT) {
+        ++reason_counts[reason];
+    }
+}
+
 v9x_u16 v9x_vbe_build_mode_table(
     const V9X_HW16_MODE *baseline, v9x_u16 baseline_count,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
     v9x_u32 vram_bytes,
     V9X_HW16_MODE *table, struct v9x_mode_masks *masks,
     v9x_u16 capacity, v9x_u16 *dropped)
+{
+    return v9x_vbe_build_mode_table_ex(baseline, baseline_count,
+                                       scanned, scanned_count, vram_bytes, 0,
+                                       table, masks, capacity, dropped, 0);
+}
+
+v9x_u16 v9x_vbe_build_mode_table_ex(
+    const V9X_HW16_MODE *baseline, v9x_u16 baseline_count,
+    const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
+    v9x_u32 vram_bytes, v9x_vbe_distrust_fn distrust,
+    V9X_HW16_MODE *table, struct v9x_mode_masks *masks,
+    v9x_u16 capacity, v9x_u16 *dropped, v9x_u16 *reason_counts)
 {
     v9x_u16 count = 0u;
     v9x_u16 appended_from;
@@ -179,6 +225,11 @@ v9x_u16 v9x_vbe_build_mode_table(
 
     if (dropped != 0) {
         *dropped = 0u;
+    }
+    if (reason_counts != 0) {
+        for (index = 0u; index < V9X_VBE_ADMIT_REASON_COUNT; ++index) {
+            reason_counts[index] = 0u;
+        }
     }
     if (table == 0 || masks == 0 || capacity == 0u) {
         return 0u;
@@ -209,8 +260,17 @@ v9x_u16 v9x_vbe_build_mode_table(
         struct v9x_mode_masks mask;
         v9x_u16 existing;
         v9x_u16 at;
+        v9x_u16 reason;
 
-        if (v9x_vbe_scan_accept(&scanned[index], vram_bytes) == V9X_FALSE) {
+        reason = v9x_vbe_scan_admit(&scanned[index], vram_bytes);
+        if (reason != V9X_VBE_ADMIT_OK) {
+            v9x_count_reason(reason_counts, reason);
+            continue;
+        }
+        /* The family's distrust predicate can only narrow: it runs after the
+         * generic rules and its refusal carries its own reason. */
+        if (distrust != 0 && distrust(&scanned[index]) == V9X_TRUE) {
+            v9x_count_reason(reason_counts, V9X_VBE_ADMIT_KNOWN_DEFECT);
             continue;
         }
         v9x_row_from_scan(&scanned[index], &row, &mask);
@@ -230,13 +290,16 @@ v9x_u16 v9x_vbe_build_mode_table(
             table[existing].pitch = row.pitch;
             table[existing].vbe_mode = row.vbe_mode;
             masks[existing] = mask;
+            v9x_count_reason(reason_counts, V9X_VBE_ADMIT_DUPLICATE);
             continue;
         }
 
         if (count >= capacity) {
             ++lost;
+            v9x_count_reason(reason_counts, V9X_VBE_ADMIT_TABLE_FULL);
             continue;
         }
+        v9x_count_reason(reason_counts, V9X_VBE_ADMIT_OK);
 
         /* Insert into the appended region only, keeping it sorted. The
          * baseline block above it is deliberately left as the family wrote
@@ -257,6 +320,85 @@ v9x_u16 v9x_vbe_build_mode_table(
         *dropped = lost;
     }
     return count;
+}
+
+v9x_u16 v9x_vbe_publish_rows(
+    const V9X_HW16_MODE *table, v9x_u16 count, v9x_u16 baseline_rows,
+    const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
+    v9x_u32 vram_bytes, v9x_u16 scan_trustworthy,
+    v9x_u8 *publication, v9x_u16 *first_published)
+{
+    v9x_u16 index;
+    v9x_u16 published = 0u;
+    v9x_u16 first = 0u;
+    v9x_u16 hiding;
+
+    if (first_published != 0) {
+        *first_published = 0u;
+    }
+    if (table == 0 || publication == 0) {
+        return 0u;
+    }
+
+    /* Hiding needs a scan the caller vouches for and that says something. An
+     * absent, refused or empty scan contradicts nothing, so everything stays
+     * published exactly as the static path publishes it. */
+    hiding = (scan_trustworthy == V9X_TRUE && scanned != 0 &&
+              scanned_count != 0u)
+                 ? V9X_TRUE
+                 : V9X_FALSE;
+
+    for (index = 0u; index < count; ++index) {
+        v9x_u16 hide = V9X_FALSE;
+
+        if (hiding == V9X_TRUE && index < baseline_rows) {
+            /* A baseline row is scan-contradicted when no admitted record
+             * describes its geometry at its storage depth. Its slot, order
+             * and masks stay; only publication is withdrawn. */
+            v9x_u16 scan;
+
+            hide = V9X_TRUE;
+            for (scan = 0u; scan < scanned_count; ++scan) {
+                const struct v9x_vbe_mode_summary *summary =
+                    &scanned[scan].summary;
+
+                if (summary->width == table[index].width &&
+                    summary->height == table[index].height &&
+                    summary->bits_per_pixel == table[index].bits_per_pixel &&
+                    v9x_vbe_scan_accept(&scanned[scan], vram_bytes) ==
+                        V9X_TRUE) {
+                    hide = V9X_FALSE;
+                    break;
+                }
+            }
+        }
+        if (hide == V9X_TRUE) {
+            publication[index] = V9X_MODE_PUB_HIDE_SCAN;
+        } else {
+            publication[index] = V9X_MODE_PUB_PUBLISHED;
+            if (published == 0u) {
+                first = index;
+            }
+            ++published;
+        }
+    }
+
+    /* Nothing published is a defect, not a policy outcome: a trustworthy scan
+     * that admitted rows cannot contradict every one of them and the appended
+     * rows besides. Stand the whole table up rather than commit an empty
+     * offer. */
+    if (published == 0u) {
+        for (index = 0u; index < count; ++index) {
+            publication[index] = V9X_MODE_PUB_PUBLISHED;
+        }
+        published = count;
+        first = 0u;
+    }
+
+    if (first_published != 0) {
+        *first_published = first;
+    }
+    return published;
 }
 
 v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,

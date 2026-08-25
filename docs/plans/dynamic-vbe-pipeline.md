@@ -763,8 +763,12 @@ rendering remains on the static family table. The first drop clamps list-derived
 BIOS queries to 96 (enough for QEMU's measured 93 entries) and reports that
 truncation explicitly. Collection is enabled only for `vbe`; ATI, S3 and Matrox
 assemble it out. Local tree, dual-compiler host and all-family package gates are
-green. The QEMU guest comparison below is still the exit gate and has not been
-run, so Stage 1 is not yet complete. The diagnostic storage raises the Win16
+green. Exit-gate update (2026-08-25): the guest comparison has now been run and
+passed on two Windows 98 SE guests — the fresh local QEMU 4.2 std-vga VM and a
+UTM (Apple Silicon QEMU) VM at 10.0.1.250 — with all 64 cached records matching
+the DOS inventory fixture exactly and in list order, every absent record
+explained, and the cache-full truncation reported in the status flags. Stage 1
+is complete. The diagnostic storage raises the Win16
 DGROUP image to 2272 bytes; with the 1024-byte local heap the audited occupancy
 is 3296 of the 32768-byte limit, before Stage 2's runtime tables are added.
 
@@ -788,6 +792,23 @@ Exit gate: the guest dump matches the DOS inventory record-for-record; corrupt
 or truncated fixtures yield a valid baseline boot and an explicit reason.
 
 ### Stage 2 - runtime table consumed by GDI
+
+Implementation status (2026-08-25): implemented and guest-verified on the local
+QEMU 4.2 std-vga VM. `modes16.c` commits the transactional runtime table at
+load; `ddi.c` reads it through the shared macros with publication honoured in
+`v9x_find_mode`; the inventory file `C:\V9XMODES.INI` is written after a
+successful enable. The guest boot produced 46 rows (7 baseline + 39 dynamic),
+all published (hiding correctly disabled: the 64-record cache is truncated on
+this BIOS, so the trustworthiness gate refuses it), with the per-reason tally
+accounting for all 64 records (39 admitted, 18 24-bpp depth refusals, 7
+baseline duplicates). Dynamic modes 1152x864x16 and 1280x800x16 validated,
+enabled and survived live same-depth switching back to baseline 800x600x16; the
+GDI framebuffer test passed at the dynamic mode. The hiding, fallback and
+scan-disabled-equivalence rules are pinned by host tests
+(`test_publish_hides_contradicted_baseline`, `test_publish_fallback_rules`),
+since this BIOS cannot produce a trustworthy-but-contradicting scan; the GMA950
+netbook remains the hardware that will exercise hiding for real. DirectDraw
+(`dd16.c`) still publishes from the static table - that is Stage 3.
 
 - Add and link `modes16.c`, `vbe_modes.c` and their required parser objects.
 - Convert API v2 records to `v9x_vbe_scan_entry` values.

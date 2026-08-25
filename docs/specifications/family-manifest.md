@@ -43,6 +43,12 @@ its MODES capability, and its instruction signatures.
     Name = 'S3 ViRGE/DX 86C375'
     VendorId = '5333'          # four uppercase hex digits
     DeviceId = '8A01'
+    # Optional: eight uppercase hex digits (SSID+SVID as Windows prints it).
+    # When present, the generated INF model line leads with the
+    # SUBSYS-qualified hardware id and keeps the bare VEN&DEV id as the
+    # compatible id, because Win98 Have Disk matches HardwareIDs (always
+    # SUBSYS-qualified on PCI) and does not always consult CompatibleIDs.
+    # SubsystemId = '1200102B'
     DeviceDesc = 'Velocity9x S3 ViRGE/DX 86C375 (Phase 3 mode matrix)'
     Adapter = 'S3 ViRGE/DX 86C375'   # as written to C:\V9XHW.INI
     Modes = @(

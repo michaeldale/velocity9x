@@ -41,6 +41,17 @@
 #define V9X_VBE_CAP_RAMDAC_BLANK    ((v9x_u32)0x00000004ul)
 #define V9X_VBE_CAP_STEREO_SIGNAL   ((v9x_u32)0x00000008ul)
 
+/* ModeAttributes bits this driver cares about. */
+#define V9X_VBE_ATTR_SUPPORTED ((v9x_u16)0x0001u)
+#define V9X_VBE_ATTR_LINEAR    ((v9x_u16)0x0080u)
+
+/* MemoryModel values a DIB-engine surface can live in. */
+#define V9X_VBE_MODEL_PACKED_PIXEL ((v9x_u16)4u)
+#define V9X_VBE_MODEL_DIRECT_COLOR ((v9x_u16)6u)
+
+/* An aperture inside the first megabyte is real-mode memory, not a card. */
+#define V9X_VBE_MIN_PHYS_BASE ((v9x_u32)0x00100000ul)
+
 struct v9x_vbe_controller_summary {
     v9x_u16 version;            /* BCD; 0x0200 is VBE 2.0 */
     v9x_u32 total_memory_bytes; /* TotalMemory, 64 KiB units widened to bytes */

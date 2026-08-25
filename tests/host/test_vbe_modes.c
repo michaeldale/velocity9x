@@ -857,6 +857,191 @@ static void test_masks_to_bits(void)
     MODECHECK(v9x_vbe_masks_to_bits(0, &red, &green, &blue) == V9X_FALSE);
 }
 
+/* Every refusal names the rule it failed, and OK appears exactly where the
+ * boolean acceptor says yes. */
+static void test_admit_reasons(void)
+{
+    struct v9x_vbe_scan_entry entry;
+
+    MODECHECK(v9x_vbe_scan_admit(0, 0ul) == V9X_VBE_ADMIT_UNSUPPORTED);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_OK);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_TRUE);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.attributes = 0x0080u; /* linear but unsupported */
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_UNSUPPORTED);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.attributes = 0x0001u; /* supported but banked only */
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_NON_LINEAR);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.memory_model = 3u; /* planar */
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_MEMORY_MODEL);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.phys_base = 0x000a0000ul;
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_PHYS_BASE);
+
+    make_entry(&entry, 0x0112u, 640u, 480u, 24u, 1920u);
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_DEPTH);
+
+    make_entry(&entry, 0x0111u, 4096u, 480u, 16u, 8192u);
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_GEOMETRY);
+
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 640u); /* short stride */
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_STRIDE);
+
+    make_entry(&entry, 0x0117u, 1024u, 768u, 16u, 2048u);
+    MODECHECK(v9x_vbe_scan_admit(&entry, 1024ul * 1024ul) ==
+              V9X_VBE_ADMIT_VRAM);
+
+    make_entry(&entry, 0x0144u, 1024u, 768u, 32u, 4096u);
+    entry.summary.red_mask_size = 0u; /* direct colour, no red channel */
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_LAYOUT);
+    MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
+}
+
+/* One refusal from a family predicate, tallied under known-defect; the
+ * predicate cannot admit what the generic rules refused. */
+static v9x_u16 distrust_360_wide(const struct v9x_vbe_scan_entry *entry)
+{
+    return entry->summary.width == 360u ? V9X_TRUE : V9X_FALSE;
+}
+
+static void test_build_ex_reasons_and_distrust(void)
+{
+    struct v9x_vbe_scan_entry scanned[4];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u16 reasons[V9X_VBE_ADMIT_REASON_COUNT];
+    v9x_u16 dropped = 0xffffu;
+    v9x_u16 count;
+
+    make_entry(&scanned[0], 0x0111u, 640u, 480u, 16u, 1280u); /* merges */
+    make_entry(&scanned[1], 0x0190u, 1920u, 1080u, 16u, 3840u); /* appends */
+    make_entry(&scanned[2], 0x0180u, 360u, 240u, 16u, 720u);  /* distrusted */
+    make_entry(&scanned[3], 0x0112u, 640u, 480u, 24u, 1920u); /* depth */
+
+    count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
+                                        scanned, 4u, 0ul, distrust_360_wide,
+                                        table, masks, V9X_MODE_TABLE_MAX,
+                                        &dropped, reasons);
+    MODECHECK(count == BASELINE_SEVEN_COUNT + 1u);
+    MODECHECK(dropped == 0u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_OK] == 1u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_DUPLICATE] == 1u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_KNOWN_DEFECT] == 1u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_DEPTH] == 1u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_TABLE_FULL] == 0u);
+
+    /* Without the predicate, the 360-wide row is admitted: the predicate only
+     * narrows. */
+    count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
+                                        scanned, 4u, 0ul, 0,
+                                        table, masks, V9X_MODE_TABLE_MAX,
+                                        &dropped, reasons);
+    MODECHECK(count == BASELINE_SEVEN_COUNT + 2u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_OK] == 2u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_KNOWN_DEFECT] == 0u);
+}
+
+/* Publication: the GMA950 shape. A trustworthy scan that admits only two of
+ * the seven baseline geometries hides the other five; appended rows publish;
+ * fallback is the first published row. */
+static void test_publish_hides_contradicted_baseline(void)
+{
+    struct v9x_vbe_scan_entry scanned[3];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u8 publication[V9X_MODE_TABLE_MAX];
+    v9x_u16 first = 0xffffu;
+    v9x_u16 count;
+    v9x_u16 published;
+    v9x_u16 index;
+
+    make_entry(&scanned[0], 0x0101u, 640u, 480u, 8u, 640u);
+    make_entry(&scanned[1], 0x0111u, 640u, 480u, 16u, 1280u);
+    make_entry(&scanned[2], 0x0175u, 1280u, 768u, 16u, 2560u);
+
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 3u, 0ul,
+                                     table, masks, V9X_MODE_TABLE_MAX, 0);
+    MODECHECK(count == BASELINE_SEVEN_COUNT + 1u);
+
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 3u, 0ul, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(published == 3u);
+    MODECHECK(first == 0u); /* row zero (640x480x8) is alive */
+    MODECHECK(publication[0] == V9X_MODE_PUB_PUBLISHED);
+    MODECHECK(publication[4] == V9X_MODE_PUB_PUBLISHED); /* 640x480x16 */
+    MODECHECK(publication[1] == V9X_MODE_PUB_HIDE_SCAN); /* 800x600x8 */
+    MODECHECK(publication[3] == V9X_MODE_PUB_HIDE_SCAN); /* 640x400x8 */
+    MODECHECK(publication[count - 1u] == V9X_MODE_PUB_PUBLISHED); /* appended */
+
+    /* Same table, untrustworthy scan: everything published, exactly as
+     * today. */
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 3u, 0ul, V9X_FALSE,
+                                     publication, &first);
+    MODECHECK(published == count);
+    for (index = 0u; index < count; ++index) {
+        MODECHECK(publication[index] == V9X_MODE_PUB_PUBLISHED);
+    }
+
+    /* An empty cache contradicts nothing, even when trusted. */
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 0u, 0ul, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(published == count);
+    MODECHECK(first == 0u);
+}
+
+/* When even row zero is contradicted, fallback follows publication: the
+ * first published row leads, and a scan that would hide everything instead
+ * publishes everything. */
+static void test_publish_fallback_rules(void)
+{
+    struct v9x_vbe_scan_entry scanned[1];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u8 publication[V9X_MODE_TABLE_MAX];
+    v9x_u16 first = 0xffffu;
+    v9x_u16 count;
+    v9x_u16 published;
+
+    /* Only 800x600x8 survives the scan: row zero is contradicted and the
+     * fallback moves to the first published row. */
+    make_entry(&scanned[0], 0x0103u, 800u, 600u, 8u, 800u);
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 1u, 0ul,
+                                     table, masks, V9X_MODE_TABLE_MAX, 0);
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 1u, 0ul, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(published == 1u);
+    MODECHECK(first == 1u);
+    MODECHECK(publication[0] == V9X_MODE_PUB_HIDE_SCAN);
+    MODECHECK(publication[1] == V9X_MODE_PUB_PUBLISHED);
+
+    /* A scan whose only record is inadmissible would hide every row; the
+     * defect guard publishes the whole table instead. */
+    make_entry(&scanned[0], 0x0110u, 640u, 480u, 15u, 1280u);
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 1u, 0ul,
+                                     table, masks, V9X_MODE_TABLE_MAX, 0);
+    MODECHECK(count == BASELINE_SEVEN_COUNT);
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 1u, 0ul, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(published == count);
+    MODECHECK(first == 0u);
+    MODECHECK(publication[0] == V9X_MODE_PUB_PUBLISHED);
+}
+
 unsigned int v9x_run_vbe_modes_tests(void)
 {
     modes_failures = 0u;
@@ -872,5 +1057,9 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_overflow_is_bounded();
     test_dd_subset();
     test_masks_to_bits();
+    test_admit_reasons();
+    test_build_ex_reasons_and_distrust();
+    test_publish_hides_contradicted_baseline();
+    test_publish_fallback_rules();
     return modes_failures;
 }

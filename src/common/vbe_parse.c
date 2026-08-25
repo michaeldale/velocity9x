@@ -40,16 +40,9 @@
 #define V9X_VBE_MI_LIN_RSVD_MASK_SIZE  60u
 #define V9X_VBE_MI_LIN_RSVD_FIELD_POS  61u
 
-/* ModeAttributes bits this driver cares about. */
-#define V9X_VBE_ATTR_SUPPORTED ((v9x_u16)0x0001u)
-#define V9X_VBE_ATTR_LINEAR    ((v9x_u16)0x0080u)
-
-/* MemoryModel values a DIB-engine surface can live in. */
-#define V9X_VBE_MODEL_PACKED_PIXEL ((v9x_u16)4u)
-#define V9X_VBE_MODEL_DIRECT_COLOR ((v9x_u16)6u)
-
-/* An aperture inside the first megabyte is real-mode memory, not a card. */
-#define V9X_VBE_MIN_PHYS_BASE ((v9x_u32)0x00100000ul)
+/* V9X_VBE_ATTR_*, V9X_VBE_MODEL_* and V9X_VBE_MIN_PHYS_BASE moved to
+ * vbe_parse.h: v9x_vbe_scan_admit decomposes the drivability rules by field,
+ * so the field constants are contract, not implementation detail. */
 
 #define V9X_VBE_MIN_VERSION ((v9x_u16)0x0200u)
 

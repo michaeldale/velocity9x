@@ -1,4 +1,4 @@
-# Velocity9x family manifest: ATI Mach64 / Rage.
+﻿# Velocity9x family manifest: ATI Mach64 / Rage.
 #
 # One binary, two chips, dispatched at run time by PCI id - the shape the s3
 # family proved at phase 8. The chips are three years apart deliberately: the
@@ -135,6 +135,8 @@
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
+            @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
+            @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
             @{ Name = 'mobility_hw16'; Path = 'src\chipsets\ati\mobility\mobility_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }

@@ -1,4 +1,4 @@
-# Velocity9x family manifest: Matrox Millennium II.
+﻿# Velocity9x family manifest: Matrox Millennium II.
 #
 # Encodes what the -MatroxMillennium2 switch does today. This family ships as
 # a guarded drop-in candidate rather than an INF package: the physical machine
@@ -82,6 +82,8 @@
             # vbe16 parses 4F00h/4F01h answers through this, so every family
             # links it even where no hook asks the BIOS anything.
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
+            @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
+            @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
