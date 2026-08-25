@@ -211,8 +211,14 @@ v9x_u16 v9x_vbe_publish_rows(
  * ask for and what the driver accelerates; then 24 and 32 bpp by ascending
  * pixel area, so if the list has to be cut it keeps the modes most likely to be
  * usable. Stops at capacity.
+ *
+ * publication, when non-null, is the per-row byte array v9x_vbe_publish_rows
+ * filled: a row without the PUBLISHED bit is never selected, so DirectDraw's
+ * list can never advertise a geometry GDI would refuse to validate. Null means
+ * every row is published, which is the pre-publication behaviour.
  */
 v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
+                          const v9x_u8 *publication,
                           v9x_u16 *indices, v9x_u16 capacity);
 
 #endif /* VELOCITY9X_VBE_MODES_H */

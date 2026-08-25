@@ -697,7 +697,7 @@ static void test_qemu_stdvga_list(void)
      * DirectDraw now has to choose, which on this target it has never had to
      * do in a test before: 48 rows into 32 slots.
      */
-    chosen = v9x_vbe_dd_subset(table, count, indices, QEMU_DD_SLOTS);
+    chosen = v9x_vbe_dd_subset(table, count, 0, indices, QEMU_DD_SLOTS);
     MODECHECK(chosen == QEMU_DD_SLOTS);
 
     low_depth = 0u;
@@ -789,7 +789,7 @@ static void test_dd_subset(void)
     table[5].width = 1024u; table[5].height = 768u; table[5].bits_per_pixel = 24u;
     table[6].width =  800u; table[6].height = 600u; table[6].bits_per_pixel = 32u;
 
-    chosen = v9x_vbe_dd_subset(table, 7u, indices, 10u);
+    chosen = v9x_vbe_dd_subset(table, 7u, 0, indices, 10u);
     MODECHECK(chosen == 7u);
     /* 8/16 bpp first, in table order. */
     MODECHECK(indices[0] == 0u);
@@ -803,7 +803,7 @@ static void test_dd_subset(void)
     MODECHECK(indices[6] == 3u);
 
     /* Truncation keeps the low depths and the smallest high-colour modes. */
-    chosen = v9x_vbe_dd_subset(table, 7u, indices, 5u);
+    chosen = v9x_vbe_dd_subset(table, 7u, 0, indices, 5u);
     MODECHECK(chosen == 5u);
     MODECHECK(indices[3] == 4u);
     MODECHECK(indices[4] == 6u);
@@ -811,8 +811,8 @@ static void test_dd_subset(void)
         MODECHECK(indices[index] != 3u); /* the largest was cut */
     }
 
-    MODECHECK(v9x_vbe_dd_subset(table, 7u, indices, 0u) == 0u);
-    MODECHECK(v9x_vbe_dd_subset(0, 7u, indices, 10u) == 0u);
+    MODECHECK(v9x_vbe_dd_subset(table, 7u, 0, indices, 0u) == 0u);
+    MODECHECK(v9x_vbe_dd_subset(0, 7u, 0, indices, 10u) == 0u);
 }
 
 static void test_masks_to_bits(void)
@@ -1042,6 +1042,44 @@ static void test_publish_fallback_rules(void)
     MODECHECK(publication[0] == V9X_MODE_PUB_PUBLISHED);
 }
 
+/* The DirectDraw subset never selects a hidden row: its list is a subset of
+ * GDI's *published* list by construction. */
+static void test_dd_subset_publication(void)
+{
+    struct v9x_vbe_scan_entry scanned[2];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u8 publication[V9X_MODE_TABLE_MAX];
+    v9x_u16 indices[V9X_MODE_TABLE_MAX];
+    v9x_u16 first = 0u;
+    v9x_u16 count;
+    v9x_u16 chosen;
+    v9x_u16 index;
+
+    /* Only two baseline geometries survive the scan. */
+    make_entry(&scanned[0], 0x0101u, 640u, 480u, 8u, 640u);
+    make_entry(&scanned[1], 0x0111u, 640u, 480u, 16u, 1280u);
+    count = v9x_vbe_build_mode_table(baseline_seven, BASELINE_SEVEN_COUNT,
+                                     scanned, 2u, 0ul,
+                                     table, masks, V9X_MODE_TABLE_MAX, 0);
+    (void)v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                               scanned, 2u, 0ul, V9X_TRUE,
+                               publication, &first);
+
+    chosen = v9x_vbe_dd_subset(table, count, publication, indices,
+                               V9X_MODE_TABLE_MAX);
+    MODECHECK(chosen == 2u);
+    for (index = 0u; index < chosen; ++index) {
+        MODECHECK((publication[indices[index]] &
+                   V9X_MODE_PUB_PUBLISHED) != 0u);
+    }
+
+    /* Null publication keeps the pre-publication behaviour: every row. */
+    chosen = v9x_vbe_dd_subset(table, count, 0, indices,
+                               V9X_MODE_TABLE_MAX);
+    MODECHECK(chosen == count);
+}
+
 unsigned int v9x_run_vbe_modes_tests(void)
 {
     modes_failures = 0u;
@@ -1061,5 +1099,6 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_build_ex_reasons_and_distrust();
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
+    test_dd_subset_publication();
     return modes_failures;
 }

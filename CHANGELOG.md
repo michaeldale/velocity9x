@@ -64,6 +64,23 @@ published, reason tally accounting for all 64 cached records; live switches
 into dynamic 1152x864x16 and 1280x800x16 and back to baseline 800x600x16, with
 the GDI framebuffer test passing at the dynamic mode.
 
+Stage 3 - DirectDraw publication (2026-08-26):
+
+- **`dd16.c` publishes the runtime table.** Rows and masks come from
+  `modes16.c`'s committed table - the BIOS's own masks for a scanned row -
+  published rows only, so DirectDraw's list is a subset of GDI's published
+  list by construction. `v9x_vbe_dd_subset` gained a publication parameter (a
+  hidden row is never selected; host-tested), and is used when more than the
+  32 shared-block slots are published: every 8/16-bpp row in table order,
+  then 32 bpp by ascending area. The active desktop row is guaranteed a slot,
+  and the fill re-runs on every driver-object refresh so a live mode switch
+  cannot strand the desktop off the list.
+- Guest-verified: the DirectDraw probe completed with desktops at 8, 16 and
+  32 bpp (the 32-bpp desktop on a dynamic row) - SetDisplayMode across
+  depths, primary at the runtime row's exact pitch, pixel-verified blits,
+  flips and RestoreDisplayMode - with the published list matching the runtime
+  table order exactly and no 24-bpp row anywhere.
+
 Stage 0 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md):
 contracts and fixtures only. No driver behaviour changes — every image this
 builds is the same image as before, which is the stage's own exit condition.

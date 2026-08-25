@@ -13,6 +13,7 @@
 #undef SetCursor
 
 #include "velocity9x/hw16.h"
+#include "velocity9x/vbe_modes.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 
 extern void v9x_serial_write(const char FAR *message);
@@ -95,35 +96,99 @@ extern WORD v9x_dd_disable_count(void);
 /* enable16.c: VBE-reported VRAM, 0 unless the tier-0 path ran. */
 extern DWORD v9x_vbe_vram_bytes;
 
+/* modes16.c: the committed runtime table, its parallel masks and the per-row
+ * publication bytes. */
+extern V9X_HW16_MODE v9x_runtime_modes[];
+extern struct v9x_mode_masks v9x_runtime_masks[];
+extern v9x_u8 v9x_runtime_publication[];
+extern WORD v9x_runtime_count;
+extern WORD v9x_modes16_is_published(WORD index);
+
 /*
- * Publish the family's mode table to DirectDraw.
+ * Publish the runtime mode table to DirectDraw.
  *
- * This lives on the 16-bit side because this is the side that knows which
- * family it is: one V9XHAL.DLL ships to all of them, and the table it used to
- * carry was a hardcoded seven rows that the Matrox build (one mode) and every
- * future 24/32-bpp row would both have contradicted.
+ * This lives on the 16-bit side because this is the side that owns the table:
+ * one V9XHAL.DLL ships to every family, and the rows here are whatever
+ * modes16.c committed at load - the family baseline alone on a non-scanning
+ * build, or the baseline merged with the BIOS's own list.
  *
- * The masks are stated here rather than taken from the mode table, which has
- * no mask fields. 8 bpp is palettized and carries none; 16 bpp is 5:6:5, the
- * only High Color layout the driver sets; 24 and 32 bpp are byte-per-channel
- * with blue in the low byte, which is how a VBE direct-colour mode is laid out
- * and what the DIB engine assumes from biBitCount.
+ * Only published rows are offered, so this list is a subset of GDI's
+ * published list by construction and can never advertise a geometry
+ * ValidateMode would refuse. The masks come from the parallel runtime mask
+ * table - the BIOS's own answer for a scanned row, the canonical layout for a
+ * baseline one - so DirectDraw describes exactly the surface the DIB engine
+ * draws. 8 bpp is palettized and carries none.
  *
- * Capacity is bounded: a family listing more rows than the shared block can
- * carry publishes the first V9X_DD_MODE_COUNT of them and DirectDraw simply
- * sees fewer modes than GDI does. That cannot happen with any table shipping
- * today and is why the count is written rather than assumed.
+ * Capacity is bounded: when more rows are published than the shared block
+ * holds (QEMU publishes 46 against 32 slots), v9x_vbe_dd_subset chooses -
+ * every 8/16-bpp row in table order, then 32 bpp by ascending area. The
+ * active desktop row is then guaranteed a slot: if the subset cut it, it
+ * replaces the last (lowest-priority) selection, because a DirectDraw list
+ * without the mode the primary surface is in is useless to every caller.
+ *
+ * Refresh remains the 60 Hz convention, recorded as such in the inventory.
  */
 static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
 {
-    WORD count = v9x_hw16.mode_count;
+    /* Static, not stack: 64 words is more than the Win16 stack owes us. */
+    static v9x_u16 chosen_rows[V9X_MODE_TABLE_MAX];
+    WORD chosen;
     WORD index;
+    WORD active_width;
+    WORD active_height;
+    WORD active_bpp;
+    WORD active_pitch;
+    WORD have_active;
 
-    if (count > (WORD)V9X_DD_MODE_COUNT) {
-        count = (WORD)V9X_DD_MODE_COUNT;
+    chosen = 0u;
+    for (index = 0u; index < v9x_runtime_count &&
+                     chosen < (WORD)V9X_MODE_TABLE_MAX; ++index) {
+        if (v9x_modes16_is_published(index) != 0u) {
+            chosen_rows[chosen++] = index;
+        }
     }
-    for (index = 0u; index < count; ++index) {
-        const V9X_HW16_MODE *source = &v9x_hw16.modes[index];
+    if (chosen > (WORD)V9X_DD_MODE_COUNT) {
+        chosen = v9x_vbe_dd_subset(v9x_runtime_modes, v9x_runtime_count,
+                                   v9x_runtime_publication, chosen_rows,
+                                   (v9x_u16)V9X_DD_MODE_COUNT);
+    }
+
+    /* The active desktop row must be present. v9x_dd_active_mode is gated on
+     * an enabled PDEVICE; before the first Enable there is no desktop row to
+     * guarantee and the ordinary selection stands. */
+    have_active = v9x_dd_active_mode(&active_width, &active_height,
+                                     &active_bpp, &active_pitch);
+    if (have_active != 0u && chosen != 0u) {
+        WORD present = 0u;
+
+        for (index = 0u; index < chosen; ++index) {
+            const V9X_HW16_MODE *row = &v9x_runtime_modes[chosen_rows[index]];
+
+            if (row->width == active_width && row->height == active_height &&
+                row->bits_per_pixel == active_bpp) {
+                present = 1u;
+                break;
+            }
+        }
+        if (present == 0u) {
+            for (index = 0u; index < v9x_runtime_count; ++index) {
+                const V9X_HW16_MODE *row = &v9x_runtime_modes[index];
+
+                if (v9x_modes16_is_published(index) != 0u &&
+                    row->width == active_width &&
+                    row->height == active_height &&
+                    row->bits_per_pixel == active_bpp) {
+                    chosen_rows[chosen - 1u] = index;
+                    break;
+                }
+            }
+        }
+    }
+
+    for (index = 0u; index < chosen; ++index) {
+        const V9X_HW16_MODE *source = &v9x_runtime_modes[chosen_rows[index]];
+        const struct v9x_mode_masks *layout =
+            &v9x_runtime_masks[chosen_rows[index]];
         V9X_DDHALMODEINFO FAR *mode = &shared->modes[index];
 
         mode->dwWidth = (DWORD)source->width;
@@ -137,19 +202,14 @@ static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
             mode->dwRBitMask = 0ul;
             mode->dwGBitMask = 0ul;
             mode->dwBBitMask = 0ul;
-        } else if (source->bits_per_pixel == 16u) {
-            mode->wFlags = 0u;
-            mode->dwRBitMask = 0x0000f800ul;
-            mode->dwGBitMask = 0x000007e0ul;
-            mode->dwBBitMask = 0x0000001ful;
         } else {
             mode->wFlags = 0u;
-            mode->dwRBitMask = 0x00ff0000ul;
-            mode->dwGBitMask = 0x0000ff00ul;
-            mode->dwBBitMask = 0x000000fful;
+            mode->dwRBitMask = layout->red;
+            mode->dwGBitMask = layout->green;
+            mode->dwBBitMask = layout->blue;
         }
     }
-    shared->mode_count = (DWORD)count;
+    shared->mode_count = (DWORD)chosen;
 }
 
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
@@ -359,6 +419,10 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
         return 0u;
     }
     v9x_dd_trace_event(V9X_TRACE_DD16_CREATEOBJECT, (DWORD)reset);
+    /* Refill on every driver-object refresh, not just at allocation: a live
+     * mode switch can move the desktop onto a row the previous subset cut,
+     * and the fill is what guarantees the active row a slot. */
+    v9x_dd_fill_modes(v9x_dd_shared);
     v9x_dd_refresh_framebuffer();
     v9x_dd_refresh_info();
     if (v9x_dd_shared->driver_init_done == 0ul) {

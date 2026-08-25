@@ -402,6 +402,7 @@ v9x_u16 v9x_vbe_publish_rows(
 }
 
 v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
+                          const v9x_u8 *publication,
                           v9x_u16 *indices, v9x_u16 capacity)
 {
     v9x_u16 chosen = 0u;
@@ -413,6 +414,10 @@ v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
 
     /* 8 and 16 bpp, in table order. */
     for (index = 0u; index < count && chosen < capacity; ++index) {
+        if (publication != 0 &&
+            (publication[index] & V9X_MODE_PUB_PUBLISHED) == 0u) {
+            continue;
+        }
         if (table[index].bits_per_pixel == 8u ||
             table[index].bits_per_pixel == 16u) {
             indices[chosen++] = index;
@@ -433,6 +438,10 @@ v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
             v9x_u16 seen;
             v9x_u16 already = V9X_FALSE;
 
+            if (publication != 0 &&
+                (publication[index] & V9X_MODE_PUB_PUBLISHED) == 0u) {
+                continue;
+            }
             if (table[index].bits_per_pixel != 24u &&
                 table[index].bits_per_pixel != 32u) {
                 continue;

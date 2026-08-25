@@ -831,6 +831,23 @@ wave 1 gate in the verification matrix belongs to this stage.
 
 ### Stage 3 - DirectDraw publication
 
+Implementation status (2026-08-26): implemented and guest-verified on the local
+QEMU 4.2 std-vga VM. `v9x_dd_fill_modes` sources rows and masks from the
+runtime table, offers published rows only, uses `v9x_vbe_dd_subset` (now
+publication-aware) when more than 32 are published - QEMU publishes 46, and
+the chosen 32 are every 8/16-bpp row in table order plus the smallest 32-bpp
+rows - and guarantees the active desktop row a slot; the fill re-runs on every
+driver-object refresh so a live mode switch cannot strand the desktop off the
+list. The DirectDraw probe reported `Result=COMPLETE` with desktops at 8, 16
+and 32 bpp (the 32-bpp desktop on a dynamic row): SetDisplayMode across
+depths, primary creation with the runtime row's exact pitch, pixel-verified
+CPU blits and copies, flips and RestoreDisplayMode all clean; the active
+surface's pitch and 5:6:5 masks matched the published row exactly, and no
+24-bpp row appears. `FlipPixelOk=0` remains the known, separately tracked GDI
+readback result. One observation for the record: DDRAW's merged GBL reports
+`dwNumModes=33` against the driver's 32 - the extra entry is DDRAW's own
+merge, not the driver's table, whose count validation is unchanged.
+
 - Publish the runtime subset and its real masks from `dd16.c`.
 - Guarantee inclusion of the active desktop row.
 - Verify the 32-bit HAL rejects zero/over-capacity counts.

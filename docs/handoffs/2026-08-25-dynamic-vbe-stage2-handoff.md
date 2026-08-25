@@ -90,13 +90,24 @@ mini-VDD counts `l=92` listed on QEMU 4.2 where the DOS tool counted 93 (the
 UTM BIOS lists 93 and matched too); every record still matches, the counter
 difference is unexplained and worth five minutes someday.
 
+## Stage 3 addendum (2026-08-26)
+
+Stage 3 is done in the following commit: `dd16.c` publishes the runtime
+table's published rows with their real masks, subsetting 46 down to 32 via
+the now publication-aware `v9x_vbe_dd_subset`, guaranteeing the active
+desktop row, and refilling on every driver-object refresh. Guest evidence in
+`build\vm-clean\stage3-v9xdd*.ini`: the DirectDraw probe `Result=COMPLETE`
+with 8/16/32-bpp desktops (32 bpp on a dynamic row), SetDisplayMode across
+depths, primary/blits/flips/restore clean, exact pitch and 5:6:5 masks.
+`FlipPixelOk=0` stays the known tracked result; DDRAW's merged GBL reports
+33 modes against the driver's 32 (DDRAW-side merge, recorded in the plan).
+The guest runs the stage3 build and was left at 800x600x16.
+
 ## Known items and next steps
 
-1. **Stage 3 — DirectDraw publication**: `dd16.c` still reads
-   `v9x_hw16.modes` and depth-derived masks. Repoint to
-   `v9x_runtime_modes`/`v9x_runtime_masks` with `v9x_vbe_dd_subset` (the
-   runtime table now exceeds 32 rows on QEMU: 46), guarantee the active
-   desktop row, and exercise DirectDraw at 8/16/32 bpp per the plan.
+1. ~~Stage 3 — DirectDraw publication~~ — done, see addendum above. Next is
+   Stage 4 (native Display Properties synchronization via `v9xsetp.dll`'s
+   `V9xSyncModes`) per the plan.
 2. **Hiding on real hardware**: the GMA950 netbook (MICHAEL-NETBOOK) is the
    machine whose scan will actually contradict baseline rows; the host tests
    pin the rule until then.
