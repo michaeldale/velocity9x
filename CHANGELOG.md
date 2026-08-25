@@ -4,7 +4,16 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.5.0 - 2026-08-26
+
+The dynamic VBE pipeline: the driver stops trusting a hand-written mode list
+and starts asking the video BIOS, with every answer validated on the host
+before a guest ever runs it. On the generic VESA family this releases 46
+modes on QEMU where the baseline named 7, native Display Properties follows
+along, and the panel's EDID chooses the fallback mode. Also in this release:
+the settings report tells the runtime-table story, INSTALL.TXT is generated
+per family, and the INF leads with the SUBSYS-qualified hardware id where the
+family declares one.
 
 Stages 1 and 2 of [the dynamic VBE pipeline](docs/plans/dynamic-vbe-pipeline.md)
 are guest-verified. Stage 1's exit gate passed on 2026-08-25 on two Windows 98 SE

@@ -12,7 +12,7 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.4.4** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.5.0** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **This is an engineering bring-up driver, not a release driver.** Most of its
 > development and testing happens under [86Box](https://86box.net/); as of

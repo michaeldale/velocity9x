@@ -287,6 +287,70 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                    "Windows DIB Engine (software GDI)");
     }
 
+    /*
+     * The runtime mode table, from the validated inventory the driver writes
+     * after a successful enable. An absent or torn inventory reads as the
+     * static list rather than as partial numbers: Complete=1 is the same
+     * sentinel the registry synchronizer requires.
+     */
+    {
+        char table_line[96];
+        DWORD rows = 0ul;
+        DWORD published = 0ul;
+
+        status->dynamic_modes[0] = '\0';
+        if (GetPrivateProfileIntA("Velocity9xModes", "Complete", 0,
+                                  "C:\\V9XMODES.INI") == 1 &&
+            GetPrivateProfileStringA("Velocity9xModes", "Table", "",
+                                     table_line, sizeof(table_line),
+                                     "C:\\V9XMODES.INI") != 0ul) {
+            /* "rows=N published=N first=N dropped=N": two bounded fields. */
+            const char *at = table_line;
+            DWORD out = 0ul;
+            int field = 0;
+
+            while (*at != '\0' && field < 2) {
+                if (at[0] == '=' && at > table_line) {
+                    const char *cursor = at + 1;
+
+                    out = 0ul;
+                    while (*cursor >= '0' && *cursor <= '9') {
+                        out = out * 10ul + (DWORD)(*cursor - '0');
+                        ++cursor;
+                    }
+                    if (field == 0) {
+                        rows = out;
+                    } else {
+                        published = out;
+                    }
+                    ++field;
+                    at = cursor;
+                    continue;
+                }
+                ++at;
+            }
+        }
+        if (rows != 0ul && published != 0ul && published <= rows) {
+            v9x_append_uint(status->dynamic_modes,
+                            sizeof(status->dynamic_modes), (UINT)published);
+            v9x_append(status->dynamic_modes, sizeof(status->dynamic_modes),
+                       " published");
+            if (published < rows) {
+                v9x_append(status->dynamic_modes,
+                           sizeof(status->dynamic_modes), ", ");
+                v9x_append_uint(status->dynamic_modes,
+                                sizeof(status->dynamic_modes),
+                                (UINT)(rows - published));
+                v9x_append(status->dynamic_modes,
+                           sizeof(status->dynamic_modes),
+                           " hidden (scan-contradicted)");
+            }
+        } else {
+            v9x_append(status->dynamic_modes, sizeof(status->dynamic_modes),
+                       "Static mode list (no runtime inventory)");
+        }
+    }
+
     GetPrivateProfileStringA("Velocity9x", "Stage", "not recorded",
                              status->driver_stage,
                              sizeof(status->driver_stage),
@@ -362,7 +426,53 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     v9x_append(status->report, sizeof(status->report),
                status->mode_switching);
     v9x_append(status->report, sizeof(status->report),
-        "\r\nSupported modes: " V9X_MODES_SUMMARY
+        "\r\nBaseline modes: " V9X_MODES_SUMMARY
+        "\r\nRuntime modes: ");
+    v9x_append(status->report, sizeof(status->report), status->dynamic_modes);
+
+    /* The rest of the runtime-table story, verbatim from the inventory and
+     * the synchronizer report: scan state and counts, per-reason drop tally,
+     * the panel's EDID recommendation, and the generation the registry was
+     * last synchronized against - so a stale Settings page is identifiable
+     * rather than mysterious. */
+    {
+        char line[112];
+
+        GetPrivateProfileStringA("Velocity9xModes", "Scan", "not collected",
+                                 line, sizeof(line), "C:\\V9XMODES.INI");
+        v9x_append(status->report, sizeof(status->report), "\r\nMode scan: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xModes", "Reasons", "none",
+                                 line, sizeof(line), "C:\\V9XMODES.INI");
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nDrop reasons: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xModes", "Recommendation", "none",
+                                 line, sizeof(line), "C:\\V9XMODES.INI");
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nEDID recommendation: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xModes", "Generation", "0",
+                                 line, sizeof(line), "C:\\V9XMODES.INI");
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nInventory generation: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xSync", "Status", "never ran",
+                                 line, sizeof(line), "C:\\V9XSYNC.INI");
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nRegistry sync: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xSync", "Generation", "",
+                                 line, sizeof(line), "C:\\V9XSYNC.INI");
+        if (line[0] != '\0') {
+            v9x_append(status->report, sizeof(status->report),
+                       " (generation ");
+            v9x_append(status->report, sizeof(status->report), line);
+            v9x_append(status->report, sizeof(status->report), ")");
+        }
+    }
+
+    v9x_append(status->report, sizeof(status->report),
         "\r\nRendering: ");
     v9x_append(status->report, sizeof(status->report), status->rendering);
     v9x_append(status->report, sizeof(status->report), "\r\nDirectDraw: ");

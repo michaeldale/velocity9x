@@ -26,7 +26,10 @@ typedef struct v9x_settings_status {
     int live_mode_switching;
     int hardware_acceleration;
     int live_depth_switching;
-    char report[1024];
+    /* The runtime mode table's story, from C:\V9XMODES.INI: published and
+     * hidden counts, or the static-list statement when no inventory exists. */
+    char dynamic_modes[128];
+    char report[1536];
 } V9X_SETTINGS_STATUS;
 
 unsigned long v9x_settings_string_length(const char *text);
