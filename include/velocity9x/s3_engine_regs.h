@@ -78,5 +78,40 @@
 #define V9X_VIRGE_COMMAND             0x0000a500ul
 #define V9X_VIRGE_RECT_WH             0x0000a504ul
 #define V9X_VIRGE_RECT_DEST_XY        0x0000a50cul
+/* Screen-to-screen BitBLT is command 0 in bits 31:27, so the source is read
+ * from display memory when neither the mono-source nor image-data-source bit
+ * is set. The stride register carries the destination stride in its high word
+ * and the source stride in its low word; both are masked to 0xff8 by the
+ * hardware, and the surface bases to an 8-byte boundary. */
+#define V9X_VIRGE_SRC_BASE            0x0000a4d4ul
+#define V9X_VIRGE_RECT_SRC_XY         0x0000a508ul
+#define V9X_VIRGE_STRIDE_MASK            0x00000ff8ul
+#define V9X_VIRGE_COORD_MAX                    2047ul
+
+/* SUBSYS_STAT: a FIFO free-slot count and an engine-idle bit. */
+#define V9X_VIRGE_STATUS_FIFO_SHIFT             8u
+#define V9X_VIRGE_STATUS_FIFO_MASK       0x00001f00ul
+#define V9X_VIRGE_STATUS_IDLE            0x00002000ul
+
+/*
+ * CMD_SET fields. The ROP256 byte occupies bits 24:17, which is why both ROP
+ * constants are a byte shifted left by 17 - a GDI Rop's high word carries the
+ * same ROP256 code, so bits 24:17 take it unchanged.
+ */
+#define V9X_VIRGE_CMD_DRAW_ENABLE        0x00000020ul
+#define V9X_VIRGE_CMD_MONO_PATTERN       0x00000100ul
+#define V9X_VIRGE_CMD_ROP_SHIFT                  17
+#define V9X_VIRGE_CMD_ROP_PATCOPY        (0x000000f0ul << 17)
+#define V9X_VIRGE_CMD_ROP_SRCCOPY        (0x000000ccul << 17)
+#define V9X_VIRGE_CMD_X_POSITIVE         0x02000000ul
+#define V9X_VIRGE_CMD_Y_POSITIVE         0x04000000ul
+
+/*
+ * CR66 bit 1 is the ViRGE/DX graphics-engine reset the Windows 98 S3 sample
+ * uses, and the only recovery either bitness has. The Trio64 has none, which
+ * is why this is a ViRGE constant and not a family one.
+ */
+#define V9X_VIRGE_CR66_ENGINE_RESET            0x02u
+#define V9X_VIRGE_CRTC_CR66                    0x66u
 
 #endif

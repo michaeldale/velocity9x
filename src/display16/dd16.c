@@ -15,6 +15,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "gdi_accel.h"
 
 extern void v9x_serial_write(const char FAR *message);
 extern LONG FAR PASCAL V9xDibControlCall(LPVOID device, WORD function,
@@ -645,11 +646,43 @@ void FAR PASCAL V9xDdInvalidate(void)
 
 #endif /* DirectDraw targets */
 
+/*
+ * The two GDI acceleration escapes.
+ *
+ * Served on every family, including one with no DirectDraw HAL at all, and so
+ * deliberately outside the target guard below: GDI acceleration is a display
+ * driver service, its code links into all four binaries, and its counters are
+ * the only evidence that a primitive fired rather than declined. A harness
+ * that could not read them on an engine-less family could not tell "declined
+ * correctly" from "never reached", which is the whole failure mode the /accel
+ * phase exists to detect.
+ */
+static LONG v9x_gdi_command(V9X_DCICMD FAR *command, LPVOID output)
+{
+    switch (command->dwCommand) {
+    case V9X_GDIGETSTATS:
+        return v9x_gdi_accel_stats(output) != 0u ? 1 : 0;
+    case V9X_GDIFAULTINJECT:
+        return v9x_gdi_accel_fault_inject(command->dwParam1) != 0u ? 1 : 0;
+    default:
+        return 0;
+    }
+}
+
 LONG __loadds FAR PASCAL Control(LPVOID device,
                                  WORD function,
                                  LPVOID input,
                                  LPVOID output)
 {
+    if (function == V9X_DCICOMMAND && input != 0) {
+        V9X_DCICMD FAR *command = (V9X_DCICMD FAR *)input;
+
+        if (command->dwVersion == V9X_DD_VERSION &&
+            (command->dwCommand == V9X_GDIGETSTATS ||
+             command->dwCommand == V9X_GDIFAULTINJECT)) {
+            return v9x_gdi_command(command, output);
+        }
+    }
 #ifndef V9X_TARGET_MATROX_MILLENNIUM2
     if (function == V9X_QUERYESCSUPPORT && input != 0) {
         if (*(WORD FAR *)input == V9X_DCICOMMAND) {

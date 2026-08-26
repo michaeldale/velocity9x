@@ -88,27 +88,15 @@
 #define V9X_VIRGE_3D_CMD_TEX_MODULATE   0x00008000ul
 #define V9X_VIRGE_3D_CMD_TEXTURE_WRAP   0x04000000ul
 
-#define V9X_VIRGE_STATUS_FIFO_SHIFT             8u
-#define V9X_VIRGE_STATUS_FIFO_MASK       0x00001f00ul
-#define V9X_VIRGE_STATUS_IDLE            0x00002000ul
+/*
+ * Bounded 32-bit engine waits. Deliberately NOT in the shared header: these
+ * are the flat HAL's own calibration, measured against a flat-model spin, and
+ * the 16-bit GDI path keeps its own limits in src\display16\gdi_accel.c.
+ * Sharing one number between two loops that do not cost the same would make
+ * one of them wrong without saying so.
+ */
 #define V9X_VIRGE_FIFO_SPIN_LIMIT        0x00200000ul
 #define V9X_VIRGE_IDLE_SPIN_LIMIT        0x00400000ul
-
-#define V9X_VIRGE_CMD_DRAW_ENABLE        0x00000020ul
-#define V9X_VIRGE_CMD_MONO_PATTERN       0x00000100ul
-#define V9X_VIRGE_CMD_ROP_PATCOPY        (0x000000f0ul << 17)
-#define V9X_VIRGE_CMD_ROP_SRCCOPY        (0x000000ccul << 17)
-#define V9X_VIRGE_CMD_X_POSITIVE         0x02000000ul
-#define V9X_VIRGE_CMD_Y_POSITIVE         0x04000000ul
-/* Screen-to-screen BitBLT is command 0 in bits 31:27, so the source is read
- * from display memory when neither the mono-source nor image-data-source bit
- * is set. The stride register carries the destination stride in its high word
- * and the source stride in its low word; both are masked to 0xff8 by the
- * hardware, and the surface bases to an 8-byte boundary. */
-#define V9X_VIRGE_SRC_BASE            0x0000a4d4ul
-#define V9X_VIRGE_RECT_SRC_XY         0x0000a508ul
-#define V9X_VIRGE_STRIDE_MASK            0x00000ff8ul
-#define V9X_VIRGE_COORD_MAX                    2047ul
 
 /*
  * Port I/O and FPU primitives.

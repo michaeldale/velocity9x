@@ -52,6 +52,22 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * without needing the hardware to actually hang. See fault_inject below. */
 #define V9X_DDFAULTINJECT        0x56394649ul /* 'V9FI' */
 
+/*
+ * Project-private DCICOMMANDs for the 16-bit GDI acceleration path
+ * (docs\plans\gdi-acceleration.md). They are answered by src\display16, not by
+ * the HAL, and are served on every family - including one with no DirectDraw
+ * HAL at all - because GDI acceleration is a display-driver service and its
+ * counters are the only evidence that a primitive fired.
+ *
+ * V9X_GDIGETSTATS copies a V9X_GDI_STATS to the output buffer.
+ * V9X_GDIFAULTINJECT arms the GDI bounded waits' fault injector with dwParam1,
+ * mirroring V9X_DDFAULTINJECT: an armed count is consumed by production waits
+ * falling into their existing timeout tail, so the injector drives the
+ * shipping recovery path rather than a parallel test one.
+ */
+#define V9X_GDIGETSTATS          0x56394753ul /* 'V9GS' */
+#define V9X_GDIFAULTINJECT       0x56394749ul /* 'V9GI' */
+
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul
 #define V9X_DDHAL_DRIVER_HANDLED     0x00000001ul
@@ -1154,6 +1170,70 @@ typedef struct v9x_dd_trace_snapshot {
     V9X_DD_TRACE trace;
 } V9X_DD_TRACE_SNAPSHOT;
 
+/*
+ * V9X_GDIGETSTATS output: everything the /accel harness needs to decide
+ * whether an accelerated primitive actually ran.
+ *
+ * The `advertised` and `enabled` pair is the whole point. A build that
+ * compiles a primitive advertises it; a build (or a SYSTEM.INI key) that turns
+ * it on enables it. The harness fails when a primitive is advertised and
+ * enabled and its counter is nonetheless zero - which is the anti-vacuous-pass
+ * check, and the check the ati package would have needed
+ * (docs\issues\2026-08-26-ati-package-cannot-enable.md).
+ *
+ * decline_* is not decoration: when the zero-counter check fires, the decline
+ * tallies are what say which gate ate every operation.
+ */
+#define V9X_GDI_PRIM_FILL           0x00000001ul
+#define V9X_GDI_PRIM_COPY           0x00000002ul
+#define V9X_GDI_PRIM_OVERLAP        0x00000004ul
+
+typedef struct v9x_gdi_stats {
+    DWORD dwSize;
+    DWORD abi;
+    /* Primitives this binary contains code for. */
+    DWORD advertised;
+    /* Of those, the ones the compile-time defaults and SYSTEM.INI left on. */
+    DWORD enabled;
+    DWORD engine_type;          /* V9X_DD_ENGINE_TYPE_*, 0 = no engine  */
+    DWORD threshold;            /* minimum accelerated pixel count      */
+    DWORD calls;                /* BitBlt entries                       */
+    DWORD declines;             /* forwarded to DIB_BitBlt              */
+    DWORD fills;                /* solid fills issued to the engine     */
+    DWORD copies;               /* screen-to-screen copies issued       */
+    DWORD idle_timeouts;
+    DWORD fifo_timeouts;
+    DWORD resets;
+    DWORD poisoned;             /* 1 once the session-long latch is set */
+    DWORD fault_inject;         /* armed injections still unconsumed    */
+    DWORD drains;               /* BeginAccess slow-path engine drains   */
+    /* Decline tallies, in gate order. */
+    DWORD decline_disabled;
+    DWORD decline_poisoned;
+    DWORD decline_not_screen;
+    DWORD decline_busy;
+    DWORD decline_palette_xlat;
+    DWORD decline_depth;
+    DWORD decline_rop;
+    DWORD decline_geometry;
+    DWORD decline_threshold;
+    DWORD decline_engine;
+    /*
+     * The last operation the dispatcher accepted, for diagnosing a wrong-pixel
+     * failure without a second guest round trip.
+     *
+     * Added because the first GdiAccelFill=1 run needed exactly this and did
+     * not have it: the harness could say "the engine painted white where the
+     * DIB Engine painted yellow" but not what colour the driver had decided on,
+     * so it could not separate a misread brush from a misclassified ROP from a
+     * register the engine wants in a different format.
+     */
+    DWORD last_rop256;
+    DWORD last_color;
+    DWORD last_brush_flags;
+    DWORD last_bpp;
+} V9X_GDI_STATS;
+
 typedef struct v9x_dd_shared {
     DWORD dwSize;           /* sizeof(V9X_DD_SHARED)                    */
     DWORD abi;              /* V9X_DD_SHARED_ABI                        */
@@ -1234,6 +1314,10 @@ typedef char v9x_dd_assert_bltdata[
 #endif
 typedef char v9x_dd_assert_trace_entry[
     sizeof(V9X_DD_TRACE_ENTRY) == 8 ? 1 : -1];
+/* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
+ * so both compilers have to lay it out the same way. */
+typedef char v9x_dd_assert_gdi_stats[
+    sizeof(V9X_GDI_STATS) == 120 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

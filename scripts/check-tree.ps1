@@ -86,6 +86,8 @@ $required = @(
     "src\display16\display_component.c",
     "src\display16\loader.c",
     "src\display16\ddi.c",
+    "src\display16\gdi_accel.c",
+    "src\display16\gdi_accel.h",
     "src\display16\win9x_display_abi.h",
     "src\display32\ddhal_internal.h",
     "src\display32\ddhal_core.c",
@@ -134,6 +136,11 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\ddi.c"),
     (Join-Path $repoRoot "src\display16\dd16.c"),
     (Join-Path $repoRoot "src\display16\enable16.c"),
+    # gdi_accel.c reads its SYSTEM.INI keys with GetPrivateProfileInt and
+    # writes the deferred poison report with WritePrivateProfileString, so it
+    # is a genuine OS boundary and is listed as one rather than reaching
+    # <windows.h> through a header that already is.
+    (Join-Path $repoRoot "src\display16\gdi_accel.c"),
     # The runtime mode table writes the validated inventory file
     # (C:\V9XMODES.INI) through WritePrivateProfileString; the table logic
     # itself stays in src\common\vbe_modes.c, which remains OS-free.

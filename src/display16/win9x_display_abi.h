@@ -25,11 +25,31 @@
 
 #define V9X_DE_MINIDRIVER         0x0001u
 #define V9X_DE_PALETTIZED         0x0002u
+#define V9X_DE_SELECTEDDIB        0x0004u
+#define V9X_DE_OFFSCREEN          0x0008u
 #define V9X_DE_BUSY               0x0010u
 #define V9X_DE_FIVE6FIVE          0x0040u
+/*
+ * The destination needs a background palette translation the drawing engine
+ * cannot perform. Every accelerated GDI path has to test it: an accelerated
+ * fill under a translated palette produces a right-shaped, wrong-coloured
+ * rectangle. Both Windows 98 DDK reference blitters gate on it
+ * (98DDK\src\display\mini\xga\BITBLT.ASM:71 and
+ * 98DDK\src\display\mini\s3v\S3BLT.ASM:130).
+ */
+#define V9X_DE_PALETTE_XLAT       0x1000u
 #define V9X_DE_VRAM               0x8000u
 #define V9X_DE_VERSION            0x0400u
 #define V9X_TYPE_DIBENG           0x5250u
+
+/*
+ * DIBEngine.deBeginAccess flags, from C:\98DDK\inc\win98\inc16\DIBENG.INC.
+ * That file carries both an assembly equ (:126-127) and a C #define
+ * (:131-132) of each, so these have a first-party source. There is no
+ * dibeng.h in this DDK.
+ */
+#define V9X_FB_ACCESS             0x0001u
+#define V9X_CURSOREXCLUDE         0x0008u
 
 #define V9X_VALMODE_YES                0u
 #define V9X_VALMODE_NO_WRONG_DRIVER    1u
@@ -90,6 +110,25 @@ typedef struct v9x_gdi_info {
 
 typedef void (FAR PASCAL *V9X_ACCESS_PROC)(void);
 
+/*
+ * The same entry point deBeginAccess holds, with its real argument list:
+ * BeginAccess(lpDevice, Left, Top, Right, Bottom, Flags), returning Flags.
+ *
+ * Declared in first-party code at 98DDK\src\display\mini\s3v\ACCESS.ASM:83-95,
+ * and used through the PDEVICE the way the accelerated blitter does at
+ * S3BLT.ASM:1778 - deCursorExclude is an alias for deBeginAccess
+ * (DIBENG.INC:45), and calling it with CURSOREXCLUDE and the blit rectangle is
+ * how a software cursor is lifted before the framebuffer is touched.
+ *
+ * V9X_ACCESS_PROC above stays as it is: that is the type of the field, and the
+ * DIB Engine's own zero-argument view of it is what ddi.c assigns. This is the
+ * caller's view of the same pointer.
+ */
+typedef WORD (FAR PASCAL *V9X_CURSOR_EXCLUDE_PROC)(void FAR *device,
+                                                   WORD left, WORD top,
+                                                   WORD right, WORD bottom,
+                                                   WORD flags);
+
 typedef struct v9x_dib_engine {
     WORD deType;
     WORD deWidth;
@@ -109,6 +148,66 @@ typedef struct v9x_dib_engine {
     V9X_ACCESS_PROC deEndAccess;
     DWORD deDriverReserved;
 } V9X_DIB_ENGINE;
+
+/*
+ * DIBENG realized brush, common header only.
+ *
+ * DIBENG.INC:183-253 declares six per-depth structs - DIB_Brush1/4/8/16/24/32 -
+ * which share this 14-byte header and then differ only in the size of a
+ * trailing Bits[] array. Rather than transcribe six near-copies, the header is
+ * mirrored once and the two accelerated depths are size-asserted below, which
+ * is what pins the layout.
+ *
+ * The solid-fill gate reads exactly two of these fields: BrushFlags &
+ * V9X_BRUSH_COLORSOLID, and FgColor. The Mono/Mask/Bits arrays are never
+ * touched, so they are deliberately absent - a driver that does not parse a
+ * pattern should not carry a declaration inviting it to.
+ *
+ * BRUSHSIZE is 8 (DIBENG.INC:25), so the trailing arrays are
+ * Mono[32] + Mask[32] + Bits[BRUSHSIZE * bpp].
+ */
+typedef struct v9x_dib_brush {
+    BYTE BrushFlags;
+    BYTE BrushBpp;
+    WORD BrushStyle;
+    DWORD FgColor;
+    WORD Hatch;
+    DWORD BgColor;
+} V9X_DIB_BRUSH;
+
+#define V9X_DIB_BRUSH_HEADER_SIZE   14u
+#define V9X_DIB_BRUSH8_SIZE        142u   /* 14 + 32 + 32 + 8*8   */
+#define V9X_DIB_BRUSH16_SIZE       206u   /* 14 + 32 + 32 + 8*16  */
+
+/* DIB_Brushxx.dpxxBrushFlags, DIBENG.INC:258-265. */
+#define V9X_BRUSH_COLORSOLID      0x01u
+#define V9X_BRUSH_MONOSOLID       0x02u
+#define V9X_BRUSH_PATTERNMONO     0x04u
+#define V9X_BRUSH_MONOVALID       0x08u
+#define V9X_BRUSH_MASKVALID       0x10u
+#define V9X_BRUSH_PRIVATEDATA     0x20u
+#define V9X_BRUSH_BRUSH40         0x40u
+#define V9X_BRUSH_DIBENGBRUSH     0x80u
+
+/*
+ * Whole-struct size checks for the two depths this driver accelerates. The
+ * DDK structs are byte-packed; these exist to catch a compiler that pads, in
+ * which case FgColor would be read from the wrong offset and the fill would
+ * take a garbage colour.
+ */
+typedef struct v9x_dib_brush8 {
+    V9X_DIB_BRUSH header;
+    BYTE Mono[32];
+    BYTE Mask[32];
+    BYTE Bits[64];
+} V9X_DIB_BRUSH8;
+
+typedef struct v9x_dib_brush16 {
+    V9X_DIB_BRUSH header;
+    BYTE Mono[32];
+    BYTE Mask[32];
+    BYTE Bits[128];
+} V9X_DIB_BRUSH16;
 
 typedef struct v9x_display_validate_mode {
     WORD size;
@@ -139,5 +238,17 @@ typedef char v9x_assert_validate_mode_size[
     sizeof(V9X_DISPLAY_VALIDATE_MODE) == 8u ? 1 : -1];
 typedef char v9x_assert_display_info_size[
     sizeof(V9X_DISPLAY_INFO) == 34u ? 1 : -1];
+/*
+ * The brush layout, asserted three ways: the shared header's size, and the
+ * whole realized brush for each accelerated depth. Offsets follow from the
+ * header size holding, because every field in it is declared in DDK order and
+ * a pad anywhere inside would show up as a 16-byte header.
+ */
+typedef char v9x_assert_dib_brush_header_size[
+    sizeof(V9X_DIB_BRUSH) == V9X_DIB_BRUSH_HEADER_SIZE ? 1 : -1];
+typedef char v9x_assert_dib_brush8_size[
+    sizeof(V9X_DIB_BRUSH8) == V9X_DIB_BRUSH8_SIZE ? 1 : -1];
+typedef char v9x_assert_dib_brush16_size[
+    sizeof(V9X_DIB_BRUSH16) == V9X_DIB_BRUSH16_SIZE ? 1 : -1];
 
 #endif
