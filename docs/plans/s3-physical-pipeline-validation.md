@@ -21,16 +21,19 @@ calls on S3 until they are validated on S3 silicon. That is not what the plan
 says, and the difference decides what BARRY is worth.
 
 - **The reason is zero benefit, not missing validation.**
-  `docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md` §2: both S3 chips
-  have a `read_aperture` hook, so the 4F9Ch cache is never consulted. The
+  `docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md` §2: the `s3` family
+  has a `read_aperture` hook, so the 4F9Ch cache is never consulted. The
   collection is "all risk and no benefit" for `s3`; the boot hang made that
   concrete rather than creating the argument.
-- **The corpus's headline defects are VBE 2.0-specific.** The 360-wide FIFO
-  fault, the lost 8x14 font and the Pinball Illusions crash appear on ViRGE/DX
-  reference 2.01.07 / 2.01.16, Genoa 3.0 and Trio64V2/DX reference 2.04.07 - and
-  on none of the VBE 1.2 BIOSes of the same silicon
-  (`docs/specifications/dos-vbe-conformance.md:94-112`). BARRY reports
-  **VBE 1.2**, so it is the benign half of that table.
+- **The corpus's headline defects are VBE 2.0-weighted.** The lost 8x14 font
+  hits all four 2.0 BIOSes and none of the 1.2 ones. The 360-wide FIFO fault
+  hits only the two newest 2.0 BIOSes, Trio64V2/DX reference 2.04.07 and
+  ViRGE/DX reference 2.01.16. Pinball Illusions hangs on those plus ViRGE/DX
+  2.01.07 - Genoa 3.0 survives it - while on the 1.2 BIOSes the same defect
+  degrades from a hang to a drawing fault
+  (`docs/specifications/dos-vbe-conformance.md:98-110`). BARRY reports
+  **VBE 1.2**, so it sits on the milder half of that table - milder, not
+  spotless.
 - **A clean BARRY run would unlock nothing.** All four measured S3 targets are
   VBE 1.2 with every mode at attribute `001B` (bit 7 clear), `PhysBasePtr=0` and
   `LinBytesPerScanLine=0` (`docs/decisions/2026-08-20-vbe-mode-inventory.md`,
@@ -52,8 +55,9 @@ The `s3` family manifest links `vbe_modes.c`, `edid.c` and **`modes16.c`**
 (`packaging/families/s3/family.psd1`, `Build.Sources`). So the S3 driver does
 build the runtime mode table at load and does write `C:\V9XMODES.INI` after a
 successful enable - with the mini-VDD's collection assembled out, hence a zeroed
-cache, hence a refused scan, hence all seven baseline rows published and nothing
-hidden. This is the real-silicon instance of Stage 2's exit gate, that "a
+cache, hence a refused scan, hence all 12 baseline rows
+(`src/chipsets/s3/s3_hw16.c:56-75`) published and nothing hidden. This is the
+real-silicon instance of Stage 2's exit gate, that "a
 scan-disabled or invalid-scan build is byte-for-behavior equivalent to the static
 baseline path", which is currently proven only in host tests and on QEMU.
 
@@ -68,6 +72,11 @@ Record what BARRY is running now, so any later difference is attributable.
 
 - `v9xctl info` for driver and build id; pull `C:\V9XHW.INI`, the driver's
   serial log, and `C:\V9XMODES.INI` if one already exists.
+- Capture the pre-deploy registry state that block 2 will assert absences
+  against: `HKLM\...\CurrentVersion\Run\V9xSyncModes`, any `V9xFamily` value on
+  the display instances, any `V9xDynamic` or `V9xSyncGeneration`, and the
+  `MODES` tree itself. An absence asserted without this baseline is an
+  assumption, not evidence.
 - Note whether BARRY holds 0.4.3 or 0.5.0. If 0.4.3, block 2 is the first 0.5.0
   boot on this card and its serial capture is the load-bearing artefact.
 
@@ -76,8 +85,14 @@ Record what BARRY is running now, so any later difference is attributable.
 Build and deploy the shipping S3 package, then assert the pipeline is present
 but contributes nothing.
 
-Build with `scripts/build-active-package.ps1 -Family s3 -ChipId trio64`, deploy
-with `scripts/update-associated-driver.ps1 -GuestHost 10.0.1.47 -Port 9869`.
+Build with `scripts/build-active-package.ps1 -Family s3` (the script has no
+`-ChipId` parameter; the package covers the family and BARRY's `5333:8811`
+selects trio64 at install), deploy with
+`scripts/update-associated-driver.ps1 -GuestHost 10.0.1.47 -Port 9869`, and
+boot twice - the verification section counts two clean boots, so take both
+serial captures here. If the deploy leaves BARRY unbootable, Safe Mode retains
+the stock VGA fallback and reinstalling the baseline package recovers
+(`docs/plans/dynamic-vbe-pipeline.md`, rollback strategy).
 
 Assertions, ordered by what they would catch:
 
@@ -85,10 +100,12 @@ Assertions, ordered by what they would catch:
    `V9X-MINI vbe-collect disabled` and no `vbe-collect start`, `vbe-call fn=` or
    `vbe-status ptr=` line. `scripts/build-minivdd-skeleton.ps1:259` asserts the
    marker at build time; this asserts the runtime consequence.
-2. **`C:\V9XMODES.INI` describes a refused scan**, not a partial one: scan state
-   unavailable or invalid, 7 runtime rows, 7 published, 0 hidden, 0 dynamic,
-   EDID unavailable, `Complete=1`. Any hidden row here is a defect - hiding
-   requires a trustworthy scan and there is none.
+2. **`C:\V9XMODES.INI` describes a refused scan**, not a partial one, in the
+   inventory's own field names (`src/display16/modes16.c:416-592`):
+   `Scan state=` unavailable or invalid, `Table rows=12 published=12`, every
+   row `src=baseline` and none `src=dynamic`, no `HiddenNN` key, `Edid=none`,
+   `Complete=1`. Any `HiddenNN` key here is a defect - hiding requires a
+   trustworthy scan and there is none.
 3. **No synchronizer artefacts in the installed registry.** A scan-disabled
    family's INF emits neither the `V9xFamily` marker nor the `Run,V9xSyncModes`
    line, and `scripts/lib/inf.ps1:431,439` asserts both absent at build time.
@@ -98,14 +115,29 @@ Assertions, ordered by what they would catch:
    no `V9xSyncGeneration`.
 4. **Mode matrix unchanged.** `scripts/run-vm-mode-matrix.ps1` cannot address
    BARRY, because the family's VM target is an emulator port, so drive the
-   family's `Vm.Modes` set by hand through the agent: 640x480, 800x600 and
-   1024x768 at 8/16/32, 1280x1024x8, and the Doom95 640x400x8 row. Reboot
-   between modes, per the caveat below. Allow each capture to settle: the
-   screenshot race on this machine already produced one withdrawn regression
-   report (`docs/issues/2026-08-20-barry-tiling-was-a-screenshot-race.md`).
-5. **VRAM refusal still holds.** `ValidateMode` refuses 1024x768x32 (3 MiB) and
-   1280x1024x16 (2.5 MiB) on the 2 MiB card, and a forced attempt fails staged
-   with a trace and the VGA fallback rather than a black screen.
+   trio64 chip's `Modes` list by hand through the agent - the 12-row baseline
+   minus the two rows that do not fit 2 MiB, which is 10 bootable modes:
+   640x400x8 (the Doom95 row), 640x480 and 800x600 at 8/16/32, 1024x768 at
+   8/16, and 1280x1024x8. (Do not use `Vm.Modes` as the checklist: it carries
+   1280x1024x16 and omits 640x400x8, because it is sized for the 4 MiB
+   emulated targets.) Reboot between modes, per the caveat below. Allow each
+   capture to settle: the screenshot race on this machine already produced one
+   withdrawn regression report
+   (`docs/issues/2026-08-20-barry-tiling-was-a-screenshot-race.md`).
+5. **VRAM refusal still holds - and this run settles a contradiction in the
+   tree.** `packaging/families/s3/family.psd1:285-292` claims
+   `v9x_vbe_vram_reported` is permanently zero on `s3` so `ValidateMode`'s
+   memory test is inert; `src/display16/enable16.c:719-731` assigns it from
+   the family's CR36 hook (`src/chipsets/s3/s3_hw16.c:96-99`) after a
+   successful enable, and `s3_hw16.c:46-49` says the refusal is live. The code
+   reads as live; BARRY is the experiment that proves it on silicon. Assert:
+   the inventory's `Vram reported=` line shows the CR36-decoded 2 MiB (proof
+   the hook ran), and 1024x768x32 (3 MiB) and 1280x1024x16 (2.5 MiB) are
+   refused. The refusal is a plain `V9X_VALMODE_NO_NOMEM` return
+   (`src/display16/ddi.c:1086-1089`), deliberately indistinguishable from
+   "not in the table" - do not expect a staged trace; that path belongs to the
+   separate hardware check at `ddi.c:1055-1063`. Whichever way it lands, the
+   losing comment gets corrected (deliverables).
 6. **Text mode returns intact**, 8x14 font included, after a mode set and
    release. BARRY is VBE 1.2, so per the corpus this should need no fixer -
    worth asserting once on the silicon rather than inferring it from the table.
@@ -150,12 +182,13 @@ Re-dump the mode list on the same run, to confirm the 18-mode, VBE 1.2,
 Stage 4's unique-instance matching was tested on a clean QEMU guest. BARRY
 carries a stale Cirrus `Display\0000`
 (`docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md:51`), a genuine second
-display instance, which is the case the pipeline plan calls "ambiguous devnodes"
-and requires to be a recorded no-op.
+display instance, which is the "ambiguous devnodes" case in the pipeline plan's
+Stage 4 test list, with the no-op reason among its required diagnostics.
 
 `V9xSyncModes` has a read-only mode: any command line containing `rep`
-(`tools/diag/settings_syncmodes.c:648-659`) opens the class key `KEY_READ` only
-and writes nothing but its report.
+(a case-insensitive substring scan, `tools/diag/settings_syncmodes.c:648-660`)
+sets the dry-run flag, which opens the class key `KEY_READ` only
+(`settings_syncmodes.c:677-678`) and writes nothing but its report.
 
 ```text
 rundll32.exe v9xsetp.dll,V9xSyncModes report
@@ -176,12 +209,15 @@ This plan is satisfied when:
 
 - BARRY boots 0.5.0 clean twice, with no `vbe-collect start` or `vbe-call` line
   anywhere in the serial capture;
-- `C:\V9XMODES.INI` shows 7 runtime, 7 published, 0 hidden, 0 dynamic, EDID
-  unavailable and `Complete=1`;
+- `C:\V9XMODES.INI` shows `Table rows=12 published=12`, every row
+  `src=baseline`, no `HiddenNN` key, `Edid=none`, a `Vram reported=` figure of
+  2 MiB, and `Complete=1`;
 - the installed registry has no `Run\V9xSyncModes`, no `V9xFamily`, no
-  `V9xDynamic` key and no `V9xSyncGeneration`;
-- every family mode boots and captures correctly, Doom95's 640x400x8 included,
-  with the two oversized rows refused by `ValidateMode`;
+  `V9xDynamic` key and no `V9xSyncGeneration` - measured against the block 1
+  baseline, not assumed;
+- all 10 fitting baseline modes boot and capture correctly, Doom95's 640x400x8
+  included, and the two oversized rows are refused by `ValidateMode` with
+  `V9X_VALMODE_NO_NOMEM`;
 - text mode and its 8x14 font survive a mode set and release;
 - the DOS survey's mode list still matches the 2026-08-20 BARRY fixture, and its
   EDID section is recorded either way;
@@ -197,7 +233,13 @@ This plan is satisfied when:
 - The BARRY survey report beside the existing inventory dump, and a new EDID
   host fixture if DDC answered, serial number excluded.
 - A note in `docs/plans/dynamic-vbe-pipeline.md`'s regression-targets section
-  recording which S3 items are now physically verified.
+  recording which S3 items are now physically verified - and, in the same
+  edit, correcting that section's claim that the VLB 486's Trio64 is "the only
+  VBE 1.2 target this project can reach" (`dynamic-vbe-pipeline.md:1136`);
+  BARRY is a reachable VBE 1.2 Trio64 too.
+- The stale VRAM-test comment at `packaging/families/s3/family.psd1:285-292`
+  corrected to match `enable16.c:719-731` and the BARRY evidence, whichever
+  way block 2's item 5 lands.
 - `docs/issues/2026-08-20-live-mode-switch-no-repaint-barry.md` updated only to
   confirm the fault still reproduces on 0.5.0. No diagnosis attempted.
 
