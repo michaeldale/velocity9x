@@ -147,6 +147,33 @@ static WORD v9x_pdevice_allocated;
 /* Non-zero while ReEnable rebuilds at a different colour depth. */
 static WORD v9x_depth_changed;
 /*
+ * USER's "repaint every window" entry point, resolved by ordinal once and
+ * cached. Zero means unresolved, and v9x_repaint_resolved says whether that
+ * is because nothing has tried yet or because the lookup failed - a driver
+ * that cannot find it must still work, just without the forced repaint.
+ *
+ * USER.EXE exports this at ordinal 275 with no name, which is why every
+ * Windows 98 DDK display sample reaches it with GetProcAddress on a far
+ * pointer whose selector is zero and whose offset is the ordinal
+ * (98DDK\src\display\mini\{framebuf,mini,s3v,xga}\SSWITCH.ASM,
+ * REPAINT_EXPORT_INDEX). It takes no arguments and is a far PASCAL call.
+ */
+#define V9X_USER_REPAINT_ORDINAL 275
+static FARPROC v9x_user_repaint;
+static WORD v9x_repaint_resolved;
+/*
+ * The DDK's deferred-repaint protocol. USER calls UserRepaintDisable (every
+ * DDK display sample exports it at ordinal 500) to say whether the driver may
+ * ask for a repaint right now. A request made while repaints are disabled is
+ * remembered and issued on the enabling call instead.
+ *
+ * USER does not use it around a mode change - measured, see
+ * v9x_request_repaint - so on that path nothing is ever deferred. It is here
+ * for the screen-switch path the samples use it for.
+ */
+static WORD v9x_repaint_disabled;
+static WORD v9x_repaint_pending;
+/*
  * Latched on the first successful Enable and never cleared.
  *
  * The boot trace records the furthest stage reached, so a GDIINFO query must
@@ -977,6 +1004,85 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     return 0xffffu;
 }
 
+/*
+ * Force USER to repaint every window, the way every DDK display sample does
+ * when it has changed the screen behind USER's back.
+ *
+ * Measured limit, recorded so nobody re-tries this as a cure: on the physical
+ * Trio64 this does NOT fix the unrepainted desktop after a live mode switch
+ * (docs\issues\2026-08-20-live-mode-switch-no-repaint-barry.md). Instrumented
+ * on BARRY 2026-08-26, the export resolves to a valid far pointer and is
+ * called exactly once per switch, and the desktop keeps the previous mode's
+ * contents anyway - while an Explorer refresh straight afterwards repaints it
+ * perfectly. Issued from inside ReEnable it is evidently too early to survive
+ * whatever USER does next.
+ *
+ * It is kept because it is the right call on the paths the samples use it on:
+ * a switch that failed and was reverted behind USER's back, and the deferred
+ * request below.
+ *
+ * Deliberately not fatal and deliberately not checked - a driver that cannot
+ * resolve the export is exactly as correct as this driver was before, so the
+ * lookup failing must not fail the mode switch.
+ */
+static void v9x_force_repaint(void)
+{
+    if (v9x_repaint_resolved == 0u) {
+        HMODULE user;
+
+        v9x_repaint_resolved = 1u;
+        user = GetModuleHandle("USER");
+        if (user != 0) {
+            v9x_user_repaint = GetProcAddress(
+                user, (LPCSTR)MAKELONG(V9X_USER_REPAINT_ORDINAL, 0));
+        }
+        if (v9x_user_repaint == 0) {
+            v9x_serial_write("V9X-DRV repaint-export-missing\r\n");
+        }
+    }
+    if (v9x_user_repaint != 0) {
+        (*(void (FAR PASCAL *)(void))v9x_user_repaint)();
+    }
+}
+
+/*
+ * Ask for a repaint at the first moment USER will honour one: now if repaints
+ * are enabled, otherwise on the enabling call.
+ *
+ * Measured on BARRY 2026-08-26: USER does not disable repaints around a
+ * ChangeDisplaySettings - UserRepaintDisable is never called across a live
+ * mode switch - so on that path this always takes the immediate branch, and
+ * the immediate branch does not cure the unrepainted desktop. The deferral
+ * exists for the screen-switch path the DDK samples use it for, where USER
+ * does toggle the flag.
+ */
+static void v9x_request_repaint(void)
+{
+    if (v9x_repaint_disabled != 0u) {
+        v9x_repaint_pending = 1u;
+        return;
+    }
+    v9x_force_repaint();
+}
+
+/*
+ * USER tells the driver whether repaint requests may be issued now. Exported
+ * at ordinal 500, the ordinal every Windows 98 DDK display sample uses
+ * (98DDK\src\display\mini\{framebuf,mini,s3v,xga}\*.DEF).
+ *
+ * Exporting it closes a real conformance gap - this driver had no ordinal 500
+ * at all - but measurement says it is not the missing hook for a live mode
+ * switch: USER never calls it across one. See v9x_request_repaint.
+ */
+void __loadds FAR PASCAL UserRepaintDisable(WORD disable)
+{
+    v9x_repaint_disabled = disable != 0u ? 1u : 0u;
+    if (disable == 0u && v9x_repaint_pending != 0u) {
+        v9x_repaint_pending = 0u;
+        v9x_force_repaint();
+    }
+}
+
 WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
                                   LPVOID gdi_info)
 {
@@ -1012,11 +1118,19 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         return 1u;
     }
 
-    /* Live same-depth mode switch: rebuild the PDEVICE in place. DIBENGINE's
-     * reference mini-driver does not wrap this operation in BeginAccess /
-     * EndAccess: CreateDIBPDevice replaces cursor bookkeeping inside the same
-     * PDEVICE, so an exclusion begun against the old contents cannot safely
-     * be ended against the rebuilt contents. */
+    /* Live same-depth mode switch: rebuild the PDEVICE in place.
+     *
+     * This is not wrapped in BeginAccess / EndAccess: CreateDIBPDevice
+     * replaces cursor bookkeeping inside the same PDEVICE, so an exclusion
+     * begun against the old contents cannot safely be ended against the
+     * rebuilt contents.
+     *
+     * That is a departure from the DDK samples, which do wrap it - the
+     * framebuf, mini and s3v ReEnables all call DIB_BeginAccess with
+     * CURSOREXCLUDE over the new screen rectangle, and s3v ends the exclusion
+     * only when the cursor is a software one. This comment used to claim they
+     * did not; they do, and the reason for differing is the one above rather
+     * than a precedent. */
     v9x_reenabling = 1u;
     /* Arriving at 8 bpp from 16 bpp there is no realized palette in the
      * reused colour table to preserve, so it has to be rebuilt. */
@@ -1028,20 +1142,35 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         (void)v9x_build_pdevice(device, 0, 0, 0);
         v9x_reenabling = 0u;
         v9x_serial_write("V9X-DRV switch-fail\r\n");
+        /* The previous mode was put back behind USER's back, so USER has no
+         * reason to repaint and every sample forces one here. */
+        v9x_request_repaint();
         return 0u;
     }
     v9x_reenabling = 0u;
     v9x_depth_changed = 0u;
     if (v9x_fill_gdi_info((V9X_GDI_INFO FAR *)gdi_info, 0, 0, 0) == 0u) {
         v9x_serial_write("V9X-DRV switch-fail stage=gdi-info\r\n");
+        v9x_request_repaint();
         return 0u;
     }
     device->deFlags &= (WORD)~V9X_DE_BUSY;
     /* PDEVICE reconstruction is complete; it is now safe to call the
      * runtime's SetInfo reset callback. */
     (void)V9xDdCreateDriverObject(1u);
+    /*
+     * Close the mode change with the master VDD. v9x_build_pdevice opened it
+     * with VDD_PRE_MODE_CHANGE, and until the matching VDD_POST_MODE_CHANGE
+     * arrives the VDD believes a mode change is still in flight. The
+     * unchanged-mode branch above has always paired them; this path never did.
+     */
+    V9xVddPostMode();
     v9x_serial_write_mode("V9X-DRV switch-ok mode=");
     v9x_serial_write("\r\n");
+    /* Last, once the PDEVICE, GDIINFO, HAL and the VDD all describe the new
+     * mode: a repaint issued before this point could be drawn against a
+     * half-rebuilt device, which is the fault this call exists to cure. */
+    v9x_request_repaint();
     return 1u;
 }
 

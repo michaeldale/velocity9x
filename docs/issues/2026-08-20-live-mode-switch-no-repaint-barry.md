@@ -63,6 +63,74 @@ not established.
 every mode, so every capture it takes is of a freshly painted desktop. That is
 why 11/11 passes on both emulated chips and 0.4.3 shipped without noticing.
 
+## Three cures ruled out, 2026-08-26
+
+An attempt to fix this on 0.5.0 failed. All three candidates below were built,
+deployed to BARRY and measured, and none of them changes the symptom. They are
+recorded because each looked compelling and each is now excluded.
+
+**1. USER's forced repaint, called from ReEnable. Ruled out.** Every Windows 98
+DDK display sample resolves USER.EXE's unnamed export at ordinal 275 -
+`REPAINT_EXPORT_INDEX` in `98DDK\src\display\mini\*\SSWITCH.ASM` - and calls it
+to force a repaint of all windows whenever it has changed the screen behind
+USER's back. This driver had no such call at all, which made it the obvious
+gap. It is not the cause: instrumented into the boot trace, the export resolves
+to a valid far pointer (`1807:0498` on that boot) and is called exactly once per
+switch, and the desktop keeps the stale contents regardless. Issued from inside
+`ReEnable` it is apparently too early to survive whatever USER does next. The
+call is now in the tree for the paths the samples use it on, explicitly
+documented as *not* fixing this.
+
+**2. `UserRepaintDisable` at ordinal 500. Ruled out, but a real gap closed.**
+USER calls this exported entry point to tell a driver whether repaint requests
+may be issued yet, and the enabling call is the DDK's deferred-repaint trigger
+(`bRepaintDisable` / `RepaintPending`). It looked like the missing "USER has
+finished" hook, and this driver did not export ordinal 500 at all. Measurement
+says it is not this path's hook: with the export in place and instrumented,
+**USER never calls it across a `ChangeDisplaySettings`** - no call, in either
+direction, before or after the switch. It is presumably only used for the
+full-screen screen-switch path. The export and the deferral are kept, since a
+display driver is supposed to have them, but they do not fire here.
+
+**3. The unpaired `VDD_PRE_MODE_CHANGE`. Ruled out, but a real bug fixed.**
+`v9x_build_pdevice` opens every mode set with `V9xVddPreMode`, and the live
+switch branch of `ReEnable` never sent the matching `VDD_POST_MODE_CHANGE` -
+while the unchanged-mode branch beside it always has. So the master VDD was
+left believing a mode change was still in flight. That is a genuine protocol
+violation and is now fixed, and it does not change this symptom either.
+
+## What is now known about the mechanism
+
+Two measurements narrow it a long way.
+
+**The framebuffer really does hold the stale image, and everything the driver
+reports is correct.** The agent's screenshot is a GDI `BitBlt` of the screen DC,
+so it reads through the driver's own mapping - and it shows the doubled image.
+So this is not a scanout-only artefact. Meanwhile `C:\V9XBOOT.INI` reports
+`Surface=pitch=2048 bpp=16 dwb=2048 dds=2048 w=1024 h=768 debpp=16` after the
+switch, the guest-side GDI probe reports `Width=1024 Height=768
+BitsPerPixel=16` with `Result=PASS`, and its drawing checks - `BlackPixel`,
+`WhitePixel`, `RedPixel`, `BltPixel`, `SetPixel` - all read back correct. GDI
+draws correctly into a correctly described surface.
+
+**An Explorer desktop refresh repairs it completely.** Clicking an empty desktop
+area and pressing F5 after the failed switch repaints the desktop crisply and
+correctly at the new geometry, leaving only a couple of stale text fragments
+where the taskbar had been - F5 refreshes the desktop, not the taskbar. So
+nothing is wrong with the surface, the geometry or the driver's painting: the
+desktop simply is never invalidated, and it repaints perfectly the moment
+something asks it to.
+
+Taken with the ruled-out cures, the remaining question is narrow and is
+**not about the driver's own state**: what invalidates the desktop after a
+resolution change on the emulated S3 targets and fails to on this machine, given
+that the driver reports the change identically in both. Whoever picks this up
+should probably start by establishing whether the **stock S3 driver** live
+switches cleanly on BARRY. If it does not, this is a platform or hardware
+property rather than a Velocity9x defect, and that reframes the whole issue.
+That test was not run here because it means unbinding Velocity9x from the only
+physical S3 target.
+
 ## Where to look
 
 `ReEnable` in `src\display16\ddi.c` is the live-switch path. It rebuilds the
@@ -74,10 +142,15 @@ switching at 8 and 16 bpp on the **86Box ViRGE**, never on physical hardware.
 
 Worth checking in roughly this order:
 
-1. Whether anything invalidates the full desktop after the rebuild, and whether
-   Windows' own post-`ChangeDisplaySettings` repaint is arriving at all. A
-   deliberate full-screen invalidate at the end of `ReEnable` would be the
-   cheap test, even if it turns out to be papering over the real cause.
+1. ~~Whether anything invalidates the full desktop after the rebuild, and
+   whether Windows' own post-`ChangeDisplaySettings` repaint is arriving at
+   all. A deliberate full-screen invalidate at the end of `ReEnable` would be
+   the cheap test, even if it turns out to be papering over the real cause.~~
+   **Done 2026-08-26 and it is not the answer at the end of `ReEnable`.** The
+   invalidate half of this is confirmed - nothing invalidates the desktop, and
+   an Explorer F5 repairs it - but a forced repaint issued from `ReEnable` does
+   not work. See "Three cures ruled out" above. What is still unanswered is who
+   is supposed to issue that invalidate and why the emulated targets get it.
 2. Whether `V9xVddReregister`'s visible-byte count matters here: it is the one
    figure that differs between a 2 MiB and a 4 MiB card, and the master VDD uses
    it for save/restore sizing.
