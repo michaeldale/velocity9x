@@ -51,6 +51,23 @@ So the fault is in *invalidation*: after the in-place PDEVICE rebuild, something
 is not telling GDI the whole screen is dirty, or the repaint it does issue is
 being dropped.
 
+## Emulated targets reverified on the changed driver, 2026-08-26
+
+The two fixes above land on the live-switch path that every family shares, so
+they were regression-tested on the emulated guests where live switching works.
+Nine live switches, three per target, each captured twice and read at the second
+capture, all crisp with correct palettes and no stale content - and each target
+had a clean "before" switch on its previously installed driver for comparison:
+
+| Guest | Chip | Switches |
+|---|---|---|
+| `Win98SE-Trio64` :9871 | Trio64 4 MiB | 1024x768x32, 640x480x8, 1024x768x16 |
+| `Win86SE` :9869 | ViRGE/DX 4 MiB | 1280x1024x8, 640x480x32, 1024x768x16 |
+| `Win98SE-Mach64VT2` :9873 | Mach64 VT2 | 1024x768x16, 640x480x8, 800x600x16 |
+
+So the reboot/live asymmetry is unchanged and confined to the physical card, and
+the fixes do not regress the targets that work.
+
 ## Not reproducible under emulation
 
 The same 0.4.3 binary live-switches cleanly on both 86Box S3 targets - ViRGE/DX
