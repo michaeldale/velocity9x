@@ -1136,11 +1136,57 @@ defect in the fit check, not a hardware limit.
 - The VLB 486's Trio64 reports VBE 1.2, per the conformance corpus. Even with
   collection enabled on that family, the version gate refuses the list and the
   static table stands - the designed outcome, and worth asserting once rather
-  than assuming, since it is the only VBE 1.2 target this project can reach.
+  than assuming. It is not the only VBE 1.2 target this project can reach:
+  BARRY, the physical 2 MiB PCI Trio64 at `10.0.1.47:9869`, reports
+  `Version=0102` too (`docs\decisions\2026-08-20-vbe-inventory-barry.txt`), and
+  is the easier of the two to drive.
 - S3 8/16/32 mode matrix, Doom95 640x400, DirectDraw and ViRGE D3D remain
   unchanged.
 - Physical 2 MiB Trio64 continues to reject rows that do not fit VRAM.
 - Safe Mode retains the stock VGA fallback.
+
+#### Physically verified on S3, 2026-08-26
+
+Run on BARRY, the physical 2 MiB PCI Trio64, against 0.5.0 build `edd7684`.
+Evidence and method in `docs\decisions\2026-08-26-s3-physical-pipeline-inert.md`.
+
+Verified on silicon:
+
+- **No new BIOS calls**, by two substitutes rather than the serial capture:
+  the shipped `V9XMINI.VXD` carries the `vbe-collect disabled` marker that
+  `build-minivdd-skeleton.ps1:258-266` makes exclusive to a no-collect build,
+  and the runtime inventory reads back `flags=0800`
+  (`V9X_VBE_ST_COLLECT_OFF`) and no other bit.
+- **Stage 2's scan-disabled equivalence**, previously host-tests and QEMU only:
+  two clean boots, `Table=rows=12 published=12`, every row `src=baseline`, no
+  `HiddenNN`, `Scan=state=3`, `Edid=none`, `Complete=1`, identical across both.
+- **No synchronizer artefacts**, measured as a byte-identical pre/post diff of
+  both the `Run` key and the whole `Display` class tree.
+- **Stage 4 on a two-instance machine**: the `V9xSyncModes` dry run reaches
+  `Reason=no-marked-instance`, so it stops at instance matching rather than
+  inventory loading. Only the zero-marked-instances branch is covered;
+  `multiple-marked-instances` still needs a scanning family.
+- **The VRAM refusal**, and it is our check, not the BIOS: a live
+  `ChangeDisplaySettings` to 1024x768x32 and 1280x1024x16 returns
+  `DISP_CHANGE_BADMODE` while 1024x768x16 succeeds.
+- **Stage 5's no-EDID path** on a real monitor: BARRY's ROM has no DDC at all
+  (4F15h capability probe returns `4F00`), so "unavailable DDC is a no-op" is
+  now measured rather than assumed.
+
+Still not verified on S3 silicon:
+
+- **Live mode switching.** `docs\issues\2026-08-20-live-mode-switch-no-repaint-barry.md`
+  still reproduces on 0.5.0, so Stage 2's "survives live same-depth switching"
+  gate stays emulator-only.
+- **The mini-VDD's boot serial markers.** Needs a null-modem link from BARRY's
+  COM1 to a capturing host; nothing on the machine reads its own UART back.
+
+Found by this run, and **not** a 0.5.0 regression: the shared table's
+640x400x8 row (`0x0100`) is absent from BARRY's BIOS mode list, so it validates
+and then fails at 4F02h with `Stage=fail-hardware-vbe-mode`. That is the exact
+failure the mode inventory predicted for a row the BIOS does not list. The
+regression target "Doom95 640x400" above cannot be met on this target by this
+row, and the fix - probably per-device row admission - is unresolved.
 
 ## Diagnostics required for release
 

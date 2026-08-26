@@ -177,6 +177,12 @@ $linkLines += @(
     "export ReEnable.31=REENABLE", "export Inquire.101",
     "export SetCursor.102", "export MoveCursor.103",
     "export CheckCursor.104",
+    # Ordinal 500 is where every Windows 98 DDK display sample exports this
+    # (98DDK\src\display\mini\{framebuf,mini,s3v,xga}\*.DEF). USER calls it to
+    # say whether a repaint request may be issued now, and the enabling call is
+    # the driver's only hook that is reliably after USER has finished a display
+    # change - which is what a live mode switch needs to repaint the desktop.
+    "export UserRepaintDisable.500=USERREPAINTDISABLE",
     "export ValidateMode.700=VALIDATEMODE"
 )
 Set-Content -LiteralPath $linkFile -Value $linkLines -Encoding Ascii

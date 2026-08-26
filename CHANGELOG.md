@@ -4,6 +4,42 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+The dynamic VBE pipeline is verified inert on physical S3 silicon. BARRY, the
+physical 2 MiB PCI Trio64, ran 0.5.0 over two clean boots with the runtime table
+byte-identical to the static baseline — twelve rows, all `src=baseline`, nothing
+hidden, the scan refused with `COLLECT_OFF` and no other status bit — and with
+the `Run` key and the whole display class tree byte-identical either side of the
+install. Full evidence and method in
+[the decision note](docs/decisions/2026-08-26-s3-physical-pipeline-inert.md).
+That run also settled that `ValidateMode`'s VRAM refusal is live on this family,
+corrected three claims in the tree that said otherwise, and recorded that a
+VBE 2.0 S3 board — not BARRY — is the prerequisite for ever enabling
+`MiniVddVbeCollect` on `s3`.
+
+Fixed: the live mode-switch path never sent `VDD_POST_MODE_CHANGE`, so the
+master VDD was left believing a mode change was still in flight after every
+live switch. `v9x_build_pdevice` has always opened the change with
+`V9xVddPreMode` and the unchanged-mode branch beside it has always paired them.
+
+Fixed: the display driver did not export `UserRepaintDisable` at ordinal 500,
+which every Windows 98 DDK display sample exports and USER uses to tell a driver
+when repaint requests may be issued. Implemented with the DDK's deferred-repaint
+pattern.
+
+Found and not fixed: the shared `s3` table's 640x400x8 row (`0x0100`) is absent
+from BARRY's BIOS mode list, so it validates and then fails at 4F02h. Not a
+0.5.0 regression — 0.4.3 carried the same registry row and nobody had selected
+it. The row is kept, because removing it costs Doom95 its mode on every S3
+target whose BIOS does list it.
+
+Still open: the live-repaint fault on the physical Trio64
+([issue](docs/issues/2026-08-20-live-mode-switch-no-repaint-barry.md)) still
+reproduces. Three candidate cures were built, deployed and measured out; what is
+now known is that the desktop is simply never invalidated, and that an Explorer
+refresh repairs it perfectly.
+
 ## 0.5.0 - 2026-08-26
 
 The dynamic VBE pipeline: the driver stops trusting a hand-written mode list
