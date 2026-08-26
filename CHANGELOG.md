@@ -38,6 +38,60 @@ move by a byte-identical `v9xhal.dll`. Two of that plan's three open items are
 resolved by measurement, and its stale references to a `ddhal.c` that no longer
 exists are corrected.
 
+Added: **GDI acceleration build `gdi-accel-000`** - all of the machinery, none
+of it enabled ([decision](docs/decisions/2026-08-26-gdi-accel-000.md)). Ordinal
+1 stops being an unconditional `jmp DIB_BitBlt` thunk and becomes a C
+dispatcher, `src/display16/gdi_accel.c`, carrying the acceptance gates, the
+ViRGE and Trio64 fill and copy primitives, bounded waits, the CR66 engine
+reset, a poison latch that survives a live mode switch, counters, and the
+SYSTEM.INI controls. Every primitive is compiled and every one defaults to off,
+so the shipping behaviour is unchanged: each blit still declines to the DIB
+Engine.
+
+That decline path matters more than a staging step usually would. All four
+families link the same 16-bit layer and three of them - `ati`, `vbe`,
+`matrox-m2` - declare no 2D engine on any chip, so for three quarters of the
+fleet the decline branch is the shipping code on every blit, permanently. Its
+exit gate is therefore run on an engine-less family as well as on the S3.
+
+Added: `V9XGDI.EXE /accel`, the phase that can fail. 500 seeded operations
+against the screen and a reference DC, compared with `GetDIBits` every 25, and
+then the driver's own counters read back through a new `V9X_GDIGETSTATS`
+escape - **failing if a primitive that is advertised and enabled never fired.**
+A comparison harness that silently exercised the decline path on every
+operation would pass perfectly and prove nothing, which is exactly how the
+`ati` package shipped unable to enable. It writes its own result file, so
+`Result=PASS` in `C:\V9XGDI.INI` keeps the meaning the mode matrix relies on.
+
+Added: `scripts/run-family-enable-gate.ps1`. `run-checks` builds every family
+package and passes, because a package that builds is not a package that
+enables. This gate starts each family's emulated guest, deploys, reboots and
+asserts `Stage=enable-ok` - nothing else - and prints the targets it cannot
+reach by name rather than equating "each family with an emulator" with "every
+family". Opt-in, because it needs VMs and minutes.
+
+The stage's own gates found two things, which is what they were for. The
+`/accel` harness failed its first run identically on the ViRGE and on the
+engine-less ATI guest - same operation, same byte - on a build where every
+operation declined and the DIB Engine drew both sides: its reference bitmap was
+24-bpp while the screen was 8-bpp, and `PATINVERT` XORs palette indices on one
+and RGB bytes on the other. And the deliberate `GdiAccelFill=1` run proved the
+fill primitive fires and then paints the wrong colour, because the realized
+brush's `FgColor` holds a logical RGB where the engine wants a physical pixel
+value ([issue](docs/issues/2026-08-26-gdi-fill-brush-colour-not-physical.md)).
+Nothing ships on the second - every primitive is off by default - and it blocks
+build 001 rather than this one. Both are the plan's insistence on landing the
+harness before the first build that turns a primitive on, paying for itself on
+its first use.
+
+Corrected in the parent plan: build 000's "byte-identical behavior" exit gate
+was not achievable and is now worded as behaviour; the `v9xhal.dll` hash claim
+is replaced by a per-object disassembly comparison, because a Win32 PE embeds
+its link timestamp and three builds of unchanged source produce three different
+hashes; and the 16-bit MMIO design needed replacing, since this driver is built
+without a `-3` and a C 32-bit store to the ViRGE command register compiles to
+two 16-bit halves - which would trigger the engine on a half-written command.
+
 The dynamic VBE pipeline is verified inert on physical S3 silicon. BARRY, the
 physical 2 MiB PCI Trio64, ran 0.5.0 over two clean boots with the runtime table
 byte-identical to the static baseline — twelve rows, all `src=baseline`, nothing

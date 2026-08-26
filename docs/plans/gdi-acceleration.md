@@ -55,7 +55,7 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 
 | Build | Content | Default | Exit gate |
 |---|---|---|---|
-| gdi-accel-000 | All infrastructure + primitives compiled, default-off; ddhal.c header refactor; HAL Lock/Flip drain audit | off | Byte-identical behavior: V9XGDI PASS, full mode matrix, Ironfield numbers unchanged, both targets; one manual INI-on run proving fill fires |
+| gdi-accel-000 **(done)** | All infrastructure + primitives compiled, default-off; shared 2D register header; HAL Lock/Flip drain audit; `/accel` harness; per-family enable gate | off | **Behaviour** unchanged (not bytes - see below): V9XGDI PASS and the new `/accel` phase on the full mode matrix, on the engine family **and on an engine-less one**; Ironfield numbers unchanged; one manual INI-on run proving fill fires |
 | gdi-accel-001 | Solid fill (BLACKNESS/WHITENESS, then PATCOPY+solid brush) | fill on | Randomized fill comparison PASS, engine counters nonzero, timeout injection recovers, DD probes unchanged |
 | gdi-accel-002 | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
 | gdi-accel-003 | Overlap in all 8 directions | +overlap on | Randomized overlap PASS both chips; **full PLAN.md Phase 5 exit gate** |
@@ -127,6 +127,66 @@ mind. Nothing about the *design* changed - only where the code lives.
   ViRGE offset in it is below 0x10000 and must stay so, because the 16-bit side
   reaches them through one LDT selector based at linear + 0x01000000. The header
   says this where someone adding a register will read it.
+
+## Gate wording this stage found to be wrong
+
+Recorded here because the wording, not the work, is what needed changing.
+
+- **"Byte-identical behavior" for build 000 was not achievable and should not
+  have been asked for.** Build 000 adds a translation unit and an ordinal-1
+  export, so the DRV cannot hash the same and there is no point pretending
+  otherwise. The gate is behaviour: what the driver *does* must be
+  indistinguishable. See
+  [gdi-accel-000-and-harness.md](gdi-accel-000-and-harness.md) Block 3.
+- **"Both targets" was too narrow.** `s3` is the only family with a 2D engine;
+  `ati`, `vbe` and `matrox-m2` declare `EngineType = NONE` on every chip, and
+  all four link the same `ddi.c`/`dd16.c`. Ordinal 1 is now a C function in the
+  shared 16-bit layer, so *every* family gets the dispatcher and three of them
+  take its decline branch on every blit, permanently. The exit gate therefore
+  has to be run on a family with no engine as well.
+- **The "byte-identical `v9xhal.dll`" claim in the Corrections below is not
+  reproducible today, and the check that replaces it is better.** The HAL is a
+  Win32 PE and its COFF header carries the link timestamp, so two builds of
+  identical source from the same pinned `-BuildId` hash differently. What was
+  verified for the second half of the register-header move (2026-08-26) is that
+  all seven HAL translation units **disassemble identically** across it -
+  `wdis -a` on every `.obj`, byte-for-byte equal. That is the property the
+  claim was reaching for, and unlike an image hash it cannot be satisfied by
+  accident or defeated by a clock.
+- **Design decision 1 was only half done.** The register move left the 2D
+  status, command, ROP, source-base, stride-mask and coordinate-limit constants
+  behind in `ddhal_internal.h`, which the 16-bit primitives need. They are in
+  `include\velocity9x\s3_engine_regs.h` now. `V9X_VIRGE_FIFO_SPIN_LIMIT` and
+  `V9X_VIRGE_IDLE_SPIN_LIMIT` deliberately stayed: they are the flat HAL's own
+  calibration, and the 16-bit side's loop does not cost the same, so sharing
+  one number would silently make one of the two wrong.
+- **Design decision 2's "plain `return DIB_BitBlt(...)`" needs one more hop.**
+  This driver compiles PASCAL exports with their names uppercased - the reason
+  the build script says `export Control.3=CONTROL` - so a C `extern WORD FAR
+  PASCAL DIB_BitBlt(...)` asks the linker for `DIB_BITBLT` while `DIBENG.LIB`
+  supplies `DIB_BitBlt`. The decline branch calls a typed
+  `V9XDIBBITBLTCALL` forward in `runtime.asm`, exactly as every other DIBENG
+  routine C code calls in this driver already does.
+- **Design decision 4's "two-instruction fast path" is four.** The DIB Engine
+  calls `deBeginAccess` with DS holding whatever its caller had, so the dirty
+  flag is reached through an explicit `mov ax,DGROUP / mov es,ax` - the idiom
+  every thunk in `dib_thunks.asm` uses for the same reason.
+- **The 16-bit MMIO plan needed a correction the design did not anticipate.**
+  Design decision 1 said the 16-bit side reaches the ViRGE registers as
+  `volatile DWORD FAR *` through one selector. It cannot: this driver is built
+  without a `-3`, so wcc emits 8086 code and a 32-bit store compiles to two
+  16-bit halves. On `CMD_SET` that is wrong rather than slow, because the low
+  half starts the blit. Every 32-bit engine access goes through
+  `V9XENGINEREAD`/`V9XENGINEWRITE` in `runtime.asm`, where `.386p` guarantees
+  one bus cycle, and `audit-family-binary.ps1` asserts the single-instruction
+  forms.
+- **Design decision 6's combined `Acceleration=` string was dropped.** That key
+  is per-chip manifest data written by the chip module
+  (`s3_regs16.c:315` writes `device->acceleration`), and GDI acceleration is
+  decided by the shared 16-bit layer from SYSTEM.INI. Appending to it would put
+  this layer's policy inside the chip's key, and `settings_status.c` reads that
+  key expecting the manifest's own words. GDI state is published as its own
+  `GdiAcceleration` key instead.
 
 ### What build 000 still needs
 

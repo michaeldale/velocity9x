@@ -343,6 +343,20 @@ Exit gate:
 
 ### Phase 5 - Conservative GDI acceleration
 
+Implementation plan: [docs/plans/gdi-acceleration.md](docs/plans/gdi-acceleration.md),
+which splits this phase into builds `gdi-accel-000`..`005`, one primitive per
+build. **Build 000 is done** - all infrastructure and primitives compiled and
+every one of them default-off, plus the randomized comparison harness the later
+builds are gated by
+([docs/decisions/2026-08-26-gdi-accel-000.md](docs/decisions/2026-08-26-gdi-accel-000.md)).
+Nothing in the list below is enabled yet.
+
+One thing that phase discovered and this list did not anticipate: the `BitBlt`
+export lives in the 16-bit layer all four families share, so *every* family got
+the dispatcher, and the three with no 2D engine take its decline branch on every
+blit permanently. The exit gate therefore has to be run on an engine-less family
+as well, not only on the accelerated one.
+
 Enable one primitive at a time:
 
 1. Solid rectangle fill.
@@ -363,6 +377,7 @@ Exit gate:
 
 - Pixel-for-pixel comparison against a software reference passes randomized rectangles, pitches, clipping regions, overlap directions, and supported ROPs.
 - Injected timeouts recover to an operable desktop.
+- The comparison is not allowed to pass vacuously: the driver's own counters are read back, and a primitive that is advertised and enabled and never fired is a failure. A comparison harness that silently exercised the decline path on every operation would pass perfectly and prove nothing.
 
 ### Phase 6 - DirectDraw foundation
 
