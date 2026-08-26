@@ -282,14 +282,37 @@
         # can hold every one. The 2 MiB physical Trio64 is not driven by this
         # list.
         #
-        # It used to say those two oversized rows would be refused by
-        # ValidateMode on the 2 MiB card. They are not, and cannot be:
-        # ValidateMode's memory test reads v9x_vbe_vram_reported, which
-        # enable16.c assigns only on the tier-0 VBE path, and this family has a
-        # read_aperture hook - so for this binary the figure is permanently zero
-        # and the test is inert. Inf.ManualSelect's pruned list is what actually
-        # keeps 1024x768x32 and 1280x1024x16 off a 2 MiB card, which makes it
-        # load-bearing rather than a duplicate of a runtime refusal.
+        # The two oversized rows ARE refused by ValidateMode on the 2 MiB card.
+        # Measured on BARRY 2026-08-26; see
+        # docs\decisions\2026-08-26-s3-physical-pipeline-inert.md section 7.
+        #
+        # This comment used to claim the opposite - that ValidateMode's memory
+        # test is inert here because enable16.c assigns v9x_vbe_vram_reported
+        # only on the tier-0 VBE path. It does not: enable16.c:719-731 assigns
+        # it from the family's read_video_memory hook (the S3 CR36 decode)
+        # whenever that hook exists, which is exactly this family. On BARRY the
+        # figure is the CR36-decoded 2 MiB, and a live ChangeDisplaySettings to
+        # 1024x768x32 or 1280x1024x16 returns DISP_CHANGE_BADMODE while
+        # 1024x768x16 succeeds.
+        #
+        # Two traps that made the wrong claim look right, both worth keeping:
+        #
+        # - The inventory's "Vram=reported=" line is NOT this variable. That is
+        #   v9x_runtime_vram_reported, the mini-VDD 4F00h figure, and it is
+        #   correctly zero on a scan-disabled family. The ValidateMode variable
+        #   is v9x_vbe_vram_reported, which s3's publish_diagnostics does not
+        #   report; the inventory's "usable=" figure is what evidences it,
+        #   since both are assigned in the same branch.
+        # - Rebooting into an oversized mode does not test ValidateMode at all.
+        #   GDI calls ValidateMode on a mode CHANGE; at boot it calls Enable
+        #   directly, so an oversized row fails at 4F02h with
+        #   Stage=fail-hardware-vbe-mode instead. Use a live switch.
+        #
+        # Inf.ManualSelect's pruned list is also not what keeps these rows off
+        # a 2 MiB card: it applies only to the VLB manual-select install, and
+        # BARRY's PCI\VEN_5333&DEV_8811 takes Velocity9x.Registry.trio64, which
+        # publishes all twelve rows. On the PnP path the runtime refusal is the
+        # only guard.
         Modes = @('640x480x8', '800x600x8', '1024x768x8', '1280x1024x8',
                   '640x480x16', '800x600x16', '1024x768x16', '1280x1024x16',
                   '640x480x32', '800x600x32', '1024x768x32')

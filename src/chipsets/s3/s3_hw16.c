@@ -63,7 +63,20 @@ static const V9X_HW16_MODE v9x_s3_modes[] = {
      * the game keeps the 16-bpp desktop mode and writes its 8-bpp frame into
      * it: one byte per pixel into a two-byte pitch renders the picture at half
      * width in garbage colours. It sits after the other 8-bpp entries so this
-     * list runs in the same order as the MODES registry key GDI enumerates. */
+     * list runs in the same order as the MODES registry key GDI enumerates.
+     *
+     * KNOWN EXCEPTION to the "leave it out" rule below, and the one row in this
+     * table that breaks it: BARRY's ROM does not list 0x0100 at all. Its list
+     * runs 0101..011B plus 0211, and 0x0100 is one of the modes only the two
+     * 4 MiB targets add (2026-08-20-vbe-mode-inventory.md:133). So on that card
+     * the row validates - it is in the table and 256 KiB fits 2 MiB - and then
+     * fails at 4F02h, exactly the failure the 1600x1200x8 paragraph predicts.
+     * Measured 2026-08-26: selecting it as the desktop mode gives
+     * Stage=fail-hardware-vbe-mode, a fall back to 640x480, and a modal Display
+     * applet (2026-08-26-s3-physical-pipeline-inert.md §8). The row is kept
+     * because removing it costs Doom95 its mode on every target whose BIOS does
+     * list it, which is every other S3 target measured; what to do about the
+     * older ROM is unresolved and tracked in that note. */
     {  640u, 400u,  8u,  640u, 0x0100u, 254, 127 },
     {  640u, 480u, 16u, 1280u, 0x0111u, 254, 127 },
     {  800u, 600u, 16u, 1600u, 0x0114u, 318, 159 },

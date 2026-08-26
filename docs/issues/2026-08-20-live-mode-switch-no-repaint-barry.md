@@ -1,6 +1,9 @@
 # A live mode switch leaves the desktop unrepainted on the physical Trio64
 
 Status: **open.** Found 2026-08-20 on driver 0.4.3. Not diagnosed.
+**Still reproduces on 0.5.0** (build `edd7684`), reconfirmed 2026-08-26 on the
+same card during `docs\plans\s3-physical-pipeline-validation.md`; see
+"Reconfirmed on 0.5.0" below. No diagnosis attempted.
 
 Target: BARRY, physical S3 Trio64 (86C764), `PCI\VEN_5333&DEV_8811`, 2 MiB VRAM,
 Windows 98 SE, 32 MB RAM. Reached over the remote agent at `10.0.1.47:9869`.
@@ -92,3 +95,23 @@ then screenshot **several times over 30 seconds** and confirm the stale content
 persists rather than resolving. Reboot and screenshot again for the clean
 comparison. `V9XMSW.INI` reports `Result=PASS` and `ChangeResult=0` throughout:
 the switch itself succeeds, only the repaint does not.
+
+## Reconfirmed on 0.5.0, 2026-08-26
+
+Driver 0.5.0, build `edd7684`, same card. A live switch from a booted
+800x600x32 desktop to **1024x768x16** reports `Result=PASS` and
+`ChangeResult=0`, and the desktop never finishes repainting. The 800-wide
+desktop's stale framebuffer, read at the new 2048-byte stride, appears twice
+side by side with a band of garbage between - the same signature as 0.4.3.
+
+**One new observation, and it narrows the search.** Six captures at 5-second
+intervals over 30 seconds are pixel-identical *except the taskbar clock, which
+advances from 5:34 PM to 5:35 PM*. So GDI is still drawing, the driver is still
+presenting those updates, and they land in the right place - the only thing
+missing is invalidation of everything else. That kills the capture-race
+explanation for good, and it makes suspect 1 in "Where to look" (nothing
+invalidates the full desktop after the `ReEnable` rebuild) the strongly
+favoured one over suspects 2 and 3.
+
+Also worth recording for whoever picks this up: the nine reboot-entered modes
+tested the same day were all clean, so the reboot/live asymmetry is unchanged.
