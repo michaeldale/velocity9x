@@ -47,6 +47,12 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 
 ## Rollout builds (each independently testable, `build/driver-results/gdi-accel-NNN`)
 
+> **Build 000 has its own implementation plan:**
+> [gdi-accel-000-and-harness.md](gdi-accel-000-and-harness.md). It carries the
+> corrected file references, the first-party `BitBlt` signature and the extra
+> `PALETTE_XLAT` gate, and the reasoning for why 000's exit gate must also run
+> on an engine-less family.
+
 | Build | Content | Default | Exit gate |
 |---|---|---|---|
 | gdi-accel-000 | All infrastructure + primitives compiled, default-off; ddhal.c header refactor; HAL Lock/Flip drain audit | off | Byte-identical behavior: V9XGDI PASS, full mode matrix, Ironfield numbers unchanged, both targets; one manual INI-on run proving fill fires |
