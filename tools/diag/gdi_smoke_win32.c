@@ -672,6 +672,8 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("LastRop256", stats->last_rop256);
     v9x_accel_write_uint("LastColor", stats->last_color);
     v9x_accel_write_uint("LastBrushFlags", stats->last_brush_flags);
+    v9x_accel_write_uint("LastBrushBpp", stats->last_brush_bpp);
+    v9x_accel_write_uint("LastBrushStyle", stats->last_brush_style);
     v9x_accel_write_uint("LastBpp", stats->last_bpp);
 }
 
@@ -687,6 +689,7 @@ static DWORD v9x_accel_run(HWND window)
     DWORD compares = 0ul;
     long difference = -1l;
     int screen_bpp;
+    int accelerated_depth;
     int index;
     int stats_ok;
     int compared_ok = 1;
@@ -823,20 +826,53 @@ static DWORD v9x_accel_run(HWND window)
      * What it must never do is skip silently, so the depth it decided on is
      * reported either way.
      */
+    /*
+     * One predicate for both of the checks below, because they depend on the
+     * same thing and gating them differently produced two false positives at
+     * 32 bpp on a driver that was behaving perfectly. The S3 primitives serve
+     * 8 and 16 bpp only; above that every operation is declined at the depth
+     * gate, so no primitive can fire and no bounded wait can run.
+     */
+    accelerated_depth = screen_bpp == 8 || screen_bpp == 16;
     if (error == 0) {
-        int serviceable = screen_bpp == 8 || screen_bpp == 16;
+        int serviceable = accelerated_depth;
 
         v9x_accel_write_uint("ZeroCounterChecked", serviceable ? 1ul : 0ul);
         if (!serviceable) {
             v9x_accel_write_text("ZeroCounterSkipped",
                                  "depth-not-accelerated");
         } else if ((stats.enabled & V9X_GDI_PRIM_FILL) != 0ul &&
-                   stats.fills == 0ul) {
+                   stats.fills == before.fills) {
             error = "fill-enabled-but-never-fired";
         } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
-                   stats.copies == 0ul) {
+                   stats.copies == before.copies) {
             error = "copy-enabled-but-never-fired";
         }
+    }
+
+    /*
+     * A poison this run did not ask for is a failure, and nothing was checking.
+     *
+     * The driver's counters do not reset per Enable, and the mode matrix runs
+     * the original V9XGDI smoke phase in the same boot before this one - so
+     * `stats.fills` can be non-zero because of work that happened before this
+     * run started. Comparing against `before` above is what makes the
+     * zero-counter check about *this* run; comparing against zero let the
+     * earlier phase satisfy it.
+     *
+     * That is not hypothetical. On the Trio64 at its three largest modes a real
+     * uninjected bounded wait expired during the smoke phase, latched the
+     * poison, and turned acceleration off for the rest of the boot. This run
+     * then performed 500 operations with every one of them declining at the
+     * first gate, and passed - because `fills` was non-zero from before, and
+     * because being poisoned is a legitimate state nobody had asserted against.
+     * Two holes, one of which hid a driver defect.
+     */
+    if (error == 0 && before.poisoned != 0ul) {
+        error = "poisoned-before-run";
+    }
+    if (error == 0 && stats.poisoned != 0ul) {
+        error = "poisoned-during-run";
     }
     /*
      * And the check that still means something when nothing is enabled, which
@@ -849,17 +885,37 @@ static DWORD v9x_accel_run(HWND window)
     }
 
     /*
-     * Fault injection, gated on the same condition as the zero-counter check.
+     * Fault injection, gated on the same condition as the zero-counter check -
+     * and it has to be the *same* condition, not merely a similar one.
      *
-     * On a default 000 build no GDI bounded wait ever runs, so an armed
-     * injection would never be consumed and Poisoned would stay 0 - honestly.
-     * Running the step there would assert something the build does not claim.
-     * From 001 onward a primitive is on by default and this runs every time.
+     * An armed injection is only ever consumed by an operation that actually
+     * reaches a bounded wait. Two things can stop that: no primitive enabled
+     * (every default build 000, where no GDI wait ever runs), or a depth no
+     * primitive serves (every 32-bpp mode, where the depth gate declines
+     * before any wait). In both cases Poisoned stays 0 honestly, and asserting
+     * otherwise fails a healthy driver. Gating on `enabled` alone got the first
+     * and missed the second.
      */
-    if (error == 0 && stats.enabled != 0ul) {
+    v9x_accel_write_uint("InjectionChecked",
+                         (stats.enabled != 0ul && accelerated_depth) ? 1ul
+                                                                     : 0ul);
+    if (error == 0 && stats.enabled == 0ul) {
+        v9x_accel_write_text("InjectionSkipped", "no-primitive-enabled");
+    } else if (error == 0 && !accelerated_depth) {
+        v9x_accel_write_text("InjectionSkipped", "depth-not-accelerated");
+    } else if (error == 0) {
         V9X_GDI_STATS injected;
         HBRUSH brush = CreateSolidBrush(v9x_accel_colors[9]);
-        HBRUSH previous = (HBRUSH)SelectObject(state.screen, brush);
+        /*
+         * Into BOTH DCs. Selecting it into the screen alone left the reference
+         * holding its default white brush, so this step compared a red screen
+         * against a white reference and reported a pixel mismatch on a driver
+         * that had just filled 197 rectangles correctly - two of every three
+         * bytes differing, which is exactly red against white.
+         */
+        HBRUSH previous_screen = (HBRUSH)SelectObject(state.screen, brush);
+        HBRUSH previous_reference = (HBRUSH)SelectObject(state.reference,
+                                                        brush);
 
         v9x_accel_write_uint("InjectArmed",
                              v9x_accel_arm_fault(state.screen, 1ul) ? 1ul
@@ -868,7 +924,8 @@ static DWORD v9x_accel_run(HWND window)
                V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT, PATCOPY);
         PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
                PATCOPY);
-        SelectObject(state.screen, previous);
+        SelectObject(state.screen, previous_screen);
+        SelectObject(state.reference, previous_reference);
         DeleteObject(brush);
         if (!v9x_accel_read_stats(state.screen, &injected)) {
             error = "escape-rejected-injected";

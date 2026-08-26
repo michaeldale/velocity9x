@@ -97,7 +97,14 @@ foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:",
                        "Velocity9xAccel",
                        "fill-enabled-but-never-fired",
                        "copy-enabled-but-never-fired",
-                       "dispatcher-never-called")) {
+                       "dispatcher-never-called",
+                       # A poison this run did not ask for is a failure. These
+                       # two are what caught a real Trio64 bounded-wait timeout
+                       # that the zero-counter check alone had passed over,
+                       # because the counter was already non-zero from an
+                       # earlier phase in the same boot.
+                       "poisoned-before-run",
+                       "poisoned-during-run")) {
     if (-not $imageText.Contains($marker)) {
         throw "The GDI smoke test is missing marker $marker."
     }
