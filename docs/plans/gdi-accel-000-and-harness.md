@@ -21,7 +21,22 @@ plan's "Corrections" section records them.
   `CURSOREXCLUDE = 0x0008`, from `C:\98DDK\inc\win98\inc16\DIBENG.INC`, which
   carries both an assembly `equ` (126-127) and a C `#define` (131-132). There is
   no `dibeng.h` in this DDK; the parent plan named a file that does not exist.
-  The realized-brush layout is still unread - see Block 1.
+- **Open item 1, the other half, read 2026-08-26 during this plan's review.**
+  The realized-brush layout is `DIBENG.INC:183-253`: six per-depth structs
+  (`DIB_Brush1/4/8/16/24/32`) sharing one 14-byte header -
+  `BYTE BrushFlags` (offset 0), `BYTE BrushBpp` (1), `WORD BrushStyle` (2),
+  `DWORD FgColor` (4, the physical foreground colour), `WORD Hatch` (8),
+  `DWORD BgColor` (10) - followed by `Mono[BRUSHSIZE*4]`, `Mask[BRUSHSIZE*4]`
+  and a `Bits[]` array sized by depth, with `BRUSHSIZE = 8` (`:25`). Flag bits
+  at `:258-265`: `COLORSOLID 0x01`, `MONOSOLID 0x02`, `PATTERNMONO 0x04`,
+  `MONOVALID 0x08`, `MASKVALID 0x10`, `PRIVATEDATA 0x20`, `BRUSH40 0x40`,
+  `DIBENGBRUSH 0x80`. The solid-fill gate needs exactly two fields:
+  `BrushFlags & COLORSOLID` and `FgColor`; the pattern arrays are never
+  touched. So Block 1 mirrors the common header once with offset asserts, plus
+  whole-struct `sizeof` asserts for the two accelerated depths:
+  `DIB_Brush8` = 142 bytes (14+32+32+64) and `DIB_Brush16` = 206 bytes
+  (14+32+32+128). The structs are byte-packed; the asserts exist to catch a
+  compiler that pads.
 - **Open item 2.** `Lock` and `Flip` already drain the engine
   (`src\display32\ddhal_core.c:503` and `:340`), each under
   `v9x_engine_status_validated()`, honouring `DDLOCK_DONOTWAIT` /
@@ -82,6 +97,16 @@ gates.** Without it, the first accelerated 8-bpp fill under a translated palette
 would produce right-shaped, wrong-coloured pixels - the class of bug the harness
 exists to catch, avoidable for free by copying the reference driver's gate.
 
+Copy the rule exactly, not approximately. `BB_JumpToDibEngineX`
+(`BITBLT.ASM:44-50`) re-checks `lpSrcDev == lpDestDev` and still accelerates a
+screen-to-screen blit under `PALETTE_XLAT`, because a copy that never leaves
+VRAM moves pixel values untranslated. Fills arrive with `lpSrcDev` not equal to
+the screen PDEVICE, so they decline. The distinction is load-bearing from build
+002 onward: an 8-bpp desktop with an active palette translate is precisely the
+desktop whose window scrolls and moves builds 002/003 exist to accelerate, and a
+blanket "decline whenever `PALETTE_XLAT`" gate would silently turn the feature
+off exactly there.
+
 ## Scope
 
 Four blocks. Blocks 1 and 2 are the stage; Block 3 is what makes the stage's
@@ -92,19 +117,37 @@ claim believable; Block 4 is a small safety net this stage's blast radius earns.
 Build `gdi-accel-000` per the parent plan: all infrastructure and primitives
 compiled, every primitive default-off, the dispatcher declining unconditionally.
 
-- Read the realized-brush layout out of `DIBENG.INC` and add it to
-  `src\display16\win9x_display_abi.h` with a `sizeof` assert, beside the two
-  constants already resolved. Do not guess a field order.
+- Transcribe the realized-brush layout recorded above into
+  `src\display16\win9x_display_abi.h` - the common 14-byte header with offset
+  asserts, and the `DIB_Brush8` / `DIB_Brush16` `sizeof` asserts - beside the
+  two constants already resolved.
 - New `src\display16\gdi_accel.c` and `.h`: the dispatcher, the acceptance
   gates, the ViRGE and Trio primitives, bounded waits, the CR66 reset, the
   poison latch, counters, and the config read. Compiled everywhere; the
   primitives must be unreachable on an engine-less family.
-- Remove the BitBlt forward at `dib_thunks.asm:74`; export
-  `BitBlt.1=BITBLT` in `scripts\build-win16-ddi-skeleton.ps1` alongside the
-  existing pattern (`Control.3=CONTROL`, and `UserRepaintDisable.500` added
-  2026-08-26 for the shape of it). Extend that script's map assertions.
-- `V9XDIBBEGINACCESS` (`src\display16\runtime.asm:76-79`) gains the
-  two-instruction dirty-check fast path and a C slow path. The slow path runs at
+- Remove the BitBlt forward at `dib_thunks.asm:74`; change the existing
+  `export BitBlt.1` line (`scripts\build-win16-ddi-skeleton.ps1:164`) to
+  `export BitBlt.1=BITBLT`, the `Control.3=CONTROL` pattern - `Control` is the
+  existing proof that a Watcom `FAR PASCAL` C function can own an ordinal here.
+  The post-link assertions live in `scripts\audit-family-binary.ps1`, not the
+  build script (which delegates at `:195-201`): it already requires the
+  `BitBlt` export (`:90`), and its thunk disassembly audits cover `CheckCursor`,
+  `SetCursor`, `MoveCursor` and `DibBlt` only, so deleting the forward disturbs
+  none of them (the `:233` error text says "BitBlt thunk" but the pattern audits
+  `DibBlt`, ordinal 19 - a trap for the unwary). New `gdi_accel` symbols go in
+  the audit's script-level required-symbol list, since the file links into
+  every family; and add one new disassembly audit worth its lines: the
+  dispatcher's decline branch must still reach `DIB_BitBlt`.
+- `V9XDIBBEGINACCESS` (`src\display16\runtime.asm:133-136`; both this plan and
+  the parent said `:76-79`, which is now DGROUP data - the tree moved) gains the
+  two-instruction dirty-check fast path and a C slow path. The PDEVICE really
+  does route through it - `ddi.c:917` sets `deBeginAccess = V9xDibBeginAccess` -
+  so interrupt-time cursor draws hit the patched entry. But it is not the only
+  door: `V9XDIBBEGINACCESSRECT` (`runtime.asm:231-234`) jumps to the same
+  `DIB_BeginAccess`, and ReEnable's live-switch cursor exclusion calls it
+  (`ddi.c:957`). Give both entries the same dirty check - it is a shared
+  two-instruction stub either way - rather than reasoning per caller about who
+  can never race pending engine work. The slow path runs at
   interrupt time for software-cursor draws, so it may touch MMIO, ports and
   DGROUP only - **no `WritePrivateProfileString`, no serial write**. Poison
   reporting defers to the next BitBlt or to Disable.
@@ -137,6 +180,17 @@ smoke path untouched so `Result=PASS` keeps its current meaning.
 - Finally `V9X_GDIFAULTINJECT`, one more `PatBlt`, then assert the desktop still
   renders, `Poisoned=1`, and the pixels are still correct.
 
+`V9X_GDIFAULTINJECT` should mirror `V9X_DDFAULTINJECT`
+(`docs\decisions\2026-08-16-engine-fault-injection.md`): an armed count that the
+production bounded waits consume by falling into their existing timeout tail, so
+the injector drives the shipping recovery path rather than a parallel test one.
+That choice has a consequence this plan must own: on a default 000 build every
+primitive is off, no GDI bounded wait ever runs, and an armed injection is never
+consumed - `Poisoned` stays 0 honestly. So the harness gates its fault-injection
+step on the same condition as the zero-counter check (a primitive advertised and
+enabled), and at 000 the step runs only in Block 3's deliberate `GdiAccelFill=1`
+session. From 001 onward it runs unconditionally.
+
 **Land this with or before build 001, never after.** Build 000 turns nothing on,
 so the harness cannot yet catch a wrong fill - but writing it against 000, where
 the correct answer is "the reference DC and the screen agree because the DIB
@@ -160,7 +214,10 @@ what the driver does.
   `docs\decisions\2026-08-14-virge-blitter.md`, and `V9XDDP` unchanged: the
   engine is shared, and this stage must not have disturbed the HAL.
 - One deliberate manual run with `GdiAccelFill=1` in `SYSTEM.INI`, purely to
-  prove the primitive can fire at all before build 001 claims it works.
+  prove the primitive can fire at all before build 001 claims it works. This is
+  also the session in which the `/accel` fault-injection step and the
+  poison-latch mode-switch test run at this stage: an armed injection is only
+  consumed by an op that actually reaches a bounded wait (see Block 2).
 
 Capture discipline, because this project has already lost a day to it: on a slow
 guest a screenshot taken straight after a mode change samples an animation, not a
@@ -182,6 +239,15 @@ emulator, starts the guest, deploys, and asserts `Stage=enable-ok` and nothing
 else. Not in the default `run-checks` path - it needs VMs and minutes - but one
 command, so it is runnable before any merge that touches the shared layer.
 
+Coverage honesty: the gate reaches three families, not four. `matrox-m2`
+declares `Emulator = 'none'` (physical only), as does the `ati` family's Rage
+Mobility target, so the gate covers `s3` (both chips, 86Box), `vbe` (QEMU) and
+`ati`/mach64-vt2 (86Box). The script should print the skipped families by name
+rather than silently equating "each family with an emulator" with "every
+family". `run-vm-mode-matrix.ps1` already has the pieces to reuse: the
+no-emulator refusal wording (`:36-50`) and the `Stage=enable-ok` assert
+(`:227`).
+
 This is now practical in a way it was not believed to be: 86Box starts and drives
 from an automated session. Two mechanics worth writing into the script rather
 than rediscovering - the forwarded host port opens **before** the guest agent
@@ -195,17 +261,22 @@ This stage is satisfied when:
 
 - the `BitBlt` C prototype matches `xga\BITBLT.ASM:57` argument for argument,
   and the realized-brush struct carries a `sizeof` assert against `DIBENG.INC`;
-- `PALETTE_XLAT` is among the acceptance gates;
+- `PALETTE_XLAT` is among the acceptance gates, with the screen-to-screen
+  exemption copied from `BB_JumpToDibEngineX`;
+- both `DIB_BeginAccess` entries (`V9XDIBBEGINACCESS` and
+  `V9XDIBBEGINACCESSRECT`) carry the dirty check;
 - the mode matrix passes on `:9869`, `:9871` **and** `:9873`, with `V9XGDI`
   `PASS` on each;
 - the `/accel` phase passes and its zero-counter check has been proven to fail
   when it should - inject a build with the primitive advertised but stubbed out
   and confirm the harness rejects it, because an assertion never observed
   failing is not known to work;
-- fault injection leaves the desktop rendering, `Poisoned=1`, pixels correct;
+- fault injection leaves the desktop rendering, `Poisoned=1`, pixels correct -
+  run with a primitive enabled, per Block 2's consumption note;
 - Ironfield and `V9XDDP` numbers unchanged;
 - the poison latch survives a live mode switch, tested by switching mode after
-  injecting a fault and confirming the latch still reads set.
+  injecting a fault and confirming the latch still reads set (same session:
+  needs a primitive enabled for the fault to be consumed).
 
 ## Deliverables
 

@@ -75,8 +75,13 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
    There is no `dibeng.h` in this DDK - the plan named a file that does not
    exist. They come from `C:\98DDK\inc\win98\inc16\DIBENG.INC`, which carries
    both an assembly `equ` (lines 126-127) and a C `#define` (lines 131-132) of
-   each, so the C consumer has a first-party source. The realized-brush layout
-   still needs reading out of the same file and size-asserting.
+   each, so the C consumer has a first-party source. ~~The realized-brush layout
+   still needs reading out of the same file and size-asserting.~~ **Read
+   2026-08-26: recorded in
+   [gdi-accel-000-and-harness.md](gdi-accel-000-and-harness.md) ("What is
+   already done") - six per-depth structs at `DIBENG.INC:183-253` sharing a
+   14-byte header; the fill gate needs only `BrushFlags & COLORSOLID` and
+   `FgColor`.**
 2. ~~Whether `V9xLock`/`V9xFlip` in ddhal.c drain the engine (build-000 audit).~~
    **Audited 2026-08-26: both already drain, so build 000 has nothing to add
    here and the "new drain points must not regress the HAL paths" risk in
@@ -113,6 +118,11 @@ mind. Nothing about the *design* changed - only where the code lives.
   they are Direct3D's, the 16-bit side has no use for them, and copying them
   into a shared header would invite a 16-bit caller to poke the 3D pipeline.
   `V9X_VBLANK_SPIN_LIMIT` also stayed, being a DirectDraw service.
+- **`runtime.asm:76-79` is stale.** `V9XDIBBEGINACCESS` (design decision 4) now
+  sits at `runtime.asm:133-136`, and it has a sibling the fast path must also
+  cover: `V9XDIBBEGINACCESSRECT` (`:231-234`) jumps to the same
+  `DIB_BeginAccess` and is what ReEnable's live-switch cursor exclusion calls.
+  The child plan carries the detail.
 - **The 16-bit selector constraint is now load-bearing on that header.** Every
   ViRGE offset in it is below 0x10000 and must stay so, because the 16-bit side
   reaches them through one LDT selector based at linear + 0x01000000. The header
