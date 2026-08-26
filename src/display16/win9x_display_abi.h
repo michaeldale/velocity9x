@@ -179,6 +179,47 @@ typedef struct v9x_dib_brush {
 #define V9X_DIB_BRUSH8_SIZE        142u   /* 14 + 32 + 32 + 8*8   */
 #define V9X_DIB_BRUSH16_SIZE       206u   /* 14 + 32 + 32 + 8*16  */
 
+/*
+ * Where a solid brush's physical colour actually lives.
+ *
+ * NOT FgColor, which DIBENG.INC:189 labels "Physical fg color" and which this
+ * driver read first. Measured on the ViRGE at 8 bpp: it holds the *logical*
+ * COLORREF. Reading it and handing it to the engine's pattern-colour register
+ * paints the low byte - the red channel - as a palette index, so every colour
+ * with red 255 came out white
+ * (docs\issues\2026-08-26-gdi-fill-brush-colour-not-physical.md).
+ *
+ * The reference driver takes it from the realized pattern instead:
+ * 98DDK\src\display\mini\s3v\S3BLT.ASM PB_SolidPatBlt does
+ * `mov ecx,dword ptr ds:[si.dp8BrushBits]` and comments it "ECX = solid
+ * foregnd color". That is the right source for a reason worth keeping in mind:
+ * DIBENG renders Bits[] at the *destination's* depth, so its first DWORD is
+ * already the physical value replicated - four pixels at 8 bpp, two at 16 -
+ * which is exactly the form a pattern-colour register wants. FgColor could
+ * never have been, at any depth.
+ *
+ * Only the first DWORD is declared. For a COLORSOLID brush every pixel of the
+ * pattern is the same value, and a driver that does not parse patterns should
+ * not carry a declaration inviting it to.
+ */
+typedef struct v9x_dib_brush_solid {
+    V9X_DIB_BRUSH header;
+    BYTE Mono[32];
+    BYTE Mask[32];
+    DWORD Bits;
+} V9X_DIB_BRUSH_SOLID;
+
+/*
+ * DIB_Brushxx.dpxxBrushStyle. The reference driver branches on this before it
+ * looks at the flags (PatternBlt in S3BLT.ASM), and only BS_SOLID means a
+ * solid colour: BS_HOLLOW draws nothing at all, and the other two carry a
+ * pattern this driver does not read. These are the standard Windows BS_ values.
+ */
+#define V9X_BRUSH_STYLE_SOLID        0u
+#define V9X_BRUSH_STYLE_HOLLOW       1u
+#define V9X_BRUSH_STYLE_HATCHED      2u
+#define V9X_BRUSH_STYLE_PATTERN      3u
+
 /* DIB_Brushxx.dpxxBrushFlags, DIBENG.INC:258-265. */
 #define V9X_BRUSH_COLORSOLID      0x01u
 #define V9X_BRUSH_MONOSOLID       0x02u
@@ -250,5 +291,13 @@ typedef char v9x_assert_dib_brush8_size[
     sizeof(V9X_DIB_BRUSH8) == V9X_DIB_BRUSH8_SIZE ? 1 : -1];
 typedef char v9x_assert_dib_brush16_size[
     sizeof(V9X_DIB_BRUSH16) == V9X_DIB_BRUSH16_SIZE ? 1 : -1];
+/*
+ * The solid-brush accessor lands Bits at offset 78 - 14 + 32 + 32 - which is
+ * where DIBENG.INC puts dpxxBrushBits in every one of its six per-depth
+ * structs. Asserting the whole size is what pins that offset: a pad anywhere
+ * above it would show up here rather than as a wrong fill colour on a screen.
+ */
+typedef char v9x_assert_dib_brush_solid_size[
+    sizeof(V9X_DIB_BRUSH_SOLID) == 82u ? 1 : -1];
 
 #endif

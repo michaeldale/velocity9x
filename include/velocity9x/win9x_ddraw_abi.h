@@ -1231,6 +1231,8 @@ typedef struct v9x_gdi_stats {
     DWORD last_rop256;
     DWORD last_color;
     DWORD last_brush_flags;
+    DWORD last_brush_bpp;
+    DWORD last_brush_style;
     DWORD last_bpp;
 } V9X_GDI_STATS;
 
@@ -1317,7 +1319,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 120 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 128 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

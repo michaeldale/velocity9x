@@ -87,13 +87,20 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
 /*
  * Compile-time primitive defaults, advanced per rollout build.
  *
- * Build 000 is all zeroes on purpose: every primitive below is compiled and
- * none of them is reachable, so the exit gate can ask whether adding this file
- * changed what the driver does rather than whether the new code is correct.
- * Build 001 turns fill on here, 002 copy, 003 overlap.
+ * Build 000 was all zeroes on purpose: every primitive compiled and none of
+ * them reachable, so its exit gate could ask whether adding this file changed
+ * what the driver does rather than whether the new code was correct.
+ *
+ * Build 001 turns fill on. It is on because it was measured, not because it
+ * was written: the randomized comparison against a DIB Engine reference passes
+ * with the engine executing the fills, and it did not pass on the first
+ * attempt - the colour came from the wrong field of the realized brush, which
+ * is recorded on V9X_DIB_BRUSH_SOLID and was worth an issue of its own.
+ *
+ * 002 turns copy on, 003 overlap.
  */
 #define V9X_GDI_DEFAULT_MASTER   1
-#define V9X_GDI_DEFAULT_FILL     0
+#define V9X_GDI_DEFAULT_FILL     1
 #define V9X_GDI_DEFAULT_COPY     0
 #define V9X_GDI_DEFAULT_OVERLAP  0
 
@@ -108,25 +115,38 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
 #define V9X_GDI_DEFAULT_THRESHOLD  1024ul
 
 /*
- * Bounded waits, in iterations.
+ * Bounded waits, in iterations. The same numbers the 32-bit HAL uses, and that
+ * is not laziness - it is the correction of a derivation that was wrong.
  *
- * These are NOT the 32-bit HAL's numbers, and must not be: this driver is
- * built without a -3, so wcc emits 8086 code, and one iteration here is a far
- * call into V9xEngineRead plus a DWORD countdown - call it 60 to 100 clocks
- * against the flat HAL's ten or so. Scaling the HAL's 0x00400000 by that
- * factor lands near 0x00010000, which on a 66 MHz part is roughly 100 ms: far
- * longer than any rectangle this driver accelerates takes to complete, and
- * short enough that the one operation that ever waits this long is not
- * mistaken for a hang. It is paid at most once per session, because the
- * expiry poisons the latch.
+ * These started 64 times shorter, scaled down from the HAL's on the grounds
+ * that this driver is built without a -3, so one iteration here is a far call
+ * into V9xEngineRead plus a DWORD countdown - 60 to 100 clocks against the flat
+ * HAL's ten or so.
  *
- * Uncalibrated. Open item 3 of docs\plans\gdi-acceleration.md is the
- * measurement, on 86Box, through the serial log; these are the starting
- * points that measurement should replace, and the arithmetic above is what
- * they are derived from rather than a guess dressed as one.
+ * That argument scaled the wrong quantity. What an iteration costs is not its
+ * instructions, it is its bus access: on the Trio64 every spin is an `in ax,dx`
+ * on a 9AE8h port, which is ISA-timed at roughly a microsecond and costs
+ * exactly the same in 16-bit and in 32-bit code, and on the ViRGE it is an
+ * uncached MMIO dword read. The loop overhead is noise beside either. So the
+ * two bitnesses' iterations cost about the same, and their limits should be the
+ * same order - not a 64th of each other.
+ *
+ * Measured, which is how the error was found: at 0x00010000 the Trio64 timed
+ * out on real uninjected work in exactly its three largest modes -
+ * 1024x768x16, 1280x1024x8 and 1280x1024x16 - and poisoned the session, while
+ * every mode of 960 KB or less was fine. The ViRGE, whose MMIO read is cheaper
+ * than a port cycle, passed all eleven. That is a limit too short for the
+ * hardware, not hardware too slow for the limit.
+ *
+ * The cost of being generous is bounded and paid at most once per session,
+ * because an expiry latches the poison: a genuinely hung engine stalls for a
+ * few seconds and then acceleration is off for good, which is the trade the
+ * 32-bit side already accepts on the same registers.
+ *
+ * This closes open item 3 of docs\plans\gdi-acceleration.md.
  */
-#define V9X_GDI_FIFO_SPIN_LIMIT   0x00004000ul
-#define V9X_GDI_IDLE_SPIN_LIMIT   0x00010000ul
+#define V9X_GDI_FIFO_SPIN_LIMIT   0x00200000ul
+#define V9X_GDI_IDLE_SPIN_LIMIT   0x00400000ul
 
 /* FIFO slots one accelerated operation needs before it starts writing. */
 #define V9X_GDI_FIFO_SLOTS              8ul
@@ -328,6 +348,7 @@ typedef struct v9x_gdi_op {
     DWORD base;              /* destination byte offset into the aperture */
     DWORD pitch;
     DWORD color;             /* physical fill colour, already depth-sized */
+    WORD rop256;             /* the GDI Rop's high byte, unchanged         */
     WORD bytes_per_pixel;
     WORD destination_x;
     WORD destination_y;
@@ -344,7 +365,17 @@ static WORD v9x_gdi_virge_fill(const V9X_GDI_OP *op)
     if (v9x_gdi_wait_fifo(V9X_GDI_FIFO_SLOTS) == 0u) {
         return 0u;
     }
-    command = V9X_VIRGE_CMD_ROP_PATCOPY | V9X_VIRGE_CMD_MONO_PATTERN |
+    /*
+     * The ROP goes into the command word rather than being normalised into a
+     * colour. That is what the reference driver does - DoBltNoDSP puts the
+     * ROP256 code straight into CMD_SET bits 24:17 and writes no colour at all
+     * for BLACKNESS and WHITENESS - and it is better than normalising for a
+     * concrete reason: with an all-ones mono pattern the engine generates the
+     * pixel values itself from the ROP, so BLACKNESS and WHITENESS need no
+     * opinion about what black and white are. Only PATCOPY reads the colour.
+     */
+    command = ((DWORD)op->rop256 << V9X_VIRGE_CMD_ROP_SHIFT) |
+              V9X_VIRGE_CMD_MONO_PATTERN |
               V9X_VIRGE_CMD_X_POSITIVE | V9X_VIRGE_CMD_Y_POSITIVE |
               V9X_VIRGE_CMD_DRAW_ENABLE |
               ((DWORD)(op->bytes_per_pixel - 1u) << 2);
@@ -760,15 +791,16 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
      * source operand (0x00 and 0xff), a pattern only (0xf0), or a source only
      * (0xcc).
      *
-     * BLACKNESS and WHITENESS are normalised into a solid fill here rather
-     * than passed to the engine as ROPs, so that one definition of the fill
-     * colour serves both chips and the two cannot disagree about what
-     * whiteness means. That definition is the all-ones bit pattern, which is
-     * what both DDK reference blitters produce; GDI documents the two in terms
-     * of physical palette indices 0 and 1 instead. On a palettized desktop
-     * whose realized palette does not put white at 0xff those are different
-     * answers, and the /accel comparison against a reference DC is what
-     * settles it - which is why it must land before build 001 turns fill on.
+     * BLACKNESS and WHITENESS reach the engine as ROPs wherever the hardware
+     * has a ROP field, which is what the reference driver does and which means
+     * neither chip needs an opinion about what black and white are: with an
+     * all-ones mono pattern the engine generates the pixel values from the ROP
+     * alone. The colour below is therefore ignored by the ViRGE for those two.
+     *
+     * The Trio64's 8514/A command set has no ROP field - FRGD_MIX selects a
+     * mix, not a ternary operation - so on that chip the two are expressed as a
+     * solid fill of 0 or of all ones, and the colour is how. All ones is the
+     * right value there for the same reason it is what a ROP of 0xff produces.
      */
     rop256 = (WORD)((rop >> 16) & 0x00fful);
     op.color = 0ul;
@@ -777,12 +809,23 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     } else if (rop256 == V9X_ROP256_WHITENESS) {
         op.color = all_ones;
     } else if (rop256 == V9X_ROP256_PATCOPY) {
+        /*
+         * Style first, then the flag, then the colour - the order the
+         * reference driver's PatternBlt uses. BS_HOLLOW draws nothing and the
+         * other two carry a pattern this driver does not read, so only a
+         * BS_SOLID brush with COLORSOLID set is a solid fill.
+         *
+         * The colour comes from the realized pattern, not from FgColor. See the
+         * note on V9X_DIB_BRUSH_SOLID: FgColor holds the logical COLORREF, and
+         * handing that to the engine painted every red-255 colour white.
+         */
         if (brush == 0 ||
+            brush->BrushStyle != V9X_BRUSH_STYLE_SOLID ||
             (brush->BrushFlags & V9X_BRUSH_COLORSOLID) == 0u) {
             ++v9x_gdi.decline_rop;
             goto decline;
         }
-        op.color = brush->FgColor;
+        op.color = ((const V9X_DIB_BRUSH_SOLID FAR *)brush)->Bits;
     } else if (rop256 != V9X_ROP256_SRCCOPY) {
         ++v9x_gdi.decline_rop;
         goto decline;
@@ -891,9 +934,12 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
      * pending engine work after we return - that is v9x_gdi_engine_dirty and
      * the BeginAccess drain.
      */
+    op.rop256 = rop256;
     v9x_gdi.last_rop256 = (DWORD)rop256;
     v9x_gdi.last_color = op.color;
     v9x_gdi.last_brush_flags = brush != 0 ? (DWORD)brush->BrushFlags : 0ul;
+    v9x_gdi.last_brush_bpp = brush != 0 ? (DWORD)brush->BrushBpp : 0ul;
+    v9x_gdi.last_brush_style = brush != 0 ? (DWORD)brush->BrushStyle : 0ul;
     v9x_gdi.last_bpp = (DWORD)destination_device->deBitsPixel;
     v9x_gdi_exclude_cursor(destination_device, &op);
     destination_device->deFlags |= V9X_DE_BUSY;
