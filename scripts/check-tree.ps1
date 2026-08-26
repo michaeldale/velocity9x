@@ -46,6 +46,7 @@ $required = @(
     "scripts\build-host.ps1",
     "scripts\build-host-msvc.ps1",
     "scripts\run-vm-mode-matrix.ps1",
+    "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",
     "scripts\build-win16-skeleton.ps1",
     "scripts\build-win16-ddi-skeleton.ps1",
