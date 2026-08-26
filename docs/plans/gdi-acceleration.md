@@ -56,7 +56,7 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 | Build | Content | Default | Exit gate |
 |---|---|---|---|
 | gdi-accel-000 **(done)** | All infrastructure + primitives compiled, default-off; shared 2D register header; HAL Lock/Flip drain audit; `/accel` harness; per-family enable gate | off | **Behaviour** unchanged (not bytes - see below): V9XGDI PASS and the new `/accel` phase on the full mode matrix, on the engine family **and on an engine-less one**; Ironfield numbers unchanged; one manual INI-on run proving fill fires |
-| gdi-accel-001 | Solid fill (BLACKNESS/WHITENESS, then PATCOPY+solid brush) | fill on | Randomized fill comparison PASS, engine counters nonzero, timeout injection recovers, DD probes unchanged |
+| gdi-accel-001 **(done)** | Solid fill (BLACKNESS/WHITENESS as ROPs, PATCOPY from the realized brush) | fill on | Randomized fill comparison PASS, engine counters nonzero, timeout injection recovers, DD probes unchanged |
 | gdi-accel-002 | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
 | gdi-accel-003 | Overlap in all 8 directions | +overlap on | Randomized overlap PASS both chips; **full PLAN.md Phase 5 exit gate** |
 | gdi-accel-004 | CPU-to-screen upload (design after 003) | off | Same harness with memory-source ops |
@@ -91,9 +91,30 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
    `DDERR_WASSTILLDRAWING` when the engine will not go idle, honouring
    `DDFLIP_DONOTWAIT` / `DDLOCK_DONOTWAIT` respectively. Two further CPU-access
    boundaries at `:448` and `:481` do the same.
-3. 16-bit spin-limit calibration on 86Box via serial log. Still open. Note the
-   32-bit starting points are `V9X_TRIO_IDLE_SPIN_LIMIT` (0x00400000) and
-   `V9X_ENGINE_VALIDATE_SPINS` (64, in `engines\eng_s3_virge.c`).
+3. ~~16-bit spin-limit calibration on 86Box via serial log.~~ **Closed
+   2026-08-26 in `gdi-accel-001`, by a failure rather than by a measurement
+   campaign, and the answer is that the 16-bit limits are the 32-bit limits.**
+
+   They were first set 64 times shorter, scaled down on the grounds that this
+   driver is built without a `-3` so an iteration costs 60-100 clocks against
+   the flat HAL's ten. That scaled the wrong quantity. An iteration's cost is
+   its bus access, not its instructions: on the Trio64 every spin is an
+   `in ax,dx` on a 9AE8h port, ISA-timed at roughly a microsecond and identical
+   in both bitnesses, and on the ViRGE it is an uncached MMIO dword read. The
+   loop overhead is noise beside either.
+
+   Found because it broke: at 0x00010000 the Trio64's idle wait expired on real
+   uninjected work in exactly its three largest modes - 1024x768x16,
+   1280x1024x8, 1280x1024x16 - latching the poison and silently turning
+   acceleration off for the rest of the boot, while every mode of 960 KB or
+   less was fine. The ViRGE passed all eleven, which is the asymmetry that
+   identifies the cause: its MMIO read is cheaper than a port cycle.
+
+   The `/accel` phase did not catch it on the first pass, and that is worth
+   recording too: its zero-counter check compared `fills` against zero rather
+   than against its own starting snapshot, so fills from the smoke phase
+   earlier in the same boot satisfied it. It now compares deltas and fails on
+   an unrequested poison (`poisoned-before-run`, `poisoned-during-run`).
 
 ## Corrections to this plan, 2026-08-26
 

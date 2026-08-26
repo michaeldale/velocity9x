@@ -1,7 +1,7 @@
 # The GDI solid fill takes a logical RGB where the engine wants a physical colour
 
 Date: 2026-08-26
-Status: open, diagnosed, blocks `gdi-accel-001`
+Status: **fixed** 2026-08-26 in `gdi-accel-001`
 Found by: `V9XGDI.EXE /accel` on the ViRGE/DX guest (`:9869`), build
 `gdi-accel-000` with `GdiAccelFill=1` set by hand
 
@@ -49,30 +49,51 @@ dispatcher was written against. On this path it is evidently not that - or it is
 that only for some brush realizations, and the physical index has to be obtained
 another way.
 
-## What build 001 has to settle
+## The fix
 
-Read the DDK's `RealizeObject` contract properly before changing a line. The
-question is narrow: for a solid brush realized by `DIB_RealizeObjectExt` against
-an 8-bpp screen PDEVICE, where does the physical pixel value live? Candidates,
-in the order worth checking:
+It was the third candidate: the physical colour for a solid brush lives in
+`Bits`, not `FgColor`. The reference driver says so in first-party code -
+`PB_SolidPatBlt` in `98DDK/src/display/mini/s3v/S3BLT.ASM` does
 
-1. **`BrushBpp` says which.** It was not captured in this run and should be the
-   first thing added to `V9X_GDI_STATS`. A brush realized at a depth other than
-   the screen's would explain an RGB `FgColor` completely.
-2. **The colour translation table.** A palettized device has one, and the driver
-   already forwards `SetPaletteTranslate`/`GetPaletteTranslate`. If DIBENG
-   expects the *driver* to translate, that table is the mechanism.
-3. **A different field.** The header mirrors the common 14 bytes and its size
-   asserts hold, so the offsets are right for what it declares - but if the
-   physical colour for a solid brush lives in `Bits[0]` rather than `FgColor`,
-   the size asserts would not notice.
+```
+        mov     ecx,dword ptr ds:[si.dp8BrushBits] ; ECX = solid foregnd color
+        ...
+        EngineWrite B_PAT_FG_CLR,  es, ecx ; write ECX = foreground color
+```
 
-## Why 16 bpp is not evidence either way
+and the comment on that instruction is the whole answer.
 
-This was measured at 8 bpp only. At 16 bpp a logical RGB and a physical pixel
-value are also different numbers, so the same defect almost certainly applies -
-but the failure would look different (a wrong hue rather than uniform white),
-and it has not been observed. Test both depths.
+There is a reason it has to be `Bits` and not `FgColor`, worth keeping because
+it means no other field could have worked: DIBENG renders `Bits[]` at the
+**destination's** depth, so its first DWORD is already the physical value
+replicated across the dword - four pixels at 8 bpp, two at 16 - which is exactly
+the form a pattern-colour register wants. A single logical RGB could not have
+served either depth.
+
+Two things landed with it:
+
+- **The style is checked as well as the flag**, in the reference's order.
+  `PatternBlt` branches on `BrushStyle` before it looks at `BrushFlags`, and
+  only `BS_SOLID` means a solid colour: `BS_HOLLOW` draws nothing at all.
+- **BLACKNESS and WHITENESS stopped being normalised into a colour.** They now
+  reach the ViRGE as ROPs in `CMD_SET` bits 24:17, which is what `DoBltNoDSP`
+  does, so with an all-ones mono pattern the engine generates the pixel values
+  itself and neither chip needs an opinion about what black and white are. The
+  Trio64's 8514/A command set has no ROP field, so there they stay a solid fill
+  of 0 or of all ones. That retires the open question the original
+  normalisation carried.
+
+`BrushBpp` and `BrushStyle` were added to `V9X_GDI_STATS` while diagnosing, and
+they confirmed the brush was realized at the screen's depth (`LastBrushBpp=8`,
+`LastBrushStyle=0`), which is what ruled the first two candidates out.
+
+## Verified
+
+Randomized comparison against a DIB Engine reference, ViRGE at 640x480x8: 500
+operations, 20 comparisons, `Compared=PASS` with `FillsDelta=197` fills executed
+on the engine, and the fault-injection step passing on the same run. 16 bpp is
+covered by the mode matrix, which runs the same phase in every mode.
+
 
 ## Why this is not a build 000 defect
 

@@ -18,6 +18,7 @@ $required = @(
     "docs\decisions\2026-08-16-restructure-baseline.md",
     "docs\decisions\2026-08-16-engine-fault-injection.md",
     "docs\decisions\2026-08-26-gdi-accel-000.md",
+    "docs\decisions\2026-08-26-gdi-accel-001.md",
     "docs\issues\2026-08-26-gdi-fill-brush-colour-not-physical.md",
     "docs\plans\gdi-acceleration.md",
     "docs\plans\gdi-accel-000-and-harness.md",

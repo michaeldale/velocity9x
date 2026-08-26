@@ -84,6 +84,45 @@ build 001 rather than this one. Both are the plan's insistence on landing the
 harness before the first build that turns a primitive on, paying for itself on
 its first use.
 
+Added: **GDI acceleration build `gdi-accel-001` - solid rectangle fills now run
+on the engine on both S3 chips.** This is the first drawing operation Velocity9x
+accelerates outside DirectDraw. It is on because it was measured rather than
+because it was written: the randomized comparison against a DIB Engine
+reference passes with 197 fills executed on the engine per run, the
+fault-injection step still recovers to a rendering desktop, and the mode matrix
+passes in every mode on both chips.
+
+Two defects fixed on the way there, both found by the harness, and between them
+the reason it had to land before the build that turns a primitive on.
+
+The second was the bounded-wait spin limits, which were 64 times too short.
+They had been scaled down from the 32-bit HAL's on the grounds that this driver
+emits 8086 code, so an iteration costs more instructions - but an iteration's
+cost is its bus access, not its instructions, and on the Trio64 every spin is an
+`in ax,dx` on a 9AE8h port that costs the same in either bitness. Measured: the
+Trio64's idle wait expired on real uninjected work in exactly its three largest
+modes, latched the poison and turned acceleration off for the rest of the boot,
+while the ViRGE - whose MMIO read is cheaper than a port cycle - passed all
+eleven. The limits are now the 32-bit values, which closes the parent plan's
+open item 3 by measurement rather than by argument.
+
+The `/accel` phase had passed that defect, twice over, and both holes are now
+closed: its zero-counter check compared fills against zero rather than against
+its own starting snapshot, so fills from the smoke phase earlier in the same
+boot satisfied it; and being poisoned was a legitimate state nothing asserted
+against. A check built to prevent a vacuous pass, passing vacuously one level up.
+
+The first was the fill colour: it came from the realized brush's `FgColor`,
+which holds the *logical* COLORREF. Handing that to the engine's pattern-colour register painted the low
+byte - the red channel - as a palette index, so every colour with red 255 came
+out white. The physical value lives in `Bits`, which DIBENG renders at the
+destination's depth, so its first DWORD is already the value replicated across
+the dword; a single logical RGB could not have served both 8 and 16 bpp. The
+reference driver says exactly this in first-party code and the fix follows it,
+including checking the brush *style* before the flag, and letting BLACKNESS and
+WHITENESS reach the ViRGE as ROPs so neither chip needs an opinion about what
+black and white are.
+
 Corrected in the parent plan: build 000's "byte-identical behavior" exit gate
 was not achievable and is now worded as behaviour; the `v9xhal.dll` hash claim
 is replaced by a per-object disassembly comparison, because a Win32 PE embeds
