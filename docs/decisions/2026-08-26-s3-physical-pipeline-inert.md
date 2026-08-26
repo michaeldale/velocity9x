@@ -48,6 +48,43 @@ risk lives.
 VBE 2.0 S3 board, which nothing in the fleet has.** No collection-enabled
 experiment build was made.
 
+### There are no extra resolutions to be had here anyway
+
+The obvious follow-up question is whether a scan would give this card the extra
+modes the pipeline releases on tier-0 - 46 where the baseline named 7, on QEMU.
+It would not, and the survey settles it by measurement rather than by argument.
+Comparing the 2026-08-26 survey's mode list against the `s3` table, the sets of
+distinct **resolutions** are identical:
+
+```
+BARRY's BIOS (graphics, >= 8 bpp): 640x400 640x480 800x600 1024x768 1280x1024
+the s3 baseline table:             640x400 640x480 800x600 1024x768 1280x1024
+```
+
+Nothing this BIOS knows about is missing from the table. What it lists and the
+table does not carry is four *depth* variants, and neither kind is a win:
+
+| Mode | Geometry | Why not |
+|---|---|---|
+| `0110` | 640x480x15 | 15 bpp is refused by policy - `v9x_vbe_scan_admit` |
+| `0113` | 800x600x15 | admits 8, 16 and 32 only, so a scan would drop |
+| `0116` | 1024x768x15 | these even on a fully compliant BIOS |
+| `0211` | 640x400x32 | the one real gain, and unreachable by construction |
+
+`0x0211` is the interesting one and the irony is already on record: the mode
+inventory called it "the only direct evidence so far that walking the list finds
+modes enumerating fixed numbers cannot - and it is on the one target where the
+scan can never run" (`2026-08-20-vbe-mode-inventory.md`). It stays out of reach.
+
+**The discrepancy on this card runs the other way, which reframes what the
+pipeline would be for on `s3`.** The table carries three rows BARRY's BIOS does
+*not* list: `0100` (section 8's defect), and `0118` and `011A`, which the BIOS
+answers `014F` to. So `s3` does not want a longer table, it wants a shorter and
+more honest one - the pipeline's value here would be its **scan-contradicted
+hiding**, not its merging. That does not rescue BARRY, whose scan can never be
+valid enough to be trusted for hiding, but it is the right expectation to carry
+into any future VBE 2.0 S3 board: pruning, not adding.
+
 ## 2. The pipeline is present and contributes nothing
 
 Two clean boots, boot counters 44 and 45. `C:\V9XMODES.INI` was byte-identical

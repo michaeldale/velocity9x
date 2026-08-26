@@ -1167,10 +1167,14 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
     V9xVddPostMode();
     v9x_serial_write_mode("V9X-DRV switch-ok mode=");
     v9x_serial_write("\r\n");
-    /* Last, once the PDEVICE, GDIINFO, HAL and the VDD all describe the new
-     * mode: a repaint issued before this point could be drawn against a
-     * half-rebuilt device, which is the fault this call exists to cure. */
-    v9x_request_repaint();
+    /*
+     * No forced repaint here, deliberately. One was tried and measured not to
+     * help (see v9x_force_repaint), and a successful switch is the one case
+     * where USER already knows the mode changed - so on every target where
+     * live switching works today this would be a redundant full-screen
+     * repaint on the hot path, bought with nothing. The failure paths above
+     * keep theirs, which is where the DDK samples use it.
+     */
     return 1u;
 }
 
