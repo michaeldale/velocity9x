@@ -960,11 +960,35 @@ done; the rest is explicitly hardware-blocked.
   not compatibility - it is the active aperture-discovery operation v2
   itself specifies. `V9XMINI_API_V1` remains as a named historical constant
   under the check-tree contract assertions.
-- Hardware-blocked, deliberately not faked: ATI enablement waits on its own
-  guest/physical mode-inventory agreement; the Intel GMA target waits on a
+- **ATI is enabled and its gate is met (2026-08-26).** This was listed here as
+  hardware-blocked; it is done. The mode-inventory agreement passed on
+  `Win98SE-Mach64VT2`: the mini-VDD's 22 cached records agree with the DOS
+  inventory record-for-record on mode number, geometry, depth and scan line -
+  **zero disagreements** - and every one of the ten listed modes it did not
+  cache is explained, three legacy planar 4-bpp and seven refused by the 15-bpp
+  policy, with nothing unexplained. The controller reports VBE 2.0, 32 listed
+  modes, terminated, no overflow.
+
+  What the consumer then does with it, on that guest:
+  `Table=rows=15 published=15` - seven baseline rows plus **eight dynamic** -
+  `Scan=state=1`, so the scan is trusted for hiding, and a real panel EDID at
+  `v=0104 preferred=800x600 ext=1` driving `Recommendation=800x600
+  reason=edid-preferred`. The mode matrix passes all six declared modes, and two
+  of the eight new rows were driven by reboot (1280x1024x8 and 320x200x8, the
+  largest and smallest) and both reach `enable-ok` at the requested geometry.
+
+  Note how ATI came to be enabled, because it was not a free choice: this family
+  has no `read_aperture` hook, so the collection is the only way it can learn
+  its aperture. Disabling it had left the package unable to enable at all
+  (`docs\issues\2026-08-26-ati-package-cannot-enable.md`), and fixing that
+  necessarily switched the consumer on - the two cannot be separated on a
+  tier-0 family. The gate above is what makes that acceptable rather than
+  accidental.
+
+- Hardware-blocked, deliberately not faked: the Intel GMA target waits on a
   family that binds that devnode plus the two netbook waves (real
-  scan-contradiction hiding, real panel EDID). Those are the remaining exit
-  gates of this stage.
+  scan-contradiction hiding, real panel EDID). That is the one remaining exit
+  gate of this stage.
 
 - Enable the consumer for `vbe`, then ATI after its own guest/physical mode
   inventory agrees, then the Intel GMA target once a family actually binds that

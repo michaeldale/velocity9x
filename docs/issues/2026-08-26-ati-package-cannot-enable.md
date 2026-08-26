@@ -1,9 +1,10 @@
 # A freshly built `ati` package cannot enable: no collection and no aperture
 
-Status: **open, and it breaks the shipping `ati` package.** Found 2026-08-26 on
-the Mach64 VT2 guest while regression-testing something else. Not diagnosed
-beyond the cause below, and deliberately not fixed here - the fix is a decision,
-not a typo.
+Status: **fixed 2026-08-26.** `MiniVddVbeCollect` is `$true` for `ati` again,
+which is what the 2026-08-18 gating decision always said a family with no
+`read_aperture` hook must have. Two assertions now make the pairing
+unrepresentable rather than merely documented - see "How it is prevented now" at
+the end. Found on the Mach64 VT2 guest while regression-testing something else.
 
 Target: `Win98SE-Mach64VT2`, 86Box, ATI Mach64 VT2 264VT2 (`5654`), reached at
 `127.0.0.1:9873`.
@@ -82,10 +83,11 @@ enables. `run-vm-mode-matrix.ps1 -Family ati` would have caught it immediately -
 it checks `Stage=enable-ok` after a reboot - but it is not part of `run-checks`
 and needs the guest running.
 
-## The fix is a decision, not a typo
+## The fix
 
-Two coherent options, and picking between them is out of scope for the change
-that found this:
+Option 1 below was taken. Both were coherent; option 1 restores the documented
+decision, is one manifest value, and needed no new hardware verification -
+the collection is how this family has always learned its aperture.
 
 1. **Set `MiniVddVbeCollect = $true` for `ati`.** Restores the 2026-08-18
    decision as written. The stated reason for turning it off was to stage the
@@ -118,11 +120,45 @@ build-time assertion - a family with no `read_aperture` hook may not set
 `MiniVddVbeCollect = $false` - would have caught this defect and would stop the
 `vbe` case ever becoming one.
 
-## Guest state left behind
+## How it is prevented now
 
-`Win98SE-Mach64VT2` is currently running a **hand-built** collection-enabled
-mini-VDD (`build-minivdd-skeleton.ps1 -Family ati -DisableVbeCollect:$false`)
-dropped into the package directory, because that is what it took to get the
-guest working again after a fresh `main` package broke it. That binary does not
-match what the manifest would build. Rebuild and redeploy the family once this
-issue is decided.
+The rule was already written down - the comment above the manifest check in
+`scripts\lib\family.ps1` has always said the collection is "what tier-0 families
+(no read_aperture hook) require". It was advice. It is now two assertions built
+on one shared detector, `Test-V9xFamilyHasApertureHook`, which reads the ops
+table's initialiser line out of the family's own sources so the manifest cannot
+drift away from the code:
+
+- **`Test-V9xFamilyManifest`**: a family that sets `MiniVddVbeCollect = $false`
+  and does not fill the `read_aperture` slot is rejected. That is this defect.
+- **`check-tree.ps1`**: a family that *does* fill the slot and leaves the
+  collection on is also rejected - the other half of the 2026-08-18 decision,
+  which had never been asserted at all.
+
+`check-tree.ps1` used to say "enabled only for vbe". That hardcoded list is what
+held this bug in place: it made the broken state the *required* state, so the
+check that should have caught the defect defended it instead. The allowed set is
+now derived from the hooks rather than listed. Its original concern - that a new
+family should not acquire boot-time BIOS calls by accident, since an absent key
+means enabled - is still met, and better: a new family with a hook is rejected
+for enabling, and one without a hook cannot work at all unless it is enabled.
+
+The `vbe` family was safe only by accident of omission before this, since its
+manifest has no key at all. It is now safe by assertion.
+
+## Verified after the fix
+
+On `Win98SE-Mach64VT2`, from the manifest-driven package (no hand-built
+binaries):
+
+- `Stage=enable-ok`, `VbeDetail=ok`, `VbeCache=s=1829 l=32 q=32 c=22 p=0 f=0107`,
+  `VbeController=v=0200 mem=64 caps=00000000 rev=0100`.
+- `run-vm-mode-matrix.ps1 -Family ati -ChipId mach64-vt2` passes all six
+  declared modes.
+- The dynamic pipeline came on with it, which is the point of Stage 6 and is
+  recorded there: `Table=rows=15 published=15`, seven baseline rows plus **eight
+  dynamic**, `Scan=state=1` (trusted for hiding), and a real panel EDID at
+  `v=0104 preferred=800x600 ext=1`.
+- Two of the eight newly discovered modes were driven by reboot - 1280x1024x8
+  and 320x200x8, the largest and the smallest - and both reach `enable-ok` at
+  exactly the requested geometry.

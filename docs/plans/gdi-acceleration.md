@@ -64,6 +64,62 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 4. **DirectDraw regression**: rerun the Ironfield BltFast benchmark and V9XDDP probe after each build (shared engine, new drain points must not regress the HAL paths in `docs/decisions/2026-08-14-virge-blitter.md`).
 
 ## Open items (verify during implementation, read-only against C:\98DDK)
-1. Exact CURSOREXCLUDE/FB_ACCESS values and realized-brush layout from `dibeng.h` (size-asserted).
-2. Whether `V9xLock`/`V9xFlip` in ddhal.c drain the engine (build-000 audit).
-3. 16-bit spin-limit calibration on 86Box via serial log.
+1. ~~Exact CURSOREXCLUDE/FB_ACCESS values and realized-brush layout from `dibeng.h` (size-asserted).~~
+   **Values resolved 2026-08-26: `FB_ACCESS = 0x0001`, `CURSOREXCLUDE = 0x0008`.**
+   There is no `dibeng.h` in this DDK - the plan named a file that does not
+   exist. They come from `C:\98DDK\inc\win98\inc16\DIBENG.INC`, which carries
+   both an assembly `equ` (lines 126-127) and a C `#define` (lines 131-132) of
+   each, so the C consumer has a first-party source. The realized-brush layout
+   still needs reading out of the same file and size-asserting.
+2. ~~Whether `V9xLock`/`V9xFlip` in ddhal.c drain the engine (build-000 audit).~~
+   **Audited 2026-08-26: both already drain, so build 000 has nothing to add
+   here and the "new drain points must not regress the HAL paths" risk in
+   Verification §4 does not apply to Lock or Flip.** `Flip`
+   (`src\display32\ddhal_core.c:340`) and `Lock` (`:503`) each call
+   `v9x_wait_idle` under `v9x_engine_status_validated()` and return
+   `DDERR_WASSTILLDRAWING` when the engine will not go idle, honouring
+   `DDFLIP_DONOTWAIT` / `DDLOCK_DONOTWAIT` respectively. Two further CPU-access
+   boundaries at `:448` and `:481` do the same.
+3. 16-bit spin-limit calibration on 86Box via serial log. Still open. Note the
+   32-bit starting points are `V9X_TRIO_IDLE_SPIN_LIMIT` (0x00400000) and
+   `V9X_ENGINE_VALIDATE_SPINS` (64, in `engines\eng_s3_virge.c`).
+
+## Corrections to this plan, 2026-08-26
+
+The plan was written against a HAL layout that no longer exists, so every file
+reference in the Context and Design sections above needs reading with this in
+mind. Nothing about the *design* changed - only where the code lives.
+
+- **`src/display32/ddhal.c` is gone.** The HAL was split into
+  `src\display32\ddhal_core.c` plus per-chip `src\display32\engines\eng_s3_virge.c`
+  and `eng_s3_trio.c`, with `ddhal_internal.h` shared between them. So the
+  "ddhal.c:36-147" register block, "v9x_virge_copy (ddhal.c:1134-1144)" and
+  "v9x_trio_copy (ddhal.c:1207-1219)" citations are all stale. The per-chip
+  split is helpful rather than not: the engine ops are already behind a
+  `wait_idle`/`fill`/`copy` ops table (`eng_s3_trio.c:193`), which is the shape
+  the 16-bit side wants to mirror.
+- **Design decision 1 is done.** The 2D register map now lives in
+  `include\velocity9x\s3_engine_regs.h`, moved out of `ddhal_internal.h`, which
+  includes it. Verified a pure preprocessor move: `v9xhal.dll` built with a
+  pinned build id is **byte-identical** across the change
+  (`1BEDF7BD692792F39F23ED7B1E182DF597EA65BAAC85CF5E8B90F71C847A3685`). The
+  ViRGE S3D windows at 0xb4xx deliberately stayed behind in `ddhal_internal.h`:
+  they are Direct3D's, the 16-bit side has no use for them, and copying them
+  into a shared header would invite a 16-bit caller to poke the 3D pipeline.
+  `V9X_VBLANK_SPIN_LIMIT` also stayed, being a DirectDraw service.
+- **The 16-bit selector constraint is now load-bearing on that header.** Every
+  ViRGE offset in it is below 0x10000 and must stay so, because the 16-bit side
+  reaches them through one LDT selector based at linear + 0x01000000. The header
+  says this where someone adding a register will read it.
+
+### What build 000 still needs
+
+With the above done and items 1-2 closed, `gdi-accel-000` reduces to: the
+realized-brush struct and its size assert, `src\display16\gdi_accel.c` with the
+primitives compiled but default-off, the `BeginAccess` fast path, the BitBlt
+export and dispatcher with an unconditional decline, and the build-script
+asserts. The V9XGDI `/accel` harness in Verification §2 should land with or
+before the first build that turns a primitive **on** (001), not after - it is
+the only thing that makes a fill or copy claim checkable, and a randomized
+comparison against a reference DC is not something to retrofit onto code that
+has already been declared working.

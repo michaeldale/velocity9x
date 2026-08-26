@@ -6,6 +6,38 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+Fixed: a freshly built `ati` package could not enable at all. Its manifest set
+`MiniVddVbeCollect = $false` while the family has no `read_aperture` hook, so
+the tier-0 aperture path had an empty 4F9Ch cache to read, Enable refused at
+stage 3 with `fail-hardware-aperture`, and Windows fell back to 4-bpp
+`vga.drv`. Latent since the Stage 1 pipeline work, because the only guest that
+would have shown it was running an installed binary from before the change
+([issue](docs/issues/2026-08-26-ati-package-cannot-enable.md)).
+
+Two assertions now make that state unrepresentable, built on one shared
+detector that reads the ops table out of the family's own sources so the
+manifest cannot drift from the code: a family with no `read_aperture` hook may
+not disable the collection, and a family with one may not keep it. The second
+half of the 2026-08-18 gating decision had never been asserted at all, and
+`check-tree.ps1`'s old hardcoded "enabled only for vbe" list was what held the
+`ati` defect in place - it made the broken state the required state.
+
+With that fixed, **the dynamic VBE pipeline's ATI rollout is done and its
+Stage 6 gate is met.** On the Mach64 VT2 guest the mini-VDD's 22 cached records
+agree with the DOS inventory record-for-record with zero disagreements, and
+every one of the ten listed modes it did not cache is explained. The consumer
+then publishes **15 rows where the baseline named 7** - eight dynamically
+discovered modes - with the scan trusted for hiding and a real panel EDID
+(`preferred=800x600`) choosing the fallback. The mode matrix passes, and the
+largest and smallest of the new modes both enable at the requested geometry.
+
+Groundwork for GDI acceleration: the S3 2D register map moves from the HAL's
+private `ddhal_internal.h` to a shared `include/velocity9x/s3_engine_regs.h`
+so the 16-bit driver can reach the same registers, verified a pure preprocessor
+move by a byte-identical `v9xhal.dll`. Two of that plan's three open items are
+resolved by measurement, and its stale references to a `ddhal.c` that no longer
+exists are corrected.
+
 The dynamic VBE pipeline is verified inert on physical S3 silicon. BARRY, the
 physical 2 MiB PCI Trio64, ran 0.5.0 over two clean boots with the runtime table
 byte-identical to the static baseline — twelve rows, all `src=baseline`, nothing

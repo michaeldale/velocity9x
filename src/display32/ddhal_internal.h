@@ -25,51 +25,17 @@
 
 #define V9X_HAL_BASE            0xb0400000ul
 
-#define V9X_CRTC_INDEX              0x03d4u
-#define V9X_CRTC_DATA               0x03d5u
-#define V9X_INPUT_STATUS_1          0x03dau
-#define V9X_STATUS_VBLANK              0x08u
+/*
+ * The 2D engine register map is shared with the 16-bit driver, which needs the
+ * same registers for GDI acceleration and cannot depend on this DLL. Constants
+ * only; the 3D windows below stay private to Direct3D.
+ */
+#include "velocity9x/s3_engine_regs.h"
 
-/* Trio32/64 enhanced 8514/A-compatible drawing engine ports. */
-#define V9X_TRIO_CUR_Y                 0x82e8u
-#define V9X_TRIO_CUR_X                 0x86e8u
-#define V9X_TRIO_MAJ_AXIS_PCNT         0x96e8u
-#define V9X_TRIO_CMD_STATUS            0x9ae8u
-#define V9X_TRIO_FRGD_COLOR            0xa6e8u
-#define V9X_TRIO_FRGD_MIX              0xbae8u
-#define V9X_TRIO_MULTIFUNC_CNTL        0xbee8u
-#define V9X_TRIO_PIXEL_CNTL_FRGD_MIX   0xa000u
-#define V9X_TRIO_FRGD_MIX_NEW          0x0027u
-#define V9X_TRIO_CMD_RECT_SOLID        0x40b1u
-/* Screen-to-screen BitBLT on the 8514/A-compatible enhanced command set:
- * opcode 6 in bits 15:13, plus write-enable and the two direction bits.
- * FRGD_MIX 0x0067 selects a display-memory source with the SRC mix, which is
- * what makes it a copy rather than a pattern fill. The engine addresses both
- * rectangles through the display pitch from a common bank base, so source and
- * destination must both be display-pitch surfaces on a scan-line boundary. */
-#define V9X_TRIO_DESTX_DIASTP          0x8ee8u
-#define V9X_TRIO_DESTY_AXSTP           0x8ae8u
-#define V9X_TRIO_FRGD_MIX_COPY         0x0067u
-#define V9X_TRIO_CMD_BITBLT            0xc011u
-#define V9X_TRIO_CMD_INC_X             0x0020u
-#define V9X_TRIO_CMD_INC_Y             0x0080u
-#define V9X_TRIO_STATUS_BUSY           0x0200u
-#define V9X_TRIO_IDLE_SPIN_LIMIT       0x00400000ul
-
-/* Bounded vblank polling so a broken timing source cannot hang a caller. */
+/* Bounded vblank polling so a broken timing source cannot hang a caller. Stays
+ * here rather than in the shared header: vblank waits are a DirectDraw service
+ * and the 16-bit GDI path has no business polling for one. */
 #define V9X_VBLANK_SPIN_LIMIT   0x00200000ul
-
-/* ViRGE linear-aperture register offsets. The active DPMI mapping covers
- * 64 MiB, while DirectDraw exposes only the first 4 MiB as allocatable VRAM. */
-#define V9X_VIRGE_ENGINE_STATUS       0x00008504ul
-#define V9X_VIRGE_DEST_BASE           0x0000a4d8ul
-#define V9X_VIRGE_MONO_PAT_0          0x0000a4e8ul
-#define V9X_VIRGE_MONO_PAT_1          0x0000a4ecul
-#define V9X_VIRGE_DEST_SRC_STRIDE     0x0000a4e4ul
-#define V9X_VIRGE_PATTERN_FG          0x0000a4f4ul
-#define V9X_VIRGE_COMMAND             0x0000a500ul
-#define V9X_VIRGE_RECT_WH             0x0000a504ul
-#define V9X_VIRGE_RECT_DEST_XY        0x0000a50cul
 
 /* ViRGE S3D setup and triangle register windows (new MMIO). */
 #define V9X_VIRGE_3D_Z_BASE           0x0000b4d4ul

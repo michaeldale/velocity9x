@@ -122,10 +122,23 @@
     )
 
     Build = @{
-        # Stage 1's many-mode BIOS walk rolls out to QEMU VBE first. ATI keeps
-        # the mini-VDD for power callbacks but assembles collection out until
-        # its own guest/physical inventory gate is ready.
-        MiniVddVbeCollect = $false
+        # This family has no read_aperture hook, so the mini-VDD's 4F9Ch cache
+        # is the only way it can learn where its framebuffer is. The collection
+        # therefore has to stay on, and Test-V9xFamilyManifest now enforces
+        # that pairing rather than leaving it to a comment.
+        #
+        # It was $false between the Stage 1 pipeline work and 2026-08-26, on the
+        # reasoning that "Stage 1's many-mode BIOS walk rolls out to QEMU VBE
+        # first" - a sequencing preference. The consequence was not sequencing:
+        # a freshly built package could not enable at all, refusing at stage 3
+        # with fail-hardware-aperture and falling back to 4-bpp vga.drv. It went
+        # unnoticed because the only guest that would have shown it was running
+        # an installed binary from before the change
+        # (docs\issues\2026-08-26-ati-package-cannot-enable.md).
+        #
+        # Verified on Win98SE-Mach64VT2 after restoring it: enable-ok with 22
+        # modes cached off a VBE 2.0 BIOS.
+        MiniVddVbeCollect = $true
         # Compile order is link order. Reordering changes the image.
         # One object per chip, then the family table that points at both -
         # the split the per-object audit layer needs to tell them apart.

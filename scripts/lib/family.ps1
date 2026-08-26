@@ -51,10 +51,45 @@ function Assert-V9xFamilyKeys {
     }
 }
 
+function Test-V9xFamilyHasApertureHook {
+    <#
+      Does this family fill the ops table's read_aperture slot?
+
+      That single fact decides both halves of the mini-VDD collection rule, so
+      it is detected in one place and consumed twice - here for "no hook means
+      the collection is mandatory", and in check-tree.ps1 for "a hook means the
+      collection is forbidden". Two independent detections could disagree.
+
+      Read from the family's own sources rather than declared in the manifest,
+      so the manifest cannot drift away from the code. The pattern matches the
+      ops table's initialiser line - a bare identifier ending in read_aperture -
+      and deliberately not prose, so a comment mentioning the hook in the past
+      tense does not count as having one (which is exactly what ati_hw16.c has).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Family,
+        [Parameter(Mandatory = $true)][string]$RepoRoot
+    )
+
+    foreach ($source in @($Family.Build.Sources)) {
+        $sourcePath = Join-Path $RepoRoot $source.Path
+        if (-not (Test-Path -LiteralPath $sourcePath)) { continue }
+        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        if ($sourceText -match '(?m)^\s*[A-Za-z_][A-Za-z0-9_]*read_aperture\s*,\s*$') {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Test-V9xFamilyManifest {
     param(
         [Parameter(Mandatory = $true)]$Family,
-        [Parameter(Mandatory = $true)][string]$Id
+        [Parameter(Mandatory = $true)][string]$Id,
+        # Needed to resolve Build.Sources paths for the aperture-hook check
+        # below. Optional so an existing caller that only has the manifest can
+        # still run every other assertion.
+        [string]$RepoRoot
     )
 
     Assert-V9xFamilyKeys -Table $Family -Context "Family $Id" -Required @(
@@ -137,6 +172,26 @@ function Test-V9xFamilyManifest {
     $sources = @($Family.Build.Sources)
     if ($sources.Count -eq 0) {
         throw "Family $Id declares no build sources."
+    }
+    #
+    # Half one of the collection rule: no read_aperture hook means the 4F9Ch
+    # cache is the only way this family can learn where its framebuffer is, so
+    # assembling the collection out leaves it with no aperture at all - Enable
+    # refuses at stage 3 with fail-hardware-aperture and Windows falls back to
+    # 4-bpp vga.drv. That shipped in the ati package and went unnoticed across
+    # a release, because a package that builds is not a package that enables
+    # (docs\issues\2026-08-26-ati-package-cannot-enable.md). The comment above
+    # has always said this; now it is enforced.
+    #
+    # Half two - a family that HAS the hook must not run the collection - is
+    # asserted in check-tree.ps1, which can see every family at once.
+    if ($RepoRoot -and $Family.Build.ContainsKey('MiniVddVbeCollect') -and
+        $Family.Build.MiniVddVbeCollect -eq $false -and
+        -not (Test-V9xFamilyHasApertureHook -Family $Family -RepoRoot $RepoRoot)) {
+        throw ("Family $Id sets Build.MiniVddVbeCollect = `$false but does not " +
+               "fill the read_aperture slot, so it has no way to learn its " +
+               "framebuffer aperture and cannot enable. Either keep the " +
+               "collection or give the family a read_aperture hook.")
     }
     $sourceNames = @($sources | ForEach-Object { $_.Name })
     $duplicateNames = @($sourceNames | Group-Object |
@@ -385,7 +440,7 @@ function Import-V9xFamily {
         throw "Unknown family '$Id'. Known families: $known."
     }
     $family = Import-PowerShellDataFile -LiteralPath $path
-    Test-V9xFamilyManifest -Family $family -Id $Id
+    Test-V9xFamilyManifest -Family $family -Id $Id -RepoRoot $RepoRoot
     $family['ManifestPath'] = $path
     $family
 }

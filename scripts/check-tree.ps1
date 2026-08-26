@@ -180,15 +180,43 @@ foreach ($family in $families) {
     }
 }
 
-# Stage 1 rolls the no-timeout many-mode walk out to the QEMU VBE package only.
-# A missing manifest key means enabled, so assert the positive set explicitly;
-# otherwise a newly added family would acquire boot-time BIOS calls by default.
-$collectFamilies = @($families | Where-Object {
-    $_.Build.MiniVddVbeCollect -ne $false
-} | ForEach-Object { $_.Id })
-if ($collectFamilies.Count -ne 1 -or $collectFamilies[0] -ne 'vbe') {
-    throw ("Stage-1 mini-VDD collection must be enabled only for vbe; enabled: " +
-           ($collectFamilies -join ', '))
+# Which families may run the mini-VDD's boot-time VBE collection is derived from
+# whether they can learn their aperture any other way, not from a hardcoded
+# list. Both halves of the rule matter:
+#
+#   no read_aperture hook -> the collection is MANDATORY. Without it the 4F9Ch
+#     cache is empty, there is no aperture, and the driver cannot enable. That
+#     half is asserted per-family in Test-V9xFamilyManifest.
+#   a read_aperture hook   -> the collection is FORBIDDEN. The cache is never
+#     consulted, so eight nested Exec_Int 10h calls at boot are all risk and no
+#     benefit - the 2026-08-18 gating decision, made after that code path hung a
+#     physical Trio64.
+#
+# This used to be spelled "enabled only for vbe". That hardcoded list is what
+# kept the ati family broken: ati has no hook, so disabling its collection made
+# a package that could not enable, and the assertion held the bug in place
+# rather than catching it (docs\issues\2026-08-26-ati-package-cannot-enable.md).
+#
+# The original concern behind the list - that a newly added family should not
+# acquire boot-time BIOS calls by accident, since a missing key means enabled -
+# is still met, and better: a new family with a hook is rejected for enabling,
+# and a new family without one cannot work at all unless it is enabled, so the
+# collection is never an accident either way.
+foreach ($family in $families) {
+    $hasHook = Test-V9xFamilyHasApertureHook -Family $family -RepoRoot $repoRoot
+    $collects = $family.Build.MiniVddVbeCollect -ne $false
+    if ($hasHook -and $collects) {
+        throw ("Family $($family.Id) fills the read_aperture slot, so its " +
+               "mini-VDD must assemble the VBE collection out " +
+               "(Build.MiniVddVbeCollect = `$false): the 4F9Ch cache is never " +
+               "consulted on such a family, so the boot-time BIOS calls are " +
+               "all risk and no benefit.")
+    }
+    if (-not $hasHook -and -not $collects) {
+        throw ("Family $($family.Id) has no read_aperture hook, so it must " +
+               "keep the mini-VDD VBE collection; without it the family has no " +
+               "aperture and cannot enable.")
+    }
 }
 
 # The mini-VDD API contract is written twice - once for the two assemblers
