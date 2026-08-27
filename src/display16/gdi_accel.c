@@ -230,6 +230,16 @@ static WORD v9x_gdi_fault_injected(void)
 }
 
 /*
+ * Read one S3 CRTC register. Index then data, the same two ports the engine
+ * reset below already uses, so this adds no new hardware surface.
+ */
+static BYTE v9x_gdi_crtc_read(BYTE index)
+{
+    v9x_gdi_port_out(V9X_CRTC_INDEX, index);
+    return v9x_gdi_port_in(V9X_CRTC_DATA);
+}
+
+/*
  * CR66 bit 1 is the ViRGE/DX graphics-engine reset the Windows 98 S3 sample
  * uses, and it is touched only after a bounded wait has already expired. The
  * Trio64 has no recovery at all - the 32-bit side measured that a forced
@@ -608,7 +618,18 @@ static WORD v9x_gdi_trio_fill(const V9X_GDI_OP *op)
     v9x_gdi_port_out_word(V9X_TRIO_CUR_Y, (WORD)y);
     v9x_gdi_port_out_word(V9X_TRIO_MAJ_AXIS_PCNT, (WORD)(op->width - 1u));
     v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, (WORD)(op->height - 1u));
+    v9x_gdi.last_status_entry =
+        (DWORD)v9x_gdi_port_in_word(V9X_TRIO_CMD_STATUS);
     v9x_gdi_port_out_word(V9X_TRIO_CMD_STATUS, V9X_TRIO_CMD_RECT_SOLID);
+    v9x_gdi.last_status_issued =
+        (DWORD)v9x_gdi_port_in_word(V9X_TRIO_CMD_STATUS);
+    /* Where the engine's memory origin is being taken from. See the note on
+     * last_cr6a: a non-zero bank would put this fill outside the displayed
+     * part of video memory. */
+    v9x_gdi.last_cr6a = (DWORD)v9x_gdi_crtc_read(0x6au);
+    v9x_gdi.last_cr35 = (DWORD)v9x_gdi_crtc_read(0x35u);
+    v9x_gdi.last_cr51 = (DWORD)v9x_gdi_crtc_read(0x51u);
+    v9x_gdi.last_cr31 = (DWORD)v9x_gdi_crtc_read(0x31u);
     return 1u;
 }
 

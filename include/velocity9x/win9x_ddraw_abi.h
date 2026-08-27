@@ -1272,6 +1272,41 @@ typedef struct v9x_gdi_stats {
     DWORD last_base;
     DWORD last_pitch;
     /*
+     * The Trio64 engine's raw status word, sampled at three points around the
+     * last fill: on entry, immediately after the command is written, and after
+     * a short settle. Recorded because the probe measured a fill that the
+     * driver counted and the framebuffer never received, which leaves only one
+     * question worth asking - whether the engine is executing at all.
+     *
+     * A status that never shows busy means the command is not being accepted,
+     * which points at enhanced-mode state the 16-bit path never establishes
+     * rather than at anything in the fill itself. 0xffff means the port is
+     * reading back floating, i.e. nothing is decoding it.
+     */
+    DWORD last_status_entry;
+    DWORD last_status_issued;
+    /*
+     * Was last_status_settled. It read the status a few instructions after the
+     * command with an empty delay loop the compiler was free to delete, so
+     * "still busy" meant nothing - a busy engine immediately after a command is
+     * normal. Replaced rather than kept, because a diagnostic that cannot fail
+     * informatively is worse than none.
+     *
+     * These are the S3 CRTC registers that decide where the engine's memory
+     * origin is, sampled at fill time: CR6A is the current 64 KiB bank, CR35
+     * the older bank register, CR51 carries display-start high bits, CR31 the
+     * memory-configuration bits. GDI moves the bank for its own framebuffer
+     * access; the 32-bit HAL uses the linear aperture and never does. If the
+     * engine origin follows the bank, a non-zero bank displaces every fill -
+     * potentially into the ~1.1 MiB of BARRY's 2 MiB that 800x600x16 does not
+     * display, which is exactly what "the engine ran and nothing appeared"
+     * looks like.
+     */
+    DWORD last_cr6a;
+    DWORD last_cr35;
+    DWORD last_cr51;
+    DWORD last_cr31;
+    /*
      * The last operation the dispatcher accepted, for diagnosing a wrong-pixel
      * failure without a second guest round trip.
      *
@@ -1372,7 +1407,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 156 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 180 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

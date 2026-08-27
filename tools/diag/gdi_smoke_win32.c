@@ -420,6 +420,27 @@ static void v9x_accel_fill_header(BITMAPINFO *info)
     info->bmiHeader.biCompression = BI_RGB;
 }
 
+/* The probe's variant: same call, caller-chosen dimensions. Kept separate so
+ * the comparison's fixed 320x240 contract is untouched. */
+static int v9x_accel_capture_size(HDC source, HBITMAP bitmap,
+                                  unsigned char *bits, int width, int height)
+{
+    BITMAPINFO info;
+    unsigned index;
+
+    for (index = 0u; index < sizeof(info); ++index) {
+        ((unsigned char *)&info)[index] = 0u;
+    }
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 24;
+    info.bmiHeader.biCompression = BI_RGB;
+    return GetDIBits(source, bitmap, 0, height, bits, &info,
+                     DIB_RGB_COLORS) == height;
+}
+
 static int v9x_accel_capture(HDC source, HBITMAP bitmap, unsigned char *bits)
 {
     BITMAPINFO info;
@@ -718,6 +739,154 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
     ++*noise;
 }
 
+
+/*
+ * One fill, measured.
+ *
+ * Everything else in this file compares the screen against a reference render
+ * and reports *whether* they differ. That is the wrong instrument for a driver
+ * that mis-addresses: it says the pixels are wrong without saying where they
+ * went. This phase asks the only question that matters for that -
+ * **where did the engine actually write?** - and it asks without assuming
+ * anything about the background, because it snapshots the screen before and
+ * after a single operation and diffs the two snapshots.
+ *
+ * Both snapshots are read the same way, so the 24-bpp readback that caused an
+ * earlier false failure is harmless here: it is the same conversion on both
+ * sides of the diff.
+ *
+ * A note on why one fill and not many: on hardware eight were enough to corrupt
+ * the framebuffer beyond attribution. One keeps the answer readable.
+ */
+static DWORD v9x_accel_probe(HWND window, int screen_width,
+                             int screen_height)
+{
+    /* Deliberately not at the origin, and not square: an offset, asymmetric
+     * rectangle makes a transposed or scaled result obvious, where a square at
+     * (0,0) would hide both. */
+    const int probe_x = 64;
+    const int probe_y = 48;
+    const int probe_w = 96;
+    const int probe_h = 32;
+
+    HDC screen = GetDC(window);
+    HDC before_dc = 0;
+    HDC after_dc = 0;
+    HBITMAP before_bm = 0;
+    HBITMAP after_bm = 0;
+    unsigned char *before_bits = 0;
+    unsigned char *after_bits = 0;
+    /*
+     * The whole screen, not the comparison's 320x240 corner. The first run of
+     * this probe on hardware reported nothing changed inside that corner while
+     * the engine had accepted the fill - so where the write went is the
+     * question, and a sampling window smaller than the screen cannot answer it.
+     */
+    DWORD stride = (DWORD)((screen_width * 3 + 3) & ~3);
+    DWORD bytes = stride * (DWORD)screen_height;
+    DWORD result = 0ul;
+
+    if (screen == 0) {
+        v9x_accel_write_text("ProbeError", "no-screen-dc");
+        return 1ul;
+    }
+    before_dc = CreateCompatibleDC(screen);
+    after_dc = CreateCompatibleDC(screen);
+    before_bm = CreateCompatibleBitmap(screen, screen_width, screen_height);
+    after_bm = CreateCompatibleBitmap(screen, screen_width, screen_height);
+    before_bits = (unsigned char *)GlobalAlloc(GPTR, bytes);
+    after_bits = (unsigned char *)GlobalAlloc(GPTR, bytes);
+    if (before_dc == 0 || after_dc == 0 || before_bm == 0 || after_bm == 0 ||
+        before_bits == 0 || after_bits == 0) {
+        v9x_accel_write_text("ProbeError", "alloc");
+        result = 2ul;
+        goto done;
+    }
+    SelectObject(before_dc, before_bm);
+    SelectObject(after_dc, after_bm);
+
+    /* Snapshot, single fill, snapshot. */
+    BitBlt(before_dc, 0, 0, screen_width, screen_height,
+           screen, 0, 0, SRCCOPY);
+    if (!v9x_accel_capture_size(before_dc, before_bm, before_bits,
+                                screen_width, screen_height)) {
+        v9x_accel_write_text("ProbeError", "capture-before");
+        result = 3ul;
+        goto done;
+    }
+    {
+        HBRUSH brush = CreateSolidBrush(RGB(255, 0, 255));
+        HBRUSH previous = (HBRUSH)SelectObject(screen, brush);
+
+        PatBlt(screen, probe_x, probe_y, probe_w, probe_h, PATCOPY);
+        SelectObject(screen, previous);
+        DeleteObject(brush);
+    }
+    BitBlt(after_dc, 0, 0, screen_width, screen_height,
+           screen, 0, 0, SRCCOPY);
+    if (!v9x_accel_capture_size(after_dc, after_bm, after_bits,
+                                screen_width, screen_height)) {
+        v9x_accel_write_text("ProbeError", "capture-after");
+        result = 4ul;
+        goto done;
+    }
+
+    /* Bounding box of every pixel that changed, in the sampled region's own
+     * coordinates. GetDIBits handed back a bottom-up DIB, so row 0 of the
+     * buffer is the bottom of the region and y is flipped on the way out. */
+    {
+        long min_x = -1l, min_y = -1l, max_x = -1l, max_y = -1l;
+        DWORD changed = 0ul;
+        int row;
+        int col;
+
+        for (row = 0; row < screen_height; ++row) {
+            const unsigned char *a = before_bits + (DWORD)row * stride;
+            const unsigned char *b = after_bits + (DWORD)row * stride;
+
+            for (col = 0; col < screen_width; ++col) {
+                if (a[col * 3] != b[col * 3] ||
+                    a[col * 3 + 1] != b[col * 3 + 1] ||
+                    a[col * 3 + 2] != b[col * 3 + 2]) {
+                    long y = (long)(screen_height - 1 - row);
+
+                    ++changed;
+                    if (min_x < 0l || col < min_x) { min_x = col; }
+                    if (max_x < 0l || col > max_x) { max_x = col; }
+                    if (min_y < 0l || y < min_y) { min_y = y; }
+                    if (max_y < 0l || y > max_y) { max_y = y; }
+                }
+            }
+        }
+        v9x_accel_write_uint("ProbeRequestedX", (DWORD)probe_x);
+        v9x_accel_write_uint("ProbeRequestedY", (DWORD)probe_y);
+        v9x_accel_write_uint("ProbeRequestedW", (DWORD)probe_w);
+        v9x_accel_write_uint("ProbeRequestedH", (DWORD)probe_h);
+        v9x_accel_write_uint("ProbeChangedPixels", changed);
+        v9x_accel_write_uint("ProbeExpectedPixels",
+                             (DWORD)(probe_w * probe_h));
+        if (changed == 0ul) {
+            v9x_accel_write_text("ProbeActual", "nothing-changed");
+        } else {
+            v9x_accel_write_uint("ProbeActualX0", (DWORD)min_x);
+            v9x_accel_write_uint("ProbeActualY0", (DWORD)min_y);
+            v9x_accel_write_uint("ProbeActualX1", (DWORD)max_x);
+            v9x_accel_write_uint("ProbeActualY1", (DWORD)max_y);
+            v9x_accel_write_uint("ProbeActualW", (DWORD)(max_x - min_x + 1l));
+            v9x_accel_write_uint("ProbeActualH", (DWORD)(max_y - min_y + 1l));
+        }
+    }
+
+done:
+    if (before_bits != 0) { GlobalFree((HGLOBAL)before_bits); }
+    if (after_bits != 0) { GlobalFree((HGLOBAL)after_bits); }
+    if (before_dc != 0) { DeleteDC(before_dc); }
+    if (after_dc != 0) { DeleteDC(after_dc); }
+    if (before_bm != 0) { DeleteObject(before_bm); }
+    if (after_bm != 0) { DeleteObject(after_bm); }
+    ReleaseDC(window, screen);
+    return result;
+}
 static int v9x_accel_compare(V9X_ACCEL_STATE *state, long *difference)
 {
     BitBlt(state->capture, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
@@ -803,6 +972,12 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_hex("UploadRejectDetail", stats->upload_reject_detail);
     v9x_accel_write_hex("LastBase", stats->last_base);
     v9x_accel_write_uint("LastPitch", stats->last_pitch);
+    v9x_accel_write_hex("LastStatusEntry", stats->last_status_entry);
+    v9x_accel_write_hex("LastStatusIssued", stats->last_status_issued);
+    v9x_accel_write_hex("LastCR6A", stats->last_cr6a);
+    v9x_accel_write_hex("LastCR35", stats->last_cr35);
+    v9x_accel_write_hex("LastCR51", stats->last_cr51);
+    v9x_accel_write_hex("LastCR31", stats->last_cr31);
     v9x_accel_write_uint("LastRop256", stats->last_rop256);
     v9x_accel_write_uint("LastColor", stats->last_color);
     v9x_accel_write_uint("LastBrushFlags", stats->last_brush_flags);
@@ -1514,6 +1689,79 @@ static DWORD v9x_accel_inject_phase(DWORD count)
     return armed ? 0ul : 3ul;
 }
 
+/*
+ * The probe phase: the same full-screen window the comparison uses, one fill,
+ * and no comparison at all. Separate from /accel on purpose - /accel issues
+ * hundreds of operations, and on hardware the first handful already corrupt the
+ * framebuffer, so a measurement of where one fill landed has to be the only
+ * thing that has happened since boot.
+ */
+static DWORD v9x_accel_probe_phase(HINSTANCE instance)
+{
+    WNDCLASSA window_class;
+    HWND window;
+    DWORD result;
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    unsigned index;
+
+    WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
+    v9x_accel_write_text("Build", V9X_BUILD_ID);
+    v9x_accel_write_text("Phase", "probe");
+    v9x_accel_write_uint("Width", (DWORD)screen_width);
+    v9x_accel_write_uint("Height", (DWORD)screen_height);
+
+    for (index = 0u; index < sizeof(window_class); ++index) {
+        ((unsigned char *)&window_class)[index] = 0u;
+    }
+    window_class.lpfnWndProc = v9x_accel_window_proc;
+    window_class.hInstance = instance;
+    window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    window_class.lpszClassName = V9X_ACCEL_CLASS;
+    window_class.hCursor = LoadCursorA(0, IDC_ARROW);
+    if (!RegisterClassA(&window_class)) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "register-class");
+        return 1ul;
+    }
+    window = CreateWindowExA(WS_EX_TOPMOST, V9X_ACCEL_CLASS,
+                             "Velocity9x GDI fill probe",
+                             WS_POPUP, 0, 0, screen_width, screen_height,
+                             0, 0, instance, 0);
+    if (window == 0) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "create-window");
+        return 2ul;
+    }
+    ShowWindow(window, SW_SHOW);
+    UpdateWindow(window);
+    SetCursorPos(screen_width - 1, screen_height - 1);
+    result = v9x_accel_probe(window, screen_width, screen_height);
+    /* Stats after the fill, so the run says whether the engine took it at all -
+     * a probe reporting "nothing changed" means something very different when
+     * Fills moved than when it did not. */
+    {
+        HDC screen = GetDC(0);
+        V9X_GDI_STATS stats;
+
+        if (screen != 0) {
+            if (v9x_accel_read_stats(screen, &stats)) {
+                v9x_accel_report_stats(&stats);
+            } else {
+                v9x_accel_write_text("ProbeStats", "escape-rejected");
+            }
+            v9x_accel_write_uint("ScreenBpp",
+                                 (DWORD)(GetDeviceCaps(screen, BITSPIXEL) *
+                                         GetDeviceCaps(screen, PLANES)));
+            ReleaseDC(0, screen);
+        }
+    }
+    v9x_accel_write_text("Result", result == 0ul ? "PASS" : "FAIL");
+    WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+    DestroyWindow(window);
+    return result;
+}
+
 static DWORD v9x_accel_phase(HINSTANCE instance)
 {
     WNDCLASSA window_class;
@@ -1633,6 +1881,9 @@ void WINAPI V9xGdiSmokeEntry(void)
     }
     if (v9x_has_switch(command_line, "/stats")) {
         ExitProcess(v9x_accel_inject_phase(0ul));
+    }
+    if (v9x_has_switch(command_line, "/probe")) {
+        ExitProcess(v9x_accel_probe_phase(instance));
     }
     if (v9x_has_switch(command_line, "/accel")) {
         ExitProcess(v9x_accel_phase(instance));

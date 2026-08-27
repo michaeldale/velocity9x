@@ -93,6 +93,55 @@ everything still executed 8 fills in the smoke phase, recorded `FillsDelta=0`
 for the measured window, and *still* failed the comparison - the corruption from
 those 8 persisted. This is not a rare race; it is close to every fill.
 
+## The single-fill probe, and what it measured
+
+`V9XGDI.EXE /probe` was written for this: it snapshots the whole screen, issues
+**one** `PatBlt`, snapshots again, and reports the bounding box of pixels that
+actually changed. It assumes nothing about the background, and both snapshots go
+through the same readback, so the 24-bpp conversion that caused an earlier false
+failure cancels out.
+
+**Validated before it was trusted.** On the emulated ViRGE, requesting (64,48)
+96x32 gives `ProbeActualX0=64 Y0=48 W=96 H=32` and
+`ProbeChangedPixels=3072 == ProbeExpectedPixels` - an exact match with not one
+stray pixel in the sampled region.
+
+**On BARRY the same request changes almost nothing.** Across four runs:
+`ProbeChangedPixels` of 0, 14, 17, 22 against 3072 expected, and the few pixels
+that do change are scattered thinly across a wide band 4-8 pixels tall, at a
+different y each run. That is readback noise, not a rectangle. Wherever the
+engine wrote, **it was not the displayed framebuffer.**
+
+Corroborating this: the probe's own full-screen window paints black through
+`WM_ERASEBKGND`, which is also an accelerated fill, and the photographs show the
+desktop still visible through where that black window should be. Those fills are
+not landing either.
+
+## The engine does execute
+
+`LastStatusEntry=0x0400` before the command, `LastStatusIssued=0x0600` after -
+the busy bit sets, so the port writes are reaching the hardware and the engine
+accepts the command. By the next fill's entry it reads `0x0400` again, so it
+finishes. `IdleTimeouts=0` and `Poisoned=0` throughout.
+
+An engine that accepts a command, runs, finishes, and puts nothing in the visible
+framebuffer wrote **somewhere else in video memory**. At 800x600x16 BARRY's 2 MiB
+holds 960 KB of displayed pixels and about 1.1 MiB that is not displayed, which
+is more than enough to hide every fill this probe issued.
+
+*A retracted diagnostic:* an earlier `LastStatusSettled` field claimed the engine
+was "still busy after a settle". Its delay loop was an empty `while` the
+compiler was free to delete, so it sampled a few instructions after the command,
+where busy is normal. It proved nothing and has been removed rather than kept.
+
+## It is not one-time engine initialisation
+
+Tested directly: `V9XDDP` run **immediately before** `/probe` in the same boot
+reports `BltFillPixelOk=1`, and the GDI probe then fails exactly as before. The
+engine is demonstrably working for the 32-bit caller seconds earlier, on the same
+silicon, at the same mode. Nothing is missing that a DirectDraw session
+establishes.
+
 ## What is left to explain
 
 The difference is not the registers, the depth, the base, the pitch, or the
@@ -100,22 +149,35 @@ timing (`Poisoned=0` throughout). It is something about the **16-bit calling
 context** that the 32-bit HAL does not share. Candidates not yet tested, in the
 order worth testing:
 
-1. **Concurrent access.** The 32-bit HAL runs under DirectDraw's exclusive
-   lock. The 16-bit path runs whenever GDI calls it, and the engine registers
-   are global, non-reentrant hardware state. The build 000 drain hooks guard
-   CPU-after-engine; nothing guards engine-after-CPU or engine-after-engine
-   against a 32-bit caller.
-2. **Chip state the 16-bit path never establishes.** `ADVFUNC_CNTL` (0x4AE8)
-   and the CR registers that select enhanced-mode addressing are programmed by
-   whoever set the mode. The 32-bit HAL may be inheriting a state the 16-bit
-   entry does not, and the emulator may not require it at all.
-3. **A single controlled fill.** One `PatBlt` at known coordinates, then read
-   back the whole screen and report the bounding box of changed pixels. That
-   measures the actual transform instead of inferring it, and is the experiment
-   to run before any more hypotheses.
+The question is now narrow: **the engine's memory origin is not where the CRTC
+is scanning out from.** Everything else is accounted for.
 
-Two hypotheses were already lost to reasoning ahead of measurement in this
-session. The third item above exists so the next one is not.
+Measured at fill time on BARRY at 800x600x16: `CR6A=0x80`, `CR35=0x00`,
+`CR51=0x00`, `CR31=0x89`. Those are recorded rather than interpreted, because
+interpreting S3 bit fields from memory is how three hypotheses died today. The
+next step needs the **S3 Trio32/64 databook** to say which of these sets the
+drawing engine's origin and how it relates to the display start address - not
+another guess.
+
+One concrete lead worth checking first, because it is cheap and it is in this
+repository rather than in a databook: `V9XDD.INI` on BARRY reports
+`GblDisplayPitch=0x640` (1600, correct for this mode) alongside
+`PrimaryPitch=1280`, which is 640x480x16's pitch. That file may simply be stale
+from an earlier run - but if the HAL and the engine disagree about pitch, that is
+exactly the class of fault that would displace every fill, and it would leave the
+32-bit path unaffected.
+
+Also still untested, and not displaced by the above:
+
+- **Concurrent access.** The 32-bit HAL runs under DirectDraw's exclusive lock.
+  The 16-bit path runs whenever GDI calls it, and the engine registers are
+  global, non-reentrant hardware state. The build 000 drain hooks guard
+  CPU-after-engine; nothing guards the other directions.
+
+Three hypotheses of mine were refuted by measurement in this session - pixel
+depth, surface base offset, and missing engine initialisation. That is progress,
+and it is why the probe exists; it is also why the remaining step is
+documentation rather than more inference.
 
 ## Superseded: the original next step
 
