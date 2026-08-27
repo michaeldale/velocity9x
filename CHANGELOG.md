@@ -84,6 +84,35 @@ build 001 rather than this one. Both are the plan's insistence on landing the
 harness before the first build that turns a primitive on, paying for itself on
 its first use.
 
+Measured: **the first CrystalMark Retro run of Velocity9x on physical S3
+silicon**, as the before-column for the GDI acceleration work
+([baseline](docs/decisions/2026-08-27-crystalmark-barry-baseline.md)). BARRY,
+Trio32/64, Windows 98 SE, driver 0.5.x at 800x600x16: 2D Text 2, Square 253,
+Circle 134, Image 91, with CPU 99/99 and Disk 44/2/38/2 recorded as controls.
+CrystalMark reports the adapter as "Velocity9x S3 Trio32/64 86C764" - this
+driver's own description reaching a third-party tool.
+
+The mode matters and is pinned for all three runs: the machine was left at
+800x600x**32**, where GDI acceleration declines everything by design, so a
+benchmark taken there would have shown no difference and invited the conclusion
+that the feature does nothing.
+
+The baseline also records a prediction for the accelerated run to be judged
+against, rather than a number to admire: Square should rise (solid fills), Image
+may rise (screen-to-screen BitBlt), Circle and Text should not move - text
+arrives through `ExtTextOut`, which is still forwarded to the DIB Engine
+untouched - and CPU and Disk must not move at all.
+
+Designed: **build 004 narrows "CPU-to-screen upload" to monochrome expansion
+only** ([design](docs/decisions/2026-08-27-gdi-accel-004-design.md)). Counting
+bus traffic settles it: a colour upload has the CPU move exactly the same bytes
+across the same bus as the DIB Engine already does, so there is no throughput
+win for SRCCOPY and no hardware ROP or clip to gain either - against selector
+stepping for sources over 64 KiB and a partial-dword read that faults if it is
+got wrong. Monochrome expansion writes one bit per pixel and lets the engine
+expand: eight times less CPU-to-bus traffic at 8 bpp, sixteen at 16, which is
+why the reference driver carries a separate command for it.
+
 Added: **GDI acceleration build `gdi-accel-003` - overlapping screen-to-screen
 copies in all eight directions**, which completes the three primitives the
 rollout table gates on and with them PLAN.md's Phase 5. Desktop fills, window

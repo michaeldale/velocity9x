@@ -418,6 +418,93 @@ V9xEngineWriteDone:
     retf    6
 V9XENGINEWRITE ENDP
 
+; V9xEngineImageRow(WORD source_selector, WORD source_offset, WORD bytes)
+;
+; Push one scanline of image data into the ViRGE's image-transfer window, which
+; S3.INC:688 places at MMIO offset 0 - inside the 64 KiB window V9xEngineSel
+; already covers, so this needs no mapping of its own.
+;
+; Three things about this are copied from the reference driver's ColorSourceBlt
+; (98DDK\src\display\mini\s3v\S3BLT.ASM:1400-1460) rather than invented:
+;
+;  - The destination offset restarts at 0 for every row. The window is a FIFO
+;    port, not memory; writing further into it is meaningless.
+;  - There is no FIFO polling in the loop. The engine throttles the bus itself
+;    and the writes stall until it can accept them, so a pacing loop here would
+;    be a slower way to do nothing.
+;  - The tail is handled without ever reading past the source. A row is not
+;    necessarily a whole number of dwords, and `rep movsd` rounded up would read
+;    up to three bytes beyond the bitmap - which in a display driver is a GP
+;    fault, not a rounding error. Whole dwords go first, then the remaining one
+;    to three bytes are assembled into a register and written as a single dword,
+;    because the window takes dword writes.
+;
+; The engine consumes exactly the pixel count the command told it to expect, so
+; the padding bits in that final dword are discarded by the hardware.
+PUBLIC V9XENGINEIMAGEROW
+V9XENGINEIMAGEROW PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    si
+    push    di
+    push    cx
+    push    bx
+    push    ax
+
+    mov     ax, V9xEngineSel
+    or      ax, ax
+    je      short V9xImageRowDone
+
+    mov     es, ax
+    xor     di, di                  ; ES:DI -> IMAGE_XFER, offset 0 always
+    mov     cx, word ptr [bp+6]     ; bytes
+    mov     ds, word ptr [bp+10]    ; source selector
+    mov     si, word ptr [bp+8]     ; source offset
+
+    mov     bx, cx
+    shr     cx, 2                   ; whole dwords
+    jz      short V9xImageRowTail
+    cld
+    rep     movsd
+
+V9xImageRowTail:
+    and     bx, 3                   ; leftover 1..3 bytes, or none
+    jz      short V9xImageRowDone
+    ; Assemble the tail a byte at a time, from the last byte down to the first,
+    ; shifting left as we go. Reading a whole dword is what would fault here;
+    ; the reference avoids that by reading from *before* the end and shifting
+    ; down, which needs the row to be at least a dword long. Building the value
+    ; upward needs no such assumption and no compensating shift.
+    ;
+    ; Traced, because the obvious alternative is wrong: loading each byte into
+    ; AH and rotating right lands the bytes correctly only for a full dword. For
+    ; two bytes it leaves them at opposite ends of the register, and any single
+    ; shift that rescues one discards the other.
+    ;
+    ; b0 must end up in the dword's byte 0, so with N bytes:
+    ;   N=1 -> 0x000000b0, N=2 -> 0x0000b1b0, N=3 -> 0x00b2b1b0
+    xor     eax, eax
+    mov     cx, bx
+    add     si, bx                  ; one past the row's last byte
+V9xImageRowTailByte:
+    dec     si
+    shl     eax, 8
+    mov     al, ds:[si]
+    loop    V9xImageRowTailByte
+    mov     es:[di], eax
+
+V9xImageRowDone:
+    pop     ax
+    pop     bx
+    pop     cx
+    pop     di
+    pop     si
+    pop     ds
+    pop     bp
+    retf    6
+V9XENGINEIMAGEROW ENDP
+
 ; Return the linear address of the DirectDraw shared block in DX:AX.
 PUBLIC V9XDDSHAREDLINEAR
 V9XDDSHAREDLINEAR PROC FAR
