@@ -4,6 +4,28 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+### Changed
+
+- **The backend registry's PCI dispatch is generated from the family
+  manifests.** `src\common\backend_registry.c` was a hand-written if-chain
+  restating PCI ids the manifests already declare — the file every new family
+  had to edit to exist. Each manifest now carries a `Backend` section (getter,
+  header, host-testable sources), `scripts\update-backend-registry.ps1` emits
+  the checked-in `src\common\backend_registry_table.inc` from it, and
+  `check-tree.ps1` regenerates and compares so the table cannot silently
+  drift from the manifests. The allowlist semantics are byte-for-byte the
+  same six ids as before; tier-0 still refuses unlisted hardware.
+- **The host builds derive their chipset source list from the manifests.**
+  `build-host.ps1` and `build-host-msvc.ps1` compile the union of every
+  family's `Backend.Sources` instead of hand-listing the policy backends —
+  the section of the two lists that had already drifted apart once. With the
+  family-manifest paths also dropped from `check-tree.ps1`'s required-file
+  list (manifests are glob-discovered and schema-validated), adding a family
+  now touches no script: manifest, evidence, regenerated table. Track A2/A3
+  of `docs\plans\family-structure-and-next-d3d-roadmap.md`.
+
 ## 0.6.0 - 2026-08-27
 
 **The milestone this version number marks: Velocity9x is no longer an

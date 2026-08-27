@@ -86,6 +86,18 @@
         }
     )
 
+    # The host-testable policy backend; see the s3 manifest for the shape.
+    # The one registry row this emits is the QEMU std-vga id: tier-0 stays an
+    # allowlist, and unlisted cards reach this package by Have Disk, not by
+    # the registry guessing.
+    Backend = @{
+        Getter = 'v9x_vbe_generic_backend'
+        Header = 'velocity9x/vbe_generic.h'
+        Sources = @(
+            'src\chipsets\generic\vbe\vbe_backend.c'
+        )
+    }
+
     Build = @{
         # No chipset modules at all beyond the generic pair - that absence is
         # the family.

@@ -94,7 +94,7 @@ function Test-V9xFamilyManifest {
 
     Assert-V9xFamilyKeys -Table $Family -Context "Family $Id" -Required @(
         'SchemaVersion', 'Id', 'DisplayName', 'Description',
-        'Chips', 'Build', 'Audit', 'Inf', 'Floppy', 'Vm')
+        'Chips', 'Backend', 'Build', 'Audit', 'Inf', 'Floppy', 'Vm')
     if ($Family.SchemaVersion -ne $script:V9xFamilySchemaVersion) {
         throw ("Family $Id declares schema version {0}; this loader understands {1}." -f
                $Family.SchemaVersion, $script:V9xFamilySchemaVersion)
@@ -157,6 +157,37 @@ function Test-V9xFamilyManifest {
                 $null = [regex]::new($pattern)
             } catch {
                 throw "Family $Id chip $($chip.Id) has invalid audit pattern '$pattern': $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # The policy backend the registry dispatches to. Getter becomes a C call
+    # in the generated backend_registry_table.inc, Header its #include, and
+    # Sources the host builds' compile list - so a typo in any of them is a
+    # build break, and the checks here exist only to name the manifest and the
+    # key instead of a C error in a generated file.
+    Assert-V9xFamilyKeys -Table $Family.Backend -Context "Family $Id Backend" -Required @(
+        'Getter', 'Header', 'Sources')
+    if ($Family.Backend.Getter -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw ("Family $Id Backend.Getter '$($Family.Backend.Getter)' is not a " +
+               "C identifier.")
+    }
+    if ($Family.Backend.Header -notmatch '^[A-Za-z0-9_./-]+\.h$') {
+        throw ("Family $Id Backend.Header '$($Family.Backend.Header)' is not a " +
+               "forward-slash include path ending in .h.")
+    }
+    $backendSources = @($Family.Backend.Sources)
+    if ($backendSources.Count -eq 0) {
+        throw "Family $Id declares no Backend.Sources."
+    }
+    if ($RepoRoot) {
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot ("include\" + ($Family.Backend.Header -replace '/', '\'))))) {
+            throw ("Family $Id Backend.Header '$($Family.Backend.Header)' does " +
+                   "not exist under include\.")
+        }
+        foreach ($backendSource in $backendSources) {
+            if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $backendSource))) {
+                throw "Family $Id Backend.Sources names missing file $backendSource."
             }
         }
     }

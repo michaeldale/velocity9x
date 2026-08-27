@@ -42,6 +42,13 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 . (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
 $null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
 
+# The chipset policy backends come from the manifests' Backend.Sources rather
+# than a list here, so a new family joins the host build by existing. The
+# registry table those backends satisfy is generated from the same manifests.
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+$backendSourceNames = @(Get-V9xFamilies -RepoRoot $repoRoot |
+    ForEach-Object { @($_.Backend.Sources) } | Sort-Object -Unique)
+
 $executable = Join-Path $outputDir "v9x-host-tests.exe"
 $sourceNames = @(
     "src\common\build.c",
@@ -52,13 +59,8 @@ $sourceNames = @(
     "src\common\vbe_parse.c",
     "src\common\vbe_modes.c",
     "src\common\vbe_cache.c",
-    "src\common\edid.c",
-    "src\chipsets\s3\virge\backend.c",
-    "src\chipsets\s3\virge\clocks.c",
-    "src\chipsets\s3\virge\memory.c",
-    "src\chipsets\matrox\millennium2\mga2_backend.c",
-    "src\chipsets\generic\vbe\vbe_backend.c",
-    "src\chipsets\ati\ati_backend.c",
+    "src\common\edid.c"
+) + $backendSourceNames + @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
     "tests\host\test_family_matrix.c",

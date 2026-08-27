@@ -25,6 +25,7 @@ manifest on every run, so a schema error is caught before a build.
 | `DisplayName` | Human name used in build output. |
 | `Description` | One line; what the family covers and any limits. |
 | `Chips` | One entry per supported chip. See below. |
+| `Backend` | The host-testable policy backend. See below. |
 | `Build` | Source list, defines, output directories, variants. |
 | `Audit` | Family-wide audit additions. |
 | `Inf` | INF metadata, or `Generate = $false`. |
@@ -378,6 +379,36 @@ declare it: without it a matrix pass on one guest would read as a pass for the
 whole family, which is exactly the claim a merged binary has to prove. The
 family is green only when every target passes from the same package.
 
+## Backend
+
+The family's I/O-free policy backend — the half under `src\chipsets` that the
+backend registry dispatches to by PCI id and the host tests exercise.
+
+```powershell
+Backend = @{
+    Getter = 'v9x_s3_virge_backend'     # C function returning the ops table
+    Header = 'velocity9x/s3_virge.h'    # include that declares the getter
+    Sources = @(                        # what the host test builds compile
+        'src\chipsets\s3\virge\backend.c'
+    )
+}
+```
+
+Two things are generated from it, so a family never edits them by hand:
+
+* `src\common\backend_registry_table.inc` — one dispatch row per chip in
+  `Chips`, all pointing at this family's `Getter`. Regenerate with
+  `scripts\update-backend-registry.ps1` after adding a family or changing a
+  PCI id; `check-tree.ps1` regenerates and compares, so a stale checked-in
+  table fails the tree check. The table keeps the registry's allowlist
+  meaning: a row exists only because a manifest lists the chip.
+* the host builds' chipset source list — `build-host.ps1` and
+  `build-host-msvc.ps1` compile the union of every family's
+  `Backend.Sources`, so the backend joins the host tests by existing.
+
+`Build.Sources` is separate and unaffected: it is the driver binary's compile
+list, and tier-0 families deliberately ship no policy-backend code in it.
+
 ## Adding a family
 
 1. Create `packaging\families\<id>\family.psd1`.
@@ -388,10 +419,15 @@ family is green only when every target passes from the same package.
    with another family, an engine capability declared against no engine, and a
    mode the backend cannot lay out in the declared VRAM. This is the cheapest
    feedback in the sequence — no emulator, no Windows.
-4. Build it: `scripts\build-active-package.ps1 -Family <id>`.
-5. The audit will report any signature that the manifest claims but the
+4. Run `scripts\update-backend-registry.ps1` and commit the regenerated
+   `src\common\backend_registry_table.inc`; `check-tree.ps1` fails while it is
+   stale.
+5. Build it: `scripts\build-active-package.ps1 -Family <id>`.
+6. The audit will report any signature that the manifest claims but the
    binary does not produce, and vice versa.
-6. Add the manifest path to `check-tree.ps1`'s required-file list.
+
+No script edit is needed anywhere in this sequence: manifests are discovered
+by glob, and the host builds and registry table derive from them.
 
 ## The generated family matrix
 

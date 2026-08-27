@@ -134,6 +134,22 @@
         }
     )
 
+    # The host-testable policy backend: the I/O-free half under src\chipsets
+    # that the backend registry dispatches to by PCI id. Getter and Header are
+    # what scripts\lib\backend-registry.ps1 emits into the generated
+    # src\common\backend_registry_table.inc - one row per chip above, all
+    # pointing at this family's getter. Sources is what the host test builds
+    # compile; the driver build takes its own list from Build.Sources below.
+    Backend = @{
+        Getter = 'v9x_s3_virge_backend'
+        Header = 'velocity9x/s3_virge.h'
+        Sources = @(
+            'src\chipsets\s3\virge\backend.c',
+            'src\chipsets\s3\virge\clocks.c',
+            'src\chipsets\s3\virge\memory.c'
+        )
+    }
+
     Build = @{
         # Ordered compile list. The object order is also the link order.
         Sources = @(

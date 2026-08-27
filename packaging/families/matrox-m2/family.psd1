@@ -71,6 +71,15 @@
         }
     )
 
+    # The host-testable policy backend; see the s3 manifest for the shape.
+    Backend = @{
+        Getter = 'v9x_matrox_millennium2_backend'
+        Header = 'velocity9x/matrox_millennium2.h'
+        Sources = @(
+            'src\chipsets\matrox\millennium2\mga2_backend.c'
+        )
+    }
+
     Build = @{
         # No S3 chipset modules: the Matrox path does not compile the ViRGE
         # backend, clocks or memory probes.

@@ -61,6 +61,14 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 . (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
 $null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
 
+# The chipset policy backends come from the manifests' Backend.Sources, the
+# same derivation build-host.ps1 uses - which is also what keeps the two
+# passes' source sets from drifting apart in that section, the failure mode
+# the comment below records.
+. (Join-Path $PSScriptRoot "lib\family.ps1")
+$backendSourceNames = @(Get-V9xFamilies -RepoRoot $repoRoot |
+    ForEach-Object { @($_.Backend.Sources) } | Sort-Object -Unique)
+
 $executable = Join-Path $outputDir "v9x-host-tests.exe"
 # Must stay the same set build-host.ps1 compiles. It had drifted: the clock,
 # memory, registry and Matrox modules were missing, so this pass had stopped
@@ -74,13 +82,8 @@ $sourceNames = @(
     "src\common\vbe_parse.c",
     "src\common\vbe_modes.c",
     "src\common\vbe_cache.c",
-    "src\common\edid.c",
-    "src\chipsets\s3\virge\backend.c",
-    "src\chipsets\s3\virge\clocks.c",
-    "src\chipsets\s3\virge\memory.c",
-    "src\chipsets\matrox\millennium2\mga2_backend.c",
-    "src\chipsets\generic\vbe\vbe_backend.c",
-    "src\chipsets\ati\ati_backend.c",
+    "src\common\edid.c"
+) + $backendSourceNames + @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
     "tests\host\test_family_matrix.c",

@@ -2,7 +2,8 @@
 
 Date: 2026-08-28
 
-Status: proposed
+Status: Track A implemented (A1 pre-existing, A2/A3 2026-08-28, A4's
+doc/tool salvage pending); Tracks B and C not started
 
 This roadmap came out of three reviews on 2026-08-28: the stale
 `intel-gma-tier0` branch (what to salvage), the cost of adding a new VGA
@@ -43,7 +44,7 @@ One follow-up worth confirming when convenient: a Have-Disk install on the
 netbook after 0.6.0 should now publish the panel's native OEM-numbered mode
 with zero family C code — the 2026-08-27 run predates parts of this.
 
-### A2. Generate the backend registry from the family manifests
+### A2. Generate the backend registry from the family manifests — done 2026-08-28
 
 `src/common/backend_registry.c` is a hand-written if-chain over PCI ids that
 duplicates ids already declared in `packaging/families/*/family.psd1`. The
@@ -74,7 +75,11 @@ is caught by the check-tree rule rather than at runtime. Deliberately out of
 scope: `pci_match_optional` and the 16-bit family table — the registry is the
 host-testable policy layer only, exactly as the current comment says.
 
-### A3. Glob-driven family discovery in the build
+### A3. Glob-driven family discovery in the build — done 2026-08-28
+
+As implemented, the derivation runs on the two host build scripts' chipset
+source lists (from `Backend.Sources`) and check-tree's manifest list (glob +
+schema validation, no per-family lines); no skip list proved necessary.
 
 `build-host.ps1`, `build-host-msvc.ps1`, and `check-tree.ps1` each carry a
 hand-maintained family list (the intel branch touched all three). Replace the

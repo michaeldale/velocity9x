@@ -121,6 +121,15 @@
         }
     )
 
+    # The host-testable policy backend; see the s3 manifest for the shape.
+    Backend = @{
+        Getter = 'v9x_ati_mach64_backend'
+        Header = 'velocity9x/ati_mach64.h'
+        Sources = @(
+            'src\chipsets\ati\ati_backend.c'
+        )
+    }
+
     Build = @{
         # This family has no read_aperture hook, so the mini-VDD's 4F9Ch cache
         # is the only way it can learn where its framebuffer is. The collection

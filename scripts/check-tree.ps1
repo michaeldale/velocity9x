@@ -40,13 +40,14 @@ $required = @(
     "packaging\win98se\INSTALL.TXT",
     "packaging\win98se\FIRSTBOOT.TXT",
     "packaging\win98se\RECOVER.TXT",
-    "packaging\families\s3\family.psd1",
-    "packaging\families\matrox-m2\family.psd1",
-    "packaging\families\vbe\family.psd1",
-    "packaging\families\ati\family.psd1",
+    # Family manifests are deliberately not listed here: they are discovered
+    # by glob and schema-validated below, so a family is added by creating its
+    # directory, with no script edit.
     "scripts\common.ps1",
     "scripts\lib\family.ps1",
     "scripts\lib\family-matrix.ps1",
+    "scripts\lib\backend-registry.ps1",
+    "scripts\update-backend-registry.ps1",
     "scripts\lib\inf.ps1",
     "scripts\audit-family-binary.ps1",
     "scripts\build-all-packages.ps1",
@@ -74,6 +75,7 @@ $required = @(
     "scripts\build-vxd-loader-probe.ps1",
     "scripts\capture-serial-pipe.ps1",
     "scripts\prepare-vm-probe.ps1",
+    "src\common\backend_registry_table.inc",
     "src\common\mode.c",
     "src\common\resources.c",
     "src\common\vbe_parse.c",
@@ -195,6 +197,20 @@ foreach ($family in $families) {
         throw ("Family $($family.Id) derives no forbidden patterns; its audit " +
                "cannot detect cross-family contamination.")
     }
+}
+
+# The backend registry's PCI dispatch table is generated from the manifests
+# and checked in. Regenerate and compare, so a manifest edit that forgot
+# scripts\update-backend-registry.ps1 fails here instead of shipping a
+# registry that disagrees with the family that changed.
+. (Join-Path $PSScriptRoot "lib\backend-registry.ps1")
+$registryExpected = @(Get-V9xBackendRegistryTableLines -RepoRoot $repoRoot)
+$registryPath = Join-Path $repoRoot "src\common\backend_registry_table.inc"
+$registryActual = @(Get-Content -LiteralPath $registryPath)
+if (Compare-Object -ReferenceObject $registryExpected -DifferenceObject $registryActual -SyncWindow 0) {
+    throw ("src\common\backend_registry_table.inc does not match the family " +
+           "manifests; run scripts\update-backend-registry.ps1 and commit the " +
+           "result.")
 }
 
 # Which families may run the mini-VDD's boot-time VBE collection is derived from
