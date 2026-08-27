@@ -97,11 +97,14 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
  * attempt - the colour came from the wrong field of the realized brush, which
  * is recorded on V9X_DIB_BRUSH_SOLID and was worth an issue of its own.
  *
- * 002 turns copy on, 003 overlap.
+ * Build 002 turns copy on, non-overlapping only. Overlap stays off: an
+ * overlapping same-surface copy is correct only if the engine walks from the
+ * corner that keeps it correct, and that is build 003's claim to make rather
+ * than this one's.
  */
 #define V9X_GDI_DEFAULT_MASTER   1
 #define V9X_GDI_DEFAULT_FILL     1
-#define V9X_GDI_DEFAULT_COPY     0
+#define V9X_GDI_DEFAULT_COPY     1
 #define V9X_GDI_DEFAULT_OVERLAP  0
 
 /*
@@ -524,17 +527,54 @@ static WORD v9x_gdi_trio_copy(const V9X_GDI_OP *op)
  * engine command already in flight.
  */
 static void v9x_gdi_exclude_cursor(V9X_DIB_ENGINE FAR *device,
-                                   const V9X_GDI_OP *op)
+                                   const V9X_GDI_OP *op, WORD is_copy)
 {
     V9X_CURSOR_EXCLUDE_PROC exclude =
         (V9X_CURSOR_EXCLUDE_PROC)device->deBeginAccess;
+    WORD left = op->destination_x;
+    WORD top = op->destination_y;
+    WORD right = op->destination_x;
+    WORD bottom = op->destination_y;
 
     if (exclude == 0) {
         return;
     }
-    (void)exclude((void FAR *)device, op->destination_x, op->destination_y,
-                  (WORD)(op->destination_x + op->width - 1u),
-                  (WORD)(op->destination_y + op->height - 1u),
+    /*
+     * A fill excludes its destination; a screen-to-screen copy has to exclude
+     * the union of source and destination, and the reference driver keeps two
+     * separate routines for exactly that distinction - B_SWCursorExcludeRect
+     * for the pattern paths and B_SWCursorExcludeUnion for DSP_ScreenBlt
+     * (S3BLT.ASM).
+     *
+     * The reason is specific to a copy: the engine READS the source. A software
+     * cursor sitting over the source rectangle is part of the framebuffer, so
+     * the engine would copy the cursor's pixels into the destination and leave
+     * a second cursor painted on the screen. Excluding only the destination
+     * lifts the cursor from where the pixels land and not from where they come
+     * from.
+     *
+     * The union is the bounding box of the two equal-sized rectangles, which is
+     * what B_SWCursorExcludeUnion computes: min of the origins, and max of the
+     * origins plus the extent, less one for the last pixel drawn.
+     *
+     * Note the harness cannot catch this. /accel parks the pointer in the far
+     * corner so the readback is not polluted by it, which by construction makes
+     * it blind to every cursor interaction. The window-drag soak is what covers
+     * this, and it is the reason build 002's exit gate asks for one.
+     */
+    if (is_copy != 0u) {
+        left = op->destination_x < op->source_x ? op->destination_x
+                                               : op->source_x;
+        top = op->destination_y < op->source_y ? op->destination_y
+                                              : op->source_y;
+        right = op->destination_x > op->source_x ? op->destination_x
+                                                : op->source_x;
+        bottom = op->destination_y > op->source_y ? op->destination_y
+                                                  : op->source_y;
+    }
+    (void)exclude((void FAR *)device, left, top,
+                  (WORD)(right + op->width - 1u),
+                  (WORD)(bottom + op->height - 1u),
                   V9X_CURSOREXCLUDE);
 }
 
@@ -885,7 +925,7 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
                                      : source_y + op.height);
 
             if (left < right && top < bottom) {
-                ++v9x_gdi.decline_geometry;
+                ++v9x_gdi.decline_overlap;
                 goto decline;
             }
         }
@@ -941,7 +981,8 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     v9x_gdi.last_brush_bpp = brush != 0 ? (DWORD)brush->BrushBpp : 0ul;
     v9x_gdi.last_brush_style = brush != 0 ? (DWORD)brush->BrushStyle : 0ul;
     v9x_gdi.last_bpp = (DWORD)destination_device->deBitsPixel;
-    v9x_gdi_exclude_cursor(destination_device, &op);
+    v9x_gdi_exclude_cursor(destination_device, &op,
+                           rop256 == V9X_ROP256_SRCCOPY ? 1u : 0u);
     destination_device->deFlags |= V9X_DE_BUSY;
     if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_virge_copy(&op)

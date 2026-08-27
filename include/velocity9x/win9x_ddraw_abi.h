@@ -1216,6 +1216,11 @@ typedef struct v9x_gdi_stats {
     DWORD decline_depth;
     DWORD decline_rop;
     DWORD decline_geometry;
+    /* Overlapping same-surface copies, declined until build 003 turns overlap
+     * on. Separate from decline_geometry because it is the one decline a build
+     * can be asked to prove it is still making: at 002 the harness issues
+     * overlapping copies deliberately and checks that this advanced. */
+    DWORD decline_overlap;
     DWORD decline_threshold;
     DWORD decline_engine;
     /*
@@ -1319,7 +1324,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 128 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 132 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
