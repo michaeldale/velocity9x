@@ -1,7 +1,16 @@
 # Handover: GDI acceleration does not work on physical S3 Trio64
 
 Date: 2026-08-27
-Status: **open, diagnosis incomplete.** Feature is default-off; build 005 blocked.
+Status: **RESOLVED later the same day - root cause found and fixed.** See the
+"Root cause" section added to the issue: ADVFUNC_CNTL (4AE8H) bit 0 is cleared
+by DOS-box/VDD activity on real silicon, after which the engine executes
+commands and discards every memory write; a mode set rewrites the register,
+which is what made the 32-bit HAL (whose probe mode-sets first, and at
+640x480, not the failing mode) look immune. Neither candidate in section 7
+was the cause, and the elimination in section 3 ("same silicon, same boot,
+same mode") compared different modes. The per-operation guard now lives in
+`v9x_gdi_trio_prepare()` and `v9x_trio_ensure_enhanced()`. This handover is
+kept for the record of what was and was not established at the time.
 Issue: [`2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md`](../issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)
 
 This is a review handover for one unresolved defect. It exists because the

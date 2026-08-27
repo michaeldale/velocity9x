@@ -105,20 +105,18 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
  * direction logic below is what decides that.
  */
 /*
- * Master switch, forced to 0 on 2026-08-27.
- *
- * Every primitive below is still recorded at the default its rollout build
- * earned in emulation, because those results stand. This switch is what makes
- * them unreachable, and it is off for one reason: on physical S3 Trio64 silicon
- * the fill path corrupts the display, and eight fills are enough to do it
+ * Master switch. Forced to 0 on 2026-08-27 when the fill path corrupted real
+ * Trio64 silicon; back to 1 later the same day with the divergence understood
+ * and fixed. The cause was never in the fills: ADVFUNC_CNTL (4AE8H) bit 0 is
+ * cleared by DOS-box/VDD activity on real silicon, after which the engine
+ * executes commands and discards every write - and 86Box does not model that
+ * gate, which is why 11/11 emulated modes passed while hardware failed.
+ * v9x_gdi_trio_prepare() now re-asserts the bit per operation; verified on
+ * BARRY at 640x480x16 and 800x600x16 with /probe exact (3072/3072) and
+ * /accel PASS immediately after deliberate DOS-box poisoning
  * (docs/issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md).
- *
- * Emulation cannot be the gate for this feature. 86Box passes 11/11 modes on
- * both S3 chips, twice, at the exact mode that fails on hardware. Until the
- * divergence is understood, acceleration is opt-in via GdiAccel=1 and anyone
- * turning it on should expect to need a reboot to recover.
  */
-#define V9X_GDI_DEFAULT_MASTER   0
+#define V9X_GDI_DEFAULT_MASTER   1
 #define V9X_GDI_DEFAULT_FILL     1
 #define V9X_GDI_DEFAULT_COPY     1
 #define V9X_GDI_DEFAULT_OVERLAP  1
@@ -613,6 +611,23 @@ static WORD v9x_gdi_virge_upload(const V9X_GDI_OP *op)
  */
 static void v9x_gdi_trio_prepare(void)
 {
+    /*
+     * The one that was the actual hardware defect: ADVFUNC_CNTL bit 0. DOS-box
+     * activity clears it on real silicon (0x008B measured dropping to 0x008A),
+     * after which the engine executes every command and writes nothing - the
+     * exact "busy toggles, pixels vanish" signature this file's fills showed
+     * on BARRY. The register is Read/Write, so assert the bit and preserve
+     * the rest; count the restores so a field failure can show whether the
+     * environment is flipping it.
+     */
+    WORD advfunc = v9x_gdi_port_in_word(V9X_TRIO_ADVFUNC_CNTL);
+
+    v9x_gdi.last_advfunc = (DWORD)advfunc;
+    if ((advfunc & V9X_TRIO_ADVFUNC_ENABLE) == 0u) {
+        v9x_gdi_port_out_word(V9X_TRIO_ADVFUNC_CNTL,
+                              (WORD)(advfunc | V9X_TRIO_ADVFUNC_ENABLE));
+        ++v9x_gdi.advfunc_restores;
+    }
     /* Both bases in the first MByte of display memory, no external clipping,
      * no colour compare. */
     v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_MULT_MISC2);
@@ -697,6 +712,9 @@ static WORD v9x_gdi_trio_copy(const V9X_GDI_OP *op)
     if (v9x_gdi_wait_idle() == 0u) {
         return 0u;
     }
+    /* The copy path skipped the latched-state setup; the ADVFUNC guard it now
+     * carries applies to every enhanced-engine operation equally. */
+    v9x_gdi_trio_prepare();
     v9x_gdi_port_out_word(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_COPY);
     v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
                           V9X_TRIO_PIXEL_CNTL_FRGD_MIX);

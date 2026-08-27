@@ -6,6 +6,28 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+Fixed: **GDI acceleration on physical S3 Trio64 silicon** - the 2026-08-27
+defect where every accelerated fill executed and put nothing on the screen.
+Root cause: ADVFUNC_CNTL (4AE8H) bit 0, "Enable Enhanced Functions", is
+cleared by DOS-box/VDD activity on real silicon (measured 0x008B to 0x008A,
+exactly bit 0); with it clear the enhanced engine accepts commands, sets and
+clears busy, and discards every memory write, while no other readable register
+changes. 86Box does not model that gate, which is why 11/11 emulated modes
+passed. It was never a 16-bit-context problem: the 32-bit HAL only looked
+immune because its probe calls SetDisplayMode first (a mode set rewrites
+4AE8H) - and at 640x480, not the failing desktop mode. Isolated with a new
+single-source dual-bitness probe (`tools/diag/trio_ctx_probe.c`, V9XTC32 +
+V9XTC16) that programs the fill by raw port I/O, reads the engine's latched
+state back off the silicon, and carries an engine-copy coherence test.
+`v9x_gdi_trio_prepare()` now re-asserts the bit before every operation, the
+Trio64 GDI copy path runs prepare too, the 32-bit HAL fill and copy carry the
+same guard, and the stats block reports `LastAdvFunc`/`AdvFuncRestores`.
+Verified on BARRY at 640x480x16 and 800x600x16: /probe exact (3072/3072
+changed pixels at the requested rectangle) and /accel `Compared=PASS`
+immediately after deliberate DOS-box poisoning, with the guard's restore
+counter advancing. `V9X_GDI_DEFAULT_MASTER` returns to 1
+([issue](docs/issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)).
+
 Fixed: a freshly built `ati` package could not enable at all. Its manifest set
 `MiniVddVbeCollect = $false` while the family has no `read_aperture` hook, so
 the tier-0 aperture path had an empty 4F9Ch cache to read, Enable refused at

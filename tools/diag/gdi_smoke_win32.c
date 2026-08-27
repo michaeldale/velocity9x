@@ -984,6 +984,8 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("LastBrushBpp", stats->last_brush_bpp);
     v9x_accel_write_uint("LastBrushStyle", stats->last_brush_style);
     v9x_accel_write_uint("LastBpp", stats->last_bpp);
+    v9x_accel_write_hex("LastAdvFunc", stats->last_advfunc);
+    v9x_accel_write_uint("AdvFuncRestores", stats->advfunc_restores);
 }
 
 /* ------------------------------------------------------------------------

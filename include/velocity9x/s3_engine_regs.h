@@ -88,6 +88,21 @@
 #define V9X_TRIO_MULT_MISC             0xe000u
 #define V9X_TRIO_WRT_MASK              0xaae8u
 #define V9X_TRIO_WRT_MASK_ALL          0xffffu
+/*
+ * Advanced Function Control (4AE8H), Read/Write. Bit 0 is ENB EHFC, "Enable
+ * Enhanced Functions": with it clear the chip is in VGA/planar mode and the
+ * enhanced engine EXECUTES its commands - busy sets and clears - while every
+ * memory write it makes is discarded. That silent combination was the whole
+ * 2026-08-27 hardware defect: DOS-box (V86/VDD) activity on real Trio64
+ * silicon clears bit 0 behind the driver (measured 0x008B -> 0x008A, exactly
+ * bit 0), no other readable register changes, and every subsequent fill from
+ * either bitness lands nowhere until a mode set writes 4AE8H again. See
+ * docs\issues\2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md.
+ * The value is re-asserted per operation, preserving the other bits as read,
+ * because the BIOS leaves 0x008B and the databook marks those bits Reserved.
+ */
+#define V9X_TRIO_ADVFUNC_CNTL          0x4ae8u
+#define V9X_TRIO_ADVFUNC_ENABLE        0x0001u
 /* Screen-to-screen BitBLT on the 8514/A-compatible enhanced command set:
  * opcode 6 in bits 15:13, plus write-enable and the two direction bits.
  * FRGD_MIX 0x0067 selects a display-memory source with the SRC mix, which is

@@ -1338,6 +1338,17 @@ typedef struct v9x_gdi_stats {
     DWORD last_brush_bpp;
     DWORD last_brush_style;
     DWORD last_bpp;
+    /*
+     * ADVFUNC_CNTL (4AE8H) as the last Trio64 operation's prepare read it,
+     * and how many times the prepare had to set bit 0 (ENB EHFC) back. Bit 0
+     * clearing under the driver was the 2026-08-27 hardware defect: the
+     * engine executes with it clear and writes nothing, DOS-box activity
+     * clears it on real silicon, and no other readable state changes. A
+     * non-zero restore count on a healthy desktop means the environment is
+     * actively flipping it and the per-operation guard is earning its keep.
+     */
+    DWORD last_advfunc;
+    DWORD advfunc_restores;
 } V9X_GDI_STATS;
 
 typedef struct v9x_dd_shared {
@@ -1423,7 +1434,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 180 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 188 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

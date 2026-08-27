@@ -1,9 +1,59 @@
 # GDI acceleration corrupts the display on physical S3 Trio64 silicon
 
 Date: 2026-08-27
-Status: **open - default-on primitives are unsafe on real hardware**
+Status: **ROOT CAUSE FOUND, fix implemented - see "Root cause" below**
 Severity: high. `GdiAccel` is on by default, and `gdi-fill-copy-overlap` is what
 ships.
+
+## Root cause (added 2026-08-27, second session)
+
+**ADVFUNC_CNTL (4AE8H) bit 0, `ENB EHFC` "Enable Enhanced Functions", gets
+cleared behind the driver on real Trio64 silicon.** With it clear the chip is
+in VGA/planar mode: the enhanced 8514/A engine still accepts commands and the
+busy bit still sets and clears, but **every memory write the engine makes is
+discarded**. No other readable register changes - full dumps of the engine
+registers, CR30-CR70, SR00-SR1F and GR00-GR08 are byte-identical between the
+working and broken states - which is why every register theory failed. The
+register is Read/Write: measured directly, the working state reads `0x008B`
+and the broken state `0x008A`, differing in exactly bit 0.
+
+What clears it: **DOS-box (V86/VDD) activity**. Launching COMMAND.COM (every
+`v9xctl shell`, and anything else that creates a DOS VM) can write 4AE8H with
+bit 0 clear. It does not happen on every DOS box, but one strike breaks every
+subsequent engine operation from *both* bitnesses until something rewrites
+4AE8H. A display mode set rewrites it, which produced all the misleading
+correlations below.
+
+Why every earlier observation pointed at the 16-bit context, and was wrong:
+
+- **`V9XDDP` "worked from 32-bit"** because it calls `SetDisplayMode` first -
+  a mode set rewrites 4AE8H, curing the machine immediately before its fills.
+  It also ran at 640x480, not the desktop mode, a second confound.
+- **The GDI fills "failed from 16-bit"** because by the time any accelerated
+  desktop fill ran, deployment and testing had already launched DOS boxes.
+- Isolated with two single-source probe apps (`tools\diag\trio_ctx_probe.c`,
+  built as V9XTC32/V9XTC16): both bitnesses' raw port-I/O fills **pass** on a
+  clean machine and both **fail** after the poison lands. Bitness was never
+  the variable.
+- 86Box never reproduces it because its Trio64 model does not gate engine
+  memory writes on ADVFUNC_CNTL bit 0 (and/or its VDD interaction differs).
+
+Key measurements, all on BARRY at 640x480x16 and 800x600x16:
+
+- Poisoned state: a 2048x2048 engine flood fill changes essentially nothing
+  anywhere in the visible framebuffer (writes discarded, not displaced).
+- Poisoned state: an engine screen-to-screen copy of live desktop content
+  delivers nothing (`CopyResult=DISPLACED` in the probe's coherence test).
+- Writing `4AE8H <- value | 1` in the poisoned state cures it instantly, with
+  no other register touched (`Cure=advfunc-enable`, fill PASS, copy COHERENT).
+- The 42E8H GE-RST "engine enable" write does **not** cure it.
+
+**The fix:** `v9x_gdi_trio_prepare()` now reads ADVFUNC_CNTL and re-asserts
+bit 0 (preserving the register otherwise) before every accelerated operation,
+the copy path now runs prepare too, and the 32-bit HAL's fill and copy do the
+same via `v9x_trio_ensure_enhanced()`. The stats block reports `LastAdvFunc`
+and `AdvFuncRestores` so a field failure can show whether the environment is
+flipping the bit.
 
 ## What happened
 
