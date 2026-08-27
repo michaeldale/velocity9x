@@ -1,7 +1,9 @@
 # CrystalMark Retro on BARRY: the driver-0.5 baseline
 
 Date: 2026-08-27
-Status: baseline recorded; two comparison runs outstanding
+Status: baseline recorded. The accelerated column is now measured -
+[2026-08-27-crystalmark-barry-accelerated.md](2026-08-27-crystalmark-barry-accelerated.md).
+The native-S3 column is still outstanding.
 
 The first CrystalMark Retro measurement of Velocity9x on physical S3 silicon,
 taken so that the GDI acceleration builds have something real to be compared
