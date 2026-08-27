@@ -161,7 +161,13 @@ $linkLines += @(
     "libfile '$dibEngineLibrary'",
     "library '$runtimeLibrary'",
     "reference RESETHIRESMODE",
-    "export BitBlt.1", "export ColorInfo.2", "export Control.3=CONTROL",
+    # Ordinal 1 is a C function now (src\display16\gdi_accel.c), not the
+    # assembly forwarding thunk it used to be. This driver compiles PASCAL
+    # exports with their names uppercased, so the ordinal has to name the
+    # mangled symbol - the same =CONTROL / =ENABLE / =DISABLE pattern the rest
+    # of this list already uses for its C exports.
+    "export BitBlt.1=BITBLT",
+    "export ColorInfo.2", "export Control.3=CONTROL",
     "export Disable.4=DISABLE", "export Enable.5=ENABLE", "export EnumDFonts.6",
     "export EnumObj.7", "export Output.8", "export Pixel.9",
     "export RealizeObject.10", "export StrBlt.11", "export ScanLR.12",

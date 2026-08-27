@@ -52,6 +52,22 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * without needing the hardware to actually hang. See fault_inject below. */
 #define V9X_DDFAULTINJECT        0x56394649ul /* 'V9FI' */
 
+/*
+ * Project-private DCICOMMANDs for the 16-bit GDI acceleration path
+ * (docs\plans\gdi-acceleration.md). They are answered by src\display16, not by
+ * the HAL, and are served on every family - including one with no DirectDraw
+ * HAL at all - because GDI acceleration is a display-driver service and its
+ * counters are the only evidence that a primitive fired.
+ *
+ * V9X_GDIGETSTATS copies a V9X_GDI_STATS to the output buffer.
+ * V9X_GDIFAULTINJECT arms the GDI bounded waits' fault injector with dwParam1,
+ * mirroring V9X_DDFAULTINJECT: an armed count is consumed by production waits
+ * falling into their existing timeout tail, so the injector drives the
+ * shipping recovery path rather than a parallel test one.
+ */
+#define V9X_GDIGETSTATS          0x56394753ul /* 'V9GS' */
+#define V9X_GDIFAULTINJECT       0x56394749ul /* 'V9GI' */
+
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul
 #define V9X_DDHAL_DRIVER_HANDLED     0x00000001ul
@@ -1154,6 +1170,187 @@ typedef struct v9x_dd_trace_snapshot {
     V9X_DD_TRACE trace;
 } V9X_DD_TRACE_SNAPSHOT;
 
+/*
+ * V9X_GDIGETSTATS output: everything the /accel harness needs to decide
+ * whether an accelerated primitive actually ran.
+ *
+ * The `advertised` and `enabled` pair is the whole point. A build that
+ * compiles a primitive advertises it; a build (or a SYSTEM.INI key) that turns
+ * it on enables it. The harness fails when a primitive is advertised and
+ * enabled and its counter is nonetheless zero - which is the anti-vacuous-pass
+ * check, and the check the ati package would have needed
+ * (docs\issues\2026-08-26-ati-package-cannot-enable.md).
+ *
+ * decline_* is not decoration: when the zero-counter check fires, the decline
+ * tallies are what say which gate ate every operation.
+ */
+#define V9X_GDI_PRIM_FILL           0x00000001ul
+#define V9X_GDI_PRIM_COPY           0x00000002ul
+#define V9X_GDI_PRIM_OVERLAP        0x00000004ul
+/*
+ * Monochrome CPU-source expansion (build 004). Colour upload is deliberately
+ * not a primitive - see docs/decisions/2026-08-27-gdi-accel-004-design.md.
+ *
+ * 0x10 and NOT 0x08, which is the value the sequence would otherwise take.
+ * Testing bit 3 of this mask in the shared 16-bit layer compiles to
+ * `test al,8`, and that is the ViRGE's CR53[3] new-MMIO signature - a required
+ * instruction in that chip's object and therefore a forbidden one in every
+ * other family's image. Build 004 tripped exactly that: the ati image was
+ * refused for "foreign-family instruction test al,8" the first time this
+ * primitive was compiled in.
+ *
+ * The s3 family manifest already warns about this class of collision for
+ * unanchored patterns. Do not tidy this back to 0x08.
+ */
+#define V9X_GDI_PRIM_UPLOAD         0x00000010ul
+
+typedef struct v9x_gdi_stats {
+    DWORD dwSize;
+    DWORD abi;
+    /* Primitives this binary contains code for. */
+    DWORD advertised;
+    /* Of those, the ones the compile-time defaults and SYSTEM.INI left on. */
+    DWORD enabled;
+    DWORD engine_type;          /* V9X_DD_ENGINE_TYPE_*, 0 = no engine  */
+    DWORD threshold;            /* minimum accelerated pixel count      */
+    DWORD calls;                /* BitBlt entries                       */
+    DWORD declines;             /* forwarded to DIB_BitBlt              */
+    DWORD fills;                /* solid fills issued to the engine     */
+    DWORD copies;               /* screen-to-screen copies issued       */
+    DWORD idle_timeouts;
+    DWORD fifo_timeouts;
+    DWORD resets;
+    DWORD poisoned;             /* 1 once the session-long latch is set */
+    DWORD fault_inject;         /* armed injections still unconsumed    */
+    DWORD drains;               /* BeginAccess slow-path engine drains   */
+    /* Decline tallies, in gate order. */
+    DWORD decline_disabled;
+    DWORD decline_poisoned;
+    DWORD decline_not_screen;
+    DWORD decline_busy;
+    DWORD decline_palette_xlat;
+    DWORD decline_depth;
+    DWORD decline_rop;
+    DWORD decline_geometry;
+    /* Overlapping same-surface copies, declined until build 003 turns overlap
+     * on. Separate from decline_geometry because it is the one decline a build
+     * can be asked to prove it is still making: at 002 the harness issues
+     * overlapping copies deliberately and checks that this advanced. */
+    DWORD decline_overlap;
+    DWORD decline_threshold;
+    DWORD decline_engine;
+    /* Memory-source blits declined for not being a monochrome expansion - a
+     * colour upload, which build 004's design establishes is not worth
+     * accelerating. Counted so the harness can prove they decline rather than
+     * assume it. */
+    DWORD decline_upload;
+    DWORD uploads;
+    /*
+     * Why memory-source blits were refused. A **bitmask**, one bit per reason,
+     * accumulated over the run - not a last-one-wins scalar, because a mixed
+     * run declines for several reasons at once and the first attempt at this
+     * reported only whichever operation happened to come last.
+     *   bit 1 not enabled  2 no source   3 source is VRAM  4 source not 1bpp
+     *   bit 5 no drawmode  6 zero stride 7 bit offset > destination x
+     *   bit 8 source would leave its selector      9 source out of bounds
+     * bit 0 is set when an upload was accepted.
+     *
+     * The detail carries the numbers behind the *geometry* reasons only (6-9),
+     * since those are the ones a bit alone does not explain, and is left alone
+     * by the earlier reasons so a later colour operation cannot overwrite it.
+     */
+    DWORD upload_reject_mask;
+    DWORD upload_reject_detail;
+    /*
+     * The destination surface's base offset and pitch, as the last accepted
+     * operation saw them. Reported because the Trio64 fill folds the base into
+     * the y coordinate - `y = base / pitch + destination_y` - so a non-zero
+     * base displaces every rectangle by that many scan lines, and every
+     * emulated guest reports zero. Real silicon corrupted the screen and this
+     * is the input that differs between the two.
+     */
+    DWORD last_base;
+    DWORD last_pitch;
+    /*
+     * The Trio64 engine's raw status word, sampled at three points around the
+     * last fill: on entry, immediately after the command is written, and after
+     * a short settle. Recorded because the probe measured a fill that the
+     * driver counted and the framebuffer never received, which leaves only one
+     * question worth asking - whether the engine is executing at all.
+     *
+     * A status that never shows busy means the command is not being accepted,
+     * which points at enhanced-mode state the 16-bit path never establishes
+     * rather than at anything in the fill itself. 0xffff means the port is
+     * reading back floating, i.e. nothing is decoding it.
+     */
+    DWORD last_status_entry;
+    DWORD last_status_issued;
+    /*
+     * Was last_status_settled. It read the status a few instructions after the
+     * command with an empty delay loop the compiler was free to delete, so
+     * "still busy" meant nothing - a busy engine immediately after a command is
+     * normal. Replaced rather than kept, because a diagnostic that cannot fail
+     * informatively is worse than none.
+     *
+     * These are the S3 CRTC registers that decide where the engine's memory
+     * origin is, sampled at fill time: CR6A is the current 64 KiB bank, CR35
+     * the older bank register, CR51 carries display-start high bits, CR31 the
+     * memory-configuration bits. GDI moves the bank for its own framebuffer
+     * access; the 32-bit HAL uses the linear aperture and never does. If the
+     * engine origin follows the bank, a non-zero bank displaces every fill -
+     * potentially into the ~1.1 MiB of BARRY's 2 MiB that 800x600x16 does not
+     * display, which is exactly what "the engine ran and nothing appeared"
+     * looks like.
+     */
+    /*
+     * CR50 is the one that matters, and it is the one the first pass at this
+     * failed to read. The Trio32/Trio64 databook (DB014-B, "Extended System
+     * Cont 1") gives it two fields the Graphics Engine uses and the CRTC does
+     * not:
+     *
+     *   bits 7-6 plus bit 0  GE-SCR-W, "Graphics Engine Command Screen Pixel
+     *                        Width" - bit 0 is the field's MSB:
+     *                        000=1024 001=640 010=800 011=1280 100=1152 110=1600
+     *   bits 5-4             PXL-LNGH, pixel length for Enhanced mode command
+     *                        execution: 00=1 byte 01=2 bytes 11=4 bytes
+     *
+     * So the engine has its own screen width and its own pixel length, neither
+     * of which is the display pitch this driver hands it. Nothing in this
+     * driver programs CR50.
+     */
+    DWORD last_cr50;
+    DWORD last_cr6a;
+    DWORD last_cr51;
+    DWORD last_cr31;
+    /*
+     * The last operation the dispatcher accepted, for diagnosing a wrong-pixel
+     * failure without a second guest round trip.
+     *
+     * Added because the first GdiAccelFill=1 run needed exactly this and did
+     * not have it: the harness could say "the engine painted white where the
+     * DIB Engine painted yellow" but not what colour the driver had decided on,
+     * so it could not separate a misread brush from a misclassified ROP from a
+     * register the engine wants in a different format.
+     */
+    DWORD last_rop256;
+    DWORD last_color;
+    DWORD last_brush_flags;
+    DWORD last_brush_bpp;
+    DWORD last_brush_style;
+    DWORD last_bpp;
+    /*
+     * ADVFUNC_CNTL (4AE8H) as the last Trio64 operation's prepare read it,
+     * and how many times the prepare had to set bit 0 (ENB EHFC) back. Bit 0
+     * clearing under the driver was the 2026-08-27 hardware defect: the
+     * engine executes with it clear and writes nothing, DOS-box activity
+     * clears it on real silicon, and no other readable state changes. A
+     * non-zero restore count on a healthy desktop means the environment is
+     * actively flipping it and the per-operation guard is earning its keep.
+     */
+    DWORD last_advfunc;
+    DWORD advfunc_restores;
+} V9X_GDI_STATS;
+
 typedef struct v9x_dd_shared {
     DWORD dwSize;           /* sizeof(V9X_DD_SHARED)                    */
     DWORD abi;              /* V9X_DD_SHARED_ABI                        */
@@ -1234,6 +1431,10 @@ typedef char v9x_dd_assert_bltdata[
 #endif
 typedef char v9x_dd_assert_trace_entry[
     sizeof(V9X_DD_TRACE_ENTRY) == 8 ? 1 : -1];
+/* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
+ * so both compilers have to lay it out the same way. */
+typedef char v9x_dd_assert_gdi_stats[
+    sizeof(V9X_GDI_STATS) == 188 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

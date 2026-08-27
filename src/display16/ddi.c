@@ -17,6 +17,7 @@
 #include "velocity9x/build.h"
 #include "velocity9x/hw16.h"
 #include "win9x_display_abi.h"
+#include "gdi_accel.h"
 
 #define V9X_BITMAP_HEADER_SIZE     40u
 #define V9X_PALETTE_ENTRIES       256u
@@ -368,6 +369,19 @@ static void v9x_publish_hardware_diagnostics(void)
     WritePrivateProfileString("Velocity9xHardware", 0, 0,
                               V9X_HARDWARE_INFO_PATH);
     v9x_hw16.publish_diagnostics(device, v9x_write_hardware_info);
+    /*
+     * GDI acceleration gets its own key rather than being appended to the
+     * family's Acceleration= string.
+     *
+     * The parent plan asked for one combined value. Acceleration= is per-chip
+     * manifest data written by the chip module (s3_regs16.c:315 writes
+     * device->acceleration), and GDI acceleration is decided by the shared
+     * 16-bit layer from SYSTEM.INI - so appending to it from here would put
+     * this layer's policy inside the chip's key, and settings_status.c reads
+     * that key expecting the manifest's own words. A second key says the same
+     * thing without either half having to know about the other.
+     */
+    v9x_write_hardware_info("GdiAcceleration", v9x_gdi_accel_state_text());
 }
 
 void v9x_serial_write(const char FAR *message)
@@ -918,6 +932,14 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_driver_pdevice->deEndAccess = V9xDibEndAccess;
     v9x_driver_pdevice->deVersion = V9X_DE_VERSION;
     /*
+     * Resolve GDI acceleration against the mode and the chip now that both are
+     * settled, and before anything can call ordinal 1. A ReEnable comes back
+     * through here, which is what re-clamps the primitives to a new depth -
+     * and what a latched poison has to survive, which is why the latch is a
+     * DGROUP word and not a field of the PDEVICE this line just rebuilt.
+     */
+    v9x_gdi_accel_configure();
+    /*
      * The surface layout the DIB Engine actually settled on, next to the one
      * the mode table asked for.
      *
@@ -991,6 +1013,9 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     if (device != 0) {
         device->deFlags |= V9X_DE_BUSY;
     }
+    /* Last chance to say a bounded engine wait expired: the wait itself may
+     * have run at interrupt time, where writing a file was not allowed. */
+    v9x_gdi_accel_flush_report();
     v9x_enabled = 0u;
     ++v9x_disable_count;
     v9x_active_mode = 0;

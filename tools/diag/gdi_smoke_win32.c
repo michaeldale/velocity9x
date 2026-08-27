@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/win9x_ddraw_abi.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
@@ -26,9 +28,8 @@ static int v9x_ascii_equal_ci(char left, char right)
     return left == right;
 }
 
-static int v9x_has_auto_switch(const char *command_line)
+static int v9x_has_switch(const char *command_line, const char *option)
 {
-    static const char option[] = "/auto";
     int offset;
     int index;
 
@@ -45,6 +46,11 @@ static int v9x_has_auto_switch(const char *command_line)
         }
     }
     return 0;
+}
+
+static int v9x_has_auto_switch(const char *command_line)
+{
+    return v9x_has_switch(command_line, "/auto");
 }
 
 static void v9x_uint_text(char *text, UINT value)
@@ -280,6 +286,1589 @@ static LRESULT CALLBACK v9x_window_proc(HWND window,
     return DefWindowProcA(window, message, wparam, lparam);
 }
 
+/* ------------------------------------------------------------------------
+ * /accel: the phase that can fail.
+ *
+ * The existing smoke path above is deliberately untouched, so Result=PASS in
+ * C:\V9XGDI.INI keeps exactly the meaning the mode matrix already relies on.
+ * This phase writes its own file.
+ *
+ * What it is for: a seeded stream of operations drawn on the screen and
+ * mirrored into a reference DC, compared periodically, and then checked
+ * against the driver's own counters. The comparison alone is not enough and
+ * that is the whole point - a comparison harness that silently exercised the
+ * decline path on every operation would pass perfectly and prove nothing,
+ * which is exactly how the ati package shipped unable to enable for a release
+ * (docs\issues\2026-08-26-ati-package-cannot-enable.md). Every check it had to
+ * pass was a check it could pass without working.
+ *
+ * So the counters are read, and the run fails when a primitive is advertised
+ * and enabled and its counter is nonetheless zero. On a build with nothing
+ * enabled - which is every default build 000 - that check cannot fire, and the
+ * one that can is Calls: if the dispatcher were not actually wired to ordinal
+ * 1, no blit would have reached it at all.
+ *
+ * Colours come from a fixed table of 16 static system-palette entries. That is
+ * not decoration either: on an 8-bpp desktop an arbitrary RGB is mapped to the
+ * nearest palette entry, and comparing a screen readback against a reference
+ * DC only means something if both map the same way. Static entries map to
+ * themselves at every depth this driver offers.
+ * ------------------------------------------------------------------------ */
+
+#define V9X_ACCEL_PATH        "C:\\V9XACCE.INI"
+#define V9X_ACCEL_SECTION     "Velocity9xAccel"
+#define V9X_ACCEL_CLASS       "Velocity9xAccelWindow"
+#define V9X_ACCEL_OPERATIONS  500
+#define V9X_ACCEL_COMPARE_EVERY 25
+#define V9X_ACCEL_WIDTH       320
+#define V9X_ACCEL_HEIGHT      240
+#define V9X_ACCEL_MARGIN        8
+
+static const COLORREF v9x_accel_colors[16] = {
+    RGB(0, 0, 0),       RGB(128, 0, 0),     RGB(0, 128, 0),
+    RGB(128, 128, 0),   RGB(0, 0, 128),     RGB(128, 0, 128),
+    RGB(0, 128, 128),   RGB(192, 192, 192), RGB(128, 128, 128),
+    RGB(255, 0, 0),     RGB(0, 255, 0),     RGB(255, 255, 0),
+    RGB(0, 0, 255),     RGB(255, 0, 255),   RGB(0, 255, 255),
+    RGB(255, 255, 255)
+};
+
+/* The eight overlap directions a same-surface copy has to get right, plus the
+ * two axis-aligned zero cases that make it eight rather than four. */
+static const int v9x_accel_shift_x[8] = { -1, 0, 1, 1, 1, 0, -1, -1 };
+static const int v9x_accel_shift_y[8] = { -1, -1, -1, 0, 1, 1, 1, 0 };
+
+static DWORD v9x_accel_seed = 0x13579bdful;
+
+static DWORD v9x_accel_random(DWORD limit)
+{
+    v9x_accel_seed = v9x_accel_seed * 1103515245ul + 12345ul;
+    if (limit == 0ul) {
+        return 0ul;
+    }
+    return ((v9x_accel_seed >> 16) & 0x7ffful) % limit;
+}
+
+static void v9x_accel_write_text(const char *key, const char *value)
+{
+    WritePrivateProfileStringA(V9X_ACCEL_SECTION, key, value, V9X_ACCEL_PATH);
+}
+
+static void v9x_accel_write_uint(const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_uint_text(text, (UINT)value);
+    v9x_accel_write_text(key, text);
+}
+
+/* Packed diagnostics read far better as hex, because the two halves of a
+ * (high << 16) | low pair are then visible without dividing anything. */
+static void v9x_accel_write_hex(const char *key, DWORD value)
+{
+    static const char digits[] = "0123456789abcdef";
+    char text[12];
+    int i;
+
+    text[0] = '0';
+    text[1] = 'x';
+    for (i = 0; i < 8; ++i) {
+        text[2 + i] = digits[(int)((value >> (28 - 4 * i)) & 0x0ful)];
+    }
+    text[10] = ' ';
+    v9x_accel_write_text(key, text);
+}
+
+/*
+ * The reference and the screen are COMPARED in 24-bpp RGB, but they are DRAWN
+ * at the screen's own depth. The distinction is not cosmetic, and getting it
+ * wrong is what the first run of this phase found:
+ *
+ * The reference bitmap was created as a 24-bpp DIBSection, and the comparison
+ * failed identically on the ViRGE and on the engine-less ATI guest - same
+ * operation, same byte - on a build where every operation declined and the DIB
+ * Engine therefore drew both sides. The cause was PATINVERT, the decline-noise
+ * operation: it XORs the destination, and on an 8-bpp desktop that XORs palette
+ * *indices* while a 24-bpp reference XORs RGB *bytes*. Two different answers,
+ * neither wrong, compared against each other.
+ *
+ * So the reference is a compatible bitmap - same format as the screen - and
+ * only the readback is 24 bpp. Both sides then go through GetDIBits with the
+ * same request, so the conversion is the same conversion, and one code path
+ * covers 8 and 16 bpp. Any destination-dependent ROP is comparable again.
+ */
+static DWORD v9x_accel_dib_bytes(void)
+{
+    return (DWORD)(((V9X_ACCEL_WIDTH * 3 + 3) & ~3) * V9X_ACCEL_HEIGHT);
+}
+
+static void v9x_accel_fill_header(BITMAPINFO *info)
+{
+    unsigned index;
+    unsigned char *bytes = (unsigned char *)info;
+
+    for (index = 0u; index < sizeof(BITMAPINFO); ++index) {
+        bytes[index] = 0u;
+    }
+    info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info->bmiHeader.biWidth = V9X_ACCEL_WIDTH;
+    /* Negative height would be a top-down DIB; either orientation compares
+     * equal as long as both sides ask for the same one. */
+    info->bmiHeader.biHeight = V9X_ACCEL_HEIGHT;
+    info->bmiHeader.biPlanes = 1;
+    info->bmiHeader.biBitCount = 24;
+    info->bmiHeader.biCompression = BI_RGB;
+}
+
+/* The probe's variant: same call, caller-chosen dimensions. Kept separate so
+ * the comparison's fixed 320x240 contract is untouched. */
+static int v9x_accel_capture_size(HDC source, HBITMAP bitmap,
+                                  unsigned char *bits, int width, int height)
+{
+    BITMAPINFO info;
+    unsigned index;
+
+    for (index = 0u; index < sizeof(info); ++index) {
+        ((unsigned char *)&info)[index] = 0u;
+    }
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 24;
+    info.bmiHeader.biCompression = BI_RGB;
+    return GetDIBits(source, bitmap, 0, height, bits, &info,
+                     DIB_RGB_COLORS) == height;
+}
+
+static int v9x_accel_capture(HDC source, HBITMAP bitmap, unsigned char *bits)
+{
+    BITMAPINFO info;
+
+    v9x_accel_fill_header(&info);
+    return GetDIBits(source, bitmap, 0, V9X_ACCEL_HEIGHT, bits, &info,
+                     DIB_RGB_COLORS) == V9X_ACCEL_HEIGHT;
+}
+
+/* First differing byte, or -1. Hand-rolled: this tool links no C runtime. */
+static long v9x_accel_first_difference(const unsigned char *left,
+                                       const unsigned char *right,
+                                       DWORD bytes)
+{
+    DWORD index;
+
+    for (index = 0ul; index < bytes; ++index) {
+        if (left[index] != right[index]) {
+            return (long)index;
+        }
+    }
+    return -1l;
+}
+
+static DWORD v9x_accel_difference_count(const unsigned char *left,
+                                        const unsigned char *right,
+                                        DWORD bytes)
+{
+    DWORD index;
+    DWORD count = 0ul;
+
+    for (index = 0ul; index < bytes; ++index) {
+        if (left[index] != right[index]) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+typedef struct v9x_accel_state {
+    HDC screen;          /* the window's client DC - the real framebuffer   */
+    /* Memory DC every operation is mirrored into, at the screen's own pixel
+     * format. This is the software reference: a memory bitmap is drawn by the
+     * DIB Engine, which is precisely what the accelerated path has to agree
+     * with. */
+    HDC reference;
+    HBITMAP reference_bitmap;
+    HDC capture;         /* where the screen region is read back to         */
+    HBITMAP capture_bitmap;
+    unsigned char *screen_bits;
+    unsigned char *reference_bits;
+    int origin_x;
+    int origin_y;
+    HWND window;
+} V9X_ACCEL_STATE;
+
+/*
+ * Enough about a mismatch to tell the failure modes apart without another
+ * round trip to a guest. A wrong colour puts a specific value on the screen
+ * side; a stale read leaves the screen holding what the previous operation
+ * put there; a wrong rectangle disagrees over a shape rather than a hue. The
+ * count and the coordinates are what separate those three.
+ */
+static void v9x_accel_report_mismatch(const V9X_ACCEL_STATE *state,
+                                      long difference)
+{
+    DWORD stride = (DWORD)((V9X_ACCEL_WIDTH * 3 + 3) & ~3);
+    DWORD offset = (DWORD)difference;
+    DWORD row = offset / stride;
+    DWORD column = (offset - row * stride) / 3ul;
+
+    v9x_accel_write_uint("MismatchByte", offset);
+    /* The DIB is bottom-up, so row 0 is the bottom scan line. */
+    v9x_accel_write_uint("MismatchX", column);
+    v9x_accel_write_uint("MismatchY", (DWORD)(V9X_ACCEL_HEIGHT - 1) - row);
+    v9x_accel_write_uint("MismatchBytes",
+                         v9x_accel_difference_count(state->screen_bits,
+                                                    state->reference_bits,
+                                                    v9x_accel_dib_bytes()));
+    v9x_accel_write_uint("MismatchScreenB", state->screen_bits[offset]);
+    v9x_accel_write_uint("MismatchRefB", state->reference_bits[offset]);
+    if (offset + 2ul < v9x_accel_dib_bytes()) {
+        v9x_accel_write_uint("MismatchScreenG", state->screen_bits[offset + 1]);
+        v9x_accel_write_uint("MismatchRefG", state->reference_bits[offset + 1]);
+        v9x_accel_write_uint("MismatchScreenR", state->screen_bits[offset + 2]);
+        v9x_accel_write_uint("MismatchRefR", state->reference_bits[offset + 2]);
+    }
+}
+
+/*
+ * One operation, issued twice: once against the screen and once against the
+ * reference DC, with identical coordinates. Anything the driver declines still
+ * has to produce the same pixels, which is what makes the decline-noise
+ * operations worth issuing.
+ */
+static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
+                                DWORD *fills, DWORD *copies, DWORD *overlaps,
+                                DWORD *noise)
+{
+    int kind = (int)v9x_accel_random(10ul);
+    int width;
+    int height;
+    int x;
+    int y;
+    HBRUSH brush;
+    HBRUSH previous_screen;
+    HBRUSH previous_reference;
+    COLORREF color = v9x_accel_colors[v9x_accel_random(16ul)];
+
+    if (kind <= 4) {
+        /* Solid fill. One in five is deliberately below the driver's
+         * accelerated pixel threshold, so the gate that rejects a small
+         * rectangle is exercised rather than assumed. */
+        int small = (index % 5) == 0;
+
+        width = small ? 4 + (int)v9x_accel_random(12ul)
+                      : 40 + (int)v9x_accel_random(140ul);
+        height = small ? 4 + (int)v9x_accel_random(12ul)
+                       : 40 + (int)v9x_accel_random(120ul);
+        x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+        y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        brush = CreateSolidBrush(color);
+        previous_screen = (HBRUSH)SelectObject(state->screen, brush);
+        previous_reference = (HBRUSH)SelectObject(state->reference, brush);
+        if (kind == 0) {
+            PatBlt(state->screen, state->origin_x + x, state->origin_y + y,
+                   width, height, BLACKNESS);
+            PatBlt(state->reference, x, y, width, height, BLACKNESS);
+        } else if (kind == 1) {
+            PatBlt(state->screen, state->origin_x + x, state->origin_y + y,
+                   width, height, WHITENESS);
+            PatBlt(state->reference, x, y, width, height, WHITENESS);
+        } else {
+            PatBlt(state->screen, state->origin_x + x, state->origin_y + y,
+                   width, height, PATCOPY);
+            PatBlt(state->reference, x, y, width, height, PATCOPY);
+        }
+        SelectObject(state->screen, previous_screen);
+        SelectObject(state->reference, previous_reference);
+        DeleteObject(brush);
+        ++*fills;
+        return;
+    }
+    if (kind <= 6) {
+        /*
+         * Non-overlapping screen-to-screen SRCCOPY - what build 002 turns on.
+         *
+         * Disjointness is constructed rather than hoped for: the source lies
+         * entirely in the left half of the test area and the destination
+         * entirely in the right, so they cannot intersect on x whatever the y
+         * offsets are. The y offsets still vary, which exercises the engine's
+         * scan direction on a copy where direction cannot affect the result.
+         *
+         * The smallest rectangle here is 32x32 = 1024 pixels, which is exactly
+         * the accelerated threshold and therefore lands on its boundary - the
+         * gate declines below it, so this is the smallest copy that should be
+         * accepted.
+         */
+        int half = V9X_ACCEL_WIDTH / 2;
+        int source_x;
+        int source_y;
+
+        width = 32 + (int)v9x_accel_random(64ul);
+        height = 32 + (int)v9x_accel_random(48ul);
+        source_x = (int)v9x_accel_random((DWORD)(half - width));
+        source_y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        x = half + (int)v9x_accel_random((DWORD)(half - width));
+        y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        BitBlt(state->screen, state->origin_x + x, state->origin_y + y,
+               width, height, state->screen,
+               state->origin_x + source_x, state->origin_y + source_y,
+               SRCCOPY);
+        BitBlt(state->reference, x, y, width, height, state->reference,
+               source_x, source_y, SRCCOPY);
+        ++*copies;
+        return;
+    }
+    if (kind == 7) {
+        /*
+         * Overlapping screen-to-screen SRCCOPY. The shift table walks all eight
+         * directions in turn and the shift is always smaller than the
+         * rectangle, so the two really do overlap.
+         *
+         * Until build 003 these must all DECLINE, and the run checks that they
+         * did - an overlapping copy accelerated by an engine walking from the
+         * wrong corner produces a smeared rectangle, so "we declined it" is a
+         * claim worth verifying rather than assuming.
+         */
+        int direction = index % 8;
+        int shift = 8 + (int)v9x_accel_random(24ul);
+        int source_x;
+        int source_y;
+
+        width = 48 + (int)v9x_accel_random(120ul);
+        height = 48 + (int)v9x_accel_random(100ul);
+        source_x = 40 + (int)v9x_accel_random(
+            (DWORD)(V9X_ACCEL_WIDTH - width - 80));
+        source_y = 40 + (int)v9x_accel_random(
+            (DWORD)(V9X_ACCEL_HEIGHT - height - 80));
+        x = source_x + v9x_accel_shift_x[direction] * shift;
+        y = source_y + v9x_accel_shift_y[direction] * shift;
+        BitBlt(state->screen, state->origin_x + x, state->origin_y + y,
+               width, height, state->screen,
+               state->origin_x + source_x, state->origin_y + source_y,
+               SRCCOPY);
+        BitBlt(state->reference, x, y, width, height, state->reference,
+               source_x, source_y, SRCCOPY);
+        ++*overlaps;
+        return;
+    }
+    if (kind == 8) {
+        /*
+         * Memory-source blits - build 004's territory. Alternating a 1-bpp
+         * source, which a build with upload enabled expands on the engine, and
+         * a colour source, which is declined always because a colour upload
+         * moves exactly the bytes the DIB Engine would move anyway.
+         *
+         * Both must produce the same pixels as the reference whichever way the
+         * driver routes them, which is what makes this worth issuing even with
+         * upload off.
+         */
+        int mono = (index & 2) == 0;
+        HDC memory = CreateCompatibleDC(state->screen);
+        HBITMAP bitmap;
+        HBITMAP previous;
+
+        width = 32 + (int)v9x_accel_random(64ul);
+        height = 32 + (int)v9x_accel_random(48ul);
+        x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+        y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        if (memory == 0) {
+            return;
+        }
+        if (mono) {
+            /* A recognisable 1-bpp pattern: alternating byte columns, which
+             * expands to vertical bars the comparison can see. */
+            static BYTE mono_bits[64 * 16];
+            unsigned index2;
+
+            for (index2 = 0u; index2 < sizeof(mono_bits); ++index2) {
+                mono_bits[index2] = (BYTE)((index2 & 1u) != 0u ? 0xccu
+                                                               : 0x33u);
+            }
+            bitmap = CreateBitmap(64, 64, 1, 1, mono_bits);
+            SetTextColor(state->screen, v9x_accel_colors[11]);
+            SetBkColor(state->screen, v9x_accel_colors[4]);
+            SetTextColor(state->reference, v9x_accel_colors[11]);
+            SetBkColor(state->reference, v9x_accel_colors[4]);
+            width = 64;
+            height = 64;
+            x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+            y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        } else {
+            bitmap = CreateCompatibleBitmap(state->screen, width, height);
+        }
+        if (bitmap == 0) {
+            DeleteDC(memory);
+            return;
+        }
+        previous = (HBITMAP)SelectObject(memory, bitmap);
+        if (!mono) {
+            HBRUSH brush = CreateSolidBrush(color);
+            HBRUSH old_brush = (HBRUSH)SelectObject(memory, brush);
+
+            PatBlt(memory, 0, 0, width, height, PATCOPY);
+            SelectObject(memory, old_brush);
+            DeleteObject(brush);
+        }
+        BitBlt(state->screen, state->origin_x + x, state->origin_y + y,
+               width, height, memory, 0, 0, SRCCOPY);
+        BitBlt(state->reference, x, y, width, height, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, previous);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+        ++*noise;
+        return;
+    }
+    /*
+     * Decline noise. PATINVERT is not among the ROPs any build accepts, so it
+     * must go to the DIB Engine - and must still land the same pixels on both
+     * sides.
+     */
+    width = 32 + (int)v9x_accel_random(96ul);
+    height = 32 + (int)v9x_accel_random(80ul);
+    x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+    y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+    brush = CreateSolidBrush(color);
+    previous_screen = (HBRUSH)SelectObject(state->screen, brush);
+    previous_reference = (HBRUSH)SelectObject(state->reference, brush);
+    PatBlt(state->screen, state->origin_x + x, state->origin_y + y,
+           width, height, PATINVERT);
+    PatBlt(state->reference, x, y, width, height, PATINVERT);
+    SelectObject(state->screen, previous_screen);
+    SelectObject(state->reference, previous_reference);
+    DeleteObject(brush);
+    ++*noise;
+}
+
+
+/*
+ * One fill, measured.
+ *
+ * Everything else in this file compares the screen against a reference render
+ * and reports *whether* they differ. That is the wrong instrument for a driver
+ * that mis-addresses: it says the pixels are wrong without saying where they
+ * went. This phase asks the only question that matters for that -
+ * **where did the engine actually write?** - and it asks without assuming
+ * anything about the background, because it snapshots the screen before and
+ * after a single operation and diffs the two snapshots.
+ *
+ * Both snapshots are read the same way, so the 24-bpp readback that caused an
+ * earlier false failure is harmless here: it is the same conversion on both
+ * sides of the diff.
+ *
+ * A note on why one fill and not many: on hardware eight were enough to corrupt
+ * the framebuffer beyond attribution. One keeps the answer readable.
+ */
+static DWORD v9x_accel_probe(HWND window, int screen_width,
+                             int screen_height)
+{
+    /* Deliberately not at the origin, and not square: an offset, asymmetric
+     * rectangle makes a transposed or scaled result obvious, where a square at
+     * (0,0) would hide both. */
+    const int probe_x = 64;
+    const int probe_y = 48;
+    const int probe_w = 96;
+    const int probe_h = 32;
+
+    HDC screen = GetDC(window);
+    HDC before_dc = 0;
+    HDC after_dc = 0;
+    HBITMAP before_bm = 0;
+    HBITMAP after_bm = 0;
+    unsigned char *before_bits = 0;
+    unsigned char *after_bits = 0;
+    /*
+     * The whole screen, not the comparison's 320x240 corner. The first run of
+     * this probe on hardware reported nothing changed inside that corner while
+     * the engine had accepted the fill - so where the write went is the
+     * question, and a sampling window smaller than the screen cannot answer it.
+     */
+    DWORD stride = (DWORD)((screen_width * 3 + 3) & ~3);
+    DWORD bytes = stride * (DWORD)screen_height;
+    DWORD result = 0ul;
+
+    if (screen == 0) {
+        v9x_accel_write_text("ProbeError", "no-screen-dc");
+        return 1ul;
+    }
+    before_dc = CreateCompatibleDC(screen);
+    after_dc = CreateCompatibleDC(screen);
+    before_bm = CreateCompatibleBitmap(screen, screen_width, screen_height);
+    after_bm = CreateCompatibleBitmap(screen, screen_width, screen_height);
+    before_bits = (unsigned char *)GlobalAlloc(GPTR, bytes);
+    after_bits = (unsigned char *)GlobalAlloc(GPTR, bytes);
+    if (before_dc == 0 || after_dc == 0 || before_bm == 0 || after_bm == 0 ||
+        before_bits == 0 || after_bits == 0) {
+        v9x_accel_write_text("ProbeError", "alloc");
+        result = 2ul;
+        goto done;
+    }
+    SelectObject(before_dc, before_bm);
+    SelectObject(after_dc, after_bm);
+
+    /* Snapshot, single fill, snapshot. */
+    BitBlt(before_dc, 0, 0, screen_width, screen_height,
+           screen, 0, 0, SRCCOPY);
+    if (!v9x_accel_capture_size(before_dc, before_bm, before_bits,
+                                screen_width, screen_height)) {
+        v9x_accel_write_text("ProbeError", "capture-before");
+        result = 3ul;
+        goto done;
+    }
+    {
+        HBRUSH brush = CreateSolidBrush(RGB(255, 0, 255));
+        HBRUSH previous = (HBRUSH)SelectObject(screen, brush);
+
+        PatBlt(screen, probe_x, probe_y, probe_w, probe_h, PATCOPY);
+        SelectObject(screen, previous);
+        DeleteObject(brush);
+    }
+    BitBlt(after_dc, 0, 0, screen_width, screen_height,
+           screen, 0, 0, SRCCOPY);
+    if (!v9x_accel_capture_size(after_dc, after_bm, after_bits,
+                                screen_width, screen_height)) {
+        v9x_accel_write_text("ProbeError", "capture-after");
+        result = 4ul;
+        goto done;
+    }
+
+    /* Bounding box of every pixel that changed, in the sampled region's own
+     * coordinates. GetDIBits handed back a bottom-up DIB, so row 0 of the
+     * buffer is the bottom of the region and y is flipped on the way out. */
+    {
+        long min_x = -1l, min_y = -1l, max_x = -1l, max_y = -1l;
+        DWORD changed = 0ul;
+        int row;
+        int col;
+
+        for (row = 0; row < screen_height; ++row) {
+            const unsigned char *a = before_bits + (DWORD)row * stride;
+            const unsigned char *b = after_bits + (DWORD)row * stride;
+
+            for (col = 0; col < screen_width; ++col) {
+                if (a[col * 3] != b[col * 3] ||
+                    a[col * 3 + 1] != b[col * 3 + 1] ||
+                    a[col * 3 + 2] != b[col * 3 + 2]) {
+                    long y = (long)(screen_height - 1 - row);
+
+                    ++changed;
+                    if (min_x < 0l || col < min_x) { min_x = col; }
+                    if (max_x < 0l || col > max_x) { max_x = col; }
+                    if (min_y < 0l || y < min_y) { min_y = y; }
+                    if (max_y < 0l || y > max_y) { max_y = y; }
+                }
+            }
+        }
+        v9x_accel_write_uint("ProbeRequestedX", (DWORD)probe_x);
+        v9x_accel_write_uint("ProbeRequestedY", (DWORD)probe_y);
+        v9x_accel_write_uint("ProbeRequestedW", (DWORD)probe_w);
+        v9x_accel_write_uint("ProbeRequestedH", (DWORD)probe_h);
+        v9x_accel_write_uint("ProbeChangedPixels", changed);
+        v9x_accel_write_uint("ProbeExpectedPixels",
+                             (DWORD)(probe_w * probe_h));
+        if (changed == 0ul) {
+            v9x_accel_write_text("ProbeActual", "nothing-changed");
+        } else {
+            v9x_accel_write_uint("ProbeActualX0", (DWORD)min_x);
+            v9x_accel_write_uint("ProbeActualY0", (DWORD)min_y);
+            v9x_accel_write_uint("ProbeActualX1", (DWORD)max_x);
+            v9x_accel_write_uint("ProbeActualY1", (DWORD)max_y);
+            v9x_accel_write_uint("ProbeActualW", (DWORD)(max_x - min_x + 1l));
+            v9x_accel_write_uint("ProbeActualH", (DWORD)(max_y - min_y + 1l));
+        }
+    }
+
+done:
+    if (before_bits != 0) { GlobalFree((HGLOBAL)before_bits); }
+    if (after_bits != 0) { GlobalFree((HGLOBAL)after_bits); }
+    if (before_dc != 0) { DeleteDC(before_dc); }
+    if (after_dc != 0) { DeleteDC(after_dc); }
+    if (before_bm != 0) { DeleteObject(before_bm); }
+    if (after_bm != 0) { DeleteObject(after_bm); }
+    ReleaseDC(window, screen);
+    return result;
+}
+static int v9x_accel_compare(V9X_ACCEL_STATE *state, long *difference)
+{
+    BitBlt(state->capture, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
+           state->screen, state->origin_x, state->origin_y, SRCCOPY);
+    if (!v9x_accel_capture(state->capture, state->capture_bitmap,
+                           state->screen_bits) ||
+        !v9x_accel_capture(state->reference, state->reference_bitmap,
+                           state->reference_bits)) {
+        *difference = -2l;
+        return 0;
+    }
+    *difference = v9x_accel_first_difference(state->screen_bits,
+                                            state->reference_bits,
+                                            v9x_accel_dib_bytes());
+    return *difference < 0l;
+}
+
+static int v9x_accel_read_stats(HDC screen, V9X_GDI_STATS *stats)
+{
+    V9X_DCICMD command;
+    unsigned char *bytes = (unsigned char *)stats;
+    unsigned index;
+
+    for (index = 0u; index < sizeof(V9X_GDI_STATS); ++index) {
+        bytes[index] = 0u;
+    }
+    command.dwCommand = V9X_GDIGETSTATS;
+    command.dwParam1 = 0ul;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_DD_VERSION;
+    command.dwReserved = 0ul;
+    if (ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                  (LPCSTR)&command, sizeof(V9X_GDI_STATS),
+                  (LPSTR)stats) <= 0) {
+        return 0;
+    }
+    return stats->dwSize == sizeof(V9X_GDI_STATS);
+}
+
+static int v9x_accel_arm_fault(HDC screen, DWORD count)
+{
+    V9X_DCICMD command;
+
+    command.dwCommand = V9X_GDIFAULTINJECT;
+    command.dwParam1 = count;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_DD_VERSION;
+    command.dwReserved = 0ul;
+    return ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                     (LPCSTR)&command, 0, 0) > 0;
+}
+
+static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
+{
+    v9x_accel_write_uint("Advertised", stats->advertised);
+    v9x_accel_write_uint("Enabled", stats->enabled);
+    v9x_accel_write_uint("EngineType", stats->engine_type);
+    v9x_accel_write_uint("Threshold", stats->threshold);
+    v9x_accel_write_uint("Calls", stats->calls);
+    v9x_accel_write_uint("Declines", stats->declines);
+    v9x_accel_write_uint("Fills", stats->fills);
+    v9x_accel_write_uint("Copies", stats->copies);
+    v9x_accel_write_uint("IdleTimeouts", stats->idle_timeouts);
+    v9x_accel_write_uint("FifoTimeouts", stats->fifo_timeouts);
+    v9x_accel_write_uint("Resets", stats->resets);
+    v9x_accel_write_uint("Poisoned", stats->poisoned);
+    v9x_accel_write_uint("FaultInjectRemaining", stats->fault_inject);
+    v9x_accel_write_uint("Drains", stats->drains);
+    v9x_accel_write_uint("DeclineDisabled", stats->decline_disabled);
+    v9x_accel_write_uint("DeclinePoisoned", stats->decline_poisoned);
+    v9x_accel_write_uint("DeclineNotScreen", stats->decline_not_screen);
+    v9x_accel_write_uint("DeclineBusy", stats->decline_busy);
+    v9x_accel_write_uint("DeclinePaletteXlat", stats->decline_palette_xlat);
+    v9x_accel_write_uint("DeclineDepth", stats->decline_depth);
+    v9x_accel_write_uint("DeclineRop", stats->decline_rop);
+    v9x_accel_write_uint("DeclineGeometry", stats->decline_geometry);
+    v9x_accel_write_uint("DeclineOverlap", stats->decline_overlap);
+    v9x_accel_write_uint("DeclineThreshold", stats->decline_threshold);
+    v9x_accel_write_uint("DeclineEngine", stats->decline_engine);
+    v9x_accel_write_uint("DeclineUpload", stats->decline_upload);
+    v9x_accel_write_uint("Uploads", stats->uploads);
+    v9x_accel_write_hex("UploadRejectMask", stats->upload_reject_mask);
+    v9x_accel_write_hex("UploadRejectDetail", stats->upload_reject_detail);
+    v9x_accel_write_hex("LastBase", stats->last_base);
+    v9x_accel_write_uint("LastPitch", stats->last_pitch);
+    v9x_accel_write_hex("LastStatusEntry", stats->last_status_entry);
+    v9x_accel_write_hex("LastStatusIssued", stats->last_status_issued);
+    v9x_accel_write_hex("LastCR50", stats->last_cr50);
+    v9x_accel_write_hex("LastCR6A", stats->last_cr6a);
+    v9x_accel_write_hex("LastCR51", stats->last_cr51);
+    v9x_accel_write_hex("LastCR31", stats->last_cr31);
+    v9x_accel_write_uint("LastRop256", stats->last_rop256);
+    v9x_accel_write_uint("LastColor", stats->last_color);
+    v9x_accel_write_uint("LastBrushFlags", stats->last_brush_flags);
+    v9x_accel_write_uint("LastBrushBpp", stats->last_brush_bpp);
+    v9x_accel_write_uint("LastBrushStyle", stats->last_brush_style);
+    v9x_accel_write_uint("LastBpp", stats->last_bpp);
+    v9x_accel_write_hex("LastAdvFunc", stats->last_advfunc);
+    v9x_accel_write_uint("AdvFuncRestores", stats->advfunc_restores);
+}
+
+/* ------------------------------------------------------------------------
+ * /soak: a window drag and scroll pass.
+ *
+ * What this is NOT, and why, because the gap matters more than the coverage:
+ *
+ * A copy makes the engine READ the framebuffer, so a software cursor sitting
+ * over the source rectangle is part of the pixels it copies, and an exclusion
+ * covering only the destination leaves that cursor to be duplicated into the
+ * destination. The reference driver keeps a separate B_SWCursorExcludeUnion for
+ * exactly this (98DDK\src\display\mini\s3v\S3BLT.ASM), and this driver had
+ * only the destination form until build 002 fixed it.
+ *
+ * An automated check for that was written, and then measured to be vacuous: a
+ * driver deliberately built to exclude only the destination passed it 40 out of
+ * 40 iterations. It was removed rather than kept, and the reason it cannot work
+ * is worth recording, because it is a property of the cursor contract rather
+ * than a shortage of effort:
+ *
+ *   Every way a Win32 application can read the screen goes through GDI, GDI
+ *   goes through the DIB Engine, and the DIB Engine announces framebuffer
+ *   access through deBeginAccess - which lifts the software cursor before the
+ *   read happens. The readback therefore never contains the cursor, whatever
+ *   the driver did or did not exclude, so no comparison built on a readback can
+ *   tell a correct exclusion from a missing one.
+ *
+ * So the cursor-over-source case has no automated coverage in this project. It
+ * rests on the reference driver's authority for the shape of the fix, and on
+ * somebody looking at a screen for confirmation. Saying so is better than a
+ * green check that means nothing.
+ *
+ * What remains here is the soak the rollout plan asks for: volume through
+ * USER's own screen-to-screen copy paths with the pointer kept on the window
+ * being moved, checked for survival and for the desktop still rendering
+ * afterwards.
+ * ------------------------------------------------------------------------ */
+
+#define V9X_SOAK_DRAGS              60
+
+/*
+ * Clipped drawing, which PLAN.md's Phase 5 exit gate names and which nothing
+ * here covered until now.
+ *
+ * The argument for not covering it was that GDI clips before the driver sees a
+ * blit, so the driver never receives a rectangle it could mishandle. That is an
+ * argument rather than a measurement, and it is also not quite what happens: a
+ * blit straddling a multi-rectangle clip region is *split*, and the driver
+ * receives one call per piece. Those pieces are what this exercises.
+ *
+ * The region is two disjoint rectangles with a gap between them, so a fill drawn
+ * across all three areas must come back as two painted bands with the original
+ * contents surviving in between. Both DCs get the same region, so the reference
+ * clips identically and the comparison is about the driver's handling of the
+ * pieces rather than about clipping itself.
+ *
+ * Two things this has to avoid being vacuous about, both checked by the caller:
+ * the pieces must stay above the accelerated pixel threshold - hence bands 140
+ * wide rather than a few pixels - and the pass must be shown to have produced
+ * accelerated operations rather than declines.
+ *
+ * The clip region is deselected before any readback: the comparison reads
+ * through the same DC, and a region left selected would clip the readback too
+ * and hide exactly what it is meant to inspect.
+ */
+#define V9X_CLIP_BAND_WIDTH   140
+#define V9X_CLIP_OPERATIONS    24
+
+static int v9x_accel_clipped_pass(V9X_ACCEL_STATE *state, DWORD *operations,
+                                  long *difference)
+{
+    HRGN left = CreateRectRgn(state->origin_x,
+                              state->origin_y,
+                              state->origin_x + V9X_CLIP_BAND_WIDTH,
+                              state->origin_y + V9X_ACCEL_HEIGHT);
+    HRGN right = CreateRectRgn(state->origin_x + V9X_ACCEL_WIDTH -
+                                   V9X_CLIP_BAND_WIDTH,
+                               state->origin_y,
+                               state->origin_x + V9X_ACCEL_WIDTH,
+                               state->origin_y + V9X_ACCEL_HEIGHT);
+    /* The reference DC has no window margin, so its region is the same two
+     * bands translated to the bitmap's own origin. */
+    HRGN reference_left = CreateRectRgn(0, 0, V9X_CLIP_BAND_WIDTH,
+                                        V9X_ACCEL_HEIGHT);
+    HRGN reference_right = CreateRectRgn(
+        V9X_ACCEL_WIDTH - V9X_CLIP_BAND_WIDTH, 0, V9X_ACCEL_WIDTH,
+        V9X_ACCEL_HEIGHT);
+    int ok = 0;
+    DWORD index;
+
+    *operations = 0ul;
+    if (left == 0 || right == 0 || reference_left == 0 ||
+        reference_right == 0) {
+        goto done;
+    }
+    CombineRgn(left, left, right, RGN_OR);
+    CombineRgn(reference_left, reference_left, reference_right, RGN_OR);
+    SelectClipRgn(state->screen, left);
+    SelectClipRgn(state->reference, reference_left);
+
+    for (index = 0ul; index < V9X_CLIP_OPERATIONS; ++index) {
+        HBRUSH brush = CreateSolidBrush(
+            v9x_accel_colors[v9x_accel_random(16ul)]);
+        HBRUSH previous_screen = (HBRUSH)SelectObject(state->screen, brush);
+        HBRUSH previous_reference = (HBRUSH)SelectObject(state->reference,
+                                                        brush);
+        int height = 40 + (int)v9x_accel_random(80ul);
+        int y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+
+        /* Full width, so every operation straddles both bands and the gap. */
+        if ((index & 1u) == 0u) {
+            PatBlt(state->screen, state->origin_x, state->origin_y + y,
+                   V9X_ACCEL_WIDTH, height, PATCOPY);
+            PatBlt(state->reference, 0, y, V9X_ACCEL_WIDTH, height, PATCOPY);
+        } else {
+            int source_y = (int)v9x_accel_random(
+                (DWORD)(V9X_ACCEL_HEIGHT - height));
+
+            BitBlt(state->screen, state->origin_x, state->origin_y + y,
+                   V9X_ACCEL_WIDTH, height, state->screen,
+                   state->origin_x, state->origin_y + source_y, SRCCOPY);
+            BitBlt(state->reference, 0, y, V9X_ACCEL_WIDTH, height,
+                   state->reference, 0, source_y, SRCCOPY);
+        }
+        SelectObject(state->screen, previous_screen);
+        SelectObject(state->reference, previous_reference);
+        DeleteObject(brush);
+        ++*operations;
+    }
+
+    SelectClipRgn(state->screen, 0);
+    SelectClipRgn(state->reference, 0);
+    ok = v9x_accel_compare(state, difference);
+
+done:
+    if (left != 0) { DeleteObject(left); }
+    if (right != 0) { DeleteObject(right); }
+    if (reference_left != 0) { DeleteObject(reference_left); }
+    if (reference_right != 0) { DeleteObject(reference_right); }
+    return ok;
+}
+
+static void v9x_soak_drag_window(HWND window, DWORD drags)
+{
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    int width = 320;
+    int height = 240;
+    DWORD index;
+
+    if (screen_width < width + 8 || screen_height < height + 8) {
+        return;
+    }
+    for (index = 0ul; index < drags; ++index) {
+        int x = (int)v9x_accel_random((DWORD)(screen_width - width));
+        int y = (int)v9x_accel_random((DWORD)(screen_height - height));
+        HDC client;
+
+        /* Keep the pointer on the window being moved, which is what a real
+         * drag does and what puts the cursor over the source of USER's copy. */
+        SetCursorPos(x + width / 2, y + height / 2);
+        SetWindowPos(window, HWND_TOP, x, y, width, height, SWP_NOZORDER);
+        client = GetDC(window);
+        if (client != 0) {
+            ScrollWindow(window, 0, 16, 0, 0);
+            ScrollWindow(window, 12, 0, 0, 0);
+            ReleaseDC(window, client);
+        }
+    }
+}
+
+static DWORD v9x_accel_run(HWND window)
+{
+    V9X_ACCEL_STATE state;
+    V9X_GDI_STATS stats;
+    V9X_GDI_STATS before;
+    RECT client;
+    DWORD fills = 0ul;
+    DWORD copies = 0ul;
+    DWORD overlaps = 0ul;
+    DWORD noise = 0ul;
+    DWORD compares = 0ul;
+    long difference = -1l;
+    int screen_bpp;
+    int accelerated_depth;
+    int index;
+    int stats_ok;
+    int compared_ok = 1;
+    const char *error = 0;
+
+    for (index = 0; index < (int)sizeof(state); ++index) {
+        ((unsigned char *)&state)[index] = 0u;
+    }
+    GetClientRect(window, &client);
+    if (client.right < V9X_ACCEL_WIDTH + V9X_ACCEL_MARGIN * 2 ||
+        client.bottom < V9X_ACCEL_HEIGHT + V9X_ACCEL_MARGIN * 2) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "client-too-small");
+        v9x_accel_write_uint("ClientWidth", (DWORD)client.right);
+        v9x_accel_write_uint("ClientHeight", (DWORD)client.bottom);
+        return 4ul;
+    }
+    state.origin_x = V9X_ACCEL_MARGIN;
+    state.origin_y = V9X_ACCEL_MARGIN;
+    state.window = window;
+    state.screen = GetDC(window);
+    if (state.screen == 0) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "no-window-dc");
+        return 4ul;
+    }
+    screen_bpp = GetDeviceCaps(state.screen, BITSPIXEL) *
+                 GetDeviceCaps(state.screen, PLANES);
+    v9x_accel_write_uint("ScreenBpp", (DWORD)screen_bpp);
+
+    state.reference = CreateCompatibleDC(state.screen);
+    state.reference_bitmap = CreateCompatibleBitmap(state.screen,
+                                                   V9X_ACCEL_WIDTH,
+                                                   V9X_ACCEL_HEIGHT);
+    state.capture = CreateCompatibleDC(state.screen);
+    state.capture_bitmap = CreateCompatibleBitmap(state.screen,
+                                                 V9X_ACCEL_WIDTH,
+                                                 V9X_ACCEL_HEIGHT);
+    state.screen_bits = (unsigned char *)VirtualAlloc(
+        0, v9x_accel_dib_bytes(), MEM_COMMIT, PAGE_READWRITE);
+    state.reference_bits = (unsigned char *)VirtualAlloc(
+        0, v9x_accel_dib_bytes(), MEM_COMMIT, PAGE_READWRITE);
+    if (state.reference == 0 || state.reference_bitmap == 0 ||
+        state.capture == 0 || state.capture_bitmap == 0 ||
+        state.screen_bits == 0 || state.reference_bits == 0) {
+        error = "setup-failed";
+    } else {
+        SelectObject(state.reference, state.reference_bitmap);
+        SelectObject(state.capture, state.capture_bitmap);
+    }
+
+    if (error == 0) {
+        /*
+         * Both sides start from the same known contents, so a mismatch is
+         * always attributable to an operation in this run and not to whatever
+         * was on the desktop.
+         */
+        PatBlt(state.screen, state.origin_x, state.origin_y, V9X_ACCEL_WIDTH,
+               V9X_ACCEL_HEIGHT, BLACKNESS);
+        PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
+               BLACKNESS);
+        stats_ok = v9x_accel_read_stats(state.screen, &before);
+        if (!stats_ok) {
+            error = "escape-rejected";
+        }
+    }
+
+    if (error == 0) {
+        for (index = 0; index < V9X_ACCEL_OPERATIONS; ++index) {
+            v9x_accel_operation(&state, index, &fills, &copies, &overlaps,
+                                &noise);
+            if ((index + 1) % V9X_ACCEL_COMPARE_EVERY == 0) {
+                ++compares;
+                if (!v9x_accel_compare(&state, &difference)) {
+                    compared_ok = 0;
+                    v9x_accel_write_uint("MismatchOperation",
+                                         (DWORD)(index + 1));
+                    break;
+                }
+            }
+        }
+    }
+
+    if (error == 0 && !v9x_accel_read_stats(state.screen, &stats)) {
+        error = "escape-rejected-after";
+    }
+
+    if (error == 0) {
+        v9x_accel_report_stats(&stats);
+        /*
+         * The driver's counters are DGROUP statics with no per-Enable reset,
+         * so they accumulate over a whole session - a second /accel run in one
+         * boot, or a live mode switch between two runs, reads the first run's
+         * totals as well as its own. The absolutes above are what the
+         * zero-counter check uses (0 against non-0 is unambiguous either way);
+         * these deltas are what a human comparing two runs needs.
+         */
+        v9x_accel_write_uint("CallsDelta", stats.calls - before.calls);
+        v9x_accel_write_uint("FillsDelta", stats.fills - before.fills);
+        v9x_accel_write_uint("CopiesDelta", stats.copies - before.copies);
+        v9x_accel_write_uint("DeclinesDelta",
+                             stats.declines - before.declines);
+        v9x_accel_write_uint("DrainsDelta", stats.drains - before.drains);
+        v9x_accel_write_uint("UploadsDelta", stats.uploads - before.uploads);
+        v9x_accel_write_uint("DeclineUploadDelta",
+                             stats.decline_upload - before.decline_upload);
+        v9x_accel_write_uint("Operations", (DWORD)index);
+        v9x_accel_write_uint("FillOperations", fills);
+        v9x_accel_write_uint("CopyOperations", copies);
+        v9x_accel_write_uint("OverlapOperations", overlaps);
+        v9x_accel_write_uint("NoiseOperations", noise);
+        v9x_accel_write_uint("Comparisons", compares);
+        v9x_accel_write_text("Compared", compared_ok ? "PASS" : "FAIL");
+        if (!compared_ok) {
+            if (difference >= 0l) {
+                v9x_accel_report_mismatch(&state, difference);
+            }
+            error = difference == -2l ? "getdibits-failed" : "pixel-mismatch";
+        }
+    }
+
+    /*
+     * The anti-vacuous-pass check, and the single most important line here.
+     *
+     * A primitive that the build advertises and the configuration enabled must
+     * have fired. Without this the whole comparison above can pass while every
+     * operation quietly took the decline path - the failure mode this file
+     * exists to make impossible.
+     *
+     * Conditioned on the depth, and that condition was measured rather than
+     * anticipated. Run with GdiAccelFill=1 on a 1024x768x32 desktop this check
+     * fired and the run failed, on a driver that was behaving perfectly: the
+     * S3 primitives serve 8 and 16 bpp only, so at 32 bpp every fill is
+     * declined at the depth gate by design (DeclineDepth=669 said so plainly).
+     * Left unconditioned, every 32-bpp mode in the mode matrix would fail from
+     * build 001 onward.
+     *
+     * The check is not weakened by this: it still runs in every mode the
+     * primitives can actually serve, which is eight of the S3 family's eleven.
+     * What it must never do is skip silently, so the depth it decided on is
+     * reported either way.
+     */
+    /*
+     * One predicate for both of the checks below, because they depend on the
+     * same thing and gating them differently produced two false positives at
+     * 32 bpp on a driver that was behaving perfectly. The S3 primitives serve
+     * 8 and 16 bpp only; above that every operation is declined at the depth
+     * gate, so no primitive can fire and no bounded wait can run.
+     */
+    accelerated_depth = screen_bpp == 8 || screen_bpp == 16;
+    if (error == 0) {
+        int serviceable = accelerated_depth;
+
+        v9x_accel_write_uint("ZeroCounterChecked", serviceable ? 1ul : 0ul);
+        if (!serviceable) {
+            v9x_accel_write_text("ZeroCounterSkipped",
+                                 "depth-not-accelerated");
+        } else if ((stats.enabled & V9X_GDI_PRIM_FILL) != 0ul &&
+                   stats.fills == before.fills) {
+            error = "fill-enabled-but-never-fired";
+        } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
+                   stats.copies == before.copies) {
+            error = "copy-enabled-but-never-fired";
+        } else if ((stats.enabled & V9X_GDI_PRIM_OVERLAP) != 0ul &&
+                   stats.decline_overlap != before.decline_overlap) {
+            /*
+             * With overlap enabled the mirror claim inverts: no overlapping
+             * copy should be declined for overlapping. If any was, the gate is
+             * still refusing what this build says it accelerates, and the
+             * eight directions the generator walks are not being exercised on
+             * the engine at all - the comparison would pass on the DIB
+             * Engine's own work and prove nothing about the direction logic.
+             */
+            error = "overlap-enabled-but-still-declined";
+        } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
+                   (stats.enabled & V9X_GDI_PRIM_OVERLAP) == 0ul &&
+                   stats.decline_overlap == before.decline_overlap) {
+            /*
+             * The mirror of the check above, and it matters for the same
+             * reason. A build with copy on and overlap off claims two things:
+             * that disjoint copies are accelerated, and that overlapping ones
+             * are not. This run issues both deliberately, so if no overlapping
+             * copy was declined then either the generator stopped producing
+             * them or the gate stopped catching them - and the second would
+             * mean an overlapping copy running on an engine that has not been
+             * told which corner to start from.
+             */
+            error = "overlap-declines-never-exercised";
+        } else if ((stats.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul &&
+                   stats.uploads == before.uploads) {
+            /*
+             * Build 004's claim, in the same shape as the three above: with
+             * upload on, the monochrome memory-source operations this run
+             * issues must reach the engine. The first enabled build declined
+             * every one of them and still reported PASS, because the pixels
+             * were right - the DIB Engine had drawn them.
+             */
+            error = "upload-enabled-but-never-fired";
+        } else if (stats.enabled != 0ul &&
+                   stats.decline_upload == before.decline_upload) {
+            /*
+             * The mirror, and it holds whether upload is on or off. Off, every
+             * memory-source operation declines here; on, the colour-source ones
+             * still do, because build 004 accelerates monochrome only. Either
+             * way the count must move, or the generator has stopped issuing
+             * memory-source work and neither claim above is being tested.
+             *
+             * `enabled != 0` is load-bearing, not defensive. On a family with
+             * no 2D engine every operation declines at the first gate and no
+             * per-reason counter past it ever moves - so without this the check
+             * would fail on ati, vbe and matrox-m2 while they behave exactly as
+             * designed. The three checks above self-gate the same way, through
+             * their own `enabled &` test.
+             */
+            error = "upload-declines-never-exercised";
+        } else if ((stats.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul &&
+                   (stats.upload_reject_mask & ~0x0011ul) != 0ul) {
+            /*
+             * Only two reject reasons are legitimate with upload enabled: bit 0
+             * (an upload was accepted) and bit 4 (a colour source refused for
+             * not being 1 bpp). Any other bit means the dispatcher is refusing
+             * monochrome work for a reason this build does not intend.
+             *
+             * This is the check that would have shortened today: bit 8 was set
+             * on every run while the pixel comparison passed, because the
+             * source address was computed from the wrong struct offset and the
+             * DIB Engine quietly did the work instead. The counters said the
+             * stage refused it; nothing said that was wrong.
+             */
+            error = "upload-unexpected-reject-reason";
+        }
+    }
+
+    /*
+     * A poison this run did not ask for is a failure, and nothing was checking.
+     *
+     * The driver's counters do not reset per Enable, and the mode matrix runs
+     * the original V9XGDI smoke phase in the same boot before this one - so
+     * `stats.fills` can be non-zero because of work that happened before this
+     * run started. Comparing against `before` above is what makes the
+     * zero-counter check about *this* run; comparing against zero let the
+     * earlier phase satisfy it.
+     *
+     * That is not hypothetical. On the Trio64 at its three largest modes a real
+     * uninjected bounded wait expired during the smoke phase, latched the
+     * poison, and turned acceleration off for the rest of the boot. This run
+     * then performed 500 operations with every one of them declining at the
+     * first gate, and passed - because `fills` was non-zero from before, and
+     * because being poisoned is a legitimate state nobody had asserted against.
+     * Two holes, one of which hid a driver defect.
+     */
+    if (error == 0 && before.poisoned != 0ul) {
+        error = "poisoned-before-run";
+    }
+    if (error == 0 && stats.poisoned != 0ul) {
+        error = "poisoned-during-run";
+    }
+    /*
+     * And the check that still means something when nothing is enabled, which
+     * is every default build 000: the dispatcher has to have been reached. If
+     * ordinal 1 were not actually ours, five hundred blits would have produced
+     * no calls at all and the pixel comparison would still be perfect.
+     */
+    if (error == 0 && stats.calls <= before.calls) {
+        error = "dispatcher-never-called";
+    }
+
+    /*
+     * The clipped pass runs BEFORE fault injection, and the order is not
+     * incidental: injection poisons the session on purpose, and a poisoned
+     * driver declines everything at the first gate. Run the other way round
+     * this pass reported 100 dispatcher calls with 99 of them declining as
+     * disabled, which is the latch doing its job rather than anything to do
+     * with clipping.
+     */
+    /*
+     * The clipped pass, which Phase 5's gate names and nothing covered before.
+     * Its own anti-vacuous check is the accelerated-operation count: if the clip
+     * split every blit into pieces the gates declined, the pixels would still
+     * match and the pass would prove nothing about the driver.
+     */
+    if (error == 0 && accelerated_depth && stats.enabled != 0ul) {
+        V9X_GDI_STATS clipped;
+        DWORD clip_operations = 0ul;
+        int clip_ok = v9x_accel_clipped_pass(&state, &clip_operations,
+                                             &difference);
+
+        v9x_accel_write_uint("ClipOperations", clip_operations);
+        if (!v9x_accel_read_stats(state.screen, &clipped)) {
+            error = "escape-rejected-clipped";
+        } else {
+            DWORD accelerated = (clipped.fills - stats.fills) +
+                                (clipped.copies - stats.copies);
+
+            v9x_accel_write_uint("ClipAccelerated", accelerated);
+            /* Calls first: if the dispatcher was not reached at all then GDI
+             * did not route a clipped blit through ordinal 1, which is an
+             * answer about the platform rather than about the driver. */
+            v9x_accel_write_uint("ClipCalls", clipped.calls - stats.calls);
+            v9x_accel_write_uint("ClipDeclines",
+                                 clipped.declines - stats.declines);
+            v9x_accel_write_uint("ClipDeclineDisabled",
+                                 clipped.decline_disabled -
+                                     stats.decline_disabled);
+            v9x_accel_write_uint("ClipDeclineNotScreen",
+                                 clipped.decline_not_screen -
+                                     stats.decline_not_screen);
+            v9x_accel_write_uint("ClipDeclineBusy",
+                                 clipped.decline_busy - stats.decline_busy);
+            v9x_accel_write_uint("ClipDeclineRop",
+                                 clipped.decline_rop - stats.decline_rop);
+            v9x_accel_write_uint("ClipDeclineGeometry",
+                                 clipped.decline_geometry -
+                                     stats.decline_geometry);
+            v9x_accel_write_uint("ClipDeclineOverlap",
+                                 clipped.decline_overlap -
+                                     stats.decline_overlap);
+            v9x_accel_write_uint("ClipDeclineThreshold",
+                                 clipped.decline_threshold -
+                                     stats.decline_threshold);
+            v9x_accel_write_uint("ClipDeclineEngine",
+                                 clipped.decline_engine -
+                                     stats.decline_engine);
+            if (!clip_ok) {
+                if (difference >= 0l) {
+                    v9x_accel_report_mismatch(&state, difference);
+                }
+                error = "clipped-pixel-mismatch";
+            } else if (accelerated == 0ul) {
+                error = "clipped-operations-never-accelerated";
+            }
+        }
+    } else if (error == 0) {
+        v9x_accel_write_uint("ClipOperations", 0ul);
+        v9x_accel_write_text("ClipSkipped",
+                             accelerated_depth ? "no-primitive-enabled"
+                                               : "depth-not-accelerated");
+    }
+
+    /*
+     * Fault injection, gated on the same condition as the zero-counter check -
+     * and it has to be the *same* condition, not merely a similar one.
+     *
+     * An armed injection is only ever consumed by an operation that actually
+     * reaches a bounded wait. Two things can stop that: no primitive enabled
+     * (every default build 000, where no GDI wait ever runs), or a depth no
+     * primitive serves (every 32-bpp mode, where the depth gate declines
+     * before any wait). In both cases Poisoned stays 0 honestly, and asserting
+     * otherwise fails a healthy driver. Gating on `enabled` alone got the first
+     * and missed the second.
+     */
+    v9x_accel_write_uint("InjectionChecked",
+                         (stats.enabled != 0ul && accelerated_depth) ? 1ul
+                                                                     : 0ul);
+    if (error == 0 && stats.enabled == 0ul) {
+        v9x_accel_write_text("InjectionSkipped", "no-primitive-enabled");
+    } else if (error == 0 && !accelerated_depth) {
+        v9x_accel_write_text("InjectionSkipped", "depth-not-accelerated");
+    } else if (error == 0) {
+        V9X_GDI_STATS injected;
+        HBRUSH brush = CreateSolidBrush(v9x_accel_colors[9]);
+        /*
+         * Into BOTH DCs. Selecting it into the screen alone left the reference
+         * holding its default white brush, so this step compared a red screen
+         * against a white reference and reported a pixel mismatch on a driver
+         * that had just filled 197 rectangles correctly - two of every three
+         * bytes differing, which is exactly red against white.
+         */
+        HBRUSH previous_screen = (HBRUSH)SelectObject(state.screen, brush);
+        HBRUSH previous_reference = (HBRUSH)SelectObject(state.reference,
+                                                        brush);
+
+        v9x_accel_write_uint("InjectArmed",
+                             v9x_accel_arm_fault(state.screen, 1ul) ? 1ul
+                                                                    : 0ul);
+        PatBlt(state.screen, state.origin_x, state.origin_y,
+               V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT, PATCOPY);
+        PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
+               PATCOPY);
+        SelectObject(state.screen, previous_screen);
+        SelectObject(state.reference, previous_reference);
+        DeleteObject(brush);
+        if (!v9x_accel_read_stats(state.screen, &injected)) {
+            error = "escape-rejected-injected";
+        } else {
+            v9x_accel_write_uint("PoisonedAfterInject", injected.poisoned);
+            v9x_accel_write_uint("IdleTimeoutsAfterInject",
+                                 injected.idle_timeouts);
+            v9x_accel_write_uint("FifoTimeoutsAfterInject",
+                                 injected.fifo_timeouts);
+            if (injected.poisoned == 0ul) {
+                error = "injection-not-consumed";
+            } else if (!v9x_accel_compare(&state, &difference)) {
+                /* The forced timeout must leave the pixels correct: the
+                 * operation the engine did not perform is still performed by
+                 * the DIB Engine. */
+                if (difference >= 0l) {
+                    v9x_accel_report_mismatch(&state, difference);
+                }
+                error = "pixel-mismatch-after-inject";
+            }
+        }
+    }
+
+    if (state.screen_bits != 0) {
+        VirtualFree(state.screen_bits, 0, MEM_RELEASE);
+    }
+    if (state.reference_bits != 0) {
+        VirtualFree(state.reference_bits, 0, MEM_RELEASE);
+    }
+    if (state.capture_bitmap != 0) {
+        DeleteObject(state.capture_bitmap);
+    }
+    if (state.capture != 0) {
+        DeleteDC(state.capture);
+    }
+    if (state.reference_bitmap != 0) {
+        DeleteObject(state.reference_bitmap);
+    }
+    if (state.reference != 0) {
+        DeleteDC(state.reference);
+    }
+    ReleaseDC(window, state.screen);
+
+    if (error != 0) {
+        v9x_accel_write_text("Error", error);
+        v9x_accel_write_text("Result", "FAIL");
+        return 5ul;
+    }
+    v9x_accel_write_text("Result", "PASS");
+    return 0ul;
+}
+
+static LRESULT CALLBACK v9x_accel_window_proc(HWND window, UINT message,
+                                             WPARAM wparam, LPARAM lparam)
+{
+    if (message == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcA(window, message, wparam, lparam);
+}
+
+/*
+ * Parse /inject:N. Returns 0 when the switch is absent.
+ *
+ * It exists because fault injection and the poison latch are properties of the
+ * bounded-wait and recovery paths, not of any primitive's pixel output, and
+ * /accel's own injection step is gated behind a passing comparison. With a
+ * primitive that fires but paints the wrong colour - which is where build 000
+ * left the fill - that gate is unreachable, and the recovery paths would have
+ * gone untested for the wrong reason. Arming from outside separates the two
+ * claims.
+ */
+static DWORD v9x_accel_parse_inject(const char *command_line)
+{
+    static const char option[] = "/inject:";
+    int offset;
+    int index;
+    DWORD value;
+
+    for (offset = 0; command_line[offset] != ' '; ++offset) {
+        for (index = 0; option[index] != ' '; ++index) {
+            if (!v9x_ascii_equal_ci(command_line[offset + index],
+                                    option[index])) {
+                break;
+            }
+        }
+        if (option[index] != ' ') {
+            continue;
+        }
+        offset += index;
+        value = 0ul;
+        while (command_line[offset] >= '0' && command_line[offset] <= '9') {
+            value = value * 10ul + (DWORD)(command_line[offset] - '0');
+            ++offset;
+        }
+        return value;
+    }
+    return 0ul;
+}
+
+/*
+ * Arm the GDI fault injector and report the driver's counters, without drawing
+ * anything. Also the way to read the counters back after a live mode switch,
+ * which is what shows the poison latch surviving one.
+ */
+static DWORD v9x_accel_inject_phase(DWORD count)
+{
+    V9X_GDI_STATS stats;
+    HDC screen = GetDC(0);
+    int armed;
+
+    WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
+    v9x_accel_write_text("Build", V9X_BUILD_ID);
+    v9x_accel_write_text("Phase", "inject");
+    v9x_accel_write_uint("InjectRequested", count);
+    if (screen == 0) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "no-screen-dc");
+        return 1ul;
+    }
+    v9x_accel_write_uint("ScreenBpp",
+                         (DWORD)(GetDeviceCaps(screen, BITSPIXEL) *
+                                 GetDeviceCaps(screen, PLANES)));
+    armed = count != 0ul ? v9x_accel_arm_fault(screen, count) : 1;
+    v9x_accel_write_uint("InjectArmed", armed ? 1ul : 0ul);
+    if (!v9x_accel_read_stats(screen, &stats)) {
+        ReleaseDC(0, screen);
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "escape-rejected");
+        return 2ul;
+    }
+    ReleaseDC(0, screen);
+    v9x_accel_report_stats(&stats);
+    v9x_accel_write_text("Result", armed ? "PASS" : "FAIL");
+    WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+    return armed ? 0ul : 3ul;
+}
+
+/*
+ * The probe phase: the same full-screen window the comparison uses, one fill,
+ * and no comparison at all. Separate from /accel on purpose - /accel issues
+ * hundreds of operations, and on hardware the first handful already corrupt the
+ * framebuffer, so a measurement of where one fill landed has to be the only
+ * thing that has happened since boot.
+ */
+static DWORD v9x_accel_probe_phase(HINSTANCE instance)
+{
+    WNDCLASSA window_class;
+    HWND window;
+    DWORD result;
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    unsigned index;
+
+    WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
+    v9x_accel_write_text("Build", V9X_BUILD_ID);
+    v9x_accel_write_text("Phase", "probe");
+    v9x_accel_write_uint("Width", (DWORD)screen_width);
+    v9x_accel_write_uint("Height", (DWORD)screen_height);
+
+    for (index = 0u; index < sizeof(window_class); ++index) {
+        ((unsigned char *)&window_class)[index] = 0u;
+    }
+    window_class.lpfnWndProc = v9x_accel_window_proc;
+    window_class.hInstance = instance;
+    window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    window_class.lpszClassName = V9X_ACCEL_CLASS;
+    window_class.hCursor = LoadCursorA(0, IDC_ARROW);
+    if (!RegisterClassA(&window_class)) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "register-class");
+        return 1ul;
+    }
+    window = CreateWindowExA(WS_EX_TOPMOST, V9X_ACCEL_CLASS,
+                             "Velocity9x GDI fill probe",
+                             WS_POPUP, 0, 0, screen_width, screen_height,
+                             0, 0, instance, 0);
+    if (window == 0) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "create-window");
+        return 2ul;
+    }
+    ShowWindow(window, SW_SHOW);
+    UpdateWindow(window);
+    SetCursorPos(screen_width - 1, screen_height - 1);
+    result = v9x_accel_probe(window, screen_width, screen_height);
+    /* Stats after the fill, so the run says whether the engine took it at all -
+     * a probe reporting "nothing changed" means something very different when
+     * Fills moved than when it did not. */
+    {
+        HDC screen = GetDC(0);
+        V9X_GDI_STATS stats;
+
+        if (screen != 0) {
+            if (v9x_accel_read_stats(screen, &stats)) {
+                v9x_accel_report_stats(&stats);
+            } else {
+                v9x_accel_write_text("ProbeStats", "escape-rejected");
+            }
+            v9x_accel_write_uint("ScreenBpp",
+                                 (DWORD)(GetDeviceCaps(screen, BITSPIXEL) *
+                                         GetDeviceCaps(screen, PLANES)));
+            ReleaseDC(0, screen);
+        }
+    }
+    v9x_accel_write_text("Result", result == 0ul ? "PASS" : "FAIL");
+    WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+    DestroyWindow(window);
+    return result;
+}
+
+static DWORD v9x_accel_phase(HINSTANCE instance)
+{
+    WNDCLASSA window_class;
+    HWND window;
+    DWORD result;
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    unsigned index;
+
+    WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
+    v9x_accel_write_text("Build", V9X_BUILD_ID);
+    v9x_accel_write_uint("Width", (DWORD)screen_width);
+    v9x_accel_write_uint("Height", (DWORD)screen_height);
+
+    for (index = 0u; index < sizeof(window_class); ++index) {
+        ((unsigned char *)&window_class)[index] = 0u;
+    }
+    window_class.lpfnWndProc = v9x_accel_window_proc;
+    window_class.hInstance = instance;
+    window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    window_class.lpszClassName = V9X_ACCEL_CLASS;
+    /*
+     * A class cursor, and it is load bearing rather than cosmetic.
+     *
+     * This was zero, and with no class cursor USER draws no cursor at all over
+     * the window - so there was no cursor image anywhere in the framebuffer
+     * while this phase ran. The cursor-over-source check was therefore
+     * vacuous, and it was measured vacuous: a driver built to exclude only the
+     * destination rectangle passed it 40 times out of 40. An assertion never
+     * observed failing is not known to work, and this one was not working.
+     *
+     * It also means the pointer-parking below was belt-and-braces over a window
+     * that showed no pointer.
+     */
+    window_class.hCursor = LoadCursorA(0, IDC_ARROW);
+    if (!RegisterClassA(&window_class)) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "register-class");
+        return 1ul;
+    }
+    /*
+     * A borderless full-screen topmost window, because the comparison reads
+     * pixels back out of the framebuffer: anything overlapping the sampled
+     * region would be read as a mismatch. The pointer is parked in the far
+     * corner for the same reason - DIBENG's cursor exclusion should keep a
+     * software cursor out of the readback, but not relying on that costs one
+     * call.
+     */
+    window = CreateWindowExA(WS_EX_TOPMOST, V9X_ACCEL_CLASS,
+                             "Velocity9x GDI acceleration test",
+                             WS_POPUP, 0, 0, screen_width, screen_height,
+                             0, 0, instance, 0);
+    if (window == 0) {
+        v9x_accel_write_text("Result", "FAIL");
+        v9x_accel_write_text("Error", "create-window");
+        return 2ul;
+    }
+    ShowWindow(window, SW_SHOW);
+    UpdateWindow(window);
+    SetCursorPos(screen_width - 1, screen_height - 1);
+    result = v9x_accel_run(window);
+    /*
+     * The window drag and scroll soak the rollout plan asks for: volume through
+     * USER's own screen-to-screen copy paths, with the pointer kept on the
+     * window being moved. Checked for survival rather than for pixels - USER
+     * may or may not blit content on a move on this platform, so a pixel
+     * failure here would not be attributable, and the attributable version of
+     * that test is the cursor-over-source check above.
+     */
+    v9x_soak_drag_window(window, V9X_SOAK_DRAGS);
+
+    /*
+     * Prove the desktop still renders after everything above, including a
+     * forced engine timeout: a driver that poisoned itself into drawing
+     * nothing would still have written PASS for the pixels it compared before
+     * the injection.
+     */
+    {
+        HDC screen = GetDC(window);
+        COLORREF probe = CLR_INVALID;
+
+        if (screen != 0) {
+            HBRUSH brush = CreateSolidBrush(v9x_accel_colors[15]);
+            HBRUSH previous = (HBRUSH)SelectObject(screen, brush);
+
+            PatBlt(screen, 4, 4, 64, 64, PATCOPY);
+            SelectObject(screen, previous);
+            DeleteObject(brush);
+            probe = GetPixel(screen, 32, 32);
+            ReleaseDC(window, screen);
+        }
+        v9x_accel_write_uint("DesktopRenders",
+                             v9x_color_near(probe, RGB(255, 255, 255)) ? 1ul
+                                                                       : 0ul);
+        if (result == 0ul && !v9x_color_near(probe, RGB(255, 255, 255))) {
+            v9x_accel_write_text("Error", "desktop-stopped-rendering");
+            v9x_accel_write_text("Result", "FAIL");
+            result = 6ul;
+        }
+    }
+    DestroyWindow(window);
+    WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+    return result;
+}
+
 void WINAPI V9xGdiSmokeEntry(void)
 {
     HINSTANCE instance = GetModuleHandleA(0);
@@ -287,6 +1876,20 @@ void WINAPI V9xGdiSmokeEntry(void)
     WNDCLASSA window_class;
     HWND window;
     MSG message;
+
+    if (v9x_has_switch(command_line, "/inject:")) {
+        ExitProcess(v9x_accel_inject_phase(
+            v9x_accel_parse_inject(command_line)));
+    }
+    if (v9x_has_switch(command_line, "/stats")) {
+        ExitProcess(v9x_accel_inject_phase(0ul));
+    }
+    if (v9x_has_switch(command_line, "/probe")) {
+        ExitProcess(v9x_accel_probe_phase(instance));
+    }
+    if (v9x_has_switch(command_line, "/accel")) {
+        ExitProcess(v9x_accel_phase(instance));
+    }
 
     v9x_auto_mode = v9x_has_auto_switch(command_line);
 

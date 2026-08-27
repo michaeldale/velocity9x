@@ -44,6 +44,65 @@
 #define V9X_TRIO_PIXEL_CNTL_FRGD_MIX   0xa000u
 #define V9X_TRIO_FRGD_MIX_NEW          0x0027u
 #define V9X_TRIO_CMD_RECT_SOLID        0x40b1u
+/*
+ * The scissors registers, MULTIFUNC_CNTL sub-registers 1-4, each a 12-bit
+ * coordinate in the low bits with the index in bits 15-12.
+ *
+ * From the S3 Trio32/Trio64 databook (DB014-B, "ENHANCED COMMANDS REGISTER
+ * DESCRIPTIONS", Top/Left/Bottom/Right Scissors): they bound every drawing
+ * operation, they are **write only**, and their power-on default is
+ * **Undefined**. The databook also states outright that "all bitmap updates
+ * are affected by the settings in the clipping registers ... These must be set
+ * up so they include" the target area.
+ *
+ * Nothing in this driver programmed them until 2026-08-27, so every fill was
+ * clipped by whatever the BIOS or the VDD happened to leave behind - which is
+ * invisible in emulation and, on real Trio64 silicon, discarded the drawing
+ * entirely. Being write-only, they cannot be read back to check; the only way
+ * to know their state is to set it.
+ */
+#define V9X_TRIO_SCISSORS_T            0x1000u
+#define V9X_TRIO_SCISSORS_L            0x2000u
+#define V9X_TRIO_SCISSORS_B            0x3000u
+#define V9X_TRIO_SCISSORS_R            0x4000u
+#define V9X_TRIO_SCISSORS_MAX          0x0fffu
+
+/*
+ * The rest of the latched engine state, from the databook's own list of what
+ * every drawing operation depends on (DB014-B section 13.4.2, "Initial Setup"):
+ * the clipping registers and the internal/external clipping choice, colour
+ * compare, and the write mask. All of it is write-only, so none of it can be
+ * read back to check, and this driver programmed none of it before 2026-08-27.
+ *
+ * MULT_MISC (index 0EH) is the one that makes an incomplete fix worse rather
+ * than neutral: bit 5 is EXT CLIP, and with it set "only pixels **outside** the
+ * clipping rectangle are drawn" - so opening the clip rectangle wide, on its
+ * own, excludes the entire screen. Bit 8 enables colour compare, another way to
+ * suppress every pixel. Bits 1-0 and 3-2 put the destination and source in a
+ * chosen MByte of display memory, and index 0DH supersedes them with a 3-bit
+ * form. E000H and D000H are the documented power-on values with every field
+ * zero, which is the state this driver wants: no external clipping, no colour
+ * compare, both bases in the first MByte.
+ */
+#define V9X_TRIO_MULT_MISC2            0xd000u
+#define V9X_TRIO_MULT_MISC             0xe000u
+#define V9X_TRIO_WRT_MASK              0xaae8u
+#define V9X_TRIO_WRT_MASK_ALL          0xffffu
+/*
+ * Advanced Function Control (4AE8H), Read/Write. Bit 0 is ENB EHFC, "Enable
+ * Enhanced Functions": with it clear the chip is in VGA/planar mode and the
+ * enhanced engine EXECUTES its commands - busy sets and clears - while every
+ * memory write it makes is discarded. That silent combination was the whole
+ * 2026-08-27 hardware defect: DOS-box (V86/VDD) activity on real Trio64
+ * silicon clears bit 0 behind the driver (measured 0x008B -> 0x008A, exactly
+ * bit 0), no other readable register changes, and every subsequent fill from
+ * either bitness lands nowhere until a mode set writes 4AE8H again. See
+ * docs\issues\2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md.
+ * The value is re-asserted per operation, preserving the other bits as read,
+ * because the BIOS leaves 0x008B and the databook marks those bits Reserved.
+ */
+#define V9X_TRIO_ADVFUNC_CNTL          0x4ae8u
+#define V9X_TRIO_ADVFUNC_ENABLE        0x0001u
 /* Screen-to-screen BitBLT on the 8514/A-compatible enhanced command set:
  * opcode 6 in bits 15:13, plus write-enable and the two direction bits.
  * FRGD_MIX 0x0067 selects a display-memory source with the SRC mix, which is
@@ -78,5 +137,80 @@
 #define V9X_VIRGE_COMMAND             0x0000a500ul
 #define V9X_VIRGE_RECT_WH             0x0000a504ul
 #define V9X_VIRGE_RECT_DEST_XY        0x0000a50cul
+/* Screen-to-screen BitBLT is command 0 in bits 31:27, so the source is read
+ * from display memory when neither the mono-source nor image-data-source bit
+ * is set. The stride register carries the destination stride in its high word
+ * and the source stride in its low word; both are masked to 0xff8 by the
+ * hardware, and the surface bases to an 8-byte boundary. */
+#define V9X_VIRGE_SRC_BASE            0x0000a4d4ul
+#define V9X_VIRGE_RECT_SRC_XY         0x0000a508ul
+#define V9X_VIRGE_STRIDE_MASK            0x00000ff8ul
+#define V9X_VIRGE_COORD_MAX                    2047ul
+
+/* SUBSYS_STAT: a FIFO free-slot count and an engine-idle bit. */
+#define V9X_VIRGE_STATUS_FIFO_SHIFT             8u
+#define V9X_VIRGE_STATUS_FIFO_MASK       0x00001f00ul
+#define V9X_VIRGE_STATUS_IDLE            0x00002000ul
+
+/*
+ * CMD_SET fields. The ROP256 byte occupies bits 24:17, which is why both ROP
+ * constants are a byte shifted left by 17 - a GDI Rop's high word carries the
+ * same ROP256 code, so bits 24:17 take it unchanged.
+ */
+#define V9X_VIRGE_CMD_DRAW_ENABLE        0x00000020ul
+#define V9X_VIRGE_CMD_MONO_PATTERN       0x00000100ul
+#define V9X_VIRGE_CMD_ROP_SHIFT                  17
+#define V9X_VIRGE_CMD_ROP_PATCOPY        (0x000000f0ul << 17)
+#define V9X_VIRGE_CMD_ROP_SRCCOPY        (0x000000ccul << 17)
+#define V9X_VIRGE_CMD_X_POSITIVE         0x02000000ul
+#define V9X_VIRGE_CMD_Y_POSITIVE         0x04000000ul
+/*
+ * CPU-source command bits, from S3.INC:800-829. MONOSRCBLT is
+ * BITBLT + bSRC_Sys + bSRC_Mono, and the mono path additionally sets
+ * CPUAlign_dword and bClip_Enable - the first because the image-transfer window
+ * takes dword writes, the second because the bit-alignment padding has to be
+ * clipped away rather than drawn.
+ */
+#define V9X_VIRGE_CMD_SRC_SYS            0x00000080ul
+#define V9X_VIRGE_CMD_SRC_MONO           0x00000040ul
+#define V9X_VIRGE_CMD_CPU_ALIGN_DWORD    0x00000800ul
+#define V9X_VIRGE_CMD_TRANSPARENT        0x00000200ul
+#define V9X_VIRGE_CMD_CLIP_ENABLE        0x00000002ul
+
+/*
+ * Registers the monochrome CPU-source path needs.
+ *
+ * Derived, not guessed. S3.INC:702 defines BitBLTArea = D2BaseOffset + 0x400
+ * and gives each register as an offset within it - CLIP_L_R 0xdc, CLIP_T_B
+ * 0xe0, SRC_BG_CLR 0xf8, SRC_FG_CLR 0xfc. The base resolves to 0xa400, which
+ * is confirmed three ways against offsets already verified on hardware above:
+ * PAT_FG_CLR 0xf4 -> 0xa4f4, CMD_SET 0x100 -> 0xa500, RWIDTH_HEIGHT 0x104 ->
+ * 0xa504.
+ *
+ * The clip rectangle is not optional on the mono path. A mono source starts at
+ * an arbitrary bit within a byte and the engine is fed whole bytes, so the
+ * destination is shifted left by that bit offset and the leading padding pixels
+ * are trimmed by hardware clipping. Without the clip they would be drawn.
+ */
+#define V9X_VIRGE_CLIP_L_R            0x0000a4dcul
+#define V9X_VIRGE_CLIP_T_B            0x0000a4e0ul
+#define V9X_VIRGE_SRC_BG_COLOR        0x0000a4f8ul
+#define V9X_VIRGE_SRC_FG_COLOR        0x0000a4fcul
+
+/*
+ * The image-transfer window, where the CPU hands pixel data to the engine.
+ * S3.INC:688 puts it at offset 0 of the MMIO window with a 0x8000-byte maximum
+ * burst - inside the 64 KiB this driver's engine selector already covers.
+ */
+#define V9X_VIRGE_IMAGE_XFER          0x00000000ul
+#define V9X_VIRGE_IMAGE_XFER_MAX      0x00008000ul
+
+/*
+ * CR66 bit 1 is the ViRGE/DX graphics-engine reset the Windows 98 S3 sample
+ * uses, and the only recovery either bitness has. The Trio64 has none, which
+ * is why this is a ViRGE constant and not a family one.
+ */
+#define V9X_VIRGE_CR66_ENGINE_RESET            0x02u
+#define V9X_VIRGE_CRTC_CR66                    0x66u
 
 #endif

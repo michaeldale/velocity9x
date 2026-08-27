@@ -48,8 +48,12 @@ $executable = Join-Path $outputDir "v9xgdi.exe"
 $mapFile = Join-Path $outputDir "v9xgdi.map"
 $linkFile = Join-Path $outputDir "v9xgdi.lnk"
 
+# The /accel phase reads the driver's GDI counters through the project-private
+# V9X_GDIGETSTATS escape, whose struct and command ids live in
+# include\velocity9x\win9x_ddraw_abi.h.
+$includeDir = Join-Path $repoRoot "include"
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
-    "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+    "-i=$includeDir" "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to compile the GDI framebuffer smoke test."
 }
@@ -84,7 +88,31 @@ if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or
     throw "The GDI smoke test is not an MZ/PE executable."
 }
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
-foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:")) {
+foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:",
+                       # The /accel phase and the two strings that make its
+                       # failures readable in C:\V9XACCE.INI. The two
+                       # "enabled-but-never-fired" messages are the
+                       # anti-vacuous-pass check; a build that lost them would
+                       # still pass every other assertion in this script.
+                       "Velocity9xAccel",
+                       "fill-enabled-but-never-fired",
+                       "copy-enabled-but-never-fired",
+                       "dispatcher-never-called",
+                       # A poison this run did not ask for is a failure. These
+                       # two are what caught a real Trio64 bounded-wait timeout
+                       # that the zero-counter check alone had passed over,
+                       # because the counter was already non-zero from an
+                       # earlier phase in the same boot.
+                       "poisoned-before-run",
+                       "poisoned-during-run",
+                       # Build 002 claims two things - disjoint copies
+                       # accelerated, overlapping ones declined - and this is
+                       # the second half of that claim.
+                       "overlap-declines-never-exercised",
+                       # Build 003 inverts that claim: with overlap on, an
+                       # overlap decline means the eight directions are never
+                       # reaching the engine.
+                       "overlap-enabled-but-still-declined")) {
     if (-not $imageText.Contains($marker)) {
         throw "The GDI smoke test is missing marker $marker."
     }
@@ -102,7 +130,19 @@ $unexpectedDlls = @($dllNames | Where-Object {
 })
 foreach ($requiredApi in @("BitBlt", "StretchBlt", "GetPixel", "SetPixel",
                             "TextOutA", "GetCommandLineA",
-                            "WritePrivateProfileStringA")) {
+                            "WritePrivateProfileStringA",
+                            # /accel: the reference DC, the readback, and the
+                            # escape that reads the driver's own counters.
+                            # /accel draws its reference at the screen's own
+                            # pixel format (CreateCompatibleBitmap) and reads
+                            # both sides back at 24 bpp (GetDIBits). A 24-bpp
+                            # reference is wrong and was measured wrong: see the
+                            # comment on v9x_accel_dib_bytes.
+                            "PatBlt", "CreateCompatibleBitmap", "GetDIBits",
+                            "ExtEscape", "VirtualAlloc",
+                            # The clipped pass, which is what covers Phase 5's
+                            # clipping-regions gate item.
+                            "CreateRectRgn", "CombineRgn", "SelectClipRgn")) {
     if ($dumpText -notmatch "(?m)\s$([regex]::Escape($requiredApi))\s*$") {
         throw "The GDI smoke test is missing import $requiredApi."
     }

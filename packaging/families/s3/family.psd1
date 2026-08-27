@@ -161,6 +161,11 @@
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
+            # Ordinal 1. Every family links it, and three of the four take its
+            # decline branch on every blit for ever - see the header comment in
+            # src\display16\gdi_accel.c. Last in the list so it links after the
+            # runtime symbols it calls are declared.
+            @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
         RuntimeDefines = @()

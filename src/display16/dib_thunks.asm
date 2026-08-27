@@ -71,7 +71,11 @@ ENDM
 EXTRN _v9x_driver_pdevice:DWORD
 EXTRN _v9x_palettized:WORD
 
-V9X_FORWARD BitBlt,                    DIB_BitBlt
+; BitBlt (ordinal 1) is implemented in C (gdi_accel.c): it is the GDI
+; acceleration dispatcher, and its decline branch forwards to DIB_BitBlt
+; through the typed V9XDIBBITBLTCALL wrapper in runtime.asm. The unconditional
+; `V9X_FORWARD BitBlt, DIB_BitBlt` that used to be here is what that dispatcher
+; replaced - see docs\plans\gdi-acceleration.md.
 V9X_FORWARD ColorInfo,                 DIB_ColorInfo
 ; Control (ordinal 3) is implemented in C (dd16.c) for DirectDraw escapes
 ; and forwards non-DirectDraw functions to DIB_Control itself.

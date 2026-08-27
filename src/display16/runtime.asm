@@ -75,6 +75,26 @@ V9xHardwareStageCode dw 0
 V9xCreateDibReturn dd 0
 V9xDdSharedSel   dw 0
 V9xDdSharedLin   dd 0
+; One LDT descriptor over the ViRGE new-MMIO window, for GDI acceleration.
+; Allocated lazily by V9XENGINESELECTOR and held for the driver's lifetime,
+; for the same reason V9xScreenSelector is (see V9XHARDWAREDISABLE): a
+; descriptor handed back to the LDT and re-acquired later is a descriptor that
+; could belong to anything in between.
+V9xEngineSel dw 0
+
+; GDI acceleration state that has to survive a live mode switch.
+;
+; It lives here, in DGROUP, and not in the PDEVICE and not in V9X_DD_SHARED.
+; Two concrete reasons: V9X_DD_SHARED does not exist before the HAL DLL loads,
+; and ReEnable rebuilds the PDEVICE in place on a live mode switch, so anything
+; latched inside it would be silently cleared by a resolution change. The
+; poison latch is required to survive mode switches; DGROUP is what makes that
+; true.
+;
+; Defined in C (src\display16\gdi_accel.c) and only read here, so the
+; two-instruction fast path below and the C policy cannot disagree about which
+; word they mean.
+EXTRN _v9x_gdi_engine_dirty:WORD
 
 ; DirectDraw shared-block size: sizeof(V9X_DD_SHARED) rounded up.
 ; Must match the v9x_dd_assert_shared_fits_dpmi_block bound in
@@ -130,9 +150,36 @@ V9XCREATEDIBPDEVICECALL PROC FAR
     retf
 V9XCREATEDIBPDEVICECALL ENDP
 
+; The GDI engine drain, in C. Called only from the two BeginAccess entries
+; below and only when the dirty flag is set; it may touch MMIO, ports and
+; DGROUP and nothing else, because it can run at interrupt time on a
+; software-cursor draw.
+EXTRN V9XGDIBEGINACCESSSLOW:FAR
+
+; Drain pending engine work before the CPU touches the framebuffer.
+;
+; This macro is what both deBeginAccess entry points get. The DIB Engine calls
+; through the PDEVICE with DS holding whatever its caller had, so the flag is
+; reached through ES and an explicit DGROUP load - the same idiom every thunk
+; in dib_thunks.asm uses, and the reason this is four instructions on the fast
+; path rather than the two the plan describes. AX and ES are the caller-scratch
+; registers of the Pascal convention and DIB_BeginAccess may clobber them
+; itself, so tail-jumping to it after using them is transparent.
+V9X_BEGIN_ACCESS_DRAIN MACRO
+    LOCAL V9xDrainPending
+    mov ax,DGROUP
+    mov es,ax
+    cmp word ptr es:_v9x_gdi_engine_dirty,0
+    jne short V9xDrainPending
+    jmp DIB_BeginAccess
+V9xDrainPending:
+    call V9XGDIBEGINACCESSSLOW
+    jmp DIB_BeginAccess
+ENDM
+
 PUBLIC V9XDIBBEGINACCESS
 V9XDIBBEGINACCESS PROC FAR
-    jmp DIB_BeginAccess
+    V9X_BEGIN_ACCESS_DRAIN
 V9XDIBBEGINACCESS ENDP
 
 PUBLIC V9XDIBENDACCESS
@@ -150,6 +197,26 @@ PUBLIC V9XDIBCONTROLCALL
 V9XDIBCONTROLCALL PROC FAR
     jmp DIB_Control
 V9XDIBCONTROLCALL ENDP
+
+; Typed forward of the DIB Engine's BitBlt, for the C dispatcher's decline
+; branch in gdi_accel.c.
+;
+; Ordinal 1 used to be an unconditional `jmp DIB_BitBlt` thunk in
+; dib_thunks.asm. It is a C function now, and a C function cannot name
+; DIB_BitBlt directly: this driver compiles PASCAL exports with their names
+; uppercased (which is what `export Control.3=CONTROL` in the build script is
+; about), so a C `extern WORD FAR PASCAL DIB_BitBlt(...)` would ask the linker
+; for DIB_BITBLT and DIBENG.LIB supplies DIB_BitBlt. Every other DIBENG routine
+; C code calls reaches it through a wrapper like this one for the same reason.
+;
+; Stack-transparent: the caller's eleven Pascal arguments are already below our
+; far return address, and DIB_BitBlt pops them itself, so the jump lands the
+; DIB Engine's return straight back at the C caller.
+EXTRN DIB_BitBlt:FAR
+PUBLIC V9XDIBBITBLTCALL
+V9XDIBBITBLTCALL PROC FAR
+    jmp DIB_BitBlt
+V9XDIBBITBLTCALL ENDP
 
 ; Return the linear address of the mapped framebuffer aperture in DX:AX.
 PUBLIC V9XLINEARBASE
@@ -220,6 +287,224 @@ V9xDdSharedDone:
     retf
 V9XDDSHAREDALLOC ENDP
 
+; ---------------------------------------------------------------------------
+; ViRGE new-MMIO access for GDI acceleration.
+;
+; These three routines exist because of one measured compiler fact, not for
+; convenience: this driver is built without a -3, so wcc emits 8086 code, and a
+; `volatile DWORD FAR *` store compiles to TWO 16-bit writes. On the ViRGE that
+; is wrong rather than merely slow - CMD_SET starts the blit, so a split write
+; would trigger the engine on the low half with a stale high half, and a split
+; SUBSYS_STAT read would sample the FIFO count and the idle bit at different
+; instants. Every 32-bit engine register therefore goes through here, where
+; .386p guarantees one bus cycle.
+;
+; Offsets are WORDs: every 2D register in include\velocity9x\s3_engine_regs.h
+; is below 0x10000, which is exactly the constraint that makes one 64 KiB
+; selector enough.
+
+; Allocate (once) and return the MMIO window selector in AX, 0 on failure.
+;
+; Base is V9xLinearAddress + 16 MiB: V9XMAPAPERTURE maps the whole 64 MiB PCI
+; BAR and the new-MMIO window sits at BAR + 0x01000000. Limit is 0xFFFF, one
+; 64 KiB window. Callers that are not on a ViRGE never call this, so a
+; default-off build allocates no descriptor at all.
+PUBLIC V9XENGINESELECTOR
+V9XENGINESELECTOR PROC FAR
+    push    bx
+    push    cx
+    push    dx
+
+    mov     ax, V9xEngineSel
+    cmp     ax, 0
+    jne     short V9xEngineSelectorDone
+    ; No aperture mapped means no window to describe.
+    cmp     V9xLinearAddress, 0
+    je      short V9xEngineSelectorFailed
+
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xEngineSelectorFailed
+    mov     V9xEngineSel, ax
+
+    mov     bx, ax
+    mov     eax, V9xLinearAddress
+    add     eax, 01000000h
+    mov     dx, ax
+    shr     eax, 16
+    mov     cx, ax
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xEngineSelectorFree
+
+    mov     bx, V9xEngineSel
+    xor     cx, cx
+    mov     dx, 0ffffh
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xEngineSelectorFree
+
+    mov     ax, V9xEngineSel
+    jmp     short V9xEngineSelectorDone
+
+V9xEngineSelectorFree:
+    mov     bx, V9xEngineSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xEngineSel, 0
+V9xEngineSelectorFailed:
+    xor     ax, ax
+V9xEngineSelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XENGINESELECTOR ENDP
+
+; V9xEngineRead(WORD offset) -> DWORD in DX:AX, the Watcom 16-bit convention.
+;
+; FAR PASCAL pushes arguments left to right, so with the four-byte far return
+; address below them the single WORD argument sits at [bp+6]. Reading through
+; an unallocated selector would fault, so a zero selector answers 0 - which
+; every caller already treats as "the engine is not there".
+PUBLIC V9XENGINEREAD
+V9XENGINEREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xEngineReadDone
+    mov     es, bx
+    mov     bx, word ptr [bp+6]
+    mov     eax, es:[bx]
+V9xEngineReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    2
+V9XENGINEREAD ENDP
+
+; V9xEngineWrite(WORD offset, DWORD value). One 32-bit store, or nothing.
+;
+; Pushed left to right, so value (four bytes, last pushed) is at [bp+6] and
+; offset is above it at [bp+10].
+PUBLIC V9XENGINEWRITE
+V9XENGINEWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xEngineWriteDone
+    mov     es, bx
+    mov     bx, word ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[bx], eax
+V9xEngineWriteDone:
+    pop     es
+    pop     bx
+    pop     bp
+    retf    6
+V9XENGINEWRITE ENDP
+
+; V9xEngineImageRow(WORD source_selector, WORD source_offset, WORD bytes)
+;
+; Push one scanline of image data into the ViRGE's image-transfer window, which
+; S3.INC:688 places at MMIO offset 0 - inside the 64 KiB window V9xEngineSel
+; already covers, so this needs no mapping of its own.
+;
+; Three things about this are copied from the reference driver's ColorSourceBlt
+; (98DDK\src\display\mini\s3v\S3BLT.ASM:1400-1460) rather than invented:
+;
+;  - The destination offset restarts at 0 for every row. The window is a FIFO
+;    port, not memory; writing further into it is meaningless.
+;  - There is no FIFO polling in the loop. The engine throttles the bus itself
+;    and the writes stall until it can accept them, so a pacing loop here would
+;    be a slower way to do nothing.
+;  - The tail is handled without ever reading past the source. A row is not
+;    necessarily a whole number of dwords, and `rep movsd` rounded up would read
+;    up to three bytes beyond the bitmap - which in a display driver is a GP
+;    fault, not a rounding error. Whole dwords go first, then the remaining one
+;    to three bytes are assembled into a register and written as a single dword,
+;    because the window takes dword writes.
+;
+; The engine consumes exactly the pixel count the command told it to expect, so
+; the padding bits in that final dword are discarded by the hardware.
+PUBLIC V9XENGINEIMAGEROW
+V9XENGINEIMAGEROW PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    si
+    push    di
+    push    cx
+    push    bx
+    push    ax
+
+    mov     ax, V9xEngineSel
+    or      ax, ax
+    je      short V9xImageRowDone
+
+    mov     es, ax
+    xor     di, di                  ; ES:DI -> IMAGE_XFER, offset 0 always
+    mov     cx, word ptr [bp+6]     ; bytes
+    mov     ds, word ptr [bp+10]    ; source selector
+    mov     si, word ptr [bp+8]     ; source offset
+
+    mov     bx, cx
+    shr     cx, 2                   ; whole dwords
+    jz      short V9xImageRowTail
+    cld
+    rep     movsd
+
+V9xImageRowTail:
+    and     bx, 3                   ; leftover 1..3 bytes, or none
+    jz      short V9xImageRowDone
+    ; Assemble the tail a byte at a time, from the last byte down to the first,
+    ; shifting left as we go. Reading a whole dword is what would fault here;
+    ; the reference avoids that by reading from *before* the end and shifting
+    ; down, which needs the row to be at least a dword long. Building the value
+    ; upward needs no such assumption and no compensating shift.
+    ;
+    ; Traced, because the obvious alternative is wrong: loading each byte into
+    ; AH and rotating right lands the bytes correctly only for a full dword. For
+    ; two bytes it leaves them at opposite ends of the register, and any single
+    ; shift that rescues one discards the other.
+    ;
+    ; b0 must end up in the dword's byte 0, so with N bytes:
+    ;   N=1 -> 0x000000b0, N=2 -> 0x0000b1b0, N=3 -> 0x00b2b1b0
+    xor     eax, eax
+    mov     cx, bx
+    add     si, bx                  ; one past the row's last byte
+V9xImageRowTailByte:
+    dec     si
+    shl     eax, 8
+    mov     al, ds:[si]
+    loop    V9xImageRowTailByte
+    mov     es:[di], eax
+
+V9xImageRowDone:
+    pop     ax
+    pop     bx
+    pop     cx
+    pop     di
+    pop     si
+    pop     ds
+    pop     bp
+    retf    6
+V9XENGINEIMAGEROW ENDP
+
 ; Return the linear address of the DirectDraw shared block in DX:AX.
 PUBLIC V9XDDSHAREDLINEAR
 V9XDDSHAREDLINEAR PROC FAR
@@ -228,9 +513,14 @@ V9XDDSHAREDLINEAR PROC FAR
     retf
 V9XDDSHAREDLINEAR ENDP
 
+; The rectangle form of the same DIBENG routine, re-exported so C code can call
+; it with the full argument list. It gets the same dirty check as the plain
+; entry - not because a caller is known to race pending engine work, but
+; because reasoning per caller about who cannot is a worse trade than a shared
+; stub: this is the same four instructions either way.
 PUBLIC V9XDIBBEGINACCESSRECT
 V9XDIBBEGINACCESSRECT PROC FAR
-    jmp DIB_BeginAccess
+    V9X_BEGIN_ACCESS_DRAIN
 V9XDIBBEGINACCESSRECT ENDP
 
 PUBLIC V9XDIBENDACCESSRECT

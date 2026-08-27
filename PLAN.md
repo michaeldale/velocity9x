@@ -343,6 +343,23 @@ Exit gate:
 
 ### Phase 5 - Conservative GDI acceleration
 
+Implementation plan: [docs/plans/gdi-acceleration.md](docs/plans/gdi-acceleration.md),
+which splits this phase into builds `gdi-accel-000`..`005`, one primitive per
+build. **Builds 000 through 003 are done**, which is items 1 to 3 of the list
+below: solid fill, non-overlapping screen copy, and overlapping copy in all
+eight directions all run on the engine on both S3 chips
+([000](docs/decisions/2026-08-26-gdi-accel-000.md),
+[001](docs/decisions/2026-08-26-gdi-accel-001.md),
+[002](docs/decisions/2026-08-27-gdi-accel-002.md),
+[003](docs/decisions/2026-08-27-gdi-accel-003.md)). Items 4 and 5 —
+CPU-to-screen upload and extra ROPs — are not started.
+
+One thing that phase discovered and this list did not anticipate: the `BitBlt`
+export lives in the 16-bit layer all four families share, so *every* family got
+the dispatcher, and the three with no 2D engine take its decline branch on every
+blit permanently. The exit gate therefore has to be run on an engine-less family
+as well, not only on the accelerated one.
+
 Enable one primitive at a time:
 
 1. Solid rectangle fill.
@@ -363,6 +380,9 @@ Exit gate:
 
 - Pixel-for-pixel comparison against a software reference passes randomized rectangles, pitches, clipping regions, overlap directions, and supported ROPs.
 - Injected timeouts recover to an operable desktop.
+- The comparison is not allowed to pass vacuously: the driver's own counters are read back, and a primitive that is advertised and enabled and never fired is a failure. A comparison harness that silently exercised the decline path on every operation would pass perfectly and prove nothing.
+
+**Status after build 003: met, with one item recorded as incidental rather than counted as passed.** Randomized rectangles, overlap directions and supported ROPs are covered on every mode of both chips; injected timeouts recover to a rendering desktop, verified by observing the gate fail on a deliberately broken build; and clipping regions are covered by a two-band clip pass which showed that GDI *splits* a straddling blit into one driver call per clip rectangle rather than hiding clipping from the driver - 24 clipped operations produce exactly 48 accelerated ones. *Pitch coverage is incidental* - eleven distinct pitches across the mode list, but no variation within a mode. See [the 003 record](docs/decisions/2026-08-27-gdi-accel-003.md).
 
 ### Phase 6 - DirectDraw foundation
 

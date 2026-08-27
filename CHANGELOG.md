@@ -6,6 +6,28 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+Fixed: **GDI acceleration on physical S3 Trio64 silicon** - the 2026-08-27
+defect where every accelerated fill executed and put nothing on the screen.
+Root cause: ADVFUNC_CNTL (4AE8H) bit 0, "Enable Enhanced Functions", is
+cleared by DOS-box/VDD activity on real silicon (measured 0x008B to 0x008A,
+exactly bit 0); with it clear the enhanced engine accepts commands, sets and
+clears busy, and discards every memory write, while no other readable register
+changes. 86Box does not model that gate, which is why 11/11 emulated modes
+passed. It was never a 16-bit-context problem: the 32-bit HAL only looked
+immune because its probe calls SetDisplayMode first (a mode set rewrites
+4AE8H) - and at 640x480, not the failing desktop mode. Isolated with a new
+single-source dual-bitness probe (`tools/diag/trio_ctx_probe.c`, V9XTC32 +
+V9XTC16) that programs the fill by raw port I/O, reads the engine's latched
+state back off the silicon, and carries an engine-copy coherence test.
+`v9x_gdi_trio_prepare()` now re-asserts the bit before every operation, the
+Trio64 GDI copy path runs prepare too, the 32-bit HAL fill and copy carry the
+same guard, and the stats block reports `LastAdvFunc`/`AdvFuncRestores`.
+Verified on BARRY at 640x480x16 and 800x600x16: /probe exact (3072/3072
+changed pixels at the requested rectangle) and /accel `Compared=PASS`
+immediately after deliberate DOS-box poisoning, with the guard's restore
+counter advancing. `V9X_GDI_DEFAULT_MASTER` returns to 1
+([issue](docs/issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)).
+
 Fixed: a freshly built `ati` package could not enable at all. Its manifest set
 `MiniVddVbeCollect = $false` while the family has no `read_aperture` hook, so
 the tier-0 aperture path had an empty 4F9Ch cache to read, Enable refused at
@@ -37,6 +59,228 @@ so the 16-bit driver can reach the same registers, verified a pure preprocessor
 move by a byte-identical `v9xhal.dll`. Two of that plan's three open items are
 resolved by measurement, and its stale references to a `ddhal.c` that no longer
 exists are corrected.
+
+Added: **GDI acceleration build `gdi-accel-000`** - all of the machinery, none
+of it enabled ([decision](docs/decisions/2026-08-26-gdi-accel-000.md)). Ordinal
+1 stops being an unconditional `jmp DIB_BitBlt` thunk and becomes a C
+dispatcher, `src/display16/gdi_accel.c`, carrying the acceptance gates, the
+ViRGE and Trio64 fill and copy primitives, bounded waits, the CR66 engine
+reset, a poison latch that survives a live mode switch, counters, and the
+SYSTEM.INI controls. Every primitive is compiled and every one defaults to off,
+so the shipping behaviour is unchanged: each blit still declines to the DIB
+Engine.
+
+That decline path matters more than a staging step usually would. All four
+families link the same 16-bit layer and three of them - `ati`, `vbe`,
+`matrox-m2` - declare no 2D engine on any chip, so for three quarters of the
+fleet the decline branch is the shipping code on every blit, permanently. Its
+exit gate is therefore run on an engine-less family as well as on the S3.
+
+Added: `V9XGDI.EXE /accel`, the phase that can fail. 500 seeded operations
+against the screen and a reference DC, compared with `GetDIBits` every 25, and
+then the driver's own counters read back through a new `V9X_GDIGETSTATS`
+escape - **failing if a primitive that is advertised and enabled never fired.**
+A comparison harness that silently exercised the decline path on every
+operation would pass perfectly and prove nothing, which is exactly how the
+`ati` package shipped unable to enable. It writes its own result file, so
+`Result=PASS` in `C:\V9XGDI.INI` keeps the meaning the mode matrix relies on.
+
+Added: `scripts/run-family-enable-gate.ps1`. `run-checks` builds every family
+package and passes, because a package that builds is not a package that
+enables. This gate starts each family's emulated guest, deploys, reboots and
+asserts `Stage=enable-ok` - nothing else - and prints the targets it cannot
+reach by name rather than equating "each family with an emulator" with "every
+family". Opt-in, because it needs VMs and minutes.
+
+The stage's own gates found two things, which is what they were for. The
+`/accel` harness failed its first run identically on the ViRGE and on the
+engine-less ATI guest - same operation, same byte - on a build where every
+operation declined and the DIB Engine drew both sides: its reference bitmap was
+24-bpp while the screen was 8-bpp, and `PATINVERT` XORs palette indices on one
+and RGB bytes on the other. And the deliberate `GdiAccelFill=1` run proved the
+fill primitive fires and then paints the wrong colour, because the realized
+brush's `FgColor` holds a logical RGB where the engine wants a physical pixel
+value ([issue](docs/issues/2026-08-26-gdi-fill-brush-colour-not-physical.md)).
+Nothing ships on the second - every primitive is off by default - and it blocks
+build 001 rather than this one. Both are the plan's insistence on landing the
+harness before the first build that turns a primitive on, paying for itself on
+its first use.
+
+Added: **GDI acceleration build `gdi-accel-004` - monochrome CPU-to-screen
+upload on the ViRGE/DX** ([record](docs/decisions/2026-08-27-gdi-accel-004.md)),
+behind `GdiAccelUpload`, default off. A 1-bpp source is handed to the engine and
+expanded to the destination depth in hardware, so the CPU moves one bit per
+pixel instead of one byte. Colour sources decline, as the design record argued
+they should; the Trio64 declines because this repository has no first-party
+source for its 8514/A CPU-data registers.
+
+The defect worth remembering is why the first four enabled runs reported
+`Uploads=0` and `Result=PASS` together. GDI hands a monochrome BitBlt source over
+as a plain Win16 `BITMAP`, not a `DIBENGINE`, and the two layouts **share their
+first ten bytes** - type, width, height, stride, planes, bits-per-pixel. Every
+gate in the dispatcher reads a field inside that shared prefix, so every gate
+passed on a correct value; the bits pointer, the one field past the boundary, was
+garbage that computed a half-gigabyte source address. `deBitsPixel` is 1 for a
+monochrome bitmap under either interpretation, so even the check whose whole job
+is to identify a monochrome source could not distinguish them. The discriminator
+is `deType`, which is `TYPE_DIBENG` **or zero**, and it has to be read before
+anything past byte 10. A second bug fell out of the same confusion: the source
+VRAM test was reading `deFlags` from past the end of a `BITMAP` entirely.
+
+Passing pixels are what hid it. Every declined operation was drawn correctly by
+the DIB Engine, so a build that accelerated nothing was indistinguishable from
+one that accelerated everything. The harness now asserts the counters directly -
+`upload-enabled-but-never-fired`, `upload-declines-never-exercised`, and
+`upload-unexpected-reject-reason`, the last of which fails on any decline reason
+this build does not intend and would have caught the defect on the first run.
+
+The deliberately-crossed foreground and background colours - the ViRGE reads a
+set mono bit as *background* - were confirmed by un-crossing them and watching
+the comparison fail at the first monochrome blit, screen `(128,0,0)` against
+reference `(0,255,255)`.
+
+Verified across all three emulated guests: ViRGE 11/11 with upload deliberately
+left on, `Uploads=29` and reject mask `0x11` identical in all eight accelerated
+modes at both depths, and mask `0x00` with the checks correctly skipped in the
+three 32-bpp modes; Trio64 11/11 with upload off, mask `0x02`; mach64-vt2 6/6.
+The ATI pass is the one that matters most - it is the case the new mirror check
+would have failed on without its liveness guard. `V9XDDP` on both S3 guests
+afterwards is `Result=COMPLETE` with unchanged HAL caps.
+
+Measured: **the first CrystalMark Retro run of Velocity9x on physical S3
+silicon**, as the before-column for the GDI acceleration work
+([baseline](docs/decisions/2026-08-27-crystalmark-barry-baseline.md)). BARRY,
+Trio32/64, Windows 98 SE, driver 0.5.x at 800x600x16: 2D Text 2, Square 253,
+Circle 134, Image 91, with CPU 99/99 and Disk 44/2/38/2 recorded as controls.
+CrystalMark reports the adapter as "Velocity9x S3 Trio32/64 86C764" - this
+driver's own description reaching a third-party tool.
+
+The mode matters and is pinned for all three runs: the machine was left at
+800x600x**32**, where GDI acceleration declines everything by design, so a
+benchmark taken there would have shown no difference and invited the conclusion
+that the feature does nothing.
+
+The baseline also records a prediction for the accelerated run to be judged
+against, rather than a number to admire: Square should rise (solid fills), Image
+may rise (screen-to-screen BitBlt), Circle and Text should not move - text
+arrives through `ExtTextOut`, which is still forwarded to the DIB Engine
+untouched - and CPU and Disk must not move at all.
+
+Designed: **build 004 narrows "CPU-to-screen upload" to monochrome expansion
+only** ([design](docs/decisions/2026-08-27-gdi-accel-004-design.md)). Counting
+bus traffic settles it: a colour upload has the CPU move exactly the same bytes
+across the same bus as the DIB Engine already does, so there is no throughput
+win for SRCCOPY and no hardware ROP or clip to gain either - against selector
+stepping for sources over 64 KiB and a partial-dword read that faults if it is
+got wrong. Monochrome expansion writes one bit per pixel and lets the engine
+expand: eight times less CPU-to-bus traffic at 8 bpp, sixteen at 16, which is
+why the reference driver carries a separate command for it.
+
+Added: **GDI acceleration build `gdi-accel-003` - overlapping screen-to-screen
+copies in all eight directions**, which completes the three primitives the
+rollout table gates on and with them PLAN.md's Phase 5. Desktop fills, window
+scrolls and window moves all run on the engine on both S3 chips now.
+
+The transition is what makes it a clean result rather than a green one: build 002
+reported 99 engine copies and 58 overlap declines per run, and 003 reports 157
+copies and zero declines. 99 + 58 = 157 - the overlapping operations moved from
+declined to executed and nothing else changed.
+
+The gate was proven able to fail before it was trusted. With the scan-direction
+logic deliberately disabled the harness failed at its first comparison with a
+26808-byte smear, `DeclineOverlap=0` confirming the operations were reaching the
+engine rather than being turned away. That is the standard build 002's cursor
+check could not meet, and the contrast is instructive: a smear is written into
+the framebuffer and survives a readback, while a software cursor is lifted by
+`deBeginAccess` before any readback can see it.
+
+The direction logic itself was settled against the reference driver rather than
+assumed. The reference flips the X and Y scan directions independently where this
+driver flips one or the other; both are correct, because once rows are walked
+from the far end the source row for any destination row is both unwritten and a
+*different row*, so within-row order cannot alias. The reference tests a
+condition this driver has already made irrelevant.
+
+Phase 5's exit gate also named clipping regions, which the harness now covers -
+and the measurement corrected the argument that had stood in for it. The claim
+had been that GDI clips before the driver sees a blit, so there is nothing for
+the driver to mishandle. The conclusion held; the reasoning did not. A two-band
+clip region shows that GDI *splits* a straddling blit into one driver call per
+clip rectangle: 24 clipped operations produce exactly 48 accelerated ones, in
+every accelerated mode on both chips. Of that gate's items only pitch coverage
+is now recorded as incidental rather than counted - eleven distinct pitches
+across the mode list, none varied within a mode.
+
+Added: **GDI acceleration build `gdi-accel-002` - non-overlapping
+screen-to-screen copies now run on the engine on both S3 chips.** That is the
+operation behind a window scroll and a window move. Overlapping copies still
+decline, and the decline is itself checked now: `decline_overlap` is its own
+counter and the run fails if copy is on, overlap is off, and no overlapping copy
+was declined. The first run's counts made the correspondence exact - 99 disjoint
+copy operations produced 99 engine copies, 58 overlapping ones produced 58
+overlap declines.
+
+Fixed with it, and found by reading the reference driver rather than by a test:
+a copy makes the engine *read* the framebuffer, so the software cursor has to be
+excluded from the source rectangle as well as the destination, or it is copied
+into the destination. The reference keeps a separate `B_SWCursorExcludeUnion`
+for exactly that and this driver had only the destination form.
+
+An automated check for that was written and then **measured to be vacuous** - a
+driver built to exclude only the destination passed it 40 out of 40 - so it was
+removed rather than kept. The reason it cannot work is structural: every screen
+readback available to a Win32 application goes through the DIB Engine, which
+announces framebuffer access and lifts the software cursor before the read. No
+readback-based comparison can tell a correct source exclusion from a missing
+one. The cursor-over-source case therefore has no automated coverage here, which
+is recorded rather than glossed.
+
+Added: **GDI acceleration build `gdi-accel-001` - solid rectangle fills now run
+on the engine on both S3 chips.** This is the first drawing operation Velocity9x
+accelerates outside DirectDraw. It is on because it was measured rather than
+because it was written: the randomized comparison against a DIB Engine
+reference passes with 197 fills executed on the engine per run, the
+fault-injection step still recovers to a rendering desktop, and the mode matrix
+passes in every mode on both chips.
+
+Two defects fixed on the way there, both found by the harness, and between them
+the reason it had to land before the build that turns a primitive on.
+
+The second was the bounded-wait spin limits, which were 64 times too short.
+They had been scaled down from the 32-bit HAL's on the grounds that this driver
+emits 8086 code, so an iteration costs more instructions - but an iteration's
+cost is its bus access, not its instructions, and on the Trio64 every spin is an
+`in ax,dx` on a 9AE8h port that costs the same in either bitness. Measured: the
+Trio64's idle wait expired on real uninjected work in exactly its three largest
+modes, latched the poison and turned acceleration off for the rest of the boot,
+while the ViRGE - whose MMIO read is cheaper than a port cycle - passed all
+eleven. The limits are now the 32-bit values, which closes the parent plan's
+open item 3 by measurement rather than by argument.
+
+The `/accel` phase had passed that defect, twice over, and both holes are now
+closed: its zero-counter check compared fills against zero rather than against
+its own starting snapshot, so fills from the smoke phase earlier in the same
+boot satisfied it; and being poisoned was a legitimate state nothing asserted
+against. A check built to prevent a vacuous pass, passing vacuously one level up.
+
+The first was the fill colour: it came from the realized brush's `FgColor`,
+which holds the *logical* COLORREF. Handing that to the engine's pattern-colour register painted the low
+byte - the red channel - as a palette index, so every colour with red 255 came
+out white. The physical value lives in `Bits`, which DIBENG renders at the
+destination's depth, so its first DWORD is already the value replicated across
+the dword; a single logical RGB could not have served both 8 and 16 bpp. The
+reference driver says exactly this in first-party code and the fix follows it,
+including checking the brush *style* before the flag, and letting BLACKNESS and
+WHITENESS reach the ViRGE as ROPs so neither chip needs an opinion about what
+black and white are.
+
+Corrected in the parent plan: build 000's "byte-identical behavior" exit gate
+was not achievable and is now worded as behaviour; the `v9xhal.dll` hash claim
+is replaced by a per-object disassembly comparison, because a Win32 PE embeds
+its link timestamp and three builds of unchanged source produce three different
+hashes; and the 16-bit MMIO design needed replacing, since this driver is built
+without a `-3` and a C 32-bit store to the ViRGE command register compiles to
+two 16-bit halves - which would trigger the engine on a half-written command.
 
 The dynamic VBE pipeline is verified inert on physical S3 silicon. BARRY, the
 physical 2 MiB PCI Trio64, ran 0.5.0 over two clean boots with the runtime table

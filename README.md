@@ -92,7 +92,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | **No** | **No** | **No** |
-| GDI acceleration | No | No | No | No |
+| GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
 
 The Trio32/64 target is intentionally a software-GDI plus DirectDraw baseline.
@@ -261,9 +261,18 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
 
 **Where it is behind the retail driver**
 
-- **No GDI acceleration.** The retail drivers accelerate desktop blits, fills
-  and line drawing through the same 2D engine Velocity9x only uses for
-  DirectDraw. Desktop drawing here goes through the DIB Engine in software.
+- **Partial GDI acceleration.** The retail drivers accelerate desktop blits,
+  fills and line drawing through the same 2D engine Velocity9x used to reserve
+  for DirectDraw. Of those, **solid rectangle fills and screen-to-screen copies,
+  including overlapping ones in all eight directions, are now accelerated on
+  both S3 chips** (builds `gdi-accel-001` through `003`) — the operations behind
+  a desktop fill and a window scroll or move. Line drawing, text and
+  CPU-to-screen uploads still go through the DIB Engine in software. On ATI, VBE and Matrox every operation declines and always will:
+  those chips have no 2D engine. Every accelerated case keeps a DIB Engine
+  fallback, a bounded wait, and a session-long poison latch that turns
+  acceleration off for good if the engine ever fails to respond - so the desktop
+  survives a wedged engine rather than following it down. See
+  [docs/decisions/2026-08-26-gdi-accel-000.md](docs/decisions/2026-08-26-gdi-accel-000.md).
 - **No hardware cursor.** The retail drivers use the chip's cursor; Velocity9x
   draws a software cursor.
 - **Direct3D is a subset.** Against the retail S3 ViRGE driver's Direct3D

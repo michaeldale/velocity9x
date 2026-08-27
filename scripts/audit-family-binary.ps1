@@ -170,7 +170,18 @@ $requiredRuntimeSymbols = @(
     "V9XCREATEDIBPDEVICECALL", "V9XDIBSETPALETTETRANSLATECALL",
     "DIB_EnumObjExt", "DIB_RealizeObjectExt",
     "DIB_DibBltExt", "DIB_GetPaletteExt", "DIB_SetCursorExt",
-    "DIB_MoveCursorExt", "DIB_CheckCursorExt"
+    "DIB_MoveCursorExt", "DIB_CheckCursorExt",
+    # GDI acceleration. Script-level rather than manifest-driven because
+    # src\display16\gdi_accel.c links into every family: three of the four have
+    # no 2D engine and take its decline path on every blit for ever, so these
+    # symbols are as load-bearing there as on the S3.
+    #
+    # BITBLT is ordinal 1 and is a C function now; V9XDIBBITBLTCALL is the only
+    # route back to the DIB Engine, so a build that lost it would have replaced
+    # the passthrough with nothing.
+    "BITBLT", "V9XDIBBITBLTCALL",
+    "V9XGDIBEGINACCESSSLOW", "_v9x_gdi_engine_dirty", "_v9x_gdi_poisoned",
+    "V9XENGINESELECTOR", "V9XENGINEREAD", "V9XENGINEWRITE"
 )
 foreach ($symbol in $requiredRuntimeSymbols) {
     if ($mapText -notmatch "(?m)^.*$([regex]::Escape($symbol)).*$") {
@@ -230,7 +241,78 @@ foreach ($cursorThunk in @(
 }
 if ($thunkDisassembly -notmatch
     '(?s)DibBlt:.*?push\s+word ptr es:_v9x_palettized.*?jmp\s+far ptr DIB_DibBltExt') {
-    throw "The DIB BitBlt thunk is not forwarding the selected palette mode."
+    # Historical trap: this message says "BitBlt thunk" in older trees, but the
+    # pattern audits DibBlt - ordinal 19, not ordinal 1.
+    throw "The DIB DibBlt thunk is not forwarding the selected palette mode."
+}
+# Ordinal 1 must no longer be an assembly forward. If the dispatcher were ever
+# reverted by re-adding V9X_FORWARD BitBlt to dib_thunks.asm, the link would
+# pick a thunk over the C function and every gate below would silently stop
+# running - a passing build that had quietly lost the feature.
+if ($thunkDisassembly -match '(?m)^BitBlt:') {
+    throw ("dib_thunks.asm still forwards BitBlt. Ordinal 1 belongs to the C " +
+           "dispatcher in src\display16\gdi_accel.c.")
+}
+
+# ---------------------------------------------------------------------------
+# GDI acceleration: the decline path must still reach the DIB Engine.
+#
+# This is the one new disassembly audit worth its lines. Every acceptance gate
+# in the dispatcher ends in the same decline branch, and on three of the four
+# families that branch is the only branch, on every blit, for ever. A build in
+# which it stopped calling through to DIB_BitBlt would not draw at all - and it
+# would still link, still export ordinal 1, and still pass every other check
+# here.
+#
+# Two objects, because the route is two hops: gdi_accel.c cannot name
+# DIB_BitBlt directly (its PASCAL exports are uppercased, DIBENG.LIB's symbol
+# is not), so it calls the typed V9XDIBBITBLTCALL wrapper in runtime.asm, which
+# tail-jumps to DIB_BitBlt.
+# ---------------------------------------------------------------------------
+
+$gdiAccelObject = Join-Path $OutputDir "gdi_accel.obj"
+if (-not (Test-Path -LiteralPath $gdiAccelObject)) {
+    throw ("Audit input is missing: $gdiAccelObject. Every family links " +
+           "src\display16\gdi_accel.c; a family manifest that dropped it has " +
+           "no ordinal 1.")
+}
+$gdiDisassembly = (& $disassembler "-a" $gdiAccelObject 2>&1) -join "`n"
+if ($gdiDisassembly -notmatch '(?m)^\s*PUBLIC\s+BITBLT\s*$') {
+    throw "gdi_accel.obj does not export BITBLT, so ordinal 1 has no owner."
+}
+if ($gdiDisassembly -notmatch
+    '(?sm)^BITBLT:.*?call\s+far ptr V9XDIBBITBLTCALL') {
+    throw ("The GDI BitBlt dispatcher's decline branch does not reach " +
+           "V9XDIBBITBLTCALL, so a declined blit would draw nothing.")
+}
+if ($runtimeDisassembly -notmatch
+    '(?s)V9XDIBBITBLTCALL:\s*jmp\s+far ptr DIB_BitBlt') {
+    throw "V9XDIBBITBLTCALL does not forward to the DIB Engine's BitBlt."
+}
+# Both deBeginAccess entry points carry the dirty check. Reasoning per caller
+# about which one can never race pending engine work is a worse trade than a
+# shared stub, so the audit asserts both rather than one.
+foreach ($accessEntry in @("V9XDIBBEGINACCESS", "V9XDIBBEGINACCESSRECT")) {
+    if ($runtimeDisassembly -notmatch
+        ("(?s)$accessEntry" + ':\s*mov\s+ax,DGROUP.*?cmp\s+word ptr ' +
+         'es:_v9x_gdi_engine_dirty,0.*?jmp\s+far ptr DIB_BeginAccess.*?' +
+         'call\s+far ptr V9XGDIBEGINACCESSSLOW')) {
+        throw ("$accessEntry is missing the GDI engine dirty check, so a CPU " +
+               "framebuffer access could overtake pending engine work.")
+    }
+}
+# The ViRGE command and status registers are 32 bits wide and this driver is
+# built without a -3, so a C `volatile DWORD FAR *` access compiles to two
+# 16-bit halves. On CMD_SET that is wrong rather than slow: the low half starts
+# the blit. Assert the single-instruction accesses the assembly exists to
+# provide.
+foreach ($engineAccess in @('mov\s+eax,dword ptr es:\[bx\]',
+                            'mov\s+dword ptr es:\[bx\],eax')) {
+    if ($runtimeDisassembly -notmatch $engineAccess) {
+        throw ("The ViRGE MMIO accessors are missing 32-bit-wide access " +
+               "$engineAccess; a split access would trigger the engine on a " +
+               "half-written command.")
+    }
 }
 
 # ---------------------------------------------------------------------------

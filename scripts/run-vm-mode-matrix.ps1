@@ -25,6 +25,12 @@ param(
     [int]$BootTimeoutSeconds = 180,
     [ValidateRange(1, 10)]
     [int]$Repeat = 1,
+    # The GDI acceleration phase (docs\plans\gdi-accel-000-and-harness.md
+    # Block 2) runs on every mode by default. It is a separate V9XGDI phase
+    # writing a separate result file, so the existing Result=PASS keeps exactly
+    # the meaning this script already relies on. Skip it only to reproduce a
+    # pre-000 run.
+    [switch]$SkipAccel,
     [switch]$Json
 )
 
@@ -248,6 +254,43 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
             throw "Mode $name GDI result is missing $expected."
         }
     }
+    # The phase that can fail on content rather than on liveness: a seeded
+    # stream of fills and screen-to-screen copies mirrored into a reference DC,
+    # compared periodically, and then checked against the driver's own
+    # counters. Its most important assertion is the one that fails when a
+    # primitive is advertised and enabled and its counter is nonetheless zero -
+    # without which the comparison could pass while every operation quietly
+    # took the decline path.
+    #
+    # Given a much longer poll budget than the phases above deliberately: five
+    # hundred drawing operations and twenty full-region readbacks on an
+    # emulated Pentium are seconds, not milliseconds.
+    $accelResult = "SKIP"
+    if (-not $SkipAccel) {
+        $null = Invoke-GuestShell "DEL C:\V9XACCE.INI"
+        $null = Invoke-GuestShell "START $GuestJob\V9XGDI.EXE /accel"
+        $accel = $null
+        for ($attempt = 0; $attempt -lt 240; ++$attempt) {
+            Start-Sleep -Milliseconds 500
+            $candidate = Invoke-GuestShell (
+                "IF EXIST C:\V9XACCE.INI TYPE C:\V9XACCE.INI")
+            if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL)\s*$') {
+                $accel = $candidate
+                break
+            }
+        }
+        if (-not $accel) {
+            throw "Mode $name timed out in the GDI acceleration phase."
+        }
+        Set-Content -LiteralPath (Join-Path $modeResults "V9XACCE.INI") `
+            -Value $accel.Stdout -Encoding Ascii
+        if ($accel.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+            throw ("Mode $name failed the GDI acceleration phase. " +
+                   "C:\V9XACCE.INI said:" + [Environment]::NewLine +
+                   $accel.Stdout)
+        }
+        $accelResult = "PASS"
+    }
     $paletteResult = "N/A"
     if ($bits -eq 8) {
         $null = Invoke-GuestShell "START $GuestJob\V9XPAL.EXE /auto"
@@ -282,6 +325,7 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
         BootCounter = $info.BootCounter
         DriverStage = "enable-ok"
         GdiResult = "PASS"
+        AccelResult = $accelResult
         PaletteResult = $paletteResult
         Screenshot = $screenshot.Destination
     }

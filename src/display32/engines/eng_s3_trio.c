@@ -14,6 +14,25 @@
  */
 #include "ddhal_internal.h"
 
+/*
+ * ADVFUNC_CNTL bit 0 (ENB EHFC) clears under the driver on real silicon -
+ * DOS-box activity writes 4AE8H - and with it clear the engine executes
+ * commands and discards every memory write. The 16-bit GDI path measured
+ * this on BARRY (docs\issues\2026-08-27-gdi-accel-corrupts-display-on-
+ * physical-trio64.md); this HAL had only ever run right after its callers'
+ * SetDisplayMode, which rewrites 4AE8H and masked the exposure. Assert the
+ * bit before every operation, preserving the rest of the register as read.
+ */
+static void v9x_trio_ensure_enhanced(void)
+{
+    unsigned short advfunc = v9x_inpw(V9X_TRIO_ADVFUNC_CNTL);
+
+    if ((advfunc & V9X_TRIO_ADVFUNC_ENABLE) == 0u) {
+        v9x_outpw(V9X_TRIO_ADVFUNC_CNTL,
+                  (unsigned short)(advfunc | V9X_TRIO_ADVFUNC_ENABLE));
+    }
+}
+
 static int v9x_trio_engine_ready(void)
 {
     return v9x_hal != 0 &&
@@ -115,6 +134,7 @@ static int v9x_trio_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     if (!v9x_trio_wait_idle(wait)) {
         return V9X_BLT_BUSY;
     }
+    v9x_trio_ensure_enhanced();
     v9x_outpw(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_COPY);
     v9x_outpw(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_PIXEL_CNTL_FRGD_MIX);
     v9x_outpw(V9X_TRIO_CUR_X, (unsigned short)source_x);
@@ -160,6 +180,7 @@ static int v9x_trio_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     if (!v9x_trio_wait_idle(wait)) {
         return V9X_BLT_BUSY;
     }
+    v9x_trio_ensure_enhanced();
 
     /* S3 Trio32/64 databook section 13.3.3: solid rectangle fill. */
     v9x_outpw(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_NEW);

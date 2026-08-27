@@ -54,6 +54,39 @@ The local CI gate: tree check, host tests, every family package with its
 post-link audits and INF assertions, then the floppy. Run this before calling a
 change done.
 
+It builds every family package and it passes, and that is worth being precise
+about: **a package that builds is not a package that enables.** That gap is how
+the `ati` package shipped unable to enable for a release
+(`docs/issues/2026-08-26-ati-package-cannot-enable.md`) - every check it had to
+pass was a check it could pass without working. So when a change touches the
+shared 16-bit layer under `src/display16`, where a mistake is a four-family
+mistake, run the enable gate as well:
+
+```powershell
+./scripts/run-family-enable-gate.ps1
+```
+
+It starts each family's emulated guest, deploys the freshly built package over
+the already associated driver, reboots, and asserts `Stage=enable-ok`. Nothing
+else - it is not the mode matrix. It needs virtual machines and minutes, which
+is why it is not in `run-checks`, but it is one command. It prints the targets
+it skips **by name** rather than equating "each family with an emulator" with
+"every family": today it reaches `s3` (both chips) and `ati`/mach64-vt2, and
+skips `matrox-m2` and `ati`/rage-mobility-m, which are physical-hardware targets.
+
+`vbe` is a third case: the gate covers it, but its guest is QEMU-hosted and this
+gate launches 86Box profiles only, so bring that guest up first or pass
+`-Family s3,ati`.
+
+One practical note, because it cost a while to work out. There is more than one
+QEMU image under `C:\QemuVMs`, and the one `Win98SE-QEMU-StdVGA\start-vm.ps1`
+boots came up on 2026-08-27 sitting on a modal "Your display adapter is not
+configured properly" — which also explains an agent that never answers, since a
+modal holds the Win16Mutex. If `v9xctl ping` on port 9872 stays silent, take a
+`screendump` through the QEMU monitor before assuming a boot problem, and check
+which image the launcher is pointing at against
+[the guest handoffs](handoffs/).
+
 ## Families
 
 A *family* is one built package covering one or more chips that share a driver
@@ -215,9 +248,20 @@ error.
 
 The runner refuses a mismatched installed DRV/VXD pair, verifies the requested
 mode and the `enable-ok` trace after every reboot, runs the machine-readable
-GDI test, runs palette animation and readback in every 8-bit mode, and retains
-a screenshot and JSON summary per mode. Use `-Repeat 2` or higher for repeated
-reliability passes.
+GDI test, runs the GDI acceleration phase, runs palette animation and readback
+in every 8-bit mode, and retains a screenshot and JSON summary per mode. Use
+`-Repeat 2` or higher for repeated reliability passes.
+
+The acceleration phase is `V9XGDI.EXE /accel`, which writes `C:\V9XACCE.INI`
+and is retained beside each mode's screenshot. It is a separate phase writing a
+separate file, so `Result=PASS` in `C:\V9XGDI.INI` keeps the meaning it has
+always had. It drives a seeded stream of solid fills and screen-to-screen
+copies against the screen and against a reference DC, compares them
+periodically, and **then reads the driver's own counters through the
+`V9X_GDIGETSTATS` escape and fails if a primitive that is advertised and
+enabled never fired.** That last check is the point: a comparison harness that
+silently exercised the decline path on every operation would pass perfectly and
+prove nothing. Pass `-SkipAccel` only to reproduce a pre-`gdi-accel-000` run.
 
 For a device already associated with Velocity9x, update a locked DRV/VXD pair
 without SetupX media prompts:

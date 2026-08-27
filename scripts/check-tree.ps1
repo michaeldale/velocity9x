@@ -17,6 +17,15 @@ $required = @(
     "docs\decisions\2026-08-16-per-family-packaging.md",
     "docs\decisions\2026-08-16-restructure-baseline.md",
     "docs\decisions\2026-08-16-engine-fault-injection.md",
+    "docs\decisions\2026-08-26-gdi-accel-000.md",
+    "docs\decisions\2026-08-26-gdi-accel-001.md",
+    "docs\decisions\2026-08-27-gdi-accel-002.md",
+    "docs\decisions\2026-08-27-gdi-accel-003.md",
+    "docs\decisions\2026-08-27-gdi-accel-004-design.md",
+    "docs\decisions\2026-08-27-crystalmark-barry-baseline.md",
+    "docs\issues\2026-08-26-gdi-fill-brush-colour-not-physical.md",
+    "docs\plans\gdi-acceleration.md",
+    "docs\plans\gdi-accel-000-and-harness.md",
     "docs\decisions\2026-08-16-engine32-vtable.md",
     "docs\decisions\2026-08-16-s3-family-merge.md",
     "docs\specifications\logging-protocol.md",
@@ -46,6 +55,7 @@ $required = @(
     "scripts\build-host.ps1",
     "scripts\build-host-msvc.ps1",
     "scripts\run-vm-mode-matrix.ps1",
+    "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",
     "scripts\build-win16-skeleton.ps1",
     "scripts\build-win16-ddi-skeleton.ps1",
@@ -86,6 +96,8 @@ $required = @(
     "src\display16\display_component.c",
     "src\display16\loader.c",
     "src\display16\ddi.c",
+    "src\display16\gdi_accel.c",
+    "src\display16\gdi_accel.h",
     "src\display16\win9x_display_abi.h",
     "src\display32\ddhal_internal.h",
     "src\display32\ddhal_core.c",
@@ -134,6 +146,11 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\ddi.c"),
     (Join-Path $repoRoot "src\display16\dd16.c"),
     (Join-Path $repoRoot "src\display16\enable16.c"),
+    # gdi_accel.c reads its SYSTEM.INI keys with GetPrivateProfileInt and
+    # writes the deferred poison report with WritePrivateProfileString, so it
+    # is a genuine OS boundary and is listed as one rather than reaching
+    # <windows.h> through a header that already is.
+    (Join-Path $repoRoot "src\display16\gdi_accel.c"),
     # The runtime mode table writes the validated inventory file
     # (C:\V9XMODES.INI) through WritePrivateProfileString; the table logic
     # itself stays in src\common\vbe_modes.c, which remains OS-free.
