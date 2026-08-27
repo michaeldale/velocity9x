@@ -55,6 +55,15 @@ EXTRN _v9x_minivdd_queried:WORD
 EXTRN _v9x_minivdd_cached:WORD
 EXTRN _v9x_minivdd_probed:WORD
 EXTRN _v9x_minivdd_status:WORD
+; The memory-type registers the mini-VDD read at init. Diagnostic in this
+; build; nothing here writes an MTRR. See include\velocity9x\mtrr.h.
+EXTRN _v9x_minivdd_mtrr_flags:WORD
+EXTRN _v9x_minivdd_mtrr_count:WORD
+EXTRN _v9x_minivdd_mtrr_cap:DWORD
+EXTRN _v9x_minivdd_mtrr_deftype:DWORD
+EXTRN _v9x_minivdd_mtrr_base:DWORD
+EXTRN _v9x_minivdd_mtrr_mask:DWORD
+EXTRN _v9x_minivdd_mtrr_high:WORD
 ; One 16-byte EDID chunk, as the four dwords the API hands back.
 EXTRN _v9x_minivdd_edid0:DWORD
 EXTRN _v9x_minivdd_edid1:DWORD
@@ -783,6 +792,99 @@ V9xMiniVbeStatusDone:
     pop     bx
     retf
 V9XMINIVBESTATUS ENDP
+
+; WORD FAR PASCAL V9xMiniMtrrInfo(void)
+;
+; What the CPU admits to and what the two global memory-type registers hold.
+; Returns 1 and fills the globals, or 0 when there is no usable API.
+;
+; Diagnostic in this build. The registers say whether the framebuffer aperture
+; is uncached and whether a write-combining range could be installed over it;
+; the rules that read them are host-tested C in src\common\mtrr.c, and nothing
+; in this driver or the mini-VDD writes an MTRR yet. See
+; docs\plans\tier0-quality.md.
+PUBLIC V9XMINIMTRRINFO
+V9XMINIMTRRINFO PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniMtrrInfoFailed
+
+    mov     eax, V9XMINI_FN_MTRR_INFO
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniMtrrInfoFailed
+
+    mov     _v9x_minivdd_mtrr_cap, ebx
+    mov     _v9x_minivdd_mtrr_deftype, ecx
+    mov     _v9x_minivdd_mtrr_flags, dx
+    mov     _v9x_minivdd_mtrr_count, si
+    mov     ax, 1
+    jmp     short V9xMiniMtrrInfoDone
+V9xMiniMtrrInfoFailed:
+    xor     ax, ax
+V9xMiniMtrrInfoDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XMINIMTRRINFO ENDP
+
+; WORD FAR PASCAL V9xMiniMtrrRange(WORD index)
+;
+; One variable-range pair. Returns 1 and fills the globals, 0 for an index at
+; or beyond the count V9xMiniMtrrInfo reported, or when there is no API.
+;
+; _v9x_minivdd_mtrr_high is 1 when that pair's PHYSBASE had a non-zero high
+; dword: the range starts above 4 GiB and cannot reach anything this driver
+; maps.
+PUBLIC V9XMINIMTRRRANGE
+V9XMINIMTRRRANGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniMtrrRangeFailed
+
+    movzx   ecx, word ptr [bp+6]        ; the pair index
+    mov     eax, V9XMINI_FN_MTRR_RANGE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniMtrrRangeFailed
+
+    mov     _v9x_minivdd_mtrr_base, ebx
+    mov     _v9x_minivdd_mtrr_mask, ecx
+    mov     _v9x_minivdd_mtrr_high, dx
+    mov     ax, 1
+    jmp     short V9xMiniMtrrRangeDone
+V9xMiniMtrrRangeFailed:
+    xor     ax, ax
+V9xMiniMtrrRangeDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    2
+V9XMINIMTRRRANGE ENDP
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)
 PUBLIC V9XMINIVBEMODEAT

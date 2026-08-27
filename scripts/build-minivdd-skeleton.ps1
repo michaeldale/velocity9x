@@ -89,7 +89,14 @@ $buildIncludeLines = @(
     "V9xMiniVbeStatusProbedHex db `"0000`"",
     "db `" flags=`"",
     "V9xMiniVbeStatusFlagsHex db `"0000`", 13, 10",
-    "V9xMiniVbeStatusLineLength equ `$ - V9xMiniVbeStatusLine"
+    "V9xMiniVbeStatusLineLength equ `$ - V9xMiniVbeStatusLine",
+    # The memory-type inspection brackets its MSR reads, so a CPU that claims
+    # MTRR support and then faults on RDMSR names the step in a serial capture
+    # instead of hanging the boot silently.
+    "V9xMiniMtrrReadLine db `"V9X-MINI mtrr-read start`", 13, 10",
+    "V9xMiniMtrrReadLineLength equ `$ - V9xMiniMtrrReadLine",
+    "V9xMiniMtrrDoneLine db `"V9X-MINI mtrr-read done`", 13, 10",
+    "V9xMiniMtrrDoneLineLength equ `$ - V9xMiniMtrrDoneLine"
 )
 if ($DisableVbeCollect) {
     $buildIncludeLines += @(

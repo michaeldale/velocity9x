@@ -35,6 +35,10 @@ $required = @(
     "include\velocity9x\engine_abi.h",
     "include\velocity9x\hw16.h",
     "include\velocity9x\vbe_cache.h",
+    "include\velocity9x\mtrr.h",
+    "src\common\mtrr.c",
+    "tests\host\test_mtrr.c",
+    "docs\plans\tier0-quality.md",
     "include\asm\V9XMAPI.INC",
     "include\velocity9x\s3_regs16.h",
     "packaging\win98se\INSTALL.TXT",
@@ -322,6 +326,52 @@ foreach ($name in $cValues.Keys) {
                "$($asmValues[$asmName]) but vbe_cache.h $name = $($cValues[$name]).")
     }
     $contractChecked++
+}
+
+# The memory-type contract is the same two-file arrangement, with one
+# difference that is the point of its design: only a handful of its constants
+# are shared. The mini-VDD establishes the CPU flags and bounds its array, and
+# every rule that reads them lives in host-tested C, so the C header defines a
+# great deal the assembler never needs. Asserting the intersection, plus a
+# named required set, is therefore the check - a blanket "every C constant must
+# exist in the asm" would be wrong here rather than merely stricter.
+$mtrrHeader = Join-Path $repoRoot "include\velocity9x\mtrr.h"
+$mtrrValues = @{}
+foreach ($line in (Get-Content -LiteralPath $mtrrHeader)) {
+    if ($line -match '^\s*#define\s+(V9X_MTRR_[A-Z0-9_]+)\s+\(\(v9x_u16\)(0[xX][0-9A-Fa-f]+|[0-9]+)u\)') {
+        $constantName = $Matches[1]
+        $text = $Matches[2]
+        $mtrrValues[$constantName] = if ($text -match '^0[xX]') {
+            [Convert]::ToInt32($text.Substring(2), 16)
+        } else { [int]$text }
+    }
+}
+$mtrrShared = @('V9X_MTRR_CPU_CPUID', 'V9X_MTRR_CPU_MSR', 'V9X_MTRR_CPU_MTRR',
+                'V9X_MTRR_CPU_PGE', 'V9X_MTRR_RANGE_MAX')
+foreach ($name in $mtrrShared) {
+    if (-not $mtrrValues.ContainsKey($name)) {
+        throw "include\velocity9x\mtrr.h no longer defines $name."
+    }
+    if (-not $asmValues.ContainsKey($name)) {
+        throw ("$name is defined in mtrr.h but not in V9XMAPI.INC; the two " +
+               "halves of the memory-type contract must agree.")
+    }
+    if ($asmValues[$name] -ne $mtrrValues[$name]) {
+        throw ("Memory-type contract mismatch: V9XMAPI.INC $name = " +
+               "$($asmValues[$name]) but mtrr.h $name = $($mtrrValues[$name]).")
+    }
+    $contractChecked++
+}
+# Stage A writes no MTRR, and that is a property worth holding rather than
+# trusting to review: the write instructions must not appear in the mini-VDD
+# at all. WRMSR is the one that matters; CR0/CR4 handling would arrive with it.
+$mtrrSource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
+if ($mtrrSource -match '(?im)^\s*wrmsr\b') {
+    throw ("src\minivdd32\loader.asm contains WRMSR. Stage A of " +
+           "docs\plans\tier0-quality.md reads the memory-type registers and " +
+           "writes none; adding the write is a staged change that updates " +
+           "this check with it.")
 }
 
 # A renamed or deleted constant would otherwise shrink the checked set to

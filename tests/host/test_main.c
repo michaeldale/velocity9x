@@ -31,6 +31,10 @@ unsigned int v9x_run_vbe_cache_tests(void);
  * same convention. */
 unsigned int v9x_run_edid_tests(void);
 
+/* tests\host\test_mtrr.c: the write-combining decision, over the MSR states
+ * ring 0 reports, same convention. */
+unsigned int v9x_run_mtrr_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -586,6 +590,7 @@ int main(void)
     failures += v9x_run_vbe_modes_tests();
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
+    failures += v9x_run_mtrr_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

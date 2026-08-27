@@ -5,7 +5,12 @@
 ; D0 only because the VESA BIOS resume path can blank an S3 ViRGE display
 ; without reliably restoring the active high-resolution framebuffer.
 
-.386p
+; .586p, not .386p, for CPUID and RDMSR in the memory-type inspection below.
+; Nothing here executes either instruction without first proving at run time
+; that this CPU has it: assembling an opcode and reaching it are different
+; questions, and the 386 and early 486 this project still runs on answer the
+; second one with an exception.
+.586p
 
 .xlist
 include VMM.INC
@@ -74,6 +79,24 @@ V9xVbeCtrlOemRev dw 0
 V9xVbeListOff   dw 0
 V9xVbeListSeg   dw 0
 V9xVbeListSelf  dw 0
+
+; The memory-type registers, exactly as read at init.
+;
+; Read once, for the same reason the VBE answers are: they describe the machine
+; rather than any mode, so nothing about them changes later, and reading them
+; at init keeps the API a table lookup. Ring 0 decides nothing about them - see
+; V9XMAPI.INC and include\velocity9x\mtrr.h for why the rules are elsewhere.
+;
+; V9xMtrrHigh carries one bit per pair, set when that pair's PHYSBASE had a
+; non-zero high dword: the range starts above 4 GiB and cannot reach anything
+; a 32-bit driver maps.
+V9xMtrrFlags    dw 0
+V9xMtrrCount    dw 0
+V9xMtrrHigh     dw 0
+V9xMtrrCap      dd 0
+V9xMtrrDefType  dd 0
+V9xMtrrBase     dd V9X_MTRR_RANGE_MAX dup (0)
+V9xMtrrMask     dd V9X_MTRR_RANGE_MAX dup (0)
 
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
 ; be had. Allocated at init and never freed.
@@ -407,9 +430,61 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_ModeMasks
     cmp     ax, V9XMINI_FN_EDID_CHUNK
     je      V9xMini_Api_EdidChunk
+    cmp     ax, V9XMINI_FN_MTRR_INFO
+    je      V9xMini_Api_MtrrInfo
+    cmp     ax, V9XMINI_FN_MTRR_RANGE
+    je      V9xMini_Api_MtrrRange
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
+    ret
+
+; What the CPU admits to and what the two global memory-type registers hold.
+; Reported, never interpreted; see V9XMAPI.INC.
+V9xMini_Api_MtrrInfo:
+    push    ecx
+    push    edx
+    push    esi
+    mov     [ebp.Client_AX], 1
+    mov     eax, V9xMtrrCap
+    mov     [ebp.Client_EBX], eax
+    mov     ecx, V9xMtrrDefType
+    mov     [ebp.Client_ECX], ecx
+    movzx   edx, V9xMtrrFlags
+    mov     [ebp.Client_EDX], edx
+    movzx   esi, V9xMtrrCount
+    mov     [ebp.Client_ESI], esi
+    pop     esi
+    pop     edx
+    pop     ecx
+    ret
+
+; In:  client CX = pair index. Out: AX=0 at or beyond the reported count.
+V9xMini_Api_MtrrRange:
+    push    ecx
+    push    edx
+    movzx   ecx, [ebp.Client_CX]
+    cmp     cx, V9xMtrrCount
+    jae     short V9xMini_Api_MtrrRange_Missing
+    mov     [ebp.Client_AX], 1
+    mov     eax, V9xMtrrBase[ecx*4]
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xMtrrMask[ecx*4]
+    mov     [ebp.Client_ECX], eax
+    xor     edx, edx
+    mov     ax, V9xMtrrHigh
+    bt      ax, cx
+    jnc     short V9xMini_Api_MtrrRange_Low
+    mov     edx, 1
+V9xMini_Api_MtrrRange_Low:
+    mov     [ebp.Client_EDX], edx
+    pop     edx
+    pop     ecx
+    ret
+V9xMini_Api_MtrrRange_Missing:
+    mov     [ebp.Client_AX], 0
+    pop     edx
+    pop     ecx
     ret
 
 ; What the init-time collection actually managed, so a failure can be diagnosed
@@ -1216,6 +1291,115 @@ EndProc V9xMini_Vbe_Collect
 ENDIF ; IFNDEF V9X_NO_VBE_COLLECT
 
 public MiniVDD_Dynamic_Init
+; Establish what the CPU admits to, then read the memory-type registers.
+;
+; Reads only. Nothing here writes an MTRR: Stage A of
+; docs\plans\tier0-quality.md deliberately stops at reporting, because the
+; rules that would decide a write are host-tested C and their answers have to
+; be seen to be right on real machines before any of them acts. A wrong rule
+; that has already written shows up as corruption somewhere else entirely.
+;
+; Each step is the licence for the next, and the ordering is a safety property:
+; CPUID is an invalid opcode without the EFLAGS.ID test, RDMSR is one without
+; the MSR feature bit, and the MTRR registers exist only when the MTRR bit is
+; set. The serial markers bracket the reads for the same reason the vbe-call
+; markers bracket a BIOS call - if a CPU whose CPUID claims MTRR still faults
+; on RDMSR, a capture names the step instead of leaving a silent boot hang.
+;
+; Deliberately outside the V9X_NO_VBE_COLLECT gate: that gate is about nested
+; BIOS calls, and none of this is one. Every family gets the diagnostics.
+BeginProc V9xMini_Mtrr_Inspect
+    pushad
+
+    ; EFLAGS.ID (bit 21) will not toggle on a CPU without CPUID.
+    pushfd
+    pop     eax
+    mov     ecx, eax
+    xor     eax, 200000h
+    push    eax
+    popfd
+    pushfd
+    pop     eax
+    push    ecx
+    popfd                               ; restore the caller's EFLAGS
+    xor     eax, ecx
+    test    eax, 200000h
+    jz      V9xMini_Mtrr_Done
+    or      V9xMtrrFlags, V9X_MTRR_CPU_CPUID
+
+    xor     eax, eax
+    cpuid
+    test    eax, eax
+    jz      V9xMini_Mtrr_Done           ; leaf 1 does not exist
+    mov     eax, 1
+    cpuid
+    test    edx, 20h                    ; MSR
+    jz      short V9xMini_Mtrr_No_Msr
+    or      V9xMtrrFlags, V9X_MTRR_CPU_MSR
+V9xMini_Mtrr_No_Msr:
+    test    edx, 1000h                  ; MTRR
+    jz      short V9xMini_Mtrr_No_Mtrr
+    or      V9xMtrrFlags, V9X_MTRR_CPU_MTRR
+V9xMini_Mtrr_No_Mtrr:
+    test    edx, 2000h                  ; PGE, which a Stage B write sequence
+    jz      short V9xMini_Mtrr_No_Pge   ; would need before touching CR4
+    or      V9xMtrrFlags, V9X_MTRR_CPU_PGE
+V9xMini_Mtrr_No_Pge:
+
+    ; Both bits, or no MSR is read at all.
+    mov     ax, V9xMtrrFlags
+    and     ax, V9X_MTRR_CPU_MSR OR V9X_MTRR_CPU_MTRR
+    cmp     ax, V9X_MTRR_CPU_MSR OR V9X_MTRR_CPU_MTRR
+    jne     V9xMini_Mtrr_Done
+
+    mov     esi, OFFSET32 V9xMiniMtrrReadLine
+    mov     ecx, V9xMiniMtrrReadLineLength
+    call    V9xMini_Serial_Write
+
+    mov     ecx, 0FEh                   ; IA32_MTRRCAP
+    rdmsr
+    mov     V9xMtrrCap, eax
+    mov     ecx, 2FFh                   ; IA32_MTRR_DEF_TYPE
+    rdmsr
+    mov     V9xMtrrDefType, eax
+
+    mov     eax, V9xMtrrCap
+    and     eax, 0FFh                   ; VCNT
+    cmp     eax, V9X_MTRR_RANGE_MAX
+    jbe     short V9xMini_Mtrr_Count_Ok
+    mov     eax, V9X_MTRR_RANGE_MAX
+V9xMini_Mtrr_Count_Ok:
+    mov     V9xMtrrCount, ax
+
+    xor     esi, esi
+V9xMini_Mtrr_Pair:
+    cmp     si, V9xMtrrCount
+    jae     short V9xMini_Mtrr_Read_Done
+    mov     ecx, 200h                   ; IA32_MTRR_PHYSBASEn
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrBase[esi*4], eax
+    test    edx, edx
+    jz      short V9xMini_Mtrr_Base_Low
+    bts     word ptr V9xMtrrHigh, si    ; the range starts above 4 GiB
+V9xMini_Mtrr_Base_Low:
+    mov     ecx, 201h                   ; IA32_MTRR_PHYSMASKn
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrMask[esi*4], eax
+    inc     esi
+    jmp     short V9xMini_Mtrr_Pair
+
+V9xMini_Mtrr_Read_Done:
+    mov     esi, OFFSET32 V9xMiniMtrrDoneLine
+    mov     ecx, V9xMiniMtrrDoneLineLength
+    call    V9xMini_Serial_Write
+
+V9xMini_Mtrr_Done:
+    popad
+    ret
+EndProc V9xMini_Mtrr_Inspect
+
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
     mov     ecx, V9xMiniInitLineLength
@@ -1251,6 +1435,9 @@ V9xMini_Power_Defaults:
     mov     ecx, V9xMiniDefaultsLineLength
     call    V9xMini_Serial_Write
 V9xMini_Init_Succeeded:
+    ; Read-only, and no BIOS call, so it runs for every family and cannot fail
+    ; the init any more than the collection below can.
+    call    V9xMini_Mtrr_Inspect
 IFNDEF V9X_NO_VBE_COLLECT
     ; Collect the VBE answers for the tier-0 driver. Deliberately last, and
     ; deliberately not able to fail the init: an adapter with no usable VESA

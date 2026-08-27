@@ -8,6 +8,23 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Added
 
+- **The framebuffer aperture's memory type is now measured, and a
+  write-combining range planned for it — but not written.** Tier-0 draws with
+  the CPU into a framebuffer that is uncached wherever the BIOS leaves the PCI
+  hole at the MTRR default type, and one variable-range MTRR set to WC is the
+  standard fix. It is also global CPU state that corrupts unrelated memory
+  when it is wrong, so this ships as Stage A: the mini-VDD reads `MTRRCAP`,
+  `DEF_TYPE` and the variable pairs at `Device_Init` and reports them through
+  two new API functions, host-tested policy in `src\common\mtrr.c` decides
+  from them, and `enable16.c` writes the decision and the raw pairs to the
+  boot INI as `Mtrr=` and `Mtrr0`..`Mtrr7`. Nothing writes an MTRR, and
+  `check-tree.ps1` asserts the mini-VDD contains no `WRMSR` so that cannot
+  change unnoticed. The rule the policy rests on — MTRRs enabled, default type
+  uncached, no valid range over the aperture — is reasoning until the `Mtrr=`
+  lines from real machines say otherwise, which is what Stage A exists to
+  find out ([decision](docs/decisions/2026-08-28-mtrr-stage-a-inspect-only.md),
+  plan item D1 of `docs/plans/tier0-quality.md`).
+
 - **The intel-gma Phase 0 evidence and survey tooling, salvaged to main.**
   The Gen3 hardware audit, the measured DOS and Windows Phase 0 evidence, the
   bring-up runbook, the query-only DOS survey (`tools\diag\intel_survey_dos.c`

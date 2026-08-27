@@ -17,6 +17,13 @@ Ordered by value. Each item is independently shippable.
 
 ## D1. MTRR write-combining on the linear framebuffer
 
+**Stage A implemented 2026-08-28** — the registers are read, the decision is
+made by host-tested policy, and nothing is written; see
+[the decision record](../decisions/2026-08-28-mtrr-stage-a-inspect-only.md).
+Stage B (the write, behind a SYSTEM.INI kill switch) is gated on the `Mtrr=`
+evidence Stage A collects, and that decision record lists what it needs. The
+scope below is the original item; the split into two stages is the change.
+
 Tier-0 draws with the CPU through an LFB that is uncached by default, so
 every GDI and DirectDraw operation pays full uncached-write cost. Marking the
 aperture write-combining via a variable-range MTRR is the standard fix and

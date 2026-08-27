@@ -114,6 +114,58 @@ V9XMINI_FN_MODE_AT    EQU 0004h
 V9XMINI_FN_MODE_MASKS EQU 0005h
 V9XMINI_FN_EDID_CHUNK EQU 0006h
 
+; The memory-type registers, reported and not interpreted.
+;
+; Tier-0 draws with the CPU into a framebuffer that is uncached wherever the
+; BIOS left the PCI hole at the MTRR default type, and one variable range set
+; to write-combining fixes that. Deciding whether it may be set is the most
+; consequential decision in this driver - MTRRs are global CPU state and a
+; wrong range puts WC on somebody else's memory - so ring 0 does none of it.
+; It establishes what the CPU admits to, reads the registers, and reports.
+; The rules live in host-tested C: src\common\mtrr.c, whose contract is
+; include\velocity9x\mtrr.h.
+;
+; This is the same division as significant_depth in the packed record above,
+; for a much larger stake.
+;
+;   MTRR_INFO   out: AX=1 when the flags below were established (always, on a
+;                    CPU this driver can run on), 0 never.
+;                    EBX = IA32_MTRRCAP, low 32 bits, or 0 if unreadable
+;                    ECX = IA32_MTRR_DEF_TYPE, low 32 bits, or 0 if unreadable
+;                    EDX = the V9X_MTRR_CPU_* flags
+;                    ESI = variable-range pairs actually read
+;
+;   MTRR_RANGE  in:  CX = pair index below the count MTRR_INFO reported
+;               out: AX=1, or 0 for an index at or beyond that count
+;                    EBX = IA32_MTRR_PHYSBASEn, low 32 bits
+;                    ECX = IA32_MTRR_PHYSMASKn, low 32 bits
+;                    EDX = 1 when PHYSBASEn had a non-zero high dword - the
+;                          range starts above 4 GiB and cannot reach anything
+;                          a 32-bit driver maps. PHYSMASK's high dword is not
+;                          reported: it is routinely non-zero on any CPU with
+;                          more than 32 physical address bits.
+V9XMINI_FN_MTRR_INFO  EQU 0007h
+V9XMINI_FN_MTRR_RANGE EQU 0008h
+
+; What the CPU admits to, established in this order because each flag is the
+; licence to look for the next: CPUID is an invalid opcode on the 386 and
+; early 486 this project still targets on VLB, RDMSR is one without MSR
+; support, and the MTRR registers exist only when the MTRR bit is set. No MSR
+; is read unless both MSR and MTRR are present.
+;
+; Shared with include\velocity9x\mtrr.h, which is the C view of the same
+; flags; check-tree.ps1 asserts the two agree.
+V9X_MTRR_CPU_CPUID    EQU 0001h
+V9X_MTRR_CPU_MSR      EQU 0002h
+V9X_MTRR_CPU_MTRR     EQU 0004h
+V9X_MTRR_CPU_PGE      EQU 0008h
+
+; Variable-range pairs read and reported. Eight is what every x86 that
+; implements MTRRs exposes; a CPU claiming more is read only this far, and
+; because an unread pair can only make the policy decline, that direction is
+; safe.
+V9X_MTRR_RANGE_MAX    EQU 8
+
 ; ---------------------------------------------------------------------------
 ; Bounds
 ; ---------------------------------------------------------------------------

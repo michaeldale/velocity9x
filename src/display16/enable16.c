@@ -32,6 +32,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe16.h"
 #include "velocity9x/vbe_cache.h"
+#include "velocity9x/mtrr.h"
 
 extern WORD v9x_active_vbe_mode;
 extern WORD v9x_vbe_mode_flags;
@@ -113,6 +114,18 @@ WORD v9x_minivdd_queried = 0u;
 WORD v9x_minivdd_cached = 0u;
 WORD v9x_minivdd_probed = 0u;
 WORD v9x_minivdd_status = 0u;
+
+/*
+ * The memory-type registers the mini-VDD read at init, one call's worth at a
+ * time. Filled by the runtime.asm helpers below; nothing here writes an MTRR.
+ */
+WORD v9x_minivdd_mtrr_flags = 0u;
+WORD v9x_minivdd_mtrr_count = 0u;
+DWORD v9x_minivdd_mtrr_cap = 0ul;
+DWORD v9x_minivdd_mtrr_deftype = 0ul;
+DWORD v9x_minivdd_mtrr_base = 0ul;
+DWORD v9x_minivdd_mtrr_mask = 0ul;
+WORD v9x_minivdd_mtrr_high = 0u;
 /* One 16-byte EDID chunk, as the four dwords the API hands back. */
 DWORD v9x_minivdd_edid0 = 0ul;
 DWORD v9x_minivdd_edid1 = 0ul;
@@ -127,6 +140,8 @@ extern WORD FAR PASCAL V9xMiniVbeController(void);
 extern WORD FAR PASCAL V9xMiniVbeStatus(void);
 extern WORD FAR PASCAL V9xMiniVbeModeAt(WORD index);
 extern WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index);
+extern WORD FAR PASCAL V9xMiniMtrrInfo(void);
+extern WORD FAR PASCAL V9xMiniMtrrRange(WORD index);
 
 WORD FAR PASCAL V9xHardwareStage(void)
 {
@@ -471,6 +486,114 @@ static void v9x_vbe_trace_cache(void)
 }
 
 /*
+ * Record whether the framebuffer aperture could be made write-combining, and
+ * what would be written if it were.
+ *
+ * Nothing is written. This is Stage A of docs\plans\tier0-quality.md: the
+ * mini-VDD reads the memory-type registers, the host-tested policy in
+ * src\common\mtrr.c decides from them, and the answer goes in the boot INI so
+ * that what the rules conclude on every machine this project can reach is
+ * known before any of them acts. An MTRR is global CPU state and a wrong range
+ * corrupts memory that has nothing to do with this driver, so the evidence
+ * comes first.
+ *
+ * The aperture handed to the policy is the one the driver actually mapped and
+ * draws through, not the BIOS's claim about some mode: v9x_map_physical_base
+ * is what stage 4 mapped, and v9x_vbe_vram_bytes is what dd16.c hands out.
+ */
+static void v9x_mtrr_trace(void)
+{
+    static char text[80];
+    static WORD traced = 0u;
+    struct v9x_mtrr_state state;
+    struct v9x_mtrr_plan plan;
+    WORD at = 0u;
+    WORD index;
+
+    if (traced != 0u) {
+        return;
+    }
+    traced = 1u;
+
+    V9xEnsureDiagDir();
+    if (V9xMiniMtrrInfo() == 0u) {
+        v9x_write_ini_key("Mtrr", "no-api");
+        return;
+    }
+
+    for (index = 0u; index < V9X_MTRR_RANGE_MAX; ++index) {
+        state.base[index] = 0ul;
+        state.mask[index] = 0ul;
+    }
+    state.cpu_flags = v9x_minivdd_mtrr_flags;
+    state.cap = v9x_minivdd_mtrr_cap;
+    state.def_type = v9x_minivdd_mtrr_deftype;
+    state.high_bits = 0u;
+    state.range_count = v9x_minivdd_mtrr_count > V9X_MTRR_RANGE_MAX
+                            ? V9X_MTRR_RANGE_MAX : v9x_minivdd_mtrr_count;
+    for (index = 0u; index < state.range_count; ++index) {
+        if (V9xMiniMtrrRange(index) == 0u) {
+            /* The count and the pairs came from the same read, so a refusal
+             * here is a contract disagreement. Believe the smaller number. */
+            state.range_count = index;
+            break;
+        }
+        state.base[index] = v9x_minivdd_mtrr_base;
+        state.mask[index] = v9x_minivdd_mtrr_mask;
+        if (v9x_minivdd_mtrr_high != 0u) {
+            state.high_bits |= (WORD)(1u << index);
+        }
+    }
+
+    (void)v9x_mtrr_plan_wc(&state, v9x_map_physical_base, v9x_vbe_vram_bytes,
+                           &plan);
+
+    /* cpu flags, MTRRCAP, DEF_TYPE, pairs read, then the decision. */
+    text[at++] = 'c'; text[at++] = 'p'; text[at++] = 'u'; text[at++] = '=';
+    at = v9x_append_hex16(text, at, state.cpu_flags);
+    text[at++] = ' '; text[at++] = 'c'; text[at++] = 'a'; text[at++] = 'p';
+    text[at++] = '=';
+    at = v9x_append_hex32(text, at, state.cap);
+    text[at++] = ' '; text[at++] = 'd'; text[at++] = 'e'; text[at++] = 'f';
+    text[at++] = '=';
+    at = v9x_append_hex32(text, at, state.def_type);
+    text[at++] = ' '; text[at++] = 'n'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, state.range_count);
+    text[at++] = ' '; text[at++] = 'r'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, plan.reason);
+    text[at++] = ' '; text[at++] = 's'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, plan.slot);
+    text[at++] = ' '; text[at++] = 'b'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, plan.base);
+    text[at++] = ' '; text[at++] = 'z'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, plan.size);
+    text[at] = '\0';
+    v9x_write_ini_key("Mtrr", text);
+
+    /* The pairs themselves, so a refusal can be re-derived off the machine
+     * rather than taken on trust from the reason code above. */
+    for (index = 0u; index < state.range_count; ++index) {
+        static char key[10];
+        WORD keyat = 0u;
+
+        key[keyat++] = 'M'; key[keyat++] = 't'; key[keyat++] = 'r';
+        key[keyat++] = 'r';
+        keyat = v9x_append_decimal(key, keyat, index);
+        key[keyat] = '\0';
+
+        at = 0u;
+        at = v9x_append_hex32(text, at, state.base[index]);
+        text[at++] = ' ';
+        at = v9x_append_hex32(text, at, state.mask[index]);
+        if ((state.high_bits & (WORD)(1u << index)) != 0u) {
+            text[at++] = ' '; text[at++] = 'h'; text[at++] = 'i';
+        }
+        text[at] = '\0';
+        WritePrivateProfileString("Velocity9x", key, text, V9X_DIAG_BOOT_INI);
+    }
+}
+
+/*
  * Stage 9 for a family with no post_mode_set hook: make the card scan the
  * surface out at the stride we are going to draw with.
  *
@@ -663,6 +786,7 @@ WORD FAR PASCAL V9xHardwareEnable(void)
 {
     DWORD base;
     const V9X_HW16_DEVICE *device;
+    WORD mapped;
 
     v9x_hardware_stage_code = 1u;
     if (v9x_hardware_acceptable() == 0u) {
@@ -742,7 +866,14 @@ WORD FAR PASCAL V9xHardwareEnable(void)
      * the mapping helper; it advances the stage code itself. */
     v9x_hardware_stage_code = 4u;
     v9x_map_physical_base = base;
-    return V9xMapAperture();
+    mapped = V9xMapAperture();
+    if (mapped != 0u) {
+        /* After the mapping, and only on success: the aperture handed to the
+         * write-combining policy has to be the one the driver actually draws
+         * through, which is not known until here. Diagnostic only. */
+        v9x_mtrr_trace();
+    }
+    return mapped;
 }
 
 /*
