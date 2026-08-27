@@ -1262,6 +1262,16 @@ typedef struct v9x_gdi_stats {
     DWORD upload_reject_mask;
     DWORD upload_reject_detail;
     /*
+     * The destination surface's base offset and pitch, as the last accepted
+     * operation saw them. Reported because the Trio64 fill folds the base into
+     * the y coordinate - `y = base / pitch + destination_y` - so a non-zero
+     * base displaces every rectangle by that many scan lines, and every
+     * emulated guest reports zero. Real silicon corrupted the screen and this
+     * is the input that differs between the two.
+     */
+    DWORD last_base;
+    DWORD last_pitch;
+    /*
      * The last operation the dispatcher accepted, for diagnosing a wrong-pixel
      * failure without a second guest round trip.
      *
@@ -1362,7 +1372,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 148 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 156 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

@@ -53,6 +53,15 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 > `PALETTE_XLAT` gate, and the reasoning for why 000's exit gate must also run
 > on an engine-less family.
 
+**Stopped 2026-08-27, before build 005.** The `Default` column below records
+what each build earned *in emulation*. All of it is now unreachable: the master
+`GdiAccel` switch compiles to **0** because the fill path corrupts the display on
+physical S3 Trio64 silicon
+([issue](../issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)),
+while 86Box passes 11/11 modes on both S3 chips at the very mode that fails.
+Build 005 does not start until that is understood - adding ROPs to a fill path
+that mis-addresses on hardware would only widen the blast radius.
+
 | Build | Content | Default | Exit gate |
 |---|---|---|---|
 | gdi-accel-000 **(done)** | All infrastructure + primitives compiled, default-off; shared 2D register header; HAL Lock/Flip drain audit; `/accel` harness; per-family enable gate | off | **Behaviour** unchanged (not bytes - see below): V9XGDI PASS and the new `/accel` phase on the full mode matrix, on the engine family **and on an engine-less one**; Ironfield numbers unchanged; one manual INI-on run proving fill fires |

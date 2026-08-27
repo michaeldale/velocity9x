@@ -104,7 +104,21 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
  * only if the engine walks from the corner that keeps it correct, and the
  * direction logic below is what decides that.
  */
-#define V9X_GDI_DEFAULT_MASTER   1
+/*
+ * Master switch, forced to 0 on 2026-08-27.
+ *
+ * Every primitive below is still recorded at the default its rollout build
+ * earned in emulation, because those results stand. This switch is what makes
+ * them unreachable, and it is off for one reason: on physical S3 Trio64 silicon
+ * the fill path corrupts the display, and eight fills are enough to do it
+ * (docs/issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md).
+ *
+ * Emulation cannot be the gate for this feature. 86Box passes 11/11 modes on
+ * both S3 chips, twice, at the exact mode that fails on hardware. Until the
+ * divergence is understood, acceleration is opt-in via GdiAccel=1 and anyone
+ * turning it on should expect to need a reboot to recover.
+ */
+#define V9X_GDI_DEFAULT_MASTER   0
 #define V9X_GDI_DEFAULT_FILL     1
 #define V9X_GDI_DEFAULT_COPY     1
 #define V9X_GDI_DEFAULT_OVERLAP  1
@@ -1074,6 +1088,8 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     op.source_y = source_y;
     op.pitch = (DWORD)destination_device->deWidthBytes;
     op.base = destination_device->deBitsOffset;
+    v9x_gdi.last_base = op.base;
+    v9x_gdi.last_pitch = op.pitch;
     if (op.width == 0u || op.height == 0u || op.pitch == 0ul ||
         (DWORD)destination_x + (DWORD)op.width >
             (DWORD)destination_device->deWidth ||

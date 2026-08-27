@@ -801,6 +801,8 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("Uploads", stats->uploads);
     v9x_accel_write_hex("UploadRejectMask", stats->upload_reject_mask);
     v9x_accel_write_hex("UploadRejectDetail", stats->upload_reject_detail);
+    v9x_accel_write_hex("LastBase", stats->last_base);
+    v9x_accel_write_uint("LastPitch", stats->last_pitch);
     v9x_accel_write_uint("LastRop256", stats->last_rop256);
     v9x_accel_write_uint("LastColor", stats->last_color);
     v9x_accel_write_uint("LastBrushFlags", stats->last_brush_flags);
