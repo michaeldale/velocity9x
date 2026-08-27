@@ -99,13 +99,19 @@ quick errand.
 
 ## 4. Blocked, and on what
 
-- **`vbe` enable gate** - the QEMU guest boots to DOS with a registry error and
-  its agent never starts
-  ([issue](../issues/2026-08-27-vbe-qemu-guest-registry-error.md)). Needs someone
-  at the console to pick a `SCANREG /RESTORE` point, because the restore points
-  predate that guest's NIC installation and a wrong choice takes its networking,
-  its agent, and any remote access with it. Low stakes for the driver: `vbe` is
-  engine-less and `ati/mach64-vt2` covers that path.
+- ~~**`vbe` enable gate**~~ - **closed 2026-08-27** on a different, freshly built
+  QEMU guest that the earlier registry failure did not affect. `Stage=enable-ok`
+  on the merged build, and `/accel` `Result=PASS` with the engine-less shape:
+  `Advertised=23`, `Enabled=0`, all 3231 calls declining at the first gate. That
+  run also confirmed the `stats.enabled != 0` liveness guard on a **second**
+  independent engine-less family - `ZeroCounterChecked=1` with
+  `DeclineUploadDelta=0` is exactly the case
+  `upload-declines-never-exercised` would have false-failed without it.
+  The `vbe` **mode matrix** is still blocked, on a BIOS-level reset hang in that
+  guest ([issue](../issues/2026-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md)).
+  The original broken guest's registry issue
+  ([issue](../issues/2026-08-27-vbe-qemu-guest-registry-error.md)) is moot for
+  gating now, though that VM is still unbootable.
 - **Post-run display artifact** - a screenshot after the CrystalMark run shows
   the window duplicated at several scales. Deliberately not attributed to the
   driver: a `/probe` moments later was pixel-exact, which a mis-addressing driver
