@@ -1,8 +1,9 @@
-# The vbe QEMU guest hangs in SeaBIOS on reset, and only a fresh process recovers
+# The vbe QEMU guest hangs on reset, and only a fresh process recovers
 
 Date: 2026-08-27
-Status: **open.** Not a Velocity9x defect - the hang is in the BIOS, before any
-OS or driver code runs. Blocks the `vbe` mode matrix, not the enable gate.
+Status: **open.** Not a Velocity9x defect - two distinct hang signatures, both
+before any of this driver's code runs, and the serial log confirms it wrote
+nothing on a hung boot. Blocks the `vbe` mode matrix, not the enable gate.
 
 ## Symptom
 
@@ -36,6 +37,45 @@ ES =dc00                             <- an option ROM segment
 `hlt` expecting a timer or device interrupt to wake it, and nothing does. That
 points at the PIT/PIC or the IDE controller not being re-initialised across a
 reset, which is emulator and machine-configuration territory.
+
+## A second signature, same trigger
+
+A later reset of the same guest hung in a **different** place, which is what
+makes "the reset path is unreliable" a better description than any single
+stopping point:
+
+| | Where it stops | CPU state |
+|---|---|---|
+| Signature A | SeaBIOS, just after "Press ESC for boot menu" | `HLT=1` - halted with interrupts enabled, waiting for one that never arrives |
+| Signature B | Windows 98 splash screen, 640x400 | `HLT=0`, `EIP=00009dfb`, `ES=0000` with 16-bit limits, 168 s of host CPU burned - spinning in real mode |
+
+Signature B is a livelock in early real-mode boot, not a stall. Both follow a
+reset of an existing QEMU process, and both are cured by killing QEMU and
+relaunching.
+
+## The serial log excludes this driver, and says so positively
+
+The guest logs to COM1, so there is a record rather than an inference. On the
+boot that hung at the splash, **Velocity9x wrote nothing at all** - no
+`V9X-MINI` lines, no `V9X-DRV` lines. The last entries in the file are from the
+*previous*, successful session and end cleanly:
+
+```
+V9X-MINI vbe-collect done
+V9X-DRV load build=6f86e94
+V9X-DRV lfb=0xFD000000 bytes=0x01000000
+V9X-DRV enable-ok mode=800x600x16 lfb-mapped
+V9X-DRV disable
+```
+
+Load, enable at 800x600x16, then a clean `disable` on shutdown. That is a driver
+doing its job and being torn down properly.
+
+It also fits the CPU state: real mode with 16-bit segment limits is *before*
+Windows loads protected-mode VxDs, which is where both the mini-VDD and the
+display driver live. The hang precedes any of this driver's code running, and the
+same disk image with the same driver reached the desktop in about 30 seconds
+minutes earlier.
 
 ## What recovers it, and what does not
 
