@@ -107,8 +107,19 @@ quick errand.
   independent engine-less family - `ZeroCounterChecked=1` with
   `DeclineUploadDelta=0` is exactly the case
   `upload-declines-never-exercised` would have false-failed without it.
-  The `vbe` **mode matrix** is still blocked, on a BIOS-level reset hang in that
-  guest ([issue](../issues/2026-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md)).
+  The `vbe` **mode matrix** has now run too, via a new `-LiveSwitch` mode added to
+  `run-vm-mode-matrix.ps1` that applies each mode with `V9XMSW /set:` instead of a
+  registry write plus a reboot - the guest's reset path wedges the emulated
+  machine ([issue](../issues/2026-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md)),
+  and live switching avoids it entirely. 6/6 modes, all six applied in a single
+  boot with no reboot. `AppliedBy` is recorded per mode and at the top of
+  `matrix.json`, because a live-switch run does **not** exercise establishing a
+  mode at boot and must not be read as full coverage.
+  **Read that 6/6 with one boundary**: immediately afterwards the emulated scanout
+  showed whole-screen stripes while GDI read a clean desktop, and the matrix
+  passed because every check in it reads back through GDI
+  ([issue](../issues/2026-08-27-scanout-and-gdi-disagreed-once-on-vbe-guest.md)).
+  Not reproduced, but the harness gap is real and has a cheap fix on QEMU targets.
   The original broken guest's registry issue
   ([issue](../issues/2026-08-27-vbe-qemu-guest-registry-error.md)) is moot for
   gating now, though that VM is still unbootable.

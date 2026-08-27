@@ -77,6 +77,34 @@ display driver live. The hang precedes any of this driver's code running, and th
 same disk image with the same driver reached the desktop in about 30 seconds
 minutes earlier.
 
+## A third thing that mimics a hang: the SDL window goes stale
+
+Twice now the SDL window has shown something the guest was not doing.
+
+- At 800x600x8 it showed red and green streaks across the desktop while a
+  `screendump` of the same moment was pixel-clean.
+- Later it showed the Windows splash screen, reported as "stuck at splash",
+  while the agent answered `boot=22 desktop=True` and a `screendump` showed a
+  complete, correctly rendered 800x600 desktop with a working clock.
+
+So a stale or wrong SDL window is not evidence of anything about the guest. The
+two states are trivially separable once you look at the right thing:
+
+| | Genuinely hung at the splash | SDL merely stale |
+|---|---|---|
+| `info registers` | `HLT=0`, real mode, 16-bit segment limits, host CPU climbing | `HLT=1`, 32-bit flat segments, registers holding `0xC0000000`-range kernel addresses |
+| Agent | not answering | answers, `DesktopReady=True` |
+| `screendump` | shows the splash | shows the desktop |
+
+`HLT=1` on its own means nothing: Windows idles the CPU with `hlt`. It is `HLT=0`
+with the host burning CPU that indicates a livelock.
+
+**The rule this earns: on this guest, `screendump` plus `info registers` decide
+what is happening, and the SDL window does not.** `screendump` reads the emulated
+framebuffer directly, with no driver, no GDI and no host renderer in between,
+which is exactly why it is trustworthy here - and why it was also the instrument
+that cleared the driver of the streaks.
+
 ## What recovers it, and what does not
 
 | Action | Result |

@@ -31,6 +31,22 @@ param(
     # the meaning this script already relies on. Skip it only to reproduce a
     # pre-000 run.
     [switch]$SkipAccel,
+    # Apply each mode with a live mode switch instead of a registry write plus a
+    # reboot.
+    #
+    # This exists because the vbe QEMU guest cannot be rebooted reliably - its
+    # reset path wedges the emulated machine, in the BIOS or in early real-mode
+    # boot depending on the attempt, and only a fresh QEMU process recovers
+    # (docs\issues6-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md).
+    # Live switching works fine on that guest, so this is the way to get mode
+    # coverage there at all.
+    #
+    # It is NOT equivalent to the default path and must not be read as such. The
+    # reboot path additionally exercises establishing the mode at boot: the
+    # registry is what the driver reads on Enable during Windows startup, and a
+    # mode that works when switched into can still fail to come up. Every result
+    # records which path applied it, so the two are never silently mixed.
+    [switch]$LiveSwitch,
     [switch]$Json
 )
 
@@ -202,20 +218,55 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $bits = [int]$Matches[3]
     $modeResults = Join-Path (Join-Path $results "pass-$pass") $name
     New-Item -ItemType Directory -Force -Path $modeResults | Out-Null
-    $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
-    $null = Invoke-V9xCtlJson put @(
-        "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
-    $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
-    $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
-    $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
-    $null = Invoke-GuestShell "REGEDIT /S $GuestJob\MODE.REG"
+    if ($LiveSwitch) {
+        # The driver rewrites V9XBOOT.INI on every Enable, so deleting it first
+        # keeps the enable-ok check below about *this* mode rather than the one
+        # the guest happened to boot in.
+        $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
+        $switch = Invoke-V9xCtlJson exec @(
+            "-Application", "$GuestJob\V9XMSW.EXE",
+            "-Arguments", "/set:$name",
+            "-WorkingDirectory", $GuestJob,
+            "-TimeoutSeconds", "180")
+        if ($switch.ExitCode -ne 0) {
+            throw ("Mode {0} live switch exited {1}." -f $name, $switch.ExitCode)
+        }
+        # V9XMSW writes its own verdict; a non-zero exit is not the only way for
+        # a switch to fail.
+        $mswReport = Invoke-GuestShell "TYPE C:\V9XMSW.INI"
+        if ($mswReport.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+            throw ("Mode {0} live switch did not report Result=PASS." -f $name)
+        }
+        # The agent's cached screen metrics can lag a live switch, so poll rather
+        # than trust the first read.
+        $info = $null
+        for ($settle = 0; $settle -lt 20; ++$settle) {
+            Start-Sleep -Milliseconds 500
+            $info = Invoke-V9xCtlJson info
+            if ($info.ScreenWidth -eq $width -and $info.ScreenHeight -eq $height) {
+                break
+            }
+        }
+        $appliedBy = "live-switch"
+    } else {
+        $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
+        $null = Invoke-V9xCtlJson put @(
+            "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
+        $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
+        $null = Invoke-GuestShell "REGEDIT /S $GuestJob\MODE.REG"
 
-    $reboot = Invoke-V9xCtlJson reboot @(
-        "-JobId", "matrix-$pass-$name",
-        "-WaitSeconds", [string]$BootTimeoutSeconds)
-    $desktop = Invoke-V9xCtlJson wait-desktop @(
-        "-WaitSeconds", [string]$BootTimeoutSeconds)
-    $info = Invoke-V9xCtlJson info
+        $reboot = Invoke-V9xCtlJson reboot @(
+            "-JobId", "matrix-$pass-$name",
+            "-WaitSeconds", [string]$BootTimeoutSeconds)
+        $desktop = Invoke-V9xCtlJson wait-desktop @(
+            "-WaitSeconds", [string]$BootTimeoutSeconds)
+        $info = Invoke-V9xCtlJson info
+        $appliedBy = "reboot"
+    }
     if ($info.ScreenWidth -ne $width -or $info.ScreenHeight -ne $height) {
         throw ("Mode {0} fell back to {1}x{2}." -f $name,
                $info.ScreenWidth, $info.ScreenHeight)
@@ -322,6 +373,7 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $matrix += [pscustomobject]@{
         Pass = $pass
         Mode = $name
+        AppliedBy = $appliedBy
         BootCounter = $info.BootCounter
         DriverStage = "enable-ok"
         GdiResult = "PASS"
@@ -342,6 +394,10 @@ $summary = [pscustomobject]@{
     PackagePath = [IO.Path]::GetFullPath($PackagePath)
     GuestJob = $GuestJob
     Repeat = $Repeat
+    # Recorded at the top level as well as per mode: a summary that does not say
+    # how its modes were applied invites a live-switch run being read as full
+    # coverage, which it is not - see the -LiveSwitch note in the parameters.
+    AppliedBy = $(if ($LiveSwitch) { "live-switch" } else { "reboot" })
     ResultsDirectory = $results
     Upload = $upload
     Matrix = $matrix
@@ -353,4 +409,8 @@ if ($Json) {
 } else {
     $matrix | Format-Table -AutoSize
     Write-Output "Mode matrix passed. Results: $results"
+    if ($LiveSwitch) {
+        Write-Output ("Applied by live mode switch: this run did not exercise " +
+                      "establishing each mode at boot.")
+    }
 }
