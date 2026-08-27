@@ -263,11 +263,11 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
 
 - **Partial GDI acceleration.** The retail drivers accelerate desktop blits,
   fills and line drawing through the same 2D engine Velocity9x used to reserve
-  for DirectDraw. Of those, **solid rectangle fills and non-overlapping
-  screen-to-screen copies are now accelerated on both S3 chips** (builds
-  `gdi-accel-001` and `002`) — the operations behind a desktop fill and a window
-  scroll or move. Overlapping copies still decline pending build 003, and
-  everything else goes through the DIB Engine in software. On ATI, VBE and Matrox every operation declines and always will:
+  for DirectDraw. Of those, **solid rectangle fills and screen-to-screen copies,
+  including overlapping ones in all eight directions, are now accelerated on
+  both S3 chips** (builds `gdi-accel-001` through `003`) — the operations behind
+  a desktop fill and a window scroll or move. Line drawing, text and
+  CPU-to-screen uploads still go through the DIB Engine in software. On ATI, VBE and Matrox every operation declines and always will:
   those chips have no 2D engine. Every accelerated case keeps a DIB Engine
   fallback, a bounded wait, and a session-long poison latch that turns
   acceleration off for good if the engine ever fails to respond - so the desktop

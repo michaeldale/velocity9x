@@ -345,11 +345,14 @@ Exit gate:
 
 Implementation plan: [docs/plans/gdi-acceleration.md](docs/plans/gdi-acceleration.md),
 which splits this phase into builds `gdi-accel-000`..`005`, one primitive per
-build. **Build 000 is done** - all infrastructure and primitives compiled and
-every one of them default-off, plus the randomized comparison harness the later
-builds are gated by
-([docs/decisions/2026-08-26-gdi-accel-000.md](docs/decisions/2026-08-26-gdi-accel-000.md)).
-Nothing in the list below is enabled yet.
+build. **Builds 000 through 003 are done**, which is items 1 to 3 of the list
+below: solid fill, non-overlapping screen copy, and overlapping copy in all
+eight directions all run on the engine on both S3 chips
+([000](docs/decisions/2026-08-26-gdi-accel-000.md),
+[001](docs/decisions/2026-08-26-gdi-accel-001.md),
+[002](docs/decisions/2026-08-27-gdi-accel-002.md),
+[003](docs/decisions/2026-08-27-gdi-accel-003.md)). Items 4 and 5 —
+CPU-to-screen upload and extra ROPs — are not started.
 
 One thing that phase discovered and this list did not anticipate: the `BitBlt`
 export lives in the 16-bit layer all four families share, so *every* family got
@@ -378,6 +381,8 @@ Exit gate:
 - Pixel-for-pixel comparison against a software reference passes randomized rectangles, pitches, clipping regions, overlap directions, and supported ROPs.
 - Injected timeouts recover to an operable desktop.
 - The comparison is not allowed to pass vacuously: the driver's own counters are read back, and a primitive that is advertised and enabled and never fired is a failure. A comparison harness that silently exercised the decline path on every operation would pass perfectly and prove nothing.
+
+**Status after build 003: met, with two items recorded as uncovered rather than counted as passed.** Randomized rectangles, overlap directions and supported ROPs are covered on every mode of both chips, and injected timeouts recover to a rendering desktop, verified by observing the gate fail on a deliberately broken build. *Clipping regions are not covered* - the harness draws into an unclipped window, and the argument that GDI clips before the driver sees a blit is an argument rather than a measurement. *Pitch coverage is incidental* - eleven distinct pitches across the mode list, but no variation within a mode. See [the 003 record](docs/decisions/2026-08-27-gdi-accel-003.md).
 
 ### Phase 6 - DirectDraw foundation
 

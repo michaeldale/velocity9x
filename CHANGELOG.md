@@ -84,6 +84,36 @@ build 001 rather than this one. Both are the plan's insistence on landing the
 harness before the first build that turns a primitive on, paying for itself on
 its first use.
 
+Added: **GDI acceleration build `gdi-accel-003` - overlapping screen-to-screen
+copies in all eight directions**, which completes the three primitives the
+rollout table gates on and with them PLAN.md's Phase 5. Desktop fills, window
+scrolls and window moves all run on the engine on both S3 chips now.
+
+The transition is what makes it a clean result rather than a green one: build 002
+reported 99 engine copies and 58 overlap declines per run, and 003 reports 157
+copies and zero declines. 99 + 58 = 157 - the overlapping operations moved from
+declined to executed and nothing else changed.
+
+The gate was proven able to fail before it was trusted. With the scan-direction
+logic deliberately disabled the harness failed at its first comparison with a
+26808-byte smear, `DeclineOverlap=0` confirming the operations were reaching the
+engine rather than being turned away. That is the standard build 002's cursor
+check could not meet, and the contrast is instructive: a smear is written into
+the framebuffer and survives a readback, while a software cursor is lifted by
+`deBeginAccess` before any readback can see it.
+
+The direction logic itself was settled against the reference driver rather than
+assumed. The reference flips the X and Y scan directions independently where this
+driver flips one or the other; both are correct, because once rows are walked
+from the far end the source row for any destination row is both unwritten and a
+*different row*, so within-row order cannot alias. The reference tests a
+condition this driver has already made irrelevant.
+
+Phase 5's exit gate is met except for one item recorded as uncovered rather than
+counted: clipping regions. The harness draws into an unclipped window, and the
+argument that GDI clips before the driver sees a blit is an argument, not a
+measurement.
+
 Added: **GDI acceleration build `gdi-accel-002` - non-overlapping
 screen-to-screen copies now run on the engine on both S3 chips.** That is the
 operation behind a window scroll and a window move. Overlapping copies still
