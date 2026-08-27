@@ -962,6 +962,17 @@ static DWORD v9x_accel_run(HWND window)
         } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
                    stats.copies == before.copies) {
             error = "copy-enabled-but-never-fired";
+        } else if ((stats.enabled & V9X_GDI_PRIM_OVERLAP) != 0ul &&
+                   stats.decline_overlap != before.decline_overlap) {
+            /*
+             * With overlap enabled the mirror claim inverts: no overlapping
+             * copy should be declined for overlapping. If any was, the gate is
+             * still refusing what this build says it accelerates, and the
+             * eight directions the generator walks are not being exercised on
+             * the engine at all - the comparison would pass on the DIB
+             * Engine's own work and prove nothing about the direction logic.
+             */
+            error = "overlap-enabled-but-still-declined";
         } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
                    (stats.enabled & V9X_GDI_PRIM_OVERLAP) == 0ul &&
                    stats.decline_overlap == before.decline_overlap) {

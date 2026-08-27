@@ -108,7 +108,11 @@ foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:",
                        # Build 002 claims two things - disjoint copies
                        # accelerated, overlapping ones declined - and this is
                        # the second half of that claim.
-                       "overlap-declines-never-exercised")) {
+                       "overlap-declines-never-exercised",
+                       # Build 003 inverts that claim: with overlap on, an
+                       # overlap decline means the eight directions are never
+                       # reaching the engine.
+                       "overlap-enabled-but-still-declined")) {
     if (-not $imageText.Contains($marker)) {
         throw "The GDI smoke test is missing marker $marker."
     }

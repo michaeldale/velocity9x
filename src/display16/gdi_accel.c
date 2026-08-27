@@ -97,15 +97,15 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
  * attempt - the colour came from the wrong field of the realized brush, which
  * is recorded on V9X_DIB_BRUSH_SOLID and was worth an issue of its own.
  *
- * Build 002 turns copy on, non-overlapping only. Overlap stays off: an
- * overlapping same-surface copy is correct only if the engine walks from the
- * corner that keeps it correct, and that is build 003's claim to make rather
- * than this one's.
+ * Build 002 turns copy on, non-overlapping only. Build 003 turns overlap on,
+ * which is the last of the three: an overlapping same-surface copy is correct
+ * only if the engine walks from the corner that keeps it correct, and the
+ * direction logic below is what decides that.
  */
 #define V9X_GDI_DEFAULT_MASTER   1
 #define V9X_GDI_DEFAULT_FILL     1
 #define V9X_GDI_DEFAULT_COPY     1
-#define V9X_GDI_DEFAULT_OVERLAP  0
+#define V9X_GDI_DEFAULT_OVERLAP  1
 
 /*
  * Smallest rectangle worth handing to the engine, in pixels.
@@ -418,6 +418,30 @@ static WORD v9x_gdi_virge_copy(const V9X_GDI_OP *op)
     WORD x_positive = 1u;
     WORD y_positive = 1u;
 
+    /*
+     * Scan direction for an overlapping same-surface copy. Build 003's whole
+     * correctness rests on these five lines, so the reasoning is here rather
+     * than in a decision record nobody reads while editing this function.
+     *
+     * The rule: flip Y when the copy moves down; otherwise, and only if the
+     * copy stays on the same rows, flip X when it moves right.
+     *
+     * Why the "otherwise" is safe, which is the part worth checking. Once rows
+     * are walked from the far end, the source row for any destination row lies
+     * in the direction not yet written - moving down and walking bottom-up, the
+     * source row is above and still intact - and the two rows are *different
+     * rows*, so within-row order cannot alias anything. The X test is therefore
+     * needed only when the copy stays on one row, which is exactly when it is
+     * applied. Enumerated: down-any-x flips Y only; up-any-x flips nothing;
+     * same-row-right flips X; same-row-left flips nothing. All four are safe.
+     *
+     * The reference driver is more conservative and flips X whenever the
+     * destination x exceeds the source x, independent of the Y flip
+     * (ScreenToScreenBlt in 98DDK\src\display\mini\s3v\S3BLT.ASM compares
+     * the packed (x,y) dword for its second test). That is also correct, and
+     * the difference is not a disagreement about the hardware - it is one
+     * driver testing a condition the other has already made irrelevant.
+     */
     if (destination_y > source_y) {
         y_positive = 0u;
         source_y += (DWORD)op->height - 1ul;
