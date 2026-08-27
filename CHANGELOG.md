@@ -109,10 +109,15 @@ from the far end the source row for any destination row is both unwritten and a
 *different row*, so within-row order cannot alias. The reference tests a
 condition this driver has already made irrelevant.
 
-Phase 5's exit gate is met except for one item recorded as uncovered rather than
-counted: clipping regions. The harness draws into an unclipped window, and the
-argument that GDI clips before the driver sees a blit is an argument, not a
-measurement.
+Phase 5's exit gate also named clipping regions, which the harness now covers -
+and the measurement corrected the argument that had stood in for it. The claim
+had been that GDI clips before the driver sees a blit, so there is nothing for
+the driver to mishandle. The conclusion held; the reasoning did not. A two-band
+clip region shows that GDI *splits* a straddling blit into one driver call per
+clip rectangle: 24 clipped operations produce exactly 48 accelerated ones, in
+every accelerated mode on both chips. Of that gate's items only pitch coverage
+is now recorded as incidental rather than counted - eleven distinct pitches
+across the mode list, none varied within a mode.
 
 Added: **GDI acceleration build `gdi-accel-002` - non-overlapping
 screen-to-screen copies now run on the engine on both S3 chips.** That is the

@@ -71,10 +71,21 @@ the already associated driver, reboots, and asserts `Stage=enable-ok`. Nothing
 else - it is not the mode matrix. It needs virtual machines and minutes, which
 is why it is not in `run-checks`, but it is one command. It prints the targets
 it skips **by name** rather than equating "each family with an emulator" with
-"every family": today it reaches `s3` (both chips), `ati`/mach64-vt2 and `vbe`,
-and skips `matrox-m2` and `ati`/rage-mobility-m, which are physical-hardware
-targets. It launches 86Box profiles only; bring the QEMU-hosted `vbe` guest up
-yourself first, or pass `-Family s3,ati`.
+"every family": today it reaches `s3` (both chips) and `ati`/mach64-vt2, and
+skips `matrox-m2` and `ati`/rage-mobility-m, which are physical-hardware targets.
+
+`vbe` is a third case: the gate covers it, but its guest is QEMU-hosted and this
+gate launches 86Box profiles only, so bring that guest up first or pass
+`-Family s3,ati`.
+
+One practical note, because it cost a while to work out. There is more than one
+QEMU image under `C:\QemuVMs`, and the one `Win98SE-QEMU-StdVGA\start-vm.ps1`
+boots came up on 2026-08-27 sitting on a modal "Your display adapter is not
+configured properly" — which also explains an agent that never answers, since a
+modal holds the Win16Mutex. If `v9xctl ping` on port 9872 stays silent, take a
+`screendump` through the QEMU monitor before assuming a boot problem, and check
+which image the launcher is pointing at against
+[the guest handoffs](handoffs/).
 
 ## Families
 

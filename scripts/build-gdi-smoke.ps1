@@ -139,7 +139,10 @@ foreach ($requiredApi in @("BitBlt", "StretchBlt", "GetPixel", "SetPixel",
                             # reference is wrong and was measured wrong: see the
                             # comment on v9x_accel_dib_bytes.
                             "PatBlt", "CreateCompatibleBitmap", "GetDIBits",
-                            "ExtEscape", "VirtualAlloc")) {
+                            "ExtEscape", "VirtualAlloc",
+                            # The clipped pass, which is what covers Phase 5's
+                            # clipping-regions gate item.
+                            "CreateRectRgn", "CombineRgn", "SelectClipRgn")) {
     if ($dumpText -notmatch "(?m)\s$([regex]::Escape($requiredApi))\s*$") {
         throw "The GDI smoke test is missing import $requiredApi."
     }

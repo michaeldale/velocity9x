@@ -759,6 +759,108 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
 
 #define V9X_SOAK_DRAGS              60
 
+/*
+ * Clipped drawing, which PLAN.md's Phase 5 exit gate names and which nothing
+ * here covered until now.
+ *
+ * The argument for not covering it was that GDI clips before the driver sees a
+ * blit, so the driver never receives a rectangle it could mishandle. That is an
+ * argument rather than a measurement, and it is also not quite what happens: a
+ * blit straddling a multi-rectangle clip region is *split*, and the driver
+ * receives one call per piece. Those pieces are what this exercises.
+ *
+ * The region is two disjoint rectangles with a gap between them, so a fill drawn
+ * across all three areas must come back as two painted bands with the original
+ * contents surviving in between. Both DCs get the same region, so the reference
+ * clips identically and the comparison is about the driver's handling of the
+ * pieces rather than about clipping itself.
+ *
+ * Two things this has to avoid being vacuous about, both checked by the caller:
+ * the pieces must stay above the accelerated pixel threshold - hence bands 140
+ * wide rather than a few pixels - and the pass must be shown to have produced
+ * accelerated operations rather than declines.
+ *
+ * The clip region is deselected before any readback: the comparison reads
+ * through the same DC, and a region left selected would clip the readback too
+ * and hide exactly what it is meant to inspect.
+ */
+#define V9X_CLIP_BAND_WIDTH   140
+#define V9X_CLIP_OPERATIONS    24
+
+static int v9x_accel_clipped_pass(V9X_ACCEL_STATE *state, DWORD *operations,
+                                  long *difference)
+{
+    HRGN left = CreateRectRgn(state->origin_x,
+                              state->origin_y,
+                              state->origin_x + V9X_CLIP_BAND_WIDTH,
+                              state->origin_y + V9X_ACCEL_HEIGHT);
+    HRGN right = CreateRectRgn(state->origin_x + V9X_ACCEL_WIDTH -
+                                   V9X_CLIP_BAND_WIDTH,
+                               state->origin_y,
+                               state->origin_x + V9X_ACCEL_WIDTH,
+                               state->origin_y + V9X_ACCEL_HEIGHT);
+    /* The reference DC has no window margin, so its region is the same two
+     * bands translated to the bitmap's own origin. */
+    HRGN reference_left = CreateRectRgn(0, 0, V9X_CLIP_BAND_WIDTH,
+                                        V9X_ACCEL_HEIGHT);
+    HRGN reference_right = CreateRectRgn(
+        V9X_ACCEL_WIDTH - V9X_CLIP_BAND_WIDTH, 0, V9X_ACCEL_WIDTH,
+        V9X_ACCEL_HEIGHT);
+    int ok = 0;
+    DWORD index;
+
+    *operations = 0ul;
+    if (left == 0 || right == 0 || reference_left == 0 ||
+        reference_right == 0) {
+        goto done;
+    }
+    CombineRgn(left, left, right, RGN_OR);
+    CombineRgn(reference_left, reference_left, reference_right, RGN_OR);
+    SelectClipRgn(state->screen, left);
+    SelectClipRgn(state->reference, reference_left);
+
+    for (index = 0ul; index < V9X_CLIP_OPERATIONS; ++index) {
+        HBRUSH brush = CreateSolidBrush(
+            v9x_accel_colors[v9x_accel_random(16ul)]);
+        HBRUSH previous_screen = (HBRUSH)SelectObject(state->screen, brush);
+        HBRUSH previous_reference = (HBRUSH)SelectObject(state->reference,
+                                                        brush);
+        int height = 40 + (int)v9x_accel_random(80ul);
+        int y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+
+        /* Full width, so every operation straddles both bands and the gap. */
+        if ((index & 1u) == 0u) {
+            PatBlt(state->screen, state->origin_x, state->origin_y + y,
+                   V9X_ACCEL_WIDTH, height, PATCOPY);
+            PatBlt(state->reference, 0, y, V9X_ACCEL_WIDTH, height, PATCOPY);
+        } else {
+            int source_y = (int)v9x_accel_random(
+                (DWORD)(V9X_ACCEL_HEIGHT - height));
+
+            BitBlt(state->screen, state->origin_x, state->origin_y + y,
+                   V9X_ACCEL_WIDTH, height, state->screen,
+                   state->origin_x, state->origin_y + source_y, SRCCOPY);
+            BitBlt(state->reference, 0, y, V9X_ACCEL_WIDTH, height,
+                   state->reference, 0, source_y, SRCCOPY);
+        }
+        SelectObject(state->screen, previous_screen);
+        SelectObject(state->reference, previous_reference);
+        DeleteObject(brush);
+        ++*operations;
+    }
+
+    SelectClipRgn(state->screen, 0);
+    SelectClipRgn(state->reference, 0);
+    ok = v9x_accel_compare(state, difference);
+
+done:
+    if (left != 0) { DeleteObject(left); }
+    if (right != 0) { DeleteObject(right); }
+    if (reference_left != 0) { DeleteObject(reference_left); }
+    if (reference_right != 0) { DeleteObject(reference_right); }
+    return ok;
+}
+
 static void v9x_soak_drag_window(HWND window, DWORD drags)
 {
     int screen_width = GetSystemMetrics(SM_CXSCREEN);
@@ -1022,6 +1124,78 @@ static DWORD v9x_accel_run(HWND window)
      */
     if (error == 0 && stats.calls <= before.calls) {
         error = "dispatcher-never-called";
+    }
+
+    /*
+     * The clipped pass runs BEFORE fault injection, and the order is not
+     * incidental: injection poisons the session on purpose, and a poisoned
+     * driver declines everything at the first gate. Run the other way round
+     * this pass reported 100 dispatcher calls with 99 of them declining as
+     * disabled, which is the latch doing its job rather than anything to do
+     * with clipping.
+     */
+    /*
+     * The clipped pass, which Phase 5's gate names and nothing covered before.
+     * Its own anti-vacuous check is the accelerated-operation count: if the clip
+     * split every blit into pieces the gates declined, the pixels would still
+     * match and the pass would prove nothing about the driver.
+     */
+    if (error == 0 && accelerated_depth && stats.enabled != 0ul) {
+        V9X_GDI_STATS clipped;
+        DWORD clip_operations = 0ul;
+        int clip_ok = v9x_accel_clipped_pass(&state, &clip_operations,
+                                             &difference);
+
+        v9x_accel_write_uint("ClipOperations", clip_operations);
+        if (!v9x_accel_read_stats(state.screen, &clipped)) {
+            error = "escape-rejected-clipped";
+        } else {
+            DWORD accelerated = (clipped.fills - stats.fills) +
+                                (clipped.copies - stats.copies);
+
+            v9x_accel_write_uint("ClipAccelerated", accelerated);
+            /* Calls first: if the dispatcher was not reached at all then GDI
+             * did not route a clipped blit through ordinal 1, which is an
+             * answer about the platform rather than about the driver. */
+            v9x_accel_write_uint("ClipCalls", clipped.calls - stats.calls);
+            v9x_accel_write_uint("ClipDeclines",
+                                 clipped.declines - stats.declines);
+            v9x_accel_write_uint("ClipDeclineDisabled",
+                                 clipped.decline_disabled -
+                                     stats.decline_disabled);
+            v9x_accel_write_uint("ClipDeclineNotScreen",
+                                 clipped.decline_not_screen -
+                                     stats.decline_not_screen);
+            v9x_accel_write_uint("ClipDeclineBusy",
+                                 clipped.decline_busy - stats.decline_busy);
+            v9x_accel_write_uint("ClipDeclineRop",
+                                 clipped.decline_rop - stats.decline_rop);
+            v9x_accel_write_uint("ClipDeclineGeometry",
+                                 clipped.decline_geometry -
+                                     stats.decline_geometry);
+            v9x_accel_write_uint("ClipDeclineOverlap",
+                                 clipped.decline_overlap -
+                                     stats.decline_overlap);
+            v9x_accel_write_uint("ClipDeclineThreshold",
+                                 clipped.decline_threshold -
+                                     stats.decline_threshold);
+            v9x_accel_write_uint("ClipDeclineEngine",
+                                 clipped.decline_engine -
+                                     stats.decline_engine);
+            if (!clip_ok) {
+                if (difference >= 0l) {
+                    v9x_accel_report_mismatch(&state, difference);
+                }
+                error = "clipped-pixel-mismatch";
+            } else if (accelerated == 0ul) {
+                error = "clipped-operations-never-accelerated";
+            }
+        }
+    } else if (error == 0) {
+        v9x_accel_write_uint("ClipOperations", 0ul);
+        v9x_accel_write_text("ClipSkipped",
+                             accelerated_depth ? "no-primitive-enabled"
+                                               : "depth-not-accelerated");
     }
 
     /*
