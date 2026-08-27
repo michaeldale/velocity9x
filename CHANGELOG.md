@@ -84,6 +84,30 @@ build 001 rather than this one. Both are the plan's insistence on landing the
 harness before the first build that turns a primitive on, paying for itself on
 its first use.
 
+Added: **GDI acceleration build `gdi-accel-002` - non-overlapping
+screen-to-screen copies now run on the engine on both S3 chips.** That is the
+operation behind a window scroll and a window move. Overlapping copies still
+decline, and the decline is itself checked now: `decline_overlap` is its own
+counter and the run fails if copy is on, overlap is off, and no overlapping copy
+was declined. The first run's counts made the correspondence exact - 99 disjoint
+copy operations produced 99 engine copies, 58 overlapping ones produced 58
+overlap declines.
+
+Fixed with it, and found by reading the reference driver rather than by a test:
+a copy makes the engine *read* the framebuffer, so the software cursor has to be
+excluded from the source rectangle as well as the destination, or it is copied
+into the destination. The reference keeps a separate `B_SWCursorExcludeUnion`
+for exactly that and this driver had only the destination form.
+
+An automated check for that was written and then **measured to be vacuous** - a
+driver built to exclude only the destination passed it 40 out of 40 - so it was
+removed rather than kept. The reason it cannot work is structural: every screen
+readback available to a Win32 application goes through the DIB Engine, which
+announces framebuffer access and lifts the software cursor before the read. No
+readback-based comparison can tell a correct source exclusion from a missing
+one. The cursor-over-source case therefore has no automated coverage here, which
+is recorded rather than glossed.
+
 Added: **GDI acceleration build `gdi-accel-001` - solid rectangle fills now run
 on the engine on both S3 chips.** This is the first drawing operation Velocity9x
 accelerates outside DirectDraw. It is on because it was measured rather than

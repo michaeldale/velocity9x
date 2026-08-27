@@ -92,7 +92,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | **No** | **No** | **No** |
-| GDI acceleration | Solid fill (S3D) | Solid fill (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
+| GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
 
 The Trio32/64 target is intentionally a software-GDI plus DirectDraw baseline.
@@ -263,10 +263,11 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
 
 - **Partial GDI acceleration.** The retail drivers accelerate desktop blits,
   fills and line drawing through the same 2D engine Velocity9x used to reserve
-  for DirectDraw. Of those, **solid rectangle fills are now accelerated on both
-  S3 chips** (build `gdi-accel-001`); screen-to-screen copies are compiled but
-  still off pending build 002, and everything else goes through the DIB Engine
-  in software. On ATI, VBE and Matrox every operation declines and always will:
+  for DirectDraw. Of those, **solid rectangle fills and non-overlapping
+  screen-to-screen copies are now accelerated on both S3 chips** (builds
+  `gdi-accel-001` and `002`) — the operations behind a desktop fill and a window
+  scroll or move. Overlapping copies still decline pending build 003, and
+  everything else goes through the DIB Engine in software. On ATI, VBE and Matrox every operation declines and always will:
   those chips have no 2D engine. Every accelerated case keeps a DIB Engine
   fallback, a bounded wait, and a session-long poison latch that turns
   acceleration off for good if the engine ever fails to respond - so the desktop

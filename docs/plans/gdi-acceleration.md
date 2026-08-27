@@ -57,7 +57,7 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 |---|---|---|---|
 | gdi-accel-000 **(done)** | All infrastructure + primitives compiled, default-off; shared 2D register header; HAL Lock/Flip drain audit; `/accel` harness; per-family enable gate | off | **Behaviour** unchanged (not bytes - see below): V9XGDI PASS and the new `/accel` phase on the full mode matrix, on the engine family **and on an engine-less one**; Ironfield numbers unchanged; one manual INI-on run proving fill fires |
 | gdi-accel-001 **(done)** | Solid fill (BLACKNESS/WHITENESS as ROPs, PATCOPY from the realized brush) | fill on | Randomized fill comparison PASS, engine counters nonzero, timeout injection recovers, DD probes unchanged |
-| gdi-accel-002 | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
+| gdi-accel-002 **(done)** | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
 | gdi-accel-003 | Overlap in all 8 directions | +overlap on | Randomized overlap PASS both chips; **full PLAN.md Phase 5 exit gate** |
 | gdi-accel-004 | CPU-to-screen upload (design after 003) | off | Same harness with memory-source ops |
 | gdi-accel-005 | Extra ROPs (DSTINVERT, PATINVERT, DPx/DPa) | per-ROP INI | Per-ROP conformance |
