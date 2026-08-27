@@ -2,8 +2,10 @@
 
 Date: 2026-08-28
 
-Status: Track A complete 2026-08-28 (A1 pre-existing, A2/A3/A4 done);
-Tracks B and C not started
+Status: Track A complete 2026-08-28 (A1 pre-existing, A2/A3/A4 done).
+Track C resolved to 3dfx: the card is a confirmed Voodoo3, planned in
+[3dfx-voodoo3-family.md](3dfx-voodoo3-family.md). Track B queues before that
+plan's D3D phase.
 
 This roadmap came out of three reviews on 2026-08-28: the stale
 `intel-gma-tier0` branch (what to salvage), the cost of adding a new VGA
