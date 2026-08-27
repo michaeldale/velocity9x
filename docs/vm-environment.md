@@ -115,3 +115,27 @@ Remote agent 0.5.2 reports `BitsPerPixel` as 0 against the Velocity9x driver
 while reporting it correctly against the stock S3 driver. Colour depth is
 therefore verified from the guest-side `C:\V9XDIAG\V9XGDI.INI` result, not from the
 agent's `info`.
+
+## Win98SE-BX-Trio64 (added 2026-08-28)
+
+The fleet's only P6-class Win98 guest. Cloned from `Win98SE-Trio64` and
+reconfigured onto a 440BX board with a Pentium II, to test whether the
+memory-type inspection's MSR path could be exercised in an emulator.
+
+- Profile: `<86Box VMs>\Win98SE-BX-Trio64`
+- `machine = 686bx`, `cpu_family = pentium2_deschutes`, `cpu_speed = 350 MHz`
+- `gfxcard = s3_trio64_pci`, unchanged from its parent
+- Agent port: host 9873 -> guest 9869
+
+It answered the question with a no: 86Box emulates no MTRRs on any CPU, so
+this guest reports the same `V9X_MTRR_NO_MTRR` as the Socket 7 ones (see
+docs\decisions\2026-08-28-mtrr-stage-a-inspect-only.md).
+
+It is kept regardless. It is the only guest here whose board has AGP and whose
+CPU is P6-class, which is the right era pairing for the Voodoo3 work
+(docs\plans\3dfx-voodoo3-family.md) in a way the Socket 7 boards are not.
+
+Win98 required one interactive "restart to finish setting up your new
+hardware" acknowledgement on first boot after the board change; nothing else.
+No install media was needed - the chipset re-detection completed from what was
+already on the image.

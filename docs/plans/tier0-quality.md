@@ -13,7 +13,11 @@ rule restated: ideas only; the implementations are written from the Intel
 SDM, chip documentation, and this repository's own interfaces, with no
 third-party driver source copied.
 
-Ordered by value. Each item is independently shippable.
+Ordered by value as first written. **That order is now provisional for D1**:
+its Stage A measurements found that only two machines in the fleet have MTRRs
+at all, so the write-combining win is smaller and harder to iterate on than
+this plan assumed - see the decision record linked under D1. D4, D2 and D3 are
+unaffected, and D4 is the better next item.
 
 ## D1. MTRR write-combining on the linear framebuffer
 

@@ -2,7 +2,9 @@
 
 Date: 2026-08-28
 
-Status: implemented, unmeasured on hardware
+Status: implemented; measured on three emulated guests 2026-08-28, and the
+first finding is that most of this project's targets have no MTRRs at all
+(see "First measurements" below). Unmeasured on physical hardware.
 
 Plan: [tier0-quality.md](../plans/tier0-quality.md) item D1.
 
@@ -82,13 +84,63 @@ machine instead of taken on trust.
 quietly become Stage B: adding the write is a staged change that updates that
 check with it.
 
+## First measurements, 2026-08-28
+
+Three emulated guests, all reporting the same thing:
+
+| Guest | CPU | `Mtrr=` |
+|---|---|---|
+| Win86SE (ViRGE/DX) | Pentium MMX 200 | `cpu=0003 cap=0 def=0 n=0 r=3` |
+| Win98SE-Trio64 | Pentium MMX 200 | `cpu=0003 cap=0 def=0 n=0 r=3` |
+| Win98SE-BX-Trio64 | Pentium II 350 | `cpu=0003 cap=0 def=0 n=0 r=3` |
+
+`cpu=0003` is CPUID plus MSR and **not** MTRR; `r=3` is `V9X_MTRR_NO_MTRR`.
+`cap` and `def` are zero because no `RDMSR` executed at all - which is the
+capability ladder working exactly as designed, and the single most important
+thing Stage A had to prove. All three guests reached `Stage=enable-ok` with no
+boot hang.
+
+Two findings, and the second one is the significant one.
+
+**1. 86Box does not emulate MTRRs, on any CPU.** The third row above is a
+440BX/Pentium II guest built specifically to test the MSR path
+(`Win98SE-BX-Trio64`, cloned from the Trio64 image, external agent port 9873);
+it reports no MTRR bit either, and the 86Box binary contains no MTRR code. So
+no 86Box guest can ever exercise the register reads, whatever CPU it is given.
+The guest is kept anyway: it is the fleet's only P6-class Win98 target, and a
+440BX board with AGP is the right era pairing for the coming Voodoo3 work in a
+way the Socket 7 boards are not.
+
+**2. Most of this project's hardware predates MTRRs.** They are a Pentium Pro
+(P6, 1995) feature. The classic Pentium and Pentium MMX have MSRs but no
+MTRRs, so:
+
+- BARRY is a pre-MMX Pentium (established in the CrystalMark baseline: Ironfield
+  reports `MMX OFF`), so it has **no MTRRs** and will report `r=3`;
+- the 486 VLB machine has neither, and runs no mini-VDD anyway;
+- every 86Box guest is out, per finding 1.
+
+That leaves exactly two targets that can benefit: the **netbook** (Atom N280,
+945GSE) and **SOLO2150** (450 MHz Pentium II, Rage Mobility-M). Both are
+physical, and the netbook is the machine tier-0's uncached drawing hurts most,
+so the win is still real - but it is a two-machine win, not a fleet-wide one,
+and Stage B's cost/benefit has to be argued on that basis rather than on the
+general claim the plan opened with.
+
+This is exactly what Stage A was for. It cost one boot per guest and it
+changed the size of the prize before any dangerous code was written.
+
 ## What Stage B needs before it is written
 
-1. `Mtrr=` lines from every reachable machine: BARRY (physical Trio64), the
-   netbook (945GSE), the 486 if it ever runs a mini-VDD, and both emulated
-   guests. The interesting number is the reason code - if real BIOSes mostly
+1. `Mtrr=` lines from the two machines that can produce anything but `r=3`:
+   the **netbook** and **SOLO2150**. The emulated guests and BARRY are already
+   measured and answer `no MTRRs` (above), so they can neither validate the
+   rules nor benefit. The interesting number is the reason code - if those two
    report a non-UC default, the central rule needs rethinking before any code
    is written, and that is exactly the finding this stage exists to produce.
+   Until then Stage B has no target it can be developed against in an
+   emulator, which is a materially worse iteration loop than any other work in
+   this project and is itself an argument for scheduling it late.
 2. A measured before/after on the netbook, which needs the write; until then
    the size of the win is an expectation, not a number.
 3. The write sequence itself: interrupts off, CR4.PGE cleared (only where
