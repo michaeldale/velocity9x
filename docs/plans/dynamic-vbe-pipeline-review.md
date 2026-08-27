@@ -1,5 +1,10 @@
 # Review of docs/plans/dynamic-vbe-pipeline.md
 
+Status: closed — this is a point-in-time review, not a plan; the reviewed
+pipeline has since shipped in 0.5.0. Renamed on 2026-08-28 from
+`for-tier-0-issue-we-concurrent-mist.md`, a garbled dictation-artifact
+filename.
+
 ## Context
 
 Michael asked for a review of the dynamic VBE pipeline plan in the velocity9x repo

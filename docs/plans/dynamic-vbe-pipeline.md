@@ -1,5 +1,9 @@
 # Dynamic VBE pipeline
 
+Status: implemented — Stages 1–5 shipped in 0.5.0 (2026-08-26). Inertness on
+scan-disabled physical S3 silicon was validated separately; see
+[s3-physical-pipeline-validation.md](s3-physical-pipeline-validation.md).
+
 ## Purpose
 
 Finish Velocity9x's generic VBE path so the modes offered by the video BIOS

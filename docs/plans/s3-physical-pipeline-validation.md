@@ -1,5 +1,9 @@
 # Validating the dynamic VBE pipeline is inert on physical S3 silicon
 
+Status: executed (2026-08-27) — run on BARRY; results are in the 0.6.0
+CHANGELOG entry and the
+[CrystalMark baseline decision](../decisions/2026-08-27-crystalmark-barry-baseline.md).
+
 ## Context
 
 Velocity9x 0.5.0 shipped the dynamic VBE pipeline (Stages 1-5 of

@@ -1,5 +1,10 @@
 # Velocity9x: 24/32-bit colour + dynamic mode discovery (widescreen included)
 
+Status: partially superseded (2026-08-26) — the dynamic-discovery and EDID/DDC
+portions were re-planned and shipped via
+[dynamic-vbe-pipeline.md](dynamic-vbe-pipeline.md); the completed high-depth
+(24/32-bpp) work and its hardware evidence remain valid.
+
 ## Context
 
 Velocity9x currently offers only 8/16bpp at 640x400/640x480/800x600/1024x768,

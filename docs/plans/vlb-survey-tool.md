@@ -1,5 +1,8 @@
 # Survey tool v2: a 486 with an S3 Trio VLB
 
+Status: implemented — the v2 survey ran on the 486; its captured INIs are the
+`2026-08-21-vlb-survey-486-trio64-*.ini` files under `docs\decisions\`.
+
 ## Context
 
 We want VLB support. The card in hand is an S3 Trio on VESA Local Bus in a 486,

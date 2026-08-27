@@ -1,5 +1,11 @@
 # A manual-select INF model, then the first driver run on the 486
 
+Status: implemented — the manual-select model landed (0.4.4 era) and the first
+driver run on the 486 happened; outcomes and the open ends are in the
+[2026-08-21 first-run](../handoffs/2026-08-21-vlb-first-driver-run.md) and
+[2026-08-22 handover](../handoffs/2026-08-22-vlb-manual-select-handover.md)
+handoffs.
+
 ## Context
 
 The [VLB bring-up handoff](../handoffs/2026-08-21-vlb-bringup.md) leaves the S3

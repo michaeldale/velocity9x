@@ -1,6 +1,11 @@
 # Multi-chip restructure plan
 
-Status: proposed (2026-08-15)
+Status: implemented (proposed 2026-08-15). The tree now carries this
+structure: per-family manifests under `packaging\families\`, chip modules
+under `src\chipsets\`, the hw16 hook table, and runtime PCI dispatch. Kept as
+the record of the decisions taken; the intel-gma family it deferred remains
+deferred (see
+[family-structure-and-next-d3d-roadmap.md](family-structure-and-next-d3d-roadmap.md)).
 
 ## Context
 

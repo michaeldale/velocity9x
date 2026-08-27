@@ -13,9 +13,10 @@ when scheduled, per house convention.
 
 Existing plans this defers to rather than repeats:
 
-- `docs/plans/dynamic-vbe-pipeline.md` — stages 2–5 are open and are this
-  roadmap's first dependency. Stage 1 (bounded mini-VDD enumeration,
-  diagnostic only) is merged.
+- `docs/plans/dynamic-vbe-pipeline.md` — **complete**: stages 1–5 shipped in
+  0.5.0 and the physical-S3 inertness validation ran on BARRY (0.6.0). An
+  earlier draft of this roadmap treated stages 2–5 as open; corrected
+  2026-08-28.
 - `docs/decisions/2026-08-24-chipset-hal-free-split.md` — the noted, not
   scheduled, chipset-library refactor. Nothing here schedules it, and Track A
   deliberately avoids touching the chipset/driver boundary it discusses.
@@ -28,22 +29,19 @@ Goal: adding a VGA chipset at tier-0 collapses to *manifest + survey evidence*,
 with no hand-edited C or build-script lists. Four items, ordered; each is
 independently shippable and none blocks the others' rollback.
 
-### A1. Finish the dynamic VBE pipeline (stages 2–5)
+### A1. Dynamic VBE pipeline — already done
 
-This is the prerequisite that kills the per-family audited mode table, and it
-is already planned and staged in `docs/plans/dynamic-vbe-pipeline.md`. Nothing
-to re-plan here; this roadmap just records that A2–A4 sequence *after* stage 3
-(DirectDraw publication) at the earliest, because:
+The prerequisite that kills the per-family audited mode table shipped before
+this roadmap was written: stages 1–5 of `docs/plans/dynamic-vbe-pipeline.md`
+landed in 0.5.0, and the netbook findings work in 0.6.0 built on it. The
+static `V9X_HW16_MODE` rows already hold the plan's fallback role (and remain
+primary on Win95 by design, per the mini-VDD Code-24 constraint). Nothing to
+do; A2 can start immediately against the settled consumption path in
+`ddi.c`/`dd16.c`.
 
-- Stage 2/3 change what `ddi.c`/`dd16.c` consume, and A2's generated registry
-  should be built against the settled consumption path, not the moving one.
-- The netbook evidence (`docs/issues/2026-08-27-netbook-gma950-findings.md`)
-  is the proof case: an unlisted VBIOS with OEM-numbered panel modes must
-  arrive at the full mode list with zero family C code.
-
-Exit gate: the vbe family's static `V9X_HW16_MODE` rows are demoted to the
-plan's stated fallback role on Win98, and a Have-Disk install on the netbook
-publishes the panel's native mode without a family table row naming it.
+One follow-up worth confirming when convenient: a Have-Disk install on the
+netbook after 0.6.0 should now publish the panel's native OEM-numbered mode
+with zero family C code — the 2026-08-27 run predates parts of this.
 
 ### A2. Generate the backend registry from the family manifests
 
@@ -173,11 +171,10 @@ exit gate.
 
 ## Sequencing
 
-1. **A1** (dynamic VBE stages 2–5) — in flight, everything else queues behind
-   its stage 3.
-2. **A2 + A3** — one small branch each, order between them free.
-3. **A4** — any time; the doc/tool cherry-picks (items 1–2) do not even need
-   to wait for A1.
+1. **A1** — already shipped (0.5.0/0.6.0); nothing queues behind it.
+2. **A2 + A3** — one small branch each, order between them free; can start
+   now.
+3. **A4** — any time.
 4. **Track B decision doc** — any time; **Track B execution** when 5 is
    scheduled.
 5. **Track C: 3dfx family** — tier-0 first, which after A1–A3 is

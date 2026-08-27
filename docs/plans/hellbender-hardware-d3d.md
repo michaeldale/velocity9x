@@ -2,6 +2,12 @@
 
 Date: 2026-08-12
 
+Status: closed (2026-08-15) — the milestone target does not exist. Pixel
+comparison against the retail S3 ViRGE driver established that Hellbender
+renders in software on both drivers; no publishable capability moves it onto
+hardware Direct3D (commit `beee733`). The capability and stability work done
+under this plan stands and is what later titles build on.
+
 Current implementation and VM-test status is recorded in the dated
 [2026-08-13 review handoff](../handoffs/2026-08-13-hellbender-d3d-review.md).
 Read and run its regression gates before reproducing the current hard wedge;

@@ -1,5 +1,9 @@
 # GDI acceleration, build 000: a provably free decline path and the harness that can judge it
 
+Status: implemented — shipped with the 2026-08-26 decision record
+([2026-08-26-gdi-accel-000.md](../decisions/2026-08-26-gdi-accel-000.md)) and
+validated on physical Trio64 silicon in 0.6.0.
+
 Parent plan: [gdi-acceleration.md](gdi-acceleration.md), which owns the design
 and the `gdi-accel-000`..`005` rollout table. This is the implementation plan for
 the next stage only: **build 000 plus the `/accel` harness**. It exists because

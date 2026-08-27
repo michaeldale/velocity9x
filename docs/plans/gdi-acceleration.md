@@ -1,5 +1,13 @@
 # Conservative GDI acceleration (PLAN.md Phase 5)
 
+Status: in progress (2026-08-28) — build `gdi-accel-000` shipped
+([decision](../decisions/2026-08-26-gdi-accel-000.md)) and its physical-Trio64
+corruption was fixed in 0.6.0; the remaining builds of the `000`..`005`
+rollout table are pending. The "Corrections" section below records where this
+document has drifted from the refactored tree; read
+[gdi-accel-000-and-harness.md](gdi-accel-000-and-harness.md) for the
+implementation-accurate account of build 000.
+
 ## Context
 
 Velocity9x's GDI path today is a pure DIB Engine passthrough: every drawing ordinal in `src/display16/dib_thunks.asm` is an unconditional `jmp DIB_*` (e.g. line 74 `V9X_FORWARD BitBlt, DIB_BitBlt`). Meanwhile the 32-bit DirectDraw HAL (`src/display32/ddhal.c`) already drives the ViRGE S3D and Trio64 8514/A 2D engines successfully — screen-to-screen SRCCOPY with overlap handling and solid fills, with bounded waits, engine reset, and measured wins (Ironfield BltFast 3→18 FPS, see `docs/decisions/2026-08-14-virge-blitter.md`). This plan brings that engine to GDI: desktop fills and window scrolls/moves go to hardware, everything else declines to the DIB Engine unchanged. It implements PLAN.md Phase 5 ("Conservative GDI acceleration", one primitive at a time, DIB fallback for every unsupported case, desktop must survive engine timeouts).

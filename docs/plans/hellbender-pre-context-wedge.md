@@ -2,6 +2,11 @@
 
 Date: 2026-08-13
 
+Status: closed — the wedge was diagnosed and fixed (mode-teardown PDEVICE
+guard; see the 0.2-era CHANGELOG entries), and the parent milestone was then
+closed on 2026-08-15 when Hellbender was shown never to use hardware Direct3D
+on the ViRGE (see [hellbender-hardware-d3d.md](hellbender-hardware-d3d.md)).
+
 Related: [2026-08-13 handoff](../handoffs/2026-08-13-hellbender-d3d-review.md),
 [Hellbender hardware Direct3D plan](hellbender-hardware-d3d.md)
 

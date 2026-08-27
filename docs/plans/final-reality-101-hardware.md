@@ -1,6 +1,7 @@
 # Final Reality 1.01 hardware Direct3D
 
-Status: hardware enumeration and benchmark submission path working on VM 9869;
+Status (2026-08-14, still current as of 2026-08-28):
+hardware enumeration and benchmark submission path working on VM 9869;
 subpixel accuracy, specular Gouraud, vertex fog, vertex-alpha blending,
 ARGB1555 texturing, mipmapping, and trilinear filtering working. Real Z-buffer
 state remains incomplete.
