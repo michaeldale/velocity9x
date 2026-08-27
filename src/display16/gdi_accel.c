@@ -595,6 +595,46 @@ static WORD v9x_gdi_virge_upload(const V9X_GDI_OP *op)
 }
 
 /*
+ * Establish the engine's latched global state.
+ *
+ * Everything here is write-only and undefined or inherited, and the databook
+ * lists it as the setup every drawing operation depends on (DB014-B 13.4.2).
+ * Before this existed the driver programmed only the per-operation registers -
+ * colour, mix, coordinates, extent, command - and inherited clipping, colour
+ * compare, the write mask and the destination base from whatever had used the
+ * engine previously. In emulation that inheritance is a zeroed struct and
+ * everything works; on real Trio64 silicon it is whatever the BIOS, the VDD or
+ * a DirectDraw session left, and the fills went nowhere.
+ *
+ * Written before the per-operation registers, and written on every operation
+ * rather than once at Enable: the 32-bit HAL drives the same engine through the
+ * same registers with no lock shared with this side, so state established once
+ * here could be changed underneath by a DirectDraw blit between two GDI calls.
+ */
+static void v9x_gdi_trio_prepare(void)
+{
+    /* Both bases in the first MByte of display memory, no external clipping,
+     * no colour compare. */
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_MULT_MISC2);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_MULT_MISC);
+    /* All planes enabled for writing. */
+    v9x_gdi_port_out_word(V9X_TRIO_WRT_MASK, V9X_TRIO_WRT_MASK_ALL);
+    /*
+     * The clip rectangle, opened to the engine's full 12-bit coordinate space.
+     * The dispatcher's geometry gate has already bounded the operation to the
+     * surface, so a second and narrower bound here would only be another thing
+     * to get wrong - and with EXT CLIP now known to be clear, wide open means
+     * wide open.
+     */
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_SCISSORS_T);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_SCISSORS_L);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_B | V9X_TRIO_SCISSORS_MAX));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_R | V9X_TRIO_SCISSORS_MAX));
+}
+
+/*
  * Solid rectangle fill on the Trio32/64 enhanced 8514/A engine, per the
  * databook section 13.3.3 sequence the 32-bit side already drives.
  *
@@ -610,6 +650,7 @@ static WORD v9x_gdi_trio_fill(const V9X_GDI_OP *op)
     if (v9x_gdi_wait_idle() == 0u) {
         return 0u;
     }
+    v9x_gdi_trio_prepare();
     v9x_gdi_port_out_word(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_NEW);
     v9x_gdi_port_out_word(V9X_TRIO_FRGD_COLOR, (WORD)op->color);
     v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
@@ -626,8 +667,8 @@ static WORD v9x_gdi_trio_fill(const V9X_GDI_OP *op)
     /* Where the engine's memory origin is being taken from. See the note on
      * last_cr6a: a non-zero bank would put this fill outside the displayed
      * part of video memory. */
+    v9x_gdi.last_cr50 = (DWORD)v9x_gdi_crtc_read(0x50u);
     v9x_gdi.last_cr6a = (DWORD)v9x_gdi_crtc_read(0x6au);
-    v9x_gdi.last_cr35 = (DWORD)v9x_gdi_crtc_read(0x35u);
     v9x_gdi.last_cr51 = (DWORD)v9x_gdi_crtc_read(0x51u);
     v9x_gdi.last_cr31 = (DWORD)v9x_gdi_crtc_read(0x31u);
     return 1u;

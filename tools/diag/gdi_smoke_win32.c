@@ -974,8 +974,8 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("LastPitch", stats->last_pitch);
     v9x_accel_write_hex("LastStatusEntry", stats->last_status_entry);
     v9x_accel_write_hex("LastStatusIssued", stats->last_status_issued);
+    v9x_accel_write_hex("LastCR50", stats->last_cr50);
     v9x_accel_write_hex("LastCR6A", stats->last_cr6a);
-    v9x_accel_write_hex("LastCR35", stats->last_cr35);
     v9x_accel_write_hex("LastCR51", stats->last_cr51);
     v9x_accel_write_hex("LastCR31", stats->last_cr31);
     v9x_accel_write_uint("LastRop256", stats->last_rop256);

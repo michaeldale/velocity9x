@@ -142,6 +142,51 @@ engine is demonstrably working for the 32-bit caller seconds earlier, on the sam
 silicon, at the same mode. Nothing is missing that a DirectDraw session
 establishes.
 
+## The databook, and the engine state no driver here was programming
+
+The S3 Trio32/Trio64 databook (bitsavers `DB014-B`, March 1995) settles several
+things the source could not.
+
+**The command word is right.** Section 13.3.3.3 "Rectangle Fill Solid" gives the
+sequence literally, ending `ES:[CMD] <= 0100000010110001b` - which is `0x40b1`,
+this driver's `V9X_TRIO_CMD_RECT_SOLID`, unchanged.
+
+**CR50 is right, and is not the difference.** "Extended System Cont 1" defines
+bits 7-6 plus bit 0 as `GE-SCR-W`, the *Graphics Engine Command Screen Pixel
+Width* (`000`=1024 `001`=640 `010`=800 `011`=1280 `100`=1152 `110`=1600, bit 0
+being the field's MSB), and bits 5-4 as `PXL-LNGH`, the pixel length for
+Enhanced mode command execution. So the engine keeps its own width and pixel
+length, independent of the display pitch. Measured at fill time: `CR50=0x90` on
+BARRY and `0x92` on the emulated Trio64 - both decode to width 800 and 2
+bytes/pixel at 800x600x16, differing only in bit 1, which the databook lists as
+Reserved.
+
+**Section 13.4.2 "Initial Setup" lists global state this driver never
+programmed**, and the list is short and specific: the clipping registers
+(BEE8H indices 1-4) with the internal/external clipping choice (index 0EH bit
+5); colour compare (index 0EH bit 8, comparison colour in B2E8H); and the Write
+Mask (AAE8H), where "all planes are enabled for writing unless explicitly set
+otherwise". All of it is **write only**, the scissors' power-on default is
+**Undefined**, and this driver programmed only the per-operation registers -
+colour, mix, coordinates, extent, command - inheriting the rest from whatever
+last used the engine.
+
+One of those would have made a partial fix worse rather than neutral. Index 0EH
+bit 5 is `EXT CLIP`: with it set, "only pixels **outside** the clipping
+rectangle are drawn", so opening the clip rectangle wide *on its own* excludes
+the whole screen. An intermediate attempt here did exactly that.
+
+`v9x_gdi_trio_prepare()` now establishes all of it before every operation -
+both bases in the first MByte, no external clipping, no colour compare, all
+planes writable, clip rectangle open to the engine's full 12-bit space. It is
+written per operation rather than once at Enable because the 32-bit HAL drives
+the same engine through the same registers with no lock shared with this side.
+
+**It is correct, and it does not fix BARRY.** The emulated Trio64 with this
+change returns a perfect probe - `ProbeChangedPixels=3072` of 3072, bounding box
+exactly the requested rectangle - so it is verified non-regressive and it removes
+a real inherited-state risk. BARRY is unchanged at 29 scattered pixels.
+
 ## What is left to explain
 
 The difference is not the registers, the depth, the base, the pitch, or the
@@ -149,35 +194,53 @@ timing (`Poisoned=0` throughout). It is something about the **16-bit calling
 context** that the 32-bit HAL does not share. Candidates not yet tested, in the
 order worth testing:
 
-The question is now narrow: **the engine's memory origin is not where the CRTC
-is scanning out from.** Everything else is accounted for.
+Six hypotheses have now been eliminated by measurement, all of them mine:
 
-Measured at fill time on BARRY at 800x600x16: `CR6A=0x80`, `CR35=0x00`,
-`CR51=0x00`, `CR31=0x89`. Those are recorded rather than interpreted, because
-interpreting S3 bit fields from memory is how three hypotheses died today. The
-next step needs the **S3 Trio32/64 databook** to say which of these sets the
-drawing engine's origin and how it relates to the display start address - not
-another guess.
+| # | Hypothesis | Refuted by |
+|---|---|---|
+| 1 | Pixel-depth mismatch | 800x600x**8** fails identically |
+| 2 | Surface base offset | `LastBase=0`, `LastPitch=1600`, same as emulation |
+| 3 | Missing one-time engine init | `V9XDDP` immediately before the probe: `BltFillPixelOk=1`, probe still fails |
+| 4 | Wrong engine width / pixel length | `CR50=0x90` decodes to 800 and 2 bytes, correct |
+| 5 | Stale scissors alone | Programmed wide open: no change |
+| 6 | Unestablished latched engine state | Full 13.4.2 set programmed: no change on BARRY, perfect in emulation |
 
-One concrete lead worth checking first, because it is cheap and it is in this
-repository rather than in a databook: `V9XDD.INI` on BARRY reports
+The central fact remains unexploited and is the place to start next: **the
+identical register sequence is correct from the 32-bit HAL on this silicon in
+this boot, and wrong from the 16-bit driver.** The engine responds to the 16-bit
+writes - status goes `0x400` to `0x600` on the command - so the ports are
+reaching it. What differs is the surrounding context, not the sequence.
+
+Two candidates for that, neither tested:
+
+1. **I/O virtualisation.** Windows 9x traps ring-3 port access through VMM, and
+   a VxD may virtualise the S3 enhanced-register range per VM. The 16-bit
+   driver's writes and the 32-bit HAL's writes do not necessarily arrive by the
+   same route. A way to test this is wanted before more register theories.
+2. **What the DIB Engine has done to the chip.** The 16-bit path runs mid-GDI
+   operation, after `deBeginAccess` has prepared the surface for CPU access. The
+   32-bit HAL runs under DirectDraw's exclusive lock instead.
+
+One foundational assumption also deserves a check, because everything above
+rests on it: the probe reads back through GDI, so it measures what GDI sees. The
+photographs prove fills do reach the framebuffer *sometimes*. A readback that
+disagrees with the CRTC would invalidate the probe's "nothing changed" - though
+the probe returning an exact 3072-pixel match on two emulated chips argues it is
+sound.
+
+Other registers measured at fill time on BARRY, recorded rather than
+interpreted: `CR6A=0x80`, `CR51=0x00`, `CR31=0x89`.
+
+One cheap in-repo lead is still unchecked: `V9XDD.INI` on BARRY reports
 `GblDisplayPitch=0x640` (1600, correct for this mode) alongside
 `PrimaryPitch=1280`, which is 640x480x16's pitch. That file may simply be stale
-from an earlier run - but if the HAL and the engine disagree about pitch, that is
-exactly the class of fault that would displace every fill, and it would leave the
-32-bit path unaffected.
+from an earlier run, but a HAL and an engine disagreeing about pitch would
+displace every fill and would leave the 32-bit path unaffected.
 
-Also still untested, and not displaced by the above:
-
-- **Concurrent access.** The 32-bit HAL runs under DirectDraw's exclusive lock.
-  The 16-bit path runs whenever GDI calls it, and the engine registers are
-  global, non-reentrant hardware state. The build 000 drain hooks guard
-  CPU-after-engine; nothing guards the other directions.
-
-Three hypotheses of mine were refuted by measurement in this session - pixel
-depth, surface base offset, and missing engine initialisation. That is progress,
-and it is why the probe exists; it is also why the remaining step is
-documentation rather than more inference.
+The databook is at `bitsavers.org/components/s3/DB014-B_Trio32_Trio64_Graphics_Accelerators_Mar1995.pdf`
+(278 pages; note that `www.bitsavers.org` returns 403 and plain `bitsavers.org`
+over https serves it). `DB018-A` covers the Trio64V+, a different part from
+BARRY's 86C764, and was not needed.
 
 ## Superseded: the original next step
 

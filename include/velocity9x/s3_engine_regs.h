@@ -44,6 +44,50 @@
 #define V9X_TRIO_PIXEL_CNTL_FRGD_MIX   0xa000u
 #define V9X_TRIO_FRGD_MIX_NEW          0x0027u
 #define V9X_TRIO_CMD_RECT_SOLID        0x40b1u
+/*
+ * The scissors registers, MULTIFUNC_CNTL sub-registers 1-4, each a 12-bit
+ * coordinate in the low bits with the index in bits 15-12.
+ *
+ * From the S3 Trio32/Trio64 databook (DB014-B, "ENHANCED COMMANDS REGISTER
+ * DESCRIPTIONS", Top/Left/Bottom/Right Scissors): they bound every drawing
+ * operation, they are **write only**, and their power-on default is
+ * **Undefined**. The databook also states outright that "all bitmap updates
+ * are affected by the settings in the clipping registers ... These must be set
+ * up so they include" the target area.
+ *
+ * Nothing in this driver programmed them until 2026-08-27, so every fill was
+ * clipped by whatever the BIOS or the VDD happened to leave behind - which is
+ * invisible in emulation and, on real Trio64 silicon, discarded the drawing
+ * entirely. Being write-only, they cannot be read back to check; the only way
+ * to know their state is to set it.
+ */
+#define V9X_TRIO_SCISSORS_T            0x1000u
+#define V9X_TRIO_SCISSORS_L            0x2000u
+#define V9X_TRIO_SCISSORS_B            0x3000u
+#define V9X_TRIO_SCISSORS_R            0x4000u
+#define V9X_TRIO_SCISSORS_MAX          0x0fffu
+
+/*
+ * The rest of the latched engine state, from the databook's own list of what
+ * every drawing operation depends on (DB014-B section 13.4.2, "Initial Setup"):
+ * the clipping registers and the internal/external clipping choice, colour
+ * compare, and the write mask. All of it is write-only, so none of it can be
+ * read back to check, and this driver programmed none of it before 2026-08-27.
+ *
+ * MULT_MISC (index 0EH) is the one that makes an incomplete fix worse rather
+ * than neutral: bit 5 is EXT CLIP, and with it set "only pixels **outside** the
+ * clipping rectangle are drawn" - so opening the clip rectangle wide, on its
+ * own, excludes the entire screen. Bit 8 enables colour compare, another way to
+ * suppress every pixel. Bits 1-0 and 3-2 put the destination and source in a
+ * chosen MByte of display memory, and index 0DH supersedes them with a 3-bit
+ * form. E000H and D000H are the documented power-on values with every field
+ * zero, which is the state this driver wants: no external clipping, no colour
+ * compare, both bases in the first MByte.
+ */
+#define V9X_TRIO_MULT_MISC2            0xd000u
+#define V9X_TRIO_MULT_MISC             0xe000u
+#define V9X_TRIO_WRT_MASK              0xaae8u
+#define V9X_TRIO_WRT_MASK_ALL          0xffffu
 /* Screen-to-screen BitBLT on the 8514/A-compatible enhanced command set:
  * opcode 6 in bits 15:13, plus write-enable and the two direction bits.
  * FRGD_MIX 0x0067 selects a display-memory source with the SRC mix, which is

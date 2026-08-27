@@ -1302,8 +1302,24 @@ typedef struct v9x_gdi_stats {
      * display, which is exactly what "the engine ran and nothing appeared"
      * looks like.
      */
+    /*
+     * CR50 is the one that matters, and it is the one the first pass at this
+     * failed to read. The Trio32/Trio64 databook (DB014-B, "Extended System
+     * Cont 1") gives it two fields the Graphics Engine uses and the CRTC does
+     * not:
+     *
+     *   bits 7-6 plus bit 0  GE-SCR-W, "Graphics Engine Command Screen Pixel
+     *                        Width" - bit 0 is the field's MSB:
+     *                        000=1024 001=640 010=800 011=1280 100=1152 110=1600
+     *   bits 5-4             PXL-LNGH, pixel length for Enhanced mode command
+     *                        execution: 00=1 byte 01=2 bytes 11=4 bytes
+     *
+     * So the engine has its own screen width and its own pixel length, neither
+     * of which is the display pitch this driver hands it. Nothing in this
+     * driver programs CR50.
+     */
+    DWORD last_cr50;
     DWORD last_cr6a;
-    DWORD last_cr35;
     DWORD last_cr51;
     DWORD last_cr31;
     /*
