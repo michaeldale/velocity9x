@@ -456,6 +456,7 @@ typedef struct v9x_accel_state {
     unsigned char *reference_bits;
     int origin_x;
     int origin_y;
+    HWND window;
 } V9X_ACCEL_STATE;
 
 /*
@@ -498,7 +499,8 @@ static void v9x_accel_report_mismatch(const V9X_ACCEL_STATE *state,
  * operations worth issuing.
  */
 static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
-                                DWORD *fills, DWORD *copies, DWORD *noise)
+                                DWORD *fills, DWORD *copies, DWORD *overlaps,
+                                DWORD *noise)
 {
     int kind = (int)v9x_accel_random(10ul);
     int width;
@@ -544,10 +546,51 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
         ++*fills;
         return;
     }
-    if (kind <= 7) {
-        /* Screen-to-screen SRCCOPY. The shift table walks all eight overlap
-         * directions in turn, and the shift is smaller than the rectangle so
-         * the two really do overlap. */
+    if (kind <= 6) {
+        /*
+         * Non-overlapping screen-to-screen SRCCOPY - what build 002 turns on.
+         *
+         * Disjointness is constructed rather than hoped for: the source lies
+         * entirely in the left half of the test area and the destination
+         * entirely in the right, so they cannot intersect on x whatever the y
+         * offsets are. The y offsets still vary, which exercises the engine's
+         * scan direction on a copy where direction cannot affect the result.
+         *
+         * The smallest rectangle here is 32x32 = 1024 pixels, which is exactly
+         * the accelerated threshold and therefore lands on its boundary - the
+         * gate declines below it, so this is the smallest copy that should be
+         * accepted.
+         */
+        int half = V9X_ACCEL_WIDTH / 2;
+        int source_x;
+        int source_y;
+
+        width = 32 + (int)v9x_accel_random(64ul);
+        height = 32 + (int)v9x_accel_random(48ul);
+        source_x = (int)v9x_accel_random((DWORD)(half - width));
+        source_y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        x = half + (int)v9x_accel_random((DWORD)(half - width));
+        y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        BitBlt(state->screen, state->origin_x + x, state->origin_y + y,
+               width, height, state->screen,
+               state->origin_x + source_x, state->origin_y + source_y,
+               SRCCOPY);
+        BitBlt(state->reference, x, y, width, height, state->reference,
+               source_x, source_y, SRCCOPY);
+        ++*copies;
+        return;
+    }
+    if (kind == 7) {
+        /*
+         * Overlapping screen-to-screen SRCCOPY. The shift table walks all eight
+         * directions in turn and the shift is always smaller than the
+         * rectangle, so the two really do overlap.
+         *
+         * Until build 003 these must all DECLINE, and the run checks that they
+         * did - an overlapping copy accelerated by an engine walking from the
+         * wrong corner produces a smeared rectangle, so "we declined it" is a
+         * claim worth verifying rather than assuming.
+         */
         int direction = index % 8;
         int shift = 8 + (int)v9x_accel_random(24ul);
         int source_x;
@@ -567,7 +610,7 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
                SRCCOPY);
         BitBlt(state->reference, x, y, width, height, state->reference,
                source_x, source_y, SRCCOPY);
-        ++*copies;
+        ++*overlaps;
         return;
     }
     /*
@@ -667,6 +710,7 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("DeclineDepth", stats->decline_depth);
     v9x_accel_write_uint("DeclineRop", stats->decline_rop);
     v9x_accel_write_uint("DeclineGeometry", stats->decline_geometry);
+    v9x_accel_write_uint("DeclineOverlap", stats->decline_overlap);
     v9x_accel_write_uint("DeclineThreshold", stats->decline_threshold);
     v9x_accel_write_uint("DeclineEngine", stats->decline_engine);
     v9x_accel_write_uint("LastRop256", stats->last_rop256);
@@ -677,6 +721,73 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("LastBpp", stats->last_bpp);
 }
 
+/* ------------------------------------------------------------------------
+ * /soak: a window drag and scroll pass.
+ *
+ * What this is NOT, and why, because the gap matters more than the coverage:
+ *
+ * A copy makes the engine READ the framebuffer, so a software cursor sitting
+ * over the source rectangle is part of the pixels it copies, and an exclusion
+ * covering only the destination leaves that cursor to be duplicated into the
+ * destination. The reference driver keeps a separate B_SWCursorExcludeUnion for
+ * exactly this (98DDK\src\display\mini\s3v\S3BLT.ASM), and this driver had
+ * only the destination form until build 002 fixed it.
+ *
+ * An automated check for that was written, and then measured to be vacuous: a
+ * driver deliberately built to exclude only the destination passed it 40 out of
+ * 40 iterations. It was removed rather than kept, and the reason it cannot work
+ * is worth recording, because it is a property of the cursor contract rather
+ * than a shortage of effort:
+ *
+ *   Every way a Win32 application can read the screen goes through GDI, GDI
+ *   goes through the DIB Engine, and the DIB Engine announces framebuffer
+ *   access through deBeginAccess - which lifts the software cursor before the
+ *   read happens. The readback therefore never contains the cursor, whatever
+ *   the driver did or did not exclude, so no comparison built on a readback can
+ *   tell a correct exclusion from a missing one.
+ *
+ * So the cursor-over-source case has no automated coverage in this project. It
+ * rests on the reference driver's authority for the shape of the fix, and on
+ * somebody looking at a screen for confirmation. Saying so is better than a
+ * green check that means nothing.
+ *
+ * What remains here is the soak the rollout plan asks for: volume through
+ * USER's own screen-to-screen copy paths with the pointer kept on the window
+ * being moved, checked for survival and for the desktop still rendering
+ * afterwards.
+ * ------------------------------------------------------------------------ */
+
+#define V9X_SOAK_DRAGS              60
+
+static void v9x_soak_drag_window(HWND window, DWORD drags)
+{
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    int width = 320;
+    int height = 240;
+    DWORD index;
+
+    if (screen_width < width + 8 || screen_height < height + 8) {
+        return;
+    }
+    for (index = 0ul; index < drags; ++index) {
+        int x = (int)v9x_accel_random((DWORD)(screen_width - width));
+        int y = (int)v9x_accel_random((DWORD)(screen_height - height));
+        HDC client;
+
+        /* Keep the pointer on the window being moved, which is what a real
+         * drag does and what puts the cursor over the source of USER's copy. */
+        SetCursorPos(x + width / 2, y + height / 2);
+        SetWindowPos(window, HWND_TOP, x, y, width, height, SWP_NOZORDER);
+        client = GetDC(window);
+        if (client != 0) {
+            ScrollWindow(window, 0, 16, 0, 0);
+            ScrollWindow(window, 12, 0, 0, 0);
+            ReleaseDC(window, client);
+        }
+    }
+}
+
 static DWORD v9x_accel_run(HWND window)
 {
     V9X_ACCEL_STATE state;
@@ -685,6 +796,7 @@ static DWORD v9x_accel_run(HWND window)
     RECT client;
     DWORD fills = 0ul;
     DWORD copies = 0ul;
+    DWORD overlaps = 0ul;
     DWORD noise = 0ul;
     DWORD compares = 0ul;
     long difference = -1l;
@@ -709,6 +821,7 @@ static DWORD v9x_accel_run(HWND window)
     }
     state.origin_x = V9X_ACCEL_MARGIN;
     state.origin_y = V9X_ACCEL_MARGIN;
+    state.window = window;
     state.screen = GetDC(window);
     if (state.screen == 0) {
         v9x_accel_write_text("Result", "FAIL");
@@ -758,7 +871,8 @@ static DWORD v9x_accel_run(HWND window)
 
     if (error == 0) {
         for (index = 0; index < V9X_ACCEL_OPERATIONS; ++index) {
-            v9x_accel_operation(&state, index, &fills, &copies, &noise);
+            v9x_accel_operation(&state, index, &fills, &copies, &overlaps,
+                                &noise);
             if ((index + 1) % V9X_ACCEL_COMPARE_EVERY == 0) {
                 ++compares;
                 if (!v9x_accel_compare(&state, &difference)) {
@@ -794,6 +908,7 @@ static DWORD v9x_accel_run(HWND window)
         v9x_accel_write_uint("Operations", (DWORD)index);
         v9x_accel_write_uint("FillOperations", fills);
         v9x_accel_write_uint("CopyOperations", copies);
+        v9x_accel_write_uint("OverlapOperations", overlaps);
         v9x_accel_write_uint("NoiseOperations", noise);
         v9x_accel_write_uint("Comparisons", compares);
         v9x_accel_write_text("Compared", compared_ok ? "PASS" : "FAIL");
@@ -847,6 +962,20 @@ static DWORD v9x_accel_run(HWND window)
         } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
                    stats.copies == before.copies) {
             error = "copy-enabled-but-never-fired";
+        } else if ((stats.enabled & V9X_GDI_PRIM_COPY) != 0ul &&
+                   (stats.enabled & V9X_GDI_PRIM_OVERLAP) == 0ul &&
+                   stats.decline_overlap == before.decline_overlap) {
+            /*
+             * The mirror of the check above, and it matters for the same
+             * reason. A build with copy on and overlap off claims two things:
+             * that disjoint copies are accelerated, and that overlapping ones
+             * are not. This run issues both deliberately, so if no overlapping
+             * copy was declined then either the generator stopped producing
+             * them or the gate stopped catching them - and the second would
+             * mean an overlapping copy running on an engine that has not been
+             * told which corner to start from.
+             */
+            error = "overlap-declines-never-exercised";
         }
     }
 
@@ -1086,6 +1215,20 @@ static DWORD v9x_accel_phase(HINSTANCE instance)
     window_class.hInstance = instance;
     window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     window_class.lpszClassName = V9X_ACCEL_CLASS;
+    /*
+     * A class cursor, and it is load bearing rather than cosmetic.
+     *
+     * This was zero, and with no class cursor USER draws no cursor at all over
+     * the window - so there was no cursor image anywhere in the framebuffer
+     * while this phase ran. The cursor-over-source check was therefore
+     * vacuous, and it was measured vacuous: a driver built to exclude only the
+     * destination rectangle passed it 40 times out of 40. An assertion never
+     * observed failing is not known to work, and this one was not working.
+     *
+     * It also means the pointer-parking below was belt-and-braces over a window
+     * that showed no pointer.
+     */
+    window_class.hCursor = LoadCursorA(0, IDC_ARROW);
     if (!RegisterClassA(&window_class)) {
         v9x_accel_write_text("Result", "FAIL");
         v9x_accel_write_text("Error", "register-class");
@@ -1112,6 +1255,16 @@ static DWORD v9x_accel_phase(HINSTANCE instance)
     UpdateWindow(window);
     SetCursorPos(screen_width - 1, screen_height - 1);
     result = v9x_accel_run(window);
+    /*
+     * The window drag and scroll soak the rollout plan asks for: volume through
+     * USER's own screen-to-screen copy paths, with the pointer kept on the
+     * window being moved. Checked for survival rather than for pixels - USER
+     * may or may not blit content on a move on this platform, so a pixel
+     * failure here would not be attributable, and the attributable version of
+     * that test is the cursor-over-source check above.
+     */
+    v9x_soak_drag_window(window, V9X_SOAK_DRAGS);
+
     /*
      * Prove the desktop still renders after everything above, including a
      * forced engine timeout: a driver that poisoned itself into drawing

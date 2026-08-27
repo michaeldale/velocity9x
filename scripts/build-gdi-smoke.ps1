@@ -104,7 +104,11 @@ foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:",
                        # because the counter was already non-zero from an
                        # earlier phase in the same boot.
                        "poisoned-before-run",
-                       "poisoned-during-run")) {
+                       "poisoned-during-run",
+                       # Build 002 claims two things - disjoint copies
+                       # accelerated, overlapping ones declined - and this is
+                       # the second half of that claim.
+                       "overlap-declines-never-exercised")) {
     if (-not $imageText.Contains($marker)) {
         throw "The GDI smoke test is missing marker $marker."
     }
