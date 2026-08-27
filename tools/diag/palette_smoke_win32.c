@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
@@ -9,7 +11,7 @@
 #define V9X_TEST_INDEX     20u
 
 static const char v9x_title[] = "Velocity9x 8-bit palette test";
-static const char v9x_result_path[] = "C:\\V9XPAL.INI";
+static const char v9x_result_path[] = V9X_DIAG_PAL_INI;
 
 static int v9x_ascii_equal_ci(char left, char right)
 {
@@ -105,6 +107,7 @@ void WINAPI V9xPaletteSmokeEntry(void)
     UINT index;
     int passed;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     window = CreateWindowExA(WS_EX_DLGMODALFRAME, "STATIC", v9x_title,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
         (GetSystemMetrics(SM_CXSCREEN) - 360) / 2,

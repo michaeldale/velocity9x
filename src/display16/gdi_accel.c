@@ -36,6 +36,7 @@
 #undef SetCursor
 #undef BitBlt
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/engine_abi.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_engine_regs.h"
@@ -82,7 +83,7 @@ static BYTE v9x_gdi_port_in(WORD port);
 static void v9x_gdi_port_out(WORD port, BYTE value);
 #pragma aux v9x_gdi_port_out = "out dx,al" parm [dx] [al] modify exact []
 
-#define V9X_HARDWARE_INFO_PATH  "C:\\V9XHW.INI"
+#define V9X_HARDWARE_INFO_PATH  V9X_DIAG_HW_INI
 #define V9X_SYSTEM_INI          "SYSTEM.INI"
 #define V9X_INI_SECTION         "Velocity9x"
 
@@ -284,8 +285,14 @@ void v9x_gdi_accel_flush_report(void)
     }
     v9x_gdi_report_pending = 0u;
     v9x_serial_write("V9X-DRV gdi-poisoned\r\n");
+    {
+        /* runtime.asm: the directory must exist before this write; on a boot
+         * poisoned this early it may not yet. */
+        extern void FAR PASCAL V9xEnsureDiagDir(void);
+        V9xEnsureDiagDir();
+    }
     WritePrivateProfileString("Velocity9xHardware", "GdiAcceleration",
-                              "gdi-poisoned", V9X_HARDWARE_INFO_PATH);
+                              "gdi-poisoned", V9X_DIAG_HW_INI);
 }
 
 /* ViRGE SUBSYS_STAT carries a FIFO free-slot count and an idle bit. */

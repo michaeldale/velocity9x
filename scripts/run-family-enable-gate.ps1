@@ -337,13 +337,13 @@ foreach ($target in $covered) {
     $traceArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         $ControllerPath, "shell", "-Json",
                         "-Port", [string]$target.Port,
-                        "-ShellCommand", "TYPE C:\V9XBOOT.INI")
+                        "-ShellCommand", "TYPE C:\V9XDIAG\V9XBOOT.INI")
     $traceLines = @(& $powershell @traceArguments)
     $traceJson = $traceLines | Where-Object {
         $_ -is [string] -and $_.TrimStart().StartsWith("{")
     } | Select-Object -Last 1
     if (-not $traceJson) {
-        throw ("Could not read C:\V9XBOOT.INI from " +
+        throw ("Could not read C:\V9XDIAG\V9XBOOT.INI from " +
                "$($target.Family)/$($target.ChipId).")
     }
     $trace = $traceJson | ConvertFrom-Json
@@ -351,7 +351,7 @@ foreach ($target in $covered) {
         -Value $trace.Stdout -Encoding Ascii
     if ($trace.Stdout -notmatch '(?m)^Stage=enable-ok\s*$') {
         throw ("$($target.Family)/$($target.ChipId) did not reach the " +
-               "enable-ok driver trace. C:\V9XBOOT.INI said:" +
+               "enable-ok driver trace. C:\V9XDIAG\V9XBOOT.INI said:" +
                [Environment]::NewLine + $trace.Stdout)
     }
     Write-Output "  Stage=enable-ok"

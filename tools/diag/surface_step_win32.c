@@ -1,11 +1,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_RESULT "C:\\V9XSURF.INI"
+#define V9X_RESULT V9X_DIAG_SURF_INI
 
 static int v9x_near(BYTE actual, BYTE expected)
 {
@@ -53,6 +55,7 @@ void WINAPI V9xSurfaceStepEntry(void)
     char actual[7];
     char set_actual[7];
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA("Velocity9xSurface", 0, 0, V9X_RESULT);
     WritePrivateProfileStringA("Velocity9xSurface", "Build", V9X_BUILD_ID,
                                V9X_RESULT);

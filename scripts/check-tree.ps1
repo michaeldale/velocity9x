@@ -152,7 +152,7 @@ $allowedOsBoundaries = @(
     # <windows.h> through a header that already is.
     (Join-Path $repoRoot "src\display16\gdi_accel.c"),
     # The runtime mode table writes the validated inventory file
-    # (C:\V9XMODES.INI) through WritePrivateProfileString; the table logic
+    # (C:\V9XDIAG\V9XMODES.INI) through WritePrivateProfileString; the table logic
     # itself stays in src\common\vbe_modes.c, which remains OS-free.
     (Join-Path $repoRoot "src\display16\modes16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),

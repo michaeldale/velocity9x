@@ -3,7 +3,7 @@
  *
  * Drives ChangeDisplaySettingsA the same way Display Properties does and
  * verifies the result with GetDeviceCaps plus a pixel write/readback.
- * Records machine-readable results in C:\V9XMSW.INI.
+ * Records machine-readable results in C:\V9XDIAG\V9XMSW.INI.
  *
  *   V9XMSW /set:800x600x8    switch to one mode and verify it
  *   V9XMSW /cycle:20         alternate 640x480 and 800x600 at the current
@@ -11,15 +11,19 @@
  *   V9XMSW /depth:20         alternate 8 and 16 bpp at the current
  *                            resolution the requested number of times
  *   V9XMSW /cursor           add cursor agitation around every switch
+ *   V9XMSW                   no arguments: default /cycle:2 run, so a bare
+ *                            double-click on a physical machine still tests
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "velocity9x/diagpaths.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_RESULT_PATH "C:\\V9XMSW.INI"
+#define V9X_RESULT_PATH V9X_DIAG_MSW_INI
 #define V9X_SECTION     "Velocity9xModeSwitch"
 
 /* /cursor: keep the pointer moving and redrawing across every switch. */
@@ -229,6 +233,7 @@ void __stdcall V9xModeSwitchEntry(void)
     LONG change_result;
     DWORD exit_code = 1u;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", V9X_BUILD_ID);
     v9x_write_text("Result", "INCOMPLETE");
@@ -340,6 +345,48 @@ void __stdcall V9xModeSwitchEntry(void)
         ExitProcess(exit_code);
     }
 
-    v9x_write_text("Result", "NO-ARGUMENT");
-    ExitProcess(2u);
+    /* No arguments: run a default two-cycle resolution exercise instead of
+     * writing NO-ARGUMENT and exiting. On the automated guests there is
+     * always a command line, but on a physical machine reached by carrying a
+     * USB stick to it, double-clicking the tool is the only way it runs -
+     * and a diagnostic that no-ops when double-clicked wastes the trip. */
+    {
+        UINT completed = 0u;
+        UINT round;
+        int at_alternate = 0;
+
+        v9x_write_text("DefaultRun", "cycle:2");
+        v9x_write_uint("RequestedCycles", 2u);
+        for (round = 0u; round < 2u; ++round) {
+            UINT width = at_alternate != 0 ? start_width : 640u;
+            UINT height = at_alternate != 0 ? start_height : 480u;
+
+            if (at_alternate == 0 && start_width == 640u &&
+                start_height == 480u) {
+                width = 800u;
+                height = 600u;
+            }
+            if (!v9x_switch_and_verify(width, height, start_bits,
+                                       &change_result)) {
+                v9x_write_int("ChangeResult", change_result);
+                break;
+            }
+            at_alternate = !at_alternate;
+            ++completed;
+            v9x_write_uint("CompletedCycles", completed);
+        }
+        if (at_alternate != 0) {
+            (void)v9x_switch_and_verify(start_width, start_height,
+                                        start_bits, &change_result);
+        }
+        v9x_write_uint("CompletedCycles", completed);
+        if (completed == 2u) {
+            v9x_write_text("Result", "PASS");
+            exit_code = 0u;
+        } else {
+            v9x_write_text("Result", "FAIL");
+        }
+        v9x_flush_results();
+        ExitProcess(exit_code);
+    }
 }

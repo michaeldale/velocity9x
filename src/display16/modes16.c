@@ -18,6 +18,7 @@
  */
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/vbe_cache.h"
@@ -343,7 +344,7 @@ const V9X_HW16_MODE *v9x_modes16_edid_mode(WORD bits_per_pixel)
  * Complete=1 is the last write, so a reader never mistakes a torn file for a
  * whole one.
  */
-#define V9X_MODE_INVENTORY_PATH "C:\\V9XMODES.INI"
+#define V9X_MODE_INVENTORY_PATH V9X_DIAG_MODES_INI
 #define V9X_MODE_INVENTORY_SECTION "Velocity9xModes"
 #define V9X_MODE_INVENTORY_SCHEMA "1"
 
@@ -396,8 +397,12 @@ static WORD v9x_inv_literal(char *text, WORD at, const char *literal)
     return at;
 }
 
+/* runtime.asm: create V9X_DIAG_DIR once before the first diagnostic write. */
+extern void FAR PASCAL V9xEnsureDiagDir(void);
+
 static void v9x_inv_write(const char *key, const char *value)
 {
+    V9xEnsureDiagDir();
     WritePrivateProfileString(V9X_MODE_INVENTORY_SECTION, key, value,
                               V9X_MODE_INVENTORY_PATH);
 }
@@ -577,8 +582,21 @@ void v9x_modes16_write_inventory(void)
             v9x_inv_row_key(key, "Row", index);
             v9x_inv_write(key, text);
         } else {
-            /* A hidden row is an entry with a reason, never a mode. */
-            at = v9x_inv_literal(text, at, " hide=scan-contradicted");
+            /* A hidden row is an entry with a reason, never a mode.
+             *
+             * The mechanism is always the scan (v9x_vbe_publish_rows hides a
+             * baseline row no admitted record describes), but when EDID says
+             * the panel is smaller than the row, the cause is knowable and
+             * the file should say it: on a machine read only after the fact,
+             * "the panel cannot show this" explains itself where
+             * "the scan lacked it" invites a BIOS hunt. */
+            if (v9x_edid_state != 0u &&
+                (row->width > v9x_edid.preferred_width ||
+                 row->height > v9x_edid.preferred_height)) {
+                at = v9x_inv_literal(text, at, " hide=edid-contradicted");
+            } else {
+                at = v9x_inv_literal(text, at, " hide=scan-contradicted");
+            }
             text[at] = '\0';
             v9x_inv_row_key(key, "Hidden", index);
             v9x_inv_write(key, text);

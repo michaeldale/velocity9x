@@ -1,6 +1,9 @@
 # Netbook GMA 950 first run: what the on-disk reports say to change
 
-Status: **open**, five actionable items plus notes on what is already known.
+Status: **mostly implemented 2026-08-27** (see the Unreleased CHANGELOG entry).
+Items 1, 2, 3 and the item-5 fixes are in the tree; item 4 (heap restriction
+masks) remains **open** pending the QEMU measurement it prescribes, and the
+weaker fallback (smaller advertised heap) with it.
 
 First run of the `vbe` tier-0 package on a real Intel GMA 950. The machine has
 no networking, so nothing was observed live; every statement below comes from
@@ -41,6 +44,12 @@ Inf = @{
     ...
     ManualSelect = @{
         Description = 'Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)'
+        # Required by the manifest validator (family.ps1 Assert-V9xFamilyKeys):
+        # it is the budget Get-V9xFamilyManualSelectModes prunes the manual
+        # model's mode list against. 2 MiB keeps every declared vbe mode
+        # (largest is 1024x768x16 at 1.5 MiB) while staying honest about
+        # small VBE cards.
+        VideoMemoryBytes = 2097152
     }
 }
 ```

@@ -69,7 +69,7 @@ $readme = @(
     "V9XDISP.DRV, reports one PASS/FAIL result, and changes no display mode.",
     "SAFE HARDWARE SURVEY: run V9XSURV.EXE from a DOS prompt.",
     "It reads PCI config space, the video BIOS, VBE and the VGA registers and",
-    "writes C:\V9XSURV.INI. It sets no video mode. Boot to MS-DOS mode for a",
+    "writes C:\V9XDIAG\V9XSURV.INI. It sets no video mode. Boot to MS-DOS mode for a",
     "full report; a DOS box works but cannot see real register values.",
     "Add /rom for the complete video BIOS image, /notier2 to skip the",
     "vendor-specific register probe it asks about.",

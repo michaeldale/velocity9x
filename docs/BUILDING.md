@@ -252,9 +252,9 @@ GDI test, runs the GDI acceleration phase, runs palette animation and readback
 in every 8-bit mode, and retains a screenshot and JSON summary per mode. Use
 `-Repeat 2` or higher for repeated reliability passes.
 
-The acceleration phase is `V9XGDI.EXE /accel`, which writes `C:\V9XACCE.INI`
+The acceleration phase is `V9XGDI.EXE /accel`, which writes `C:\V9XDIAG\V9XACCE.INI`
 and is retained beside each mode's screenshot. It is a separate phase writing a
-separate file, so `Result=PASS` in `C:\V9XGDI.INI` keeps the meaning it has
+separate file, so `Result=PASS` in `C:\V9XDIAG\V9XGDI.INI` keeps the meaning it has
 always had. It drives a seeded stream of solid fills and screen-to-screen
 copies against the screen and against a reference DC, compares them
 periodically, and **then reads the driver's own counters through the

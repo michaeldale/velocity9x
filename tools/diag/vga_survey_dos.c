@@ -48,12 +48,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
 #define V9X_SURVEY_SCHEMA "2"
-#define V9X_SURVEY_DEFAULT "C:\\V9XSURV.INI"
+#define V9X_SURVEY_DEFAULT V9X_DIAG_SURV_INI
 
 /* Enough for any real machine; the walk stops at the PCI BIOS's last bus. */
 #define V9X_MAX_DISPLAY_DEVICES 8
@@ -2398,6 +2400,22 @@ int main(int argc, char **argv)
         input.x.ax = 0x3301u;
         input.h.dl = 0x00u;
         int86(0x21, &input, &output);
+    }
+
+    /* The default path lives in C:\V9XDIAG, which fopen will not create.
+     * INT 21h AH=39h; errors (already exists, no such drive) are ignored -
+     * the fopen below is what decides whether the path is usable. */
+    if (requested_path == V9X_SURVEY_DEFAULT) {
+        union REGS input;
+        union REGS output;
+        struct SREGS segments;
+        static char directory[] = V9X_DIAG_DIR;
+
+        segread(&segments);
+        memset(&input, 0, sizeof(input));
+        input.h.ah = 0x39u;
+        input.x.dx = (unsigned)directory;
+        int86x(0x21, &input, &output, &segments);
     }
 
     strncpy(report_path, requested_path, sizeof(report_path) - 1u);

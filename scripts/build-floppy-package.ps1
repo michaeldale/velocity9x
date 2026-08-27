@@ -210,12 +210,12 @@ let Windows redetect Standard PCI Graphics Adapter (VGA).
 
 Copy these files off the machine if they exist:
 
-   C:\V9XBOOT.INI    how far the driver got during startup
-   C:\V9XHW.INI      what the driver detected about the card
-   C:\V9XGDI.INI     last framebuffer test result
-   C:\V9XMSW.INI     last mode-switch test result
-   C:\V9XDD.INI      DirectDraw and Direct3D probe results
-   C:\V9XTRACE.INI   DirectDraw callback trace after a fault
+   C:\V9XDIAG\V9XBOOT.INI    how far the driver got during startup
+   C:\V9XDIAG\V9XHW.INI      what the driver detected about the card
+   C:\V9XDIAG\V9XGDI.INI     last framebuffer test result
+   C:\V9XDIAG\V9XMSW.INI     last mode-switch test result
+   C:\V9XDIAG\V9XDD.INI      DirectDraw and Direct3D probe results
+   C:\V9XDIAG\V9XTRACE.INI   DirectDraw callback trace after a fault
 
 Also note the chip, the mode in use when it went wrong, and the build ID at
 the top of this file. V9XSET.EXE has a Copy report button that puts most of

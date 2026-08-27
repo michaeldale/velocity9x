@@ -47,19 +47,26 @@
  * Run with GdiAccel=0 so this tool is the only engine user. It draws two
  * small rectangles on the live desktop; a repaint clears them.
  *
- * Results land in C:\V9XTC32.INI / C:\V9XTC16.INI, section [Velocity9xTrioCtx].
+ * Results land in C:\V9XDIAG\V9XTC32.INI / V9XTC16.INI, section
+ * [Velocity9xTrioCtx].
  */
 #include <windows.h>
+
+#include "velocity9x/diagpaths.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
+/* The Win16 arm has no CreateDirectory; it relies on the directory the
+ * installed driver creates at boot (V9xEnsureDiagDir), which is a safe bet
+ * for a tool whose whole purpose is probing that driver's engine context.
+ * The Win32 arm creates it defensively at entry. */
 #ifdef __386__
-#define V9X_INI      "C:\\V9XTC32.INI"
+#define V9X_INI      V9X_DIAG_TC32_INI
 #define V9X_ARM      "win32"
 #else
-#define V9X_INI      "C:\\V9XTC16.INI"
+#define V9X_INI      V9X_DIAG_TC16_INI
 #define V9X_ARM      "win16"
 #endif
 #define V9X_SEC      "Velocity9xTrioCtx"
@@ -659,6 +666,7 @@ static int v9x_has_alt(const char *command)
 #ifdef __386__
 void __stdcall V9xTrioCtxEntry(void)
 {
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     v9x_run(v9x_has_alt(GetCommandLineA()));
     ExitProcess(0u);
 }

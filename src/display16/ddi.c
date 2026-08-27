@@ -6,7 +6,7 @@
  * operation remains with the Windows DIB Engine.
  *
  * This file is chip-agnostic. Everything that differs between cards - the
- * mode table, the PCI identity, the C:\V9XHW.INI strings, and the two places
+ * mode table, the PCI identity, the C:\V9XDIAG\V9XHW.INI strings, and the two places
  * where a family must run its own code - comes from the statically linked
  * v9x_hw16 table declared in include\velocity9x\hw16.h.
  */
@@ -15,6 +15,7 @@
 #undef SetCursor
 
 #include "velocity9x/build.h"
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "win9x_display_abi.h"
 #include "gdi_accel.h"
@@ -28,7 +29,7 @@
 #define V9X_COM1_LSR_PORT       0x03fdu
 #define V9X_COM1_TX_EMPTY          0x20u
 #define V9X_SERIAL_SPIN_LIMIT   0xffffu
-#define V9X_HARDWARE_INFO_PATH "C:\\V9XHW.INI"
+#define V9X_HARDWARE_INFO_PATH V9X_DIAG_HW_INI
 
 #define V9X_COLOR_NONSTATIC        0x80u
 #define V9X_COLOR_MAP_TO_WHITE     0x40u
@@ -45,6 +46,14 @@ extern void FAR PASCAL V9xDibEndAccess(void);
 extern DWORD FAR PASCAL V9xDibSetPaletteCall(WORD, WORD, LPVOID, LPVOID);
 extern DWORD FAR PASCAL V9xDibSetPaletteTranslateCall(LPVOID, LPVOID);
 extern WORD FAR PASCAL V9xHardwarePresent(void);
+/* runtime.asm: vendor (low word) and device (high word) of the machine's
+ * first display-class PCI device, read straight from config space. Used only
+ * to make V9XHW.INI name the actual silicon when the family's own list did
+ * not claim it. */
+extern WORD FAR PASCAL V9xPciDisplayId(DWORD FAR *ids);
+/* runtime.asm: create V9X_DIAG_DIR once before the first diagnostic write;
+ * WritePrivateProfileString fails silently into a missing directory. */
+extern void FAR PASCAL V9xEnsureDiagDir(void);
 /* enable16.c. V9xHardwarePresent plus the family's view of a miss: a tier-0
  * family accepts a card its device list does not name. Both call sites below
  * use this rather than the raw scan so they cannot disagree. */
@@ -79,7 +88,7 @@ extern void FAR PASCAL V9xVddPostMode(void);
 extern void FAR PASCAL V9xVddUnregister(void);
 extern WORD FAR PASCAL V9xVddGetDisplayConfig(V9X_DISPLAY_INFO FAR *);
 
-/* The PCI identity and the C:\V9XHW.INI strings are family data, supplied by
+/* The PCI identity and the C:\V9XDIAG\V9XHW.INI strings are family data, supplied by
  * the statically linked v9x_hw16 table. The mode table is not any more: GDI
  * reads the runtime table modes16.c commits at load - the family baseline,
  * merged with the BIOS's own list where the mini-VDD scan produced a valid
@@ -125,6 +134,14 @@ WORD v9x_pci_count = 0u;
  * decides whose hooks run and which identity is published.
  */
 WORD v9x_pci_match = 0xffffu;
+/*
+ * Vendor (low word) and device (high word) of the first display-class PCI
+ * device, or 0 when unread or unreadable. Filled in only when the family's
+ * own scan missed: on a claimed card the family entry is the identity, and
+ * on an unclaimed one this is the only record of what the silicon actually
+ * is - which matters most on a machine whose V9XHW.INI is the whole report.
+ */
+DWORD v9x_pci_display_ids = 0ul;
 WORD v9x_vbe_mode_flags = 0x8000u;
 WORD v9x_map_pages_hi = 0x03ffu;
 WORD v9x_map_pages_lo = 0xffffu;
@@ -189,8 +206,9 @@ static WORD v9x_ever_enabled;
 #ifdef V9X_BOOT_TRACE
 static BOOL v9x_boot_trace(const char FAR *stage)
 {
+    V9xEnsureDiagDir();
     return WritePrivateProfileString("Velocity9x", "Stage", stage,
-                                     "C:\\V9XBOOT.INI");
+                                     V9X_DIAG_BOOT_INI);
 }
 
 static void v9x_trace_hardware_failure(void)
@@ -230,7 +248,8 @@ static void v9x_boot_trace_hex16(const char FAR *key, WORD value)
         text[(12 - shift) / 4] = digits[(WORD)(value >> shift) & 0x000fu];
     }
     text[4] = '\0';
-    WritePrivateProfileString("Velocity9x", key, text, "C:\\V9XBOOT.INI");
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", key, text, V9X_DIAG_BOOT_INI);
 }
 
 static void v9x_trace_validate_hardware_failure(void)
@@ -327,8 +346,9 @@ static void v9x_trace_surface_layout(void)
     at = v9x_append_field(text, at, "debpp=",
                           (DWORD)v9x_driver_pdevice->deBitsPixel);
     text[at - 1u] = '\0';
+    V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", "Surface", (LPCSTR)text,
-                              "C:\\V9XBOOT.INI");
+                              V9X_DIAG_BOOT_INI);
 }
 
 static void v9x_write_hardware_info(const char *key, const char *value)
@@ -336,6 +356,7 @@ static void v9x_write_hardware_info(const char *key, const char *value)
     if (value == 0) {
         return;
     }
+    V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9xHardware", (LPCSTR)key,
                               (LPCSTR)value, V9X_HARDWARE_INFO_PATH);
 }
@@ -366,6 +387,12 @@ static void v9x_publish_hardware_diagnostics(void)
     if (v9x_hw16.publish_diagnostics == 0 || device == 0) {
         return;
     }
+    if (v9x_pci_match == 0xffffu && v9x_pci_display_ids == 0ul) {
+        if (V9xPciDisplayId(&v9x_pci_display_ids) == 0u) {
+            v9x_pci_display_ids = 0ul;
+        }
+    }
+    V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9xHardware", 0, 0,
                               V9X_HARDWARE_INFO_PATH);
     v9x_hw16.publish_diagnostics(device, v9x_write_hardware_info);

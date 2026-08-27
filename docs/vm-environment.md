@@ -113,5 +113,5 @@ retail S3 driver and is never a Velocity9x install target.
 
 Remote agent 0.5.2 reports `BitsPerPixel` as 0 against the Velocity9x driver
 while reporting it correctly against the stock S3 driver. Colour depth is
-therefore verified from the guest-side `C:\V9XGDI.INI` result, not from the
+therefore verified from the guest-side `C:\V9XDIAG\V9XGDI.INI` result, not from the
 agent's `info`.

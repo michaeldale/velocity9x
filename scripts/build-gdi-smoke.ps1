@@ -90,7 +90,7 @@ if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
 foreach ($marker in @($BuildId, "Velocity9x GDI framebuffer test", "PASS:",
                        # The /accel phase and the two strings that make its
-                       # failures readable in C:\V9XACCE.INI. The two
+                       # failures readable in C:\V9XDIAG\V9XACCE.INI. The two
                        # "enabled-but-never-fired" messages are the
                        # anti-vacuous-pass check; a build that lost them would
                        # still pass every other assertion in this script.

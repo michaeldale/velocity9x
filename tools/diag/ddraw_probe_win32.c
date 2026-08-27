@@ -3,7 +3,7 @@
  *
  * Reproduces the exact presentation path used by fullscreen DirectDraw
  * applications (SetDisplayMode, flip-chain primary, Flip with DDFLIP_WAIT)
- * and records every HRESULT and timing to C:\V9XDD.INI so a host can
+ * and records every HRESULT and timing to C:\V9XDIAG\V9XDD.INI so a host can
  * distinguish a mode-switch refusal, a vertical-blank wait, and raw
  * framebuffer write cost. ddraw.dll is loaded dynamically; the module keeps
  * the diagnostic-suite rule of runtime-free static imports.
@@ -11,11 +11,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_RESULT_PATH "C:\\V9XDD.INI"
+#define V9X_RESULT_PATH V9X_DIAG_DD_INI
 #define V9X_SECTION     "Velocity9xDDraw"
 
 #define V9X_DDSD_CAPS               0x00000001ul
@@ -52,6 +54,7 @@
 #define V9X_DDPCAPS_8BIT            0x00000004ul
 #define V9X_DDPCAPS_ALLOW256        0x00000040ul
 #define V9X_DDERR_WASSTILLDRAWING   0x8876021cul
+#define V9X_DDERR_UNSUPPORTED       0x88760231ul
 #define V9X_D3DPT_TRIANGLELIST               4ul
 #define V9X_D3DVT_TLVERTEX                   3ul
 
@@ -1489,15 +1492,20 @@ void __stdcall V9xDdrawProbeEntry(void)
     V9X_D3DTLVERTEX triangle[3];
     int index;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", V9X_BUILD_ID);
     v9x_write_text("Result", "INCOMPLETE");
     v9x_write_uint("TexFormatCount", 0ul);
     v9x_write_uint("TexFormat565", 0ul);
     v9x_write_uint("TexFormat1555", 0ul);
-    v9x_write_hresult("TexSurfaceHr", (HRESULT)0x80004005ul);
-    v9x_write_hresult("TexHandleHr", (HRESULT)0x80004005ul);
-    v9x_write_hresult("TexSwapHr", (HRESULT)0x80004005ul);
+    /* Seeds for a driver whose D3D branch never runs. DDERR_UNSUPPORTED, not
+     * E_FAIL: a tier with no texture support is answering honestly, and E_FAIL
+     * reads as "something broke" in every log that quotes it. A driver that
+     * does run the branch overwrites these with the real HRESULTs. */
+    v9x_write_hresult("TexSurfaceHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("TexHandleHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("TexSwapHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
 
     winmm = LoadLibraryA("WINMM.DLL");
     v9x_time = winmm != 0

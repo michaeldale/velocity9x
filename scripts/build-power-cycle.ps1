@@ -46,6 +46,7 @@ $mapFile = Join-Path $outputDir "v9xpwr.map"
 $linkFile = Join-Path $outputDir "v9xpwr.lnk"
 
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to compile the monitor power-cycle test."
@@ -81,7 +82,7 @@ if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or
     throw "The monitor power-cycle test is not an MZ/PE executable."
 }
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
-foreach ($marker in @($BuildId, "Velocity9xPower", "C:\V9XPWR.INI")) {
+foreach ($marker in @($BuildId, "Velocity9xPower", "C:\V9XDIAG\V9XPWR.INI")) {
     if (-not $imageText.Contains($marker)) {
         throw "The monitor power-cycle test is missing marker $marker."
     }

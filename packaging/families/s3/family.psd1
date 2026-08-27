@@ -23,7 +23,7 @@
             VendorId = '5333'
             DeviceId = '8A01'
             DeviceDesc = 'Velocity9x S3 ViRGE/DX 86C375'
-            # Written to C:\V9XHW.INI by ddi.c's diagnostics publisher, for
+            # Written to C:\V9XDIAG\V9XHW.INI by ddi.c's diagnostics publisher, for
             # whichever chip the PCI scan matched.
             Adapter = 'S3 ViRGE/DX 86C375'
             ClockDetector = 's3-virge-pll-v1'

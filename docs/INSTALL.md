@@ -85,7 +85,11 @@ installing.
 3. Expand **Display adapters** and open your S3 adapter.
 4. **Driver** → **Update Driver** → choose a specific driver or location.
 5. **Have Disk**, and browse to the built package directory.
-6. Select the Velocity9x entry for your chip.
+6. Select the Velocity9x entry for your chip. For a VBE 2.0+ card the `vbe`
+   package does not name (any real hardware other than QEMU), pick
+   **Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)** — the manual
+   entry that exists for exactly this case. Do not force the QEMU model onto
+   a different card; the manual entry is the honest route.
 7. Let Windows copy the files. **Do not accept a different device ID** if it
    offers one. The list shows only the model matching your card, so on a
    ViRGE/DX you should see exactly one Velocity9x entry and no Trio64 entry.
@@ -111,7 +115,7 @@ V9X-DRV lfb=0x........ bytes=00400000
 V9X-DRV enable-ok mode=640x480x8 lfb-mapped
 ```
 
-In the guest, `C:\V9XBOOT.INI` records the last stage the driver reached. A
+In the guest, `C:\V9XDIAG\V9XBOOT.INI` records the last stage the driver reached. A
 successful activation passes through `enable-ok`.
 
 Then run the framebuffer test:
@@ -121,7 +125,7 @@ V9XGDI.EXE /auto
 ```
 
 Without `/auto` it opens an interactive window and waits for you — use `/auto`
-for an unattended PASS/FAIL written to `C:\V9XGDI.INI`. It draws GDI
+for an unattended PASS/FAIL written to `C:\V9XDIAG\V9XGDI.INI`. It draws GDI
 primitives and checks tolerant pixel readback.
 
 **If the desktop does not appear, stop after one boot attempt.** Do not
@@ -138,7 +142,7 @@ V9XMSW.EXE /depth:20           alternate 8 and 16 bpp
 V9XMSW.EXE /cursor             add cursor agitation around every switch
 ```
 
-Results are written to `C:\V9XMSW.INI`.
+Results are written to `C:\V9XDIAG\V9XMSW.INI`.
 
 The baseline matrix is 640x480, 800x600 and 1024x768 at both 8 and 16 bpp,
 plus 640x400 at 8 bpp. On the ViRGE, resolution and colour-depth changes both
@@ -149,8 +153,8 @@ On the generic VESA (`vbe`) package the list does not stop there: the driver
 reads the video BIOS's own mode list at boot, merges the drivable rows into
 its runtime table, and mirrors them into Display Properties on the next
 logon. Expect widescreen and 32-bit entries the baseline never named — on
-QEMU std-vga, 46 modes. `C:\V9XMODES.INI` is the validated inventory of what
-this boot offers and why anything was refused, and `C:\V9XSYNC.INI` records
+QEMU std-vga, 46 modes. `C:\V9XDIAG\V9XMODES.INI` is the validated inventory of what
+this boot offers and why anything was refused, and `C:\V9XDIAG\V9XSYNC.INI` records
 what the Display Properties synchronizer did about it.
 
 Run `V9XPAL.EXE` in an 8-bpp mode to check palette animation and readback, and
@@ -159,7 +163,7 @@ Run `V9XPAL.EXE` in an 8-bpp mode to check palette animation and readback, and
 ## 9. Check DirectDraw and Direct3D
 
 ```
-V9XDDP.EXE            full DirectDraw and Direct3D probe -> C:\V9XDD.INI
+V9XDDP.EXE            full DirectDraw and Direct3D probe -> C:\V9XDIAG\V9XDD.INI
 V9XDDP.EXE /pal8      palettized 8-bpp presentation and mode lists
 V9XDDP.EXE /status-only   quick blitter-reachable check
 ```
@@ -211,7 +215,7 @@ registry-selected mode.
 
 - Chip and PCI ID, and the package build identifier.
 - The display mode in use when it went wrong.
-- `C:\V9XBOOT.INI`.
-- `C:\V9XDD.INI` and `C:\V9XTRACE.INI` for DirectDraw or Direct3D problems.
-- `C:\V9XGDI.INI`, `C:\V9XMSW.INI` or `C:\V9XPAL.INI` for a failing test.
+- `C:\V9XDIAG\V9XBOOT.INI`.
+- `C:\V9XDIAG\V9XDD.INI` and `C:\V9XDIAG\V9XTRACE.INI` for DirectDraw or Direct3D problems.
+- `C:\V9XDIAG\V9XGDI.INI`, `C:\V9XDIAG\V9XMSW.INI` or `C:\V9XDIAG\V9XPAL.INI` for a failing test.
 - The COM1 serial capture, if the machine never reached the desktop.

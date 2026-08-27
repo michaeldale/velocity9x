@@ -54,6 +54,7 @@ $object = Join-Path $outputDir "trio_ctx_win32.obj"
 $exe32 = Join-Path $outputDir "v9xtc32.exe"
 $linkFile = Join-Path $outputDir "v9xtc32.lnk"
 & $compiler386 "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to compile the Win32 trio-ctx probe."
@@ -94,6 +95,7 @@ $exe16 = Join-Path $outputDir "v9xtc16.exe"
 Push-Location $outputDir
 try {
     & $compiler16 "-bt=windows" "-l=windows" "-zq" "-wx" `
+        "-i=$(Join-Path $repoRoot 'include')" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fe=$exe16" $source
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom failed to build the Win16 trio-ctx probe."

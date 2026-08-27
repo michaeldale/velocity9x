@@ -1,13 +1,16 @@
 /*
  * Shared read-only status collection for the Velocity9x settings surfaces.
  *
- * The values are read from the driver-published INI files:
- *   C:\V9XHW.INI    hardware identity and clock diagnostics
- *   C:\V9XBOOT.INI  boot-trace stage
- *   C:\V9XGDI.INI   last GDI framebuffer test result
+ * The values are read from the driver-published INI files in C:\V9XDIAG
+ * (include\velocity9x\diagpaths.h):
+ *   V9XHW.INI    hardware identity and clock diagnostics
+ *   V9XBOOT.INI  boot-trace stage
+ *   V9XGDI.INI   last GDI framebuffer test result
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "velocity9x/diagpaths.h"
 
 #include "settings_status.h"
 
@@ -142,19 +145,19 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
     GetPrivateProfileStringA("Velocity9xHardware", "Adapter",
         "Unknown VGA adapter", status->adapter_name,
-        sizeof(status->adapter_name), "C:\\V9XHW.INI");
+        sizeof(status->adapter_name), V9X_DIAG_HW_INI);
     GetPrivateProfileStringA("Velocity9xHardware", "ClockStatus",
         "unavailable", clock_status, sizeof(clock_status),
-        "C:\\V9XHW.INI");
+        V9X_DIAG_HW_INI);
     GetPrivateProfileStringA("Velocity9xHardware", "CoreClockKHz", "",
-        core_clock_khz, sizeof(core_clock_khz), "C:\\V9XHW.INI");
+        core_clock_khz, sizeof(core_clock_khz), V9X_DIAG_HW_INI);
     GetPrivateProfileStringA("Velocity9xHardware", "MemoryClockKHz", "",
-        memory_clock_khz, sizeof(memory_clock_khz), "C:\\V9XHW.INI");
+        memory_clock_khz, sizeof(memory_clock_khz), V9X_DIAG_HW_INI);
     GetPrivateProfileStringA("Velocity9xHardware", "CoreClockRelation", "",
-        core_relation, sizeof(core_relation), "C:\\V9XHW.INI");
+        core_relation, sizeof(core_relation), V9X_DIAG_HW_INI);
     GetPrivateProfileStringA("Velocity9xHardware", "ClockDetector",
         "none", status->clock_detector, sizeof(status->clock_detector),
-        "C:\\V9XHW.INI");
+        V9X_DIAG_HW_INI);
     if (lstrcmpiA(clock_status, "valid") == 0) {
         v9x_format_clock(status->core_clock, sizeof(status->core_clock),
             core_clock_khz,
@@ -173,9 +176,9 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         char device[16];
 
         GetPrivateProfileStringA("Velocity9xHardware", "VendorId", "",
-                                 vendor, sizeof(vendor), "C:\\V9XHW.INI");
+                                 vendor, sizeof(vendor), V9X_DIAG_HW_INI);
         GetPrivateProfileStringA("Velocity9xHardware", "DeviceId", "",
-                                 device, sizeof(device), "C:\\V9XHW.INI");
+                                 device, sizeof(device), V9X_DIAG_HW_INI);
         status->pci_id[0] = '\0';
         if (vendor[0] != '\0' && device[0] != '\0') {
             v9x_append(status->pci_id, sizeof(status->pci_id), vendor);
@@ -199,10 +202,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
         GetPrivateProfileStringA("Velocity9xHardware", "VideoMemoryStatus",
                                  "unavailable", memory_status,
-                                 sizeof(memory_status), "C:\\V9XHW.INI");
+                                 sizeof(memory_status), V9X_DIAG_HW_INI);
         GetPrivateProfileStringA("Velocity9xHardware", "VideoMemoryBytes",
                                  "0", memory_bytes_text,
-                                 sizeof(memory_bytes_text), "C:\\V9XHW.INI");
+                                 sizeof(memory_bytes_text), V9X_DIAG_HW_INI);
         if (!v9x_parse_u32(memory_bytes_text, &memory_bytes)) {
             memory_bytes = 0ul;
         }
@@ -234,7 +237,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
-                                 sizeof(switching), "C:\\V9XHW.INI");
+                                 sizeof(switching), V9X_DIAG_HW_INI);
         status->live_mode_switching =
             lstrcmpiA(switching, "live-any-depth") == 0 ||
             lstrcmpiA(switching, "live-same-depth") == 0;
@@ -250,7 +253,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                           : "Selected at boot"));
         GetPrivateProfileStringA("Velocity9xHardware", "Acceleration",
                                  "disabled", acceleration,
-                                 sizeof(acceleration), "C:\\V9XHW.INI");
+                                 sizeof(acceleration), V9X_DIAG_HW_INI);
         status->hardware_acceleration =
             lstrcmpiA(acceleration, "directdraw-fill-blt") == 0 ||
             lstrcmpiA(acceleration, "directdraw-solid-fill") == 0;
@@ -272,7 +275,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
         GetPrivateProfileStringA("Velocity9xHardware", "Direct3D",
                                  "not-advertised", direct3d,
-                                 sizeof(direct3d), "C:\\V9XHW.INI");
+                                 sizeof(direct3d), V9X_DIAG_HW_INI);
         status->direct3d[0] = '\0';
         if (lstrcmpiA(direct3d, "hardware-s3d") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),
@@ -300,10 +303,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
         status->dynamic_modes[0] = '\0';
         if (GetPrivateProfileIntA("Velocity9xModes", "Complete", 0,
-                                  "C:\\V9XMODES.INI") == 1 &&
+                                  V9X_DIAG_MODES_INI) == 1 &&
             GetPrivateProfileStringA("Velocity9xModes", "Table", "",
                                      table_line, sizeof(table_line),
-                                     "C:\\V9XMODES.INI") != 0ul) {
+                                     V9X_DIAG_MODES_INI) != 0ul) {
             /* "rows=N published=N first=N dropped=N": two bounded fields. */
             const char *at = table_line;
             DWORD out = 0ul;
@@ -343,7 +346,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                                 (UINT)(rows - published));
                 v9x_append(status->dynamic_modes,
                            sizeof(status->dynamic_modes),
-                           " hidden (scan-contradicted)");
+                           " hidden (scan/EDID-contradicted)");
             }
         } else {
             v9x_append(status->dynamic_modes, sizeof(status->dynamic_modes),
@@ -354,7 +357,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     GetPrivateProfileStringA("Velocity9x", "Stage", "not recorded",
                              status->driver_stage,
                              sizeof(status->driver_stage),
-                             "C:\\V9XBOOT.INI");
+                             V9X_DIAG_BOOT_INI);
     status->framebuffer_status[0] = '\0';
     if (lstrcmpiA(status->driver_stage, "enable-ok") == 0) {
         v9x_append(status->framebuffer_status,
@@ -370,15 +373,15 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     }
 
     GetPrivateProfileStringA("Velocity9xGDI", "Result", "not run", result,
-                             sizeof(result), "C:\\V9XGDI.INI");
+                             sizeof(result), V9X_DIAG_GDI_INI);
     GetPrivateProfileStringA("Velocity9xGDI", "Build", "unknown", test_build,
-                             sizeof(test_build), "C:\\V9XGDI.INI");
+                             sizeof(test_build), V9X_DIAG_GDI_INI);
     GetPrivateProfileStringA("Velocity9xGDI", "Width", "?", test_width,
-                             sizeof(test_width), "C:\\V9XGDI.INI");
+                             sizeof(test_width), V9X_DIAG_GDI_INI);
     GetPrivateProfileStringA("Velocity9xGDI", "Height", "?", test_height,
-                             sizeof(test_height), "C:\\V9XGDI.INI");
+                             sizeof(test_height), V9X_DIAG_GDI_INI);
     GetPrivateProfileStringA("Velocity9xGDI", "BitsPerPixel", "?", test_bits,
-                             sizeof(test_bits), "C:\\V9XGDI.INI");
+                             sizeof(test_bits), V9X_DIAG_GDI_INI);
     status->gdi_status[0] = '\0';
     v9x_append(status->gdi_status, sizeof(status->gdi_status), result);
     if (lstrcmpiA(result, "not run") != 0) {
@@ -439,31 +442,31 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         char line[112];
 
         GetPrivateProfileStringA("Velocity9xModes", "Scan", "not collected",
-                                 line, sizeof(line), "C:\\V9XMODES.INI");
+                                 line, sizeof(line), V9X_DIAG_MODES_INI);
         v9x_append(status->report, sizeof(status->report), "\r\nMode scan: ");
         v9x_append(status->report, sizeof(status->report), line);
         GetPrivateProfileStringA("Velocity9xModes", "Reasons", "none",
-                                 line, sizeof(line), "C:\\V9XMODES.INI");
+                                 line, sizeof(line), V9X_DIAG_MODES_INI);
         v9x_append(status->report, sizeof(status->report),
                    "\r\nDrop reasons: ");
         v9x_append(status->report, sizeof(status->report), line);
         GetPrivateProfileStringA("Velocity9xModes", "Recommendation", "none",
-                                 line, sizeof(line), "C:\\V9XMODES.INI");
+                                 line, sizeof(line), V9X_DIAG_MODES_INI);
         v9x_append(status->report, sizeof(status->report),
                    "\r\nEDID recommendation: ");
         v9x_append(status->report, sizeof(status->report), line);
         GetPrivateProfileStringA("Velocity9xModes", "Generation", "0",
-                                 line, sizeof(line), "C:\\V9XMODES.INI");
+                                 line, sizeof(line), V9X_DIAG_MODES_INI);
         v9x_append(status->report, sizeof(status->report),
                    "\r\nInventory generation: ");
         v9x_append(status->report, sizeof(status->report), line);
         GetPrivateProfileStringA("Velocity9xSync", "Status", "never ran",
-                                 line, sizeof(line), "C:\\V9XSYNC.INI");
+                                 line, sizeof(line), V9X_DIAG_SYNC_INI);
         v9x_append(status->report, sizeof(status->report),
                    "\r\nRegistry sync: ");
         v9x_append(status->report, sizeof(status->report), line);
         GetPrivateProfileStringA("Velocity9xSync", "Generation", "",
-                                 line, sizeof(line), "C:\\V9XSYNC.INI");
+                                 line, sizeof(line), V9X_DIAG_SYNC_INI);
         if (line[0] != '\0') {
             v9x_append(status->report, sizeof(status->report),
                        " (generation ");

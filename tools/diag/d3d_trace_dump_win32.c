@@ -3,7 +3,8 @@
  *
  * Reads the bounded callback trace out of the driver's shared block with
  * the project-private V9X_DDGETTRACE DCICOMMAND escape and writes it to
- * C:\V9XSNAP.INI. The HAL reserves C:\V9XTRACE.INI for automatic fault and
+ * C:\V9XDIAG\V9XSNAP.INI. The HAL reserves C:\V9XDIAG\V9XTRACE.INI for
+ * automatic fault and
  * engine-timeout captures, so a manual snapshot cannot erase crash evidence. It
  * reports the last completed HAL callbacks, per-callback counts, and engine
  * timeout counters. The tool follows the diagnostic-suite rule of runtime-
@@ -12,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 
 #ifndef V9X_BUILD_ID
@@ -19,7 +21,7 @@
 #endif
 
 #define V9X_SECTION      "Velocity9xTrace"
-#define V9X_RESULT_PATH  "C:\\V9XSNAP.INI"
+#define V9X_RESULT_PATH  V9X_DIAG_SNAP_INI
 
 static void v9x_uint_text(char *text, DWORD value)
 {
@@ -242,6 +244,7 @@ void __stdcall V9xTraceDumpEntry(void)
     unsigned index;
     unsigned char *bytes;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
 

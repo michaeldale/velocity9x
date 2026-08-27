@@ -1,16 +1,18 @@
 /*
  * GDI-free top-level window inventory for fullscreen wedge diagnosis.
- * Writes C:\V9XWND.INI so the host can identify hidden dialogs without
- * invoking a screenshot path while the display driver is unstable.
+ * Writes C:\V9XDIAG\V9XWND.INI so the host can identify hidden dialogs
+ * without invoking a screenshot path while the display driver is unstable.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "velocity9x/diagpaths.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_WINDOW_PATH "C:\\V9XWND.INI"
+#define V9X_WINDOW_PATH V9X_DIAG_WND_INI
 #define V9X_SECTION     "Velocity9xWindows"
 #define V9X_MAX_WINDOWS 128ul
 
@@ -98,6 +100,7 @@ void __stdcall V9xWindowListEntry(void)
 {
     char count[12];
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_WINDOW_PATH);
     WritePrivateProfileStringA(V9X_SECTION, "Build", V9X_BUILD_ID,
                                V9X_WINDOW_PATH);

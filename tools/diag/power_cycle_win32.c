@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
@@ -11,7 +13,8 @@
 
 static void v9x_write_result(const char *result, const char *stage)
 {
-    const char path[] = "C:\\V9XPWR.INI";
+    const char path[] = V9X_DIAG_PWR_INI;
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA("Velocity9xPower", 0, 0, path);
     WritePrivateProfileStringA("Velocity9xPower", "Result", result, path);
     WritePrivateProfileStringA("Velocity9xPower", "Stage", stage, path);

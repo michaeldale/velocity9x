@@ -80,6 +80,7 @@ try {
     # inline assembly behind a runtime CPU gate; the compiler itself must not
     # emit any, or the gate would be bypassed before it could run.
     & $compiler "-bt=dos" "-ms" "-zq" "-wx" "-os" "-k4096" "-0" `
+        "-i=$(Join-Path $repoRoot 'include')" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fe=$exe" $source
     if ($LASTEXITCODE -ne 0) { throw "Failed to build the VLB aperture probe." }
 } finally { Pop-Location }

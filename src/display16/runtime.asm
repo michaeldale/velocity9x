@@ -81,6 +81,12 @@ V9xDdSharedLin   dd 0
 ; descriptor handed back to the LDT and re-acquired later is a descriptor that
 ; could belong to anything in between.
 V9xEngineSel dw 0
+; V9xEnsureDiagDir's once-latch and the directory it creates. The diagnostic
+; INI writers all target C:\V9XDIAG (include\velocity9x\diagpaths.h), and
+; WritePrivateProfileString fails silently into a missing directory, so the
+; directory has to exist before the first write.
+V9xDiagDirDone dw 0
+V9xDiagDirName db 'C:\V9XDIAG', 0
 
 ; GDI acceleration state that has to survive a live mode switch.
 ;
@@ -1262,6 +1268,83 @@ V9xPciReadBar0Done:
     pop     bp
     retf    4
 V9XPCIREADBAR0 ENDP
+
+; Read the vendor/device ids of the machine's first display-class PCI device
+; into the DWORD the caller points at (vendor in the low word, device in the
+; high word, as PCI config offset 0 lays them out). Returns 1 on success,
+; 0 when there is no PCI BIOS, no display-class device, or the read fails.
+;
+; This exists for the tier-0 diagnostics on a card the family does not name:
+; V9xFindPciDevice only searches the family's own list, so on an unclaimed
+; card nothing else in the driver knows what silicon is actually present -
+; and V9XHW.INI may be the only thing that comes back from a machine with no
+; network. Class 030000h is the VGA-compatible display controller every
+; primary adapter enumerates as.
+PUBLIC V9XPCIDISPLAYID
+V9XPCIDISPLAYID PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+
+    mov     ax, 0b103h
+    mov     ecx, 00030000h
+    xor     si, si
+    int     1ah
+    jc      short V9xPciDisplayIdFailed
+    or      ah, ah
+    jne     short V9xPciDisplayIdFailed
+
+    ; BH/BL carry the bus and device/function B103h found.
+    mov     ax, 0b10ah
+    xor     di, di
+    int     1ah
+    jc      short V9xPciDisplayIdFailed
+    or      ah, ah
+    jne     short V9xPciDisplayIdFailed
+
+    les     bx, dword ptr 6[bp]
+    mov     es:[bx], ecx
+    mov     ax, 1
+    jmp     short V9xPciDisplayIdDone
+
+V9xPciDisplayIdFailed:
+    xor     ax, ax
+V9xPciDisplayIdDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIDISPLAYID ENDP
+
+; Create C:\V9XDIAG once, so the diagnostic INI writers have somewhere to
+; write. INT 21h AH=39h through the DPMI translation Win16 provides; errors
+; are deliberately ignored - 5 is "already exists", 3 is a path problem the
+; write itself will surface, and neither is worth failing the driver over.
+; Callable from any C writer helper: the latch makes repeats free.
+PUBLIC V9XENSUREDIAGDIR
+V9XENSUREDIAGDIR PROC FAR
+    cmp     V9xDiagDirDone, 0
+    jne     short V9xEnsureDiagDirDone
+    push    ax
+    push    dx
+    mov     dx, OFFSET V9xDiagDirName
+    mov     ah, 39h
+    int     21h
+    mov     V9xDiagDirDone, 1
+    pop     dx
+    pop     ax
+V9xEnsureDiagDirDone:
+    retf
+V9XENSUREDIAGDIR ENDP
 
 ; Map the aperture in _v9x_map_physical_base and return its selector in AX,
 ; or 0 on failure. Stages 4 to 7 of the enable sequence.

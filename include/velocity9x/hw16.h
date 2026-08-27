@@ -3,7 +3,7 @@
  *
  * One statically linked v9x_hw16_ops table per family binary. It carries the
  * data the display driver needs about the cards it supports - PCI identity,
- * the audited VBE mode table, the strings published to C:\V9XHW.INI - plus
+ * the audited VBE mode table, the strings published to C:\V9XDIAG\V9XHW.INI - plus
  * nullable hooks for the few places where a family must run its own code.
  *
  * A NULL hook means "use the chip-agnostic default". A family whose hooks are
@@ -61,7 +61,7 @@ typedef struct v9x_hw16_mode {
 
 /*
  * One entry per chip in the family. The strings are exactly what the driver
- * writes to C:\V9XHW.INI, so they are data here rather than #ifdef'd literals
+ * writes to C:\V9XDIAG\V9XHW.INI, so they are data here rather than #ifdef'd literals
  * in the diagnostics publisher.
  *
  * acceleration and direct3d may be null for a family that publishes neither.
@@ -159,7 +159,7 @@ typedef struct v9x_hw16_ops {
     unsigned short map_pages_lo;
 
     /*
-     * Publish this family's C:\V9XHW.INI block. The caller has already
+     * Publish this family's C:\V9XDIAG\V9XHW.INI block. The caller has already
      * cleared the section.
      *
      * Not nullable today: every family describes itself. It stays a hook

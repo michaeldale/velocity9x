@@ -27,6 +27,13 @@ extern unsigned long v9x_vbe_vram_reported;
  * This family runs either way, so the diagnostics have to say which. */
 extern unsigned short v9x_pci_match;
 
+/* ddi.c: vendor (low word) and device (high word) of the machine's first
+ * display-class PCI device, read from config space when the family scan
+ * missed, or 0 when unread/unreadable. The data lives on the display16 side
+ * because reading it takes INT 1Ah, which this module must stay free of to
+ * remain host-testable. */
+extern unsigned long v9x_pci_display_ids;
+
 /*
  * vbe16.c / enable16.c: the scan line length the card reported, the geometry
  * the driver is drawing with, and what the stride was before tier-0 touched it.
@@ -54,7 +61,12 @@ extern unsigned short v9x_active_width;
  */
 const V9X_HW16_DEVICE v9x_vbe_device = {
     0x1234u, 0x1111u,
-    "QEMU/Bochs VBE (generic VESA linear framebuffer)",
+    /* Chip-agnostic wording on purpose: this string is what V9XHW.INI shows
+     * on any card that matches the id above, and naming QEMU there stated an
+     * emulator as fact. The QEMU identity stays in the id and the manifest's
+     * internal Name. Keep in sync with Chips[0].Adapter in
+     * packaging\families\vbe\family.psd1. */
+    "Generic VESA VBE linear framebuffer",
     "1234", "1111",
     "vbe-generic-unavailable-v1",
     "vbe-lfb",
@@ -110,6 +122,18 @@ static void v9x_vbe_format_u32(char *text, unsigned long value)
     text[at] = '\0';
 }
 
+/* Four uppercase hex digits, the same spelling the family tables use for
+ * vendor_text/device_text, into a caller-owned buffer of at least 5 bytes. */
+static void v9x_vbe_format_hex16(char *text, unsigned short value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    text[0] = digits[(value >> 12) & 0x0fu];
+    text[1] = digits[(value >> 8) & 0x0fu];
+    text[2] = digits[(value >> 4) & 0x0fu];
+    text[3] = digits[value & 0x0fu];
+    text[4] = '\0';
+}
+
 /*
  * Key order is the diagnostic contract; see the note in s3_regs16.c.
  *
@@ -134,10 +158,26 @@ static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
     unsigned short matched = (unsigned short)(v9x_pci_match != 0xffffu);
 
     write("SchemaVersion", "1");
+    /* "no chip-specific support", not "unrecognised": being un-named is the
+     * tier working as designed, and the old wording read like a fault in the
+     * one report a networkless machine sends back. Same reasoning for
+     * "unclaimed" below - the driver read PCI fine and found no family entry,
+     * which is not the same failure as being unable to match. */
     write("Adapter", matched ? device->adapter
-                             : "Unrecognised card on the generic VBE path");
-    write("VendorId", matched ? device->vendor_text : "unmatched");
-    write("DeviceId", matched ? device->device_text : "unmatched");
+                             : "Generic VESA adapter (no chip-specific support)");
+    write("VendorId", matched ? device->vendor_text : "unclaimed");
+    write("DeviceId", matched ? device->device_text : "unclaimed");
+    if (matched == 0u && v9x_pci_display_ids != 0ul) {
+        /* What the silicon actually is, from the display-class config-space
+         * read ddi.c performed. Separate keys so a reader of VendorId= can
+         * never mistake an unclaimed card for a claimed one. */
+        v9x_vbe_format_hex16(number,
+                             (unsigned short)(v9x_pci_display_ids & 0xffffu));
+        write("PciVendorId", number);
+        v9x_vbe_format_hex16(number,
+                             (unsigned short)(v9x_pci_display_ids >> 16));
+        write("PciDeviceId", number);
+    }
     write("ClockDetector", device->clock_detector);
     write("ClockStatus", "unavailable");
     write("ModeSwitching", device->mode_switching);

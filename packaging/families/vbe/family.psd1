@@ -28,8 +28,13 @@
             # every observed host (QEMU 4.2 Windows, UTM/QEMU on macOS). Win98
             # Have Disk matches HardwareIDs, which carry this SUBSYS.
             SubsystemId = '11001AF4'
-            DeviceDesc = 'Velocity9x VBE-generic display (QEMU std-vga)'
-            Adapter = 'QEMU/Bochs VBE (generic VESA linear framebuffer)'
+            # The user-visible name. The tier is chip-agnostic, so the name
+            # carries no chip: it is what Display Properties, Device Manager
+            # and SYSTEM.INI show on whatever card the driver is installed on,
+            # QEMU or otherwise. Chip identity stays in the hardware id above
+            # and in Name, which is manifest-internal.
+            DeviceDesc = 'Velocity9x VBE-generic display'
+            Adapter = 'Generic VESA VBE linear framebuffer'
             ClockDetector = 'vbe-generic-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'none'
@@ -128,8 +133,32 @@
         DiskName = 'Velocity9x Windows 98SE driver-stage disk'
         ModelsSection = 'Velocity9x.Models'
         DefaultMode = '8,640,480'
+        # Indexed by build-active-package.ps1 -ForceModeIndex, so entries must
+        # not be reordered. These resolutions are QEMU-shaped defaults in a
+        # chip-agnostic family: on real panel hardware (the GMA 950 netbook's
+        # 1024x576 panel) the runtime table prunes the ones the card cannot
+        # scan, which is the designed behaviour, not a mismatch to fix.
         ForcedModes = @('8,640,480', '8,800,600', '8,1024,768',
                         '16,640,480', '16,800,600', '16,1024,768')
+        # A second models line with no hardware ID at all, pickable only by
+        # hand from Have Disk. This is the honest route onto every VBE 2.0+
+        # card the family does not name - before this existed, the netbook
+        # install worked only by forcing the QEMU model onto the Intel IGD.
+        # Deliberately not a wildcard and deliberately not the Intel ids: the
+        # tier cannot claim to drive the 945 family properly, and a real GMA
+        # family would collide with such a claim. See also the s3 manifest's
+        # ManualSelect comment for why CompatibleId is not the answer either.
+        #
+        # VideoMemoryBytes is the budget the derived manual mode list is
+        # pruned against (Get-V9xFamilyManualSelectModes). 2 MiB keeps every
+        # declared mode (largest is 1024x768x16 at 1.5 MiB) while staying
+        # honest about small VBE cards. Note the declared modes carry QEMU
+        # VBE mode numbers; on other BIOSes the runtime scan supplies the
+        # real numbers, so a mismatch there is by design.
+        ManualSelect = @{
+            Description = 'Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)'
+            VideoMemoryBytes = 2097152
+        }
     }
 
     Package = @{

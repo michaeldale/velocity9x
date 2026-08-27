@@ -32,6 +32,7 @@ $object = Join-Path $outputDir "surface_step_win32.obj"
 $executable = Join-Path $outputDir "v9xsurf.exe"
 $linkFile = Join-Path $outputDir "v9xsurf.lnk"
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) { throw "Surface-step compilation failed." }
 $linkLines = @(

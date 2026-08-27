@@ -71,6 +71,7 @@ unsigned short v9x_s3_identify_without_pci(void) { return 0xffffu; }
 
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
+unsigned long v9x_pci_display_ids = 0ul;
 unsigned short v9x_vbe_scan_bytes = 0u;
 unsigned short v9x_vbe_scan_pixels = 0u;
 unsigned short v9x_vbe_scan_lines = 0u;

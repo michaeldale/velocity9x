@@ -12,18 +12,20 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.5.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.6.0** — see [CHANGELOG.md](CHANGELOG.md).
 
-> **This is an engineering bring-up driver, not a release driver.** Most of its
-> development and testing happens under [86Box](https://86box.net/) and QEMU;
-> the S3 Trio32/64 target is verified on two physical machines - a PCI card
-> under Windows 98 SE and a VESA Local Bus card under Windows 95 - and every
-> other target remains emulator-only. 0.5.0's dynamic mode discovery is
-> verified on two QEMU-based Windows 98 SE guests and is enabled only for the
-> generic VESA family; the S3, ATI and Matrox packages keep their static mode
-> lists and make no new BIOS calls. Install it only on a virtual machine you
-> have backed up cold, or on hardware you are willing to recover by hand.
-> Read [docs/INSTALL.md](docs/INSTALL.md) before you install anything.
+> **0.6.0 is the release where this stops being an engineering bring-up and
+> becomes a working driver.** The full stack — display driver, DirectDraw HAL,
+> mini-VDD, GDI acceleration — runs on three physical machines across three
+> buses and two chip vendors: an S3 Trio64 on PCI under Windows 98 SE
+> (benchmarked faster than the stock S3 driver in DirectDraw and ahead of its
+> own software baseline in CrystalMark 2D), the same chip on VESA Local Bus
+> under Windows 95, and an Intel GMA 950 netbook driven by the generic VBE
+> package on silicon the driver had never been told about. Development and
+> regression testing still happen under [86Box](https://86box.net/) and QEMU,
+> the ATI target remains emulator-only, and the per-target caveats below are
+> real — so still install it on a machine you have backed up cold, and read
+> [docs/INSTALL.md](docs/INSTALL.md) first.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
@@ -61,7 +63,12 @@ target gets:
   the fallback mode when the configured one is gone, and a card whose BIOS
   list is broken simply keeps the baseline modes.
 - **2D output** — through the system DIB Engine, with the framebuffer mapped
-  linearly. GDI drawing itself is not hardware-accelerated.
+  linearly. On both S3 chips, GDI solid fills and screen-to-screen copies
+  (window moves and scrolls, including overlapping copies in all eight
+  directions) run on the 2D engine, with a DIB Engine fallback and a poison
+  latch that turns acceleration off for the session if the engine ever wedges.
+  Text, lines and CPU-to-screen uploads remain software everywhere, and the
+  engineless targets (ATI, generic VESA) are all-software by definition.
 - **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory
   surfaces, CRTC display-start page flipping and genuine vertical-blank
   services on every target. Solid colour fills and screen-to-screen BitBLT run
@@ -84,7 +91,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 |---|---|---|---|---|
 | PCI ID | `5333:8A01` | `5333:8811` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
-| Status | Primary target | Conservative baseline | Tier-0 bring-up | Tier-0 fallback |
+| Status | Primary target | Conservative baseline, verified on 2 physical machines | Tier-0 bring-up | Tier-0 fallback, verified on a physical Intel GMA 950 |
 | Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same | 640x400x8, 640/800/1024 at 8 and 16 bpp | same as ATI |
 | Live resolution change | Yes | Yes | Yes | Yes |
 | Live colour-depth change | Yes | Yes | Yes | Yes |
@@ -121,6 +128,26 @@ RTS at 640x480 fullscreen, against the stock driver on the same machine:
 | System RAM | 20 FPS | 22 FPS |
 | Windowed | 18 FPS | 18 FPS |
 
+With 0.6.0's GDI acceleration enabled, CrystalMark Retro 2.1.0 on the same
+card (800x600x16) shows the desktop-drawing gain over the driver's own
+software baseline — and, just as importantly, the controls that did not move:
+
+| CrystalMark 2D (GDI) | Software (0.5.x) | Accelerated (0.6.0) |
+|---|---|---|
+| Square | 253 | **275** |
+| Image | 91 | **98** |
+| Circle | 134 | 134 *(unaccelerated path, bit-identical — a control)* |
+| Text | 2 | 3 *(quantisation, not a gain — text is still software)* |
+
+CPU scores were bit-identical across the two runs, which is what makes the 2D
+movement attributable to the driver. The run, its prediction, and the honest
+caveats (one disk control moved by a similar margin, so the exact percentages
+should not be quoted as measured speedups) are in
+[docs/decisions/2026-08-27-crystalmark-barry-accelerated.md](docs/decisions/2026-08-27-crystalmark-barry-accelerated.md).
+The `AdvFuncRestores=5` counter from that session is the ADVFUNC_CNTL guard —
+the fix that made acceleration safe on real silicon — earning its place
+against a real workload.
+
 Getting there took two bugs that only real silicon exposed: a 4 MiB video-memory
 assumption that is wrong on a 2 MB card, and a mini-VDD that allocated a V86
 scratch buffer without paragraph alignment and then truncated its address to a
@@ -148,6 +175,29 @@ is a device Windows reports as absent — leaving a working driver that Windows
 never asks to enable. The investigation, including the wrong turns, is in
 [docs/handoffs/2026-08-22-vlb-manual-select-handover.md](docs/handoffs/2026-08-22-vlb-manual-select-handover.md).
 
+### Verified on physical hardware: Intel GMA 950, on the generic VESA package
+
+The third physical machine is the one that tests the project's central claim —
+that the chip-agnostic VBE tier can drive silicon nobody wrote a line of code
+for. An **HP Mini 110 netbook (Atom N280, Intel 945GSE, GMA 950,
+`8086:27AE`)** runs the `VBE\` package, a driver whose device list names only
+QEMU's std-vga: the driver enabled on the first attempt, read the panel's EDID
+over the VBE path, picked the native **1024x576** widescreen mode the baseline
+list never named, published six modes, and ran the full DirectDraw probe to
+`Result=COMPLETE` — every blit path `S_OK`, zero engine timeouts, and
+`WaitForVerticalBlank` measuring the panel's 60 Hz to three digits. The
+machine has no networking, so the whole result was read off the diagnostic
+files afterwards — which is exactly what they are for, and what drove 0.6.0's
+diagnostics overhaul (one `C:\V9XDIAG\` directory, honest wording for
+unclaimed cards, and the real PCI ids recorded even when the family does not
+claim them). The findings and what they changed are in
+[docs/issues/2026-08-27-netbook-gma950-findings.md](docs/issues/2026-08-27-netbook-gma950-findings.md).
+
+The one open performance item from that run: with no blitter behind it, video
+memory on this tier is fast to allocate and slow to read back (Ironfield
+staged at 100 FPS from system RAM against ~20 from VRAM), and the heap policy
+change that would steer applications away from the trap is designed but
+deliberately unshipped until it is measured.
 
 ### Tier-0: how a new card starts
 
@@ -187,7 +237,7 @@ ATI Mach64 VT2 through exactly that route, on a package whose INF does not list
 the card, with the framebuffer address taken entirely from the video BIOS.
 
 If it does not work, the failure should be legible rather than mysterious:
-`C:\V9XBOOT.INI` records how far the driver got and a `VbeDetail` key says which
+`C:\V9XDIAG\V9XBOOT.INI` records how far the driver got and a `VbeDetail` key says which
 VESA step refused. Send that.
 
 ### Helping add native support
@@ -201,7 +251,7 @@ list, your monitor's EDID and the raw VGA register file.
 It is a real-mode DOS program — that is the only place one executable can read
 all of the above without a driver. Boot to DOS (`Start` → `Shut Down` →
 *Restart in MS-DOS mode*), run `V9XSURV`, and send back the
-`C:\V9XSURV.INI` it writes. A DOS box inside Windows also works; it just sees
+`C:\V9XDIAG\V9XSURV.INI` it writes. A DOS box inside Windows also works; it just sees
 less.
 
 It reads, it does not write: no mode change, nothing installed, nothing left
@@ -357,18 +407,21 @@ device, and there is no Direct3D at all on the Trio32/64, ATI or generic VESA
 targets.
 
 **Will the desktop feel faster than with the card's retail driver?**
-For ordinary window and text drawing, no — there is no GDI acceleration here, so
-that work goes through the DIB Engine on the CPU where a retail driver hands it
-to the 2D engine. DirectDraw is the other way round on the Trio64, where
-measured frame rates beat the stock S3 driver. Both sets of numbers are in
-[How it compares](#how-it-compares-to-the-retail-s3-drivers).
+On the S3 chips, fills and window moves/scrolls now run on the 2D engine —
+CrystalMark 2D measures the gain over the driver's own software path on a
+physical Trio64 — but text and line drawing are still software, so a retail
+driver keeps an edge on text-heavy work. DirectDraw is the other way round on
+the Trio64, where measured frame rates beat the stock S3 driver. The numbers
+are in [Verified on physical hardware](#verified-on-physical-hardware-s3-trio64-on-pci)
+and [How it compares](#how-it-compares-to-the-retail-s3-drivers).
 
 **Can I run this on real hardware, or only in an emulator?**
-One target is verified on real silicon: the S3 Trio64, as of 0.4.2. Every other
-target is emulator-only, and the Matrox Millennium II candidate has never been
-run on its physical card at all. Real hardware is welcome and is how the last
-two bugs were found — just read [docs/INSTALL.md](docs/INSTALL.md) first and have
-a recovery path.
+Three physical machines run it today: an S3 Trio64 on PCI (Windows 98 SE), the
+same chip on VESA Local Bus (Windows 95), and an Intel GMA 950 netbook on the
+generic VESA package. The ATI target is still emulator-only, and the Matrox
+Millennium II candidate has never been run on its physical card at all. Real
+hardware is welcome and is where the best bugs have been found — just read
+[docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
 
 **Do I uninstall the existing display driver first?**
 No — and do not remove the display adapter in Device Manager either, because
@@ -385,11 +438,11 @@ send back if it refuses.
 ## Reporting problems
 
 Include the chip and PCI ID, the package build identifier, the display mode in
-use, and the contents of `C:\V9XBOOT.INI` — its `Stage` key names the furthest
+use, and the contents of `C:\V9XDIAG\V9XBOOT.INI` — its `Stage` key names the furthest
 step the driver reached, and on the `VBE\` and `ATI\` packages a `VbeDetail` key
-names which VESA step refused. `C:\V9XHW.INI` carries the detected adapter,
-memory and stride. If DirectDraw or Direct3D is involved, add `C:\V9XDD.INI` and
-`C:\V9XTRACE.INI`. If the machine failed to reach the desktop, a COM1 serial
+names which VESA step refused. `C:\V9XDIAG\V9XHW.INI` carries the detected adapter,
+memory and stride. If DirectDraw or Direct3D is involved, add `C:\V9XDIAG\V9XDD.INI` and
+`C:\V9XDIAG\V9XTRACE.INI`. If the machine failed to reach the desktop, a COM1 serial
 capture is the most useful single artefact — [docs/INSTALL.md](docs/INSTALL.md)
 explains how to set one up.
 

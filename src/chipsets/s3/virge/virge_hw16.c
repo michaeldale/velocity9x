@@ -2,7 +2,7 @@
  * S3 ViRGE/DX 86C375 chip module.
  *
  * The chip data that used to be #ifdef'd into src\display16\ddi.c: the PCI
- * identity, the strings published to C:\V9XHW.INI, and the two hooks that
+ * identity, the strings published to C:\V9XDIAG\V9XHW.INI, and the two hooks that
  * differ from its Trio64 sibling. Register access is shared with the other S3
  * chips in src\chipsets\s3\common\s3_regs16.c, and the mode table and the rest
  * of the family description live in src\chipsets\s3\s3_hw16.c.

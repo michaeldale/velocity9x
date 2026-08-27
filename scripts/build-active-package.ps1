@@ -9,7 +9,7 @@ param(
     # lost a forced mode.
     [int]$ForceModeIndex = -1,
     # Boot tracing is on by default: the driver records the furthest lifecycle
-    # stage it reached in C:\V9XBOOT.INI, which the settings page reports and
+    # stage it reached in C:\V9XDIAG\V9XBOOT.INI, which the settings page reports and
     # the install guide asks testers to send in. -BootTrace is still accepted
     # so existing invocations keep working. Use -NoBootTrace to omit it.
     [switch]$BootTrace,
@@ -172,7 +172,7 @@ if ($miniVddVbeCollect) {
         ''
         'This family also discovers the modes the video BIOS itself reports:'
         'after the first successful boot the driver merges them into its'
-        'runtime table, writes the validated inventory C:\V9XMODES.INI, and'
+        'runtime table, writes the validated inventory C:\V9XDIAG\V9XMODES.INI, and'
         'the per-boot synchronizer mirrors it into Display Properties, so the'
         'offered list grows past the baseline above on capable cards. The'
         'panel EDID, where readable, selects the fallback mode; it never'
@@ -204,7 +204,7 @@ $manifest = @(
     "Target: Windows 98SE, $($expectedHardwareIds -join ', ')$manualTargetNote",
     "Modes: $($familyManifest.Package.ModesSummary)",
     "Forced diagnostic mode index: $ForceModeIndex (-1 means registry-selected)",
-    "Boot trace: $traceEnabled (writes C:\\V9XBOOT.INI)",
+    "Boot trace: $traceEnabled (writes C:\V9XDIAG\V9XBOOT.INI)",
     "Rendering: Windows DIB Engine plus DirectDraw HAL",
     "Mini-VDD callbacks: D0-only caps + guarded VESA DPMS + Win98 power state",
     "Settings: read-only bring-up status, report, and recovery shortcut",
@@ -216,8 +216,8 @@ $manifest = @(
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
-    "HAL trace: driver writes C:\\V9XTRACE.INI on faults; V9XTRACE.EXE writes live C:\\V9XSNAP.INI",
-    "Window inventory: V9XWND.EXE writes GDI-free C:\\V9XWND.INI",
+    "HAL trace: driver writes C:\V9XDIAG\V9XTRACE.INI on faults; V9XTRACE.EXE writes live C:\V9XDIAG\V9XSNAP.INI",
+    "Window inventory: V9XWND.EXE writes GDI-free C:\V9XDIAG\V9XWND.INI",
     "Preflight: V9XSTAGE.EXE (no mode change and no installation)",
     "Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED",
     "",

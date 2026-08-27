@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
@@ -61,7 +63,7 @@ void WINAPI V9xMatroxMmioQueryEntry(void)
     struct v9x_mga_query_result result;
 
     GetPrivateProfileStringA("MatroxInventory", "ControlBase", "",
-                             base_text, sizeof(base_text), "C:\\V9XMGA.INI");
+                             base_text, sizeof(base_text), V9X_DIAG_MGA_INI);
     control_base = v9x_parse_hex(base_text);
     if (control_base == 0u || (control_base & 0x3fffu) != 0u) ExitProcess(2u);
 
@@ -77,7 +79,8 @@ void WINAPI V9xMatroxMmioQueryEntry(void)
     }
     CloseHandle(device);
 
-    output = CreateFileA("C:\\V9XMGAMM.INI", GENERIC_WRITE, FILE_SHARE_READ,
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    output = CreateFileA(V9X_DIAG_MGAMM_INI, GENERIC_WRITE, FILE_SHARE_READ,
                          0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (output == INVALID_HANDLE_VALUE) ExitProcess(5u);
     {

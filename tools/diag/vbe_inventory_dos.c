@@ -26,11 +26,13 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_VBE_REPORT "C:\\V9XVBE.TXT"
+#define V9X_VBE_REPORT V9X_DIAG_VBE_TXT
 
 /* VBE 2.0 says a mode list may be any length; 128 is well past every BIOS
  * this project has met and bounds the staging array in the small model. */
@@ -177,6 +179,19 @@ int main(void)
     unsigned long video_mode_ptr = 0ul;
     union REGS input;
     union REGS output;
+
+    /* The report lives in C:\V9XDIAG, which fopen will not create. INT 21h
+     * AH=39h; errors are ignored - the fopen decides usability. */
+    {
+        struct SREGS segments;
+        static char directory[] = V9X_DIAG_DIR;
+
+        segread(&segments);
+        memset(&input, 0, sizeof(input));
+        input.h.ah = 0x39u;
+        input.x.dx = (unsigned)directory;
+        int86x(0x21, &input, &output, &segments);
+    }
 
     report = fopen(V9X_VBE_REPORT, "wt");
     if (report == 0) return 1;

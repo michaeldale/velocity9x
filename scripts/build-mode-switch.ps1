@@ -49,6 +49,7 @@ $mapFile = Join-Path $outputDir "v9xmsw.map"
 $linkFile = Join-Path $outputDir "v9xmsw.lnk"
 
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to compile the mode-switch exerciser."

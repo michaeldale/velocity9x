@@ -21,6 +21,7 @@ $exe = Join-Path $outputDir "v9xvbe.exe"
 Push-Location $outputDir
 try {
     & $compiler "-bt=dos" "-ms" "-zq" "-wx" `
+        "-i=$(Join-Path $repoRoot 'include')" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fe=$exe" `
         (Join-Path $repoRoot "tools\diag\vbe_inventory_dos.c")
     if ($LASTEXITCODE -ne 0) { throw "Failed to build the DOS VBE inventory." }

@@ -48,6 +48,7 @@ $mapFile = Join-Path $outputDir "v9xwnd.map"
 $linkFile = Join-Path $outputDir "v9xwnd.lnk"
 
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to compile the window-list tool."

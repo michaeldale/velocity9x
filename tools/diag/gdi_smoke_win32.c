@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 
 #ifndef V9X_BUILD_ID
@@ -73,8 +74,9 @@ static void v9x_write_auto_result(HDC display, int passed)
 {
     char number[12];
     POINT cursor;
-    const char result_path[] = "C:\\V9XGDI.INI";
+    const char result_path[] = V9X_DIAG_GDI_INI;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA("Velocity9xGDI", 0, 0, result_path);
     WritePrivateProfileStringA("Velocity9xGDI", "Result",
                                passed ? "PASS" : "FAIL", result_path);
@@ -290,7 +292,7 @@ static LRESULT CALLBACK v9x_window_proc(HWND window,
  * /accel: the phase that can fail.
  *
  * The existing smoke path above is deliberately untouched, so Result=PASS in
- * C:\V9XGDI.INI keeps exactly the meaning the mode matrix already relies on.
+ * C:\V9XDIAG\V9XGDI.INI keeps exactly the meaning the mode matrix already relies on.
  * This phase writes its own file.
  *
  * What it is for: a seeded stream of operations drawn on the screen and
@@ -315,7 +317,7 @@ static LRESULT CALLBACK v9x_window_proc(HWND window,
  * themselves at every depth this driver offers.
  * ------------------------------------------------------------------------ */
 
-#define V9X_ACCEL_PATH        "C:\\V9XACCE.INI"
+#define V9X_ACCEL_PATH        V9X_DIAG_ACCEL_INI
 #define V9X_ACCEL_SECTION     "Velocity9xAccel"
 #define V9X_ACCEL_CLASS       "Velocity9xAccelWindow"
 #define V9X_ACCEL_OPERATIONS  500
@@ -1877,6 +1879,9 @@ void WINAPI V9xGdiSmokeEntry(void)
     HWND window;
     MSG message;
 
+    /* Every phase below reports into V9X_DIAG_DIR, and
+     * WritePrivateProfileString fails silently into a missing directory. */
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     if (v9x_has_switch(command_line, "/inject:")) {
         ExitProcess(v9x_accel_inject_phase(
             v9x_accel_parse_inject(command_line)));

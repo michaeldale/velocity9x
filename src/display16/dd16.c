@@ -12,6 +12,7 @@
 #include <windows.h>
 #undef SetCursor
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/win9x_ddraw_abi.h"
@@ -51,10 +52,28 @@ static void v9x_dd_copy(void FAR *destination, const void FAR *source,
     }
 }
 
+/* runtime.asm: create V9X_DIAG_DIR once before the first diagnostic write. */
+extern void FAR PASCAL V9xEnsureDiagDir(void);
+
 static void v9x_dd_trace(const char FAR *stage)
 {
+    V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9xDDraw", "Stage", stage,
-                              "C:\\V9XDDH.INI");
+                              V9X_DIAG_DDHOOK_INI);
+}
+
+/* Stage= is last-write-wins, and DDRAW's retry pattern makes the last write
+ * frequently a transient ("setinfo-callback-missing" from a retry that raced
+ * DDNEWCALLBACKFNS) even on a boot that went on to complete. Measured on the
+ * GMA 950 netbook: CountDd16CreateObject=3 against one NewCallbackFns, session
+ * Result=COMPLETE, yet the file's only Stage was the miss. LastGoodStage= is
+ * the same key discipline applied only to stages that mean forward progress,
+ * so the file can no longer report a healthy boot as a failure. */
+static void v9x_dd_trace_good(const char FAR *stage)
+{
+    v9x_dd_trace(stage);
+    WritePrivateProfileString("Velocity9xDDraw", "LastGoodStage", stage,
+                              V9X_DIAG_DDHOOK_INI);
 }
 
 /* 16-bit writer for the shared callback trace ring (same record layout as
@@ -236,7 +255,7 @@ static V9X_DD_SHARED FAR *v9x_dd_block(void)
     v9x_dd_shared->dwSize = sizeof(V9X_DD_SHARED);
     v9x_dd_shared->abi = V9X_DD_SHARED_ABI;
     v9x_dd_fill_modes(v9x_dd_shared);
-    v9x_dd_trace("shared-ready");
+    v9x_dd_trace_good("shared-ready");
     return v9x_dd_shared;
 }
 
@@ -500,7 +519,11 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
                        (DWORD)result);
     v9x_serial_write(result != 0u ? "V9X-DD setinfo-ok\r\n"
                                   : "V9X-DD setinfo-fail\r\n");
-    v9x_dd_trace(result != 0u ? "setinfo-ok" : "setinfo-fail");
+    if (result != 0u) {
+        v9x_dd_trace_good("setinfo-ok");
+    } else {
+        v9x_dd_trace("setinfo-fail");
+    }
     return result;
 }
 
@@ -547,7 +570,7 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
         }
         v9x_dd_trace_event(V9X_TRACE_DD16_GET32BITNAME, 0ul);
         v9x_serial_write("V9X-DD get32bitname\r\n");
-        v9x_dd_trace("get32bitname");
+        v9x_dd_trace_good("get32bitname");
         return 1;
     case V9X_DDNEWCALLBACKFNS:
         {
@@ -561,7 +584,7 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
         }
         v9x_dd_trace_event(V9X_TRACE_DD16_NEWCALLBACKFNS, 0ul);
         v9x_serial_write("V9X-DD newcallbackfns\r\n");
-        v9x_dd_trace("newcallbackfns");
+        v9x_dd_trace_good("newcallbackfns");
         return 1;
     case V9X_DDGETTRACE:
         /* Copy a snapshot of the trace state for the diagnostics tool.

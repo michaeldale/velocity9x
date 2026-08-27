@@ -4,7 +4,61 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.6.0 - 2026-08-27
+
+**The milestone this version number marks: Velocity9x is no longer an
+engineering bring-up driver — it is a working driver.** The full stack runs on
+three physical machines across three buses and two chip vendors: the S3 Trio64
+on PCI under Windows 98 SE (with GDI acceleration measured faster than
+baseline in CrystalMark Retro and faster than the stock S3 driver in Ironfield
+RTS), the same chip on VESA Local Bus under Windows 95, and — first verified during
+this cycle, on the 0.5.0 vbe package — an Intel GMA 950 (945GSE netbook)
+driven by the chip-agnostic VBE
+tier-0 package on silicon the driver had never been told about: EDID read over
+the VBE path, the panel's native 1024x576 selected, six modes published, and
+DirectDraw running to `Result=COMPLETE` with zero engine timeouts across 251
+traced callbacks. The remaining caveats are recorded per-target rather than
+blanket-labelled "bring-up".
+
+Changed: the netbook GMA 950 findings implemented
+([issue](docs/issues/2026-08-27-netbook-gma950-findings.md), items 1-3 and 5):
+
+- The `vbe` family gains an `Inf.ManualSelect` model, "Velocity9x VBE-generic
+  display (any VESA VBE 2.0+ adapter)" (2 MiB mode budget, all seven declared
+  modes fit), so a Have-Disk install on a card the family does not name no
+  longer forces the QEMU model onto foreign silicon.
+- The vbe `DeviceDesc` drops "(QEMU std-vga)" - the name a user sees is now
+  chip-agnostic like the tier - and `Adapter` becomes "Generic VESA VBE linear
+  framebuffer" in both the manifest and the C table. On an unclaimed card
+  V9XHW.INI now says `Adapter=Generic VESA adapter (no chip-specific support)`
+  and `VendorId=unclaimed` instead of "Unrecognised"/"unmatched", and records
+  the silicon's real ids as `PciVendorId`/`PciDeviceId` via a new display-class
+  config-space read (`V9XPCIDISPLAYID` in runtime.asm).
+- Every diagnostic file moves from the root of `C:\` into `C:\V9XDIAG\`, with
+  one shared header (`include/velocity9x/diagpaths.h`) defining all twenty-one
+  paths so writers and readers cannot drift. The 16-bit driver creates the
+  directory once via INT 21h AH=39h (`V9XENSUREDIAGDIR`), the 32-bit HAL and
+  Win32 tools call `CreateDirectoryA`, and the DOS tools mkdir before their
+  default-path fopen (their `/out:` overrides are untouched). The VM
+  automation scripts, install docs and package manifests move with them.
+- `V9XDDH.INI` gains `LastGoodStage=` beside the last-write-wins `Stage=`, so
+  a healthy boot whose final trace write was a DDRAW retry transient no longer
+  reads as a failure.
+- The DirectDraw probe seeds `TexSurfaceHr`/`TexHandleHr`/`TexSwapHr` with
+  `DDERR_UNSUPPORTED` instead of `E_FAIL`: a tier with no texture support is
+  answering honestly.
+- `V9XMSW.EXE` run with no arguments now performs a default `/cycle:2`
+  exercise instead of writing `Result=NO-ARGUMENT` - on a machine reached only
+  by carrying a USB stick to it, a double-click no-op is a wasted trip.
+- A hidden baseline mode row whose geometry exceeds the EDID panel size is now
+  reported `hide=edid-contradicted` rather than the mechanism-only
+  `hide=scan-contradicted`, making the inventory self-explaining after the
+  fact.
+
+Item 4 (heap restriction masks for engineless families - the 10x Ironfield
+video-memory staging penalty) is deliberately not implemented here: it changes
+what `CreateSurface(DDSCAPS_VIDEOMEMORY)` returns and the issue says to
+measure it on QEMU before trusting it on hardware.
 
 Fixed: **GDI acceleration on physical S3 Trio64 silicon** - the 2026-08-27
 defect where every accelerated fill executed and put nothing on the screen.

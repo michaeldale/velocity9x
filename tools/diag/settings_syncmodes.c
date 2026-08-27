@@ -5,7 +5,7 @@
  * GDI validates a dynamic row the moment modes16.c commits it, but the native
  * Windows 9x Settings page enumerates the display class key's MODES tree,
  * which the INF wrote once at install time. This entry point bridges that
- * boot-time gap: it reads C:\V9XMODES.INI - written by the 16-bit driver
+ * boot-time gap: it reads C:\V9XDIAG\V9XMODES.INI - written by the 16-bit driver
  * after a successful enable - validates it whole, and creates the missing
  * MODES\<depth>\<width>,<height> keys for published rows, stamping only the
  * keys it creates so it can later prune only what it owns.
@@ -39,9 +39,11 @@
  */
 #include <windows.h>
 
-#define V9X_INVENTORY_PATH    "C:\\V9XMODES.INI"
+#include "velocity9x/diagpaths.h"
+
+#define V9X_INVENTORY_PATH    V9X_DIAG_MODES_INI
 #define V9X_INVENTORY_SECTION "Velocity9xModes"
-#define V9X_SYNC_REPORT_PATH  "C:\\V9XSYNC.INI"
+#define V9X_SYNC_REPORT_PATH  V9X_DIAG_SYNC_INI
 #define V9X_SYNC_SECTION      "Velocity9xSync"
 #define V9X_DISPLAY_CLASS_KEY \
     "System\\CurrentControlSet\\Services\\Class\\Display"
@@ -63,6 +65,7 @@ static WORD v9x_op_count;
 
 static void v9x_sync_write(const char *key, const char *value)
 {
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SYNC_SECTION, key, value,
                                V9X_SYNC_REPORT_PATH);
 }

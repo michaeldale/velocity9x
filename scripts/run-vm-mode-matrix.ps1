@@ -346,9 +346,9 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         # keeps the enable-ok check below about *this* mode rather than the one
         # the guest happened to boot in. Deleted after the step-aside above, so
         # that switch's trace does not satisfy the check either.
-        $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XBOOT.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XGDI.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XPAL.INI"
         $switch = Invoke-V9xCtlJson exec @(
             "-Application", "$GuestJob\V9XMSW.EXE",
             "-Arguments", "/set:$name",
@@ -359,7 +359,7 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         }
         # V9XMSW writes its own verdict; a non-zero exit is not the only way for
         # a switch to fail.
-        $mswReport = Invoke-GuestShell "TYPE C:\V9XMSW.INI"
+        $mswReport = Invoke-GuestShell "TYPE C:\V9XDIAG\V9XMSW.INI"
         if ($mswReport.Stdout -notmatch '(?m)^Result=PASS\s*$') {
             throw ("Mode {0} live switch did not report Result=PASS." -f $name)
         }
@@ -378,9 +378,9 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
         $null = Invoke-V9xCtlJson put @(
             "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
-        $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XBOOT.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XGDI.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XPAL.INI"
         $null = Invoke-GuestShell "REGEDIT /S $GuestJob\MODE.REG"
 
         $reboot = Invoke-V9xCtlJson reboot @(
@@ -404,7 +404,7 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         throw ("Mode {0} fell back to {1}x{2}x{3}." -f $name,
                $info.ScreenWidth, $info.ScreenHeight, $info.BitsPerPixel)
     }
-    $trace = Invoke-GuestShell "TYPE C:\V9XBOOT.INI"
+    $trace = Invoke-GuestShell "TYPE C:\V9XDIAG\V9XBOOT.INI"
     if ($trace.Stdout -notmatch '(?m)^Stage=enable-ok\s*$') {
         throw "Mode $name did not reach the enable-ok driver trace."
     }
@@ -414,7 +414,7 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
     for ($attempt = 0; $attempt -lt 20; ++$attempt) {
         Start-Sleep -Milliseconds 500
         $candidate = Invoke-GuestShell (
-            "IF EXIST C:\V9XGDI.INI TYPE C:\V9XGDI.INI")
+            "IF EXIST C:\V9XDIAG\V9XGDI.INI TYPE C:\V9XDIAG\V9XGDI.INI")
         if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL)\s*$') {
             $gdi = $candidate
             break
@@ -442,13 +442,13 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
     # emulated Pentium are seconds, not milliseconds.
     $accelResult = "SKIP"
     if (-not $SkipAccel) {
-        $null = Invoke-GuestShell "DEL C:\V9XACCE.INI"
+        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XACCE.INI"
         $null = Invoke-GuestShell "START $GuestJob\V9XGDI.EXE /accel"
         $accel = $null
         for ($attempt = 0; $attempt -lt 240; ++$attempt) {
             Start-Sleep -Milliseconds 500
             $candidate = Invoke-GuestShell (
-                "IF EXIST C:\V9XACCE.INI TYPE C:\V9XACCE.INI")
+                "IF EXIST C:\V9XDIAG\V9XACCE.INI TYPE C:\V9XDIAG\V9XACCE.INI")
             if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL)\s*$') {
                 $accel = $candidate
                 break
@@ -461,7 +461,7 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
             -Value $accel.Stdout -Encoding Ascii
         if ($accel.Stdout -notmatch '(?m)^Result=PASS\s*$') {
             throw ("Mode $name failed the GDI acceleration phase. " +
-                   "C:\V9XACCE.INI said:" + [Environment]::NewLine +
+                   "C:\V9XDIAG\V9XACCE.INI said:" + [Environment]::NewLine +
                    $accel.Stdout)
         }
         $accelResult = "PASS"
@@ -473,7 +473,7 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         for ($attempt = 0; $attempt -lt 20; ++$attempt) {
             Start-Sleep -Milliseconds 500
             $candidate = Invoke-GuestShell (
-                "IF EXIST C:\V9XPAL.INI TYPE C:\V9XPAL.INI")
+                "IF EXIST C:\V9XDIAG\V9XPAL.INI TYPE C:\V9XDIAG\V9XPAL.INI")
             if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL|SKIP)\s*$') {
                 $palette = $candidate
                 break

@@ -28,6 +28,7 @@ $executable = Join-Path $outputDir "v9xpal.exe"
 $map = Join-Path $outputDir "v9xpal.map"
 $link = Join-Path $outputDir "v9xpal.lnk"
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
 if ($LASTEXITCODE -ne 0) { throw "Palette test compilation failed." }
 $lines = @("format windows nt", "runtime windows=4.0", "option quiet",

@@ -74,7 +74,9 @@ void v9x_trace_exit(WORD id, DWORD result)
     v9x_trace_push((WORD)(id | V9X_DD_TRACE_EXIT_FLAG), result);
 }
 
-#define V9X_TRACE_PATH "C:\\V9XTRACE.INI"
+#include "velocity9x/diagpaths.h"
+
+#define V9X_TRACE_PATH V9X_DIAG_TRACE_INI
 
 static int v9x_fault_flush_active;
 
@@ -172,6 +174,9 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
         return;
     }
     v9x_fault_flush_active = 1;
+    /* The diag directory normally exists by now (the 16-bit driver creates it
+     * at its first boot write), but a fault dump must not depend on that. */
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     file = CreateFileA(V9X_TRACE_PATH, GENERIC_WRITE,
                        FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);

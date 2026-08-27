@@ -50,6 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to link Matrox MMIO query VxD." }
 $object = Join-Path $outputDir "matrox_mmio_query_win32.obj"
 $exe = Join-Path $outputDir "v9xmgaq.exe"
 & $compiler "-bt=nt" "-zq" "-wx" "-zl" "-s" `
+    "-i=$(Join-Path $repoRoot 'include')" `
     "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" `
     (Join-Path $repoRoot "tools\diag\matrox_mmio_query_win32.c")
 if ($LASTEXITCODE -ne 0) { throw "Failed to compile Matrox MMIO query loader." }

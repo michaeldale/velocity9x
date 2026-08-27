@@ -28,6 +28,7 @@
  */
 #include <windows.h>
 
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe16.h"
 #include "velocity9x/vbe_cache.h"
@@ -254,9 +255,15 @@ WORD v9x_hardware_acceptable(void)
  * that reports a stride we cannot use is a different problem from a BIOS call
  * that never ran. Separate key, so neither overwrites the other.
  */
+/* runtime.asm: create V9X_DIAG_DIR once, before the first diagnostic write.
+ * WritePrivateProfileString will not create it and fails silently if it is
+ * missing, which would turn every diagnostic below into a no-op. */
+extern void FAR PASCAL V9xEnsureDiagDir(void);
+
 static void v9x_write_ini_key(const char FAR *key, const char FAR *value)
 {
-    WritePrivateProfileString("Velocity9x", key, value, "C:\\V9XBOOT.INI");
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", key, value, V9X_DIAG_BOOT_INI);
 }
 
 static void v9x_vbe_trace(const char FAR *detail)
@@ -404,12 +411,13 @@ static void v9x_vbe_trace_cache(void)
     traced = 1u;
 
     /* Clear the previous boot's generation even when this boot has no API. */
+    V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", "VbeController", 0,
-                              "C:\\V9XBOOT.INI");
+                              V9X_DIAG_BOOT_INI);
     for (index = 0u; index < V9X_VBE_CACHE_MAX; ++index) {
         v9x_vbe_mode_key(key, index);
         WritePrivateProfileString("Velocity9x", key, 0,
-                                  "C:\\V9XBOOT.INI");
+                                  V9X_DIAG_BOOT_INI);
     }
 
     if (V9xMiniVbeStatus() == 0u) {

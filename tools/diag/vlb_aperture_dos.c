@@ -73,7 +73,9 @@
 #endif
 
 #define V9X_PROBE_SCHEMA "1"
-#define V9X_PROBE_DEFAULT "C:\\V9XAPER.INI"
+#include "velocity9x/diagpaths.h"
+
+#define V9X_PROBE_DEFAULT V9X_DIAG_APER_INI
 
 /* 32 bytes is enough to be unmistakable and small enough that the marker is a
  * few pixels in the corner of the screen rather than a visible band. */
@@ -896,11 +898,27 @@ int main(int argc, char **argv)
      * the only way to place a marker at all. Asking for one is asking for both. */
     if (want_linear) want_write = 1;
 
+    /* The default path lives in C:\V9XDIAG, which fopen will not create.
+     * INT 21h AH=39h; errors are ignored - the fopen decides usability. */
+    if (requested_path == V9X_PROBE_DEFAULT) {
+        union REGS input;
+        union REGS output;
+        struct SREGS segments;
+        static char directory[] = V9X_DIAG_DIR;
+
+        segread(&segments);
+        memset(&input, 0, sizeof(input));
+        input.h.ah = 0x39u;
+        input.x.dx = (unsigned)directory;
+        int86x(0x21, &input, &output, &segments);
+    }
+
     strncpy(report_path, requested_path, sizeof(report_path) - 1u);
     report_path[sizeof(report_path) - 1u] = '\0';
     report = fopen(report_path, "wt");
     if (report == 0) {
         puts("Velocity9x aperture probe: could not create a report file.");
+        puts("Try /out:A:\\V9XAPER.INI to write to a floppy instead.");
         return 3;
     }
 

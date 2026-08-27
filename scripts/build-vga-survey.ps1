@@ -174,6 +174,7 @@ $exe = Join-Path $outputDir "V9XSURV.EXE"
 Push-Location $outputDir
 try {
     & $compiler "-bt=dos" "-ms" "-zq" "-wx" "-os" "-k4096" "-0" `
+        "-i=$(Join-Path $repoRoot 'include')" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fe=$exe" $source
     if ($LASTEXITCODE -ne 0) { throw "Failed to build the VGA survey." }
 } finally { Pop-Location }
@@ -218,7 +219,7 @@ Best results come from real DOS, not a DOS window inside Windows.
    2. Change to the folder holding V9XSURV.EXE.
    3. Type:  V9XSURV
    4. Answer the one question it asks (see below).
-   5. Send back the file it names at the end - normally C:\V9XSURV.INI
+   5. Send back the file it names at the end - normally C:\V9XDIAG\V9XSURV.INI
 
 Running it from a DOS box inside Windows does work and still produces a
 useful file. It just cannot see as much.
@@ -249,7 +250,7 @@ OPTIONS
                        window, to find out whether the machine decodes
                        addresses there at all. Only asked for on ISA and
                        VESA Local Bus cards. See below.
-   V9XSURV /out:A:\V9XSURV.INI    write the report somewhere else, for
+   V9XSURV /out:A:\V9XDIAG\V9XSURV.INI    write the report somewhere else, for
                        example to a floppy on a machine with no spare disk
    V9XSURV /?          show this list
 
@@ -273,7 +274,7 @@ If we have asked for /aperture, run it like this:
       "Command prompt only" on some setups still runs it - we have measured a
       machine where it did, and the report showed EMM386 loaded.
 
-   2. V9XSURV /aperture /rom /out:C:\V9XAPER.INI
+   2. V9XSURV /aperture /rom /out:C:\V9XDIAG\V9XAPER.INI
    3. Send both reports - the ordinary one and this one.
 
 Keep the reports separate and keep them all. If a later run locks the

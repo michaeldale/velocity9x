@@ -279,7 +279,7 @@ unsigned short v9x_s3_enable_linear_aperture(void)
 /*
  * The shared S3 diagnostics block.
  *
- * Key order is the diagnostic contract: C:\V9XHW.INI is written by appending,
+ * Key order is the diagnostic contract: C:\V9XDIAG\V9XHW.INI is written by appending,
  * and the settings page and the support instructions both read it. Do not
  * reorder these calls.
  */

@@ -2,11 +2,13 @@
 #include <windows.h>
 #include <cfgmgr32.h>
 
+#include "velocity9x/diagpaths.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
-#define V9X_RESULT_PATH "C:\\V9XMGA.INI"
+#define V9X_RESULT_PATH V9X_DIAG_MGA_INI
 #define V9X_TARGET_PREFIX "VEN_102B&DEV_051B"
 #define V9X_MAX_RESOURCE_DATA 256u
 #define V9X_MAX_MEMORY_RANGES 8u
@@ -224,6 +226,7 @@ void WINAPI V9xMatroxInventoryEntry(void)
     HDC display;
     LONG find_result;
 
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_RESULT_PATH);
     {
         HANDLE file;

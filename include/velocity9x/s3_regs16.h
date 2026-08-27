@@ -13,7 +13,7 @@
 /* Decimal text for an unsigned 32-bit value. text must hold 11 bytes. */
 void v9x_format_u32(char *text, unsigned long value);
 
-/* Publishes the shared S3 C:\V9XHW.INI block for one chip. Reads SR10/SR11
+/* Publishes the shared S3 C:\V9XDIAG\V9XHW.INI block for one chip. Reads SR10/SR11
  * for the PLL and CR36 for installed memory. */
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write);
