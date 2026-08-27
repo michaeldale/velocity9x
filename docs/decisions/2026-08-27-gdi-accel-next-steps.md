@@ -118,7 +118,7 @@ quick errand.
   **Read that 6/6 with one boundary**: immediately afterwards the emulated scanout
   showed whole-screen stripes while GDI read a clean desktop, and the matrix
   passed because every check in it reads back through GDI
-  ([issue](../issues/2026-08-27-scanout-and-gdi-disagreed-once-on-vbe-guest.md)).
+  ([issue](../issues/2026-08-27-vbe-1024x768x16-scanout-stripes.md)).
   Not reproduced, but the harness gap is real and has a cheap fix on QEMU targets.
   The original broken guest's registry issue
   ([issue](../issues/2026-08-27-vbe-qemu-guest-registry-error.md)) is moot for

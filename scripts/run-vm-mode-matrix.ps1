@@ -47,6 +47,9 @@ param(
     # mode that works when switched into can still fail to come up. Every result
     # records which path applied it, so the two are never silently mixed.
     [switch]$LiveSwitch,
+    # QEMU monitor port, used for the scanout check below. Only reachable on QEMU
+    # targets; 86Box has no equivalent and the check is skipped there.
+    [int]$MonitorPort = 55559,
     [switch]$Json
 )
 
@@ -209,6 +212,104 @@ $displayKey = Get-V9xDisplayKeyIndex
 
 $matrix = @()
 for ($pass = 1; $pass -le $Repeat; ++$pass) {
+
+# ----------------------------------------------------------------------------
+# Scanout check
+#
+# Every other display check in this script reads back through GDI - the GDI
+# framebuffer test, the acceleration comparison, the palette test, the captured
+# screenshot. All of them therefore see GDI's own writes, and a fault that
+# corrupts only what the CRTC scans out is invisible to the entire matrix.
+#
+# That is not hypothetical. On 2026-08-27 a vbe live-switch run reported 6/6 PASS
+# while the emulated scanout was showing whole-screen 2-colour vertical stripes
+# and an agent screenshot of the same moment showed a clean 39-colour desktop
+# (docs\issues\2026-08-27-vbe-1024x768x16-scanout-stripes.md).
+#
+# The QEMU monitor's screendump reads the emulated framebuffer with no driver, no
+# GDI and no host renderer in between, which makes it the only instrument here
+# that can see such a fault. It exists on QEMU targets only.
+# ----------------------------------------------------------------------------
+
+function Invoke-V9xQemuMonitor {
+    param([string]$Command, [int]$MonitorPort, [int]$SettleMs = 3500)
+    $client = $null
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $connect = $client.BeginConnect('127.0.0.1', $MonitorPort, $null, $null)
+        if (-not $connect.AsyncWaitHandle.WaitOne(2000)) { return $false }
+        $client.EndConnect($connect)
+        $stream = $client.GetStream()
+        $writer = New-Object System.IO.StreamWriter($stream)
+        $writer.NewLine = "`n"
+        Start-Sleep -Milliseconds 400
+        if ($stream.DataAvailable) {
+            $drain = New-Object byte[] 8192
+            $null = $stream.Read($drain, 0, 8192)
+        }
+        $writer.WriteLine($Command)
+        $writer.Flush()
+        Start-Sleep -Milliseconds $SettleMs
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($client) { $client.Close() }
+    }
+}
+
+function Measure-V9xPpmColors {
+    param([string]$Path)
+    # Minimal P6 reader. Counts distinct sampled colours, which is all this needs:
+    # a desktop samples in the tens, and the fault this guards against samples 2.
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $fields = @()
+    $offset = 0
+    while ($fields.Count -lt 4 -and $offset -lt $bytes.Length) {
+        # Skip whitespace, then read one token.
+        while ($offset -lt $bytes.Length -and
+               [char]$bytes[$offset] -match '\s') { ++$offset }
+        if ([char]$bytes[$offset] -eq '#') {
+            while ($offset -lt $bytes.Length -and $bytes[$offset] -ne 10) { ++$offset }
+            continue
+        }
+        $token = ''
+        while ($offset -lt $bytes.Length -and
+               [char]$bytes[$offset] -notmatch '\s') {
+            $token += [char]$bytes[$offset]; ++$offset
+        }
+        $fields += $token
+    }
+    ++$offset
+    if ($fields[0] -ne 'P6') { throw "Not a P6 PPM: $Path" }
+    $width = [int]$fields[1]
+    $height = [int]$fields[2]
+    $seen = New-Object 'System.Collections.Generic.HashSet[int]'
+    for ($y = 0; $y -lt $height; $y += 37) {
+        for ($x = 0; $x -lt $width; $x += 29) {
+            $i = $offset + (($y * $width) + $x) * 3
+            if (($i + 2) -lt $bytes.Length) {
+                $null = $seen.Add(($bytes[$i] -shl 16) -bor
+                                  ($bytes[$i + 1] -shl 8) -bor $bytes[$i + 2])
+            }
+        }
+    }
+    return [pscustomobject]@{
+        Width = $width; Height = $height; DistinctColors = $seen.Count
+    }
+}
+
+# The observed fault samples 2 distinct colours; a Windows desktop samples 26-40.
+# Six sits clear of both, and tolerates an unusually plain screen rather than
+# failing a healthy run.
+$script:V9xScanoutMinColors = 6
+
+# Resolved once, the same way run-family-enable-gate.ps1 does it: a per-target
+# Emulator overrides, and the family's Vm.Emulator is the default. Reading only
+# the per-target field skipped the scanout check on every mode of a QEMU guest.
+$script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
+                      else { $familyManifest.Vm.Emulator }
+
   foreach ($name in $Mode) {
     if ($name -notmatch '^(\d+)x(\d+)x(\d+)$') {
         throw "Invalid mode name: $name"
@@ -219,9 +320,32 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     $modeResults = Join-Path (Join-Path $results "pass-$pass") $name
     New-Item -ItemType Directory -Force -Path $modeResults | Out-Null
     if ($LiveSwitch) {
+        # A switch into the mode the guest is *already* in is a no-op: the driver
+        # gets no Disable/Enable cycle, so it never rewrites V9XBOOT.INI, and the
+        # enable-ok check below then fails against the file this block just
+        # deleted. That is not hypothetical - it is what happened the first time
+        # a run began with the guest already sitting in mode 1, left there by an
+        # earlier aborted run.
+        #
+        # So force a real transition first, via any other declared mode. Using a
+        # declared mode means the intermediate is one this family is known to
+        # support, rather than something invented here.
+        $current = Invoke-V9xCtlJson info
+        if ($current.ScreenWidth -eq $width -and $current.ScreenHeight -eq $height) {
+            $stepAside = @($Mode | Where-Object { $_ -ne $name })[0]
+            if ($stepAside) {
+                $null = Invoke-V9xCtlJson exec @(
+                    "-Application", "$GuestJob\V9XMSW.EXE",
+                    "-Arguments", "/set:$stepAside",
+                    "-WorkingDirectory", $GuestJob,
+                    "-TimeoutSeconds", "180")
+                Start-Sleep -Seconds 2
+            }
+        }
         # The driver rewrites V9XBOOT.INI on every Enable, so deleting it first
         # keeps the enable-ok check below about *this* mode rather than the one
-        # the guest happened to boot in.
+        # the guest happened to boot in. Deleted after the step-aside above, so
+        # that switch's trace does not satisfy the check either.
         $null = Invoke-GuestShell "DEL C:\V9XBOOT.INI"
         $null = Invoke-GuestShell "DEL C:\V9XGDI.INI"
         $null = Invoke-GuestShell "DEL C:\V9XPAL.INI"
@@ -370,6 +494,43 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
     }
     $screenshot = Invoke-V9xCtlJson screenshot @(
         "-Destination", (Join-Path $modeResults "desktop.bmp"))
+
+    # Scanout check - see the block above the mode loop.
+    $scanout = "SKIPPED-not-qemu"
+    if ($script:V9xEmulator -eq 'qemu') {
+        $ppm = Join-Path $modeResults "scanout.ppm"
+        # .Replace, not -replace: the latter takes a regex, and a lone backslash
+        # is not a valid one. Forward slashes because the QEMU monitor parses
+        # backslashes in its own argument.
+        $ppmForMonitor = $ppm.Replace('\', '/')
+        if (Invoke-V9xQemuMonitor "screendump $ppmForMonitor" $MonitorPort) {
+            if (Test-Path -LiteralPath $ppm) {
+                $measured = Measure-V9xPpmColors $ppm
+                if ($measured.Width -ne $width -or $measured.Height -ne $height) {
+                    throw ("Mode {0} scanout is {1}x{2}, expected {3}x{4}." -f
+                           $name, $measured.Width, $measured.Height,
+                           $width, $height)
+                }
+                if ($measured.DistinctColors -lt $script:V9xScanoutMinColors) {
+                    # Interpolation, not -f: with a concatenated message the -f
+                    # binds to the last literal only, which is why this check
+                    # printed a message full of {0} placeholders the first time
+                    # it actually fired.
+                    $issue = 'docs\issues\2026-08-27-vbe-1024x768x16-scanout-stripes.md'
+                    throw ("Mode $name scanout has only " +
+                           "$($measured.DistinctColors) distinct colours, " +
+                           "below $($script:V9xScanoutMinColors): the displayed " +
+                           "image is not a desktop even though GDI readback " +
+                           "passed. Capture kept at $ppm. See $issue.")
+                }
+                $scanout = "PASS-{0}-colors" -f $measured.DistinctColors
+            } else {
+                $scanout = "SKIPPED-no-screendump-file"
+            }
+        } else {
+            $scanout = "SKIPPED-monitor-unreachable"
+        }
+    }
     $matrix += [pscustomobject]@{
         Pass = $pass
         Mode = $name
@@ -379,6 +540,7 @@ for ($pass = 1; $pass -le $Repeat; ++$pass) {
         GdiResult = "PASS"
         AccelResult = $accelResult
         PaletteResult = $paletteResult
+        ScanoutResult = $scanout
         Screenshot = $screenshot.Destination
     }
   }

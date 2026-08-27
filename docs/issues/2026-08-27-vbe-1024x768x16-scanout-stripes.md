@@ -1,8 +1,9 @@
-# The scanout and GDI disagreed once on the vbe guest, and the matrix could not see it
+# vbe 1024x768x16: the scanout shows stripes while GDI reads a clean desktop
 
 Date: 2026-08-27
-Status: **open, not reproduced.** One clear observation, no repro. The harness
-gap it exposed is real regardless and is the more useful half of this issue.
+Status: **open, reproduced and localised to 1024x768x16.** Now caught
+automatically by the scanout check added to the mode matrix, which failed on its
+first proper run - see "Reproduced" below.
 
 ## What was seen
 
@@ -22,13 +23,46 @@ The matrix's own per-mode screenshots (`desktop.bmp`) are clean teal desktops at
 every mode including this one - but those are agent screenshots, so they are the
 GDI view, and they would look clean under exactly this fault.
 
+## Reproduced, and localised to one mode
+
+The scanout check wired into `run-vm-mode-matrix.ps1` (QEMU targets only) takes a
+monitor `screendump` per mode and asserts it has more than a stripe pattern's
+worth of distinct colours. On its first properly-running pass over the `vbe`
+guest it failed, with the mode named:
+
+```
+Mode 1024x768x16 scanout has only 2 distinct colours, below 6:
+the displayed image is not a desktop even though GDI readback passed.
+```
+
+Every capture is kept in the run's results directory:
+
+| Mode | Distinct sampled colours | |
+|---|---|---|
+| 640x480x8 | 10 | ok |
+| 800x600x8 | 12 | ok |
+| 1024x768x8 | 12 | ok |
+| 640x480x16 | 21 | ok |
+| 800x600x16 | 24 | ok |
+| **1024x768x16** | **2** | **striped** |
+
+So it is **one mode**, and depth matters: 1024x768x**8** is clean at the same
+resolution. The GDI-side checks pass at 1024x768x16 in the same run, which is why
+this was invisible before.
+
+One caveat against over-reading the localisation: a manual live switch to
+1024x768x16 earlier gave a *clean* 38-colour scanout. The difference between that
+and the failing case is that the matrix runs the GDI and acceleration tests at
+the mode before capturing. So the trigger may be the drawing done at that mode
+rather than entry into it, and "1024x768x16 is broken" may be shorthand for
+something narrower. The matrix now reproduces it either way, which is what makes
+it investigable.
+
 ## What is known about it
 
-- **Transient.** A subsequent live mode switch cleared it. Sequencing
-  800x600x16 -> 1024x768x16 -> 800x600x16 afterwards gave clean scanout at all
-  three, so the mode itself is fine.
-- **Not reproduced.** A single DOS box (`v9xctl shell`, the last thing that ran
-  before the striped state) does not do it: screen clean before, clean after.
+- **Transient.** A subsequent live mode switch clears it.
+- **A single DOS box does not cause it** (`v9xctl shell`): screen clean before,
+  clean after.
 - **Not the SDL staleness** documented in the reset-hang issue. That one is the
   host window lying while `screendump` is correct; this is the reverse -
   `screendump` is the one showing the fault.
