@@ -6,6 +6,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+### Added
+
+- **The intel-gma Phase 0 evidence and survey tooling, salvaged to main.**
+  The Gen3 hardware audit, the measured DOS and Windows Phase 0 evidence, the
+  bring-up runbook, the query-only DOS survey (`tools\diag\intel_survey_dos.c`
+  + `scripts\build-intel-survey.ps1`) and the Windows capture script now live
+  on main with provenance notes; the never-merged family scaffolding is
+  archived at tag `archive/intel-gma-tier0` and the branch deleted. The
+  branch's build-time mini-VDD mode cache was judged superseded by the
+  dynamic-VBE runtime mode walk and not ported. Roadmap Track A4.
+
 ### Changed
 
 - **The backend registry's PCI dispatch is generated from the family

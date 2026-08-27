@@ -2,8 +2,8 @@
 
 Date: 2026-08-28
 
-Status: Track A implemented (A1 pre-existing, A2/A3 2026-08-28, A4's
-doc/tool salvage pending); Tracks B and C not started
+Status: Track A complete 2026-08-28 (A1 pre-existing, A2/A3/A4 done);
+Tracks B and C not started
 
 This roadmap came out of three reviews on 2026-08-28: the stale
 `intel-gma-tier0` branch (what to salvage), the cost of adding a new VGA
@@ -92,7 +92,14 @@ where a deliberate exclusion becomes visible and reviewable.
 Exit gate: `git grep` for family names in the three scripts returns only the
 skip list and comments.
 
-### A4. Salvage the intel-gma branch
+### A4. Salvage the intel-gma branch — done 2026-08-28
+
+As executed: items 1–2 landed on main with provenance notes (the branch's
+scaffolding is archived at tag `archive/intel-gma-tier0` and the branch
+deleted). Item 3's verdict: the branch's `vbe-cache.ps1` build-time mode cache
+is **superseded** by the dynamic-VBE stage-1 runtime `VideoModePtr` walk in
+`src\minivdd32\loader.asm`, which solves the same OEM-mode-number problem
+per-BIOS at boot with no manifest duplication; nothing ported.
 
 The branch is 64 commits behind and its scaffolding predates current
 manifest/INF conventions; it is a reference, not a merge. Take, as
