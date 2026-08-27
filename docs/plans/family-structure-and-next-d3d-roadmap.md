@@ -188,11 +188,36 @@ exit gate.
 
 ## Sequencing
 
-1. **A1** — already shipped (0.5.0/0.6.0); nothing queues behind it.
-2. **A2 + A3** — one small branch each, order between them free; can start
-   now.
-3. **A4** — any time.
-4. **Track B decision doc** — any time; **Track B execution** when 5 is
-   scheduled.
-5. **Track C: 3dfx family** — tier-0 first, which after A1–A3 is
-   manifest-plus-evidence; then the engine ladder above.
+Track A shipped in full on 2026-08-28; the list below is the program order
+from that date forward. Two lanes run in parallel: a software lane that needs
+no new hardware access, and a hardware lane gated on physical machines.
+
+Software lane (in order):
+
+1. **D1 — MTRR write-combining.** Implement and verify inert-when-gated on
+   the existing guests now; the payoff measurement slots into the next
+   netbook session (hardware lane 3).
+2. **D4 — windowed-DOS-box matrix test.** VM-only; green or a filed issue.
+3. **C Phase 1 — 86Box Voodoo3 guest.** Deliberately pulled ahead of
+   C Phase 0: the guest profile, agent port, and in-guest survey need no
+   physical card, and the Phase 0 diff is then one run instead of a setup
+   session.
+4. **Track B decision doc** (ops boundary, batch rule). Documentation only.
+5. **D2 — hardware cursor** (S3 first), then **D3 — synthetic vblank**.
+6. **Track B execution**, immediately before C's D3D phase.
+
+Hardware lane (as machines become available):
+
+1. **BARRY diagnosis session** — the live-mode-switch no-repaint
+   (open since 0.4.3, never diagnosed) gets one dedicated session *before*
+   the 3dfx family adds variables to the same mode-switch path; the pedestal
+   bit rides along as the same session's quick win.
+2. **C Phase 0 — Voodoo3 physical survey.** Gated on the card being seated
+   in a host machine; the plan's Phase 0 checklist starts at that machine's
+   identity.
+3. **Netbook session** — D1's before/after measurement, plus the netbook
+   findings item 4 follow-ups.
+4. **C Phase 2/3** — the tier-0 family (manifest + evidence) once Phase 0's
+   decision doc exists, validated on guest then card.
+5. **C engine ladder** — 2D engine, Track B lands, D3D, named-game milestone
+   (verified to actually use hardware D3D before it becomes the gate).
