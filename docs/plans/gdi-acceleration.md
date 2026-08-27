@@ -69,7 +69,7 @@ that mis-addresses on hardware would only widen the blast radius.
 | gdi-accel-002 **(done)** | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
 | gdi-accel-003 **(done)** | Overlap in all 8 directions | +overlap on | Randomized overlap PASS both chips; **full PLAN.md Phase 5 exit gate** - met except clipping regions, see the 003 record |
 | gdi-accel-004 **(done)** | CPU-to-screen upload, narrowed to **monochrome expansion**; colour upload deliberately not implemented (see the design record). ViRGE only - the Trio64 declines | off | Same harness with memory-source ops: mono accelerates when on, declines when off, colour declines always, and the reject mask carries no unintended reason |
-| gdi-accel-005 | Extra ROPs (DSTINVERT, PATINVERT, DPx/DPa) | per-ROP INI | Per-ROP conformance |
+| gdi-accel-005 **(target questioned)** | Extra ROPs (DSTINVERT, PATINVERT, DPx/DPa). The accelerated CrystalMark run argues this moves nothing measurable - Text scores 3 against Square 275, and these ROPs are not exercised by that test group at all. Text acceleration is proposed instead; see [next steps](../decisions/2026-08-27-gdi-accel-next-steps.md). Open decision | per-ROP INI | Per-ROP conformance |
 
 ## Verification
 
