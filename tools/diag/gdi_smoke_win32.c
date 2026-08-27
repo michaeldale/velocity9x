@@ -362,6 +362,23 @@ static void v9x_accel_write_uint(const char *key, DWORD value)
     v9x_accel_write_text(key, text);
 }
 
+/* Packed diagnostics read far better as hex, because the two halves of a
+ * (high << 16) | low pair are then visible without dividing anything. */
+static void v9x_accel_write_hex(const char *key, DWORD value)
+{
+    static const char digits[] = "0123456789abcdef";
+    char text[12];
+    int i;
+
+    text[0] = '0';
+    text[1] = 'x';
+    for (i = 0; i < 8; ++i) {
+        text[2 + i] = digits[(int)((value >> (28 - 4 * i)) & 0x0ful)];
+    }
+    text[10] = ' ';
+    v9x_accel_write_text(key, text);
+}
+
 /*
  * The reference and the screen are COMPARED in 24-bpp RGB, but they are DRAWN
  * at the screen's own depth. The distinction is not cosmetic, and getting it
@@ -613,10 +630,77 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
         ++*overlaps;
         return;
     }
+    if (kind == 8) {
+        /*
+         * Memory-source blits - build 004's territory. Alternating a 1-bpp
+         * source, which a build with upload enabled expands on the engine, and
+         * a colour source, which is declined always because a colour upload
+         * moves exactly the bytes the DIB Engine would move anyway.
+         *
+         * Both must produce the same pixels as the reference whichever way the
+         * driver routes them, which is what makes this worth issuing even with
+         * upload off.
+         */
+        int mono = (index & 2) == 0;
+        HDC memory = CreateCompatibleDC(state->screen);
+        HBITMAP bitmap;
+        HBITMAP previous;
+
+        width = 32 + (int)v9x_accel_random(64ul);
+        height = 32 + (int)v9x_accel_random(48ul);
+        x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+        y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        if (memory == 0) {
+            return;
+        }
+        if (mono) {
+            /* A recognisable 1-bpp pattern: alternating byte columns, which
+             * expands to vertical bars the comparison can see. */
+            static BYTE mono_bits[64 * 16];
+            unsigned index2;
+
+            for (index2 = 0u; index2 < sizeof(mono_bits); ++index2) {
+                mono_bits[index2] = (BYTE)((index2 & 1u) != 0u ? 0xccu
+                                                               : 0x33u);
+            }
+            bitmap = CreateBitmap(64, 64, 1, 1, mono_bits);
+            SetTextColor(state->screen, v9x_accel_colors[11]);
+            SetBkColor(state->screen, v9x_accel_colors[4]);
+            SetTextColor(state->reference, v9x_accel_colors[11]);
+            SetBkColor(state->reference, v9x_accel_colors[4]);
+            width = 64;
+            height = 64;
+            x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - width));
+            y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - height));
+        } else {
+            bitmap = CreateCompatibleBitmap(state->screen, width, height);
+        }
+        if (bitmap == 0) {
+            DeleteDC(memory);
+            return;
+        }
+        previous = (HBITMAP)SelectObject(memory, bitmap);
+        if (!mono) {
+            HBRUSH brush = CreateSolidBrush(color);
+            HBRUSH old_brush = (HBRUSH)SelectObject(memory, brush);
+
+            PatBlt(memory, 0, 0, width, height, PATCOPY);
+            SelectObject(memory, old_brush);
+            DeleteObject(brush);
+        }
+        BitBlt(state->screen, state->origin_x + x, state->origin_y + y,
+               width, height, memory, 0, 0, SRCCOPY);
+        BitBlt(state->reference, x, y, width, height, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, previous);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+        ++*noise;
+        return;
+    }
     /*
-     * Decline noise. PATINVERT is not among the ROPs any build accepts, and a
-     * memory-source blit has a source the engine cannot read, so both must go
-     * to the DIB Engine - and must still land the same pixels on both sides.
+     * Decline noise. PATINVERT is not among the ROPs any build accepts, so it
+     * must go to the DIB Engine - and must still land the same pixels on both
+     * sides.
      */
     width = 32 + (int)v9x_accel_random(96ul);
     height = 32 + (int)v9x_accel_random(80ul);
@@ -713,6 +797,10 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("DeclineOverlap", stats->decline_overlap);
     v9x_accel_write_uint("DeclineThreshold", stats->decline_threshold);
     v9x_accel_write_uint("DeclineEngine", stats->decline_engine);
+    v9x_accel_write_uint("DeclineUpload", stats->decline_upload);
+    v9x_accel_write_uint("Uploads", stats->uploads);
+    v9x_accel_write_hex("UploadRejectMask", stats->upload_reject_mask);
+    v9x_accel_write_hex("UploadRejectDetail", stats->upload_reject_detail);
     v9x_accel_write_uint("LastRop256", stats->last_rop256);
     v9x_accel_write_uint("LastColor", stats->last_color);
     v9x_accel_write_uint("LastBrushFlags", stats->last_brush_flags);
@@ -1007,6 +1095,9 @@ static DWORD v9x_accel_run(HWND window)
         v9x_accel_write_uint("DeclinesDelta",
                              stats.declines - before.declines);
         v9x_accel_write_uint("DrainsDelta", stats.drains - before.drains);
+        v9x_accel_write_uint("UploadsDelta", stats.uploads - before.uploads);
+        v9x_accel_write_uint("DeclineUploadDelta",
+                             stats.decline_upload - before.decline_upload);
         v9x_accel_write_uint("Operations", (DWORD)index);
         v9x_accel_write_uint("FillOperations", fills);
         v9x_accel_write_uint("CopyOperations", copies);
@@ -1089,6 +1180,48 @@ static DWORD v9x_accel_run(HWND window)
              * told which corner to start from.
              */
             error = "overlap-declines-never-exercised";
+        } else if ((stats.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul &&
+                   stats.uploads == before.uploads) {
+            /*
+             * Build 004's claim, in the same shape as the three above: with
+             * upload on, the monochrome memory-source operations this run
+             * issues must reach the engine. The first enabled build declined
+             * every one of them and still reported PASS, because the pixels
+             * were right - the DIB Engine had drawn them.
+             */
+            error = "upload-enabled-but-never-fired";
+        } else if (stats.enabled != 0ul &&
+                   stats.decline_upload == before.decline_upload) {
+            /*
+             * The mirror, and it holds whether upload is on or off. Off, every
+             * memory-source operation declines here; on, the colour-source ones
+             * still do, because build 004 accelerates monochrome only. Either
+             * way the count must move, or the generator has stopped issuing
+             * memory-source work and neither claim above is being tested.
+             *
+             * `enabled != 0` is load-bearing, not defensive. On a family with
+             * no 2D engine every operation declines at the first gate and no
+             * per-reason counter past it ever moves - so without this the check
+             * would fail on ati, vbe and matrox-m2 while they behave exactly as
+             * designed. The three checks above self-gate the same way, through
+             * their own `enabled &` test.
+             */
+            error = "upload-declines-never-exercised";
+        } else if ((stats.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul &&
+                   (stats.upload_reject_mask & ~0x0011ul) != 0ul) {
+            /*
+             * Only two reject reasons are legitimate with upload enabled: bit 0
+             * (an upload was accepted) and bit 4 (a colour source refused for
+             * not being 1 bpp). Any other bit means the dispatcher is refusing
+             * monochrome work for a reason this build does not intend.
+             *
+             * This is the check that would have shortened today: bit 8 was set
+             * on every run while the pixel comparison passed, because the
+             * source address was computed from the wrong struct offset and the
+             * DIB Engine quietly did the work instead. The counters said the
+             * stage refused it; nothing said that was wrong.
+             */
+            error = "upload-unexpected-reject-reason";
         }
     }
 

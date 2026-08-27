@@ -37,6 +37,39 @@
  * (98DDK\src\display\mini\xga\BITBLT.ASM:71 and
  * 98DDK\src\display\mini\s3v\S3BLT.ASM:130).
  */
+/*
+ * deType holds TYPE_DIBENG or **zero** (DIBENG.INC:55). Zero means the struct
+ * is not a DIBENGINE at all but a plain Win16 BITMAP, and the two layouts share
+ * only their first ten bytes - so a field read past that boundary from the
+ * wrong one is garbage. Build 004's first enabled run read deBitsOffset (18)
+ * out of a BITMAP and got 0x20000000; the discriminator is not optional.
+ */
+#define V9X_TYPE_DIBENG                  0x5250u
+
+/*
+ * The plain Win16 BITMAP, which is what GDI hands over as the source of a
+ * monochrome BitBlt - the reference driver reads exactly these fields
+ * (98DDK\src\display\mini\s3v\S3BLT.ASM:944-950, bmWidthBytes and bmBits).
+ *
+ * bmBits is a plain 16:16 far pointer - `bmBits dd 0`, "Far pointer to bits of
+ * main memory bitmap" (GDIDEFS.INC:48) - and **not** an fword like deBits. The
+ * offset half is therefore 16 bits by definition, which is why the reference's
+ * `mov si,ds:[si.bmBits.off]` is a plain word move and not the truncation it
+ * looks like next to a DIBENGINE.
+ */
+typedef struct {
+    WORD bmType;           /* 0 for a BITMAP, V9X_TYPE_DIBENG for a DIBENGINE */
+    WORD bmWidth;
+    WORD bmHeight;
+    WORD bmWidthBytes;
+    BYTE bmPlanes;
+    BYTE bmBitsPixel;
+    WORD bmBitsOffset;
+    WORD bmBitsSelector;
+} V9X_BITMAP16;
+
+typedef char v9x_assert_bitmap16[sizeof(V9X_BITMAP16) == 14 ? 1 : -1];
+
 #define V9X_DE_PALETTE_XLAT       0x1000u
 #define V9X_DE_VRAM               0x8000u
 #define V9X_DE_VERSION            0x0400u
@@ -250,6 +283,28 @@ typedef struct v9x_dib_brush16 {
     BYTE Bits[128];
 } V9X_DIB_BRUSH16;
 
+/*
+ * GDI's DRAWMODE, from C:\98DDK\inc\win98\inc16\GDIDEFS.INC:1283. Only the head
+ * of it is mirrored: this driver reads the two colours a monochrome expansion
+ * needs and nothing else.
+ *
+ * Note which pair, because the struct carries both. These are the physical
+ * colours; the logical ones are further down at LbkColor and LTextColor, and it
+ * is the physical pair that belongs in an engine register. That distinction is
+ * why this struct can be trusted where the realized brush could not
+ * (docs\issues\2026-08-26-gdi-fill-brush-colour-not-physical.md): the brush
+ * offered one field described as physical and held a logical COLORREF, while
+ * this one names both forms and keeps them apart.
+ */
+typedef struct v9x_drawmode {
+    short Rop2;
+    short bkMode;
+    DWORD bkColor;
+    DWORD TextColor;
+} V9X_DRAWMODE;
+
+#define V9X_DRAWMODE_HEAD_SIZE      12u
+
 typedef struct v9x_display_validate_mode {
     WORD size;
     WORD bits_per_pixel;
@@ -297,6 +352,8 @@ typedef char v9x_assert_dib_brush16_size[
  * structs. Asserting the whole size is what pins that offset: a pad anywhere
  * above it would show up here rather than as a wrong fill colour on a screen.
  */
+typedef char v9x_assert_drawmode_head_size[
+    sizeof(V9X_DRAWMODE) == V9X_DRAWMODE_HEAD_SIZE ? 1 : -1];
 typedef char v9x_assert_dib_brush_solid_size[
     sizeof(V9X_DIB_BRUSH_SOLID) == 82u ? 1 : -1];
 

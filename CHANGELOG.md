@@ -84,6 +84,47 @@ build 001 rather than this one. Both are the plan's insistence on landing the
 harness before the first build that turns a primitive on, paying for itself on
 its first use.
 
+Added: **GDI acceleration build `gdi-accel-004` - monochrome CPU-to-screen
+upload on the ViRGE/DX** ([record](docs/decisions/2026-08-27-gdi-accel-004.md)),
+behind `GdiAccelUpload`, default off. A 1-bpp source is handed to the engine and
+expanded to the destination depth in hardware, so the CPU moves one bit per
+pixel instead of one byte. Colour sources decline, as the design record argued
+they should; the Trio64 declines because this repository has no first-party
+source for its 8514/A CPU-data registers.
+
+The defect worth remembering is why the first four enabled runs reported
+`Uploads=0` and `Result=PASS` together. GDI hands a monochrome BitBlt source over
+as a plain Win16 `BITMAP`, not a `DIBENGINE`, and the two layouts **share their
+first ten bytes** - type, width, height, stride, planes, bits-per-pixel. Every
+gate in the dispatcher reads a field inside that shared prefix, so every gate
+passed on a correct value; the bits pointer, the one field past the boundary, was
+garbage that computed a half-gigabyte source address. `deBitsPixel` is 1 for a
+monochrome bitmap under either interpretation, so even the check whose whole job
+is to identify a monochrome source could not distinguish them. The discriminator
+is `deType`, which is `TYPE_DIBENG` **or zero**, and it has to be read before
+anything past byte 10. A second bug fell out of the same confusion: the source
+VRAM test was reading `deFlags` from past the end of a `BITMAP` entirely.
+
+Passing pixels are what hid it. Every declined operation was drawn correctly by
+the DIB Engine, so a build that accelerated nothing was indistinguishable from
+one that accelerated everything. The harness now asserts the counters directly -
+`upload-enabled-but-never-fired`, `upload-declines-never-exercised`, and
+`upload-unexpected-reject-reason`, the last of which fails on any decline reason
+this build does not intend and would have caught the defect on the first run.
+
+The deliberately-crossed foreground and background colours - the ViRGE reads a
+set mono bit as *background* - were confirmed by un-crossing them and watching
+the comparison fail at the first monochrome blit, screen `(128,0,0)` against
+reference `(0,255,255)`.
+
+Verified across all three emulated guests: ViRGE 11/11 with upload deliberately
+left on, `Uploads=29` and reject mask `0x11` identical in all eight accelerated
+modes at both depths, and mask `0x00` with the checks correctly skipped in the
+three 32-bpp modes; Trio64 11/11 with upload off, mask `0x02`; mach64-vt2 6/6.
+The ATI pass is the one that matters most - it is the case the new mirror check
+would have failed on without its liveness guard. `V9XDDP` on both S3 guests
+afterwards is `Result=COMPLETE` with unchanged HAL caps.
+
 Measured: **the first CrystalMark Retro run of Velocity9x on physical S3
 silicon**, as the before-column for the GDI acceleration work
 ([baseline](docs/decisions/2026-08-27-crystalmark-barry-baseline.md)). BARRY,

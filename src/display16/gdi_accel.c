@@ -55,6 +55,8 @@ extern DWORD FAR PASCAL V9xLinearBase(void);
 extern WORD FAR PASCAL V9xEngineSelector(void);
 extern DWORD FAR PASCAL V9xEngineRead(WORD offset);
 extern void FAR PASCAL V9xEngineWrite(WORD offset, DWORD value);
+extern void FAR PASCAL V9xEngineImageRow(WORD source_selector,
+                                         WORD source_offset, WORD bytes);
 extern WORD FAR PASCAL V9xDibBitBltCall(V9X_DIB_ENGINE FAR *destination_device,
                                         WORD destination_x,
                                         WORD destination_y,
@@ -106,6 +108,9 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
 #define V9X_GDI_DEFAULT_FILL     1
 #define V9X_GDI_DEFAULT_COPY     1
 #define V9X_GDI_DEFAULT_OVERLAP  1
+/* Build 004: monochrome CPU-source expansion, compiled and OFF, which is what
+ * the rollout table specifies for this build. */
+#define V9X_GDI_DEFAULT_UPLOAD   0
 
 /*
  * Smallest rectangle worth handing to the engine, in pixels.
@@ -352,6 +357,14 @@ typedef struct v9x_gdi_op {
     DWORD pitch;
     DWORD color;             /* physical fill colour, already depth-sized */
     WORD rop256;             /* the GDI Rop's high byte, unchanged         */
+    /* Monochrome CPU source, build 004. Zero selector means "not an upload". */
+    WORD source_selector;
+    DWORD source_bits_offset;   /* 32-bit: deBits is an fword, not a word   */
+    WORD source_stride;
+    WORD source_bit_offset;  /* the source x within its first byte, 0..7    */
+    WORD upload_bytes;       /* whole source bytes to feed per row          */
+    DWORD foreground;
+    DWORD background;
     WORD bytes_per_pixel;
     WORD destination_x;
     WORD destination_y;
@@ -469,6 +482,91 @@ static WORD v9x_gdi_virge_copy(const V9X_GDI_OP *op)
     v9x_gdi_write(V9X_VIRGE_RECT_DEST_XY,
                   (destination_x << 16) | destination_y);
     v9x_gdi_write(V9X_VIRGE_COMMAND, command);
+    return 1u;
+}
+
+/*
+ * Monochrome CPU-source expansion on the ViRGE (build 004).
+ *
+ * The CPU writes one bit per pixel into the image-transfer window and the
+ * engine expands it to the destination depth, which is eight times less
+ * CPU-to-bus traffic at 8 bpp and sixteen times less at 16 - the whole reason
+ * this primitive is worth having when a colour upload is not
+ * (docs\decisions6-08-27-gdi-accel-004-design.md).
+ *
+ * Two things here are counter-intuitive and both are copied from the reference
+ * driver's MonoSourceBlt rather than reasoned out:
+ *
+ * 1. THE COLOURS ARE SWAPPED. The ViRGE treats a set bit as *background* and a
+ *    clear bit as *foreground*, the opposite of every other convention, so the
+ *    reference writes DRAWMODE.TextColor to SRC_BG and DRAWMODE.bkColor to
+ *    SRC_FG to get the conventional result. Its own comment says so: "the
+ *    monochrome foreground/background bit designations are reversed from the
+ *    typical designation ... The foreground/background color settings are
+ *    reversed to convert bits back to the expected designations." Getting this
+ *    wrong produces a correctly shaped blit in inverted colours - the same
+ *    class of defect as the build 001 fill colour, and equally invisible to
+ *    reasoning.
+ *
+ * 2. THE CLIP RECTANGLE IS LOAD BEARING. A mono source starts at an arbitrary
+ *    bit within a byte, and the engine can only be fed whole bytes. So the
+ *    transfer starts at the byte containing the first source pixel, the
+ *    destination x is moved LEFT by that bit offset to line the pixels up, and
+ *    the leading padding pixels then fall outside the true destination
+ *    rectangle - where hardware clipping discards them. Without the clip they
+ *    would be drawn.
+ */
+static WORD v9x_gdi_virge_upload(const V9X_GDI_OP *op)
+{
+    DWORD command;
+    DWORD row;
+    DWORD source_offset = op->source_bits_offset;
+    /* Destination shifted left to absorb the source's bit offset, and the true
+     * rectangle kept for the clip. Both are last-pixel-inclusive, as the
+     * engine's clip registers expect. */
+    WORD shifted_x = (WORD)(op->destination_x - op->source_bit_offset);
+
+    if (v9x_gdi_wait_fifo(V9X_GDI_FIFO_SLOTS) == 0u) {
+        return 0u;
+    }
+    command = ((DWORD)op->rop256 << V9X_VIRGE_CMD_ROP_SHIFT) |
+              V9X_VIRGE_CMD_SRC_SYS | V9X_VIRGE_CMD_SRC_MONO |
+              V9X_VIRGE_CMD_CPU_ALIGN_DWORD | V9X_VIRGE_CMD_CLIP_ENABLE |
+              V9X_VIRGE_CMD_X_POSITIVE | V9X_VIRGE_CMD_Y_POSITIVE |
+              V9X_VIRGE_CMD_DRAW_ENABLE |
+              ((DWORD)(op->bytes_per_pixel - 1u) << 2);
+
+    v9x_gdi_write(V9X_VIRGE_DEST_BASE, op->base);
+    v9x_gdi_write(V9X_VIRGE_DEST_SRC_STRIDE, op->pitch << 16);
+    v9x_gdi_write(V9X_VIRGE_CLIP_L_R,
+                  ((DWORD)op->destination_x << 16) |
+                  (DWORD)(op->destination_x + op->width - 1u));
+    v9x_gdi_write(V9X_VIRGE_CLIP_T_B,
+                  ((DWORD)op->destination_y << 16) |
+                  (DWORD)(op->destination_y + op->height - 1u));
+    /* Swapped, deliberately - see note 1 above. */
+    v9x_gdi_write(V9X_VIRGE_SRC_BG_COLOR, op->background);
+    v9x_gdi_write(V9X_VIRGE_SRC_FG_COLOR, op->foreground);
+    v9x_gdi_write(V9X_VIRGE_RECT_WH,
+                  (((DWORD)(op->upload_bytes * 8u) - 1ul) << 16) |
+                  (DWORD)op->height);
+    v9x_gdi_write(V9X_VIRGE_RECT_DEST_XY,
+                  ((DWORD)shifted_x << 16) | (DWORD)op->destination_y);
+    v9x_gdi_write(V9X_VIRGE_COMMAND, command);
+
+    /*
+     * Feed the rows. The window is a port rather than memory, so every row
+     * restarts at offset 0, and there is no FIFO polling in this loop - the
+     * engine throttles the bus itself and a pacing loop would be a slower way
+     * to do nothing (the reference's ColorSourceBlt does the same).
+     */
+    for (row = 0ul; row < (DWORD)op->height; ++row) {
+        /* The cast is safe by the gate's 64 KiB bound and is written out so
+         * the narrowing is deliberate rather than incidental. */
+        V9xEngineImageRow(op->source_selector, (WORD)source_offset,
+                          op->upload_bytes);
+        source_offset += (DWORD)op->source_stride;
+    }
     return 1u;
 }
 
@@ -625,7 +723,7 @@ void v9x_gdi_accel_configure(void)
      * advertised is a property of the source and not of the chip. What the
      * chip will actually run is `enabled`. */
     v9x_gdi.advertised = V9X_GDI_PRIM_FILL | V9X_GDI_PRIM_COPY |
-                         V9X_GDI_PRIM_OVERLAP;
+                         V9X_GDI_PRIM_OVERLAP | V9X_GDI_PRIM_UPLOAD;
     v9x_gdi_engine_type = V9X_DD_ENGINE_TYPE_NONE;
     v9x_gdi_engine_caps = 0ul;
     v9x_gdi_engine_live = 0u;
@@ -660,6 +758,11 @@ void v9x_gdi_accel_configure(void)
                                  V9X_SYSTEM_INI) != 0) {
             enabled |= V9X_GDI_PRIM_OVERLAP;
         }
+        if (GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccelUpload",
+                                 V9X_GDI_DEFAULT_UPLOAD,
+                                 V9X_SYSTEM_INI) != 0) {
+            enabled |= V9X_GDI_PRIM_UPLOAD;
+        }
     }
     /* The chip is the authority on capability, and an overlap-capable copy is
      * still a copy: overlap without copy would enable nothing. */
@@ -667,7 +770,12 @@ void v9x_gdi_accel_configure(void)
         enabled &= ~V9X_GDI_PRIM_FILL;
     }
     if ((v9x_gdi_engine_caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) == 0ul) {
-        enabled &= ~(V9X_GDI_PRIM_COPY | V9X_GDI_PRIM_OVERLAP);
+        enabled &= ~(V9X_GDI_PRIM_COPY | V9X_GDI_PRIM_OVERLAP |
+                     V9X_GDI_PRIM_UPLOAD);
+    }
+    /* Only the ViRGE has an implemented upload path; see gate 8. */
+    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
+        enabled &= ~V9X_GDI_PRIM_UPLOAD;
     }
     if ((enabled & V9X_GDI_PRIM_COPY) == 0ul) {
         enabled &= ~V9X_GDI_PRIM_OVERLAP;
@@ -703,6 +811,9 @@ const char *v9x_gdi_accel_state_text(void)
     }
     if (v9x_gdi.enabled == 0ul) {
         return "none";
+    }
+    if ((v9x_gdi.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul) {
+        return "gdi-fill-copy-overlap-upload";
     }
     if ((v9x_gdi.enabled & V9X_GDI_PRIM_OVERLAP) != 0ul) {
         return "gdi-fill-copy-overlap";
@@ -762,6 +873,7 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     WORD flags;
     WORD rop256;
     WORD screen_to_screen;
+    WORD upload = 0u;
     WORD issued;
 
     ++v9x_gdi.calls;
@@ -894,9 +1006,56 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         ++v9x_gdi.decline_rop;
         goto decline;
     }
-    if (rop256 == V9X_ROP256_SRCCOPY) {
-        if ((v9x_gdi.enabled & V9X_GDI_PRIM_COPY) == 0ul ||
-            screen_to_screen == 0u) {
+    if (rop256 == V9X_ROP256_SRCCOPY && screen_to_screen == 0u) {
+        /*
+         * A memory source. Build 004: only a monochrome one is worth taking,
+         * because a colour upload has the CPU move exactly the bytes the DIB
+         * Engine would move anyway - see the design record. So a 1-bpp source
+         * becomes an engine expansion and everything else declines here, which
+         * the harness checks rather than assumes.
+         */
+        if ((v9x_gdi.enabled & V9X_GDI_PRIM_UPLOAD) == 0ul) {
+            v9x_gdi.upload_reject_mask |= 1ul << 1;
+            ++v9x_gdi.decline_upload;
+            goto decline;
+        }
+        if (source_device == 0) {
+            v9x_gdi.upload_reject_mask |= 1ul << 2;
+            ++v9x_gdi.decline_upload;
+            goto decline;
+        }
+        /*
+         * deType decides which struct this is, and must be read before any
+         * field past byte 10. A DIBENGINE has deFlags and can be VRAM; a plain
+         * BITMAP has neither the field nor the possibility, so the VRAM test
+         * only applies to the former - reading deFlags out of a BITMAP is a
+         * read past the end of the object.
+         */
+        if (source_device->deType == V9X_TYPE_DIBENG) {
+            if ((source_device->deFlags & V9X_DE_VRAM) != 0u) {
+                v9x_gdi.upload_reject_mask |= 1ul << 3;
+                ++v9x_gdi.decline_upload;
+                goto decline;
+            }
+        } else if (source_device->deType != 0u) {
+            v9x_gdi.upload_reject_mask |= 1ul << 10;
+            v9x_gdi.upload_reject_detail = (DWORD)source_device->deType;
+            ++v9x_gdi.decline_upload;
+            goto decline;
+        }
+        if (source_device->deBitsPixel != 1u) {
+            v9x_gdi.upload_reject_mask |= 1ul << 4;
+            ++v9x_gdi.decline_upload;
+            goto decline;
+        }
+        if (draw_mode == 0) {
+            v9x_gdi.upload_reject_mask |= 1ul << 5;
+            ++v9x_gdi.decline_upload;
+            goto decline;
+        }
+        upload = 1u;
+    } else if (rop256 == V9X_ROP256_SRCCOPY) {
+        if ((v9x_gdi.enabled & V9X_GDI_PRIM_COPY) == 0ul) {
             ++v9x_gdi.decline_rop;
             goto decline;
         }
@@ -925,7 +1084,104 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         ++v9x_gdi.decline_geometry;
         goto decline;
     }
-    if (rop256 == V9X_ROP256_SRCCOPY) {
+    if (upload != 0u) {
+        /*
+         * Mono source addressing. The transfer must begin at the byte holding
+         * the first source pixel, so the row start is floor(source_x / 8) and
+         * the leftover bits are handed to the primitive to absorb by shifting
+         * the destination. The byte count covers the bit offset as well as the
+         * width, rounded up.
+         */
+        DWORD first_byte = (DWORD)source_x >> 3;
+        DWORD span_bits = (DWORD)(source_x & 7u) + (DWORD)op.width;
+        const V9X_DRAWMODE FAR *mode = (const V9X_DRAWMODE FAR *)draw_mode;
+        /*
+         * Where the bits fword lives depends on which struct this is: offset 18
+         * in a DIBENGINE, offset 10 in a plain BITMAP. Same six bytes, same
+         * meaning, different place - and getting it wrong is what made the
+         * first enabled run compute a half-gigabyte source address.
+         */
+        DWORD bits_offset;
+        WORD bits_selector;
+        DWORD start;
+
+        if (source_device->deType == V9X_TYPE_DIBENG) {
+            bits_offset = source_device->deBitsOffset;
+            bits_selector = source_device->deBitsSelector;
+        } else {
+            const V9X_BITMAP16 FAR *bitmap =
+                (const V9X_BITMAP16 FAR *)source_device;
+
+            bits_offset = (DWORD)bitmap->bmBitsOffset;
+            bits_selector = bitmap->bmBitsSelector;
+        }
+        start = bits_offset +
+                (DWORD)source_y * (DWORD)source_device->deWidthBytes +
+                first_byte;
+
+        op.source_bit_offset = (WORD)(source_x & 7u);
+        op.upload_bytes = (WORD)((span_bits + 7ul) >> 3);
+        op.source_stride = source_device->deWidthBytes;
+        op.source_selector = bits_selector;
+        /*
+         * Swapped on purpose: the ViRGE reads a set bit as background. See the
+         * note on v9x_gdi_virge_upload.
+         */
+        op.foreground = mode->bkColor;
+        op.background = mode->TextColor;
+        v9x_gdi.last_color = op.foreground;
+        /*
+         * Everything must sit inside one selector. A Win16 memory bitmap larger
+         * than 64 KiB needs selector stepping to walk, and inventing that here
+         * for a first cut is how a display driver reads the wrong memory - so a
+         * source whose last row would run past the selector declines instead.
+         * Also refuse a destination the bit-offset shift would push negative.
+         */
+        if (source_device->deWidthBytes == 0u || op.upload_bytes == 0u) {
+            v9x_gdi.upload_reject_mask |= 1ul << 6;
+            v9x_gdi.upload_reject_detail =
+                ((DWORD)source_device->deWidthBytes << 16) |
+                (DWORD)op.upload_bytes;
+            ++v9x_gdi.decline_geometry;
+            goto decline;
+        }
+        if (op.source_bit_offset > destination_x) {
+            v9x_gdi.upload_reject_mask |= 1ul << 7;
+            v9x_gdi.upload_reject_detail =
+                ((DWORD)op.source_bit_offset << 16) | (DWORD)destination_x;
+            ++v9x_gdi.decline_geometry;
+            goto decline;
+        }
+        /*
+         * The transfer helper addresses the source with a 16-bit si, which
+         * costs nothing for a plain BITMAP - bmBits is a 16:16 pointer, so its
+         * offset is 16 bits by definition. A DIBENGINE source is the case worth
+         * guarding: deBits is an fword (DIBENG.INC:64) and its offset really is
+         * 32 bits, so one whose last row would pass 64 KiB declines here rather
+         * than being silently truncated into the wrong memory.
+         */
+        if (start + (DWORD)op.height * (DWORD)source_device->deWidthBytes >
+                0x00010000ul) {
+            v9x_gdi.upload_reject_mask |= 1ul << 8;
+            v9x_gdi.upload_reject_detail = start;
+            ++v9x_gdi.decline_geometry;
+            goto decline;
+        }
+        op.source_bits_offset = start;
+        if ((DWORD)source_y + (DWORD)op.height >
+                (DWORD)source_device->deHeight ||
+            (DWORD)source_x + (DWORD)op.width >
+                (DWORD)source_device->deWidth) {
+            v9x_gdi.upload_reject_mask |= 1ul << 9;
+            v9x_gdi.upload_reject_detail =
+                ((DWORD)source_device->deWidth << 16) |
+                (DWORD)source_device->deHeight;
+            ++v9x_gdi.decline_geometry;
+            goto decline;
+        }
+        v9x_gdi.upload_reject_mask |= 1ul;
+        v9x_gdi.upload_reject_detail = start;
+    } else if (rop256 == V9X_ROP256_SRCCOPY) {
         if ((DWORD)source_x + (DWORD)op.width >
                 (DWORD)destination_device->deWidth ||
             (DWORD)source_y + (DWORD)op.height >
@@ -974,7 +1230,19 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             goto decline;
         }
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64) {
-        if ((op.base % op.pitch) != 0ul) {
+        /*
+         * No monochrome upload on the Trio64, and this is a deliberate gap
+         * rather than an oversight. Its 8514/A CPU-data path needs PIX_TRANS,
+         * the background mix and pixel-control registers, and this project has
+         * no first-party source for those values - the DDK's S3 sample is
+         * ViRGE, its other samples are other vendors' chips, and the 32-bit HAL
+         * has never driven this path either. Writing invented values to a 2D
+         * engine's command register on real silicon is not a guess worth
+         * making; build 001's fill colour showed how far wrong a plausible
+         * assumption about these engines can be. Declines until somebody has
+         * the databook section.
+         */
+        if (upload != 0u || (op.base % op.pitch) != 0ul) {
             ++v9x_gdi.decline_engine;
             goto decline;
         }
@@ -1005,12 +1273,23 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     v9x_gdi.last_brush_bpp = brush != 0 ? (DWORD)brush->BrushBpp : 0ul;
     v9x_gdi.last_brush_style = brush != 0 ? (DWORD)brush->BrushStyle : 0ul;
     v9x_gdi.last_bpp = (DWORD)destination_device->deBitsPixel;
+    /*
+     * Destination-only for an upload: the engine reads the source from system
+     * memory, not from the framebuffer, so there is no source rectangle on
+     * screen for a cursor to be sitting over. The union form is a
+     * screen-to-screen concern.
+     */
     v9x_gdi_exclude_cursor(destination_device, &op,
-                           rop256 == V9X_ROP256_SRCCOPY ? 1u : 0u);
+                           (rop256 == V9X_ROP256_SRCCOPY && upload == 0u)
+                               ? 1u : 0u);
     destination_device->deFlags |= V9X_DE_BUSY;
     if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
-        issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_virge_copy(&op)
-                                              : v9x_gdi_virge_fill(&op);
+        if (upload != 0u) {
+            issued = v9x_gdi_virge_upload(&op);
+        } else {
+            issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_virge_copy(&op)
+                                                  : v9x_gdi_virge_fill(&op);
+        }
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)
                                               : v9x_gdi_trio_fill(&op);
@@ -1023,7 +1302,9 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         goto decline;
     }
     v9x_gdi_engine_dirty = 1u;
-    if (rop256 == V9X_ROP256_SRCCOPY) {
+    if (upload != 0u) {
+        ++v9x_gdi.uploads;
+    } else if (rop256 == V9X_ROP256_SRCCOPY) {
         ++v9x_gdi.copies;
     } else {
         ++v9x_gdi.fills;

@@ -1187,6 +1187,22 @@ typedef struct v9x_dd_trace_snapshot {
 #define V9X_GDI_PRIM_FILL           0x00000001ul
 #define V9X_GDI_PRIM_COPY           0x00000002ul
 #define V9X_GDI_PRIM_OVERLAP        0x00000004ul
+/*
+ * Monochrome CPU-source expansion (build 004). Colour upload is deliberately
+ * not a primitive - see docs/decisions/2026-08-27-gdi-accel-004-design.md.
+ *
+ * 0x10 and NOT 0x08, which is the value the sequence would otherwise take.
+ * Testing bit 3 of this mask in the shared 16-bit layer compiles to
+ * `test al,8`, and that is the ViRGE's CR53[3] new-MMIO signature - a required
+ * instruction in that chip's object and therefore a forbidden one in every
+ * other family's image. Build 004 tripped exactly that: the ati image was
+ * refused for "foreign-family instruction test al,8" the first time this
+ * primitive was compiled in.
+ *
+ * The s3 family manifest already warns about this class of collision for
+ * unanchored patterns. Do not tidy this back to 0x08.
+ */
+#define V9X_GDI_PRIM_UPLOAD         0x00000010ul
 
 typedef struct v9x_gdi_stats {
     DWORD dwSize;
@@ -1223,6 +1239,28 @@ typedef struct v9x_gdi_stats {
     DWORD decline_overlap;
     DWORD decline_threshold;
     DWORD decline_engine;
+    /* Memory-source blits declined for not being a monochrome expansion - a
+     * colour upload, which build 004's design establishes is not worth
+     * accelerating. Counted so the harness can prove they decline rather than
+     * assume it. */
+    DWORD decline_upload;
+    DWORD uploads;
+    /*
+     * Why memory-source blits were refused. A **bitmask**, one bit per reason,
+     * accumulated over the run - not a last-one-wins scalar, because a mixed
+     * run declines for several reasons at once and the first attempt at this
+     * reported only whichever operation happened to come last.
+     *   bit 1 not enabled  2 no source   3 source is VRAM  4 source not 1bpp
+     *   bit 5 no drawmode  6 zero stride 7 bit offset > destination x
+     *   bit 8 source would leave its selector      9 source out of bounds
+     * bit 0 is set when an upload was accepted.
+     *
+     * The detail carries the numbers behind the *geometry* reasons only (6-9),
+     * since those are the ones a bit alone does not explain, and is left alone
+     * by the earlier reasons so a later colour operation cannot overwrite it.
+     */
+    DWORD upload_reject_mask;
+    DWORD upload_reject_detail;
     /*
      * The last operation the dispatcher accepted, for diagnosing a wrong-pixel
      * failure without a second guest round trip.
@@ -1324,7 +1362,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 132 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 148 ? 1 : -1];
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the

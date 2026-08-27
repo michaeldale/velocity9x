@@ -105,6 +105,46 @@
 #define V9X_VIRGE_CMD_ROP_SRCCOPY        (0x000000ccul << 17)
 #define V9X_VIRGE_CMD_X_POSITIVE         0x02000000ul
 #define V9X_VIRGE_CMD_Y_POSITIVE         0x04000000ul
+/*
+ * CPU-source command bits, from S3.INC:800-829. MONOSRCBLT is
+ * BITBLT + bSRC_Sys + bSRC_Mono, and the mono path additionally sets
+ * CPUAlign_dword and bClip_Enable - the first because the image-transfer window
+ * takes dword writes, the second because the bit-alignment padding has to be
+ * clipped away rather than drawn.
+ */
+#define V9X_VIRGE_CMD_SRC_SYS            0x00000080ul
+#define V9X_VIRGE_CMD_SRC_MONO           0x00000040ul
+#define V9X_VIRGE_CMD_CPU_ALIGN_DWORD    0x00000800ul
+#define V9X_VIRGE_CMD_TRANSPARENT        0x00000200ul
+#define V9X_VIRGE_CMD_CLIP_ENABLE        0x00000002ul
+
+/*
+ * Registers the monochrome CPU-source path needs.
+ *
+ * Derived, not guessed. S3.INC:702 defines BitBLTArea = D2BaseOffset + 0x400
+ * and gives each register as an offset within it - CLIP_L_R 0xdc, CLIP_T_B
+ * 0xe0, SRC_BG_CLR 0xf8, SRC_FG_CLR 0xfc. The base resolves to 0xa400, which
+ * is confirmed three ways against offsets already verified on hardware above:
+ * PAT_FG_CLR 0xf4 -> 0xa4f4, CMD_SET 0x100 -> 0xa500, RWIDTH_HEIGHT 0x104 ->
+ * 0xa504.
+ *
+ * The clip rectangle is not optional on the mono path. A mono source starts at
+ * an arbitrary bit within a byte and the engine is fed whole bytes, so the
+ * destination is shifted left by that bit offset and the leading padding pixels
+ * are trimmed by hardware clipping. Without the clip they would be drawn.
+ */
+#define V9X_VIRGE_CLIP_L_R            0x0000a4dcul
+#define V9X_VIRGE_CLIP_T_B            0x0000a4e0ul
+#define V9X_VIRGE_SRC_BG_COLOR        0x0000a4f8ul
+#define V9X_VIRGE_SRC_FG_COLOR        0x0000a4fcul
+
+/*
+ * The image-transfer window, where the CPU hands pixel data to the engine.
+ * S3.INC:688 puts it at offset 0 of the MMIO window with a 0x8000-byte maximum
+ * burst - inside the 64 KiB this driver's engine selector already covers.
+ */
+#define V9X_VIRGE_IMAGE_XFER          0x00000000ul
+#define V9X_VIRGE_IMAGE_XFER_MAX      0x00008000ul
 
 /*
  * CR66 bit 1 is the ViRGE/DX graphics-engine reset the Windows 98 S3 sample
