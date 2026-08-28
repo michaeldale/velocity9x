@@ -1,9 +1,11 @@
 # A DOS box hangs the HP Mini 110 before it draws a prompt
 
 Date: 2026-08-28
-Status: **open, and narrowed by measurement: a windowed DOS box is clean and
-the full-screen transition is what hangs.** See "Measured" below. The cause
-within that transition is still unknown.
+Status: **open, and attributable. A windowed DOS box is clean, the
+full-screen transition hangs at both 32bpp and 16bpp, and the stock Windows
+VGA driver on the same machine does the same thing without fault.** This is
+Velocity9x's defect, not the machine's. The cause within the transition is
+still unknown.
 
 Reported here on the HP Mini 110 (Intel 945GSE, GMA 950, PCI `8086:27AE`),
 running the released 0.6.1 vbe package, build `e938fdc`. Typing `command` in
@@ -115,6 +117,18 @@ it.** That is the standing lesson of
 were both read off a picture and were both wrong. Recorded as a signature to
 be explained, not as a diagnosis.
 
+### The control
+
+**The stock Windows standard VGA driver, same machine, full-screen DOS box:
+no fault.** So the machine is capable of the transition and Velocity9x is what
+breaks it. Every "the machine hangs while Velocity9x is loaded" hedge above
+this line is discharged.
+
+It also says something about where to look. The stock VGA driver never leaves
+a VGA mode, so the master VDD's save and restore across the transition has
+almost nothing to do. Velocity9x is in a VESA linear-framebuffer mode at
+`d0000000`, and that is the whole of the difference.
+
 ### What it kills
 
 - **"Opening a DOS box hangs the machine."** It does not. Trial 0 is the
@@ -146,6 +160,45 @@ and nothing about the way in is implicated at all.
 this, recorded only so a later reader does not treat it as a symptom.
 `V9XBOOT.INI`, `V9XHW.INI` and the mode rows are byte-identical across both
 collections; only the sync generation counter moved.
+
+## Where to look next
+
+The mini-VDD installs exactly four callbacks, and the build gate asserts that
+it installs exactly these and no others:
+
+```
+VESA_SUPPORT   VESA_CALL_POST_PROCESSING
+SET_MONITOR_POWER_STATE   GET_MONITOR_POWER_STATE_CAPS
+```
+
+**Neither end of the hi-res/VGA round trip is among them.** The master VDD
+therefore performs its own default save and restore of video state across the
+transition, for a card it has been told nothing about, sitting in a VESA
+linear-framebuffer mode it did not set. Against the stock VGA driver that
+default has nothing to do; against this one it has everything to do, and the
+control above says the difference lands exactly there.
+
+That is the leading hypothesis and it is **not** a new idea. A chip-agnostic
+CRTC snapshot in the mini-VDD was drafted for the corrupt band, found to be
+the wrong fix, and reverted - see the "Not what was first written here"
+section of `docs\issues\2026-08-28-fullscreen-dos-scanout.md`. Being the wrong
+explanation for the band does not make it the wrong explanation for the hang;
+those are different symptoms, and the band's fix turned out to be a missing
+call one layer up in the display driver, which cannot explain a wedge on the
+way in. But the reasoning was wrong twice on this round trip already, so the
+next move is an experiment, not a patch.
+
+Because the machine cannot be traced - no serial port, no boot stage written
+on this path - the instrument has to be a differential build, the way the mode
+sweep is. Two are worth building, in this order:
+
+1. **A build whose mini-VDD hooks the round trip** and does the minimum on the
+   way out to VGA. If the hang goes, the master VDD's default is the cause.
+2. **A build with the DPMS writes below removed.** Cheap, and it eliminates
+   the one thing in our VxD known to be writing registers that do not exist on
+   this silicon.
+
+Neither has been built.
 
 ## Unproven, and a defect regardless: the mini-VDD writes S3 registers on Intel silicon
 
@@ -185,10 +238,8 @@ not it explains anything here.
    hangs. See "Measured".
 2. **One more run of the tool**, to have it write `hung` for trial 1 itself
    rather than leaving the outcome to be inferred from an absence.
-3. **Standard VGA driver, same machine, full screen.** The control every other
-   result is read against: it says whether the full-screen transition is ours
-   to fix or the machine's. Until this runs, "Velocity9x hangs on full screen"
-   is not established - only that the machine does while Velocity9x is loaded.
+3. ~~**Standard VGA driver, same machine, full screen.**~~ Done. No fault. The
+   defect is ours.
 4. ~~**16bpp desktop.**~~ Done. Hangs, as 32bpp does. Depth is not the
    variable.
 5. **640x480, and 8bpp.** Geometry is still untested, and 640x480 is the one
@@ -197,6 +248,6 @@ not it explains anything here.
    and points at the surface; a hang at every one says the transition itself
    is at fault regardless of what it is transitioning from.
 
-Test 3 is the one that matters most and is the cheapest. Until it runs, what
-is established is that this machine hangs on a full-screen DOS box while
-Velocity9x is loaded - not that Velocity9x is what hangs it.
+Test 5 is the last cheap one from the machine's side. After it, the next
+evidence has to come from a differential build - see "Where to look next" -
+because there is nothing left on this machine to vary.
