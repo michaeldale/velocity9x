@@ -1553,6 +1553,34 @@ V9xMini_Mtrr_Done:
     ret
 EndProc V9xMini_Mtrr_Inspect
 
+IFDEF V9X_NO_SCREEN_SWITCH
+; Refuse to switch a DOS box to full screen at all.
+;
+; Not a workaround invented here: the Windows 98 DDK's own XGA mini-VDD does
+; exactly this, and says why - "The XGA's HiRes screen cannot be reliably
+; saved and restored if we're in a VESA mode ... So.... we disallow switching
+; away from any VESA HiRes mode DOS box." Tier-0 is in that position by
+; construction. It drives an unknown chip through its VESA BIOS, has no
+; register-level backend to save and restore state with, and on the GMA 950
+; the BIOS mode set that would return the adapter to text hangs the machine -
+; measured from every mode the panel offers, and again with the driver issuing
+; the mode set itself.
+;
+; Entry per MINIVDD: EAX = -1 in a VESA mode, EBX = the VM being switched away
+; from, ECX = the mode number. Exit: CY prohibits the switch, NC allows it.
+;
+; Refused unconditionally rather than on EAX, deliberately: this build's job is
+; to establish whether refusing prevents the hang at all. Whether the main VDD
+; reports a driver-set linear-framebuffer mode as "a VESA mode" is exactly the
+; kind of assumption that has been wrong twice on this round trip, so it is not
+; assumed here. Narrowing the condition is the next build's problem, and only
+; worth having if this one works.
+BeginProc MiniVDD_CheckScreenSwitchOK
+    stc
+    ret
+EndProc MiniVDD_CheckScreenSwitchOK
+ENDIF
+
 IFDEF V9X_VGA_RETURN
 ; Differential build for docs\issues\2026-08-28-dos-box-entry-hang-gma950.md:
 ; return the adapter to standard VGA ourselves, before the main VDD tries.
@@ -1619,6 +1647,11 @@ IFDEF V9X_VGA_RETURN
     ; 40-entry table as well as the 49-entry one, so the count checked above
     ; already covers it.
     MiniVDDDispatch PRE_HIRES_TO_VGA, PreHiResToVGA
+ENDIF
+
+IFDEF V9X_NO_SCREEN_SWITCH
+    ; Function 43, inside the 49-entry table the count above already required.
+    MiniVDDDispatch CHECK_SCREEN_SWITCH_OK, CheckScreenSwitchOK
 ENDIF
 
     ; Power callbacks were added to the Windows 98 (4.1) dispatch table.

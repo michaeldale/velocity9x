@@ -25,7 +25,8 @@ param(
     # at one machine someone can recover; see build-minivdd-skeleton.ps1 and
     # docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
     [switch]$VgaReturn,
-    [switch]$NoDpms
+    [switch]$NoDpms,
+    [switch]$NoScreenSwitch
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,7 +67,7 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
     -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep `
-    -VgaReturn:$VgaReturn -NoDpms:$NoDpms
+    -VgaReturn:$VgaReturn -NoDpms:$NoDpms -NoScreenSwitch:$NoScreenSwitch
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `

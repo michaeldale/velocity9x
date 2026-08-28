@@ -24,6 +24,12 @@ param(
     # whatever silicon it is loaded against.
     [switch]$VgaReturn,
     [switch]$NoDpms,
+    # -NoScreenSwitch refuses the full-screen DOS box outright, through
+    # CHECK_SCREEN_SWITCH_OK. The DDK's own XGA mini-VDD does this for a
+    # driver in a VESA mode, for the reason that applies to tier-0: the
+    # hardware state cannot be reliably saved and restored. Unlike the two
+    # above, this one is a candidate for shipping if it works.
+    [switch]$NoScreenSwitch,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -274,6 +280,9 @@ if ($VgaReturn) {
 if ($NoDpms) {
     $assemblerArguments = @("-DV9X_NO_DPMS") + $assemblerArguments
 }
+if ($NoScreenSwitch) {
+    $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
+}
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Windows 98 DDK assembler failed to build the mini-VDD skeleton."
@@ -316,14 +325,17 @@ if ($DisableVbeCollect) {
     throw "A default mini-VDD build must not carry the vbe-collect disabled marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
-# The audited four, plus the one PRE_HIRES_TO_VGA hook the -VgaReturn
-# experiment adds. The count is over the source, so it has to account for the
-# experimental line whether or not this build assembles it; the symbol check
-# below is what ties the built image to the switch.
-$expectedDispatches = if ($VgaReturn) { 5 } else { 4 }
+# The audited four, plus the experimental hooks. The count is over the source,
+# so it counts every experimental line whether or not this build assembles one;
+# what ties the built image to the switches is the symbol check below. The
+# count is still worth keeping: it is what refuses a seventh, unaudited
+# callback appearing without anyone deciding to add it.
+$experimentalDispatches = @("PRE_HIRES_TO_VGA", "CHECK_SCREEN_SWITCH_OK")
 $dispatchCount = ([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count
-if ($dispatchCount -ne $expectedDispatches -and $dispatchCount -ne 5) {
-    throw "The mini-VDD source declares $dispatchCount dispatch entries; expected the four audited callbacks plus at most the PRE_HIRES_TO_VGA experiment."
+if ($dispatchCount -ne 4 + $experimentalDispatches.Count) {
+    throw ("The mini-VDD source declares $dispatchCount dispatch entries; " +
+           "expected the four audited callbacks plus " +
+           "$($experimentalDispatches.Count) experimental ones.")
 }
 if ($sourceText -notmatch 'MiniVDDDispatch\s+VESA_SUPPORT' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+VESA_CALL_POST_PROCESSING' -or
@@ -331,12 +343,19 @@ if ($sourceText -notmatch 'MiniVDDDispatch\s+VESA_SUPPORT' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+GET_MONITOR_POWER_STATE_CAPS') {
     throw "The mini-VDD must install exactly the four audited monitor-power callbacks."
 }
-# The experimental hook may exist in the source only inside its IFDEF: a
-# shipping build that installed it would be installing an untested BIOS call on
-# the DOS-box path.
-if ($sourceText -match '(?m)^\s*MiniVDDDispatch\s+PRE_HIRES_TO_VGA' -and
-    $sourceText -notmatch '(?s)IFDEF\s+V9X_VGA_RETURN.*?MiniVDDDispatch\s+PRE_HIRES_TO_VGA.*?ENDIF') {
-    throw "PRE_HIRES_TO_VGA is dispatched outside IFDEF V9X_VGA_RETURN."
+# Each experimental hook may appear in the source only inside its own IFDEF. A
+# shipping build that picked one up would be installing untested behaviour on
+# the DOS-box path without anyone asking for it.
+$experimentalGuards = @{
+    "PRE_HIRES_TO_VGA"       = "V9X_VGA_RETURN"
+    "CHECK_SCREEN_SWITCH_OK" = "V9X_NO_SCREEN_SWITCH"
+}
+foreach ($hook in $experimentalGuards.Keys) {
+    $guard = $experimentalGuards[$hook]
+    if ($sourceText -match "(?m)^\s*MiniVDDDispatch\s+$hook" -and
+        $sourceText -notmatch "(?s)IFDEF\s+$guard.*?MiniVDDDispatch\s+$hook.*?ENDIF") {
+        throw "$hook is dispatched outside IFDEF $guard."
+    }
 }
 $sweepSymbol = ([regex]::Matches(
     (Get-Content -LiteralPath $mapPath -Raw), 'V9xMini_Vbe_Sweep')).Count -gt 0
@@ -353,6 +372,12 @@ $vgaReturnSymbol = ([regex]::Matches(
 if ($VgaReturn -ne $vgaReturnSymbol) {
     throw ("The mini-VDD image " + $(if ($vgaReturnSymbol) { "carries" } else { "lacks" }) +
            " the PRE_HIRES_TO_VGA hook, which is not what -VgaReturn asked for.")
+}
+$screenSwitchSymbol = ([regex]::Matches(
+    (Get-Content -LiteralPath $mapPath -Raw), 'MiniVDD_CheckScreenSwitchOK')).Count -gt 0
+if ($NoScreenSwitch -ne $screenSwitchSymbol) {
+    throw ("The mini-VDD image " + $(if ($screenSwitchSymbol) { "carries" } else { "lacks" }) +
+           " the screen-switch refusal, which is not what -NoScreenSwitch asked for.")
 }
 $dpmsDisabledMarker = "V9X-MINI dpms-disabled"
 if ($NoDpms) {

@@ -252,8 +252,40 @@ Both exist, neither has run on any machine.
    than testing a mechanism.
 
 Neither ships. The build audit asserts the image carries exactly what the
-switch asked for in both directions, `PRE_HIRES_TO_VGA` may be dispatched only
-inside its `IFDEF`, and the no-DPMS build carries its own serial marker.
+switch asked for in both directions, an experimental hook may be dispatched
+only inside its own `IFDEF`, and the no-DPMS build carries its own serial
+marker.
+
+### Result: `-VgaReturn` hangs the same way
+
+`claude\personal\v9x-intel950\1build\`. The driver came up on it -
+`V9XMODES.INI` and `V9XSYNC.INI` both say `Build=4cb3de0-vgaret`,
+`Stage=enable-ok`, desktop at 640x480x8 - and trial 6 did not return.
+
+```
+Trial05=mode=640x480x8 action=fullscreen  hung    (shipping build)
+Trial06=mode=640x480x8 action=fullscreen  armed   (-VgaReturn)
+```
+
+So issuing the BIOS mode set ourselves, earlier, from the hook the DDK names
+for the purpose, does not avoid the hang.
+
+**What that does not settle.** The hook adds a BIOS call, it does not remove
+the main VDD's. Whether it was our `INT 10h` that never returned or the VDD's
+own subsequent route is not distinguishable here, and cannot be made so on
+this machine: no serial port, and nothing on that path can write to disk. What
+both readings share is the conclusion that matters - **going through the video
+BIOS on this path wedges the machine**, and no build that keeps a BIOS call
+there will fix it.
+
+That closes the fix-it-properly route for tier-0. Returning an unknown chip to
+text mode without asking its BIOS would need a register-level backend for that
+chip, which is the entire thing tier-0 exists not to have.
+
+*(These trials also show why the tool now records `driver=`: trials 5 and 6
+are distinguishable only by the covering message and by `V9XMODES.INI` having
+been collected between them. The build that records the driver name per trial
+had not reached the machine yet.)*
 
 ## Unproven, and a defect regardless: the mini-VDD writes S3 registers on Intel silicon
 
@@ -300,7 +332,38 @@ not it explains anything here.
 5. ~~**640x480 under Velocity9x, and 8bpp.**~~ Done. 640x480x8 hangs. Geometry
    is not the variable either.
 
-Nothing is left to vary on the machine's side. The next evidence comes from
-the two differential builds above, one at a time, each reported through
-`V9XDOSBX.INI` - whose records now carry the display driver name, so a trial
-says which build produced it.
+6. ~~**`-VgaReturn`.**~~ Done. Hangs the same way.
+7. **`-NoDpms`.** Built, not run. Expected to hang; it removes a variable
+   rather than testing a mechanism.
+8. **`-NoScreenSwitch`.** Built, not run. The candidate answer rather than
+   another probe - see below.
+
+## The answer this points at: refuse the switch
+
+The Windows 98 DDK's own XGA mini-VDD refuses to let a DOS box go full screen
+at all, and the comment in `MiniVDD_CheckScreenSwitchOK` says why:
+
+> The XGA's HiRes screen cannot be reliably saved and restored if we're in a
+> VESA mode. This is because of the fact that the XGA uses its own private DAC
+> registers ... So.... we disallow switching away from any VESA HiRes mode DOS
+> box.
+
+Tier-0 is in that position by construction, and more so. It drives an unknown
+chip through its VESA BIOS, it has no register-level backend to save and
+restore state with, and on this machine the BIOS mode set that would return
+the adapter to text hangs it - from every mode the panel offers, and again
+with the driver issuing the mode set itself.
+
+`CHECK_SCREEN_SWITCH_OK` returns carry set to prohibit the switch. The
+`-NoScreenSwitch` build installs it and refuses unconditionally.
+
+**Unconditionally, deliberately.** Refusing only when `EAX` says "a VESA mode"
+would assume the main VDD reports a driver-set linear-framebuffer mode that
+way, and assumptions about this round trip have been wrong twice already.
+Establish that refusing prevents the hang first; narrowing the condition is
+the next build's problem and is only worth having if this one works.
+
+If it works, this is a candidate for shipping on tier-0 rather than a
+stopgap - the same trade Microsoft made for the XGA, made for the same reason.
+A windowed DOS box already works, and it is what a tier-0 user would get
+instead of a machine that needs the power switch.
