@@ -167,26 +167,59 @@ static void v9x_resolve_previous(unsigned trials)
     }
 }
 
+/*
+ * Colour depth is BITSPIXEL times PLANES, not BITSPIXEL.
+ *
+ * The standard VGA driver is planar: four one-bit planes, so BITSPIXEL alone
+ * reports 1 and a 16-colour mode goes into the record as "640x480x1", which
+ * reads like a mono mode and cost a re-reading of the first control run.
+ * Every packed mode has PLANES = 1, so the multiplication is correct there
+ * too.
+ */
 static void v9x_describe_mode(char *text, char *end)
 {
     HDC screen = GetDC(0);
     char *cursor = text;
+    DWORD depth;
 
     if (screen == 0) {
         cursor = v9x_append_text(cursor, end, "unknown");
         *cursor = '\0';
         return;
     }
+    depth = (DWORD)GetDeviceCaps(screen, BITSPIXEL) *
+            (DWORD)GetDeviceCaps(screen, PLANES);
+
     cursor = v9x_append_uint(cursor, end,
                              (DWORD)GetDeviceCaps(screen, HORZRES));
     *cursor++ = 'x';
     cursor = v9x_append_uint(cursor, end,
                              (DWORD)GetDeviceCaps(screen, VERTRES));
     *cursor++ = 'x';
-    cursor = v9x_append_uint(cursor, end,
-                             (DWORD)GetDeviceCaps(screen, BITSPIXEL));
+    cursor = v9x_append_uint(cursor, end, depth);
     *cursor = '\0';
     ReleaseDC(0, screen);
+}
+
+/*
+ * Which display driver was loaded for this trial, read from SYSTEM.INI.
+ *
+ * These runs compare Velocity9x against the stock VGA driver on one machine,
+ * and until now the record said only what mode was current - so which driver
+ * produced a result had to be carried in the covering note rather than in the
+ * file. A trial that cannot say what it was testing is worth less than it
+ * should be. GetPrivateProfileString resolves a bare file name against the
+ * Windows directory, which is where SYSTEM.INI lives.
+ */
+static void v9x_describe_driver(char *text, DWORD size)
+{
+    text[0] = '\0';
+    GetPrivateProfileStringA("boot", "display.drv", "unknown", text, size,
+                             "SYSTEM.INI");
+    if (text[0] == '\0') {
+        text[0] = '?';
+        text[1] = '\0';
+    }
 }
 
 /*
@@ -235,6 +268,7 @@ void __stdcall V9xDosBoxTestEntry(void)
     char key[32];
     char state_key[32];
     char mode[32];
+    char driver[64];
     char record[160];
     char message[512];
     char count[12];
@@ -275,11 +309,14 @@ void __stdcall V9xDosBoxTestEntry(void)
     }
 
     v9x_describe_mode(mode, mode + sizeof(mode) - 1);
+    v9x_describe_driver(driver, sizeof(driver));
 
     cursor = record;
     end = record + sizeof(record) - 1;
     cursor = v9x_append_text(cursor, end, "mode=");
     cursor = v9x_append_text(cursor, end, mode);
+    cursor = v9x_append_text(cursor, end, " driver=");
+    cursor = v9x_append_text(cursor, end, driver);
     cursor = v9x_append_text(cursor, end, " action=");
     cursor = v9x_append_text(cursor, end,
                              fullscreen ? "fullscreen" : "windowed");

@@ -119,10 +119,31 @@ be explained, not as a diagnosis.
 
 ### The control
 
-**The stock Windows standard VGA driver, same machine, full-screen DOS box:
-no fault.** So the machine is capable of the transition and Velocity9x is what
-breaks it. Every "the machine hangs while Velocity9x is loaded" hedge above
-this line is discharged.
+Same file, same machine, stock Windows standard VGA driver
+(`claude\personal\v9x-intel950\standard\`):
+
+```
+Trial03=mode=640x480x1 action=fullscreen  survived
+Trial04=mode=640x480x1 action=fullscreen  survived
+```
+
+**Two full-screen DOS boxes, no fault.** So the machine is capable of the
+transition and Velocity9x is what breaks it. Every "the machine hangs while
+Velocity9x is loaded" hedge above this line is discharged.
+
+Two things about those two lines, both worth having in writing.
+
+`640x480x1` is the tool under-describing a planar mode, not a mono desktop.
+The standard VGA driver is four one-bit planes and `GetDeviceCaps(BITSPIXEL)`
+reports per plane, so the record should have read `640x480x4`. Fixed in
+`dos_box_test_win32.c` by multiplying through `PLANES`, and the record now
+also carries `driver=` read from `SYSTEM.INI`, so a trial says which driver
+produced it rather than relying on the covering note. The trials above are
+still sound - the depth in them is wrong, the outcome is not.
+
+**640x480 under Velocity9x remains untested.** Trials 3 and 4 are the stock
+driver's own resolution, not a Velocity9x run at 640x480, and it would be easy
+to read them as having covered that. They have not.
 
 It also says something about where to look. The stock VGA driver never leaves
 a VGA mode, so the master VDD's save and restore across the transition has
@@ -242,11 +263,12 @@ not it explains anything here.
    defect is ours.
 4. ~~**16bpp desktop.**~~ Done. Hangs, as 32bpp does. Depth is not the
    variable.
-5. **640x480, and 8bpp.** Geometry is still untested, and 640x480 is the one
-   mode here that a BIOS is most likely to handle conventionally. A
-   full-screen trial that survives at some geometry makes this mode-dependent
-   and points at the surface; a hang at every one says the transition itself
-   is at fault regardless of what it is transitioning from.
+5. **640x480 under Velocity9x, and 8bpp.** Still open - the 640x480 trials in
+   the collection are the stock driver's. Geometry is the last untested
+   variable, and 640x480 is the one mode here a BIOS is most likely to handle
+   conventionally. A full-screen trial that survives at some geometry makes
+   this mode-dependent and points at the surface; a hang at every one says the
+   transition itself is at fault regardless of what it is transitioning from.
 
 Test 5 is the last cheap one from the machine's side. After it, the next
 evidence has to come from a differential build - see "Where to look next" -
