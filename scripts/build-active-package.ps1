@@ -29,7 +29,12 @@ param(
     [switch]$NoScreenSwitch,
     # Trace the DOS-box round trip from the display driver, which can write a
     # file where the mini-VDD cannot. The instrument, not another elimination.
-    [switch]$DosBoxTrace
+    [switch]$DosBoxTrace,
+    # Trace the same round trip from the mini-VDD, over COM1. The other half of
+    # the instrument: the display-driver trace says the driver is not entered,
+    # and this says how far the main VDD got before that was true. Needs a guest
+    # or machine whose serial port is being captured.
+    [switch]$ScreenSwitchTrace
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,7 +75,8 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
     -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep `
-    -VgaReturn:$VgaReturn -NoDpms:$NoDpms -NoScreenSwitch:$NoScreenSwitch
+    -VgaReturn:$VgaReturn -NoDpms:$NoDpms -NoScreenSwitch:$NoScreenSwitch `
+    -ScreenSwitchTrace:$ScreenSwitchTrace
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `

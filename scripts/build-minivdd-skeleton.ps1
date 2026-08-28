@@ -30,6 +30,14 @@ param(
     # hardware state cannot be reliably saved and restored. Unlike the two
     # above, this one is a candidate for shipping if it works.
     [switch]$NoScreenSwitch,
+    # -ScreenSwitchTrace is the instrument, not an experiment: it installs
+    # observer-only hooks on the four HiRes/VGA notifications plus
+    # CHECK_SCREEN_SWITCH_OK, each of which writes one serial line and returns.
+    # It is how the main VDD's own narration of the DOS-box round trip becomes
+    # readable on a guest with COM1 to a file. It changes no register of the
+    # card and refuses nothing. See the observer bodies in
+    # src\minivdd32\loader.asm for why SAVE_REGISTERS is not among them.
+    [switch]$ScreenSwitchTrace,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -135,6 +143,24 @@ if ($NoDpms) {
     $buildIncludeLines += @(
         "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-disabled build=$BuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
+    )
+}
+if ($ScreenSwitchTrace) {
+    # One line per callback, so the order they arrive in is the order the main
+    # VDD called them and a missing line is a step that never happened.
+    $buildIncludeLines += @(
+        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-trace build=$BuildId`", 13, 10",
+        "V9xMiniSsTraceLineLength equ `$ - V9xMiniSsTraceLine",
+        "V9xMiniSsCheckLine db `"V9X-MINI ss check-screen-switch-ok`", 13, 10",
+        "V9xMiniSsCheckLineLength equ `$ - V9xMiniSsCheckLine",
+        "V9xMiniSsPreToVgaLine db `"V9X-MINI ss pre-hires-to-vga`", 13, 10",
+        "V9xMiniSsPreToVgaLineLength equ `$ - V9xMiniSsPreToVgaLine",
+        "V9xMiniSsPostToVgaLine db `"V9X-MINI ss post-hires-to-vga`", 13, 10",
+        "V9xMiniSsPostToVgaLineLength equ `$ - V9xMiniSsPostToVgaLine",
+        "V9xMiniSsPreToHiResLine db `"V9X-MINI ss pre-vga-to-hires`", 13, 10",
+        "V9xMiniSsPreToHiResLineLength equ `$ - V9xMiniSsPreToHiResLine",
+        "V9xMiniSsPostToHiResLine db `"V9X-MINI ss post-vga-to-hires`", 13, 10",
+        "V9xMiniSsPostToHiResLineLength equ `$ - V9xMiniSsPostToHiResLine"
     )
 }
 Set-Content -LiteralPath $buildInclude -Encoding Ascii -Value $buildIncludeLines
@@ -283,6 +309,19 @@ if ($NoDpms) {
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
 }
+if ($ScreenSwitchTrace) {
+    # Both of these dispatch a callback the trace also dispatches, and the last
+    # write to a table slot wins, so the image would carry one of them silently.
+    if ($VgaReturn) {
+        throw ("-ScreenSwitchTrace and -VgaReturn both dispatch " +
+               "PRE_HIRES_TO_VGA. Build them separately.")
+    }
+    if ($NoScreenSwitch) {
+        throw ("-ScreenSwitchTrace and -NoScreenSwitch both dispatch " +
+               "CHECK_SCREEN_SWITCH_OK. Build them separately.")
+    }
+    $assemblerArguments = @("-DV9X_SCREEN_SWITCH_TRACE") + $assemblerArguments
+}
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Windows 98 DDK assembler failed to build the mini-VDD skeleton."
@@ -325,37 +364,59 @@ if ($DisableVbeCollect) {
     throw "A default mini-VDD build must not carry the vbe-collect disabled marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
-# The audited four, plus the experimental hooks. The count is over the source,
-# so it counts every experimental line whether or not this build assembles one;
-# what ties the built image to the switches is the symbol check below. The
-# count is still worth keeping: it is what refuses a seventh, unaudited
-# callback appearing without anyone deciding to add it.
-$experimentalDispatches = @("PRE_HIRES_TO_VGA", "CHECK_SCREEN_SWITCH_OK")
-$dispatchCount = ([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count
-if ($dispatchCount -ne 4 + $experimentalDispatches.Count) {
-    throw ("The mini-VDD source declares $dispatchCount dispatch entries; " +
-           "expected the four audited callbacks plus " +
-           "$($experimentalDispatches.Count) experimental ones.")
-}
-if ($sourceText -notmatch 'MiniVDDDispatch\s+VESA_SUPPORT' -or
-    $sourceText -notmatch 'MiniVDDDispatch\s+VESA_CALL_POST_PROCESSING' -or
-    $sourceText -notmatch 'MiniVDDDispatch\s+SET_MONITOR_POWER_STATE' -or
-    $sourceText -notmatch 'MiniVDDDispatch\s+GET_MONITOR_POWER_STATE_CAPS') {
-    throw "The mini-VDD must install exactly the four audited monitor-power callbacks."
-}
-# Each experimental hook may appear in the source only inside its own IFDEF. A
-# shipping build that picked one up would be installing untested behaviour on
-# the DOS-box path without anyone asking for it.
-$experimentalGuards = @{
-    "PRE_HIRES_TO_VGA"       = "V9X_VGA_RETURN"
-    "CHECK_SCREEN_SWITCH_OK" = "V9X_NO_SCREEN_SWITCH"
-}
-foreach ($hook in $experimentalGuards.Keys) {
-    $guard = $experimentalGuards[$hook]
-    if ($sourceText -match "(?m)^\s*MiniVDDDispatch\s+$hook" -and
-        $sourceText -notmatch "(?s)IFDEF\s+$guard.*?MiniVDDDispatch\s+$hook.*?ENDIF") {
-        throw "$hook is dispatched outside IFDEF $guard."
+# Every dispatch the source declares, paired with the IFDEF it sits inside.
+# The four audited callbacks are unguarded; every other one belongs to an
+# experiment or an instrument and may appear only inside that switch's guard,
+# because a shipping build that picked one up would install untested behaviour
+# on the DOS-box path without anyone asking for it.
+#
+# Walked line by line rather than matched across the source: two builds now
+# dispatch the same callback under different guards, and a pattern that spans
+# blocks cannot tell those apart. The set is exact in both directions, so an
+# unaudited callback cannot appear without this failing, and neither can a
+# dispatch quietly moving out of its guard or changing handler.
+$expectedDispatches = @(
+    "/VESA_SUPPORT,VESASupport",
+    "/VESA_CALL_POST_PROCESSING,VESACallPostProcessing",
+    "/SET_MONITOR_POWER_STATE,SetMonitorPowerState",
+    "/GET_MONITOR_POWER_STATE_CAPS,GetMonitorPowerStateCaps",
+    "V9X_VGA_RETURN/PRE_HIRES_TO_VGA,PreHiResToVGA",
+    "V9X_NO_SCREEN_SWITCH/CHECK_SCREEN_SWITCH_OK,CheckScreenSwitchOK",
+    "V9X_SCREEN_SWITCH_TRACE/CHECK_SCREEN_SWITCH_OK,TraceCheckScreenSwitchOK",
+    "V9X_SCREEN_SWITCH_TRACE/PRE_HIRES_TO_VGA,TracePreHiResToVGA",
+    "V9X_SCREEN_SWITCH_TRACE/POST_HIRES_TO_VGA,TracePostHiResToVGA",
+    "V9X_SCREEN_SWITCH_TRACE/PRE_VGA_TO_HIRES,TracePreVGAToHiRes",
+    "V9X_SCREEN_SWITCH_TRACE/POST_VGA_TO_HIRES,TracePostVGAToHiRes"
+)
+$foundDispatches = [System.Collections.Generic.List[string]]::new()
+$guardStack = [System.Collections.Generic.List[string]]::new()
+foreach ($line in ($sourceText -split "`r?`n")) {
+    if ($line -match '^\s*IFDEF\s+(\S+)') { $guardStack.Add($Matches[1]); continue }
+    if ($line -match '^\s*IFNDEF\s+(\S+)') { $guardStack.Add("!$($Matches[1])"); continue }
+    # An ELSE branch keeps the nesting but inverts the condition. Marked rather
+    # than resolved: no dispatch belongs in one, and the marker makes a dispatch
+    # that appeared there fail the comparison instead of passing as its IFDEF.
+    if ($line -match '^\s*ELSE\s*$' -and $guardStack.Count -gt 0) {
+        $guardStack[$guardStack.Count - 1] = "ELSE:" + $guardStack[$guardStack.Count - 1]
+        continue
     }
+    if ($line -match '^\s*ENDIF\b') {
+        if ($guardStack.Count -gt 0) { $guardStack.RemoveAt($guardStack.Count - 1) }
+        continue
+    }
+    if ($line -match '^\s*MiniVDDDispatch\s+([A-Z0-9_]+)\s*,\s*(\w+)') {
+        $guard = if ($guardStack.Count -eq 0) { "" } else { $guardStack[$guardStack.Count - 1] }
+        $foundDispatches.Add("$guard/$($Matches[1]),$($Matches[2])")
+    }
+}
+$dispatchDifference = @(Compare-Object -ReferenceObject @($expectedDispatches | Sort-Object) `
+                                       -DifferenceObject @($foundDispatches | Sort-Object))
+if ($dispatchDifference.Count -ne 0) {
+    throw ("The mini-VDD source does not declare the audited set of dispatch " +
+           "entries. Differences (=> unexpected, <= missing): " +
+           (($dispatchDifference | ForEach-Object {
+               "$($_.SideIndicator) $($_.InputObject)"
+           }) -join '; '))
 }
 $sweepSymbol = ([regex]::Matches(
     (Get-Content -LiteralPath $mapPath -Raw), 'V9xMini_Vbe_Sweep')).Count -gt 0
@@ -378,6 +439,29 @@ $screenSwitchSymbol = ([regex]::Matches(
 if ($NoScreenSwitch -ne $screenSwitchSymbol) {
     throw ("The mini-VDD image " + $(if ($screenSwitchSymbol) { "carries" } else { "lacks" }) +
            " the screen-switch refusal, which is not what -NoScreenSwitch asked for.")
+}
+# All five observer hooks, not just one: a partial trace would read as "that
+# callback never fired" for whichever body went missing, which is the exact
+# wrong answer for an instrument whose whole output is which lines arrive.
+foreach ($observer in @("MiniVDD_TraceCheckScreenSwitchOK",
+                        "MiniVDD_TracePreHiResToVGA",
+                        "MiniVDD_TracePostHiResToVGA",
+                        "MiniVDD_TracePreVGAToHiRes",
+                        "MiniVDD_TracePostVGAToHiRes")) {
+    $observerSymbol = ([regex]::Matches(
+        (Get-Content -LiteralPath $mapPath -Raw), $observer)).Count -gt 0
+    if ($ScreenSwitchTrace -ne $observerSymbol) {
+        throw ("The mini-VDD image " + $(if ($observerSymbol) { "carries" } else { "lacks" }) +
+               " $observer, which is not what -ScreenSwitchTrace asked for.")
+    }
+}
+$screenSwitchTraceMarker = "V9X-MINI screen-switch-trace"
+if ($ScreenSwitchTrace) {
+    if (-not $imageText.Contains($screenSwitchTraceMarker)) {
+        throw "The screen-switch-trace mini-VDD is missing its marker."
+    }
+} elseif ($imageText.Contains($screenSwitchTraceMarker)) {
+    throw "A default mini-VDD build must not carry the screen-switch-trace marker."
 }
 $dpmsDisabledMarker = "V9X-MINI dpms-disabled"
 if ($NoDpms) {

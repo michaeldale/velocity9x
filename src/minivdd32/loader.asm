@@ -1625,16 +1625,120 @@ BeginProc MiniVDD_PreHiResToVGA
 EndProc MiniVDD_PreHiResToVGA
 ENDIF
 
+IFDEF V9X_SCREEN_SWITCH_TRACE
+; Observer hooks for docs\issues\2026-08-28-dos-box-entry-hang-gma950.md, so
+; the DOS-box round trip can be watched from the VxD side instead of inferred.
+;
+; The display driver's own nine-point trace writes nothing on this path and
+; neither does the serial log, which says the driver is never entered - but not
+; whether the main VDD got as far as intending to. These five callbacks are the
+; VDD's own narration of the round trip, and 86Box's COM1 file gives them
+; somewhere to land.
+;
+; Each one writes a fixed string and returns. That is safe because these five
+; are notifications: MINIVDD documents PRE_HIRES_TO_VGA, POST_HIRES_TO_VGA,
+; PRE_VGA_TO_HIRES and POST_VGA_TO_HIRES as "we are notified", with "Exit:
+; Nothing assumed", and CHECK_SCREEN_SWITCH_OK as carry-prohibits /
+; no-carry-allows, so a CLC is the same answer as not hooking it at all.
+;
+; What is deliberately NOT hooked: SAVE_REGISTERS and RESTORE_REGISTERS. Those
+; are work, not narration - hooking them tells the main VDD the mini-VDD will
+; save and restore the state itself, and an observer that only traced would
+; destroy exactly the state this round trip is failing to bring back.
+;
+; Fixed strings only: V9xMini_Hex16 is in ICODE, discarded after init, and
+; these run long afterwards.
+BeginProc MiniVDD_TraceCheckScreenSwitchOK
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniSsCheckLine
+    mov     ecx, V9xMiniSsCheckLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    clc                                 ; allow the switch, as no hook does
+    ret
+EndProc MiniVDD_TraceCheckScreenSwitchOK
+
+BeginProc MiniVDD_TracePreHiResToVGA
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniSsPreToVgaLine
+    mov     ecx, V9xMiniSsPreToVgaLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_TracePreHiResToVGA
+
+BeginProc MiniVDD_TracePostHiResToVGA
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniSsPostToVgaLine
+    mov     ecx, V9xMiniSsPostToVgaLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_TracePostHiResToVGA
+
+BeginProc MiniVDD_TracePreVGAToHiRes
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniSsPreToHiResLine
+    mov     ecx, V9xMiniSsPreToHiResLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_TracePreVGAToHiRes
+
+BeginProc MiniVDD_TracePostVGAToHiRes
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniSsPostToHiResLine
+    mov     ecx, V9xMiniSsPostToHiResLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_TracePostVGAToHiRes
+ENDIF
+
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
     mov     ecx, V9xMiniInitLineLength
     call    V9xMini_Serial_Write
 
+IFDEF V9X_SCREEN_SWITCH_TRACE
+    ; Named before the dispatch table is fetched, deliberately: further down,
+    ; ECX holds the table size the power-callback test needs, and code inserted
+    ; between the short jumps below and their targets pushes them out of range.
+    ; A capture therefore says which build is running even if the table is
+    ; refused - which is itself a thing this instrument might have to report.
+    mov     esi, OFFSET32 V9xMiniSsTraceLine
+    mov     ecx, V9xMiniSsTraceLineLength
+    call    V9xMini_Serial_Write
+ENDIF
+
     VxDCall VDD_Get_Mini_Dispatch_Table
     test    edi, edi
-    jz      short V9xMini_Init_Failed
+    ; Not short jumps: the dispatch block below them can carry the
+    ; screen-switch trace's five extra table writes, which is more than the
+    ; -128 byte reach spans. Same instruction either way, two bytes wider.
+    jz      V9xMini_Init_Failed
     cmp     ecx, NBR_MINI_VDD_FUNCTIONS
-    jb      short V9xMini_Init_Failed
+    jb      V9xMini_Init_Failed
 
     ; These callbacks exist in the legacy 49-entry table.  VESA_SUPPORT
     ; prevents the problematic BIOS DPMS call; the post hook is a D0 safety
@@ -1652,6 +1756,17 @@ ENDIF
 IFDEF V9X_NO_SCREEN_SWITCH
     ; Function 43, inside the 49-entry table the count above already required.
     MiniVDDDispatch CHECK_SCREEN_SWITCH_OK, CheckScreenSwitchOK
+ENDIF
+
+IFDEF V9X_SCREEN_SWITCH_TRACE
+    ; Functions 4 to 7 and 43; see the observer bodies above. Functions 4 and 5
+    ; also exist in the 40-entry table, 6, 7 and 43 only in the 49-entry one
+    ; the count checked above already required.
+    MiniVDDDispatch CHECK_SCREEN_SWITCH_OK, TraceCheckScreenSwitchOK
+    MiniVDDDispatch PRE_HIRES_TO_VGA, TracePreHiResToVGA
+    MiniVDDDispatch POST_HIRES_TO_VGA, TracePostHiResToVGA
+    MiniVDDDispatch PRE_VGA_TO_HIRES, TracePreVGAToHiRes
+    MiniVDDDispatch POST_VGA_TO_HIRES, TracePostVGAToHiRes
 ENDIF
 
     ; Power callbacks were added to the Windows 98 (4.1) dispatch table.
