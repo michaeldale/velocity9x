@@ -144,6 +144,52 @@ a clean negative.
   multiplied through; trials 3 and 4 in the netbook's file carry the old
   wrong depth with correct outcomes.
 
+## Suggested path forward
+
+The 86Box repro changes what is possible, not just where. The netbook forced
+differential builds because a VxD could not be traced there; the guest has
+COM1 to a host file. That constraint is gone, and the plan below leans on it.
+
+In order:
+
+1. **Capture the return.** Restart the guest, take the box full screen, send
+   Alt+Enter host-side to bring it back, screenshot the desktop. One scripted
+   pass; it answers whether the guest shows the netbook's actual symptom
+   (corrupt desktop on return) or recovers. Everything after this depends on
+   which it is.
+2. **Test the repair in the guest, not blind on the netbook.** With the
+   desktop corrupt, run `V9XMSW /set:` to a *different* mode via the agent
+   (a same-mode set is a no-op before the driver is reached — see the control
+   above). If the picture comes back, the fault reduces to "find a trigger",
+   and the fix is small. If not, the mode is not the whole of what was lost.
+3. **Serial-trace the mini-VDD across the round trip.** `V9xMini_Serial_Write`
+   exists and 86Box gives it somewhere to go. Instrument the four installed
+   callbacks plus registration, take the box full screen and back, read the
+   log. This directly attacks open question 2 — why the VDD holds
+   `RESETHIRESMODE` and never uses it — with a measurement instead of a guess.
+   It is the first time anything on the VxD side of this fault can be observed
+   rather than eliminated.
+4. **Run `-NoDpms` in the guest** while it is set up. Cheap now, and it closes
+   the one differential build that was never run. Expected no change; record
+   it either way.
+5. **Fix the tooling defects** so the next reader is not misled: rename the
+   `hung` outcome (`unreadable` or `no-outcome`), drop or replace the rescue
+   hotkey, keep the automatic re-assert.
+
+Housekeeping, before or alongside:
+
+- **Push the eleven commits.** Nothing above requires them to stay local, and
+  an unpushed day of forensics is a risk with no offsetting benefit.
+- **Restore the guest**: reinstall a plain (non-trace) package, set it back to
+  800x600, clear `DosBox=` from `V9XBOOT.INI` — or snapshot the current state
+  first if the trace install is worth keeping as a baseline.
+- Retitle or annotate the issue doc's filename claim (`entry-hang`) if it is
+  linked from anywhere else; the body already corrects itself.
+
+Steps 1–3 are one guest session. If step 2 repairs the picture, the shape of
+the fix is a re-assert trigger and step 3 becomes about choosing where that
+trigger lives; if it does not, step 3's log is the only lead left.
+
 ## Netbook state
 
 HP Mini 110, Intel 945GSE / GMA 950, `8086:27AE`. Hard-reset after the last
