@@ -298,3 +298,71 @@ comes back, the fix is a trigger; if not, the mode is not what was lost.
   Use it rather than the agent's screenshot: the agent reads the GDI primary,
   which is exactly the part of this fault that is not wrong. It selects the
   86Box window **by title** because the user runs other VMs in parallel.
+
+---
+
+# Session 2, continued: step 2 answered, and two routes closed
+
+Record: [`docs/decisions/2026-08-28-dos-box-exit-ninth-dot.md`](../decisions/2026-08-28-dos-box-exit-ninth-dot.md),
+"Four more experiments".
+
+**Step 2 is answered: no.** A repair armed inside the guest before the round
+trip - `CHOICE /T:y,30`, `MODE CO80`, then `V9XMSW /set:` to a different mode -
+does not bring the picture back. A control with no round trip passed every
+step, so the instrument is sound. And the serial log carries **no
+`V9X-DRV switch-ok`** where the control produces one, so the mode set never
+reached the display driver. **This was not a missing trigger. The mode-set path
+itself is blocked.** `MODE CO80` does not clear the ninth dot either.
+
+**Step 4 is answered for `-NoScreenSwitch`, which was thought settled.** Run in
+the guest, the box goes full screen anyway with the agent healthy throughout.
+The VDD does not consult `CHECK_SCREEN_SWITCH_OK` on this path at all, so
+refusing the switch from the mini-VDD is closed, not merely unproven.
+
+**And the trace build's wedge is the hook itself.** `-ScreenSwitchQuiet` - the
+same five hooks with the serial writes assembled out, bodies that do nothing
+but `ret` - wedges identically. So a repair cannot live in `POST_VGA_TO_HIRES`
+either: installing the hook breaks the transition before the fault it would
+repair. The DDK's s3v mini-VDD hooks those four alongside `SAVE_REGISTERS`,
+`RESTORE_REGISTERS` and the bank/latch/CRTC set, which suggests these callbacks
+are a package rather than a menu, and that a subset tells the VDD the mini-VDD
+owns hardware it does not actually manage. Hypothesis, not measurement.
+
+**One more negative, and it was reverted:** `VDD_DRIVER_REGISTER` with EDX = -1
+("do not attempt to virtualize", which is what the DDK's framebuffer driver
+passes unless its mini-VDD can do four-plane graphics in a window - ours
+cannot) changes nothing. The claim mismatch in `runtime.asm` is real and worth
+its own decision; it is not this fault, and shipping it on a null result would
+have changed how graphics-mode DOS apps are windowed for no measured gain.
+
+## What is left to try, in order
+
+1. **Take the whole package for the s3 family.** `SAVE_REGISTERS`,
+   `RESTORE_REGISTERS` and the bank/latch/CRTC set in the mini-VDD, against
+   real S3 registers, the way the DDK's s3v does. It is the only route that
+   follows the DDK's model rather than fighting it, and experiment 3 predicts
+   any subset makes things worse. A design change of real size, family-specific,
+   nothing for tier-0 - **get agreement before starting it.**
+2. **Keep the box windowed from outside the VDD.** Windows' own per-application
+   settings decide whether a DOS box may go full screen, and a PIF the package
+   installs would hold it in a window - which is measured to be safe on both
+   machines. Heavy-handed and user-visible, and still better than a display
+   that needs the power switch.
+3. **Watch the VDD from the emulator.** Every in-guest route is now exhausted:
+   the driver is not entered, the mini-VDD cannot be hooked, and the mode-set
+   path is blocked. 86Box's own debugger or a register dump at the broken moment
+   would say which register carries the ninth-dot value and what wrote it.
+
+Still not run: `-NoDpms`, and tracing the already-installed `VESA_SUPPORT` hook
+(one serial line at its entry, no screen-switch slot touched).
+
+## Guest state as left, second update
+
+- **`ssNoVirt1` was reverted in the tree but is still what the guest booted
+  last.** Reinstall a package built from `main` before trusting a run.
+- Serial stays on `serial1_device = pipe`; captures for the day are in
+  `claude\personal\v9x-86box-dosbox\2026-08-28\serial\`.
+- `REPAIR.BAT` is at `C:\V9XDIAG\REPAIR.BAT` in the guest and echoes each step
+  to `COM1` now, so an armed probe's progress survives a wedge and a reset.
+  Its `V9XMSW` path points at `C:\V9XREMOTE\JOBS\ssnosw1\`; change it to
+  whichever job folder the current package went to.

@@ -646,3 +646,48 @@ The cheap observation that remains: `VESA_SUPPORT` is already installed and
 shipping, and writes no serial line. Adding one to its entry says whether
 Windows routes a VESA call through us on this path, and touches no
 screen-switch slot.
+
+## Four more measurements, and two routes closed rather than untried
+
+Full record: `docs\decisions\2026-08-28-dos-box-exit-ninth-dot.md`.
+
+**Re-asserting the mode does not repair it, and never reaches the driver.**
+A batch armed *before* the round trip - `CHOICE /T:y,30`, `MODE CO80`, twenty
+seconds more, then `V9XMSW /set:` to a different mode - fires from inside the
+guest with no host involvement. A control with no round trip passed every step
+(`Result=PASS`, `ChangeResult=0`, 640x480 to 800x600, agent confirming the new
+size), so the instrument works. Through the fault: 80 columns at a 9-pixel
+period at 31, 51 and 86 seconds, no desktop, and **no `V9X-DRV switch-ok` line
+on the serial log** where the control produces one. So the fault is not a
+missing trigger; the mode-set path is blocked. `MODE CO80` does not clear the
+ninth dot either.
+
+**`-NoScreenSwitch` refuses nothing because the VDD never asks.** Run in the
+guest: the box goes full screen anyway and the agent answers `ping` five times
+out of five while it is there. The netbook's result is confirmed with a
+mechanism - `CHECK_SCREEN_SWITCH_OK` is not consulted on this path - and the
+"refuse the switch" answer proposed above is closed from inside the mini-VDD.
+
+**The trace build's wedge is the hook, not the serial write.**
+`-ScreenSwitchQuiet` installs the same five hooks with the writes assembled
+out - bodies that do nothing but `ret` - and wedges identically. So the cause
+is a dispatch entry in one of the four HiRes/VGA notifications, and a repair
+placed in `POST_VGA_TO_HIRES`, where re-asserting the mode on the way back
+belongs, cannot work: installing the hook breaks the transition before the
+fault it would repair.
+
+The DDK's s3v mini-VDD hooks those four *and* `SAVE_REGISTERS`,
+`RESTORE_REGISTERS`, `ACCESS_VGA_MEMORY_MODE`, `VIRTUALIZE_CRTC_IN`/`OUT` and
+thirty more. **These callbacks look like a package, not a menu** - hooking a
+subset appears to tell the VDD the mini-VDD manages the hardware, after which
+it stops doing the parts we did not take over. A hypothesis, not a measurement.
+
+**`VDD_DRIVER_REGISTER` with EDX = -1 changes nothing.** EDX is the
+virtualization request; the DDK's framebuffer driver passes `-1` for "do NOT
+attempt to virtualize" unless its own per-chip `bCanVirtualize` flag is set,
+and `src\display16\runtime.asm` passes zero at both registration sites while
+our mini-VDD installs none of the bank/latch callbacks that answering yes asks
+for. The mismatch is real; fixing it does not fix this. Built, run, identical
+result, and reverted rather than shipped on a null measurement - `-1` also
+makes graphics-mode DOS apps run full screen instead of in a window, which is
+not a change to make without a reason.

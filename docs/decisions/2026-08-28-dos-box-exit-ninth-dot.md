@@ -98,13 +98,19 @@ on 0x3F8-0x3FB from a callback invoked in the switching VM's context) or the
 presence of a dispatch entry changes the main VDD's path before any hook is
 called, is **not distinguished by this evidence**. The absent trace byte is
 consistent with both: a hook that hangs on its first byte, and a hook that is
-never reached. Written down as the open question it is.
+never reached.
+
+*Settled later the same day - it is the dispatch entry, not the write. See
+experiment 3 below.*
 
 The practical consequence: **step 3 of the handoff cannot be run as designed.**
 A serial trace from these five callbacks does not observe this path, it
 replaces the fault with a different one.
 
-## What is still open
+## What was still open at this point
+
+*Item 1 was answered the same day: no, and the mode set never reaches the
+driver. Item 3 is still open. See the four experiments below.*
 
 1. **Does re-asserting the mode repair the picture?** Untested, and not
    testable from the host: the agent dies with the fault, so `V9XMSW /set:`
@@ -138,3 +144,124 @@ replaces the fault with a different one.
 - Piping a build script through `Select-Object` or `*>` under
   `$ErrorActionPreference = 'Stop'` turns ML.EXE's stderr banner into a
   terminating error, and the real assembler diagnostic is lost. Run it bare.
+
+---
+
+## Four more experiments, same day. Three negatives and one that matters.
+
+Evidence for all four: `claude\personal\v9x-86box-dosbox\2026-08-28\`, same
+guest, same 640x480x16 desktop, host-side captures and a live COM1 pipe.
+
+### 1. The armed guest-side repair: neither probe brings the picture back
+
+`REPAIR.BAT` (kept with the scripts) waits with `CHOICE /T:y,30`, runs
+`MODE CO80`, waits 20 more, then runs `V9XMSW /set:800x600x16`. Launched
+detached in the DOS box, so both probes fire from inside the guest with no host
+involvement, and both are armed *before* anything is broken.
+
+**Control first, which passed completely.** With no round trip, the log
+recorded every step in order and `V9XMSW.INI` reported
+`Result=PASS ChangeResult=0`, `StartW=640 -> RequestW=800`, with the agent
+confirming `screen 800x600`. A Win32 mode set launched from inside a DOS box
+works, and the timing works.
+
+**Through the fault, nothing repairs.** Stripe counts on the host captures at
+t=31, 51 and 86 s: 80 columns, `9 x 79`, every time. The text mode never comes
+back and the desktop never returns.
+
+One measurement is stronger than the captures: **no `V9X-DRV switch-ok` line
+appeared on the serial log**, and the control shows a successful mode set does
+emit one. So the re-assert never reached the display driver at all. The fault
+is not a missing trigger; the mode-set path itself is blocked.
+
+`REPAIR.LOG` survived the reset carrying only `ARMED`, which is consistent with
+the batch never getting past its first `CHOICE` - and also with the later lines
+being lost to the write cache, so it is not decisive on its own. The probe now
+echoes each step to `COM1` for that reason.
+
+### 2. `-NoScreenSwitch` does not refuse anything: the VDD never asks
+
+Deployed to the guest as `ssNoSw1`. `MiniVDD_CheckScreenSwitchOK` returns carry
+set, unconditionally, which is "prohibit the switch".
+
+**The box went full screen anyway, and the agent answered `ping` five times out
+of five while it was there.** So the main VDD does not consult
+`CHECK_SCREEN_SWITCH_OK` on this path - if it had, the box would have stayed
+windowed. The netbook's reading of this build ("refusing does not prevent it")
+is confirmed on a second machine, with the mechanism now named.
+
+That also means the trace build's wedge came from one of the other four hooks.
+
+### 3. The wedge is the hook, not the serial write
+
+`-ScreenSwitchQuiet` installs the same five hooks with the serial writes
+assembled out: five bodies that do nothing but `ret`, and `clc` on the check.
+
+**It wedges identically** - the box never reaches full screen, the agent dies
+at the `input` call, twice measured. So `V9xMini_Serial_Write` is exonerated,
+and the cause is the presence of a dispatch entry in one of
+`PRE_HIRES_TO_VGA`, `POST_HIRES_TO_VGA`, `PRE_VGA_TO_HIRES`,
+`POST_VGA_TO_HIRES`.
+
+**This closes the obvious fix route.** A repair placed in `POST_VGA_TO_HIRES` -
+where re-asserting the mode on the way back belongs - cannot work, because
+installing that hook at all breaks the transition before the fault it would
+repair.
+
+It also suggests why, and the DDK's own s3v mini-VDD is the evidence: it hooks
+these four *and* `SAVE_REGISTERS`, `RESTORE_REGISTERS`,
+`ACCESS_VGA_MEMORY_MODE`, `VIRTUALIZE_CRTC_IN`/`OUT`, the bank and latch set,
+and thirty more. **These callbacks look like a package, not a menu.** Hooking a
+subset appears to tell the main VDD that the mini-VDD manages the hardware,
+after which the VDD stops doing the parts we did not take over. Stated as the
+hypothesis it is - nothing here measures the VDD's internal decision.
+
+### 4. `VDD_DRIVER_REGISTER` with EDX = -1 changes nothing, and was reverted
+
+EDX is the virtualization request. The DDK's framebuffer driver documents both
+values - `mov edx,-1` for "tell VDD NOT to attempt to virtualize" against
+`xor edx,edx` for yes - and gates the yes on a per-chip `bCanVirtualize` flag
+plus a megabyte of video memory. `src\display16\runtime.asm` passes zero at
+both registration sites.
+
+**There is a real claim mismatch there**: saying yes asks for VGA four-plane
+graphics in a window, which needs `GET_VDD_BANK`, `SET_VDD_BANK`,
+`SET_LATCH_BANK`, `SAVE_LATCHES`, `ACCESS_VGA_MEMORY_MODE` and
+`VIRTUALIZE_CRTC_IN`/`OUT` in the mini-VDD, and ours installs none of them.
+
+Built as `ssNoVirt1` with `-1` at both sites and run in the guest: **entry
+clean, exit striped, 80 columns, `9 x 79`, agent down.** Identical to the plain
+build.
+
+Reverted rather than kept. It is defensible on the DDK's rule alone, but it has
+no measured benefit here and it is not behaviour-neutral - `-1` is what makes
+Windows run graphics-mode DOS apps full screen instead of in a window, which
+would be a user-visible change shipped on a null result. Whether the claim
+should be corrected anyway is a separate question, and it wants its own
+measurement: whether a DOS graphics app in a window works at all today.
+
+## Where that leaves a fix
+
+Nothing tried today repairs the exit leg, and two routes are now closed rather
+than untested: a repair in a screen-switch hook (experiment 3) and a repair
+triggered from inside the guest (experiment 1). What is left, in the order it
+seems worth trying:
+
+1. **Take the whole package for the s3 family.** Implement `SAVE_REGISTERS`,
+   `RESTORE_REGISTERS` and the bank/latch/CRTC set in the mini-VDD against the
+   real S3 registers, the way the DDK's s3v does, rather than hooking a subset.
+   Experiment 3's hypothesis predicts a subset can only make things worse; this
+   is the only route that follows the DDK's own model. It is a design change of
+   real size and needs agreement before it starts - and it is family-specific,
+   so it does nothing for tier-0.
+2. **Stop the box going full screen from outside the VDD.** Windows' own
+   per-application settings decide whether a DOS box may go full screen, and a
+   PIF the package installs would keep it windowed - which is measured to be
+   safe. Heavy-handed and user-visible, but a windowed DOS box is what a user
+   would rather have than a display they must power-cycle.
+3. **Watch the VDD rather than infer it.** Every observation route from inside
+   the guest is now exhausted: the driver is not entered, the mini-VDD cannot be
+   hooked, and the mode-set path is blocked. What remains is an emulator-side
+   view - 86Box's own debugger or a register dump at the broken moment - which
+   would say directly which register holds the ninth-dot value and what wrote
+   it.
