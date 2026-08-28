@@ -1,13 +1,14 @@
-# A DOS box hangs the HP Mini 110 before it draws a prompt
+# A full-screen DOS box destroys the picture on the HP Mini 110
+
+*Filed as "hangs the machine". It does not: see the status line.*
 
 Date: 2026-08-28
-Status: **open and attributable, cause unknown, and three differential builds
-have failed to find it.** A windowed DOS box is clean; the full-screen
-transition hangs from every mode the panel offers; the stock Windows VGA
-driver does it faultlessly on the same machine. So the defect is Velocity9x's.
-Returning to VGA ourselves, and refusing the switch outright, both hang the
-same way. The next build is an instrument rather than another elimination -
-see "Stop eliminating; get a trace".
+Status: **open. The title of this issue is wrong and so was most of what
+follows it: the machine does not hang.** Windows keeps running - the mouse
+moves - and only the picture is destroyed. The display driver is never
+entered on this path at all: a build tracing nine points across `Disable`,
+`ResetHiResMode` and `ReEnable` wrote none of them. See "What the trace
+proves", which supersedes the three eliminations above it.
 
 Reported here on the HP Mini 110 (Intel 945GSE, GMA 950, PCI `8086:27AE`),
 running the released 0.6.1 vbe package, build `e938fdc`. Typing `command` in
@@ -413,3 +414,68 @@ code never runs, and every place examined so far has been the wrong one. A
 
 Built as `c5fa4ed-trace`. It is expected to hang; that is not its failure
 condition.
+
+## What the trace proves
+
+`claude\personal\v9x-intel950\3build\`, build `c5fa4ed-trace` confirmed
+installed by `V9XMODES.INI` and `V9XSYNC.INI`.
+
+**`V9XBOOT.INI` contains no `DosBox=` line.** Not one of the nine trace points
+fired: not `disable-enter`, not `reset-enter`, not `reenable-same-mode`. The
+16-bit display driver is never entered on the way into a full-screen DOS box,
+and never on the way back.
+
+And the machine is not hung. The photograph is annotated by the reporter: the
+mouse cursor is on screen and it moves. Windows is running the whole time.
+
+### The title of this issue is wrong, and so is the record above
+
+Every trial recorded `hung` in `V9XDOSBX.INI` is really *"the display became
+unusable and the machine was powered off"*. The tool cannot tell those apart -
+it marks a trial `hung` when the run that started it never wrote an outcome,
+and a user who cannot see the screen to type `EXIT` produces exactly that. The
+outcomes still stand as measured (full screen breaks the display, windowed
+does not, the stock driver is fine); the word for them was wrong.
+
+That also disposes of the three experiments. `-VgaReturn` and
+`-NoScreenSwitch` were aimed at a hang that does not exist, and their results
+say nothing about whether their mechanisms matter.
+
+### What the picture shows once you know it is not a crash
+
+The cursor is a tall narrow bar rather than an arrow. The driver is still
+drawing a correct desktop into memory; the CRTC is reading that memory with
+the wrong horizontal geometry, squeezing each scanline into a fraction of its
+width. Everything else in the frame - the stripes, the staircased bands - is
+the same statement made about the rest of the desktop.
+
+So: something reprogrammed the display timing, and nothing put it back.
+
+### Which explains a fix that never had a chance
+
+`V9xHardwareReset` is reached from `ResetHiResMode` and `ReEnable`. Neither is
+called here. **The stride re-assert added in 0.6.1 for
+`docs\issues\2026-08-28-fullscreen-dos-scanout.md` cannot fire on this path**,
+and no fix placed in those functions can. Declining to call that a fix in the
+0.6.1 changelog was right for a better reason than the one given at the time.
+
+### What is not yet known
+
+**Why the VDD never calls back.** Registration succeeded - it hands the VDD
+`RESETHIRESMODE` as the callback, and a failure would have aborted `Enable`
+with `Stage=fail-vdd-register` rather than the `Stage=enable-ok` on disk. So
+the VDD holds our callback and does not use it on this transition. Whether it
+believes it restored the state itself, from the snapshot
+`VDD_SAVE_DRIVER_STATE` asks for at registration, is a guess and is written
+here as one.
+
+### The next test needs no build
+
+The system is alive and the keyboard works, so the display can be poked while
+it is broken. Blind-run `V9XMSW.EXE` from Start, Run while the picture is
+destroyed.
+
+If the desktop comes back, then re-asserting the mode is the whole of the
+repair and the only thing missing is a trigger for it - which is a much
+smaller problem than it has looked for the last four builds. If it does not,
+the mode is not the whole of what was lost.
