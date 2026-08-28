@@ -59,6 +59,9 @@
 #define V9X_VBE_RF_MASKS_LINEAR ((v9x_u16)0x0004u)
 #define V9X_VBE_RF_MASKS_LEGACY ((v9x_u16)0x0008u)
 #define V9X_VBE_RF_LIN_STRIDE   ((v9x_u16)0x0010u)
+/* The record exists only because the mode was set first: see the sweep in
+ * src\minivdd32\loader.asm. Judged by content like any other. */
+#define V9X_VBE_RF_ORIGIN_SWEEP ((v9x_u16)0x0020u)
 
 /*
  * Status flags, as reported by the STATUS function.
@@ -79,6 +82,8 @@
 #define V9X_VBE_ST_EDID_FAILED    ((v9x_u16)0x0400u)
 #define V9X_VBE_ST_COLLECT_OFF    ((v9x_u16)0x0800u)
 #define V9X_VBE_ST_QUERY_LIMIT    ((v9x_u16)0x1000u)
+#define V9X_VBE_ST_SWEEP_RAN      ((v9x_u16)0x2000u)
+#define V9X_VBE_ST_SWEEP_UNRESTORED ((v9x_u16)0x4000u)
 
 /*
  * How many cached records a consumer may read, given the reported status and

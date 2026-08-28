@@ -3,6 +3,13 @@ param(
     [string]$BuildId,
     [string]$DdkRoot = "C:\98DDK",
     [switch]$DisableVbeCollect,
+    # Assemble in the set-and-ask-again mode sweep. Off by default and
+    # deliberately so: it issues 4F02h into the real video BIOS at
+    # Device_Init, which is a heavier call than the collection's and can hang
+    # a boot on a BIOS that does not come back. See V9xMini_Vbe_Sweep in
+    # src\minivdd32\loader.asm and
+    # docs\decisions6-08-28-pineview-vbe-mode-list.md for what it is for.
+    [switch]$ModeSweep,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -230,6 +237,12 @@ $assemblerArguments = @(
 if ($DisableVbeCollect) {
     $assemblerArguments = @("-DV9X_NO_VBE_COLLECT") + $assemblerArguments
 }
+if ($ModeSweep) {
+    if ($DisableVbeCollect) {
+        throw "-ModeSweep needs the collection: the sweep walks its mode list."
+    }
+    $assemblerArguments = @("-DV9X_VBE_MODE_SWEEP") + $assemblerArguments
+}
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Windows 98 DDK assembler failed to build the mini-VDD skeleton."
@@ -278,6 +291,12 @@ if (([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count -ne 4 -o
     $sourceText -notmatch 'MiniVDDDispatch\s+SET_MONITOR_POWER_STATE' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+GET_MONITOR_POWER_STATE_CAPS') {
     throw "The mini-VDD must install exactly the four audited monitor-power callbacks."
+}
+$sweepSymbol = ([regex]::Matches(
+    (Get-Content -LiteralPath $mapPath -Raw), 'V9xMini_Vbe_Sweep')).Count -gt 0
+if ($ModeSweep -ne $sweepSymbol) {
+    throw ("The mini-VDD image " + $(if ($sweepSymbol) { "carries" } else { "lacks" }) +
+           " the mode sweep, which is not what -ModeSweep asked for.")
 }
 $mapText = Get-Content -LiteralPath $mapPath -Raw
 foreach ($symbol in @("V9xMini_Serial_Write", "V9xMini_Set_Dpms",

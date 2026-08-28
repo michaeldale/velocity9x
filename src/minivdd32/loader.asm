@@ -27,6 +27,10 @@ include V9XMAPI.INC
 ; maximum permits. QEMU's measured 93-entry list still fits; later rollout can
 ; raise this toward V9X_VBE_MODE_QUERY_MAX after the guest gate is stable.
 V9X_STAGE1_QUERY_MAX EQU 96
+; How many modes the set-and-ask-again sweep may try. Each one is a 4F02h into
+; the real BIOS, so this is a budget on damage as much as on time: the eighteen
+; OEM numbers a Pineview BIOS lists fit inside it with room to spare.
+V9X_STAGE1_SWEEP_MAX EQU 32
 
 Declare_Virtual_Device V9XMINI, 1, 0, MiniVDD_Control, \
                        V9XMINI_DEVICE_ID, VDD_Init_Order, , MiniVDD_PM_API,
@@ -104,6 +108,14 @@ V9xVbeBufSeg    dw 0
 ; The client BX for the next V9xMini_Vbe_Call. Parked here because EBX is
 ; taken by Get_Cur_VM_Handle inside the call itself.
 V9xVbeCallBx    dw 0
+; The client BX the last V9xMini_Vbe_Call came back with. 4F03h returns the
+; current mode there and nothing else uses it, which is how the sweep learns
+; the mode it has to put back.
+V9xVbeCallRetBx dw 0
+; The sweep's own state. Declared whether or not the sweep is assembled in, so
+; the data segment does not change shape between the two builds.
+V9xVbeSwept     dw 0
+V9xVbeEntryMode dw 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -831,6 +843,8 @@ V9xMini_Vbe_Call_Ready:
     mov     eax, 10h
     VMMcall Exec_Int
 
+    mov     ax, [ebp.Client_BX]         ; 4F03h's answer; the rest ignore it
+    mov     V9xVbeCallRetBx, ax
     movzx   esi, [ebp.Client_AX]        ; reply, before the state is restored
 
     VMMcall End_Nest_Exec
@@ -1007,6 +1021,127 @@ V9xMini_Vbe_Query_Record_Reject_Done:
     xor     ax, ax
     ret
 EndProc V9xMini_Vbe_Query_Record
+
+IFDEF V9X_VBE_MODE_SWEEP
+; Set each listed mode the query pass could not describe, and ask again.
+;
+; VBE lets a BIOS answer 4F01h with the mode-supported bit clear for a mode
+; that is in its table but not available in the current hardware
+; configuration. Pineview does exactly that for all eighteen of its OEM
+; numbers, including whichever one the panel's own EDID is asking for
+; (docs\decisions\2026-08-28-pineview-vbe-mode-list.md). Some BIOSes will
+; describe such a mode once it is the active one, so this sets it and asks
+; again; a record that comes back usable goes into the same cache as any
+; other and the host-tested admit rules judge it on its content.
+;
+; The cost is stated plainly. 4F02h is a heavier call than the collection's
+; 4F00h and 4F01h, it runs the real BIOS at Device_Init with no timeout, and
+; it changes the display mid-boot. That is why it is assembled in rather than
+; always on. Every attempt is named on the wire by V9xMini_Vbe_Call before it
+; is made, so a boot that dies names the mode that killed it.
+;
+; The entry mode is captured with 4F03h first and put back at the end. A BIOS
+; that will not say what mode it is in is not swept at all: without that
+; answer there is nothing to restore to.
+BeginProc V9xMini_Vbe_Sweep
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    or      V9xVbeStatus, V9X_VBE_ST_SWEEP_RAN
+
+    mov     ax, 4F03h
+    xor     bx, bx
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    jne     V9xMini_Vbe_Sweep_Done
+    mov     ax, V9xVbeCallRetBx
+    mov     V9xVbeEntryMode, ax
+
+    xor     edi, edi                    ; staged-list index
+V9xMini_Vbe_Sweep_Next:
+    cmp     di, V9xVbeListed
+    jae     V9xMini_Vbe_Sweep_Restore
+    cmp     V9xVbeSwept, V9X_STAGE1_SWEEP_MAX
+    jae     V9xMini_Vbe_Sweep_Restore
+    cmp     V9xVbeCached, V9X_VBE_CACHE_MAX
+    jae     V9xMini_Vbe_Sweep_Restore
+
+    mov     cx, V9xVbeListStage[edi*2]
+
+    ; A mode this list already appeared at was tried on its first appearance.
+    xor     ebx, ebx
+V9xMini_Vbe_Sweep_Duplicate_Next:
+    cmp     ebx, edi
+    jae     short V9xMini_Vbe_Sweep_Cached_Check
+    cmp     cx, V9xVbeListStage[ebx*2]
+    je      V9xMini_Vbe_Sweep_Skip
+    inc     ebx
+    jmp     short V9xMini_Vbe_Sweep_Duplicate_Next
+
+    ; A mode the query pass described needs no setting to describe it.
+V9xMini_Vbe_Sweep_Cached_Check:
+    movzx   edx, V9xVbeCached
+    mov     esi, OFFSET32 V9xVbeCache
+V9xMini_Vbe_Sweep_Cached_Find:
+    test    edx, edx
+    jz      short V9xMini_Vbe_Sweep_Set
+    cmp     word ptr [esi+V9X_VBE_REC_MODE_NUMBER], cx
+    je      V9xMini_Vbe_Sweep_Skip
+    add     esi, V9X_VBE_REC_BYTES
+    dec     edx
+    jmp     short V9xMini_Vbe_Sweep_Cached_Find
+
+V9xMini_Vbe_Sweep_Set:
+    inc     V9xVbeSwept
+    mov     bx, cx
+    or      bx, 0C000h                  ; linear framebuffer, do not clear
+    mov     ax, 4F02h
+    push    ecx
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+    pop     ecx
+    cmp     ax, 004Fh
+    jne     short V9xMini_Vbe_Sweep_Skip
+
+    movzx   eax, V9xVbeCached
+    shl     eax, V9X_VBE_REC_SHIFT
+    add     eax, OFFSET32 V9xVbeCache
+    push    edi
+    mov     edi, eax
+    mov     dx, V9X_VBE_RF_ORIGIN_SWEEP
+    inc     V9xVbeQueried
+    call    V9xMini_Vbe_Query_Record
+    pop     edi
+    or      ax, ax
+    jz      short V9xMini_Vbe_Sweep_Skip
+    inc     V9xVbeCached
+
+V9xMini_Vbe_Sweep_Skip:
+    inc     edi
+    jmp     V9xMini_Vbe_Sweep_Next
+
+V9xMini_Vbe_Sweep_Restore:
+    mov     bx, V9xVbeEntryMode
+    mov     ax, 4F02h
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+    cmp     ax, 004Fh
+    je      short V9xMini_Vbe_Sweep_Done
+    or      V9xVbeStatus, V9X_VBE_ST_SWEEP_UNRESTORED
+
+V9xMini_Vbe_Sweep_Done:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_Vbe_Sweep
+ENDIF
 
 ; Collect 4F00h, stage its complete bounded VideoModePtr list before any 4F01h
 ; can overwrite the controller block, then fill the dynamic and rescue caches.
@@ -1242,6 +1377,12 @@ V9xMini_Vbe_Collect_Edid_Copy:
     cld
     rep movsd
     or      V9xVbeStatus, V9X_VBE_ST_EDID_VALID
+
+IFDEF V9X_VBE_MODE_SWEEP
+    ; Last, and only on the path where the list was trustworthy: a sweep over
+    ; a list that could not be walked would be setting arbitrary numbers.
+    call    V9xMini_Vbe_Sweep
+ENDIF
 
 V9xMini_Vbe_Collect_Done:
     mov     ax, V9xVbeListSeg

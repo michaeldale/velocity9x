@@ -15,7 +15,12 @@ param(
     [switch]$BootTrace,
     [switch]$NoBootTrace,
     # Family manifest id under packaging\families.
-    [string]$Family = 's3'
+    [string]$Family = 's3',
+    # Build the mini-VDD with the set-and-ask-again mode sweep assembled in.
+    # An experiment, not a shipping default: it drives 4F02h into the real
+    # video BIOS at Device_Init. Pass it only for a package aimed at a machine
+    # someone can recover. See build-minivdd-skeleton.ps1 -ModeSweep.
+    [switch]$ModeSweep
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,7 +60,7 @@ $traceEnabled = -not $NoBootTrace
 $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
-    -DisableVbeCollect:(-not $miniVddVbeCollect)
+    -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `

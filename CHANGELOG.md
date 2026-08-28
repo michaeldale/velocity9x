@@ -8,6 +8,45 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ### Added
 
+- **The Acer NAV50's video BIOS lists thirty-six modes and describes six, and
+  the driver now says so.** A third-party Pineview netbook cannot reach its
+  panel's native 1024x600 under Velocity9x, SoftGPU or Bear Windows VBEMP
+  alike. Three independent measurements agree - a survey from a Windows Me DOS
+  box, the driver's own boot-time scan, and a survey from real DOS whose mode
+  rows `diff` byte-identical to the first - that this BIOS answers `4F01h`
+  with the mode-supported bit clear for thirty of the modes in its own
+  `VideoModePtr` list, including all eighteen Intel OEM numbers. The panel's
+  EDID is read correctly and the settings page reports
+  `EDID recommendation: 1024x600 reason=edid-unpublished`, which is the
+  diagnostic working: the driver knows what the panel wants and has nothing to
+  offer for it ([decision](docs/decisions/2026-08-28-pineview-vbe-mode-list.md)).
+
+- **An opt-in mode sweep that sets a mode the BIOS will not describe, then
+  asks again.** VBE lets a BIOS refuse to describe a mode that is in its table
+  but not available in the current hardware configuration, and some will
+  describe it once it is the active one. `V9xMini_Vbe_Sweep` tries that inside
+  the existing `Device_Init` collection for every listed mode the query pass
+  could not describe, capturing the entry mode with `4F03h` first and putting
+  it back at the end; a record that comes back usable enters the same cache as
+  any other and the host-tested admit rules judge it on content. It is
+  **off by default** - `4F02h` runs the real BIOS with no timeout and can hang
+  a boot - and is assembled in only by `build-minivdd-skeleton.ps1 -ModeSweep`
+  or `build-active-package.ps1 -ModeSweep`, with the image audit refusing a
+  build whose symbol presence disagrees with the switch.
+
+- **The full EDID detailed timing, and the VBE 3.0 CRTC block built from it.**
+  `v9x_edid_parse_timing` reads the blanking and sync figures the mode table
+  never needed, recording sync polarity only where the descriptor says digital
+  separate - on an analog composite descriptor those bits mean serration and
+  sync-on-green. `v9x_vbe_crtc_build` turns one into a CRTCInfoBlock, written
+  as bytes at specification offsets because it crosses into the BIOS and both
+  memory models share the header. Host-tested against the NAV50 panel's real
+  EDID. This does **not** reach an unlisted resolution: the block carries no
+  active width or height, so bit 11 of `4F02h` buys a refresh rate at a
+  geometry the BIOS already has. It is kept for that, and for driving a panel
+  at its own pixel clock if a mode number for it ever turns up.
+
+
 - **The framebuffer aperture's memory type is now measured, and a
   write-combining range planned for it — but not written.** Tier-0 draws with
   the CPU into a framebuffer that is uncached wherever the BIOS leaves the PCI
@@ -34,7 +73,47 @@ build identifier so exact guest-tested binaries remain traceable.
   branch's build-time mini-VDD mode cache was judged superseded by the
   dynamic-VBE runtime mode walk and not ported. Roadmap Track A4.
 
+### Fixed
+
+- **The survey no longer points the video BIOS at its own null pointer zone.**
+  `V9XSURV.EXE` exited with the Open Watcom runtime's
+  `*** NULL assignment detected` and froze on an Acer NAV50, on two separate
+  Windows installs. `vbe_call` set `ES:DI` only when the caller supplied a
+  buffer; `segread` returns the caller's `ES`, which in the small model is
+  `DS`, and the register block is zeroed - so the two bufferless calls
+  (`4F03h`, and `4F15h` BL=00h) handed the BIOS `DS:0000`. Neither is
+  documented to write there and this one evidently does. `ES:DI` is now always
+  a named scratch buffer. The safety gate gains its first *required* rules to
+  go with its banned ones, and the self-test a `Remove` mutation shape to
+  exercise them, because a rule about an omission cannot be tested by
+  appending ([issue](docs/issues/2026-08-28-survey-null-assignment.md)).
+
+- **A full-screen DOS box no longer loses the scanline stride on tier-0.**
+  Returning from full screen left a corrupt band across the top of the
+  desktop, reported on the NAV50 and reproduced on the HP Mini 110.
+  `ResetHiResMode` reaches `V9xHardwareReset`, which re-issued `4F02h` and
+  then - unlike `V9xHardwareEnable`, which has always done it - never called
+  `v9x_vbe_default_pitch`. A BIOS may accept a mode set and scan the surface
+  out at a stride of its own, so the mode came back and the stride did not.
+  Families with their own `post_mode_set` return before the new branch and are
+  unaffected ([issue](docs/issues/2026-08-28-fullscreen-dos-scanout.md)).
+
+- **The settings page no longer claims the mini-VDD installs nothing.**
+  `Mini-VDD callbacks: master VDD defaults` was a string literal, wrong since
+  the monitor-power callbacks landed, and it was read as evidence of what the
+  mini-VDD hooked. It now names the set the build gate asserts.
+
 ### Changed
+
+- **The generic VBE package binds by PCI class code instead of only by
+  Have Disk.** The id-less model line now carries `PCI\CC_0300` as a
+  *compatible* id, so Windows selects the driver where no vendor driver claims
+  the device - a compatible id ranks below every hardware-id match, which
+  makes this the fallback rather than the default. It also matches class 0300
+  only, so the second display-class function a Pineview IGD presents at
+  `038000` no longer receives a forced copy of the driver: the duplicate
+  Device Manager entry on the NAV50, and the frozen Settings tab that came
+  with it, have one cause and one fix. Reported by CentaurHauls.
 
 - **The backend registry's PCI dispatch is generated from the family
   manifests.** `src\common\backend_registry.c` was a hand-written if-chain

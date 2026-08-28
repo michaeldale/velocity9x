@@ -255,6 +255,7 @@ V9X_VBE_RF_ORIGIN_PROBE   EQU 0002h
 V9X_VBE_RF_MASKS_LINEAR   EQU 0004h
 V9X_VBE_RF_MASKS_LEGACY   EQU 0008h
 V9X_VBE_RF_LIN_STRIDE     EQU 0010h  ; LinBytesPerScanLine was reported non-zero
+V9X_VBE_RF_ORIGIN_SWEEP   EQU 0020h  ; described only after being set
 
 ; ---------------------------------------------------------------------------
 ; STATUS
@@ -283,3 +284,5 @@ V9X_VBE_ST_EDID_NO_DDC    EQU 0200h  ; 4F15h reported no DDC support
 V9X_VBE_ST_EDID_FAILED    EQU 0400h  ; DDC claimed, read refused
 V9X_VBE_ST_COLLECT_OFF    EQU 0800h  ; assembled without collection at all
 V9X_VBE_ST_QUERY_LIMIT    EQU 1000h  ; first-drop BIOS-call clamp stopped queries
+V9X_VBE_ST_SWEEP_RAN      EQU 2000h  ; the set-and-ask-again pass was assembled in
+V9X_VBE_ST_SWEEP_UNRESTORED EQU 4000h ; the sweep could not put the entry mode back

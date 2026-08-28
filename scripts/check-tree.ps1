@@ -380,7 +380,8 @@ foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_MODE_LIST_MAX',
                         'V9X_VBE_MODE_QUERY_MAX', 'V9X_VBE_CACHE_MAX',
                         'V9X_VBE_BASELINE_PROBE_MAX', 'V9X_VBE_EDID_BYTES',
                         'V9X_VBE_EDID_CHUNKS', 'V9X_VBE_RF_ORIGIN_LIST',
-                        'V9X_VBE_RF_ORIGIN_PROBE', 'V9X_VBE_ST_LIST_VALID',
+                        'V9X_VBE_RF_ORIGIN_PROBE', 'V9X_VBE_RF_ORIGIN_SWEEP',
+                        'V9X_VBE_ST_SWEEP_RAN', 'V9X_VBE_ST_LIST_VALID',
                         'V9X_VBE_ST_COLLECT_OFF', 'V9X_VBE_ST_QUERY_LIMIT')) {
     if (-not $cValues.ContainsKey($required)) {
         throw "vbe_cache.h no longer defines $required."
