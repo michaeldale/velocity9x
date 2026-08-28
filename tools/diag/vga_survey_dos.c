@@ -1244,6 +1244,23 @@ static void survey_secondary_roms(void)
 /* VBE                                                                 */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Where ES:DI points on the calls that carry no buffer of their own.
+ *
+ * It must never be DS:0000, and used to be. segread hands back the caller's
+ * ES - which in the small model is DS - and the register block is zeroed, so
+ * a null buffer aimed the BIOS squarely at the null pointer zone. 4F03h and
+ * 4F15h/BL=00h are documented to answer in registers and touch nothing, but
+ * documentation is not what runs: on an Acer NAV50 the survey exited with the
+ * Open Watcom runtime's "*** NULL assignment detected" and then froze, which
+ * is that check finding DS:0 rewritten.
+ *
+ * 128 bytes is an EDID block, which is the largest thing any of these
+ * functions could plausibly deposit if it deposits anything at all; the rest
+ * is margin. See docs\issues\2026-08-28-survey-null-assignment.md.
+ */
+static unsigned char vbe_no_buffer_scratch[256];
+
 static unsigned short vbe_call(unsigned short function, unsigned short bx,
                                unsigned short cx, unsigned short dx,
                                void far *buffer)
@@ -1251,6 +1268,7 @@ static unsigned short vbe_call(unsigned short function, unsigned short bx,
     union REGS input;
     union REGS output;
     struct SREGS segments;
+    void far *destination = buffer;
 
     memset(&input, 0, sizeof(input));
     memset(&output, 0, sizeof(output));
@@ -1259,10 +1277,11 @@ static unsigned short vbe_call(unsigned short function, unsigned short bx,
     input.x.bx = bx;
     input.x.cx = cx;
     input.x.dx = dx;
-    if (buffer != 0) {
-        segments.es = FP_SEG(buffer);
-        input.x.di = FP_OFF(buffer);
+    if (destination == 0) {
+        destination = (void far *)vbe_no_buffer_scratch;
     }
+    segments.es = FP_SEG(destination);
+    input.x.di = FP_OFF(destination);
     int86x(0x10, &input, &output, &segments);
     return output.x.ax;
 }

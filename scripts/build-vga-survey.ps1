@@ -74,6 +74,28 @@ function Test-V9xSurveySafety {
         }
     }
 
+    # Required, not banned: ES:DI must never reach the BIOS as DS:0000.
+    #
+    # A survey that hands the video BIOS a pointer to the null zone is a
+    # survey that can corrupt the machine it was promised not to touch, which
+    # is what happened on the NAV50 before vbe_no_buffer_scratch existed. This
+    # is the one rule here that asserts the presence of something rather than
+    # the absence of it, because the failure mode is an omission.
+    $required = @(
+        @{ Pattern = 'static unsigned char vbe_no_buffer_scratch\[';
+           Why = "the no-buffer scratch ES:DI points at" },
+        @{ Pattern = 'destination = \(void far \*\)vbe_no_buffer_scratch;';
+           Why = "the substitution of that scratch for a null buffer" },
+        @{ Pattern = 'segments\.es = FP_SEG\(destination\);';
+           Why = "an unconditional ES from the resolved destination" }
+    )
+    foreach ($rule in $required) {
+        if ($Text -notmatch $rule.Pattern) {
+            throw ("vga_survey_dos.c is missing $($rule.Why); without it a " +
+                   "null buffer aims the BIOS at DS:0000.")
+        }
+    }
+
     # The audited port set. Everything the tool touches is in the VGA block at
     # 3B0-3DF; index_port and status_port are the two derived from the MISC
     # output register's colour/mono bit.
@@ -136,13 +158,30 @@ if ($GateSelfTest) {
         @{ Name = "unallowlisted bytes"; Add = 'static void bad(void); #pragma aux bad = "db 0x0f, 0x22, 0xc0";' },
         @{ Name = "descriptor load";     Add = 'static void bad(void); #pragma aux bad = "lgdt [si]";' },
         @{ Name = "port write in asm";   Add = 'static void bad(void); #pragma aux bad = "out dx,al";' },
-        @{ Name = "inline INT 10h";      Add = 'static void bad(void); #pragma aux bad = "int 10h";' }
+        @{ Name = "inline INT 10h";      Add = 'static void bad(void); #pragma aux bad = "int 10h";' },
+        # The required rules fail by omission, so their mutations delete rather
+        # than add. Each one is a way the null-buffer fix could be undone.
+        @{ Name = "no-buffer scratch removed";
+           Remove = 'static unsigned char vbe_no_buffer_scratch[256];' },
+        @{ Name = "null buffer left unsubstituted";
+           Remove = 'destination = (void far *)vbe_no_buffer_scratch;' },
+        @{ Name = "ES left as the caller's";
+           Remove = 'segments.es = FP_SEG(destination);' }
     )
     $failures = @()
     foreach ($mutation in $mutations) {
         $rejected = $false
+        if ($mutation.ContainsKey('Remove')) {
+            $mutated = $sourceText.Replace($mutation.Remove, '')
+            if ($mutated -eq $sourceText) {
+                throw ("The self-test cannot remove '" + $mutation.Remove +
+                       "': it is not in vga_survey_dos.c verbatim.")
+            }
+        } else {
+            $mutated = $sourceText + "`n" + $mutation.Add + "`n"
+        }
         try {
-            Test-V9xSurveySafety -Text ($sourceText + "`n" + $mutation.Add + "`n")
+            Test-V9xSurveySafety -Text $mutated
         } catch {
             $rejected = $true
         }
