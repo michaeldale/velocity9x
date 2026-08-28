@@ -139,3 +139,41 @@ Win98 required one interactive "restart to finish setting up your new
 hardware" acknowledgement on first boot after the board change; nothing else.
 No install media was needed - the chipset re-detection completed from what was
 already on the image.
+
+## Win98SE-BX-Voodoo3 (added 2026-08-28)
+
+Track C Phase 1's guest (`docs\plans\3dfx-voodoo3-family.md`): a Voodoo3 on the
+only P6-class board here, cloned from `Win98SE-BX-Trio64` because that guest
+was kept for exactly this.
+
+- Profile: `<86Box VMs>\Win98SE-BX-Voodoo3`
+- `machine = 686bx`, `cpu_family = pentium2_deschutes`, 350 MHz, 128 MiB
+- `gfxcard = voodoo3_3k_agp` (86Box ROM `video/voodoo/3k12sd.rom`)
+- Agent port: host **9874** -> guest 9869; COM1 pipe `voodoo3-com1`
+
+The model is a **placeholder pending Phase 0**. The physical card's board model
+and bus are unmeasured, so a Voodoo3 3000 AGP was chosen as the era-correct
+pairing for the 440BX; 86Box also offers 1000/2000/3500 and Banshee in both
+bus variants, and re-pointing `gfxcard` is a one-line change.
+
+Measured on the first boot, which needed no interaction at all - no "moved or
+copied" modal, no restart prompt:
+
+- Desktop at 640x480x4, `Standard PCI Graphics Adapter (VGA)`. The parent's
+  Velocity9x Trio64 driver does not bind the new card, which is the wanted
+  starting state for an install target.
+- `HKLM\Enum\PCI` carries
+  `PCI\VEN_121A&DEV_0005&SUBSYS_003A121A&REV_01`, class `030000`. That
+  confirms the plan's expected identity (3Dfx `121A`, Voodoo3 `0005`) on the
+  emulator; the physical card's ids are still Phase 0's job.
+
+Two inherited oddities, neither yet a problem:
+
+- The image carries a stale `3dfxzone.it FastVoodoo2 4.6` driver for
+  `VEN_121A&DEV_0002`, from a Voodoo2 add-on the parent profile once had
+  configured. This clone's config declares no Voodoo2. It did not bind the
+  Voodoo3.
+- `serial1_device = pipe` was kept from the parent rather than switched to
+  `file` as the cloning notes advise. It did not block startup here.
+
+The guest still reports the parent's ComputerName. Identify it by port.
