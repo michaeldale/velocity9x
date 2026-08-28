@@ -482,8 +482,16 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     v9x_append(status->report, sizeof(status->report), status->directdraw);
     v9x_append(status->report, sizeof(status->report), "\r\nDirect3D: ");
     v9x_append(status->report, sizeof(status->report), status->direct3d);
+    /*
+     * A static statement of what the mini-VDD installs, not a query: the
+     * dispatch table is registered once at Device_Init and the build gate in
+     * scripts\build-minivdd-skeleton.ps1 asserts the set, so the two cannot
+     * drift. This said "master VDD defaults" until 2026-08-28, by which time
+     * it had been wrong since the power callbacks landed - and it was read as
+     * evidence of what the mini-VDD hooked, which it never was.
+     */
     v9x_append(status->report, sizeof(status->report),
-               "\r\nMini-VDD callbacks: master VDD defaults\r\n");
+               "\r\nMini-VDD callbacks: VESA, monitor power\r\n");
 }
 
 int v9x_settings_copy_report(void *owner_window,

@@ -153,14 +153,32 @@
         # scan, which is the designed behaviour, not a mismatch to fix.
         ForcedModes = @('8,640,480', '8,800,600', '8,1024,768',
                         '16,640,480', '16,800,600', '16,1024,768')
-        # A second models line with no hardware ID at all, pickable only by
-        # hand from Have Disk. This is the honest route onto every VBE 2.0+
-        # card the family does not name - before this existed, the netbook
-        # install worked only by forcing the QEMU model onto the Intel IGD.
-        # Deliberately not a wildcard and deliberately not the Intel ids: the
-        # tier cannot claim to drive the 945 family properly, and a real GMA
-        # family would collide with such a claim. See also the s3 manifest's
-        # ManualSelect comment for why CompatibleId is not the answer either.
+        # A second models line, the route onto every VBE 2.0+ card the family
+        # does not name - before it existed, the netbook install worked only
+        # by forcing the QEMU model onto the Intel IGD.
+        #
+        # It carries the VGA-compatible-controller class code as a *compatible*
+        # id, not a hardware id. Three things follow, and the first two are why
+        # this stopped being Have-Disk-only on 2026-08-28:
+        #
+        #   - Windows binds it without Have Disk when nothing better claims the
+        #     device, which is the whole point of a tier-0 generic driver.
+        #   - It matches PCI class 0300 only. On the Acer NAV50 the Pineview
+        #     IGD presents a second function at class 038000, and forcing the
+        #     id-less model onto both was the duplicate devnode of
+        #     docs\decisions\2026-08-28-pineview-vbe-mode-list.md finding 3.
+        #     A class-code match cannot reach function 1.
+        #   - A real driver matching PCI\VEN_&DEV_ outranks a compatible id, so
+        #     this never displaces a vendor driver; it is the fallback, not the
+        #     default. That ranking is the reason the earlier refusal to claim
+        #     anything broader than one tested id no longer applies - the claim
+        #     is "I will drive this if no one else will", which is true.
+        #
+        # This is not the s3 family's rejected *PNP0913: that id makes a claim
+        # about specific S3 chips this driver has no code for, where CC_0300
+        # claims exactly what the VBE tier does - any VGA-class adapter, through
+        # its BIOS. Reported by CentaurHauls, who hit the Have-Disk route on a
+        # NAV50.
         #
         # VideoMemoryBytes is the budget the derived manual mode list is
         # pruned against (Get-V9xFamilyManualSelectModes). 2 MiB keeps every
@@ -171,6 +189,7 @@
         ManualSelect = @{
             Description = 'Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)'
             VideoMemoryBytes = 2097152
+            CompatibleId = 'PCI\CC_0300'
         }
     }
 
@@ -183,17 +202,18 @@
         Include = $true
         Folder = 'VBE'
         Order = 2
-        # The INF claims one id because one is what has been tested - not a
-        # wildcard that makes Windows bind this driver to every display adapter
-        # it finds. Other VBE 2.0 cards are reached by choosing this package
-        # through Have-Disk, which is a decision a person makes rather than one
-        # Windows makes for them.
+        # One exact id, plus PCI\CC_0300 as a compatible id on the model line
+        # above. The class code is not the wildcard this comment used to refuse:
+        # a compatible id ranks below every hardware-id match, so Windows binds
+        # it only where no vendor driver claims the device. See the ManualSelect
+        # comment for the ranking argument and for the duplicate devnode it
+        # also fixes.
         #
-        # That route only works because this family sets pci_match_optional:
+        # Either route only works because this family sets pci_match_optional:
         # until 2026-08-16 the driver carried a second allowlist of its own and
         # refused at stage 1 on any card the family did not name, whatever the
         # INF said. See docs\issues\2026-08-16-tier0-defects-deferred.md D3.
-        HardwareIdHint = 'PCI 1234:1111 automatically; any VBE 2.0 card via Have-Disk'
+        HardwareIdHint = 'PCI 1234:1111 exactly; any VGA-class adapter via PCI\CC_0300'
     }
 
     Vm = @{

@@ -894,6 +894,19 @@ WORD FAR PASCAL V9xHardwareReset(void)
     if (v9x_hw16.post_mode_set != 0) {
         return v9x_hw16.post_mode_set();
     }
+    /*
+     * Tier-0's follow-up, which V9xHardwareEnable has always run and this
+     * path never did. A BIOS may accept 4F02h and then scan the surface out
+     * at a stride of its own choosing, so the stride is re-asserted rather
+     * than assumed to have survived the trip through VGA - see the 4F06h
+     * commentary in hw\vbe16.c for why a mismatch shreds the picture.
+     *
+     * That asymmetry is the corrupt band a full-screen DOS box left behind:
+     * the mode came back and the stride did not.
+     */
+    if (v9x_hw16.read_aperture == 0 && v9x_vbe_default_pitch() == 0u) {
+        return 0u;
+    }
     if (device != 0 && device->enable_aperture != 0) {
         return device->enable_aperture();
     }
