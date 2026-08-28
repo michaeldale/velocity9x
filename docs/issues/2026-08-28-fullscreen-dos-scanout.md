@@ -15,6 +15,12 @@ this fixable rather than remote.
 Photograph and reporter's notes:
 `claude\personal\v9x-centaurhauls-acer\source-data\`.
 
+The HP Mini 110 has since been seen to hang on the way *into* a DOS box,
+before any prompt is drawn, on both 0.6.0 and 0.6.1 - filed separately as
+`docs\issues\2026-08-28-dos-box-entry-hang-gma950.md`. Whether that shares a
+cause with this band is unknown; they are kept apart until something says
+otherwise.
+
 ## What the picture says
 
 The band is confined to the top scanlines. The rest of the desktop is intact,
