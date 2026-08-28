@@ -533,3 +533,116 @@ Whether the guest's desktop comes back corrupt or clean after the round trip,
 which is the netbook's actual symptom. The DOS box was legible-but-striped
 while full screen; what the desktop looks like on return has not been
 captured, and the guest was reset mid-run before that could be seen.
+
+## Measured in the guest, second session: the picture breaks on the way *out*
+
+2026-08-28, same `Win86SE` guest, driver `8c59959-trace`, desktop
+640x480x16 - not the 800x600 the earlier run was at. Captures in this
+session's scratchpad; the stripe measurement below is reproducible from
+`host-04-ret-t15.png`.
+
+**Entry is clean.** `command.com` launched windowed through the agent, then
+one agent-injected `ALT+ENTER`: 720x400 text mode at 70 Hz, the Windows 98
+banner and `C:\>` legible, **no striping at all**, unchanged across captures
+at 2, 5, 10 and 20 seconds. The agent answered `ping` throughout, with the box
+full screen.
+
+That corrects the note above it. The striping is not what a full-screen DOS
+box looks like on this guest; the earlier capture must have been taken after an
+exit had already been attempted.
+
+**The exit destroys it.** A second `ALT+ENTER`, and within two seconds:
+
+- every character cell gains a lit ninth dot - **80 bright columns at a
+  9-pixel period** across the 720-pixel text mode, counted off the host-side
+  `PrintWindow` capture, not eyeballed. 720 / 80 = 9, which is the VGA
+  character cell, so the artefact is one column per cell and not a stride.
+- the DOS text stays legible underneath it, and the timing stays text-mode:
+  70 Hz, 720x400, the emulator window unchanged in size.
+- **Windows never comes back.** No desktop, no mode change, and the agent
+  stopped answering at that instant and was still down 25 seconds later when
+  the machine was reset.
+
+**The display driver is entered on neither leg.** After the reset,
+`C:\V9XDIAG\V9XBOOT.INI` still read `DosBox=disable-exit` - the value the
+graceful-reboot control had left - and the serial log gained no `V9X-DRV` line
+across the whole round trip. So the nine trace points fired on neither the way
+in nor the way out, on this guest as on the netbook.
+
+### What the 9-pixel period is worth
+
+It is the first number this fault has produced. A character-cell-periodic
+artefact in a text mode is VGA state - the sequencer's dot clock, the attribute
+controller's ninth-dot handling - and it is **not** a linear-framebuffer
+stride, which is what both earlier diagnoses of the striping assumed. Whatever
+is wrong has been done to the *text* mode the DOS box is sitting in, on the way
+back out of it, after the box itself was demonstrably fine.
+
+### It reproduces, and the one run that looked unstable was the instrument
+
+Repeated on a fresh boot with the plain `ssPlain1` package: entry clean, exit
+striped, **80 columns, same `9 x 79` gap histogram**. Two builds, two boots,
+one number.
+
+Two runs in between failed differently - wedged on the *first* `ALT+ENTER`,
+never reaching full screen, no striping and no trace byte - and both were the
+screen-switch-trace mini-VDD. That is the instrument, not the fault; see
+`docs\decisions\2026-08-28-dos-box-exit-ninth-dot.md`.
+
+**The injection method is not the fault either.** `ALT+ENTER` injected with no
+DOS box open returns `ActionsPerformed: 4`, the agent answers `ping`
+immediately after, and the desktop is unchanged. The wedge needs the box.
+
+## Tooling facts from this session, so they are not rediscovered
+
+- **The agent's screenshot cannot see this fault.** It reads the GDI primary,
+  and the driver's drawing into memory is exactly the part that is *not*
+  wrong - the netbook's whole finding. Host-side `PrintWindow(hwnd, hdc, 2)`
+  on the 86Box window is what shows the emulated CRTC's output. Select the
+  window by title: the user runs other 86Box VMs in parallel and
+  "first process" grabs whichever comes back first.
+- **86Box's File COM device does not flush live.** Not on a graceful guest
+  reboot, not on a hard reset, not for tens of minutes; `build\vm-logs\com1.log`
+  stayed 243,903 bytes across two boots and gained them all at once when the
+  emulator process exited. `serial1_device = pipe` plus
+  `scripts\capture-serial-pipe.ps1` is the only live route, and it is what the
+  other five VMs in that folder already use.
+- `update-associated-driver.ps1` needs `-ControllerPath` (or `V9X_AGENT_CTL`)
+  pointing at `v9xctl.ps1`.
+- Piping a build script's output through `Select-Object` or `*>` turns
+  ML.EXE's stderr banner into a terminating error under `$ErrorActionPreference
+  = 'Stop'`. Run the script bare, or the real assembler diagnostic is replaced
+  by the banner.
+
+## The VxD-side trace does not work, and that is a result
+
+`-ScreenSwitchTrace` on `build-active-package.ps1` installs observer-only
+hooks on `CHECK_SCREEN_SWITCH_OK` and the four `PRE/POST_HIRES_TO_VGA` /
+`PRE/POST_VGA_TO_HIRES` notifications. Each body is one serial write and a
+return; the `CHECK_SCREEN_SWITCH_OK` observer returns `CLC`, which is the same
+answer as not hooking it. `SAVE_REGISTERS` and `RESTORE_REGISTERS` are
+deliberately not among them: hooking those tells the main VDD the mini-VDD will
+save and restore the state itself, and an observer that only traced would
+destroy the state this round trip is already failing to restore.
+
+**With it installed the box never goes full screen at all** - twice out of two
+attempts - the agent wedges at the `input` call, and no trace byte is emitted.
+The same keystroke with the plain mini-VDD, on the same guest and the same
+serial device, goes full screen with the agent healthy.
+
+So the reading carried above - that these callbacks are additive and the DDK's
+own mini-VDDs just `ret` from them - is wrong in a second way. A no-op hook
+does not stop the main VDD doing its work, but installing one is not
+observationally free. Whether the body hangs inside `V9xMini_Serial_Write` or
+the dispatch entry changes the VDD's path before any hook is called is not
+distinguished by this evidence, and the absent trace byte is consistent with
+both.
+
+The switch stays in the tree, behind its own guard, with the build audit
+pinning every dispatch entry to the `IFDEF` that owns it. It is a recorded
+negative, not a usable instrument.
+
+The cheap observation that remains: `VESA_SUPPORT` is already installed and
+shipping, and writes no serial line. Adding one to its entry says whether
+Windows routes a VESA call through us on this path, and touches no
+screen-switch slot.

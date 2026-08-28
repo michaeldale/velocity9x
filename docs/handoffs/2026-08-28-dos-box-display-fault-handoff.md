@@ -4,6 +4,11 @@ Date: 2026-08-28
 Branch: `main`, eleven commits ahead of both remotes and **unpushed**
 Issue: [`docs/issues/2026-08-28-dos-box-entry-hang-gma950.md`](../issues/2026-08-28-dos-box-entry-hang-gma950.md)
 
+> **A second session has run steps 1 to 3 of the path below. Read
+> "Session 2" at the foot of this document first: it establishes that the
+> fault is on the way *out*, gives it a number, and closes step 3 as
+> designed.**
+
 Taking a DOS box full screen destroys the display. It was reported as a hang
 on an HP Mini 110 (Intel GMA 950), spent most of a day being investigated as
 one, and is not one. It has since reproduced in 86Box on an emulated S3
@@ -201,3 +206,95 @@ Its mode cache is worth remembering: 36 modes listed, **all 36 described**,
 6 admitted by our own rules. That is the opposite of the NAV50's Pineview
 BIOS, so **the mode sweep has nothing to sweep on this machine** and a clean
 run of it there would mean nothing.
+
+---
+
+# Session 2, same day: what the guest actually does
+
+Full record with the numbers:
+[`docs/decisions/2026-08-28-dos-box-exit-ninth-dot.md`](../decisions/2026-08-28-dos-box-exit-ninth-dot.md).
+Evidence: `claude\personal\v9x-86box-dosbox\2026-08-28\`.
+
+## Answered
+
+**Step 1 - capture the return. The entry is clean and the *exit* is the
+fault.** At a 640x480x16 desktop the full-screen box is a correct 720x400 text
+mode at 70 Hz with no striping, held over 20 seconds, agent answering `ping`
+throughout. The second `ALT+ENTER` breaks it within two seconds: **80 lit
+columns at a 9-pixel period** across 720 pixels - one per VGA character cell,
+the ninth dot - with the DOS text still legible, the timing still text-mode,
+and Windows never coming back. Reproduced on two builds and two boots with the
+same gap histogram.
+
+That corrects this document's own "a full-screen DOS box shows the striping".
+It does not; the earlier capture was taken after an exit attempt.
+
+**The driver is not entered on either leg**, confirmed twice over: `DosBox=`
+stayed at the control's `disable-exit`, and the serial log gained no
+`V9X-DRV` line across the round trip. `SET_MONITOR_POWER_STATE` is not called
+either.
+
+**Step 3 - serial-trace the mini-VDD. It cannot be done from those callbacks.**
+`-ScreenSwitchTrace` (new, on `build-active-package.ps1`) installs
+observer-only hooks on `CHECK_SCREEN_SWITCH_OK` and the four HiRes/VGA
+notifications. With it installed the box **never goes full screen**, twice out
+of two, the agent wedges at the keystroke, and not one trace byte arrives. The
+same keystroke with the plain mini-VDD on the same guest and the same serial
+device goes full screen with the agent healthy - so the A/B isolates the hooks,
+not the serial change.
+
+So "these callbacks are additive, the DDK's own mini-VDDs just `ret`" is right
+about the main VDD still doing its work and wrong about the cost: installing
+one is not observationally free. The switch stays in the tree behind its guard
+as a recorded negative.
+
+**A control worth having: the agent's injection is not the fault.**
+`ALT+ENTER` with no DOS box open returns cleanly and the agent survives.
+
+## Not answered
+
+**Step 2 - does re-asserting the mode repair the picture?** Still untested, and
+it cannot be driven from the host: the agent dies with the fault. It answered
+once, 8 seconds later, then refused everything. **The next attempt should arm
+the repair inside the guest before breaking anything** - a batch file that
+waits (`CHOICE /T:y,30`) and then runs `V9XMSW /set:` to a *different* mode,
+launched detached, and the round trip started immediately after. If the picture
+comes back, the fix is a trigger; if not, the mode is not what was lost.
+
+**Step 4 - `-NoDpms`.** Still never run. Cheap while the guest is set up.
+
+## Where to look next, in order
+
+1. **The guest-side delayed repair** above. It is the one measurement that
+   changes the shape of the fix, and it needs no new build.
+2. **Trace `VESA_SUPPORT`.** It is already installed and shipping and writes
+   nothing. One serial line at its entry says whether Windows routes a VESA
+   call through us on this path, and it touches no screen-switch slot - so it
+   is not exposed to the negative above.
+3. **What lights the ninth dot.** A character-cell-periodic artefact is VGA
+   text state - the sequencer dot-clock bit, or the attribute controller's
+   ninth-dot handling. Which register holds the wrong value is unmeasured, and
+   an 86Box-side register dump at the broken moment is the only obvious way to
+   see it. No tooling for that exists.
+4. `-NoDpms`, to close it either way.
+
+## Guest state as left
+
+- Win86SE, **`ssPlain1`** installed: shipping mini-VDD, `-DosBoxTrace`
+  display driver. 640x480x16.
+- **`serial1_device` is now `pipe`**, not `file`. The old value is saved at
+  `86box.cfg.file-backup` in the VM folder. The file device does not flush
+  live - not on a guest reboot, not on a hard reset - so the pipe is the only
+  usable serial route. Attach with:
+
+  ```powershell
+  Start-Process powershell -ArgumentList '-NoProfile','-File',
+    'C:\everything\velocity9x\scripts\capture-serial-pipe.ps1',
+    '-PipeName','velocity9x-com1','-OutputPath','<file>','-NoConsole'
+  ```
+
+  It disconnects whenever the emulator restarts; reattach each time.
+- Host-side capture is `claude\personal\v9x-86box-dosbox\2026-08-28\scripts\capture-86box.ps1`.
+  Use it rather than the agent's screenshot: the agent reads the GDI primary,
+  which is exactly the part of this fault that is not wrong. It selects the
+  86Box window **by title** because the user runs other VMs in parallel.
