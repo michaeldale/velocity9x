@@ -20,7 +20,12 @@ param(
     # An experiment, not a shipping default: it drives 4F02h into the real
     # video BIOS at Device_Init. Pass it only for a package aimed at a machine
     # someone can recover. See build-minivdd-skeleton.ps1 -ModeSweep.
-    [switch]$ModeSweep
+    [switch]$ModeSweep,
+    # Differential builds for the full-screen DOS box hang. Experiments aimed
+    # at one machine someone can recover; see build-minivdd-skeleton.ps1 and
+    # docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
+    [switch]$VgaReturn,
+    [switch]$NoDpms
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,7 +65,8 @@ $traceEnabled = -not $NoBootTrace
 $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
-    -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep
+    -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep `
+    -VgaReturn:$VgaReturn -NoDpms:$NoDpms
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `

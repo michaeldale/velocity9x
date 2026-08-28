@@ -174,6 +174,17 @@ EndProc V9xMini_Serial_Write
 ; S3 DPMS controls, and clears SR01[5] on wake in case the BIOS used the
 ; generic VGA screen-off bit.  All registers and flags are preserved.
 BeginProc V9xMini_Set_Dpms
+IFDEF V9X_NO_DPMS
+    ; Differential build for
+    ; docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
+    ;
+    ; The body below writes the S3 extended sequencer unlock, SR0D and CR56
+    ; with no family or chip guard, so the generic VBE mini-VDD issues them on
+    ; whatever silicon it is loaded against. This build removes them to take
+    ; that off the table as a cause. A bare ret satisfies the documented
+    ; contract by construction: all registers and flags preserved.
+    ret
+ENDIF
     pushfd
     pushad
 
@@ -1541,6 +1552,50 @@ V9xMini_Mtrr_Done:
     ret
 EndProc V9xMini_Mtrr_Inspect
 
+IFDEF V9X_VGA_RETURN
+; Differential build for docs\issues\2026-08-28-dos-box-entry-hang-gma950.md:
+; return the adapter to standard VGA ourselves, before the main VDD tries.
+;
+; A full-screen DOS box hangs that machine from every Velocity9x mode measured
+; - 1024x576 at 32 and 16bpp and 640x480 at 8bpp - while a windowed box is
+; clean and the stock VGA driver survives the same transition. The one
+; structural difference is that we are sitting in a VESA linear-framebuffer
+; mode the main VDD did not set and knows nothing about.
+;
+; What this is NOT: a way to stop the main VDD doing its own work. These
+; callbacks are additive, not overriding - the DDK's own mini-VDDs just `ret`
+; from them and the VDD proceeds regardless. Hooking them with no-ops would
+; measure nothing, which is what the first draft of this experiment would have
+; done.
+;
+; What it is: the job MINIVDD's PreHiResToVGA comment actually asks for -
+; "if your hardware does not return to a standard VGA mode via a call to
+; INT 10H, function 0, make sure to do whatever it takes to restore your
+; hardware to a standard VGA mode at this time". So set mode 3 through the
+; BIOS here, from a point where nothing else is mid-transition.
+;
+; Reading the outcome: if the hang goes, the main VDD's own route out of an
+; LFB mode was the wedge and getting there first avoids it. If it still hangs,
+; a BIOS mode set from VxD context is the wedge whoever issues it, and the
+; next build has to leave the BIOS out of the path entirely.
+;
+; Exec_Int runs the real video BIOS with no timeout, exactly as the mode sweep
+; does. This build can hang a machine that did not hang before.
+BeginProc MiniVDD_PreHiResToVGA
+    pushfd
+    pushad
+
+    mov     ax, 0003h                   ; INT 10h AH=00h, AL=03h: 80x25 text
+    xor     bx, bx
+    xor     cx, cx
+    call    V9xMini_Vbe_Call
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_PreHiResToVGA
+ENDIF
+
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
     mov     ecx, V9xMiniInitLineLength
@@ -1558,6 +1613,13 @@ BeginProc MiniVDD_Dynamic_Init
     MiniVDDDispatch VESA_SUPPORT, VESASupport
     MiniVDDDispatch VESA_CALL_POST_PROCESSING, VESACallPostProcessing
 
+IFDEF V9X_VGA_RETURN
+    ; Experiment only; see MiniVDD_PreHiResToVGA above. Function 4 is in the
+    ; 40-entry table as well as the 49-entry one, so the count checked above
+    ; already covers it.
+    MiniVDDDispatch PRE_HIRES_TO_VGA, PreHiResToVGA
+ENDIF
+
     ; Power callbacks were added to the Windows 98 (4.1) dispatch table.
     ; Older tables are covered by the VESA post hook above.
     cmp     ecx, GET_MONITOR_POWER_STATE_CAPS + 1
@@ -1568,6 +1630,13 @@ BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniPowerCallbacksLine
     mov     ecx, V9xMiniPowerCallbacksLineLength
     call    V9xMini_Serial_Write
+IFDEF V9X_NO_DPMS
+    ; Names the experiment in the image, so the build audit can assert this is
+    ; the no-DPMS build and a capture says which one is running.
+    mov     esi, OFFSET32 V9xMiniDpmsDisabledLine
+    mov     ecx, V9xMiniDpmsDisabledLineLength
+    call    V9xMini_Serial_Write
+ENDIF
     jmp     short V9xMini_Init_Succeeded
 
 V9xMini_Power_Defaults:

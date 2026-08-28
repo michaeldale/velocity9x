@@ -10,6 +10,20 @@ param(
     # src\minivdd32\loader.asm and
     # docs\decisions6-08-28-pineview-vbe-mode-list.md for what it is for.
     [switch]$ModeSweep,
+    # Differential builds for the full-screen DOS box hang,
+    # docs\issues\2026-08-28-dos-box-entry-hang-gma950.md. Experiments, not
+    # shipping options: neither is in any package the release folder carries.
+    #
+    # -VgaReturn hooks PRE_HIRES_TO_VGA and sets INT 10h mode 3 there, before
+    # the main VDD takes its own route out of the linear-framebuffer mode. It
+    # runs the real video BIOS with no timeout and can hang a machine that did
+    # not hang before.
+    #
+    # -NoDpms removes the unguarded S3 sequencer and CRTC writes from
+    # V9xMini_Set_Dpms, which the generic VBE build otherwise issues on
+    # whatever silicon it is loaded against.
+    [switch]$VgaReturn,
+    [switch]$NoDpms,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -109,6 +123,12 @@ if ($DisableVbeCollect) {
     $buildIncludeLines += @(
         "V9xMiniVbeDisabledLine db `"V9X-MINI vbe-collect disabled build=$BuildId`", 13, 10",
         "V9xMiniVbeDisabledLineLength equ `$ - V9xMiniVbeDisabledLine"
+    )
+}
+if ($NoDpms) {
+    $buildIncludeLines += @(
+        "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-disabled build=$BuildId`", 13, 10",
+        "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
     )
 }
 Set-Content -LiteralPath $buildInclude -Encoding Ascii -Value $buildIncludeLines
@@ -243,6 +263,17 @@ if ($ModeSweep) {
     }
     $assemblerArguments = @("-DV9X_VBE_MODE_SWEEP") + $assemblerArguments
 }
+if ($VgaReturn) {
+    if ($DisableVbeCollect) {
+        throw ("-VgaReturn needs the collection: the mode set goes through " +
+               "V9xMini_Vbe_Call, which no-ops without the V86 scratch the " +
+               "collection allocates.")
+    }
+    $assemblerArguments = @("-DV9X_VGA_RETURN") + $assemblerArguments
+}
+if ($NoDpms) {
+    $assemblerArguments = @("-DV9X_NO_DPMS") + $assemblerArguments
+}
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Windows 98 DDK assembler failed to build the mini-VDD skeleton."
@@ -285,18 +316,51 @@ if ($DisableVbeCollect) {
     throw "A default mini-VDD build must not carry the vbe-collect disabled marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
-if (([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count -ne 4 -or
-    $sourceText -notmatch 'MiniVDDDispatch\s+VESA_SUPPORT' -or
+# The audited four, plus the one PRE_HIRES_TO_VGA hook the -VgaReturn
+# experiment adds. The count is over the source, so it has to account for the
+# experimental line whether or not this build assembles it; the symbol check
+# below is what ties the built image to the switch.
+$expectedDispatches = if ($VgaReturn) { 5 } else { 4 }
+$dispatchCount = ([regex]::Matches($sourceText, '(?m)^\s*MiniVDDDispatch\s+')).Count
+if ($dispatchCount -ne $expectedDispatches -and $dispatchCount -ne 5) {
+    throw "The mini-VDD source declares $dispatchCount dispatch entries; expected the four audited callbacks plus at most the PRE_HIRES_TO_VGA experiment."
+}
+if ($sourceText -notmatch 'MiniVDDDispatch\s+VESA_SUPPORT' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+VESA_CALL_POST_PROCESSING' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+SET_MONITOR_POWER_STATE' -or
     $sourceText -notmatch 'MiniVDDDispatch\s+GET_MONITOR_POWER_STATE_CAPS') {
     throw "The mini-VDD must install exactly the four audited monitor-power callbacks."
+}
+# The experimental hook may exist in the source only inside its IFDEF: a
+# shipping build that installed it would be installing an untested BIOS call on
+# the DOS-box path.
+if ($sourceText -match '(?m)^\s*MiniVDDDispatch\s+PRE_HIRES_TO_VGA' -and
+    $sourceText -notmatch '(?s)IFDEF\s+V9X_VGA_RETURN.*?MiniVDDDispatch\s+PRE_HIRES_TO_VGA.*?ENDIF') {
+    throw "PRE_HIRES_TO_VGA is dispatched outside IFDEF V9X_VGA_RETURN."
 }
 $sweepSymbol = ([regex]::Matches(
     (Get-Content -LiteralPath $mapPath -Raw), 'V9xMini_Vbe_Sweep')).Count -gt 0
 if ($ModeSweep -ne $sweepSymbol) {
     throw ("The mini-VDD image " + $(if ($sweepSymbol) { "carries" } else { "lacks" }) +
            " the mode sweep, which is not what -ModeSweep asked for.")
+}
+
+# Same rule for the two DOS-box experiments: the image has to carry exactly
+# what the switch asked for, so a shipping package cannot pick one up by
+# accident and an experimental package cannot silently lack it.
+$vgaReturnSymbol = ([regex]::Matches(
+    (Get-Content -LiteralPath $mapPath -Raw), 'MiniVDD_PreHiResToVGA')).Count -gt 0
+if ($VgaReturn -ne $vgaReturnSymbol) {
+    throw ("The mini-VDD image " + $(if ($vgaReturnSymbol) { "carries" } else { "lacks" }) +
+           " the PRE_HIRES_TO_VGA hook, which is not what -VgaReturn asked for.")
+}
+$dpmsDisabledMarker = "V9X-MINI dpms-disabled"
+if ($NoDpms) {
+    if (-not $imageText.Contains($dpmsDisabledMarker)) {
+        throw "The no-DPMS mini-VDD is missing its disabled marker."
+    }
+} elseif ($imageText.Contains($dpmsDisabledMarker)) {
+    throw "A default mini-VDD build must not carry the DPMS disabled marker."
 }
 $mapText = Get-Content -LiteralPath $mapPath -Raw
 foreach ($symbol in @("V9xMini_Serial_Write", "V9xMini_Set_Dpms",
