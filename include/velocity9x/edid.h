@@ -38,4 +38,42 @@ struct v9x_edid_summary {
  */
 v9x_u16 v9x_edid_parse(const v9x_u8 *block, struct v9x_edid_summary *out);
 
+/*
+ * The first detailed timing, in full.
+ *
+ * v9x_edid_summary carries only the active geometry, which is all the mode
+ * table needs. A VBE 3.0 CRTC override needs the blanking and sync figures
+ * too, so they are parsed into their own structure rather than widened into
+ * the summary every consumer already reads.
+ *
+ * Sync polarity is meaningful only for digital separate sync; on an analog
+ * composite descriptor those same bits mean something else entirely, so the
+ * parse records which kind it saw and a consumer must check.
+ */
+#define V9X_EDID_TIMING_DIGITAL_SEPARATE ((v9x_u16)0x0001u)
+#define V9X_EDID_TIMING_HSYNC_NEGATIVE   ((v9x_u16)0x0002u)
+#define V9X_EDID_TIMING_VSYNC_NEGATIVE   ((v9x_u16)0x0004u)
+
+struct v9x_edid_timing {
+    v9x_u32 pixel_clock_hz;
+    v9x_u16 h_active;
+    v9x_u16 h_blank;
+    v9x_u16 h_sync_offset;   /* front porch, pixels */
+    v9x_u16 h_sync_width;
+    v9x_u16 v_active;
+    v9x_u16 v_blank;
+    v9x_u16 v_sync_offset;   /* front porch, lines */
+    v9x_u16 v_sync_width;
+    v9x_u16 flags;
+};
+
+/*
+ * Parse the first detailed timing whole. Same acceptance rules as
+ * v9x_edid_parse - 1.x structure, valid checksum, a timing rather than a
+ * display descriptor, not interlaced - and V9X_FALSE zeroes the output.
+ */
+v9x_u16 v9x_edid_parse_timing(const v9x_u8 *block,
+                              struct v9x_edid_timing *out);
+
+
 #endif /* VELOCITY9X_EDID_H */

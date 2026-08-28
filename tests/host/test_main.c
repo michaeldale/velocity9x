@@ -35,6 +35,10 @@ unsigned int v9x_run_edid_tests(void);
  * ring 0 reports, same convention. */
 unsigned int v9x_run_mtrr_tests(void);
 
+/* tests\host	est_vbe_crtc.c: the full EDID detailed timing and the VBE 3.0
+ * CRTC block built from it, same convention. */
+unsigned int v9x_run_vbe_crtc_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -591,6 +595,7 @@ int main(void)
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
+    failures += v9x_run_vbe_crtc_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);
