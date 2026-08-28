@@ -83,8 +83,10 @@ flushes its record before it opens the box precisely so that this absence is
 readable: a cancel writes `cancelled` and a failed launch writes
 `launch-failed`.
 
-**Depth is not the variable.** 32bpp at pitch 4096 and 16bpp at pitch 2048
-both hang. `V9XBOOT.INI` is byte-identical across the two collections but for
+**Neither depth nor geometry is the variable.** 1024x576 at 32bpp and at
+16bpp, and 640x480 at 8bpp, all hang. That is every mode this machine offers
+tried at both extremes of the surface, and it exhausts what can be varied from
+the machine's side. `V9XBOOT.INI` is byte-identical across the two collections but for
 the `Surface=` line, and `Stage=enable-ok` both times, so the driver came up
 the same way and the same mode cache backed both.
 
@@ -211,15 +213,47 @@ next move is an experiment, not a patch.
 
 Because the machine cannot be traced - no serial port, no boot stage written
 on this path - the instrument has to be a differential build, the way the mode
-sweep is. Two are worth building, in this order:
+sweep is.
 
-1. **A build whose mini-VDD hooks the round trip** and does the minimum on the
-   way out to VGA. If the hang goes, the master VDD's default is the cause.
-2. **A build with the DPMS writes below removed.** Cheap, and it eliminates
-   the one thing in our VxD known to be writing registers that do not exist on
-   this silicon.
+### The experiment that was proposed does not work, and why
 
-Neither has been built.
+The first plan was to hook the round trip and do the minimum, on the theory
+that hooking it would keep the master VDD's default handling out of the way.
+`MINIVDD.INC` and the DDK's own s3v mini-VDD say otherwise. **These callbacks
+are additive, not overriding.** The reference implementations do their
+hardware-specific work and `ret`; there is no carry-flag "I handled it"
+convention on `PRE_HIRES_TO_VGA` the way there is on `VESA_SUPPORT`, and the
+VDD proceeds regardless. A no-op hook would have changed nothing and returned
+a clean-looking null result.
+
+What the DDK asks for there is the opposite of minimal. `MiniVDD_PreHiResToVGA`
+carries this instruction in the sample source: *"If your hardware does not
+return to a standard VGA mode via a call to INT 10H, function 0, you should
+also make sure to do whatever it takes to restore your hardware to a standard
+VGA mode at this time."*
+
+### The two builds
+
+Both exist, neither has run on any machine.
+
+1. **`-VgaReturn`** hooks `PRE_HIRES_TO_VGA` and sets INT 10h mode 3 through
+   `V9xMini_Vbe_Call`, getting the adapter out of the linear-framebuffer mode
+   before the master VDD takes its own route. If the hang goes, that route was
+   the wedge. If it stays, a BIOS mode set from VxD context is the wedge
+   whoever issues it, and the BIOS has to come out of that path entirely.
+   `Exec_Int` runs the real video BIOS with no timeout, so this build can hang
+   a machine that did not hang before.
+2. **`-NoDpms`** excludes the S3 sequencer and CRTC writes below from the
+   image - absent from the binary, not skipped at runtime; verified by the two
+   instructions unique to that body occurring once each in the default
+   mini-VDD and zero times here. The weaker experiment, and worth saying why:
+   the routine's callers are the monitor-power and `4F10h` paths, which
+   opening a DOS box is not obviously either of. It removes a variable rather
+   than testing a mechanism.
+
+Neither ships. The build audit asserts the image carries exactly what the
+switch asked for in both directions, `PRE_HIRES_TO_VGA` may be dispatched only
+inside its `IFDEF`, and the no-DPMS build carries its own serial marker.
 
 ## Unproven, and a defect regardless: the mini-VDD writes S3 registers on Intel silicon
 
@@ -263,13 +297,10 @@ not it explains anything here.
    defect is ours.
 4. ~~**16bpp desktop.**~~ Done. Hangs, as 32bpp does. Depth is not the
    variable.
-5. **640x480 under Velocity9x, and 8bpp.** Still open - the 640x480 trials in
-   the collection are the stock driver's. Geometry is the last untested
-   variable, and 640x480 is the one mode here a BIOS is most likely to handle
-   conventionally. A full-screen trial that survives at some geometry makes
-   this mode-dependent and points at the surface; a hang at every one says the
-   transition itself is at fault regardless of what it is transitioning from.
+5. ~~**640x480 under Velocity9x, and 8bpp.**~~ Done. 640x480x8 hangs. Geometry
+   is not the variable either.
 
-Test 5 is the last cheap one from the machine's side. After it, the next
-evidence has to come from a differential build - see "Where to look next" -
-because there is nothing left on this machine to vary.
+Nothing is left to vary on the machine's side. The next evidence comes from
+the two differential builds above, one at a time, each reported through
+`V9XDOSBX.INI` - whose records now carry the display driver name, so a trial
+says which build produced it.
