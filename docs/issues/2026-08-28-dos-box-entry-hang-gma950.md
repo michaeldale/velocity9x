@@ -712,3 +712,40 @@ outcome. Test 7 in the list above is answered by measurement rather than by
 elimination. Measured on the s3 family in the guest only; the netbook has no
 serial port. The unguarded S3 writes on non-S3 silicon are still a defect in
 their own right.
+
+## 2026-08-29: tier-0 breaks identically on a second chip, and the stock driver does not
+
+Full record: `docs\decisions\2026-08-29-dos-box-exit-tier0.md`.
+
+The vbe tier-0 package was installed on the `Win98SE-VBE-Tier0` 86Box guest -
+an **ATI Mach64 VT2**, nothing to do with S3 - through the INF's manual "any
+VESA VBE 2.0+ adapter" entry, and came up `enable-ok mode=1024x768x16
+lfb-mapped` with 22 modes.
+
+**The round trip fails exactly as the s3 family's does**: entry clean, exit
+gives **80 lit columns at a 9-pixel period**, Windows never returns, the agent
+dies, and `V9XBOOT.INI` carries no `DosBox=` key. The desktop mode is not a
+variable - s3 measured it at 640x480x16 and tier-0 at 1024x768x16 for the same
+count and period.
+
+**The control on the same VM answers the emulator question.** Switched back to
+ATI's own 4.02 driver, same card and same desktop mode: the box goes full
+screen and **comes back to an intact desktop**, with the agent answering five
+pings after the return. So 86Box's VGA emulation is not the artefact, and the
+netbook's standard-VGA control is now reproduced somewhere scriptable.
+
+Three consequences:
+
+- The cross-family claim at the top of this issue is now **measured** rather
+  than inferred from two photographs: two families, two unrelated chips, one
+  number.
+- **A chip-specific fix cannot be the answer.** An artefact identical to the
+  pixel on a ViRGE and a Mach64 is not S3 extension-register state; the
+  character cell is standard VGA, which the main VDD restores.
+- What remains is the shared path: what the driver tells the VDD at
+  registration, the VESA linear-framebuffer mode itself, and keeping the switch
+  from happening at all.
+
+Still not established: that this is the netbook's fault. Both measured cases are
+86Box, and the netbook's photograph is a corrupt hi-res desktop rather than a
+legible text page. That comparison needs a person at that keyboard.

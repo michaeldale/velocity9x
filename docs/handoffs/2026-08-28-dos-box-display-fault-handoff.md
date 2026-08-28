@@ -391,3 +391,63 @@ The two things a person can do that would move it are in the same order:
 confirm the exit-leg finding and the 9-pixel period on the HP Mini 110, and try
 `V9XMSW` by hand from Start, Run while the picture is broken - a real keypress,
 which host automation cannot deliver to 86Box.
+
+---
+
+# Session 3 (2026-08-29): tier-0 measured, and the emulator exonerated
+
+Record: [`docs/decisions/2026-08-29-dos-box-exit-tier0.md`](../decisions/2026-08-29-dos-box-exit-tier0.md).
+Evidence: `claude\personal\v9x-86box-dosbox\2026-08-29-tier0\`.
+
+The vbe tier-0 package now runs in 86Box on an **ATI Mach64 VT2**
+(`Win98SE-VBE-Tier0`, host port 9872, COM1 pipe `native-s3-com1`), installed
+through the INF's manual "any VESA VBE 2.0+ adapter" entry. Disk and NVR backed
+up to `Velocity9x Backups\Win98SE-VBE-Tier0-pre-v9x-20260829\` first.
+
+**Tier-0 fails identically to s3**: entry clean, exit 80 lit columns at a
+9-pixel period, no desktop, agent dead, no `DosBox=` key. Two families, two
+unrelated chips, two different desktop modes, one number.
+
+**ATI's own driver on the same VM survives the round trip** - the desktop comes
+back and the agent answers five pings. So the emulator is not the artefact and
+the fault is ours, which is the netbook's standard-VGA control reproduced
+somewhere a script can reach.
+
+**This kills the s3-register-save/restore proposal as a fix for this issue.** An
+artefact identical on a ViRGE and a Mach64 cannot be S3 extension-register
+state. The 9-pixel period is standard VGA text state, which the main VDD
+restores itself.
+
+## Revised list of what is left
+
+1. **The shared path.** What the driver tells the main VDD at registration
+   (`VDD_DRIVER_REGISTER` flags - one measured, null; `VDD_SAVE_DRIVER_STATE`;
+   the re-registration on a live mode switch), and the VESA
+   linear-framebuffer mode the VDD was never told about.
+2. **Keeping the box windowed from outside the VDD** - the PIF route. Family
+   and chip independent, so it is the only thing that protects tier-0, and a
+   windowed box is measured safe on every machine tried.
+3. **Emulator-side observation.** 86Box's debugger or a register dump at the
+   broken moment would name the register that carries the ninth dot. Every
+   in-guest route is exhausted.
+
+## Still needing a person
+
+Confirm the exit leg and the 9-pixel period on the HP Mini 110. Both measured
+cases are 86Box, and the netbook's photograph is a corrupt *hi-res desktop*
+rather than a legible text page - so whether it is the same fault is still
+assumed, not shown.
+
+## Tier-0 guest state as left
+
+- **ATI's 4.02 driver is active** (the control), not Velocity9x. The vbe
+  package is installed in the INF cache and can be reselected through
+  Display Properties, Advanced, Adapter, Change.
+- `vbeTrace1` was the Velocity9x build measured; the package folder is the VM's
+  mounted CD (`build\win98se-vbe`), so a rebuild is picked up by Have Disk
+  without copying anything in.
+- Once Velocity9x is the associated driver again,
+  `update-associated-driver.ps1 -Port 9872` works for further builds; while
+  ATI's driver is active it does not, and the install has to go through the UI.
+- The DOS VBE inventory is at `C:\V9XVBE.EXE` in the guest and its report at
+  `C:\V9XDIAG\V9XVBE.TXT`.
