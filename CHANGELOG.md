@@ -11,13 +11,19 @@ cost and bought.** An Acer NAV50 - Intel Pineview, a class of chip this
 project had never seen - produced four defects and one measurement. The
 defects: the hardware survey was pointing the video BIOS at its own null
 pointer zone and corrupting the machine it promised not to touch; a
-full-screen DOS box lost the scanline stride; the driver installed itself
-twice, onto both of the IGD's display-class functions; and the settings page
-was reporting a hardcoded lie about which mini-VDD callbacks it installs. The
-measurement is that this video BIOS lists thirty-six modes and will describe
-only six of them, which is why the panel's native 1024x600 is out of reach for
-Velocity9x, SoftGPU and Bear Windows VBEMP alike - and the reason for the
-opt-in mode sweep that tries setting what it will not describe.
+full-screen DOS box came back with a corrupt band and froze the machine; the
+driver installed itself twice, onto both of the IGD's display-class functions;
+and the settings page was reporting a hardcoded lie about which mini-VDD
+callbacks it installs. The measurement is that this video BIOS lists
+thirty-six modes and will describe only six of them, which is why the panel's
+native 1024x600 is out of reach for Velocity9x, SoftGPU and Bear Windows VBEMP
+alike - and the reason for the opt-in mode sweep that tries setting what it
+will not describe.
+
+Three of those four are addressed below. **The full-screen DOS box is not.**
+A stride re-assert was written for it and is in this build, but nothing has
+shown it stops the freeze, so 0.6.1 makes no claim about that defect and
+[the issue](docs/issues/2026-08-28-fullscreen-dos-scanout.md) stays open.
 
 None of the fixes has run on hardware yet. The version number exists so that
 the reports that come back can be attributed to the right driver.
@@ -103,16 +109,6 @@ the reports that come back can be attributed to the right driver.
   go with its banned ones, and the self-test a `Remove` mutation shape to
   exercise them, because a rule about an omission cannot be tested by
   appending ([issue](docs/issues/2026-08-28-survey-null-assignment.md)).
-
-- **A full-screen DOS box no longer loses the scanline stride on tier-0.**
-  Returning from full screen left a corrupt band across the top of the
-  desktop, reported on the NAV50 and reproduced on the HP Mini 110.
-  `ResetHiResMode` reaches `V9xHardwareReset`, which re-issued `4F02h` and
-  then - unlike `V9xHardwareEnable`, which has always done it - never called
-  `v9x_vbe_default_pitch`. A BIOS may accept a mode set and scan the surface
-  out at a stride of its own, so the mode came back and the stride did not.
-  Families with their own `post_mode_set` return before the new branch and are
-  unaffected ([issue](docs/issues/2026-08-28-fullscreen-dos-scanout.md)).
 
 - **The settings page no longer claims the mini-VDD installs nothing.**
   `Mini-VDD callbacks: master VDD defaults` was a string literal, wrong since

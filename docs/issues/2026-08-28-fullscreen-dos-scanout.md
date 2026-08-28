@@ -1,8 +1,10 @@
 # A full-screen DOS box comes back with a corrupt band across the top
 
 Date: 2026-08-28
-Status: **fix written, untested on hardware** - it must run on the HP Mini 110
-before 0.6.1 ships
+Status: **open - fix written, untested on hardware**. The stride re-assert
+shipped in 0.6.1 without being run on a machine, so 0.6.1 deliberately claims
+no fix for this defect. It must reproduce and then pass on the HP Mini 110
+before the issue is closed.
 
 Reported by CentaurHauls on an Acer NAV50 (Pineview, Windows Me, vbe package,
 build `200cd31`): switching a DOS box to full screen and back leaves the
