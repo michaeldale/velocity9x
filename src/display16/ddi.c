@@ -203,6 +203,36 @@ static WORD v9x_repaint_pending;
  */
 static WORD v9x_ever_enabled;
 
+#ifdef V9X_DOSBOX_TRACE
+/*
+ * Trace the DOS-box round trip to disk, for
+ * docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
+ *
+ * Three differential builds have eliminated causes without producing any
+ * evidence, because the mini-VDD cannot be traced on this path: the machine
+ * has no serial port and a VxD cannot write a file there. The display driver
+ * can. It is ring 3 GDI code, and Disable already writes a file through
+ * v9x_gdi_accel_flush_report, so this is a channel that exists on exactly the
+ * path in question.
+ *
+ * Its own key, not Stage: the settings page and the boot-trace tooling match
+ * on Stage, and a driver mid-DOS-box is not a driver that failed to start.
+ *
+ * The flush is the point. Profile writes are cached, and every one of these
+ * is followed by something that may take the machine down before the cache is
+ * written back - which is precisely the case this has to survive.
+ */
+static void v9x_dosbox_trace(const char FAR *step)
+{
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", "DosBox", step,
+                              V9X_DIAG_BOOT_INI);
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
+}
+#else
+#define v9x_dosbox_trace(step) ((void)0)
+#endif
+
 #ifdef V9X_BOOT_TRACE
 static BOOL v9x_boot_trace(const char FAR *stage)
 {
@@ -1037,6 +1067,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     V9X_DIB_ENGINE FAR *device =
         (V9X_DIB_ENGINE FAR *)destination_device;
 
+    v9x_dosbox_trace("disable-enter");
     if (device != 0) {
         device->deFlags |= V9X_DE_BUSY;
     }
@@ -1050,9 +1081,11 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     v9x_color_table = 0;
     V9xDdInvalidate();
     V9xVddUnregister();
+    v9x_dosbox_trace("disable-pre-hardware");
     V9xHardwareDisable();
     v9x_screen_selector = 0u;
     v9x_serial_write("V9X-DRV disable\r\n");
+    v9x_dosbox_trace("disable-exit");
     return 0xffffu;
 }
 
@@ -1155,11 +1188,14 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
     if (v9x_selected_mode == previous_mode) {
         /* Unchanged mode: restore the current mode, e.g. returning from a
          * full-screen DOS box. */
+        v9x_dosbox_trace("reenable-same-mode");
         if (v9x_fill_gdi_info((V9X_GDI_INFO FAR *)gdi_info, 0, 0, 0) == 0u ||
             V9xHardwareReset() == 0u) {
             v9x_serial_write("V9X-DRV reenable-fail\r\n");
+            v9x_dosbox_trace("reenable-fail");
             return 0u;
         }
+        v9x_dosbox_trace("reenable-hardware-ok");
         device->deFlags &= (WORD)~V9X_DE_BUSY;
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
@@ -1167,6 +1203,7 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         v9x_publish_hardware_diagnostics();
         V9xVddPostMode();
         v9x_serial_write("V9X-DRV reenable-ok\r\n");
+        v9x_dosbox_trace("reenable-exit");
         return 1u;
     }
 
@@ -1295,9 +1332,12 @@ DWORD __loadds FAR PASCAL SetPalette(WORD start,
 
 void __loadds FAR PASCAL ResetHiResMode(void)
 {
+    v9x_dosbox_trace("reset-enter");
     if (V9xHardwareReset() != 0u) {
+        v9x_dosbox_trace("reset-hardware-ok");
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
         }
     }
+    v9x_dosbox_trace("reset-exit");
 }

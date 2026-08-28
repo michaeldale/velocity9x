@@ -8,7 +8,12 @@ param(
     [string]$Variant,
     [ValidateRange(-1, 5)]
     [int]$ForceModeIndex = -1,
-    [switch]$BootTrace
+    [switch]$BootTrace,
+    # Write a DosBox= step to V9XBOOT.INI, flushed, at each point of the
+    # DOS-box round trip. The instrument for
+    # docs\issues\2026-08-28-dos-box-entry-hang-gma950.md, where the mini-VDD
+    # cannot be traced and the display driver can.
+    [switch]$DosBoxTrace
 )
 
 $ErrorActionPreference = "Stop"
@@ -106,6 +111,9 @@ foreach ($source in $sources) {
     }
     if ($BootTrace) {
         $arguments = @("-dV9X_BOOT_TRACE=1") + $arguments
+    }
+    if ($DosBoxTrace) {
+        $arguments = @("-dV9X_DOSBOX_TRACE=1") + $arguments
     }
     foreach ($define in $familyDefines) {
         $arguments = @("-d$define") + $arguments

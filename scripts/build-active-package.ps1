@@ -26,7 +26,10 @@ param(
     # docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
     [switch]$VgaReturn,
     [switch]$NoDpms,
-    [switch]$NoScreenSwitch
+    [switch]$NoScreenSwitch,
+    # Trace the DOS-box round trip from the display driver, which can write a
+    # file where the mini-VDD cannot. The instrument, not another elimination.
+    [switch]$DosBoxTrace
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,7 +65,7 @@ if ($BuildId -notmatch '^[A-Za-z0-9._+-]+$') {
 $traceEnabled = -not $NoBootTrace
 & (Join-Path $PSScriptRoot "build-win16-ddi-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -ForceModeIndex $ForceModeIndex `
-    -BootTrace:$traceEnabled -Family $Family
+    -BootTrace:$traceEnabled -Family $Family -DosBoxTrace:$DosBoxTrace
 $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-minivdd-skeleton.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
