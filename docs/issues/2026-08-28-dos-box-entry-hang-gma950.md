@@ -3,6 +3,7 @@
 *Filed as "hangs the machine". It does not: see the status line.*
 
 Date: 2026-08-28
+Handoff: [`docs/handoffs/2026-08-28-dos-box-display-fault-handoff.md`](../handoffs/2026-08-28-dos-box-display-fault-handoff.md)
 Status: **open, and reproduced in 86Box on an emulated S3 ViRGE - so it is
 neither Intel-specific nor tier-0-specific, and it can now be worked on
 without the netbook.** The title is also wrong: the machine does not hang.
