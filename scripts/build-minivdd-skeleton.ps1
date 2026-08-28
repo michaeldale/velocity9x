@@ -30,14 +30,24 @@ param(
     # hardware state cannot be reliably saved and restored. Unlike the two
     # above, this one is a candidate for shipping if it works.
     [switch]$NoScreenSwitch,
-    # -ScreenSwitchTrace is the instrument, not an experiment: it installs
-    # observer-only hooks on the four HiRes/VGA notifications plus
-    # CHECK_SCREEN_SWITCH_OK, each of which writes one serial line and returns.
-    # It is how the main VDD's own narration of the DOS-box round trip becomes
-    # readable on a guest with COM1 to a file. It changes no register of the
-    # card and refuses nothing. See the observer bodies in
-    # src\minivdd32\loader.asm for why SAVE_REGISTERS is not among them.
+    # -ScreenSwitchTrace installs observer-only hooks on the four HiRes/VGA
+    # notifications plus CHECK_SCREEN_SWITCH_OK, each of which writes one serial
+    # line and returns. It changes no register of the card and refuses nothing.
+    # See the observer bodies in src\minivdd32\loader.asm for why SAVE_REGISTERS
+    # is not among them.
+    #
+    # It also does not work: with it installed the box never reaches full screen
+    # and the Win16 side wedges, and no line is emitted
+    # (docs\decisions\2026-08-28-dos-box-exit-ninth-dot.md).
+    #
+    # -ScreenSwitchQuiet is the same five hooks with the serial writes assembled
+    # out, which is what separates the two mechanisms that fit that result: a
+    # dispatch entry in one of those slots changing the main VDD's path, or the
+    # serial write itself deadlocking in that context. The outcome is the whole
+    # readout - there is nothing to read but how the round trip behaves - so the
+    # Device_Init marker names the variant.
     [switch]$ScreenSwitchTrace,
+    [switch]$ScreenSwitchQuiet,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -143,6 +153,14 @@ if ($NoDpms) {
     $buildIncludeLines += @(
         "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-disabled build=$BuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
+    )
+}
+if ($ScreenSwitchQuiet) {
+    # The quiet variant's hooks write nothing, so this Device_Init line is the
+    # only thing that says which image is running.
+    $buildIncludeLines += @(
+        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-quiet build=$BuildId`", 13, 10",
+        "V9xMiniSsTraceLineLength equ `$ - V9xMiniSsTraceLine"
     )
 }
 if ($ScreenSwitchTrace) {
@@ -309,18 +327,27 @@ if ($NoDpms) {
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
 }
-if ($ScreenSwitchTrace) {
-    # Both of these dispatch a callback the trace also dispatches, and the last
-    # write to a table slot wins, so the image would carry one of them silently.
+if ($ScreenSwitchTrace -or $ScreenSwitchQuiet) {
+    # Both of these dispatch a callback the observer hooks also dispatch, and
+    # the last write to a table slot wins, so the image would carry one of them
+    # silently.
     if ($VgaReturn) {
-        throw ("-ScreenSwitchTrace and -VgaReturn both dispatch " +
+        throw ("The screen-switch hooks and -VgaReturn both dispatch " +
                "PRE_HIRES_TO_VGA. Build them separately.")
     }
     if ($NoScreenSwitch) {
-        throw ("-ScreenSwitchTrace and -NoScreenSwitch both dispatch " +
+        throw ("The screen-switch hooks and -NoScreenSwitch both dispatch " +
                "CHECK_SCREEN_SWITCH_OK. Build them separately.")
     }
-    $assemblerArguments = @("-DV9X_SCREEN_SWITCH_TRACE") + $assemblerArguments
+    if ($ScreenSwitchTrace -and $ScreenSwitchQuiet) {
+        throw ("-ScreenSwitchTrace and -ScreenSwitchQuiet are the two variants " +
+               "of one experiment: the quiet one is the traced one with the " +
+               "writes removed. Pick one.")
+    }
+    $assemblerArguments = @("-DV9X_SCREEN_SWITCH_HOOKS") + $assemblerArguments
+    if ($ScreenSwitchTrace) {
+        $assemblerArguments = @("-DV9X_SCREEN_SWITCH_TRACE") + $assemblerArguments
+    }
 }
 & $assembler @assemblerArguments
 if ($LASTEXITCODE -ne 0) {
@@ -382,11 +409,11 @@ $expectedDispatches = @(
     "/GET_MONITOR_POWER_STATE_CAPS,GetMonitorPowerStateCaps",
     "V9X_VGA_RETURN/PRE_HIRES_TO_VGA,PreHiResToVGA",
     "V9X_NO_SCREEN_SWITCH/CHECK_SCREEN_SWITCH_OK,CheckScreenSwitchOK",
-    "V9X_SCREEN_SWITCH_TRACE/CHECK_SCREEN_SWITCH_OK,TraceCheckScreenSwitchOK",
-    "V9X_SCREEN_SWITCH_TRACE/PRE_HIRES_TO_VGA,TracePreHiResToVGA",
-    "V9X_SCREEN_SWITCH_TRACE/POST_HIRES_TO_VGA,TracePostHiResToVGA",
-    "V9X_SCREEN_SWITCH_TRACE/PRE_VGA_TO_HIRES,TracePreVGAToHiRes",
-    "V9X_SCREEN_SWITCH_TRACE/POST_VGA_TO_HIRES,TracePostVGAToHiRes"
+    "V9X_SCREEN_SWITCH_HOOKS/CHECK_SCREEN_SWITCH_OK,TraceCheckScreenSwitchOK",
+    "V9X_SCREEN_SWITCH_HOOKS/PRE_HIRES_TO_VGA,TracePreHiResToVGA",
+    "V9X_SCREEN_SWITCH_HOOKS/POST_HIRES_TO_VGA,TracePostHiResToVGA",
+    "V9X_SCREEN_SWITCH_HOOKS/PRE_VGA_TO_HIRES,TracePreVGAToHiRes",
+    "V9X_SCREEN_SWITCH_HOOKS/POST_VGA_TO_HIRES,TracePostVGAToHiRes"
 )
 $foundDispatches = [System.Collections.Generic.List[string]]::new()
 $guardStack = [System.Collections.Generic.List[string]]::new()
@@ -440,9 +467,11 @@ if ($NoScreenSwitch -ne $screenSwitchSymbol) {
     throw ("The mini-VDD image " + $(if ($screenSwitchSymbol) { "carries" } else { "lacks" }) +
            " the screen-switch refusal, which is not what -NoScreenSwitch asked for.")
 }
-# All five observer hooks, not just one: a partial trace would read as "that
+# All five observer hooks, not just one: a partial set would read as "that
 # callback never fired" for whichever body went missing, which is the exact
-# wrong answer for an instrument whose whole output is which lines arrive.
+# wrong answer from an experiment whose whole output is how the round trip
+# behaves. Both variants install all five; only the writes differ.
+$screenSwitchHooks = ($ScreenSwitchTrace -or $ScreenSwitchQuiet)
 foreach ($observer in @("MiniVDD_TraceCheckScreenSwitchOK",
                         "MiniVDD_TracePreHiResToVGA",
                         "MiniVDD_TracePostHiResToVGA",
@@ -450,18 +479,28 @@ foreach ($observer in @("MiniVDD_TraceCheckScreenSwitchOK",
                         "MiniVDD_TracePostVGAToHiRes")) {
     $observerSymbol = ([regex]::Matches(
         (Get-Content -LiteralPath $mapPath -Raw), $observer)).Count -gt 0
-    if ($ScreenSwitchTrace -ne $observerSymbol) {
+    if ($screenSwitchHooks -ne $observerSymbol) {
         throw ("The mini-VDD image " + $(if ($observerSymbol) { "carries" } else { "lacks" }) +
-               " $observer, which is not what -ScreenSwitchTrace asked for.")
+               " $observer, which is not what the screen-switch switches asked for.")
     }
 }
-$screenSwitchTraceMarker = "V9X-MINI screen-switch-trace"
-if ($ScreenSwitchTrace) {
-    if (-not $imageText.Contains($screenSwitchTraceMarker)) {
-        throw "The screen-switch-trace mini-VDD is missing its marker."
-    }
-} elseif ($imageText.Contains($screenSwitchTraceMarker)) {
-    throw "A default mini-VDD build must not carry the screen-switch-trace marker."
+# Exactly one marker, naming the variant. The per-callback strings are the
+# difference between the two, so their presence is asserted too: a quiet build
+# that still carried them would be the traced build under the wrong name.
+$traceMarker = "V9X-MINI screen-switch-trace"
+$quietMarker = "V9X-MINI screen-switch-quiet"
+$callbackMarker = "V9X-MINI ss pre-vga-to-hires"
+if ($ScreenSwitchTrace -ne $imageText.Contains($traceMarker)) {
+    throw ("The mini-VDD image " + $(if ($imageText.Contains($traceMarker)) { "carries" } else { "lacks" }) +
+           " the screen-switch-trace marker, which is not what -ScreenSwitchTrace asked for.")
+}
+if ($ScreenSwitchQuiet -ne $imageText.Contains($quietMarker)) {
+    throw ("The mini-VDD image " + $(if ($imageText.Contains($quietMarker)) { "carries" } else { "lacks" }) +
+           " the screen-switch-quiet marker, which is not what -ScreenSwitchQuiet asked for.")
+}
+if ($ScreenSwitchTrace -ne $imageText.Contains($callbackMarker)) {
+    throw ("The mini-VDD image " + $(if ($imageText.Contains($callbackMarker)) { "carries" } else { "lacks" }) +
+           " the per-callback trace strings, which only -ScreenSwitchTrace asks for.")
 }
 $dpmsDisabledMarker = "V9X-MINI dpms-disabled"
 if ($NoDpms) {

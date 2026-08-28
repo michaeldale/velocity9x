@@ -1625,21 +1625,38 @@ BeginProc MiniVDD_PreHiResToVGA
 EndProc MiniVDD_PreHiResToVGA
 ENDIF
 
-IFDEF V9X_SCREEN_SWITCH_TRACE
+IFDEF V9X_SCREEN_SWITCH_HOOKS
 ; Observer hooks for docs\issues\2026-08-28-dos-box-entry-hang-gma950.md, so
 ; the DOS-box round trip can be watched from the VxD side instead of inferred.
 ;
 ; The display driver's own nine-point trace writes nothing on this path and
 ; neither does the serial log, which says the driver is never entered - but not
 ; whether the main VDD got as far as intending to. These five callbacks are the
-; VDD's own narration of the round trip, and 86Box's COM1 file gives them
-; somewhere to land.
+; VDD's own narration of the round trip.
 ;
-; Each one writes a fixed string and returns. That is safe because these five
-; are notifications: MINIVDD documents PRE_HIRES_TO_VGA, POST_HIRES_TO_VGA,
-; PRE_VGA_TO_HIRES and POST_VGA_TO_HIRES as "we are notified", with "Exit:
-; Nothing assumed", and CHECK_SCREEN_SWITCH_OK as carry-prohibits /
-; no-carry-allows, so a CLC is the same answer as not hooking it at all.
+; They are notifications, which is what licenses a body that only observes:
+; MINIVDD documents PRE_HIRES_TO_VGA, POST_HIRES_TO_VGA, PRE_VGA_TO_HIRES and
+; POST_VGA_TO_HIRES as "we are notified", with "Exit: Nothing assumed", and
+; CHECK_SCREEN_SWITCH_OK as carry-prohibits / no-carry-allows, so a CLC is the
+; same answer as not hooking it at all.
+;
+; Two variants, because the first one changed the outcome. With the serial
+; writes in (-ScreenSwitchTrace) the box never reaches full screen at all and
+; the Win16 side wedges, twice out of two, and not one byte is emitted - while
+; the plain mini-VDD on the same guest and the same serial device goes full
+; screen cleanly. Two mechanisms fit that: a dispatch entry in one of these
+; slots changing the main VDD's path, or V9xMini_Serial_Write's raw port I/O on
+; 0x3F8-0x3FB deadlocking because it runs inside a callback belonging to the VM
+; being switched, whose COM1 the VCD is virtualising. -ScreenSwitchQuiet
+; assembles the same hooks with the writes omitted, so the outcome alone
+; separates them: a round trip that behaves like the plain build means hooking
+; is free and the serial write was the wedge, which would in turn mean a hook
+; is a legitimate place to put a repair.
+;
+; The one measurement already in hand: -NoScreenSwitch installs a single
+; refusing hook on CHECK_SCREEN_SWITCH_OK, and the box goes full screen anyway
+; with the agent healthy. So the main VDD does not consult that callback on
+; this path, and whatever the trace build broke was one of the other four.
 ;
 ; What is deliberately NOT hooked: SAVE_REGISTERS and RESTORE_REGISTERS. Those
 ; are work, not narration - hooking them tells the main VDD the mini-VDD will
@@ -1649,6 +1666,7 @@ IFDEF V9X_SCREEN_SWITCH_TRACE
 ; Fixed strings only: V9xMini_Hex16 is in ICODE, discarded after init, and
 ; these run long afterwards.
 BeginProc MiniVDD_TraceCheckScreenSwitchOK
+IFDEF V9X_SCREEN_SWITCH_TRACE
     pushfd
     pushad
 
@@ -1658,11 +1676,13 @@ BeginProc MiniVDD_TraceCheckScreenSwitchOK
 
     popad
     popfd
+ENDIF
     clc                                 ; allow the switch, as no hook does
     ret
 EndProc MiniVDD_TraceCheckScreenSwitchOK
 
 BeginProc MiniVDD_TracePreHiResToVGA
+IFDEF V9X_SCREEN_SWITCH_TRACE
     pushfd
     pushad
 
@@ -1672,10 +1692,12 @@ BeginProc MiniVDD_TracePreHiResToVGA
 
     popad
     popfd
+ENDIF
     ret
 EndProc MiniVDD_TracePreHiResToVGA
 
 BeginProc MiniVDD_TracePostHiResToVGA
+IFDEF V9X_SCREEN_SWITCH_TRACE
     pushfd
     pushad
 
@@ -1685,10 +1707,12 @@ BeginProc MiniVDD_TracePostHiResToVGA
 
     popad
     popfd
+ENDIF
     ret
 EndProc MiniVDD_TracePostHiResToVGA
 
 BeginProc MiniVDD_TracePreVGAToHiRes
+IFDEF V9X_SCREEN_SWITCH_TRACE
     pushfd
     pushad
 
@@ -1698,10 +1722,12 @@ BeginProc MiniVDD_TracePreVGAToHiRes
 
     popad
     popfd
+ENDIF
     ret
 EndProc MiniVDD_TracePreVGAToHiRes
 
 BeginProc MiniVDD_TracePostVGAToHiRes
+IFDEF V9X_SCREEN_SWITCH_TRACE
     pushfd
     pushad
 
@@ -1711,6 +1737,7 @@ BeginProc MiniVDD_TracePostVGAToHiRes
 
     popad
     popfd
+ENDIF
     ret
 EndProc MiniVDD_TracePostVGAToHiRes
 ENDIF
@@ -1720,12 +1747,16 @@ BeginProc MiniVDD_Dynamic_Init
     mov     ecx, V9xMiniInitLineLength
     call    V9xMini_Serial_Write
 
-IFDEF V9X_SCREEN_SWITCH_TRACE
-    ; Named before the dispatch table is fetched, deliberately: further down,
-    ; ECX holds the table size the power-callback test needs, and code inserted
+IFDEF V9X_SCREEN_SWITCH_HOOKS
+    ; Both hook variants name themselves here, and the text says which one is
+    ; running - the quiet build writes nothing from the hooks themselves, so
+    ; this is the only line that identifies it.
+    ;
+    ; Before the dispatch table is fetched, deliberately: further down, ECX
+    ; holds the table size the power-callback test needs, and code inserted
     ; between the short jumps below and their targets pushes them out of range.
-    ; A capture therefore says which build is running even if the table is
-    ; refused - which is itself a thing this instrument might have to report.
+    ; Device_Init is also the one context on this path known to be safe for a
+    ; serial write, which is the whole question the quiet variant exists to ask.
     mov     esi, OFFSET32 V9xMiniSsTraceLine
     mov     ecx, V9xMiniSsTraceLineLength
     call    V9xMini_Serial_Write
@@ -1758,7 +1789,7 @@ IFDEF V9X_NO_SCREEN_SWITCH
     MiniVDDDispatch CHECK_SCREEN_SWITCH_OK, CheckScreenSwitchOK
 ENDIF
 
-IFDEF V9X_SCREEN_SWITCH_TRACE
+IFDEF V9X_SCREEN_SWITCH_HOOKS
     ; Functions 4 to 7 and 43; see the observer bodies above. Functions 4 and 5
     ; also exist in the 40-entry table, 6, 7 and 43 only in the 49-entry one
     ; the count checked above already required.
