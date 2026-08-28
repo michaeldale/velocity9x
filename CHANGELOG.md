@@ -4,7 +4,23 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.6.1 - 2026-08-28
+
+**A third party ran 0.6.0 on hardware nobody here owns, and this is what that
+cost and bought.** An Acer NAV50 - Intel Pineview, a class of chip this
+project had never seen - produced four defects and one measurement. The
+defects: the hardware survey was pointing the video BIOS at its own null
+pointer zone and corrupting the machine it promised not to touch; a
+full-screen DOS box lost the scanline stride; the driver installed itself
+twice, onto both of the IGD's display-class functions; and the settings page
+was reporting a hardcoded lie about which mini-VDD callbacks it installs. The
+measurement is that this video BIOS lists thirty-six modes and will describe
+only six of them, which is why the panel's native 1024x600 is out of reach for
+Velocity9x, SoftGPU and Bear Windows VBEMP alike - and the reason for the
+opt-in mode sweep that tries setting what it will not describe.
+
+None of the fixes has run on hardware yet. The version number exists so that
+the reports that come back can be attributed to the right driver.
 
 ### Added
 

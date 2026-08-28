@@ -12,7 +12,7 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.6.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.6.1** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **0.6.0 is the release where this stops being an engineering bring-up and
 > becomes a working driver.** The full stack — display driver, DirectDraw HAL,
