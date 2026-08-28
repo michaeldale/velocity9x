@@ -44,6 +44,10 @@
  * so the two-digit key format below cannot overflow. */
 #define V9X_MAX_TRIALS    64u
 
+/* Ctrl+Alt+Shift+R while a trial is running: re-assert the display mode. Any
+ * id will do; it is unregistered before the process exits. */
+#define V9X_RESCUE_HOTKEY_ID 0xb9c1
+
 static char *v9x_append_text(char *cursor, char *end, const char *text)
 {
     while (cursor < end && *text != '\0') {
@@ -223,6 +227,75 @@ static void v9x_describe_driver(char *text, DWORD size)
 }
 
 /*
+ * Re-assert the current display mode.
+ *
+ * The repair half of this tool, for
+ * docs\issues\2026-08-28-dos-box-entry-hang-gma950.md. A full-screen DOS box
+ * on that machine leaves the picture destroyed while Windows keeps running,
+ * and the display driver is never entered on that path - a nine-point trace
+ * of Disable, ResetHiResMode and ReEnable wrote nothing. A mode change does
+ * enter the driver, through ReEnable's unchanged-mode branch, which is the
+ * one path that reaches V9xHardwareReset.
+ *
+ * So this asks the question the machine cannot be asked by hand while its
+ * screen is unreadable: does re-asserting the mode put the picture back?
+ *
+ * CDS_UPDATEREGISTRY and the current geometry, exactly as mode_switch_win32.c
+ * does it - the point is to travel the ordinary Display Properties path, not
+ * a private one.
+ */
+static LONG v9x_reassert_mode(void)
+{
+    DEVMODEA mode;
+    BYTE *bytes = (BYTE *)&mode;
+    UINT index;
+    HDC screen = GetDC(0);
+
+    if (screen == 0) {
+        return DISP_CHANGE_FAILED;
+    }
+    for (index = 0u; index < sizeof(mode); ++index) {
+        bytes[index] = 0u;
+    }
+    mode.dmSize = sizeof(mode);
+    mode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
+    mode.dmPelsWidth = (DWORD)GetDeviceCaps(screen, HORZRES);
+    mode.dmPelsHeight = (DWORD)GetDeviceCaps(screen, VERTRES);
+    mode.dmBitsPerPel = (DWORD)(GetDeviceCaps(screen, BITSPIXEL) *
+                                GetDeviceCaps(screen, PLANES));
+    ReleaseDC(0, screen);
+
+    return ChangeDisplaySettingsA(&mode, CDS_UPDATEREGISTRY);
+}
+
+static void v9x_record_rescue(const char *when, LONG result)
+{
+    char key[32];
+    char text[64];
+    char *cursor = key;
+
+    cursor = v9x_append_text(cursor, key + sizeof(key) - 1, "Rescue");
+    cursor = v9x_append_text(cursor, key + sizeof(key) - 1, when);
+    *cursor = '\0';
+
+    cursor = text;
+    if (result == DISP_CHANGE_SUCCESSFUL) {
+        cursor = v9x_append_text(cursor, text + sizeof(text) - 1, "ok");
+    } else {
+        cursor = v9x_append_text(cursor, text + sizeof(text) - 1, "failed rc=");
+        /* Negative on every failure code, so the sign is carried by hand. */
+        if (result < 0l) {
+            *cursor++ = '-';
+            result = -result;
+        }
+        cursor = v9x_append_uint(cursor, text + sizeof(text) - 1, (DWORD)result);
+    }
+    *cursor = '\0';
+    v9x_write(key, text);
+    v9x_flush();
+}
+
+/*
  * Launch the interpreter and wait for it to close.
  *
  * CreateProcess rather than WinExec because the wait is the whole point: a
@@ -257,7 +330,36 @@ static int v9x_run_shell(void)
                         &startup, &process)) {
         return 0;
     }
-    WaitForSingleObject(process.hProcess, INFINITE);
+
+    /*
+     * Wait for the box, but stay able to act while waiting.
+     *
+     * The reason is the whole point of this build: on the affected machine the
+     * screen is unreadable from the moment the box goes full screen, so
+     * "close the box and the tool will repair it" assumes the user can find
+     * the box to close it. A hotkey does not assume that. It is registered
+     * against the thread queue rather than a window, which needs the message
+     * pump below - a plain WaitForSingleObject would never see it.
+     */
+    RegisterHotKey(0, V9X_RESCUE_HOTKEY_ID,
+                   MOD_CONTROL | MOD_ALT | MOD_SHIFT, 'R');
+    for (;;) {
+        MSG message;
+        DWORD signalled = MsgWaitForMultipleObjects(1u, &process.hProcess,
+                                                    FALSE, INFINITE,
+                                                    QS_ALLINPUT);
+
+        if (signalled == WAIT_OBJECT_0) {
+            break;
+        }
+        while (PeekMessageA(&message, 0, 0u, 0u, PM_REMOVE)) {
+            if (message.message == WM_HOTKEY) {
+                v9x_record_rescue("Hotkey", v9x_reassert_mode());
+            }
+        }
+    }
+    UnregisterHotKey(0, V9X_RESCUE_HOTKEY_ID);
+
     CloseHandle(process.hProcess);
     CloseHandle(process.hThread);
     return 1;
@@ -354,9 +456,13 @@ void __stdcall V9xDosBoxTestEntry(void)
             "in the window, then type EXIT. Do not press ALT+ENTER.");
     }
     cursor = v9x_append_text(cursor, end,
-        "\r\n\r\nIf the machine hangs, power it off, start it again and run "
-        "this program once more. It will record the hang by itself - there is "
-        "nothing to write down.");
+        "\r\n\r\nIF THE PICTURE BREAKS: the machine is probably still "
+        "running. Press CTRL+ALT+SHIFT+R to put the screen back. Closing the "
+        "DOS box does the same thing by itself.");
+    cursor = v9x_append_text(cursor, end,
+        "\r\n\r\nIf it really is dead, power it off, start it again and run "
+        "this program once more. It records that by itself - there is nothing "
+        "to write down.");
     *cursor = '\0';
 
     if (MessageBoxA(0, message, "Velocity9x DOS box test",
@@ -379,6 +485,12 @@ void __stdcall V9xDosBoxTestEntry(void)
     /* Reached only because the box closed and the desktop is still alive. */
     v9x_write(state_key, "survived");
     v9x_flush();
+
+    /* The repair, unconditionally after every trial. It costs a flicker on a
+     * trial that did no damage and it is the entire experiment on one that
+     * did - and the machine it is aimed at cannot be asked to do it by hand,
+     * because by then its screen is unreadable. */
+    v9x_record_rescue("AfterBox", v9x_reassert_mode());
 
     MessageBoxA(0, "That trial survived.\r\n\r\nRun this program again for the "
                    "next one. When you have done both a windowed and a full "
