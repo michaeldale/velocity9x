@@ -1,11 +1,13 @@
 # A DOS box hangs the HP Mini 110 before it draws a prompt
 
 Date: 2026-08-28
-Status: **open, and attributable. A windowed DOS box is clean, the
-full-screen transition hangs at both 32bpp and 16bpp, and the stock Windows
-VGA driver on the same machine does the same thing without fault.** This is
-Velocity9x's defect, not the machine's. The cause within the transition is
-still unknown.
+Status: **open and attributable, cause unknown, and three differential builds
+have failed to find it.** A windowed DOS box is clean; the full-screen
+transition hangs from every mode the panel offers; the stock Windows VGA
+driver does it faultlessly on the same machine. So the defect is Velocity9x's.
+Returning to VGA ourselves, and refusing the switch outright, both hang the
+same way. The next build is an instrument rather than another elimination -
+see "Stop eliminating; get a trace".
 
 Reported here on the HP Mini 110 (Intel 945GSE, GMA 950, PCI `8086:27AE`),
 running the released 0.6.1 vbe package, build `e938fdc`. Typing `command` in
@@ -335,8 +337,9 @@ not it explains anything here.
 6. ~~**`-VgaReturn`.**~~ Done. Hangs the same way.
 7. **`-NoDpms`.** Built, not run. Expected to hang; it removes a variable
    rather than testing a mechanism.
-8. **`-NoScreenSwitch`.** Built, not run. The candidate answer rather than
-   another probe - see below.
+8. ~~**`-NoScreenSwitch`.**~~ Done. Hangs the same way.
+9. **`-DosBoxTrace`.** Built, not run. The instrument rather than another
+   elimination - see below.
 
 ## The answer this points at: refuse the switch
 
@@ -367,3 +370,46 @@ If it works, this is a candidate for shipping on tier-0 rather than a
 stopgap - the same trade Microsoft made for the XGA, made for the same reason.
 A windowed DOS box already works, and it is what a tier-0 user would get
 instead of a machine that needs the power switch.
+
+### Result: refusing the switch does not prevent it either
+
+`claude\personal\v9x-intel950\2build\`, `Build=48ca2d3-noswitch`,
+`Stage=enable-ok`, trials 7 and 8 both hung at 640x480x8. So either the main
+VDD does not consult `CHECK_SCREEN_SWITCH_OK` on this path, or the fault is
+reached before the question is asked. Which of those, is not distinguishable
+from here - the same wall as everything else.
+
+## Stop eliminating; get a trace
+
+Three differential builds have now removed candidate causes and produced no
+evidence about the fault. That is the signal that the approach is wrong, not
+that the next elimination will land.
+
+The reason there is no evidence is structural: everything suspected lives in
+the mini-VDD, and on this machine a VxD cannot be traced at all.
+
+**The display driver can, and has not been asked to.** It is ring 3 GDI code.
+`Disable` already writes a file on this exact path through
+`v9x_gdi_accel_flush_report`. The channel existed the whole time.
+
+`-DosBoxTrace` writes a `DosBox=` step to `V9XBOOT.INI` at each point of the
+round trip and flushes the profile cache after each one, because every step is
+followed by something that may take the machine down before a cached write is
+written back:
+
+```
+disable-enter, disable-pre-hardware, disable-exit
+reset-enter, reset-hardware-ok, reset-exit
+reenable-same-mode, reenable-hardware-ok, reenable-exit
+```
+
+Own key, not `Stage=`: a driver mid-DOS-box is not a driver that failed to
+start, and the settings page and boot-trace tooling match on `Stage`.
+
+**What the first run answers.** Whether the display driver is entered at all on
+the way into a full-screen DOS box. No `DosBox=` after a hang means our 16-bit
+code never runs, and every place examined so far has been the wrong one. A
+`DosBox=` that stops at a named step names the last thing that completed.
+
+Built as `c5fa4ed-trace`. It is expected to hang; that is not its failure
+condition.
