@@ -1,11 +1,12 @@
-# A full-screen DOS box destroys the picture on the HP Mini 110
+# A full-screen DOS box destroys the picture, on the Mini 110 and in 86Box
 
 *Filed as "hangs the machine". It does not: see the status line.*
 
 Date: 2026-08-28
-Status: **open. The title of this issue is wrong and so was most of what
-follows it: the machine does not hang.** Windows keeps running - the mouse
-moves - and only the picture is destroyed. The display driver is never
+Status: **open, and reproduced in 86Box on an emulated S3 ViRGE - so it is
+neither Intel-specific nor tier-0-specific, and it can now be worked on
+without the netbook.** The title is also wrong: the machine does not hang.
+Windows keeps running - the mouse moves - and only the picture is destroyed. The display driver is never
 entered on this path at all: a build tracing nine points across `Disable`,
 `ResetHiResMode` and `ReEnable` wrote none of them. See "What the trace
 proves", which supersedes the three eliminations above it.
@@ -479,3 +480,55 @@ If the desktop comes back, then re-asserting the mode is the whole of the
 repair and the only thing missing is a trigger for it - which is a much
 smaller problem than it has looked for the last four builds. If it does not,
 the mode is not the whole of what was lost.
+
+## Reproduced in 86Box, on an S3 ViRGE
+
+2026-08-28, `Win86SE` guest (86Box 6.0, ViRGE/DX, Win98SE), s3 family package
+built `8c59959-trace` and deployed with `update-associated-driver.ps1`.
+
+**The striping reproduces.** A full-screen DOS box in the guest shows the
+Windows 98 banner and `C:\>` prompt legibly, overlaid with the same regular
+fine vertical striping the netbook photographs show. Screenshot of the
+emulator window taken host-side while the guest was full screen.
+
+So **it is not Intel-specific, not GMA-specific, and not tier-0-specific.** It
+happens on an emulated S3 ViRGE running the s3 family driver, in an emulator
+that can be driven from a script.
+
+**And the trace is silent here too.** After the full-screen round trip
+`V9XBOOT.INI` carried no `DosBox=` key.
+
+### The control that makes that mean something
+
+An absent trace proves nothing until the trace is known to fire, and two
+attempts to prove it failed to exercise the instrumented code:
+
+- `V9XMSW.EXE /set:` to a *different* mode enters `ReEnable`'s mode-change
+  branch, which is not instrumented. Inconclusive.
+- `/set:` to the *current* mode wrote nothing either - `ChangeDisplaySettings`
+  evidently declines a no-op change before the driver is reached.
+
+A graceful reboot does call `Disable`. After one, the file read:
+
+```
+DosBox=disable-exit
+```
+
+The instrument works, it survives a reboot, and its silence across the DOS-box
+round trip is therefore a measurement rather than a missing feature.
+
+### What this changes
+
+The netbook stops being the only machine that can answer questions about this,
+and it was a machine with no serial port, no boot stage on the path, and a
+human round trip per experiment. The 86Box guest has a scriptable agent, COM1
+to a file, and a disk that can be rolled back - and it shows the same defect.
+
+Every remaining question about this issue should be asked there first.
+
+### Not yet checked on the guest
+
+Whether the guest's desktop comes back corrupt or clean after the round trip,
+which is the netbook's actual symptom. The DOS box was legible-but-striped
+while full screen; what the desktop looks like on return has not been
+captured, and the guest was reset mid-run before that could be seen.
