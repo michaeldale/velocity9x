@@ -15,11 +15,14 @@ this fixable rather than remote.
 Photograph and reporter's notes:
 `claude\personal\v9x-centaurhauls-acer\source-data\`.
 
-The HP Mini 110 has since been seen to hang on the way *into* a DOS box,
-before any prompt is drawn, on both 0.6.0 and 0.6.1 - filed separately as
-`docs\issues\2026-08-28-dos-box-entry-hang-gma950.md`. Whether that shares a
-cause with this band is unknown; they are kept apart until something says
-otherwise.
+The HP Mini 110 has since been seen to hang when a DOS box goes full screen,
+on both 0.6.0 and 0.6.1 - filed separately as
+`docs\issues\2026-08-28-dos-box-entry-hang-gma950.md`. It was first reported
+as a hang on the way *in*; a differential run has since measured a windowed
+box surviving and the full-screen trial not returning, which puts it on this
+same round trip. Whether the two are one defect is still unknown, but they are
+no longer plainly separate. **Note what that costs this issue: the test below
+cannot be run on the Mini 110 while a full-screen box hangs it.**
 
 ## What the picture says
 

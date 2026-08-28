@@ -1,8 +1,9 @@
 # A DOS box hangs the HP Mini 110 before it draws a prompt
 
 Date: 2026-08-28
-Status: **open - reproduced, cause unknown. Nothing is measured beyond the
-hang itself; no hypothesis below has been tested.**
+Status: **open, and narrowed by measurement: a windowed DOS box is clean and
+the full-screen transition is what hangs.** See "Measured" below. The cause
+within that transition is still unknown.
 
 Reported here on the HP Mini 110 (Intel 945GSE, GMA 950, PCI `8086:27AE`),
 running the released 0.6.1 vbe package, build `e938fdc`. Typing `command` in
@@ -61,6 +62,60 @@ that build, and a clean boot from it here would mean nothing.
 `SWEEP_RAN` (`0x2000`) is clear, which confirms the package installed was the
 plain one.
 
+## Measured
+
+`V9XDOSBX.EXE` build `ecc3e52`, run on the machine.
+`claude\personal\v9x-intel950\0.6.1a\V9XDOSBX.INI`:
+
+```
+Trial00=mode=1024x576x32 action=windowed
+Trial00State=survived
+Trial01=mode=1024x576x32 action=fullscreen
+Trial01State=armed
+```
+
+**A windowed DOS box opens, runs and closes with the desktop intact.** The
+full-screen trial never wrote an outcome. The tool writes and flushes its
+record before it opens the box precisely so that this absence is readable: a
+cancel writes `cancelled` and a failed launch writes `launch-failed`, so
+`armed` means the trial started and the machine did not come back from it.
+
+That is inference from an absence rather than the tool writing `hung` itself,
+which it does on the next run. Worth closing off, but it agrees with the
+symptom that opened this issue.
+
+### What it kills
+
+- **"Opening a DOS box hangs the machine."** It does not. Trial 0 is the
+  counter-example, at the same depth and resolution that trial 1 died at.
+- Anything reached merely by starting `COMMAND.COM` - VDD virtualisation of a
+  windowed box, our driver's ordinary operation while one is open.
+
+### What it implicates
+
+The full-screen transition, which is the same round trip as the corrupt band
+in `docs\issues\2026-08-28-fullscreen-dos-scanout.md`. The two issues were
+deliberately kept apart until something joined them; this is that something,
+though it still falls short of one cause for both.
+
+### It also reconciles the original report
+
+The hang was first seen from Start, Run, `command`, which reads like an entry
+defect rather than a full-screen one. The tool launches the interpreter with
+`CreateProcess` and `SW_SHOWNORMAL` and that survives. The likeliest reading
+is that the Run launch went straight to full screen from a PIF or registry
+default on this machine, in which case both observations are the same finding
+and nothing about the way in is implicated at all.
+
+### Unrelated, noted so it is not read as a change
+
+`V9XDDH.INI` moved from `Stage=get32bitname` to
+`Stage=setinfo-callback-missing` between the two collections, with
+`LastGoodStage=get32bitname` unchanged. Different subsystem, no bearing on
+this, recorded only so a later reader does not treat it as a symptom.
+`V9XBOOT.INI`, `V9XHW.INI` and the mode rows are byte-identical across both
+collections; only the sync generation counter moved.
+
 ## Unproven, and a defect regardless: the mini-VDD writes S3 registers on Intel silicon
 
 `V9xMini_Set_Dpms` (`src\minivdd32\loader.asm`) is documented in its own header
@@ -95,16 +150,19 @@ not it explains anything here.
 
 ## Tests to run
 
-1. **Windowed against full screen.** If a windowed box is clean and only full
-   screen hangs, the mode-switch round trip is implicated. If windowed hangs
-   too, it is not, and a whole branch dies.
-2. **Standard VGA driver, same machine, same action.** Confirms the defect is
-   ours rather than the machine's. Cheap, and it is the control every other
-   result is read against.
-3. **8bpp and 16bpp desktops.** The hang was seen at 32bpp with a 4096 pitch.
-4. **640x480 rather than 1024x576.** Separates the panel's own mode from the
-   round trip.
+1. ~~**Windowed against full screen.**~~ Done. Windowed survives, full screen
+   hangs. See "Measured".
+2. **One more run of the tool**, to have it write `hung` for trial 1 itself
+   rather than leaving the outcome to be inferred from an absence.
+3. **Standard VGA driver, same machine, full screen.** The control every other
+   result is read against: it says whether the full-screen transition is ours
+   to fix or the machine's. Until this runs, "Velocity9x hangs on full screen"
+   is not established - only that the machine does while Velocity9x is loaded.
+4. **8bpp and 16bpp desktops, then 640x480.** The tool records the mode with
+   each trial, so this is only "change it in Display Properties and run it
+   again". A full-screen trial that survives at some depth or geometry makes
+   this mode-dependent and points at the surface; a hang at every one says the
+   depth and geometry are irrelevant and the transition itself is at fault.
 
-A pass in any of 3 or 4 narrows this to a mode-dependent path. A hang in all
-of them says the depth and geometry are irrelevant and the round trip itself
-is at fault.
+Test 3 is the one that matters most and is the cheapest, and it has not been
+run.
