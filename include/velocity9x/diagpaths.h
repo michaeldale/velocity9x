@@ -48,6 +48,7 @@
 #define V9X_DIAG_PAL_INI     V9X_DIAG_PATH("V9XPAL.INI")    /* palette_smoke_win32.c */
 #define V9X_DIAG_SURF_INI    V9X_DIAG_PATH("V9XSURF.INI")   /* surface_step_win32.c */
 #define V9X_DIAG_WND_INI     V9X_DIAG_PATH("V9XWND.INI")    /* window_list_win32.c */
+#define V9X_DIAG_DOSBOX_INI  V9X_DIAG_PATH("V9XDOSBX.INI")  /* dos_box_test_win32.c */
 #define V9X_DIAG_MGA_INI     V9X_DIAG_PATH("V9XMGA.INI")    /* matrox_inventory / mmio_query */
 #define V9X_DIAG_MGAMM_INI   V9X_DIAG_PATH("V9XMGAMM.INI")  /* matrox_mmio_query_win32.c */
 #define V9X_DIAG_GDI_INI     V9X_DIAG_PATH("V9XGDI.INI")    /* gdi_smoke_win32.c */
