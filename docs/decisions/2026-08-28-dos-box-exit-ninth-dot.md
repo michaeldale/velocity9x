@@ -67,7 +67,8 @@ same `9 x 79` histogram. Two builds, two boots, one number.
   not called either.
 
 `VESA_SUPPORT` and `VESA_CALL_POST_PROCESSING` remain unobserved: neither hook
-writes a serial line, and that was not changed here.
+writes a serial line, and that was not changed here. *Answered later the same
+day - both are silent on this path too. See experiment 5.*
 
 ### The injection method is not the fault
 
@@ -265,3 +266,50 @@ seems worth trying:
    view - 86Box's own debugger or a register dump at the broken moment - which
    would say directly which register holds the ninth-dot value and what wrote
    it.
+
+---
+
+## The last two open items, and neither needed a differential build
+
+### 5. The VESA hooks are not called on this path either
+
+`-VesaTrace` writes one serial line at the entry of `MiniVDD_VESASupport` and
+one at `MiniVDD_VESACallPostProcessing`. Both hooks are installed in every
+build already, so unlike the screen-switch switches this adds no dispatch
+entry - which is what makes it safe to run at all after experiment 3.
+
+**Known to fire**: at boot the log carries two `vesa-support-entry` /
+`vesa-post-entry` pairs, between `V9X-DRV load` and `enable-ok`.
+
+**Silent across the round trip**: deployed as `ssVesa1`, the entry leg clean
+(0 striped columns) and the exit leg the usual 80 at `9 x 79`, the serial log
+gained **not one line** from the keystroke onwards
+(`serial\com1-vesa.bin`, ten lines, all from the boot).
+
+So with the shipping mini-VDD, **nothing of ours runs on this path at all**:
+not the display driver's nine trace points, not `SET_MONITOR_POWER_STATE`, and
+not either VESA hook. The list of our own code that could be responsible for
+the ninth dot is now empty.
+
+### 6. `-NoDpms` is closed without running it
+
+`V9xMini_Set_Dpms` has exactly four call sites, and every one of them is inside
+a proc measured silent above:
+
+| Call site | Enclosing proc | Traced? | Fired on this path? |
+|---|---|---|---|
+| loader.asm:325 | `MiniVDD_SetMonitorPowerState` | yes, `monitor-power low` | no |
+| loader.asm:340 | `MiniVDD_SetMonitorPowerState` | yes, `monitor-power D0` | no |
+| loader.asm:411 | `MiniVDD_VESASupport` | yes, `-VesaTrace` | no |
+| loader.asm:453 | `MiniVDD_VESACallPostProcessing` | yes, `-VesaTrace` | no |
+
+The routine cannot execute during a DOS-box round trip, so a build with its
+body removed cannot change the outcome. That is a stronger answer than the
+differential build would have given - "no change" from `-NoDpms` would have
+left open whether the writes had happened and been harmless.
+
+**Scope**: measured on the s3 family in the 86Box guest. The netbook has no
+serial port, so the same three callbacks are unobserved there; the reasoning
+carries only as far as the guest. And the unguarded S3 sequencer and CRTC
+writes on non-S3 silicon remain a defect in their own right - this says they
+are not *this* fault, not that they are fine.

@@ -357,6 +357,27 @@ EndProc MiniVDD_GetMonitorPowerStateCaps
 ; Windows 98 4.1 monitor-power entries.  Carry set means fully handled.
 ; Entry: AX=VESA function, EBP=Client_Reg_Struc (BL=0 query or BL=1 set).
 BeginProc MiniVDD_VESASupport
+IFDEF V9X_VESA_TRACE
+    ; Says whether Windows routes a VESA call through us on the DOS-box round
+    ; trip. This hook is already installed and shipping, so the trace touches
+    ; no new dispatch slot - which matters, because installing one on a
+    ; screen-switch callback breaks the transition outright
+    ; (docs\decisions\2026-08-28-dos-box-exit-ninth-dot.md, experiment 3).
+    ;
+    ; At the top of the proc, before the function test: an insertion here does
+    ; not lengthen the short jumps below, because it sits before both the jumps
+    ; and their targets. Every call is traced, not just 4F10h - "some VESA call
+    ; arrived and it was not the one we handle" is an answer too.
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniVesaEntryLine
+    mov     ecx, V9xMiniVesaEntryLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+ENDIF
     cmp     ax, 4f10h
     jne     short V9xMini_Vesa_Default
     cmp     [ebp.Client_BL], 00h
@@ -408,6 +429,17 @@ EndProc MiniVDD_VESASupport
 ; on so a BIOS/emulator combination cannot leave the display latched blank.
 ; Entry: DX = VESA function, EBP = Client_Reg_Struc.  Preserve used registers.
 BeginProc MiniVDD_VESACallPostProcessing
+IFDEF V9X_VESA_TRACE
+    pushfd
+    pushad
+
+    mov     esi, OFFSET32 V9xMiniVesaPostLine
+    mov     ecx, V9xMiniVesaPostLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+ENDIF
     cmp     dx, 4f10h
     jne     short V9xMini_Vesa_Post_Done
     push    eax

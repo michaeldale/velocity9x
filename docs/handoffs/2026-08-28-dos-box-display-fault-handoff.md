@@ -366,3 +366,28 @@ Still not run: `-NoDpms`, and tracing the already-installed `VESA_SUPPORT` hook
   to `COM1` now, so an armed probe's progress survives a wedge and a reset.
   Its `V9XMSW` path points at `C:\V9XREMOTE\JOBS\ssnosw1\`; change it to
   whichever job folder the current package went to.
+
+---
+
+# Session 2, final: the two cheap leftovers are done
+
+**`VESA_SUPPORT` is not called on this path.** `-VesaTrace` (new; traces both
+already-installed VESA hooks, so it adds no dispatch entry) fires twice at boot
+and stays silent across the whole round trip. With the shipping mini-VDD,
+**nothing of ours runs between the keystroke and the destroyed picture** - not
+the driver's nine points, not `SET_MONITOR_POWER_STATE`, not either VESA hook.
+
+**`-NoDpms` is closed without running it.** All four `V9xMini_Set_Dpms` call
+sites are inside those three measured-silent procs, so the routine cannot
+execute during a round trip. Stronger than the build would have been: a "no
+change" result would have left open whether the writes happened and were
+harmless. Guest only - the netbook has no serial port - and the unguarded S3
+writes on non-S3 silicon are still a defect on their own account.
+
+So the list in "What is left to try" is the list. Nothing on it can be done
+from this session: item 1 is a design change needing agreement, item 2 is a
+product decision, item 3 needs emulator-side tooling that does not exist yet.
+The two things a person can do that would move it are in the same order:
+confirm the exit-leg finding and the 9-pixel period on the HP Mini 110, and try
+`V9XMSW` by hand from Start, Run while the picture is broken - a real keypress,
+which host automation cannot deliver to 86Box.

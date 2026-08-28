@@ -48,6 +48,12 @@ param(
     # Device_Init marker names the variant.
     [switch]$ScreenSwitchTrace,
     [switch]$ScreenSwitchQuiet,
+    # -VesaTrace writes one serial line at the entry of each VESA hook. Those
+    # two are installed in every build already, so unlike the switches above it
+    # adds no dispatch entry - which is the whole point: the screen-switch slots
+    # cannot be hooked without breaking the transition, and these two are the
+    # only callbacks of ours left that might be reached on that path.
+    [switch]$VesaTrace,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -153,6 +159,14 @@ if ($NoDpms) {
     $buildIncludeLines += @(
         "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-disabled build=$BuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
+    )
+}
+if ($VesaTrace) {
+    $buildIncludeLines += @(
+        "V9xMiniVesaEntryLine db `"V9X-MINI vesa-support-entry`", 13, 10",
+        "V9xMiniVesaEntryLineLength equ `$ - V9xMiniVesaEntryLine",
+        "V9xMiniVesaPostLine db `"V9X-MINI vesa-post-entry`", 13, 10",
+        "V9xMiniVesaPostLineLength equ `$ - V9xMiniVesaPostLine"
     )
 }
 if ($ScreenSwitchQuiet) {
@@ -326,6 +340,9 @@ if ($NoDpms) {
 }
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
+}
+if ($VesaTrace) {
+    $assemblerArguments = @("-DV9X_VESA_TRACE") + $assemblerArguments
 }
 if ($ScreenSwitchTrace -or $ScreenSwitchQuiet) {
     # Both of these dispatch a callback the observer hooks also dispatch, and
@@ -501,6 +518,11 @@ if ($ScreenSwitchQuiet -ne $imageText.Contains($quietMarker)) {
 if ($ScreenSwitchTrace -ne $imageText.Contains($callbackMarker)) {
     throw ("The mini-VDD image " + $(if ($imageText.Contains($callbackMarker)) { "carries" } else { "lacks" }) +
            " the per-callback trace strings, which only -ScreenSwitchTrace asks for.")
+}
+$vesaTraceMarker = "V9X-MINI vesa-support-entry"
+if ($VesaTrace -ne $imageText.Contains($vesaTraceMarker)) {
+    throw ("The mini-VDD image " + $(if ($imageText.Contains($vesaTraceMarker)) { "carries" } else { "lacks" }) +
+           " the VESA trace strings, which is not what -VesaTrace asked for.")
 }
 $dpmsDisabledMarker = "V9X-MINI dpms-disabled"
 if ($NoDpms) {

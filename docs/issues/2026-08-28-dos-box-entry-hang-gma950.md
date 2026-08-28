@@ -691,3 +691,24 @@ for. The mismatch is real; fixing it does not fix this. Built, run, identical
 result, and reverted rather than shipped on a null measurement - `-1` also
 makes graphics-mode DOS apps run full screen instead of in a window, which is
 not a change to make without a reason.
+
+## Nothing of ours runs on this path, and that list is now complete
+
+`-VesaTrace` puts one serial line at the entry of each VESA hook. Both are
+installed in every build already, so it adds no dispatch entry - which is what
+makes it safe after the screen-switch result above. It fires twice at boot and
+**not once across the DOS-box round trip**.
+
+With the shipping mini-VDD that closes the set: the display driver's nine trace
+points are silent, `SET_MONITOR_POWER_STATE` is silent, and both VESA hooks are
+silent. No code of ours executes between the keystroke and the destroyed
+picture.
+
+That also closes **`-NoDpms`** without running it. `V9xMini_Set_Dpms` has four
+call sites, two in `MiniVDD_SetMonitorPowerState` and one in each VESA hook, and
+all three procs are now measured silent on this path - so the routine cannot
+execute during a round trip and a build without its body cannot change the
+outcome. Test 7 in the list above is answered by measurement rather than by
+elimination. Measured on the s3 family in the guest only; the netbook has no
+serial port. The unguarded S3 writes on non-S3 silicon are still a defect in
+their own right.

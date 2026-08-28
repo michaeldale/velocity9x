@@ -36,7 +36,11 @@ param(
     # the same hooks with the writes assembled out, which is what says whether
     # the hooks or the writes were responsible.
     [switch]$ScreenSwitchTrace,
-    [switch]$ScreenSwitchQuiet
+    [switch]$ScreenSwitchQuiet,
+    # Trace the two VESA hooks, which every build installs already, so this adds
+    # no dispatch entry. They are the only callbacks of ours that might still be
+    # reached on the DOS-box path.
+    [switch]$VesaTrace
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,7 +82,8 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
     -BuildId $BuildId -DdkRoot $DdkRoot -Family $Family `
     -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep `
     -VgaReturn:$VgaReturn -NoDpms:$NoDpms -NoScreenSwitch:$NoScreenSwitch `
-    -ScreenSwitchTrace:$ScreenSwitchTrace -ScreenSwitchQuiet:$ScreenSwitchQuiet
+    -ScreenSwitchTrace:$ScreenSwitchTrace -ScreenSwitchQuiet:$ScreenSwitchQuiet `
+    -VesaTrace:$VesaTrace
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `
