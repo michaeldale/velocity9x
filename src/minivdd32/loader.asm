@@ -184,7 +184,7 @@ IFDEF V9X_NO_DPMS
     ; that off the table as a cause. A bare ret satisfies the documented
     ; contract by construction: all registers and flags preserved.
     ret
-ENDIF
+ELSE
     pushfd
     pushad
 
@@ -301,6 +301,7 @@ V9xMini_Dpms_Done:
     popad
     popfd
     ret
+ENDIF
 EndProc V9xMini_Set_Dpms
 
 ; Windows 98 DDK SET_MONITOR_POWER_STATE callback.
