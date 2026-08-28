@@ -68,21 +68,52 @@ plain one.
 `claude\personal\v9x-intel950\0.6.1a\V9XDOSBX.INI`:
 
 ```
-Trial00=mode=1024x576x32 action=windowed
-Trial00State=survived
-Trial01=mode=1024x576x32 action=fullscreen
-Trial01State=armed
+Trial00=mode=1024x576x32 action=windowed    survived
+Trial01=mode=1024x576x32 action=fullscreen  hung
+Trial02=mode=1024x576x16 action=fullscreen  armed
 ```
 
-**A windowed DOS box opens, runs and closes with the desktop intact.** The
-full-screen trial never wrote an outcome. The tool writes and flushes its
-record before it opens the box precisely so that this absence is readable: a
-cancel writes `cancelled` and a failed launch writes `launch-failed`, so
-`armed` means the trial started and the machine did not come back from it.
+**A windowed DOS box opens, runs and closes with the desktop intact.** Both
+full-screen trials failed to return. Trial 1 is the tool's own written `hung`,
+resolved on the run that armed trial 2; trial 2 is still `armed` in the
+collection sent, which means the same thing one run later. The tool writes and
+flushes its record before it opens the box precisely so that this absence is
+readable: a cancel writes `cancelled` and a failed launch writes
+`launch-failed`.
 
-That is inference from an absence rather than the tool writing `hung` itself,
-which it does on the next run. Worth closing off, but it agrees with the
-symptom that opened this issue.
+**Depth is not the variable.** 32bpp at pitch 4096 and 16bpp at pitch 2048
+both hang. `V9XBOOT.INI` is byte-identical across the two collections but for
+the `Surface=` line, and `Stage=enable-ok` both times, so the driver came up
+the same way and the same mode cache backed both.
+
+### What the 16bpp hang looks like
+
+Photograph in `claude\personal\v9x-intel950\0.6.1b\`. At 32bpp the panel went
+to a near-blank screen carrying Windows' progress bar; at 16bpp it holds a
+stable, structured, thoroughly corrupt image instead. Three things follow from
+the picture without needing to explain it:
+
+1. **The display controller is still scanning out.** The panel is lit and the
+   image is stable, not decaying. Whatever wedged, it did not stop the CRTC.
+2. **It is not a VGA text screen.** If `PRE_HIRES_TO_VGA` had completed, an
+   80x25 text page is what would be on the panel. So the machine did not get
+   through the transition; it stopped inside it, with the controller left in
+   whatever state it had reached.
+3. **The corruption has two distinct signatures at once.** Regular fine
+   vertical striping across the whole frame, and horizontal colour bands whose
+   edges step diagonally down the screen.
+
+The second of those is a stride mismatch - content shifting by a constant
+per-line offset staircases exactly like that. The first is not; a stride error
+skews, it does not stripe. Fine vertical striping at a regular pitch is what a
+bytes-per-pixel disagreement looks like, or what scanning out character and
+attribute byte pairs as pixels looks like.
+
+**Which of those it is, is not settled here, and a photograph cannot settle
+it.** That is the standing lesson of
+`docs\issues\2026-08-28-fullscreen-dos-scanout.md`, whose first two diagnoses
+were both read off a picture and were both wrong. Recorded as a signature to
+be explained, not as a diagnosis.
 
 ### What it kills
 
@@ -158,11 +189,14 @@ not it explains anything here.
    result is read against: it says whether the full-screen transition is ours
    to fix or the machine's. Until this runs, "Velocity9x hangs on full screen"
    is not established - only that the machine does while Velocity9x is loaded.
-4. **8bpp and 16bpp desktops, then 640x480.** The tool records the mode with
-   each trial, so this is only "change it in Display Properties and run it
-   again". A full-screen trial that survives at some depth or geometry makes
-   this mode-dependent and points at the surface; a hang at every one says the
-   depth and geometry are irrelevant and the transition itself is at fault.
+4. ~~**16bpp desktop.**~~ Done. Hangs, as 32bpp does. Depth is not the
+   variable.
+5. **640x480, and 8bpp.** Geometry is still untested, and 640x480 is the one
+   mode here that a BIOS is most likely to handle conventionally. A
+   full-screen trial that survives at some geometry makes this mode-dependent
+   and points at the surface; a hang at every one says the transition itself
+   is at fault regardless of what it is transitioning from.
 
-Test 3 is the one that matters most and is the cheapest, and it has not been
-run.
+Test 3 is the one that matters most and is the cheapest. Until it runs, what
+is established is that this machine hangs on a full-screen DOS box while
+Velocity9x is loaded - not that Velocity9x is what hangs it.
