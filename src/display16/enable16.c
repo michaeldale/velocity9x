@@ -71,6 +71,21 @@ DWORD v9x_map_physical_base = 0ul;
 DWORD v9x_vbe_vram_bytes = 0ul;
 
 /*
+ * The card's total memory as reported to the main VDD, and 0 until something
+ * can report it. Read by runtime.asm, which hands it over with
+ * VDD_REGISTER_DISPLAY_DRIVER_INFO.
+ *
+ * Separate from v9x_vbe_vram_bytes on purpose. That one is the *usable* figure,
+ * clamped against the active mode's surface, and it is only established inside
+ * V9xHardwareEnable - which is too late: the main VDD asks the mini-VDD for the
+ * total exactly once per boot, before the driver has reached that point, and
+ * never asks again. Measured on the s3 guest, serial order `vram-asked` then
+ * `regdd-called`. So this figure has to exist earlier, and it is the raw total
+ * rather than the usable remainder.
+ */
+DWORD v9x_vdd_total_vram_bytes = 0ul;
+
+/*
  * The raw 4F00h answer, before the floor below is applied.
  *
  * publish_diagnostics reports this rather than the usable figure on purpose.
@@ -142,6 +157,35 @@ extern WORD FAR PASCAL V9xMiniVbeModeAt(WORD index);
 extern WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index);
 extern WORD FAR PASCAL V9xMiniMtrrInfo(void);
 extern WORD FAR PASCAL V9xMiniMtrrRange(WORD index);
+
+/*
+ * Establish that figure before the driver's first call into the VDD.
+ *
+ * Two sources, in the order that costs least: a family's own hook is a couple
+ * of register reads, and the mini-VDD's cached controller answer is a read of a
+ * table it filled at Device_Init. Neither calls the BIOS from here, which is
+ * what makes this safe to run this early - the whole reason the size was
+ * established late in the first place.
+ *
+ * Latched: the answer cannot change for the life of the driver, and a family
+ * whose hook declines should not be asked again on every Enable.
+ */
+void v9x_establish_vdd_vram_size(void)
+{
+    static WORD established;
+
+    if (established != 0u) {
+        return;
+    }
+    established = 1u;
+
+    if (v9x_hw16.read_video_memory != 0) {
+        v9x_vdd_total_vram_bytes = v9x_hw16.read_video_memory();
+    }
+    if (v9x_vdd_total_vram_bytes == 0ul && V9xMiniVbeController() != 0u) {
+        v9x_vdd_total_vram_bytes = (DWORD)v9x_minivdd_total64k * 65536ul;
+    }
+}
 
 WORD FAR PASCAL V9xHardwareStage(void)
 {

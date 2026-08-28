@@ -12,6 +12,14 @@
 .data
 EXTRN _v9x_active_vbe_mode:WORD
 EXTRN _v9x_active_visible_bytes:DWORD
+; What VDD_DRIVER_REGISTER answered. Defined in ddi.c, which reports it;
+; see the comment there for the three documented cases.
+EXTRN _v9x_vdd_register_result:DWORD
+; What VDD_REGISTER_DISPLAY_DRIVER_INFO answered, likewise.
+EXTRN _v9x_vdd_info_result:DWORD
+; The card's total memory, established by ddi.c before the first call into
+; the VDD. Zero when nothing could report it.
+EXTRN _v9x_vdd_total_vram_bytes:DWORD
 EXTRN _v9x_active_width:WORD
 EXTRN _v9x_active_pitch:WORD
 ; Stamped from the family's v9x_hw16 table at load time (ddi.c). Keeping the
@@ -137,6 +145,7 @@ VDD_DEVICE_ID          EQU 000ah
 VDD_DRIVER_REGISTER    EQU 0080h
 VDD_DRIVER_UNREGISTER  EQU 0081h
 VDD_SAVE_DRIVER_STATE  EQU 0082h
+VDD_REGISTER_DISPLAY_DRIVER_INFO EQU 0083h
 VDD_GET_DISPLAY_CONFIG EQU 0085h
 VDD_PRE_MODE_CHANGE    EQU 0086h
 VDD_POST_MODE_CHANGE   EQU 0087h
@@ -1058,6 +1067,47 @@ V9xVddGetConfigDone:
     retf    4
 V9XVDDGETDISPLAYCONFIG ENDP
 
+; Hand the card's total memory to the VDD, which the DDK's framebuffer driver
+; does and this driver never did: "we need to get this to the MiniVDD before
+; calling VDD_DRIVER_REGISTER since the VDD needs the video memory size to
+; calculate the off-screen area available to it".
+;
+; Called before VDD_PRE_MODE_CHANGE, not before VDD_DRIVER_REGISTER as the
+; sample does, and the difference is the measurement: the main VDD asks the
+; mini-VDD for the total exactly once per boot, during the pre-mode call, and
+; never asks again. Handing it over at registration time was one call too late,
+; and the VDD went on reserving nothing for itself - so a full-screen DOS box
+; had no off-screen area for its state to be saved into. Serial order on the s3
+; guest was `vram-asked` then `regdd-called`; this reverses it. See
+; docs\decisions6-08-29-dos-box-exit-tier0.md.
+;
+; ECX is the size. EDX is the "extra" screen selector the DDK's driver passes
+; for mini-VDDs that need to control it during virtualization, which ours does
+; not, so zero; EDI is zeroed the way the sample does it. Skipped when the size
+; is unknown, because claiming zero would be worse than not answering.
+;
+; Preserves the 16-bit registers its callers rely on; the high halves of ECX,
+; EDX and EDI are already caller-scratch on every path through this file.
+V9xVddSendInfo PROC NEAR
+    cmp     V9xVddEntryPoint, 0
+    je      short V9xVddSendInfoDone
+    mov     ecx, _v9x_vdd_total_vram_bytes
+    test    ecx, ecx
+    jz      short V9xVddSendInfoDone
+    push    bx
+    xor     edx, edx
+    xor     edi, edi
+    mov     eax, VDD_REGISTER_DISPLAY_DRIVER_INFO
+    movzx   ebx, V9xVmHandle
+    call    dword ptr V9xVddEntryPoint
+    ; The service number back means no mini-VDD handled it, which the DDK's XGA
+    ; driver tests for. Recorded either way; nothing here fails on it.
+    mov     _v9x_vdd_info_result, eax
+    pop     bx
+V9xVddSendInfoDone:
+    ret
+V9xVddSendInfo ENDP
+
 PUBLIC V9XVDDPREMODE
 V9XVDDPREMODE PROC FAR
     push    bx
@@ -1070,6 +1120,7 @@ V9XVDDPREMODE PROC FAR
     call    V9xVddInitialize
     or      ax, ax
     jz      short V9xVddPreModeFailed
+    call    V9xVddSendInfo
     mov     eax, VDD_PRE_MODE_CHANGE
     movzx   ebx, V9xVmHandle
     call    dword ptr V9xVddEntryPoint
@@ -1096,11 +1147,14 @@ V9XVDDREGISTER PROC FAR
     push    es
 
     cmp     V9xVddRegistered, 0
-    jne     short V9xVddRegisterReady
+    ; Not short: the memory-size call added below sits between these jumps
+    ; and their targets, which is past a -128 byte reach.
+    jne     V9xVddRegisterReady
     call    V9xVddInitialize
     or      ax, ax
-    jz      short V9xVddRegisterFailed
+    jz      V9xVddRegisterFailed
 
+    call    V9xVddSendInfo
     mov     ax, STOP_IO_TRAP
     int     2fh
 
@@ -1115,6 +1169,9 @@ V9XVDDREGISTER PROC FAR
     mov     ecx, _v9x_active_visible_bytes
     xor     edx, edx
     call    dword ptr V9xVddEntryPoint
+    ; Recorded before the failure test: EAX is also how much video memory
+    ; the VDD reserved for itself, which nothing here has ever read.
+    mov     _v9x_vdd_register_result, eax
     cmp     eax, VDD_DRIVER_REGISTER
     je      short V9xVddRegisterRestartTrap
 
@@ -1167,6 +1224,9 @@ V9XVDDREREGISTER PROC FAR
     mov     ecx, _v9x_active_visible_bytes
     xor     edx, edx
     call    dword ptr V9xVddEntryPoint
+    ; Recorded before the failure test: EAX is also how much video memory
+    ; the VDD reserved for itself, which nothing here has ever read.
+    mov     _v9x_vdd_register_result, eax
     cmp     eax, VDD_DRIVER_REGISTER
     je      short V9xVddReregisterFailed
 

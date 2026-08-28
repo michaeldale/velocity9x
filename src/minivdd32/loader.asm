@@ -116,6 +116,19 @@ V9xVbeCallRetBx dw 0
 ; the data segment does not change shape between the two builds.
 V9xVbeSwept     dw 0
 V9xVbeEntryMode dw 0
+; The card's total video memory, as the display driver reported it through
+; VDD_REGISTER_DISPLAY_DRIVER_INFO, and 0 until it does.
+;
+; This is the only route by which a chip-agnostic mini-VDD can know the size:
+; it cannot read it off an unknown chip, and the driver above it already
+; establishes it from 4F00h or from a family's own hook before it registers.
+; GET_TOTAL_VRAM_SIZE hands it to the main VDD, which is what lets the VDD
+; reserve an off-screen area for itself - measured as reserving nothing at all
+; while these two callbacks were missing. See
+; docs\decisions\2026-08-29-dos-box-exit-tier0.md.
+V9xTotalVramBytes dd 0
+; One-shot latch for the size query's trace line.
+V9xVramAsked    dw 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -165,6 +178,73 @@ V9xMini_Serial_Done:
     popfd
     ret
 EndProc V9xMini_Serial_Write
+
+; Receive the display driver's VDD_REGISTER_DISPLAY_DRIVER_INFO call.
+;
+; MINIVDD routes that PM API service to this callback, function 0, and the
+; parameters are whatever the driver and its own mini-VDD agree on - the DDK's
+; three samples pass three different things. Ours passes the card's total video
+; memory in ECX and nothing else; EAX and EBX are reserved by the contract.
+;
+; Entry: EBP -> the client register structure. Exit: nothing assumed, and the
+; DDK's own handler simply rets.
+;
+; Values arrive through the client registers, not the live ones: the caller is
+; ring-3 display-driver code whose register state the VMM has captured.
+BeginProc MiniVDD_RegisterDisplayDriver
+    pushfd
+    pushad
+
+    mov     eax, [ebp.Client_ECX]
+    mov     V9xTotalVramBytes, eax
+
+    ; Says in a capture that the main VDD routed the call here, which its EAX
+    ; return does not: it answers the service number whether or not a mini-VDD
+    ; handled it. Registration-time, so one line per boot.
+    mov     esi, OFFSET32 V9xMiniRegDdLine
+    mov     ecx, V9xMiniRegDdLineLength
+    call    V9xMini_Serial_Write
+
+    popad
+    popfd
+    ret
+EndProc MiniVDD_RegisterDisplayDriver
+
+; Tell the main VDD how much video memory the card has.
+;
+; Entry: EBX = the current VM handle, EBP -> its client registers.
+; Exit:  CY and ECX = the size on success, NC when it is not known. Everything
+;        except ECX is preserved, which is the contract MINIVDD documents and
+;        the DDK's s3v mini-VDD implements in three instructions.
+;
+; Answering NC rather than zero when the driver has not registered yet is
+; deliberate: zero is a size, and a VDD that believed it would be worse than a
+; VDD that knows it was not told.
+BeginProc MiniVDD_GetTotalVRAMSize
+    ; Traced for the first few calls rather than once: the first query arrives
+    ; before the display driver has reported a size, so what matters is whether
+    ; the VDD asks again afterwards. Bounded so a capture stays readable.
+    cmp     V9xVramAsked, 4
+    jae     short V9xMini_Vram_Answer
+    inc     V9xVramAsked
+    pushfd
+    pushad
+    mov     esi, OFFSET32 V9xMiniVramAskLine
+    mov     ecx, V9xMiniVramAskLineLength
+    call    V9xMini_Serial_Write
+    popad
+    popfd
+
+V9xMini_Vram_Answer:
+    mov     ecx, V9xTotalVramBytes
+    test    ecx, ecx
+    jz      short V9xMini_Vram_Unknown
+    stc
+    ret
+V9xMini_Vram_Unknown:
+    clc
+    ret
+EndProc MiniVDD_GetTotalVRAMSize
 
 ; Update the S3 ViRGE DPMS state without changing the active video mode.
 ;
@@ -1808,6 +1888,14 @@ ENDIF
     ; net for calls that another component sends directly to the BIOS.
     MiniVDDDispatch VESA_SUPPORT, VESASupport
     MiniVDDDispatch VESA_CALL_POST_PROCESSING, VESACallPostProcessing
+
+    ; Functions 0 and 36, the memory-size pair. Without them the main VDD is
+    ; never told the card has anything beyond the visible screen, and it was
+    ; measured reserving nothing for itself - so a full-screen DOS box has no
+    ; off-screen area for its state to be saved into. Neither is on the
+    ; screen-switch path: one runs at registration, the other answers a query.
+    MiniVDDDispatch REGISTER_DISPLAY_DRIVER, RegisterDisplayDriver
+    MiniVDDDispatch GET_TOTAL_VRAM_SIZE, GetTotalVRAMSize
 
 IFDEF V9X_VGA_RETURN
     ; Experiment only; see MiniVDD_PreHiResToVGA above. Function 4 is in the

@@ -749,3 +749,47 @@ Three consequences:
 Still not established: that this is the netbook's fault. Both measured cases are
 86Box, and the netbook's photograph is a corrupt hi-res desktop rather than a
 legible text page. That comparison needs a person at that keyboard.
+
+## 2026-08-29, second pass: three more eliminations, and the VDD reserves nothing
+
+Full record: `docs\decisions\2026-08-29-dos-box-vdd-reservation.md`. **Not
+fixed.**
+
+Closed by reading the build against the DDK reference, before spending a run:
+the callback's segment is `preload fixed shared` and cannot be discarded (the
+DDK's own is merely `MOVEABLE`), the VM handle comes from `INT 2Fh 1683h` as the
+reference does, the I/O-trap pairing matches, and the export list matches
+ordinal for ordinal.
+
+**`UserRepaintDisable` is not called on this path.** The trace now accumulates a
+`DosBoxTrail=` sequence rather than only the last step, proven by a graceful
+reboot writing `disable-enter,disable-pre-hardware,disable-exit`. Across the
+round trip the trail does not change. That eliminates the last driver-side hook:
+nothing of ours is invoked on this transition, in the driver or the mini-VDD.
+
+**The VDD reserves no off-screen memory**, now measured rather than assumed:
+`VddReserve=vdd=614400 visible=614400` - it answered with exactly the visible
+bytes it was handed, where the DDK documents the answer as "the visible screen
+plus the memory allocated by the VDD". So a full-screen DOS box has nowhere for
+its state to be saved.
+
+**An ordering defect was found and fixed on the way, and it changed nothing.**
+The VDD asks the mini-VDD for the card's total memory through
+`GET_TOTAL_VRAM_SIZE` exactly once per boot, during `VDD_PRE_MODE_CHANGE` - and
+originally asked *before* the driver had established a size, so our answer was
+"unknown". The two callbacks the DDK's mini-VDDs implement for this
+(`REGISTER_DISPLAY_DRIVER` and `GET_TOTAL_VRAM_SIZE`) are now installed, the
+size is established before the first VDD call, and the hand-over moved ahead of
+the pre-mode call. Serial order is now `regdd-called, vram-asked, regdd-called`,
+the VDD receives 4 MiB - and it still reserves nothing, and the round trip is
+identical.
+
+That leaves one candidate, and three independent measurements now agree on it:
+hooking a subset of the screen-switch callbacks makes things worse, the
+virtualization request flag buys nothing either way, and the VDD declines to
+reserve memory even when correctly told it exists. All three are what you would
+expect if **the main VDD requires the full banking and latch set** -
+`GET_VDD_BANK`, `SET_VDD_BANK`, `SET_LATCH_BANK`, `SAVE_LATCHES`,
+`ACCESS_VGA_MEMORY_MODE`, `VIRTUALIZE_CRTC_IN`/`OUT` - before it will manage
+this transition at all. The DDK's framebuffer driver gates its own request on
+exactly that capability, per chip.

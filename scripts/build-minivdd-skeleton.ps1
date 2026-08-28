@@ -147,7 +147,18 @@ $buildIncludeLines = @(
     "V9xMiniMtrrReadLine db `"V9X-MINI mtrr-read start`", 13, 10",
     "V9xMiniMtrrReadLineLength equ `$ - V9xMiniMtrrReadLine",
     "V9xMiniMtrrDoneLine db `"V9X-MINI mtrr-read done`", 13, 10",
-    "V9xMiniMtrrDoneLineLength equ `$ - V9xMiniMtrrDoneLine"
+    "V9xMiniMtrrDoneLineLength equ `$ - V9xMiniMtrrDoneLine",
+    # One line when the display driver reaches REGISTER_DISPLAY_DRIVER, which
+    # is how a capture says whether the main VDD routed the call at all - it
+    # answers the service number either way. Registration-time only, so it
+    # costs one line per boot.
+    "V9xMiniRegDdLine db `"V9X-MINI regdd-called`", 13, 10",
+    "V9xMiniRegDdLineLength equ `$ - V9xMiniRegDdLine",
+    # And one when the main VDD first asks for the size. Latched to a single
+    # line: a query callback can be called repeatedly and the question is
+    # only whether it is ever asked at all.
+    "V9xMiniVramAskLine db `"V9X-MINI vram-asked`", 13, 10",
+    "V9xMiniVramAskLineLength equ `$ - V9xMiniVramAskLine"
 )
 if ($DisableVbeCollect) {
     $buildIncludeLines += @(
@@ -409,7 +420,7 @@ if ($DisableVbeCollect) {
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
 # Every dispatch the source declares, paired with the IFDEF it sits inside.
-# The four audited callbacks are unguarded; every other one belongs to an
+# The six audited callbacks are unguarded; every other one belongs to an
 # experiment or an instrument and may appear only inside that switch's guard,
 # because a shipping build that picked one up would install untested behaviour
 # on the DOS-box path without anyone asking for it.
@@ -424,6 +435,8 @@ $expectedDispatches = @(
     "/VESA_CALL_POST_PROCESSING,VESACallPostProcessing",
     "/SET_MONITOR_POWER_STATE,SetMonitorPowerState",
     "/GET_MONITOR_POWER_STATE_CAPS,GetMonitorPowerStateCaps",
+    "/REGISTER_DISPLAY_DRIVER,RegisterDisplayDriver",
+    "/GET_TOTAL_VRAM_SIZE,GetTotalVRAMSize",
     "V9X_VGA_RETURN/PRE_HIRES_TO_VGA,PreHiResToVGA",
     "V9X_NO_SCREEN_SWITCH/CHECK_SCREEN_SWITCH_OK,CheckScreenSwitchOK",
     "V9X_SCREEN_SWITCH_HOOKS/CHECK_SCREEN_SWITCH_OK,TraceCheckScreenSwitchOK",
@@ -538,6 +551,8 @@ foreach ($symbol in @("V9xMini_Serial_Write", "V9xMini_Set_Dpms",
                       "MiniVDD_VESACallPostProcessing",
                       "MiniVDD_SetMonitorPowerState",
                       "MiniVDD_GetMonitorPowerStateCaps",
+                      "MiniVDD_RegisterDisplayDriver",
+                      "MiniVDD_GetTotalVRAMSize",
                       "MiniVDD_Dynamic_Init")) {
     if ($mapText -notmatch "(?m)^.*$([regex]::Escape($symbol)).*$") {
         throw "The mini-VDD map is missing symbol $symbol."

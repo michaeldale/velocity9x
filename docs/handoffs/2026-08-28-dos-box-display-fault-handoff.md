@@ -451,3 +451,50 @@ assumed, not shown.
   ATI's driver is active it does not, and the install has to go through the UI.
 - The DOS VBE inventory is at `C:\V9XVBE.EXE` in the guest and its report at
   `C:\V9XDIAG\V9XVBE.TXT`.
+
+---
+
+# Session 4 (2026-08-29): worked the fix candidates. Not fixed; one route left.
+
+Record: [`docs/decisions/2026-08-29-dos-box-vdd-reservation.md`](../decisions/2026-08-29-dos-box-vdd-reservation.md).
+
+Step 1 of the plan came back negative: **`UserRepaintDisable` is not called**
+across the round trip, measured with a new `DosBoxTrail=` key that accumulates
+the whole sequence and is proven by a graceful reboot. No hook of ours is on
+this path, anywhere.
+
+Step 2 turned into a real finding and still not a fix. `VDD_DRIVER_REGISTER`
+answers "visible screen plus what the VDD allocated"; ours answers exactly the
+visible bytes, so **the VDD reserves nothing** and a full-screen box has no
+off-screen area to be saved into. Chasing that exposed an ordering defect worth
+having on record: the VDD asks the mini-VDD for the card's total memory
+**exactly once per boot, during `VDD_PRE_MODE_CHANGE`**, and the driver did not
+establish a size until later, so the answer was "unknown". Fixed - two mini-VDD
+callbacks installed, size established before the first VDD call, hand-over
+moved ahead of pre-mode - and the VDD **still** reserves nothing. Round trip
+identical.
+
+Three eliminations by reading, no VM needed: the callback segment is fixed and
+non-discardable, the VM handle matches the DDK, the I/O-trap pairing matches,
+and the export list matches ordinal for ordinal.
+
+## The one route left, and it now has three independent supports
+
+Implement the **banking and latch half** of the mini-VDD dispatch table -
+`GET_VDD_BANK`, `SET_VDD_BANK`, `SET_LATCH_BANK`, `SAVE_LATCHES`,
+`ACCESS_VGA_MEMORY_MODE`, `VIRTUALIZE_CRTC_IN`/`OUT` - so the main VDD will
+treat this as a driver it can virtualize for. The three measurements that point
+there: a subset of screen-switch hooks makes the transition worse, the
+virtualization request flag changes nothing either way, and the VDD declines to
+reserve memory even when correctly told there is 4 MiB. The DDK's framebuffer
+driver gates its own virtualization request on exactly this capability, per chip.
+
+It is a design change of real size and chip-specific in its details. **Get
+agreement before starting it.** Until then the windowed-only mitigation is the
+only thing that protects a released package, tier-0 included.
+
+## Guest state
+
+`Win86SE` on `vram5` (s3, `-DosBoxTrace`, the new size plumbing). The tier-0
+guest is still on ATI's own driver as the control; reinstalling Velocity9x there
+means the Have Disk walk again.

@@ -66,6 +66,11 @@ extern DWORD FAR PASCAL V9xHardwareBase(void);
  * read_video_memory hook, from VBE 4F00h at tier-0, and 0 when neither
  * established one - in which case dd16.c applies its own default. */
 extern DWORD v9x_vbe_vram_bytes;
+/* enable16.c. Establishes the total the VDD is told, before the first VDD
+ * call; see the comment on v9x_vdd_total_vram_bytes for why the timing is the
+ * whole point. */
+extern DWORD v9x_vdd_total_vram_bytes;
+extern void v9x_establish_vdd_vram_size(void);
 /* enable16.c: the card's total VRAM as claimed by the chip hook or VBE 4F00h,
  * before any deduction for the visible surface, and 0 when unmeasured. This is
  * the figure a mode has to fit inside, so it is what ValidateMode tests. */
@@ -114,6 +119,33 @@ DWORD v9x_active_visible_bytes = 307200ul;
 WORD v9x_active_width = 640u;
 WORD v9x_active_pitch = 640u;
 WORD v9x_palettized = 1u;
+
+/*
+ * What VDD_DRIVER_REGISTER answered, written by runtime.asm and read here.
+ *
+ * The DDK's framebuffer driver documents the three cases and what they mean:
+ * the function code back means the call failed, -1 means "memory-shy" (the
+ * visible screen reaches into the last physical bank), and anything else is
+ * "the size in bytes of the visible screen plus the memory allocated by the
+ * VDD" - with the VDD using the memory directly below the visible screen, so
+ * that the driver's own off-screen areas have to sit below the VDD's.
+ *
+ * This driver has never read it. Recorded first, because how much the VDD
+ * reserves here is unmeasured and the DOS-box round trip restores from
+ * whatever it put there (docs\decisions\2026-08-29-dos-box-exit-tier0.md).
+ */
+DWORD v9x_vdd_register_result;
+
+/*
+ * What VDD_REGISTER_DISPLAY_DRIVER_INFO answered, written by runtime.asm.
+ *
+ * The service number coming back means no mini-VDD handled the call, which is
+ * what the DDK's XGA driver tests for; ours installs no REGISTER_DISPLAY_DRIVER
+ * handler, so that is the expected answer and is not a failure. It is reported
+ * because the point of making the call is what the *main* VDD does with the
+ * memory size on the way past.
+ */
+DWORD v9x_vdd_info_result;
 
 /*
  * The rest of what runtime.asm needs from the family table, flattened into
@@ -222,11 +254,45 @@ static WORD v9x_ever_enabled;
  * is followed by something that may take the machine down before the cache is
  * written back - which is precisely the case this has to survive.
  */
+static char v9x_dosbox_trail[128];
+static WORD v9x_dosbox_trail_used;
+
 static void v9x_dosbox_trace(const char FAR *step)
 {
+    WORD limit = (WORD)sizeof(v9x_dosbox_trail);
+    WORD i;
+
     V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", "DosBox", step,
                               V9X_DIAG_BOOT_INI);
+
+    /* The key above keeps only the last step, which was enough while the
+     * question was "is the driver entered at all" - the answer being no, on
+     * two families and two chips. The question now is which entry points do
+     * fire across one round trip and in what order, so the steps accumulate
+     * into a second key as well.
+     *
+     * Bounded and truncating rather than wrapping: a trail that lost its
+     * beginning would be indistinguishable from one that started late, and the
+     * beginning is the part that says what ran first. Cursor and palette
+     * entries are deliberately not traced - they fire continuously and would
+     * fill this with noise.
+     */
+    if ((WORD)(v9x_dosbox_trail_used + 1u) < limit) {
+        if (v9x_dosbox_trail_used != 0u) {
+            v9x_dosbox_trail[v9x_dosbox_trail_used++] = ',';
+        }
+        for (i = 0u; step[i] != '\0'; i++) {
+            if ((WORD)(v9x_dosbox_trail_used + 1u) >= limit) {
+                break;
+            }
+            v9x_dosbox_trail[v9x_dosbox_trail_used++] = step[i];
+        }
+        v9x_dosbox_trail[v9x_dosbox_trail_used] = '\0';
+        WritePrivateProfileString("Velocity9x", "DosBoxTrail",
+                                  v9x_dosbox_trail, V9X_DIAG_BOOT_INI);
+    }
+
     WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
 }
 #else
@@ -378,6 +444,30 @@ static void v9x_trace_surface_layout(void)
     text[at - 1u] = '\0';
     V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", "Surface", (LPCSTR)text,
+                              V9X_DIAG_BOOT_INI);
+}
+
+/*
+ * What the VDD said at registration, and what the driver assumed instead.
+ *
+ * vdd= is EAX from VDD_DRIVER_REGISTER: the visible screen plus whatever the
+ * VDD reserved below it, or 0xffffffff for the memory-shy case, or the service
+ * number if the call failed. visible= is what the driver told it. The pair is
+ * the measurement: their difference is video memory the VDD has taken and this
+ * driver has never accounted for.
+ */
+static void v9x_trace_vdd_reservation(void)
+{
+    char text[64];
+    WORD at = 0u;
+
+    at = v9x_append_field(text, at, "vdd=", v9x_vdd_register_result);
+    at = v9x_append_field(text, at, "visible=", v9x_active_visible_bytes);
+    at = v9x_append_field(text, at, "vram=", v9x_vbe_vram_bytes);
+    at = v9x_append_field(text, at, "info=", v9x_vdd_info_result);
+    text[at - 1u] = '\0';
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", "VddReserve", (LPCSTR)text,
                               V9X_DIAG_BOOT_INI);
 }
 
@@ -873,6 +963,14 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         v9x_serial_write("V9X-DRV enable-fail stage=device-id\r\n");
         return 0u;
     }
+    /*
+     * Before any call into the VDD, because the main VDD asks the mini-VDD for
+     * the card's total memory exactly once per boot and does so during the
+     * pre-mode call below - measured, and it never asks again. Establishing the
+     * figure inside V9xHardwareEnable, as the driver used to, is too late by
+     * one call.
+     */
+    v9x_establish_vdd_vram_size();
     if (V9xVddPreMode() == 0u) {
         v9x_boot_trace("fail-vdd-pre-mode");
         v9x_serial_write("V9X-DRV enable-fail stage=vdd-pre-mode\r\n");
@@ -1009,6 +1107,7 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * of guessing between them.
      */
     v9x_trace_surface_layout();
+    v9x_trace_vdd_reservation();
     if (v9x_palettized != 0u) {
         v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
     }
@@ -1161,6 +1260,15 @@ static void v9x_request_repaint(void)
  */
 void __loadds FAR PASCAL UserRepaintDisable(WORD disable)
 {
+    /* Traced because this is the one hook of ours that the DDK samples use on
+     * the screen-switch path and nobody has measured there. If USER calls it
+     * across a full-screen DOS box, it is a driver-side trigger on a round trip
+     * where the main VDD is measured never to call our registered callback -
+     * and the only such trigger left. See
+     * docs\decisions\2026-08-29-dos-box-exit-tier0.md.
+     */
+    v9x_dosbox_trace(disable != 0u ? "urd-disable" : "urd-enable");
+
     v9x_repaint_disabled = disable != 0u ? 1u : 0u;
     if (disable == 0u && v9x_repaint_pending != 0u) {
         v9x_repaint_pending = 0u;
