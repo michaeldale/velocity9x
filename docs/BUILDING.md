@@ -142,6 +142,23 @@ how a guest-tested build stays traceable.
 The pre-restructure `-S3Trio64` and `-MatroxMillennium2` switches were retired
 at phase 8; use `-Family`.
 
+## Publishing a release
+
+`build/` is scratch and git-ignored. To turn what it holds into the committed,
+downloadable `releases/<version>` folder — one zip per family, one for the
+survey, `SHA256SUMS.txt` and a generated index:
+
+```powershell
+./scripts/build-vga-survey.ps1
+./scripts/build-release.ps1
+```
+
+Run it after `build-all-packages.ps1`, from a clean tree. It compiles nothing:
+it reads the version and build id back out of `build/packages.json` and refuses
+to publish if the version disagrees with `include/velocity9x/build.h` or the
+build id carries `-dirty`, so a published folder always names one commit. Pass
+`-Force` to replace a version folder that already exists.
+
 ## Post-link auditing
 
 ```powershell

@@ -34,6 +34,7 @@ at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/image
 
 | If you want to | Go to |
 |---|---|
+| Download a built driver or the survey tool | [releases/](releases/README.md) |
 | Find out whether your card is supported | [Supported cards](#supported-cards) |
 | Install it on a test VM or machine | [docs/INSTALL.md](docs/INSTALL.md) |
 | Try it on a card that is not listed | [Have an unsupported card?](#have-an-unsupported-card) |
@@ -247,7 +248,8 @@ a photograph of the silkscreen is not enough. `V9XSURV.EXE` collects it: the
 PCI identifiers and full configuration space, the video BIOS, the VBE mode
 list, your monitor's EDID and the raw VGA register file.
 
-**Download it from the [`survey-v1` release](https://github.com/michaeldale/velocity9x/releases/tag/survey-v1).**
+**Download it from [releases/](releases/README.md)** — the newest version folder
+holds `velocity9x-survey-<version>.zip`.
 It is a real-mode DOS program — that is the only place one executable can read
 all of the above without a driver. Boot to DOS (`Start` → `Shut Down` →
 *Restart in MS-DOS mode*), run `V9XSURV`, and send back the

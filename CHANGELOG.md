@@ -121,6 +121,20 @@ the reports that come back can be attributed to the right driver.
 
 ### Changed
 
+- **Built packages are committed to the repository under `releases/<version>`
+  instead of living only in the git-ignored `build/`.** Four family zips and
+  the DOS hardware survey, a `SHA256SUMS.txt` over the zips, and a generated
+  index saying which zip matches which PCI id. `scripts\build-release.ps1`
+  assembles the folder from what the package builders already produced: it
+  compiles nothing, reads the version and build id back out of
+  `build\packages.json`, refuses a version that disagrees with
+  `include\velocity9x\build.h`, and refuses a build id from a dirty tree, so a
+  published folder is attributable to one commit. The card-owner-facing
+  wording is generated from each package's own `MANIFEST.TXT`, including the
+  not-yet-tested-on-a-guest status line, so it cannot drift a version behind.
+  The survey download link in `README.md` pointed at a `survey-v1` GitHub
+  release tag and now points at the in-repo folder.
+
 - **The generic VBE package binds by PCI class code instead of only by
   Have Disk.** The id-less model line now carries `PCI\CC_0300` as a
   *compatible* id, so Windows selects the driver where no vendor driver claims
