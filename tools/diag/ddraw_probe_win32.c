@@ -1347,7 +1347,8 @@ static WORD v9x_surface_pixel16(struct v9x_dds *surface, DWORD x, DWORD y)
 static int v9x_z_step(struct v9x_d3d_device2 *device,
                       V9X_D3DTLVERTEX *triangle, float depth, DWORD color,
                       DWORD compare, DWORD write_enable,
-                      struct v9x_dds *target, DWORD *raw_out)
+                      struct v9x_dds *target, DWORD *raw_out,
+                      HRESULT *state_out, HRESULT *draw_out)
 {
     HRESULT state_hr;
     HRESULT begin_hr;
@@ -1382,6 +1383,15 @@ static int v9x_z_step(struct v9x_d3d_device2 *device,
         end_hr = begin_hr;
     }
     *raw_out = v9x_surface_pixel16(target, 16ul, 16ul);
+    /* Reported, not just folded into the result. A rung that renders nothing
+     * because a state call was refused and one that renders nothing because
+     * the depth test rejected it look identical in the pixel alone. */
+    if (state_out != 0) {
+        *state_out = state_hr;
+    }
+    if (draw_out != 0) {
+        *draw_out = draw_hr;
+    }
     return state_hr == 0 && draw_hr == 0 && end_hr == 0;
 }
 
@@ -2495,6 +2505,8 @@ void __stdcall V9xDdrawProbeEntry(void)
             DWORD update_raw = 65535ul;
             DWORD nowrite_raw = 65535ul;
             DWORD mask_raw = 65535ul;
+            HRESULT z_state_hr = 0;
+            HRESULT z_draw_hr = 0;
             int ladder_ok = 1;
             int mask_ok = 1;
 
@@ -2548,20 +2560,23 @@ void __stdcall V9xDdrawProbeEntry(void)
                  */
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.5f, 0xffff0000ul,
                                        V9X_D3DCMP_ALWAYS, 1ul,
-                                       z_target, &init_raw) &&
+                                       z_target, &init_raw,
+                                       &z_state_hr, &z_draw_hr) &&
                             init_raw == 0x7c00ul;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.75f, 0xff00ff00ul,
                                        V9X_D3DCMP_LESS, 1ul,
-                                       z_target, &reject_raw) &&
+                                       z_target, &reject_raw, 0, 0) &&
                             reject_raw == 0x7c00ul && ladder_ok;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xff0000fful,
                                        V9X_D3DCMP_LESS, 1ul,
-                                       z_target, &accept_raw) &&
+                                       z_target, &accept_raw, 0, 0) &&
                             accept_raw == 0x001ful && ladder_ok;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.5f, 0xfffffffful,
                                        V9X_D3DCMP_LESS, 1ul,
-                                       z_target, &update_raw) &&
+                                       z_target, &update_raw, 0, 0) &&
                             update_raw == 0x001ful && ladder_ok;
+                v9x_write_hresult("D3DZStateHr", z_state_hr);
+                v9x_write_hresult("D3DZDrawHr", z_draw_hr);
                 v9x_write_uint("D3DZInitRaw", init_raw);
                 v9x_write_uint("D3DZRejectRaw", reject_raw);
                 v9x_write_uint("D3DZAcceptRaw", accept_raw);
@@ -2581,15 +2596,15 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_fill_surface(z_target, 0ul);
                 mask_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xfffffffful,
                                      V9X_D3DCMP_ALWAYS, 1ul,
-                                     z_target, &mask_raw) &&
+                                     z_target, &mask_raw, 0, 0) &&
                           mask_raw == 0x7ffful;
                 mask_ok = v9x_z_step(z_device, z_tri, 0.125f, 0xff00ff00ul,
                                      V9X_D3DCMP_LESS, 0ul,
-                                     z_target, &nowrite_raw) &&
+                                     z_target, &nowrite_raw, 0, 0) &&
                           nowrite_raw == 0x03e0ul && mask_ok;
                 mask_ok = v9x_z_step(z_device, z_tri, 0.1875f, 0xffff0000ul,
                                      V9X_D3DCMP_LESS, 1ul,
-                                     z_target, &mask_raw) &&
+                                     z_target, &mask_raw, 0, 0) &&
                           mask_raw == 0x7c00ul && mask_ok;
                 v9x_write_uint("D3DZNoWriteRaw", nowrite_raw);
                 v9x_write_uint("D3DZMaskRaw", mask_raw);

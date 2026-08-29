@@ -110,6 +110,13 @@ typedef struct v9x_d3d_engine_limits {
     DWORD texture_size_min;
     DWORD texture_size_max;
     /*
+     * Screen coordinates outside +/- this are refused before clipping. The
+     * clipper's output is fed to the engine's fixed-point conversion, so a
+     * vertex beyond the converter's range has to be rejected rather than
+     * wrapped.
+     */
+    float coordinate_limit;
+    /*
      * Bits per pixel in the depth buffer. The core sizes and bounds-checks
      * the Z surface, so it needs the number - and the number is the engine's.
      * It was a literal 2 in the core's footprint arithmetic, which is a ViRGE
@@ -118,12 +125,17 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD depth_bits_per_pixel;
     /*
-     * Screen coordinates outside +/- this are refused before clipping. The
-     * clipper's output is fed to the engine's fixed-point conversion, so a
-     * vertex beyond the converter's range has to be rejected rather than
-     * wrapped.
+     * APPEND ONLY, and the reason is not style. The initialisers below are
+     * positional - C89 has no designated form - and every member is an
+     * arithmetic type, so inserting a field in the middle silently reassigns
+     * every value after it and the compiler says nothing.
+     *
+     * That is not hypothetical: depth_bits_per_pixel was first added here
+     * above coordinate_limit while its value was appended at the end of the
+     * initialiser. coordinate_limit became 16.0f, the software clipper then
+     * refused every vertex beyond sixteen pixels, and all Direct3D rendering
+     * went black with every HRESULT still reporting success.
      */
-    float coordinate_limit;
 } V9X_D3D_ENGINE_LIMITS;
 
 /*
