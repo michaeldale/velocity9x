@@ -111,6 +111,8 @@ $required = @(
     "src\display32\engines\vga_scanout.c",
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
+    "src\display32\d3d\d3d_internal.h",
+    "src\display32\d3d\d3d_core.c",
     "src\display32\d3d\d3d_virge.c",
     "src\display16\runtime.asm",
     "src\display16\dib_thunks.asm",
@@ -386,6 +388,39 @@ foreach ($name in $mtrrShared) {
     }
     $contractChecked++
 }
+# The Direct3D core is chip-neutral, which is the whole claim of the
+# core/engine split and exactly the kind of property that decays by one
+# convenient exception. Two things must stay out of it: any MMIO access, and
+# any chip's register vocabulary. Asserted here rather than left to the file's
+# own header comment, and stated as a rule over the directory so a second
+# engine is covered the day it is added rather than the day someone remembers.
+$d3dCorePath = Join-Path $repoRoot "src\display32\d3d\d3d_core.c"
+if (-not (Test-Path -LiteralPath $d3dCorePath)) {
+    throw "src\display32\d3d\d3d_core.c is missing; the D3D core/engine split expects it."
+}
+$d3dCore = Get-Content -LiteralPath $d3dCorePath -Raw
+foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_', 'V9X_TRIO_')) {
+    if ($d3dCore -match [regex]::Escape($forbidden)) {
+        throw ("src\display32\d3d\d3d_core.c names $forbidden. The D3D core is " +
+               "chip-neutral: register access and per-chip vocabulary belong " +
+               "behind V9X_D3D_ENGINE_OPS in an engine file. See " +
+               "docs\decisions\2026-08-29-d3d-core-engine-split.md.")
+    }
+}
+# The other half of the same rule: an engine must not carry a DDHAL entry
+# point. Those are the core's, and a chip file growing one is how the seam
+# would quietly stop being a seam.
+foreach ($engine in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\display32\d3d") `
+                        -Filter "d3d_*.c" |
+                      Where-Object { $_.Name -ne 'd3d_core.c' })) {
+    $text = Get-Content -LiteralPath $engine.FullName -Raw
+    if ($text -match '(?m)^\s*DWORD\s+__stdcall\s+V9x') {
+        throw ("src\display32\d3d\$($engine.Name) defines a DDHAL entry point. " +
+               "Those belong in d3d_core.c; an engine implements " +
+               "V9X_D3D_ENGINE_OPS and nothing else.")
+    }
+}
+
 # Stage A writes no MTRR, and that is a property worth holding rather than
 # trusting to review: the write instructions must not appear in the mini-VDD
 # at all. WRMSR is the one that matters; CR0/CR4 handling would arrive with it.

@@ -6,6 +6,47 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+**The Direct3D block splits into a chip-neutral core and one engine, and the
+probe cannot tell.** Roadmap Track B, executed ahead of its scheduled slot -
+the plan puts it immediately before the 3dfx D3D phase precisely so the
+abstraction is drawn around two engines rather than one, and that caveat still
+stands.
+
+`d3d_virge.c` was 1,733 lines carrying both halves. It is now `d3d_core.c`
+(context pool, texture handle table, render state, software clipper, all
+sixteen DDHAL entry points), `d3d_virge.c` (the S3D triangle emitter, the
+sampler's format test, the device caps) and `d3d_internal.h` (the boundary).
+All 63 MMIO writes are in the engine; the core names no chip's register
+vocabulary. Every moved body is byte-identical - the split was done by a script
+copying verified line ranges, not by retyping.
+
+The vtable draws at `draw_triangles(context, vertices, count)` and never at
+register level, which is the one rule fixed hardest: the ViRGE is immediate-mode
+and would take either, but every plausible next engine is a command-stream
+engine that needs a run of work to build one packet from. All three call sites
+mapped onto it without contortion.
+
+The part the roadmap did not anticipate: most of what was chip-specific here is
+*numbers*, not code - target depth, pitch ceiling and alignment, dimension and
+texture-size caps, the coordinate guard band - all literals sitting inside
+otherwise chip-neutral routines. They became a `V9X_D3D_ENGINE_LIMITS` struct
+rather than five more function pointers, on the grounds that a second engine
+changes the values and nothing about their use.
+
+Measured on the 86Box ViRGE/DX guest: the 323-key DirectDraw/Direct3D probe is
+**byte-identical** before and after, every read-back pixel included
+(`D3DTrianglePixelRaw`, `D3DBaseTextureRaw`, `D3DMipmapLevelRaw`,
+`D3DTrilinearRaw`, `Tex4444Raw`). Two controls rule out the reading that an
+identical result means a failed install: the guest's `V9XHAL.DLL` hash equals
+the split build's, and the linked image carries a `d3d_core.obj` that did not
+exist before.
+
+One thing the split buys before any second engine: `v9x_d3d_engine()` resolves
+null for a chip with no S3D core, so the ATI and VBE packages - which have
+always linked this code and relied entirely on the 16-bit side nulling
+`lpD3D*` - now have a second lock behind the first. `check-tree.ps1` holds the
+boundary in both directions rather than leaving it to review.
+
 **Two S3 chips were supported all along and nobody had checked.** Reading the
 PCI Data Structure out of all 41 S3 option ROMs in the local 86Box tree showed
 that the Trio64V+ 86C765 and the Trio32 86C732 both publish `5333:8811` - the

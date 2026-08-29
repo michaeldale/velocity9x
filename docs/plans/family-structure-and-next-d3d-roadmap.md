@@ -3,10 +3,11 @@
 Date: 2026-08-28
 
 Status: Track A complete 2026-08-28 (A1 pre-existing, A2/A3/A4 done).
+Track B complete 2026-08-29, executed ahead of its scheduled slot.
 Track C resolved to 3dfx: the card is a confirmed Voodoo3, planned in
-[3dfx-voodoo3-family.md](3dfx-voodoo3-family.md). Track B queues before that
-plan's D3D phase. Track D (tier-0 quality: MTRR write-combining, hardware
-cursor, synthetic vblank, DOS-box guard) added 2026-08-28 from the
+[3dfx-voodoo3-family.md](3dfx-voodoo3-family.md); its D3D phase now finds the
+Track B seam already in place. Track D (tier-0 quality: MTRR write-combining,
+hardware cursor, synthetic vblank, DOS-box guard) added 2026-08-28 from the
 vmdisp9x/vmhal9x survey, planned in [tier0-quality.md](tier0-quality.md);
 its D1/D4 land before the 3dfx packages ship.
 
@@ -149,10 +150,20 @@ from the monolith later:
    validation matrix (Hellbender gates included) with identical results; it is
    mechanical extraction inside a file nothing else reaches into.
 
-Timing: written as its own plan and executed when Track C's engine is
-scheduled — not before, per the house rule against speculative refactors — but
-the decision doc recording the ops boundary and the two rules above can be
-written any time.
+**Done 2026-08-29, out of order.** Executed on instruction rather than waiting
+for Track C's engine, so the caveat this paragraph used to carry still stands
+and is restated in the decision doc: the abstraction is drawn around one
+engine. The split is recorded in
+[`../decisions/2026-08-29-d3d-core-engine-split.md`](../decisions/2026-08-29-d3d-core-engine-split.md),
+which also holds the ops boundary and the two rules above.
+
+What landed beyond the two rules: most of what was chip-specific in the module
+turned out to be *numbers*, not code - target depth and pitch limits, texture
+size range, the coordinate guard band - all of them literals inside otherwise
+chip-neutral routines. They became a `V9X_D3D_ENGINE_LIMITS` struct rather than
+more function pointers. The 323-key DirectDraw/Direct3D probe is byte-identical
+before and after, every rendered pixel included, and `check-tree.ps1` now holds
+the boundary in both directions.
 
 ---
 
@@ -202,9 +213,11 @@ Software lane (in order):
    C Phase 0: the guest profile, agent port, and in-guest survey need no
    physical card, and the Phase 0 diff is then one run instead of a setup
    session.
-4. **Track B decision doc** (ops boundary, batch rule). Documentation only.
+4. ~~**Track B decision doc** (ops boundary, batch rule). Documentation only.~~
+   Done 2026-08-29, together with the execution it was meant to precede.
 5. **D2 — hardware cursor** (S3 first), then **D3 — synthetic vblank**.
-6. **Track B execution**, immediately before C's D3D phase.
+6. ~~**Track B execution**, immediately before C's D3D phase.~~ Done
+   2026-08-29, ahead of C - see Track B above.
 
 Hardware lane (as machines become available):
 

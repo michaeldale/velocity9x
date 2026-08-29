@@ -1,112 +1,51 @@
 /*
- * ViRGE/DX Direct3D block for V9XHAL.DLL.
+ * ViRGE/DX S3D engine for V9XHAL.DLL's Direct3D path.
  *
- * The whole S3D path lives here: context and texture bookkeeping, render
- * state, the software clipper, the fixed-point triangle setup that feeds the
- * 3D command registers, and the caps this driver publishes for them.
+ * The chip half of the D3D split: the fixed-point triangle setup that feeds
+ * the 3D command registers, the sampler's view of which surfaces it can
+ * texture from, the caps the device publishes, and the S3D unit's own limits
+ * as data. This is the only file on the D3D path that writes a hardware
+ * register.
  *
- * Nothing outside this file reaches into it. DriverInit calls v9x_d3d_publish
- * to fill the shared block's D3D fields and callback tables, and DDRAW then
- * calls the V9xD3d* entry points directly. The chipset gate is upstream of
- * both: the 16-bit side nulls lpD3D* and GetDriverInfo for any engine whose
- * engine_caps lack D3D, so a Trio64 never advertises what is implemented here.
+ * Everything chip-neutral is in d3d_core.c and reaches this file only through
+ * V9X_D3D_ENGINE_OPS at the bottom. In particular the core owns the context
+ * pool and the texture handle table; this file asks it which surface a
+ * context has bound and then judges the surface itself.
+ *
+ * Split out of the combined d3d_virge.c on 2026-08-29. Every body here is the
+ * one that passed the DirectDraw/Direct3D probe before the split, moved
+ * unchanged.
  *
  * Every register offset and command bit it uses is in ddhal_internal.h with
  * the rest of the S3 vocabulary.
  */
-#include "ddhal_internal.h"
+#include "d3d_internal.h"
 
-#define V9X_D3D_CONTEXT_COUNT 16u
-#define V9X_D3D_TEXTURE_COUNT 256u
-#define V9X_D3D_MAX_BATCH_TRIANGLES 256u
-
-typedef struct v9x_d3d_context {
-    DWORD active;
-    DWORD pid;
-    V9X_DD_SURFACE_LCL *target;
-    V9X_DD_SURFACE_LCL *zbuffer;
-    DWORD target_offset;
-    DWORD pitch;
-    DWORD width;
-    DWORD height;
-    DWORD specular_enable;
-    DWORD fog_enable;
-    DWORD fog_color;
-    DWORD alpha_blend_enable;
-    DWORD src_blend;
-    DWORD dest_blend;
-    DWORD texture_handle;
-    DWORD texture_min;
-    DWORD texture_mag;
-    DWORD texture_blend;
-    DWORD texture_wrap;
-    DWORD texture_border;
-} V9X_D3D_CONTEXT;
-
-typedef struct v9x_d3d_texture {
-    DWORD active;
-    DWORD context;
-    void *surface;
-} V9X_D3D_TEXTURE;
-
-static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
-static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
-static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
-
-#if V9X_C3_SERVE_D3D_CALLBACKS2
-static const BYTE v9x_guid_d3d_callbacks2[16] = {
-    0xe1u, 0x84u, 0xa5u, 0x0bu, 0xb6u, 0x70u, 0xd0u, 0x11u,
-    0x88u, 0x9du, 0x00u, 0xaau, 0x00u, 0xbbu, 0xb7u, 0x6au
+/*
+ * The S3D unit's constraints, previously literals spread through the routines
+ * that are now in d3d_core.c.
+ *
+ * 16 bpp: the only render-target depth the engine has a pixel format for.
+ * 0FF8h/8: the destination stride field is 8-byte aligned with a 12-bit byte
+ * count. 2048: the coordinate registers' pixel range. 4..512 texels: the
+ * sampler's square power-of-two range. 2048.0f: outside this the 12.20
+ * fixed-point converter in this file overflows, so the core refuses the
+ * vertex before clipping rather than wrapping it.
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
+    16ul,           /* target_bits_per_pixel */
+    0x00000ff8ul,   /* target_pitch_max */
+    8ul,            /* target_pitch_align */
+    2048ul,         /* target_dimension_max */
+    4ul,            /* texture_size_min */
+    512ul,          /* texture_size_max */
+    2048.0f         /* coordinate_limit */
 };
-#endif
-
-static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
-{
-    DWORD index;
-
-    for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
-        if ((DWORD)&v9x_d3d_contexts[index] == handle &&
-            v9x_d3d_contexts[index].active != 0ul) {
-            return &v9x_d3d_contexts[index];
-        }
-    }
-    return 0;
-}
-
-static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
-                                                     DWORD context)
-{
-    DWORD index;
-
-    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
-        if ((DWORD)&v9x_d3d_textures[index] == handle &&
-            v9x_d3d_textures[index].active != 0ul &&
-            v9x_d3d_textures[index].context == context) {
-            return &v9x_d3d_textures[index];
-        }
-    }
-    return 0;
-}
-
-static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface);
-
-static void v9x_d3d_textures_destroy_context(DWORD context)
-{
-    DWORD index;
-
-    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
-        if (v9x_d3d_textures[index].active != 0ul &&
-            v9x_d3d_textures[index].context == context) {
-            v9x_d3d_textures[index].active = 0ul;
-            v9x_d3d_textures[index].context = 0ul;
-            v9x_d3d_textures[index].surface = 0;
-        }
-    }
-}
 
 /* Which ViRGE texture format a surface is sampled as. */
 #define V9X_TEX_FORMAT_ARGB1555 0
 #define V9X_TEX_FORMAT_ARGB4444 1
+
 
 /*
  * Classify the surface's pixel format.
@@ -149,19 +88,12 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
                                 DWORD *offset_out, DWORD *size_log_out,
                                 int *mipmapped_out, DWORD *format_out)
 {
-    V9X_D3D_TEXTURE *texture;
-    V9X_DD_SURFACE_LCL *surface;
+    V9X_DD_SURFACE_LCL *surface = v9x_d3d_context_texture_surface(context);
     DWORD size;
     DWORD size_log = 0ul;
     DWORD offset;
     DWORD last_byte;
 
-    if (context->texture_handle == 0ul) {
-        return 0;
-    }
-    texture = v9x_d3d_texture_from_handle(context->texture_handle,
-                                           (DWORD)context);
-    surface = texture != 0 ? v9x_d3d_surface_lcl(texture->surface) : 0;
     if (surface == 0 || surface->lpGbl == 0) {
         return 0;
     }
@@ -170,7 +102,8 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
         return 0;
     }
     if (surface->lpGbl->wWidth != surface->lpGbl->wHeight ||
-        surface->lpGbl->wWidth < 4u || surface->lpGbl->wWidth > 512u) {
+        (DWORD)surface->lpGbl->wWidth < v9x_d3d_virge_limits.texture_size_min ||
+        (DWORD)surface->lpGbl->wWidth > v9x_d3d_virge_limits.texture_size_max) {
         return 0;
     }
     if (surface->lpGbl->lPitch != (LONG)surface->lpGbl->wWidth * 2l) {
@@ -199,825 +132,6 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     *size_log_out = size_log;
     *mipmapped_out = (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul;
     return 1;
-}
-
-static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
-                            const V9X_D3DTLVERTEX *first);
-DWORD __stdcall V9xD3dRenderPrimitive(
-    V9X_D3DHAL_RENDERPRIMITIVEDATA *data);
-
-static BYTE v9x_d3d_lerp_byte(BYTE first, BYTE second, float amount)
-{
-    return (BYTE)v9x_float_to_long((float)first +
-        ((float)second - (float)first) * amount);
-}
-
-static DWORD v9x_d3d_lerp_color(DWORD first, DWORD second, float amount)
-{
-    return ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 24),
-                                     (BYTE)(second >> 24), amount) << 24) |
-           ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 16),
-                                     (BYTE)(second >> 16), amount) << 16) |
-           ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 8),
-                                     (BYTE)(second >> 8), amount) << 8) |
-           (DWORD)v9x_d3d_lerp_byte((BYTE)first, (BYTE)second, amount);
-}
-
-static void v9x_d3d_lerp_vertex(V9X_D3DTLVERTEX *result,
-                                const V9X_D3DTLVERTEX *first,
-                                const V9X_D3DTLVERTEX *second,
-                                float amount)
-{
-    result->sx = first->sx + (second->sx - first->sx) * amount;
-    result->sy = first->sy + (second->sy - first->sy) * amount;
-    result->sz = first->sz + (second->sz - first->sz) * amount;
-    result->rhw = first->rhw + (second->rhw - first->rhw) * amount;
-    result->color = v9x_d3d_lerp_color(first->color, second->color, amount);
-    result->specular = v9x_d3d_lerp_color(first->specular,
-                                          second->specular, amount);
-    result->tu = first->tu + (second->tu - first->tu) * amount;
-    result->tv = first->tv + (second->tv - first->tv) * amount;
-}
-
-static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
-                                 const V9X_D3DTLVERTEX *triangle,
-                                 V9X_D3DTLVERTEX *result)
-{
-    V9X_D3DTLVERTEX buffers[2][8];
-    V9X_D3DTLVERTEX *input = buffers[0];
-    V9X_D3DTLVERTEX *output = buffers[1];
-    DWORD count = 3ul;
-    DWORD edge;
-    DWORD index;
-
-    for (index = 0ul; index < 3ul; ++index) {
-        if (!(triangle[index].sx >= -2048.0f &&
-              triangle[index].sx < 2048.0f &&
-              triangle[index].sy >= -2048.0f &&
-              triangle[index].sy < 2048.0f)) {
-            return -1;
-        }
-        input[index] = triangle[index];
-    }
-    for (edge = 0ul; edge < 4ul && count != 0ul; ++edge) {
-        V9X_D3DTLVERTEX previous = input[count - 1ul];
-        int previous_inside;
-        DWORD output_count = 0ul;
-        float boundary = (edge == 0ul || edge == 2ul) ? 0.0f :
-            (edge == 1ul ? (float)(context->width - 1ul) :
-                           (float)(context->height - 1ul));
-
-        if (edge < 2ul) {
-            previous_inside = edge == 0ul ? previous.sx >= boundary
-                                          : previous.sx <= boundary;
-        } else {
-            previous_inside = edge == 2ul ? previous.sy >= boundary
-                                          : previous.sy <= boundary;
-        }
-        for (index = 0ul; index < count; ++index) {
-            V9X_D3DTLVERTEX current = input[index];
-            int current_inside;
-
-            if (edge < 2ul) {
-                current_inside = edge == 0ul ? current.sx >= boundary
-                                             : current.sx <= boundary;
-            } else {
-                current_inside = edge == 2ul ? current.sy >= boundary
-                                             : current.sy <= boundary;
-            }
-            if (current_inside != previous_inside) {
-                float denominator = edge < 2ul
-                    ? current.sx - previous.sx : current.sy - previous.sy;
-                float numerator = edge < 2ul
-                    ? boundary - previous.sx : boundary - previous.sy;
-
-                if (denominator != 0.0f && output_count < 8ul) {
-                    v9x_d3d_lerp_vertex(&output[output_count], &previous,
-                                        &current, numerator / denominator);
-                    if (edge < 2ul) {
-                        output[output_count].sx = boundary;
-                    } else {
-                        output[output_count].sy = boundary;
-                    }
-                    ++output_count;
-                }
-            }
-            if (current_inside && output_count < 8ul) {
-                output[output_count++] = current;
-            }
-            previous = current;
-            previous_inside = current_inside;
-        }
-        count = output_count;
-        {
-            V9X_D3DTLVERTEX *swap = input;
-            input = output;
-            output = swap;
-        }
-    }
-    for (index = 0ul; index < count; ++index) {
-        result[index] = input[index];
-    }
-    return (int)count;
-}
-
-static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
-{
-    V9X_DD_SURFACE_INT *wrapper = (V9X_DD_SURFACE_INT *)surface;
-
-    return wrapper != 0 ? wrapper->lpLcl : 0;
-}
-
-static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
-                              void *zbuffer)
-{
-    V9X_DD_SURFACE_LCL *target = v9x_d3d_surface_lcl(surface);
-    V9X_DD_SURFACE_LCL *depth = zbuffer != 0
-        ? v9x_d3d_surface_lcl(zbuffer) : 0;
-    V9X_DD_SURFACE_GBL *global;
-    DWORD offset;
-    DWORD last_byte;
-    DWORD pitch;
-    DWORD width;
-    DWORD height;
-    int primary;
-    int display_layout;
-
-    if (context == 0 || target == 0 || target->lpGbl == 0 ||
-        (target->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
-        return 0;
-    }
-    global = target->lpGbl;
-    offset = v9x_surface_offset(target);
-    primary = (target->ddsCaps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul;
-    display_layout = (target->ddsCaps &
-        (V9X_DDSCAPS_PRIMARYSURFACE | V9X_DDSCAPS_BACKBUFFER)) != 0ul;
-    pitch = (DWORD)global->lPitch;
-    width = global->wWidth;
-    height = global->wHeight;
-    /* Low byte: 0x80 marks raw DDRAW metadata; bits 1:0 identify
-     * offscreen/primary/backbuffer. The following event records the pitch
-     * actually selected after display-layout normalization. */
-    v9x_trace_push(V9X_TRACE_D3D_TARGET_LAYOUT,
-                   ((pitch & 0xfffful) << 16) |
-                   ((v9x_hal->fb.bits_per_pixel & 0xfful) << 8) | 0x80ul |
-                   (primary ? 1ul : (display_layout ? 2ul : 0ul)));
-    if (display_layout) {
-        V9X_DDPIXELFORMAT *format = &v9x_hal->info.vmiData.ddpfDisplay;
-
-        /* DDRAW's primary/flip-chain metadata has varied across the legacy
-         * runtime paths. The scanout descriptor is authoritative for these
-         * display-sized surfaces: using a stale surface pitch here creates
-         * diagonal/striped S3D output and can walk beyond the page. */
-        if ((primary && offset != 0ul) ||
-            v9x_hal->fb.bits_per_pixel != 16ul ||
-            v9x_hal->info.vmiData.lDisplayPitch !=
-                (LONG)v9x_hal->fb.pitch ||
-            format->dwSize != sizeof(V9X_DDPIXELFORMAT) ||
-            (format->dwFlags & V9X_DDPF_RGB) == 0ul ||
-            format->dwRGBBitCount != 16ul ||
-            format->dwRBitMask != 0x0000f800ul ||
-            format->dwGBitMask != 0x000007e0ul ||
-            format->dwBBitMask != 0x0000001ful) {
-            return 0;
-        }
-        pitch = v9x_hal->fb.pitch;
-        width = v9x_hal->fb.width;
-        height = v9x_hal->fb.height;
-    }
-    v9x_trace_push(V9X_TRACE_D3D_TARGET_LAYOUT,
-                   ((pitch & 0xfffful) << 16) |
-                   ((v9x_hal->fb.bits_per_pixel & 0xfful) << 8) |
-                   (primary ? 1ul : (display_layout ? 2ul : 0ul)));
-    if (offset == 0xfffffffful || (!display_layout && global->lPitch <= 0l) ||
-        (pitch & 7ul) != 0ul || pitch > 0x00000ff8ul ||
-        width == 0ul || width > pitch / 2ul || height == 0ul ||
-        width > 2048ul || height > 2048ul) {
-        return 0;
-    }
-    last_byte = (height - 1ul) * pitch + width * 2ul;
-    if (last_byte > v9x_hal->fb.vram_bytes ||
-        offset > v9x_hal->fb.vram_bytes - last_byte) {
-        return 0;
-    }
-    if (depth != 0) {
-        DWORD depth_offset;
-        DWORD depth_pitch;
-        DWORD depth_last_byte;
-
-        if (depth->lpGbl == 0 ||
-            (depth->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
-            (depth->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-            depth->lpGbl->lPitch <= 0l || depth->lpGbl->wWidth < width ||
-            depth->lpGbl->wHeight < height) {
-            return 0;
-        }
-        depth_offset = v9x_surface_offset(depth);
-        depth_pitch = (DWORD)depth->lpGbl->lPitch;
-        depth_last_byte = (height - 1ul) * depth_pitch + width * 2ul;
-        if ((depth_pitch & 7ul) != 0ul || depth_pitch > 0x00000ff8ul ||
-            depth_offset == 0xfffffffful ||
-            depth_last_byte > v9x_hal->fb.vram_bytes ||
-            depth_offset > v9x_hal->fb.vram_bytes - depth_last_byte) {
-            return 0;
-        }
-    }
-    context->target = target;
-    context->zbuffer = depth;
-    context->target_offset = offset;
-    context->pitch = pitch;
-    context->width = width;
-    context->height = height;
-    return 1;
-}
-
-DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
-{
-    DWORD index;
-    V9X_D3D_CONTEXT *context;
-
-    v9x_trace_enter(V9X_TRACE_D3D_CTXCREATE,
-                    data != 0 ? data->dwPID : 0ul);
-    if (data == 0 || v9x_hal == 0 || data->lpDDS == 0 ||
-        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        v9x_hal->fb.bits_per_pixel != 16ul) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.context_rejects;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_CTXCREATE, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
-        context = &v9x_d3d_contexts[index];
-        if (context->active == 0ul) {
-            if (!v9x_d3d_set_target(context, data->lpDDS, data->lpDDSZ)) {
-                data->ddrval = 0x80070057ul;
-                ++v9x_hal->d3d_diagnostics.context_rejects;
-                v9x_trace_exit(V9X_TRACE_D3D_CTXCREATE, data->ddrval);
-                return V9X_DDHAL_DRIVER_HANDLED;
-            }
-            context->pid = data->dwPID;
-            context->specular_enable = 0ul;
-            context->fog_enable = 0ul;
-            context->fog_color = 0ul;
-            context->alpha_blend_enable = 0ul;
-            context->src_blend = V9X_D3DBLEND_SRCALPHA;
-            context->dest_blend = V9X_D3DBLEND_INVSRCALPHA;
-            context->texture_handle = 0ul;
-            context->texture_min = V9X_D3DFILTER_NEAREST;
-            context->texture_mag = V9X_D3DFILTER_NEAREST;
-            context->texture_blend = V9X_D3DTBLEND_MODULATE;
-            context->texture_wrap = 1ul;
-            context->texture_border = 0ul;
-            context->active = 1ul;
-            data->dwhContext = (DWORD)context;
-            data->ddrval = V9X_DD_OK;
-            ++v9x_hal->d3d_diagnostics.context_creates;
-            v9x_trace_exit(V9X_TRACE_D3D_CTXCREATE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-    }
-    data->ddrval = 0x8007000eul;
-    ++v9x_hal->d3d_diagnostics.context_rejects;
-    v9x_trace_exit(V9X_TRACE_D3D_CTXCREATE, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
-{
-    V9X_D3D_CONTEXT *context;
-
-    context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROY,
-                    data != 0 ? data->dwhContext : 0ul);
-    if (context == 0) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.context_rejects;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    v9x_d3d_textures_destroy_context(data->dwhContext);
-    context->active = 0ul;
-    context->pid = 0ul;
-    context->target = 0;
-    context->zbuffer = 0;
-    context->target_offset = 0ul;
-    context->pitch = 0ul;
-    context->width = 0ul;
-    context->height = 0ul;
-    context->specular_enable = 0ul;
-    context->fog_enable = 0ul;
-    context->fog_color = 0ul;
-    context->alpha_blend_enable = 0ul;
-    context->src_blend = 0ul;
-    context->dest_blend = 0ul;
-    context->texture_handle = 0ul;
-    context->texture_min = 0ul;
-    context->texture_mag = 0ul;
-    context->texture_blend = 0ul;
-    context->texture_wrap = 0ul;
-    context->texture_border = 0ul;
-    data->ddrval = V9X_DD_OK;
-    ++v9x_hal->d3d_diagnostics.context_destroys;
-    v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dContextDestroyAll(
-    V9X_D3DHAL_CONTEXTDESTROYALLDATA *data)
-{
-    DWORD index;
-
-    v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROYALL,
-                    data != 0 ? data->dwPID : 0ul);
-    if (data == 0) {
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
-        if (v9x_d3d_contexts[index].active != 0ul &&
-            v9x_d3d_contexts[index].pid == data->dwPID) {
-            v9x_d3d_textures_destroy_context(
-                (DWORD)&v9x_d3d_contexts[index]);
-            v9x_d3d_contexts[index].active = 0ul;
-            v9x_d3d_contexts[index].pid = 0ul;
-            v9x_d3d_contexts[index].target = 0;
-            v9x_d3d_contexts[index].zbuffer = 0;
-            v9x_d3d_contexts[index].target_offset = 0ul;
-            v9x_d3d_contexts[index].pitch = 0ul;
-            v9x_d3d_contexts[index].width = 0ul;
-            v9x_d3d_contexts[index].height = 0ul;
-            v9x_d3d_contexts[index].specular_enable = 0ul;
-            v9x_d3d_contexts[index].fog_enable = 0ul;
-            v9x_d3d_contexts[index].fog_color = 0ul;
-            v9x_d3d_contexts[index].alpha_blend_enable = 0ul;
-            v9x_d3d_contexts[index].src_blend = 0ul;
-            v9x_d3d_contexts[index].dest_blend = 0ul;
-            v9x_d3d_contexts[index].texture_handle = 0ul;
-            v9x_d3d_contexts[index].texture_min = 0ul;
-            v9x_d3d_contexts[index].texture_mag = 0ul;
-            v9x_d3d_contexts[index].texture_blend = 0ul;
-            v9x_d3d_contexts[index].texture_wrap = 0ul;
-            v9x_d3d_contexts[index].texture_border = 0ul;
-        }
-    }
-    data->ddrval = V9X_DD_OK;
-    ++v9x_hal->d3d_diagnostics.context_destroy_alls;
-    v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROYALL, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
-{
-    DWORD index;
-
-    v9x_trace_enter(V9X_TRACE_D3D_TEXTURECREATE,
-                    data != 0 ? data->dwhContext : 0ul);
-    if (data == 0 || data->lpDDS == 0 ||
-        v9x_d3d_context_from_handle(data->dwhContext) == 0) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
-        if (v9x_d3d_textures[index].active == 0ul) {
-            v9x_d3d_textures[index].active = 1ul;
-            v9x_d3d_textures[index].context = data->dwhContext;
-            v9x_d3d_textures[index].surface = data->lpDDS;
-            data->dwHandle = (DWORD)&v9x_d3d_textures[index];
-            data->ddrval = V9X_DD_OK;
-            ++v9x_hal->d3d_diagnostics.texture_creates;
-            v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-    }
-    data->ddrval = 0x8007000eul;
-    v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dTextureDestroy(V9X_D3DHAL_TEXTUREDESTROYDATA *data)
-{
-    V9X_D3D_TEXTURE *texture;
-
-    v9x_trace_enter(V9X_TRACE_D3D_TEXTUREDESTROY,
-                    data != 0 ? data->dwHandle : 0ul);
-    texture = data != 0
-        ? v9x_d3d_texture_from_handle(data->dwHandle, data->dwhContext) : 0;
-    if (texture == 0) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_TEXTUREDESTROY, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    texture->active = 0ul;
-    texture->context = 0ul;
-    texture->surface = 0;
-    data->ddrval = V9X_DD_OK;
-    ++v9x_hal->d3d_diagnostics.texture_destroys;
-    v9x_trace_exit(V9X_TRACE_D3D_TEXTUREDESTROY, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
-{
-    V9X_D3D_TEXTURE *first;
-    V9X_D3D_TEXTURE *second;
-    void *surface;
-
-    v9x_trace_enter(V9X_TRACE_D3D_TEXTURESWAP,
-                    data != 0 ? data->dwHandle1 : 0ul);
-    first = data != 0
-        ? v9x_d3d_texture_from_handle(data->dwHandle1, data->dwhContext) : 0;
-    second = data != 0
-        ? v9x_d3d_texture_from_handle(data->dwHandle2, data->dwhContext) : 0;
-    if (first == 0 || second == 0) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    surface = first->surface;
-    first->surface = second->surface;
-    second->surface = surface;
-    data->ddrval = V9X_DD_OK;
-    ++v9x_hal->d3d_diagnostics.texture_swaps;
-    v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dTextureGetSurf(V9X_D3DHAL_TEXTUREGETSURFDATA *data)
-{
-    V9X_D3D_TEXTURE *texture;
-
-    v9x_trace_enter(V9X_TRACE_D3D_TEXTUREGETSURF,
-                    data != 0 ? data->dwHandle : 0ul);
-    texture = data != 0
-        ? v9x_d3d_texture_from_handle(data->dwHandle, data->dwhContext) : 0;
-    if (texture == 0) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_TEXTUREGETSURF, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    data->lpDDS = (DWORD)texture->surface;
-    data->ddrval = V9X_DD_OK;
-    ++v9x_hal->d3d_diagnostics.texture_get_surfs;
-    v9x_trace_exit(V9X_TRACE_D3D_TEXTUREGETSURF, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
-{
-    V9X_D3D_CONTEXT *context;
-    V9X_DD_SURFACE_LCL *exe;
-    V9X_D3DSTATE *states;
-    DWORD index;
-
-    v9x_trace_enter(V9X_TRACE_D3D_RENDERSTATE,
-                    data != 0 ? data->dwCount : 0ul);
-    if (v9x_hal != 0) {
-        ++v9x_hal->d3d_diagnostics.render_state_calls;
-    }
-    context = data != 0
-        ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
-    if (context != 0 && exe != 0 && exe->lpGbl != 0 &&
-        exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) {
-        states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
-        for (index = 0ul; index < data->dwCount; ++index) {
-            switch (states[index].type) {
-            case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
-                context->texture_handle = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE:
-                /* Perspective setup is added after the affine texture gate. */
-                break;
-            case V9X_D3DRENDERSTATE_WRAPU:
-            case V9X_D3DRENDERSTATE_WRAPV:
-                context->texture_wrap = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMAG:
-                context->texture_mag = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMIN:
-                context->texture_min = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
-                context->texture_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_BORDERCOLOR:
-                context->texture_border = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_SRCBLEND:
-                context->src_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_DESTBLEND:
-                context->dest_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_ALPHABLENDENABLE:
-                context->alpha_blend_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_FOGENABLE:
-                context->fog_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_SPECULARENABLE:
-                context->specular_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_FOGCOLOR:
-                context->fog_color = states[index].argument;
-                break;
-            default:
-                break;
-            }
-        }
-    }
-    if (data != 0) {
-        data->ddrval = V9X_DD_OK;
-    }
-    v9x_trace_exit(V9X_TRACE_D3D_RENDERSTATE, V9X_DD_OK);
-    return V9X_DDHAL_DRIVER_NOTHANDLED;
-}
-
-static BYTE v9x_d3d_saturating_add_byte(BYTE first, BYTE second)
-{
-    WORD sum = (WORD)first + (WORD)second;
-
-    return sum > 255u ? 255u : (BYTE)sum;
-}
-
-static BYTE v9x_d3d_fog_byte(BYTE color, BYTE fog, BYTE factor)
-{
-    return (BYTE)(((DWORD)color * factor +
-                   (DWORD)fog * (255u - factor) + 127ul) / 255ul);
-}
-
-static void v9x_d3d_apply_vertex_color(const V9X_D3D_CONTEXT *context,
-                                       V9X_D3DTLVERTEX *vertex)
-{
-    DWORD color = vertex->color;
-    BYTE alpha = (BYTE)(color >> 24);
-    BYTE red = (BYTE)(color >> 16);
-    BYTE green = (BYTE)(color >> 8);
-    BYTE blue = (BYTE)color;
-
-    if (context->specular_enable != 0ul) {
-        red = v9x_d3d_saturating_add_byte(
-            red, (BYTE)(vertex->specular >> 16));
-        green = v9x_d3d_saturating_add_byte(
-            green, (BYTE)(vertex->specular >> 8));
-        blue = v9x_d3d_saturating_add_byte(blue, (BYTE)vertex->specular);
-    }
-    if (context->fog_enable != 0ul) {
-        BYTE factor = (BYTE)(vertex->specular >> 24);
-
-        red = v9x_d3d_fog_byte(red, (BYTE)(context->fog_color >> 16),
-                               factor);
-        green = v9x_d3d_fog_byte(green, (BYTE)(context->fog_color >> 8),
-                                 factor);
-        blue = v9x_d3d_fog_byte(blue, (BYTE)context->fog_color, factor);
-    }
-    vertex->color = ((DWORD)alpha << 24) | ((DWORD)red << 16) |
-                    ((DWORD)green << 8) | (DWORD)blue;
-}
-
-#define V9X_D3DOP_TRIANGLE             3u
-#define V9X_D3DOP_EXIT                11u
-#define V9X_D3DHAL_EXECUTE_OVERRIDE    1ul
-#define V9X_D3DHAL_EXECUTE_UNHANDLED   0x00000211ul
-
-DWORD __stdcall V9xD3dExecute(V9X_D3DHAL_EXECUTEDATA *data)
-{
-    V9X_DD_SURFACE_LCL *exe;
-    V9X_D3DINSTRUCTION *instruction;
-    BYTE *base;
-    DWORD offset;
-    DWORD end;
-    int one_instruction;
-
-    v9x_trace_enter(V9X_TRACE_D3D_EXECUTE,
-                    data != 0 ? data->dwFlags : 0ul);
-    if (v9x_hal != 0) {
-        ++v9x_hal->d3d_diagnostics.execute_calls;
-    }
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
-    if (data == 0 || v9x_d3d_context_from_handle(data->dwhContext) == 0 ||
-        exe == 0 || exe->lpGbl == 0 || exe->lpGbl->fpVidMem == 0ul ||
-        data->deExData.dwInstructionLength > 0x00100000ul) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    base = (BYTE *)exe->lpGbl->fpVidMem;
-    one_instruction = (data->dwFlags & V9X_D3DHAL_EXECUTE_OVERRIDE) != 0ul;
-    offset = one_instruction ? data->dwOffset
-                             : data->deExData.dwInstructionOffset +
-                               data->dwOffset;
-    end = data->deExData.dwInstructionOffset +
-          data->deExData.dwInstructionLength;
-    for (;;) {
-        DWORD bytes;
-
-        if (!one_instruction && (offset > end ||
-            end - offset < sizeof(V9X_D3DINSTRUCTION))) {
-            data->ddrval = 0x80070057ul;
-            v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-        instruction = one_instruction ? &data->diInstruction
-                                      : (V9X_D3DINSTRUCTION *)(base + offset);
-        bytes = (DWORD)instruction->bSize * (DWORD)instruction->wCount;
-        if (!one_instruction && bytes > end - offset -
-            sizeof(V9X_D3DINSTRUCTION)) {
-            data->ddrval = 0x80070057ul;
-            v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-        if (instruction->bOpcode == V9X_D3DOP_EXIT) {
-            data->ddrval = V9X_DD_OK;
-            v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-        if (instruction->bOpcode == V9X_D3DOP_TRIANGLE) {
-            V9X_D3DHAL_RENDERPRIMITIVEDATA primitive;
-
-            primitive.dwhContext = data->dwhContext;
-            primitive.dwOffset = one_instruction ? data->dwOffset
-                : offset + sizeof(V9X_D3DINSTRUCTION);
-            primitive.dwStatus = data->dwStatus;
-            primitive.lpExeBuf = data->lpExeBuf;
-            primitive.dwTLOffset = data->lpTLBuf != 0
-                ? 0ul : data->deExData.dwVertexOffset;
-            primitive.lpTLBuf = data->lpTLBuf != 0
-                ? data->lpTLBuf : data->lpExeBuf;
-            primitive.diInstruction = *instruction;
-            primitive.ddrval = V9X_DD_OK;
-            (void)V9xD3dRenderPrimitive(&primitive);
-            if (primitive.ddrval != V9X_DD_OK) {
-                data->ddrval = primitive.ddrval;
-                v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-                return V9X_DDHAL_DRIVER_HANDLED;
-            }
-        } else {
-            data->dwOffset = one_instruction ? data->dwOffset
-                : offset - data->deExData.dwInstructionOffset;
-            data->ddrval = V9X_D3DHAL_EXECUTE_UNHANDLED;
-            v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-            return one_instruction ? V9X_DDHAL_DRIVER_NOTHANDLED
-                                   : V9X_DDHAL_DRIVER_HANDLED;
-        }
-        if (one_instruction) {
-            data->ddrval = V9X_DD_OK;
-            v9x_trace_exit(V9X_TRACE_D3D_EXECUTE, data->ddrval);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-        offset += sizeof(V9X_D3DINSTRUCTION) + bytes;
-    }
-}
-
-DWORD __stdcall V9xD3dExecuteClipped(
-    V9X_D3DHAL_EXECUTECLIPPEDDATA *data)
-{
-    V9X_D3DHAL_EXECUTEDATA execute;
-    DWORD handled;
-
-    if (data == 0) {
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    execute.dwhContext = data->dwhContext;
-    execute.dwOffset = data->dwOffset;
-    execute.dwFlags = data->dwFlags;
-    execute.dwStatus = data->dwStatus;
-    execute.deExData = data->deExData;
-    execute.lpExeBuf = data->lpExeBuf;
-    execute.lpTLBuf = data->lpTLBuf;
-    execute.diInstruction = data->diInstruction;
-    execute.ddrval = data->ddrval;
-    handled = V9xD3dExecute(&execute);
-    data->dwOffset = execute.dwOffset;
-    data->dwStatus = execute.dwStatus;
-    data->ddrval = execute.ddrval;
-    return handled;
-}
-
-DWORD __stdcall V9xD3dRenderPrimitive(
-    V9X_D3DHAL_RENDERPRIMITIVEDATA *data)
-{
-    V9X_FPU_AREA fpu;
-    V9X_D3D_CONTEXT *context;
-    V9X_DD_SURFACE_LCL *exe;
-    V9X_DD_SURFACE_LCL *tl;
-    const V9X_D3DTRIANGLE *triangles;
-    const V9X_D3DTLVERTEX *vertices;
-    DWORD index;
-    int ok = 0;
-
-    v9x_trace_enter(V9X_TRACE_D3D_RENDERPRIM,
-                    data != 0
-                        ? (((DWORD)data->diInstruction.bOpcode << 24) |
-                           ((DWORD)data->diInstruction.bSize << 16) |
-                           (DWORD)data->diInstruction.wCount)
-                        : 0ul);
-    v9x_fpu_save(&fpu);
-    context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
-    tl = data != 0 ? v9x_d3d_surface_lcl(data->lpTLBuf) : 0;
-    (void)v9x_engine_validate_status();
-    if (context != 0 && exe != 0 && exe->lpGbl != 0 && tl != 0 &&
-        tl->lpGbl != 0 && v9x_engine_status_validated() &&
-        data->diInstruction.bOpcode == 3u &&
-        data->diInstruction.bSize >= sizeof(V9X_D3DTRIANGLE) &&
-        data->diInstruction.wCount <= V9X_D3D_MAX_BATCH_TRIANGLES) {
-        triangles = (const V9X_D3DTRIANGLE *)
-            (exe->lpGbl->fpVidMem + data->dwOffset);
-        vertices = (const V9X_D3DTLVERTEX *)
-            (tl->lpGbl->fpVidMem + data->dwTLOffset);
-        ok = 1;
-        for (index = 0ul; index < data->diInstruction.wCount; ++index) {
-            const V9X_D3DTRIANGLE *triangle =
-                (const V9X_D3DTRIANGLE *)
-                ((const BYTE *)triangles +
-                 index * data->diInstruction.bSize);
-            V9X_D3DTLVERTEX source[3];
-            V9X_D3DTLVERTEX clipped[8];
-            int clipped_count;
-            int fan;
-
-            source[0] = vertices[triangle->v1];
-            source[1] = vertices[triangle->v2];
-            source[2] = vertices[triangle->v3];
-            v9x_d3d_apply_vertex_color(context, &source[0]);
-            v9x_d3d_apply_vertex_color(context, &source[1]);
-            v9x_d3d_apply_vertex_color(context, &source[2]);
-            clipped_count = v9x_d3d_clip_triangle(context, source, clipped);
-            if (clipped_count < 0) {
-                v9x_trace_push(V9X_TRACE_D3D_PRIMREJECT,
-                               0x20000000ul | index);
-                ok = 0;
-                break;
-            }
-            for (fan = 1; fan + 1 < clipped_count; ++fan) {
-                V9X_D3DTLVERTEX clipped_triangle[3];
-
-                clipped_triangle[0] = clipped[0];
-                clipped_triangle[1] = clipped[fan];
-                clipped_triangle[2] = clipped[fan + 1];
-                if (!v9x_d3d_triangle(context, clipped_triangle)) {
-                    v9x_trace_push(V9X_TRACE_D3D_PRIMREJECT,
-                                   0x30000000ul | index);
-                    ok = 0;
-                    break;
-                }
-            }
-            if (!ok) {
-                break;
-            }
-        }
-    }
-    if (v9x_hal != 0) {
-        ++v9x_hal->d3d_diagnostics.render_primitive_calls;
-    }
-    if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
-    }
-    v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_RENDERPRIM,
-                   ok ? V9X_DD_OK : 0x80070057ul);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dSetRenderTarget(
-    V9X_D3DHAL_SETRENDERTARGETDATA *data)
-{
-    V9X_D3D_CONTEXT *context = data != 0
-        ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-
-    v9x_trace_enter(V9X_TRACE_D3D_SETRENDERTARGET,
-                    data != 0 ? data->dwhContext : 0ul);
-    if (context == 0 ||
-        !v9x_d3d_set_target(context, data->lpDDS, data->lpDDSZ)) {
-        if (data != 0) {
-            data->ddrval = 0x80070057ul;
-        }
-        v9x_trace_exit(V9X_TRACE_D3D_SETRENDERTARGET, 0x80070057ul);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    data->ddrval = V9X_DD_OK;
-    v9x_trace_exit(V9X_TRACE_D3D_SETRENDERTARGET, data->ddrval);
-    return V9X_DDHAL_DRIVER_HANDLED;
 }
 
 static LONG v9x_d3d_fixed_12_20(float value)
@@ -1377,170 +491,32 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     return 1;
 }
 
-DWORD __stdcall V9xD3dDrawOnePrimitive(
-    V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data)
-{
-    V9X_FPU_AREA fpu;
-    V9X_D3D_CONTEXT *context;
-    int ok = 0;
-
-    v9x_trace_enter(V9X_TRACE_D3D_DRAWONEPRIM,
-                    data != 0
-                        ? ((data->PrimitiveType << 16) |
-                           (data->dwNumVertices & 0xfffful))
-                        : 0ul);
-    v9x_fpu_save(&fpu);
-    context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    (void)v9x_engine_validate_status();
-    if (context != 0 && v9x_engine_status_validated() &&
-        data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
-        data->VertexType == V9X_D3DVT_TLVERTEX &&
-        data->lpvVertices != 0 && data->dwNumVertices == 3ul) {
-        ok = v9x_d3d_triangle(context,
-                              (const V9X_D3DTLVERTEX *)data->lpvVertices);
-    }
-    if (v9x_hal != 0) {
-        ++v9x_hal->d3d_diagnostics.render_primitive_calls;
-    }
-    if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
-    }
-    v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEPRIM,
-                   ok ? V9X_DD_OK : 0x80070057ul);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
-{
-    V9X_FPU_AREA fpu;
-    V9X_D3D_CONTEXT *context;
-    V9X_D3DHAL_DRAWPRIMCOUNTS *counts;
-    BYTE *cursor;
-    DWORD record;
-    DWORD vertex;
-    int ok = 0;
-
-    v9x_trace_enter(V9X_TRACE_D3D_DRAWPRIMS,
-                    data != 0 ? (DWORD)data->lpvData : 0ul);
-    v9x_fpu_save(&fpu);
-    context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    (void)v9x_engine_validate_status();
-    if (context != 0 && v9x_engine_status_validated() &&
-        data->lpvData != 0) {
-        cursor = (BYTE *)data->lpvData;
-        ok = 1;
-        for (record = 0ul; record < 64ul; ++record) {
-            counts = (V9X_D3DHAL_DRAWPRIMCOUNTS *)cursor;
-            cursor += sizeof(*counts);
-            if (counts->wNumStateChanges > 64u) {
-                ok = 0;
-                break;
-            }
-            cursor += (DWORD)counts->wNumStateChanges * 2ul * sizeof(DWORD);
-            if (counts->wNumVertices == 0u) {
-                break;
-            }
-            cursor = (BYTE *)(((DWORD)cursor + 31ul) & ~31ul);
-            if (counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST ||
-                counts->wVertexType != V9X_D3DVT_TLVERTEX ||
-                counts->wNumVertices > 192u ||
-                (counts->wNumVertices % 3u) != 0u) {
-                ok = 0;
-                break;
-            }
-            for (vertex = 0ul; vertex < counts->wNumVertices; vertex += 3ul) {
-                if (!v9x_d3d_triangle(
-                        context,
-                        &((const V9X_D3DTLVERTEX *)cursor)[vertex])) {
-                    ok = 0;
-                    break;
-                }
-            }
-            if (!ok) {
-                break;
-            }
-            cursor += (DWORD)counts->wNumVertices *
-                      sizeof(V9X_D3DTLVERTEX);
-        }
-        if (record == 64ul) {
-            ok = 0;
-        }
-    }
-    if (v9x_hal != 0) {
-        ++v9x_hal->d3d_diagnostics.render_primitive_calls;
-    }
-    if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
-    }
-    v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWPRIMS,
-                   ok ? V9X_DD_OK : 0x80070057ul);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(void *data)
-{
-    (void)data;
-    v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
-    return V9X_DDHAL_DRIVER_NOTHANDLED;
-}
-
-DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
-{
-#if V9X_C3_SERVE_D3D_CALLBACKS2
-    DWORD index;
-    DWORD bytes;
-    BYTE *destination;
-    const BYTE *source;
-#endif
-
-    if (data == 0) {
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-    v9x_trace_enter(V9X_TRACE_GETDRIVERINFO,
-                    ((DWORD)data->guidInfo[3] << 24) |
-                    ((DWORD)data->guidInfo[2] << 16) |
-                    ((DWORD)data->guidInfo[1] << 8) |
-                    (DWORD)data->guidInfo[0]);
-    data->dwActualSize = 0ul;
-    data->ddRVal = 0x88760028ul;
-#if V9X_C3_SERVE_D3D_CALLBACKS2
-    for (index = 0ul; index < 16ul; ++index) {
-        if (data->guidInfo[index] != v9x_guid_d3d_callbacks2[index]) {
-            v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
-            return V9X_DDHAL_DRIVER_HANDLED;
-        }
-    }
-    bytes = data->dwExpectedSize < sizeof(v9x_d3d_callbacks2)
-        ? data->dwExpectedSize : sizeof(v9x_d3d_callbacks2);
-    data->dwActualSize = sizeof(v9x_d3d_callbacks2);
-    if (data->lpvData != 0) {
-        v9x_d3d_callbacks2.dwSize = bytes;
-        destination = (BYTE *)data->lpvData;
-        source = (const BYTE *)&v9x_d3d_callbacks2;
-        for (index = 0ul; index < bytes; ++index) {
-            destination[index] = source[index];
-        }
-        data->ddRVal = V9X_DD_OK;
-    }
-#endif
-    v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
-    return V9X_DDHAL_DRIVER_HANDLED;
-}
-
 /*
- * Publish the Direct3D global data, texture formats and callback tables into
- * the shared block.
+ * Draw a run of triangles.
  *
- * DriverInit calls this at the point the single-file build wrote these fields
- * inline, so the field set and its ordering are unchanged. Keeping them here
- * rather than in the core is what makes the D3D block self-contained: a family
- * whose engine has no S3D path links none of this, and until then the 16-bit
- * caps clamp is what stops a Trio64 advertising it.
+ * The batch entry point the ops table fixes. The ViRGE is immediate-mode, so
+ * this is a loop over the per-triangle emitter above and nothing more; a
+ * command-stream engine would build one packet here instead, which is the
+ * whole reason the seam is at this granularity and not at the triangle.
+ *
+ * Stops at the first triangle the emitter refuses, which is what the three
+ * call sites did when they held the loop themselves.
  */
-void v9x_d3d_publish(V9X_DD_SHARED *shared)
+static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
+                                        const V9X_D3DTLVERTEX *vertices,
+                                        DWORD triangle_count)
+{
+    DWORD index;
+
+    for (index = 0ul; index < triangle_count; ++index) {
+        if (!v9x_d3d_triangle(context, &vertices[index * 3ul])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
 {
     shared->d3d_global.dwSize = sizeof(V9X_D3DHAL_GLOBALDRIVERDATA);
     shared->d3d_global.hwCaps.dwSize = sizeof(V9X_D3DDEVICEDESC_V1);
@@ -1693,41 +669,11 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
 
     shared->d3d_global.dwNumTextureFormats = 2ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-
-    shared->d3d_callbacks.dwSize = sizeof(V9X_D3DHAL_CALLBACKS);
-    shared->d3d_callbacks.ContextCreate =
-        (V9X_DD_CODE_PTR)V9xD3dContextCreate;
-    shared->d3d_callbacks.ContextDestroy =
-        (V9X_DD_CODE_PTR)V9xD3dContextDestroy;
-    shared->d3d_callbacks.ContextDestroyAll =
-        (V9X_DD_CODE_PTR)V9xD3dContextDestroyAll;
-    shared->d3d_callbacks.Execute = 0;
-    shared->d3d_callbacks.ExecuteClipped = 0;
-    shared->d3d_callbacks.RenderState =
-        (V9X_DD_CODE_PTR)V9xD3dRenderState;
-    shared->d3d_callbacks.RenderPrimitive =
-        (V9X_DD_CODE_PTR)V9xD3dRenderPrimitive;
-    shared->d3d_callbacks.TextureCreate =
-        (V9X_DD_CODE_PTR)V9xD3dTextureCreate;
-    shared->d3d_callbacks.TextureDestroy =
-        (V9X_DD_CODE_PTR)V9xD3dTextureDestroy;
-    shared->d3d_callbacks.TextureSwap =
-        (V9X_DD_CODE_PTR)V9xD3dTextureSwap;
-    shared->d3d_callbacks.TextureGetSurf =
-        (V9X_DD_CODE_PTR)V9xD3dTextureGetSurf;
-
-    v9x_d3d_callbacks2.dwSize = sizeof(V9X_D3DHAL_CALLBACKS2);
-    v9x_d3d_callbacks2.dwFlags =
-        V9X_D3DHAL2_CB32_SETRENDERTARGET |
-        V9X_D3DHAL2_CB32_DRAWONEPRIMITIVE |
-        V9X_D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE |
-        V9X_D3DHAL2_CB32_DRAWPRIMITIVES;
-    v9x_d3d_callbacks2.SetRenderTarget =
-        (V9X_DD_CODE_PTR)V9xD3dSetRenderTarget;
-    v9x_d3d_callbacks2.DrawOnePrimitive =
-        (V9X_DD_CODE_PTR)V9xD3dDrawOnePrimitive;
-    v9x_d3d_callbacks2.DrawOneIndexedPrimitive =
-        (V9X_DD_CODE_PTR)V9xD3dDrawOneIndexedPrimitive;
-    v9x_d3d_callbacks2.DrawPrimitives =
-        (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives;
 }
+
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge = {
+    &v9x_d3d_virge_limits,
+    v9x_d3d_texture_format,
+    v9x_d3d_virge_describe_caps,
+    v9x_d3d_virge_draw_triangles
+};

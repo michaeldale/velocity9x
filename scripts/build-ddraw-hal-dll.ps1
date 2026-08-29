@@ -53,6 +53,9 @@ $sources = @(
     "src\display32\engines\vga_scanout.c",
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
+    # The D3D core before its engines, matching the 2D order above: the core
+    # owns the entry points and the engine selector, an engine owns registers.
+    "src\display32\d3d\d3d_core.c",
     "src\display32\d3d\d3d_virge.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
