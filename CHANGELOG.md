@@ -33,19 +33,35 @@ otherwise chip-neutral routines. They became a `V9X_D3D_ENGINE_LIMITS` struct
 rather than five more function pointers, on the grounds that a second engine
 changes the values and nothing about their use.
 
-Measured on the 86Box ViRGE/DX guest: the 323-key DirectDraw/Direct3D probe is
-**byte-identical** before and after, every read-back pixel included
-(`D3DTrianglePixelRaw`, `D3DBaseTextureRaw`, `D3DMipmapLevelRaw`,
-`D3DTrilinearRaw`, `Tex4444Raw`). Two controls rule out the reading that an
-identical result means a failed install: the guest's `V9XHAL.DLL` hash equals
-the split build's, and the linked image carries a `d3d_core.obj` that did not
-exist before.
+**The first attempt broke Direct3D and the gate said it had not**, which is
+the part worth recording. Selecting the engine inside `v9x_d3d_publish` looked
+right - it is the selector the draw path uses - but DriverInit runs before the
+16-bit side fills the engine descriptor, so it resolved null, published
+nothing, and DDRAW enumerated no hardware Direct3D device at all. The first
+gate run missed it because the 2026-08-13 handoff's probe path is stale: the
+result moved to `C:\V9XDIAG\V9XDD.INI`, and fetching the old path returned an
+untouched file from an old build, so "byte-identical" was two reads of the same
+stale bytes. The `Build=` stamp is what exposed it. The gate is now run by
+deleting the result first, checking the exit code, and requiring the `Build=`
+key to match.
 
-One thing the split buys before any second engine: `v9x_d3d_engine()` resolves
-null for a chip with no S3D core, so the ATI and VBE packages - which have
-always linked this code and relied entirely on the 16-bit side nulling
-`lpD3D*` - now have a second lock behind the first. `check-tree.ps1` holds the
-boundary in both directions rather than leaving it to review.
+Caps publication cannot be chip-selected at DriverInit, so it publishes the one
+D3D engine the binary carries - exactly the pre-split behaviour, with the
+16-bit clamp remaining the capability authority. `v9x_d3d_engine()` survives as
+the draw-time selector, where the descriptor is valid and every entry point
+declines for a chip with no engine; that second gate is real, it just cannot
+also be the publish-time one. A second D3D engine has to fix publish-time
+selection on the 16-bit side, by stamping `engine_type` before DriverInit.
+
+Measured on the corrected gate, against a pre-split baseline built from a clean
+worktree: every functional key identical, rendered pixels included
+(`D3DTrianglePixelRaw=31744`, `D3DBaseTextureRaw=992`, `D3DMipmapLevelRaw=31`,
+`D3DTrilinearRaw=495`, `Tex4444Raw=992`). What differs is the build stamp, six
+kernel heap addresses, two texture handles, a HAL code pointer, a vblank
+sampling race and three millisecond timings. On `Win98SE-Mach64VT2`:
+`Stage=enable-ok`, `D3DHalFound=0`, `TexFormatCount=0`, and DirectDraw fully
+working. `check-tree.ps1` holds the core/engine boundary in both directions
+rather than leaving it to review.
 
 **Two S3 chips were supported all along and nobody had checked.** Reading the
 PCI Data Structure out of all 41 S3 option ROMs in the local 86Box tree showed

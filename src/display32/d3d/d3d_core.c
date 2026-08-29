@@ -1115,21 +1115,47 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
 }
 
 /*
+ * The engine whose caps this binary publishes at DriverInit.
+ *
+ * NOT v9x_d3d_engine(). DriverInit runs before the 16-bit side fills the
+ * engine descriptor - dd16.c says so about the framebuffer descriptor at the
+ * same point, and the engine is filled in that same later step - so at publish
+ * time engine_type is 0 and engine.flags carries no V9X_DD_ENGINE_VALID.
+ * Selecting on it here published nothing at all, and DDRAW then enumerated no
+ * hardware Direct3D device. Measured on the ViRGE guest: D3DHalFound went 1 to
+ * 0. See docs\decisions6-08-29-d3d-core-engine-split.md.
+ *
+ * So caps publication cannot be chip-selected today, and this returns the one
+ * D3D engine the binary carries. That is exactly the pre-split behaviour: the
+ * tables were always filled, and the 16-bit side is and remains the capability
+ * authority that hides them from a chip whose engine_caps lack D3D.
+ *
+ * A second D3D engine has to fix this properly, and the fix is on the 16-bit
+ * side rather than here: stamp the chip's engine_type into the shared block
+ * before DriverInit is called, then select on it. That is a change to the
+ * enable ordering and needs its own evidence, which is why it is not being
+ * guessed at now.
+ */
+static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void)
+{
+    return &v9x_d3d_engine_virge;
+}
+
+/*
  * Publish the D3D tables into the shared block.
  *
- * The callbacks are this file's own entry points, so they are wired here.
- * What the device can actually do is the engine's to say, so the caps and
- * the texture-format list come from describe_caps. A chip with no engine
- * publishes neither: it leaves the tables zeroed, which is the same state
- * the 16-bit capability clamp produces from the other direction.
+ * The callbacks are this file's own entry points, so they are wired here; the
+ * caps and the texture-format list come from the engine. Publishing them for a
+ * chip that cannot serve them is safe and is what the driver has always done:
+ * the 16-bit side nulls GetDriverInfo and both lpD3D* pointers for a family
+ * whose engine_caps lack D3D, so DDRAW never reaches any of it, and every
+ * entry point above independently declines when v9x_d3d_engine() resolves
+ * nothing at call time.
  */
 void v9x_d3d_publish(V9X_DD_SHARED *shared)
 {
-    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
 
-    if (ops == 0) {
-        return;
-    }
     ops->describe_caps(shared);
 
     shared->d3d_callbacks.dwSize = sizeof(V9X_D3DHAL_CALLBACKS);
