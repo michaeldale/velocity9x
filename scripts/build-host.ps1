@@ -61,7 +61,13 @@ $sourceNames = @(
     "src\common\vbe_cache.c",
     "src\common\edid.c",
     "src\common\mtrr.c",
-    "src\common\vbe_crtc.c"
+    "src\common\vbe_crtc.c",
+    # A leaf translation unit that happens to live under src\display32\d3d: it
+    # includes nothing from the DDHAL side, so the host build can reach it
+    # without dragging in MMIO or the #pragma aux converters. It stays on the
+    # engine side of the D3D split rather than moving to src\common, because a
+    # ViRGE depth encoding is chip vocabulary - see the header comment.
+    "src\display32\d3d\d3d_zfixed.c"
 ) + $backendSourceNames + @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
@@ -73,6 +79,7 @@ $sourceNames = @(
     "tests\host\test_edid.c",
     "tests\host\test_mtrr.c",
     "tests\host\test_vbe_crtc.c",
+    "tests\host\test_d3d_zfixed.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })

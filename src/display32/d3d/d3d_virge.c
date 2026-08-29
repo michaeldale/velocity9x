@@ -20,6 +20,7 @@
  * the rest of the S3 vocabulary.
  */
 #include "d3d_internal.h"
+#include "d3d_zfixed.h"
 
 /*
  * The S3D unit's constraints, previously literals spread through the routines
@@ -39,7 +40,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
     2048ul,         /* target_dimension_max */
     4ul,            /* texture_size_min */
     512ul,          /* texture_size_max */
-    2048.0f         /* coordinate_limit */
+    2048.0f,        /* coordinate_limit */
+    16ul            /* depth_bits_per_pixel */
 };
 
 /* Which ViRGE texture format a surface is sampled as. */
@@ -151,6 +153,33 @@ static WORD v9x_d3d_fixed_8_7(float value)
     return (WORD)fixed;
 }
 
+/*
+ * D3D's comparison function as the S3D unit encodes it.
+ *
+ * A table, not arithmetic: the chip's order is NEVER, GREATER, EQUAL,
+ * GREATEREQUAL, LESS, NOTEQUAL, LESSEQUAL, ALWAYS, so six of the eight differ
+ * from (D3DCMP value - 1). Taken from the DDK's own switch, D3DRENDR.C:290-314,
+ * and cross-checked against 86Box's Z_CLIP.
+ *
+ * The default arm is ALWAYS rather than a fallthrough to zero, and that
+ * matters: zero is the encoding for NEVER, so a function this driver does not
+ * recognise would otherwise discard every pixel and render black with nothing
+ * anywhere to say why.
+ */
+static DWORD v9x_d3d_z_compare(DWORD func)
+{
+    switch (func) {
+    case V9X_D3DCMP_NEVER:        return V9X_VIRGE_3D_CMD_Z_CMP_NEVER;
+    case V9X_D3DCMP_LESS:         return V9X_VIRGE_3D_CMD_Z_CMP_LESS;
+    case V9X_D3DCMP_EQUAL:        return V9X_VIRGE_3D_CMD_Z_CMP_EQUAL;
+    case V9X_D3DCMP_LESSEQUAL:    return V9X_VIRGE_3D_CMD_Z_CMP_LESSEQUAL;
+    case V9X_D3DCMP_GREATER:      return V9X_VIRGE_3D_CMD_Z_CMP_GREATER;
+    case V9X_D3DCMP_NOTEQUAL:     return V9X_VIRGE_3D_CMD_Z_CMP_NOTEQUAL;
+    case V9X_D3DCMP_GREATEREQUAL: return V9X_VIRGE_3D_CMD_Z_CMP_GREATEREQUAL;
+    default:                      return V9X_VIRGE_3D_CMD_Z_CMP_ALWAYS;
+    }
+}
+
 static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                             const V9X_D3DTLVERTEX *first)
 {
@@ -168,6 +197,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     float dadx, dady;
     float dudx = 0.0f, dvdx = 0.0f;
     float dudy = 0.0f, dvdy = 0.0f;
+    float dzdx = 0.0f, dzdy = 0.0f;
+    int z_active;
     DWORD color;
     DWORD gs_bs;
     DWORD as_rs;
@@ -243,6 +274,25 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     dadx = ((float)((LONG)((p1->color >> 24) & 0xfful) -
                           (LONG)((p0->color >> 24) & 0xfful)) -
             dady * fdy01) * fdxr;
+    /*
+     * Depth is active only when the application asked for it AND a validated
+     * depth surface is actually attached. The conjunction is the DDK's
+     * (D3DRENDR.C:266, `if (ctxt->lpLclZ && ctxt->bZEnabled)`) and it is load
+     * bearing: an application may legally set ZENABLE with no Z buffer bound,
+     * and the runtime often replays a whole default state block. Enabling the
+     * hardware on that would point the depth unit at depth_offset 0, which is
+     * the visible framebuffer.
+     */
+    z_active = context->z_enable != 0ul && context->zbuffer != 0 &&
+               context->depth_pitch != 0ul;
+    if (z_active) {
+        /* Same shape as the colour gradients below, and the same fdxr. That
+         * value is 1/|dx|; the triangle's orientation is carried once, in bit
+         * 31 of Y01_Y12. Using a signed 1/dx for depth alone would make depth
+         * run backwards against the shading on half of all triangles. */
+        dzdy = (p2->sz - p0->sz) * fdy02r;
+        dzdx = (p1->sz - (dzdy * fdy01 + p0->sz)) * fdxr;
+    }
     textured = v9x_d3d_texture_info(context, &texture_offset,
                                     &texture_size_log, &texture_mipmapped,
                                     &texture_format);
@@ -297,12 +347,18 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     if (!v9x_wait_idle(1) || !v9x_wait_fifo(9ul, 1)) {
         return 0;
     }
-    v9x_mmio_write(V9X_VIRGE_3D_Z_BASE, 0ul);
+    /* Depth base and stride, or zero when depth is off. Both come from the
+     * same z_active expression as the command word's Z-mode field, and must
+     * keep doing so: a base of 0 with the mode field enabled writes depth
+     * values over the visible framebuffer. */
+    v9x_mmio_write(V9X_VIRGE_3D_Z_BASE,
+                   z_active ? context->depth_offset : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_DEST_BASE, context->target_offset);
     v9x_mmio_write(V9X_VIRGE_3D_CLIP_L_R, context->width - 1ul);
     v9x_mmio_write(V9X_VIRGE_3D_CLIP_T_B, context->height - 1ul);
     v9x_mmio_write(V9X_VIRGE_3D_DEST_SRC_STRIDE, context->pitch << 16);
-    v9x_mmio_write(V9X_VIRGE_3D_Z_STRIDE, context->width * 2ul);
+    v9x_mmio_write(V9X_VIRGE_3D_Z_STRIDE,
+                   z_active ? context->depth_pitch : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BASE,
                    textured ? texture_offset : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BORDER, context->texture_border);
@@ -324,12 +380,26 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         v9x_mmio_write(V9X_VIRGE_3D_US,
             (DWORD)v9x_float_to_long(p0->tu * 134217728.0f));
     }
-    if (!v9x_wait_fifo(15ul, 1)) {
+    /* Fifteen writes from COMMAND through Y01_Y12, plus the depth triple when
+     * depth is on. Conditional rather than an unconditional 18 so the
+     * depth-off path's stall behaviour is exactly what it was. */
+    if (!v9x_wait_fifo(z_active ? 18ul : 15ul, 1)) {
         return 0;
     }
     /* With AE set, CMD_SET establishes persistent state; the final
      * Y01_Y12 write launches the triangle. */
-    command = V9X_VIRGE_3D_CMD_GOURAUD_16_AE;
+    /*
+     * A ternary rather than the DDK's mask-and-OR, deliberately. The
+     * depth-disabled arm is the literal pre-Z constant, so "a triangle drawn
+     * without depth emits exactly the word it always did" is true by
+     * construction rather than by reasoning about mask exactness - and the
+     * header's compile-time assertion pins that constant's value.
+     */
+    command = z_active
+        ? (V9X_VIRGE_3D_CMD_GOURAUD_16 |
+           v9x_d3d_z_compare(context->z_func) |
+           (context->z_write != 0ul ? V9X_VIRGE_3D_CMD_Z_UPDATE : 0ul))
+        : V9X_VIRGE_3D_CMD_GOURAUD_16_AE;
     if (textured) {
         command |= (texture_format == V9X_TEX_FORMAT_ARGB4444
                         ? V9X_VIRGE_3D_CMD_TEX_ARGB4444
@@ -392,6 +462,19 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                    (DWORD)v9x_d3d_fixed_8_7(drdy));
     v9x_mmio_write(V9X_VIRGE_3D_GS_BS, gs_bs);
     v9x_mmio_write(V9X_VIRGE_3D_AS_RS, as_rs);
+    if (z_active) {
+        /* Where GENTRI.C:975-984 puts them: after the colour registers and
+         * before the edges. ZS02 is p0's depth advanced to the start scanline
+         * by the same fdycc the X edges use - without that correction the
+         * whole triangle's depth is biased by a fraction of a scan line. */
+        v9x_mmio_write(V9X_VIRGE_3D_DZDX,
+                       (DWORD)v9x_d3d_z_to_1_31_signed(dzdx));
+        v9x_mmio_write(V9X_VIRGE_3D_DZDY,
+                       (DWORD)v9x_d3d_z_to_1_31_signed(dzdy));
+        v9x_mmio_write(V9X_VIRGE_3D_ZS02,
+                       (DWORD)v9x_d3d_z_to_1_31_depth(
+                           p0->sz + fdycc * dzdy));
+    }
     v9x_mmio_write(V9X_VIRGE_3D_DXDY12,
                    (DWORD)v9x_d3d_fixed_12_20(dxdy12));
     v9x_mmio_write(V9X_VIRGE_3D_XEND12,
@@ -431,7 +514,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             (DWORD)v9x_float_to_long(p0->tv * 134217728.0f));
         v9x_mmio_write(V9X_VIRGE_3D_US,
             (DWORD)v9x_float_to_long(p0->tu * 134217728.0f));
-        if (!v9x_wait_fifo(15ul, 1)) {
+        if (!v9x_wait_fifo(z_active ? 18ul : 15ul, 1)) {
             return 0;
         }
         second_command &= ~V9X_VIRGE_3D_CMD_TEXTURE_UNLIT;
@@ -439,6 +522,33 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                           V9X_VIRGE_3D_CMD_TEX_MODULATE |
                           V9X_VIRGE_3D_CMD_ALPHA_SOURCE |
                           V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+        /*
+         * The depth rule for the second pass, which is not obvious.
+         *
+         * This pass re-draws the same triangle at the same depth to blend mip
+         * level N+1 over level N. Inheriting the first pass's comparison would
+         * break it: with the usual LESS, the first pass has already written
+         * this depth, so the second pass finds Zfb == Zs, fails, and trilinear
+         * silently degrades to bilinear.
+         *
+         * Turning depth off for the pass would be worse - it would paint over
+         * pixels the first pass correctly rejected as occluded, bleeding
+         * hidden geometry through at the blend alpha.
+         *
+         * So: never update depth twice, and select exactly the pixels the
+         * first pass wrote. Both passes emit bit-identical depth registers, so
+         * EQUAL is exact for that set, whatever the application's own function
+         * was. When the first pass did not update depth, the buffer is
+         * unchanged and repeating the application's comparison selects the
+         * same set anyway.
+         */
+        if (z_active) {
+            second_command &= ~V9X_VIRGE_3D_CMD_Z_UPDATE;
+            if (context->z_write != 0ul) {
+                second_command &= ~V9X_VIRGE_3D_CMD_Z_CMP_ALWAYS;
+                second_command |= V9X_VIRGE_3D_CMD_Z_CMP_EQUAL;
+            }
+        }
         v9x_mmio_write(V9X_VIRGE_3D_COMMAND, second_command);
         if (context->texture_blend == V9X_D3DTBLEND_MODULATE) {
             v9x_mmio_write(V9X_VIRGE_3D_DGDX_DBDX,
@@ -465,6 +575,20 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                            (255ul << 7));
             v9x_mmio_write(V9X_VIRGE_3D_DADX_DRDX, 0ul);
             v9x_mmio_write(V9X_VIRGE_3D_DADY_DRDY, 0ul);
+        }
+        if (z_active) {
+            /* Re-emitted with the identical values rather than relied upon to
+             * persist: the second COMMAND write launches a separate triangle,
+             * and whether the setup registers latch across an autoexecute
+             * launch is not something this project can verify. Three writes
+             * are cheaper than that assumption. */
+            v9x_mmio_write(V9X_VIRGE_3D_DZDX,
+                           (DWORD)v9x_d3d_z_to_1_31_signed(dzdx));
+            v9x_mmio_write(V9X_VIRGE_3D_DZDY,
+                           (DWORD)v9x_d3d_z_to_1_31_signed(dzdy));
+            v9x_mmio_write(V9X_VIRGE_3D_ZS02,
+                           (DWORD)v9x_d3d_z_to_1_31_depth(
+                               p0->sz + fdycc * dzdy));
         }
         v9x_mmio_write(V9X_VIRGE_3D_DXDY12,
                        (DWORD)v9x_d3d_fixed_12_20(dxdy12));

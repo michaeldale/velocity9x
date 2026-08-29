@@ -39,6 +39,10 @@ unsigned int v9x_run_mtrr_tests(void);
  * CRTC block built from it, same convention. */
 unsigned int v9x_run_vbe_crtc_tests(void);
 
+/* The ViRGE 1.31 depth conversion: the clamp that keeps sz = 1.0 from
+ * becoming the x87 integer indefinite, and with it the near plane. */
+unsigned int v9x_run_d3d_zfixed_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -596,6 +600,7 @@ int main(void)
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
     failures += v9x_run_vbe_crtc_tests();
+    failures += v9x_run_d3d_zfixed_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

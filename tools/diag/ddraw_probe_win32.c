@@ -26,6 +26,11 @@
 #define V9X_DDSD_BACKBUFFERCOUNT    0x00000020ul
 #define V9X_DDSD_MIPMAPCOUNT        0x00020000ul
 #define V9X_DDSD_PIXELFORMAT        0x00001000ul
+/* Depth-surface creation on the DirectDraw 1 interface this probe uses: the
+ * bit depth travels in DDSURFACEDESC's union slot, not in a pixel format.
+ * DDPF_ZBUFFER is the later spelling and is not what CreateSurface wants
+ * here. */
+#define V9X_DDSD_ZBUFFERBITDEPTH    0x00000040ul
 #define V9X_DDSCAPS_BACKBUFFER      0x00000004ul
 #define V9X_DDSCAPS_COMPLEX         0x00000008ul
 #define V9X_DDSCAPS_FLIP            0x00000010ul
@@ -36,6 +41,7 @@
 #define V9X_DDSCAPS_3DDEVICE        0x00002000ul
 #define V9X_DDSCAPS_VIDEOMEMORY     0x00004000ul
 #define V9X_DDSCAPS_MIPMAP          0x00400000ul
+#define V9X_DDSCAPS_ZBUFFER         0x00020000ul
 #define V9X_DDSCL_FULLSCREEN        0x00000001ul
 #define V9X_DDSCL_NORMAL            0x00000008ul
 #define V9X_DDSCL_EXCLUSIVE         0x00000010ul
@@ -303,6 +309,11 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DRENDERSTATE_FOGENABLE        28ul
 #define V9X_D3DRENDERSTATE_SPECULARENABLE   29ul
 #define V9X_D3DRENDERSTATE_FOGCOLOR         34ul
+#define V9X_D3DRENDERSTATE_ZENABLE            7ul
+#define V9X_D3DRENDERSTATE_ZWRITEENABLE      14ul
+#define V9X_D3DRENDERSTATE_ZFUNC             23ul
+#define V9X_D3DCMP_LESS                       2ul
+#define V9X_D3DCMP_ALWAYS                     8ul
 #define V9X_D3DBLEND_SRCALPHA                5ul
 #define V9X_D3DBLEND_INVSRCALPHA             6ul
 #define V9X_D3DFILTER_NEAREST                 1ul
@@ -1321,6 +1332,60 @@ static WORD v9x_surface_pixel16(struct v9x_dds *surface, DWORD x, DWORD y)
 }
 
 /*
+ * One rung of a depth ladder: set the comparison and write mask, draw the
+ * triangle at a given depth and colour, and read back the pixel.
+ *
+ * Returns non-zero only when every call succeeded. That matters more than it
+ * looks: several rungs below expect the pixel to be *unchanged*, and a failed
+ * SetRenderState or DrawPrimitive also leaves it unchanged. Without folding
+ * the HRESULTs in, a driver that refused every depth call would pass the
+ * rejection tests for entirely the wrong reason.
+ *
+ * The caller still compares the pixel itself, because what counts as correct
+ * differs per rung.
+ */
+static int v9x_z_step(struct v9x_d3d_device2 *device,
+                      V9X_D3DTLVERTEX *triangle, float depth, DWORD color,
+                      DWORD compare, DWORD write_enable,
+                      struct v9x_dds *target, DWORD *raw_out)
+{
+    HRESULT state_hr;
+    HRESULT begin_hr;
+    HRESULT draw_hr;
+    HRESULT end_hr;
+
+    triangle[0].sz = depth;
+    triangle[1].sz = depth;
+    triangle[2].sz = depth;
+    triangle[0].color = color;
+    triangle[1].color = color;
+    triangle[2].color = color;
+
+    state_hr = device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_ZENABLE, 1ul);
+    if (state_hr == 0) {
+        state_hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_ZFUNC, compare);
+    }
+    if (state_hr == 0) {
+        state_hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_ZWRITEENABLE, write_enable);
+    }
+    begin_hr = state_hr == 0 ? device->vtbl->BeginScene(device) : state_hr;
+    if (begin_hr == 0) {
+        draw_hr = device->vtbl->DrawPrimitive(
+            device, V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
+            triangle, 3ul, 0ul);
+        end_hr = device->vtbl->EndScene(device);
+    } else {
+        draw_hr = begin_hr;
+        end_hr = begin_hr;
+    }
+    *raw_out = v9x_surface_pixel16(target, 16ul, 16ul);
+    return state_hr == 0 && draw_hr == 0 && end_hr == 0;
+}
+
+/*
  * Paint a ramp so every row (or every column) of a surface carries a distinct
  * 16-bit value. An overlapping copy that runs in the wrong direction repeats
  * a band of the ramp instead of shifting it, which a flat fill could not
@@ -1506,6 +1571,30 @@ void __stdcall V9xDdrawProbeEntry(void)
     v9x_write_hresult("TexSurfaceHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
     v9x_write_hresult("TexHandleHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
     v9x_write_hresult("TexSwapHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    /*
+     * Depth-buffer seeds, same reasoning. Seeded rather than left absent so a
+     * driver whose Z branch never runs still produces the keys: a baseline
+     * diff then shows values that changed rather than keys that appeared, and
+     * "not attempted" is distinguishable from "attempted and returned zero".
+     * The raw pixels seed to 65535, which is not a colour any test expects.
+     */
+    v9x_write_hresult("D3DZTargetHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("D3DZSurfaceHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("D3DZAttachHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("D3DZDeviceHr", (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_uint("D3DZSurfacePitch", 0ul);
+    v9x_write_uint("D3DZSurfaceCaps", 0ul);
+    v9x_write_uint("D3DZInitRaw", 65535ul);
+    v9x_write_uint("D3DZRejectRaw", 65535ul);
+    v9x_write_uint("D3DZAcceptRaw", 65535ul);
+    v9x_write_uint("D3DZUpdateRaw", 65535ul);
+    v9x_write_uint("D3DZNoWriteRaw", 65535ul);
+    v9x_write_uint("D3DZMaskRaw", 65535ul);
+    v9x_write_uint("D3DZCompareOk", 0ul);
+    v9x_write_uint("D3DZWriteMaskOk", 0ul);
+    /* Depth gradients are deliberately NOT exercised: every vertex in the
+     * ladders below carries the same sz. See the block itself for why. */
+    v9x_write_uint("D3DZGradientTested", 0ul);
 
     winmm = LoadLibraryA("WINMM.DLL");
     v9x_time = winmm != 0
@@ -2311,6 +2400,222 @@ void __stdcall V9xDdrawProbeEntry(void)
             } else {
                 v9x_write_uint("D3DContextCycleOk", 0ul);
             }
+        }
+    }
+
+    /*
+     * Depth buffering.
+     *
+     * Its own render target, its own depth surface and its own device, kept
+     * entirely apart from the block above. Attaching a depth surface to that
+     * device would turn depth testing on for every test it already ran - and
+     * with a depth buffer whose contents are undefined, those tests would
+     * become non-deterministic rather than merely different. A depth surface
+     * that failed validation would also fail context creation and take all
+     * fourteen existing pixel results down with it, for a reason that has
+     * nothing to do with what they measure. The legacy Direct3D 1 block above
+     * keeps its own surface for the same reason. The cost is 16 KiB.
+     *
+     * The depth surface is attached before CreateDevice, because that is when
+     * the runtime decides which surface to hand the driver as the context's
+     * depth buffer.
+     *
+     * Every vertex of every triangle here carries the same sz. Depth
+     * gradients are deliberately untested: 86Box doubles a triangle's start
+     * depth but not its per-pixel X gradient
+     * (build\reference-vid_s3_virge.c:4261 against :4413), so a sloped-depth
+     * test would be measuring that inconsistency rather than this driver.
+     * D3DZGradientTested stays 0 to say so.
+     *
+     * The ladders are self-initialising: nothing here assumes the depth buffer
+     * starts at any particular value, because the driver implements no depth
+     * clear and DirectDraw's software one is not what this is testing.
+     */
+    if (d3d != 0 && d3d_result.hal_found != 0ul) {
+        struct v9x_dds *z_target = 0;
+        struct v9x_dds *z_surface = 0;
+        struct v9x_d3d_device2 *z_device = 0;
+        struct v9x_d3d_viewport2 *z_viewport = 0;
+        HRESULT z_hr;
+
+        v9x_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT;
+        desc.dwWidth = 64ul;
+        desc.dwHeight = 64ul;
+        desc.ddsCaps.dwCaps = V9X_DDSCAPS_3DDEVICE |
+                              V9X_DDSCAPS_OFFSCREENPLAIN |
+                              V9X_DDSCAPS_VIDEOMEMORY;
+        z_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &z_target, 0);
+        v9x_write_hresult("D3DZTargetHr", z_hr);
+
+        if (z_hr == 0 && z_target != 0) {
+            v9x_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                           V9X_DDSD_HEIGHT | V9X_DDSD_ZBUFFERBITDEPTH;
+            desc.dwWidth = 64ul;
+            desc.dwHeight = 64ul;
+            /* The union slot DDSURFACEDESC shares between dwMipMapCount,
+             * dwZBufferBitDepth and dwRefreshRate. */
+            desc.dwMipMapCount = 16ul;
+            desc.ddsCaps.dwCaps = V9X_DDSCAPS_ZBUFFER |
+                                  V9X_DDSCAPS_VIDEOMEMORY;
+            z_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &z_surface, 0);
+            v9x_write_hresult("D3DZSurfaceHr", z_hr);
+        }
+
+        if (z_hr == 0 && z_surface != 0) {
+            /* Where it actually landed. "Created but in system memory" and
+             * "not created" must not look the same in the report: the driver
+             * refuses a system-memory depth surface, so the first would show
+             * up as a context-create failure with no other explanation. */
+            v9x_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            if (z_surface->vtbl->GetSurfaceDesc(z_surface, &desc) == 0) {
+                v9x_write_uint("D3DZSurfacePitch", (DWORD)desc.lPitch);
+                v9x_write_uint("D3DZSurfaceCaps", desc.ddsCaps.dwCaps);
+            }
+            z_hr = z_target->vtbl->AddAttachedSurface(z_target, z_surface);
+            v9x_write_hresult("D3DZAttachHr", z_hr);
+        }
+
+        if (z_hr == 0 && z_target != 0) {
+            z_hr = d3d->vtbl->CreateDevice(d3d, &v9x_iid_d3d_hal,
+                                           z_target, &z_device);
+            v9x_write_hresult("D3DZDeviceHr", z_hr);
+        }
+
+        if (z_hr == 0 && z_device != 0) {
+            V9X_D3DTLVERTEX z_tri[3];
+            V9X_D3D_VIEWPORT_DESC2 z_view;
+            DWORD init_raw = 65535ul;
+            DWORD reject_raw = 65535ul;
+            DWORD accept_raw = 65535ul;
+            DWORD update_raw = 65535ul;
+            DWORD nowrite_raw = 65535ul;
+            DWORD mask_raw = 65535ul;
+            int ladder_ok = 1;
+            int mask_ok = 1;
+
+            z_hr = d3d->vtbl->CreateViewport(d3d, (void **)&z_viewport, 0);
+            if (z_hr == 0 && z_viewport != 0) {
+                z_hr = z_device->vtbl->AddViewport(z_device, z_viewport);
+            }
+            if (z_hr == 0) {
+                v9x_zero(&z_view, sizeof(z_view));
+                z_view.dwSize = sizeof(z_view);
+                z_view.dwWidth = 64ul;
+                z_view.dwHeight = 64ul;
+                z_view.dvClipX = -1.0f;
+                z_view.dvClipY = 1.0f;
+                z_view.dvClipWidth = 2.0f;
+                z_view.dvClipHeight = 2.0f;
+                z_view.dvMinZ = 0.0f;
+                z_view.dvMaxZ = 1.0f;
+                z_hr = z_viewport->vtbl->SetViewport2(z_viewport, &z_view);
+            }
+            if (z_hr == 0) {
+                z_hr = z_device->vtbl->SetCurrentViewport(z_device,
+                                                          z_viewport);
+            }
+
+            if (z_hr == 0) {
+                z_tri[0].sx = 8.25f;
+                z_tri[0].sy = 8.25f;
+                z_tri[0].sz = 0.5f;
+                z_tri[0].rhw = 1.0f;
+                z_tri[0].color = 0xffff0000ul;
+                z_tri[0].specular = 0ul;
+                z_tri[0].tu = 0.0f;
+                z_tri[0].tv = 0.0f;
+                z_tri[1] = z_tri[0];
+                z_tri[1].sx = 55.75f;
+                z_tri[2] = z_tri[0];
+                z_tri[2].sy = 55.75f;
+
+                v9x_fill_surface(z_target, 0ul);
+
+                /*
+                 * Ladder one: does the comparison work, and does a passing
+                 * fragment actually update the buffer.
+                 *
+                 * A distinct colour per step, so "unchanged" is proved by the
+                 * pixel still being the previous colour rather than merely
+                 * not being the new one. Step D is what closes the last hole:
+                 * without it, a depth buffer that keeps comparing against A's
+                 * 0.5 for ever - never taking C's write - still passes A to C.
+                 */
+                ladder_ok = v9x_z_step(z_device, z_tri, 0.5f, 0xffff0000ul,
+                                       V9X_D3DCMP_ALWAYS, 1ul,
+                                       z_target, &init_raw) &&
+                            init_raw == 0x7c00ul;
+                ladder_ok = v9x_z_step(z_device, z_tri, 0.75f, 0xff00ff00ul,
+                                       V9X_D3DCMP_LESS, 1ul,
+                                       z_target, &reject_raw) &&
+                            reject_raw == 0x7c00ul && ladder_ok;
+                ladder_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xff0000fful,
+                                       V9X_D3DCMP_LESS, 1ul,
+                                       z_target, &accept_raw) &&
+                            accept_raw == 0x001ful && ladder_ok;
+                ladder_ok = v9x_z_step(z_device, z_tri, 0.5f, 0xfffffffful,
+                                       V9X_D3DCMP_LESS, 1ul,
+                                       z_target, &update_raw) &&
+                            update_raw == 0x001ful && ladder_ok;
+                v9x_write_uint("D3DZInitRaw", init_raw);
+                v9x_write_uint("D3DZRejectRaw", reject_raw);
+                v9x_write_uint("D3DZAcceptRaw", accept_raw);
+                v9x_write_uint("D3DZUpdateRaw", update_raw);
+                v9x_write_uint("D3DZCompareOk", ladder_ok ? 1ul : 0ul);
+
+                /*
+                 * Ladder two: does ZWRITEENABLE = 0 really suppress the
+                 * write. Self-initialising, so it does not depend on ladder
+                 * one having passed.
+                 *
+                 * Seed 0.25, draw 0.125 with the write masked off, then draw
+                 * 0.1875. The last step is the discriminator: 0.1875 is
+                 * behind 0.125 but in front of 0.25, so it is accepted only
+                 * if the masked draw genuinely left the buffer at 0.25.
+                 */
+                v9x_fill_surface(z_target, 0ul);
+                mask_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xfffffffful,
+                                     V9X_D3DCMP_ALWAYS, 1ul,
+                                     z_target, &mask_raw) &&
+                          mask_raw == 0x7ffful;
+                mask_ok = v9x_z_step(z_device, z_tri, 0.125f, 0xff00ff00ul,
+                                     V9X_D3DCMP_LESS, 0ul,
+                                     z_target, &nowrite_raw) &&
+                          nowrite_raw == 0x03e0ul && mask_ok;
+                mask_ok = v9x_z_step(z_device, z_tri, 0.1875f, 0xffff0000ul,
+                                     V9X_D3DCMP_LESS, 1ul,
+                                     z_target, &mask_raw) &&
+                          mask_raw == 0x7c00ul && mask_ok;
+                v9x_write_uint("D3DZNoWriteRaw", nowrite_raw);
+                v9x_write_uint("D3DZMaskRaw", mask_raw);
+                v9x_write_uint("D3DZWriteMaskOk", mask_ok ? 1ul : 0ul);
+            }
+        }
+
+        /*
+         * Teardown only. No early return anywhere above, so Result reaches
+         * COMPLETE whether or not any of this worked - and on a failure the
+         * main device, already released, is never fallen back to.
+         */
+        if (z_viewport != 0) {
+            if (z_device != 0) {
+                z_device->vtbl->DeleteViewport(z_device, z_viewport);
+            }
+            z_viewport->vtbl->Release(z_viewport);
+        }
+        if (z_device != 0) {
+            z_device->vtbl->Release(z_device);
+        }
+        if (z_surface != 0) {
+            z_surface->vtbl->Release(z_surface);
+        }
+        if (z_target != 0) {
+            z_target->vtbl->Release(z_target);
         }
     }
 

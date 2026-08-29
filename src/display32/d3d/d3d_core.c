@@ -268,6 +268,8 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     DWORD pitch;
     DWORD width;
     DWORD height;
+    DWORD depth_offset = 0ul;
+    DWORD depth_pitch = 0ul;
     int primary;
     int display_layout;
 
@@ -332,9 +334,9 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         return 0;
     }
     if (depth != 0) {
-        DWORD depth_offset;
-        DWORD depth_pitch;
+        DWORD depth_bytes = limits->depth_bits_per_pixel >> 3;
         DWORD depth_last_byte;
+        DWORD depth_expected;
 
         if (depth->lpGbl == 0 ||
             (depth->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
@@ -345,7 +347,51 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         }
         depth_offset = v9x_surface_offset(depth);
         depth_pitch = (DWORD)depth->lpGbl->lPitch;
-        depth_last_byte = (height - 1ul) * depth_pitch + width * 2ul;
+        /*
+         * The footprint is measured on the depth surface's own dimensions
+         * rather than the render target's. The target is never larger - that
+         * is checked just above - so the old form was not out of bounds, but
+         * it was correct only because the hardware clip rectangle happens to
+         * be programmed from the target. Bounding the surface by its own size
+         * makes it safe by construction instead of by coincidence.
+         */
+        depth_last_byte =
+            ((DWORD)depth->lpGbl->wHeight - 1ul) * depth_pitch +
+            (DWORD)depth->lpGbl->wWidth * depth_bytes;
+        /*
+         * The engine drops the low three bits of the depth base address, so an
+         * unaligned offset would have the chip addressing up to seven bytes
+         * below what was validated here. dwZBufferAlign = 8 asks DirectDraw
+         * for an aligned surface; it does not promise one.
+         */
+        if ((depth_offset & 7ul) != 0ul) {
+            return 0;
+        }
+        /*
+         * And it must not overlap the visible framebuffer.
+         *
+         * Everything else here bounds the depth surface inside VRAM, which
+         * includes the scanned-out region. Depth writes landing there are the
+         * one failure in this feature that is destructive rather than merely
+         * wrong - the screen fills with depth values - so the region is
+         * excluded explicitly rather than left to the heap always allocating
+         * above it.
+         */
+        if (depth_offset < v9x_hal->fb.visible_bytes) {
+            return 0;
+        }
+        /*
+         * The DDK ignores lPitch for depth and programs its own stride,
+         * (width * bytes + 7) & ~7 (D3DDRV.C:71). If DirectDraw's pitch
+         * disagrees with that, the driver and the chip hold different ideas of
+         * where each depth row starts and nothing downstream can tell which is
+         * right - so refuse rather than pick one.
+         */
+        depth_expected =
+            (((DWORD)depth->lpGbl->wWidth * depth_bytes) + 7ul) & ~7ul;
+        if (depth_pitch != depth_expected) {
+            return 0;
+        }
         if ((depth_pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
             depth_pitch > limits->target_pitch_max ||
             depth_offset == 0xfffffffful ||
@@ -360,6 +406,16 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     context->pitch = pitch;
     context->width = width;
     context->height = height;
+    context->depth_offset = depth_offset;
+    context->depth_pitch = depth_pitch;
+    /*
+     * Attaching a depth surface turns depth testing on; detaching turns it
+     * off. That is the DDK's behaviour (D3DCB2.C:57-66), and it is what makes
+     * a title that attaches a Z buffer and never sends ZENABLE render with
+     * depth rather than without it. The render states own these afterwards.
+     */
+    context->z_enable = depth != 0 ? 1ul : 0ul;
+    context->z_write = depth != 0 ? 1ul : 0ul;
     return 1;
 }
 
@@ -405,6 +461,13 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->texture_blend = V9X_D3DTBLEND_MODULATE;
             context->texture_wrap = 1ul;
             context->texture_border = 0ul;
+            /*
+             * Only z_func. depth_offset, depth_pitch, z_enable and z_write are
+             * owned by v9x_d3d_set_target, which ran above - resetting them
+             * here would discard the decision it just made about the attached
+             * depth surface. D3DCMP_LESS is the DDK's default (D3DCTXT.C:351).
+             */
+            context->z_func = V9X_D3DCMP_LESS;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -457,6 +520,11 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->texture_blend = 0ul;
     context->texture_wrap = 0ul;
     context->texture_border = 0ul;
+    context->depth_offset = 0ul;
+    context->depth_pitch = 0ul;
+    context->z_enable = 0ul;
+    context->z_write = 0ul;
+    context->z_func = 0ul;
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.context_destroys;
     v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, data->ddrval);
@@ -498,6 +566,11 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].texture_blend = 0ul;
             v9x_d3d_contexts[index].texture_wrap = 0ul;
             v9x_d3d_contexts[index].texture_border = 0ul;
+            v9x_d3d_contexts[index].depth_offset = 0ul;
+            v9x_d3d_contexts[index].depth_pitch = 0ul;
+            v9x_d3d_contexts[index].z_enable = 0ul;
+            v9x_d3d_contexts[index].z_write = 0ul;
+            v9x_d3d_contexts[index].z_func = 0ul;
         }
     }
     data->ddrval = V9X_DD_OK;
@@ -670,6 +743,21 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
                 break;
             case V9X_D3DRENDERSTATE_FOGCOLOR:
                 context->fog_color = states[index].argument;
+                break;
+            case V9X_D3DRENDERSTATE_ZENABLE:
+                /* DirectX 5 allows D3DZB_USEW (2) here. This driver publishes
+                 * no W-buffer capability, so anything non-zero is plain Z. */
+                context->z_enable = states[index].argument != 0ul;
+                break;
+            case V9X_D3DRENDERSTATE_ZWRITEENABLE:
+                context->z_write = states[index].argument != 0ul;
+                break;
+            case V9X_D3DRENDERSTATE_ZFUNC:
+                /* Not validated here. The engine's mapping table has a
+                 * default arm, which is where an unknown function is decided
+                 * - and the safe default is not the one a zeroed field would
+                 * give. */
+                context->z_func = states[index].argument;
                 break;
             default:
                 break;
@@ -1123,7 +1211,7 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
  * time engine_type is 0 and engine.flags carries no V9X_DD_ENGINE_VALID.
  * Selecting on it here published nothing at all, and DDRAW then enumerated no
  * hardware Direct3D device. Measured on the ViRGE guest: D3DHalFound went 1 to
- * 0. See docs\decisions6-08-29-d3d-core-engine-split.md.
+ * 0. See the D3D core/engine split decision record of 2026-08-29.
  *
  * So caps publication cannot be chip-selected today, and this returns the one
  * D3D engine the binary carries. That is exactly the pre-split behaviour: the

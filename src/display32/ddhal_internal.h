@@ -63,6 +63,13 @@
 #define V9X_VIRGE_3D_DADY_DRDY        0x0000b548ul
 #define V9X_VIRGE_3D_GS_BS            0x0000b54cul
 #define V9X_VIRGE_3D_AS_RS            0x0000b550ul
+/* The depth gradients and start value, filling what used to be a gap in this
+ * table. Offsets from VIRGE1.H:264-266 (TRI_3D_dZdX/dZdY/ZS02, relative to the
+ * 0xb504 triangle-data base), cross-checked against 86Box's register decode in
+ * build\reference-vid_s3_virge.c:1881-1888. */
+#define V9X_VIRGE_3D_DZDX             0x0000b554ul
+#define V9X_VIRGE_3D_DZDY             0x0000b558ul
+#define V9X_VIRGE_3D_ZS02             0x0000b55cul
 #define V9X_VIRGE_3D_DXDY12           0x0000b560ul
 #define V9X_VIRGE_3D_XEND12           0x0000b564ul
 #define V9X_VIRGE_3D_DXDY01           0x0000b568ul
@@ -72,7 +79,59 @@
 #define V9X_VIRGE_3D_YSTART           0x0000b578ul
 #define V9X_VIRGE_3D_Y01_Y12          0x0000b57cul
 
-#define V9X_VIRGE_3D_CMD_GOURAUD_16_AE 0x83000007ul
+/*
+ * The command word, with the Z-buffer mode field no longer baked in.
+ *
+ * The historic constant was 0x83000007, which decomposes (VIRGE1.H:126-178) as
+ * cmd3D_CMD 0x80000000 | cmdZ_BUF_OFF 0x03000000 | cmdDEST_FMT_ZRGB1555 0x4 |
+ * cmdHWCLIP_EN 0x2 | cmdAE_ENABLE 0x1 - that is, Z was explicitly switched off
+ * by two bits sitting inside what looked like an opaque base value.
+ */
+#define V9X_VIRGE_3D_CMD_GOURAUD_16    0x80000007ul
+
+/*
+ * Z-buffer mode, bits 25:24. 00 is active; 11 is off. The two MUX modes are
+ * never emitted - 86Box treats any non-zero value as off
+ * (build\reference-vid_s3_virge.c:4220, use_z = !(cmd_set & CMD_SET_ZB_MODE)),
+ * but they are documented hardware modes and silicon need not agree, so this
+ * driver stays on the two it understands.
+ */
+#define V9X_VIRGE_3D_CMD_Z_BUF_OFF     0x03000000ul
+
+/* Bit 23: write the passing depth back to the Z buffer (cmdZ_UP_EN). */
+#define V9X_VIRGE_3D_CMD_Z_UPDATE      0x00800000ul
+
+/*
+ * Z compare function, bits 22:20. NOT in the D3DCMP order - LESS is 4 and
+ * GREATER is 1, and six of the eight differ from (D3DCMP value - 1), so this
+ * must be a table rather than arithmetic. Confirmed twice over: VIRGE1.H:161-169
+ * and 86Box's Z_CLIP macro, which switches on (cmd_set >> 20) & 7.
+ *
+ * Note NEVER is zero. A command word that reaches the hardware with this field
+ * unset therefore discards every pixel, which is why the mapping's default arm
+ * is ALWAYS rather than a fallthrough to zero.
+ */
+#define V9X_VIRGE_3D_CMD_Z_CMP_NEVER        0x00000000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_GREATER      0x00100000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_EQUAL        0x00200000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_GREATEREQUAL 0x00300000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_LESS         0x00400000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_NOTEQUAL     0x00500000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_LESSEQUAL    0x00600000ul
+#define V9X_VIRGE_3D_CMD_Z_CMP_ALWAYS       0x00700000ul
+
+/* The Z-disabled command word, unchanged in value from the single constant
+ * this replaced. */
+#define V9X_VIRGE_3D_CMD_GOURAUD_16_AE \
+    (V9X_VIRGE_3D_CMD_GOURAUD_16 | V9X_VIRGE_3D_CMD_Z_BUF_OFF)
+
+/*
+ * The regression-safety property, as a build failure rather than a review
+ * note: a triangle drawn with Z disabled must emit exactly the command word
+ * it emitted before the Z path existed.
+ */
+typedef char v9x_assert_cmd_base_unchanged
+    [(V9X_VIRGE_3D_CMD_GOURAUD_16_AE == 0x83000007ul) ? 1 : -1];
 #define V9X_VIRGE_3D_CMD_ALPHA_SOURCE   0x00040000ul
 #define V9X_VIRGE_3D_CMD_ALPHA_ENABLE   0x00080000ul
 #define V9X_VIRGE_3D_CMD_TEXTURE_UNLIT  0x10000000ul

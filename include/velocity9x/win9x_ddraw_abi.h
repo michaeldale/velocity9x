@@ -481,6 +481,22 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_TEXTUREMIN               18ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAPBLEND          21ul
 #define V9X_D3DRENDERSTATE_BORDERCOLOR              43ul
+/* Depth-buffer state. Values from the Windows 98 DDK's own ViRGE driver,
+ * C:\98DDK\src\display\mini\s3v\D3DSTATE.C:73/95/130. */
+#define V9X_D3DRENDERSTATE_ZENABLE                   7ul
+#define V9X_D3DRENDERSTATE_ZWRITEENABLE             14ul
+#define V9X_D3DRENDERSTATE_ZFUNC                    23ul
+/* D3DCMP_*, the comparison functions D3DRENDERSTATE_ZFUNC selects between.
+ * The chip's own encoding is a different order entirely; the engine maps
+ * between them. */
+#define V9X_D3DCMP_NEVER                             1ul
+#define V9X_D3DCMP_LESS                              2ul
+#define V9X_D3DCMP_EQUAL                             3ul
+#define V9X_D3DCMP_LESSEQUAL                         4ul
+#define V9X_D3DCMP_GREATER                           5ul
+#define V9X_D3DCMP_NOTEQUAL                          6ul
+#define V9X_D3DCMP_GREATEREQUAL                      7ul
+#define V9X_D3DCMP_ALWAYS                            8ul
 #define V9X_D3DFILTER_NEAREST                        1ul
 #define V9X_D3DFILTER_LINEAR                         2ul
 #define V9X_D3DFILTER_MIPNEAREST                     3ul

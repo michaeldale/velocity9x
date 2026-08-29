@@ -51,6 +51,21 @@ typedef struct v9x_d3d_context {
     DWORD pitch;
     DWORD width;
     DWORD height;
+    /*
+     * The depth surface, once validated. depth_offset and depth_pitch were
+     * computed and thrown away before the Z path existed; the engine needs
+     * both, and neither is recoverable from the surface pointer without
+     * repeating the validation.
+     *
+     * z_enable and z_write start life from whether a Z surface was attached
+     * at all, matching the DDK's SetRenderTarget32 (D3DCB2.C:57-66), and are
+     * then owned by the render states.
+     */
+    DWORD depth_offset;
+    DWORD depth_pitch;
+    DWORD z_enable;
+    DWORD z_write;
+    DWORD z_func;
     DWORD specular_enable;
     DWORD fog_enable;
     DWORD fog_color;
@@ -94,6 +109,14 @@ typedef struct v9x_d3d_engine_limits {
     /* Inclusive square-texture edge bounds in texels. */
     DWORD texture_size_min;
     DWORD texture_size_max;
+    /*
+     * Bits per pixel in the depth buffer. The core sizes and bounds-checks
+     * the Z surface, so it needs the number - and the number is the engine's.
+     * It was a literal 2 in the core's footprint arithmetic, which is a ViRGE
+     * fact in the chip-neutral file that check-tree cannot catch, because that
+     * rule forbids chip *names* and this was a bare constant.
+     */
+    DWORD depth_bits_per_pixel;
     /*
      * Screen coordinates outside +/- this are refused before clipping. The
      * clipper's output is fed to the engine's fixed-point conversion, so a

@@ -1028,6 +1028,20 @@ DWORD __stdcall DriverInit(DWORD context)
                                   V9X_DDSCAPS_COMPLEX |
                                   V9X_DDSCAPS_MIPMAP |
                                   V9X_DDSCAPS_ZBUFFER;
+    /*
+     * Which depths a Z buffer may be created at. DDSCAPS_ZBUFFER above says
+     * the driver understands depth surfaces at all; this says what to make
+     * one out of, and DirectDraw consults it before allocating one in video
+     * memory. It was never assigned, so it read as zero - no acceptable
+     * depth - which is why an attached Z surface could not reach the driver
+     * however completely the rest of the Z path was written. The Windows 98
+     * DDK's ViRGE driver sets the same value at DDDRV.C:706.
+     *
+     * DDBD_16 and nothing else: the S3D unit's depth path is 16-bit
+     * throughout, which is also what dwDeviceZBufferBitDepth advertises on
+     * the Direct3D side.
+     */
+    shared->info.ddCaps.dwZBufferBitDepths = V9X_DDBD_16;
     shared->info.ddCaps.dwVidMemTotal =
         shared->fb.vram_bytes - shared->fb.visible_bytes;
     shared->info.ddCaps.dwVidMemFree = shared->info.ddCaps.dwVidMemTotal;
