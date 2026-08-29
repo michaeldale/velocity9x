@@ -1,7 +1,9 @@
 # The Direct3D block splits into a chip-neutral core and one engine, and the probe cannot tell
 
 Date: 2026-08-29
-Branch: `d3d-core-engine-split`
+Branch: `s3-device-id-aliases` - this work is unrelated to that branch's
+subject and should have had its own; recorded as it happened rather than as
+it should have been
 Plan: [`family-structure-and-next-d3d-roadmap.md`](../plans/family-structure-and-next-d3d-roadmap.md) Track B
 
 Guest: `Win86SE`, s3 family, ViRGE/DX 86C375, 4 MiB, agent port 9869.
