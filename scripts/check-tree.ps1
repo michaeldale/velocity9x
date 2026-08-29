@@ -203,6 +203,30 @@ foreach ($family in $families) {
     }
 }
 
+# Every PCI id a family owns - chips and their aliases alike - is copied at
+# load into the fixed DGROUP arrays runtime.asm's scan walks. ddi.c truncates
+# to V9X_PCI_ID_LIMIT silently, so a manifest that outgrew the array would ship
+# a driver that never scans for its last few ids and says nothing about it.
+# Aliases are what make that reachable: they cost a manifest line each.
+$pciIdLimit = $null
+foreach ($line in (Get-Content -LiteralPath (Join-Path $repoRoot "src\display16\ddi.c"))) {
+    if ($line -match '^\s*#define\s+V9X_PCI_ID_LIMIT\s+([0-9]+)u\s*$') {
+        $pciIdLimit = [int]$Matches[1]
+        break
+    }
+}
+if (-not $pciIdLimit) {
+    throw "src\display16\ddi.c no longer defines V9X_PCI_ID_LIMIT as a plain count."
+}
+foreach ($family in $families) {
+    $idCount = @(Get-V9xFamilyPciEntries -Family $family).Count
+    if ($idCount -gt $pciIdLimit) {
+        throw ("Family $($family.Id) declares $idCount PCI ids, more than " +
+               "V9X_PCI_ID_LIMIT ($pciIdLimit) in src\display16\ddi.c; the " +
+               "scan table would be truncated silently.")
+    }
+}
+
 # The backend registry's PCI dispatch table is generated from the manifests
 # and checked in. Regenerate and compare, so a manifest edit that forgot
 # scripts\update-backend-registry.ps1 fails here instead of shipping a

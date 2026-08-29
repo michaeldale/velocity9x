@@ -48,6 +48,24 @@ const V9X_HW16_DEVICE v9x_virge_device = {
 const V9X_HW16_DEVICE v9x_trio_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+/* The Trio64's aliases. Stubs like the rest: what this file checks about them
+ * is that the family's device list has one entry per manifest id, which is a
+ * count, not an identity. */
+const V9X_HW16_DEVICE v9x_trio32_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_aurora64_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_trio32_64_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_trio64uv_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_trio64v2_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_mach64_vt2_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
@@ -164,6 +182,49 @@ static void test_mode_tables_match_manifests(void)
 }
 
 /*
+ * The family's device list must have one entry per PCI id the manifest names -
+ * chips and their aliases alike.
+ *
+ * The scan copies this array into the fixed table runtime.asm walks, one slot
+ * per entry, so an alias the manifest declares and the device list omits binds
+ * in the INF and is then never scanned for: Windows installs the driver and
+ * Enable reports no matching device. Nothing else catches that. It is a count
+ * rather than an id comparison because the descriptors are stubbed above;
+ * test_family_matrix.c is where the ids themselves are held to the manifest.
+ */
+static void test_device_lists_cover_every_manifest_id(void)
+{
+    unsigned int table_index;
+
+    for (table_index = 0u; table_index < V9X_HW16_TABLE_COUNT; ++table_index) {
+        const char *family_id = v9x_hw16_tables[table_index].family_id;
+        const V9X_HW16_OPS *ops = v9x_hw16_tables[table_index].ops;
+        unsigned int declared = 0u;
+        unsigned int index;
+
+        for (index = 0u; index < V9X_FAMILY_MATRIX_COUNT; ++index) {
+            if (strcmp(v9x_family_matrix[index].family_id, family_id) == 0) {
+                ++declared;
+            }
+        }
+        for (index = 0u; index < V9X_FAMILY_MATRIX_ALIAS_COUNT; ++index) {
+            if (strcmp(v9x_family_matrix_aliases[index].family_id,
+                       family_id) == 0) {
+                ++declared;
+            }
+        }
+
+        if (ops->device_count != declared) {
+            printf("FAIL %s:%u: %s has %u device entries for %u manifest "
+                   "id(s)\n",
+                   __FILE__, (unsigned int)__LINE__, family_id,
+                   (unsigned int)ops->device_count, declared);
+            ++hw16_failures;
+        }
+    }
+}
+
+/*
  * The pitch is the one field the manifest does not carry, so it is checked
  * against the geometry instead: these are packed linear modes, so a scan line
  * is exactly width * bytes-per-pixel. A pitch that disagrees would put every
@@ -249,6 +310,7 @@ unsigned int v9x_run_hw16_mode_tests(void)
 {
     hw16_failures = 0u;
     test_mode_tables_match_manifests();
+    test_device_lists_cover_every_manifest_id();
     test_mode_pitches_are_packed();
     test_first_mode_is_the_fallback();
     test_pci_miss_strategies_are_exclusive();

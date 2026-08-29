@@ -100,6 +100,54 @@ static void test_family_backends_are_distinct(void)
     }
 }
 
+/*
+ * Every alias resolves to exactly the backend of the chip it aliases.
+ *
+ * An alias is a PCI id bound to a sibling's code, so the two questions worth
+ * asking are that the registry knows the id at all - an id the INF binds and
+ * the registry does not would install and then resolve nothing - and that what
+ * it resolves to is the *same* backend, not merely some backend. The second
+ * is the one that would catch an alias drifting onto another family's chip
+ * after a manifest edit.
+ */
+static void test_aliases_resolve_to_their_chip(void)
+{
+    unsigned int index;
+
+    for (index = 0u; index < V9X_FAMILY_MATRIX_ALIAS_COUNT; ++index) {
+        const struct v9x_family_matrix_alias *alias =
+            &v9x_family_matrix_aliases[index];
+        const struct v9x_family_matrix_chip *chip;
+        struct v9x_pci_identity pci;
+        const struct v9x_backend_ops *ops;
+
+        if (alias->chip_index >= V9X_FAMILY_MATRIX_COUNT) {
+            printf("FAIL %s:%u: alias %04x names chip index %u of %u\n",
+                   __FILE__, (unsigned int)__LINE__,
+                   (unsigned int)alias->device_id,
+                   (unsigned int)alias->chip_index, V9X_FAMILY_MATRIX_COUNT);
+            ++matrix_failures;
+            continue;
+        }
+
+        chip = &v9x_family_matrix[alias->chip_index];
+        pci.vendor_id = alias->vendor_id;
+        pci.device_id = alias->device_id;
+        pci.revision = 0u;
+        ops = v9x_backend_for_pci(&pci);
+
+        if (ops == 0 || ops != ops_for(chip)) {
+            printf("FAIL %s:%u: %s/%s alias %04x:%04x does not resolve to its "
+                   "chip's backend\n",
+                   __FILE__, (unsigned int)__LINE__,
+                   alias->family_id, alias->chip_id,
+                   (unsigned int)alias->vendor_id,
+                   (unsigned int)alias->device_id);
+            ++matrix_failures;
+        }
+    }
+}
+
 /* Hardware no manifest claims must not resolve. A registry that answered for
  * an undeclared id would install this driver on a card it was never built
  * for. */
@@ -231,6 +279,7 @@ unsigned int v9x_run_family_matrix_tests(void)
 {
     test_every_declared_chip_resolves();
     test_family_backends_are_distinct();
+    test_aliases_resolve_to_their_chip();
     test_undeclared_hardware_is_refused();
     test_engine_caps_match_engine_type();
     test_advertised_modes_are_servable();

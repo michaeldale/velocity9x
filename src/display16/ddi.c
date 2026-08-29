@@ -154,8 +154,15 @@ DWORD v9x_vdd_info_result;
  *
  * V9xFindPciDevice walks v9x_pci_vendor/device, which is what lets one family
  * binary serve more than one card.
+ *
+ * The limit was 8 while a family meant a chip or two. Aliases - ids a chip's
+ * code drives unchanged - put the s3 family at seven, and the overflow below
+ * truncates silently: the ids past the limit would simply never be scanned
+ * for, with nothing to say why. Raised to leave room, and check-tree.ps1
+ * asserts every family's id count against this number so the manifest cannot
+ * outgrow the array unnoticed.
  */
-#define V9X_PCI_ID_LIMIT 8u
+#define V9X_PCI_ID_LIMIT 16u
 WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_count = 0u;

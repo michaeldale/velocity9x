@@ -1,4 +1,4 @@
-# Read V9XSURV.INI reports sent back by testers and turn them into something
+﻿# Read V9XSURV.INI reports sent back by testers and turn them into something
 # actionable.
 #
 # The DOS tool deliberately captures rather than interprets, so all the decoding
@@ -179,8 +179,20 @@ function Get-HexValue {
 # S3 chip identity
 #
 # CR2D/CR2E hold the same device id the PCI parts publish to configuration
-# space, so this table is the one the driver's own family manifest is keyed on
-# and it is as solid as the PCI ids themselves.
+# space, so this table is keyed on the same ids the driver's own family
+# manifest is - and that mechanism is as solid as the PCI ids themselves.
+#
+# The names attached to those ids are a separate question, and were previously
+# covered by the same claim when they should not have been. These thirteen were
+# read out of the PCIR structure of an option ROM dump, which is a first-party
+# statement by the board the dump came from:
+#
+#   5631 883D 8811 8880 88B0 88C0 88C1 88D0 88F0 8901 8A01 8A10 8A13
+#
+# See docs\decisions\2026-08-29-s3-device-id-survey.md and
+# scripts\read-option-rom-ids.ps1, which reproduces it. The rest of the table
+# comes from the public PCI id list. That survey corrected two entries that had
+# been documentation all along: 86C765 sits at 8811, not 8814.
 #
 # CR30 is different, and worth being honest about. It is the only id register
 # the pre-Trio parts have - the 86C801/805 and 86C928 that a VLB card is likely
@@ -192,10 +204,13 @@ $script:S3DeviceIds = @{
     '5631' = 'ViRGE (86C325)'
     '883D' = 'ViRGE/VX (86C988)'
     '8810' = 'Trio32 (86C732)'
-    '8811' = 'Trio32 or Trio64 (86C732/86C764)'
-    '8812' = 'Aurora64V+ (86C862)'
+    # Measured: the S3 Trio64V+ reference BIOS and a Trio32 BIOS both publish
+    # 8811, alongside seven Trio64 board ROMs. 86C765 was previously listed at
+    # 8814 instead, which the Trio64V+ dump contradicts.
+    '8811' = 'Trio32, Trio64 or Trio64V+ (86C732/86C764/86C765)'
+    '8812' = 'Trio64V+ family / Aurora64V+ (86C862)'
     '8813' = 'Trio32 or Trio64 (86C732/86C764)'
-    '8814' = 'Trio64UV+ (86C765)'
+    '8814' = 'Trio64UV+ (86C767)'
     '8880' = 'Vision868 (86C868)'
     '88B0' = 'Vision928 (86C928)'
     '88B1' = 'Vision928 (86C928)'

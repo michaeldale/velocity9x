@@ -4,6 +4,48 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+**Two S3 chips were supported all along and nobody had checked.** Reading the
+PCI Data Structure out of all 41 S3 option ROMs in the local 86Box tree showed
+that the Trio64V+ 86C765 and the Trio32 86C732 both publish `5333:8811` - the
+id the `trio64` chip has bound since the family merge. An 86Box Trio32 guest
+then confirmed it end to end: the driver enables, CR36 decodes the card's
+2 MiB, and eight of the nine declared modes that fit pass with GDI
+acceleration. Neither part needed a line of code.
+
+The same survey corrected two labels the field-report tool had been printing
+from documentation - 86C765 is at `8811`, not `8814`, and `8814` is the 86C767
+Trio64UV+.
+
+Added, off the back of it, a **device-id alias** to the family manifest: a PCI
+id a chip's own code drives unchanged, bound so it installs but deliberately
+not a chip. Chips must carry a VM target and are covered by the mode matrix;
+an alias has run nowhere and the schema keeps that distinction rather than
+leaving it to prose. Five are declared on the Trio64 - `8810`, `8812`, `8813`,
+`8814` and `8901` (Trio64V2/DX, the one of the five confirmed as an id here) -
+and each produces its own INF model line, its own backend-registry row and its
+own 16-bit device entry, with the diagnostics naming the part the machine has
+rather than the sibling driving it.
+
+Three checks came with it, because aliases multiply the ways the manifest and
+the driver can disagree: `check-tree.ps1` holds the manifest's id count against
+`V9X_PCI_ID_LIMIT` (raised 8 -> 16, since the array truncates silently),
+`test_hw16_modes.c` asserts every family's device list has one entry per
+manifest id, and `test_family_matrix.c` asserts every alias resolves to its own
+chip's backend rather than merely to some backend.
+
+Found on the way, and **not** fixed: the Trio32's BIOS has no VBE `0115h`, so
+that card is offered 800x600x32 and refuses it at 4F02h. It is not a
+regression - the Trio32 has inherited the Trio64's mode list since the merge -
+and it is the second ROM to show the failure the shared mode table's own
+comment predicts. Filed as
+`docs/issues/2026-08-29-trio32-lacks-vbe-0115.md`.
+
+Deliberately not added: the Vision864/868/964/968 and 86C928 ids, all measured
+and all unclaimed. Those are external-RAMDAC boards whose CR36 encoding differs
+from the Trio line, so binding them would be a claim rather than an alias.
+
 ## 0.6.1 - 2026-08-28
 
 **A third party ran 0.6.0 on hardware nobody here owns, and this is what that

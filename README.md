@@ -90,7 +90,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 
 | | **S3 ViRGE/DX** | **S3 Trio32/64** | **ATI Mach64 / Rage** | **Generic VESA** |
 |---|---|---|---|---|
-| PCI ID | `5333:8A01` | `5333:8811` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
+| PCI ID | `5333:8A01` | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
 | Status | Primary target | Conservative baseline, verified on 2 physical machines | Tier-0 bring-up | Tier-0 fallback, verified on a physical Intel GMA 950 |
 | Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same | 640x400x8, 640/800/1024 at 8 and 16 bpp | same as ATI |
@@ -107,6 +107,23 @@ The Trio32/64 target is intentionally a software-GDI plus DirectDraw baseline.
 The ViRGE-only new-MMIO window, the S3D engine and Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
+
+The five ids after `8811` are **aliases**: parts the Trio64's code drives
+unchanged, bound so they install, but validated nowhere. Only `8901`
+(Trio64V2/DX) was even confirmed as an id here, off an option ROM. Treat them
+as "it should come up", not as supported. The distinction is enforced rather
+than described — an alias cannot carry a VM target and is not covered by the
+mode matrix; see
+[docs/specifications/family-manifest.md](docs/specifications/family-manifest.md)
+and [docs/decisions/2026-08-29-s3-device-id-survey.md](docs/decisions/2026-08-29-s3-device-id-survey.md).
+
+The Trio32 86C732 and the Trio64V+ 86C765 are **not** in that list, because
+they publish `8811` itself: the shipping driver has always bound them. That is
+now measured both ways — off the option ROMs, and on an 86Box Trio32 guest that
+enables, reads its 2 MiB from CR36 and passes eight of the nine declared modes
+that fit ([docs/decisions/2026-08-29-s3-trio32-alias-guest.md](docs/decisions/2026-08-29-s3-trio32-alias-guest.md)).
+The ninth, 800x600x32, is refused by that card's BIOS
+([docs/issues/2026-08-29-trio32-lacks-vbe-0115.md](docs/issues/2026-08-29-trio32-lacks-vbe-0115.md)).
 
 ### Verified on physical hardware: S3 Trio64 on PCI
 
@@ -366,7 +383,7 @@ expensive:
 ```
 README.TXT     what this is, which folder to use, install and recovery
 RECOVER.TXT    recovery steps, at the root so they are findable in a hurry
-S3\            S3 ViRGE/DX 86C375 and Trio32/64 86C764  (5333:8A01, 5333:8811)
+S3\            S3 ViRGE/DX and the Trio32/64 family     (5333:8A01, 5333:8811 +5)
 ATI\           ATI Mach64 VT2 and Rage Mobility-M       (1002:5654, 1002:4C4D)
 VBE\           generic VESA 2.0, for anything else
 ```

@@ -14,7 +14,7 @@
     SchemaVersion = 1
     Id = 's3'
     DisplayName = 'S3'
-    Description = 'S3 ViRGE/DX and Trio32/64, dispatched at runtime by PCI id.'
+    Description = 'S3 ViRGE/DX and Trio32/64, dispatched at runtime by PCI id, plus five bound-but-unvalidated Trio64 aliases.'
 
     Chips = @(
         @{
@@ -115,6 +115,48 @@
                 @{ BitsPerPixel = 32; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0112' }
                 @{ BitsPerPixel = 32; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0115' }
                 @{ BitsPerPixel = 32; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0118' }
+            )
+
+            # Further PCI ids this chip's code drives unchanged: same S3
+            # unlock, same CR58/CR40 aperture enable, same CR59/CR5A base,
+            # same CR36 memory decode, same 8514/A engine driven by port I/O.
+            # They share this chip's install section, registry section and
+            # mode list, and they are aliases rather than chips because a chip
+            # must carry a VM target and be covered by the mode matrix, and
+            # none of these has run anywhere.
+            #
+            # Evidence, from docs\decisions\2026-08-29-s3-device-id-survey.md:
+            # 8901 was read out of the PCIR structure of 86Box's 86c775_2.bin
+            # Trio64V2/DX ROM. The other four appear in no dump in this tree -
+            # their names come from the public PCI id list. Nothing here has
+            # seen any of the five silicon.
+            #
+            # Deliberately absent: the Vision864/868/964/968 (88C0, 88C1,
+            # 8880, 88D0, 88F0) and the 86C928 (88B0), all measured and all
+            # unclaimed. Those are external-RAMDAC boards whose CR36 encoding
+            # differs from the Trio line - src\chipsets\s3\virge\memory.c
+            # refuses the codes they use rather than guessing - so binding
+            # them would be a claim rather than an alias.
+            #
+            # 8901 is the one worth promoting to a chip first: 86Box emulates
+            # it as trio64v2dx_pci, so it needs a guest and a VBE inventory
+            # and nothing else.
+            Aliases = @(
+                @{ DeviceId = '8810'
+                   Name = 'S3 Trio32 86C732'
+                   DeviceDesc = 'Velocity9x S3 Trio32 86C732' }
+                @{ DeviceId = '8812'
+                   Name = 'S3 Aurora64V+ 86C862'
+                   DeviceDesc = 'Velocity9x S3 Aurora64V+ 86C862' }
+                @{ DeviceId = '8813'
+                   Name = 'S3 Trio32/64 86C732/86C764'
+                   DeviceDesc = 'Velocity9x S3 Trio32/64 86C732/86C764' }
+                @{ DeviceId = '8814'
+                   Name = 'S3 Trio64UV+ 86C767'
+                   DeviceDesc = 'Velocity9x S3 Trio64UV+ 86C767' }
+                @{ DeviceId = '8901'
+                   Name = 'S3 Trio64V2/DX or /GX 86C775/86C785'
+                   DeviceDesc = 'Velocity9x S3 Trio64V2/DX or /GX 86C775/86C785' }
             )
 
             Objects = @('trio_hw16')
@@ -288,7 +330,7 @@
         # Hand-written display string, printed into the floppy README's chip
         # table at column 35 - keep it inside 38 characters (see the 73-column
         # wrap at build-floppy-package.ps1:75).
-        HardwareIdHint = 'PCI 5333:8A01/8811, or VLB by hand'
+        HardwareIdHint = 'PCI 5333 ViRGE/DX or Trio, VLB by hand'
     }
 
     Vm = @{

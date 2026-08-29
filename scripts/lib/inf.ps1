@@ -122,8 +122,13 @@ function New-V9xInfText {
     $lines = @(
         '; Velocity9x Windows 98SE bring-up package'
         ('; Family {0}: {1}' -f $Family.Id, $Family.DisplayName)
-    ) + @($chips | ForEach-Object {
-        '; Supported adapter: {0}, PCI {1}:{2}' -f $_.Name, $_.VendorId, $_.DeviceId
+    ) + @(Get-V9xFamilyPciEntries -Family $Family | ForEach-Object {
+        if ($_.IsAlias) {
+            '; Supported adapter: {0}, PCI {1}:{2} (alias of {3}, not validated)' -f
+                $_.Name, $_.VendorId, $_.DeviceId, $_.ChipId
+        } else {
+            '; Supported adapter: {0}, PCI {1}:{2}' -f $_.Name, $_.VendorId, $_.DeviceId
+        }
     }) + @(if ($manual) {
         '; Manual-select model, no hardware ID: {0} ({1} modes within {2} bytes)' -f
             $manual.Description, $manualModes.Count, $manual.VideoMemoryBytes
@@ -176,6 +181,21 @@ function New-V9xInfText {
         } else {
             $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $chip.DeviceDesc, $section,
                 $chip.VendorId, $chip.DeviceId
+        }
+
+        # One further model line per alias, pointing at the same install
+        # section - so an aliased card gets the chip's registry, mode list and
+        # mini-VDD, and Device Manager still shows the part the user has rather
+        # than the sibling whose code drives it. Not folded into the chip's
+        # line as extra compatible ids for exactly that reason: a compatible id
+        # binds under the first line's description.
+        #
+        # No SubsystemId branch. That field exists for a chip whose devnode is
+        # only ever seen SUBSYS-qualified, which is a per-board fact; an alias
+        # names silicon nobody here has run, so there is no board to qualify.
+        foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
+            $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $alias.DeviceDesc,
+                $section, $chip.VendorId, $alias.DeviceId
         }
     }
 

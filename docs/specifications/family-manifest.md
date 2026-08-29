@@ -24,7 +24,7 @@ manifest on every run, so a schema error is caught before a build.
 | `Id` | Lowercase kebab-case, matching the directory name. |
 | `DisplayName` | Human name used in build output. |
 | `Description` | One line; what the family covers and any limits. |
-| `Chips` | One entry per supported chip. See below. |
+| `Chips` | One entry per supported chip, each optionally with `Aliases`. See below. |
 | `Backend` | The host-testable policy backend. See below. |
 | `Build` | Source list, defines, output directories, variants. |
 | `Audit` | Family-wide audit additions. |
@@ -85,7 +85,51 @@ generator orders it by depth, width, height; `ddi.c`'s table has its own order
 
 A PCI ID may be claimed by exactly one family. Two families claiming one device
 would give Windows two matching INF models, and which driver installs becomes a
-coin toss. `Get-V9xFamilies` enforces this.
+coin toss. `Get-V9xFamilies` enforces this, over chips and aliases alike.
+
+## Aliases
+
+A chip may declare `Aliases`: further PCI device ids that the chip's own code
+drives unchanged.
+
+```powershell
+Aliases = @(
+    @{ DeviceId = '8814'
+       Name = 'S3 Trio64UV+ 86C767'
+       DeviceDesc = 'Velocity9x S3 Trio64UV+ 86C767' }
+)
+```
+
+An alias inherits everything from its chip - the same registers, the same
+engine and capability mask, the same `Modes`, the same INF install and registry
+sections, so the same MODES key and the same mini-VDD. It contributes:
+
+* one further model line in the generated INF, with its own `DeviceDesc`, so
+  Device Manager names the part the machine has rather than the sibling whose
+  code drives it;
+* one further row in the generated backend registry, dispatching to the same
+  family backend - an id the INF binds and the registry does not know would
+  install and then resolve nothing;
+* one further `V9X_HW16_DEVICE` in the family's device list, which the chip's
+  own module declares, since the PCI scan matches one entry per id.
+
+**An alias is a binding, not a claim.** It is not a chip precisely because
+chips carry evidence: every chip must have a `Vm.Targets` entry and is covered
+by the family's mode matrix, and an alias by definition has run nowhere. That
+distinction is the whole point of the mechanism - the alternative was either
+inventing a guest per id or quietly listing ids among the validated chips.
+Promoting an alias to a chip is what a measurement licenses, and it costs a
+guest profile and a VBE mode inventory of that ROM.
+
+`Objects` and `MapSymbols` stay on the chip. An alias adds no code, so there is
+no separate object for the per-object audit to check.
+
+The count of chips plus aliases in a family is bounded by `V9X_PCI_ID_LIMIT` in
+`src\display16\ddi.c`, which sizes the arrays the 16-bit scan walks and
+truncates past it silently; `check-tree.ps1` asserts the manifest against that
+constant. `test_hw16_modes.c` asserts each family's device list has exactly one
+entry per manifest id, and `test_family_matrix.c` asserts every alias resolves
+to its own chip's backend.
 
 ## Audit signatures and cross-family derivation
 

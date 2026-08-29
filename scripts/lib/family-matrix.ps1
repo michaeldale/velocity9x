@@ -48,9 +48,25 @@ function Write-V9xFamilyMatrixHeader {
     $lines.Add("    unsigned short mode_count;")
     $lines.Add("};")
     $lines.Add("")
+    $lines.Add("/*")
+    $lines.Add(" * A chip's aliases: further PCI device ids the chip's own code drives")
+    $lines.Add(" * unchanged. chip_index is the row above that owns the alias, which is what")
+    $lines.Add(" * lets a test assert the two resolve to the same backend rather than only")
+    $lines.Add(" * that the alias resolves to something.")
+    $lines.Add(" */")
+    $lines.Add("struct v9x_family_matrix_alias {")
+    $lines.Add("    const char *family_id;")
+    $lines.Add("    const char *chip_id;")
+    $lines.Add("    unsigned short vendor_id;")
+    $lines.Add("    unsigned short device_id;")
+    $lines.Add("    unsigned short chip_index;")
+    $lines.Add("};")
+    $lines.Add("")
 
     $chipIndex = 0
+    $aliasCount = 0
     $rows = [System.Collections.Generic.List[string]]::new()
+    $aliasRows = [System.Collections.Generic.List[string]]::new()
     foreach ($family in $families) {
         foreach ($chip in @($family.Chips)) {
             $modeSymbol = "v9x_family_matrix_modes_$chipIndex"
@@ -82,6 +98,13 @@ function Write-V9xFamilyMatrixHeader {
             $rows.Add('      ' + $modeSymbol + ',')
             $rows.Add('      (unsigned short)(sizeof(' + $modeSymbol + ') / sizeof(' +
                       $modeSymbol + '[0])) },')
+
+            foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
+                $aliasRows.Add('    { "' + $family.Id + '", "' + $chip.Id + '", 0x' +
+                               $chip.VendorId + 'u, 0x' + $alias.DeviceId + 'u, ' +
+                               $chipIndex + 'u },')
+                ++$aliasCount
+            }
             ++$chipIndex
         }
     }
@@ -90,6 +113,19 @@ function Write-V9xFamilyMatrixHeader {
     $lines.Add("};")
     $lines.Add("")
     $lines.Add("#define V9X_FAMILY_MATRIX_COUNT ${chipIndex}u")
+    $lines.Add("")
+    # An empty C array is not valid C89, so a tree with no aliases at all still
+    # emits one unreachable row rather than nothing; the count is what the
+    # tests loop over.
+    $lines.Add("static const struct v9x_family_matrix_alias v9x_family_matrix_aliases[] = {")
+    if ($aliasCount -eq 0) {
+        $lines.Add('    { "", "", 0u, 0u, 0u }')
+    } else {
+        $lines.AddRange([string[]]$aliasRows)
+    }
+    $lines.Add("};")
+    $lines.Add("")
+    $lines.Add("#define V9X_FAMILY_MATRIX_ALIAS_COUNT ${aliasCount}u")
     $lines.Add("")
     $lines.Add("#endif")
 

@@ -142,6 +142,42 @@ function Test-V9xFamilyManifest {
                        "'$($chip.$field)'; use four uppercase hex digits.")
             }
         }
+
+        # Aliases: further PCI device ids the chip's own code drives unchanged.
+        #
+        # An alias is a binding, not a claim. It shares the chip's registers,
+        # engine, mode list and INF install section, and it is deliberately NOT
+        # a chip: chips must each carry a VM target and be covered by the mode
+        # matrix, and an alias by definition has run nowhere. Promoting one to
+        # a chip is what a measurement licenses. See the Aliases section of
+        # docs\specifications\family-manifest.md.
+        foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
+            Assert-V9xFamilyKeys -Table $alias -Required @(
+                'DeviceId', 'Name', 'DeviceDesc') `
+                -Context "Family $Id chip $($chip.Id) alias"
+            if ($alias.DeviceId -notmatch '^[0-9A-F]{4}$') {
+                throw ("Family $Id chip $($chip.Id) has a non-canonical alias " +
+                       "DeviceId '$($alias.DeviceId)'; use four uppercase hex " +
+                       "digits.")
+            }
+            # An alias id is emitted into the INF and compiled into the 16-bit
+            # device table beside its chip's, so a collision there would be two
+            # models and two scan entries for one card.
+            if ($alias.DeviceId -eq $chip.DeviceId) {
+                throw ("Family $Id chip $($chip.Id) declares an alias for its " +
+                       "own DeviceId $($chip.DeviceId).")
+            }
+            # Emitted inline and double-quoted into a SetupX model line, the
+            # same three characters that would corrupt a manual-select one.
+            foreach ($bad in @(',', '=', '%')) {
+                if ($alias.DeviceDesc.Contains($bad)) {
+                    throw ("Family $Id chip $($chip.Id) alias " +
+                           "$($alias.DeviceId) DeviceDesc may not contain " +
+                           "'$bad'; it is emitted inline into a SetupX model " +
+                           "line.")
+                }
+            }
+        }
         if (@($chip.Modes).Count -eq 0) {
             throw "Family $Id chip $($chip.Id) declares no modes."
         }
@@ -486,15 +522,23 @@ function Get-V9xFamilies {
     # A PCI ID may name exactly one family. Two families claiming the same
     # device would give Windows two matching INF models and make which driver
     # installs a coin toss.
+    #
+    # Aliases are in scope here for the same reason their chips are - they
+    # produce model lines and scan entries indistinguishable from a chip's - so
+    # this also catches a chip and an alias colliding inside one family.
     $owners = @{}
     foreach ($family in $families) {
-        foreach ($chip in @($family.Chips)) {
-            $key = "{0}:{1}" -f $chip.VendorId, $chip.DeviceId
-            if ($owners.ContainsKey($key)) {
-                throw ("PCI ID $key is claimed by both family " +
-                       "'$($owners[$key])' and family '$($family.Id)'.")
+        foreach ($entry in @(Get-V9xFamilyPciEntries -Family $family)) {
+            $key = "{0}:{1}" -f $entry.VendorId, $entry.DeviceId
+            $owner = "family '$($family.Id)'"
+            if ($entry.IsAlias) {
+                $owner += " (alias of chip '$($entry.ChipId)')"
             }
-            $owners[$key] = $family.Id
+            if ($owners.ContainsKey($key)) {
+                throw ("PCI ID $key is claimed by both $($owners[$key]) and " +
+                       "$owner.")
+            }
+            $owners[$key] = $owner
         }
     }
 
@@ -503,13 +547,24 @@ function Get-V9xFamilies {
     # list, and it has no hardware ID to fall back on. Two identical entries
     # there - or one colliding with a chip's own DeviceDesc - would make the
     # pick a coin toss for a human instead of for Windows.
+    #
+    # Chip and alias descriptions are checked against each other too, which
+    # they were not while a family had one model line per chip and the set was
+    # small enough to read. Aliases multiply the models, and two identical
+    # descriptions in one [Models] section is a Have Disk list with two
+    # indistinguishable rows.
     $descriptions = @{}
     foreach ($family in $families) {
-        foreach ($chip in @($family.Chips)) {
-            # First writer wins the name; the manual loop below is what reports.
-            if (-not $descriptions.ContainsKey($chip.DeviceDesc)) {
-                $descriptions[$chip.DeviceDesc] = "family '$($family.Id)' chip '$($chip.Id)'"
+        foreach ($entry in @(Get-V9xFamilyPciEntries -Family $family)) {
+            $owner = "family '$($family.Id)' chip '$($entry.ChipId)'"
+            if ($entry.IsAlias) {
+                $owner = "family '$($family.Id)' chip '$($entry.ChipId)' alias $($entry.DeviceId)"
             }
+            if ($descriptions.ContainsKey($entry.DeviceDesc)) {
+                throw ("Model description '$($entry.DeviceDesc)' in $owner is " +
+                       "already used by $($descriptions[$entry.DeviceDesc]).")
+            }
+            $descriptions[$entry.DeviceDesc] = $owner
         }
     }
     foreach ($family in $families) {
@@ -527,9 +582,43 @@ function Get-V9xFamilies {
     $families
 }
 
+# Every PCI id the family owns, chips and their aliases alike, in the order the
+# INF, the 16-bit device table and the backend registry all use: each chip
+# followed by its own aliases.
+#
+# One definition, because four consumers derive from it and a chip-only view is
+# the wrong answer in all of them - an alias the INF binds but the backend
+# registry does not know would install and then fail to enable.
+function Get-V9xFamilyPciEntries {
+    param([Parameter(Mandatory = $true)]$Family)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    foreach ($chip in @($Family.Chips)) {
+        $entries.Add([pscustomobject]@{
+            ChipId = $chip.Id
+            VendorId = $chip.VendorId
+            DeviceId = $chip.DeviceId
+            Name = $chip.Name
+            DeviceDesc = $chip.DeviceDesc
+            IsAlias = $false
+        })
+        foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
+            $entries.Add([pscustomobject]@{
+                ChipId = $chip.Id
+                VendorId = $chip.VendorId
+                DeviceId = $alias.DeviceId
+                Name = $alias.Name
+                DeviceDesc = $alias.DeviceDesc
+                IsAlias = $true
+            })
+        }
+    }
+    $entries
+}
+
 function Get-V9xFamilyHardwareIds {
     param([Parameter(Mandatory = $true)]$Family)
-    @(@($Family.Chips) | ForEach-Object {
+    @(@(Get-V9xFamilyPciEntries -Family $Family) | ForEach-Object {
         "PCI\VEN_{0}&DEV_{1}" -f $_.VendorId, $_.DeviceId
     } | Sort-Object -Unique)
 }

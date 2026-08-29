@@ -75,6 +75,10 @@ than the controller's default port.
 | `ati` / `-ChipId mach64-vt2` | `Win98SE-Mach64VT2` | 9873 | Cloned from `Win98SE-Native-S3` 2026-08-16, so it too reports ComputerName `WIN98-S3NATIVE`. Identify it by port. |
 | `ati` / `-ChipId rage-mobility-m` | none | - | Per-target `Emulator = 'none'`: 86Box emulates no Rage. Real hardware only, at `10.0.1.22`. |
 
+`Win98SE-Trio32` on 9875 is not in that table on purpose: it validates a PCI id
+the `trio64` chip already binds rather than a chip of its own, so no manifest
+`Vm.Targets` row names it. See below.
+
 ### Cloning a guest profile - four things that will stop it booting
 
 All four were hit creating `Win98SE-Mach64VT2`, and not one produces a useful
@@ -98,6 +102,16 @@ error message.
 4. **`Start-Process -ArgumentList` does not re-quote**, so a VM path containing
    a space - and `86Box VMs` contains one - is split into two arguments and
    86Box silently opens something else. Pass one pre-quoted string.
+
+Correction to trap 1, measured on 2026-08-29 creating `Win98SE-Trio32`: the
+modal **cannot be answered programmatically**. 86Box 6.0 draws its dialogs in
+Qt, so enumerating the process's windows returns class `Q` controls with no
+captions - there is no button text to match and no native control to send
+`BM_CLICK` to. Either click it by hand, or remove its cause: the check is tied
+to the inherited NE2000 `mac`, and a clone given a fresh one came up with the
+profile name in its title bar and no modal at all. Answering by hand is still
+what regenerates network identity, so if you skip the modal, set the MAC
+yourself rather than leaving the parent's.
 
 The profiles live in `C:\Users\michael\86Box VMs`, directly under the user
 profile rather than under `Documents`.
@@ -175,5 +189,34 @@ Two inherited oddities, neither yet a problem:
   Voodoo3.
 - `serial1_device = pipe` was kept from the parent rather than switched to
   `file` as the cloning notes advise. It did not block startup here.
+
+The guest still reports the parent's ComputerName. Identify it by port.
+
+## Win98SE-Trio32 (added 2026-08-29)
+
+The guest that turned "the Trio32 publishes 8811, so we already drive it" from
+an option-ROM reading into a boot. Cloned from `Win98SE-Trio64`.
+
+- Profile: `<86Box VMs>\Win98SE-Trio32`
+- `machine = ym430tx`, Pentium MMX 200 MHz, 128 MiB, unchanged from its parent
+- `gfxcard = s3_trio32_pci`, `[S3 Trio32 PCI] memory = 2` - the real 86C732 is
+  a 32-bit-bus part and tops out at 2 MiB, so the parent's 4 is not a figure
+  this card can have
+- Agent port: host **9875** -> guest 9869; COM1 logs to a file of its own at
+  `build\vm-logs\trio32-com1.log`
+
+It is **not** a manifest `Vm.Targets` entry, and should not become one while
+the Trio32 is an id sharing the `trio64` chip entry rather than a chip. Run the
+matrix against it with an explicit `-Port 9875 -ChipId trio64`.
+
+Measured on the first boot
+(`docs\decisions\2026-08-29-s3-trio32-alias-guest.md`):
+
+- The card reports `5333:8811`, the PCI scan matched the `trio64` entry, and
+  `V9XHW.INI` reads `Adapter=S3 Trio32/64 86C764` with CR36 decoding the
+  configured 2 MiB correctly.
+- Eight of the nine declared modes that fit 2 MiB pass with GDI acceleration.
+  800x600x32 does not: its BIOS has no VBE `0115h`
+  (`docs\issues\2026-08-29-trio32-lacks-vbe-0115.md`).
 
 The guest still reports the parent's ComputerName. Identify it by port.

@@ -14,16 +14,32 @@
  *
  * Device order is the scan order. ViRGE first is not load bearing: a machine
  * has one of these cards, so the two ids cannot both match.
+ *
+ * The entries after the Trio64 are its aliases: ids the Trio64 chip module
+ * drives with the same two hooks and the same modes, bound but validated
+ * nowhere. They are declared in that module, not this one, so the per-object
+ * audit still sees one object per chip's code - and so the list here stays a
+ * scan order rather than becoming a second place that describes a chip.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_regs16.h"
 
 extern const V9X_HW16_DEVICE v9x_virge_device;
 extern const V9X_HW16_DEVICE v9x_trio_device;
+extern const V9X_HW16_DEVICE v9x_trio32_device;
+extern const V9X_HW16_DEVICE v9x_aurora64_device;
+extern const V9X_HW16_DEVICE v9x_trio32_64_device;
+extern const V9X_HW16_DEVICE v9x_trio64uv_device;
+extern const V9X_HW16_DEVICE v9x_trio64v2_device;
 
 static const V9X_HW16_DEVICE * const v9x_s3_devices[] = {
     &v9x_virge_device,
-    &v9x_trio_device
+    &v9x_trio_device,
+    &v9x_trio32_device,
+    &v9x_aurora64_device,
+    &v9x_trio32_64_device,
+    &v9x_trio64uv_device,
+    &v9x_trio64v2_device
 };
 
 /*

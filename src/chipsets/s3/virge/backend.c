@@ -42,6 +42,37 @@ static v9x_status v9x_s3_virge_recover(struct v9x_backend_state *state)
     return V9X_STATUS_UNSUPPORTED;
 }
 
+/*
+ * The device ids this family accepts: the two chips, then the Trio64's
+ * aliases. A table rather than a condition because the list is now long enough
+ * that an added id is a one-line data change, and because the family manifest
+ * states the same set - the generated backend registry dispatches to this
+ * backend for exactly these ids, and the host family-matrix test asserts it.
+ */
+static const v9x_u16 v9x_s3_device_ids[] = {
+    V9X_PCI_DEVICE_VIRGE_DX,
+    V9X_PCI_DEVICE_TRIO64,
+    V9X_PCI_DEVICE_TRIO32,
+    V9X_PCI_DEVICE_AURORA64,
+    V9X_PCI_DEVICE_TRIO32_64,
+    V9X_PCI_DEVICE_TRIO64UV,
+    V9X_PCI_DEVICE_TRIO64V2
+};
+
+static v9x_u16 v9x_s3_accepts_device(v9x_u16 device_id)
+{
+    unsigned int index;
+
+    for (index = 0u;
+         index < sizeof(v9x_s3_device_ids) / sizeof(v9x_s3_device_ids[0]);
+         ++index) {
+        if (v9x_s3_device_ids[index] == device_id) {
+            return V9X_TRUE;
+        }
+    }
+    return V9X_FALSE;
+}
+
 v9x_status v9x_s3_virge_probe(struct v9x_backend_state *state,
                               const struct v9x_pci_identity *pci)
 {
@@ -56,8 +87,7 @@ v9x_status v9x_s3_virge_probe(struct v9x_backend_state *state,
     state->pci.revision = 0u;
 
     if (pci->vendor_id != V9X_PCI_VENDOR_S3 ||
-        (pci->device_id != V9X_PCI_DEVICE_VIRGE_DX &&
-         pci->device_id != V9X_PCI_DEVICE_TRIO64)) {
+        v9x_s3_accepts_device(pci->device_id) == V9X_FALSE) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

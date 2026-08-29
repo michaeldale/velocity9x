@@ -11,11 +11,15 @@
 # dispatch.
 #
 # The table preserves the registry's allowlist meaning unchanged: a row exists
-# only because a manifest lists the chip, and manifests only list hardware
-# someone has run. Get-V9xFamilies has already asserted that no PCI id is
-# claimed twice, so row order cannot change what a lookup returns; families
-# are emitted in Get-V9xFamilyIds order (sorted) and chips in manifest order,
-# which keeps the file byte-stable for the comparison.
+# only because a manifest lists the id. It no longer follows that someone has
+# run every row - a chip's aliases are ids the chip's own code drives unchanged
+# but which have run nowhere, and they are emitted here because an id the INF
+# binds and this table does not know would install and then resolve no backend.
+# Each alias row says so in its comment. Get-V9xFamilies has already asserted
+# that no PCI id is claimed twice, so row order cannot change what a lookup
+# returns; families are emitted in Get-V9xFamilyIds order (sorted), chips in
+# manifest order and each chip's aliases directly after it, which keeps the
+# file byte-stable for the comparison.
 
 function Get-V9xBackendRegistryTableLines {
     param([Parameter(Mandatory = $true)][string]$RepoRoot)
@@ -40,10 +44,13 @@ function Get-V9xBackendRegistryTableLines {
     $lines.Add("")
     $lines.Add("static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {")
     foreach ($family in $families) {
-        foreach ($chip in @($family.Chips)) {
-            $lines.Add("    { 0x" + $chip.VendorId + "u, 0x" + $chip.DeviceId +
-                       "u, " + $family.Backend.Getter + " }, /* " +
-                       $family.Id + " / " + $chip.Id + " */")
+        foreach ($entry in @(Get-V9xFamilyPciEntries -Family $family)) {
+            $note = $family.Id + " / " + $entry.ChipId
+            if ($entry.IsAlias) {
+                $note += " alias"
+            }
+            $lines.Add("    { 0x" + $entry.VendorId + "u, 0x" + $entry.DeviceId +
+                       "u, " + $family.Backend.Getter + " }, /* " + $note + " */")
         }
     }
     $lines.Add("};")
