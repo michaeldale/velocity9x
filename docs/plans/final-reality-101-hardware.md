@@ -131,11 +131,65 @@ surface without programming Z coordinates, comparison mode, or updates. Steps
 3. ~~add pixel-verified depth-test and depth-write probes;~~ done. Both
    ladders pass on `Win86SE` with zero FIFO timeouts and zero engine resets;
    the baseline pixel results are unchanged.
-4. rerun the Robots and City scene tests after the Z gate passes. **Still
-   open**, and blocked on something this plan does not record: it has FR's
-   *results* but not the *procedure* for driving it. Write that down first.
+4. ~~rerun the Robots and City scene tests after the Z gate passes.~~ done,
+   see below. The procedure this plan never recorded is now
+   [`final-reality-101-runbook.md`](../specifications/final-reality-101-runbook.md).
 
-Deferred, deliberately, and not blocking step 4:
+### Robots and City scene, with hardware depth working
+
+Installed build: `zfifo-001`, boot counter 498, desktop 1024x768x16.
+Evidence under `build\driver-results\fr101-zfifo-vm1`.
+
+All four 3D tests, five repeats, 2D and bus-transfer tests cleared. 14.5
+minutes wall clock. Robots and City scene produce numbers for the first time;
+every earlier round left them `n/a`.
+
+| Test | Raw speed | R marks |
+|---|---|---|
+| 25 pixel | 23.62 Kpolys/s | 0.76 |
+| **Robots** | **9.45 images/s** | **2.45** |
+| Fill rate | 67.74 Mpixels/s | 14.66 |
+| **City scene** | **11.46 images/s** | **2.84** |
+| Visual appearance | 74.07 % | - |
+| **3D performance** | | **1.97 Reality marks** |
+
+The driver carried it without a single engine fault. Post-FR trace:
+
+```
+EngineFifoTimeouts=0  EngineIdleTimeouts=0  EngineResets=0
+D3dContextCreates=8   D3dContextDestroys=8  D3dContextRejects=0
+D3dRenderPrimitiveCalls=2697602   D3dRenderStateCalls=2674296
+D3dTextureCreates=808
+D3dDepthOffered=5     D3dDepthAccepted=5    D3dDepthRejectName=accepted
+D3dDepthCaps=0x10026000  D3dDepthOffset=0x0012C000  D3dDepthPitch=1280
+```
+
+FR attached a depth surface five times and the driver accepted all five;
+`CountAddAttachedSurface=5` agrees. Pitch 1280 is 640 x 2, matching FR's
+fullscreen 640x480, and the offset sits above the front and back buffers.
+2.7 million primitive calls with depth testing live and zero FIFO timeouts is
+what says the reservation fix of
+[`2026-08-30-virge-depth-fifo-reservation.md`](../decisions/2026-08-30-virge-depth-fifo-reservation.md)
+holds under real load rather than only on a seven-rung ladder.
+
+**25 pixel fell from 28.54 to 23.62 Kpolys/s, and that was predicted.** The
+28.54 was measured when the driver advertised depth and did none, so its
+triangles paid for no depth registers, no depth reads and no depth writes.
+The deferred `DDBLT_DEPTHFILL` item below says a per-frame software depth
+clear "will show in FR's polygon rate, which is exactly what step 4
+measures"; it now has. How much of the 17% is the clear and how much is the
+depth work itself is **not** separated by this run - the two are only
+separable by implementing the depth fill and re-running. Note also that the
+28.54 came from a 25-pixel-only run while this one runs four tests in
+sequence, so the two are not perfectly matched.
+
+**Do not read anything into `Visual appearance` staying at 74.07 %.** It was
+74.07 before the depth work and 74.07 after, and FR's own built-in ViRGE
+reference entry also reads 74.07. The runbook sets out why it is most likely
+a capability-derived score rather than an image comparison, and what would be
+needed to prove that.
+
+## Deferred, deliberately
 
 - **`DDBLT_DEPTHFILL`.** No depth-fill path exists in `src\`; DirectDraw
   emulates the clear on the CPU, so correctness does not depend on it — but a
@@ -144,10 +198,15 @@ Deferred, deliberately, and not blocking step 4:
   regression there.
 - **The `DEST_BASE` 8-byte alignment hole**, the same shape as the `Z_BASE`
   one the depth work closed, and predating it.
-- **Depth gradients.** Every vertex in both ladders carries the same `sz`, so
-  `dZdX`/`dZdY` are written but never exercised against a slope. 86Box doubles
-  a triangle's start depth but not its per-pixel X gradient
-  (`build\reference-vid_s3_virge.c:4261` against `:4413`), so a sloped test on
-  this guest would measure that inconsistency rather than the driver.
-  `D3DZGradientTested=0` says so in every result file. FR is the first thing
-  that will exercise them.
+- **Depth gradients, still unverified.** Every vertex in both probe
+  ladders carries the same `sz`, so `dZdX`/`dZdY` are written but never
+  checked against a slope; `D3DZGradientTested=0` says so in every result
+  file. 86Box doubles a triangle's start depth but not its per-pixel X
+  gradient (`build\reference-vid_s3_virge.c:4261` against `:4413`), so a
+  sloped pixel test on this guest would measure that inconsistency rather
+  than the driver. The FR run above did drive them - its scenes are sloped,
+  across 2.7 million primitives, and nothing faulted - but "it did not
+  fault" is not "it computed the right depth", and `Visual appearance`
+  cannot close that gap, for the reason given above. The honest position is
+  that the gradients are now exercised and still unverified; closing it
+  needs either a 86Box fix or a second ViRGE target.
