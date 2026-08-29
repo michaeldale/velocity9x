@@ -468,6 +468,25 @@ if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) 
            "V9X_VBE_MODE_QUERY_MAX bound.")
 }
 
+# The packaged instructions are read on the target, in Notepad, on a machine
+# whose display driver may be the thing that just failed. Notepad on Windows 9x
+# does not break lines on a bare LF, so an LF-only file arrives as one
+# unreadable line - reported from the field on FIRSTBOOT.TXT and RECOVER.TXT,
+# which are copied into every package verbatim. Asserted rather than converted
+# at packaging time so the repository copy is the readable one too.
+foreach ($packagedText in @("packaging\win98se\INSTALL.TXT",
+                            "packaging\win98se\FIRSTBOOT.TXT",
+                            "packaging\win98se\RECOVER.TXT")) {
+    $textPath = Join-Path $repoRoot $packagedText
+    $bytes = [System.IO.File]::ReadAllBytes($textPath)
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        if ($bytes[$i] -eq 0x0A -and ($i -eq 0 -or $bytes[$i - 1] -ne 0x0D)) {
+            throw ("$packagedText has a bare LF at byte $i. Files copied into " +
+                   "the package need CRLF or Notepad on the target shows one line.")
+        }
+    }
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,

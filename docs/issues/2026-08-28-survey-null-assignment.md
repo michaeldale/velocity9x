@@ -118,3 +118,25 @@ whether `[Result] Complete=yes` is present, and whether the mode table still
 reads the same six describable modes out of thirty-six - which it should, since
 that finding is now confirmed from three independent measurements
 (`docs\decisions\2026-08-28-pineview-vbe-mode-list.md`).
+
+## 2026-08-29: retested on the machine. The freeze is gone, the message is not.
+
+The reporter ran the fixed tool on the Pineview machine:
+
+> Survey gives a "NULL assignment detected" but doesn't freeze the computer.
+
+So the half that mattered is fixed - the tool no longer takes the machine down -
+and its report came back complete, 477 lines including the full VBE block and
+all 36 mode records (`claude\personal\v9x-centaurhauls-acer\`, `V9XSURV.INI`,
+`Build=e938fdc`, real DOS, `WindowsPresent=no`).
+
+**The message still prints.** That is Watcom's own runtime check firing on exit,
+so something still writes through a null or near-null pointer somewhere the
+corrected path did not cover, even though nothing downstream depends on it any
+more. The status above stays open until the message is gone: a diagnostic
+handed to strangers should not print a memory-corruption warning, whatever it
+survives.
+
+Next step is a host-side reproduction rather than another field run - the tool
+is buildable and runnable on the host, and the message is a runtime check, not
+a hardware behaviour.

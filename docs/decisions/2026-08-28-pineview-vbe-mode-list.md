@@ -199,3 +199,55 @@ The HP Mini 110's 945GSE **does** describe `0x0160`-`0x0162` as 1024x576
 to run the sweep first: the modes it would sweep are ones `4F01h` already
 answers for, so the mechanism can be checked against ground truth before it is
 ever pointed at a BIOS that stays silent.
+
+---
+
+## 2026-08-29: the sweep ran on the machine, and rescued nothing
+
+Collection: `claude\personal\v9x-centaurhauls-acer\` - `V9XDIAG` from the
+Pineview machine running **`b8c5103-sweep`**, the set-and-ask-again build this
+finding motivated.
+
+`VbeCache=s=53504 l=36 q=36 c=6 p=0 f=2107`. `f` carries `SWEEP_RAN` (0x2000),
+so the sweep executed. The outcome is `listed=36 queried=36 cached=6` - the
+same six modes the BIOS describes without it, and the same six the query-only
+DOS survey gets: `0101, 0103, 0111, 0112, 0114, 0115`.
+
+**It tried all of them.** Thirty modes were undescribed, `V9X_STAGE1_SWEEP_MAX`
+is 32, `V9X_VBE_CACHE_MAX` is 64 and `CACHE_FULL` is clear, so no cap stopped
+the walk before the end. Setting a mode and asking again does not make this
+BIOS describe it.
+
+*Inferred from the bounds, not read: the sweep's own counter `V9xVbeSwept` is
+not published in `VbeCache=`, so "it swept all thirty" cannot be distinguished
+from "it swept fewer and the caps happen to allow thirty". Publishing that
+counter is a one-field change worth making before the next collection.*
+
+The DOS survey in the same collection shows the shape plainly - thirty entries
+like the first and six like the last:
+
+```
+Mode.00=0160,0000,0,0,0,0,0,0,00000000,0,0,0,0,0,0,0
+Mode.35=0111,009B,640,480,1,16,6,1280,80000000,1280,5,11,6,5,5,0
+```
+
+The undescribed thirty are the OEM range `0160`-`0171`, `013A/013C/014B/014D/`
+`015A/015C`, and standard `0105/0107/0117/0118/011A/011B`. `QUERY_FAILED` stays
+clear because the BIOS answers `004F` and hands back a zeroed block: it
+succeeds and describes nothing, so our admit rules reject on content.
+
+### Consequences
+
+- **The panel's native mode stays unreachable through the BIOS.**
+  `Edid=v=0103 preferred=1024x600` and `Recommendation=1024x600
+  reason=edid-unpublished`: we know what the panel wants and have no admissible
+  mode that provides it. The machine runs 800x600 scaled.
+- **The sweep should not be run on this machine again.** It buys nothing here
+  and costs thirty blind `4F02h` calls into that BIOS at every `Device_Init` -
+  see `docs\issues\2026-08-29-pineview-driver-will-not-load-after-survey.md`,
+  where a boot that did not come back is the leading reading of a field report.
+- What is left for 1024x600 is chip-specific: a Pineview backend that programs
+  the hardware instead of asking its BIOS. One VBE-legal long shot remains
+  untested - `4F06h` to force bytes-per-scanline plus VBE 3.0's `4F02h` bit 11
+  user-CRTC block on a mode whose *format* is already known - and it risks a
+  blanked panel, so it wants scoping before anyone tries it.
