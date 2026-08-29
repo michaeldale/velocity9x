@@ -6,6 +6,111 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+**Hardware Z-buffering works on the ViRGE, and the reason it did not was one
+expression.** The driver had advertised depth testing since the first Direct3D
+work - `D3DPRASTERCAPS_ZTEST`, all eight compare functions, `DDBD_16`, and a
+fully validated attached depth surface - and then written `Z_BASE = 0`, set no
+depth bits in the command word and never read `context->zbuffer`. That was
+implemented earlier on this branch and could not be shown to work on any guest.
+It now does: both probe designs pass on `Win86SE` with `D3DZCompareOk=1` and
+`D3DZWriteMaskOk=1`, and Final Reality renders its Robots and City scenes
+through it.
+
+The emit reserved `z_active ? 18 : 15` FIFO slots. Eighteen is the right count -
+fifteen writes from `COMMAND` through `Y01_Y12` plus the depth triple - but
+`SUBSYS_STAT` carries the free-slot count in five bits at 12:8, and 86Box's
+model sets bit 12 on both arms of that read, so the count it reports is always
+exactly 16. Fifteen is satisfiable and eighteen never is. Every depth-enabled
+draw spun out the full FIFO spin limit, counted a timeout, reset the engine
+through CR66 bit 1 and abandoned the triangle - while `SetRenderState`,
+`BeginScene`, `DrawPrimitive` and `EndScene` all returned `S_OK`. Measured
+before the fix: seven FIFO timeouts and seven engine resets for the seven rungs
+of the two depth ladders, against zero on the same run's depth-off draws.
+Sixteen is also the S3D FIFO's own depth in that model, so a reservation larger
+than the FIFO holds was not going to work on the chip either. The fix takes the
+eighteen in two bites, in both the main emit and the trilinear second pass,
+leaving the depth-off reservation and its stall behaviour untouched.
+
+**Three hypotheses died on the guest**, all of them from the handoff written
+the day before, and all of them plausible readings of the same symptom -
+`S_OK` everywhere, no pixels, driver counters that did not move. The runtime
+*does* hand the driver a depth surface, once, in `lpDDSZ` at context creation,
+and the driver accepts it: `D3dDepthOffered=1`, `D3dDepthAccepted=1`, caps
+`0x10024000`, above the visible page. `CreateDevice` *does* create a context -
+`D3dContextCreates` is 3, not the 2 recorded, which had been read off a run of
+a different probe design. And the device it returns *is* the HAL:
+`IDirect3DDevice2::GetCaps` fills the hardware half for both devices. The one
+finding that survives is the negative one, that `SetRenderTarget` never reaches
+`V9xD3dSetRenderTarget` - but the conclusion drawn from it does not, because
+the runtime binds the depth surface on that path by creating a new context
+instead.
+
+Instruments added, because each of those wrong readings was cheap to make and
+expensive to unmake: `d3d_diagnostics` gains `depth_offered`, `depth_accepted`,
+`depth_reject`, `depth_caps`, `depth_offset` and `depth_pitch`, with every arm
+of the depth validation recording its own reason, so "the runtime never passed
+a depth surface" and "the driver refused the one it passed" stop looking alike;
+the probe reports which device `CreateDevice` actually returned rather than the
+GUID it asked for; and the private-target-and-device probe design is restored
+behind `/zprivate` with its own key prefix, mutually exclusive with the
+working-device design so the cumulative counters belong to one of them.
+`V9X_DD_TRACE_ID_COUNT` goes 50 to 51 in the same ABI bump (`2026083001`):
+`v9x_trace_count` indexes `counters[]` with the trace id and the highest id is
+50, so `D3dPrimitiveReject` was silently never counted.
+
+**Final Reality's Robots and City scenes ran for the first time.** All four 3D
+tests at five repeats, 14.5 minutes, 1024x768x16:
+
+| Test | Raw speed | R marks |
+|---|---|---|
+| 25 pixel | 23.62 Kpolys/s | 0.76 |
+| Robots | 9.45 images/s | 2.45 |
+| Fill rate | 67.74 Mpixels/s | 14.66 |
+| City scene | 11.46 images/s | 2.84 |
+| 3D performance | | 1.97 Reality marks |
+
+Zero FIFO timeouts, idle timeouts, engine resets and context rejects across
+2,697,602 primitive calls, with 8 context creates against 8 destroys. FR
+attached a depth surface five times and the driver accepted all five, at a
+pitch of 1280 - 640 x 2, matching FR's fullscreen 640x480 - above the front and
+back buffers. That is what says the reservation fix holds under real load
+rather than only on a seven-rung ladder.
+
+25 pixel fell 28.54 -> 23.62 Kpolys/s, and the plan predicted it: the 28.54 was
+measured while the driver advertised depth and did none, so those triangles
+paid for no depth registers, reads or writes. How much of the 17% is the
+still-absent `DDBLT_DEPTHFILL` (DirectDraw clears depth on the CPU every frame)
+and how much is the depth work itself is not separated by this run.
+
+Two things in FR's results screen mislead, and both are now written down:
+`Save results to file` does not save your run - it writes the database entry
+currently selected, which with `Compare to: <none>` is FR's built-in
+`Baseline system (Pentium 150 MHz + S3 Virge/VX)` reference, whose numbers are
+plausible enough to be mistaken for a measurement. And `Visual appearance` read
+exactly `74.07 %` both before and after hardware depth started working, as does
+that same ViRGE reference entry; the consistent reading is that it is derived
+from the advertised capability set rather than from rendered pixels. Not
+proven, and flagged as not proven - the plan had been treating it as a
+correctness indicator.
+
+The procedure for driving Final Reality, whose absence blocked this step for
+two weeks, is now `docs/specifications/final-reality-101-runbook.md`.
+
+Filed rather than fixed: `V9XTRACE.EXE` faults in KRNL386 once DirectDraw has
+run on the boot, hanging or dying in the profile-write path. It costs the exit
+code and sometimes the counter and ring tail; the scalar counters are written
+first, and every value quoted here came from a file a faulting run had already
+produced. Whether it predates this work is not established.
+
+Still open, and stated as open: **depth gradients are exercised and
+unverified.** Both probe ladders hold `sz` constant, so `dZdX`/`dZdY` are
+written but never checked against a slope, and 86Box doubles a triangle's start
+depth but not its per-pixel X gradient, so a sloped pixel test on that guest
+would measure the emulator. Final Reality did drive them across sloped scenes
+for 2.7 million primitives without a fault, but "it did not fault" is not "it
+computed the right depth". Closing it needs a 86Box fix or a second ViRGE
+target.
+
 **The Direct3D block splits into a chip-neutral core and one engine, and the
 probe cannot tell.** Roadmap Track B, executed ahead of its scheduled slot -
 the plan puts it immediately before the 3dfx D3D phase precisely so the

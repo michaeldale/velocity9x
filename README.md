@@ -308,7 +308,35 @@ blending, which is the crossfade case and nothing more.
 
 This is a useful sanity check on the capability table, because it is an
 independent reading of what the driver advertises rather than the driver
-describing itself.
+describing itself. It is only a reading of what is *advertised*, though, and
+that is a real distinction: "Z-buffer sorting" lit up in this list for weeks
+while the driver accepted a depth buffer and then ignored it. Depth testing is
+backed by the hardware as of 2026-08-30.
+
+Running the benchmark rather than reading its capability list, on an emulated
+ViRGE/DX with 4 MiB, all four 3D tests at five repeats:
+
+| Test | Raw speed | Reality marks |
+|---|---|---|
+| 25 pixel | 23.62 Kpolys/s | 0.76 |
+| Robots | 9.45 images/s | 2.45 |
+| Fill rate | 67.74 Mpixels/s | 14.66 |
+| City scene | 11.46 images/s | 2.84 |
+| **3D performance** | | **1.97** |
+
+Those are modest numbers and they are meant to be read as "the path is real and
+survives a third-party workload", not as a performance claim: 2.7 million
+triangles went through the S3D engine with depth testing live and not one FIFO
+timeout or engine reset. The 25-pixel figure is *down* from 28.54 Kpolys/s,
+which is the cost of depth actually being done - and partly of DirectDraw
+clearing the depth buffer on the CPU every frame, because the driver has no
+`DDBLT_DEPTHFILL` path yet.
+
+FR's own `Visual appearance` percentage is not quoted here. It reads the same
+value before and after depth testing began working, and the same value again
+for FR's built-in ViRGE reference entry, so it appears to score the advertised
+capability set rather than the rendered image. See
+[docs/specifications/final-reality-101-runbook.md](docs/specifications/final-reality-101-runbook.md).
 
 ## How it compares to the retail S3 drivers
 
@@ -351,6 +379,12 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
   pre-lit vertices, and does no clipping, backface culling, lines or indexed
   primitives. The S3D triangle engine writes native ZRGB1555 into a surface
   described as RGB565, which is an unresolved mismatch.
+- **Depth gradients are exercised but unverified.** Depth comparison and
+  depth-write masking are both pixel-verified. The per-pixel depth slope is
+  not: the emulator this is tested on doubles a triangle's start depth but not
+  its X gradient, so a sloped test there would measure the emulator rather than
+  the driver. Final Reality drives the gradients across sloped scenes without
+  faulting, which is not the same as computing the right depth.
 - **Fewer modes.** No 24-bpp modes anywhere: no S3 BIOS measured offers one —
   the VESA "24-bit" numbers are all 32 bpp on these cards — so there is nothing
   to drive. The ATI and generic-VESA targets have no high-colour modes above
