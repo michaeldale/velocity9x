@@ -380,10 +380,29 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         v9x_mmio_write(V9X_VIRGE_3D_US,
             (DWORD)v9x_float_to_long(p0->tu * 134217728.0f));
     }
-    /* Fifteen writes from COMMAND through Y01_Y12, plus the depth triple when
-     * depth is on. Conditional rather than an unconditional 18 so the
-     * depth-off path's stall behaviour is exactly what it was. */
-    if (!v9x_wait_fifo(z_active ? 18ul : 15ul, 1)) {
+    /*
+     * Fifteen writes from COMMAND through Y01_Y12. The depth triple needs
+     * three more and reserves them separately, immediately before it writes
+     * them.
+     *
+     * Not one reservation of eighteen, which is what this was and what made
+     * the whole depth feature inert. SUBSYS_STAT carries the free-slot count
+     * in five bits at 12:8, and 86Box's model sets bit 12 on both arms of
+     * that read (build\reference-vid_s3_virge.c:1457-1462), so the count it
+     * reports is always exactly 16. A wait for 18 can therefore never be
+     * satisfied: it spun out V9X_VIRGE_FIFO_SPIN_LIMIT, counted a FIFO
+     * timeout, reset the engine and abandoned the triangle - on every
+     * depth-enabled draw, with every HRESULT still reporting success and
+     * every depth pixel reading zero. Measured on Win86SE 2026-08-30: seven
+     * FIFO timeouts and seven engine resets for the seven rungs of the depth
+     * ladders, against zero on the same run's depth-off draws. See
+     * docs/decisions/2026-08-30-virge-depth-fifo-reservation.md.
+     *
+     * Sixteen is also the S3D FIFO's own depth in that model - it throttles
+     * its queue at FIFO_ENTRIES >= 16 - so reserving more slots than the FIFO
+     * holds was never going to work on the chip either.
+     */
+    if (!v9x_wait_fifo(15ul, 1)) {
         return 0;
     }
     /* With AE set, CMD_SET establishes persistent state; the final
@@ -463,6 +482,11 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     v9x_mmio_write(V9X_VIRGE_3D_GS_BS, gs_bs);
     v9x_mmio_write(V9X_VIRGE_3D_AS_RS, as_rs);
     if (z_active) {
+        /* Reserved apart from the fifteen above; see that reservation for
+         * why three and fifteen cannot be asked for as one eighteen. */
+        if (!v9x_wait_fifo(3ul, 1)) {
+            return 0;
+        }
         /* Where GENTRI.C:975-984 puts them: after the colour registers and
          * before the edges. ZS02 is p0's depth advanced to the start scanline
          * by the same fdycc the X edges use - without that correction the
@@ -514,7 +538,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             (DWORD)v9x_float_to_long(p0->tv * 134217728.0f));
         v9x_mmio_write(V9X_VIRGE_3D_US,
             (DWORD)v9x_float_to_long(p0->tu * 134217728.0f));
-        if (!v9x_wait_fifo(z_active ? 18ul : 15ul, 1)) {
+        /* Same split as the first pass, for the same reason. */
+        if (!v9x_wait_fifo(15ul, 1)) {
             return 0;
         }
         second_command &= ~V9X_VIRGE_3D_CMD_TEXTURE_UNLIT;
@@ -577,6 +602,10 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             v9x_mmio_write(V9X_VIRGE_3D_DADY_DRDY, 0ul);
         }
         if (z_active) {
+            /* Reserved apart from the fifteen above, as in the first pass. */
+            if (!v9x_wait_fifo(3ul, 1)) {
+                return 0;
+            }
             /* Re-emitted with the identical values rather than relied upon to
              * persist: the second COMMAND write launches a separate triangle,
              * and whether the setup registers latch across an autoexecute

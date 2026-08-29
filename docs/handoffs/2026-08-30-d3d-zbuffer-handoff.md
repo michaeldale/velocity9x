@@ -1,5 +1,18 @@
 # ViRGE Z-buffer handoff — implemented, host-tested, never exercised on a guest
 
+> **Superseded the same day by
+> [`2026-08-30-virge-depth-fifo-reservation.md`](../decisions/2026-08-30-virge-depth-fifo-reservation.md).**
+> Depth testing now works on the guest and both probe designs pass. The cause
+> was not the plumbing this document describes: the depth-enabled emit
+> reserved 18 FIFO slots and the free-slot field reports 16, so every
+> depth-enabled draw timed out and reset the engine while returning `S_OK`.
+> All three of the hypotheses under "The next thing to pull" below were
+> checked on the guest and are wrong — the runtime does pass `lpDDSZ`, the
+> driver does accept it, `CreateDevice` does create a context, and the device
+> it returns is the HAL. The one finding that survives is that
+> `SetRenderTarget` never reaches the driver; the conclusion drawn from it
+> does not. Kept as a dated record of what was believed, not as guidance.
+
 Date: 2026-08-30
 Branch: `d3d-zbuffer`, three commits ahead of `main`, **unpushed**
 Plan: [`docs/plans/final-reality-101-hardware.md`](../plans/final-reality-101-hardware.md) lines 122-131

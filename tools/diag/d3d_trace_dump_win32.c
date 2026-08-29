@@ -121,6 +121,29 @@ static const char *v9x_trace_name(WORD id)
     }
 }
 
+/*
+ * The reject reason as a name as well as a number. The number is the durable
+ * record; the name is so a result file can be read without the header open
+ * beside it, which is how the last two of these runs were actually read.
+ */
+static const char *v9x_depth_reject_name(DWORD reason)
+{
+    switch (reason) {
+    case V9X_D3D_ZREJECT_NONE:          return "none-offered";
+    case V9X_D3D_ZREJECT_ACCEPTED:      return "accepted";
+    case V9X_D3D_ZREJECT_NO_LCL:        return "no-lcl";
+    case V9X_D3D_ZREJECT_NO_GBL:        return "no-gbl";
+    case V9X_D3D_ZREJECT_NOT_ZBUFFER:   return "not-zbuffer";
+    case V9X_D3D_ZREJECT_SYSTEM_MEMORY: return "system-memory";
+    case V9X_D3D_ZREJECT_DIMENSIONS:    return "dimensions";
+    case V9X_D3D_ZREJECT_UNALIGNED:     return "unaligned";
+    case V9X_D3D_ZREJECT_OVERLAPS_FB:   return "overlaps-framebuffer";
+    case V9X_D3D_ZREJECT_PITCH:         return "pitch";
+    case V9X_D3D_ZREJECT_BOUNDS:        return "bounds";
+    default:                            return "unknown";
+    }
+}
+
 static int v9x_append_text(char *buffer, int offset, const char *text)
 {
     while (*text != '\0') {
@@ -331,6 +354,32 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("D3dTextureDestroys", snapshot.d3d.texture_destroys);
     v9x_write_uint("D3dTextureSwaps", snapshot.d3d.texture_swaps);
     v9x_write_uint("D3dTextureGetSurfs", snapshot.d3d.texture_get_surfs);
+    /*
+     * Depth-surface plumbing. D3dDepthOffered is the key that separates "the
+     * runtime never passed a depth surface" from "the driver refused the one
+     * it passed": zero means the question is about the runtime and nothing in
+     * the driver's depth validation is implicated.
+     */
+    v9x_write_uint("D3dDepthOffered", snapshot.d3d.depth_offered);
+    v9x_write_uint("D3dDepthAccepted", snapshot.d3d.depth_accepted);
+    v9x_write_uint("D3dDepthReject", snapshot.d3d.depth_reject);
+    v9x_write_text("D3dDepthRejectName",
+                   v9x_depth_reject_name(snapshot.d3d.depth_reject));
+    v9x_write_hex("D3dDepthCaps", snapshot.d3d.depth_caps);
+    v9x_write_hex("D3dDepthOffset", snapshot.d3d.depth_offset);
+    v9x_write_uint("D3dDepthPitch", snapshot.d3d.depth_pitch);
+    /*
+     * Stage markers, so the file says how far the tool got.
+     *
+     * They exist because this tool faults in KRNL386 on the final flush after
+     * a DirectDraw run (docs/issues/2026-08-30-trace-dump-krnl386-flush-gpf.md),
+     * which made "wrote nothing" and "wrote everything and died on the last
+     * call" indistinguishable. Markers rather than intermediate flushes: the
+     * flush is the call that faults, so adding more of them truncates the
+     * output instead of preserving it, and ordinary key writes reach the file
+     * without one.
+     */
+    v9x_write_uint("StageScalars", 1ul);
     v9x_write_uint("TraceEvents", snapshot.trace.seq);
     v9x_write_text("LastEnter", v9x_trace_name(
         (WORD)snapshot.trace.last_enter_id));
@@ -338,8 +387,14 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_text("LastExit", v9x_trace_name(
         (WORD)snapshot.trace.last_exit_id));
     v9x_write_hex("LastExitResult", snapshot.trace.last_exit_result);
+    v9x_write_uint("StageLast", 1ul);
     v9x_write_counters(&snapshot.trace);
+    v9x_write_uint("StageCounters", 1ul);
     v9x_write_ring(&snapshot.trace);
+    v9x_write_uint("StageRing", 1ul);
+    /* Kept despite the fault above: it is the documented way to force the
+     * cached tail out, the fault costs only the exit code, and every key is
+     * already on disk by the time it runs. */
     WritePrivateProfileStringA(0, 0, 0, V9X_RESULT_PATH);
     ExitProcess(0ul);
 }

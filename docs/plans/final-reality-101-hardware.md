@@ -120,11 +120,34 @@ Evidence is under
 
 ## Remaining correctness work
 
-FR visual appearance is now 74.07%. The remaining major correctness gap is
-that the driver validates the attached Z surface without programming Z
-coordinates, comparison mode, or updates. The next implementation slice is:
+FR visual appearance was 74.07% when the driver validated the attached Z
+surface without programming Z coordinates, comparison mode, or updates. Steps
+1-3 of that slice are done and measured on the guest — see
+[`2026-08-30-virge-depth-fifo-reservation.md`](../decisions/2026-08-30-virge-depth-fifo-reservation.md):
 
-1. retain Z enable, write-enable, and comparison render states per context;
-2. program Z_BASE/Z_STRIDE and Z gradients for transformed vertices;
-3. add pixel-verified depth-test and depth-write probes;
-4. rerun the Robots and City scene tests after the Z gate passes.
+1. ~~retain Z enable, write-enable, and comparison render states per
+   context;~~ done.
+2. ~~program Z_BASE/Z_STRIDE and Z gradients for transformed vertices;~~ done.
+3. ~~add pixel-verified depth-test and depth-write probes;~~ done. Both
+   ladders pass on `Win86SE` with zero FIFO timeouts and zero engine resets;
+   the baseline pixel results are unchanged.
+4. rerun the Robots and City scene tests after the Z gate passes. **Still
+   open**, and blocked on something this plan does not record: it has FR's
+   *results* but not the *procedure* for driving it. Write that down first.
+
+Deferred, deliberately, and not blocking step 4:
+
+- **`DDBLT_DEPTHFILL`.** No depth-fill path exists in `src\`; DirectDraw
+  emulates the clear on the CPU, so correctness does not depend on it — but a
+  per-frame software depth clear will show in FR's polygon rate, which is
+  exactly what step 4 measures. Worth doing before reading too much into a
+  regression there.
+- **The `DEST_BASE` 8-byte alignment hole**, the same shape as the `Z_BASE`
+  one the depth work closed, and predating it.
+- **Depth gradients.** Every vertex in both ladders carries the same `sz`, so
+  `dZdX`/`dZdY` are written but never exercised against a slope. 86Box doubles
+  a triangle's start depth but not its per-pixel X gradient
+  (`build\reference-vid_s3_virge.c:4261` against `:4413`), so a sloped test on
+  this guest would measure that inconsistency rather than the driver.
+  `D3DZGradientTested=0` says so in every result file. FR is the first thing
+  that will exercise them.

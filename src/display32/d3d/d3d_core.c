@@ -254,6 +254,21 @@ static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
     return wrapper != 0 ? wrapper->lpLcl : 0;
 }
 
+/*
+ * Record why a depth surface was refused, and return the failure so the
+ * caller can write "return v9x_d3d_depth_reject(REASON);" in place of a bare
+ * "return 0;". Every arm of the depth validation below has its own reason,
+ * because the whole point of the field is that one guest run should say which
+ * check fired rather than only that one did.
+ */
+static int v9x_d3d_depth_reject(DWORD reason)
+{
+    if (v9x_hal != 0) {
+        v9x_hal->d3d_diagnostics.depth_reject = reason;
+    }
+    return 0;
+}
+
 static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
                               void *zbuffer)
 {
@@ -272,6 +287,23 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     DWORD depth_pitch = 0ul;
     int primary;
     int display_layout;
+
+    /*
+     * Record the offer before anything can reject it, and key it off zbuffer
+     * rather than depth: a non-null lpDDSZ that resolves to no lpLcl leaves
+     * depth null, and that case must not read as "the runtime passed no depth
+     * surface" - it is the one path on which the driver renders without depth
+     * while every HRESULT reports success.
+     */
+    if (v9x_hal != 0 && zbuffer != 0) {
+        ++v9x_hal->d3d_diagnostics.depth_offered;
+        v9x_hal->d3d_diagnostics.depth_caps = depth != 0 ? depth->ddsCaps
+                                                         : 0ul;
+        v9x_hal->d3d_diagnostics.depth_offset = 0ul;
+        v9x_hal->d3d_diagnostics.depth_pitch = 0ul;
+        v9x_hal->d3d_diagnostics.depth_reject =
+            depth != 0 ? V9X_D3D_ZREJECT_NONE : V9X_D3D_ZREJECT_NO_LCL;
+    }
 
     if (ops == 0 || context == 0 || target == 0 || target->lpGbl == 0 ||
         (target->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
@@ -338,15 +370,34 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         DWORD depth_last_byte;
         DWORD depth_expected;
 
-        if (depth->lpGbl == 0 ||
-            (depth->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
-            (depth->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-            depth->lpGbl->lPitch <= 0l || depth->lpGbl->wWidth < width ||
-            depth->lpGbl->wHeight < height) {
-            return 0;
+        /*
+         * One arm per reason. This was a single disjunction; it is split
+         * because a run that reaches here and refuses has to say which check
+         * refused, and folding six conditions into one return makes the
+         * cheapest question - is the surface in system memory, or merely the
+         * wrong size - cost another guest round trip to answer.
+         */
+        if (depth->lpGbl == 0) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_NO_GBL);
+        }
+        if ((depth->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_NOT_ZBUFFER);
+        }
+        if ((depth->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_SYSTEM_MEMORY);
+        }
+        if (depth->lpGbl->lPitch <= 0l) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
+        }
+        if (depth->lpGbl->wWidth < width || depth->lpGbl->wHeight < height) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_DIMENSIONS);
         }
         depth_offset = v9x_surface_offset(depth);
         depth_pitch = (DWORD)depth->lpGbl->lPitch;
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.depth_offset = depth_offset;
+            v9x_hal->d3d_diagnostics.depth_pitch = depth_pitch;
+        }
         /*
          * The footprint is measured on the depth surface's own dimensions
          * rather than the render target's. The target is never larger - that
@@ -365,7 +416,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
          * for an aligned surface; it does not promise one.
          */
         if ((depth_offset & 7ul) != 0ul) {
-            return 0;
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_UNALIGNED);
         }
         /*
          * And it must not overlap the visible framebuffer.
@@ -378,7 +429,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
          * above it.
          */
         if (depth_offset < v9x_hal->fb.visible_bytes) {
-            return 0;
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_OVERLAPS_FB);
         }
         /*
          * The DDK ignores lPitch for depth and programs its own stride,
@@ -390,14 +441,20 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         depth_expected =
             (((DWORD)depth->lpGbl->wWidth * depth_bytes) + 7ul) & ~7ul;
         if (depth_pitch != depth_expected) {
-            return 0;
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
         }
         if ((depth_pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
-            depth_pitch > limits->target_pitch_max ||
-            depth_offset == 0xfffffffful ||
+            depth_pitch > limits->target_pitch_max) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
+        }
+        if (depth_offset == 0xfffffffful ||
             depth_last_byte > v9x_hal->fb.vram_bytes ||
             depth_offset > v9x_hal->fb.vram_bytes - depth_last_byte) {
-            return 0;
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_BOUNDS);
+        }
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.depth_accepted;
+            v9x_hal->d3d_diagnostics.depth_reject = V9X_D3D_ZREJECT_ACCEPTED;
         }
     }
     context->target = target;

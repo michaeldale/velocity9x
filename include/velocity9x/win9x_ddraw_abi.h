@@ -975,11 +975,12 @@ typedef struct v9x_ddhal_destroydriverdata {
  * V9XHAL.DLL's DriverInit. The 32-bit side owns all content except the
  * framebuffer descriptor, which the 16-bit side refreshes on every enable.
  */
-/* Bumped for the generalized engine descriptor, and again when the mode table
- * became variable-length. A mixed old/new DRV+DLL pair fails safe: DriverInit
- * rejects on the dwSize/abi mismatch and leaves a driverinit-pending trace
- * rather than running against the wrong layout. */
-#define V9X_DD_SHARED_ABI   2026081901ul
+/* Bumped for the generalized engine descriptor, again when the mode table
+ * became variable-length, and again for the depth-surface diagnostics below.
+ * A mixed old/new DRV+DLL pair fails safe: DriverInit rejects on the
+ * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
+ * running against the wrong layout. */
+#define V9X_DD_SHARED_ABI   2026083001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1085,6 +1086,40 @@ typedef struct v9x_dd_cb32 {
     DWORD flags;            /* extra DDHALINFO.dwFlags bits             */
 } V9X_DD_CB32;
 
+/*
+ * Why the last depth surface offered to v9x_d3d_set_target was refused.
+ *
+ * These exist because "the runtime never passed a depth surface" and "the
+ * driver rejected the one it passed" are the same observation from outside:
+ * both leave the context depth-less and both let ContextCreate return
+ * DD_OK. Each guest round trip is expensive enough that the discriminating
+ * detail has to be recorded the first time rather than narrowed by
+ * re-running.
+ *
+ * NONE is the initial value and means no depth surface has been offered
+ * since the driver loaded, which is itself the finding when the count of
+ * offers is zero.
+ */
+#define V9X_D3D_ZREJECT_NONE          0ul
+#define V9X_D3D_ZREJECT_ACCEPTED      1ul
+/*
+ * A non-null lpDDSZ whose wrapper carries no lpLcl. This one is not a
+ * rejection: the driver treats it as no depth surface at all and creates the
+ * context anyway, so it is the one arm where a title gets depth-less
+ * rendering with every HRESULT still reporting success. It is recorded
+ * rather than refused because refusing is a behaviour change, not
+ * instrumentation.
+ */
+#define V9X_D3D_ZREJECT_NO_LCL        2ul
+#define V9X_D3D_ZREJECT_NO_GBL        3ul  /* no global surface record     */
+#define V9X_D3D_ZREJECT_NOT_ZBUFFER   4ul  /* DDSCAPS_ZBUFFER absent       */
+#define V9X_D3D_ZREJECT_SYSTEM_MEMORY 5ul  /* allocated in system memory   */
+#define V9X_D3D_ZREJECT_DIMENSIONS    6ul  /* smaller than the target      */
+#define V9X_D3D_ZREJECT_UNALIGNED     7ul  /* offset not 8-byte aligned    */
+#define V9X_D3D_ZREJECT_OVERLAPS_FB   8ul  /* would write the visible page */
+#define V9X_D3D_ZREJECT_PITCH         9ul  /* disagrees with DDK stride    */
+#define V9X_D3D_ZREJECT_BOUNDS       10ul  /* falls outside VRAM           */
+
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
     DWORD context_destroys;
@@ -1097,6 +1132,19 @@ typedef struct v9x_d3d_diagnostics {
     DWORD texture_destroys;
     DWORD texture_swaps;
     DWORD texture_get_surfs;
+    /*
+     * Appended 2026-08-30, and append-only from here. This struct is copied
+     * wholesale into V9X_DD_TRACE_SNAPSHOT and read back by a separately
+     * built tool, so a field inserted above an existing one reassigns every
+     * field after it with nothing to say so - the same failure that moved
+     * the clipper's guard band to sixteen pixels on this branch.
+     */
+    DWORD depth_offered;    /* set_target calls carrying a depth surface   */
+    DWORD depth_accepted;   /* ... of which the surface passed validation  */
+    DWORD depth_reject;     /* V9X_D3D_ZREJECT_* of the most recent offer  */
+    DWORD depth_caps;       /* ddsCaps of that surface                     */
+    DWORD depth_offset;     /* its VRAM offset, or 0 if it had no lpGbl    */
+    DWORD depth_pitch;      /* its lPitch as DirectDraw reported it        */
 } V9X_D3D_DIAGNOSTICS;
 
 /*
@@ -1106,7 +1154,14 @@ typedef struct v9x_d3d_diagnostics {
  * back with the V9X_DDGETTRACE escape. All writers are allocation-free.
  */
 #define V9X_DD_TRACE_RING_COUNT     56u
-#define V9X_DD_TRACE_ID_COUNT       50u
+/*
+ * One past the highest trace id, because v9x_trace_count indexes counters[]
+ * with the id itself. At 50 the highest id, V9X_TRACE_D3D_PRIMREJECT = 50,
+ * fell outside the array and was silently never counted - the ring still
+ * showed it, but the ring is 56 deep and any real workload overwrites it.
+ * A primitive rejected during a depth run would have read as zero rejects.
+ */
+#define V9X_DD_TRACE_ID_COUNT       51u
 #define V9X_DD_TRACE_EXIT_FLAG   0x8000u
 
 /* Trace event ids. Gaps group the sources: 16-bit escapes, DirectDraw
@@ -1451,8 +1506,11 @@ typedef char v9x_dd_assert_trace_entry[
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
     sizeof(V9X_GDI_STATS) == 188 ? 1 : -1];
+/* 574, not 572: counters[] grew by one WORD so that the highest trace id
+ * lands inside the array. The whole header is pack(1), so that is the entire
+ * difference - there is no padding to absorb it. */
 typedef char v9x_dd_assert_trace[
-    sizeof(V9X_DD_TRACE) == 572 ? 1 : -1];
+    sizeof(V9X_DD_TRACE) == 574 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[
