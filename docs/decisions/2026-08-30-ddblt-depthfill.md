@@ -251,6 +251,65 @@ the runtime. Anything better would need a rule that picks per clear - by size,
 or by what the frame did before it - which is a heuristic this evidence does
 not justify designing.
 
+## S3's own driver serves it, and does something this one does not
+
+`98DDK\src\display\mini\s3v` is S3's ViRGE sample for this exact chip, in the
+DDK this project is written against. It advertises `DDCAPS_BLTDEPTHFILL`
+(`DDDRV.C:682` and `:699`) and handles `DDBLT_DEPTHFILL` in the same branch as
+`DDBLT_COLORFILL` (`S3_DD32.C:878`), taking the value from `dwFillDepth` and
+the width from the destination surface. That is the same design as this
+implementation, arrived at independently, which settles the best-practice
+question: serving it is what the vendor's own driver does.
+
+**But it prefixes every blit with a dummy 1x1 screen-to-screen blit**
+(`S3_DD32.C:860-874`), under the comment:
+
+> patch: do a dummy screen to screen blt in case we were called right after a
+> 3D command
+
+Seven FIFO slots and seven register writes, on every blit, as a workaround for
+being entered immediately after 3D work. **A depth clear is precisely that
+case** - it is issued between frames, right after the S3D engine has been
+drawing - and `v9x_depthfill_body` does not do it. So this driver is running
+the exact sequence S3 patched around, and has not hit the defect the patch
+exists for, on one emulated chip.
+
+That is a correctness concern before it is a performance one, and it is
+unresolved either way: the erratum may not exist on the real part, may not be
+modelled by 86Box, or may be latent here. It also means the fill-rate
+comparison above is not quite a like-for-like against what a correct driver
+would cost, since the reference implementation pays seven more slots per blit
+than this one.
+
+## Why the fill-rate number may not transfer to silicon
+
+Read out of 86Box's ViRGE model (`build\reference-vid_s3_virge.c`):
+
+- **2D and 3D share one command FIFO** (`FIFO_ENTRIES`, one `fifo_thread`),
+  and the guest blocks once it holds 16 entries (`:1999`). So interleaving a
+  2D fill with 3D draws genuinely serialises against queued rendering. That
+  much is structural and true of the silicon too.
+- **The FIFO is executed on a host thread**, woken by status reads
+  (`wake_fifo_thread`, called from the `0x8504` and `0x8505` read paths). The
+  cost of that hand-off is a host-side scheduling artefact with no silicon
+  analogue.
+- **Status reads are charged emulated cycles**
+  (`cycles -= mon_video_timing_read_b`); MMIO writes appear not to be. So in
+  this model a register-programmed fill is nearly free in cycles but expensive
+  in synchronisation - which is the opposite of the balance on a real card,
+  where the writes are posted and cross a bus.
+
+And the arm this A/B favoured is the one the environment favours: 86Box's
+framebuffer is host RAM, so the CPU clear it compares against never pays the
+uncached-aperture cost that
+[the MTRR work](2026-08-28-mtrr-stage-a-inspect-only.md) identifies as the
+dominant cost of CPU drawing on this project's real targets. On silicon the
+CPU arm gets worse and the engine arm's advantage grows.
+
+**So the 38% is a number about this emulator, and the direction of its bias is
+known.** No physical ViRGE is recorded on this project, so it cannot be
+checked; BARRY is a Trio64 and has no D3D at all.
+
 ## What is not established
 - **Why the fill rate falls.** The A/B says it does, reproducibly, and the
   counters say the engine is doing the work without timing out. The mechanism
