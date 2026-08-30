@@ -12,7 +12,7 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.6.1** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.6.5** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **0.6.0 is the release where this stops being an engineering bring-up and
 > becomes a working driver.** The full stack — display driver, DirectDraw HAL,
@@ -78,7 +78,14 @@ target gets:
 - **Direct3D acceleration** (S3 ViRGE only) — a deliberately narrow but real
   hardware path through the S3D engine: textured, Gouraud-shaded,
   perspective-correct triangles with mipmapping, trilinear filtering, alpha
-  blending, specular highlights, fog and Z testing.
+  blending, specular highlights, fog and Z testing, with depth-buffer clears
+  served by the blitter rather than by the CPU.
+- **A Direct3D on/off switch** on the Velocity9x page in Display Properties.
+  Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
+  enumerates no hardware device and applications fall back to Microsoft's
+  software rasterizers — useful on a machine with a second graphics card, or
+  when a game misbehaves through the narrow S3D path. It takes effect after a
+  restart, and DirectDraw itself is unaffected either way.
 - **A Velocity9x page inside Display Properties** reporting the detected
   adapter, PCI ID, installed video memory, active mode and clock, which
   acceleration paths are live, and the driver's own runtime diagnostics.
@@ -100,6 +107,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | **No** | **No** | **No** |
+| Direct3D on/off switch | Yes | Shown, disabled — nothing to switch | same | same |
 | GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
 
@@ -318,19 +326,27 @@ ViRGE/DX with 4 MiB, all four 3D tests at five repeats:
 
 | Test | Raw speed | Reality marks |
 |---|---|---|
-| 25 pixel | 23.62 Kpolys/s | 0.76 |
-| Robots | 9.45 images/s | 2.45 |
-| Fill rate | 67.74 Mpixels/s | 14.66 |
-| City scene | 11.46 images/s | 2.84 |
-| **3D performance** | | **1.97** |
+| 25 pixel | 23.35 Kpolys/s | 0.75 |
+| Robots | 11.54 images/s | 2.99 |
+| Fill rate | 42.09 Mpixels/s | 9.11 |
+| City scene | 15.50 images/s | 3.85 |
+| **3D performance** | | **1.96** |
 
 Those are modest numbers and they are meant to be read as "the path is real and
-survives a third-party workload", not as a performance claim: 2.7 million
-triangles went through the S3D engine with depth testing live and not one FIFO
+survives a third-party workload", not as a performance claim: millions of
+triangles go through the S3D engine with depth testing live and not one FIFO
 timeout or engine reset. The 25-pixel figure is *down* from 28.54 Kpolys/s,
-which is the cost of depth actually being done - and partly of DirectDraw
-clearing the depth buffer on the CPU every frame, because the driver has no
-`DDBLT_DEPTHFILL` path yet.
+which is the cost of depth actually being done.
+
+**Serving `DDBLT_DEPTHFILL` is a trade-off, and the numbers above are the side
+of it this driver currently takes.** A controlled A/B — same guest, same
+session, the only difference being a HAL built without the depth-fill path —
+gives 23.42 / 9.41 / 67.66 / 11.38 and the same `3D performance` of 1.97. So
+moving the depth clear off the CPU and onto the blitter buys Robots 22% and
+City scene 36%, costs Fill rate 38%, and leaves the composite where it was. It
+also does *not* recover any of the 25-pixel drop, which is what implementing it
+was expected to do. Why the fill rate falls is not established; see
+[docs/decisions/2026-08-30-ddblt-depthfill.md](docs/decisions/2026-08-30-ddblt-depthfill.md).
 
 FR's own `Visual appearance` percentage is not quoted here. It reads the same
 value before and after depth testing began working, and the same value again

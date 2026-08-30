@@ -183,6 +183,16 @@ separable by implementing the depth fill and re-running. Note also that the
 28.54 came from a 25-pixel-only run while this one runs four tests in
 sequence, so the two are not perfectly matched.
 
+> **Separated on 2026-08-30, and the answer is "none of it".** The depth fill
+> was implemented and a controlled A/B run
+> ([decision](../decisions/2026-08-30-ddblt-depthfill.md)): 25 pixel goes
+> 23.42 without it to 23.35 with it, which is no change. The whole 17% was the
+> depth work itself. The paragraph above hedged toward the clear being part of
+> it; it was not. The same A/B found Robots +22.6% and City scene +36.2%
+> against Fill rate -37.8%, with `3D performance` flat at 1.97 to 1.96 - so
+> serving the clear is a trade-off between scene types rather than a win, and
+> why the fill rate falls is not established.
+
 **Do not read anything into `Visual appearance` staying at 74.07 %.** It was
 74.07 before the depth work and 74.07 after, and FR's own built-in ViRGE
 reference entry also reads 74.07. The runbook sets out why it is most likely
@@ -191,11 +201,13 @@ needed to prove that.
 
 ## Deferred, deliberately
 
-- **`DDBLT_DEPTHFILL`.** No depth-fill path exists in `src\`; DirectDraw
+- ~~**`DDBLT_DEPTHFILL`.** No depth-fill path exists in `src\`; DirectDraw
   emulates the clear on the CPU, so correctness does not depend on it — but a
   per-frame software depth clear will show in FR's polygon rate, which is
   exactly what step 4 measures. Worth doing before reading too much into a
-  regression there.
+  regression there.~~ **Done and pixel-verified, 2026-08-30**
+  ([decision](../decisions/2026-08-30-ddblt-depthfill.md)); the re-run that
+  separates the clear from the depth work is recorded above.
 - **The `DEST_BASE` 8-byte alignment hole**, the same shape as the `Z_BASE`
   one the depth work closed, and predating it.
 - **Depth gradients, still unverified.** Every vertex in both probe

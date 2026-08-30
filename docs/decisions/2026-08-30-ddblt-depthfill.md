@@ -1,4 +1,4 @@
-# DDBLT_DEPTHFILL is one solid fill, and the flag is not where guessing puts it
+# DDBLT_DEPTHFILL is one solid fill, and it is a trade-off rather than a win
 
 Date: 2026-08-30
 Branch: `d3d-mode-selector`
@@ -102,17 +102,98 @@ The `ZDepthFill*` keys are absent from that run, correctly: the probe's depth
 test lives inside the D3D block, and a chip with no Direct3D device never
 creates a Z surface to fill.
 
+`Win98SE-Mach64VT2` covers the other shape - a family whose chips supply no
+engine descriptor at all, so `engine.flags` never gets `V9X_DD_ENGINE_VALID`.
+Same result: `Stage=enable-ok`, `Direct3DMode=none`, `D3DHalFound=0`,
+`D3DDeviceCount=3`, `TexFormatCount=0`, and DirectDraw working through fill,
+copy, overlap and `RestoreHr`. That leaves `vbe` as the only family not booted
+with this change; it takes the identical code path to `ati` - null
+`fill_engine_descriptor`, zero caps - and differs from it only in which chip
+module is linked.
+
+## The pixel test proves less than it looks like it proves
+
+`ZDepthFillOk=1` came back **identical on a HAL built without any of this
+work** - no `v9x_depthfill_body`, no `DDCAPS_BLTDEPTHFILL`. Measured, not
+supposed: the control build for the A/B below was installed and the probe run
+against it reported `ZDepthFillHr=0x00000000`, `ZDepthFillRaw=4660`,
+`ZDepthFill2Raw=43981`, `ZDepthFillCornerRaw=43981`, `ZDepthFillOk=1`.
+
+DirectDraw emulates `DDBLT_DEPTHFILL` when the driver declines it, and returns
+`S_OK` either way. So the test establishes that **the fill is correct** - the
+right value, over the whole rectangle, twice - and says **nothing about who
+performed it**. A driver path that returned `DDHAL_DRIVER_NOTHANDLED` on every
+call would pass it unchanged.
+
+That is worth stating plainly because the obvious reading of a green pixel test
+is "my code ran", and here it is not. The discriminator is the driver's own
+`Blt` trace: `v9x_trace_enter(V9X_TRACE_BLT, data->dwFlags)` records the flag
+word, so a `Blt` entry whose detail carries `0x02000000` is the callback
+actually receiving a depth fill. That has not been read yet.
+
+## It is a trade-off, not a win, and the composite does not move
+
+A controlled A/B on `Win86SE`: same guest, same session, same Final Reality
+configuration (four 3D tests, five repeats, 2D and bus tests cleared), the only
+difference being which `V9XHAL.DLL` was installed. The control was built by
+checking the five HAL sources out at the parent commit, so it is this branch
+minus the depth fill and nothing else.
+
+| Test | Control, no depth fill | With depth fill | Change |
+|---|---|---|---|
+| 25 pixel | 23.42 Kpolys/s | 23.35 | -0.3% |
+| Robots | 9.41 images/s | 11.54 | **+22.6%** |
+| Fill rate | 67.66 Mpixels/s | 42.09 | **-37.8%** |
+| City scene | 11.38 images/s | 15.50 | **+36.2%** |
+| **3D performance** | **1.97 marks** | **1.96** | flat |
+
+The control reproduces the previously recorded run - 23.62 / 9.45 / 67.74 /
+11.46, `3D performance` 1.97 - to within 1% on every test, which is what makes
+the comparison a measurement rather than two sessions being compared. The
+depth-fill column was also run twice (Fill rate 41.09 and 42.09), so neither
+side is a single sample.
+
+**The prediction this was supposed to confirm is refuted.** The Final Reality
+plan said the 28.54 to 23.62 Kpolys/s drop was the cost of depth work "and
+partly of DirectDraw clearing the depth buffer on the CPU every frame", and
+that the two were "only separable by implementing the depth fill and
+re-running". They are now separated: **25 pixel does not move.** Essentially
+none of that 17% was the clear.
+
+**And the fill-rate regression is real, reproducible and unexplained.** A
+plausible mechanism is that the clear now goes through the 2D engine and waits
+on FIFO slots, so it serialises against queued S3D work, where the CPU pass it
+replaced touched no engine at all - a fill-rate test keeps the engine busy and
+would pay most for that. That is a hypothesis, not a finding; nothing here
+measures it. What is measured is that two scenes gain 22-36%, one loses 38%,
+and the composite is unchanged.
+
+This is exactly the failure mode this section of the hybrid-3D plan warns
+about: "the honest reading of where the wins are" says a blit costs FIFO
+reservation and register setup, and that assuming otherwise is the same class
+of mistake as assuming a FIFO could supply 18 slots when it reports 16. The
+per-frame clear was argued as structurally cheaper without being measured. It
+is cheaper for some scenes and dearer for others.
+
 ## What is not established
 
-- **Which path served it.** `v9x_depthfill_body` tries the engine and falls
-  back to `v9x_cpu_fill`, and both produce the same words, so the pixel test
-  cannot tell them apart. The engine was live and validated on that boot
-  (`D3DZCompareOk=1` requires it) and `v9x_virge_fill` declines only above 2
-  bytes per pixel, so the engine is the strong inference - but it is an
-  inference. `V9X_TRACE_BLT_ENGINE` is the counter that would settle it.
-- **Whether it is faster.** No before/after benchmark was taken. The argument
-  for the change is one blit per frame against one CPU pass per frame over the
-  aperture, which is structural, but Final Reality has not been re-run.
+- **Which path served it.** Two layers of this, and the pixel test settles
+  neither: driver against DirectDraw's emulation (above), and within the
+  driver, engine against `v9x_cpu_fill`. The engine was live and validated on
+  that boot (`D3DZCompareOk=1` requires it) and `v9x_virge_fill` declines only
+  above 2 bytes per pixel, so the engine is the strong inference if the driver
+  served it at all - but it is an inference on top of an unestablished
+  premise.
+- **Why the fill rate falls.** The A/B says it does, reproducibly. The
+  serialisation story above is a hypothesis and the obvious next measurement is
+  the driver's own `Blt` trace plus the engine timeout and reset counters
+  across an FR run - which would also settle whether the driver served the
+  fill at all.
+- **Whether the trade is worth taking.** Two scenes gain 22-36%, one loses
+  38%, the composite is flat, and the sample is one benchmark on one emulated
+  chip. Nothing here says how a real title's mix of geometry and fill falls
+  out, and the decision to keep, revert or make it selectable is not one this
+  document settles.
 - **Any chip but the ViRGE.** No other family has a D3D engine, so
   `v9x_d3d_depth_bytes_per_pixel()` returns zero everywhere else and the fill
   declines. That is asserted by construction, not measured.

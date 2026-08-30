@@ -4,13 +4,48 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.6.5 - 2026-08-30
 
-**`DDBLT_DEPTHFILL` is served, so a depth clear is one blit instead of a CPU
-pass over the aperture every frame.** Nothing in `src/` handled it and
-`DDCAPS_BLTDEPTHFILL` was not advertised, so DirectDraw locked the Z buffer and
-wrote every word itself - part of what Final Reality's 25-pixel figure paid when
-depth testing started actually happening.
+**A Direct3D selector, a depth-clear path, and the measurements behind both.**
+Direct3D can now be turned off from Display Properties, and depth-buffer clears
+go through the blitter instead of a CPU pass over the aperture. Both are backed
+by guest runs rather than by code reading — and the depth-clear measurement did
+not come out the way the plan predicted, which is recorded below rather than
+smoothed over: it is a trade-off that leaves Final Reality's composite score
+unchanged, not the improvement it was argued to be.
+
+**`DDBLT_DEPTHFILL` is served, and a controlled A/B says it is a trade-off
+rather than a win.** Nothing in `src/` handled it and `DDCAPS_BLTDEPTHFILL` was
+not advertised, so DirectDraw locked the Z buffer and wrote every word itself.
+That clear is now one blit.
+
+Final Reality on `Win86SE`, same guest and session, the only difference being
+which `V9XHAL.DLL` was installed - the control built by checking the five HAL
+sources out at the parent commit, so it is this branch minus the depth fill:
+
+| Test | No depth fill | With depth fill | Change |
+|---|---|---|---|
+| 25 pixel | 23.42 Kpolys/s | 23.35 | -0.3% |
+| Robots | 9.41 images/s | 11.54 | **+22.6%** |
+| Fill rate | 67.66 Mpixels/s | 42.09 | **-37.8%** |
+| City scene | 11.38 images/s | 15.50 | **+36.2%** |
+| **3D performance** | **1.97 marks** | **1.96** | flat |
+
+The control reproduces the previously recorded run to within 1% on every test,
+which is what makes this a measurement rather than two sessions compared; the
+depth-fill column was run twice.
+
+**Two things this refutes, both of them ours.** The Final Reality plan said the
+28.54 to 23.62 Kpolys/s drop was the cost of depth work "and partly of
+DirectDraw clearing the depth buffer on the CPU every frame", separable only by
+implementing the fill and re-running. They are separated now and **25 pixel does
+not move** - essentially none of that 17% was the clear. And the argument for
+the change was that one blit per frame must beat one CPU pass per frame. For
+two scenes it does, by a lot; for the fill-rate test it loses by a lot. A
+plausible mechanism is that the clear now waits on engine FIFO slots and
+serialises against queued S3D work where the CPU pass touched no engine at all,
+but that is a hypothesis and nothing here measures it. This is the failure mode
+the hybrid-3D plan's own "honest reading of where the wins are" warns about.
 
 No engine code changed. A depth clear is a solid fill of a 16-bit surface, and
 `v9x_virge_fill` was already parameterised on the destination offset, that
@@ -34,14 +69,23 @@ decline every depth fill while advertising a capability it never received a
 request for, and the symptom would have been "no change" rather than anything
 resembling a bug.
 
-**Pixel-verified on `Win86SE`.** The probe gained a depth-fill test that fills a
-64x64 video-memory Z surface twice and reads the words back:
+**The fill is pixel-verified on `Win86SE`.** The probe gained a depth-fill test
+that fills a 64x64 video-memory Z surface twice and reads the words back:
 `ZDepthFillRaw=4660` (0x1234), then `ZDepthFill2Raw=43981` and
 `ZDepthFillCornerRaw=43981` (0xABCD at both the origin and 63,63),
 `ZDepthFillOk=1`. Two values because freshly allocated video memory holds
 whatever the last owner left and a single-value test passes by accident; two
 positions because a rectangle blit with the wrong pitch writes the first row
 and nothing else.
+
+**That test proves less than it looks like it proves, and this was measured
+rather than assumed.** A HAL built without any of this work - no depth-fill
+body, no cap - passes it identically: DirectDraw emulates `DDBLT_DEPTHFILL`
+when the driver declines and returns `S_OK` either way. So the test establishes
+that the fill is *correct*, not that the driver *performed* it. A path that
+returned `DDHAL_DRIVER_NOTHANDLED` on every call would pass unchanged. The
+discriminator is the driver's own `Blt` trace, whose detail records the flag
+word; it has not been read yet.
 
 The new cap goes into the word DriverInit publishes for the whole binary, so it
 is a regression risk on the three families that cannot serve it. Checked on
