@@ -84,8 +84,20 @@ body, no cap - passes it identically: DirectDraw emulates `DDBLT_DEPTHFILL`
 when the driver declines and returns `S_OK` either way. So the test establishes
 that the fill is *correct*, not that the driver *performed* it. A path that
 returned `DDHAL_DRIVER_NOTHANDLED` on every call would pass unchanged. The
-discriminator is the driver's own `Blt` trace, whose detail records the flag
-word; it has not been read yet.
+discriminator is counting `Blt` callbacks across the two builds, and that has
+now been done.
+
+**The driver does serve it, and on the blitter.** The probe issues exactly two
+depth fills; the control build reports `CountBlt=7` / `CountBltEngine=7` and
+the depth-fill build `CountBlt=9` / `CountBltEngine=9`. So without the cap
+DirectDraw never dispatches the call to the driver at all - the control is a
+true "driver does nothing" arm - and with it, both fills reach the engine
+rather than falling through to the CPU fallback, since that counter only rises
+where `ops->fill` returned `V9X_BLT_DONE`. With `EngineFifoTimeouts`,
+`EngineIdleTimeouts` and `EngineResets` all zero, the fill-rate cost is not
+timeouts or recovery: it is the ordinary price of reserving FIFO slots and
+writing seven registers per clear, where the CPU pass it replaced touched no
+engine state at all.
 
 The new cap goes into the word DriverInit publishes for the whole binary, so it
 is a regression risk on the three families that cannot serve it. Checked on

@@ -126,10 +126,11 @@ performed it**. A driver path that returned `DDHAL_DRIVER_NOTHANDLED` on every
 call would pass it unchanged.
 
 That is worth stating plainly because the obvious reading of a green pixel test
-is "my code ran", and here it is not. The discriminator is the driver's own
-`Blt` trace: `v9x_trace_enter(V9X_TRACE_BLT, data->dwFlags)` records the flag
-word, so a `Blt` entry whose detail carries `0x02000000` is the callback
-actually receiving a depth fill. That has not been read yet.
+is "my code ran", and here it is not. The section below settles it by a
+different route - counting `Blt` callbacks across the two builds - and the
+answer turns out to be that the code does run. That does not redeem the test:
+it would have read green either way, and a version of this work that was
+entirely inert would have shipped looking verified.
 
 ## It is a trade-off, not a win, and the composite does not move
 
@@ -175,20 +176,52 @@ of mistake as assuming a FIFO could supply 18 slots when it reports 16. The
 per-frame clear was argued as structurally cheaper without being measured. It
 is cheaper for some scenes and dearer for others.
 
-## What is not established
+## Who serves the fill, settled by counting Blt callbacks
 
-- **Which path served it.** Two layers of this, and the pixel test settles
-  neither: driver against DirectDraw's emulation (above), and within the
-  driver, engine against `v9x_cpu_fill`. The engine was live and validated on
-  that boot (`D3DZCompareOk=1` requires it) and `v9x_virge_fill` declines only
-  above 2 bytes per pixel, so the engine is the strong inference if the driver
-  served it at all - but it is an inference on top of an unestablished
-  premise.
-- **Why the fill rate falls.** The A/B says it does, reproducibly. The
-  serialisation story above is a hypothesis and the obvious next measurement is
-  the driver's own `Blt` trace plus the engine timeout and reset counters
-  across an FR run - which would also settle whether the driver served the
-  fill at all.
+The trace ring wraps long before the probe finishes, so the `Blt` entry
+carrying `0x02000000` was gone by the time `V9XTRACE.EXE` ran. The counters
+answer it anyway, because the probe issues **exactly two** depth fills and
+nothing else in it changes between the two builds:
+
+| | `CountBlt` | `CountBltEngine` | `ZDepthFillOk` |
+|---|---|---|---|
+| Control, no depth-fill path | 7 | 7 | 1 |
+| With depth fill | **9** | **9** | 1 |
+
+Two conclusions, and the first is the one the pixel test could not reach.
+
+**Without `DDCAPS_BLTDEPTHFILL`, DirectDraw does not dispatch the depth fill to
+the driver at all.** Seven against nine: the driver's `Blt` callback is never
+entered for it, so the runtime emulates the whole thing. That is why
+`ZDepthFillOk=1` on the control - and it means the control build is a true
+"driver does nothing" arm rather than "driver declines and the runtime picks up
+the pieces".
+
+**With the cap, the engine serves both.** `CountBltEngine` rises by the same
+two as `CountBlt`, and that counter is incremented only where `ops->fill`
+returned `V9X_BLT_DONE`. Neither depth fill fell through to `v9x_cpu_fill`.
+
+So the driver path runs, and it runs on the blitter. Both of the questions this
+document previously left open are closed, and the answers are the ones the
+implementation intended.
+
+**Which makes the fill-rate cost the engine's.** `EngineFifoTimeouts=0`,
+`EngineIdleTimeouts=0` and `EngineResets=0` across the run, so the 38% is not
+timeouts or recovery - it is the ordinary price of reserving FIFO slots and
+writing seven registers per clear, on a part where the CPU pass it replaced
+touched no engine state at all. That is consistent with the serialisation
+hypothesis above and still does not prove it; what it does rule out is the
+engine misbehaving.
+
+## What is not established
+- **Why the fill rate falls.** The A/B says it does, reproducibly, and the
+  counters now say the engine is doing the work without timing out. What is
+  still missing is the mechanism: whether the per-clear FIFO wait genuinely
+  stalls queued S3D work, and whether a clear issued through `v9x_cpu_fill`
+  instead - the driver's own CPU path, which skips the engine but keeps the
+  single callback - would keep the Robots and City gains without the fill-rate
+  loss. That is a one-line experiment behind a build switch and the obvious
+  next step if the trade is worth trying to win outright.
 - **Whether the trade is worth taking.** Two scenes gain 22-36%, one loses
   38%, the composite is flat, and the sample is one benchmark on one emulated
   chip. Nothing here says how a real title's mix of geometry and fill falls
