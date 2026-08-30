@@ -511,6 +511,19 @@ So mode 3's first deliverable is `DDBLT_DEPTHFILL`, which is already a
 deferred item on the Final Reality plan, and which is worth doing whether or
 not mode 3 ever exists. Everything past that waits on mode 2's numbers.
 
+**`DDBLT_DEPTHFILL` is done and pixel-verified**
+([2026-08-30](../decisions/2026-08-30-ddblt-depthfill.md)), and it cost no
+engine code: the ViRGE solid fill was already parameterised on offset, pitch
+and pixel width, so the whole change is one validating body in `ddhal_core.c`
+plus the cap. It is the first evidence for this section's thesis, and it is
+the easy half of it - one blit per frame against one CPU pass per frame is a
+structural win that needed no measurement to argue for. The per-span claims
+below still do, and are still the ones this section warns against assuming.
+
+What it does **not** yet show: whether the engine or the CPU fallback served
+it - both write the same words - and whether Final Reality's polygon rate
+moves. Neither blocks the rest of mode 3, and both are cheap to close.
+
 ------------------------------------------------------------------------
 
 ## Mode 4 - Voodoo2 offload, deferred

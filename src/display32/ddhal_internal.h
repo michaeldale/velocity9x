@@ -285,14 +285,22 @@ void v9x_cpu_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
                   DWORD destination_offset, DWORD bytes_per_pixel);
 
 /*
- * The ViRGE Direct3D block, in d3d\d3d_virge.c.
+ * The Direct3D block, in d3d\d3d_core.c.
  *
  * v9x_d3d_publish fills the shared block's D3D global data, texture formats
  * and callback tables. DriverInit calls it at the point the single-file build
  * wrote those fields inline; the 16-bit side still clamps them back out for a
  * chipset whose engine_caps lack D3D.
+ *
+ * v9x_d3d_depth_bytes_per_pixel is the 2D side's one question for the D3D
+ * side, and exists so that DDBLT_DEPTHFILL can fill a depth surface without
+ * this file knowing how wide a depth pixel is on any particular chip. Zero
+ * means the fitted chip has no D3D engine and therefore no depth buffers.
+ * Declared here as well as in d3d\d3d_internal.h because ddhal_core.c must
+ * not include the D3D internals to ask one number.
  */
 void v9x_d3d_publish(V9X_DD_SHARED *shared);
+DWORD v9x_d3d_depth_bytes_per_pixel(void);
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data);
 
 #endif /* VELOCITY9X_DDHAL_INTERNAL_H */

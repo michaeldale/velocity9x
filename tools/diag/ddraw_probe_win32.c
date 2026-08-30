@@ -51,6 +51,8 @@
 #define V9X_DDFLIP_WAIT             0x00000001ul
 #define V9X_DDBLT_COLORFILL          0x00000400ul
 #define V9X_DDBLT_KEYSRC             0x00008000ul
+/* DDRAW.H:2799, and not where its neighbours suggest. */
+#define V9X_DDBLT_DEPTHFILL          0x02000000ul
 #define V9X_DDCKEY_SRCBLT            0x00000008ul
 #define V9X_DDBLT_WAIT               0x01000000ul
 #define V9X_DDGBS_CANBLT              0x00000001ul
@@ -1294,6 +1296,94 @@ static HRESULT v9x_hardware_fill(struct v9x_dds *surface, DWORD color,
     }
     *elapsed = v9x_time() - started;
     return hr;
+}
+
+/*
+ * Read one 16-bit word out of a depth surface.
+ *
+ * Not v9x_surface_pixel16_equals, which gates on
+ * ddpfPixelFormat.dwRGBBitCount == 16: a Z buffer's format is a depth format
+ * and carries no RGB bit count, so that check refuses every depth surface and
+ * the test would report a failure that is really a wrong reader.
+ *
+ * Returns non-zero when the word was read, and writes it to value_out.
+ */
+static int v9x_depth_word_at(struct v9x_dds *surface, DWORD x, DWORD y,
+                             WORD *value_out)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return 0;
+    }
+    if (desc.lpSurface == 0 || desc.lPitch <= 0l ||
+        x >= desc.dwWidth || y >= desc.dwHeight) {
+        surface->vtbl->Unlock(surface, 0);
+        return 0;
+    }
+    row = (BYTE FAR *)desc.lpSurface + y * (DWORD)desc.lPitch;
+    *value_out = *(WORD FAR *)(row + x * 2ul);
+    surface->vtbl->Unlock(surface, 0);
+    return 1;
+}
+
+/*
+ * DDBLT_DEPTHFILL, verified by reading the depth words back.
+ *
+ * Two different values, in sequence, and both are checked. One fill cannot
+ * distinguish "the driver wrote the value" from "the surface already held it"
+ * - freshly allocated video memory is whatever the last owner left, and a
+ * single-value test passes by accident often enough to be worthless. The
+ * second fill has to change what the first one wrote.
+ *
+ * Two positions, because a fill that writes only the first word or only the
+ * first row is a real failure mode of a rectangle blit with the wrong pitch
+ * or the wrong height, and reading (0,0) alone cannot see it.
+ */
+static void v9x_probe_depth_fill(struct v9x_dds *z_surface)
+{
+    static const WORD first = 0x1234u;
+    static const WORD second = 0xabcdu;
+    V9X_DDBLTFX fx;
+    HRESULT hr;
+    WORD origin = 0u;
+    WORD corner = 0u;
+    int read_ok;
+    int ok = 0;
+
+    v9x_zero(&fx, sizeof(fx));
+    fx.dwSize = sizeof(fx);
+    /* The union DDBLTFX shares between dwFillColor, dwFillDepth and
+     * dwFillPixel; this member is the depth one here. */
+    fx.dwFillColor = (DWORD)first;
+    hr = z_surface->vtbl->Blt(z_surface, 0, 0, 0,
+                              V9X_DDBLT_DEPTHFILL | V9X_DDBLT_WAIT, &fx);
+    v9x_write_hresult("ZDepthFillHr", hr);
+    if (hr == 0) {
+        read_ok = v9x_depth_word_at(z_surface, 0ul, 0ul, &origin);
+        v9x_write_uint("ZDepthFillRaw", read_ok ? (DWORD)origin : 0xfffful);
+
+        if (read_ok && origin == first) {
+            fx.dwFillColor = (DWORD)second;
+            hr = z_surface->vtbl->Blt(z_surface, 0, 0, 0,
+                                      V9X_DDBLT_DEPTHFILL | V9X_DDBLT_WAIT,
+                                      &fx);
+            v9x_write_hresult("ZDepthFill2Hr", hr);
+            if (hr == 0 &&
+                v9x_depth_word_at(z_surface, 0ul, 0ul, &origin) &&
+                v9x_depth_word_at(z_surface, 63ul, 63ul, &corner)) {
+                v9x_write_uint("ZDepthFill2Raw", (DWORD)origin);
+                v9x_write_uint("ZDepthFillCornerRaw", (DWORD)corner);
+                ok = origin == second && corner == second;
+            }
+        }
+    }
+    v9x_write_uint("ZDepthFillOk", ok ? 1ul : 0ul);
 }
 
 static int v9x_surface_pixel16_equals(struct v9x_dds *surface,
@@ -2549,6 +2639,12 @@ void __stdcall V9xDdrawProbeEntry(void)
                             v9x_write_uint("D3DZSurfaceCaps",
                                            desc.ddsCaps.dwCaps);
                         }
+                        /* Before the attach, so a depth fill is tested on a
+                         * plain Z surface rather than on one the render
+                         * target owns - the driver's Blt path does not care,
+                         * and neither should this. */
+                        v9x_probe_depth_fill(z_surface);
+
                         z_hr = d3d_target->vtbl->AddAttachedSurface(
                             d3d_target, z_surface);
                         v9x_write_hresult("D3DZAttachHr", z_hr);

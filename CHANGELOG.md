@@ -6,6 +6,54 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+**`DDBLT_DEPTHFILL` is served, so a depth clear is one blit instead of a CPU
+pass over the aperture every frame.** Nothing in `src/` handled it and
+`DDCAPS_BLTDEPTHFILL` was not advertised, so DirectDraw locked the Z buffer and
+wrote every word itself - part of what Final Reality's 25-pixel figure paid when
+depth testing started actually happening.
+
+No engine code changed. A depth clear is a solid fill of a 16-bit surface, and
+`v9x_virge_fill` was already parameterised on the destination offset, that
+surface's own pitch and the bytes per pixel, taking its value from
+`bltFX.dwFillColor` - a union member sharing its DWORD with `dwFillDepth`. The
+new `v9x_depthfill_body` validates the request and hands the existing fill a
+different offset and width. It requires `DDSCAPS_ZBUFFER` and refuses system
+memory, does not consult the screen depth (a Z surface is 16-bit whatever the
+desktop is), and gets the depth width from
+`v9x_d3d_depth_bytes_per_pixel()` rather than writing a literal 2 in a
+chip-neutral file - which is the mistake the comment on `depth_bits_per_pixel`
+already records having made once. Zero from that call means the chip has no D3D
+engine, so the fill declines everywhere but the ViRGE.
+
+**`DDBLT_DEPTHFILL` is `0x02000000`, not `0x00002000`.** Its neighbours in the
+flag list suggest the latter and that is what writing it from memory produces;
+the `DDBLT_` flags are not densely packed. Both it and
+`DDCAPS_BLTDEPTHFILL` (`0x10000000`) were read out of the Win98 DDK's
+`DDRAW.H` before either was used. A wrong flag would have made the driver
+decline every depth fill while advertising a capability it never received a
+request for, and the symptom would have been "no change" rather than anything
+resembling a bug.
+
+**Pixel-verified on `Win86SE`.** The probe gained a depth-fill test that fills a
+64x64 video-memory Z surface twice and reads the words back:
+`ZDepthFillRaw=4660` (0x1234), then `ZDepthFill2Raw=43981` and
+`ZDepthFillCornerRaw=43981` (0xABCD at both the origin and 63,63),
+`ZDepthFillOk=1`. Two values because freshly allocated video memory holds
+whatever the last owner left and a single-value test passes by accident; two
+positions because a rectangle blit with the wrong pitch writes the first row
+and nothing else.
+
+The new cap goes into the word DriverInit publishes for the whole binary, so it
+is a regression risk on the three families that cannot serve it. Checked on
+`Win98SE-Trio64` rather than reasoned about: the 16-bit clamp reassigns
+`dwCaps` and drops the bit with the rest, `D3DHalFound=0` and
+`D3DDeviceCount=3` as before, and DirectDraw stayed fully working through fill,
+copy, all four overlap cases and `RestoreHr`.
+
+**Not established:** which path served the fill - engine and CPU fallback
+produce the same words - and whether it is actually faster, since Final Reality
+has not been re-run.
+
 **A SYSTEM.INI key now decides whether the driver advertises Direct3D at all.**
 `[Velocity9x] Direct3D=1` clears `V9X_DD_ENGINE_CAP_D3D` before the engine
 descriptor is stamped into the DirectDraw shared block, and the clamp in
@@ -81,6 +129,15 @@ Apply, reboot, `D3DHalFound=0` / `D3DDeviceCount=3` / `TexFormatCount=0`;
 select Hardware, Apply, reboot, back to `1` / `4` / `2` with no functional key
 differing from the baseline. The page fits at 640x480 with OK/Cancel/Apply on
 screen, and the dialog is 211 dialog units before and after.
+
+**The no-3D path was run on `Win98SE-Trio64`**, same family binary. Absent, `0`
+and `1` all report `none` - a setting cannot change what the card cannot do -
+while `2` reports `mode-unimplemented`, because the unwritten modes exist for
+exactly that card and answering them with the card's answer would be the wrong
+report the day one of them lands. The control is greyed on all four. That run
+also shortened the `mode-unimplemented` wording, which was longer than the
+selector and clipped mid-word on the guest; nothing but looking would have
+caught it, since the string fits every buffer it passes through.
 
 **A fourth probe hygiene rule: one `V9XDDP.EXE` run per boot.** A second run in
 the same boot reported `ExitCode=0` and `Result=COMPLETE` and three false
