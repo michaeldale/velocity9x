@@ -59,7 +59,8 @@ $sources = @(
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",
-    "src\display32\d3d\d3d_virge.c"
+    "src\display32\d3d\d3d_virge.c",
+    "src\display32\d3d\d3d_soft.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"

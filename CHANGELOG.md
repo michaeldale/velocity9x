@@ -4,6 +4,51 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+**A Trio64 created a Direct3D device and drew.** `Direct3D=2` now resolves to a
+CPU engine on any chip: `Direct3DMode=software`, `D3DHalFound=1`,
+`D3DCreateDeviceHr=0x00000000` and pixels on screen, on a card whose own
+answer is `not-advertised`.
+
+**What was built is not a rasterizer.** `draw_triangles` fills each triangle's
+bounding box with a flat colour and `describe_caps` advertises nothing else -
+deliberately, so that the whole path is proved before any edge-stepping
+arithmetic exists. This driver has twice spent a long time establishing that
+the thing wrong with a new Direct3D path was not the part that had just been
+written.
+
+The change that mattered is underneath it: **three ViRGE-specific gates left
+the chip-neutral draw path.** `v9x_d3d_engine()` tests the software capability
+before `engine_type` - mode first, chip second. `v9x_engine_status_validated()`
+is gone from all three draw entry points, replaced by a `ready` hook appended
+to `V9X_D3D_ENGINE_OPS`; it resolved through a literal
+`engine_type == S3_VIRGE_DX` test, so a Trio64 failed it and a software engine
+fails it by construction, and the result would have been an engine that
+published caps, accepted every call and drew nothing with every HRESULT
+reporting success. The unconditional `v9x_engine_validate_status()` beside each
+went with it.
+
+The mode reaches the 32-bit side as `V9X_DD_ENGINE_CAP_D3D_SOFTWARE`, so **no
+ABI or layout change**. It is stamped outside the descriptor branch, because
+four of the six families supply no `fill_engine_descriptor` and those are
+exactly the cards this mode is for. And `v9x_dd_block()` now stamps the
+capability word before `DriverInit`, which is what finally lets
+`v9x_d3d_publish_engine()` select - a function that has carried a comment
+since 2026-08-29 explaining why it could not.
+
+**The one failing probe key is the interesting one.** `D3DTrianglePixelOk=0`
+because the probe expects `31744` - red in ZRGB1555, the value the ViRGE
+writes - while the software engine wrote `63488`, red in RGB565, which is the
+format the surface is described as. README already records that mismatch as a
+known ViRGE defect; a second engine has now made it visible from outside rather
+than only in a comment. Not fixed here: deciding whether the ViRGE path or the
+probe is wrong is a separate question with its own evidence.
+
+**No regression on the ViRGE.** Same build, hardware mode, after all three
+gates moved: every functional key matches the recorded ladder, depth and depth
+fill included.
+
 ## 0.6.5 - 2026-08-30
 
 **A Direct3D selector, a depth-clear path, and the measurements behind both.**

@@ -175,6 +175,30 @@ typedef struct v9x_d3d_engine_ops {
     int (*draw_triangles)(V9X_D3D_CONTEXT *context,
                           const V9X_D3DTLVERTEX *vertices,
                           DWORD triangle_count);
+
+    /*
+     * Is this engine in a state to draw, right now?
+     *
+     * APPENDED, and for the same reason V9X_D3D_ENGINE_LIMITS is append-only:
+     * the initialisers below are positional, so a member inserted above this
+     * one silently reassigns every function pointer after it and the compiler
+     * says nothing. A mis-set function pointer here is a jump to the wrong
+     * code, not a wrong number.
+     *
+     * This exists because the three draw entry points in d3d_core.c used to
+     * ask v9x_engine_status_validated() instead - a ViRGE 2D-engine question,
+     * asked in the chip-neutral file, which resolves through a literal
+     * engine_type == S3_VIRGE_DX test plus a mapped MMIO aperture. A Trio64
+     * failed it even though its descriptor is valid, and a software engine
+     * fails it by construction: no MMIO window, no FIFO, no status register.
+     * The result would have been an engine that resolved, published caps,
+     * accepted every call and drew nothing, with every HRESULT reporting
+     * success.
+     *
+     * The ViRGE's implementation validates its engine and answers that same
+     * question. The software engine answers yes.
+     */
+    int (*ready)(void);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */
@@ -196,6 +220,10 @@ DWORD v9x_d3d_depth_bytes_per_pixel(void);
 
 /* The ViRGE S3D engine, in d3d_virge.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge;
+
+/* The CPU rasterizer, in d3d_soft.c. Selected by capability rather than by
+ * chip: it serves whatever silicon it is given, including none. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_soft;
 
 /*
  * The core services an engine may use.

@@ -26,5 +26,21 @@
 #define V9X_DD_ENGINE_CAP_FLIP          0x00000004ul
 #define V9X_DD_ENGINE_CAP_VBLANK        0x00000008ul
 #define V9X_DD_ENGINE_CAP_D3D           0x00000010ul
+/*
+ * Serve Direct3D from the CPU rasterizer rather than from the chip.
+ *
+ * Set by the 16-bit driver when [Velocity9x] Direct3D selects the software
+ * mode, on any chip, and never by a chip module - no silicon has this
+ * capability, the driver does. It is what the 32-bit HAL selects the software
+ * V9X_D3D_ENGINE_OPS on, and it implies V9X_DD_ENGINE_CAP_D3D so that the
+ * existing clamp keeps publishing the Direct3D tables.
+ *
+ * That makes this word carry a mode decision and not only a chip fact, which
+ * is a departure from the header comment above - and the departure predates
+ * this bit: mode 1 already clears CAP_D3D from a user setting. The rule that
+ * survives is the useful one: the 16-bit side is the single authority on what
+ * may be advertised, whether it is reading silicon or a setting.
+ */
+#define V9X_DD_ENGINE_CAP_D3D_SOFTWARE  0x00000020ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

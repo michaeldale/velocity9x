@@ -824,9 +824,26 @@ static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
 }
 
+/*
+ * The ViRGE is ready to draw when its 2D engine has been validated.
+ *
+ * This is the test that used to sit in d3d_core.c on all three draw entry
+ * points, moved to the engine it was always about: v9x_engine_ready() tests
+ * engine_type == S3_VIRGE_DX literally, plus a control window and a mapped
+ * MMIO aperture. The validate call comes with it, because it is what makes
+ * the answer current rather than stale - the core used to issue it
+ * unconditionally right before asking, and that pairing is a ViRGE detail.
+ */
+static int v9x_d3d_virge_ready(void)
+{
+    (void)v9x_engine_validate_status();
+    return v9x_engine_status_validated();
+}
+
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge = {
     &v9x_d3d_virge_limits,
     v9x_d3d_texture_format,
     v9x_d3d_virge_describe_caps,
-    v9x_d3d_virge_draw_triangles
+    v9x_d3d_virge_draw_triangles,
+    v9x_d3d_virge_ready
 };

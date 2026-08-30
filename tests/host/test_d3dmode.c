@@ -36,8 +36,10 @@ static void test_resolve_on_a_chip_with_3d(void)
             V9X_D3D_STATE_HARDWARE);
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_DISABLED, V9X_TRUE) ==
             V9X_D3D_STATE_DISABLED);
+    /* Software resolves to itself even on a chip that has a 3D engine: the
+     * point of asking for it is to get the rasterizer instead. */
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_SOFTWARE, V9X_TRUE) ==
-            V9X_D3D_STATE_UNIMPLEMENTED);
+            V9X_D3D_STATE_SOFTWARE);
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_HYBRID, V9X_TRUE) ==
             V9X_D3D_STATE_UNIMPLEMENTED);
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_OFFLOAD, V9X_TRUE) ==
@@ -56,11 +58,11 @@ static void test_resolve_on_a_chip_without_3d(void)
      * setting's, so the page does not invite somebody to switch it back. */
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_DISABLED, V9X_FALSE) ==
             V9X_D3D_STATE_NONE);
-    /* But an unwritten mode reports itself even here - these are the modes
-     * whose whole purpose is a card with no 3D, so NONE would be the wrong
-     * answer the day one of them lands. */
+    /* Software is the mode whose whole purpose is a card with no 3D engine,
+     * so it resolves to itself here - this is the case it exists for, and the
+     * day it landed is the day this assertion changed from UNIMPLEMENTED. */
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_SOFTWARE, V9X_FALSE) ==
-            V9X_D3D_STATE_UNIMPLEMENTED);
+            V9X_D3D_STATE_SOFTWARE);
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_HYBRID, V9X_FALSE) ==
             V9X_D3D_STATE_UNIMPLEMENTED);
     D3CHECK(v9x_d3d_mode_resolve(V9X_D3D_REQUEST_OFFLOAD, V9X_FALSE) ==
@@ -94,6 +96,7 @@ static void test_only_hardware_advertises(void)
     D3CHECK(v9x_d3d_mode_advertises(V9X_D3D_STATE_NONE) == V9X_FALSE);
     D3CHECK(v9x_d3d_mode_advertises(V9X_D3D_STATE_DISABLED) == V9X_FALSE);
     D3CHECK(v9x_d3d_mode_advertises(V9X_D3D_STATE_UNIMPLEMENTED) == V9X_FALSE);
+    D3CHECK(v9x_d3d_mode_advertises(V9X_D3D_STATE_SOFTWARE) == V9X_TRUE);
     /* A state code this build does not know must not advertise either. */
     D3CHECK(v9x_d3d_mode_advertises((v9x_u16)9u) == V9X_FALSE);
 }
@@ -112,9 +115,15 @@ static void test_the_chip_is_the_authority(void)
         v9x_u16 without = v9x_d3d_mode_resolve(request, V9X_FALSE);
         v9x_u16 with = v9x_d3d_mode_resolve(request, V9X_TRUE);
 
-        D3CHECK(v9x_d3d_mode_advertises(without) == V9X_FALSE);
+        if (request == V9X_D3D_REQUEST_SOFTWARE) {
+            /* The one request that advertises Direct3D on a card with no 3D
+             * engine, because the rasterizer is what serves it. Every other
+             * value still obeys "the chip is the authority". */
+            D3CHECK(v9x_d3d_mode_advertises(without) == V9X_TRUE);
+        } else {
+            D3CHECK(v9x_d3d_mode_advertises(without) == V9X_FALSE);
+        }
         if (request == V9X_D3D_REQUEST_DISABLED ||
-            request == V9X_D3D_REQUEST_SOFTWARE ||
             request == V9X_D3D_REQUEST_HYBRID ||
             request == V9X_D3D_REQUEST_OFFLOAD) {
             D3CHECK(v9x_d3d_mode_advertises(with) == V9X_FALSE);
@@ -137,6 +146,8 @@ static void test_state_text_is_stable(void)
                    "user-disabled") == 0);
     D3CHECK(strcmp(v9x_d3d_mode_text(V9X_D3D_STATE_UNIMPLEMENTED),
                    "mode-unimplemented") == 0);
+    D3CHECK(strcmp(v9x_d3d_mode_text(V9X_D3D_STATE_SOFTWARE),
+                   "software") == 0);
     D3CHECK(strcmp(v9x_d3d_mode_text((v9x_u16)9u), "unknown") == 0);
 
     /* Distinct and non-empty, including against the unknown fallback: two
@@ -146,12 +157,12 @@ static void test_state_text_is_stable(void)
         v9x_u16 left;
         v9x_u16 right;
 
-        for (left = 0u; left <= 3u; ++left) {
+        for (left = 0u; left <= 4u; ++left) {
             const char *left_text = v9x_d3d_mode_text(left);
 
             D3CHECK(left_text[0] != '\0');
             D3CHECK(strcmp(left_text, "unknown") != 0);
-            for (right = (v9x_u16)(left + 1u); right <= 3u; ++right) {
+            for (right = (v9x_u16)(left + 1u); right <= 4u; ++right) {
                 D3CHECK(strcmp(left_text, v9x_d3d_mode_text(right)) != 0);
             }
         }

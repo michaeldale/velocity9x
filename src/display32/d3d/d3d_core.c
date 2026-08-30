@@ -50,6 +50,20 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void)
     if (v9x_hal == 0 || (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul) {
         return 0;
     }
+    /*
+     * Mode first, chip second.
+     *
+     * The software engine is selected by capability, not by engine_type,
+     * because the whole point of it is to serve a chip whose engine_type is
+     * NONE. Testing it before the chip means a card with an S3D unit can also
+     * be asked for the rasterizer - which is what "Software" in the settings
+     * page means on a ViRGE, and is how a game that misbehaves through the
+     * narrow S3D path gets a second option.
+     */
+    if ((v9x_hal->engine.engine_caps &
+         V9X_DD_ENGINE_CAP_D3D_SOFTWARE) != 0ul) {
+        return &v9x_d3d_engine_soft;
+    }
     if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         return &v9x_d3d_engine_virge;
     }
@@ -1035,9 +1049,8 @@ DWORD __stdcall V9xD3dRenderPrimitive(
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
     exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
     tl = data != 0 ? v9x_d3d_surface_lcl(data->lpTLBuf) : 0;
-    (void)v9x_engine_validate_status();
     if (ops != 0 && context != 0 && exe != 0 && exe->lpGbl != 0 && tl != 0 &&
-        tl->lpGbl != 0 && v9x_engine_status_validated() &&
+        tl->lpGbl != 0 && ops->ready() &&
         data->diInstruction.bOpcode == 3u &&
         data->diInstruction.bSize >= sizeof(V9X_D3DTRIANGLE) &&
         data->diInstruction.wCount <= V9X_D3D_MAX_BATCH_TRIANGLES) {
@@ -1139,8 +1152,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
                         : 0ul);
     v9x_fpu_save(&fpu);
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    (void)v9x_engine_validate_status();
-    if (ops != 0 && context != 0 && v9x_engine_status_validated() &&
+    if (ops != 0 && context != 0 && ops->ready() &&
         data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
         data->VertexType == V9X_D3DVT_TLVERTEX &&
         data->lpvVertices != 0 && data->dwNumVertices == 3ul) {
@@ -1174,8 +1186,7 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                     data != 0 ? (DWORD)data->lpvData : 0ul);
     v9x_fpu_save(&fpu);
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    (void)v9x_engine_validate_status();
-    if (ops != 0 && context != 0 && v9x_engine_status_validated() &&
+    if (ops != 0 && context != 0 && ops->ready() &&
         data->lpvData != 0) {
         cursor = (BYTE *)data->lpvData;
         ok = 1;
@@ -1302,6 +1313,26 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
  */
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void)
 {
+    /*
+     * This can now select, and the comment above is the record of why it could
+     * not before. The 16-bit side stamps engine_caps in v9x_dd_block(), which
+     * runs on the DDGET32BITDRIVERNAME escape and therefore strictly before
+     * DriverInit - so the software capability is readable here where
+     * engine_type still is not.
+     *
+     * Only the software bit is tested. Selecting the chip's engine on
+     * engine_type remains impossible at this point and remains the reason this
+     * function exists separately from v9x_d3d_engine(): the descriptor's
+     * control window and type are filled by the later framebuffer refresh.
+     * The fallback is the binary's one hardware engine, which is exactly the
+     * pre-split behaviour and is clamped out by the 16-bit side for a family
+     * that does not claim D3D.
+     */
+    if (v9x_hal != 0 &&
+        (v9x_hal->engine.engine_caps &
+         V9X_DD_ENGINE_CAP_D3D_SOFTWARE) != 0ul) {
+        return &v9x_d3d_engine_soft;
+    }
     return &v9x_d3d_engine_virge;
 }
 

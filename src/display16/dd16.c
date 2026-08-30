@@ -287,6 +287,38 @@ static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
     shared->mode_count = (DWORD)chosen;
 }
 
+/*
+ * The engine capability word, resolved from the chip and the Direct3D mode.
+ *
+ * Split out of v9x_dd_refresh_framebuffer so it can also run at block
+ * allocation, which is before DriverInit. Both callers must agree, so there is
+ * one copy of the rule rather than two that can drift.
+ */
+static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
+{
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    DWORD control_base = 0ul;
+    DWORD aperture_bytes = 0ul;
+    DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
+    DWORD engine_caps = 0ul;
+
+    if (device != 0 && device->fill_engine_descriptor != 0) {
+        device->fill_engine_descriptor(V9xLinearBase(), &control_base,
+                                       &aperture_bytes, &engine_type,
+                                       &engine_caps);
+        shared->engine.flags |= V9X_DD_ENGINE_VALID;
+    }
+    if (v9x_d3d_mode_advertises(v9x_dd_d3d_state) == V9X_FALSE) {
+        engine_caps &= ~V9X_DD_ENGINE_CAP_D3D;
+    }
+    if (v9x_dd_d3d_state == V9X_D3D_STATE_SOFTWARE) {
+        engine_caps |= V9X_DD_ENGINE_CAP_D3D |
+                       V9X_DD_ENGINE_CAP_D3D_SOFTWARE;
+        shared->engine.flags |= V9X_DD_ENGINE_VALID;
+    }
+    shared->engine.engine_caps = engine_caps;
+}
+
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
 {
     WORD selector;
@@ -310,6 +342,23 @@ static V9X_DD_SHARED FAR *v9x_dd_block(void)
     v9x_dd_shared->dwSize = sizeof(V9X_DD_SHARED);
     v9x_dd_shared->abi = V9X_DD_SHARED_ABI;
     v9x_dd_fill_modes(v9x_dd_shared);
+    /*
+     * Stamp the engine capabilities here, before DriverInit rather than after.
+     *
+     * This function runs on the DDGET32BITDRIVERNAME escape, which is where
+     * DDRAW learns the name of V9XHAL.DLL - so it is strictly before
+     * DriverInit, and the framebuffer refresh that used to be the only writer
+     * of this field runs strictly after. That ordering is why
+     * v9x_d3d_publish_engine() could not select an engine: at publish time
+     * engine_caps was zero, and selecting on it published nothing at all.
+     *
+     * Only the capability word and the valid flag are stamped. The control
+     * window, aperture size and engine_type still come from the full refresh,
+     * because those describe a mapping this side has not made yet. What the
+     * 32-bit HAL needs at DriverInit is not "where is the engine" but "which
+     * engine am I publishing for", and that is a capability question.
+     */
+    v9x_dd_stamp_engine_caps(v9x_dd_shared);
     v9x_dd_trace_good("shared-ready");
     return v9x_dd_shared;
 }
@@ -410,6 +459,35 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.engine_caps = 0ul;
         shared->engine.flags = 0ul;
     }
+
+    /*
+     * The software rasterizer serves Direct3D on any chip, so this is the one
+     * place a capability is added rather than taken away - and it is outside
+     * the descriptor branch above on purpose.
+     *
+     * Four of the six families supply no fill_engine_descriptor at all and
+     * take the else arm, which zeroes everything. Those are exactly the cards
+     * this mode exists for. Stamping the capability inside the if would have
+     * made software Direct3D reachable only on the two chips that least need
+     * it, and the symptom would have been a mode that silently did nothing on
+     * a Trio64 or a tier-0 card.
+     *
+     * VALID is set with it because the 32-bit selector tests that flag before
+     * anything else. It means "the engine descriptor has been filled in", and
+     * for a software engine this is that filling-in: engine_type stays NONE
+     * because no chip engine is being described.
+     *
+     * It is not the "a setting cannot grant a capability" rule being broken:
+     * that rule is about silicon, and the thing granting this one is code in
+     * this driver that implements it. CAP_D3D goes on with it so the clamp in
+     * V9xDdCreateDriverObject keeps publishing the Direct3D tables.
+     */
+    if (v9x_dd_d3d_state == V9X_D3D_STATE_SOFTWARE) {
+        shared->engine.engine_caps |= V9X_DD_ENGINE_CAP_D3D |
+                                      V9X_DD_ENGINE_CAP_D3D_SOFTWARE;
+        shared->engine.flags |= V9X_DD_ENGINE_VALID;
+    }
+
     shared->engine.io_base = 0ul;
     shared->engine.crtc_index_port = 0ul;
     /* fault_inject is deliberately NOT cleared here. This runs on every

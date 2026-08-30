@@ -293,15 +293,21 @@ something mode 1 can promise on its own.
 
 ## Mode 2 - Software rasterizer
 
-Status: **parked, 2026-08-30, at a known starting line.** The seam has been
-read and the plan corrected (see the box near the top); the mode plumbing and
-the `Direct3D=2` value already exist and resolve to `mode-unimplemented` on a
-guest. Nothing else is written. The next actor picks up at step 4 of the work
-order below, and step 5 is what proves steps 3 and 4 were done right.
+Status: **steps 3, 4 and 5 are done and measured. Step 6 - the rasterizer
+itself - is where the next work starts.**
 
-Parked rather than abandoned because the priority moved to mode 3, and because
-mode 3 turned out to need an instrument neither mode has - see the note at the
-head of mode 3.
+A Trio64, which has no 3D engine, now enumerates a Direct3D HAL device,
+creates it and puts pixels on the screen under `Direct3D=2`
+([decision](../decisions/2026-08-30-software-d3d-path-proven.md)). The three
+ViRGE gates named in the correction above are out of the chip-neutral path and
+behind an appended `ready` hook, the mode reaches the 32-bit side as
+`V9X_DD_ENGINE_CAP_D3D_SOFTWARE` with no ABI change, and the ViRGE's own ladder
+is unchanged by the move.
+
+What exists is not a rasterizer: `draw_triangles` fills each triangle's
+bounding box with a flat colour, and `describe_caps` advertises nothing else.
+That is step 5 doing its job - everything the rasterizer would otherwise have
+had to debug at the same time is now known to work.
 
 The substantial one, and the one that changes what the driver is: Direct3D on
 the Trio32/64, on ATI, and on generic VESA, none of which have any today.
@@ -511,13 +517,13 @@ would score identically. FR is an integration test, not a correctness one.
 3. ~~Decide the mode plumbing (shared with mode 1) and land it.~~ **Done** -
    mode 1 landed it, and `Direct3D=2` already resolves to
    `mode-unimplemented` and advertises nothing, measured on the Trio64.
-4. Move all three chip gates behind the engine vtable: the selector's
+4. ~~Move all three chip gates behind the engine vtable~~ **Done.** The selector's
    `V9X_DD_ENGINE_VALID` test, `v9x_engine_status_validated()` on the three
    draw entry points, and the unconditional `v9x_engine_validate_status()`
    beside them. This is the whole of the core change, and the correction at
    the top of this document is why it is one step rather than the half-step
    the old wording implied.
-5. **Prove the path before writing any maths.** A stub engine whose
+5. ~~**Prove the path before writing any maths.**~~ **Done, 2026-08-30.** A stub engine whose
    `draw_triangles` fills the triangle's bounding box with a flat colour, wired
    in behind `Direct3D=2`, and run on the Trio64 guest. If a coloured rectangle
    appears where a triangle was asked for, then the selector, the three gates

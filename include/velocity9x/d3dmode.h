@@ -63,6 +63,18 @@
 #define V9X_D3D_STATE_NONE          ((v9x_u16)1u)
 #define V9X_D3D_STATE_DISABLED      ((v9x_u16)2u)
 #define V9X_D3D_STATE_UNIMPLEMENTED ((v9x_u16)3u)
+/*
+ * The CPU rasterizer serves Direct3D, whatever the chip is.
+ *
+ * The one state that advertises Direct3D on a card with no 3D engine, and so
+ * the one exception to "the chip is the authority" that every other value in
+ * this file obeys. It is not an exception to the rule that a capability must
+ * be implemented before it is advertised: what makes it legitimate is that
+ * something in the driver genuinely serves the call. Appended after
+ * UNIMPLEMENTED rather than inserted, so no stored or logged state code
+ * changes meaning.
+ */
+#define V9X_D3D_STATE_SOFTWARE      ((v9x_u16)4u)
 
 /*
  * Resolve the setting against the chip.
