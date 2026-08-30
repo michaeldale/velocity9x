@@ -27,9 +27,18 @@ Direct3D is served:
 | 3 | **Hybrid** | The software rasterizer, with the 2D engine taking the work it is actually good at: clears, colour expansion, moving finished frames. | Trio64 and any other target with a blitter but no 3D |
 | 4 | **Offload** | A Voodoo2 renders; windowed frames come back over PCI into the primary card's framebuffer, fullscreen uses the Voodoo2's own DAC through the VGA pass-through. | A period 2D + 3dfx pairing |
 
-**Near-term scope is modes 1 and 2.** Mode 3 is a measurement away from being
-plannable and mode 4 is a research project; both are recorded below so the
-early work does not paint them out, and neither is being started.
+**Where this stands, 2026-08-30.** **Mode 1 is done, released in 0.6.5 and
+measured on three chips.** Mode 2 is **parked at a known starting line** - the
+plumbing exists, the seam has been read and the plan corrected, no rasterizer
+is written. **Mode 3 is the current direction**, its first deliverable
+(`DDBLT_DEPTHFILL`) landed, and it is now blocked on an instrument rather than
+on a design: see its section. Mode 4 remains a research project with no
+confirmed target.
+
+That ordering changed from "near-term scope is modes 1 and 2" and the reason is
+worth keeping: mode 3 was described here as "a measurement away from being
+plannable", and doing its first deliverable proved the measurement is the hard
+part. The instrument, not the rasterizer, is what the next work builds.
 
 The ViRGE's existing hardware path is not one of these four. It stays what it
 is - the default on that card - and the selector chooses among alternatives to
@@ -284,6 +293,16 @@ something mode 1 can promise on its own.
 
 ## Mode 2 - Software rasterizer
 
+Status: **parked, 2026-08-30, at a known starting line.** The seam has been
+read and the plan corrected (see the box near the top); the mode plumbing and
+the `Direct3D=2` value already exist and resolve to `mode-unimplemented` on a
+guest. Nothing else is written. The next actor picks up at step 4 of the work
+order below, and step 5 is what proves steps 3 and 4 were done right.
+
+Parked rather than abandoned because the priority moved to mode 3, and because
+mode 3 turned out to need an instrument neither mode has - see the note at the
+head of mode 3.
+
 The substantial one, and the one that changes what the driver is: Direct3D on
 the Trio32/64, on ATI, and on generic VESA, none of which have any today.
 
@@ -526,7 +545,32 @@ chip-neutral core, and step 5 is what says they were done right.
 
 ------------------------------------------------------------------------
 
-## Mode 3 - Hybrid, deferred
+## Mode 3 - Hybrid
+
+Status: **the current direction, 2026-08-30, and blocked on measurement rather
+than on code.**
+
+`DDBLT_DEPTHFILL` was mode 3's first deliverable and it is done
+([decision](../decisions/2026-08-30-ddblt-depthfill.md)). What it produced was
+not a win but an argument: the same change gains 22-36% on two scenes, loses
+38% on a third, leaves the composite flat, and **nothing available could say
+why**. Final Reality returns four composite numbers; it cannot separate "the
+clear is slow" from "the clear interferes with queued 3D work", and answering
+even that much took three full benchmark runs, a hand-built control HAL and a
+callback-counting trick.
+
+Every remaining question in this section is of that shape. Is a per-span blit
+cheaper than a CPU loop, and above what span width? Does colour expansion pay?
+Does a screen-to-screen present beat the CPU? Those are per-operation cost
+questions, and the section below already warns that assuming an answer is
+"the same class of mistake as assuming a FIFO could supply 18 slots when it
+reports 16".
+
+**So mode 3's real blocker is an instrument, not a design.**
+`C:\everything\dispbench` is that instrument and is at stage 1 of 7; its
+stage 2 and 3 are exactly the per-operation timing harness this needs. The
+scoping for that, and for the survey/crowdsourcing expansion proposed alongside
+it, is in [`dispbench-as-the-measurement-instrument.md`](dispbench-as-the-measurement-instrument.md).
 
 The idea: the software rasterizer, with the 2D engine doing the parts it is
 good at. On a Trio64 that engine is the 8514/A block already driving
