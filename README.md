@@ -430,7 +430,11 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
   16 bpp at all yet, and nothing goes above 1280x1024.
 - **No hardware acceleration above 16 bpp.** Both S3 blitters decline at 24 and
   32 bpp and the CPU fallback serves those depths, so DirectDraw fills and blits
-  are software there. Direct3D is 16-bpp only.
+  are software there. Direct3D is 16-bpp only. This is a limit of this driver
+  rather than of the chip: XFree86's S3V driver accelerates 32 bpp by running
+  the engine in 16-bpp mode over the same rectangle at double width, which is a
+  documented route to lifting it that nothing here has tried
+  ([issue](docs/issues/2026-08-30-virge-1024x768x32-xfree86-limit.md)).
 - **DirectDraw low-resolution modes are unreliable.** 640x400 is reachable
   from GDI but not from `SetDisplayMode`, and the 320x200/320x240 ModeX path
   reports success then fails in use. Applications configured for those modes

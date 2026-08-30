@@ -83,6 +83,27 @@ silicon analogue. On silicon the CPU arm gets worse and the engine arm's
 advantage grows. No physical ViRGE is recorded on this project, so that cannot
 be checked.
 
+**Two claims from other people's ViRGE drivers are recorded as issues rather
+than acted on.** XFree86's S3V documentation states that "32bpp is limited to a
+width of < 1024 pixels. (1024x768 is not possible, even if you have the memory.)
+This is a hardware limit of ViRGE chips" - and this driver ships 1024x768x32 on
+both S3 chips. Four guest runs and a host-side `PrintWindow` capture say the
+mode is clean, which is good evidence against a driver fault and none at all
+against a silicon limit 86Box need not model; this driver also sets modes
+through the VBE BIOS rather than programming the CRTC as XFree86 does, so the
+limit could be real and not reached this way. No physical ViRGE exists here to
+settle it. The same page describes how XFree86 accelerates 32 bpp despite the
+chip having no 32-bpp engine support - run the engine in 16-bpp mode over the
+same rectangle at double width - which is a shipped-driver route to lifting
+this driver's "no acceleration above 16 bpp" limitation, and is now recorded as
+such. Both in `docs/issues/2026-08-30-virge-1024x768x32-xfree86-limit.md`.
+
+The XFree86 and X.org `fifo_aggressive` / `fifo_moderate` /
+`fifo_conservative` options are **not** about the engine command FIFO this
+driver waits on - they set the threshold at which the *pixel* FIFO takes over
+the internal memory bus to refill scanout. Worth stating because the names
+invite the confusion.
+
 **One thing S3's driver does that this one does not**, found in the same
 reading: it prefixes every blit with a dummy 1x1 screen-to-screen blit, "in
 case we were called right after a 3D command". A depth clear is exactly that
