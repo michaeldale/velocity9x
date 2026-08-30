@@ -48,12 +48,41 @@ tree and exercised.
 `draw_triangles`. `d3d_core.c` holds everything chip-neutral - context pool,
 texture handle table, render-state bookkeeping, software clipper, all sixteen
 DDHAL entry points - and `d3d_virge.c` is the only file in the D3D path that
-writes a hardware register. **A software rasterizer is a second
-`V9X_D3D_ENGINE_OPS` and nothing else.** That split
+writes a hardware register. That split
 ([2026-08-29](../decisions/2026-08-29-d3d-core-engine-split.md)) was justified
 on the grounds that a second engine was coming and would otherwise have to
 move the seam. This is that second engine, arriving in software rather than as
 3dfx.
+
+> **Correction, 2026-08-30.** This section used to say "a software rasterizer
+> is a second `V9X_D3D_ENGINE_OPS` and nothing else". That is wrong, and it is
+> wrong in the direction that costs a session: **three chip-specific gates sit
+> in the chip-neutral draw path**, and on any card but the ViRGE they would let
+> a software engine resolve, publish caps, accept every call and draw nothing,
+> with every HRESULT reporting success. Read before writing a rasterizer:
+>
+> 1. `v9x_d3d_engine()` (`d3d_core.c:50`) requires `V9X_DD_ENGINE_VALID`, which
+>    only a chip with a `fill_engine_descriptor` hook sets - so the VBE, both
+>    ATI and the Matrox devices never get past it. Already recorded under mode
+>    2 below.
+> 2. `v9x_engine_status_validated()` gates **all three** Direct3D draw entry
+>    points (`d3d_core.c:1040`, `:1143`, `:1178`). It lives in
+>    `engines\eng_s3_virge.c` and resolves through `v9x_engine_ready()`, which
+>    tests `engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX` **literally**, plus
+>    a non-zero control window and a mapped MMIO aperture. A Trio64 fails it
+>    even though it sets `V9X_DD_ENGINE_VALID`.
+> 3. `v9x_engine_validate_status()` is called unconditionally before each of
+>    those three draws and pokes ViRGE MMIO to do it.
+>
+> All three are 2D-engine concepts that predate the D3D split and were correct
+> while one chip had the only D3D path. A software engine is subject to none of
+> them: it needs no MMIO window, no FIFO and no status register. They have to
+> become engine-vtable questions - "is this engine ready to draw" asked of the
+> `V9X_D3D_ENGINE_OPS`, not of the ViRGE - before any rasterizer output can be
+> believed.
+>
+> This is the same shape as the publish-time defect recorded below: the failure
+> mode is silence, not an error, and it would read as a bug in the rasterizer.
 
 `draw_triangles(context, vertices, triangle_count)` is a batch entry point on
 purpose, and the reason was mode 4: the ViRGE is immediate-mode and would take
@@ -460,22 +489,40 @@ would score identically. FR is an integration test, not a correctness one.
 2. Settle where the render target lives, and whether the driver can decide it.
    If the answer is system memory, a system-to-video presentation path is part
    of mode 2 and `v9x_cpu_copy()` cannot serve it as written.
-3. Decide the mode plumbing (shared with mode 1) and land it.
-4. Invert the engine selector so it tests the mode before
-   `V9X_DD_ENGINE_VALID`, which is what makes the tier-0 and ATI families
-   reachable at all.
-5. Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
-   interpolation. Red then green, per stage.
-6. Depth: 16-bit, compare and write mask, host-tested against the same eight
+3. ~~Decide the mode plumbing (shared with mode 1) and land it.~~ **Done** -
+   mode 1 landed it, and `Direct3D=2` already resolves to
+   `mode-unimplemented` and advertises nothing, measured on the Trio64.
+4. Move all three chip gates behind the engine vtable: the selector's
+   `V9X_DD_ENGINE_VALID` test, `v9x_engine_status_validated()` on the three
+   draw entry points, and the unconditional `v9x_engine_validate_status()`
+   beside them. This is the whole of the core change, and the correction at
+   the top of this document is why it is one step rather than the half-step
+   the old wording implied.
+5. **Prove the path before writing any maths.** A stub engine whose
+   `draw_triangles` fills the triangle's bounding box with a flat colour, wired
+   in behind `Direct3D=2`, and run on the Trio64 guest. If a coloured rectangle
+   appears where a triangle was asked for, then the selector, the three gates
+   above, caps publication, context creation and the draw call all work on a
+   card with no 3D engine - and every later failure is the rasterizer's.
+   Without this the first rasterizer doubles as the first test of six other
+   things, which is how the depth path lost two weeks.
+6. Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
+   interpolation. Red then green, per stage. It writes into a caller-supplied
+   surface - pointer, pitch, width, height - so it is pure arithmetic and does
+   not care whether that memory is VRAM or a system-memory shadow. That keeps
+   step 1's measurement out of the rasterizer's design entirely: it decides
+   which pointer is passed, not how anything is written.
+7. Depth: 16-bit, compare and write mask, host-tested against the same eight
    comparison functions the ViRGE path implements.
-7. Texture sampling: point, then bilinear.
-8. `describe_caps` publishing only what steps 5-7 verified.
-9. Probe ladder against the software engine on a real guest.
-10. Final Reality on BARRY - the first time that machine has run a 3D
+8. Texture sampling: point, then bilinear.
+9. `describe_caps` publishing only what steps 6-8 verified.
+10. Probe ladder against the software engine on a real guest.
+11. Final Reality on BARRY - the first time that machine has run a 3D
     benchmark at all. An integration check, not a correctness one; see the
     note above about what its score actually measures.
 
-Steps 5 to 8 need no guest.
+Steps 6 to 9 need no guest. Steps 3 and 4 are the only ones that touch the
+chip-neutral core, and step 5 is what says they were done right.
 
 ------------------------------------------------------------------------
 
