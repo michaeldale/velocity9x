@@ -322,8 +322,15 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Turned off in SYSTEM.INI ([Velocity9x] Direct3D=1)");
         } else if (lstrcmpiA(direct3d_mode, "mode-unimplemented") == 0) {
+            /* Short enough to fit the selector on the property page, which is
+             * where this string is rendered on a chip with no 3D engine: the
+             * control is 166 dialog units and the previous wording, "Requested
+             * mode is not in this build; none advertised", clipped at "none
+             * adver" on the Trio64 guest. That the mode advertises nothing is
+             * already said by the greyed control and by the report line, which
+             * carries the request number too. */
             v9x_append(status->direct3d, sizeof(status->direct3d),
-                       "Requested mode is not in this build; none advertised");
+                       "Requested mode is not in this build");
         } else if (lstrcmpiA(direct3d, "hardware-s3d") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Hardware (S3D triangle engine)");

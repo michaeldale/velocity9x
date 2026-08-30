@@ -157,13 +157,46 @@ which held the previous copy pushed with the package. Launch
 
 - **Whether Windows 9x picks a second GPU's Direct3D** once this one stops
   advertising. That was mode 1's stated motivation and this guest has one card.
-- **The disabled-control path.** On a chip with no 3D engine the combo is meant
-  to show the card's answer and be greyed. That branch is written and the host
-  tests cover the state it reads, but no Trio64 or tier-0 guest has opened the
-  page.
-- **Every other family.** Only the ViRGE was run. The `vbe`, `ati` and
-  `matrox-m2` families resolve `none` by construction, which is asserted in the
-  host tests and not on hardware.
+- **Every other family.** The `vbe`, `ati` and `matrox-m2` families resolve
+  `none` by construction, which is asserted in the host tests and not on
+  hardware. The Trio64 below covers the shape they share.
+
+## The disabled path, on a chip with no 3D engine
+
+`Win98SE-Trio64` (86Box, S3 Trio32/64 86C764, 4 MiB, 800x600x16, host port
+9871), same `s3` family binary, same build. The Trio64 is in a D3D-capable
+family and declares no D3D itself, which is the case the selector has to get
+right without any help from the family manifest.
+
+| `SYSTEM.INI` | `Direct3DMode` | The control |
+|---|---|---|
+| absent | `none` | greyed, "Not advertised on this chip" |
+| `Direct3D=1` | `none` | greyed |
+| `Direct3D=2` | `mode-unimplemented` | greyed, "Requested mode is not in this build" |
+| `Direct3D=0` | `none` | greyed |
+
+`Stage=enable-ok` throughout.
+
+Two results worth separating. **A setting cannot change what the card cannot
+do**: `Direct3D=1` on a Trio64 reports `none`, not `user-disabled` - the chip
+is the authority, which is the property the host test asserts over the whole
+request space and this is it on a guest. And **an unimplemented mode reports
+itself even here**: `Direct3D=2` gives `mode-unimplemented`, not `none`,
+because software, hybrid and offload exist precisely for a card with no 3D
+engine and answering them with the card's answer would be the wrong report the
+day one of them lands. That ordering - unwritten modes tested before chip
+capability - is the one non-obvious line in `v9x_d3d_mode_resolve`, and it is
+now measured rather than argued.
+
+### One thing the run changed
+
+The `mode-unimplemented` wording clipped. "Requested mode is not in this build;
+none advertised" is longer than the 166-dialog-unit selector and rendered as
+"...none adver" on the guest. Shortened to "Requested mode is not in this
+build": that the mode advertises nothing is already said by the greyed control
+and by the report line, which carries the request number too. Nothing but
+looking at the guest would have caught it - the string fits every buffer it
+passes through.
 
 ## Guest left as
 

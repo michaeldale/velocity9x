@@ -4,7 +4,11 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.6.5 - 2026-08-30
+
+**Direct3D can be turned off from Display Properties.** One control, backed by
+guest runs on three chips rather than by a code reading. Nothing else in this
+release changes what the driver draws.
 
 **A SYSTEM.INI key now decides whether the driver advertises Direct3D at all.**
 `[Velocity9x] Direct3D=1` clears `V9X_DD_ENGINE_CAP_D3D` before the engine
@@ -81,6 +85,22 @@ Apply, reboot, `D3DHalFound=0` / `D3DDeviceCount=3` / `TexFormatCount=0`;
 select Hardware, Apply, reboot, back to `1` / `4` / `2` with no functional key
 differing from the baseline. The page fits at 640x480 with OK/Cancel/Apply on
 screen, and the dialog is 211 dialog units before and after.
+
+**The no-3D path was run on `Win98SE-Trio64` and `Win98SE-Mach64VT2`**, the
+second having no engine descriptor at all, so `engine.flags` never gets
+`V9X_DD_ENGINE_VALID`. Absent, `0` and `1` all report `none` - a setting cannot
+change what the card cannot do - while `2` reports `mode-unimplemented`,
+because the unwritten modes exist for exactly that card and answering them with
+the card's answer would be the wrong report the day one of them lands. The
+control is greyed on all four, `Stage=enable-ok` throughout, and DirectDraw
+stays fully working through fill, copy, overlap and `RestoreHr`. That leaves
+`vbe` as the only family not booted with this change; it takes the identical
+code path to `ati` and differs only in which chip module is linked.
+
+Those runs also shortened the `mode-unimplemented` wording, which was longer
+than the 166-dialog-unit selector and rendered as "...none adver" on the guest.
+Nothing but looking at a guest would have caught it - the string fits every
+buffer it passes through.
 
 **A fourth probe hygiene rule: one `V9XDDP.EXE` run per boot.** A second run in
 the same boot reported `ExitCode=0` and `Result=COMPLETE` and three false

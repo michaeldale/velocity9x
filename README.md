@@ -12,7 +12,7 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.6.1** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 0.6.5** — see [CHANGELOG.md](CHANGELOG.md).
 
 > **0.6.0 is the release where this stops being an engineering bring-up and
 > becomes a working driver.** The full stack — display driver, DirectDraw HAL,
@@ -79,6 +79,12 @@ target gets:
   hardware path through the S3D engine: textured, Gouraud-shaded,
   perspective-correct triangles with mipmapping, trilinear filtering, alpha
   blending, specular highlights, fog and Z testing.
+- **A Direct3D on/off switch** on the Velocity9x page in Display Properties.
+  Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
+  enumerates no hardware device and applications fall back to Microsoft's
+  software rasterizers — useful on a machine with a second graphics card, or
+  when a game misbehaves through the narrow S3D path. It takes effect after a
+  restart, and DirectDraw itself is unaffected either way.
 - **A Velocity9x page inside Display Properties** reporting the detected
   adapter, PCI ID, installed video memory, active mode and clock, which
   acceleration paths are live, and the driver's own runtime diagnostics.
@@ -100,6 +106,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | **No** | **No** | **No** |
+| Direct3D on/off switch | Yes | Shown, disabled — nothing to switch | same | same |
 | GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
 
