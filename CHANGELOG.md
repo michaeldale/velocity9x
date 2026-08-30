@@ -6,9 +6,140 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.6.5 - 2026-08-30
 
-**Direct3D can be turned off from Display Properties.** One control, backed by
-guest runs on three chips rather than by a code reading. Nothing else in this
-release changes what the driver draws.
+**A Direct3D selector, a depth-clear path, and the measurements behind both.**
+Direct3D can now be turned off from Display Properties, and depth-buffer clears
+go through the blitter instead of a CPU pass over the aperture. Both are backed
+by guest runs rather than by code reading — and the depth-clear measurement did
+not come out the way the plan predicted, which is recorded below rather than
+smoothed over: it is a trade-off that leaves Final Reality's composite score
+unchanged, not the improvement it was argued to be. It is kept because S3's own
+ViRGE driver in the Windows 98 DDK serves the same call, and because every bias
+in the environment it was measured in favours the arm it lost to.
+**`DDBLT_DEPTHFILL` is served, and a controlled A/B says it is a trade-off
+rather than a win.** Nothing in `src/` handled it and `DDCAPS_BLTDEPTHFILL` was
+not advertised, so DirectDraw locked the Z buffer and wrote every word itself.
+That clear is now one blit.
+
+Final Reality on `Win86SE`, same guest and session, the only difference being
+which `V9XHAL.DLL` was installed - the control built by checking the five HAL
+sources out at the parent commit, so it is this branch minus the depth fill:
+
+| Test | No depth fill | With depth fill | Change |
+|---|---|---|---|
+| 25 pixel | 23.42 Kpolys/s | 23.35 | -0.3% |
+| Robots | 9.41 images/s | 11.54 | **+22.6%** |
+| Fill rate | 67.66 Mpixels/s | 42.09 | **-37.8%** |
+| City scene | 11.38 images/s | 15.50 | **+36.2%** |
+| **3D performance** | **1.97 marks** | **1.96** | flat |
+
+The control reproduces the previously recorded run to within 1% on every test,
+which is what makes this a measurement rather than two sessions compared; the
+depth-fill column was run twice.
+
+**Two things this refutes, both of them ours.** The Final Reality plan said the
+28.54 to 23.62 Kpolys/s drop was the cost of depth work "and partly of
+DirectDraw clearing the depth buffer on the CPU every frame", separable only by
+implementing the fill and re-running. They are separated now and **25 pixel does
+not move** - essentially none of that 17% was the clear. And the argument for
+the change was that one blit per frame must beat one CPU pass per frame. For
+two scenes it does, by a lot; for the fill-rate test it loses by a lot. A
+plausible mechanism is that the clear now waits on engine FIFO slots and
+serialises against queued S3D work where the CPU pass touched no engine at all,
+but that is a hypothesis and nothing here measures it. This is the failure mode
+the hybrid-3D plan's own "honest reading of where the wins are" warns about.
+
+**A third arm rules out the obvious fix.** Routing the clear through the
+driver's own `v9x_cpu_fill` - keeping the single callback, skipping the
+blitter - tests whether the gains came from avoiding DirectDraw's Lock/Unlock
+round trip rather than from the engine. They did not: Robots falls to 9.29 and
+City scene to 11.13, both slightly *below* the control, and the composite is
+**1.92, the worst of the three arms**. A driver-side CPU clear is worse than
+not implementing the path at all. The gains are the engine's, the fill-rate
+cost is the engine's, and the two cannot be separated by choosing a different
+fill path. 25 pixel reads 23.4 in all three arms, which is a third independent
+confirmation that the clear was never part of that figure.
+
+**It is kept, on grounds that are not this benchmark's.** S3's own ViRGE driver
+in the Windows 98 DDK advertises `DDCAPS_BLTDEPTHFILL` and handles
+`DDBLT_DEPTHFILL` in the same branch as its colour fill, from `dwFillDepth`,
+which is the design this driver reached independently - so serving it is what
+the vendor's driver for this exact chip does. And every bias in the environment
+these numbers come from favours the arm that won: 86Box's framebuffer is host
+RAM, so the CPU clear never pays the uncached-aperture cost the MTRR work
+identifies as dominant on real targets, and its shared 2D/3D command FIFO runs
+on a host thread woken by status reads, which is a scheduling artefact with no
+silicon analogue. On silicon the CPU arm gets worse and the engine arm's
+advantage grows. No physical ViRGE is recorded on this project, so that cannot
+be checked.
+
+**One thing S3's driver does that this one does not**, found in the same
+reading: it prefixes every blit with a dummy 1x1 screen-to-screen blit, "in
+case we were called right after a 3D command". A depth clear is exactly that
+case. Nothing has gone wrong here, but that is one emulated chip and 86Box need
+not model an erratum the vendor handled in software. Filed as
+`docs/issues/2026-08-30-virge-2d-after-3d-dummy-blit.md` rather than copied,
+because seven FIFO slots on every blit is a real cost and one comment is not
+evidence the fault exists on silicon.
+
+No engine code changed. A depth clear is a solid fill of a 16-bit surface, and
+`v9x_virge_fill` was already parameterised on the destination offset, that
+surface's own pitch and the bytes per pixel, taking its value from
+`bltFX.dwFillColor` - a union member sharing its DWORD with `dwFillDepth`. The
+new `v9x_depthfill_body` validates the request and hands the existing fill a
+different offset and width. It requires `DDSCAPS_ZBUFFER` and refuses system
+memory, does not consult the screen depth (a Z surface is 16-bit whatever the
+desktop is), and gets the depth width from
+`v9x_d3d_depth_bytes_per_pixel()` rather than writing a literal 2 in a
+chip-neutral file - which is the mistake the comment on `depth_bits_per_pixel`
+already records having made once. Zero from that call means the chip has no D3D
+engine, so the fill declines everywhere but the ViRGE.
+
+**`DDBLT_DEPTHFILL` is `0x02000000`, not `0x00002000`.** Its neighbours in the
+flag list suggest the latter and that is what writing it from memory produces;
+the `DDBLT_` flags are not densely packed. Both it and
+`DDCAPS_BLTDEPTHFILL` (`0x10000000`) were read out of the Win98 DDK's
+`DDRAW.H` before either was used. A wrong flag would have made the driver
+decline every depth fill while advertising a capability it never received a
+request for, and the symptom would have been "no change" rather than anything
+resembling a bug.
+
+**The fill is pixel-verified on `Win86SE`.** The probe gained a depth-fill test
+that fills a 64x64 video-memory Z surface twice and reads the words back:
+`ZDepthFillRaw=4660` (0x1234), then `ZDepthFill2Raw=43981` and
+`ZDepthFillCornerRaw=43981` (0xABCD at both the origin and 63,63),
+`ZDepthFillOk=1`. Two values because freshly allocated video memory holds
+whatever the last owner left and a single-value test passes by accident; two
+positions because a rectangle blit with the wrong pitch writes the first row
+and nothing else.
+
+**That test proves less than it looks like it proves, and this was measured
+rather than assumed.** A HAL built without any of this work - no depth-fill
+body, no cap - passes it identically: DirectDraw emulates `DDBLT_DEPTHFILL`
+when the driver declines and returns `S_OK` either way. So the test establishes
+that the fill is *correct*, not that the driver *performed* it. A path that
+returned `DDHAL_DRIVER_NOTHANDLED` on every call would pass unchanged. The
+discriminator is counting `Blt` callbacks across the two builds, and that has
+now been done.
+
+**The driver does serve it, and on the blitter.** The probe issues exactly two
+depth fills; the control build reports `CountBlt=7` / `CountBltEngine=7` and
+the depth-fill build `CountBlt=9` / `CountBltEngine=9`. So without the cap
+DirectDraw never dispatches the call to the driver at all - the control is a
+true "driver does nothing" arm - and with it, both fills reach the engine
+rather than falling through to the CPU fallback, since that counter only rises
+where `ops->fill` returned `V9X_BLT_DONE`. With `EngineFifoTimeouts`,
+`EngineIdleTimeouts` and `EngineResets` all zero, the fill-rate cost is not
+timeouts or recovery: it is the ordinary price of reserving FIFO slots and
+writing seven registers per clear, where the CPU pass it replaced touched no
+engine state at all.
+
+The new cap goes into the word DriverInit publishes for the whole binary, so it
+is a regression risk on the three families that cannot serve it. Checked on
+`Win98SE-Trio64` rather than reasoned about: the 16-bit clamp reassigns
+`dwCaps` and drops the bit with the rest, `D3DHalFound=0` and
+`D3DDeviceCount=3` as before, and DirectDraw stayed fully working through fill,
+copy, all four overlap cases and `RestoreHr`.
+
 
 **A SYSTEM.INI key now decides whether the driver advertises Direct3D at all.**
 `[Velocity9x] Direct3D=1` clears `V9X_DD_ENGINE_CAP_D3D` before the engine

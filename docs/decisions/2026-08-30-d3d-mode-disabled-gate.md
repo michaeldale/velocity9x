@@ -117,6 +117,21 @@ check the exit code, check `Build=` - do not catch it. A second run passes all
 three and still reports three false failures. **Add a fourth rule: one probe
 run per boot.**
 
+**That fourth rule is necessary and not sufficient.** On 2026-08-30 a *first*
+run after a clean boot produced a worse version of the same failure -
+`D3DZInitRaw=0` where it should be 31744, accept and reject inverted,
+`D3DZCompareOk=0` and `D3DZWriteMaskOk=0` - on a build whose only difference
+was in the depth-fill path, which runs before the ladder and cannot reach its
+registers. Rebooting and running again on the same binary gave the correct
+ladder and both flags at 1.
+
+So the depth ladder is not deterministic even as the first run of a boot. A
+single bad ladder is not evidence of a regression, and a single good one is
+not proof of correctness; treat a ladder change as a claim needing a second
+boot to confirm, in both directions. What made this legible was that the
+failure was implausible - a Blt path cannot invert a depth comparison - which
+is a weaker instrument than a rule and is why this note exists.
+
 ## The settings page, driven the same day
 
 The Direct3D row became a combo box - replacing the value label in place,

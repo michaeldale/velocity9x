@@ -180,6 +180,20 @@ typedef struct v9x_d3d_engine_ops {
 /* The engine for the chip this HAL was handed, or null when it has none. */
 const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void);
 
+/*
+ * Bytes per depth-buffer pixel for this chip, or zero when it has no D3D
+ * engine and therefore no depth buffers.
+ *
+ * For ddhal_core.c's DDBLT_DEPTHFILL, which has to know how wide a depth
+ * pixel is to fill one and is a chip-neutral file. The number belongs to the
+ * engine - depth_bits_per_pixel in the limits above - and this is how the 2D
+ * side asks for it rather than writing a literal 2. That exact literal, in
+ * that exact file, is what the comment on depth_bits_per_pixel is about: a
+ * ViRGE fact in chip-neutral code that check-tree cannot catch, because the
+ * rule it enforces forbids chip *names* and a bare constant has none.
+ */
+DWORD v9x_d3d_depth_bytes_per_pixel(void);
+
 /* The ViRGE S3D engine, in d3d_virge.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge;
 

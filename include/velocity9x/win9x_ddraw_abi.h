@@ -80,6 +80,10 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDCAPS_GDI               0x00000400ul
 #define V9X_DDCAPS_VBI               0x00080000ul
 #define V9X_DDCAPS_BLTCOLORFILL      0x04000000ul
+/* DDRAW.H:1745. Says the Blt callback serves DDBLT_DEPTHFILL; without it the
+ * runtime clears a Z buffer by locking it and writing every word from the
+ * CPU, once per frame. */
+#define V9X_DDCAPS_BLTDEPTHFILL      0x10000000ul
 #define V9X_DDSCAPS_3DDEVICE         0x00002000ul
 #define V9X_DDSCAPS_BACKBUFFER       0x00000004ul
 #define V9X_DDSCAPS_COMPLEX          0x00000008ul
@@ -126,6 +130,11 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 
 #define V9X_DDBLT_ASYNC              0x00000200ul
 #define V9X_DDBLT_COLORFILL          0x00000400ul
+/* DDRAW.H:2799. Not 0x00002000, which is what its position in the flag list
+ * suggests and what guessing it produces: the DDBLT_ flags are not densely
+ * packed and this one sits well above DDBLT_ROP. Fill the destination
+ * rectangle with bltFX.dwFillDepth. */
+#define V9X_DDBLT_DEPTHFILL          0x02000000ul
 #define V9X_DDBLT_ROP                0x00020000ul
 #define V9X_DDBLT_WAIT               0x01000000ul
 #define V9X_DDBLT_DONOTWAIT          0x08000000ul
@@ -235,6 +244,11 @@ typedef struct v9x_ddbltfx {
     DWORD dwAlphaDestConst;
     DWORD dwAlphaSrcConstBitDepth;
     DWORD dwAlphaSrcConst;
+    /* A union in DDRAW.H:223-229: dwFillColor, dwFillDepth, dwFillPixel and
+     * lpDDSPattern share this DWORD. Named for the colour fill because that
+     * is the older reader; the depth fill takes the same bytes and means
+     * dwFillDepth by them. Adding a second member here would move
+     * ddckDestColorkey and break the ABI. */
     DWORD dwFillColor;
     V9X_DDCOLORKEY ddckDestColorkey;
     V9X_DDCOLORKEY ddckSrcColorkey;

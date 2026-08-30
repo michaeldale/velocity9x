@@ -56,6 +56,25 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void)
     return 0;
 }
 
+/*
+ * How wide a depth pixel is on this chip, for the 2D side's depth fill.
+ *
+ * Resolved through v9x_d3d_engine() rather than v9x_d3d_publish_engine(),
+ * because this is asked at blit time, when the descriptor is valid and the
+ * answer must be the fitted chip's. Zero on a chip with no D3D engine, which
+ * is what makes DDBLT_DEPTHFILL decline there: a card with no depth buffers
+ * can be asked to clear one only by a caller that has gone wrong.
+ */
+DWORD v9x_d3d_depth_bytes_per_pixel(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (ops == 0 || ops->limits == 0) {
+        return 0ul;
+    }
+    return ops->limits->depth_bits_per_pixel >> 3;
+}
+
 static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
 {
     DWORD index;

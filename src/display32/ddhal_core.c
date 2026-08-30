@@ -845,12 +845,95 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * Depth fill.
+ *
+ * A depth clear is a solid fill of a 16-bit surface, so this is the colour
+ * fill with three differences and no new engine code: the destination is the
+ * Z buffer rather than the render target, the width of a pixel comes from the
+ * engine's depth format rather than from the screen mode, and the value is
+ * bltFX.dwFillDepth - the same DWORD as dwFillColor, which is why the engine
+ * and the CPU fallback both serve it unchanged.
+ *
+ * Without DDCAPS_BLTDEPTHFILL the runtime clears a Z buffer by locking it and
+ * writing every word from the CPU, once per frame, through the uncached
+ * aperture. That cost is part of the 28.54 to 23.62 Kpolys/s that Final
+ * Reality's 25-pixel figure lost when depth testing started actually
+ * happening (docs\decisions\2026-08-30-virge-depth-fifo-reservation.md).
+ *
+ * The screen depth is deliberately NOT consulted. A depth surface is 16-bit
+ * whatever the desktop is, and gating this on v9x_depth_is_blittable as the
+ * colour fill does would refuse a legitimate depth clear on an 8- or 32-bpp
+ * desktop for a reason that has nothing to do with the surface being filled.
+ */
+static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
+{
+    const DWORD allowed = V9X_DDBLT_DEPTHFILL | V9X_DDBLT_WAIT |
+                          V9X_DDBLT_DONOTWAIT | V9X_DDBLT_ASYNC;
+    DWORD bytes_per_pixel;
+    DWORD offset;
+    int wait;
+    int outcome = V9X_BLT_DECLINED;
+    const V9X_ENGINE32_OPS *ops;
+
+    if ((data->dwFlags & ~allowed) != 0ul ||
+        v9x_hal == 0 || (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        data->lpDDDestSurface == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    /* The destination has to actually be a depth surface. A caller that asks
+     * for a depth fill of the primary is asking for the screen to be filled
+     * with a Z value, and the answer to that is no rather than a rectangle of
+     * garbage. */
+    if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        (data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    bytes_per_pixel = v9x_d3d_depth_bytes_per_pixel();
+    if (bytes_per_pixel == 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (!v9x_fill_rect_valid(data, bytes_per_pixel, &offset) ||
+        (DWORD)data->rDest[2] * bytes_per_pixel >
+            (DWORD)data->lpDDDestSurface->lpGbl->lPitch) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    wait = (data->dwFlags &
+            (V9X_DDBLT_ASYNC | V9X_DDBLT_DONOTWAIT)) == 0ul;
+
+    ops = v9x_engine32();
+    if (ops != 0 && ops->validate_status()) {
+        outcome = ops->fill(data, offset, bytes_per_pixel, wait);
+    }
+    if (outcome == V9X_BLT_BUSY) {
+        data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (outcome == V9X_BLT_DONE) {
+        *engine_used = 1;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (!v9x_blt_drain(wait)) {
+        data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    v9x_cpu_fill(data, offset, bytes_per_pixel);
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
 static DWORD v9x_blt_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 {
     if (data == 0) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     data->ddRVal = V9X_DD_OK;
+    /* Tested before the source-surface split: DDBLT_DEPTHFILL carries no
+     * source, so it would otherwise fall into the colour fill, which refuses
+     * it as an unknown flag - correct, but as NOTHANDLED rather than as the
+     * fill it is. */
+    if ((data->dwFlags & V9X_DDBLT_DEPTHFILL) != 0ul) {
+        return v9x_depthfill_body(data, engine_used);
+    }
     if (data->lpDDSrcSurface != 0) {
         return v9x_srccopy_body(data, engine_used);
     }
@@ -1007,7 +1090,8 @@ DWORD __stdcall DriverInit(DWORD context)
 
     shared->info.ddCaps.dwSize = sizeof(V9X_DDCORECAPS);
     shared->info.ddCaps.dwCaps = V9X_DDCAPS_3D | V9X_DDCAPS_GDI |
-                                 V9X_DDCAPS_BLT | V9X_DDCAPS_BLTCOLORFILL;
+                                 V9X_DDCAPS_BLT | V9X_DDCAPS_BLTCOLORFILL |
+                                 V9X_DDCAPS_BLTDEPTHFILL;
     /*
      * DDCAPS_BLTCOLORFILL on its own is inert: without DDCAPS_BLT the runtime
      * never dispatches the Blt callback at all, which is why the bounded
@@ -1017,6 +1101,15 @@ DWORD __stdcall DriverInit(DWORD context)
      * docs/issues/2026-08-14-directdraw-hal-nohardware.md. dwRops[6] bit 12
      * is SRCCOPY (0xcc = 6 * 32 + 12); dwRops[7] bit 16 is PATCOPY (0xf0),
      * the ROP the colour fill implements.
+     *
+     * DDCAPS_BLTDEPTHFILL is claimed here for the whole binary, like every
+     * other cap in this word, and hidden for a chip that cannot serve it by
+     * the same two gates the D3D tables use: dd16.c narrows dwCaps for a
+     * family whose engine_caps lack D3D, and v9x_depthfill_body declines at
+     * call time when the fitted chip has no depth format. Publishing it
+     * unconditionally is safe for the same reason publishing the D3D tables
+     * is - see v9x_d3d_publish - and it cannot be chip-selected here anyway,
+     * because DriverInit runs before the 16-bit side has described anything.
      */
     shared->info.ddCaps.dwRops[6] = 0x00001000ul;
     shared->info.ddCaps.dwRops[7] = 0x00010000ul;
