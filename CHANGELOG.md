@@ -59,6 +59,17 @@ cost is the engine's, and the two cannot be separated by choosing a different
 fill path. 25 pixel reads 23.4 in all three arms, which is a third independent
 confirmation that the clear was never part of that figure.
 
+**And the fill-rate figure may not be about this chip at all.** Published
+per-cycle rates for the family put a 55 MHz ViRGE 325 at 44 Mpixels/s on
+non-textured polygons with no Z buffer, 23 with Z, and single figures for
+perspective-correct textured pixels, the DX improving only the textured path.
+Both the control's 67.74 and the depth fill's 42.09 sit above that
+non-textured, Z-disabled ceiling. Not a like-for-like comparison - Final
+Reality's `Fill rate` is its own composite and the source is a secondary one -
+but the order of magnitude says 86Box is not reproducing this part's fill
+throughput, and a 38% swing in a figure the silicon could not produce is not a
+performance result about the silicon.
+
 **It is kept, on grounds that are not this benchmark's.** S3's own ViRGE driver
 in the Windows 98 DDK advertises `DDCAPS_BLTDEPTHFILL` and handles
 `DDBLT_DEPTHFILL` in the same branch as its colour fill, from `dwFillDepth`,

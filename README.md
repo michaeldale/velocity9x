@@ -352,6 +352,14 @@ blitter — gives 23.38 / 9.29 / 62.03 / 11.13 and a composite of 1.92, the wors
 of the three. So the gains are the engine's, not the callback's, and the
 trade-off cannot be avoided by choosing a different fill path.
 
+There is also reason to doubt the fill-rate figure is about this chip at all.
+Published per-cycle rates put a 55 MHz ViRGE 325 at 44 Mpixels/s on
+*non-textured* polygons with no Z buffer, 23 with Z, and single figures for
+perspective-correct textured pixels; the DX improves only the textured path.
+Both numbers in the table above sit above that non-textured ceiling, so 86Box
+is not reproducing the real part's fill throughput, and a swing in a figure the
+silicon could not produce is not a result about the silicon.
+
 **It is kept anyway, for two reasons that are not about this benchmark.** S3's
 own ViRGE driver in the Windows 98 DDK advertises the same capability and
 handles the same flag in the same branch as its colour fill, so serving it is

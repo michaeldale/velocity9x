@@ -299,6 +299,46 @@ Read out of 86Box's ViRGE model (`build\reference-vid_s3_virge.c`):
   in synchronisation - which is the opposite of the balance on a real card,
   where the writes are posted and cross a bus.
 
+### A third-party figure suggests the fill-rate arm is emulator fantasy
+
+[A ViRGE deep dive on retro.swarm.cz](https://retro.swarm.cz/s3-virge-325-vx-dx-gx-gx2-series-of-early-3d-accelerators-deep-dive/)
+gives per-cycle rasterizer rates for the family. A 55 MHz ViRGE 325 reaches
+**44 Mpix/s on non-textured polygons with no Z buffer** - the chip's best case -
+falling to **23 Mpix/s once Z is enabled**, and to roughly **5-6 Mpix/s** for
+perspective-correct textured pixels, at 7 texture cycles per pixel. The DX
+improves the textured path to about 4 cycles per pixel with bilinear filtering,
+so call it low teens of Mpix/s textured.
+
+The runs above report Final Reality's `Fill rate` at **67.74 Mpixels/s** on the
+control and 42.09 with the depth fill. Both are above the non-textured,
+Z-disabled ceiling of the real part, and the control is several times what a DX
+should manage on a textured fill test.
+
+This is not a like-for-like comparison - FR's `Fill rate` is its own composite
+metric and that article is a secondary source rather than a databook, so the
+numbers are not directly commensurable. But the order of magnitude is the
+point: **86Box is not reproducing this chip's fill throughput, and a 38% swing
+in a figure the silicon could not produce in the first place is not a
+performance result about the silicon.** It is a third independent reason to
+treat that arm as an emulator artefact, alongside the two below.
+
+### Two things the same source corroborates
+
+- **The Z buffer is 16-bit whatever the colour depth is**, which is what
+  `depth_bits_per_pixel`, `dwZBufferBitDepths = DDBD_16` and the whole depth
+  path already assume. Assumed from the DDK sample until now; independently
+  stated here.
+- **The two MUX values in the Z-mode field are real modes**, used for
+  multi-pass rendering where the back buffer holds Z on the first pass and
+  colour on the second. `ddhal_internal.h:93` records them as "documented
+  hardware modes" this driver deliberately does not emit, on the grounds that
+  86Box treats any non-zero value as Z-off and silicon need not agree. That
+  caution was right, and the feature it was cautious about has a name.
+
+It says nothing about the dummy-blit erratum
+([issue](../issues/2026-08-30-virge-2d-after-3d-dummy-blit.md)), which remains
+the open question this evidence does not touch.
+
 And the arm this A/B favoured is the one the environment favours: 86Box's
 framebuffer is host RAM, so the CPU clear it compares against never pays the
 uncached-aperture cost that
