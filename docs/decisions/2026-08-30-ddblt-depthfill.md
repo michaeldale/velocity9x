@@ -213,15 +213,49 @@ touched no engine state at all. That is consistent with the serialisation
 hypothesis above and still does not prove it; what it does rule out is the
 engine misbehaving.
 
+## The third arm: the gains are the engine's, and a CPU clear is worse than none
+
+The obvious way to try to win the trade outright was to keep the single driver
+callback but skip the blitter - route the clear through `v9x_cpu_fill`, which is
+what the runtime's own emulation does anyway, and see whether the Robots and
+City gains came from avoiding DirectDraw's Lock/Unlock round trip rather than
+from the engine. A `V9X_DEPTHFILL_CPU_ONLY` compile switch over the engine
+attempt builds exactly that, and the counters confirm it does what it says:
+`CountBlt=9` with `CountBltEngine=7`, so the driver receives both depth fills
+and neither reaches the engine.
+
+| Test | Control, DirectDraw emulates | Driver, engine | Driver, CPU |
+|---|---|---|---|
+| 25 pixel | 23.42 Kpolys/s | 23.35 | 23.38 |
+| Robots | 9.41 images/s | **11.54** | 9.29 |
+| Fill rate | 67.66 Mpixels/s | **42.09** | 62.03 |
+| City scene | 11.38 images/s | **15.50** | 11.13 |
+| **3D performance** | **1.97 marks** | 1.96 | **1.92** |
+
+**The hypothesis is refuted.** The gains are not the callback's; they are the
+engine's. With the clear on the CPU, Robots and City scene fall back to the
+control's numbers - slightly below them - and the composite is **1.92, the
+worst of the three arms**. A driver-side CPU clear is worse than not
+implementing the path at all: it pays the callback and a CPU pass over the
+aperture, and buys nothing the runtime's emulation was not already doing.
+
+Two smaller readings. The fill rate is 62.03 against the control's 67.66, so
+about 8% of the 38% loss is present without the engine at all - the callback
+path and its `v9x_blt_drain` cost something on their own - and the remaining
+30% is the engine. And 25 pixel is 23.4 in all three arms, which is the third
+independent confirmation that the clear was never part of that figure.
+
+So the trade is not avoidable by choosing a different fill path. Either the
+engine clear is taken with its fill-rate cost, or the whole thing is left to
+the runtime. Anything better would need a rule that picks per clear - by size,
+or by what the frame did before it - which is a heuristic this evidence does
+not justify designing.
+
 ## What is not established
 - **Why the fill rate falls.** The A/B says it does, reproducibly, and the
-  counters now say the engine is doing the work without timing out. What is
-  still missing is the mechanism: whether the per-clear FIFO wait genuinely
-  stalls queued S3D work, and whether a clear issued through `v9x_cpu_fill`
-  instead - the driver's own CPU path, which skips the engine but keeps the
-  single callback - would keep the Robots and City gains without the fill-rate
-  loss. That is a one-line experiment behind a build switch and the obvious
-  next step if the trade is worth trying to win outright.
+  counters say the engine is doing the work without timing out. The mechanism
+  is still unproven; what the third arm below rules out is that the trade can
+  be avoided by moving the clear off the engine.
 - **Whether the trade is worth taking.** Two scenes gain 22-36%, one loses
   38%, the composite is flat, and the sample is one benchmark on one emulated
   chip. Nothing here says how a real title's mix of geometry and fill falls

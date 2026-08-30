@@ -47,6 +47,17 @@ serialises against queued S3D work where the CPU pass touched no engine at all,
 but that is a hypothesis and nothing here measures it. This is the failure mode
 the hybrid-3D plan's own "honest reading of where the wins are" warns about.
 
+**A third arm rules out the obvious fix.** Routing the clear through the
+driver's own `v9x_cpu_fill` - keeping the single callback, skipping the
+blitter - tests whether the gains came from avoiding DirectDraw's Lock/Unlock
+round trip rather than from the engine. They did not: Robots falls to 9.29 and
+City scene to 11.13, both slightly *below* the control, and the composite is
+**1.92, the worst of the three arms**. A driver-side CPU clear is worse than
+not implementing the path at all. The gains are the engine's, the fill-rate
+cost is the engine's, and the two cannot be separated by choosing a different
+fill path. 25 pixel reads 23.4 in all three arms, which is a third independent
+confirmation that the clear was never part of that figure.
+
 No engine code changed. A depth clear is a solid fill of a 16-bit surface, and
 `v9x_virge_fill` was already parameterised on the destination offset, that
 surface's own pitch and the bytes per pixel, taking its value from

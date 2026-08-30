@@ -345,7 +345,13 @@ gives 23.42 / 9.41 / 67.66 / 11.38 and the same `3D performance` of 1.97. So
 moving the depth clear off the CPU and onto the blitter buys Robots 22% and
 City scene 36%, costs Fill rate 38%, and leaves the composite where it was. It
 also does *not* recover any of the 25-pixel drop, which is what implementing it
-was expected to do. Why the fill rate falls is not established; see
+was expected to do.
+
+A third arm — the clear served by the driver but on the CPU rather than the
+blitter — gives 23.38 / 9.29 / 62.03 / 11.13 and a composite of 1.92, the worst
+of the three. So the gains are the engine's, not the callback's, and the
+trade-off cannot be avoided by choosing a different fill path. Why the fill rate
+falls is still not established; see
 [docs/decisions/2026-08-30-ddblt-depthfill.md](docs/decisions/2026-08-30-ddblt-depthfill.md).
 
 FR's own `Visual appearance` percentage is not quoted here. It reads the same
