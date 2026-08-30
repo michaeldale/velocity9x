@@ -84,6 +84,7 @@ $sourceNames = @(
     "src\common\vbe_cache.c",
     "src\common\edid.c",
     "src\common\mtrr.c",
+    "src\common\d3dmode.c",
     "src\common\vbe_crtc.c"
 ) + $backendSourceNames + @(
     "src\display16\display_component.c",
@@ -95,6 +96,7 @@ $sourceNames = @(
     "tests\host\test_vbe_cache.c",
     "tests\host\test_edid.c",
     "tests\host\test_mtrr.c",
+    "tests\host\test_d3dmode.c",
     "tests\host\test_vbe_crtc.c",
     "tests\host\test_main.c"
 )

@@ -6,6 +6,90 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+**A SYSTEM.INI key now decides whether the driver advertises Direct3D at all.**
+`[Velocity9x] Direct3D=1` clears `V9X_DD_ENGINE_CAP_D3D` before the engine
+descriptor is stamped into the DirectDraw shared block, and the clamp in
+`V9xDdCreateDriverObject` - which has nulled `GetDriverInfo` and both `lpD3D*`
+pointers for a family without that capability since the Trio64 shipped - does
+the rest unchanged. No 32-bit code was touched and the shared-block ABI did not
+move.
+
+**Measured on `Win86SE`**, nine probe runs across seven boots
+(`docs\decisions\2026-08-30-d3d-mode-disabled-gate.md`). On a fresh boot with
+the key set: `D3DHalFound=0`, `TexFormatCount=0`, `D3DDeviceCount=3` - Ramp,
+RGB and MMX, with no `Direct3D HAL` entry offered at all - while DirectDraw
+stays fully working, overlap cases and `RestoreHr` included. Setting the key
+back to 0, after three reboots on 1 and 2, reproduced the baseline ladder with
+**no differing `D3D*` or `Tex*` key**, texture handles included.
+
+This is mode 1 of the four in
+`docs\plans\s3-trio64-voodoo2-hybrid-3d.md`, done first because it is the only
+one that exercises the whole settings-to-published-caps chain with a back end
+that already works. The key takes the plan's own mode numbers, with 0 for the
+chip's own engine: 0 hardware (the default, and what an absent key means), 1
+disabled, 2 software, 3 hybrid, 4 offload. The last three are recognised and
+not implemented, and resolve to advertising nothing rather than silently
+falling back to hardware - a mode selector that answered "software" with the
+chip's own engine would be the same defect as advertising a capability that is
+not implemented, which this driver has already shipped once.
+
+The decision is `src\common\d3dmode.c`: pure arithmetic, no OS, no DirectDraw
+header, host-tested over the whole 16-bit request space against both values of
+"does this chip claim D3D". The property that test exists for is that no
+setting can make a card without a 3D engine advertise one. `dd16.c` reads the
+key at Enable, in the same section and by the same call as the `GdiAccel` keys,
+and `check-tree.ps1` now asserts the two readers agree on the file and the
+section and that the header still spells the mode numbers the plan does.
+
+**Two of that plan's open questions were closed by reading the tree**, and the
+plan records both with citations. `V9X_DD_ENGINE_VALID` is set only for a chip
+with a `fill_engine_descriptor` hook, which the VBE, both ATI and the Matrox
+devices do not have - so a software engine selected on `engine_type` could
+never resolve on any of the families it is meant for, and the selector will
+have to test the mode first. And the shared block is allocated and stamped on
+the `DDGET32BITDRIVERNAME` escape, before DriverInit, so there is already a
+place to put a mode where the 32-bit side can see it at publish time.
+
+**A change takes effect on restart, and the reason is not laziness.** A
+re-enable does move the driver - `Direct3DMode=` republishes and
+`TexFormatCount` drops to 0 - but DDRAW keeps offering the `Direct3D HAL`
+device it enumerated from the previous session, and every attempt to use it
+then fails with `E_NOINTERFACE`. That is worse for an application than either
+end state: it selects a hardware device and dies instead of falling back to
+`RGB Emulation`. Only a fresh boot removes the entry, so that is what the
+settings page will say.
+
+**The Display Properties page now sets it.** The Direct3D row became a combo
+box - replacing the value label in place, because the page's height budget has
+no room for a new row and the 640x480 case is the binding one. It reports the
+resolved state from a new `Direct3DMode=` key in `V9XHW.INI`, kept separate
+from the chip module's existing `Direct3D=` because it has to tell "this card
+has none" apart from "you turned it off".
+
+The list holds only the modes this build implements. Offering "Software"
+before it renders a pixel would be the same defect as publishing a Direct3D
+capability the engine does not serve, in a different surface. `Apply` stays
+greyed until the selection differs from the file, so opening the page and
+pressing `OK` writes nothing - including on a machine whose key somebody set by
+hand to a value this build does not know, which gets its own list entry rather
+than being silently replaced by the default. On a chip with no 3D engine the
+control shows the card's answer and is disabled, since no value could change
+anything.
+
+Driven on the guest at both 1024x768x16 and 640x480x16: select Disabled,
+Apply, reboot, `D3DHalFound=0` / `D3DDeviceCount=3` / `TexFormatCount=0`;
+select Hardware, Apply, reboot, back to `1` / `4` / `2` with no functional key
+differing from the baseline. The page fits at 640x480 with OK/Cancel/Apply on
+screen, and the dialog is 211 dialog units before and after.
+
+**A fourth probe hygiene rule: one `V9XDDP.EXE` run per boot.** A second run in
+the same boot reported `ExitCode=0` and `Result=COMPLETE` and three false
+failures - `D3DZWriteMaskOk`, `D3DDepthFogOk` and `D3DVertexAlphaBlendOk` all
+went 1 to 0 against a run that had just passed. Rebooting and running once more
+restored every key. The three existing rules - delete the result, check the
+exit code, check `Build=` - all pass on that bad run, so none of them catches
+it.
+
 **Hardware Z-buffering works on the ViRGE, and the reason it did not was one
 expression.** The driver had advertised depth testing since the first Direct3D
 work - `D3DPRASTERCAPS_ZTEST`, all eight compare functions, `DDBD_16`, and a

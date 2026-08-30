@@ -22,5 +22,8 @@
 #define V9X_IDC_DIRECTDRAW    2017
 #define V9X_IDC_DIRECT3D      2018
 #define V9X_IDC_MODE_SWITCH   2019
+/* The Direct3D selector. The only control on this page that changes
+ * anything; every other row is a statement of fact. */
+#define V9X_IDC_DIRECT3D_MODE 2020
 
 #endif

@@ -102,8 +102,13 @@ $required = @(
     "src\display16\display_component.c",
     "src\display16\loader.c",
     "src\display16\ddi.c",
+    "src\display16\dd16.c",
+    "src\display16\dd16.h",
     "src\display16\gdi_accel.c",
     "src\display16\gdi_accel.h",
+    "src\common\d3dmode.c",
+    "include\velocity9x\d3dmode.h",
+    "tests\host\test_d3dmode.c",
     "src\display16\win9x_display_abi.h",
     "src\display32\ddhal_internal.h",
     "src\display32\ddhal_core.c",
@@ -525,6 +530,63 @@ $queryClamp = [int]$queryClampMatch.Groups[1].Value
 if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) {
     throw ("loader.asm Stage-1 query clamp $queryClamp is outside the shared " +
            "V9X_VBE_MODE_QUERY_MAX bound.")
+}
+
+# Every SYSTEM.INI reader and writer must agree on which file and which
+# section.
+#
+# gdi_accel.c reads the GdiAccel keys, dd16.c reads the Direct3D key, and the
+# two settings surfaces read it back and write it - each from its own pair of
+# literals rather than a shared header, because the header they would share
+# would have to be reachable from src\common\d3dmode.c, which is deliberately
+# free of every OS and DirectDraw dependency. Four files, one assertion: a typo
+# in any of them would silently read defaults for ever, and the writer's typo
+# would write a key nothing reads. Nothing else in the tree would notice
+# either.
+$settingsReaders = @{
+    "src\display16\gdi_accel.c"     = @('V9X_SYSTEM_INI', 'V9X_INI_SECTION')
+    "src\display16\dd16.c"          = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
+    "tools\diag\settings_status.c"  = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
+    "tools\diag\settings_propsheet.c" = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
+}
+$settingsValues = @{}
+foreach ($reader in $settingsReaders.Keys) {
+    $readerText = Get-Content -LiteralPath (Join-Path $repoRoot $reader) -Raw
+    foreach ($name in $settingsReaders[$reader]) {
+        $match = [regex]::Match(
+            $readerText,
+            '(?m)^\s*#define\s+' + [regex]::Escape($name) + '\s+"([^"]*)"')
+        if (-not $match.Success) {
+            throw "$reader no longer defines $name as a string literal."
+        }
+        $role = if ($name -like '*SECTION*') { 'section' } else { 'file' }
+        if ($settingsValues.ContainsKey($role) -and
+            $settingsValues[$role] -cne $match.Groups[1].Value) {
+            throw ("The SYSTEM.INI $role disagrees between the two readers: " +
+                   "'$($settingsValues[$role])' against " +
+                   "'$($match.Groups[1].Value)' in $reader.")
+        }
+        $settingsValues[$role] = $match.Groups[1].Value
+    }
+}
+
+# The mode numbers the settings key accepts are the plan's mode numbers, and
+# the plan is what a settings page or a recovery batch file would be written
+# from. Assert the header still spells them the way that document does.
+$d3dModeHeader = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "include\velocity9x\d3dmode.h") -Raw
+foreach ($request in @(@('V9X_D3D_REQUEST_HARDWARE', 0),
+                       @('V9X_D3D_REQUEST_DISABLED', 1),
+                       @('V9X_D3D_REQUEST_SOFTWARE', 2),
+                       @('V9X_D3D_REQUEST_HYBRID', 3),
+                       @('V9X_D3D_REQUEST_OFFLOAD', 4))) {
+    $pattern = '(?m)^\s*#define\s+' + [regex]::Escape($request[0]) +
+               '\s+\(\(v9x_u16\)' + $request[1] + 'u\)'
+    if ($d3dModeHeader -notmatch $pattern) {
+        throw ("d3dmode.h no longer defines $($request[0]) as " +
+               "$($request[1]); the SYSTEM.INI values are a documented " +
+               "contract with docs\plans\s3-trio64-voodoo2-hybrid-3d.md.")
+    }
 }
 
 # The packaged instructions are read on the target, in Notepad, on a machine

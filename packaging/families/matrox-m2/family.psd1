@@ -94,6 +94,11 @@
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # The Direct3D back-end decision behind [Velocity9x] Direct3D.
+            # Pure policy, host-tested; dd16.c resolves it at Enable and every
+            # family publishes the result as Direct3DMode= whether or not it
+            # has a DirectDraw HAL to apply it to.
+            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }

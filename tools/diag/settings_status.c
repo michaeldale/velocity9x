@@ -10,9 +10,22 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/d3dmode.h"
 #include "velocity9x/diagpaths.h"
 
 #include "settings_status.h"
+
+/*
+ * The one setting these surfaces read from somewhere other than C:\V9XDIAG.
+ *
+ * [Velocity9x] Direct3D lives in SYSTEM.INI because that is where the 16-bit
+ * driver reads it at Enable, beside the GdiAccel keys. The same two literals
+ * are in src\display16\dd16.c and src\display16\gdi_accel.c under their own
+ * names, and scripts\check-tree.ps1 asserts all three readers agree - a typo
+ * in any one of them would silently read defaults for ever.
+ */
+#define V9X_SETTINGS_INI     "SYSTEM.INI"
+#define V9X_SETTINGS_SECTION "Velocity9x"
 
 /*
  * The family's mode list, supplied at build time from the manifest's
@@ -234,6 +247,7 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         char switching[32];
         char acceleration[40];
         char direct3d[32];
+        char direct3d_mode[32];
 
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
@@ -273,11 +287,44 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                        "Software emulation only");
         }
 
+        /*
+         * Two keys, and the second one decides.
+         *
+         * Direct3D= is the chip module's manifest word for what the silicon
+         * carries. Direct3DMode= is what the driver resolved this boot from
+         * [Velocity9x] Direct3D in SYSTEM.INI, having already masked the
+         * request against that same chip - see src\common\d3dmode.c, whose
+         * v9x_d3d_mode_text spellings these are.
+         *
+         * The mode key is read second and answered first, because the only
+         * case where the two disagree is the one worth reporting: a card that
+         * has Direct3D and a setting that turned it off. An old V9XHW.INI
+         * written before the key existed has no Direct3DMode=, and the
+         * "hardware" default below then reproduces this page's previous
+         * wording exactly.
+         */
         GetPrivateProfileStringA("Velocity9xHardware", "Direct3D",
                                  "not-advertised", direct3d,
                                  sizeof(direct3d), V9X_DIAG_HW_INI);
+        GetPrivateProfileStringA("Velocity9xHardware", "Direct3DMode",
+                                 "hardware", direct3d_mode,
+                                 sizeof(direct3d_mode), V9X_DIAG_HW_INI);
+        /* What the chip can do, and what the user last asked for. A page that
+         * offers to change the setting needs both; the sentence below cannot
+         * be reversed back into either. */
+        status->direct3d_capable =
+            lstrcmpiA(direct3d, "hardware-s3d") == 0 ? 1 : 0;
+        status->direct3d_request = (int)GetPrivateProfileIntA(
+            V9X_SETTINGS_SECTION, V9X_D3D_SETTING_KEY,
+            (INT)V9X_D3D_REQUEST_HARDWARE, V9X_SETTINGS_INI);
         status->direct3d[0] = '\0';
-        if (lstrcmpiA(direct3d, "hardware-s3d") == 0) {
+        if (lstrcmpiA(direct3d_mode, "user-disabled") == 0) {
+            v9x_append(status->direct3d, sizeof(status->direct3d),
+                       "Turned off in SYSTEM.INI ([Velocity9x] Direct3D=1)");
+        } else if (lstrcmpiA(direct3d_mode, "mode-unimplemented") == 0) {
+            v9x_append(status->direct3d, sizeof(status->direct3d),
+                       "Requested mode is not in this build; none advertised");
+        } else if (lstrcmpiA(direct3d, "hardware-s3d") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Hardware (S3D triangle engine)");
         } else {
@@ -428,6 +475,16 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                "\r\nMode switching: ");
     v9x_append(status->report, sizeof(status->report),
                status->mode_switching);
+    /* Both halves, because the sentence alone does not say what to change. A
+     * pasted report should let somebody see the SYSTEM.INI value that
+     * produced it without asking for the file as well. */
+    v9x_append(status->report, sizeof(status->report), "\r\nDirect3D: ");
+    v9x_append(status->report, sizeof(status->report), status->direct3d);
+    v9x_append(status->report, sizeof(status->report),
+               " (SYSTEM.INI Direct3D=");
+    v9x_append_uint(status->report, sizeof(status->report),
+                    (UINT)status->direct3d_request);
+    v9x_append(status->report, sizeof(status->report), ")");
     v9x_append(status->report, sizeof(status->report),
         "\r\nBaseline modes: " V9X_MODES_SUMMARY
         "\r\nRuntime modes: ");

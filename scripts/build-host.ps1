@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$BuildId
 )
@@ -61,6 +61,7 @@ $sourceNames = @(
     "src\common\vbe_cache.c",
     "src\common\edid.c",
     "src\common\mtrr.c",
+    "src\common\d3dmode.c",
     "src\common\vbe_crtc.c",
     # A leaf translation unit that happens to live under src\display32\d3d: it
     # includes nothing from the DDHAL side, so the host build can reach it
@@ -78,6 +79,7 @@ $sourceNames = @(
     "tests\host\test_vbe_cache.c",
     "tests\host\test_edid.c",
     "tests\host\test_mtrr.c",
+    "tests\host\test_d3dmode.c",
     "tests\host\test_vbe_crtc.c",
     "tests\host\test_d3d_zfixed.c",
     "tests\host\test_main.c"

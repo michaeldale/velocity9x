@@ -18,6 +18,10 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "win9x_display_abi.h"
+/* DirectDraw glue accessors. A family with no DirectDraw HAL links the no-op
+ * forms of the driver-object entries, so the calls below need no per-target
+ * guard here. */
+#include "dd16.h"
 #include "gdi_accel.h"
 
 #define V9X_BITMAP_HEADER_SIZE     40u
@@ -536,6 +540,15 @@ static void v9x_publish_hardware_diagnostics(void)
      * thing without either half having to know about the other.
      */
     v9x_write_hardware_info("GdiAcceleration", v9x_gdi_accel_state_text());
+    /*
+     * The same split, for the same reason. Direct3D= is the chip module's
+     * manifest word for what the silicon has ("hardware-s3d" on the ViRGE,
+     * "not-advertised" everywhere else); Direct3DMode= is what this boot
+     * actually resolved from SYSTEM.INI against it. Two keys, because a
+     * settings page needs to tell "this card has none" apart from "you turned
+     * it off", and neither key can express both.
+     */
+    v9x_write_hardware_info("Direct3DMode", v9x_dd_d3d_state_text());
 }
 
 void v9x_serial_write(const char FAR *message)
@@ -676,11 +689,6 @@ static void v9x_select_requested_mode(void)
     }
     v9x_apply_mode(requested);
 }
-
-/* DirectDraw glue accessors (dd16.c). A family with no DirectDraw HAL links
- * the no-op forms, so these calls need no per-target guard here. */
-extern WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset);
-extern void FAR PASCAL V9xDdInvalidate(void);
 
 LPVOID v9x_dd_active_pdevice(void)
 {
@@ -1101,6 +1109,14 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * DGROUP word and not a field of the PDEVICE this line just rebuilt.
      */
     v9x_gdi_accel_configure();
+    /*
+     * And the Direct3D back end, from the same section of the same file, at
+     * the same point and for the same reasons. It has to be resolved before
+     * anything can stamp engine capabilities into the DirectDraw shared
+     * block, and that block is not built until DDRAW asks for it - which is
+     * always after this.
+     */
+    v9x_dd_d3d_configure();
     /*
      * The surface layout the DIB Engine actually settled on, next to the one
      * the mode table asked for.

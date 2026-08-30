@@ -15,7 +15,21 @@
 // than scaling it. The bitmap is generated at 185x37 (see
 // scripts/build-settings-page.ps1) against this 238x24 slot.
 //
-// Every row is a read-only label/value pair. The page previously used
+// The Direct3D row is the one exception to that: it is a combo box, not a
+// label, and it is the only control here that changes anything. It replaced
+// the value LTEXT in place rather than being added as a new row, because the
+// height budget above has none to give - a dropped-down combo costs nothing
+// vertically, an extra row costs 11 units and would push the dialog past 211.
+// Its cy of 60 is the dropped-down height; closed it occupies about 12 units
+// from y=122, clearing the 136 row below it.
+//
+// The list is built at run time and holds only what this build implements,
+// which is the same discipline the driver applies to capabilities: an
+// unimplemented mode is not offered. When SYSTEM.INI already names one, the
+// page adds an entry for it so that opening the page cannot silently rewrite
+// a setting somebody put there deliberately.
+//
+// Every other row is a read-only label/value pair. The page previously used
 // disabled checkboxes for "DIB Engine rendering", "Hardware acceleration"
 // and "Live mode switching", but those are statements of fact rather than
 // settings: a permanently checked, permanently greyed box tells the reader
@@ -51,7 +65,8 @@ BEGIN
     LTEXT           "DirectDraw:", -1, 14, 114, 56, 8
     LTEXT           "", V9X_IDC_DIRECTDRAW, 72, 114, 166, 8
     LTEXT           "Direct3D:", -1, 14, 125, 56, 8
-    LTEXT           "", V9X_IDC_DIRECT3D, 72, 125, 166, 8
+    COMBOBOX        V9X_IDC_DIRECT3D_MODE, 72, 122, 166, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Mode switching:", -1, 14, 136, 56, 8
     LTEXT           "", V9X_IDC_MODE_SWITCH, 72, 136, 166, 8
 

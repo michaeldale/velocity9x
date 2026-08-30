@@ -8,9 +8,13 @@
  *       Controls Folder\Display\shellex\PropertySheetHandlers
  *
  * and the page appears as a "Velocity9x" tab inside the native Display
- * Properties dialog. The page is read-only: it renders the same
- * driver-published INI facts as the standalone V9XSET.EXE panel and offers
- * the clipboard report. It performs no hardware access.
+ * Properties dialog. It renders the same driver-published INI facts as the
+ * standalone V9XSET.EXE panel and offers the clipboard report, and it
+ * performs no hardware access.
+ *
+ * One control writes: the Direct3D selector, which puts [Velocity9x] Direct3D
+ * into SYSTEM.INI for the 16-bit driver to read at its next Enable. Every
+ * other row is a statement of fact.
  *
  * The module is built without a C runtime, so COM is implemented with
  * explicit vtables and static singleton objects.
@@ -20,8 +24,15 @@
 #include <prsht.h>
 
 #include "velocity9x/build.h"
+#include "velocity9x/d3dmode.h"
 #include "settings_propsheet.h"
 #include "settings_status.h"
+
+/* Where the one writable setting lives. The same pair is in
+ * tools\diag\settings_status.c, src\display16\dd16.c and
+ * src\display16\gdi_accel.c; scripts\check-tree.ps1 asserts they agree. */
+#define V9X_SETTINGS_INI     "SYSTEM.INI"
+#define V9X_SETTINGS_SECTION "Velocity9x"
 
 #define V9X_S_OK                       ((LONG)0x00000000l)
 #define V9X_S_FALSE                    ((LONG)0x00000001l)
@@ -64,6 +75,161 @@ static LONG v9x_object_count;
 static V9X_SETTINGS_STATUS v9x_page_status;
 static const char v9x_page_caption[] = "Velocity9x Settings";
 
+/*
+ * The Direct3D selector's state, between WM_INITDIALOG and PSN_APPLY.
+ *
+ * v9x_page_d3d_loaded is what SYSTEM.INI said when the page opened. Apply
+ * compares against it and writes nothing when they match, so opening the page
+ * on a machine somebody configured by hand and pressing OK cannot rewrite the
+ * file - including when the value is a mode this build does not implement.
+ */
+static int v9x_page_d3d_loaded;
+
+/*
+ * Only what this build implements is offered.
+ *
+ * Adding "Software", "Hybrid" and "Offload" here the day before they exist is
+ * the same defect as publishing a Direct3D capability the engine does not
+ * serve, which this driver has shipped once: the control would promise a
+ * rendering path and deliver none. They join the list when they render
+ * pixels. The order is the list order, and the value is what goes in the
+ * file.
+ */
+static const struct v9x_d3d_choice {
+    int value;
+    const char *label;
+} v9x_page_d3d_choices[] = {
+    { (int)V9X_D3D_REQUEST_HARDWARE, "Hardware (the chip's own engine)" },
+    { (int)V9X_D3D_REQUEST_DISABLED, "Disabled - advertise no Direct3D" }
+};
+#define V9X_PAGE_D3D_CHOICE_COUNT \
+    (sizeof(v9x_page_d3d_choices) / sizeof(v9x_page_d3d_choices[0]))
+
+/*
+ * Fill the selector and select the current value.
+ *
+ * Three cases, and the third is the one worth the code. On a chip with no 3D
+ * engine no value can produce Direct3D, so the control says the card's answer
+ * and is disabled rather than offering a choice that does nothing. On a
+ * capable chip it offers the implemented modes. And when SYSTEM.INI holds a
+ * value that is not among them - a mode from a later build, or a typo - that
+ * value gets its own entry and is selected, so the page reports what is
+ * actually in the file instead of quietly presenting the default and writing
+ * it back on OK.
+ */
+static void v9x_page_fill_d3d(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_DIRECT3D_MODE);
+    UINT index;
+    LRESULT item;
+
+    if (combo == 0) {
+        return;
+    }
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    v9x_page_d3d_loaded = v9x_page_status.direct3d_request;
+
+    if (!v9x_page_status.direct3d_capable) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_status.direct3d);
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_page_d3d_loaded);
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+        EnableWindow(combo, FALSE);
+        return;
+    }
+
+    for (index = 0u; index < V9X_PAGE_D3D_CHOICE_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_d3d_choices[index].label);
+        if (item < 0) {
+            continue;
+        }
+        SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                     (LPARAM)v9x_page_d3d_choices[index].value);
+        if (v9x_page_d3d_choices[index].value == v9x_page_d3d_loaded) {
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+
+    if (SendMessageA(combo, CB_GETCURSEL, 0, 0) == CB_ERR) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)"Mode set in SYSTEM.INI, not in this build");
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_page_d3d_loaded);
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+}
+
+/* The selector's current value, or the loaded one when nothing is selected. */
+static int v9x_page_selected_d3d(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_DIRECT3D_MODE);
+    LRESULT selection;
+    LRESULT data;
+
+    if (combo == 0) {
+        return v9x_page_d3d_loaded;
+    }
+    selection = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+    if (selection == CB_ERR) {
+        return v9x_page_d3d_loaded;
+    }
+    data = SendMessageA(combo, CB_GETITEMDATA, (WPARAM)selection, 0);
+    if (data == CB_ERR) {
+        return v9x_page_d3d_loaded;
+    }
+    return (int)data;
+}
+
+/*
+ * Write the selector to SYSTEM.INI, and say when it takes effect.
+ *
+ * "After you restart" is measured, not a hedge:
+ * docs\decisions\2026-08-30-d3d-mode-disabled-gate.md. A re-enable does move
+ * the driver, but DDRAW keeps offering the Direct3D HAL device it enumerated
+ * from the previous session and creating it then fails with E_NOINTERFACE -
+ * an application picks a hardware device and dies instead of falling back to
+ * software. Only a fresh boot removes the entry, so the page must not offer a
+ * shorter promise.
+ */
+static void v9x_page_apply_d3d(HWND dialog)
+{
+    int selected = v9x_page_selected_d3d(dialog);
+    char value[2];
+
+    if (selected == v9x_page_d3d_loaded) {
+        return;
+    }
+    /* One digit covers every value this page can select, and the page never
+     * writes a value it did not put in the list. */
+    if (selected < 0 || selected > 9) {
+        return;
+    }
+    value[0] = (char)('0' + selected);
+    value[1] = '\0';
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION,
+                                    V9X_D3D_SETTING_KEY, value,
+                                    V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the Direct3D setting to SYSTEM.INI.\n\n"
+                    "The file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    v9x_page_d3d_loaded = selected;
+    MessageBoxA(dialog,
+                "The Direct3D setting has been saved.\n\n"
+                "It takes effect after you restart Windows. Until then "
+                "DirectDraw applications continue to see the previous "
+                "setting.",
+                v9x_page_caption, MB_OK | MB_ICONINFORMATION);
+}
+
 static BOOL v9x_guid_equal(const V9X_GUID *left, const V9X_GUID *right)
 {
     const BYTE *a = (const BYTE *)left;
@@ -104,8 +270,7 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                         v9x_page_status.rendering);
         SetDlgItemTextA(dialog, V9X_IDC_DIRECTDRAW,
                         v9x_page_status.directdraw);
-        SetDlgItemTextA(dialog, V9X_IDC_DIRECT3D,
-                        v9x_page_status.direct3d);
+        v9x_page_fill_d3d(dialog);
         SetDlgItemTextA(dialog, V9X_IDC_MODE_SWITCH,
                         v9x_page_status.mode_switching);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
@@ -122,10 +287,27 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                                            v9x_page_status.report);
             return TRUE;
         }
+        /* Enable Apply only once the selection actually differs from the
+         * file, so OK on an untouched page writes nothing. */
+        if (LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE &&
+            HIWORD(wparam) == CBN_SELCHANGE) {
+            if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded) {
+                SendMessageA(GetParent(dialog), PSM_CHANGED,
+                             (WPARAM)dialog, 0);
+            } else {
+                SendMessageA(GetParent(dialog), PSM_UNCHANGED,
+                             (WPARAM)dialog, 0);
+            }
+            return TRUE;
+        }
         break;
     case WM_NOTIFY:
-        /* The page is read-only, so Apply always succeeds untouched. */
+        /* Every row but the Direct3D selector is a statement of fact, so
+         * Apply has exactly one thing to do. It succeeds either way: a failed
+         * write reports itself in its own box rather than keeping the user in
+         * a dialog they cannot leave. */
         if (((NMHDR FAR *)lparam)->code == (UINT)PSN_APPLY) {
+            v9x_page_apply_d3d(dialog);
             SetWindowLongA(dialog, DWL_MSGRESULT, PSNRET_NOERROR);
             return TRUE;
         }

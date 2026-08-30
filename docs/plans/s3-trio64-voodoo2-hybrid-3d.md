@@ -1,6 +1,13 @@
 # Direct3D rendering modes: one settings-page selector, four back ends
 
-Status: planning, 2026-08-30. Nothing here is implemented.
+Status: 2026-08-30. **Mode 1 is written, gated and measured on the ViRGE
+guest** - see [the gate record](../decisions/2026-08-30-d3d-mode-disabled-gate.md).
+Modes 2, 3 and 4 are planning only.
+
+Reviewed against the tree the same day: two open questions closed by reading
+code, one target named, the development order re-cut around what that changed,
+and mode 1 landed. Every claim added by that review is either a file:line
+citation or an existing decision record - none of it was measured.
 
 The filename is historical. This document began as the S3 Trio64 + Voodoo2
 hybrid architecture and that material is still here, intact, as **mode 4**.
@@ -113,6 +120,25 @@ That is the same fix the existing comment names for a second D3D engine
 ("stamp the chip's `engine_type` into the shared block before DriverInit"), so
 modes and a second engine want the same piece of work. Do it once.
 
+**And there is already a place to do it.** Reading the escape sequence in
+`dd16.c`: DDRAW's first `DDCREATEDRIVEROBJECT` returns 0 because
+`v9x_dd_set_info` is still null (`dd16.c:434`); DDRAW then issues
+`DDGET32BITDRIVERNAME`, which calls `v9x_dd_block()` - allocating and zeroing
+the shared block, stamping `dwSize`, `abi` and the mode table
+(`dd16.c:255-257`) - and hands back `V9xDdSharedLinear()` as the context
+DriverInit is called with. Only `v9x_dd_refresh_framebuffer()`, which is where
+the engine descriptor is filled (`dd16.c:312-341`), runs later, on the retry.
+
+So the shared block is live and writable before DriverInit, and
+`v9x_hw16_active_device()` already resolves by then - the PCI scan ran at
+Enable, long before any of this. Both the mode and `engine_type` can be
+stamped in `v9x_dd_block()`. The mode has no ordering dependency on the
+hardware at all; it comes out of `SYSTEM.INI`.
+
+This is a code-reading result, not a measured one. It says the change is small
+and says where it goes; it does not say DDRAW behaves as expected once the
+published caps differ.
+
 Two consequences follow:
 
 - **A mode change needs a driver re-enable at minimum.** Whether DDRAW
@@ -130,35 +156,95 @@ Two consequences follow:
 
 ## Mode 1 - Disabled
 
+Status: **complete and measured on `Win86SE`**, all five steps. The gate record
+is [2026-08-30](../decisions/2026-08-30-d3d-mode-disabled-gate.md).
+
+On a fresh boot with the key set, `D3DHalFound=0`, `TexFormatCount=0` and
+`D3DDeviceCount=3` - Ramp, RGB and MMX, with no `Direct3D HAL` entry - while
+DirectDraw stays fully working. Setting the key back reproduced the baseline
+ladder with **no differing `D3D*` or `Tex*` key at all**.
+
+**Step 5 is answered, and the answer constrains the page.** A re-enable stops
+the driver serving Direct3D but does not stop DDRAW offering the device: the
+HAL entry stays enumerated from the previous session's `DDHALINFO` and
+`CreateDevice` then fails with `E_NOINTERFACE`, which is worse for an
+application than either end state. Only a restart removes it. So the page says
+"takes effect after restart", measured rather than assumed.
+
 The cheapest of the four and worth doing first for that reason alone: it
 exercises the whole settings-to-shared-block-to-published-caps chain with a
 back end that already works.
 
-**Mechanism.** `enable16.c`/`dd16.c` reads `[Velocity9x] Direct3D` from
-`SYSTEM.INI` at enable time. Value 0 clears `V9X_DD_ENGINE_CAP_D3D` from the
-engine caps it stamps into the shared block, and the existing clamp at
-`dd16.c:490` does the rest unchanged. No 32-bit change at all.
+**Mechanism.** `dd16.c` reads `[Velocity9x] Direct3D` from `SYSTEM.INI` at
+enable time. A mode that advertises nothing clears `V9X_DD_ENGINE_CAP_D3D` from
+the engine caps it stamps into the shared block, and the existing clamp in
+`V9xDdCreateDriverObject` does the rest unchanged. No 32-bit change at all,
+and no ABI change.
 
 That the clamp is driven by `engine_caps` rather than a build-time define -
 already true, and already commented as deliberate - is what makes this a
 setting rather than a rewrite.
 
+**The values**, in `include\velocity9x\d3dmode.h`, are this document's mode
+numbers with zero added for the chip's own engine:
+
+| | | |
+|---|---|---|
+| 0 | hardware | the chip's engine if it has one. The default, and what an absent, blank or unparsable key means |
+| 1 | disabled | mode 1 |
+| 2 | software | mode 2, recognised and not implemented |
+| 3 | hybrid | mode 3, recognised and not implemented |
+| 4 | offload | mode 4, recognised and not implemented |
+
+An unrecognised number is a typo, not a request, and reads as 0.
+
+A recognised-but-unimplemented mode advertises nothing rather than falling back
+to hardware. Falling back would answer "software" with the ViRGE's S3D engine,
+which is the same class of defect as advertising a capability that is not
+implemented - and this driver has shipped that once already.
+
+**Where the policy lives.** `src\common\d3dmode.c`, pure and host-tested, with
+`dd16.c` reading the key and applying the answer. The split is
+`CLAUDE.md`'s layering rule, and it buys a specific thing here: the property
+that no setting can grant a capability the chip does not have is asserted over
+the whole 16-bit request space in `tests\host\test_d3dmode.c`, rather than
+being a comment beside an `if`.
+
+**Recovery is not needed for this mode**, and the plan's earlier note that
+`V9XFIX.BAT` should learn to clear the key belongs with mode 2 rather than
+here. Mode 1 only removes capability: DirectDraw stays fully working, GDI is
+untouched, and the worst a bad value can do is read as 0 and change nothing.
+Nothing can strand a machine until a rasterizer is running in the HAL.
+
 **Work**
 
-1. Define the key and its values. One integer, defaults to the family's
-   current behaviour so an absent key changes nothing.
-2. Read it in the 16-bit enable path, mask `engine_caps`, stamp.
-3. Report the effective mode on the settings page (read-only first).
-4. Make the page write it.
-5. Probe what a mode change actually requires before the page claims anything
-   about when it takes effect.
+1. ~~Define the key and its values.~~ Done.
+2. ~~Read it in the 16-bit enable path, mask `engine_caps`, stamp.~~ Done.
+3. ~~Report the effective mode on the settings page (read-only first).~~ Done,
+   as `Direct3DMode=` in `V9XHW.INI`, separate from the chip module's existing
+   `Direct3D=`: the page has to tell "this card has none" apart from "you
+   turned it off", and one key cannot say both.
+4. ~~Make the page write it.~~ Done. The Direct3D row is a combo box carrying
+   only the modes this build implements - offering "Software" before it
+   renders a pixel would be the UI form of advertising an unimplemented
+   capability - with `Apply` greyed until the selection differs from the file,
+   so opening the page and pressing `OK` writes nothing. The whole loop was
+   driven on the guest at 1024x768 and again at 640x480, where the height
+   budget is binding.
+5. ~~Probe what a mode change actually requires before the page claims
+   anything about when it takes effect.~~ Done. Restart.
 
-**Gate.** `V9XDDP.EXE` on the ViRGE with the key set to 0 must report
-`D3DHalFound=0` and `TexFormatCount=0` while every DirectDraw key stays green -
-which is exactly the `Win98SE-Mach64VT2` result already recorded in the
-changelog for a family with no D3D, so there is a known-good shape to compare
-against. With the key absent or 1, the full existing gate must be unchanged,
-pixels included.
+**Gate, and it passed.** `V9XDDP.EXE` on the ViRGE with the key set to 1 must
+report `D3DHalFound=0` and `TexFormatCount=0` while every DirectDraw key stays
+green - which is the `Win98SE-Mach64VT2` shape already recorded for a family
+with no D3D, so there was a known-good result to compare against. With the key
+absent or 0, the full existing gate must be unchanged, pixels included.
+
+Both held. The disabled runs also reported `D3DDeviceCount=3` - Ramp, RGB and
+MMX, no `Direct3D HAL` entry - and the restored run differed from the baseline
+in no functional key at all. (This paragraph previously had the two values the
+wrong way round, written before the encoding was settled: 0 is hardware, 1 is
+disabled.)
 
 **Open question.** A machine with a second GPU is the stated motivation, and
 this driver has never been tested alongside one. Whether Windows 9x picks the
@@ -171,6 +257,48 @@ something mode 1 can promise on its own.
 
 The substantial one, and the one that changes what the driver is: Direct3D on
 the Trio32/64, on ATI, and on generic VESA, none of which have any today.
+
+### The target, and what it can be expected to do
+
+**BARRY** - `10.0.1.47:9869`, S3 Trio32/64 86C764, 2 MB, Windows 98 SE, a
+pre-MMX classic Pentium with 32 MB
+([baseline](../decisions/2026-08-27-crystalmark-barry-baseline.md)). It is the
+only physical S3 target with DirectX, so it is where mode 2 gets judged.
+
+Three consequences, and they should be stated before any expectation is set:
+
+- **No MMX and no MTRRs.** Neither of the two levers that normally make a
+  software rasterizer tolerable is available here.
+- **2 MB of VRAM.** At 800x600x16 the desktop is 960 KB; a 640x480x16 render
+  target plus a 16-bit depth buffer is another 1.2 MB and does not fit
+  alongside it. 640x480x16 desktop (614 KB) plus a 320x240 target and depth
+  (307 KB) does, with room. The mode matrix mode 2 is tested in has to be
+  chosen against the card, not assumed.
+### What mode 2 is for, and in which order
+
+All three of compatibility, reach and speed are goals; they are not all
+achievable on the same machine, and which apply is a property of the CPU. The
+order is settled (2026-08-30):
+
+1. **Compatibility first.** A title that refuses to start without a HAL device
+   starts, and draws correctly. This is the goal on BARRY, and on this machine
+   a textured, depth-tested rasterizer will be slow whatever is done to it -
+   any frame-rate claim here is a guess until measured, and the honest
+   expectation is low. Done means the pixel ladder, not a number.
+2. **Reach**, once correctness holds: the ATI, Matrox and tier-0 families get a
+   HAL where they have none. That is what the inverted selector above buys, and
+   most of those targets are 86Box guests where a speed measurement would be
+   the emulator's rather than the driver's.
+3. **Speed, where the CPU allows it.** MMX and a write-combining aperture are
+   the two levers, and BARRY has neither. A machine that has them can take a
+   faster path; a machine that does not must not pay for one it cannot use. So
+   any such path is selected from what the CPU reports, the way
+   `include\velocity9x\mtrr.h` already gates on a capability ladder, rather
+   than compiled in - and it comes after 1 and 2, not instead of them.
+
+The `vbe` and ATI families widen the reach, but every one of those targets is
+either an 86Box guest (where the measurement is the emulator's) or, for the
+netbook and SOLO2150, a machine whose own reason for existing is elsewhere.
 
 ### Why this is different from everything else in the project
 
@@ -204,12 +332,31 @@ point of it. So the selector becomes: mode first, chip second. Mode 2 resolves
 the software engine whatever the chip is, including when there is no engine
 descriptor worth speaking of.
 
-**Check before designing on it:** whether `engine.flags` carries
-`V9X_DD_ENGINE_VALID` at all on a family whose `EngineType` is `NONE`.
-`v9x_d3d_engine()` tests that flag before anything else, and if a tier-0
-family never sets it, the software engine can never resolve there. This is a
-five-minute read of `enable16.c` and it decides whether the VBE path is
-reachable, which is half the value of mode 2.
+**Answered, 2026-08-30, by reading the tree: it does not.** `V9X_DD_ENGINE_VALID`
+is set in exactly one place, `dd16.c:334`, and only when the active chip
+supplies a `fill_engine_descriptor` hook; the `else` branch at `dd16.c:340`
+sets `flags = 0`. That hook is NULL on
+`v9x_vbe_device` (`vbe_hw16.c:62`), `v9x_mach64_vt2_device` (`vt2_hw16.c:20`),
+`v9x_rage_mobility_device` (`mobility_hw16.c:26`) and `v9x_mga2_device`
+(`mga2_hw16.c:41`). So on every family mode 2 is aimed at except the Trio64,
+`engine.flags` is zero, and `v9x_d3d_engine()` returns null at
+`d3d_core.c:50` before it looks at anything else.
+
+Two ways out, and they are not equivalent:
+
+- **Test the mode before the VALID flag in `v9x_d3d_engine()`.** The mode is a
+  software setting, not a property of an engine descriptor, so it has no
+  business behind a flag that means "a chip filled the descriptor in". Touches
+  one function and no family.
+- **Make every family stamp `VALID` with an explicit `TYPE_NONE` descriptor.**
+  More honest about what the flag names, but it changes the flag's meaning for
+  the 2D readers too - `v9x_engine32()` at `ddhal_core.c:723` and
+  `v9x_can_set_display_start()` at `ddhal_core.c:330` both gate on it, and both
+  currently short-circuit on tier-0 for free. Changing that is a behaviour
+  change on four families to serve a D3D question.
+
+Take the first. Note it inverts the selector in the order the section title
+already asks for: mode first, chip second.
 
 ### Where the pixels go, and the thing that will decide performance
 
@@ -227,6 +374,37 @@ surface against the same into system memory, on the real guest, before writing
 a rasterizer around either assumption.
 
 It is also the seam where mode 3 attaches.
+
+### What the tree already says about that measurement
+
+Not enough to skip it, but enough to say which way it will fall and to stop
+the rasterizer being designed around the wrong answer.
+
+- **A byte-at-a-time loop over the aperture is unusable.** `blt_cpu.c:19-26`
+  records 640x480x16 - 614,400 bytes - at roughly 700 ms per frame, about
+  1 FPS, before the dword-at-a-time path replaced it. That is the cost of a
+  naive span writer, measured, on the presentation path.
+- **On an emulated guest the gap is small.**
+  [2026-08-17](../decisions/2026-08-17-native-driver-benchmark.md) has Ironfield
+  on tier-0 Mach64 at 31 FPS writing the backbuffer directly in VRAM against
+  39 FPS through the HEL's system-memory copy. An 86Box framebuffer is host
+  RAM, so that ratio measures the emulator, not a PCI aperture, and a mode 2
+  measurement taken only in a VM will read as "VRAM is fine" and be wrong.
+- **The obvious fix is unavailable on the target.**
+  [MTRR stage A](../decisions/2026-08-28-mtrr-stage-a-inspect-only.md) found
+  BARRY is a pre-MMX classic Pentium: no MTRRs, so its aperture cannot be made
+  write-combining, and no MMX either, so the rasterizer's inner loop gets no
+  help there. 86Box emulates no MTRRs on any CPU. Of the whole fleet only the
+  netbook and SOLO2150 can take a WC range, and neither is a mode 2 target.
+
+So the likely shape is: rasterize into system memory, present with one bulk
+copy. That is not free either - **`v9x_cpu_copy()` computes both its source and
+its destination from `v9x_hal->fb.linear_base` (`blt_cpu.c:83`), so it can only
+copy VRAM to VRAM.** A system-memory render target needs a
+system-to-video path that does not exist yet, and needs the driver to have a
+say in where DDRAW puts the surface at all. **That, not the rasterizer, is
+mode 2's first real piece of work**, and it should be settled before step 4 of
+the work order rather than discovered inside it.
 
 ### Scope for a first version
 
@@ -277,20 +455,27 @@ would score identically. FR is an integration test, not a correctness one.
 
 ### Work order
 
-1. Measure VRAM versus system-memory write cost on the guest.
-2. Decide the mode plumbing (shared with mode 1) and land it.
-3. Invert the engine selector; confirm the VBE reachability question above.
-4. Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
+1. Measure VRAM versus system-memory write cost, **on BARRY**. An 86Box number
+   here answers a different question; see above.
+2. Settle where the render target lives, and whether the driver can decide it.
+   If the answer is system memory, a system-to-video presentation path is part
+   of mode 2 and `v9x_cpu_copy()` cannot serve it as written.
+3. Decide the mode plumbing (shared with mode 1) and land it.
+4. Invert the engine selector so it tests the mode before
+   `V9X_DD_ENGINE_VALID`, which is what makes the tier-0 and ATI families
+   reachable at all.
+5. Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
    interpolation. Red then green, per stage.
-5. Depth: 16-bit, compare and write mask, host-tested against the same eight
+6. Depth: 16-bit, compare and write mask, host-tested against the same eight
    comparison functions the ViRGE path implements.
-6. Texture sampling: point, then bilinear.
-7. `describe_caps` publishing only what steps 4-6 verified.
-8. Probe ladder against the software engine on a real guest.
-9. Final Reality on a Trio64 guest - the first time that machine has run a
-   3D benchmark at all.
+7. Texture sampling: point, then bilinear.
+8. `describe_caps` publishing only what steps 5-7 verified.
+9. Probe ladder against the software engine on a real guest.
+10. Final Reality on BARRY - the first time that machine has run a 3D
+    benchmark at all. An integration check, not a correctness one; see the
+    note above about what its score actually measures.
 
-Steps 4 to 7 need no guest.
+Steps 5 to 8 need no guest.
 
 ------------------------------------------------------------------------
 
@@ -495,9 +680,13 @@ five-bit free-slot field that reports 16, and every depth-enabled draw timed
 out and reset the engine while returning `S_OK`. Read the field, do not assume
 the count.
 
-**The gate's hygiene rules are load-bearing.** Delete the result file before
-the run, check the `exec` exit code, and require the `Build=` key to match.
-Two of those three were once absent and a stale file passed as a result.
+**The gate's hygiene rules are load-bearing, and there are four.** Delete the
+result file before the run, check the `exec` exit code, require the `Build=`
+key to match - and **run the probe once per boot**. Two of the first three were
+once absent and a stale file passed as a result. The fourth was added
+2026-08-30: a second `V9XDDP.EXE` in one boot passes all three of the others
+and still reports `D3DZWriteMaskOk`, `D3DDepthFogOk` and
+`D3DVertexAlphaBlendOk` as failures against a run that had just passed.
 
 **Pick the control by what it does, not where it sits.** A "known-good"
 baseline built from the commit before a fix is a known-*broken* baseline.
@@ -514,6 +703,17 @@ adding it means bumping `V9X_DD_SHARED_ABI` and rebuilding the 16-bit driver,
 the HAL and the diagnostic tools together, and the compile-time size assertions
 have to be updated with it.
 
+The **layout** need not move, though. `V9X_DD_ENGINE.reserved1`
+(`win9x_ddraw_abi.h:1077`) is a spare DWORD, and there is precedent for
+claiming one: `fault_inject` took what was `reserved0` and the comment beside
+it records that the layout was unchanged. Bump the ABI stamp for the semantic
+change, keep every offset where it is.
+
+**Mode 1 needs neither.** Clearing `V9X_DD_ENGINE_CAP_D3D` before the stamp
+reuses a field that already exists, drives a clamp that already runs, and
+changes nothing on the 32-bit side. Only mode 2 needs the mode itself visible
+to the HAL, because only mode 2 has to select an engine on it.
+
 ------------------------------------------------------------------------
 
 ## Development order
@@ -521,22 +721,44 @@ have to be updated with it.
 Modes 1 and 2 only. Mode 3 begins at `DDBLT_DEPTHFILL`; mode 4 begins at
 confirming a target exists.
 
-1. Probe what changing a Direct3D capability set at run time actually requires:
-   re-enable, `DirectDrawCreate`, or restart.
-2. Check whether `V9X_DD_ENGINE_VALID` is set on a family whose `EngineType` is
-   `NONE`, which decides whether mode 2 can reach the VBE path.
-3. Measure CPU write cost into a video-memory surface against system memory.
-4. Mode plumbing: `[Velocity9x] Direct3D` in `SYSTEM.INI`, read at enable time,
-   stamped into the shared block before DriverInit, with the ABI bump.
-5. **Mode 1** end to end, gated against the existing no-D3D family shape.
-6. Settings page reports the effective mode, then writes it.
-7. Rasterizer core, host-tested, red then green: traversal, spans, Gouraud.
-8. Depth compare and write mask, host-tested, all eight functions.
-9. Texture sampling, point then bilinear.
-10. `describe_caps` publishing only what 7-9 verified.
-11. **Mode 2** probe ladder on a guest, per mode.
-12. Final Reality on a Trio64 guest.
+Two of the three questions this list used to open with have been answered by
+reading the tree, and are struck out here rather than deleted so the order can
+be read against the version above:
 
-The measurement in step 3 is the one that can change the shape of mode 2, and
-step 1 is the one that can change the shape of the settings page. Both are
-cheap and both come before any rasterizer is written.
+- ~~Check whether `V9X_DD_ENGINE_VALID` is set on a family whose `EngineType`
+  is `NONE`.~~ **No.** Only a chip with a `fill_engine_descriptor` hook sets
+  it, and four of the six families have none. The selector tests the mode
+  first; see mode 2 above.
+- ~~Where to stamp the mode so DriverInit can see it.~~ **`v9x_dd_block()`.**
+  It runs on the `DDGET32BITDRIVERNAME` escape, before DriverInit, and the
+  active PCI device is already resolved there.
+
+What is left:
+
+1. ~~Mode plumbing: `[Velocity9x] Direct3D` in `SYSTEM.INI`, read at enable
+   time, masked against `engine_caps` the way `gdi_accel.c` masks its own
+   keys.~~ **Done**, and it needed no new shared-block field: mode 1 masks the
+   capability the descriptor already carries. Mode 2 still needs the mode
+   itself visible to the HAL, and `V9X_DD_ENGINE.reserved1` is where it goes.
+2. ~~**Mode 1** end to end.~~ **Done and measured on `Win86SE`.**
+3. ~~**On the back of mode 1**, probe what changing a Direct3D capability set
+   at run time actually requires.~~ **Restart.** A re-enable moves the driver
+   but not DDRAW's device list, which leaves an application enumerating a HAL
+   that fails to create - the worst of the three states.
+4. Settings page reports the effective mode, then writes it, with wording that
+   step 3 licenses. **Reporting is done; writing is the open half.**
+5. Measure CPU write cost into a video-memory surface against system memory,
+   on BARRY.
+6. Settle where the render target lives, and the system-to-video path if it is
+   not VRAM.
+7. Invert the engine selector.
+8. Rasterizer core, host-tested, red then green: traversal, spans, Gouraud.
+9. Depth compare and write mask, host-tested, all eight functions.
+10. Texture sampling, point then bilinear.
+11. `describe_caps` publishing only what 8-10 verified.
+12. **Mode 2** probe ladder on a guest, per mode.
+13. Final Reality on BARRY.
+
+Steps 5 and 6 are the ones that can change the shape of mode 2, and step 3 is
+the one that can change the shape of the settings page. None of them needs a
+rasterizer to have been written.

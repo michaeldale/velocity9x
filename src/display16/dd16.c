@@ -12,21 +12,76 @@
 #include <windows.h>
 #undef SetCursor
 
+#include "velocity9x/d3dmode.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "dd16.h"
 #include "gdi_accel.h"
 
 extern void v9x_serial_write(const char FAR *message);
 extern LONG FAR PASCAL V9xDibControlCall(LPVOID device, WORD function,
                                          LPVOID input, LPVOID output);
 
+/*
+ * Which Direct3D back end this boot serves, resolved at Enable.
+ *
+ * Outside the target guard below, and deliberately: matrox-m2 has no
+ * DirectDraw HAL but still publishes a Direct3DMode= key, because a
+ * diagnostics reader that could not distinguish "this family has no HAL" from
+ * "the key was never written" would be unable to tell a stale file from a
+ * working one. The state it reports there is NONE, which is the truth.
+ *
+ * The chip's own descriptor is read here rather than taken from the shared
+ * block, for the same reason gdi_accel.c reads it: the shared block does not
+ * exist yet at Enable, and DirectDraw may never create it at all.
+ */
+#define V9X_SETTINGS_INI     "SYSTEM.INI"
+#define V9X_SETTINGS_SECTION "Velocity9x"
+
+extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
+extern DWORD FAR PASCAL V9xLinearBase(void);
+
+static v9x_u16 v9x_dd_d3d_state = V9X_D3D_STATE_NONE;
+
+void v9x_dd_d3d_configure(void)
+{
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    DWORD control_base = 0ul;
+    DWORD aperture_bytes = 0ul;
+    DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
+    DWORD engine_caps = 0ul;
+    WORD requested;
+
+    if (device != 0 && device->fill_engine_descriptor != 0) {
+        device->fill_engine_descriptor(V9xLinearBase(), &control_base,
+                                       &aperture_bytes, &engine_type,
+                                       &engine_caps);
+    }
+
+    /* Same section, same call and same enable-time timing as the GdiAccel
+     * keys. An absent key is V9X_D3D_REQUEST_HARDWARE, so a machine that
+     * never heard of this setting behaves exactly as it did before it. */
+    requested = (WORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
+                                           V9X_D3D_SETTING_KEY,
+                                           (int)V9X_D3D_REQUEST_HARDWARE,
+                                           V9X_SETTINGS_INI);
+
+    v9x_dd_d3d_state = v9x_d3d_mode_resolve(
+        (v9x_u16)requested,
+        (engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul ? V9X_TRUE : V9X_FALSE);
+}
+
+const char *v9x_dd_d3d_state_text(void)
+{
+    return v9x_d3d_mode_text(v9x_dd_d3d_state);
+}
+
 #ifndef V9X_TARGET_MATROX_MILLENNIUM2
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);
 extern DWORD FAR PASCAL V9xDdSharedLinear(void);
-extern DWORD FAR PASCAL V9xLinearBase(void);
 extern DWORD FAR PASCAL V9xHardwareBase(void);
 
 typedef WORD (FAR PASCAL *V9X_SETINFO_FN)(V9X_DDHALINFO FAR *info,
@@ -319,6 +374,22 @@ static void v9x_dd_refresh_framebuffer(void)
         device->fill_engine_descriptor(shared->fb.linear_base,
                                        &control_base, &aperture_bytes,
                                        &engine_type, &engine_caps);
+        /*
+         * The user's Direct3D setting, applied before the stamp rather than
+         * after it.
+         *
+         * Everything downstream already reads engine_caps as the statement of
+         * what may be advertised - V9xDdCreateDriverObject's clamp below nulls
+         * GetDriverInfo and both lpD3D* pointers when the D3D bit is clear,
+         * and has done since the Trio64 shipped - so clearing the bit here
+         * needs no new code anywhere else and no change at all on the 32-bit
+         * side. It also keeps the 16-bit side the single capability authority
+         * it is documented to be: a setting can take a capability away, and
+         * v9x_d3d_mode_resolve is what guarantees it cannot grant one.
+         */
+        if (v9x_d3d_mode_advertises(v9x_dd_d3d_state) == V9X_FALSE) {
+            engine_caps &= ~V9X_DD_ENGINE_CAP_D3D;
+        }
         shared->engine.control_linear_base = control_base;
         shared->engine.mapped_aperture_bytes = aperture_bytes;
         shared->engine.engine_type = engine_type;

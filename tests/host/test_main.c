@@ -35,6 +35,10 @@ unsigned int v9x_run_edid_tests(void);
  * ring 0 reports, same convention. */
 unsigned int v9x_run_mtrr_tests(void);
 
+/* tests\host\test_d3dmode.c: which Direct3D back end the SYSTEM.INI setting
+ * and the chip's engine descriptor resolve to, same convention. */
+unsigned int v9x_run_d3dmode_tests(void);
+
 /* tests\host	est_vbe_crtc.c: the full EDID detailed timing and the VBE 3.0
  * CRTC block built from it, same convention. */
 unsigned int v9x_run_vbe_crtc_tests(void);
@@ -599,6 +603,7 @@ int main(void)
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
+    failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vbe_crtc_tests();
     failures += v9x_run_d3d_zfixed_tests();
 
