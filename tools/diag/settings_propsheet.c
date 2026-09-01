@@ -88,19 +88,37 @@ static int v9x_page_d3d_loaded;
 /*
  * Only what this build implements is offered.
  *
- * Adding "Software", "Hybrid" and "Offload" here the day before they exist is
- * the same defect as publishing a Direct3D capability the engine does not
- * serve, which this driver has shipped once: the control would promise a
- * rendering path and deliver none. They join the list when they render
- * pixels. The order is the list order, and the value is what goes in the
- * file.
+ * Adding "Hybrid" and "Offload" here the day before they exist is the same
+ * defect as publishing a Direct3D capability the engine does not serve, which
+ * this driver has shipped once: the control would promise a rendering path and
+ * deliver none. They join the list when they render pixels. The order is the
+ * list order, and the value is what goes in the file.
+ *
+ * "Software" joined it on 2026-09-01, when it started rendering them - depth
+ * tested, textured Gouraud triangles on a Trio64, which is a card with no 3D
+ * engine at all
+ * (docs\decisions\2026-09-01-software-textures-and-caps.md).
+ *
+ * `needs_engine` is what decides which entries a given card sees. Only
+ * Hardware needs one; Software runs on the framebuffer and Disabled describes
+ * an absence. It is not a "hide it" flag - Hardware is still offered on a card
+ * without an engine, because it is the default and the file's absent-key
+ * value, and a page that could not select it could not undo a change. What it
+ * changes is the label, so the entry does not promise silicon that is not
+ * there.
  */
 static const struct v9x_d3d_choice {
     int value;
+    int needs_engine;
     const char *label;
+    const char *label_no_engine;
 } v9x_page_d3d_choices[] = {
-    { (int)V9X_D3D_REQUEST_HARDWARE, "Hardware (the chip's own engine)" },
-    { (int)V9X_D3D_REQUEST_DISABLED, "Disabled - advertise no Direct3D" }
+    { (int)V9X_D3D_REQUEST_HARDWARE, 1, "Hardware (the chip's own engine)",
+      "Hardware (this card has no 3D engine)" },
+    { (int)V9X_D3D_REQUEST_SOFTWARE, 0, "Software (CPU rasterizer - slow)",
+      "Software (CPU rasterizer - slow)" },
+    { (int)V9X_D3D_REQUEST_DISABLED, 0, "Disabled - advertise no Direct3D",
+      "Disabled - advertise no Direct3D" }
 };
 #define V9X_PAGE_D3D_CHOICE_COUNT \
     (sizeof(v9x_page_d3d_choices) / sizeof(v9x_page_d3d_choices[0]))
@@ -108,12 +126,18 @@ static const struct v9x_d3d_choice {
 /*
  * Fill the selector and select the current value.
  *
- * Three cases, and the third is the one worth the code. On a chip with no 3D
- * engine no value can produce Direct3D, so the control says the card's answer
- * and is disabled rather than offering a choice that does nothing. On a
- * capable chip it offers the implemented modes. And when SYSTEM.INI holds a
- * value that is not among them - a mode from a later build, or a typo - that
- * value gets its own entry and is selected, so the page reports what is
+ * The control used to be greyed out on a chip with no 3D engine, on the
+ * grounds that no value there could produce Direct3D. That stopped being true
+ * on 2026-09-01: the software rasterizer serves Direct3D from the CPU on every
+ * card the driver supports, and the cards with no engine are precisely the
+ * ones it exists for. Leaving the control disabled would have hidden the mode
+ * from its own audience - the setting worked, and only the page could not
+ * reach it.
+ *
+ * So the control is always live and the *labels* carry what the card can do.
+ * The one case left worth the code is the last: when SYSTEM.INI holds a value
+ * that is not among the implemented modes - one from a later build, or a
+ * typo - it gets its own entry and is selected, so the page reports what is
  * actually in the file instead of quietly presenting the default and writing
  * it back on OK.
  */
@@ -128,22 +152,16 @@ static void v9x_page_fill_d3d(HWND dialog)
     }
     SendMessageA(combo, CB_RESETCONTENT, 0, 0);
     v9x_page_d3d_loaded = v9x_page_status.direct3d_request;
-
-    if (!v9x_page_status.direct3d_capable) {
-        item = SendMessageA(combo, CB_ADDSTRING, 0,
-                            (LPARAM)v9x_page_status.direct3d);
-        if (item >= 0) {
-            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
-                         (LPARAM)v9x_page_d3d_loaded);
-            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
-        }
-        EnableWindow(combo, FALSE);
-        return;
-    }
+    EnableWindow(combo, TRUE);
 
     for (index = 0u; index < V9X_PAGE_D3D_CHOICE_COUNT; ++index) {
-        item = SendMessageA(combo, CB_ADDSTRING, 0,
-                            (LPARAM)v9x_page_d3d_choices[index].label);
+        const char *label =
+            (v9x_page_d3d_choices[index].needs_engine != 0 &&
+             !v9x_page_status.direct3d_capable)
+                ? v9x_page_d3d_choices[index].label_no_engine
+                : v9x_page_d3d_choices[index].label;
+
+        item = SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)label);
         if (item < 0) {
             continue;
         }

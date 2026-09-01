@@ -80,7 +80,8 @@ target gets:
   perspective-correct triangles with mipmapping, trilinear filtering, alpha
   blending, specular highlights, fog and Z testing, with depth-buffer clears
   served by the blitter rather than by the CPU.
-- **A Direct3D on/off switch** on the Velocity9x page in Display Properties.
+- **A Direct3D mode selector** on the Velocity9x page in Display Properties,
+  offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
   enumerates no hardware device and applications fall back to Microsoft's
   software rasterizers — useful on a machine with a second graphics card, or
@@ -107,7 +108,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | same |
-| Direct3D on/off switch | Yes | Shown, disabled — nothing to switch | same | same |
+| Direct3D mode selector | Hardware / Software / Disabled | same, with Hardware labelled as absent | same | same |
 | GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
 
