@@ -1412,6 +1412,133 @@ static int v9x_surface_pixel16_equals(struct v9x_dds *surface,
     return value == expected;
 }
 
+/*
+ * The render target's real channel layout, and the colours to expect from it.
+ *
+ * Every "did it draw the right colour" key in this probe used to compare
+ * against a literal - 0x7C00 for red, 0x03E0 for green, 0x7FFF for white.
+ * Those are ZRGB1555, and the render target is RGB565: the constants were
+ * written to match what the ViRGE's triangle engine writes rather than what
+ * the surface says it is, and the driver already records that mismatch as an
+ * unresolved defect.
+ *
+ * That was harmless while one engine existed. It is not now. A second engine
+ * writing the format the surface declares fails those comparisons while being
+ * correct, and on 2026-09-01 it did so on three keys at once - the flat
+ * triangle, the depth ladder and the write mask - each of which had to be read
+ * back out of its raw value by hand. Every capability added after that would
+ * have joined them.
+ *
+ * So the expectations are derived from the surface. The literals move to being
+ * the fallback for a surface that will not describe itself, which keeps a
+ * failed query looking like the old behaviour rather than like a black screen.
+ */
+typedef struct v9x_pixel_layout {
+    DWORD red_mask;
+    DWORD green_mask;
+    DWORD blue_mask;
+    DWORD valid;
+} V9X_PIXEL_LAYOUT;
+
+static DWORD v9x_mask_shift(DWORD mask)
+{
+    DWORD shift = 0ul;
+
+    if (mask == 0ul) {
+        return 0ul;
+    }
+    while ((mask & 1ul) == 0ul) {
+        mask >>= 1;
+        ++shift;
+    }
+    return shift;
+}
+
+/* A channel of a pixel, expanded to 0..255 so a comparison can be written
+ * once and mean the same thing in 1555 and in 565, where the same colour is a
+ * different number and green has an extra bit. */
+static DWORD v9x_layout_channel(const V9X_PIXEL_LAYOUT *layout, DWORD pixel,
+                                DWORD mask)
+{
+    DWORD shift;
+    DWORD range;
+
+    if (layout->valid == 0ul || mask == 0ul) {
+        return 0ul;
+    }
+    shift = v9x_mask_shift(mask);
+    range = mask >> shift;
+    return (((pixel & mask) >> shift) * 255ul + range / 2ul) / range;
+}
+
+static DWORD v9x_layout_red(const V9X_PIXEL_LAYOUT *layout, DWORD pixel)
+{
+    return v9x_layout_channel(layout, pixel, layout->red_mask);
+}
+
+static DWORD v9x_layout_green(const V9X_PIXEL_LAYOUT *layout, DWORD pixel)
+{
+    return v9x_layout_channel(layout, pixel, layout->green_mask);
+}
+
+static DWORD v9x_layout_blue(const V9X_PIXEL_LAYOUT *layout, DWORD pixel)
+{
+    return v9x_layout_channel(layout, pixel, layout->blue_mask);
+}
+
+/* Three 0..255 channels as the surface would store them. Rounding is
+ * to nearest so 255 lands on the full field rather than one short of it. */
+static WORD v9x_layout_pack(const V9X_PIXEL_LAYOUT *layout,
+                            DWORD red, DWORD green, DWORD blue)
+{
+    DWORD value = 0ul;
+    DWORD shift;
+    DWORD range;
+
+    if (layout->valid == 0ul) {
+        return 0u;
+    }
+    shift = v9x_mask_shift(layout->red_mask);
+    range = layout->red_mask >> shift;
+    value |= ((red * range + 127ul) / 255ul) << shift;
+    shift = v9x_mask_shift(layout->green_mask);
+    range = layout->green_mask >> shift;
+    value |= ((green * range + 127ul) / 255ul) << shift;
+    shift = v9x_mask_shift(layout->blue_mask);
+    range = layout->blue_mask >> shift;
+    value |= ((blue * range + 127ul) / 255ul) << shift;
+    return (WORD)value;
+}
+
+static void v9x_surface_layout(struct v9x_dds *surface,
+                               V9X_PIXEL_LAYOUT *layout)
+{
+    V9X_DDSURFACEDESC desc;
+
+    layout->red_mask = 0ul;
+    layout->green_mask = 0ul;
+    layout->blue_mask = 0ul;
+    layout->valid = 0ul;
+    if (surface == 0) {
+        return;
+    }
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (surface->vtbl->GetSurfaceDesc(surface, &desc) != 0) {
+        return;
+    }
+    if (desc.ddpfPixelFormat.dwRGBBitCount != 16ul ||
+        desc.ddpfPixelFormat.dwRBitMask == 0ul ||
+        desc.ddpfPixelFormat.dwGBitMask == 0ul ||
+        desc.ddpfPixelFormat.dwBBitMask == 0ul) {
+        return;
+    }
+    layout->red_mask = desc.ddpfPixelFormat.dwRBitMask;
+    layout->green_mask = desc.ddpfPixelFormat.dwGBitMask;
+    layout->blue_mask = desc.ddpfPixelFormat.dwBBitMask;
+    layout->valid = 1ul;
+}
+
 static WORD v9x_surface_pixel16(struct v9x_dds *surface, DWORD x, DWORD y)
 {
     V9X_DDSURFACEDESC desc;
@@ -1702,6 +1829,13 @@ void __stdcall V9xDdrawProbeEntry(void)
     struct v9x_d3d_viewport2 *d3d_viewport = 0;
     V9X_D3D_ENUM_RESULT d3d_result;
     DWORD caps_buffer[79]; /* DDCAPS_DX3, 0x13c bytes. */
+    V9X_PIXEL_LAYOUT target_layout;
+    /* The ZRGB1555 literals, as the fallback for a surface that will not
+     * describe itself. Overwritten from the target below. */
+    WORD expect_red = 0x7c00u;
+    WORD expect_green = 0x03e0u;
+    WORD expect_blue = 0x001fu;
+    WORD expect_white = 0x7fffu;
     BOOL in_vblank = FALSE;
     V9X_TEXTURE_ENUM_RESULT texture_result;
     V9X_DDSURFACEDESC desc;
@@ -1997,6 +2131,25 @@ void __stdcall V9xDdrawProbeEntry(void)
                               V9X_DDSCAPS_VIDEOMEMORY;
         hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &d3d_target, 0);
         v9x_write_hresult("D3DTargetHr", hr);
+        v9x_surface_layout(d3d_target, &target_layout);
+        if (target_layout.valid != 0ul) {
+            expect_red = v9x_layout_pack(&target_layout, 255ul, 0ul, 0ul);
+            expect_green = v9x_layout_pack(&target_layout, 0ul, 255ul, 0ul);
+            expect_blue = v9x_layout_pack(&target_layout, 0ul, 0ul, 255ul);
+            expect_white = v9x_layout_pack(&target_layout, 255ul, 255ul,
+                                           255ul);
+        }
+        /* Recorded so a result file says which constants its Ok keys used.
+         * Without these, a key that flipped between two runs looks like a
+         * driver change when it may be a surface-format change. */
+        v9x_write_uint("D3DTargetFormatValid", target_layout.valid);
+        v9x_write_uint("D3DTargetRMask", target_layout.red_mask);
+        v9x_write_uint("D3DTargetGMask", target_layout.green_mask);
+        v9x_write_uint("D3DTargetBMask", target_layout.blue_mask);
+        v9x_write_uint("D3DExpectRed", expect_red);
+        v9x_write_uint("D3DExpectGreen", expect_green);
+        v9x_write_uint("D3DExpectBlue", expect_blue);
+        v9x_write_uint("D3DExpectWhite", expect_white);
         if (hr == 0 && d3d_target != 0) {
             hr = d3d->vtbl->CreateDevice(d3d, &v9x_iid_d3d_hal,
                                          d3d_target, &d3d_device);
@@ -2231,11 +2384,11 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_write_uint("D3DTrianglePixelOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x7c00u) ? 1ul : 0ul);
+                                               expect_red) ? 1ul : 0ul);
                 v9x_write_uint("D3DSubpixelTriangleOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x7c00u) ? 1ul : 0ul);
+                                               expect_red) ? 1ul : 0ul);
 
                 /*
                  * Is it a triangle, or is it the triangle's bounding box?
@@ -2354,7 +2507,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_write_uint("D3DSpecularGouraudOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x03e0u) ? 1ul : 0ul);
+                                               expect_green) ? 1ul : 0ul);
 
                 v9x_fill_surface(d3d_target, 0ul);
                 state_hr = d3d_device->vtbl->SetRenderState(
@@ -2389,11 +2542,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_write_uint("D3DDepthFogOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x001fu) ? 1ul : 0ul);
+                                               expect_blue) ? 1ul : 0ul);
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
 
-                v9x_fill_surface(d3d_target, 0x001ful);
+                v9x_fill_surface(d3d_target,
+                                 ((DWORD)expect_blue << 16) |
+                                 (DWORD)expect_blue);
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
                     V9X_D3DBLEND_SRCALPHA);
@@ -2424,10 +2579,31 @@ void __stdcall V9xDdrawProbeEntry(void)
                     draw_hr = begin_hr;
                     end_hr = begin_hr;
                 }
-                v9x_write_uint("D3DVertexAlphaBlendOk",
-                    draw_hr == 0 && end_hr == 0 &&
-                    v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x400fu) ? 1ul : 0ul);
+                /*
+                 * Half-alpha red over a blue destination, so both channels
+                 * land near the middle. A range on 0..255 channels rather
+                 * than the old exact 0x400F: that literal is a 1555 bit
+                 * pattern, and the same colour in 565 is a different number
+                 * with a different green field width. The window is +/- 20
+                 * levels, which is wider than either format's quantisation
+                 * and far narrower than the difference between blending and
+                 * not.
+                 */
+                {
+                    WORD blend_raw =
+                        v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+
+                    v9x_write_uint("D3DVertexAlphaBlendRaw", blend_raw);
+                    v9x_write_uint("D3DVertexAlphaBlendOk",
+                        draw_hr == 0 && end_hr == 0 &&
+                        target_layout.valid != 0ul &&
+                        v9x_layout_red(&target_layout, blend_raw) >= 112ul &&
+                        v9x_layout_red(&target_layout, blend_raw) <= 152ul &&
+                        v9x_layout_green(&target_layout, blend_raw) <= 20ul &&
+                        v9x_layout_blue(&target_layout, blend_raw) >= 103ul &&
+                        v9x_layout_blue(&target_layout, blend_raw) <= 143ul
+                            ? 1ul : 0ul);
+                }
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
 
@@ -2477,7 +2653,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_write_uint("D3DBaseTextureOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x03e0u) ? 1ul : 0ul);
+                                               expect_green) ? 1ul : 0ul);
                 v9x_write_uint("D3DBaseTextureRaw",
                     v9x_surface_pixel16(d3d_target, 16ul, 16ul));
 
@@ -2511,7 +2687,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_write_uint("D3DMipmapLevelSelectOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
-                                               0x001fu) ? 1ul : 0ul);
+                                               expect_blue) ? 1ul : 0ul);
                 v9x_write_uint("D3DMipmapLevelRaw",
                     v9x_surface_pixel16(d3d_target, 16ul, 16ul));
 
@@ -2548,12 +2724,19 @@ void __stdcall V9xDdrawProbeEntry(void)
                 trilinear_raw = v9x_surface_pixel16(
                     d3d_target, 16ul, 16ul);
                 v9x_write_uint("D3DTrilinearRaw", trilinear_raw);
+                /* Half green, half blue, as 0..255 channels. The old
+                 * form masked the 1555 fields directly: green 12..18 of 31
+                 * and blue 12..20 of 31, which is 39%..58% and 39%..65%.
+                 * These are those same fractions, and they now mean the same
+                 * thing whichever format the target is in. */
                 v9x_write_uint("D3DTrilinearBlendOk",
                     draw_hr == 0 && end_hr == 0 &&
-                    (trilinear_raw & 0x03e0ul) >= 0x0180ul &&
-                    (trilinear_raw & 0x03e0ul) <= 0x0240ul &&
-                    (trilinear_raw & 0x001ful) >= 12ul &&
-                    (trilinear_raw & 0x001ful) <= 20ul ? 1ul : 0ul);
+                    target_layout.valid != 0ul &&
+                    v9x_layout_green(&target_layout, trilinear_raw) >= 95ul &&
+                    v9x_layout_green(&target_layout, trilinear_raw) <= 152ul &&
+                    v9x_layout_blue(&target_layout, trilinear_raw) >= 95ul &&
+                    v9x_layout_blue(&target_layout, trilinear_raw) <= 168ul
+                        ? 1ul : 0ul);
                 /*
                  * ARGB4444 sampling.
                  *
@@ -2637,9 +2820,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_uint("Tex4444Raw", raw4444);
                         v9x_write_uint("Tex4444PixelOk",
                             begin_hr == 0 && draw_hr == 0 && end_hr == 0 &&
-                            ((DWORD)raw4444 & 0x03e0ul) >= 0x0300ul &&
-                            ((DWORD)raw4444 & 0x7c00ul) <= 0x1000ul &&
-                            ((DWORD)raw4444 & 0x001ful) <= 4ul ? 1ul : 0ul);
+                            target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout,
+                                             raw4444) >= 197ul &&
+                            v9x_layout_red(&target_layout,
+                                           raw4444) <= 33ul &&
+                            v9x_layout_blue(&target_layout,
+                                            raw4444) <= 33ul ? 1ul : 0ul);
                         (void)d3d_device->vtbl->SetRenderState(
                             d3d_device,
                             V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
@@ -2784,25 +2971,28 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                V9X_D3DCMP_ALWAYS, 1ul,
                                                d3d_target, &init_raw,
                                                &z_state_hr, &z_draw_hr) &&
-                                    init_raw == 0x7c00ul;
+                                    init_raw == (DWORD)expect_red;
                         ladder_ok = v9x_z_step(d3d_device, triangle, 0.75f,
                                                0xff00ff00ul,
                                                V9X_D3DCMP_LESS, 1ul,
                                                d3d_target, &reject_raw,
                                                0, 0) &&
-                                    reject_raw == 0x7c00ul && ladder_ok;
+                                    reject_raw == (DWORD)expect_red &&
+                                    ladder_ok;
                         ladder_ok = v9x_z_step(d3d_device, triangle, 0.25f,
                                                0xff0000fful,
                                                V9X_D3DCMP_LESS, 1ul,
                                                d3d_target, &accept_raw,
                                                0, 0) &&
-                                    accept_raw == 0x001ful && ladder_ok;
+                                    accept_raw == (DWORD)expect_blue &&
+                                    ladder_ok;
                         ladder_ok = v9x_z_step(d3d_device, triangle, 0.5f,
                                                0xfffffffful,
                                                V9X_D3DCMP_LESS, 1ul,
                                                d3d_target, &update_raw,
                                                0, 0) &&
-                                    update_raw == 0x001ful && ladder_ok;
+                                    update_raw == (DWORD)expect_blue &&
+                                    ladder_ok;
                         v9x_write_hresult("D3DZStateHr", z_state_hr);
                         v9x_write_hresult("D3DZDrawHr", z_draw_hr);
                         v9x_write_uint("D3DZInitRaw", init_raw);
@@ -2824,18 +3014,19 @@ void __stdcall V9xDdrawProbeEntry(void)
                                              0xfffffffful,
                                              V9X_D3DCMP_ALWAYS, 1ul,
                                              d3d_target, &mask_raw, 0, 0) &&
-                                  mask_raw == 0x7ffful;
+                                  mask_raw == (DWORD)expect_white;
                         mask_ok = v9x_z_step(d3d_device, triangle, 0.125f,
                                              0xff00ff00ul,
                                              V9X_D3DCMP_LESS, 0ul,
                                              d3d_target, &nowrite_raw,
                                              0, 0) &&
-                                  nowrite_raw == 0x03e0ul && mask_ok;
+                                  nowrite_raw == (DWORD)expect_green &&
+                                  mask_ok;
                         mask_ok = v9x_z_step(d3d_device, triangle, 0.1875f,
                                              0xffff0000ul,
                                              V9X_D3DCMP_LESS, 1ul,
                                              d3d_target, &mask_raw, 0, 0) &&
-                                  mask_raw == 0x7c00ul && mask_ok;
+                                  mask_raw == (DWORD)expect_red && mask_ok;
                         v9x_write_uint("D3DZNoWriteRaw", nowrite_raw);
                         v9x_write_uint("D3DZMaskRaw", mask_raw);
                         v9x_write_uint("D3DZWriteMaskOk",
@@ -3042,19 +3233,19 @@ void __stdcall V9xDdrawProbeEntry(void)
                                        V9X_D3DCMP_ALWAYS, 1ul,
                                        z_target, &init_raw,
                                        &z_state_hr, &z_draw_hr) &&
-                            init_raw == 0x7c00ul;
+                            init_raw == (DWORD)expect_red;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.75f, 0xff00ff00ul,
                                        V9X_D3DCMP_LESS, 1ul,
                                        z_target, &reject_raw, 0, 0) &&
-                            reject_raw == 0x7c00ul && ladder_ok;
+                            reject_raw == (DWORD)expect_red && ladder_ok;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xff0000fful,
                                        V9X_D3DCMP_LESS, 1ul,
                                        z_target, &accept_raw, 0, 0) &&
-                            accept_raw == 0x001ful && ladder_ok;
+                            accept_raw == (DWORD)expect_blue && ladder_ok;
                 ladder_ok = v9x_z_step(z_device, z_tri, 0.5f, 0xfffffffful,
                                        V9X_D3DCMP_LESS, 1ul,
                                        z_target, &update_raw, 0, 0) &&
-                            update_raw == 0x001ful && ladder_ok;
+                            update_raw == (DWORD)expect_blue && ladder_ok;
                 v9x_write_hresult("D3DZPStateHr", z_state_hr);
                 v9x_write_hresult("D3DZPDrawHr", z_draw_hr);
                 v9x_write_uint("D3DZPInitRaw", init_raw);
@@ -3074,15 +3265,15 @@ void __stdcall V9xDdrawProbeEntry(void)
                 mask_ok = v9x_z_step(z_device, z_tri, 0.25f, 0xfffffffful,
                                      V9X_D3DCMP_ALWAYS, 1ul,
                                      z_target, &mask_raw, 0, 0) &&
-                          mask_raw == 0x7ffful;
+                          mask_raw == (DWORD)expect_white;
                 mask_ok = v9x_z_step(z_device, z_tri, 0.125f, 0xff00ff00ul,
                                      V9X_D3DCMP_LESS, 0ul,
                                      z_target, &nowrite_raw, 0, 0) &&
-                          nowrite_raw == 0x03e0ul && mask_ok;
+                          nowrite_raw == (DWORD)expect_green && mask_ok;
                 mask_ok = v9x_z_step(z_device, z_tri, 0.1875f, 0xffff0000ul,
                                      V9X_D3DCMP_LESS, 1ul,
                                      z_target, &mask_raw, 0, 0) &&
-                          mask_raw == 0x7c00ul && mask_ok;
+                          mask_raw == (DWORD)expect_red && mask_ok;
                 v9x_write_uint("D3DZPNoWriteRaw", nowrite_raw);
                 v9x_write_uint("D3DZPMaskRaw", mask_raw);
                 v9x_write_uint("D3DZPWriteMaskOk", mask_ok ? 1ul : 0ul);

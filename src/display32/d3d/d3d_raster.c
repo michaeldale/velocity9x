@@ -172,6 +172,131 @@ int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
     return 1;
 }
 
+int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
+{
+    v9x_u32 bit;
+
+    if (texture == 0 || texture->pixels == 0) {
+        return 0;
+    }
+    if (texture->format != V9X_D3D_RASTER_TEXFMT_ARGB1555 &&
+        texture->format != V9X_D3D_RASTER_TEXFMT_ARGB4444) {
+        return 0;
+    }
+    if (texture->filter != V9X_D3D_RASTER_FILTER_POINT &&
+        texture->filter != V9X_D3D_RASTER_FILTER_LINEAR) {
+        return 0;
+    }
+    if (texture->blend != V9X_D3D_RASTER_BLEND_DECAL &&
+        texture->blend != V9X_D3D_RASTER_BLEND_MODULATE) {
+        return 0;
+    }
+    if (texture->size < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
+        texture->size > V9X_D3D_RASTER_TEXTURE_SIZE_MAX) {
+        return 0;
+    }
+    /* Power of two, checked rather than assumed: the sampler wraps its texel
+     * index with size - 1 as a mask, and on a non-power-of-two size that mask
+     * indexes outside the surface instead of looking wrong. */
+    bit = 1ul;
+    while (bit < texture->size) {
+        bit <<= 1;
+    }
+    if (bit != texture->size) {
+        return 0;
+    }
+    if (texture->pitch < texture->size * 2ul) {
+        return 0;
+    }
+    return 1;
+}
+
+/* Five bits to eight, replicating the high bits into the low ones so that 31
+ * reaches 255 rather than 248. Four bits to eight is exact - 17 is 255/15 - so
+ * it needs no equivalent. */
+static v9x_s32 v9x_d3d_raster_expand5(v9x_u32 value)
+{
+    return (v9x_s32)((value << 3) | (value >> 2));
+}
+
+/*
+ * One texel, decoded to three 0..255 channels.
+ *
+ * Alpha is read by neither format's arm. The sampler has no alpha blending
+ * behind it, and describe_caps advertises no texture alpha to match - a
+ * channel decoded and discarded would be the beginning of exactly the
+ * advertise-then-ignore pattern this driver has paid for twice.
+ */
+static void v9x_d3d_raster_texel(const V9X_D3D_RASTER_TEXTURE *texture,
+                                 v9x_s32 x, v9x_s32 y,
+                                 v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
+{
+    const v9x_u16 *row = (const v9x_u16 *)((const v9x_u8 *)texture->pixels +
+                                           (v9x_u32)y * texture->pitch);
+    v9x_u32 texel = (v9x_u32)row[x];
+
+    if (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444) {
+        *red = (v9x_s32)(((texel >> 8) & 0x0ful) * 17ul);
+        *green = (v9x_s32)(((texel >> 4) & 0x0ful) * 17ul);
+        *blue = (v9x_s32)((texel & 0x0ful) * 17ul);
+        return;
+    }
+    *red = v9x_d3d_raster_expand5((texel >> 10) & 0x1ful);
+    *green = v9x_d3d_raster_expand5((texel >> 5) & 0x1ful);
+    *blue = v9x_d3d_raster_expand5(texel & 0x1ful);
+}
+
+/*
+ * Sample the texture at a normalised coordinate, point or bilinear.
+ *
+ * Every product here is bounded and the bounds are worth stating, because they
+ * are the reason the coordinate range is what it is. u is at most 65535 and
+ * size at most 512, so u * size is at most 33,553,920. The bilinear arm adds
+ * a whole texture's worth of bias to keep the half-texel offset from going
+ * negative - an arithmetic right shift of a negative value is implementation
+ * defined, and the wrap mask below would then index backwards off the surface
+ * - which doubles it to 67,107,840. The weighted sum of four texels is at most
+ * 255 * 256 * 256, which is 16,711,680.
+ */
+static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_TEXTURE *texture,
+                                  v9x_s32 u, v9x_s32 v,
+                                  v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
+{
+    v9x_s32 size = (v9x_s32)texture->size;
+    v9x_s32 mask = size - 1l;
+    v9x_s32 su = u * size;
+    v9x_s32 sv = v * size;
+
+    if (texture->filter == V9X_D3D_RASTER_FILTER_LINEAR) {
+        v9x_s32 bias = size << 16;
+        v9x_s32 bu = su + bias - 32768l;
+        v9x_s32 bv = sv + bias - 32768l;
+        v9x_s32 x0 = (bu >> 16) & mask;
+        v9x_s32 y0 = (bv >> 16) & mask;
+        v9x_s32 x1 = (x0 + 1l) & mask;
+        v9x_s32 y1 = (y0 + 1l) & mask;
+        v9x_s32 fu = (bu >> 8) & 0xffl;
+        v9x_s32 fv = (bv >> 8) & 0xffl;
+        v9x_s32 w00 = (256l - fu) * (256l - fv);
+        v9x_s32 w10 = fu * (256l - fv);
+        v9x_s32 w01 = (256l - fu) * fv;
+        v9x_s32 w11 = fu * fv;
+        v9x_s32 r00, g00, b00, r10, g10, b10, r01, g01, b01, r11, g11, b11;
+
+        v9x_d3d_raster_texel(texture, x0, y0, &r00, &g00, &b00);
+        v9x_d3d_raster_texel(texture, x1, y0, &r10, &g10, &b10);
+        v9x_d3d_raster_texel(texture, x0, y1, &r01, &g01, &b01);
+        v9x_d3d_raster_texel(texture, x1, y1, &r11, &g11, &b11);
+        *red = (r00 * w00 + r10 * w10 + r01 * w01 + r11 * w11) >> 16;
+        *green = (g00 * w00 + g10 * w10 + g01 * w01 + g11 * w11) >> 16;
+        *blue = (b00 * w00 + b10 * w10 + b01 * w01 + b11 * w11) >> 16;
+        return;
+    }
+
+    v9x_d3d_raster_texel(texture, (su >> 16) & mask, (sv >> 16) & mask,
+                         red, green, blue);
+}
+
 /*
  * Where an edge crosses a scanline centre, and what colour it is there.
  *
@@ -208,6 +333,8 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
      * pixel wider than the cap would exhaust it here rather than in the
      * coordinate arithmetic that motivated the cap in the first place. */
     result->z = v9x_d3d_raster_lerp(from->z, to->z, offset, span);
+    result->u = v9x_d3d_raster_lerp(from->u, to->u, offset, span);
+    result->v = v9x_d3d_raster_lerp(from->v, to->v, offset, span);
     result->red = v9x_d3d_raster_lerp(from->red, to->red, offset, span);
     result->green = v9x_d3d_raster_lerp(from->green, to->green, offset, span);
     result->blue = v9x_d3d_raster_lerp(from->blue, to->blue, offset, span);
@@ -231,6 +358,7 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
  */
 static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_DEPTH *depth,
+                                const V9X_D3D_RASTER_TEXTURE *texture,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -242,10 +370,14 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 green_step = 0l;
     v9x_s32 blue_step = 0l;
     v9x_s32 z_step = 0l;
+    v9x_s32 u_step = 0l;
+    v9x_s32 v_step = 0l;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
     v9x_s32 z;
+    v9x_s32 u;
+    v9x_s32 v;
     v9x_s32 offset;
     v9x_s32 column;
     v9x_u16 *pixels;
@@ -269,6 +401,11 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         blue_step = ((right->blue - left->blue) <<
                      V9X_D3D_RASTER_COLOUR_BITS) / width;
         z_step = ((right->z - left->z) << V9X_D3D_RASTER_DEPTH_BITS) / width;
+        /* Texture coordinates share the depth interpolator's eight fractional
+         * bits, and for the same reason: both run to 65535, and sixteen would
+         * put the step alone outside a signed 32-bit integer. */
+        u_step = ((right->u - left->u) << V9X_D3D_RASTER_DEPTH_BITS) / width;
+        v_step = ((right->v - left->v) << V9X_D3D_RASTER_DEPTH_BITS) / width;
     }
 
     /* The colour at the first pixel centre, then one whole pixel per step. */
@@ -281,10 +418,14 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     green = (left->green << V9X_D3D_RASTER_COLOUR_BITS) + green_step * offset;
     blue = (left->blue << V9X_D3D_RASTER_COLOUR_BITS) + blue_step * offset;
     z = (left->z << V9X_D3D_RASTER_DEPTH_BITS) + z_step * offset;
+    u = (left->u << V9X_D3D_RASTER_DEPTH_BITS) + u_step * offset;
+    v = (left->v << V9X_D3D_RASTER_DEPTH_BITS) + v_step * offset;
     red_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     z_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
 
     pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
                          (v9x_u32)row * target->pitch);
@@ -316,10 +457,70 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         }
 
         if (visible) {
-            pixels[column] = v9x_d3d_raster_rgb565(
-                red >> V9X_D3D_RASTER_COLOUR_BITS,
-                green >> V9X_D3D_RASTER_COLOUR_BITS,
-                blue >> V9X_D3D_RASTER_COLOUR_BITS);
+            v9x_s32 out_red = red >> V9X_D3D_RASTER_COLOUR_BITS;
+            v9x_s32 out_green = green >> V9X_D3D_RASTER_COLOUR_BITS;
+            v9x_s32 out_blue = blue >> V9X_D3D_RASTER_COLOUR_BITS;
+
+            if (texture != 0) {
+                v9x_s32 tex_red;
+                v9x_s32 tex_green;
+                v9x_s32 tex_blue;
+                v9x_s32 texel_u = u >> V9X_D3D_RASTER_DEPTH_BITS;
+                v9x_s32 texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
+
+                /* Clamped, not wrapped, and the caps say so. One repeat is all
+                 * the coordinate range holds - see V9X_D3D_RASTER_TEXCOORD_MAX
+                 * - so a coordinate that has drifted a fraction past either end
+                 * takes the edge texel rather than reappearing at the far
+                 * side. */
+                if (texel_u < 0l) {
+                    texel_u = 0l;
+                }
+                if (texel_u > V9X_D3D_RASTER_TEXCOORD_MAX) {
+                    texel_u = V9X_D3D_RASTER_TEXCOORD_MAX;
+                }
+                if (texel_v < 0l) {
+                    texel_v = 0l;
+                }
+                if (texel_v > V9X_D3D_RASTER_TEXCOORD_MAX) {
+                    texel_v = V9X_D3D_RASTER_TEXCOORD_MAX;
+                }
+                v9x_d3d_raster_sample(texture, texel_u, texel_v,
+                                      &tex_red, &tex_green, &tex_blue);
+                if (texture->blend == V9X_D3D_RASTER_BLEND_MODULATE) {
+                    /* Clamped first: the interpolator's endpoints can sit a
+                     * fraction outside 0..255, and a negative factor here
+                     * would brighten rather than darken. */
+                    if (out_red < 0l) {
+                        out_red = 0l;
+                    }
+                    if (out_red > 255l) {
+                        out_red = 255l;
+                    }
+                    if (out_green < 0l) {
+                        out_green = 0l;
+                    }
+                    if (out_green > 255l) {
+                        out_green = 255l;
+                    }
+                    if (out_blue < 0l) {
+                        out_blue = 0l;
+                    }
+                    if (out_blue > 255l) {
+                        out_blue = 255l;
+                    }
+                    out_red = (tex_red * out_red + 127l) / 255l;
+                    out_green = (tex_green * out_green + 127l) / 255l;
+                    out_blue = (tex_blue * out_blue + 127l) / 255l;
+                } else {
+                    out_red = tex_red;
+                    out_green = tex_green;
+                    out_blue = tex_blue;
+                }
+            }
+
+            pixels[column] = v9x_d3d_raster_rgb565(out_red, out_green,
+                                                   out_blue);
         }
 
         /* Stepped for every pixel, drawn or not. A failed depth test skips
@@ -329,11 +530,14 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         green += green_step;
         blue += blue_step;
         z += z_step;
+        u += u_step;
+        v += v_step;
     }
 }
 
 int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
+                            const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
@@ -356,13 +560,20 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     if (depth != 0 && !v9x_d3d_raster_depth_valid(depth, target)) {
         return 0;
     }
+    if (texture != 0 && !v9x_d3d_raster_texture_valid(texture)) {
+        return 0;
+    }
     for (index = 0ul; index < 3ul; ++index) {
         if (vertices[index].x < 0l ||
             vertices[index].x > V9X_D3D_RASTER_COORD_MAX ||
             vertices[index].y < 0l ||
             vertices[index].y > V9X_D3D_RASTER_COORD_MAX ||
             vertices[index].z < 0l ||
-            vertices[index].z > V9X_D3D_RASTER_DEPTH_MAX) {
+            vertices[index].z > V9X_D3D_RASTER_DEPTH_MAX ||
+            vertices[index].u < 0l ||
+            vertices[index].u > V9X_D3D_RASTER_TEXCOORD_MAX ||
+            vertices[index].v < 0l ||
+            vertices[index].v > V9X_D3D_RASTER_TEXCOORD_MAX) {
             return 0;
         }
     }
@@ -418,9 +629,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         }
 
         if (along.x <= across.x) {
-            v9x_d3d_raster_span(target, depth, row, &along, &across);
+            v9x_d3d_raster_span(target, depth, texture, row, &along, &across);
         } else {
-            v9x_d3d_raster_span(target, depth, row, &across, &along);
+            v9x_d3d_raster_span(target, depth, texture, row, &across, &along);
         }
     }
     return 1;

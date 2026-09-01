@@ -106,7 +106,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | DirectDraw surfaces / page flip / vblank | Yes | Yes | Yes | Yes |
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
-| Direct3D | Yes (narrow S3D path) | **No** | **No** | **No** |
+| Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | same |
 | Direct3D on/off switch | Yes | Shown, disabled — nothing to switch | same | same |
 | GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
 | Hardware cursor | No (software cursor) | No | No | No |
@@ -417,7 +417,23 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
   `SORTINCREASINGZ` and `SPECULARFLATRGB`, accepts only pre-transformed and
   pre-lit vertices, and does no clipping, backface culling, lines or indexed
   primitives. The S3D triangle engine writes native ZRGB1555 into a surface
-  described as RGB565, which is an unresolved mismatch.
+  described as RGB565 — an unresolved mismatch, and since 2026-09-01 a
+  measured one rather than an observation: it fails every probe key whose
+  expected colour is not blue, blue being the one value the two formats agree
+  on. See
+  [`docs/issues/2026-09-01-virge-3d-writes-zrgb1555.md`](docs/issues/2026-09-01-virge-3d-writes-zrgb1555.md),
+  which names the two hypotheses and the machine that can tell them apart.
+
+- **The software rasterizer is opt-in and slow.** `Direct3D=2` in
+  `SYSTEM.INI`'s `[Velocity9x]` section serves Direct3D from a CPU rasterizer
+  on any supported card, including the ones with no 3D hardware at all. It
+  draws depth-tested Gouraud triangles with one texture, point or bilinear,
+  decal or modulate, from ARGB1555 or ARGB4444 — every one of those verified by
+  a pixel on a Trio64. It has no alpha blending, no mip selection, no fog and
+  no texture tiling, it clamps texture coordinates instead of wrapping, and its
+  capabilities advertise exactly that list and nothing more. **No performance
+  measurement of it exists**: it has been run on an emulated guest and never on
+  a period machine.
 - **Depth gradients are exercised but unverified.** Depth comparison and
   depth-write masking are both pixel-verified. The per-pixel depth slope is
   not: the emulator this is tested on doubles a triangle's start depth but not

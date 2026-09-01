@@ -96,6 +96,52 @@
 #define V9X_D3D_RASTER_CMP_ALWAYS       8ul
 
 /*
+ * Texture coordinates are 0..65535 across the texture, and 65535 is the whole
+ * of it - ONE REPEAT, not a tiling coordinate.
+ *
+ * That is an arithmetic limit, not a design preference, and it is the same
+ * limit depth runs into. The edge interpolator forms max(from, to) *
+ * denominator with the denominator being the triangle's height in subpixels,
+ * at most 32752, so anything it carries must stay under 65566 or the product
+ * leaves a signed 32-bit integer. A coordinate that could express two repeats
+ * would need twice that.
+ *
+ * The consequence is visible in the caps: the engine clamps rather than wraps,
+ * and `describe_caps` advertises CLAMP and not WRAP. Widening it means a wider
+ * intermediate in v9x_d3d_raster_lerp, which is a change to the arithmetic
+ * every other interpolated quantity shares.
+ */
+#define V9X_D3D_RASTER_TEXCOORD_MAX 65535l
+
+/*
+ * The two texture formats, numbered as this file likes: unlike the comparison
+ * functions below, these correspond to no Direct3D constant - a D3D texture
+ * format is a whole DDPIXELFORMAT - so the engine classifies the surface and
+ * hands one of these over. They are the same two the ViRGE's sampler accepts,
+ * deliberately: the two engines are meant to be interchangeable, and a
+ * software path that took formats the hardware path refuses would be a
+ * difference nobody asked for.
+ */
+#define V9X_D3D_RASTER_TEXFMT_ARGB1555 1ul
+#define V9X_D3D_RASTER_TEXFMT_ARGB4444 2ul
+
+/*
+ * Filter and blend, numbered as D3DFILTER_* and D3DTBLEND_* number them, for
+ * the same reason the comparison functions are: the engine passes the render
+ * state through and asserts the equality at compile time. Only these values
+ * are implemented - the mip filters have no meaning here, because nothing
+ * selects a mip level, and `describe_caps` advertises none of them.
+ */
+#define V9X_D3D_RASTER_FILTER_POINT   1ul
+#define V9X_D3D_RASTER_FILTER_LINEAR  2ul
+#define V9X_D3D_RASTER_BLEND_DECAL    1ul
+#define V9X_D3D_RASTER_BLEND_MODULATE 2ul
+
+/* Square, power-of-two texture edge bounds in texels, matching the ViRGE. */
+#define V9X_D3D_RASTER_TEXTURE_SIZE_MIN 4ul
+#define V9X_D3D_RASTER_TEXTURE_SIZE_MAX 512ul
+
+/*
  * One vertex, already transformed, clipped and unpacked by the caller.
  *
  * Colour is three separate 0..255 channels rather than a packed DWORD because
@@ -114,6 +160,8 @@ typedef struct v9x_d3d_raster_vertex {
     v9x_s32 x;
     v9x_s32 y;
     v9x_s32 z;
+    v9x_s32 u;
+    v9x_s32 v;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
@@ -136,6 +184,27 @@ typedef struct v9x_d3d_raster_depth {
     v9x_u32 compare;
     v9x_u32 write;
 } V9X_D3D_RASTER_DEPTH;
+
+/*
+ * The bound texture and the two render states that drive sampling.
+ *
+ * Per draw for the same reason the depth buffer is: an application changes the
+ * filter or the blend between two draws into the same target. A null pointer
+ * for the whole struct means untextured, which is what every draw was before
+ * this existed and what the engine passes when no handle is bound.
+ *
+ * `size` is the edge of a square, power-of-two texture. It is not derived from
+ * the pitch, because a surface may be padded, and it is not inferred at all:
+ * the engine validates the surface and states it.
+ */
+typedef struct v9x_d3d_raster_texture {
+    void *pixels;
+    v9x_u32 pitch;
+    v9x_u32 size;
+    v9x_u32 format;
+    v9x_u32 filter;
+    v9x_u32 blend;
+} V9X_D3D_RASTER_TEXTURE;
 
 /*
  * Where the pixels go: a pointer, a byte pitch and the extent in pixels.
@@ -174,16 +243,29 @@ int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
                                const V9X_D3D_RASTER_TARGET *target);
 
 /*
+ * Whether a texture is one this rasterizer will sample: non-null, a known
+ * format, a known filter and blend, and a square power-of-two edge inside the
+ * declared bounds with a pitch wide enough for its row.
+ *
+ * Power-of-two is not a formality here - the sampler wraps its texel index
+ * with a mask, so a non-power-of-two size would index outside the surface
+ * rather than merely look wrong.
+ */
+int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture);
+
+/*
  * Rasterize one triangle - exactly three vertices - into the target, testing
- * and updating `depth` if it is not null.
+ * and updating `depth` if it is not null, sampling `texture` if it is not.
  *
  * Returns non-zero when the triangle was processed, which includes a
  * degenerate one that covers no pixel centre. Returns zero only when the
  * arguments are ones it refuses: a target that fails the check above, a
- * non-null depth buffer that fails its own, or a coordinate outside
- * [0, V9X_D3D_RASTER_COORD_MAX]. The caller clips and clamps; a refusal here
- * means the caller did not, and drawing anyway would write outside a surface
- * that on these cards is also the desktop.
+ * non-null depth buffer or texture that fails its own, a coordinate outside
+ * [0, V9X_D3D_RASTER_COORD_MAX], a depth outside
+ * [0, V9X_D3D_RASTER_DEPTH_MAX] or a texture coordinate outside
+ * [0, V9X_D3D_RASTER_TEXCOORD_MAX]. The caller clips and clamps; a refusal
+ * here means the caller did not, and drawing anyway would write outside a
+ * surface that on these cards is also the desktop.
  *
  * Coverage is pixel centres with half-open intervals: a pixel belongs to the
  * triangle when its centre - (x + 0.5, y + 0.5) - is inside, with the low edge
@@ -193,6 +275,7 @@ int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
  */
 int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
+                            const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_VERTEX *vertices);
 
 #endif

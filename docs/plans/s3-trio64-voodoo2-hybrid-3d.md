@@ -2,9 +2,12 @@
 
 Status: 2026-09-01. **Mode 1 is written, gated and measured on the ViRGE
 guest** - see [the gate record](../decisions/2026-08-30-d3d-mode-disabled-gate.md).
-**Mode 2 rasterizes depth-tested Gouraud triangles**, measured on a Trio64 -
-see [the rasterizer record](../decisions/2026-09-01-software-rasterizer-depth.md).
-Modes 3 and 4 are planning only.
+**Mode 2 is functionally complete**: depth-tested, textured Gouraud triangles
+with caps that publish exactly what a pixel test holds them to, measured on a
+Trio64 - see the
+[rasterizer](../decisions/2026-09-01-software-rasterizer-depth.md) and
+[texture](../decisions/2026-09-01-software-textures-and-caps.md) records. It
+has never been measured for speed. Modes 3 and 4 are planning only.
 
 Reviewed against the tree the same day: two open questions closed by reading
 code, one target named, the development order re-cut around what that changed,
@@ -30,11 +33,12 @@ Direct3D is served:
 | 4 | **Offload** | A Voodoo2 renders; windowed frames come back over PCI into the primary card's framebuffer, fullscreen uses the Voodoo2's own DAC through the VGA pass-through. | A period 2D + 3dfx pairing |
 
 **Where this stands, 2026-09-01.** **Mode 1 is done, released in 0.6.5 and
-measured on three chips.** **Mode 2 draws depth-tested Gouraud triangles on a
-Trio64** - work-order steps 3 to 7, measured on the guest against the ViRGE as
-a control ([record](../decisions/2026-09-01-software-rasterizer-depth.md)). It
-has no texture sampling, and it advertises neither depth nor texturing, so no
-application that checks caps will use what works. **Mode 3 is the current
+measured on three chips.** **Mode 2 draws depth-tested, textured Gouraud
+triangles on a Trio64 and advertises exactly what it draws** - work-order steps
+3 to 10 bar the two measurements. What remains is not features: **step 1, the
+VRAM versus system-memory write cost on BARRY, has never been run**, and
+neither has step 11. So mode 2 is correct and of entirely unknown speed, on a
+machine nobody has timed it on. **Mode 3 is the current
 direction**, its first deliverable
 (`DDBLT_DEPTHFILL`) landed, and it is now blocked on an instrument rather than
 on a design: see its section. Mode 4 remains a research project with no
@@ -593,16 +597,47 @@ would score identically. FR is an integration test, not a correctness one.
    format defect put there. See the record; the probe's expectations are now
    hiding three passes rather than one, and fixing that is a decision about a
    validated baseline rather than a tidy-up.
-8. Texture sampling: point, then bilinear.
-9. `describe_caps` publishing only what steps 6-8 verified.
-10. Probe ladder against the software engine on a real guest. **Partly done**:
-    steps 6 and 7 were each run on `Win98SE-Trio64` with `Win86SE` as a
-    hardware control, and two keys were added to the probe -
-    `D3DTriangleShapeOk`, which is what separates a rasterizer from the stage-1
-    bounding-box stub, and the four `D3DEdge*Raw` keys, which found that the
-    core's clipper loses the last row and column on **both** engines
-    ([issue](../issues/2026-09-01-clipper-loses-last-row-and-column.md)). The
-    full ladder still needs re-running once step 9 publishes caps.
+8. ~~Texture sampling: point, then bilinear.~~ **Done, 2026-09-01**, and
+   measured on the Trio64. ARGB1555 and ARGB4444 - the same two the ViRGE
+   accepts, so the engines stay interchangeable - point or bilinear, decal or
+   modulate.
+
+   One limit came out of the arithmetic rather than the design. **Texture
+   coordinates hold exactly one repeat**: the edge interpolator forms
+   `max(from, to) * denominator` against a denominator of at most 32752, so
+   anything it carries must stay under 65566, and depth already sits at 65535
+   against that bound. The sampler therefore clamps, and step 9 publishes
+   CLAMP without WRAP. Wrapping a coordinate the interpolator cannot carry
+   would put a seam through the middle of every triangle rather than stretch an
+   edge texel.
+9. ~~`describe_caps` publishing only what steps 6-8 verified.~~ **Done,
+   2026-09-01**, and read back through `GetCaps` on the guest. Published: RGB,
+   float TL vertices, execute buffers from system memory, texturing from device
+   memory, 16-bit target and Z, all eight comparison functions, flat and
+   Gouraud RGB, specular Gouraud, subpixel, NEAREST and LINEAR, DECAL and
+   MODULATE, POW2 and SQUAREONLY, CLAMP. Withheld with reasons: WRAP, the mip
+   filters, texture alpha and every alpha blend cap, PERSPECTIVE, COPY, and the
+   fog caps - fog works, but on one probe rung, and it goes in when there is a
+   ladder behind it.
+10. ~~Probe ladder against the software engine on a real guest.~~ **Done,
+    2026-09-01.** Every step from 6 onwards was run on `Win98SE-Trio64` with
+    `Win86SE` as a hardware control. The ladder passes on the software engine:
+    flat and subpixel triangles, shape, all four depth-compare rungs, the write
+    mask, specular, fog, both texture formats, and a context cycle.
+
+    Three things came out of it that the ladder was not looking for.
+
+    - **The probe's expected colours were the ViRGE's bug.** They were ZRGB1555
+      literals against an RGB565 target, so a correct engine failed them. They
+      are now derived from the surface
+      ([record](../decisions/2026-09-01-probe-derives-expected-colours.md)), and
+      six ViRGE keys went red as a result - a real defect, now measured from
+      outside ([issue](../issues/2026-09-01-virge-3d-writes-zrgb1555.md)).
+    - **`D3DTriangleShapeOk`** was added, and it is what separates a rasterizer
+      from the stage-1 bounding-box stub. Nothing before it could.
+    - **The four `D3DEdge*Raw` keys** found the core's clipper losing the last
+      row and column on **both** engines
+      ([issue](../issues/2026-09-01-clipper-loses-last-row-and-column.md)).
 11. Final Reality on BARRY - the first time that machine has run a 3D
     benchmark at all. An integration check, not a correctness one; see the
     note above about what its score actually measures.
