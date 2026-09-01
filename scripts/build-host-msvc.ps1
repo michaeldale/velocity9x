@@ -85,7 +85,12 @@ $sourceNames = @(
     "src\common\edid.c",
     "src\common\mtrr.c",
     "src\common\d3dmode.c",
-    "src\common\vbe_crtc.c"
+    "src\common\vbe_crtc.c",
+    # The software rasterizer's arithmetic. It compiles here as well as under
+    # Watcom because it is integer-only by construction - the float-to-fixed
+    # conversion, and with it the #pragma aux that keeps d3d_zfixed.c out of
+    # this list, stays in the engine. See d3d_raster.h.
+    "src\display32\d3d\d3d_raster.c"
 ) + $backendSourceNames + @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
@@ -98,6 +103,7 @@ $sourceNames = @(
     "tests\host\test_mtrr.c",
     "tests\host\test_d3dmode.c",
     "tests\host\test_vbe_crtc.c",
+    "tests\host\test_d3d_raster.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })

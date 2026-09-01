@@ -27,10 +27,11 @@ Direct3D is served:
 | 3 | **Hybrid** | The software rasterizer, with the 2D engine taking the work it is actually good at: clears, colour expansion, moving finished frames. | Trio64 and any other target with a blitter but no 3D |
 | 4 | **Offload** | A Voodoo2 renders; windowed frames come back over PCI into the primary card's framebuffer, fullscreen uses the Voodoo2's own DAC through the VGA pass-through. | A period 2D + 3dfx pairing |
 
-**Where this stands, 2026-08-30.** **Mode 1 is done, released in 0.6.5 and
-measured on three chips.** Mode 2 is **parked at a known starting line** - the
-plumbing exists, the seam has been read and the plan corrected, no rasterizer
-is written. **Mode 3 is the current direction**, its first deliverable
+**Where this stands, 2026-09-01.** **Mode 1 is done, released in 0.6.5 and
+measured on three chips.** Mode 2 has its **plumbing proved on a Trio64 and a
+flat-shaded rasterizer written and host-tested** - work-order steps 3 to 6.
+Nothing it draws has been seen on a guest yet, and it has no depth buffer and
+no textures. **Mode 3 is the current direction**, its first deliverable
 (`DDBLT_DEPTHFILL`) landed, and it is now blocked on an instrument rather than
 on a design: see its section. Mode 4 remains a research project with no
 confirmed target.
@@ -531,12 +532,32 @@ would score identically. FR is an integration test, not a correctness one.
    card with no 3D engine - and every later failure is the rasterizer's.
    Without this the first rasterizer doubles as the first test of six other
    things, which is how the depth path lost two weeks.
-6. Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
-   interpolation. Red then green, per stage. It writes into a caller-supplied
+6. ~~Rasterizer core, host-tested: edge setup, traversal, span fill, Gouraud
+   interpolation.~~ **Done, 2026-09-01.** `src\display32\d3d\d3d_raster.c`,
+   held by `tests\host\test_d3d_raster.c`. It writes into a caller-supplied
    surface - pointer, pitch, width, height - so it is pure arithmetic and does
    not care whether that memory is VRAM or a system-memory shadow. That keeps
    step 1's measurement out of the rasterizer's design entirely: it decides
    which pointer is passed, not how anything is written.
+
+   Three decisions in it are worth carrying forward. **It is integer-only**,
+   in 28.4 screen coordinates: the float-to-fixed conversion stays in
+   `d3d_soft.c`, because it needs the `#pragma aux` fistp that keeps
+   `d3d_zfixed.c` out of the MSVC host pass, and keeping it out of the
+   arithmetic leaves the arithmetic portable and tested twice. **The target
+   dimension is capped at 2048** and that cap is an overflow bound rather than
+   a taste - every interpolation product is bounded by coordinate squared, and
+   32752 squared is 1,072,693,504, so a 4096-pixel target would break every
+   span silently and on large modes only. `d3d_soft.c` asserts its own
+   `target_dimension_max` against it at compile time. **Coverage is pixel
+   centres with half-open intervals in both axes**, which is what the test
+   suite's central property checks: two triangles sharing an edge cover the
+   pixels along it exactly once, neither twice nor not at all.
+
+   What it is not: no depth, no texture, no fill-rule for anything but a
+   triangle list, and no guest has drawn through it. The tests are properties
+   - coverage, containment, flat colour staying flat, vertex-order
+   independence - not a picture.
 7. Depth: 16-bit, compare and write mask, host-tested against the same eight
    comparison functions the ViRGE path implements.
 8. Texture sampling: point, then bilinear.

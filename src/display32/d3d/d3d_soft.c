@@ -1,29 +1,58 @@
 /*
  * The CPU rasterizer's engine, selected by mode rather than by chip.
  *
- * STAGE 1 OF MODE 2, AND DELIBERATELY NOT A RASTERIZER YET. draw_triangles
- * fills each triangle's bounding box with a flat colour. That is not a
- * rendering technique, it is an instrument: it makes the whole path visible
- * end to end - the SYSTEM.INI mode, the capability stamp, engine selection,
- * caps publication, context creation, the clipper, and the draw call arriving
- * here with usable vertices - on a card with no 3D engine, before a single
- * line of edge-stepping arithmetic exists.
+ * This file is the engine, not the rasterizer. It answers the four questions
+ * V9X_D3D_ENGINE_OPS asks - what it will accept, whether it is ready, what to
+ * publish, and draw this batch - and hands the arithmetic to d3d_raster.c,
+ * which knows nothing about DirectDraw and is held to a pixel table by
+ * tests\host\test_d3d_raster.c. What stays here is everything that cannot
+ * cross that line: the shared block, the DDHAL vertex layout, and the
+ * float-to-fixed conversion, which needs a #pragma aux fistp because Open
+ * Watcom lowers a float-to-int cast to __CHP and the HAL links with `option
+ * nodefaultlibs`.
  *
- * The reason is this project's own history. The depth path was written
- * complete and then spent two weeks proving that the thing wrong with it was
- * not the depth arithmetic; the D3D split published nothing at all and looked
- * like a caps bug. When a first rasterizer doubles as the first test of six
- * other things, a black screen says nothing about which of the seven is
- * broken. A coloured rectangle where a triangle was asked for says the other
- * six work.
+ * Stage 1 of mode 2 shipped a stub here that filled each triangle's bounding
+ * box with a flat colour, and it was not a placeholder - it was the
+ * instrument that proved the whole path on a Trio64 before any arithmetic
+ * existed: the SYSTEM.INI mode, the capability stamp, engine selection, caps
+ * publication, context creation, the clipper, and the draw call arriving with
+ * usable vertices. That measurement is in the 2026-08-30 commit and is what
+ * lets this change be read as a rasterizer change and nothing else.
  *
- * So the acceptance test for this file is not "does it look right" - it will
- * look wrong, on purpose. It is: does a rectangle appear, at the right place,
- * on a Trio64.
+ * Work-order step 6, and it has been run by the host tests only. No guest has
+ * drawn a triangle through it.
  *
- * docs\plans\s3-trio64-voodoo2-hybrid-3d.md, mode 2, work-order step 5.
+ * docs\plans\s3-trio64-voodoo2-hybrid-3d.md, mode 2, work-order steps 5 and 6.
  */
 #include "d3d_internal.h"
+#include "d3d_raster.h"
+
+/*
+ * The largest render target this engine accepts.
+ *
+ * It is the rasterizer's bound, restated where the limits table can use it.
+ * Exceeding V9X_D3D_RASTER_DIMENSION_MAX would make that file's interpolation
+ * products overflow a signed 32-bit integer - on large modes only, silently -
+ * so the two numbers are tied together here rather than left to agree by
+ * habit. The assert below is a negative array size on a mismatch, which is a
+ * compile error rather than a review comment.
+ */
+#define V9X_D3D_SOFT_DIMENSION_MAX V9X_D3D_RASTER_DIMENSION_MAX
+
+typedef char v9x_assert_soft_dimension[
+    (V9X_D3D_SOFT_DIMENSION_MAX <= V9X_D3D_RASTER_DIMENSION_MAX) ? 1 : -1];
+
+/*
+ * The subpixel scale as a float, for the one conversion that needs it.
+ *
+ * Written as a literal because a cast of the integer macro would be a
+ * float-to-int conversion's mirror image and this file is already careful
+ * about those; the assert holds the two forms together.
+ */
+#define V9X_D3D_SOFT_SUBPIXEL_SCALE 16.0f
+
+typedef char v9x_assert_soft_subpixel[
+    (V9X_D3D_RASTER_SUBPIXEL_ONE == 16l) ? 1 : -1];
 
 /*
  * What the rasterizer will accept, which is not what it can currently draw.
@@ -46,7 +75,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
     16ul,           /* target_bits_per_pixel */
     0x00000ff8ul,   /* target_pitch_max */
     8ul,            /* target_pitch_align */
-    2048ul,         /* target_dimension_max */
+    V9X_D3D_SOFT_DIMENSION_MAX, /* target_dimension_max */
     4ul,            /* texture_size_min */
     512ul,          /* texture_size_max */
     2048.0f,        /* coordinate_limit */
@@ -116,105 +145,98 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.lpTextureFormats = 0ul;
 }
 
-/* RGB565 from the vertex's 0x00RRGGBB colour, which is what the core has
- * already normalised the specular and fog contributions into. */
-static WORD v9x_d3d_soft_rgb565(DWORD colour)
+/*
+ * A screen coordinate, in the rasterizer's 28.4 fixed point.
+ *
+ * v9x_float_to_long, not a C cast: the HAL links no runtime and Watcom lowers
+ * the cast to __CHP. The inline fistp in ddhal_internal.h is what the ViRGE
+ * path uses for the same reason, and it rounds to nearest, so a vertex on a
+ * subpixel boundary lands on the same side here as it does there.
+ *
+ * The clamp is the rasterizer's precondition, and it is why that file can
+ * refuse an out-of-range coordinate rather than wrap one. The core's clipper
+ * has already cut the triangle to [0, extent - 1] in both axes, so this is a
+ * no-op on every vertex it will actually see - but "already clipped" is a
+ * claim about another file, and the surface being written here is also the
+ * desktop.
+ */
+static v9x_s32 v9x_d3d_soft_coordinate(float value, DWORD extent)
 {
-    return (WORD)(((colour >> 8) & 0xf800ul) |
-                  ((colour >> 5) & 0x07e0ul) |
-                  ((colour >> 3) & 0x001ful));
+    LONG fixed = v9x_float_to_long(value * V9X_D3D_SOFT_SUBPIXEL_SCALE);
+    LONG limit = ((LONG)extent - 1l) << V9X_D3D_RASTER_SUBPIXEL_BITS;
+
+    if (fixed < 0l) {
+        fixed = 0l;
+    }
+    if (fixed > limit) {
+        fixed = limit;
+    }
+    return (v9x_s32)fixed;
 }
 
 /*
- * Fill each triangle's bounding box, clipped to the render target.
+ * One DDHAL vertex as the rasterizer wants it.
  *
- * The colour comes from the first vertex, so a Gouraud triangle reads as one
- * flat block - which is the point: it is unmistakably not a rendered triangle,
- * so nobody can mistake this stage for working rasterisation, while still
- * proving the vertices arrived with sane coordinates and a sane colour.
+ * The colour is 0x00RRGGBB - the core has already folded the specular and fog
+ * contributions into it - and is unpacked into separate channels because each
+ * one is interpolated independently. Packing to RGB565 happens per pixel, at
+ * the far end of the interpolation, not here.
+ */
+static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
+                                const V9X_D3D_CONTEXT *context,
+                                V9X_D3D_RASTER_VERTEX *result)
+{
+    result->x = v9x_d3d_soft_coordinate(source->sx, context->width);
+    result->y = v9x_d3d_soft_coordinate(source->sy, context->height);
+    result->red = (v9x_s32)((source->color >> 16) & 0xfful);
+    result->green = (v9x_s32)((source->color >> 8) & 0xfful);
+    result->blue = (v9x_s32)(source->color & 0xfful);
+}
+
+/*
+ * Rasterize the batch, one triangle at a time.
  *
- * The bounds are recomputed per triangle and clamped rather than trusted. The
- * core clips against the guard band before calling, but a rasterizer that
- * trusts its input and writes outside the surface corrupts video memory
- * belonging to something else, and this one runs on cards whose framebuffer is
- * also the desktop.
+ * The render target is described once and handed down: the rasterizer takes a
+ * pointer, a pitch and an extent and has no opinion about where that memory
+ * is. That is deliberate - work-order step 1 of mode 2 is a measurement of
+ * VRAM against system-memory write cost, and its answer has to be able to
+ * change which pointer goes in here without touching any arithmetic.
+ *
+ * A refused triangle stops the batch, which is the contract V9X_D3D_ENGINE_OPS
+ * states: non-zero when every triangle was emitted, zero on the first that was
+ * not. The rasterizer refuses only what it cannot carry safely, and
+ * v9x_d3d_soft_vertex has already clamped every coordinate into range, so a
+ * zero here means the render target itself is not one this engine can write.
  */
 static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
                                        const V9X_D3DTLVERTEX *vertices,
                                        DWORD triangle_count)
 {
-    BYTE *base;
+    V9X_D3D_RASTER_TARGET target;
     DWORD index;
 
     if (context == 0 || vertices == 0 || v9x_hal == 0) {
         return 0;
     }
-    if (context->width == 0ul || context->height == 0ul ||
-        context->pitch == 0ul) {
+
+    target.pixels = (void *)(v9x_hal->fb.linear_base + context->target_offset);
+    target.pitch = context->pitch;
+    target.width = context->width;
+    target.height = context->height;
+    if (!v9x_d3d_raster_target_valid(&target)) {
         return 0;
     }
-    base = (BYTE *)(v9x_hal->fb.linear_base + context->target_offset);
 
     for (index = 0ul; index < triangle_count; ++index) {
-        const V9X_D3DTLVERTEX *v = &vertices[index * 3ul];
-        float left = v[0].sx;
-        float right = v[0].sx;
-        float top = v[0].sy;
-        float bottom = v[0].sy;
-        WORD colour = v9x_d3d_soft_rgb565(v[0].color);
-        LONG x0;
-        LONG x1;
-        LONG y0;
-        LONG y1;
-        LONG y;
+        V9X_D3D_RASTER_VERTEX triangle[3];
         DWORD corner;
 
-        for (corner = 1ul; corner < 3ul; ++corner) {
-            if (v[corner].sx < left) {
-                left = v[corner].sx;
-            }
-            if (v[corner].sx > right) {
-                right = v[corner].sx;
-            }
-            if (v[corner].sy < top) {
-                top = v[corner].sy;
-            }
-            if (v[corner].sy > bottom) {
-                bottom = v[corner].sy;
-            }
+        for (corner = 0ul; corner < 3ul; ++corner) {
+            v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], context,
+                                &triangle[corner]);
         }
-
-        /* v9x_float_to_long, not a C cast: the HAL links no runtime, and
-         * Watcom's float-to-int cast pulls in __CHP. The inline fistp in
-         * ddhal_internal.h is what the ViRGE path uses for the same reason. */
-        x0 = v9x_float_to_long(left);
-        x1 = v9x_float_to_long(right);
-        y0 = v9x_float_to_long(top);
-        y1 = v9x_float_to_long(bottom);
-
-        if (x0 < 0l) {
-            x0 = 0l;
-        }
-        if (y0 < 0l) {
-            y0 = 0l;
-        }
-        if (x1 > (LONG)context->width) {
-            x1 = (LONG)context->width;
-        }
-        if (y1 > (LONG)context->height) {
-            y1 = (LONG)context->height;
-        }
-        if (x1 <= x0 || y1 <= y0) {
-            continue;
-        }
-
-        for (y = y0; y < y1; ++y) {
-            WORD *row = (WORD *)(base + (DWORD)y * context->pitch);
-            LONG x;
-
-            for (x = x0; x < x1; ++x) {
-                row[x] = colour;
-            }
+        if (!v9x_d3d_raster_triangle(&target, triangle)) {
+            return 0;
         }
     }
     return 1;

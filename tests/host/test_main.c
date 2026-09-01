@@ -47,6 +47,10 @@ unsigned int v9x_run_vbe_crtc_tests(void);
  * becoming the x87 integer indefinite, and with it the near plane. */
 unsigned int v9x_run_d3d_zfixed_tests(void);
 
+/* tests\host\test_d3d_raster.c: the CPU rasterizer's coverage rule, its
+ * refusals and its Gouraud interpolation, same convention. */
+unsigned int v9x_run_d3d_raster_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -606,6 +610,7 @@ int main(void)
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vbe_crtc_tests();
     failures += v9x_run_d3d_zfixed_tests();
+    failures += v9x_run_d3d_raster_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

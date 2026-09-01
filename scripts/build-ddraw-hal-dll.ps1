@@ -60,6 +60,9 @@ $sources = @(
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",
     "src\display32\d3d\d3d_virge.c",
+    # The software rasterizer's arithmetic, on the same terms as d3d_zfixed.c
+    # above and before the engine that calls it.
+    "src\display32\d3d\d3d_raster.c",
     "src\display32\d3d\d3d_soft.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"

@@ -68,7 +68,11 @@ $sourceNames = @(
     # without dragging in MMIO or the #pragma aux converters. It stays on the
     # engine side of the D3D split rather than moving to src\common, because a
     # ViRGE depth encoding is chip vocabulary - see the header comment.
-    "src\display32\d3d\d3d_zfixed.c"
+    "src\display32\d3d\d3d_zfixed.c",
+    # The software rasterizer's arithmetic, on the same terms: it includes
+    # nothing but velocity9x\types.h, holds no state and takes its render
+    # target as a pointer, so the host can hand it an array and count pixels.
+    "src\display32\d3d\d3d_raster.c"
 ) + $backendSourceNames + @(
     "src\display16\display_component.c",
     "src\minivdd32\minivdd_component.c",
@@ -82,6 +86,7 @@ $sourceNames = @(
     "tests\host\test_d3dmode.c",
     "tests\host\test_vbe_crtc.c",
     "tests\host\test_d3d_zfixed.c",
+    "tests\host\test_d3d_raster.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })
