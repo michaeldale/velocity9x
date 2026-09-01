@@ -59,6 +59,8 @@ static v9x_u16 raster_cells[RASTER_CELLS];
 /* Whole pixels as a 28.4 coordinate. */
 #define PX(value) (((v9x_s32)(value)) << V9X_D3D_RASTER_SUBPIXEL_BITS)
 
+static v9x_u16 raster_depth_cells[RASTER_CELLS];
+
 static void raster_reset(V9X_D3D_RASTER_TARGET *target)
 {
     unsigned int index;
@@ -70,6 +72,32 @@ static void raster_reset(V9X_D3D_RASTER_TARGET *target)
     target->pitch = RASTER_STRIDE * 2ul;
     target->width = RASTER_WIDTH;
     target->height = RASTER_HEIGHT;
+}
+
+/*
+ * A depth buffer laid out like the colour one, cleared to a chosen value.
+ *
+ * Its own guard margins matter as much as the colour buffer's: a depth write
+ * that runs off the end of a row corrupts the next scanline's depths, which
+ * shows up later as geometry disappearing rather than as a depth bug.
+ */
+static void raster_depth_reset(V9X_D3D_RASTER_DEPTH *depth,
+                               v9x_u32 compare, v9x_u32 write, v9x_u16 clear)
+{
+    unsigned int index;
+
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_depth_cells[index] = clear;
+    }
+    depth->pixels = &raster_depth_cells[RASTER_GUARD];
+    depth->pitch = RASTER_STRIDE * 2ul;
+    depth->compare = compare;
+    depth->write = write;
+}
+
+static v9x_u16 raster_depth_at(unsigned int x, unsigned int y)
+{
+    return raster_depth_cells[RASTER_GUARD + y * RASTER_STRIDE + x];
 }
 
 static v9x_u16 raster_pixel(unsigned int x, unsigned int y)
@@ -104,9 +132,20 @@ static void raster_vertex(V9X_D3D_RASTER_VERTEX *vertex,
 {
     vertex->x = x;
     vertex->y = y;
+    vertex->z = 0l;
     vertex->red = red;
     vertex->green = green;
     vertex->blue = blue;
+}
+
+/* The depth tests want the same vertex with a depth on it. Kept separate so
+ * the twenty-odd draws that predate depth stay readable. */
+static void raster_vertex_z(V9X_D3D_RASTER_VERTEX *vertex,
+                            v9x_s32 x, v9x_s32 y, v9x_s32 z,
+                            v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+{
+    raster_vertex(vertex, x, y, red, green, blue);
+    vertex->z = z;
 }
 
 static void test_rgb565_packing(void)
@@ -177,8 +216,8 @@ static void test_refuses_coordinates_it_cannot_carry(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(20), PX(4), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(4), PX(18), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0) == 0);
 
     /* The caller clips and clamps. A refusal here means it did not, and
      * drawing anyway would write outside a surface that is also the desktop. */
@@ -189,16 +228,16 @@ static void test_refuses_coordinates_it_cannot_carry(void)
         raster_reset(&target);
         saved = triangle[index].x;
         triangle[index].x = -1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) == 0);
         triangle[index].x = V9X_D3D_RASTER_COORD_MAX + 1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) == 0);
         triangle[index].x = saved;
 
         saved = triangle[index].y;
         triangle[index].y = -1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) == 0);
         triangle[index].y = V9X_D3D_RASTER_COORD_MAX + 1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) == 0);
         triangle[index].y = saved;
 
         /* A refusal draws nothing at all, rather than the part it liked. */
@@ -234,7 +273,7 @@ static void test_flat_triangle_is_one_colour(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 0l, 0l);
     raster_vertex(&triangle[1], PX(10), PX(2), 255l, 0l, 0l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -277,7 +316,7 @@ static void test_shared_edge_is_covered_exactly_once(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(10), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
             first[row][column] = raster_pixel(column, row);
@@ -288,7 +327,7 @@ static void test_shared_edge_is_covered_exactly_once(void)
     raster_vertex(&triangle[0], PX(10), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(10), PX(8), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -327,7 +366,7 @@ static void test_full_target_triangle_stays_inside(void)
     raster_vertex(&triangle[0], PX(0), PX(0), 0l, 255l, 0l);
     raster_vertex(&triangle[1], PX(RASTER_WIDTH * 3u), PX(0), 0l, 255l, 0l);
     raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT * 3u), 0l, 255l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -365,7 +404,7 @@ static void test_degenerate_triangles_draw_nothing(void)
             raster_vertex(&triangle[1], PX(7), PX(18), 255l, 255l, 255l);
             raster_vertex(&triangle[2], PX(7), PX(9), 255l, 255l, 255l);
         }
-        RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
 
         for (row = 0u; row < RASTER_HEIGHT; ++row) {
             for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -409,7 +448,7 @@ static void test_vertex_order_does_not_matter(void)
         permuted[2] = source[orders[order][2]];
 
         raster_reset(&target);
-        RCHECK(v9x_d3d_raster_triangle(&target, permuted) != 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, permuted) != 0);
 
         for (row = 0u; row < RASTER_HEIGHT; ++row) {
             for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -455,7 +494,7 @@ static void test_gouraud_ramps_across_a_span(void)
     raster_vertex(&triangle[0], PX(1), PX(4), 0l, 0l, 0l);
     raster_vertex(&triangle[1], PX(31), PX(4), 255l, 0l, 0l);
     raster_vertex(&triangle[2], PX(1), PX(20), 0l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
 
     for (column = 0u; column < RASTER_WIDTH; ++column) {
         v9x_u16 value = raster_pixel(column, row);
@@ -488,6 +527,396 @@ static void test_gouraud_ramps_across_a_span(void)
     raster_check_untouched_margins();
 }
 
+/*
+ * A quad covering the sample point, at a chosen depth and colour.
+ *
+ * Two triangles rather than one, so the shared diagonal runs through the
+ * region every depth test reads and every one of them would notice a seam
+ * appearing under depth testing that is not there without it.
+ */
+static int raster_depth_quad(V9X_D3D_RASTER_TARGET *target,
+                             const V9X_D3D_RASTER_DEPTH *depth,
+                             v9x_s32 z, v9x_s32 red, v9x_s32 green,
+                             v9x_s32 blue)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    int ok;
+
+    raster_vertex_z(&triangle[0], PX(4), PX(4), z, red, green, blue);
+    raster_vertex_z(&triangle[1], PX(28), PX(4), z, red, green, blue);
+    raster_vertex_z(&triangle[2], PX(4), PX(20), z, red, green, blue);
+    ok = v9x_d3d_raster_triangle(target, depth, triangle) != 0;
+
+    raster_vertex_z(&triangle[0], PX(28), PX(4), z, red, green, blue);
+    raster_vertex_z(&triangle[1], PX(28), PX(20), z, red, green, blue);
+    raster_vertex_z(&triangle[2], PX(4), PX(20), z, red, green, blue);
+    return ok && v9x_d3d_raster_triangle(target, depth, triangle) != 0;
+}
+
+/*
+ * All eight comparison functions, against a buffer cleared to a known depth.
+ *
+ * The table is the point. Six of the eight names would still "work" under a
+ * transposed encoding - LESS and GREATER are symmetric, and a scene rendered
+ * with the two swapped is inside out rather than blank - so each is asserted
+ * from both sides: a fragment nearer than the stored depth, and one further.
+ * The ViRGE engine needs a translation table for exactly this reason and got
+ * its order from the DDK rather than from arithmetic.
+ */
+static void test_depth_comparisons(void)
+{
+    static const struct {
+        v9x_u32 compare;
+        int nearer_passes;
+        int equal_passes;
+        int further_passes;
+        const char *name;
+    } cases[] = {
+        { V9X_D3D_RASTER_CMP_NEVER,        0, 0, 0, "NEVER" },
+        { V9X_D3D_RASTER_CMP_LESS,         1, 0, 0, "LESS" },
+        { V9X_D3D_RASTER_CMP_EQUAL,        0, 1, 0, "EQUAL" },
+        { V9X_D3D_RASTER_CMP_LESSEQUAL,    1, 1, 0, "LESSEQUAL" },
+        { V9X_D3D_RASTER_CMP_GREATER,      0, 0, 1, "GREATER" },
+        { V9X_D3D_RASTER_CMP_NOTEQUAL,     1, 0, 1, "NOTEQUAL" },
+        { V9X_D3D_RASTER_CMP_GREATEREQUAL, 0, 1, 1, "GREATEREQUAL" },
+        { V9X_D3D_RASTER_CMP_ALWAYS,       1, 1, 1, "ALWAYS" }
+    };
+    static const v9x_s32 depths[3] = { 8000l, 16384l, 30000l };
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    unsigned int index;
+    unsigned int rung;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        for (rung = 0u; rung < 3u; ++rung) {
+            int expected = rung == 0u ? cases[index].nearer_passes
+                         : (rung == 1u ? cases[index].equal_passes
+                                       : cases[index].further_passes);
+            v9x_u16 value;
+
+            raster_reset(&target);
+            raster_depth_reset(&depth, cases[index].compare, 0ul, 16384u);
+            RCHECK(raster_depth_quad(&target, &depth, depths[rung],
+                                     255l, 255l, 255l) != 0);
+
+            value = raster_pixel(16u, 12u);
+            if ((value != RASTER_BACKGROUND) != expected) {
+                printf("FAIL %s:%u: %s at depth %ld %s, expected %s\n",
+                       __FILE__, (unsigned int)__LINE__, cases[index].name,
+                       depths[rung],
+                       value != RASTER_BACKGROUND ? "drew" : "did not draw",
+                       expected ? "to draw" : "not to draw");
+                ++raster_failures;
+            }
+            /* write is zero throughout, so a passing fragment must not have
+             * touched the buffer. A rasterizer that always writes still
+             * passes every comparison test above. */
+            RCHECK(raster_depth_at(16u, 12u) == 16384u);
+        }
+    }
+    raster_check_untouched_margins();
+}
+
+/*
+ * The write mask, which is a separate render state from the comparison and is
+ * separately capable of doing nothing.
+ *
+ * Two draws: a near one that passes and either records itself or does not,
+ * then a middle one whose fate says which happened. With writes on, the near
+ * depth is stored and the middle draw is rejected; with writes off, the buffer
+ * still holds the far clear value and the middle draw lands.
+ */
+static void test_depth_write_mask(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_LESS, 1ul, 65535u);
+    RCHECK(raster_depth_quad(&target, &depth, 4000l, 255l, 0l, 0l) != 0);
+    RCHECK(raster_depth_at(16u, 12u) == 4000u);
+    RCHECK(raster_pixel(16u, 12u) == 0xf800u);
+    RCHECK(raster_depth_quad(&target, &depth, 20000l, 0l, 255l, 0l) != 0);
+    RCHECK(raster_depth_at(16u, 12u) == 4000u);
+    RCHECK(raster_pixel(16u, 12u) == 0xf800u);
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_LESS, 0ul, 65535u);
+    RCHECK(raster_depth_quad(&target, &depth, 4000l, 255l, 0l, 0l) != 0);
+    RCHECK(raster_depth_at(16u, 12u) == 65535u);
+    RCHECK(raster_depth_quad(&target, &depth, 20000l, 0l, 255l, 0l) != 0);
+    /* Nothing was recorded, so the further quad is still nearer than the
+     * clear value and overwrites the colour. */
+    RCHECK(raster_depth_at(16u, 12u) == 65535u);
+    RCHECK(raster_pixel(16u, 12u) == 0x07e0u);
+    raster_check_untouched_margins();
+}
+
+/*
+ * Order independence: the nearer surface wins whichever way round it is drawn.
+ *
+ * This is the property a depth buffer exists for, and the one the driver
+ * previously advertised for weeks without having. It is deliberately not the
+ * same assertion as the comparison table above - that table checks the eight
+ * functions, this checks that the result does not depend on submission order,
+ * which is what an engine that accepts depth and ignores it would fail.
+ */
+static void test_depth_orders_two_surfaces(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_LESS, 1ul, 65535u);
+    RCHECK(raster_depth_quad(&target, &depth, 10000l, 255l, 0l, 0l) != 0);
+    RCHECK(raster_depth_quad(&target, &depth, 40000l, 0l, 255l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 12u) == 0xf800u);
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_LESS, 1ul, 65535u);
+    RCHECK(raster_depth_quad(&target, &depth, 40000l, 0l, 255l, 0l) != 0);
+    RCHECK(raster_depth_quad(&target, &depth, 10000l, 255l, 0l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 12u) == 0xf800u);
+    raster_check_untouched_margins();
+}
+
+/*
+ * Depth interpolates across the triangle, and a sloped surface intersects a
+ * flat one.
+ *
+ * A single flat quad cannot tell an interpolated depth from a constant one -
+ * the whole surface would pass or fail together. This draws a quad whose depth
+ * ramps left to right and then a flat one halfway through that range, and
+ * checks the flat quad wins on exactly the side where it is nearer.
+ */
+static void test_depth_interpolates_across_a_triangle(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int column;
+    unsigned int crossings = 0u;
+    int previous = -1;
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_LESS, 1ul, 65535u);
+
+    /* A ramp from near on the left to far on the right, over the same region
+     * raster_depth_quad covers. */
+    raster_vertex_z(&triangle[0], PX(4), PX(4), 1000l, 255l, 0l, 0l);
+    raster_vertex_z(&triangle[1], PX(28), PX(4), 60000l, 255l, 0l, 0l);
+    raster_vertex_z(&triangle[2], PX(4), PX(20), 1000l, 255l, 0l, 0l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) != 0);
+    raster_vertex_z(&triangle[0], PX(28), PX(4), 60000l, 255l, 0l, 0l);
+    raster_vertex_z(&triangle[1], PX(28), PX(20), 60000l, 255l, 0l, 0l);
+    raster_vertex_z(&triangle[2], PX(4), PX(20), 1000l, 255l, 0l, 0l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) != 0);
+
+    /* Row 5 sits inside the first triangle, above the diagonal, so its stored
+     * depths come from the ramp and must increase left to right. */
+    for (column = 5u; column < 27u; ++column) {
+        int stored = (int)raster_depth_at(column, 5u);
+
+        RCHECK(stored > previous);
+        previous = stored;
+    }
+    RCHECK(previous > 40000);
+
+    /* Now a flat surface at the middle of that range. It must win on the far
+     * side of the ramp and lose on the near side, so the row changes colour
+     * exactly once. */
+    RCHECK(raster_depth_quad(&target, &depth, 30000l, 0l, 255l, 0l) != 0);
+    previous = -1;
+    for (column = 5u; column < 27u; ++column) {
+        int green = raster_pixel(column, 5u) == 0x07e0u;
+
+        if (previous >= 0 && green != previous) {
+            ++crossings;
+        }
+        previous = green;
+    }
+    RCHECK(crossings == 1u);
+    raster_check_untouched_margins();
+}
+
+/*
+ * The depth buffer's own refusals, and that a refusal draws nothing.
+ *
+ * A null depth pointer means "no depth" and must keep working; a non-null one
+ * that is unusable must be refused rather than quietly ignored. Those two
+ * cannot be allowed to look alike: silently dropping the test renders the
+ * scene in submission order, which is the exact defect this driver shipped
+ * once with the capability advertised.
+ */
+static void test_depth_refusals(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_ALWAYS, 1ul, 65535u);
+    RCHECK(v9x_d3d_raster_depth_valid(&depth, &target) != 0);
+    RCHECK(v9x_d3d_raster_depth_valid(0, &target) == 0);
+
+    depth.pixels = 0;
+    RCHECK(v9x_d3d_raster_depth_valid(&depth, &target) == 0);
+
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_ALWAYS, 1ul, 65535u);
+    depth.pitch = RASTER_WIDTH * 2ul;
+    RCHECK(v9x_d3d_raster_depth_valid(&depth, &target) != 0);
+    depth.pitch = RASTER_WIDTH * 2ul - 1ul;
+    RCHECK(v9x_d3d_raster_depth_valid(&depth, &target) == 0);
+
+    /* A refused depth buffer refuses the draw, and the draw writes nothing. */
+    raster_vertex_z(&triangle[0], PX(4), PX(4), 100l, 255l, 255l, 255l);
+    raster_vertex_z(&triangle[1], PX(28), PX(4), 100l, 255l, 255l, 255l);
+    raster_vertex_z(&triangle[2], PX(4), PX(20), 100l, 255l, 255l, 255l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) == 0);
+    RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
+
+    /* An out-of-range depth is refused the same way a coordinate is. */
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_ALWAYS, 1ul, 65535u);
+    triangle[1].z = V9X_D3D_RASTER_DEPTH_MAX + 1l;
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) == 0);
+    triangle[1].z = -1l;
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) == 0);
+    RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
+
+    /* And the same triangle with no depth buffer at all still draws. This one
+     * is a single triangle rather than the quad the tests above use, so the
+     * sample sits at (10,8) - well inside it - and not at the quad's centre,
+     * which is on the far side of this triangle's hypotenuse. */
+    triangle[1].z = 100l;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, triangle) != 0);
+    RCHECK(raster_pixel(10u, 8u) == 0xffffu);
+    raster_check_untouched_margins();
+}
+
+/*
+ * The worst case for the edge interpolator's headroom, drawn rather than
+ * argued about.
+ *
+ * The lerp forms max(from, to) * denominator, and depth is the widest thing it
+ * carries: 65535 against a y-span of 32752 subpixels is 2,146,631,520, which
+ * is 852,127 short of overflowing a signed 32-bit integer. That margin is why
+ * V9X_D3D_RASTER_DIMENSION_MAX is 2048. A tall, narrow target reaches it
+ * without a four-megabyte buffer: the denominator is the triangle's height in
+ * subpixels and does not care how wide it is.
+ *
+ * An overflow here does not produce a slightly wrong depth. It produces a
+ * negative one, which clamps to the near plane, so the far end of the ramp
+ * would come out nearer than the near end - hence checking monotonicity over
+ * the whole height rather than the endpoints alone.
+ */
+#define RASTER_TALL_WIDTH  4u
+#define RASTER_TALL_HEIGHT 2048u
+
+static v9x_u16 raster_tall_colour[RASTER_TALL_WIDTH * RASTER_TALL_HEIGHT];
+static v9x_u16 raster_tall_depth[RASTER_TALL_WIDTH * RASTER_TALL_HEIGHT];
+
+static void test_depth_full_height_interpolation(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int index;
+    unsigned int row;
+    unsigned int covered = 0u;
+    unsigned int uncovered = 0u;
+    int previous = -1;
+    int lowest = 65536;
+    int highest = -1;
+
+    for (index = 0u; index < RASTER_TALL_WIDTH * RASTER_TALL_HEIGHT; ++index) {
+        raster_tall_colour[index] = 0u;
+        raster_tall_depth[index] = 65535u;
+    }
+    target.pixels = raster_tall_colour;
+    target.pitch = RASTER_TALL_WIDTH * 2ul;
+    target.width = RASTER_TALL_WIDTH;
+    target.height = RASTER_TALL_HEIGHT;
+    depth.pixels = raster_tall_depth;
+    depth.pitch = RASTER_TALL_WIDTH * 2ul;
+    depth.compare = V9X_D3D_RASTER_CMP_LESS;
+    depth.write = 1ul;
+
+    /*
+     * The full declared range in both y and z, as a quad rather than one
+     * triangle. A single triangle spanning corner to corner narrows to a point
+     * and stops covering column 0 about seven eighths of the way down, so the
+     * rows past that keep the clear value - and a test that reads them is
+     * measuring the memset. That is not hypothetical; the first version of
+     * this test passed its far-end assertion on exactly that.
+     */
+    raster_vertex_z(&triangle[0], PX(0), PX(0), 0l, 255l, 255l, 255l);
+    raster_vertex_z(&triangle[1], PX(RASTER_TALL_WIDTH), PX(0), 0l,
+                    255l, 255l, 255l);
+    raster_vertex_z(&triangle[2], PX(0), PX(RASTER_TALL_HEIGHT - 1u),
+                    V9X_D3D_RASTER_DEPTH_MAX, 255l, 255l, 255l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) != 0);
+    raster_vertex_z(&triangle[0], PX(RASTER_TALL_WIDTH), PX(0), 0l,
+                    255l, 255l, 255l);
+    raster_vertex_z(&triangle[1], PX(RASTER_TALL_WIDTH),
+                    PX(RASTER_TALL_HEIGHT - 1u), V9X_D3D_RASTER_DEPTH_MAX,
+                    255l, 255l, 255l);
+    raster_vertex_z(&triangle[2], PX(0), PX(RASTER_TALL_HEIGHT - 1u),
+                    V9X_D3D_RASTER_DEPTH_MAX, 255l, 255l, 255l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, triangle) != 0);
+
+    for (row = 0u; row < RASTER_TALL_HEIGHT; ++row) {
+        int stored = (int)raster_tall_depth[row * RASTER_TALL_WIDTH];
+
+        if (raster_tall_colour[row * RASTER_TALL_WIDTH] == 0u) {
+            /* Not covered. Counted rather than skipped quietly: every row of
+             * this quad should be, and a test that tolerates gaps would also
+             * tolerate the rasterizer dropping the bottom of the triangle. */
+            ++uncovered;
+            continue;
+        }
+        ++covered;
+        if (stored < previous) {
+            printf("FAIL %s:%u: depth at row %u is %d, below row %u's %d\n",
+                   __FILE__, (unsigned int)__LINE__, row, stored, row - 1u,
+                   previous);
+            ++raster_failures;
+            break;
+        }
+        previous = stored;
+        if (stored < lowest) {
+            lowest = stored;
+        }
+        if (stored > highest) {
+            highest = stored;
+        }
+    }
+
+    /*
+     * Every row but the last, and the last one is arithmetic rather than a
+     * gap. The largest coordinate this rasterizer accepts is
+     * (dimension - 1) << 4 - the bottom row's top edge, not its bottom - so
+     * that row's centre lies half a pixel past the furthest geometry anything
+     * can express. The D3D core's clipper cuts to exactly the same boundary,
+     * `context->height - 1` (d3d_core.c), so this is not a limit the tests
+     * invented: through the driver, the bottom scanline and the rightmost
+     * column of a full-screen triangle are never covered either.
+     *
+     * Whether that is right is an open question about the clipper, which is
+     * chip-neutral and shared with the ViRGE engine, so it is not one the
+     * software rasterizer should answer by widening its own range. Pinned here
+     * as a number so that changing it is a deliberate act with a failing test
+     * attached.
+     */
+    RCHECK(uncovered == 1u);
+    RCHECK(covered == RASTER_TALL_HEIGHT - 1u);
+    /* The first scanline's centre is half a pixel into a 2047-pixel ramp, so
+     * the near end is a few levels above zero rather than at it. What matters
+     * is that it is near: an interpolator that overflowed would land at the
+     * clamp, and the clamp is zero. */
+    RCHECK(lowest > 0 && lowest < 64);
+    RCHECK(highest > 65400);
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -499,5 +928,11 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_degenerate_triangles_draw_nothing();
     test_vertex_order_does_not_matter();
     test_gouraud_ramps_across_a_span();
+    test_depth_comparisons();
+    test_depth_write_mask();
+    test_depth_orders_two_surfaces();
+    test_depth_interpolates_across_a_triangle();
+    test_depth_refusals();
+    test_depth_full_height_interpolation();
     return raster_failures;
 }

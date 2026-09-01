@@ -2237,6 +2237,95 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
                                                0x7c00u) ? 1ul : 0ul);
 
+                /*
+                 * Is it a triangle, or is it the triangle's bounding box?
+                 *
+                 * Nothing above can tell those apart: (16,16) is inside both.
+                 * The vertices are (8.25,8.25), (55.75,8.25) and (8.25,55.75),
+                 * so the hypotenuse is x + y = 64 and (48,48) is far outside
+                 * the triangle while sitting squarely inside its box. The
+                 * surface was cleared to zero before the draw, so an unpainted
+                 * pixel is zero and a filled box is not.
+                 *
+                 * This exists because mode 2 shipped a deliberate bounding-box
+                 * stub as its first stage - it was the instrument that proved
+                 * the path on a card with no 3D engine - and the pixel it
+                 * produced at (16,16) is indistinguishable from a rasterizer's.
+                 * The colour is not asserted here: what the two engines call
+                 * red is a separate open question recorded against
+                 * D3DTrianglePixelRaw, and folding it in would make one key
+                 * answer two questions.
+                 */
+                v9x_write_uint("D3DTriangleOutsideRaw",
+                               v9x_surface_pixel16(d3d_target, 48ul, 48ul));
+                v9x_write_uint("D3DTriangleShapeOk",
+                    draw_hr == 0 && end_hr == 0 &&
+                    v9x_surface_pixel16(d3d_target, 16ul, 16ul) != 0u &&
+                    v9x_surface_pixel16(d3d_target, 48ul, 48ul) == 0u
+                        ? 1ul : 0ul);
+
+                /*
+                 * Does a triangle that overhangs the render target reach its
+                 * last row and column?
+                 *
+                 * The driver's clipper cuts geometry to [0, extent - 1], so
+                 * the furthest coordinate any vertex can carry is the bottom
+                 * row's top edge rather than its bottom. Under a coverage rule
+                 * that samples pixel centres, that row's centre then sits half
+                 * a pixel past the furthest thing the clipper will express and
+                 * is never covered - a one-pixel dark line down the right and
+                 * along the bottom of anything full-screen.
+                 *
+                 * Whether that happens is a property of the engine's coverage
+                 * rule, and the two engines here have different ones, so it is
+                 * measured rather than reasoned about. The centre key is the
+                 * control: it says the triangle drew at all, which is what
+                 * separates "the edge is missing" from "nothing is there".
+                 *
+                 * The vertices deliberately overhang by a wide margin so the
+                 * clipper, not the geometry, is what decides the edge.
+                 */
+                v9x_fill_surface(d3d_target, 0ul);
+                triangle[0].sx = -32.0f;
+                triangle[0].sy = -32.0f;
+                triangle[1] = triangle[0];
+                triangle[1].sx = 224.0f;
+                triangle[2] = triangle[0];
+                triangle[2].sy = 224.0f;
+                if (begin_hr == 0) {
+                    HRESULT edge_begin =
+                        d3d_device->vtbl->BeginScene(d3d_device);
+
+                    if (edge_begin == 0) {
+                        d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                        d3d_device->vtbl->EndScene(d3d_device);
+                    }
+                    v9x_write_hresult("D3DEdgeBeginSceneHr", edge_begin);
+                }
+                v9x_write_uint("D3DEdgeCentreRaw",
+                               v9x_surface_pixel16(d3d_target, 32ul, 32ul));
+                v9x_write_uint("D3DEdgeRightRaw",
+                               v9x_surface_pixel16(d3d_target, 63ul, 32ul));
+                v9x_write_uint("D3DEdgeBottomRaw",
+                               v9x_surface_pixel16(d3d_target, 32ul, 63ul));
+                v9x_write_uint("D3DEdgeTopLeftRaw",
+                               v9x_surface_pixel16(d3d_target, 0ul, 0ul));
+
+                /* Put the geometry back. Every test below this point reuses
+                 * `triangle` for its own subject - specular, fog, alpha,
+                 * texture - and reads the pixel at (16,16), which the
+                 * overhanging triangle above does not put where they expect
+                 * it. Leaving the coordinates changed would move six later
+                 * results without touching the code that produces them. */
+                triangle[0].sx = 8.25f;
+                triangle[0].sy = 8.25f;
+                triangle[1].sx = 55.75f;
+                triangle[1].sy = 8.25f;
+                triangle[2].sx = 8.25f;
+                triangle[2].sy = 55.75f;
+
                 v9x_fill_surface(d3d_target, 0ul);
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_FOGENABLE, 0ul);

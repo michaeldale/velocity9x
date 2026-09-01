@@ -100,6 +100,39 @@ v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
                      ((v9x_u16)(blue & 0xf8l) >> 3));
 }
 
+/*
+ * Does this fragment survive the depth test?
+ *
+ * The default arm is ALWAYS rather than a fallthrough, and it is the same
+ * decision `v9x_d3d_z_compare` makes in the ViRGE engine for the same reason:
+ * NEVER is a legal value at the low end of the range, so an unrecognised
+ * function that fell through to it would discard every pixel and render black
+ * with nothing anywhere to say why. Drawing something wrong is a bug someone
+ * can see; drawing nothing looks like a different bug entirely.
+ */
+static int v9x_d3d_raster_depth_passes(v9x_u32 compare, v9x_s32 value,
+                                       v9x_s32 stored)
+{
+    switch (compare) {
+    case V9X_D3D_RASTER_CMP_NEVER:
+        return 0;
+    case V9X_D3D_RASTER_CMP_LESS:
+        return value < stored;
+    case V9X_D3D_RASTER_CMP_EQUAL:
+        return value == stored;
+    case V9X_D3D_RASTER_CMP_LESSEQUAL:
+        return value <= stored;
+    case V9X_D3D_RASTER_CMP_GREATER:
+        return value > stored;
+    case V9X_D3D_RASTER_CMP_NOTEQUAL:
+        return value != stored;
+    case V9X_D3D_RASTER_CMP_GREATEREQUAL:
+        return value >= stored;
+    default:
+        return 1;
+    }
+}
+
 int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
 {
     if (target == 0 || target->pixels == 0) {
@@ -116,6 +149,24 @@ int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
      * narrower than the width is the one target defect that would corrupt the
      * next row rather than fault. */
     if (target->pitch < target->width * 2ul) {
+        return 0;
+    }
+    return 1;
+}
+
+int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
+                               const V9X_D3D_RASTER_TARGET *target)
+{
+    if (depth == 0 || depth->pixels == 0) {
+        return 0;
+    }
+    if (!v9x_d3d_raster_target_valid(target)) {
+        return 0;
+    }
+    /* The depth buffer covers the same pixels as the colour buffer, so its
+     * row is the colour buffer's width - not its own, which it does not
+     * carry. A pitch short of that walks into the next scanline. */
+    if (depth->pitch < target->width * 2ul) {
         return 0;
     }
     return 1;
@@ -150,6 +201,13 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
 
     result->y = sample;
     result->x = v9x_d3d_raster_lerp(from->x, to->x, offset, span);
+    /* Depth is the widest thing interpolated here and the one that decides
+     * the lerp's headroom: 65535 * 32752 is 2,146,631,520, which is 852,127
+     * short of the largest signed 32-bit integer. That margin is the reason
+     * V9X_D3D_RASTER_DIMENSION_MAX is 2048 and not 4096, and a target one
+     * pixel wider than the cap would exhaust it here rather than in the
+     * coordinate arithmetic that motivated the cap in the first place. */
+    result->z = v9x_d3d_raster_lerp(from->z, to->z, offset, span);
     result->red = v9x_d3d_raster_lerp(from->red, to->red, offset, span);
     result->green = v9x_d3d_raster_lerp(from->green, to->green, offset, span);
     result->blue = v9x_d3d_raster_lerp(from->blue, to->blue, offset, span);
@@ -159,18 +217,20 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
 /*
  * Fill one scanline between two edge crossings.
  *
- * The colour gradient is per subpixel and the walk is per pixel, which is the
- * arrangement that keeps every intermediate inside 32 bits. The step is
- * (delta << 16) / width, so a narrow span makes it large - but the number of
+ * Every gradient is per subpixel and the walk is per pixel, which is the
+ * arrangement that keeps every intermediate inside 32 bits. A step is
+ * (delta << bits) / width, so a narrow span makes it large - but the number of
  * pixel centres inside that span shrinks in exactly the same proportion,
  * because centres are sixteen subpixels apart and all of them lie within the
- * span. Their product is therefore bounded by delta << 16, at most 255 << 16,
- * whatever the width is. The same argument covers the initial partial step:
- * when the first centre is more than the span's width past its left edge there
- * are no centres inside it at all, and the early return below has already
- * taken it.
+ * span. The product is therefore bounded by delta << bits whatever the width
+ * is: 255 << 16 for a colour channel, 65535 << 8 for depth, and those two are
+ * the same number for the same reason the two shift counts differ. The same
+ * argument covers the initial partial step: when the first centre is more than
+ * the span's width past its left edge there are no centres inside it at all,
+ * and the early return below has already taken it.
  */
 static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
+                                const V9X_D3D_RASTER_DEPTH *depth,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -181,12 +241,15 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 red_step = 0l;
     v9x_s32 green_step = 0l;
     v9x_s32 blue_step = 0l;
+    v9x_s32 z_step = 0l;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
+    v9x_s32 z;
     v9x_s32 offset;
     v9x_s32 column;
     v9x_u16 *pixels;
+    v9x_u16 *depths = 0;
 
     if (first < 0l) {
         first = 0l;
@@ -205,6 +268,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                       V9X_D3D_RASTER_COLOUR_BITS) / width;
         blue_step = ((right->blue - left->blue) <<
                      V9X_D3D_RASTER_COLOUR_BITS) / width;
+        z_step = ((right->z - left->z) << V9X_D3D_RASTER_DEPTH_BITS) / width;
     }
 
     /* The colour at the first pixel centre, then one whole pixel per step. */
@@ -216,24 +280,60 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     red = (left->red << V9X_D3D_RASTER_COLOUR_BITS) + red_step * offset;
     green = (left->green << V9X_D3D_RASTER_COLOUR_BITS) + green_step * offset;
     blue = (left->blue << V9X_D3D_RASTER_COLOUR_BITS) + blue_step * offset;
+    z = (left->z << V9X_D3D_RASTER_DEPTH_BITS) + z_step * offset;
     red_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    z_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
 
     pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
                          (v9x_u32)row * target->pitch);
+    if (depth != 0) {
+        depths = (v9x_u16 *)((v9x_u8 *)depth->pixels +
+                             (v9x_u32)row * depth->pitch);
+    }
     for (column = first; column < last; ++column) {
-        pixels[column] = v9x_d3d_raster_rgb565(
-            red >> V9X_D3D_RASTER_COLOUR_BITS,
-            green >> V9X_D3D_RASTER_COLOUR_BITS,
-            blue >> V9X_D3D_RASTER_COLOUR_BITS);
+        int visible = 1;
+
+        if (depths != 0) {
+            /* Clamped before the comparison, not after: the interpolator can
+             * land a fraction of a level outside the endpoints, and a depth
+             * that wrapped would compare against the wrong end of the buffer
+             * rather than merely being one level out. */
+            v9x_s32 fragment = z >> V9X_D3D_RASTER_DEPTH_BITS;
+
+            if (fragment < 0l) {
+                fragment = 0l;
+            }
+            if (fragment > V9X_D3D_RASTER_DEPTH_MAX) {
+                fragment = V9X_D3D_RASTER_DEPTH_MAX;
+            }
+            visible = v9x_d3d_raster_depth_passes(depth->compare, fragment,
+                                                  (v9x_s32)depths[column]);
+            if (visible && depth->write != 0ul) {
+                depths[column] = (v9x_u16)fragment;
+            }
+        }
+
+        if (visible) {
+            pixels[column] = v9x_d3d_raster_rgb565(
+                red >> V9X_D3D_RASTER_COLOUR_BITS,
+                green >> V9X_D3D_RASTER_COLOUR_BITS,
+                blue >> V9X_D3D_RASTER_COLOUR_BITS);
+        }
+
+        /* Stepped for every pixel, drawn or not. A failed depth test skips
+         * the write, not the interpolation - advancing only on visible pixels
+         * would tilt the gradient behind anything occluding the span. */
         red += red_step;
         green += green_step;
         blue += blue_step;
+        z += z_step;
     }
 }
 
 int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
+                            const V9X_D3D_RASTER_DEPTH *depth,
                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
@@ -248,11 +348,21 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
     }
+    /* A null depth pointer is "no depth"; a non-null one that fails its own
+     * check is a caller error and is refused. Those must not look alike -
+     * silently dropping the depth test would render the scene in submission
+     * order, which is the exact defect this driver already shipped once with
+     * the capability advertised. */
+    if (depth != 0 && !v9x_d3d_raster_depth_valid(depth, target)) {
+        return 0;
+    }
     for (index = 0ul; index < 3ul; ++index) {
         if (vertices[index].x < 0l ||
             vertices[index].x > V9X_D3D_RASTER_COORD_MAX ||
             vertices[index].y < 0l ||
-            vertices[index].y > V9X_D3D_RASTER_COORD_MAX) {
+            vertices[index].y > V9X_D3D_RASTER_COORD_MAX ||
+            vertices[index].z < 0l ||
+            vertices[index].z > V9X_D3D_RASTER_DEPTH_MAX) {
             return 0;
         }
     }
@@ -308,9 +418,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         }
 
         if (along.x <= across.x) {
-            v9x_d3d_raster_span(target, row, &along, &across);
+            v9x_d3d_raster_span(target, depth, row, &along, &across);
         } else {
-            v9x_d3d_raster_span(target, row, &across, &along);
+            v9x_d3d_raster_span(target, depth, row, &across, &along);
         }
     }
     return 1;

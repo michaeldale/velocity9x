@@ -54,6 +54,30 @@ typedef char v9x_assert_soft_dimension[
 typedef char v9x_assert_soft_subpixel[
     (V9X_D3D_RASTER_SUBPIXEL_ONE == 16l) ? 1 : -1];
 
+/* The depth scale, on the same terms. */
+#define V9X_D3D_SOFT_DEPTH_SCALE 65535.0f
+
+typedef char v9x_assert_soft_depth[
+    (V9X_D3D_RASTER_DEPTH_MAX == 65535l) ? 1 : -1];
+
+/*
+ * The rasterizer numbers its comparison functions as Direct3D numbers them, so
+ * the engine hands context->z_func over untranslated. That is only safe while
+ * the two agree, and this is what says so. The ViRGE engine needs a real table
+ * in the same place, because the S3D encoding differs from D3DCMP - 1 in six
+ * of the eight - and a driver that silently used the wrong order would draw a
+ * scene that is inside out rather than one that is missing.
+ */
+typedef char v9x_assert_soft_compare[
+    (V9X_D3D_RASTER_CMP_NEVER == V9X_D3DCMP_NEVER &&
+     V9X_D3D_RASTER_CMP_LESS == V9X_D3DCMP_LESS &&
+     V9X_D3D_RASTER_CMP_EQUAL == V9X_D3DCMP_EQUAL &&
+     V9X_D3D_RASTER_CMP_LESSEQUAL == V9X_D3DCMP_LESSEQUAL &&
+     V9X_D3D_RASTER_CMP_GREATER == V9X_D3DCMP_GREATER &&
+     V9X_D3D_RASTER_CMP_NOTEQUAL == V9X_D3DCMP_NOTEQUAL &&
+     V9X_D3D_RASTER_CMP_GREATEREQUAL == V9X_D3DCMP_GREATEREQUAL &&
+     V9X_D3D_RASTER_CMP_ALWAYS == V9X_D3DCMP_ALWAYS) ? 1 : -1];
+
 /*
  * What the rasterizer will accept, which is not what it can currently draw.
  *
@@ -175,6 +199,32 @@ static v9x_s32 v9x_d3d_soft_coordinate(float value, DWORD extent)
 }
 
 /*
+ * A vertex depth, scaled into the rasterizer's 16-bit buffer.
+ *
+ * sz is 0..1 and the buffer holds 0..65535, so this is a multiply and a clamp
+ * - the same shape as the coordinate above and for the same reason. The
+ * clamping is not defensive: sz = 1.0 is ordinary geometry, a cleared depth
+ * buffer's far plane and any unprojected background quad, and it is exactly
+ * the value that broke the ViRGE's 1.31 conversion by landing one past the
+ * largest representable integer. Here the scale is 65535 rather than 2^31, so
+ * the arithmetic has room - but the same input still has to be answered rather
+ * than assumed away, and a NaN has to resolve to the far plane so that garbage
+ * is occluded instead of occluding. The comparisons are written so a NaN takes
+ * the else arm: !(value > 0.0f) is true for a NaN and value >= 1.0f is false.
+ * d3d_zfixed.c is that argument at length.
+ */
+static v9x_s32 v9x_d3d_soft_depth(float value)
+{
+    if (value >= 1.0f) {
+        return (v9x_s32)V9X_D3D_RASTER_DEPTH_MAX;
+    }
+    if (!(value > 0.0f)) {
+        return value == value ? 0l : (v9x_s32)V9X_D3D_RASTER_DEPTH_MAX;
+    }
+    return (v9x_s32)v9x_float_to_long(value * V9X_D3D_SOFT_DEPTH_SCALE);
+}
+
+/*
  * One DDHAL vertex as the rasterizer wants it.
  *
  * The colour is 0x00RRGGBB - the core has already folded the specular and fog
@@ -188,6 +238,7 @@ static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
 {
     result->x = v9x_d3d_soft_coordinate(source->sx, context->width);
     result->y = v9x_d3d_soft_coordinate(source->sy, context->height);
+    result->z = v9x_d3d_soft_depth(source->sz);
     result->red = (v9x_s32)((source->color >> 16) & 0xfful);
     result->green = (v9x_s32)((source->color >> 8) & 0xfful);
     result->blue = (v9x_s32)(source->color & 0xfful);
@@ -213,6 +264,8 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
                                        DWORD triangle_count)
 {
     V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    const V9X_D3D_RASTER_DEPTH *depth_arg = 0;
     DWORD index;
 
     if (context == 0 || vertices == 0 || v9x_hal == 0) {
@@ -227,6 +280,27 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
         return 0;
     }
 
+    /*
+     * The same three-part test the ViRGE engine's z_active makes, copied
+     * deliberately rather than reduced to the render state. An application may
+     * legally set ZENABLE with no Z buffer bound, and the runtime often
+     * replays a whole default state block; acting on the render state alone
+     * would point the depth unit at depth_offset 0, which is the visible
+     * framebuffer. The DDK makes the same test - D3DRENDR.C:266.
+     */
+    if (context->z_enable != 0ul && context->zbuffer != 0 &&
+        context->depth_pitch != 0ul) {
+        depth.pixels = (void *)(v9x_hal->fb.linear_base +
+                                context->depth_offset);
+        depth.pitch = context->depth_pitch;
+        depth.compare = context->z_func;
+        depth.write = context->z_write;
+        if (!v9x_d3d_raster_depth_valid(&depth, &target)) {
+            return 0;
+        }
+        depth_arg = &depth;
+    }
+
     for (index = 0ul; index < triangle_count; ++index) {
         V9X_D3D_RASTER_VERTEX triangle[3];
         DWORD corner;
@@ -235,7 +309,7 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
             v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], context,
                                 &triangle[corner]);
         }
-        if (!v9x_d3d_raster_triangle(&target, triangle)) {
+        if (!v9x_d3d_raster_triangle(&target, depth_arg, triangle)) {
             return 0;
         }
     }

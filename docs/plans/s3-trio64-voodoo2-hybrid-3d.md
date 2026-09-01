@@ -1,8 +1,10 @@
 # Direct3D rendering modes: one settings-page selector, four back ends
 
-Status: 2026-08-30. **Mode 1 is written, gated and measured on the ViRGE
+Status: 2026-09-01. **Mode 1 is written, gated and measured on the ViRGE
 guest** - see [the gate record](../decisions/2026-08-30-d3d-mode-disabled-gate.md).
-Modes 2, 3 and 4 are planning only.
+**Mode 2 rasterizes depth-tested Gouraud triangles**, measured on a Trio64 -
+see [the rasterizer record](../decisions/2026-09-01-software-rasterizer-depth.md).
+Modes 3 and 4 are planning only.
 
 Reviewed against the tree the same day: two open questions closed by reading
 code, one target named, the development order re-cut around what that changed,
@@ -28,10 +30,12 @@ Direct3D is served:
 | 4 | **Offload** | A Voodoo2 renders; windowed frames come back over PCI into the primary card's framebuffer, fullscreen uses the Voodoo2's own DAC through the VGA pass-through. | A period 2D + 3dfx pairing |
 
 **Where this stands, 2026-09-01.** **Mode 1 is done, released in 0.6.5 and
-measured on three chips.** Mode 2 has its **plumbing proved on a Trio64 and a
-flat-shaded rasterizer written and host-tested** - work-order steps 3 to 6.
-Nothing it draws has been seen on a guest yet, and it has no depth buffer and
-no textures. **Mode 3 is the current direction**, its first deliverable
+measured on three chips.** **Mode 2 draws depth-tested Gouraud triangles on a
+Trio64** - work-order steps 3 to 7, measured on the guest against the ViRGE as
+a control ([record](../decisions/2026-09-01-software-rasterizer-depth.md)). It
+has no texture sampling, and it advertises neither depth nor texturing, so no
+application that checks caps will use what works. **Mode 3 is the current
+direction**, its first deliverable
 (`DDBLT_DEPTHFILL`) landed, and it is now blocked on an instrument rather than
 on a design: see its section. Mode 4 remains a research project with no
 confirmed target.
@@ -558,11 +562,47 @@ would score identically. FR is an integration test, not a correctness one.
    triangle list, and no guest has drawn through it. The tests are properties
    - coverage, containment, flat colour staying flat, vertex-order
    independence - not a picture.
-7. Depth: 16-bit, compare and write mask, host-tested against the same eight
-   comparison functions the ViRGE path implements.
+7. ~~Depth: 16-bit, compare and write mask, host-tested against the same eight
+   comparison functions the ViRGE path implements.~~ **Done, 2026-09-01**, and
+   measured on the Trio64 guest as well as host-tested.
+
+   The comparison constants are numbered as `D3DCMP_*` numbers them, so the
+   engine hands `context->z_func` over untranslated and `d3d_soft.c` asserts
+   the equality at compile time. The ViRGE cannot do that - the S3D encoding
+   differs from `D3DCMP - 1` in six of the eight - and the difference between
+   the two is worth keeping in view, because a driver that silently used the
+   wrong order draws a scene that is inside out rather than one that is
+   missing. The gate for that is the host test's table, which asserts each of
+   the eight from both sides.
+
+   The depth gate copies the ViRGE's `z_active` verbatim: render state **and**
+   an attached Z surface **and** a non-zero depth pitch. An application may
+   legally set `ZENABLE` with no Z buffer bound and the runtime replays whole
+   default state blocks, so acting on the render state alone points the depth
+   unit at `depth_offset` 0, which is the visible framebuffer.
+
+   Depth is also what sets the interpolator's headroom: the edge lerp forms
+   `max(from, to) * denominator`, and 65535 against a 32752-subpixel y-span is
+   2,146,631,520 - 852,127 short of overflowing. That margin is the real reason
+   `V9X_D3D_RASTER_DIMENSION_MAX` is 2048, and there is a host test that draws
+   the worst case rather than arguing about it.
+
+   Both probe depth ladders pass rung for rung on the Trio64 while
+   `D3DZCompareOk` and `D3DZWriteMaskOk` still read 0, because those keys fold
+   in a colour comparison against ZRGB1555 constants that the **ViRGE's** own
+   format defect put there. See the record; the probe's expectations are now
+   hiding three passes rather than one, and fixing that is a decision about a
+   validated baseline rather than a tidy-up.
 8. Texture sampling: point, then bilinear.
 9. `describe_caps` publishing only what steps 6-8 verified.
-10. Probe ladder against the software engine on a real guest.
+10. Probe ladder against the software engine on a real guest. **Partly done**:
+    steps 6 and 7 were each run on `Win98SE-Trio64` with `Win86SE` as a
+    hardware control, and two keys were added to the probe -
+    `D3DTriangleShapeOk`, which is what separates a rasterizer from the stage-1
+    bounding-box stub, and the four `D3DEdge*Raw` keys, which found that the
+    core's clipper loses the last row and column on **both** engines
+    ([issue](../issues/2026-09-01-clipper-loses-last-row-and-column.md)). The
+    full ladder still needs re-running once step 9 publishes caps.
 11. Final Reality on BARRY - the first time that machine has run a 3D
     benchmark at all. An integration check, not a correctness one; see the
     note above about what its score actually measures.
