@@ -99,26 +99,32 @@ static int v9x_page_d3d_loaded;
  * engine at all
  * (docs\decisions\2026-09-01-software-textures-and-caps.md).
  *
- * `needs_engine` is what decides which entries a given card sees. Only
- * Hardware needs one; Software runs on the framebuffer and Disabled describes
- * an absence. It is not a "hide it" flag - Hardware is still offered on a card
- * without an engine, because it is the default and the file's absent-key
- * value, and a page that could not select it could not undo a change. What it
- * changes is the label, so the entry does not promise silicon that is not
- * there.
+ * `needs_engine` decides which entries a given card sees, and it hides the
+ * entry rather than relabelling it. Only Hardware needs an engine: Software
+ * runs on the framebuffer and Disabled describes an absence, so both are
+ * offered everywhere. A Trio64, an ATI or a VESA card therefore sees exactly
+ * Software and Disabled, and only a chip with a Direct3D engine the driver
+ * actually implements - the ViRGE's S3D unit today - is offered Hardware.
+ *
+ * Offering it everywhere and labelling it "this card has no 3D engine" was
+ * tried first and is worse. It puts an entry in the list whose only effect is
+ * to produce no Direct3D, which is what the entry below it already says, and
+ * it invites the reading that the mode is a choice the card is failing at
+ * rather than one it was never offered.
+ *
+ * The default is still reachable. HARDWARE is zero, which is what an absent
+ * key means, so a card that is not offered it can still be sitting on it - see
+ * the tail of v9x_page_fill_d3d, which gives that state its own entry carrying
+ * the card's own words for it.
  */
 static const struct v9x_d3d_choice {
     int value;
     int needs_engine;
     const char *label;
-    const char *label_no_engine;
 } v9x_page_d3d_choices[] = {
-    { (int)V9X_D3D_REQUEST_HARDWARE, 1, "Hardware (the chip's own engine)",
-      "Hardware (this card has no 3D engine)" },
-    { (int)V9X_D3D_REQUEST_SOFTWARE, 0, "Software (CPU rasterizer - slow)",
-      "Software (CPU rasterizer - slow)" },
-    { (int)V9X_D3D_REQUEST_DISABLED, 0, "Disabled - advertise no Direct3D",
-      "Disabled - advertise no Direct3D" }
+    { (int)V9X_D3D_REQUEST_HARDWARE, 1, "Hardware (the chip's own engine)" },
+    { (int)V9X_D3D_REQUEST_SOFTWARE, 0, "Software (CPU rasterizer - slow)" },
+    { (int)V9X_D3D_REQUEST_DISABLED, 0, "Disabled - advertise no Direct3D" }
 };
 #define V9X_PAGE_D3D_CHOICE_COUNT \
     (sizeof(v9x_page_d3d_choices) / sizeof(v9x_page_d3d_choices[0]))
@@ -134,12 +140,23 @@ static const struct v9x_d3d_choice {
  * from its own audience - the setting worked, and only the page could not
  * reach it.
  *
- * So the control is always live and the *labels* carry what the card can do.
- * The one case left worth the code is the last: when SYSTEM.INI holds a value
- * that is not among the implemented modes - one from a later build, or a
- * typo - it gets its own entry and is selected, so the page reports what is
- * actually in the file instead of quietly presenting the default and writing
- * it back on OK.
+ * So the control is always live, and what the card can do decides which
+ * entries exist rather than what they are called.
+ *
+ * The tail is the case worth the code, and it now covers two things. When
+ * SYSTEM.INI holds a value the list does not offer, that value gets its own
+ * entry and is selected, so the page reports what is actually in the file
+ * instead of quietly presenting something else and writing it back on OK. That
+ * happens for a mode from a later build or a typo - and also, routinely, for
+ * the default on a card with no engine: HARDWARE is zero, an absent key reads
+ * as zero, and such a card is not offered zero. That case gets the card's own
+ * description of what it is doing rather than the wording for a mode this
+ * build does not have, because "Not advertised on this chip" is true and
+ * "Mode set in SYSTEM.INI, not in this build" would not be.
+ *
+ * Either way the entry carries the loaded value, so selecting nothing changes
+ * nothing: v9x_page_apply_d3d returns early when the selection equals what was
+ * loaded.
  */
 static void v9x_page_fill_d3d(HWND dialog)
 {
@@ -155,13 +172,12 @@ static void v9x_page_fill_d3d(HWND dialog)
     EnableWindow(combo, TRUE);
 
     for (index = 0u; index < V9X_PAGE_D3D_CHOICE_COUNT; ++index) {
-        const char *label =
-            (v9x_page_d3d_choices[index].needs_engine != 0 &&
-             !v9x_page_status.direct3d_capable)
-                ? v9x_page_d3d_choices[index].label_no_engine
-                : v9x_page_d3d_choices[index].label;
-
-        item = SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)label);
+        if (v9x_page_d3d_choices[index].needs_engine != 0 &&
+            !v9x_page_status.direct3d_capable) {
+            continue;
+        }
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_d3d_choices[index].label);
         if (item < 0) {
             continue;
         }
@@ -173,8 +189,12 @@ static void v9x_page_fill_d3d(HWND dialog)
     }
 
     if (SendMessageA(combo, CB_GETCURSEL, 0, 0) == CB_ERR) {
-        item = SendMessageA(combo, CB_ADDSTRING, 0,
-                            (LPARAM)"Mode set in SYSTEM.INI, not in this build");
+        const char *label =
+            v9x_page_d3d_loaded == (int)V9X_D3D_REQUEST_HARDWARE
+                ? v9x_page_status.direct3d
+                : "Mode set in SYSTEM.INI, not in this build";
+
+        item = SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)label);
         if (item >= 0) {
             SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
                          (LPARAM)v9x_page_d3d_loaded);

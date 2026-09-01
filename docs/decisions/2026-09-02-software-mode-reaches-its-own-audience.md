@@ -56,44 +56,95 @@ Both halves were correct when written and both had gone stale:
   precisely the ones software mode exists for. **The mode worked and only the
   page could not reach it.**
 
-The control is now always live. The list carries all three implemented modes,
-and `needs_engine` changes the *label* rather than hiding the entry: Hardware
-still appears on a card without an engine, because it is the default and the
-absent-key value, and a page that could not select it could not undo a change.
-It reads "Hardware (this card has no 3D engine)" there.
+The control is now always live, and `needs_engine` decides which entries exist:
+only Hardware needs one, so a card without a Direct3D engine this driver
+implements sees exactly **Software and Disabled**, and only the ViRGE is offered
+Hardware.
 
-## Measured
+Relabelling rather than hiding was tried first - Hardware present everywhere,
+reading "this card has no 3D engine" - and it is worse. It puts an entry in the
+list whose only effect is to produce no Direct3D, which is what the entry below
+it already says, and it invites the reading that the mode is something the card
+is failing at rather than one it was never offered.
 
-`Win98SE-Trio64`, port 9871, `V9XSETP.DLL` 46,080 bytes, `Build=72268a8-dirty`.
-The Velocity9x page reports:
+The default stays reachable without it. HARDWARE is zero, which is what an
+absent key means, so a card not offered it can still be sitting on it: the tail
+of `v9x_page_fill_d3d` gives any loaded value the list does not carry its own
+entry, and for that case labels it with the card's own words - "Not advertised
+on this chip" - rather than the wording for a mode this build lacks. The entry
+carries the loaded value, so selecting nothing writes nothing.
+
+## Measured, on three cards
+
+`Build=add87c6-dirty`, `V9XSETP.DLL` from each family's own package.
+
+**S3 ViRGE/DX** (`Win86SE`, port 9869) - the only chip with a Direct3D engine
+this driver implements:
 
 ```
-Adapter:    S3 Trio32/64 86C764        PCI ID: 5333:8811
-Direct3D:   Software (CPU rasterizer - slow)   [combo box, enabled]
+Hardware (the chip's own engine)      <- selected
+Software (CPU rasterizer - slow)
+Disabled - advertise no Direct3D
 ```
 
-and the dropdown offers, in order:
+**S3 Trio32/64** (`Win98SE-Trio64`, port 9871), sitting on `Direct3D=2`:
 
 ```
-Hardware (this card has no 3D engine)
 Software (CPU rasterizer - slow)      <- selected
 Disabled - advertise no Direct3D
 ```
 
-Screenshots in the session record. Before this change the same control on the
-same card was a greyed box reading "Requested mode is not in this build".
+**ATI Mach64 VT2** (`Win98SE-Mach64VT2`, port 9873), sitting on the default:
+
+```
+Software (CPU rasterizer - slow)
+Disabled - advertise no Direct3D
+Not advertised on this chip           <- selected, carrying the loaded 0
+```
+
+Before this change the same control on the Trio64 and the ATI was a greyed box
+reading "Requested mode is not in this build".
+
+## The ATI ran it, end to end
+
+The Mach64 VT2 is the second family to take the descriptor-less path, and it is
+a stronger case than the Trio64: `Acceleration=none`, `GdiAcceleration=none`,
+`ClockStatus=unavailable`, `ModeSwitching=vbe-lfb`. It has no 2D engine this
+driver drives at all, and its registry display name is still the VBE-generic
+one from an earlier install.
+
+Driven entirely through the page - select Software, OK, restart - and then the
+probe:
+
+```
+Direct3DMode=software     D3DHalFound=1        D3DCreateDeviceHr=0x00000000
+TexFormatCount=2          D3DTrianglePixelOk=1 D3DSubpixelTriangleOk=1
+D3DTriangleShapeOk=1      D3DZCompareOk=1      D3DZWriteMaskOk=1
+D3DSpecularGouraudOk=1    D3DDepthFogOk=1      D3DBaseTextureOk=1
+Tex4444PixelOk=1          D3DContextCycleOk=1  Result=COMPLETE
+```
+
+Every functional key that passes on the Trio64 passes here, and the published
+caps are identical: `TriRaster=48`, `TriZCmp=255`, `TriShade=522`,
+`TriTexture=34`, `TriFilter=3`, `TriBlend=3`, `TriAddress=4`, `ZDepth=1024`.
+
+One trap on the way, and it is the reason to look at `Direct3DMode` before
+believing a run: the guest's 16-bit `V9XDISP.DRV` was from 2026-08-30 and
+resolved `Direct3D=2` to `mode-unimplemented`, because mode resolution lives in
+the display driver rather than in the HAL. Pushing `V9XHAL.DLL` and
+`V9XSETP.DLL` alone is not enough. The driver went over by the recorded route -
+stage at `C:\V9XNDRV.BIN`, an 8.3 path in the root, and a `WININIT.INI`
+`[Rename]` - which worked first time.
 
 ## What is still not measured
 
 **No VBE guest ran.** `Win98SE-QEMU-StdVGA` was started and boots to a Windows
-98 desktop that reports "Your display adapter is not configured properly", with
-no shell icons and no remote agent answering on host port 9872 after several
-minutes. The guest is in a broken display configuration left over from earlier
-tier-0 work; reviving it is its own task and is not attempted here.
+98 desktop reporting "Your display adapter is not configured properly", with no
+shell icons and no agent answering on host port 9872. It is in a broken display
+configuration left from earlier tier-0 work; reviving it is its own task and
+was not attempted. The VM was stopped again.
 
-So the VBE claim rests on the five-step chain above - one host-tested step, one
-generic-by-construction step, and an end-to-end measurement on a different
-family that takes the identical arm - and not on a VBE guest. That is weaker
-than a measurement and it is worth saying so plainly. The ATI family
-(`Win98SE-Mach64VT2`, port 9873) is the cheaper of the two remaining ways to
-turn it into one.
+So the VBE claim now rests on the chain above **plus** an end-to-end
+measurement on the ATI, which takes the identical arm and reaches its
+framebuffer through the same `vbe-lfb` mode switching the VBE family uses. That
+is materially stronger than it was, and it is still not a VBE guest.
