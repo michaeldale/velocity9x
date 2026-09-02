@@ -2479,6 +2479,140 @@ void __stdcall V9xDdrawProbeEntry(void)
                 triangle[2].sx = 8.25f;
                 triangle[2].sy = 55.75f;
 
+                /*
+                 * The same triangle into a full-screen-sized render target.
+                 *
+                 * Every Direct3D test above draws into a 64x64 surface, which
+                 * the heap places low in video memory and whose pitch is 128
+                 * bytes. A game renders into something the size of the screen:
+                 * a 640x480 target has a 1280-byte pitch and lands at a high
+                 * offset, behind the primary and its back buffer. Those are
+                 * the two values the engine's DEST_BASE and DEST_SRC_STRIDE
+                 * registers carry, and nothing here has ever exercised them
+                 * at a game's magnitudes.
+                 *
+                 * This exists because of a report from a physical S3 Trio3D on
+                 * 2026-09-02: Final Reality's intro displayed, its 3D section
+                 * rendered at 8 flips a second with no engine fault, and the
+                 * screen stayed black throughout - while every 64x64 pixel
+                 * test in this probe passed on the same machine and the same
+                 * boot. An engine that draws correctly into a small target and
+                 * wrongly into a large one produces exactly that, and no key
+                 * here could tell.
+                 *
+                 * Read back through Lock rather than GDI, so this says
+                 * something about where the engine wrote rather than about
+                 * which page GDI owns - see the FlipPixelOk issue for what
+                 * happens when that distinction is skipped.
+                 *
+                 * BEHIND A SWITCH, and not because it is exotic. As of
+                 * 2026-09-02 it **terminates the probe process** inside
+                 * DrawPrimitive on every target tried - a real ViRGE-path
+                 * chip and an emulated ViRGE alike - which takes every key
+                 * below it with it and leaves Result=INCOMPLETE. An
+                 * instrument that destroys the rest of its own run cannot be
+                 * on by default. Run it deliberately with /bigtarget; see
+                 * docs\issues\2026-09-02-large-render-target-kills-the-caller.md.
+                 */
+                if (v9x_has_switch("/bigtarget")) {
+                    struct v9x_dds *big_target = 0;
+                    struct v9x_d3d_device2 *big_device = 0;
+                    HRESULT big_hr;
+                    HRESULT big_draw = (HRESULT)V9X_DDERR_UNSUPPORTED;
+                    WORD big_raw = 0xffffu;
+                    WORD big_outside = 0xffffu;
+
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT;
+                    desc.dwWidth = 640ul;
+                    desc.dwHeight = 480ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_3DDEVICE |
+                                          V9X_DDSCAPS_OFFSCREENPLAIN |
+                                          V9X_DDSCAPS_VIDEOMEMORY;
+                    big_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                        &big_target, 0);
+                    v9x_write_hresult("D3DBigTargetHr", big_hr);
+                    if (big_hr == 0 && big_target != 0) {
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        if (big_target->vtbl->GetSurfaceDesc(big_target,
+                                                             &desc) == 0) {
+                            v9x_write_uint("D3DBigPitch",
+                                           (DWORD)desc.lPitch);
+                        }
+                        big_hr = d3d->vtbl->CreateDevice(d3d,
+                                                         &v9x_iid_d3d_hal,
+                                                         big_target,
+                                                         &big_device);
+                        v9x_write_hresult("D3DBigDeviceHr", big_hr);
+                    }
+                    if (big_hr == 0 && big_device != 0) {
+                        v9x_write_uint("D3DBigStage", 1ul);
+                        v9x_fill_surface(big_target, 0ul);
+                        v9x_write_uint("D3DBigStage", 2ul);
+                        /*
+                         * Wholly inside the target, so that this test changes
+                         * exactly one thing against the 64x64 case: the size
+                         * of the render target, and with it the DEST_BASE
+                         * offset and the 1280-byte stride.
+                         *
+                         * An earlier version ran to y = 503.75 in a 480-high
+                         * target, which also made it the first large-target
+                         * triangle the clipper had to cut - two variables at
+                         * once, and no way to tell which mattered.
+                         *
+                         * (100,100) is inside; (400,300) is outside the
+                         * hypotenuse and inside the bounding box.
+                         */
+                        triangle[0].sx = 8.25f;
+                        triangle[0].sy = 8.25f;
+                        triangle[1].sx = 503.75f;
+                        triangle[1].sy = 8.25f;
+                        triangle[2].sx = 8.25f;
+                        triangle[2].sy = 400.75f;
+                        if (big_device->vtbl->BeginScene(big_device) == 0) {
+                            v9x_write_uint("D3DBigStage", 3ul);
+                            big_draw = big_device->vtbl->DrawPrimitive(
+                                big_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            v9x_write_uint("D3DBigStage", 4ul);
+                            big_device->vtbl->EndScene(big_device);
+                            v9x_write_uint("D3DBigStage", 5ul);
+                        }
+                        v9x_write_hresult("D3DBigDrawHr", big_draw);
+                        big_raw = v9x_surface_pixel16(big_target, 100ul,
+                                                      100ul);
+                        v9x_write_uint("D3DBigStage", 6ul);
+                        big_outside = v9x_surface_pixel16(big_target, 400ul,
+                                                          300ul);
+                        v9x_write_uint("D3DBigStage", 7ul);
+                    }
+                    v9x_write_uint("D3DBigRaw", big_raw);
+                    v9x_write_uint("D3DBigOutsideRaw", big_outside);
+                    v9x_write_uint("D3DBigShapeOk",
+                        big_draw == 0 && big_raw != 0u && big_raw != 0xffffu &&
+                        big_outside == 0u ? 1ul : 0ul);
+                    if (big_device != 0) {
+                        struct v9x_dds *unknown =
+                            (struct v9x_dds *)big_device;
+
+                        unknown->vtbl->Release(unknown);
+                    }
+                    if (big_target != 0) {
+                        big_target->vtbl->Release(big_target);
+                    }
+
+                    /* Restore the 64x64 geometry for the tests below. */
+                    triangle[0].sx = 8.25f;
+                    triangle[0].sy = 8.25f;
+                    triangle[1].sx = 55.75f;
+                    triangle[1].sy = 8.25f;
+                    triangle[2].sx = 8.25f;
+                    triangle[2].sy = 55.75f;
+                }
+
                 v9x_fill_surface(d3d_target, 0ul);
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
