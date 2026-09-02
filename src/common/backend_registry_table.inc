@@ -17,6 +17,7 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x4C4Du, v9x_ati_mach64_backend }, /* ati / rage-mobility-m */
     { 0x102Bu, 0x051Bu, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2164w */
     { 0x5333u, 0x8A01u, v9x_s3_virge_backend }, /* s3 / virge-dx */
+    { 0x5333u, 0x8A13u, v9x_s3_virge_backend }, /* s3 / virge-dx alias */
     { 0x5333u, 0x8811u, v9x_s3_virge_backend }, /* s3 / trio64 */
     { 0x5333u, 0x8810u, v9x_s3_virge_backend }, /* s3 / trio64 alias */
     { 0x5333u, 0x8812u, v9x_s3_virge_backend }, /* s3 / trio64 alias */

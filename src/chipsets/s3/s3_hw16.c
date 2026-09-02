@@ -20,11 +20,17 @@
  * nowhere. They are declared in that module, not this one, so the per-object
  * audit still sees one object per chip's code - and so the list here stays a
  * scan order rather than becoming a second place that describes a chip.
+ *
+ * The Trio3D/2X is the ViRGE's alias on the same terms and is declared in the
+ * ViRGE's module. Its position here - before the Trio64 rather than after it -
+ * carries no meaning beyond keeping the S3D parts together; a machine has one
+ * card, so no two ids can both match.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_regs16.h"
 
 extern const V9X_HW16_DEVICE v9x_virge_device;
+extern const V9X_HW16_DEVICE v9x_trio3d2x_device;
 extern const V9X_HW16_DEVICE v9x_trio_device;
 extern const V9X_HW16_DEVICE v9x_trio32_device;
 extern const V9X_HW16_DEVICE v9x_aurora64_device;
@@ -34,6 +40,9 @@ extern const V9X_HW16_DEVICE v9x_trio64v2_device;
 
 static const V9X_HW16_DEVICE * const v9x_s3_devices[] = {
     &v9x_virge_device,
+    /* Second because it is the ViRGE's alias and shares its hooks, not the
+     * Trio64's - the name misleads. See virge_hw16.c. */
+    &v9x_trio3d2x_device,
     &v9x_trio_device,
     &v9x_trio32_device,
     &v9x_aurora64_device,

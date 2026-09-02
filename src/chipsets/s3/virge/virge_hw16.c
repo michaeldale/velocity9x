@@ -73,3 +73,32 @@ const V9X_HW16_DEVICE v9x_virge_device = {
     v9x_virge_enable_aperture,
     v9x_virge_fill_engine
 };
+
+/*
+ * The Trio3D/2X, driven by the ViRGE's hooks.
+ *
+ * It sits in this object rather than the Trio64's deliberately, and the name
+ * is the reason it is easy to put in the wrong one: despite "Trio" it is an
+ * S3D part, not a Trio64. It opens the same CR53[3] new-MMIO window and
+ * describes the same S3D engine, so it gets hardware Direct3D where the
+ * Trio64 aliases get none.
+ *
+ * The evidence is 86Box's, not silicon's: that emulator implements this chip
+ * inside its ViRGE driver, in the same chip enum, writing this exact id - and
+ * its S3D triangle engine carries no branch for the part. Two modelled
+ * differences are unaccounted for here and are the first things to suspect if
+ * it misbehaves: a 16-slot command FIFO where the ViRGE/DX has 8, and an
+ * 8 MiB decode mask where the ViRGE/DX has 4 MiB. See
+ * docs\decisions\2026-09-02-trio3d-on-the-s3-path.md.
+ */
+const V9X_HW16_DEVICE v9x_trio3d2x_device = {
+    0x5333u, 0x8a13u,
+    "S3 Trio3D/2X",
+    "5333", "8A13",
+    "s3-virge-pll-v1",
+    "live-any-depth",
+    "directdraw-fill-blt",
+    "hardware-s3d",
+    v9x_virge_enable_aperture,
+    v9x_virge_fill_engine
+};

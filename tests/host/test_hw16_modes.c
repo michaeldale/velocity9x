@@ -45,6 +45,12 @@ static unsigned int hw16_failures = 0u;
 const V9X_HW16_DEVICE v9x_virge_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+/* The ViRGE's alias. It is declared in the ViRGE's module rather than the
+ * Trio64's, because the Trio3D/2X is an S3D part and takes the ViRGE's hooks -
+ * a stub here all the same, on the same terms as the rest. */
+const V9X_HW16_DEVICE v9x_trio3d2x_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_trio_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

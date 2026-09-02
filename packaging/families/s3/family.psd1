@@ -84,6 +84,38 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_virge_device')
+
+            # An alias of the ViRGE rather than of the Trio64, which is the
+            # whole claim being made: the Trio3D/2X is an S3D part despite the
+            # name, so it gets this chip's CR53 new-MMIO enable, this chip's
+            # engine descriptor, and therefore hardware Direct3D.
+            #
+            # Evidence, and it is emulator evidence rather than silicon: 86Box
+            # implements the Trio3D/2X inside its ViRGE driver as S3_TRIO3D2X,
+            # in the same chip enum as the ViRGE parts, and its setup writes
+            # virge_id_high 8a / virge_id_low 13 - this id. The S3D triangle
+            # engine in that file carries no S3_TRIO3D2X branch at all; every
+            # per-chip conditional in the 3D and streams region is about the
+            # VirgeVX or the GX2 overlay. See build\reference-vid_s3_virge.c
+            # and docs\decisions\2026-09-02-trio3d-on-the-s3-path.md.
+            #
+            # Two modelled differences this alias does NOT account for, and
+            # they are the first suspects if a card misbehaves: the Trio3D/2X
+            # gets fifo_slots_num 16 where the ViRGE/DX arm gets 8, and an
+            # 8 MiB decode mask where the ViRGE/DX gets 4 MiB. The FIFO one
+            # matters most - a wrong slot reservation is what cost this project
+            # two weeks on the ViRGE depth path, with every HRESULT reporting
+            # success throughout.
+            #
+            # Its CR36 memory encoding also differs from the ViRGE's. That is
+            # not fatal: the decoder returns 0 for a code it does not know and
+            # enable16.c falls back to the VBE 4F00h total, so the heap is
+            # sized from the BIOS instead.
+            Aliases = @(
+                @{ DeviceId = '8A13'
+                   Name = 'S3 Trio3D/2X'
+                   DeviceDesc = 'Velocity9x S3 Trio3D/2X' }
+            )
         }
         @{
             Id = 'trio64'
