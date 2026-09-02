@@ -1,93 +1,65 @@
-# DrawPrimitive into a 640x480 render target terminates the calling process
+# RETRACTED: "DrawPrimitive into a 640x480 render target terminates the caller"
 
 Filed: 2026-09-02
-Status: open, reproduced on two chips, cause not established
-Reproduce: `V9XDDP.EXE /bigtarget`
+**Status: invalid, retracted the same day. The fault was in the test, not the
+driver.**
+Reproduce the corrected test: `V9XDDP.EXE /bigtarget`
 
-## What happens
+## The claim, and why it was wrong
 
-Create a 640x480 `DDSCAPS_3DDEVICE | OFFSCREENPLAIN | VIDEOMEMORY` surface,
-create a Direct3D HAL device on it, fill it, `BeginScene`, then
-`DrawPrimitive` one triangle. **The process dies inside `DrawPrimitive`.**
+A new probe test created a 640x480 `3DDEVICE | OFFSCREENPLAIN | VIDEOMEMORY`
+surface, created a Direct3D HAL device on it, and called `DrawPrimitive`. The
+process died inside that call. It was bisected with stage markers to the exact
+call, reproduced byte-identically on repeat runs, and reproduced on three
+targets: a physical S3 Trio3D on the hardware S3D path, an emulated ViRGE/DX on
+the same path, and an emulated Trio64 in **software** mode with no S3D engine at
+all.
 
-The same triangle into the probe's usual 64x64 target, in the same run on the
-same boot, draws correctly.
+Reproducing across two engines and three machines looked like strong evidence of
+a defect in shared code. It was strong evidence of a defect in the one thing all
+three runs shared that was not the driver: **the test.**
 
-## Bisected
+**The test never created a viewport.** `IDirect3DDevice2::DrawPrimitive` with no
+current viewport faults. The probe's existing 64x64 test creates one, adds it to
+the device and calls `SetCurrentViewport` before drawing; the new test copied the
+drawing and not the setup.
 
-The probe writes a `D3DBigStage` key after each step. The last value written is
-**3**, which is after `BeginScene` returned and before `DrawPrimitive` returns:
+## The corrected result
 
-```
-D3DBigTargetHr=0x00000000     surface created
-D3DBigPitch=1280
-D3DBigDeviceHr=0x00000000     HAL device created on it
-D3DBigStage=1                 about to fill
-D3DBigStage=2                 filled
-D3DBigStage=3                 BeginScene returned 0
-                              <- nothing further; Result stays INCOMPLETE
-```
+With a viewport created, added, set and made current, the same test passes
+everywhere it previously died:
 
-`D3DBigStage=4`, which would follow `DrawPrimitive`, is never written.
-
-## Reproduced on
-
-| Target | Driver | Result |
+| Target | Mode | Result |
 |---|---|---|
-| A8U4I5, physical S3 Trio3D/2X `5333:8A13` | `s3`, hardware D3D | dies at stage 3 |
-| `Win86SE`, 86Box S3 ViRGE/DX | `s3`, hardware D3D | dies at stage 3 |
+| `Win98SE-Trio64` (86Box) | software rasterizer | `D3DBigShapeOk=1`, `D3DBigRaw=63488` (red, RGB565) |
+| A8U4I5, physical S3 Trio3D/2X | hardware S3D | `D3DBigShapeOk=1`, `D3DBigRaw=31744` (red, ZRGB1555) |
 
-Byte-identical truncation across repeat runs on the physical machine. **It is
-not chip-specific**, which places it in the driver or the runtime rather than in
-the Trio3D alias added the same day.
+`D3DBigStage=7`, `D3DBigDrawHr=0x00000000`, `D3DBigOutsideRaw=0` on both, and
+`Result=COMPLETE`. **A screen-sized render target draws correctly on both
+engines**, with the 1555-into-565 difference that is already a separate issue.
 
-## What it is not
+## What was actually learned
 
-**Not clipping.** The first version of the test drew to y = 503.75 in a
-480-high target, so it was both large *and* the first large-target triangle the
-clipper had to cut - two variables at once. Redrawn wholly inside the target
-(`(8.25,8.25)`, `(503.75,8.25)`, `(8.25,400.75)`), it fails identically. Only
-the target size, and with it `DEST_BASE` and the 1280-byte stride, differ from
-the passing 64x64 case.
+The test is worth keeping - it closes a real gap. Every other Direct3D pixel
+test in this probe draws into a 64x64 surface with a 128-byte pitch, low in
+video memory. This one exercises a 1280-byte stride and a high `DEST_BASE`,
+which is what a game uses, and it now passes on both engines rather than being
+assumed to.
 
-**Not the DEST_BASE alignment hole** recorded in
-[`final-reality-101-hardware.md`](../plans/final-reality-101-hardware.md). A
-640x480x16 surface and every offset in play here are 8-byte aligned by
-arithmetic.
+Two process lessons, which are the reason this file is kept rather than deleted:
 
-**Not an engine fault.** `EngineFifoTimeouts`, `EngineIdleTimeouts` and
-`EngineResets` are all 0 afterwards, and the driver never writes
-`C:\V9XDIAG\V9XTRACE.INI`, which it does on a fault. Whatever kills the process
-is not the engine timing out or being reset.
+1. **Reproducing across targets does not mean the driver is at fault.** It
+   narrows the cause to something shared, and the harness is shared too. The
+   software engine reproducing it should have been read as "this is not the
+   S3D path" *and* "this may not be the driver at all"; only the first was.
+2. **A new test that fails on its first run is more likely to be wrong than the
+   thing it tests.** The bisect correctly found the failing call and was then
+   used to reason about the driver rather than to check the call's own
+   preconditions against the working test twenty lines above it.
 
-## What this does not explain
+## The switch
 
-**It does not explain the Final Reality black screen**, and it would be
-convenient to assume it does. FR rendered 478,327 primitives into screen-sized
-targets on the same machine and driver without the process dying
-([record](../decisions/2026-09-02-final-reality-on-a-real-trio3d.md)). Its
-render target is a flippable back buffer, not an `OFFSCREENPLAIN` surface, so
-the two paths differ in how the target is allocated and where it lands. The two
-symptoms may share a cause or may not; nothing here establishes either.
-
-## Next
-
-1. **Find where it dies.** The driver's own fault handler did not fire, so the
-   fault is either outside the HAL or before the handler is armed for that call.
-   `V9XTRACE.EXE` immediately after a `/bigtarget` run would say whether
-   `D3dRenderPrimitive` was entered at all - the counters distinguish "the
-   driver was called and died" from "the runtime died before calling".
-2. **Vary the size.** 64x64 works and 640x480 does not; the boundary is
-   unknown. 128x128, 256x256 and 320x240 would say whether it is a threshold, a
-   stride, or an offset.
-3. **Try it in software mode.** `Direct3D=2` uses the same core and clipper with
-   a different engine, so a crash there too would move the cause out of
-   `d3d_virge.c` entirely.
-
-## The switch, and why
-
-The test is behind `/bigtarget` rather than on by default. On by default it
-takes every key after it with it - the depth ladders, the texture tests, the
-context cycle - and leaves `Result=INCOMPLETE`, which is a worse instrument for
-everyone than the missing coverage was. That regression was introduced and
-reverted the same session.
+`/bigtarget` stays a switch rather than becoming default. Not because it is
+dangerous now - it passes - but because it has been run on two targets and the
+probe's default set is run on every family. Promote it once it has been through
+an ATI and a VBE run.

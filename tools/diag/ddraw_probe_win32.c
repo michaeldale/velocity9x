@@ -2505,18 +2505,24 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * which page GDI owns - see the FlipPixelOk issue for what
                  * happens when that distinction is skipped.
                  *
-                 * BEHIND A SWITCH, and not because it is exotic. As of
-                 * 2026-09-02 it **terminates the probe process** inside
-                 * DrawPrimitive on every target tried - a real ViRGE-path
-                 * chip and an emulated ViRGE alike - which takes every key
-                 * below it with it and leaves Result=INCOMPLETE. An
-                 * instrument that destroys the rest of its own run cannot be
-                 * on by default. Run it deliberately with /bigtarget; see
-                 * docs\issues\2026-09-02-large-render-target-kills-the-caller.md.
+                 * Behind /bigtarget rather than default, only because it is
+                 * new: the probe's default set runs on every family and this
+                 * has been through two targets. Promote it after an ATI and a
+                 * VBE run.
+                 *
+                 * Its first version omitted the viewport that the 64x64 test
+                 * above creates, and a device with no current viewport faults
+                 * inside DrawPrimitive. It died on a physical Trio3D, an
+                 * emulated ViRGE and an emulated Trio64 in software mode,
+                 * which read like a defect in shared driver code and was a
+                 * defect in this test. See
+                 * docs\issues\2026-09-02-large-render-target-kills-the-caller.md
+                 * for the retraction.
                  */
                 if (v9x_has_switch("/bigtarget")) {
                     struct v9x_dds *big_target = 0;
                     struct v9x_d3d_device2 *big_device = 0;
+                    struct v9x_d3d_viewport2 *big_viewport = 0;
                     HRESULT big_hr;
                     HRESULT big_draw = (HRESULT)V9X_DDERR_UNSUPPORTED;
                     WORD big_raw = 0xffffu;
@@ -2547,6 +2553,42 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                          big_target,
                                                          &big_device);
                         v9x_write_hresult("D3DBigDeviceHr", big_hr);
+                    }
+                    if (big_hr == 0 && big_device != 0) {
+                        /*
+                         * Its own viewport, and this is not optional: a
+                         * device with no current viewport faults inside
+                         * DrawPrimitive. The first version of this test
+                         * omitted it and died on every target - a real
+                         * ViRGE-path chip, an emulated ViRGE and an emulated
+                         * Trio64 in software mode - which reads exactly like
+                         * a driver defect and was not one.
+                         */
+                        big_hr = d3d->vtbl->CreateViewport(
+                            d3d, (void **)&big_viewport, 0);
+                        if (big_hr == 0 && big_viewport != 0) {
+                            big_hr = big_device->vtbl->AddViewport(
+                                big_device, big_viewport);
+                        }
+                        if (big_hr == 0) {
+                            v9x_zero(&viewport_desc, sizeof(viewport_desc));
+                            viewport_desc.dwSize = sizeof(viewport_desc);
+                            viewport_desc.dwWidth = 640ul;
+                            viewport_desc.dwHeight = 480ul;
+                            viewport_desc.dvClipX = -1.0f;
+                            viewport_desc.dvClipY = 1.0f;
+                            viewport_desc.dvClipWidth = 2.0f;
+                            viewport_desc.dvClipHeight = 2.0f;
+                            viewport_desc.dvMinZ = 0.0f;
+                            viewport_desc.dvMaxZ = 1.0f;
+                            big_hr = big_viewport->vtbl->SetViewport2(
+                                big_viewport, &viewport_desc);
+                        }
+                        if (big_hr == 0) {
+                            big_hr = big_device->vtbl->SetCurrentViewport(
+                                big_device, big_viewport);
+                        }
+                        v9x_write_hresult("D3DBigViewportHr", big_hr);
                     }
                     if (big_hr == 0 && big_device != 0) {
                         v9x_write_uint("D3DBigStage", 1ul);
@@ -2594,6 +2636,12 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_write_uint("D3DBigShapeOk",
                         big_draw == 0 && big_raw != 0u && big_raw != 0xffffu &&
                         big_outside == 0u ? 1ul : 0ul);
+                    if (big_viewport != 0) {
+                        struct v9x_dds *unknown =
+                            (struct v9x_dds *)big_viewport;
+
+                        unknown->vtbl->Release(unknown);
+                    }
                     if (big_device != 0) {
                         struct v9x_dds *unknown =
                             (struct v9x_dds *)big_device;
