@@ -951,6 +951,66 @@ static void test_build_ex_reasons_and_distrust(void)
 /* Publication: the GMA950 shape. A trustworthy scan that admits only two of
  * the seven baseline geometries hides the other five; appended rows publish;
  * fallback is the first published row. */
+/*
+ * The 15/16 bpp VESA pairs, and the modes that have no partner.
+ *
+ * The direction matters and is the whole reason this is one function rather
+ * than two lookups: a caller asks "what do I program instead of this 5:6:5
+ * mode", so the 5:6:5 number is the key and the 5:5:5 number is the answer.
+ * Asking it about a 5:5:5 mode has to return zero rather than the same mode
+ * back, or a driver already in 5:5:5 would think it had a sibling to switch
+ * to and switch to itself forever.
+ */
+static void test_555_mode_pairs(void)
+{
+    MODECHECK(v9x_vbe_mode_555(0x0111u) == 0x0110u);   /*  640x480  */
+    MODECHECK(v9x_vbe_mode_555(0x0114u) == 0x0113u);   /*  800x600  */
+    MODECHECK(v9x_vbe_mode_555(0x0117u) == 0x0116u);   /* 1024x768  */
+    MODECHECK(v9x_vbe_mode_555(0x011au) == 0x0119u);   /* 1280x1024 */
+    MODECHECK(v9x_vbe_mode_555(0x010eu) == 0x010du);   /*  320x200  */
+
+    /* A 15 bpp mode is not its own sibling. */
+    MODECHECK(v9x_vbe_mode_555(0x0110u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x0113u) == 0u);
+
+    /* 640x400 at 16 bpp - VBE 0x103 is 800x600x8 and 0x100 is 640x400x8; no
+     * 16 bpp 640x400 mode is standard, so nothing here pairs with one. */
+    MODECHECK(v9x_vbe_mode_555(0x0100u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x0101u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x0103u) == 0u);
+
+    /* The 32 bpp modes, which sit next to their 16 bpp partners in every
+     * family table and must not be mistaken for them. */
+    MODECHECK(v9x_vbe_mode_555(0x0112u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x0115u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x0118u) == 0u);
+
+    /* Above the standard numbering a BIOS numbers modes itself and nothing
+     * pairs. 0x0211 is the S3 mode this project has met on real cards. */
+    MODECHECK(v9x_vbe_mode_555(0x0211u) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0x011bu) == 0u);
+    MODECHECK(v9x_vbe_mode_555(0u) == 0u);
+}
+
+/* The 5:5:5 masks are 5:5:5, and the top bit is not claimed as alpha. */
+static void test_555_masks(void)
+{
+    struct v9x_mode_masks masks;
+
+    masks.red = 0xfffffffful;
+    masks.green = 0xfffffffful;
+    masks.blue = 0xfffffffful;
+    v9x_mode_masks_555(&masks);
+    MODECHECK(masks.red == 0x00007c00ul);
+    MODECHECK(masks.green == 0x000003e0ul);
+    MODECHECK(masks.blue == 0x0000001ful);
+    MODECHECK((masks.red | masks.green | masks.blue) == 0x00007ffful);
+
+    /* A null pointer is answered rather than dereferenced: this runs inside a
+     * display driver's mode path. */
+    v9x_mode_masks_555(0);
+}
+
 static void test_publish_hides_contradicted_baseline(void)
 {
     struct v9x_vbe_scan_entry scanned[3];
@@ -1100,5 +1160,7 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
     test_dd_subset_publication();
+    test_555_mode_pairs();
+    test_555_masks();
     return modes_failures;
 }

@@ -52,6 +52,18 @@ typedef struct v9x_d3d_context {
     DWORD width;
     DWORD height;
     /*
+     * The render target's channel layout, as one of the two values below.
+     *
+     * Recorded rather than assumed because a 16 bpp desktop can be 5:6:5 or
+     * 5:5:5, and on S3D silicon the difference decides whether hardware
+     * Direct3D puts its colours in the right channels at all - the triangle
+     * engine has no RGB565 destination format
+     * (docs\decisions\2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
+     * The software engine reads it; the ViRGE engine cannot act on it and does
+     * not look.
+     */
+    DWORD target_format;
+    /*
      * The depth surface, once validated. depth_offset and depth_pitch were
      * computed and thrown away before the Z path existed; the engine needs
      * both, and neither is recoverable from the surface pointer without
@@ -89,6 +101,19 @@ typedef struct v9x_d3d_context {
     DWORD texture_address;
     DWORD texture_border;
 } V9X_D3D_CONTEXT;
+
+/*
+ * The render-target layouts the core recognises.
+ *
+ * The core's vocabulary and not the software rasterizer's, because
+ * d3d_raster.h is that engine's private leaf header and this file is shared
+ * with an engine that has no rasterizer at all. The values are chosen equal to
+ * V9X_D3D_RASTER_PIXFMT_*, so d3d_soft.c passes the field through untranslated
+ * and asserts the equality at compile time - the same arrangement the filter,
+ * blend and comparison constants already use.
+ */
+#define V9X_D3D_TARGET_FORMAT_RGB565   1ul
+#define V9X_D3D_TARGET_FORMAT_XRGB1555 2ul
 
 typedef struct v9x_d3d_texture {
     DWORD active;

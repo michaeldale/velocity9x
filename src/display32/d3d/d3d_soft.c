@@ -123,6 +123,16 @@ typedef char v9x_assert_soft_blend_factor[
      V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA == V9X_D3DBLEND_INVSRCALPHA)
         ? 1 : -1];
 
+/*
+ * The render-target layout travels from the core untranslated as well. It has
+ * to be the core's vocabulary there, because d3d_raster.h is this engine's
+ * private header, and this is what keeps the two sets of numbers equal.
+ */
+typedef char v9x_assert_soft_target_format[
+    (V9X_D3D_TARGET_FORMAT_RGB565 == V9X_D3D_RASTER_PIXFMT_RGB565 &&
+     V9X_D3D_TARGET_FORMAT_XRGB1555 == V9X_D3D_RASTER_PIXFMT_XRGB1555)
+        ? 1 : -1];
+
 typedef char v9x_assert_soft_compare[
     (V9X_D3D_RASTER_CMP_NEVER == V9X_D3DCMP_NEVER &&
      V9X_D3D_RASTER_CMP_LESS == V9X_D3DCMP_LESS &&
@@ -755,6 +765,7 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     target.pitch = context->pitch;
     target.width = context->width;
     target.height = context->height;
+    target.format = context->target_format;
     if (!v9x_d3d_raster_target_valid(&target)) {
         return 0;
     }

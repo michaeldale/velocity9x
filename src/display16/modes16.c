@@ -96,6 +96,42 @@ static struct v9x_mode_masks v9x_stage_masks[V9X_MODE_TABLE_MAX];
 static v9x_u8 v9x_stage_publication[V9X_MODE_TABLE_MAX];
 static WORD v9x_scan_count = 0u;
 
+/*
+ * What a 16 bpp desktop means on this machine, from SYSTEM.INI.
+ *
+ * Read once at mode-table init, before any row is published, because both the
+ * masks published here and the VBE mode number ddi.c programs are derived from
+ * it and they must not be able to disagree. Defaults to 5:6:5, so a machine
+ * that has never heard of the key behaves exactly as it did before it existed.
+ *
+ * See V9X_HIGHCOLOR_555 for why 5:5:5 is worth having at all.
+ */
+#define V9X_HIGHCOLOR_SECTION "Velocity9x"
+#define V9X_HIGHCOLOR_KEY     "HighColor"
+#define V9X_HIGHCOLOR_INI     "SYSTEM.INI"
+
+static WORD v9x_highcolor = (WORD)V9X_HIGHCOLOR_565;
+
+WORD v9x_modes16_highcolor(void)
+{
+    return v9x_highcolor;
+}
+
+/* Non-zero when this row should be published, and programmed, as 5:5:5. Both
+ * conditions in one place: the setting asks for it, and the row's mode number
+ * has a 15 bpp sibling to switch to. A row with no sibling stays 5:6:5 rather
+ * than being described as something the mode set cannot deliver. */
+WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
+{
+    if (row == 0 || v9x_highcolor != (WORD)V9X_HIGHCOLOR_555) {
+        return 0u;
+    }
+    if (row->bits_per_pixel != 16u) {
+        return 0u;
+    }
+    return v9x_vbe_mode_555(row->vbe_mode) != 0u ? 1u : 0u;
+}
+
 /* Copy the family baseline in and publish every row: the committed fallback
  * state, and the whole story for a build whose scan never happens. */
 static void v9x_modes16_commit_baseline(void)
@@ -108,7 +144,9 @@ static void v9x_modes16_commit_baseline(void)
     }
     for (index = 0u; index < count; ++index) {
         v9x_runtime_modes[index] = v9x_hw16.modes[index];
-        if (v9x_hw16.modes[index].bits_per_pixel == 16u) {
+        if (v9x_modes16_row_is_555(&v9x_hw16.modes[index]) != 0u) {
+            v9x_mode_masks_555(&v9x_runtime_masks[index]);
+        } else if (v9x_hw16.modes[index].bits_per_pixel == 16u) {
             v9x_runtime_masks[index].red = 0x0000f800ul;
             v9x_runtime_masks[index].green = 0x000007e0ul;
             v9x_runtime_masks[index].blue = 0x0000001ful;
@@ -212,6 +250,14 @@ void v9x_modes16_init(void)
     WORD first = 0u;
     WORD published;
     DWORD vram;
+
+    /* The layout setting first: the baseline commit below publishes masks
+     * derived from it, so reading it afterwards would publish 5:6:5 and then
+     * program 5:5:5. */
+    v9x_highcolor = (WORD)GetPrivateProfileInt(V9X_HIGHCOLOR_SECTION,
+                                               V9X_HIGHCOLOR_KEY,
+                                               (int)V9X_HIGHCOLOR_565,
+                                               V9X_HIGHCOLOR_INI);
 
     /* Step 1: the fallback state is committed before anything can fail. */
     v9x_modes16_commit_baseline();

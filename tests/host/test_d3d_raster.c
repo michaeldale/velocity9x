@@ -72,6 +72,9 @@ static void raster_reset(V9X_D3D_RASTER_TARGET *target)
     target->pitch = RASTER_STRIDE * 2ul;
     target->width = RASTER_WIDTH;
     target->height = RASTER_HEIGHT;
+    /* RGB565 unless a test says otherwise, which is what every draw here
+     * meant before the target carried a format at all. */
+    target->format = V9X_D3D_RASTER_PIXFMT_RGB565;
 }
 
 /*
@@ -860,6 +863,7 @@ static void test_depth_full_height_interpolation(void)
     target.pitch = RASTER_TALL_WIDTH * 2ul;
     target.width = RASTER_TALL_WIDTH;
     target.height = RASTER_TALL_HEIGHT;
+    target.format = V9X_D3D_RASTER_PIXFMT_RGB565;
     depth.pixels = raster_tall_depth;
     depth.pitch = RASTER_TALL_WIDTH * 2ul;
     depth.compare = V9X_D3D_RASTER_CMP_LESS;
@@ -1565,6 +1569,102 @@ static void test_alpha_refusals(void)
 }
 
 /*
+ * XRGB1555 packing, against the same table the 565 packer is held to.
+ *
+ * The saturation cases matter more here than they look: a channel that wrapped
+ * instead of saturating would put a bright speck at the end of every span, and
+ * the two packers have to agree about that or a 5:5:5 desktop would show
+ * artefacts a 5:6:5 one does not.
+ */
+static void test_xrgb1555_packing(void)
+{
+    RCHECK(v9x_d3d_raster_xrgb1555(0l, 0l, 0l) == 0x0000u);
+    RCHECK(v9x_d3d_raster_xrgb1555(255l, 255l, 255l) == 0x7fffu);
+    RCHECK(v9x_d3d_raster_xrgb1555(255l, 0l, 0l) == 0x7c00u);
+    RCHECK(v9x_d3d_raster_xrgb1555(0l, 255l, 0l) == 0x03e0u);
+    RCHECK(v9x_d3d_raster_xrgb1555(0l, 0l, 255l) == 0x001fu);
+    RCHECK(v9x_d3d_raster_xrgb1555(300l, 300l, 300l) == 0x7fffu);
+    RCHECK(v9x_d3d_raster_xrgb1555(-1l, -1l, -1l) == 0x0000u);
+
+    /* The top bit is never set. A render target's fifteenth bit is not alpha
+     * here and writing it would put a value on screen that a 5:5:5 scanout
+     * ignores and a later read of the surface does not. */
+    RCHECK((v9x_d3d_raster_xrgb1555(255l, 255l, 255l) & 0x8000u) == 0u);
+}
+
+/*
+ * A draw into a 5:5:5 target lands in 5:5:5, and the same draw into a 5:6:5
+ * target lands in 5:6:5.
+ *
+ * Green is what separates them: saturated green is 0x03E0 in 1555 and 0x07E0
+ * in 565, and either value read as the other format is a different colour. So
+ * a rasterizer that packed one layout unconditionally - which this one did
+ * until the target carried a format - fails this whichever layout it chose.
+ */
+static void test_target_format_is_read(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster_reset(&target);
+    target.format = V9X_D3D_RASTER_PIXFMT_XRGB1555;
+    raster_vertex(&triangle[0], PX(2), PX(2), 0l, 255l, 0l);
+    raster_vertex(&triangle[1], PX(20), PX(2), 0l, 255l, 0l);
+    raster_vertex(&triangle[2], PX(2), PX(18), 0l, 255l, 0l);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
+    RCHECK(raster_pixel(5u, 5u) == 0x03e0u);
+
+    raster_reset(&target);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
+    RCHECK(raster_pixel(5u, 5u) == 0x07e0u);
+    raster_check_untouched_margins();
+}
+
+/*
+ * A blend reads the destination in the target's format too.
+ *
+ * Half-alpha red over a saturated green destination. Under 1555 the stored
+ * green is 0x03E0; read as 565 that is a dim green of 15 levels out of 63
+ * rather than a full one, so a blend that unpacked the wrong layout comes out
+ * with about a quarter of the green it should have. The window is wide enough
+ * to allow the rounding and far narrower than that difference.
+ */
+static void test_blend_reads_target_format(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    v9x_u16 value;
+
+    raster_reset(&target);
+    target.format = V9X_D3D_RASTER_PIXFMT_XRGB1555;
+    raster_fill(0x03e0u);       /* saturated green, in 1555 */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 0l, 128l) != 0);
+
+    value = raster_pixel(12u, 10u);
+    RCHECK((value >> 10) >= 13u && (value >> 10) <= 18u);        /* red */
+    RCHECK(((value >> 5) & 0x1fu) >= 13u &&
+           ((value >> 5) & 0x1fu) <= 18u);                       /* green */
+    RCHECK((value & 0x1fu) <= 1u);                               /* blue */
+}
+
+/* An unknown target format is refused rather than guessed at. */
+static void test_target_format_refusals(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+
+    raster_reset(&target);
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    target.format = V9X_D3D_RASTER_PIXFMT_XRGB1555;
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    target.format = 0ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+    target.format = 3ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+}
+
+/*
  * ARGB4444 is decoded as 4444 and not as 1555.
  *
  * 0xF0F0 is opaque pure green in 4444. The same sixteen bits read as ARGB1555
@@ -1840,6 +1940,10 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_wrap_extreme_coordinate();
     test_texture_address_refusals();
     test_lerp_rounds_down_descending();
+    test_xrgb1555_packing();
+    test_target_format_is_read();
+    test_blend_reads_target_format();
+    test_target_format_refusals();
     test_texture_bilinear_blends();
     test_texture_blend_modes();
     test_texture_refusals();

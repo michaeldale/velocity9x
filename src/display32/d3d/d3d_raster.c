@@ -100,6 +100,21 @@ static v9x_s32 v9x_d3d_raster_lerp(v9x_s32 from, v9x_s32 to,
     return from + whole * numerator + (part * numerator) / denominator;
 }
 
+/* Five bits to eight, replicating the high bits into the low ones so that 31
+ * reaches 255 rather than 248. Four bits to eight is exact - 17 is 255/15 - so
+ * it needs no equivalent. */
+static v9x_s32 v9x_d3d_raster_expand5(v9x_u32 value)
+{
+    return (v9x_s32)((value << 3) | (value >> 2));
+}
+
+/* Six bits to eight, on the same replication rule: 63 must reach 255, not
+ * 252. RGB565's green channel and nothing else needs it. */
+static v9x_s32 v9x_d3d_raster_expand6(v9x_u32 value)
+{
+    return (v9x_s32)((value << 2) | (value >> 4));
+}
+
 v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
 {
     /* Saturating at both ends, because the span interpolator's last pixel can
@@ -126,6 +141,58 @@ v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
     return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 8) |
                      ((v9x_u16)(green & 0xfcl) << 3) |
                      ((v9x_u16)(blue & 0xf8l) >> 3));
+}
+
+v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+{
+    /* Saturating on the same argument as the 565 packer above. */
+    if (red < 0l) {
+        red = 0l;
+    }
+    if (red > 255l) {
+        red = 255l;
+    }
+    if (green < 0l) {
+        green = 0l;
+    }
+    if (green > 255l) {
+        green = 255l;
+    }
+    if (blue < 0l) {
+        blue = 0l;
+    }
+    if (blue > 255l) {
+        blue = 255l;
+    }
+    return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 7) |
+                     ((v9x_u16)(green & 0xf8l) << 2) |
+                     ((v9x_u16)(blue & 0xf8l) >> 3));
+}
+
+/* One target pixel, packed as the target's own format wants it. */
+static v9x_u16 v9x_d3d_raster_pack(v9x_u32 format, v9x_s32 red,
+                                   v9x_s32 green, v9x_s32 blue)
+{
+    if (format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
+        return v9x_d3d_raster_xrgb1555(red, green, blue);
+    }
+    return v9x_d3d_raster_rgb565(red, green, blue);
+}
+
+/* And back again, for the destination term of a blend. */
+static void v9x_d3d_raster_unpack(v9x_u32 format, v9x_u16 pixel,
+                                  v9x_s32 *red, v9x_s32 *green,
+                                  v9x_s32 *blue)
+{
+    if (format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
+        *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 10) & 0x1ful);
+        *green = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 5) & 0x1ful);
+        *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
+        return;
+    }
+    *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 11) & 0x1ful);
+    *green = v9x_d3d_raster_expand6(((v9x_u32)pixel >> 5) & 0x3ful);
+    *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
 }
 
 /*
@@ -177,6 +244,10 @@ int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
      * narrower than the width is the one target defect that would corrupt the
      * next row rather than fault. */
     if (target->pitch < target->width * 2ul) {
+        return 0;
+    }
+    if (target->format != V9X_D3D_RASTER_PIXFMT_RGB565 &&
+        target->format != V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         return 0;
     }
     return 1;
@@ -258,21 +329,6 @@ int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
         return 0;
     }
     return 1;
-}
-
-/* Five bits to eight, replicating the high bits into the low ones so that 31
- * reaches 255 rather than 248. Four bits to eight is exact - 17 is 255/15 - so
- * it needs no equivalent. */
-static v9x_s32 v9x_d3d_raster_expand5(v9x_u32 value)
-{
-    return (v9x_s32)((value << 3) | (value >> 2));
-}
-
-/* Six bits to eight, on the same replication rule: 63 must reach 255, not
- * 252. Only RGB565's green channel needs it. */
-static v9x_s32 v9x_d3d_raster_expand6(v9x_u32 value)
-{
-    return (v9x_s32)((value << 2) | (value >> 4));
 }
 
 /*
@@ -677,6 +733,9 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
 
             if (alpha != 0) {
                 v9x_u16 stored = pixels[column];
+                v9x_s32 dst_red;
+                v9x_s32 dst_green;
+                v9x_s32 dst_blue;
 
                 /* Clamped before the weights are applied, not after. The
                  * interpolator's endpoints can land a fraction outside
@@ -714,21 +773,21 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         destination_weight = 256l - weight;
                     }
                 }
-                out_red = v9x_d3d_raster_blend(
-                    out_red, v9x_d3d_raster_expand5((v9x_u32)(stored >> 11) &
-                                                    0x1ful),
-                    source_weight, destination_weight);
-                out_green = v9x_d3d_raster_blend(
-                    out_green, v9x_d3d_raster_expand6((v9x_u32)(stored >> 5) &
-                                                      0x3ful),
-                    source_weight, destination_weight);
-                out_blue = v9x_d3d_raster_blend(
-                    out_blue, v9x_d3d_raster_expand5((v9x_u32)stored & 0x1ful),
-                    source_weight, destination_weight);
+                v9x_d3d_raster_unpack(target->format, stored,
+                                      &dst_red, &dst_green, &dst_blue);
+                out_red = v9x_d3d_raster_blend(out_red, dst_red,
+                                               source_weight,
+                                               destination_weight);
+                out_green = v9x_d3d_raster_blend(out_green, dst_green,
+                                                 source_weight,
+                                                 destination_weight);
+                out_blue = v9x_d3d_raster_blend(out_blue, dst_blue,
+                                                source_weight,
+                                                destination_weight);
             }
 
-            pixels[column] = v9x_d3d_raster_rgb565(out_red, out_green,
-                                                   out_blue);
+            pixels[column] = v9x_d3d_raster_pack(target->format, out_red,
+                                                 out_green, out_blue);
         }
 
         /* Stepped for every pixel, drawn or not. A failed depth test skips

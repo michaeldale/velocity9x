@@ -292,15 +292,41 @@ typedef struct v9x_d3d_raster_target {
     v9x_u32 pitch;
     v9x_u32 width;
     v9x_u32 height;
+    /* V9X_D3D_RASTER_PIXFMT_RGB565 or _XRGB1555. Unlike the pitch and the
+     * extent this is not a property of the allocation but of the display mode
+     * the surface was created in, and the caller reads it from the surface
+     * rather than assuming it. */
+    v9x_u32 format;
 } V9X_D3D_RASTER_TARGET;
+
+/*
+ * The two 16 bpp layouts a render target can have.
+ *
+ * Both exist because the S3D triangle engine has no RGB565 destination format
+ * and writes ZRGB1555 into any 16-bit target, so a machine running hardware
+ * Direct3D on that silicon wants a 5:5:5 desktop
+ * (docs\decisions\2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
+ * The software engine has no such constraint and had assumed 565 throughout;
+ * it now reads the target instead, which it should have done regardless.
+ *
+ * XRGB1555 and not ARGB1555: the top bit is not written and not read. This is
+ * a render target, and the alpha a blend consults comes from the fragment
+ * rather than from what is already on screen - no destination-alpha blend
+ * factor is published by either engine.
+ */
+#define V9X_D3D_RASTER_PIXFMT_RGB565   1ul
+#define V9X_D3D_RASTER_PIXFMT_XRGB1555 2ul
 
 /* Pack three 0..255 channels into RGB565. Values above 255 saturate. */
 v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue);
 
+/* The same into XRGB1555, with the unused top bit left clear. */
+v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue);
+
 /*
  * Whether a target is one this rasterizer will write to: non-null, a non-zero
- * extent within V9X_D3D_RASTER_DIMENSION_MAX, and a pitch wide enough for the
- * row it claims.
+ * extent within V9X_D3D_RASTER_DIMENSION_MAX, a pitch wide enough for the row
+ * it claims, and a known pixel format.
  */
 int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target);
 

@@ -41,6 +41,43 @@ struct v9x_mode_masks {
     v9x_u32 blue;
 };
 
+/*
+ * What a 16 bpp desktop means: 5:6:5, or 5:5:5 with the top bit unused.
+ *
+ * The values are the numbers a user writes, and they are S3's numbers - their
+ * ViRGE driver reads a `HighColor` key from SYSTEM.INI and treats 16 as
+ * 5:6:5 and anything else non-zero as 5:5:5. Matching them means a machine
+ * that already carries the setting for its old driver behaves the same way
+ * under this one.
+ *
+ * 5:5:5 exists because the S3D triangle engine has no RGB565 destination
+ * format and writes ZRGB1555 into any 16-bit target, so hardware Direct3D on
+ * that silicon only puts its colours in the right channels when the desktop
+ * is 5:5:5. Nothing else in this driver wants it - the software rasterizer
+ * writes whatever the target declares, and 5:6:5 has the extra green.
+ */
+#define V9X_HIGHCOLOR_565 ((v9x_u16)16u)
+#define V9X_HIGHCOLOR_555 ((v9x_u16)15u)
+
+/*
+ * The 5:5:5 VESA mode number paired with a 5:6:5 one, or zero when there is
+ * no such pair.
+ *
+ * One function rather than two, because the mode number and the channel masks
+ * are the same decision and must not be able to disagree: a row published as
+ * 5:5:5 whose mode set programmed 5:6:5 would put every colour on screen
+ * shifted by one bit with every HRESULT reporting success. A caller uses a
+ * non-zero answer for both or neither.
+ *
+ * VESA defines these pairs and only these; a mode outside the table - 640x400
+ * at 16 bpp, or anything a BIOS numbers itself above 0x11B - has no 15 bpp
+ * sibling to offer and returns zero.
+ */
+v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode);
+
+/* The 5:5:5 masks, for a row whose mode number has a sibling. */
+void v9x_mode_masks_555(struct v9x_mode_masks *out);
+
 /* One entry of the mini-VDD's scanned-mode cache: the BIOS mode number, and
  * what 4F01h said about it. */
 struct v9x_vbe_scan_entry {

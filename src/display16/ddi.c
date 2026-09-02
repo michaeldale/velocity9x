@@ -17,6 +17,8 @@
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
+/* v9x_vbe_mode_555: the 15 bpp sibling of a 16 bpp VESA mode number. */
+#include "velocity9x/vbe_modes.h"
 #include "win9x_display_abi.h"
 /* DirectDraw glue accessors. A family with no DirectDraw HAL links the no-op
  * forms of the driver-object entries, so the calls below need no per-target
@@ -108,6 +110,14 @@ extern V9X_HW16_MODE v9x_runtime_modes[];
 extern WORD v9x_runtime_count;
 extern WORD v9x_runtime_first;
 extern void v9x_modes16_init(void);
+/* The mode table's runtime state and its colour-layout judgement. Declared
+ * here rather than beside their first use because both the diagnostics writer
+ * and the mode-set path need them, and the writer comes first in the file. */
+extern WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row);
+extern WORD v9x_modes16_highcolor(void);
+extern V9X_HW16_MODE v9x_runtime_modes[];
+extern struct v9x_mode_masks v9x_runtime_masks[];
+extern WORD v9x_runtime_count;
 extern WORD v9x_modes16_is_published(WORD index);
 extern void v9x_modes16_write_inventory(void);
 extern const V9X_HW16_MODE *v9x_modes16_edid_mode(WORD bits_per_pixel);
@@ -459,6 +469,56 @@ static void v9x_trace_surface_layout(void)
 }
 
 /*
+ * The channel layout, from the three places that have to agree about it.
+ *
+ * `row` is the VESA mode number in the table, `set` the one actually
+ * programmed - they differ when a 5:5:5 desktop is asked for - and `mask` is
+ * what the DirectDraw mode list publishes for the row. `hc` is the SYSTEM.INI
+ * setting that decided.
+ *
+ * Written because a GDI screenshot cannot see any of it: the driver's own
+ * readback goes through the same DIB the driver filled, so a scanout in one
+ * layout and pixels in another looks perfectly correct to every test this
+ * driver can run on itself. That is the same trap FlipPixelOk fell into
+ * (docs\issues\2026-09-02-flippixelok-is-uninterpretable.md), and the only way
+ * out is to publish the numbers rather than a rendered result.
+ */
+static void v9x_trace_colour_layout(void)
+{
+    char text[96];
+    WORD at = 0u;
+    WORD index;
+
+    if (v9x_selected_mode == 0) {
+        return;
+    }
+    at = v9x_append_field(text, at, "hc=", (DWORD)v9x_modes16_highcolor());
+    at = v9x_append_field(text, at, "row=",
+                          (DWORD)v9x_selected_mode->vbe_mode);
+    at = v9x_append_field(text, at, "set=", (DWORD)v9x_active_vbe_mode);
+    at = v9x_append_field(text, at, "is555=",
+                          (DWORD)v9x_modes16_row_is_555(v9x_selected_mode));
+    /* The published mask for this row, found the same way the DirectDraw
+     * publisher finds it. Zero when the row is not in the runtime table,
+     * which is itself worth seeing. */
+    for (index = 0u; index < v9x_runtime_count; ++index) {
+        if (v9x_runtime_modes[index].vbe_mode ==
+            v9x_selected_mode->vbe_mode) {
+            at = v9x_append_field(text, at, "mask=",
+                                  v9x_runtime_masks[index].red);
+            break;
+        }
+    }
+    if (index >= v9x_runtime_count) {
+        at = v9x_append_field(text, at, "mask=", 0ul);
+    }
+    text[at - 1u] = '\0';
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", "Colour", (LPCSTR)text,
+                              V9X_DIAG_BOOT_INI);
+}
+
+/*
  * What the VDD said at registration, and what the driver assumed instead.
  *
  * vdd= is EAX from VDD_DRIVER_REGISTER: the visible screen plus whatever the
@@ -640,10 +700,21 @@ static const V9X_HW16_MODE *v9x_find_mode(WORD width,
     return 0;
 }
 
+
 static void v9x_apply_mode(const V9X_HW16_MODE *mode)
 {
     v9x_selected_mode = mode;
     v9x_active_vbe_mode = mode->vbe_mode;
+    /*
+     * A 5:5:5 desktop is the same row programmed through its 15 bpp VESA
+     * sibling. The row keeps saying 16 bits, because that is what Windows
+     * calls both layouts and what the pitch arithmetic needs; only the mode
+     * number and the published masks change, and one function decides both so
+     * they cannot disagree.
+     */
+    if (v9x_modes16_row_is_555(mode) != 0u) {
+        v9x_active_vbe_mode = v9x_vbe_mode_555(mode->vbe_mode);
+    }
     v9x_active_visible_bytes =
         (DWORD)mode->pitch * (DWORD)mode->height;
     v9x_active_width = mode->width;
@@ -1130,6 +1201,7 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * of guessing between them.
      */
     v9x_trace_surface_layout();
+    v9x_trace_colour_layout();
     v9x_trace_vdd_reservation();
     if (v9x_palettized != 0u) {
         v9x_program_palette(0u, V9X_PALETTE_ENTRIES);

@@ -318,6 +318,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     DWORD height;
     DWORD depth_offset = 0ul;
     DWORD depth_pitch = 0ul;
+    DWORD target_format = V9X_D3D_TARGET_FORMAT_RGB565;
     int primary;
     int display_layout;
 
@@ -371,10 +372,29 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
                 (LONG)v9x_hal->fb.pitch ||
             format->dwSize != sizeof(V9X_DDPIXELFORMAT) ||
             (format->dwFlags & V9X_DDPF_RGB) == 0ul ||
-            format->dwRGBBitCount != 16ul ||
-            format->dwRBitMask != 0x0000f800ul ||
-            format->dwGBitMask != 0x000007e0ul ||
-            format->dwBBitMask != 0x0000001ful) {
+            format->dwRGBBitCount != 16ul) {
+            return 0;
+        }
+        /*
+         * 5:6:5 or 5:5:5, and which one is recorded rather than assumed.
+         *
+         * This was a check for exactly 5:6:5 and nothing else. A 5:5:5 desktop
+         * is the mode in which the S3D triangle engine's output lands in the
+         * right channels, because that engine has no RGB565 destination
+         * format at all - so refusing 5:5:5 here refused the only display mode
+         * in which hardware Direct3D on this silicon is correct. Any other
+         * mask combination is still refused: a driver that guessed a layout
+         * would draw plausible wrong colours with nothing to say so.
+         */
+        if (format->dwRBitMask == 0x0000f800ul &&
+            format->dwGBitMask == 0x000007e0ul &&
+            format->dwBBitMask == 0x0000001ful) {
+            target_format = V9X_D3D_TARGET_FORMAT_RGB565;
+        } else if (format->dwRBitMask == 0x00007c00ul &&
+                   format->dwGBitMask == 0x000003e0ul &&
+                   format->dwBBitMask == 0x0000001ful) {
+            target_format = V9X_D3D_TARGET_FORMAT_XRGB1555;
+        } else {
             return 0;
         }
         pitch = v9x_hal->fb.pitch;
@@ -493,6 +513,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     context->target = target;
     context->zbuffer = depth;
     context->target_offset = offset;
+    context->target_format = target_format;
     context->pitch = pitch;
     context->width = width;
     context->height = height;
@@ -598,6 +619,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->target = 0;
     context->zbuffer = 0;
     context->target_offset = 0ul;
+    context->target_format = V9X_D3D_TARGET_FORMAT_RGB565;
     context->pitch = 0ul;
     context->width = 0ul;
     context->height = 0ul;

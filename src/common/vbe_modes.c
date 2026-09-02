@@ -27,6 +27,47 @@ static void v9x_canonical_masks(v9x_u16 bits_per_pixel,
     }
 }
 
+/*
+ * The VESA 15/16 bpp mode pairs, low member first.
+ *
+ * From the VESA BIOS Extension mode numbers, which fix these and nothing
+ * beyond 0x11B - the numbering above that is a BIOS's own and pairs nothing.
+ * 320x200 is here although no family table ships it, so that the function is
+ * complete over the standard numbering rather than over this project's
+ * current tables.
+ */
+static const v9x_u16 v9x_vbe_555_pairs[][2] = {
+    { 0x010du, 0x010eu },   /*  320x200  */
+    { 0x0110u, 0x0111u },   /*  640x480  */
+    { 0x0113u, 0x0114u },   /*  800x600  */
+    { 0x0116u, 0x0117u },   /* 1024x768  */
+    { 0x0119u, 0x011au }    /* 1280x1024 */
+};
+
+v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode)
+{
+    v9x_u16 index;
+    v9x_u16 count = (v9x_u16)(sizeof(v9x_vbe_555_pairs) /
+                              sizeof(v9x_vbe_555_pairs[0]));
+
+    for (index = 0u; index < count; ++index) {
+        if (v9x_vbe_555_pairs[index][1] == vbe_mode) {
+            return v9x_vbe_555_pairs[index][0];
+        }
+    }
+    return 0u;
+}
+
+void v9x_mode_masks_555(struct v9x_mode_masks *out)
+{
+    if (out == 0) {
+        return;
+    }
+    out->red = 0x00007c00ul;
+    out->green = 0x000003e0ul;
+    out->blue = 0x0000001ful;
+}
+
 void v9x_mode_english(v9x_u16 width, short *low, short *high)
 {
     v9x_u32 value;
