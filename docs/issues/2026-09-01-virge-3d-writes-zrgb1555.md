@@ -73,6 +73,23 @@ through `RGB15(r, g, b, dest)` (`reference-vid_s3_virge.c:3524-3536`)
 unconditionally for 16-bit destinations. On that model the S3D unit cannot
 write RGB565 from the triangle engine, whatever the driver asks for.
 
+## Real silicon, 2026-09-02: an S3D part does this
+
+A physical **S3 Trio3D/2X** (`5333:8A13`, machine A8U4I5) was bound to this
+driver's ViRGE path and run with hardware Direct3D. It writes
+`D3DTrianglePixelRaw=31744` - `0x7C00`, red in ZRGB1555 - into a surface the
+probe queried as RGB565 (`D3DTargetRMask=63488`). Its whole depth ladder reads
+in 1555 too, rung for rung identical to the emulated ViRGE.
+
+That is the same behaviour on hardware that 86Box models, which **removes
+hypothesis 1 as the likely explanation**: an incomplete emulator model would
+not be reproduced by a physical chip. It does not close the question - the
+Trio3D is not the 86C375, and the ViRGE itself has still only been seen under
+emulation - but the weight has moved decisively toward "the S3D engine really
+does write 1555 into a 16-bit destination".
+
+See [`2026-09-02-trio3d-on-the-s3-path.md`](../decisions/2026-09-02-trio3d-on-the-s3-path.md).
+
 ## What would settle it
 
 Two possibilities, and the emulator cannot distinguish them because the

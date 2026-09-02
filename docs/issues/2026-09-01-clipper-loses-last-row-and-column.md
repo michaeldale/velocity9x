@@ -41,6 +41,11 @@ Trio3D on the `vbe` tier-0 package at `Build=1ca57e0`, reports the same shape:
 `D3DEdgeRightRaw=0` and `D3DEdgeBottomRaw=0`. That is three engines on three
 machines, one of them silicon, so the cause is not an emulator artefact.
 
+**And a fourth**, later the same day: the same machine's S3 Trio3D running the
+ViRGE **hardware** S3D path, `D3DEdgeCentreRaw=31744` and
+`D3DEdgeTopLeftRaw=31744` against right and bottom of zero. Software and
+hardware, emulated and physical - the clipper is the common factor in all four.
+
 The centre and top-left keys are the control: the triangle drew, and it reached
 the first row and column. Only the last ones are missing.
 
