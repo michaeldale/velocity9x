@@ -1101,7 +1101,16 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     if (v9x_palettized != 0u) {
         (void)V9xDibSetPaletteTranslateCall(0, device_info);
         pdevice_flags |= V9X_DE_PALETTIZED;
-    } else if (v9x_selected_mode->bits_per_pixel == 16u) {
+    } else if (v9x_selected_mode->bits_per_pixel == 16u &&
+               v9x_modes16_row_is_555(v9x_selected_mode) == 0u) {
+        /*
+         * The third of three places that have to agree about a 16 bpp
+         * layout, with the VBE mode number and the DirectDraw masks. Without
+         * FIVE6FIVE the engine draws 5:5:5, which is what the row above asks
+         * for when it asks for it; DirectDraw's primary format follows this
+         * flag rather than ddpfDisplay, measured on 2026-09-02
+         * (docs\decisions\2026-09-02-a-555-desktop-needs-three-places-to-agree.md).
+         */
         pdevice_flags |= V9X_DE_FIVE6FIVE;
     }
 

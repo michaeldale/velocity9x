@@ -1,8 +1,8 @@
-# A 5:5:5 desktop needs three places to agree, and only two of them now do
+# A 5:5:5 desktop needs three places to agree, and finding the third took a day
 
 Date: 2026-09-02
-Status: mechanism partly built and measured; the experiment it exists for has
-**not** been run
+Status: mechanism complete and measured in software on 2026-09-03; the
+hardware experiment it exists for has **not** been run (A8U4I5 unreachable)
 
 ## What this was for
 
@@ -78,16 +78,50 @@ rather than a rendered result.
 
 The guest was returned to `HighColor=16` and reverified before this was written.
 
+## Completed, 2026-09-03: the third place, and a fourth nobody listed
+
+The third place was one line. `ddi.c` passed `V9X_DE_FIVE6FIVE` to the DIB
+engine for every 16 bpp mode; it now passes it only when the row is not a 5:5:5
+one. That flag, not `ddpfDisplay`, is what DirectDraw's primary format follows:
+with it withheld the probe read `D3DTargetRMask=31744` for the first time.
+
+And then the rasterizer wrote `0xF800` into that surface anyway. The core's
+classification added the day before only ran for display-layout targets; the
+probe's 64x64 render target is offscreen, took the other branch, and kept a
+default of 5:6:5. An offscreen target is now classified from its own
+`ddpfSurface` when `DDRAWISURF_HASPIXELFORMAT` says it has one and from the
+display's format when it does not, through one helper both branches share. A
+side effect worth stating: an offscreen surface that is neither layout - 32 bpp,
+say - passed the size checks before and was rasterized as 16 bits. It is refused
+now.
+
+Measured on **WIN98-S3NATIVE, 86Box, S3 Trio64**, boot 306, `HighColor=15`:
+
+```
+Colour=hc=15 row=276 set=275 is555=1 mask=31744
+D3DTargetRMask=31744  D3DTargetGMask=992
+D3DTrianglePixelRaw=31744   (0x7C00, red in 1555)
+D3DBaseTextureRaw=992       (0x03E0, green)
+D3DVertexAlphaBlendRaw=16399 (0x400F, half-alpha red over blue)
+```
+
+Every `*Ok`, `*Count` and `HwTri*` key is byte-identical to the 5:6:5 run. The
+software engine passes its whole ladder into a 5:5:5 desktop, and the numbers
+it wrote are the numbers the ViRGE engine has been writing all along - so the
+instrument now agrees with that engine's output for the first time, in the mode
+S3 shipped a switch for. The guest was returned to 5:6:5 (`Colour=hc=16
+row=276 set=276 is555=0 mask=63488`) and reverified.
+
+What this does not show: that the physical scanout is 5:5:5. A GDI screenshot
+looked normal in both states, as it must. Three declared layouts agreeing plus a
+probe whose derived expectations pass is the strongest evidence this driver can
+produce about itself; the rest is a monitor.
+
 ## What remains
 
-1. **Declare the layout to GDI.** A 16 bpp `BI_RGB` DIB is 5:5:5 by Windows'
-   own definition and a 5:6:5 one needs `BI_BITFIELDS` with a mask triple, so
-   what the driver says today is already not what it programs. Which of the two
-   the DIB engine actually believes is a measurement, not a reading - the
-   desktop is visibly correct at 5:6:5 today, so something is deciding it
-   elsewhere. S3's driver threads its `FIVE6FIVE` flag through the cursor and
-   the refresh paths as well, which suggests the answer is not one field.
-2. **Then run the experiment.** On A8U4I5 with hardware Direct3D and
+1. ~~Declare the layout to GDI.~~ Done above; it was the `FIVE6FIVE` PDEVICE
+   flag, and the `BI_RGB` header turned out not to be what the DIB engine reads.
+2. **Run the experiment.** On A8U4I5 with hardware Direct3D and
    `HighColor=15`, every failing colour key should turn to 1 with no change to
    the engine. If it does not, the engine is packing something other than what
    both the emulator and S3's header say, which would be a more interesting

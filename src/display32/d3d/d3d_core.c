@@ -288,6 +288,40 @@ static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
 }
 
 /*
+ * Which of the two 16 bpp layouts a pixel format describes, or neither.
+ *
+ * Both engines render into 16 bits and nothing else, so a format that is not
+ * one of these two is refused by the caller rather than guessed at: a driver
+ * that rendered 5:6:5 into a surface described as 5:5:5 would shift every
+ * colour by a bit with every HRESULT reporting success - which is exactly what
+ * happened on 2026-09-02 when only display-layout targets were classified and
+ * an offscreen one fell through to a default.
+ */
+static int v9x_d3d_target_format_of(const V9X_DDPIXELFORMAT *format,
+                                    DWORD *format_out)
+{
+    if (format == 0 || format_out == 0 ||
+        format->dwSize != sizeof(V9X_DDPIXELFORMAT) ||
+        (format->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        format->dwRGBBitCount != 16ul) {
+        return 0;
+    }
+    if (format->dwRBitMask == 0x0000f800ul &&
+        format->dwGBitMask == 0x000007e0ul &&
+        format->dwBBitMask == 0x0000001ful) {
+        *format_out = V9X_D3D_TARGET_FORMAT_RGB565;
+        return 1;
+    }
+    if (format->dwRBitMask == 0x00007c00ul &&
+        format->dwGBitMask == 0x000003e0ul &&
+        format->dwBBitMask == 0x0000001ful) {
+        *format_out = V9X_D3D_TARGET_FORMAT_XRGB1555;
+        return 1;
+    }
+    return 0;
+}
+
+/*
  * Record why a depth surface was refused, and return the failure so the
  * caller can write "return v9x_d3d_depth_reject(REASON);" in place of a bare
  * "return 0;". Every arm of the depth validation below has its own reason,
@@ -369,10 +403,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         if ((primary && offset != 0ul) ||
             v9x_hal->fb.bits_per_pixel != limits->target_bits_per_pixel ||
             v9x_hal->info.vmiData.lDisplayPitch !=
-                (LONG)v9x_hal->fb.pitch ||
-            format->dwSize != sizeof(V9X_DDPIXELFORMAT) ||
-            (format->dwFlags & V9X_DDPF_RGB) == 0ul ||
-            format->dwRGBBitCount != 16ul) {
+                (LONG)v9x_hal->fb.pitch) {
             return 0;
         }
         /*
@@ -382,24 +413,36 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
          * is the mode in which the S3D triangle engine's output lands in the
          * right channels, because that engine has no RGB565 destination
          * format at all - so refusing 5:5:5 here refused the only display mode
-         * in which hardware Direct3D on this silicon is correct. Any other
-         * mask combination is still refused: a driver that guessed a layout
-         * would draw plausible wrong colours with nothing to say so.
+         * in which hardware Direct3D on this silicon is correct.
          */
-        if (format->dwRBitMask == 0x0000f800ul &&
-            format->dwGBitMask == 0x000007e0ul &&
-            format->dwBBitMask == 0x0000001ful) {
-            target_format = V9X_D3D_TARGET_FORMAT_RGB565;
-        } else if (format->dwRBitMask == 0x00007c00ul &&
-                   format->dwGBitMask == 0x000003e0ul &&
-                   format->dwBBitMask == 0x0000001ful) {
-            target_format = V9X_D3D_TARGET_FORMAT_XRGB1555;
-        } else {
+        if (!v9x_d3d_target_format_of(format, &target_format)) {
             return 0;
         }
         pitch = v9x_hal->fb.pitch;
         width = v9x_hal->fb.width;
         height = v9x_hal->fb.height;
+    } else {
+        /*
+         * An offscreen render target is in its own format when it carries one
+         * and in the display's when it does not - DDRAW allocates ddpfSurface
+         * only in the differing case, which DDRAWISURF_HASPIXELFORMAT reports,
+         * so reading it unconditionally would read past the allocation.
+         *
+         * Classified for the same reason the display-layout branch is, and it
+         * was not until 2026-09-02: the probe's 64x64 target took this branch,
+         * kept a default of 5:6:5, and had 0xF800 written into a surface
+         * everything else described as 5:5:5. A format that is neither layout
+         * - a 32 bpp offscreen surface, say - is refused here, where before it
+         * passed the size checks and was rasterized as 16 bits.
+         */
+        const V9X_DDPIXELFORMAT *format =
+            (target->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+                ? &global->ddpfSurface
+                : &v9x_hal->info.vmiData.ddpfDisplay;
+
+        if (!v9x_d3d_target_format_of(format, &target_format)) {
+            return 0;
+        }
     }
     v9x_trace_push(V9X_TRACE_D3D_TARGET_LAYOUT,
                    ((pitch & 0xfffful) << 16) |
