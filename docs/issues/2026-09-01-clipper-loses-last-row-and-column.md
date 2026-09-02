@@ -35,6 +35,12 @@ and not the geometry decides the edge - and reads four pixels.
 Guests `Win98SE-Trio64` (port 9871, `Direct3D=2`) and `Win86SE` (port 9869,
 hardware mode), same `s3` binary, `Build=2fee8ce-dirty`.
 
+**Confirmed on real hardware, 2026-09-02.** The physical machine A8U4I5, an S3
+Trio3D on the `vbe` tier-0 package at `Build=1ca57e0`, reports the same shape:
+`D3DEdgeCentreRaw=63488` and `D3DEdgeTopLeftRaw=63488` against
+`D3DEdgeRightRaw=0` and `D3DEdgeBottomRaw=0`. That is three engines on three
+machines, one of them silicon, so the cause is not an emulator artefact.
+
 The centre and top-left keys are the control: the triangle drew, and it reached
 the first row and column. Only the last ones are missing.
 

@@ -136,15 +136,26 @@ the display driver rather than in the HAL. Pushing `V9XHAL.DLL` and
 stage at `C:\V9XNDRV.BIN`, an 8.3 path in the root, and a `WININIT.INI`
 `[Rename]` - which worked first time.
 
-## What is still not measured
+## Superseded, 2026-09-02: the VBE family ran on real hardware
 
-**No VBE guest ran.** `Win98SE-QEMU-StdVGA` was started and boots to a Windows
-98 desktop reporting "Your display adapter is not configured properly", with no
-shell icons and no agent answering on host port 9872. It is in a broken display
-configuration left from earlier tier-0 work; reviving it is its own task and
-was not attempted. The VM was stopped again.
+The gap this section described is closed, and not by a guest. The `vbe` package
+was installed on a physical machine with an S3 Trio3D, through its own
+manual-select model, and both the driver and the software rasterizer passed
+end to end - see
+[`2026-09-02-vbe-tier0-on-a-real-trio3d.md`](2026-09-02-vbe-tier0-on-a-real-trio3d.md).
+The selector showed Software and Disabled there too, on a fourth card and the
+first real one.
 
-So the VBE claim now rests on the chain above **plus** an end-to-end
-measurement on the ATI, which takes the identical arm and reaches its
-framebuffer through the same `vbe-lfb` mode switching the VBE family uses. That
-is materially stronger than it was, and it is still not a VBE guest.
+The original text is kept below because the reasoning it records - what a code
+chain is worth against a measurement - is the reason the measurement was chased.
+
+> **No VBE guest ran.** `Win98SE-QEMU-StdVGA` was started and boots to a Windows
+> 98 desktop reporting "Your display adapter is not configured properly", with
+> no shell icons and no agent answering on host port 9872. It is in a broken
+> display configuration left from earlier tier-0 work; reviving it is its own
+> task and was not attempted. The VM was stopped again.
+>
+> So the VBE claim now rests on the chain above **plus** an end-to-end
+> measurement on the ATI, which takes the identical arm and reaches its
+> framebuffer through the same `vbe-lfb` mode switching the VBE family uses.
+> That is materially stronger than it was, and it is still not a VBE guest.
