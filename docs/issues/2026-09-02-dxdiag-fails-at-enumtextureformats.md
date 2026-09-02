@@ -1,7 +1,8 @@
 # DxDiag's Direct3D test fails at step 44, EnumTextureFormats
 
 Filed: 2026-09-02
-Status: open, reported from a physical machine, cause not established
+Status: open. The lead was acted on for one engine of two - see "Update" at the
+end - and the discriminating test has not been run.
 Reported by: the user, from A8U4I5's own DirectX Diagnostic Tool
 
 ## What it says
@@ -72,3 +73,27 @@ pick a wrong format, or might render nothing.
 3. **Do not publish it before it is implemented.** The rule this driver keeps -
    advertise nothing a pixel test cannot hold you to - applies with force here,
    because the failing test is one that reads the advertised list.
+
+## Update, 2026-09-02: RGB565 is publishable on one engine only
+
+Next-step 2 above is answered, and the answer splits.
+
+The software rasterizer now decodes and publishes RGB565, measured on an 86Box
+Trio64 in software mode: `TexFormatCount=3`, `TexFormat565=1`, with every
+existing texture and depth assertion still passing.
+
+The ViRGE path cannot. The S3D texture unit selects its texel format from the 3D
+command register's bits 7:5, and that field carries ARGB8888, ARGB4444 and
+ARGB1555 with everything else falling back to ARGB1555
+(`build/reference-vid_s3_virge.c:4564-4577`). There is no RGB565 texel mode, so
+publishing one would be advertising a format the engine would silently misread -
+which next-step 3 forbids. A8U4I5 re-measured after the change still reports
+`TexFormatCount=2`, `TexFormat565=0`.
+
+So if this issue's lead is right, DxDiag's step 44 should now **pass in software
+mode and still fail in hardware mode on the same machine**. That is a cheap
+discriminating test and it has not been run. If it fails in software mode too,
+the missing 565 format was never the cause and next-step 1 - finding out what
+step 44 actually asks for - is the remaining route.
+
+Record: [`../decisions/2026-09-02-software-rgb565-textures.md`](../decisions/2026-09-02-software-rgb565-textures.md).

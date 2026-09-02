@@ -1450,7 +1450,19 @@ typedef struct v9x_dd_shared {
     V9X_DDHAL_DDPALETTECALLBACKS palette_callbacks;
     V9X_DDHAL_DDEXEBUFCALLBACKS execute_buffer_callbacks;
     V9X_D3DHAL_GLOBALDRIVERDATA d3d_global;
-    V9X_DDSURFACEDESC texture_formats[2];
+    /*
+     * Three, because the software rasterizer publishes RGB565 alongside
+     * ARGB1555 and ARGB4444 while the ViRGE publishes only the latter two -
+     * the S3D texture unit selects its texel format from command bits 7:5 and
+     * has no RGB565 mode (build\reference-vid_s3_virge.c:4564-4577), so the
+     * two engines legitimately publish different lists into the same array.
+     *
+     * Widening this moves every member after it, so the 16-bit driver and the
+     * 32-bit HAL must be built and deployed together. dwSize is stamped from
+     * sizeof(V9X_DD_SHARED) and the block is allocated at 4096, which the
+     * assertion at the end of this header still holds.
+     */
+    V9X_DDSURFACEDESC texture_formats[3];
     V9X_D3DHAL_CALLBACKS d3d_callbacks;
     V9X_D3D_DIAGNOSTICS d3d_diagnostics;
     V9X_VIDMEM heaps[1];

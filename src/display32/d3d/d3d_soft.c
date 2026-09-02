@@ -164,6 +164,18 @@ static int v9x_d3d_soft_texture_format(const V9X_DD_SURFACE_LCL *surface,
         *format_out = V9X_D3D_RASTER_TEXFMT_ARGB4444;
         return 1;
     }
+    /*
+     * RGB565, which the ViRGE's classifier deliberately does not have. It is
+     * the format of the display on every target this driver serves, so it is
+     * the one an application is most likely to hand over - and the S3D
+     * texture unit cannot sample it, which is why only this engine accepts it.
+     */
+    if (pixel->dwRBitMask == 0x0000f800ul &&
+        pixel->dwGBitMask == 0x000007e0ul &&
+        pixel->dwBBitMask == 0x0000001ful) {
+        *format_out = V9X_D3D_RASTER_TEXFMT_RGB565;
+        return 1;
+    }
     return 0;
 }
 
@@ -411,7 +423,33 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
         0x0000f000ul;
     shared->texture_formats[1].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
 
-    shared->d3d_global.dwNumTextureFormats = 2ul;
+    /*
+     * RGB565, third and last, and the one entry the ViRGE's list does not
+     * carry. No DDPF_ALPHAPIXELS and no alpha mask: the format has no alpha
+     * bit to describe, which is a statement about the layout rather than about
+     * this engine's alpha support - that is still absent from
+     * D3DPTEXTURECAPS_ALPHA above.
+     *
+     * It is published because it is the display's own format, so it is what an
+     * application converting a bitmap for a 16-bit screen will produce, and
+     * because DirectX's own diagnostic refuses a driver that offers no texture
+     * format matching the display
+     * (docs\issues\2026-09-02-dxdiag-fails-at-enumtextureformats.md).
+     */
+    shared->texture_formats[2].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[2].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[2].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[2].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBBitCount = 16ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[2].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->d3d_global.dwNumTextureFormats = 3ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
 }
 

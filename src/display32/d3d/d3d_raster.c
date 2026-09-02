@@ -180,7 +180,8 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
         return 0;
     }
     if (texture->format != V9X_D3D_RASTER_TEXFMT_ARGB1555 &&
-        texture->format != V9X_D3D_RASTER_TEXFMT_ARGB4444) {
+        texture->format != V9X_D3D_RASTER_TEXFMT_ARGB4444 &&
+        texture->format != V9X_D3D_RASTER_TEXFMT_RGB565) {
         return 0;
     }
     if (texture->filter != V9X_D3D_RASTER_FILTER_POINT &&
@@ -219,6 +220,13 @@ static v9x_s32 v9x_d3d_raster_expand5(v9x_u32 value)
     return (v9x_s32)((value << 3) | (value >> 2));
 }
 
+/* Six bits to eight, on the same replication rule: 63 must reach 255, not
+ * 252. Only RGB565's green channel needs it. */
+static v9x_s32 v9x_d3d_raster_expand6(v9x_u32 value)
+{
+    return (v9x_s32)((value << 2) | (value >> 4));
+}
+
 /*
  * One texel, decoded to three 0..255 channels.
  *
@@ -239,6 +247,12 @@ static void v9x_d3d_raster_texel(const V9X_D3D_RASTER_TEXTURE *texture,
         *red = (v9x_s32)(((texel >> 8) & 0x0ful) * 17ul);
         *green = (v9x_s32)(((texel >> 4) & 0x0ful) * 17ul);
         *blue = (v9x_s32)((texel & 0x0ful) * 17ul);
+        return;
+    }
+    if (texture->format == V9X_D3D_RASTER_TEXFMT_RGB565) {
+        *red = v9x_d3d_raster_expand5((texel >> 11) & 0x1ful);
+        *green = v9x_d3d_raster_expand6((texel >> 5) & 0x3ful);
+        *blue = v9x_d3d_raster_expand5(texel & 0x1ful);
         return;
     }
     *red = v9x_d3d_raster_expand5((texel >> 10) & 0x1ful);

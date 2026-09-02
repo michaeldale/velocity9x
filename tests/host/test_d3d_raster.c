@@ -1139,6 +1139,64 @@ static void test_texture_format_decode(void)
 }
 
 /*
+ * RGB565 is decoded as 565, and not as either of the other two.
+ *
+ * 0x8400 is chosen because the three layouts disagree about it completely:
+ * in 565 the top bit is red's high bit and bit 10 is green's, giving red 16 of
+ * 31 and green 32 of 63 - a middling olive. In 1555 the top bit is alpha and
+ * bit 10 is red's low bit, so the same word is red 1 of 31 and nothing else,
+ * near black. In 4444 it is dark red with no green at all. Green is therefore
+ * the channel that decides: only a 565 decode puts any there.
+ *
+ * The format matters beyond bit-shuffling. It is the display's own layout on
+ * every target this driver serves, so it is what an application converting a
+ * bitmap for a 16-bit screen hands over, and the S3D texture unit cannot
+ * sample it - the software engine accepts a format the hardware path refuses.
+ */
+static void test_texture_format_decode_565(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    v9x_u16 value;
+    unsigned int x;
+    unsigned int y;
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, 0x8400u);
+        }
+    }
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+
+    /* Red 16/31 and green 32/63 as written, allowing a level either way for
+     * the expansion to eight bits and back. */
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) >= 15u && (value >> 11) <= 17u);
+    RCHECK(((value >> 5) & 0x3fu) >= 31u && ((value >> 5) & 0x3fu) <= 33u);
+    RCHECK((value & 0x1fu) == 0u);
+
+    /* The same bits declared as 1555 are near black in every channel. */
+    raster_reset(&target);
+    texture.format = V9X_D3D_RASTER_TEXFMT_ARGB1555;
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) <= 2u);
+    RCHECK(((value >> 5) & 0x3fu) <= 2u);
+
+    /* And declared as 4444, red without green. */
+    raster_reset(&target);
+    texture.format = V9X_D3D_RASTER_TEXFMT_ARGB4444;
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK(((value >> 5) & 0x3fu) == 0u);
+    raster_texture_check_margins();
+}
+
+/*
  * Bilinear filtering produces texels that are not in the texture.
  *
  * A two-colour texture point-sampled can only ever put white or black on the
@@ -1302,6 +1360,7 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_validation();
     test_texture_point_sampling();
     test_texture_format_decode();
+    test_texture_format_decode_565();
     test_texture_bilinear_blends();
     test_texture_blend_modes();
     test_texture_refusals();

@@ -124,6 +124,13 @@
  */
 #define V9X_D3D_RASTER_TEXFMT_ARGB1555 1ul
 #define V9X_D3D_RASTER_TEXFMT_ARGB4444 2ul
+/*
+ * RGB565, and the software engine's alone. The S3D texture unit's format
+ * field carries ARGB8888, ARGB4444 and ARGB1555 and nothing else, so this
+ * engine accepts a texel layout the hardware path must keep refusing - the
+ * one place the two deliberately differ.
+ */
+#define V9X_D3D_RASTER_TEXFMT_RGB565   3ul
 
 /*
  * Filter and blend, numbered as D3DFILTER_* and D3DTBLEND_* number them, for

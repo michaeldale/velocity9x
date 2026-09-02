@@ -16,6 +16,12 @@ One texture, point or bilinear, decal or modulate, from ARGB1555 or ARGB4444 -
 the same two formats the ViRGE accepts and classified the same way, so that the
 two engines stay interchangeable rather than accepting different surfaces.
 
+> Superseded in part, 2026-09-02: the software engine gained RGB565 as a third
+> format and the ViRGE did not, because the S3D texture unit has no RGB565 texel
+> mode. The interchangeability argument below held until the hardware turned out
+> not to allow it. See
+> [`2026-09-02-software-rgb565-textures.md`](2026-09-02-software-rgb565-textures.md).
+
 **Texture coordinates hold exactly one repeat, and that is arithmetic rather
 than a choice.** The edge interpolator forms `max(from, to) * denominator` with
 the denominator being the triangle's height in subpixels, at most 32752, so
