@@ -125,6 +125,21 @@ period machine has drawn a triangle through this. No VBE guest ran either: that
 image is in a broken display configuration and reviving it is its own task, so
 the VBE claim rests on the ATI run plus a code chain rather than on the card.
 
+### The download page understates what was tested
+
+Every package's `MANIFEST.TXT` still carries the hardcoded
+`Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED`, and the release index's
+`Tested` column reads it back, so the 0.7.0 download page says that of the `s3`
+and `ati` zips as well - both of which were installed, activated and probed on
+guests for this release. The error is in the safe direction and it is filed:
+[`docs/issues/2026-08-30-package-status-string-is-hardcoded.md`](docs/issues/2026-08-30-package-status-string-is-hardcoded.md).
+
+It is not fixed here for the reason that issue gives - changing what goes inside
+the published artifacts on the run that publishes them is how a release ends up
+not being the thing that was audited - and because what each family should claim
+is a statement about its testing history rather than a mechanism. The section
+above is the accurate record for this release.
+
 ## 0.6.5 - 2026-08-30
 
 **A Direct3D selector, a depth-clear path, and the measurements behind both.**
