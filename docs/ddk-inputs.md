@@ -42,3 +42,30 @@ virtualization and screen switching rather than mapping that selector.
 
 The source files in the DDK are consulted only to confirm ABI names, ordinals,
 and build behavior. Velocity9x source must remain independently written.
+
+## Consultations on record
+
+Reading the DDK to develop a driver is what its EULA grants and what this
+document allows. Anything read that changed a decision is listed here, so that
+provenance is a matter of record rather than of memory.
+
+| Date | Files | What was taken |
+|---|---|---|
+| 2026-09-02 | `src\display\mini\s3v\` - `VIRGE1.H`, `D3DRENDR.C`, `D3DDRV.C`, `DDDRV.C`, `VGA.ASM`, `INIT.ASM`, `S3DATA.H`, `S3_DD32.C` | That the S3D engine's 3D command word has no RGB565 destination format, that S3's driver selects the destination on bit depth alone, that a `HighColor` key in `SYSTEM.INI` selects a 5:5:5 desktop, and the capability set S3 published for this silicon. Recorded in [`decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md`](decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md). |
+
+Two things about that entry are worth stating plainly.
+
+**The rule above was applied late.** The first version of that decision document
+and of its commit message quoted DDK source directly - four preprocessor lines,
+a short C switch, and seven lines of assembly with their comments. Those were
+replaced with descriptions and file-and-line citations on the same day, but the
+original text was committed and pushed first, so it remains in history. The
+check belongs before the read, not after the write.
+
+**Independence is now a live question for one file.** `d3d_virge.c` builds the
+same command word S3's driver builds, and did so before any of this was read -
+that agreement is the finding. But the ViRGE Direct3D path has now been read
+about, and "independently written" for later changes to it means something
+weaker than it did for the rest of the tree. The capability list above is a
+list of what the silicon can do, which is fact; turning any of it into driver
+code is where the distinction has to be argued rather than assumed.

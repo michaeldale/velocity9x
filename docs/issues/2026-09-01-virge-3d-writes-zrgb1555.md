@@ -95,12 +95,16 @@ See [`2026-09-02-trio3d-on-the-s3-path.md`](../decisions/2026-09-02-trio3d-on-th
 
 ## Settled, 2026-09-02: hypothesis 2, from S3's own driver
 
-`C:\98DDK\src\display\mini\s3v\VIRGE1.H:130-133` defines the 3D command
-word's destination field, and it has three values: `cmdDEST_FMT_8BPP_PAL`,
-`cmdDEST_FMT_ZRGB1555` and `cmdDEST_FMT_RGB888`. **There is no RGB565
-destination format.** `D3DRENDR.C:365-374` switches on bit depth alone and
-never looks at the channel masks, exactly as `v9x_d3d_virge_draw_triangles`
-does.
+`C:\98DDK\src\display\mini\s3v\VIRGE1.H`, around lines 130-133, defines the 3D
+command word's destination format field, and names three values for it:
+`cmdDEST_FMT_8BPP_PAL`, `cmdDEST_FMT_ZRGB1555` and `cmdDEST_FMT_RGB888`.
+**There is no RGB565 destination format.** `D3DRENDR.C`, around lines 365-374,
+switches on the target's bit depth alone and never looks at the channel masks,
+exactly as `v9x_d3d_virge_draw_triangles` does.
+
+No DDK source is reproduced here or elsewhere in this repository; these are
+citations to check against your own copy. See
+[`../ddk-inputs.md`](../ddk-inputs.md).
 
 So hypothesis 1 is dead: an emulator-only gap would not appear in the header
 S3 shipped. Three sources agree - 86Box, a physical Trio3D/2X, and the vendor
