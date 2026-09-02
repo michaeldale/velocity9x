@@ -53,23 +53,51 @@ static v9x_s32 v9x_d3d_raster_first_centre(v9x_s32 edge)
 }
 
 /*
- * from + (to - from) * numerator / denominator, with no negative intermediate.
+ * floor(from + (to - from) * numerator / denominator), divided before it is
+ * multiplied so that the interpolated quantity's range does not bound it.
  *
- * The weighted form rather than the difference form, and not for style: C89
- * leaves the direction of division with a negative operand implementation
- * defined, and a colour or a coordinate that rounds the other way on a
- * different compiler is exactly the kind of difference that shows up as a
- * one-pixel disagreement between the host test and the driver. Both weights
- * are non-negative here and they sum to the denominator, so the numerator is
- * bounded by max(from, to) * denominator - at most 32752 * 32752, which is
- * 1,072,693,504 and fits.
+ * The obvious form is (from * (d - n) + to * n) / d, and this file used it
+ * until texture wrapping needed a coordinate wider than one repeat. Its
+ * numerator is bounded by max(from, to) * d, so with d up to 32752 subpixels
+ * of triangle height, anything it carries has to stay under 65566 - which is
+ * where the one-repeat texture coordinate came from, and it was an arithmetic
+ * limit rather than a design choice
+ * (docs\decisions\2026-09-01-software-textures-and-caps.md).
+ *
+ * Splitting the quotient removes that. With q and r the floored quotient and
+ * remainder of delta by d, delta * n / d is exactly q * n + r * n / d, and
+ * because q * n is a whole number the floor of the sum is q * n plus the floor
+ * of the second term. Neither part is large: 0 <= r < d bounds r * n by d * d,
+ * at most 1,072,693,504, and n <= d bounds q * n by |delta|. So the largest
+ * intermediate no longer depends on the value being interpolated at all.
+ *
+ * It costs a second division. The file already spends two per scanline
+ * recomputing edge crossings rather than stepping them, on the argument that
+ * mode 2's trade is "slow, correct"; this is the same trade again.
+ *
+ * Floor and not truncation, and the sign fix-up is what makes it so. C89
+ * leaves both / and % implementation defined for a negative operand, and the
+ * old form rounded down because its numerator was never negative. A quotient
+ * that truncated toward zero instead would round descending gradients the
+ * other way - one level, on every gradient that falls rather than rises, which
+ * is precisely the kind of difference that shows up as a host test and a
+ * driver disagreeing by a pixel.
  *
  * Callers guarantee denominator > 0 and 0 <= numerator <= denominator.
  */
 static v9x_s32 v9x_d3d_raster_lerp(v9x_s32 from, v9x_s32 to,
                                    v9x_s32 numerator, v9x_s32 denominator)
 {
-    return (from * (denominator - numerator) + to * numerator) / denominator;
+    v9x_s32 delta = to - from;
+    v9x_s32 whole = delta / denominator;
+    v9x_s32 part = delta % denominator;
+
+    if (part < 0l) {
+        whole -= 1l;
+        part += denominator;
+    }
+
+    return from + whole * numerator + (part * numerator) / denominator;
 }
 
 v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
@@ -190,6 +218,10 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
     }
     if (texture->blend != V9X_D3D_RASTER_BLEND_DECAL &&
         texture->blend != V9X_D3D_RASTER_BLEND_MODULATE) {
+        return 0;
+    }
+    if (texture->address != V9X_D3D_RASTER_ADDRESS_WRAP &&
+        texture->address != V9X_D3D_RASTER_ADDRESS_CLAMP) {
         return 0;
     }
     if (texture->size < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
@@ -317,13 +349,20 @@ static void v9x_d3d_raster_texel(const V9X_D3D_RASTER_TEXTURE *texture,
  * Sample the texture at a normalised coordinate, point or bilinear.
  *
  * Every product here is bounded and the bounds are worth stating, because they
- * are the reason the coordinate range is what it is. u is at most 65535 and
- * size at most 512, so u * size is at most 33,553,920. The bilinear arm adds
- * a whole texture's worth of bias to keep the half-texel offset from going
- * negative - an arithmetic right shift of a negative value is implementation
- * defined, and the wrap mask below would then index backwards off the surface
- * - which doubles it to 67,107,840. The weighted sum of four texels is at most
- * 255 * 256 * 256, which is 16,711,680.
+ * are the reason the coordinate range is what it is. u is at most
+ * V9X_D3D_RASTER_TEXCOORD_MAX, 2,162,687, and size at most 512, so u * size is
+ * at most 1,107,295,744. The bilinear arm adds a whole texture's worth of bias
+ * to keep the half-texel offset from going negative - an arithmetic right
+ * shift of a negative value is implementation defined, and the wrap mask below
+ * would then index backwards off the surface - which takes it to
+ * 1,140,817,408, about half of what a signed 32-bit integer holds. The
+ * weighted sum of four texels is at most 255 * 256 * 256, which is 16,711,680.
+ *
+ * The `& mask` on every texel index is what performs the wrap, and it was
+ * already here when the coordinate could only express one repeat, where it was
+ * a no-op guarding against a coordinate that had drifted a fraction past the
+ * end. Tiling did not need a second code path in the sampler; it needed a
+ * coordinate wide enough to reach one.
  */
 static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_TEXTURE *texture,
                                   v9x_s32 u, v9x_s32 v,
@@ -555,22 +594,52 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_s32 texel_u = u >> V9X_D3D_RASTER_DEPTH_BITS;
                 v9x_s32 texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
 
-                /* Clamped, not wrapped, and the caps say so. One repeat is all
-                 * the coordinate range holds - see V9X_D3D_RASTER_TEXCOORD_MAX
-                 * - so a coordinate that has drifted a fraction past either end
-                 * takes the edge texel rather than reappearing at the far
-                 * side. */
+                /*
+                 * Under CLAMP a coordinate past either end takes the edge
+                 * texel; under WRAP it is left alone and the sampler's mask
+                 * carries it round.
+                 *
+                 * The lower bound is applied either way and it is not the
+                 * address mode talking. The sampler shifts right to find a
+                 * texel index, an arithmetic shift of a negative value is
+                 * implementation defined, and the mask would then index
+                 * backwards off the surface - so a negative coordinate is a
+                 * memory-safety question rather than a wrapping one.
+                 * v9x_d3d_raster_triangle already refuses a negative vertex
+                 * coordinate; this catches an interpolator that has drifted a
+                 * fraction below zero between two non-negative endpoints.
+                 */
                 if (texel_u < 0l) {
                     texel_u = 0l;
-                }
-                if (texel_u > V9X_D3D_RASTER_TEXCOORD_MAX) {
-                    texel_u = V9X_D3D_RASTER_TEXCOORD_MAX;
                 }
                 if (texel_v < 0l) {
                     texel_v = 0l;
                 }
-                if (texel_v > V9X_D3D_RASTER_TEXCOORD_MAX) {
-                    texel_v = V9X_D3D_RASTER_TEXCOORD_MAX;
+                if (texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP) {
+                    /* To the last texel of the FIRST repeat, which is what
+                     * clamping means - not to TEXCOORD_MAX, which is the
+                     * widest coordinate the arithmetic carries and is
+                     * thirty-three repeats away. Clamping there would let a
+                     * clamped draw tile, which is the defect this arm exists
+                     * to prevent, and a host test caught exactly that. */
+                    if (texel_u > V9X_D3D_RASTER_TEXCOORD_ONE - 1l) {
+                        texel_u = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+                    }
+                    if (texel_v > V9X_D3D_RASTER_TEXCOORD_ONE - 1l) {
+                        texel_v = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+                    }
+                } else {
+                    /* Still bounded, because the sampler's products are sized
+                     * against TEXCOORD_MAX and nothing else keeps a drifted
+                     * interpolator under it. Wrapping the value here rather
+                     * than clamping it would change which texel is read; the
+                     * mask does that correctly a few lines further on. */
+                    if (texel_u > V9X_D3D_RASTER_TEXCOORD_MAX) {
+                        texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+                    }
+                    if (texel_v > V9X_D3D_RASTER_TEXCOORD_MAX) {
+                        texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+                    }
                 }
                 v9x_d3d_raster_sample(texture, texel_u, texel_v,
                                       &tex_red, &tex_green, &tex_blue);

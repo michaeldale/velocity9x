@@ -29,6 +29,12 @@ anything it carries has to stay under 65566 or the product leaves a signed
 32-bit integer. Depth already sits at 65535 against that bound. A coordinate
 able to express two repeats would need twice it.
 
+> Superseded, 2026-09-02: the interpolator now divides before it multiplies,
+> its largest intermediate no longer depends on what it carries, and the engine
+> publishes WRAP as well as CLAMP. The reasoning below was right about the
+> bound and wrong about it being fundamental. See
+> [`2026-09-02-software-texture-wrap.md`](2026-09-02-software-texture-wrap.md).
+
 So the sampler clamps, and the caps publish `D3DPTADDRESSCAPS_CLAMP` without
 `WRAP`. That is the correct pairing rather than a shortfall hidden by
 omission - the alternative was to wrap a coordinate the interpolator cannot

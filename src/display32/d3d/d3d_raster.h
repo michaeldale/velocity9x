@@ -96,22 +96,44 @@
 #define V9X_D3D_RASTER_CMP_ALWAYS       8ul
 
 /*
- * Texture coordinates are 0..65535 across the texture, and 65535 is the whole
- * of it - ONE REPEAT, not a tiling coordinate.
+ * Texture coordinates in units of one 65536th of a texture, so 65536 is one
+ * whole repeat and the coordinate tiles rather than describing a single pass.
  *
- * That is an arithmetic limit, not a design preference, and it is the same
- * limit depth runs into. The edge interpolator forms max(from, to) *
- * denominator with the denominator being the triangle's height in subpixels,
- * at most 32752, so anything it carries must stay under 65566 or the product
- * leaves a signed 32-bit integer. A coordinate that could express two repeats
- * would need twice that.
+ * It described a single pass until 2026-09-02, and that was an arithmetic
+ * limit rather than a design preference: the edge interpolator formed
+ * max(from, to) * denominator, the denominator being the triangle's height in
+ * subpixels and at most 32752, so anything it carried had to stay under 65566.
+ * v9x_d3d_raster_lerp now divides before it multiplies and its largest
+ * intermediate no longer depends on the value being interpolated, which is
+ * what makes a wider coordinate possible at all.
  *
- * The consequence is visible in the caps: the engine clamps rather than wraps,
- * and `describe_caps` advertises CLAMP and not WRAP. Widening it means a wider
- * intermediate in v9x_d3d_raster_lerp, which is a change to the arithmetic
- * every other interpolated quantity shares.
+ * What bounds it now is the sampler. v9x_d3d_raster_sample forms u * size with
+ * size at most 512, and the bilinear arm adds a whole texture of bias on top,
+ * so the coordinate has to satisfy (max * 512) + (512 << 16) < 2^31. At
+ * thirty-three repeats that is 1,140,850,688, which leaves most of a bit
+ * spare.
+ *
+ * Thirty-three and not thirty-two because the engine normalises: it clamps a
+ * float coordinate to plus or minus sixteen repeats, so a triangle can span
+ * thirty-two of them, and shifting the smallest corner into the first repeat
+ * leaves the largest just short of the thirty-third. See
+ * V9X_D3D_SOFT_TEXCOORD_LIMIT in d3d_soft.c, which is the other half of this
+ * number.
  */
-#define V9X_D3D_RASTER_TEXCOORD_MAX 65535l
+#define V9X_D3D_RASTER_TEXCOORD_ONE     65536l
+#define V9X_D3D_RASTER_TEXCOORD_REPEATS 33l
+#define V9X_D3D_RASTER_TEXCOORD_MAX \
+    (V9X_D3D_RASTER_TEXCOORD_ONE * V9X_D3D_RASTER_TEXCOORD_REPEATS - 1l)
+
+/*
+ * What happens to a coordinate outside the first repeat, numbered as
+ * D3DTADDRESS_* numbers it.
+ *
+ * MIRROR is absent because the sampler wraps with a mask, which mirrors
+ * nothing, and describe_caps advertises neither it nor BORDER.
+ */
+#define V9X_D3D_RASTER_ADDRESS_WRAP  1ul
+#define V9X_D3D_RASTER_ADDRESS_CLAMP 3ul
 
 /*
  * The two texture formats, numbered as this file likes: unlike the comparison
@@ -234,6 +256,9 @@ typedef struct v9x_d3d_raster_texture {
     v9x_u32 format;
     v9x_u32 filter;
     v9x_u32 blend;
+    /* V9X_D3D_RASTER_ADDRESS_WRAP or _CLAMP. Render state like the two above
+     * it, and per draw for the same reason. */
+    v9x_u32 address;
 } V9X_D3D_RASTER_TEXTURE;
 
 /*

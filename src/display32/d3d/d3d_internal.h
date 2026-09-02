@@ -77,6 +77,16 @@ typedef struct v9x_d3d_context {
     DWORD texture_mag;
     DWORD texture_blend;
     DWORD texture_wrap;
+    /*
+     * D3DTADDRESS_*, from D3DRENDERSTATE_TEXTUREADDRESS and its two per-axis
+     * forms, and distinct from texture_wrap above - which carries
+     * D3DRENDERSTATE_WRAPU/WRAPV, a different render state about how a
+     * coordinate is interpolated rather than about what happens past its end.
+     * One field for both axes: D3DPTADDRESSCAPS_INDEPENDENTUV is claimed by
+     * neither engine, so the last of the two to be set wins, which is what a
+     * driver without independent axes must do.
+     */
+    DWORD texture_address;
     DWORD texture_border;
 } V9X_D3D_CONTEXT;
 

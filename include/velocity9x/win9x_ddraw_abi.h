@@ -496,6 +496,12 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_TEXTUREMAG               17ul
 #define V9X_D3DRENDERSTATE_TEXTUREMIN               18ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAPBLEND          21ul
+#define V9X_D3DRENDERSTATE_TEXTUREADDRESS            3ul
+#define V9X_D3DRENDERSTATE_TEXTUREADDRESSU          44ul
+#define V9X_D3DRENDERSTATE_TEXTUREADDRESSV          45ul
+#define V9X_D3DTADDRESS_WRAP                         1ul
+#define V9X_D3DTADDRESS_MIRROR                       2ul
+#define V9X_D3DTADDRESS_CLAMP                        3ul
 #define V9X_D3DRENDERSTATE_BORDERCOLOR              43ul
 /* Depth-buffer state. Values from the Windows 98 DDK's own ViRGE driver,
  * C:\98DDK\src\display\mini\s3v\D3DSTATE.C:73/95/130. */

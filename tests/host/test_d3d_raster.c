@@ -971,6 +971,11 @@ static void raster_texture_reset(V9X_D3D_RASTER_TEXTURE *texture,
     texture->format = format;
     texture->filter = filter;
     texture->blend = blend;
+    /* CLAMP unless a test says otherwise, so every draw that predates the
+     * address mode keeps meaning what it meant: those tests all use
+     * coordinates inside the first repeat, where the two modes agree, but
+     * saying so is cheaper than checking. */
+    texture->address = V9X_D3D_RASTER_ADDRESS_CLAMP;
 }
 
 static void raster_texel_set(unsigned int x, unsigned int y, v9x_u16 value)
@@ -1001,7 +1006,9 @@ static int raster_textured_quad(V9X_D3D_RASTER_TARGET *target,
                                 v9x_s32 red, v9x_s32 green, v9x_s32 blue)
 {
     V9X_D3D_RASTER_VERTEX triangle[3];
-    v9x_s32 edge = V9X_D3D_RASTER_TEXCOORD_MAX;
+    /* One whole repeat, which is what these tests mean by "the texture".
+     * TEXCOORD_MAX is thirty-three of them and would tile the quad. */
+    v9x_s32 edge = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
     int ok;
 
     raster_vertex(&triangle[0], PX(0), PX(0), red, green, blue);
@@ -1117,6 +1124,213 @@ static void test_texture_point_sampling(void)
     raster_texture_check_margins();
 }
 
+
+/*
+ * WRAP tiles the texture; CLAMP stretches its edge.
+ *
+ * The texture is a single bright texel at the origin on black, so the drawn
+ * quad shows exactly where the coordinate landed: under WRAP with a four-
+ * repeat span the bright column appears four times across the row, under CLAMP
+ * once. Counting the bright runs rather than checking named pixels, because
+ * the exact columns depend on the quad's geometry and the count does not.
+ */
+static void test_texture_wrap_tiles(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int column;
+    unsigned int runs;
+    unsigned int previous;
+    unsigned int y;
+    unsigned int x;
+    v9x_s32 span = V9X_D3D_RASTER_TEXCOORD_ONE * 4l;
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, x == 0u ? 0x7fffu : 0x0000u);
+        }
+    }
+    texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;
+
+    /* A band four pixels tall so the sampled row is well inside it. */
+    raster_vertex(&triangle[0], PX(0), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(32), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(0), PX(12), 255l, 255l, 255l);
+    triangle[1].u = span;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
+    raster_vertex(&triangle[0], PX(32), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(32), PX(12), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(0), PX(12), 255l, 255l, 255l);
+    triangle[0].u = span;
+    triangle[1].u = span;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
+
+    runs = 0u;
+    previous = 0u;
+    for (column = 0u; column < RASTER_WIDTH; ++column) {
+        unsigned int bright = raster_pixel(column, 6u) != 0x0000u ? 1u : 0u;
+
+        if (bright != 0u && previous == 0u) {
+            ++runs;
+        }
+        previous = bright;
+    }
+    RCHECK(runs == 4u);
+
+    /* The same draw under CLAMP reaches the bright column once, at the left,
+     * and then holds the last texel for the rest of the row. */
+    raster_reset(&target);
+    texture.address = V9X_D3D_RASTER_ADDRESS_CLAMP;
+    raster_vertex(&triangle[0], PX(0), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(32), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(0), PX(12), 255l, 255l, 255l);
+    triangle[1].u = span;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
+    raster_vertex(&triangle[0], PX(32), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(32), PX(12), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(0), PX(12), 255l, 255l, 255l);
+    triangle[0].u = span;
+    triangle[1].u = span;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
+
+    runs = 0u;
+    previous = 0u;
+    for (column = 0u; column < RASTER_WIDTH; ++column) {
+        unsigned int bright = raster_pixel(column, 6u) != 0x0000u ? 1u : 0u;
+
+        if (bright != 0u && previous == 0u) {
+            ++runs;
+        }
+        previous = bright;
+    }
+    RCHECK(runs == 1u);
+
+    /*
+     * And it is at the left, with the rest of the row holding the texture's
+     * last texel, which here is black.
+     *
+     * Counting runs alone does not say that. A clamp that clamped to
+     * TEXCOORD_MAX instead of to the texture's edge leaves the coordinate
+     * thirty-three repeats out, where the sampler's mask brings it back to
+     * texel zero - one bright run again, covering the whole row. That
+     * mutation passed the count and fails these, which is why they are here.
+     */
+    RCHECK(raster_pixel(0u, 6u) != 0x0000u);
+    RCHECK(raster_pixel(16u, 6u) == 0x0000u);
+    RCHECK(raster_pixel(RASTER_WIDTH - 1u, 6u) == 0x0000u);
+    raster_check_untouched_margins();
+    raster_texture_check_margins();
+}
+
+/*
+ * The interpolator rounds down on a falling gradient as well as a rising one.
+ *
+ * v9x_d3d_raster_lerp divides before it multiplies so that a texture
+ * coordinate can leave the first repeat, and the form it uses would truncate
+ * toward zero - which is the same as rounding down while the delta is
+ * positive and one level different once it is negative. C89 leaves the
+ * direction implementation defined for both / and %, so the function corrects
+ * the quotient explicitly, and this pins the corrected value.
+ *
+ * Depth carries it rather than colour, because depth is read back at its full
+ * sixteen bits where a colour channel is quantised to five on the way out and
+ * a one-level difference disappears. The quad's z depends only on y, so the
+ * span interpolator's step is zero and what lands in the buffer is the edge
+ * interpolator's answer unmodified.
+ *
+ * At row 5 the edge runs from z = 1001 at y = 2 to z = 0 at y = 22, so the
+ * sample is 56 subpixels into 320: rounding down gives 825 and truncating
+ * toward zero gives 826.
+ */
+static void test_lerp_rounds_down_descending(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster_reset(&target);
+    raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_ALWAYS, 1ul, 0xffffu);
+
+    raster_vertex_z(&triangle[0], PX(2), PX(2), 1001l, 255l, 255l, 255l);
+    raster_vertex_z(&triangle[1], PX(30), PX(2), 1001l, 255l, 255l, 255l);
+    raster_vertex_z(&triangle[2], PX(2), PX(22), 0l, 255l, 255l, 255l);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) != 0);
+
+    RCHECK(raster_depth_at(10u, 5u) == 825u);
+}
+
+/*
+ * A coordinate at the top of the range is still sampled safely.
+ *
+ * V9X_D3D_RASTER_TEXCOORD_MAX times the largest texture edge is the widest
+ * product the sampler forms, and the bilinear arm adds a whole texture of bias
+ * on top of it. This draws at that corner with the linear filter, which is the
+ * arm with the larger intermediate, and requires that the triangle is accepted
+ * and that what comes back is a texel from the texture rather than whatever
+ * a wrapped index found outside it - the texture is uniform, so any texel but
+ * the right one is a different colour.
+ */
+static void test_texture_wrap_extreme_coordinate(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int y;
+    unsigned int x;
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
+                         V9X_D3D_RASTER_FILTER_LINEAR,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, 0x03e0u);    /* uniform green */
+        }
+    }
+    texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;
+
+    raster_vertex(&triangle[0], PX(2), PX(2), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(28), PX(2), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(2), PX(20), 255l, 255l, 255l);
+    triangle[0].u = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[0].v = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[1].u = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[1].v = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[2].u = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[2].v = V9X_D3D_RASTER_TEXCOORD_MAX;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
+    RCHECK(raster_pixel(6u, 6u) == v9x_d3d_raster_rgb565(0l, 255l, 0l));
+
+    /* One beyond it is refused, on either axis. */
+    triangle[0].u = V9X_D3D_RASTER_TEXCOORD_MAX + 1l;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
+    triangle[0].u = V9X_D3D_RASTER_TEXCOORD_MAX;
+    triangle[2].v = V9X_D3D_RASTER_TEXCOORD_MAX + 1l;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
+    raster_texture_check_margins();
+}
+
+/* An address mode the sampler does not implement is refused. MIRROR is a legal
+ * D3DTADDRESS_* value and is not one of the two, so it stands for the class. */
+static void test_texture_address_refusals(void)
+{
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    texture.address = 2ul;      /* D3DTADDRESS_MIRROR */
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.address = 0ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+}
 
 /*
  * Fill the whole target - guard margins included - with one colour, so a
@@ -1622,6 +1836,10 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_alpha_half_blends();
     test_alpha_gouraud_varies();
     test_alpha_refusals();
+    test_texture_wrap_tiles();
+    test_texture_wrap_extreme_coordinate();
+    test_texture_address_refusals();
+    test_lerp_rounds_down_descending();
     test_texture_bilinear_blends();
     test_texture_blend_modes();
     test_texture_refusals();

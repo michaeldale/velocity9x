@@ -56,10 +56,35 @@ typedef char v9x_assert_soft_subpixel[
 
 /* The depth and texture-coordinate scales, on the same terms. */
 #define V9X_D3D_SOFT_DEPTH_SCALE 65535.0f
-#define V9X_D3D_SOFT_TEXCOORD_SCALE 65535.0f
+
+/*
+ * 65536 and not 65535, because a texture coordinate tiles and a depth does
+ * not. tu = 1.0 has to land on the first texel of the next repeat rather than
+ * on the last texel of this one, or every seam in a tiled surface repeats one
+ * texel column and the tiling is visibly wrong along every join. The depth
+ * scale above stays 65535 because 1.0 there means the far plane itself, which
+ * is a value and not a boundary.
+ */
+#define V9X_D3D_SOFT_TEXCOORD_SCALE 65536.0f
+
+/*
+ * How far outside the first repeat a coordinate is allowed to reach, in
+ * repeats, before the conversion clamps it.
+ *
+ * Sixteen either way, so a triangle can span thirty-two repeats, and after
+ * normalisation its largest corner sits just short of the thirty-third - which
+ * is V9X_D3D_RASTER_TEXCOORD_REPEATS and the assertion below holds the two
+ * numbers together. A limit is needed at all because tu is a float from an
+ * application and may be anything; without one the scaled value would overflow
+ * before the rasterizer ever saw it.
+ */
+#define V9X_D3D_SOFT_TEXCOORD_LIMIT 16.0f
+
+typedef char v9x_assert_soft_texcoord_limit[
+    (V9X_D3D_RASTER_TEXCOORD_REPEATS == 33l) ? 1 : -1];
 
 typedef char v9x_assert_soft_texcoord[
-    (V9X_D3D_RASTER_TEXCOORD_MAX == 65535l) ? 1 : -1];
+    (V9X_D3D_RASTER_TEXCOORD_ONE == 65536l) ? 1 : -1];
 
 typedef char v9x_assert_soft_depth[
     (V9X_D3D_RASTER_DEPTH_MAX == 65535l) ? 1 : -1];
@@ -274,6 +299,15 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
      */
     texture->blend = context->texture_blend == V9X_D3DTBLEND_DECAL
         ? V9X_D3D_RASTER_BLEND_DECAL : V9X_D3D_RASTER_BLEND_MODULATE;
+    /*
+     * WRAP unless the application asked for CLAMP. MIRROR and BORDER are
+     * published by neither engine and land here as WRAP, which is Direct3D's
+     * own default and the mode an application that never sets the state
+     * expects - a MIRROR request comes out tiled rather than mirrored, which
+     * is wrong in the same visible way an unpublished texture blend is.
+     */
+    texture->address = context->texture_address == V9X_D3DTADDRESS_CLAMP
+        ? V9X_D3D_RASTER_ADDRESS_CLAMP : V9X_D3D_RASTER_ADDRESS_WRAP;
     return v9x_d3d_raster_texture_valid(texture);
 }
 
@@ -415,8 +449,15 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
         V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE;
+    /*
+     * WRAP as well as CLAMP since 2026-09-02. The sampler always wrapped -
+     * it indexes texels through a mask - and what was missing was a coordinate
+     * wide enough to leave the first repeat, which the interpolator's overflow
+     * bound forbade. INDEPENDENTUV is not claimed: one context field carries
+     * both axes.
+     */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
-        V9X_D3DPTADDRESSCAPS_CLAMP;
+        V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_CLAMP;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     shared->d3d_global.dwNumVertices = 0ul;
@@ -561,15 +602,93 @@ static v9x_s32 v9x_d3d_soft_depth(float value)
  * NaN takes the else arm and resolves to zero, on the same reasoning as the
  * depth conversion above.
  */
-static v9x_s32 v9x_d3d_soft_texcoord(float value)
+static v9x_s32 v9x_d3d_soft_texcoord(float value, int wrapping)
 {
-    if (value >= 1.0f) {
-        return (v9x_s32)V9X_D3D_RASTER_TEXCOORD_MAX;
+    if (!wrapping) {
+        if (value >= 1.0f) {
+            return V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+        }
+        if (!(value > 0.0f)) {
+            return 0l;
+        }
+        return (v9x_s32)v9x_float_to_long(value *
+                                          V9X_D3D_SOFT_TEXCOORD_SCALE);
     }
-    if (!(value > 0.0f)) {
-        return 0l;
+
+    /* Wrapping: negative is meaningful and the caller shifts the triangle
+     * into range afterwards, so only the magnitude is bounded here. The
+     * comparisons are written so that NaN fails both and falls through to the
+     * conversion, which is the arm the depth conversion uses for it too. */
+    if (value > V9X_D3D_SOFT_TEXCOORD_LIMIT) {
+        value = V9X_D3D_SOFT_TEXCOORD_LIMIT;
+    }
+    if (value < -V9X_D3D_SOFT_TEXCOORD_LIMIT) {
+        value = -V9X_D3D_SOFT_TEXCOORD_LIMIT;
     }
     return (v9x_s32)v9x_float_to_long(value * V9X_D3D_SOFT_TEXCOORD_SCALE);
+}
+
+/*
+ * The whole number of repeats at or below a coordinate, as a coordinate.
+ *
+ * Written as a division and a correction rather than as a mask, although the
+ * repeat is a power of two: masking a negative value assumes two's complement
+ * and C89 does not promise it, and this is exactly the kind of assumption that
+ * holds on every compiler anyone tries until it does not.
+ */
+static v9x_s32 v9x_d3d_soft_repeat_base(v9x_s32 value)
+{
+    v9x_s32 whole = value / V9X_D3D_RASTER_TEXCOORD_ONE;
+
+    if (value < 0l && (value % V9X_D3D_RASTER_TEXCOORD_ONE) != 0l) {
+        whole -= 1l;
+    }
+    return whole * V9X_D3D_RASTER_TEXCOORD_ONE;
+}
+
+/*
+ * Shift a triangle's texture coordinates into the rasterizer's range without
+ * changing which texels it samples.
+ *
+ * Under WRAP the sampled texel depends only on the coordinate modulo one
+ * repeat, so subtracting a whole number of repeats from all three vertices at
+ * once leaves the picture identical and moves the triangle to where the
+ * rasterizer will accept it - which it must, because the rasterizer refuses a
+ * negative coordinate outright rather than wrapping it, and a shift that was
+ * not the same for all three would shear the texture across the triangle.
+ *
+ * The smallest corner lands in the first repeat, so the largest lands below
+ * V9X_D3D_SOFT_TEXCOORD_LIMIT * 2 + 1 repeats. That is the number
+ * V9X_D3D_RASTER_TEXCOORD_REPEATS is set to.
+ */
+static void v9x_d3d_soft_normalise(V9X_D3D_RASTER_VERTEX *triangle)
+{
+    v9x_s32 base;
+    DWORD corner;
+
+    base = triangle[0].u;
+    if (triangle[1].u < base) {
+        base = triangle[1].u;
+    }
+    if (triangle[2].u < base) {
+        base = triangle[2].u;
+    }
+    base = v9x_d3d_soft_repeat_base(base);
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        triangle[corner].u -= base;
+    }
+
+    base = triangle[0].v;
+    if (triangle[1].v < base) {
+        base = triangle[1].v;
+    }
+    if (triangle[2].v < base) {
+        base = triangle[2].v;
+    }
+    base = v9x_d3d_soft_repeat_base(base);
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        triangle[corner].v -= base;
+    }
 }
 
 /*
@@ -582,13 +701,14 @@ static v9x_s32 v9x_d3d_soft_texcoord(float value)
  */
 static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
                                 const V9X_D3D_CONTEXT *context,
+                                int wrapping,
                                 V9X_D3D_RASTER_VERTEX *result)
 {
     result->x = v9x_d3d_soft_coordinate(source->sx, context->width);
     result->y = v9x_d3d_soft_coordinate(source->sy, context->height);
     result->z = v9x_d3d_soft_depth(source->sz);
-    result->u = v9x_d3d_soft_texcoord(source->tu);
-    result->v = v9x_d3d_soft_texcoord(source->tv);
+    result->u = v9x_d3d_soft_texcoord(source->tu, wrapping);
+    result->v = v9x_d3d_soft_texcoord(source->tv, wrapping);
     result->red = (v9x_s32)((source->color >> 16) & 0xfful);
     result->green = (v9x_s32)((source->color >> 8) & 0xfful);
     result->blue = (v9x_s32)(source->color & 0xfful);
@@ -624,6 +744,7 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     const V9X_D3D_RASTER_TEXTURE *texture_arg = 0;
     V9X_D3D_RASTER_ALPHA alpha;
     const V9X_D3D_RASTER_ALPHA *alpha_arg = 0;
+    int wrapping;
     DWORD index;
 
     if (context == 0 || vertices == 0 || v9x_hal == 0) {
@@ -690,13 +811,23 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
         }
     }
 
+    /* Wrapping decides how the texture coordinates are converted, so it has
+     * to be known before the first vertex is built - and it is a property of
+     * the draw rather than of the vertex. An untextured draw takes the
+     * clamping conversion, which is the cheaper one and samples nothing. */
+    wrapping = texture_arg != 0 &&
+               texture.address == V9X_D3D_RASTER_ADDRESS_WRAP;
+
     for (index = 0ul; index < triangle_count; ++index) {
         V9X_D3D_RASTER_VERTEX triangle[3];
         DWORD corner;
 
         for (corner = 0ul; corner < 3ul; ++corner) {
             v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], context,
-                                &triangle[corner]);
+                                wrapping, &triangle[corner]);
+        }
+        if (wrapping) {
+            v9x_d3d_soft_normalise(triangle);
         }
         if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg,
                                      alpha_arg, triangle)) {

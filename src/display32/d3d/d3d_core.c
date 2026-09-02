@@ -550,6 +550,9 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->texture_mag = V9X_D3DFILTER_NEAREST;
             context->texture_blend = V9X_D3DTBLEND_MODULATE;
             context->texture_wrap = 1ul;
+            /* Direct3D's own default for D3DRENDERSTATE_TEXTUREADDRESS, so an
+             * application that never sets it tiles rather than stretching. */
+            context->texture_address = V9X_D3DTADDRESS_WRAP;
             context->texture_border = 0ul;
             /*
              * Only z_func. depth_offset, depth_pitch, z_enable and z_write are
@@ -609,6 +612,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->texture_mag = 0ul;
     context->texture_blend = 0ul;
     context->texture_wrap = 0ul;
+    context->texture_address = V9X_D3DTADDRESS_WRAP;
     context->texture_border = 0ul;
     context->depth_offset = 0ul;
     context->depth_pitch = 0ul;
@@ -655,6 +659,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].texture_mag = 0ul;
             v9x_d3d_contexts[index].texture_blend = 0ul;
             v9x_d3d_contexts[index].texture_wrap = 0ul;
+            v9x_d3d_contexts[index].texture_address = V9X_D3DTADDRESS_WRAP;
             v9x_d3d_contexts[index].texture_border = 0ul;
             v9x_d3d_contexts[index].depth_offset = 0ul;
             v9x_d3d_contexts[index].depth_pitch = 0ul;
@@ -812,6 +817,11 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
                 context->texture_blend = states[index].argument;
+                break;
+            case V9X_D3DRENDERSTATE_TEXTUREADDRESS:
+            case V9X_D3DRENDERSTATE_TEXTUREADDRESSU:
+            case V9X_D3DRENDERSTATE_TEXTUREADDRESSV:
+                context->texture_address = states[index].argument;
                 break;
             case V9X_D3DRENDERSTATE_BORDERCOLOR:
                 context->texture_border = states[index].argument;
