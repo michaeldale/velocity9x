@@ -3,8 +3,11 @@
 Date: 2026-09-01
 Status: **cause established 2026-09-02** from the Windows 98 DDK's own S3
 ViRGE driver. The engine has no RGB565 destination format. Not a defect in
-`d3d_virge.c`; the fix, if it is taken, is a 5:5:5 desktop. See
-[the record](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
+`d3d_virge.c`; the fix is a 5:5:5 desktop, which the driver now selects
+automatically under hardware Direct3D
+([record](../decisions/2026-09-02-a-555-desktop-needs-three-places-to-agree.md)).
+**Not yet measured on S3D silicon** - the machine has been unreachable. See
+[the cause](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
 Component: `src\display32\d3d\d3d_virge.c`
 
 ## The defect

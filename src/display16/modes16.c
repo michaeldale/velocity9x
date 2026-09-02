@@ -97,24 +97,58 @@ static v9x_u8 v9x_stage_publication[V9X_MODE_TABLE_MAX];
 static WORD v9x_scan_count = 0u;
 
 /*
- * What a 16 bpp desktop means on this machine, from SYSTEM.INI.
+ * What a 16 bpp desktop means on this machine.
  *
- * Read once at mode-table init, before any row is published, because both the
- * masks published here and the VBE mode number ddi.c programs are derived from
- * it and they must not be able to disagree. Defaults to 5:6:5, so a machine
- * that has never heard of the key behaves exactly as it did before it existed.
+ * Two readings, because the answer needs a fact that arrives late. The
+ * SYSTEM.INI key is read at mode-table init so an explicit 15 or 16 is
+ * honoured from the first row published. Automatic - the key absent - depends
+ * on what Direct3D resolves to, and that needs the chip, which the PCI scan
+ * establishes only at Enable. So v9x_modes16_resolve_layout runs again there,
+ * before the first mode set and before the DIB engine is told anything, and
+ * re-stamps the 16 bpp rows. Between the two readings automatic means 5:6:5,
+ * which is what an unresolved machine had before any of this existed.
  *
- * See V9X_HIGHCOLOR_555 for why 5:5:5 is worth having at all.
+ * The same file, section and macro names as dd16.c and the two settings
+ * surfaces, and check-tree.ps1 asserts they agree.
+ *
+ * See V9X_HIGHCOLOR_555 for why 5:5:5 is worth having at all, and
+ * v9x_highcolor_resolve for the rule.
  */
-#define V9X_HIGHCOLOR_SECTION "Velocity9x"
-#define V9X_HIGHCOLOR_KEY     "HighColor"
-#define V9X_HIGHCOLOR_INI     "SYSTEM.INI"
+#define V9X_SETTINGS_SECTION "Velocity9x"
+#define V9X_SETTINGS_INI     "SYSTEM.INI"
+#define V9X_HIGHCOLOR_KEY    "HighColor"
 
+static WORD v9x_highcolor_setting = (WORD)V9X_HIGHCOLOR_AUTO;
 static WORD v9x_highcolor = (WORD)V9X_HIGHCOLOR_565;
 
 WORD v9x_modes16_highcolor(void)
 {
     return v9x_highcolor;
+}
+
+WORD v9x_modes16_highcolor_setting(void)
+{
+    return v9x_highcolor_setting;
+}
+
+/* "555" or "565", followed by how it was decided, for V9XHW.INI and the
+ * Display Properties page. Stable text: settings_status.c reads it back. */
+const char *v9x_modes16_layout_text(void)
+{
+    if (v9x_highcolor == (WORD)V9X_HIGHCOLOR_555) {
+        return v9x_highcolor_setting == (WORD)V9X_HIGHCOLOR_555
+            ? "555-ini" : "555-auto";
+    }
+    return v9x_highcolor_setting == (WORD)V9X_HIGHCOLOR_565
+        ? "565-ini" : "565-auto";
+}
+
+static void v9x_modes16_read_highcolor(void)
+{
+    v9x_highcolor_setting = (WORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
+                                                       V9X_HIGHCOLOR_KEY,
+                                                       (int)V9X_HIGHCOLOR_AUTO,
+                                                       V9X_SETTINGS_INI);
 }
 
 /* Non-zero when this row should be published, and programmed, as 5:5:5. Both
@@ -130,6 +164,44 @@ WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
         return 0u;
     }
     return v9x_vbe_mode_555(row->vbe_mode) != 0u ? 1u : 0u;
+}
+
+/*
+ * Decide the layout against the resolved Direct3D state, and make the
+ * published masks say so.
+ *
+ * Called from the Enable path once the chip is known, and before
+ * v9x_apply_mode is re-run for the row being enabled - the caller does that,
+ * because this file does not own the active mode. Every 16 bpp row with a
+ * 15 bpp sibling is re-stamped, not only the rows whose mask changed: a row
+ * the BIOS scan described as 5:6:5 has to become 5:5:5 too, since the mode set
+ * will program the sibling regardless of what the BIOS said about the 16 bpp
+ * one, and a layout that flips between boots must leave no stale mask behind.
+ * A 16 bpp row with no sibling keeps whatever the scan or the baseline gave
+ * it.
+ */
+void v9x_modes16_resolve_layout(WORD d3d_state)
+{
+    WORD index;
+
+    v9x_modes16_read_highcolor();
+    v9x_highcolor = (WORD)v9x_highcolor_resolve(v9x_highcolor_setting,
+                                                d3d_state);
+    for (index = 0u; index < v9x_runtime_count; ++index) {
+        const V9X_HW16_MODE *row = &v9x_runtime_modes[index];
+
+        if (row->bits_per_pixel != 16u ||
+            v9x_vbe_mode_555(row->vbe_mode) == 0u) {
+            continue;
+        }
+        if (v9x_modes16_row_is_555(row) != 0u) {
+            v9x_mode_masks_555(&v9x_runtime_masks[index]);
+        } else {
+            v9x_runtime_masks[index].red = 0x0000f800ul;
+            v9x_runtime_masks[index].green = 0x000007e0ul;
+            v9x_runtime_masks[index].blue = 0x0000001ful;
+        }
+    }
 }
 
 /* Copy the family baseline in and publish every row: the committed fallback
@@ -252,12 +324,12 @@ void v9x_modes16_init(void)
     DWORD vram;
 
     /* The layout setting first: the baseline commit below publishes masks
-     * derived from it, so reading it afterwards would publish 5:6:5 and then
-     * program 5:5:5. */
-    v9x_highcolor = (WORD)GetPrivateProfileInt(V9X_HIGHCOLOR_SECTION,
-                                               V9X_HIGHCOLOR_KEY,
-                                               (int)V9X_HIGHCOLOR_565,
-                                               V9X_HIGHCOLOR_INI);
+     * derived from it. The chip is not known yet, so automatic resolves to
+     * 5:6:5 here and is decided properly at Enable - see
+     * v9x_modes16_resolve_layout. */
+    v9x_modes16_read_highcolor();
+    v9x_highcolor = (WORD)v9x_highcolor_resolve(v9x_highcolor_setting,
+                                                V9X_D3D_STATE_NONE);
 
     /* Step 1: the fallback state is committed before anything can fail. */
     v9x_modes16_commit_baseline();

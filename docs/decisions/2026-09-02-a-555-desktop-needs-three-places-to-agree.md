@@ -1,8 +1,9 @@
 # A 5:5:5 desktop needs three places to agree, and finding the third took a day
 
 Date: 2026-09-02
-Status: mechanism complete and measured in software on 2026-09-03; the
-hardware experiment it exists for has **not** been run (A8U4I5 unreachable)
+Status: mechanism complete and automatic under hardware Direct3D, with a page
+control, measured in software on 2026-09-03; the hardware experiment it exists
+for has **not** been run (A8U4I5 unreachable)
 
 ## What this was for
 
@@ -117,19 +118,70 @@ looked normal in both states, as it must. Three declared layouts agreeing plus a
 probe whose derived expectations pass is the strongest evidence this driver can
 produce about itself; the rest is a monitor.
 
+## Policy, 2026-09-03: automatic under hardware Direct3D, and a page control
+
+Both halves of the open policy question were taken.
+
+**Automatic.** `v9x_highcolor_resolve(setting, d3d_state)` in
+`src/common/vbe_modes.c`: an explicit 15 or 16 is obeyed; anything else - the
+key absent, zero, a typo - is 5:5:5 exactly when Direct3D resolved to
+`V9X_D3D_STATE_HARDWARE` and 5:6:5 otherwise. The chip's authority is already
+folded into that state by `v9x_d3d_mode_resolve`, so a Trio64 with `Direct3D=0`
+resolves to NONE and lands on 5:6:5 without the layout code knowing what a
+Trio64 is. Nine host tests pin the table.
+
+The decision needs the chip, and the chip is known only at Enable, so the
+layout is read twice: at mode-table init for an explicit value, and again from
+the Enable path once `v9x_hardware_acceptable` has matched the PCI id - before
+the FIVE6FIVE flag, before the mode set, before DirectDraw publishes anything.
+`v9x_modes16_resolve_layout` re-stamps every 16 bpp row that has a 15 bpp
+sibling in both directions, so a layout that flips between boots leaves no
+stale mask. `V9XHW.INI` gains `ColourLayout=` with one of four spellings
+(`555-auto`, `555-ini`, `565-auto`, `565-ini`) and the `Colour=` boot line
+gains `ini=`, so the file and the decision can be told apart on a machine read
+after the fact.
+
+**The page.** A third selector on the Velocity9x tab, "16-bit colour", with
+Automatic, 5:6:5 and 5:5:5. Automatic deletes the key rather than writing 0,
+so `SYSTEM.INI` stays readable by eye and by S3's own driver, which knows the
+same two numbers. Both selectors now share one Apply and one "restart Windows"
+notice. The dialog grew eleven dialog units to make room.
+
+Measured on **WIN98-S3NATIVE, 86Box, S3 Trio64**, `Direct3D=2` (software):
+
+```
+key absent               Colour=hc=16 ini=0  set=276 is555=0 mask=63488
+                         ColourLayout=565-auto
+page: 5:5:5, OK          SYSTEM.INI gains HighColor=15
+reboot                   Colour=hc=15 ini=15 set=275 is555=1 mask=31744
+                         ColourLayout=555-ini
+                         D3DTargetRMask=31744  D3DTrianglePixelRaw=31744
+                         every *Ok, *Count, HwTri* key identical to 5:6:5
+restored                 Colour=hc=16 ini=0  set=276 is555=0 mask=63488
+```
+
+The page was driven through the guest's own mouse: the tab, the dropdown with
+its three entries, the selection, OK, and the notice were each captured.
+
+**What was not measured, and why.** `555-auto` - the case the policy exists
+for - needs a chip that resolves to HARDWARE, and the only two available are an
+86Box ViRGE guest that is not running and A8U4I5, which has been unreachable
+since 2026-09-02. On this Trio64 automatic can only ever say 5:6:5, and did.
+The host tests cover the rule; the machine does not yet.
+
 ## What remains
 
 1. ~~Declare the layout to GDI.~~ Done above; it was the `FIVE6FIVE` PDEVICE
    flag, and the `BI_RGB` header turned out not to be what the DIB engine reads.
-2. **Run the experiment.** On A8U4I5 with hardware Direct3D and
+2. **Run the experiment**, which now needs no INI edit at all: boot A8U4I5
+   with `Direct3D` absent or 0 and the desktop should come up `555-auto`.
+   Then On A8U4I5 with hardware Direct3D and
    `HighColor=15`, every failing colour key should turn to 1 with no change to
    the engine. If it does not, the engine is packing something other than what
    both the emulator and S3's header say, which would be a more interesting
    finding than the fix.
-3. **Decide the policy.** Whether a 5:5:5 desktop should be automatic when
-   hardware Direct3D is selected on S3D silicon, offered in the settings page,
-   or left as an INI key. Not decided here; the mechanism defaults to 5:6:5 and
-   changes nothing until asked.
+3. ~~Decide the policy.~~ Decided 2026-09-03, above: automatic, with the page
+   able to override either way.
 
 A8U4I5 stopped answering on `10.0.1.172:9869` partway through this work and was
 not reachable for any of it. Every measurement above is from the 86Box guest.

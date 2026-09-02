@@ -25,5 +25,8 @@
 /* The Direct3D selector. The only control on this page that changes
  * anything; every other row is a statement of fact. */
 #define V9X_IDC_DIRECT3D_MODE 2020
+/* The 16-bit colour layout selector: Automatic, 5:6:5 or 5:5:5. The second
+ * control that changes anything. */
+#define V9X_IDC_COLOUR_LAYOUT 2021
 
 #endif

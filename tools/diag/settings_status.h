@@ -44,6 +44,14 @@ typedef struct v9x_settings_status {
      */
     int direct3d_capable;
     int direct3d_request;
+    /*
+     * The 16-bit colour layout. `highcolor_request` is the raw [Velocity9x]
+     * HighColor value - 15, 16, or 0 for absent/automatic - and
+     * `colour_layout` is what the driver resolved this boot, from
+     * V9XHW.INI's ColourLayout=, as a sentence for the page.
+     */
+    int highcolor_request;
+    char colour_layout[64];
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];

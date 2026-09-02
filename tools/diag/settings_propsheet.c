@@ -86,6 +86,30 @@ static const char v9x_page_caption[] = "Velocity9x Settings";
 static int v9x_page_d3d_loaded;
 
 /*
+ * The 16-bit colour layout selector's state, on the same terms.
+ *
+ * Three values and the first is an absence: 0 means the HighColor key is not
+ * in SYSTEM.INI and the driver decides - 5:5:5 when Direct3D resolved to the
+ * chip's own S3D engine, which writes ZRGB1555 into every 16-bit target and
+ * has no other layout to offer, 5:6:5 otherwise. 15 and 16 are S3's own values
+ * for the same key, so a SYSTEM.INI carried over from their driver reads the
+ * same way here. Choosing Automatic deletes the key rather than writing 0, so
+ * the file says what the page says.
+ */
+static int v9x_page_layout_loaded;
+
+static const struct v9x_layout_choice {
+    int value;
+    const char *label;
+} v9x_page_layout_choices[] = {
+    { 0,  "Automatic (5:5:5 under hardware Direct3D)" },
+    { 16, "5:6:5 - 64 greens, the usual layout" },
+    { 15, "5:5:5 - what the S3D engine draws" }
+};
+#define V9X_PAGE_LAYOUT_CHOICE_COUNT \
+    (sizeof(v9x_page_layout_choices) / sizeof(v9x_page_layout_choices[0]))
+
+/*
  * Only what this build implements is offered.
  *
  * Adding "Hybrid" and "Offload" here the day before they exist is the same
@@ -225,6 +249,106 @@ static int v9x_page_selected_d3d(HWND dialog)
 }
 
 /*
+ * Fill the layout selector and select the loaded value.
+ *
+ * Every card gets all three entries: unlike Hardware Direct3D, 5:5:5 is
+ * something every card in this driver can be asked for - it is a VESA mode
+ * number away - and a value nobody defined is given its own entry so the page
+ * reports the file rather than rewriting it, as the Direct3D selector does.
+ */
+static void v9x_page_fill_layout(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_COLOUR_LAYOUT);
+    UINT index;
+    LRESULT item;
+
+    if (combo == 0) {
+        return;
+    }
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    v9x_page_layout_loaded = v9x_page_status.highcolor_request;
+    for (index = 0u; index < V9X_PAGE_LAYOUT_CHOICE_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_layout_choices[index].label);
+        if (item < 0) {
+            continue;
+        }
+        SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                     (LPARAM)v9x_page_layout_choices[index].value);
+        if (v9x_page_layout_choices[index].value == v9x_page_layout_loaded) {
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+    if (SendMessageA(combo, CB_GETCURSEL, 0, 0) == CB_ERR) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)"Value set in SYSTEM.INI, not one this "
+                                    "page offers");
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_page_layout_loaded);
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+}
+
+static int v9x_page_selected_layout(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_COLOUR_LAYOUT);
+    LRESULT selection;
+    LRESULT data;
+
+    if (combo == 0) {
+        return v9x_page_layout_loaded;
+    }
+    selection = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+    if (selection == CB_ERR) {
+        return v9x_page_layout_loaded;
+    }
+    data = SendMessageA(combo, CB_GETITEMDATA, (WPARAM)selection, 0);
+    if (data == CB_ERR) {
+        return v9x_page_layout_loaded;
+    }
+    return (int)data;
+}
+
+/*
+ * Write the layout selector to SYSTEM.INI. Returns non-zero when the file
+ * changed, so the caller can say once what happened; a failed write reports
+ * itself here and returns zero.
+ */
+static int v9x_page_apply_layout(HWND dialog)
+{
+    int selected = v9x_page_selected_layout(dialog);
+    const char *value;
+
+    if (selected == v9x_page_layout_loaded) {
+        return 0;
+    }
+    /* Automatic is the key's absence. Deleting it, rather than writing 0,
+     * keeps the file readable by eye and by S3's own driver, which knows the
+     * same two numbers and nothing about a zero. */
+    if (selected == 0) {
+        value = 0;
+    } else if (selected == 15) {
+        value = "15";
+    } else if (selected == 16) {
+        value = "16";
+    } else {
+        return 0;
+    }
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION, "HighColor", value,
+                                    V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the 16-bit colour setting to "
+                    "SYSTEM.INI.\n\nThe file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    v9x_page_layout_loaded = selected;
+    return 1;
+}
+
+/*
  * Write the selector to SYSTEM.INI, and say when it takes effect.
  *
  * "After you restart" is measured, not a hedge:
@@ -235,18 +359,18 @@ static int v9x_page_selected_d3d(HWND dialog)
  * software. Only a fresh boot removes the entry, so the page must not offer a
  * shorter promise.
  */
-static void v9x_page_apply_d3d(HWND dialog)
+static int v9x_page_apply_d3d(HWND dialog)
 {
     int selected = v9x_page_selected_d3d(dialog);
     char value[2];
 
     if (selected == v9x_page_d3d_loaded) {
-        return;
+        return 0;
     }
     /* One digit covers every value this page can select, and the page never
      * writes a value it did not put in the list. */
     if (selected < 0 || selected > 9) {
-        return;
+        return 0;
     }
     value[0] = (char)('0' + selected);
     value[1] = '\0';
@@ -257,11 +381,31 @@ static void v9x_page_apply_d3d(HWND dialog)
                     "Could not write the Direct3D setting to SYSTEM.INI.\n\n"
                     "The file may be read-only or in use.",
                     v9x_page_caption, MB_OK | MB_ICONWARNING);
-        return;
+        return 0;
     }
     v9x_page_d3d_loaded = selected;
+    return 1;
+}
+
+/*
+ * Both selectors, one message.
+ *
+ * The Direct3D wording is measured, not a hedge:
+ * docs\decisions\2026-08-30-d3d-mode-disabled-gate.md - DDRAW keeps the
+ * device it enumerated until a fresh boot. The colour layout is decided at
+ * Enable, and the desktop, DirectDraw and the DIB engine all read it there,
+ * so it too is a restart and not a re-enable.
+ */
+static void v9x_page_apply(HWND dialog)
+{
+    int wrote_d3d = v9x_page_apply_d3d(dialog);
+    int wrote_layout = v9x_page_apply_layout(dialog);
+
+    if (!wrote_d3d && !wrote_layout) {
+        return;
+    }
     MessageBoxA(dialog,
-                "The Direct3D setting has been saved.\n\n"
+                "The setting has been saved to SYSTEM.INI.\n\n"
                 "It takes effect after you restart Windows. Until then "
                 "DirectDraw applications continue to see the previous "
                 "setting.",
@@ -309,6 +453,7 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         SetDlgItemTextA(dialog, V9X_IDC_DIRECTDRAW,
                         v9x_page_status.directdraw);
         v9x_page_fill_d3d(dialog);
+        v9x_page_fill_layout(dialog);
         SetDlgItemTextA(dialog, V9X_IDC_MODE_SWITCH,
                         v9x_page_status.mode_switching);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
@@ -327,9 +472,12 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         }
         /* Enable Apply only once the selection actually differs from the
          * file, so OK on an untouched page writes nothing. */
-        if (LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE &&
+        if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
+             LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT) &&
             HIWORD(wparam) == CBN_SELCHANGE) {
-            if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded) {
+            if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
+                v9x_page_selected_layout(dialog) !=
+                    v9x_page_layout_loaded) {
                 SendMessageA(GetParent(dialog), PSM_CHANGED,
                              (WPARAM)dialog, 0);
             } else {
@@ -340,12 +488,11 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         }
         break;
     case WM_NOTIFY:
-        /* Every row but the Direct3D selector is a statement of fact, so
-         * Apply has exactly one thing to do. It succeeds either way: a failed
-         * write reports itself in its own box rather than keeping the user in
-         * a dialog they cannot leave. */
+        /* Every row but the two selectors is a statement of fact. Apply
+         * succeeds either way: a failed write reports itself in its own box
+         * rather than keeping the user in a dialog they cannot leave. */
         if (((NMHDR FAR *)lparam)->code == (UINT)PSN_APPLY) {
-            v9x_page_apply_d3d(dialog);
+            v9x_page_apply(dialog);
             SetWindowLongA(dialog, DWL_MSGRESULT, PSNRET_NOERROR);
             return TRUE;
         }

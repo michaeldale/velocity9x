@@ -58,6 +58,15 @@ v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode)
     return 0u;
 }
 
+v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state)
+{
+    if (setting == V9X_HIGHCOLOR_555 || setting == V9X_HIGHCOLOR_565) {
+        return setting;
+    }
+    return d3d_state == V9X_D3D_STATE_HARDWARE ? V9X_HIGHCOLOR_555
+                                               : V9X_HIGHCOLOR_565;
+}
+
 void v9x_mode_masks_555(struct v9x_mode_masks *out)
 {
     if (out == 0) {

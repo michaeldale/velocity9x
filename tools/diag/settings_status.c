@@ -317,6 +317,35 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         status->direct3d_request = (int)GetPrivateProfileIntA(
             V9X_SETTINGS_SECTION, V9X_D3D_SETTING_KEY,
             (INT)V9X_D3D_REQUEST_HARDWARE, V9X_SETTINGS_INI);
+
+        /*
+         * The 16-bit layout: the setting, and what the driver made of it.
+         * ColourLayout= is written by ddi.c from v9x_modes16_layout_text, and
+         * the four spellings below are its. A V9XHW.INI from before the key
+         * existed has none, and the page then says so rather than guessing.
+         */
+        status->highcolor_request = (int)GetPrivateProfileIntA(
+            V9X_SETTINGS_SECTION, "HighColor", 0, V9X_SETTINGS_INI);
+        GetPrivateProfileStringA("Velocity9xHardware", "ColourLayout", "",
+                                 direct3d_mode, sizeof(direct3d_mode),
+                                 V9X_DIAG_HW_INI);
+        status->colour_layout[0] = '\0';
+        if (lstrcmpiA(direct3d_mode, "555-auto") == 0) {
+            v9x_append(status->colour_layout, sizeof(status->colour_layout),
+                       "5:5:5 this boot, chosen for hardware Direct3D");
+        } else if (lstrcmpiA(direct3d_mode, "565-auto") == 0) {
+            v9x_append(status->colour_layout, sizeof(status->colour_layout),
+                       "5:6:5 this boot");
+        } else if (lstrcmpiA(direct3d_mode, "555-ini") == 0) {
+            v9x_append(status->colour_layout, sizeof(status->colour_layout),
+                       "5:5:5 this boot, set in SYSTEM.INI");
+        } else if (lstrcmpiA(direct3d_mode, "565-ini") == 0) {
+            v9x_append(status->colour_layout, sizeof(status->colour_layout),
+                       "5:6:5 this boot, set in SYSTEM.INI");
+        } else {
+            v9x_append(status->colour_layout, sizeof(status->colour_layout),
+                       "Not reported by this driver build");
+        }
         status->direct3d[0] = '\0';
         if (lstrcmpiA(direct3d_mode, "user-disabled") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),

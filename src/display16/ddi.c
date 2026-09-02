@@ -115,6 +115,11 @@ extern void v9x_modes16_init(void);
  * and the mode-set path need them, and the writer comes first in the file. */
 extern WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row);
 extern WORD v9x_modes16_highcolor(void);
+extern WORD v9x_modes16_highcolor_setting(void);
+extern const char *v9x_modes16_layout_text(void);
+extern void v9x_modes16_resolve_layout(WORD d3d_state);
+extern void v9x_dd_d3d_configure(void);
+extern WORD v9x_dd_d3d_state_code(void);
 extern V9X_HW16_MODE v9x_runtime_modes[];
 extern struct v9x_mode_masks v9x_runtime_masks[];
 extern WORD v9x_runtime_count;
@@ -493,6 +498,8 @@ static void v9x_trace_colour_layout(void)
         return;
     }
     at = v9x_append_field(text, at, "hc=", (DWORD)v9x_modes16_highcolor());
+    at = v9x_append_field(text, at, "ini=",
+                          (DWORD)v9x_modes16_highcolor_setting());
     at = v9x_append_field(text, at, "row=",
                           (DWORD)v9x_selected_mode->vbe_mode);
     at = v9x_append_field(text, at, "set=", (DWORD)v9x_active_vbe_mode);
@@ -609,6 +616,8 @@ static void v9x_publish_hardware_diagnostics(void)
      * it off", and neither key can express both.
      */
     v9x_write_hardware_info("Direct3DMode", v9x_dd_d3d_state_text());
+    /* The 16 bpp layout and how it was decided, for the same reader. */
+    v9x_write_hardware_info("ColourLayout", v9x_modes16_layout_text());
 }
 
 void v9x_serial_write(const char FAR *message)
@@ -1048,6 +1057,20 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         v9x_boot_trace("fail-hardware-present");
         v9x_serial_write("V9X-DRV enable-fail stage=device-id\r\n");
         return 0u;
+    }
+    /*
+     * The 16 bpp layout, now that the chip is known and before anything
+     * downstream is told about it: the FIVE6FIVE flag below, the VBE mode
+     * number the hardware sequence programs, and the masks DirectDraw
+     * publishes all follow this. v9x_dd_d3d_configure runs again later at its
+     * usual place; it is a pure read of SYSTEM.INI and the chip descriptor, so
+     * running it early costs nothing and changes nothing. The re-apply
+     * refreshes v9x_active_vbe_mode for the row the query stage selected.
+     */
+    v9x_dd_d3d_configure();
+    v9x_modes16_resolve_layout(v9x_dd_d3d_state_code());
+    if (v9x_selected_mode != 0) {
+        v9x_apply_mode(v9x_selected_mode);
     }
     /*
      * Before any call into the VDD, because the main VDD asks the mini-VDD for

@@ -21,6 +21,9 @@
  * nothing - and sharing the row type avoids a third representation of a mode
  * alongside the family tables and the DirectDraw block. */
 #include "velocity9x/hw16.h"
+/* V9X_D3D_STATE_*: the automatic 16 bpp layout is decided against what
+ * Direct3D resolved to. Plain constants, no OS dependency. */
+#include "velocity9x/d3dmode.h"
 
 /*
  * Rows the runtime table can hold. 64 is well past what any BIOS this project
@@ -58,6 +61,26 @@ struct v9x_mode_masks {
  */
 #define V9X_HIGHCOLOR_565 ((v9x_u16)16u)
 #define V9X_HIGHCOLOR_555 ((v9x_u16)15u)
+/* The key absent, or written as 0: let the driver decide, below. */
+#define V9X_HIGHCOLOR_AUTO ((v9x_u16)0u)
+
+/*
+ * What the 16 bpp desktop should be, given the setting and what Direct3D
+ * resolved to this boot.
+ *
+ * An explicit 15 or 16 is obeyed. Anything else - the key absent, zero, a
+ * typo - is automatic, and automatic is 5:5:5 exactly when the resolved
+ * Direct3D state is V9X_D3D_STATE_HARDWARE, because that state exists only on
+ * S3D silicon and S3D silicon writes ZRGB1555 into every 16-bit target it
+ * draws. Every other state - software, none, disabled, unimplemented - gets
+ * 5:6:5, which has the extra green and is what the machine had before this.
+ *
+ * The chip's authority is already folded into the state by
+ * v9x_d3d_mode_resolve, so this function does not consult the chip again: a
+ * Trio64 with Direct3D=0 resolves to NONE and lands on 5:6:5 without this
+ * file knowing what a Trio64 is.
+ */
+v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state);
 
 /*
  * The 5:5:5 VESA mode number paired with a 5:6:5 one, or zero when there is

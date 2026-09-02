@@ -992,6 +992,46 @@ static void test_555_mode_pairs(void)
     MODECHECK(v9x_vbe_mode_555(0u) == 0u);
 }
 
+/*
+ * Automatic is 5:5:5 under hardware Direct3D and 5:6:5 everywhere else, and
+ * an explicit setting is obeyed whatever Direct3D resolved to.
+ *
+ * The state codes stand in for the chips: HARDWARE is reachable only on S3D
+ * silicon, NONE is a Trio64 or a VESA card, SOFTWARE is the CPU rasterizer on
+ * anything. A typo in the key is automatic too - the safe reading of a value
+ * nobody defined is the one the machine would have chosen unasked.
+ */
+static void test_highcolor_resolve(void)
+{
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_HARDWARE) ==
+              V9X_HIGHCOLOR_555);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_SOFTWARE) ==
+              V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_NONE) == V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_DISABLED) ==
+              V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_UNIMPLEMENTED) ==
+              V9X_HIGHCOLOR_565);
+
+    /* Explicit wins in both directions. */
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_565,
+                                    V9X_D3D_STATE_HARDWARE) ==
+              V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_555,
+                                    V9X_D3D_STATE_NONE) == V9X_HIGHCOLOR_555);
+
+    /* A value nobody defined is automatic. */
+    MODECHECK(v9x_highcolor_resolve(24u, V9X_D3D_STATE_HARDWARE) ==
+              V9X_HIGHCOLOR_555);
+    MODECHECK(v9x_highcolor_resolve(1u, V9X_D3D_STATE_NONE) ==
+              V9X_HIGHCOLOR_565);
+}
+
 /* The 5:5:5 masks are 5:5:5, and the top bit is not claimed as alpha. */
 static void test_555_masks(void)
 {
@@ -1162,5 +1202,6 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_dd_subset_publication();
     test_555_mode_pairs();
     test_555_masks();
+    test_highcolor_resolve();
     return modes_failures;
 }

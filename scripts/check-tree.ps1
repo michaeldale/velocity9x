@@ -535,8 +535,9 @@ if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) 
 # Every SYSTEM.INI reader and writer must agree on which file and which
 # section.
 #
-# gdi_accel.c reads the GdiAccel keys, dd16.c reads the Direct3D key, and the
-# two settings surfaces read it back and write it - each from its own pair of
+# gdi_accel.c reads the GdiAccel keys, dd16.c reads the Direct3D key,
+# modes16.c reads the HighColor key, and the two settings surfaces read them
+# back and write them - each from its own pair of
 # literals rather than a shared header, because the header they would share
 # would have to be reachable from src\common\d3dmode.c, which is deliberately
 # free of every OS and DirectDraw dependency. Four files, one assertion: a typo
@@ -546,6 +547,7 @@ if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) 
 $settingsReaders = @{
     "src\display16\gdi_accel.c"     = @('V9X_SYSTEM_INI', 'V9X_INI_SECTION')
     "src\display16\dd16.c"          = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
+    "src\display16\modes16.c"       = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
     "tools\diag\settings_status.c"  = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
     "tools\diag\settings_propsheet.c" = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
 }

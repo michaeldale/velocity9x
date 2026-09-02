@@ -78,6 +78,13 @@ const char *v9x_dd_d3d_state_text(void)
     return v9x_d3d_mode_text(v9x_dd_d3d_state);
 }
 
+/* The state code itself, for the layout decision in modes16.c, which wants
+ * to compare rather than print. */
+WORD v9x_dd_d3d_state_code(void)
+{
+    return (WORD)v9x_dd_d3d_state;
+}
+
 #ifndef V9X_TARGET_MATROX_MILLENNIUM2
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);
