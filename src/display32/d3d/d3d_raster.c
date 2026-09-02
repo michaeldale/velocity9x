@@ -212,6 +212,22 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
     return 1;
 }
 
+int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
+{
+    if (alpha == 0) {
+        return 0;
+    }
+    if (alpha->src != V9X_D3D_RASTER_BLEND_SRC_ONE &&
+        alpha->src != V9X_D3D_RASTER_BLEND_SRC_SRCALPHA) {
+        return 0;
+    }
+    if (alpha->dst != V9X_D3D_RASTER_BLEND_DST_ZERO &&
+        alpha->dst != V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA) {
+        return 0;
+    }
+    return 1;
+}
+
 /* Five bits to eight, replicating the high bits into the low ones so that 31
  * reaches 255 rather than 248. Four bits to eight is exact - 17 is 255/15 - so
  * it needs no equivalent. */
@@ -225,6 +241,43 @@ static v9x_s32 v9x_d3d_raster_expand5(v9x_u32 value)
 static v9x_s32 v9x_d3d_raster_expand6(v9x_u32 value)
 {
     return (v9x_s32)((value << 2) | (value >> 4));
+}
+
+/*
+ * A 0..255 alpha as a 0..256 weight, so that both ends of the range are exact.
+ *
+ * Dividing by 255 per channel per pixel is three divides in the inner loop and
+ * this engine already costs enough; shifting by eight instead needs 255 to map
+ * to 256 rather than to 255, or a fully opaque fragment would come out one
+ * two-hundred-and-fifty-sixth short of the source colour and a large flat
+ * blended surface would be visibly dimmed. `value >> 7` is 1 only at 254 and
+ * 255, which is exactly where the correction is needed, and the mapping stays
+ * monotonic everywhere else.
+ */
+static v9x_s32 v9x_d3d_raster_weight(v9x_s32 value)
+{
+    if (value < 0l) {
+        value = 0l;
+    }
+    if (value > 255l) {
+        value = 255l;
+    }
+    return value + (value >> 7);
+}
+
+/*
+ * source * source_factor + destination * destination_factor, in 0..255.
+ *
+ * The two factors are passed already resolved to 0..256 weights because they
+ * are the same for every channel and every pixel of a span; resolving them
+ * here would repeat the branch three times a pixel. The product is at most
+ * 255 * 256 twice, which is 130,560 - nowhere near the edge of anything.
+ */
+static v9x_s32 v9x_d3d_raster_blend(v9x_s32 source, v9x_s32 destination,
+                                    v9x_s32 source_weight,
+                                    v9x_s32 destination_weight)
+{
+    return (source * source_weight + destination * destination_weight) >> 8;
 }
 
 /*
@@ -352,6 +405,7 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
     result->red = v9x_d3d_raster_lerp(from->red, to->red, offset, span);
     result->green = v9x_d3d_raster_lerp(from->green, to->green, offset, span);
     result->blue = v9x_d3d_raster_lerp(from->blue, to->blue, offset, span);
+    result->alpha = v9x_d3d_raster_lerp(from->alpha, to->alpha, offset, span);
     return 1;
 }
 
@@ -373,6 +427,7 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
 static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_DEPTH *depth,
                                 const V9X_D3D_RASTER_TEXTURE *texture,
+                                const V9X_D3D_RASTER_ALPHA *alpha,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -383,12 +438,14 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 red_step = 0l;
     v9x_s32 green_step = 0l;
     v9x_s32 blue_step = 0l;
+    v9x_s32 alpha_step = 0l;
     v9x_s32 z_step = 0l;
     v9x_s32 u_step = 0l;
     v9x_s32 v_step = 0l;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
+    v9x_s32 fragment_alpha;
     v9x_s32 z;
     v9x_s32 u;
     v9x_s32 v;
@@ -396,6 +453,12 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 column;
     v9x_u16 *pixels;
     v9x_u16 *depths = 0;
+    /* Both factors resolved once per span. A source factor of ONE is a
+     * constant 256 whatever the fragment's alpha is, so only SRCALPHA has to
+     * be recomputed per pixel, and the flag says which. */
+    int alpha_varies = 0;
+    v9x_s32 source_weight = 256l;
+    v9x_s32 destination_weight = 0l;
 
     if (first < 0l) {
         first = 0l;
@@ -414,6 +477,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                       V9X_D3D_RASTER_COLOUR_BITS) / width;
         blue_step = ((right->blue - left->blue) <<
                      V9X_D3D_RASTER_COLOUR_BITS) / width;
+        alpha_step = ((right->alpha - left->alpha) <<
+                      V9X_D3D_RASTER_COLOUR_BITS) / width;
         z_step = ((right->z - left->z) << V9X_D3D_RASTER_DEPTH_BITS) / width;
         /* Texture coordinates share the depth interpolator's eight fractional
          * bits, and for the same reason: both run to 65535, and sixteen would
@@ -431,15 +496,23 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     red = (left->red << V9X_D3D_RASTER_COLOUR_BITS) + red_step * offset;
     green = (left->green << V9X_D3D_RASTER_COLOUR_BITS) + green_step * offset;
     blue = (left->blue << V9X_D3D_RASTER_COLOUR_BITS) + blue_step * offset;
+    fragment_alpha = (left->alpha << V9X_D3D_RASTER_COLOUR_BITS) +
+                     alpha_step * offset;
     z = (left->z << V9X_D3D_RASTER_DEPTH_BITS) + z_step * offset;
     u = (left->u << V9X_D3D_RASTER_DEPTH_BITS) + u_step * offset;
     v = (left->v << V9X_D3D_RASTER_DEPTH_BITS) + v_step * offset;
     red_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    alpha_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     z_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+
+    if (alpha != 0) {
+        alpha_varies = alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA ||
+                       alpha->dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    }
 
     pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
                          (v9x_u32)row * target->pitch);
@@ -533,6 +606,58 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 }
             }
 
+            if (alpha != 0) {
+                v9x_u16 stored = pixels[column];
+
+                /* Clamped before the weights are applied, not after. The
+                 * interpolator's endpoints can land a fraction outside
+                 * 0..255, and a negative source channel here would subtract
+                 * from the destination instead of adding to it - which shows
+                 * up as a dark fringe along the edge of every blended
+                 * triangle rather than as an obviously wrong colour. */
+                if (out_red < 0l) {
+                    out_red = 0l;
+                }
+                if (out_red > 255l) {
+                    out_red = 255l;
+                }
+                if (out_green < 0l) {
+                    out_green = 0l;
+                }
+                if (out_green > 255l) {
+                    out_green = 255l;
+                }
+                if (out_blue < 0l) {
+                    out_blue = 0l;
+                }
+                if (out_blue > 255l) {
+                    out_blue = 255l;
+                }
+                if (alpha_varies) {
+                    v9x_s32 weight = v9x_d3d_raster_weight(
+                        fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS);
+
+                    if (alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA) {
+                        source_weight = weight;
+                    }
+                    if (alpha->dst ==
+                        V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA) {
+                        destination_weight = 256l - weight;
+                    }
+                }
+                out_red = v9x_d3d_raster_blend(
+                    out_red, v9x_d3d_raster_expand5((v9x_u32)(stored >> 11) &
+                                                    0x1ful),
+                    source_weight, destination_weight);
+                out_green = v9x_d3d_raster_blend(
+                    out_green, v9x_d3d_raster_expand6((v9x_u32)(stored >> 5) &
+                                                      0x3ful),
+                    source_weight, destination_weight);
+                out_blue = v9x_d3d_raster_blend(
+                    out_blue, v9x_d3d_raster_expand5((v9x_u32)stored & 0x1ful),
+                    source_weight, destination_weight);
+            }
+
             pixels[column] = v9x_d3d_raster_rgb565(out_red, out_green,
                                                    out_blue);
         }
@@ -543,6 +668,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         red += red_step;
         green += green_step;
         blue += blue_step;
+        fragment_alpha += alpha_step;
         z += z_step;
         u += u_step;
         v += v_step;
@@ -552,6 +678,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
 int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
                             const V9X_D3D_RASTER_TEXTURE *texture,
+                            const V9X_D3D_RASTER_ALPHA *alpha,
                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
@@ -575,6 +702,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         return 0;
     }
     if (texture != 0 && !v9x_d3d_raster_texture_valid(texture)) {
+        return 0;
+    }
+    if (alpha != 0 && !v9x_d3d_raster_alpha_valid(alpha)) {
         return 0;
     }
     for (index = 0ul; index < 3ul; ++index) {
@@ -643,9 +773,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         }
 
         if (along.x <= across.x) {
-            v9x_d3d_raster_span(target, depth, texture, row, &along, &across);
+            v9x_d3d_raster_span(target, depth, texture, alpha, row,
+                                &along, &across);
         } else {
-            v9x_d3d_raster_span(target, depth, texture, row, &across, &along);
+            v9x_d3d_raster_span(target, depth, texture, alpha, row,
+                                &across, &along);
         }
     }
     return 1;

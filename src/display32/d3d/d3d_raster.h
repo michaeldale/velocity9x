@@ -139,6 +139,23 @@
  * are implemented - the mip filters have no meaning here, because nothing
  * selects a mip level, and `describe_caps` advertises none of them.
  */
+/*
+ * The blend factors, numbered as D3DBLEND_* numbers them, and only the four
+ * the engine implements.
+ *
+ * Four rather than eleven, and the four are not an arbitrary subset: they are
+ * the ones S3's own ViRGE driver publishes on this generation of silicon -
+ * D3DPBLENDCAPS_ONE | SRCALPHA for source, ZERO | INVSRCALPHA for destination
+ * (98DDK D3DDRV.C:239-242). ONE with ZERO is opaque, SRCALPHA with INVSRCALPHA
+ * is ordinary transparency, and between them they are what a period
+ * application actually asks for. Anything else is refused rather than
+ * approximated, and describe_caps advertises exactly these.
+ */
+#define V9X_D3D_RASTER_BLEND_SRC_ONE         2ul
+#define V9X_D3D_RASTER_BLEND_SRC_SRCALPHA    5ul
+#define V9X_D3D_RASTER_BLEND_DST_ZERO        1ul
+#define V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA 6ul
+
 #define V9X_D3D_RASTER_FILTER_POINT   1ul
 #define V9X_D3D_RASTER_FILTER_LINEAR  2ul
 #define V9X_D3D_RASTER_BLEND_DECAL    1ul
@@ -172,6 +189,12 @@ typedef struct v9x_d3d_raster_vertex {
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
+    /* 0..255, interpolated exactly as the three colour channels are and used
+     * only when the draw carries a blend. Out-of-range values are clamped
+     * where they are consumed rather than refused, which is what the colour
+     * channels do and for the same reason: the interpolator's endpoints can
+     * sit a fraction outside the range the caller wrote. */
+    v9x_s32 alpha;
 } V9X_D3D_RASTER_VERTEX;
 
 /*
@@ -212,6 +235,24 @@ typedef struct v9x_d3d_raster_texture {
     v9x_u32 filter;
     v9x_u32 blend;
 } V9X_D3D_RASTER_TEXTURE;
+
+/*
+ * How a fragment combines with what is already in the target.
+ *
+ * Per draw, like the depth buffer and the texture, and null for the same
+ * reason: it means opaque - the source replaces the destination, which is what
+ * every draw did before this existed and what an application that has not
+ * enabled blending expects.
+ *
+ * There is no `enable` field. A caller that wants blending passes the struct
+ * and a caller that does not passes null; an enable flag inside would make
+ * "blending on with factors nobody set" expressible, and that state has to
+ * mean something.
+ */
+typedef struct v9x_d3d_raster_alpha {
+    v9x_u32 src;
+    v9x_u32 dst;
+} V9X_D3D_RASTER_ALPHA;
 
 /*
  * Where the pixels go: a pointer, a byte pitch and the extent in pixels.
@@ -261,13 +302,22 @@ int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
 int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture);
 
 /*
+ * Whether a blend is one this rasterizer will apply: non-null, and a factor
+ * pair drawn from the four above. An unsupported pair is refused rather than
+ * approximated - a driver that silently substituted a factor would put the
+ * wrong picture on screen with nothing to say so.
+ */
+int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha);
+
+/*
  * Rasterize one triangle - exactly three vertices - into the target, testing
  * and updating `depth` if it is not null, sampling `texture` if it is not.
  *
  * Returns non-zero when the triangle was processed, which includes a
  * degenerate one that covers no pixel centre. Returns zero only when the
  * arguments are ones it refuses: a target that fails the check above, a
- * non-null depth buffer or texture that fails its own, a coordinate outside
+ * non-null depth buffer, texture or blend that fails its own, a coordinate
+ * outside
  * [0, V9X_D3D_RASTER_COORD_MAX], a depth outside
  * [0, V9X_D3D_RASTER_DEPTH_MAX] or a texture coordinate outside
  * [0, V9X_D3D_RASTER_TEXCOORD_MAX]. The caller clips and clamps; a refusal
@@ -283,6 +333,7 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture);
 int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
                             const V9X_D3D_RASTER_TEXTURE *texture,
+                            const V9X_D3D_RASTER_ALPHA *alpha,
                             const V9X_D3D_RASTER_VERTEX *vertices);
 
 #endif

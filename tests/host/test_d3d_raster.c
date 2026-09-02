@@ -109,6 +109,25 @@ static v9x_u16 raster_pixel(unsigned int x, unsigned int y)
  * Nothing outside the declared extent was written: not the guard margins, not
  * the padding between the width and the pitch.
  */
+/* The same check against a chosen background, for the tests that fill the
+ * whole buffer rather than reset it. */
+static void raster_check_untouched_margins_value(v9x_u16 background)
+{
+    unsigned int index;
+    unsigned int row;
+    unsigned int column;
+
+    for (index = 0u; index < RASTER_GUARD; ++index) {
+        RCHECK(raster_cells[index] == background);
+        RCHECK(raster_cells[RASTER_CELLS - 1u - index] == background);
+    }
+    for (row = 0u; row < RASTER_HEIGHT; ++row) {
+        for (column = RASTER_WIDTH; column < RASTER_STRIDE; ++column) {
+            RCHECK(raster_pixel(column, row) == background);
+        }
+    }
+}
+
 static void raster_check_untouched_margins(void)
 {
     unsigned int index;
@@ -138,6 +157,9 @@ static void raster_vertex(V9X_D3D_RASTER_VERTEX *vertex,
     vertex->red = red;
     vertex->green = green;
     vertex->blue = blue;
+    /* Opaque unless a test says otherwise, so every draw that predates
+     * blending keeps meaning what it meant. */
+    vertex->alpha = 255l;
 }
 
 /* The depth tests want the same vertex with a depth on it. Kept separate so
@@ -218,8 +240,8 @@ static void test_refuses_coordinates_it_cannot_carry(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(20), PX(4), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(4), PX(18), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, 0) == 0);
 
     /* The caller clips and clamps. A refusal here means it did not, and
      * drawing anyway would write outside a surface that is also the desktop. */
@@ -230,16 +252,16 @@ static void test_refuses_coordinates_it_cannot_carry(void)
         raster_reset(&target);
         saved = triangle[index].x;
         triangle[index].x = -1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) == 0);
         triangle[index].x = V9X_D3D_RASTER_COORD_MAX + 1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) == 0);
         triangle[index].x = saved;
 
         saved = triangle[index].y;
         triangle[index].y = -1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) == 0);
         triangle[index].y = V9X_D3D_RASTER_COORD_MAX + 1l;
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) == 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) == 0);
         triangle[index].y = saved;
 
         /* A refusal draws nothing at all, rather than the part it liked. */
@@ -275,7 +297,7 @@ static void test_flat_triangle_is_one_colour(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 0l, 0l);
     raster_vertex(&triangle[1], PX(10), PX(2), 255l, 0l, 0l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -318,7 +340,7 @@ static void test_shared_edge_is_covered_exactly_once(void)
     raster_vertex(&triangle[0], PX(2), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(10), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
             first[row][column] = raster_pixel(column, row);
@@ -329,7 +351,7 @@ static void test_shared_edge_is_covered_exactly_once(void)
     raster_vertex(&triangle[0], PX(10), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[1], PX(10), PX(8), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(2), PX(8), 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -368,7 +390,7 @@ static void test_full_target_triangle_stays_inside(void)
     raster_vertex(&triangle[0], PX(0), PX(0), 0l, 255l, 0l);
     raster_vertex(&triangle[1], PX(RASTER_WIDTH * 3u), PX(0), 0l, 255l, 0l);
     raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT * 3u), 0l, 255l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_HEIGHT; ++row) {
         for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -406,7 +428,7 @@ static void test_degenerate_triangles_draw_nothing(void)
             raster_vertex(&triangle[1], PX(7), PX(18), 255l, 255l, 255l);
             raster_vertex(&triangle[2], PX(7), PX(9), 255l, 255l, 255l);
         }
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
 
         for (row = 0u; row < RASTER_HEIGHT; ++row) {
             for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -450,7 +472,7 @@ static void test_vertex_order_does_not_matter(void)
         permuted[2] = source[orders[order][2]];
 
         raster_reset(&target);
-        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, permuted) != 0);
+        RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, permuted) != 0);
 
         for (row = 0u; row < RASTER_HEIGHT; ++row) {
             for (column = 0u; column < RASTER_WIDTH; ++column) {
@@ -496,7 +518,7 @@ static void test_gouraud_ramps_across_a_span(void)
     raster_vertex(&triangle[0], PX(1), PX(4), 0l, 0l, 0l);
     raster_vertex(&triangle[1], PX(31), PX(4), 255l, 0l, 0l);
     raster_vertex(&triangle[2], PX(1), PX(20), 0l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
 
     for (column = 0u; column < RASTER_WIDTH; ++column) {
         v9x_u16 value = raster_pixel(column, row);
@@ -547,12 +569,12 @@ static int raster_depth_quad(V9X_D3D_RASTER_TARGET *target,
     raster_vertex_z(&triangle[0], PX(4), PX(4), z, red, green, blue);
     raster_vertex_z(&triangle[1], PX(28), PX(4), z, red, green, blue);
     raster_vertex_z(&triangle[2], PX(4), PX(20), z, red, green, blue);
-    ok = v9x_d3d_raster_triangle(target, depth, 0, triangle) != 0;
+    ok = v9x_d3d_raster_triangle(target, depth, 0, 0, triangle) != 0;
 
     raster_vertex_z(&triangle[0], PX(28), PX(4), z, red, green, blue);
     raster_vertex_z(&triangle[1], PX(28), PX(20), z, red, green, blue);
     raster_vertex_z(&triangle[2], PX(4), PX(20), z, red, green, blue);
-    return ok && v9x_d3d_raster_triangle(target, depth, 0, triangle) != 0;
+    return ok && v9x_d3d_raster_triangle(target, depth, 0, 0, triangle) != 0;
 }
 
 /*
@@ -708,11 +730,11 @@ static void test_depth_interpolates_across_a_triangle(void)
     raster_vertex_z(&triangle[0], PX(4), PX(4), 1000l, 255l, 0l, 0l);
     raster_vertex_z(&triangle[1], PX(28), PX(4), 60000l, 255l, 0l, 0l);
     raster_vertex_z(&triangle[2], PX(4), PX(20), 1000l, 255l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) != 0);
     raster_vertex_z(&triangle[0], PX(28), PX(4), 60000l, 255l, 0l, 0l);
     raster_vertex_z(&triangle[1], PX(28), PX(20), 60000l, 255l, 0l, 0l);
     raster_vertex_z(&triangle[2], PX(4), PX(20), 1000l, 255l, 0l, 0l);
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) != 0);
 
     /* Row 5 sits inside the first triangle, above the diagonal, so its stored
      * depths come from the ramp and must increase left to right. */
@@ -774,15 +796,15 @@ static void test_depth_refusals(void)
     raster_vertex_z(&triangle[0], PX(4), PX(4), 100l, 255l, 255l, 255l);
     raster_vertex_z(&triangle[1], PX(28), PX(4), 100l, 255l, 255l, 255l);
     raster_vertex_z(&triangle[2], PX(4), PX(20), 100l, 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) == 0);
     RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
 
     /* An out-of-range depth is refused the same way a coordinate is. */
     raster_depth_reset(&depth, V9X_D3D_RASTER_CMP_ALWAYS, 1ul, 65535u);
     triangle[1].z = V9X_D3D_RASTER_DEPTH_MAX + 1l;
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) == 0);
     triangle[1].z = -1l;
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) == 0);
     RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
 
     /* And the same triangle with no depth buffer at all still draws. This one
@@ -790,7 +812,7 @@ static void test_depth_refusals(void)
      * sample sits at (10,8) - well inside it - and not at the quad's centre,
      * which is on the far side of this triangle's hypotenuse. */
     triangle[1].z = 100l;
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, triangle) != 0);
     RCHECK(raster_pixel(10u, 8u) == 0xffffu);
     raster_check_untouched_margins();
 }
@@ -856,7 +878,7 @@ static void test_depth_full_height_interpolation(void)
                     255l, 255l, 255l);
     raster_vertex_z(&triangle[2], PX(0), PX(RASTER_TALL_HEIGHT - 1u),
                     V9X_D3D_RASTER_DEPTH_MAX, 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) != 0);
     raster_vertex_z(&triangle[0], PX(RASTER_TALL_WIDTH), PX(0), 0l,
                     255l, 255l, 255l);
     raster_vertex_z(&triangle[1], PX(RASTER_TALL_WIDTH),
@@ -864,7 +886,7 @@ static void test_depth_full_height_interpolation(void)
                     255l, 255l, 255l);
     raster_vertex_z(&triangle[2], PX(0), PX(RASTER_TALL_HEIGHT - 1u),
                     V9X_D3D_RASTER_DEPTH_MAX, 255l, 255l, 255l);
-    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, &depth, 0, 0, triangle) != 0);
 
     for (row = 0u; row < RASTER_TALL_HEIGHT; ++row) {
         int stored = (int)raster_tall_depth[row * RASTER_TALL_WIDTH];
@@ -987,7 +1009,7 @@ static int raster_textured_quad(V9X_D3D_RASTER_TARGET *target,
     triangle[1].u = edge;
     raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), red, green, blue);
     triangle[2].v = edge;
-    ok = v9x_d3d_raster_triangle(target, 0, texture, triangle) != 0;
+    ok = v9x_d3d_raster_triangle(target, 0, texture, 0, triangle) != 0;
 
     raster_vertex(&triangle[0], PX(RASTER_WIDTH), PX(0), red, green, blue);
     triangle[0].u = edge;
@@ -997,7 +1019,7 @@ static int raster_textured_quad(V9X_D3D_RASTER_TARGET *target,
     triangle[1].v = edge;
     raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), red, green, blue);
     triangle[2].v = edge;
-    return ok && v9x_d3d_raster_triangle(target, 0, texture, triangle) != 0;
+    return ok && v9x_d3d_raster_triangle(target, 0, texture, 0, triangle) != 0;
 }
 
 static void test_texture_validation(void)
@@ -1093,6 +1115,239 @@ static void test_texture_point_sampling(void)
     RCHECK(raster_pixel(12u, 8u) == 0x0000u);
     raster_check_untouched_margins();
     raster_texture_check_margins();
+}
+
+
+/*
+ * Fill the whole target - guard margins included - with one colour, so a
+ * blend has a known destination to read.
+ *
+ * The margins get it too, deliberately: they are checked afterwards against
+ * the same value, so a blend that read or wrote outside the extent is still
+ * caught.
+ */
+static void raster_fill(v9x_u16 colour)
+{
+    unsigned int index;
+
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_cells[index] = colour;
+    }
+}
+
+/*
+ * One flat quad, with a colour and an alpha, so the blend tests read an
+ * interior pixel rather than an edge.
+ */
+static int raster_blended_quad(const V9X_D3D_RASTER_TARGET *target,
+                               const V9X_D3D_RASTER_ALPHA *alpha,
+                               v9x_s32 red, v9x_s32 green, v9x_s32 blue,
+                               v9x_s32 alpha_value)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    int ok;
+
+    raster_vertex(&triangle[0], PX(4), PX(4), red, green, blue);
+    raster_vertex(&triangle[1], PX(24), PX(4), red, green, blue);
+    raster_vertex(&triangle[2], PX(4), PX(20), red, green, blue);
+    triangle[0].alpha = alpha_value;
+    triangle[1].alpha = alpha_value;
+    triangle[2].alpha = alpha_value;
+    ok = v9x_d3d_raster_triangle(target, 0, 0, alpha, triangle) != 0;
+
+    raster_vertex(&triangle[0], PX(24), PX(4), red, green, blue);
+    raster_vertex(&triangle[1], PX(24), PX(20), red, green, blue);
+    raster_vertex(&triangle[2], PX(4), PX(20), red, green, blue);
+    triangle[0].alpha = alpha_value;
+    triangle[1].alpha = alpha_value;
+    triangle[2].alpha = alpha_value;
+    return ok &&
+           v9x_d3d_raster_triangle(target, 0, 0, alpha, triangle) != 0;
+}
+
+/*
+ * Opaque means opaque: ONE with ZERO writes the source and reads nothing.
+ *
+ * Drawn over a saturated destination rather than over black, because a blend
+ * that ignored its factors and averaged would land halfway and a blend that
+ * dropped the destination term entirely would not - only a full-strength
+ * destination separates the two.
+ */
+static void test_alpha_one_zero_replaces(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0xffffu);       /* white */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_ONE;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 0l, 0l) != 0);
+
+    /* Alpha zero and still fully red, because neither factor consults it. */
+    RCHECK(raster_pixel(12u, 10u) == 0xf800u);
+}
+
+/*
+ * A fully opaque SRCALPHA blend is exactly the source, not one level short.
+ *
+ * This is the test for the 255-to-256 weight correction, and the colour it
+ * uses is chosen to make that correction observable. A saturated channel
+ * cannot show it: 255 * 255 + 255 * 1 is 65280, which is 255 after the shift
+ * either way, so red-over-white passes with the correction removed. A middling
+ * channel over black does show it - 200 * 256 is 200 and 200 * 255 is 199 -
+ * and 200 and 199 differ in the fifth bit of the red field, so the packed
+ * pixel differs too.
+ *
+ * The error the correction prevents is one level per channel on everything
+ * blended, which reads as a grey haze rather than as a bug.
+ */
+static void test_alpha_full_is_exact(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0x0000u);       /* black, so the destination term is zero */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 200l, 200l, 200l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) ==
+           v9x_d3d_raster_rgb565(200l, 200l, 200l));
+
+    /* And with a saturated source over white, where the two arithmetics agree
+     * - stated so that a later reader does not "simplify" the case above. */
+    raster_reset(&target);
+    raster_fill(0xffffu);
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 0l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0xf800u);
+}
+
+/*
+ * A fully transparent one leaves the destination untouched.
+ *
+ * The other end of the same range, and the one that catches a weight computed
+ * with the wrong sign: the pixel has to come back bit for bit, not merely
+ * close.
+ */
+static void test_alpha_zero_keeps_destination(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0x001fu);       /* blue */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0x001fu);
+}
+
+/*
+ * Half alpha lands near the middle in both channels.
+ *
+ * The same case the guest probe draws - 0x80ff0000, half-alpha red, over a
+ * blue destination - so a disagreement between this test and the probe is a
+ * disagreement about the driver rather than about the arithmetic. Checked as
+ * a window rather than an exact value because the destination's blue arrives
+ * through a five-bit field and leaves through one.
+ */
+static void test_alpha_half_blends(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    v9x_u16 value;
+
+    raster_reset(&target);
+    raster_fill(0x001fu);
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 0l, 128l) != 0);
+
+    value = raster_pixel(12u, 10u);
+    RCHECK((value >> 11) >= 13u && (value >> 11) <= 18u);       /* red */
+    RCHECK(((value >> 5) & 0x3fu) <= 2u);                       /* green */
+    RCHECK((value & 0x1fu) >= 13u && (value & 0x1fu) <= 18u);   /* blue */
+    raster_check_untouched_margins_value(0x001fu);
+}
+
+/*
+ * Alpha is interpolated across the triangle, not taken from one vertex.
+ *
+ * Opaque at the left edge and transparent at the right, over a blue
+ * destination: the row has to run from red to blue rather than being one
+ * colour throughout. A flat-alpha engine passes every test above and fails
+ * this one, which is why it exists - ALPHAGOURAUDBLEND is a separate claim
+ * from ALPHAFLATBLEND and describe_caps publishes both.
+ */
+static void test_alpha_gouraud_varies(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int left_red;
+    unsigned int right_red;
+    unsigned int middle_red;
+
+    raster_reset(&target);
+    raster_fill(0x001fu);
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+
+    raster_vertex(&triangle[0], PX(4), PX(4), 255l, 0l, 0l);
+    raster_vertex(&triangle[1], PX(28), PX(4), 255l, 0l, 0l);
+    raster_vertex(&triangle[2], PX(4), PX(20), 255l, 0l, 0l);
+    triangle[0].alpha = 255l;
+    triangle[1].alpha = 0l;
+    triangle[2].alpha = 255l;
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, triangle) != 0);
+
+    left_red = (unsigned int)(raster_pixel(6u, 6u) >> 11);
+    middle_red = (unsigned int)(raster_pixel(12u, 6u) >> 11);
+    right_red = (unsigned int)(raster_pixel(20u, 6u) >> 11);
+    RCHECK(left_red > middle_red);
+    RCHECK(middle_red > right_red);
+    RCHECK(left_red >= 24u);
+}
+
+/*
+ * The factor pairs this engine does not implement are refused, not
+ * approximated.
+ *
+ * A driver that substituted the nearest factor it had would draw a plausible
+ * wrong picture with nothing anywhere to say so, and the caps published in
+ * d3d_soft.c claim exactly these four. The engine there turns a refused pair
+ * into an opaque draw before it reaches here; this is the layer that says no.
+ */
+static void test_alpha_refusals(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster_reset(&target);
+    raster_vertex(&triangle[0], PX(2), PX(2), 255l, 0l, 0l);
+    raster_vertex(&triangle[1], PX(20), PX(2), 255l, 0l, 0l);
+    raster_vertex(&triangle[2], PX(2), PX(18), 255l, 0l, 0l);
+
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_ONE;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
+    RCHECK(v9x_d3d_raster_alpha_valid(0) == 0);
+
+    /* D3DBLEND_SRCCOLOR, a legal render state and not one of the four. */
+    alpha.src = 3ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, triangle) == 0);
+
+    /* D3DBLEND_DESTCOLOR on the other side. */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = 9ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, triangle) == 0);
+
+    /* Nothing was drawn by either refusal. */
+    RCHECK(raster_pixel(4u, 4u) == RASTER_BACKGROUND);
 }
 
 /*
@@ -1316,7 +1571,7 @@ static void test_texture_refusals(void)
     raster_vertex(&triangle[2], PX(2), PX(20), 255l, 255l, 255l);
 
     texture.size = 6ul;
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
     RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
 
     raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
@@ -1324,18 +1579,18 @@ static void test_texture_refusals(void)
                          V9X_D3D_RASTER_BLEND_DECAL);
     raster_texel_set(0u, 0u, 0x7fffu);
     triangle[1].u = V9X_D3D_RASTER_TEXCOORD_MAX + 1l;
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
     triangle[1].u = -1l;
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
     triangle[1].u = 0l;
     triangle[1].v = V9X_D3D_RASTER_TEXCOORD_MAX + 1l;
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, triangle) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
     triangle[1].v = 0l;
     RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
 
     /* Texel (0,0) covers the sampled point at these coordinates, and it is
      * white; the whole triangle takes it because every coordinate is zero. */
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, triangle) != 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) != 0);
     RCHECK(raster_pixel(10u, 8u) == 0xffffu);
     raster_texture_check_margins();
 }
@@ -1361,6 +1616,12 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_point_sampling();
     test_texture_format_decode();
     test_texture_format_decode_565();
+    test_alpha_one_zero_replaces();
+    test_alpha_full_is_exact();
+    test_alpha_zero_keeps_destination();
+    test_alpha_half_blends();
+    test_alpha_gouraud_varies();
+    test_alpha_refusals();
     test_texture_bilinear_blends();
     test_texture_blend_modes();
     test_texture_refusals();

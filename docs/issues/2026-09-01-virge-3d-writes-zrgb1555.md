@@ -1,7 +1,10 @@
 # The ViRGE's S3D triangle engine writes ZRGB1555 into an RGB565 target
 
 Date: 2026-09-01
-Status: open, measured, cause not established
+Status: **cause established 2026-09-02** from the Windows 98 DDK's own S3
+ViRGE driver. The engine has no RGB565 destination format. Not a defect in
+`d3d_virge.c`; the fix, if it is taken, is a 5:5:5 desktop. See
+[the record](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
 Component: `src\display32\d3d\d3d_virge.c`
 
 ## The defect
@@ -90,7 +93,28 @@ does write 1555 into a 16-bit destination".
 
 See [`2026-09-02-trio3d-on-the-s3-path.md`](../decisions/2026-09-02-trio3d-on-the-s3-path.md).
 
-## What would settle it
+## Settled, 2026-09-02: hypothesis 2, from S3's own driver
+
+`C:\98DDK\src\display\mini\s3v\VIRGE1.H:130-133` defines the 3D command
+word's destination field, and it has three values: `cmdDEST_FMT_8BPP_PAL`,
+`cmdDEST_FMT_ZRGB1555` and `cmdDEST_FMT_RGB888`. **There is no RGB565
+destination format.** `D3DRENDR.C:365-374` switches on bit depth alone and
+never looks at the channel masks, exactly as `v9x_d3d_virge_draw_triangles`
+does.
+
+So hypothesis 1 is dead: an emulator-only gap would not appear in the header
+S3 shipped. Three sources agree - 86Box, a physical Trio3D/2X, and the vendor
+driver.
+
+S3's driver reports a 565 primary and writes 1555 into it, the same as this one.
+Between the two sits `HighColor=15` in `SYSTEM.INI` (`INIT.ASM:123,242-248`,
+`VGA.ASM:3574-3580`), which runs the 16 bpp desktop as 5:5:5. That is the only
+mechanism in S3's driver that puts the engine's output in the right channels.
+
+Full record, including what else the DDK says the ViRGE can do:
+[`../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md`](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
+
+## What would have settled it - kept for the reasoning
 
 Two possibilities, and the emulator cannot distinguish them because the
 emulator is the model:

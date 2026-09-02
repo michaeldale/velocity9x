@@ -485,6 +485,8 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_FOGENABLE              28ul
 #define V9X_D3DRENDERSTATE_SPECULARENABLE         29ul
 #define V9X_D3DRENDERSTATE_FOGCOLOR               34ul
+#define V9X_D3DBLEND_ZERO                           1ul
+#define V9X_D3DBLEND_ONE                            2ul
 #define V9X_D3DBLEND_SRCALPHA                       5ul
 #define V9X_D3DBLEND_INVSRCALPHA                    6ul
 #define V9X_D3DRENDERSTATE_TEXTUREHANDLE             1ul

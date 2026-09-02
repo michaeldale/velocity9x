@@ -84,6 +84,20 @@ typedef char v9x_assert_soft_filter[
      V9X_D3D_RASTER_BLEND_DECAL == V9X_D3DTBLEND_DECAL &&
      V9X_D3D_RASTER_BLEND_MODULATE == V9X_D3DTBLEND_MODULATE) ? 1 : -1];
 
+/*
+ * The four blend factors travel untranslated as well, and the assertion
+ * carries more weight here than for the filters: an application sets
+ * SRCBLEND and DESTBLEND to numbers from the same enumeration, and a
+ * disagreement would not fail - it would blend with the wrong factor and put
+ * a plausible wrong picture on screen.
+ */
+typedef char v9x_assert_soft_blend_factor[
+    (V9X_D3D_RASTER_BLEND_SRC_ONE == V9X_D3DBLEND_ONE &&
+     V9X_D3D_RASTER_BLEND_SRC_SRCALPHA == V9X_D3DBLEND_SRCALPHA &&
+     V9X_D3D_RASTER_BLEND_DST_ZERO == V9X_D3DBLEND_ZERO &&
+     V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA == V9X_D3DBLEND_INVSRCALPHA)
+        ? 1 : -1];
+
 typedef char v9x_assert_soft_compare[
     (V9X_D3D_RASTER_CMP_NEVER == V9X_D3DCMP_NEVER &&
      V9X_D3D_RASTER_CMP_LESS == V9X_D3DCMP_LESS &&
@@ -359,8 +373,22 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
-    shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps = 0ul;
-    shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps = 0ul;
+    /*
+     * Source and destination blend, the same four factors S3's own ViRGE
+     * driver publishes (98DDK D3DDRV.C:239-242). ONE with ZERO is opaque and
+     * SRCALPHA with INVSRCALPHA is ordinary transparency; the rasterizer
+     * refuses any other pair rather than substituting one, so these four are
+     * exactly what it will do.
+     *
+     * The alpha comes from the vertex colour's top byte only. There is still
+     * no D3DPTEXTURECAPS_ALPHA below, because the sampler still discards a
+     * texel's alpha - a texture-alpha blend is a separate change with its own
+     * pixel test.
+     */
+    shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_ONE | V9X_D3DPBLENDCAPS_SRCALPHA;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_INVSRCALPHA;
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
@@ -370,7 +398,17 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
          * a line being written for it - and unlike the fog caps below, it has
          * a measured pixel: D3DSpecularGouraudOk on the Trio64, 2026-09-01.
          */
-        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
+        /*
+         * Alpha flat and Gouraud. The alpha channel is interpolated across the
+         * triangle by the same lerp the colour channels use, so a triangle
+         * whose three vertices carry different alphas fades across it; flat is
+         * the case where they are equal, and claiming one without the other
+         * would be describing an engine that special-cases something it does
+         * not.
+         */
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
         V9X_D3DPTEXTURECAPS_POW2 | V9X_D3DPTEXTURECAPS_SQUAREONLY;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
@@ -554,6 +592,10 @@ static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
     result->red = (v9x_s32)((source->color >> 16) & 0xfful);
     result->green = (v9x_s32)((source->color >> 8) & 0xfful);
     result->blue = (v9x_s32)(source->color & 0xfful);
+    /* The top byte of the same DWORD. Read unconditionally, because a draw
+     * with no blend ignores it, and reading it only when blending is enabled
+     * would make the vertex mean two different things. */
+    result->alpha = (v9x_s32)((source->color >> 24) & 0xfful);
 }
 
 /*
@@ -580,6 +622,8 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     const V9X_D3D_RASTER_DEPTH *depth_arg = 0;
     V9X_D3D_RASTER_TEXTURE texture;
     const V9X_D3D_RASTER_TEXTURE *texture_arg = 0;
+    V9X_D3D_RASTER_ALPHA alpha;
+    const V9X_D3D_RASTER_ALPHA *alpha_arg = 0;
     DWORD index;
 
     if (context == 0 || vertices == 0 || v9x_hal == 0) {
@@ -630,6 +674,22 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
         texture_arg = &texture;
     }
 
+    /*
+     * A blend the rasterizer will not do draws opaque rather than refusing the
+     * batch, on the same argument the texture makes above: the factor pair is
+     * render state an application may set to anything in the enumeration, and
+     * a refusal would report failure for a legal draw. Opaque is the wrong
+     * picture, but it is a picture, and the caps say which four factors this
+     * engine actually applies.
+     */
+    if (context->alpha_blend_enable != 0ul) {
+        alpha.src = context->src_blend;
+        alpha.dst = context->dest_blend;
+        if (v9x_d3d_raster_alpha_valid(&alpha)) {
+            alpha_arg = &alpha;
+        }
+    }
+
     for (index = 0ul; index < triangle_count; ++index) {
         V9X_D3D_RASTER_VERTEX triangle[3];
         DWORD corner;
@@ -639,7 +699,7 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
                                 &triangle[corner]);
         }
         if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg,
-                                     triangle)) {
+                                     alpha_arg, triangle)) {
             return 0;
         }
     }
