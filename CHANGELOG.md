@@ -4,50 +4,126 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.7.0 - 2026-09-02
 
-**A Trio64 created a Direct3D device and drew.** `Direct3D=2` now resolves to a
-CPU engine on any chip: `Direct3DMode=software`, `D3DHalFound=1`,
-`D3DCreateDeviceHr=0x00000000` and pixels on screen, on a card whose own
-answer is `not-advertised`.
+**Direct3D on cards that have never had it.** `Direct3D=2` on the Velocity9x
+page serves Direct3D from a CPU rasterizer on any supported chip - depth-tested,
+textured, Gouraud-shaded triangles on a Trio64 and an ATI Mach64 VT2, neither of
+which has a 3D engine and the second of which has no 2D engine this driver
+drives either. It is slow, its capabilities advertise exactly what it renders
+and nothing more, and **it has never been timed on a period machine.**
 
-**What was built is not a rasterizer.** `draw_triangles` fills each triangle's
-bounding box with a flat colour and `describe_caps` advertises nothing else -
-deliberately, so that the whole path is proved before any edge-stepping
-arithmetic exists. This driver has twice spent a long time establishing that
-the thing wrong with a new Direct3D path was not the part that had just been
-written.
+### The rasterizer
 
-The change that mattered is underneath it: **three ViRGE-specific gates left
-the chip-neutral draw path.** `v9x_d3d_engine()` tests the software capability
-before `engine_type` - mode first, chip second. `v9x_engine_status_validated()`
-is gone from all three draw entry points, replaced by a `ready` hook appended
-to `V9X_D3D_ENGINE_OPS`; it resolved through a literal
-`engine_type == S3_VIRGE_DX` test, so a Trio64 failed it and a software engine
-fails it by construction, and the result would have been an engine that
-published caps, accepted every call and drew nothing with every HRESULT
-reporting success. The unconditional `v9x_engine_validate_status()` beside each
-went with it.
+`src\display32\d3d\d3d_raster.c` is a leaf translation unit: it includes nothing
+but `velocity9x\types.h`, holds no state, touches no register, and takes its
+render target as a pointer, a pitch and an extent. The host suite
+(`tests\host\test_d3d_raster.c`) holds it to properties rather than to a
+picture, because a rasterizer looks right long before it is right - two
+triangles sharing an edge cover it exactly once, nothing is written outside the
+target, a flat-coloured triangle is exactly one colour, the same triangle in all
+six vertex orders draws identical pixels, and a refused triangle draws nothing.
 
-The mode reaches the 32-bit side as `V9X_DD_ENGINE_CAP_D3D_SOFTWARE`, so **no
-ABI or layout change**. It is stamped outside the descriptor branch, because
-four of the six families supply no `fill_engine_descriptor` and those are
-exactly the cards this mode is for. And `v9x_dd_block()` now stamps the
-capability word before `DriverInit`, which is what finally lets
-`v9x_d3d_publish_engine()` select - a function that has carried a comment
-since 2026-08-29 explaining why it could not.
+Three numbers in it are decisions rather than mechanics, and each is an overflow
+bound rather than a taste:
 
-**The one failing probe key is the interesting one.** `D3DTrianglePixelOk=0`
-because the probe expects `31744` - red in ZRGB1555, the value the ViRGE
-writes - while the software engine wrote `63488`, red in RGB565, which is the
-format the surface is described as. README already records that mismatch as a
-known ViRGE defect; a second engine has now made it visible from outside rather
-than only in a comment. Not fixed here: deciding whether the ViRGE path or the
-probe is wrong is a separate question with its own evidence.
+- **Integer only, 28.4 screen coordinates.** The float-to-fixed conversion stays
+  in the engine, where the `#pragma aux` fistp lives, so the arithmetic compiles
+  under both host passes.
+- **A 2048-pixel target cap.** Every interpolation product is bounded by
+  coordinate squared; 32752 squared is 1,072,693,504 and fits, 4096 pixels would
+  not, and the failure would be wrong spans on large modes only with nothing
+  reported. `d3d_soft.c` asserts its own limit against it at compile time.
+- **One texture repeat, so the sampler clamps and the caps publish CLAMP without
+  WRAP.** The edge interpolator's denominator is at most 32752, so anything it
+  carries must stay under 65566; depth already sits at 65535 against that bound.
 
-**No regression on the ViRGE.** Same build, hardware mode, after all three
-gates moved: every functional key matches the recorded ladder, depth and depth
-fill included.
+Coverage is pixel centres with half-open intervals in both axes. Depth is
+16-bit with all eight comparison functions and a write mask, numbered as
+`D3DCMP_*` numbers them so the engine passes the render state through
+untranslated - and asserts that equality at compile time, because the ViRGE
+needs a real table there and using the wrong order draws a scene inside out
+rather than one that is missing.
+
+### Capabilities that match the engine
+
+Published: RGB, float TL vertices, execute buffers from system memory, texturing
+from device memory, 16-bit target and Z, all eight comparison functions, flat
+and Gouraud RGB, specular Gouraud, subpixel, NEAREST and LINEAR, DECAL and
+MODULATE, POW2 and SQUAREONLY, CLAMP.
+
+Withheld, each with its reason in the file: WRAP, the four mip filters, texture
+alpha and every alpha blend cap, PERSPECTIVE, COPY, and the fog caps - fog
+works, but on one probe rung, and it goes in when there is a ladder behind it.
+
+### The mode is now selectable, on the cards it was written for
+
+The Display Properties selector offered Hardware and Disabled, and greyed itself
+out entirely on any chip without an S3D unit - which is every chip the software
+mode exists for. **The mode worked and only the page could not reach it.**
+
+It now offers Software everywhere and Hardware only where there is hardware
+Direct3D to select: a ViRGE sees three entries, a Trio64, ATI or VESA card sees
+Software and Disabled. A card sitting on the default is shown its own words for
+what it is doing - "Not advertised on this chip" - carrying the loaded value, so
+opening the page and pressing OK still writes nothing.
+
+### The probe stopped certifying a bug
+
+Every "did it draw the right colour" verdict compared against a ZRGB1555
+literal, against an RGB565 render target. Those constants were written to match
+what the ViRGE's triangle engine writes rather than what the surface declares,
+and with a second engine present they reported a correct engine as failing -
+three keys at once, each needing to be read back out of its raw value by hand.
+
+The probe now reads the target's `ddpfPixelFormat` and derives its expectations,
+comparing channels as 0..255 where a range is wanted, and records what it used.
+Six Trio64 keys went from 0 to 1 with no driver change, specular Gouraud among
+them - the core folds specular into the vertex colour, so the software engine
+had it without a line written for it.
+
+**Six ViRGE keys went the other way, and that is the defect rather than the
+probe.** Every ViRGE key whose expected colour is blue still passes, blue being
+`0x001F` in both formats and the one colour they agree on; every key carrying
+red, green or white fails. The S3D unit writes ZRGB1555 into a surface described
+as RGB565, which README has recorded as an unresolved mismatch since the first
+Direct3D work and which is now measured from outside instead of noted in a
+comment. 86Box cannot settle whether the chip has a destination-format control
+its model omits, because the emulator is the model; the physical ViRGE can.
+
+### Found by measuring
+
+- **Both engines lose the last row and column** of a full-target triangle. The
+  chip-neutral clipper cuts to `extent - 1` - the last row's top edge, not its
+  bottom - so under a pixel-centre coverage rule that row is never covered. On a
+  full-screen target it is a one-pixel dark line down the right and along the
+  bottom. Filed, not fixed: widening it changes what every engine receives and
+  moves the rasterizer's overflow bound with it. A host test pins the count at
+  2047 rows of 2048 so it cannot change silently.
+
+### Measured
+
+`Win98SE-Trio64` (S3 Trio32/64, 800x600x16) and `Win98SE-Mach64VT2` (ATI Mach64
+VT2, 1024x768x16, `Acceleration=none`), with `Win86SE` (ViRGE/DX) as the
+hardware control on the same binaries. Both software-mode guests report
+`Result=COMPLETE` with `TexFormatCount=2` and every functional key passing:
+flat and subpixel triangles, triangle shape, all four depth-compare rungs, the
+write mask, specular, fog, both texture formats and a context cycle. Published
+caps identical on both.
+
+**Ironfield 1.2**, 279 frames at 16 FPS, 640x480, Video + BltFast on the Trio64
+in software mode - matching that machine's own benchmark history of 16 FPS and
+274-280 frames on every run since 2026-08-14. The software Direct3D mode costs
+the DirectDraw path nothing.
+
+### Not established
+
+No performance measurement of the rasterizer exists at all. Every run above is a
+64x64 render target on an emulated guest; the plan's first work-order item - the
+VRAM versus system-memory write cost on BARRY - has still never been run, and no
+period machine has drawn a triangle through this. No VBE guest ran either: that
+image is in a broken display configuration and reviving it is its own task, so
+the VBE claim rests on the ATI run plus a code chain rather than on the card.
 
 ## 0.6.5 - 2026-08-30
 

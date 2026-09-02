@@ -17,9 +17,9 @@
  * build identity carries them.
  */
 #define V9X_VERSION_MAJOR 0u
-#define V9X_VERSION_MINOR 6u
-#define V9X_VERSION_PATCH 5u
-#define V9X_VERSION_STRING "0.6.5"
+#define V9X_VERSION_MINOR 7u
+#define V9X_VERSION_PATCH 0u
+#define V9X_VERSION_STRING "0.7.0"
 
 struct v9x_build_identity {
     v9x_u16 major;
