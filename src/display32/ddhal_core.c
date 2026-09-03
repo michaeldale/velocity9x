@@ -333,6 +333,69 @@ static int v9x_can_set_display_start(void)
     return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
 }
 
+/*
+ * A flip is not done when its registers are written.
+ *
+ * The CRTC latches a new start address at the beginning of the next frame -
+ * 86Box models it the way the silicon behaves, a memaddr_latch copied into the
+ * live address at frame start - so between the write and the next vertical
+ * retrace the OLD page is still what the monitor shows. Until 2026-09-03
+ * GetFlipStatus answered "done" the instant Flip returned, and every double-
+ * buffered application then drew its next frame into the page still being
+ * scanned out. Final Reality on the emulated ViRGE flickered for exactly that
+ * reason: 77 flips, 821 status polls, and every poll told it to go ahead.
+ *
+ * So a flip is pending until a retrace has begun since it was issued, and the
+ * status call is what says so. Three states, because the flip may itself land
+ * during a retrace: then the latch the application needs is the one after
+ * next, so the machine waits to see the blank end before it waits to see one
+ * begin. DDRAW polls the status call before it lets an application touch a
+ * flip-chain surface or flip again, so this single answer is what throttles
+ * the application to the refresh rate - which is what a flip is for.
+ *
+ * Deliberately not a wait inside Flip itself: the HAL must not spin for a
+ * frame with the Win16 lock held, and an application that asked for
+ * DDFLIP_NOVSYNC gets the old behaviour on request.
+ */
+#define V9X_FLIP_IDLE          0ul
+#define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
+#define V9X_FLIP_WAIT_UNBLANK  2ul   /* issued in a blank: see it end first  */
+
+static DWORD v9x_flip_state = V9X_FLIP_IDLE;
+
+static void v9x_flip_arm(int novsync)
+{
+    if (novsync) {
+        v9x_flip_state = V9X_FLIP_IDLE;
+        return;
+    }
+    v9x_flip_state = v9x_in_vblank() ? V9X_FLIP_WAIT_UNBLANK
+                                     : V9X_FLIP_WAIT_BLANK;
+}
+
+/* Advance the state from what the CRTC says now; non-zero when the flip has
+ * been taken by the scanout. */
+static int v9x_flip_done(void)
+{
+    int blank;
+
+    if (v9x_flip_state == V9X_FLIP_IDLE) {
+        return 1;
+    }
+    blank = v9x_in_vblank();
+    if (v9x_flip_state == V9X_FLIP_WAIT_UNBLANK) {
+        if (!blank) {
+            v9x_flip_state = V9X_FLIP_WAIT_BLANK;
+        }
+        return 0;
+    }
+    if (blank) {
+        v9x_flip_state = V9X_FLIP_IDLE;
+        return 1;
+    }
+    return 0;
+}
+
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 {
     DWORD offset = v9x_surface_offset(data->lpSurfTarg);
@@ -343,6 +406,15 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     }
     if (v9x_engine_status_validated() &&
         !v9x_wait_idle((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {
+        data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    /* The previous flip has to have been taken by the scanout before this
+     * one is issued, or two start addresses race for one latch and the
+     * application's frame ordering is lost. DDRAW retries on this answer
+     * unless the application said DONOTWAIT, in which case it is the
+     * application's answer too. */
+    if (!v9x_flip_done()) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
@@ -362,6 +434,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             data->ddRVal = V9X_DD_OK;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
+        v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);
     }
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -432,7 +505,10 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
 DWORD __stdcall V9xHalGetFlipStatus(V9X_DDHAL_GETFLIPSTATUSDATA *data)
 {
     v9x_trace_count(V9X_TRACE_GETFLIPSTATUS, data->dwFlags);
-    data->ddRVal = V9X_DD_OK;
+    /* Both questions - "can I flip" and "is the last flip done" - have the
+     * same answer here: not until the scanout has taken the last start
+     * address. See v9x_flip_arm. */
+    data->ddRVal = v9x_flip_done() ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
