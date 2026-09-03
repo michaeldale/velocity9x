@@ -17,6 +17,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "velocity9x/probe_counts.h"
 #include "dd16.h"
 #include "gdi_accel.h"
 
@@ -778,6 +779,35 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             for (index = 0u; index < sizeof(V9X_DD_TRACE); ++index) {
                 destination[index] = source[index];
             }
+        }
+        return 1;
+    case V9X_DDGETCOUNTS:
+        /* The probe's compact counter view (probe_counts.h): a handful of
+         * DWORDs the probe reads before and after each cell so a refusal,
+         * a skipped blend or a reset lands beside the pixel it affected.
+         * Field by field rather than a byte copy, because the two structs
+         * are different shapes on purpose. */
+        if (v9x_dd_block() == 0 || output == 0) {
+            return 0;
+        }
+        {
+            V9X_PROBE_COUNTS FAR *counts = (V9X_PROBE_COUNTS FAR *)output;
+            const V9X_D3D_DIAGNOSTICS FAR *d3d =
+                &v9x_dd_shared->d3d_diagnostics;
+
+            counts->dwSize = sizeof(V9X_PROBE_COUNTS);
+            counts->render_primitive_calls = d3d->render_primitive_calls;
+            counts->texture_refused = d3d->texture_refused_format +
+                                      d3d->texture_refused_shape +
+                                      d3d->texture_refused_other;
+            counts->blend_skipped = d3d->blend_skipped;
+            counts->engine_resets = v9x_dd_shared->engine.reset_count;
+            counts->engine_idle_timeouts = v9x_dd_shared->engine.idle_timeouts;
+            counts->engine_fifo_timeouts = v9x_dd_shared->engine.fifo_timeouts;
+            counts->done_missing = d3d->done_missing;
+            counts->texture_green_draws = d3d->texture_green_draws;
+            counts->color_key_draws = d3d->color_key_draws;
+            counts->texture_alpha_draws = d3d->texture_alpha_draws;
         }
         return 1;
     case V9X_DDFAULTINJECT:

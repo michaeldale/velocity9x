@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/probe_counts.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -1348,13 +1349,93 @@ static void v9x_probe_reset_state(struct v9x_d3d_device2 *device,
     triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
 }
 
-/* Key names for the matrix are assembled, not listed: there are ninety. */
+/* Key names for the matrix are assembled, not listed: there are many. */
 static void v9x_probe_cat(char *dest, const char *src)
 {
     while (*dest != 0) ++dest;
     while (*src != 0) *dest++ = *src++;
     *dest = 0;
 }
+
+/*
+ * The driver's counters, through the display driver's DCI escape - the same
+ * route V9XTRACE uses, with a compact struct (probe_counts.h) instead of the
+ * full snapshot. Returns 0, with the struct zeroed, on any driver that does
+ * not answer: a vendor driver, or ours before the escape existed. The probe
+ * then still runs; it just cannot say what the driver did during a cell.
+ */
+#define V9X_PROBE_QUERYESCSUPPORT 8u
+#define V9X_PROBE_DCICOMMAND      3075u
+#define V9X_PROBE_DD_VERSION      0x00000200ul
+
+typedef struct v9x_probe_dcicmd {
+    DWORD dwCommand;
+    DWORD dwParam1;
+    DWORD dwParam2;
+    DWORD dwVersion;
+    DWORD dwReserved;
+} V9X_PROBE_DCICMD;
+
+static int v9x_probe_counts(V9X_PROBE_COUNTS *counts)
+{
+    HDC screen;
+    V9X_PROBE_DCICMD command;
+    int result;
+
+    v9x_zero(counts, sizeof(*counts));
+    screen = GetDC(0);
+    if (screen == 0) {
+        return 0;
+    }
+    command.dwCommand = V9X_DDGETCOUNTS;
+    command.dwParam1 = 0ul;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_PROBE_DD_VERSION;
+    command.dwReserved = 0ul;
+    result = ExtEscape(screen, V9X_PROBE_DCICOMMAND, sizeof(command),
+                       (LPCSTR)&command, sizeof(*counts), (LPSTR)counts);
+    ReleaseDC(0, screen);
+    if (result <= 0 || counts->dwSize == 0ul) {
+        v9x_zero(counts, sizeof(*counts));
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * What the driver did between two counter reads, written beside a cell only
+ * when something happened: a key that is absent means "nothing", which keeps
+ * the result file readable across hundreds of cells.
+ */
+static void v9x_probe_write_deltas(const char *prefix,
+                                   const V9X_PROBE_COUNTS *before,
+                                   const V9X_PROBE_COUNTS *after)
+{
+    char key[80];
+
+    if (after->texture_refused != before->texture_refused) {
+        key[0] = 0; v9x_probe_cat(key, prefix); v9x_probe_cat(key, "_Dref");
+        v9x_write_uint(key, after->texture_refused - before->texture_refused);
+    }
+    if (after->blend_skipped != before->blend_skipped) {
+        key[0] = 0; v9x_probe_cat(key, prefix); v9x_probe_cat(key, "_Dskip");
+        v9x_write_uint(key, after->blend_skipped - before->blend_skipped);
+    }
+    if (after->engine_resets != before->engine_resets ||
+        after->engine_idle_timeouts != before->engine_idle_timeouts ||
+        after->engine_fifo_timeouts != before->engine_fifo_timeouts) {
+        key[0] = 0; v9x_probe_cat(key, prefix); v9x_probe_cat(key, "_Dfault");
+        v9x_write_uint(key,
+            (after->engine_resets - before->engine_resets) +
+            (after->engine_idle_timeouts - before->engine_idle_timeouts) +
+            (after->engine_fifo_timeouts - before->engine_fifo_timeouts));
+    }
+    if (after->done_missing != before->done_missing) {
+        key[0] = 0; v9x_probe_cat(key, prefix); v9x_probe_cat(key, "_Dmiss");
+        v9x_write_uint(key, after->done_missing - before->done_missing);
+    }
+}
+
 
 static DWORD v9x_time_surface_fill(struct v9x_dds *surface)
 {
@@ -3991,15 +4072,32 @@ void __stdcall V9xDdrawProbeEntry(void)
                     static const char *m_size_names[3] = { "64", "128", "256" };
                     static const char *m_fmt_names[2] = { "1555", "4444" };
                     static const char *m_layout_names[3] = { "plain", "chain", "gapped" };
-                    static const DWORD m_filters[5] = {
+                    static const DWORD m_filters[7] = {
                         V9X_D3DFILTER_NEAREST, V9X_D3DFILTER_LINEAR,
                         V9X_D3DFILTER_MIPNEAREST, V9X_D3DFILTER_LINEARMIPLINEAR,
+                        V9X_D3DFILTER_NEAREST, V9X_D3DFILTER_NEAREST,
                         V9X_D3DFILTER_NEAREST };
-                    static const char *m_filter_names[5] = {
-                        "near", "lin", "mipnear", "trilin", "alpha" };
+                    /*
+                     * Two cells added 2026-09-03 after the first matrix run:
+                     * "wrap" draws with coordinates outside the first repeat
+                     * (the wrap-bit rung existed once, at 64 texels, and the
+                     * Trio3D taught that once is not a measurement), and
+                     * "halfa" blends an ARGB4444 texel of alpha 8/15 so a
+                     * chip that thresholds alpha rather than blending it is
+                     * told apart from one that blends - ARGB1555 has one
+                     * alpha bit and skips the cell.
+                     */
+                    static const char *m_filter_names[7] = {
+                        "near", "lin", "mipnear", "trilin", "alpha", "wrap", "halfa" };
                     DWORD m_ok = 0ul;
                     DWORD m_count = 0ul;
+                    DWORD m_started = GetTickCount();
+                    V9X_PROBE_COUNTS m_before;
+                    V9X_PROBE_COUNTS m_after;
+                    int m_counts_ok = v9x_probe_counts(&m_before);
                     DWORD si, fi, li, ti;
+
+                    v9x_write_uint("TexMatrixCountsOk", m_counts_ok ? 1ul : 0ul);
 
                     for (si = 0ul; si < 3ul; ++si)
                     for (fi = 0ul; fi < 2ul; ++fi)
@@ -4129,7 +4227,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_probe_cat(m_key, "_Hr");
                         v9x_write_hresult(m_key, m_hr);
 
-                        for (ti = 0ul; ti < 5ul && m_hr == 0 && m_handle != 0ul; ++ti) {
+                        for (ti = 0ul; ti < 7ul && m_hr == 0 && m_handle != 0ul; ++ti) {
                             WORD l_raw = 0u;
                             WORD r_raw = 0u;
                             HRESULT l_hr = 0x80004005ul;
@@ -4137,22 +4235,32 @@ void __stdcall V9xDdrawProbeEntry(void)
                             DWORD l_hue, r_hue;
                             DWORD cell_ok;
                             HRESULT c_hr;
+                            int blended = ti == 4ul || ti == 6ul;
 
+                            if (ti == 6ul && fi == 0ul) {
+                                continue;   /* one alpha bit: no half */
+                            }
                             v9x_probe_reset_state(d3d_device, triangle);
+                            if (m_counts_ok) {
+                                v9x_probe_counts(&m_before);
+                            }
                             if (ti == 4ul) {
                                 /* Right half alpha 0, then blended. */
                                 v9x_fill_surface_halves(m_top, left0, right0_alpha);
-                            } else if (ti == 0ul) {
+                            } else if (ti == 6ul) {
+                                /* Right half alpha 8 of 15, then blended. */
+                                v9x_fill_surface_halves(m_top, left0, 0x800fu);
+                            } else if (ti == 0ul || ti == 5ul) {
                                 v9x_fill_surface_halves(m_top, left0, right0);
                             }
                             c_hr = d3d_device->vtbl->SetRenderState(
                                 d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, m_handle);
                             if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
                                 d3d_device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
-                                ti == 4ul ? V9X_D3DTBLEND_MODULATE : V9X_D3DTBLEND_COPY);
+                                blended ? V9X_D3DTBLEND_MODULATE : V9X_D3DTBLEND_COPY);
                             if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
                                 d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN, m_filters[ti]);
-                            if (c_hr == 0 && ti == 4ul) {
+                            if (c_hr == 0 && blended) {
                                 c_hr = d3d_device->vtbl->SetRenderState(
                                     d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
                                     V9X_D3DBLEND_SRCALPHA);
@@ -4166,6 +4274,10 @@ void __stdcall V9xDdrawProbeEntry(void)
                             triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
                             triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
                             triangle[2].tu = 0.10f; triangle[2].tv = 0.40f;
+                            if (ti == 5ul) {
+                                triangle[0].tu = -0.40f; triangle[1].tu = -0.10f;
+                                triangle[2].tu = -0.40f;
+                            }
                             begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
                             if (begin_hr == 0) {
                                 l_hr = d3d_device->vtbl->DrawPrimitive(
@@ -4179,6 +4291,10 @@ void __stdcall V9xDdrawProbeEntry(void)
                             triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
                             triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
                             triangle[2].tu = 0.60f; triangle[2].tv = 0.40f;
+                            if (ti == 5ul) {
+                                triangle[0].tu = 1.10f; triangle[1].tu = 1.40f;
+                                triangle[2].tu = 1.10f;
+                            }
                             begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
                             if (begin_hr == 0) {
                                 r_hr = d3d_device->vtbl->DrawPrimitive(
@@ -4200,6 +4316,28 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 cell_ok = l_hr == 0 && r_hr == 0 &&
                                     l_hue != V9X_PROBE_HUE_BLACK &&
                                     r_hue != V9X_PROBE_HUE_BLACK ? 1ul : 0ul;
+                            } else if (ti == 5ul) {
+                                /* Wrapped: the halves swap. */
+                                cell_ok = l_hr == 0 && r_hr == 0 &&
+                                    (l_hue == V9X_PROBE_HUE_BLUE ||
+                                     l_hue == V9X_PROBE_HUE_CYAN) &&
+                                    (r_hue == V9X_PROBE_HUE_GREEN ||
+                                     r_hue == V9X_PROBE_HUE_MAGENTA) ? 1ul : 0ul;
+                            } else if (ti == 6ul) {
+                                /* Half alpha: blue at roughly half over
+                                 * black, and nothing in the other channels.
+                                 * 70..190 of 255 admits the chip's rounding
+                                 * and excludes both "opaque" and "gone". */
+                                DWORD hb = v9x_layout_blue(&target_layout, r_raw);
+                                DWORD hr_ = v9x_layout_red(&target_layout, r_raw);
+                                DWORD hg = v9x_layout_green(&target_layout, r_raw);
+
+                                cell_ok = l_hr == 0 && r_hr == 0 &&
+                                    (l_hue == V9X_PROBE_HUE_GREEN ||
+                                     l_hue == V9X_PROBE_HUE_MAGENTA) &&
+                                    target_layout.valid != 0ul &&
+                                    hb >= 70ul && hb <= 190ul &&
+                                    hr_ <= 33ul && hg <= 33ul ? 1ul : 0ul;
                             } else {
                                 cell_ok = l_hr == 0 && r_hr == 0 &&
                                     (l_hue == V9X_PROBE_HUE_GREEN ||
@@ -4227,6 +4365,22 @@ void __stdcall V9xDdrawProbeEntry(void)
                             v9x_probe_cat(m_key, m_filter_names[ti]);
                             v9x_probe_cat(m_key, "_Ok");
                             v9x_write_uint(m_key, cell_ok);
+                            if (l_hr != 0 || r_hr != 0) {
+                                m_key[0] = 0;
+                                v9x_probe_cat(m_key, m_prefix);
+                                v9x_probe_cat(m_key, "_");
+                                v9x_probe_cat(m_key, m_filter_names[ti]);
+                                v9x_probe_cat(m_key, "_Hr");
+                                v9x_write_hresult(m_key, l_hr != 0 ? l_hr : r_hr);
+                            }
+                            if (m_counts_ok) {
+                                v9x_probe_counts(&m_after);
+                                m_key[0] = 0;
+                                v9x_probe_cat(m_key, m_prefix);
+                                v9x_probe_cat(m_key, "_");
+                                v9x_probe_cat(m_key, m_filter_names[ti]);
+                                v9x_probe_write_deltas(m_key, &m_before, &m_after);
+                            }
                             ++m_count;
                             m_ok += cell_ok;
                         }
@@ -4238,6 +4392,249 @@ void __stdcall V9xDdrawProbeEntry(void)
                     }
                     v9x_write_uint("TexMatrixOk", m_ok);
                     v9x_write_uint("TexMatrixCount", m_count);
+                    v9x_write_uint("TexMatrixMs", GetTickCount() - m_started);
+                }
+
+                /*
+                 * RENDER TARGETS OF REAL SIZES, WITH DEPTH AND A TEXTURE.
+                 *
+                 * Every target above is one 64x64 offscreen surface. Games
+                 * render to 640x480 and up, and a pitch fault would hide at 64
+ * exactly as the texture stride fault hid at 64 texels. Each size
+                 * here gets its own target, its own 16-bit depth surface, its
+                 * own device and viewport, and a 64-texel texture; then three
+                 * draws that between them exercise what no rung above does at
+                 * once - a texture with depth on:
+                 *
+                 *   1. ZFUNC ALWAYS, left half of the texture, z 0.5  -> green
+                 *   2. ZFUNC LESS,   right half,               z 0.75 -> still green
+                 *   3. ZFUNC LESS,   right half,               z 0.25 -> blue
+                 *
+                 * Keys: Tgt_<w>_Hr, _Pitch, _TexRaw/_TexOk, _ZRejectRaw/Ok,
+                 * _ZAcceptRaw/Ok, and TargetsOk / TargetsCount / TargetsMs.
+                 * The largest size may not fit beside everything else the
+                 * probe has allocated; its _Hr says so and it is not counted.
+                 */
+                {
+                    static const DWORD t_w[4] = { 320ul, 640ul, 800ul, 1024ul };
+                    static const DWORD t_h[4] = { 240ul, 480ul, 600ul, 768ul };
+                    static const char *t_names[4] = { "320", "640", "800", "1024" };
+                    DWORD t_ok = 0ul;
+                    DWORD t_count = 0ul;
+                    DWORD t_started = GetTickCount();
+                    DWORD ti2;
+
+                    for (ti2 = 0ul; ti2 < 4ul; ++ti2) {
+                        struct v9x_dds *t_target = 0;
+                        struct v9x_dds *t_z = 0;
+                        struct v9x_dds *t_texs = 0;
+                        struct v9x_d3d_texture2 *t_tex = 0;
+                        struct v9x_d3d_device2 *t_device = 0;
+                        struct v9x_d3d_viewport2 *t_viewport = 0;
+                        V9X_D3D_VIEWPORT_DESC2 t_view;
+                        V9X_D3DTLVERTEX t_tri[3];
+                        DWORD t_handle = 0ul;
+                        HRESULT t_hr;
+                        char t_prefix[24];
+                        char t_key[48];
+                        WORD raw_tex = 0u, raw_rej = 0u, raw_acc = 0u;
+                        DWORD ok_tex = 0ul, ok_rej = 0ul, ok_acc = 0ul;
+                        V9X_PROBE_COUNTS t_before, t_after;
+                        int t_counts_ok;
+
+                        t_prefix[0] = 0;
+                        v9x_probe_cat(t_prefix, "Tgt_");
+                        v9x_probe_cat(t_prefix, t_names[ti2]);
+
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT;
+                        desc.dwWidth = t_w[ti2];
+                        desc.dwHeight = t_h[ti2];
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_3DDEVICE |
+                                              V9X_DDSCAPS_OFFSCREENPLAIN |
+                                              V9X_DDSCAPS_VIDEOMEMORY;
+                        t_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &t_target, 0);
+                        t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_TargetHr");
+                        v9x_write_hresult(t_key, t_hr);
+                        if (t_hr == 0) {
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            if (t_target->vtbl->GetSurfaceDesc(t_target, &desc) == 0) {
+                                t_key[0] = 0; v9x_probe_cat(t_key, t_prefix);
+                                v9x_probe_cat(t_key, "_Pitch");
+                                v9x_write_uint(t_key, (DWORD)desc.lPitch);
+                            }
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                           V9X_DDSD_HEIGHT | V9X_DDSD_ZBUFFERBITDEPTH;
+                            desc.dwWidth = t_w[ti2];
+                            desc.dwHeight = t_h[ti2];
+                            desc.dwMipMapCount = 16ul;   /* dwZBufferBitDepth */
+                            desc.ddsCaps.dwCaps = V9X_DDSCAPS_ZBUFFER |
+                                                  V9X_DDSCAPS_VIDEOMEMORY;
+                            t_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &t_z, 0);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_ZHr");
+                            v9x_write_hresult(t_key, t_hr);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = t_target->vtbl->AddAttachedSurface(t_target, t_z);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_AttachHr");
+                            v9x_write_hresult(t_key, t_hr);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = d3d->vtbl->CreateDevice(d3d, &v9x_iid_d3d_hal,
+                                                           t_target, &t_device);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_DeviceHr");
+                            v9x_write_hresult(t_key, t_hr);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = d3d->vtbl->CreateViewport(d3d, (void **)&t_viewport, 0);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = t_device->vtbl->AddViewport(t_device, t_viewport);
+                        }
+                        if (t_hr == 0) {
+                            v9x_zero(&t_view, sizeof(t_view));
+                            t_view.dwSize = sizeof(t_view);
+                            t_view.dwWidth = t_w[ti2];
+                            t_view.dwHeight = t_h[ti2];
+                            t_view.dvClipX = -1.0f;
+                            t_view.dvClipY = 1.0f;
+                            t_view.dvClipWidth = 2.0f;
+                            t_view.dvClipHeight = 2.0f;
+                            t_view.dvMinZ = 0.0f;
+                            t_view.dvMaxZ = 1.0f;
+                            t_hr = t_viewport->vtbl->SetViewport2(t_viewport, &t_view);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = t_device->vtbl->SetCurrentViewport(t_device, t_viewport);
+                        }
+                        if (t_hr == 0) {
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                           V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                            desc.dwWidth = 64ul;
+                            desc.dwHeight = 64ul;
+                            desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_VIDEOMEMORY;
+                            desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                            desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                            desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                            t_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &t_texs, 0);
+                        }
+                        if (t_hr == 0) {
+                            v9x_fill_surface_halves(t_texs, 0x83e0u, 0x801fu);
+                            t_hr = t_texs->vtbl->QueryInterface(
+                                t_texs, &v9x_iid_d3d_texture2, (void **)&t_tex);
+                        }
+                        if (t_hr == 0) {
+                            t_hr = t_tex->vtbl->GetHandle(t_tex, t_device, &t_handle);
+                        }
+                        t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_Hr");
+                        v9x_write_hresult(t_key, t_hr);
+
+                        if (t_hr == 0 && t_handle != 0ul) {
+                            DWORD step;
+                            static const float step_z[3] = { 0.5f, 0.75f, 0.25f };
+                            static const DWORD step_func[3] = {
+                                V9X_D3DCMP_ALWAYS, V9X_D3DCMP_LESS, V9X_D3DCMP_LESS };
+                            static const float step_u0[3] = { 0.10f, 0.60f, 0.60f };
+
+                            t_counts_ok = v9x_probe_counts(&t_before);
+                            v9x_fill_surface(t_target, 0ul);
+                            v9x_probe_reset_state(t_device, t_tri);
+                            (void)t_device->vtbl->SetRenderState(t_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, t_handle);
+                            (void)t_device->vtbl->SetRenderState(t_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, V9X_D3DTBLEND_COPY);
+                            (void)t_device->vtbl->SetRenderState(t_device,
+                                V9X_D3DRENDERSTATE_ZENABLE, 1ul);
+                            (void)t_device->vtbl->SetRenderState(t_device,
+                                V9X_D3DRENDERSTATE_ZWRITEENABLE, 1ul);
+                            for (step = 0ul; step < 3ul; ++step) {
+                                WORD raw;
+                                HRESULT s_hr;
+
+                                (void)t_device->vtbl->SetRenderState(t_device,
+                                    V9X_D3DRENDERSTATE_ZFUNC, step_func[step]);
+                                t_tri[0].sx = 8.25f;  t_tri[0].sy = 8.25f;
+                                t_tri[1].sx = 55.75f; t_tri[1].sy = 8.25f;
+                                t_tri[2].sx = 8.25f;  t_tri[2].sy = 55.75f;
+                                t_tri[0].sz = t_tri[1].sz = t_tri[2].sz = step_z[step];
+                                t_tri[0].rhw = t_tri[1].rhw = t_tri[2].rhw = 1.0f;
+                                t_tri[0].color = t_tri[1].color = t_tri[2].color = 0xffffffff;
+                                t_tri[0].specular = t_tri[1].specular = t_tri[2].specular = 0ul;
+                                t_tri[0].tu = step_u0[step];         t_tri[0].tv = 0.10f;
+                                t_tri[1].tu = step_u0[step] + 0.30f; t_tri[1].tv = 0.10f;
+                                t_tri[2].tu = step_u0[step];         t_tri[2].tv = 0.40f;
+                                s_hr = t_device->vtbl->BeginScene(t_device);
+                                if (s_hr == 0) {
+                                    s_hr = t_device->vtbl->DrawPrimitive(
+                                        t_device, V9X_D3DPT_TRIANGLELIST,
+                                        V9X_D3DVT_TLVERTEX, t_tri, 3ul, 0ul);
+                                    end_hr = t_device->vtbl->EndScene(t_device);
+                                    if (end_hr != 0) s_hr = end_hr;
+                                }
+                                raw = v9x_surface_pixel16(t_target, 16ul, 16ul);
+                                if (step == 0ul) {
+                                    raw_tex = raw;
+                                    ok_tex = s_hr == 0 &&
+                                        v9x_probe_hue(&target_layout, raw) == V9X_PROBE_HUE_GREEN;
+                                } else if (step == 1ul) {
+                                    raw_rej = raw;
+                                    ok_rej = s_hr == 0 &&
+                                        v9x_probe_hue(&target_layout, raw) == V9X_PROBE_HUE_GREEN;
+                                } else {
+                                    raw_acc = raw;
+                                    ok_acc = s_hr == 0 &&
+                                        v9x_probe_hue(&target_layout, raw) == V9X_PROBE_HUE_BLUE;
+                                }
+                                if (s_hr != 0) {
+                                    t_key[0] = 0; v9x_probe_cat(t_key, t_prefix);
+                                    v9x_probe_cat(t_key, step == 0ul ? "_TexHr" :
+                                                         step == 1ul ? "_ZRejectHr" : "_ZAcceptHr");
+                                    v9x_write_hresult(t_key, s_hr);
+                                }
+                            }
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_TexRaw");
+                            v9x_write_uint(t_key, raw_tex);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_TexOk");
+                            v9x_write_uint(t_key, ok_tex);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_ZRejectRaw");
+                            v9x_write_uint(t_key, raw_rej);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_ZRejectOk");
+                            v9x_write_uint(t_key, ok_rej);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_ZAcceptRaw");
+                            v9x_write_uint(t_key, raw_acc);
+                            t_key[0] = 0; v9x_probe_cat(t_key, t_prefix); v9x_probe_cat(t_key, "_ZAcceptOk");
+                            v9x_write_uint(t_key, ok_acc);
+                            if (t_counts_ok) {
+                                v9x_probe_counts(&t_after);
+                                v9x_probe_write_deltas(t_prefix, &t_before, &t_after);
+                            }
+                            t_count += 3ul;
+                            t_ok += ok_tex + ok_rej + ok_acc;
+                        }
+                        if (t_tex != 0) t_tex->vtbl->Release(t_tex);
+                        if (t_texs != 0) t_texs->vtbl->Release(t_texs);
+                        if (t_viewport != 0) {
+                            struct v9x_dds *u = (struct v9x_dds *)t_viewport; u->vtbl->Release(u);
+                        }
+                        if (t_device != 0) {
+                            struct v9x_dds *u = (struct v9x_dds *)t_device; u->vtbl->Release(u);
+                        }
+                        if (t_z != 0) t_z->vtbl->Release(t_z);
+                        if (t_target != 0) t_target->vtbl->Release(t_target);
+                    }
+                    v9x_write_uint("TargetsOk", t_ok);
+                    v9x_write_uint("TargetsCount", t_count);
+                    v9x_write_uint("TargetsMs", GetTickCount() - t_started);
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);

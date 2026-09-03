@@ -65,6 +65,34 @@ drawn when the target was read; that pattern, a different quarter of the cells
 each run, is how the 3D-done wait in `eng_s3_virge.c` was found to be needed
 (`docs/decisions/2026-09-03-the-probe-matrix-and-the-3d-done-bit.md`).
 
+## Beside each cell: what the driver did
+
+The probe reads a compact block of the driver's counters through the display
+driver's DCI escape (`V9X_DDGETCOUNTS`, `include/velocity9x/probe_counts.h`)
+before and after every matrix cell and every target, and writes a key only
+when something moved: `_Dref` (textures refused), `_Dskip` (blends skipped),
+`_Dfault` (engine timeouts and resets), `_Dmiss` (3D-done bit not seen). An
+absent key means nothing happened. `TexMatrixCountsOk=0` means the driver did
+not answer the escape - a vendor driver, or ours before it existed - and the
+absence of deltas then means nothing. A cell whose draw returned a failure
+writes `_Hr` as well.
+
+The matrix also has a `wrap` cell (coordinates outside the first repeat; the
+halves swap) and, for ARGB4444 only, a `halfa` cell (alpha 8 of 15, blended;
+the blue channel must land between 70 and 190 of 255), 117 cells in all.
+
+## Render targets of real sizes
+
+`Tgt_<w>_*`: for 320x240, 640x480, 800x600 and 1024x768, an offscreen target
+of that size with its own 16-bit depth surface, device, viewport and texture,
+then three textured draws with depth on - ALWAYS at 0.5 (green), LESS at 0.75
+(still green), LESS at 0.25 (blue). `_Pitch` is the pitch DirectDraw gave the
+target. On the emulated ViRGE with a 1024x768 desktop, 320 and 640 pass all
+three and 800 and 1024 are refused by DirectDraw at CreateSurface with
+E_INVALIDARG (`_TargetHr`), before the driver is asked; a game at those sizes
+renders to the primary chain in exclusive mode, which this block does not
+cover. `TexMatrixMs` and `TargetsMs` time each block.
+
 ## State between rungs
 
 `v9x_probe_reset_state` puts every render state back to the device's defaults
