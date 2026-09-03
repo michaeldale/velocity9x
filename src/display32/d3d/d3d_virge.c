@@ -222,6 +222,9 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     }
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        }
         return 0;
     }
     if (surface->lpGbl->wWidth != surface->lpGbl->wHeight ||
@@ -252,7 +255,31 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     }
     if (offset == 0xfffffffful || last_byte > v9x_hal->fb.vram_bytes ||
         offset > v9x_hal->fb.vram_bytes - last_byte) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_other;
         return 0;
+    }
+    /*
+     * What is actually in the texture the sampler is about to read: two
+     * texels, corner and centre. The instrument that separates "the engine
+     * reads the wrong place" from "nobody wrote this memory" - a texture
+     * whose corner and centre both still hold the probe's fill pattern was
+     * never written by the application.
+     */
+    {
+        const volatile WORD *texels =
+            (const volatile WORD *)(v9x_hal->fb.linear_base + offset);
+        DWORD mid = (size / 2ul) * size + size / 2ul;
+        WORD corner = texels[0];
+        WORD centre = texels[mid];
+
+        v9x_hal->d3d_diagnostics.texture_last_offset = offset;
+        v9x_hal->d3d_diagnostics.texture_last_size = size;
+        v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
+        v9x_hal->d3d_diagnostics.texture_last_texels =
+            ((DWORD)centre << 16) | corner;
+        if (corner == 0x83e0u && centre == 0x83e0u) {
+            ++v9x_hal->d3d_diagnostics.texture_green_draws;
+        }
     }
     *offset_out = offset;
     *size_log_out = size_log;
@@ -293,18 +320,21 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
     if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&
         context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
         /*
-         * Where A comes from. Direct3D takes it from the texture when the
-         * texture blend asks for texture alpha (DECALALPHA, MODULATEALPHA)
-         * and from the vertex otherwise; the unit cannot multiply the two,
-         * so MODULATEALPHA gets the texel's. Not "from the texture whenever
-         * the texture has an alpha channel": both formats this engine samples
-         * have one, and what DirectDraw's own upload leaves in that bit for a
-         * texture that never asked for alpha is not known here - a wrong
-         * guess would make every blended textured draw vanish.
+         * Where A comes from. Direct3D's rule for DECAL, MODULATE and COPY is
+         * "the texture's alpha if the texture has an alpha channel, else the
+         * vertex's", and for DECALALPHA/MODULATEALPHA the product of the two,
+         * which this unit cannot form - it takes the texel's. Both formats
+         * this engine samples carry alpha, so a textured blended draw uses
+         * texel alpha, full stop. The first version of this rule used the
+         * vertex's alpha unless the texture blend said otherwise, and 3DMark
+         * 99's lights and HUD - ARGB textures blended with MODULATE - drew as
+         * opaque black squares. A vertex-alpha fade of a textured polygon is
+         * what is given up; S3's own driver gives up the same.
          */
-        if (textured &&
-            (context->texture_blend == V9X_D3DTBLEND_DECALALPHA ||
-             context->texture_blend == V9X_D3DTBLEND_MODULATEALPHA)) {
+        if (textured) {
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.texture_alpha_draws;
+            }
             return V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
         }
         return V9X_VIRGE_3D_CMD_ALPHA_SOURCE | V9X_VIRGE_3D_CMD_ALPHA_ENABLE;

@@ -383,6 +383,14 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("D3dColorKeyDraws", snapshot.d3d.color_key_draws);
     v9x_write_uint("D3dColorKeyRewrites", snapshot.d3d.color_key_rewrites);
     v9x_write_uint("D3dLclTailCaptures", snapshot.d3d.lcl_tail_captures);
+    v9x_write_uint("D3dTextureRefusedOther",
+                   snapshot.d3d.texture_refused_other);
+    v9x_write_hex("D3dTextureLastOffset", snapshot.d3d.texture_last_offset);
+    v9x_write_uint("D3dTextureLastSize", snapshot.d3d.texture_last_size);
+    v9x_write_hex("D3dTextureLastCaps", snapshot.d3d.texture_last_caps);
+    v9x_write_hex("D3dTextureLastTexels", snapshot.d3d.texture_last_texels);
+    v9x_write_uint("D3dTextureGreenDraws", snapshot.d3d.texture_green_draws);
+    v9x_write_uint("D3dTextureAlphaDraws", snapshot.d3d.texture_alpha_draws);
     {
         DWORD tail_index;
         char tail_name[16];

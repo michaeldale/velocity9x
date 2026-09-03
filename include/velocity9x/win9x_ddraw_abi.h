@@ -1284,6 +1284,23 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD lcl_tail_raw[16];
     DWORD lcl_tail_captures;
+    /*
+     * Appended 2026-09-03, after 3DMark 99 again. Its walls drew in the
+     * probe's own texture-fill green and its ground in what looked like a
+     * stretched copy of an old frame - texture memory nobody had written -
+     * while texture_refused_* read zero. Two gaps: three of the sampler's
+     * refusals were not counted (system memory, no TEXTURE cap, outside
+     * VRAM), and nothing said what the sampler was actually reading. So:
+     * the refusals, and two texels of every bound texture at draw time.
+     */
+    DWORD texture_refused_other;  /* sysmem, no TEXTURE cap, or out of VRAM */
+    DWORD texture_last_offset;    /* the last sampled texture: VRAM offset  */
+    DWORD texture_last_size;      /* ... edge in texels                     */
+    DWORD texture_last_caps;      /* ... ddsCaps                            */
+    DWORD texture_last_texels;    /* ... texel (0,0) low, (mid,mid) high    */
+    DWORD texture_green_draws;    /* draws whose both sampled texels were
+                                     0x83e0, the probe's fill               */
+    DWORD texture_alpha_draws;    /* draws blended by texel alpha           */
 } V9X_D3D_DIAGNOSTICS;
 
 /*
