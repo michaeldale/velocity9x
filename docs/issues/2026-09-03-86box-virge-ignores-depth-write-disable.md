@@ -1,8 +1,11 @@
 # 86Box's ViRGE failed the Z-write-disable rung, and stopped when the stride word was fully written
 
 Filed: 2026-09-03
-Status: **amended the same day.** The rung now passes on the emulator, twice
-in a row, after `DEST_SRC_STRIDE`'s low half was written
+Status: **amended twice the same day.** The rung read 1 twice in one boot
+after `DEST_SRC_STRIDE`'s low half was written, then 0 again in a later boot
+with the Z path untouched: it **varies between boots on the emulator**, and the
+stride attribution below was overreach. The silicon passes it every time. What
+follows is the first amendment, kept as written
 (`docs/decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md`).
 The claim below that the model ignores `Z_UP_EN` is withdrawn. The mechanism by
 which a zero source stride reached this rung is not established; the emulator's

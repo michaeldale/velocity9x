@@ -125,6 +125,8 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
 
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+        v9x_hal->d3d_diagnostics.mip_chain_levels = 0ul;
+        v9x_hal->d3d_diagnostics.mip_chain_delta = 0xfffffffful;
     }
     for (depth = 0ul; depth < V9X_D3D_MIP_LEVELS_MAX; ++depth) {
         const V9X_DD_ATTACH_NODE *node =
@@ -152,8 +154,15 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
             break;
         }
         next_offset = v9x_surface_offset(next);
+        if (v9x_hal != 0 && depth == 0ul && next_offset != 0xfffffffful) {
+            v9x_hal->d3d_diagnostics.mip_chain_delta =
+                next_offset - top_offset;
+        }
         if (next_offset != expected) {
             break;
+        }
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.mip_chain_levels;
         }
         size /= 2ul;
         expected = next_offset + size * size * 2ul;
@@ -460,11 +469,18 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     v9x_mmio_write(V9X_VIRGE_3D_FADE_COLOR, 0ul);
 
     if (textured) {
-        if (!v9x_wait_fifo(9ul, 1)) {
+        /* Eleven writes, not nine: the two mip-level gradients are part of
+         * the texture setup and were never written before, which left the
+         * level index to drift across the triangle - see V9X_VIRGE_3D_DDDX.
+         * Eleven is inside the FIFO's sixteen, which is what the depth
+         * triple's separate reservation below was about. */
+        if (!v9x_wait_fifo(11ul, 1)) {
             return 0;
         }
         v9x_mmio_write(V9X_VIRGE_3D_TBV, 0ul);
         v9x_mmio_write(V9X_VIRGE_3D_TBU, 0ul);
+        v9x_mmio_write(V9X_VIRGE_3D_DDDX, 0ul);
+        v9x_mmio_write(V9X_VIRGE_3D_DDDY, 0ul);
         v9x_mmio_write(V9X_VIRGE_3D_DVDX, (DWORD)v9x_float_to_long(dvdx));
         v9x_mmio_write(V9X_VIRGE_3D_DUDX, (DWORD)v9x_float_to_long(dudx));
         v9x_mmio_write(V9X_VIRGE_3D_DVDY, (DWORD)v9x_float_to_long(dvdy));

@@ -2840,9 +2840,21 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_surface_pixel16(d3d_target, 16ul, 16ul));
 
                 v9x_fill_surface(d3d_target, 0ul);
+                /*
+                 * The TWO-LEVEL texture, texture_handle2, and not the plain
+                 * one. Until 2026-09-03 this bound texture_handle - the 64x64
+                 * texture with no mip chain - and then asked for MIPNEAREST
+                 * and expected the colour of a level that texture does not
+                 * have. The emulated ViRGE happened to return that colour,
+                 * which read as a pass, and a physical Trio3D/2X returned
+                 * black, which read as a chip that could not select a level.
+                 * Neither reading was about mip selection. The trilinear rung
+                 * below inherits this binding and was wrong the same way.
+                 * See docs\issues\2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md.
+                 */
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
-                    texture_handle);
+                    texture_handle2);
                 if (state_hr == 0) {
                     state_hr = d3d_device->vtbl->SetRenderState(
                         d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN,

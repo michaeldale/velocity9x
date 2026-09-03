@@ -50,9 +50,21 @@
 #define V9X_VIRGE_3D_COMMAND          0x0000b500ul
 #define V9X_VIRGE_3D_TBV              0x0000b504ul
 #define V9X_VIRGE_3D_TBU              0x0000b508ul
+/*
+ * The mip-level gradients. D is interpolated across the triangle like U and V
+ * are, from a start value in DS and these two per-axis steps - and until
+ * 2026-09-03 the driver wrote DS and never these, so the level index drifted
+ * across every textured triangle by whatever the registers last held: zero
+ * after power-on, another driver's leftovers after a game, and different on
+ * every boot. That is what "the Trio3D fetches the wrong mip level" and "the
+ * emulated ViRGE returns a colour the texture does not contain" both were.
+ * The engine picks one level per triangle, so both steps are written as zero.
+ */
+#define V9X_VIRGE_3D_DDDX             0x0000b518ul
 #define V9X_VIRGE_3D_DVDX             0x0000b51cul
 #define V9X_VIRGE_3D_DUDX             0x0000b520ul
 #define V9X_VIRGE_3D_DVDY             0x0000b528ul
+#define V9X_VIRGE_3D_DDDY             0x0000b524ul
 #define V9X_VIRGE_3D_DUDY             0x0000b52cul
 #define V9X_VIRGE_3D_DS               0x0000b530ul
 #define V9X_VIRGE_3D_VS               0x0000b534ul

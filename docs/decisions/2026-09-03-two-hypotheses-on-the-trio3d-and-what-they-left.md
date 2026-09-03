@@ -91,3 +91,68 @@ probes on the card rather than more reading:
   arithmetic that picks the level is what differs.
 
 Both are probe switches, not driver changes, and both need the card.
+
+## Second round, same day: the instrument was wrong, and two registers were never written
+
+**The mip rung never tested mip selection.** `ddraw_probe_win32.c` creates two
+textures - a plain 64x64 (`texture_handle`) and a 64x64 with a 32x32 level
+attached (`texture_handle2`, level 0 green, level 1 blue). The base-texture rung
+binds `texture_handle2`; the mip rung and the trilinear rung after it bound
+**`texture_handle`**, the plain one, and then asked for `MIPNEAREST` and
+expected blue. The plain texture has no blue. So `D3DMipmapLevelSelectOk=1` on
+the emulator was the engine reading a level that texture does not have from
+memory that happened to hold blue, and `=0` on the Trio3D was the same read
+landing on zeros. Neither was about mip selection. Fixed: both rungs now bind
+`texture_handle2`. This is the third instrument defect of the `FlipPixelOk`
+kind this week, and the second found by the silicon disagreeing with the model.
+
+**Two S3D registers were never written.** The mip level `D` is interpolated
+across the triangle like `U` and `V` are, from `DS` and two gradients -
+`TdDdX` at 0xB518 and `TdDdY` at 0xB524 (86Box's register decode at
+`build\reference-vid_s3_virge.c` around 1830-1839, and its per-pixel `state->d`
+arithmetic). The driver wrote `DS` and neither gradient. The level index
+therefore drifted across every textured triangle by whatever those registers
+last held: zero after power-on, another driver's leftovers after a game,
+different on every boot. The engine picks one level per triangle, so both are
+now written as zero, and the texture setup reserves eleven FIFO slots instead of
+nine.
+
+**Measured, corrected probe, both registers written:**
+
+| | 86Box ViRGE/DX | A8U4I5 Trio3D/2X, boot 16 |
+|---|---|---|
+| `D3DBaseTextureRaw` (level 0, handle2) | 992 green | 992 green |
+| `D3DMipmapLevelRaw` (expect blue) | **0** | **0** |
+| `D3DTrilinearRaw` | 960 | 992 |
+| `D3DVertexAlphaBlendRaw` | 16399 (correct) | 25352 (unchanged) |
+| `D3dMipChainChecks` | **0** | **0** |
+
+Two things in that table do not fit together, and they are the open question:
+
+1. With the two-level texture bound, the mip rung reads **black on both
+   targets**, where a non-mipmapped fetch of that texture would be green and a
+   correct level-1 fetch blue. Black is a fetch that found nothing - or a draw
+   that did not happen.
+2. `D3dMipChainChecks` is **zero on both**, which says `v9x_d3d_texture_info`
+   never saw `DDSCAPS_MIPMAP` on the surface `texture_handle2` resolves to -
+   yet the base rung textures from that same handle. A controlled A/B on the
+   emulator (the counter patch stashed, the same probe) also read zero, so the
+   counters are not what changed. The earlier readings of 2 and 4 came from
+   the old, mis-bound probe, and are unexplained by the same token.
+
+The 86Box model is deterministic and its texel address arithmetic is on the
+page, so this is answerable there before the card is involved again: a trace of
+one mip draw's register writes and the level the model computes from them.
+That is a probe-plus-trace exercise for a fresh session, not more inference
+from this one.
+
+**The emulator's Z-write-mask rung is not stable.** It read 0 this morning,
+1 twice after the stride change, and 0 again on this run with nothing in
+the Z path touched. The reversal recorded above - that the stride word
+explained the pass - was overreach; the rung varies between boots on 86Box
+and the silicon passes it every time. The issue is amended again to say
+only that.
+
+**Alpha is unchanged** on the Trio3D by any of today's changes, and correct on
+the emulator throughout. The differential rungs proposed above remain the next
+move for it.

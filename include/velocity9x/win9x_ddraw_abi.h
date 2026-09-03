@@ -1191,6 +1191,16 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD mip_chain_checks; /* mipmapped textures examined at draw time    */
     DWORD mip_chain_gaps;   /* ... of which were not laid out contiguously */
+    /*
+     * Appended the same day, because gaps=0 turned out to say nothing on its
+     * own: a walk that finds no attached level returns "contiguous" having
+     * verified nothing. These say how far the last walk actually got and what
+     * it saw, so a zero in gaps can be told apart from a walk that never
+     * started.
+     */
+    DWORD mip_chain_levels; /* levels below the top verified by the last walk */
+    DWORD mip_chain_delta;  /* last walk: level-1 offset minus level-0 offset,
+                               or 0xffffffff when no level 1 was found        */
 } V9X_D3D_DIAGNOSTICS;
 
 /*

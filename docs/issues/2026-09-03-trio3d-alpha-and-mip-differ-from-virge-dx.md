@@ -24,8 +24,11 @@ build, same layout, boot 530.
 |---|---|---|---|
 | `D3DVertexAlphaBlendRaw` | **25352** (`0x6308`: r24 g24 b8) | 16399 (`0x400F`: r16 g0 b15) | ~r16 g0 b15 |
 | same key, 2026-09-02, 5:6:5 desktop | **527** (`0x020F`) | - | - |
-| `D3DMipmapLevelRaw` | **0** (black) | 31 (blue) | blue |
+| `D3DMipmapLevelRaw` | **0** (black) | 31 (blue) * | blue |
 | `D3DTrilinearRaw` | 24856 | 495 | green/blue mix |
+
+\* Both mip rows were measured with the probe binding the wrong texture - see
+the second-round section below - and neither says what it appeared to.
 
 The alpha value is the telling one: it changed between two boots of the same
 part with the same command word, and neither value is a blend of red over blue.
@@ -68,6 +71,19 @@ Recorded in full in
   The chain is where the engine expects it and the fetch still returns nothing.
   Not the cause. The guard is kept because a gap would be an out-of-surface
   read.
+
+## Second round, 2026-09-03: the mip rung was mis-bound, and two registers were unwritten
+
+The probe's mip and trilinear rungs bound the **plain** texture, not the
+two-level one, so neither of the mip rows in the table above ever measured mip
+selection on either target. Fixed in the probe. Separately, the driver never
+wrote the mip-level gradients `TdDdX`/`TdDdY` (0xB518/0xB524), so the level
+index drifted by whatever the registers last held; both are now written as
+zero. With both corrections the two-level texture's level-1 fetch reads
+**black on the emulator and on the card alike**, and the driver's own mip-chain
+counter says the mipmapped path was never entered for that texture. That
+contradiction is the open question, and it is answerable on the emulator first.
+Record: [`../decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md`](../decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md).
 
 ## Next
 
