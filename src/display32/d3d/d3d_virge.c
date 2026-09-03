@@ -749,8 +749,33 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * The 3D engine has one surface to read back from, and it is the one it
      * writes to, so the two strides are the same number.
      */
+    /*
+     * The low half of this register is the TEXTURE's stride, on the Trio3D.
+     *
+     * The register carries the destination stride in its high half and a
+     * source stride in its low half. The ViRGE/DX never consults the source
+     * stride when fetching texels - it derives every address from the size
+     * field of the command word - and 86Box models it that way, routing the
+     * low half to the 2D source stride and nothing else. So writing the
+     * screen pitch there, as this driver did until 2026-09-03, was harmless
+     * on the DX and on the emulator, and the probe, whose textures were all
+     * 64 texels across, never noticed.
+     *
+     * The Trio3D/2X does consult it. Measured on A8U4I5 with a probe rung
+     * that fills each texture green on the left and blue on the right and
+     * draws each half: with the screen pitch here, 64-texel textures read
+     * correctly and 128- and 256-texel ones read scrambled, halves largely
+     * swapped (Tex128HalvesOk=0, Tex256HalvesOk=0); with the texture's own
+     * pitch, all three read correctly on the card and, unchanged, on the
+     * emulator. Final Reality, whose textures are all 64 texels, drew
+     * correctly on the card throughout; 3DMark 99, whose are 128 and 256,
+     * drew every texture as noise. docs/decisions/2026-09-03-the-trio3d-
+     * reads-the-texture-stride.md.
+     */
     v9x_mmio_write(V9X_VIRGE_3D_DEST_SRC_STRIDE,
-                   (context->pitch << 16) | (context->pitch & 0xfffful));
+                   (context->pitch << 16) |
+                   (textured ? ((2ul << texture_size_log) & 0xfffful)
+                             : (context->pitch & 0xfffful)));
     v9x_mmio_write(V9X_VIRGE_3D_Z_STRIDE,
                    z_active ? context->depth_pitch : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BASE,

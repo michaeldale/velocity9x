@@ -1269,6 +1269,39 @@ static void v9x_fill_surface(struct v9x_dds *surface, DWORD pattern)
     surface->vtbl->Unlock(surface, 0);
 }
 
+/*
+ * Left half of every row one 16-bit texel, right half another. A solid fill
+ * cannot tell a sampler that reads the right texture from one that reads it
+ * with the wrong stride, size or level - every texel is the same - and that
+ * is exactly what the large-texture rungs need to tell apart.
+ */
+static void v9x_fill_surface_halves(struct v9x_dds *surface, WORD left,
+                                    WORD right)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+    DWORD y;
+    DWORD x;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return;
+    }
+    row = (BYTE FAR *)desc.lpSurface;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        WORD FAR *texel = (WORD FAR *)row;
+
+        for (x = 0ul; x < desc.dwWidth; ++x) {
+            texel[x] = x < desc.dwWidth / 2ul ? left : right;
+        }
+        row += desc.lPitch;
+    }
+    surface->vtbl->Unlock(surface, 0);
+}
+
 static DWORD v9x_time_surface_fill(struct v9x_dds *surface)
 {
     DWORD started;
@@ -3436,6 +3469,142 @@ void __stdcall V9xDdrawProbeEntry(void)
                     if (keyed != 0) {
                         keyed->vtbl->Release(keyed);
                     }
+                }
+
+                /*
+                 * Textures larger than the 64 texels every rung above uses.
+                 *
+                 * Final Reality's textures are 64 texels across and it draws
+                 * correctly on the Trio3D/2X; 3DMark 99's are 128 and 256
+                 * and on the same card they draw as scrambled noise while the
+                 * emulated ViRGE/DX draws them correctly. Each size here is
+                 * filled green on the left and blue on the right and drawn
+                 * twice, once from each half. A sampler that addresses the
+                 * texture correctly reads green then blue; one that has the
+                 * stride, size or level wrong reads something else, and the
+                 * raw values say what.
+                 */
+                {
+                    static const DWORD big_sizes[3] = { 64ul, 128ul, 256ul };
+                    static const char *big_left[3] = {
+                        "Tex64LeftRaw", "Tex128LeftRaw", "Tex256LeftRaw" };
+                    static const char *big_right[3] = {
+                        "Tex64RightRaw", "Tex128RightRaw", "Tex256RightRaw" };
+                    static const char *big_ok[3] = {
+                        "Tex64HalvesOk", "Tex128HalvesOk", "Tex256HalvesOk" };
+                    static const char *big_hr[3] = {
+                        "Tex64SurfaceHr", "Tex128SurfaceHr", "Tex256SurfaceHr" };
+                    DWORD big_index;
+
+                    for (big_index = 0ul; big_index < 3ul; ++big_index) {
+                        struct v9x_dds *big = 0;
+                        struct v9x_d3d_texture2 *big_texture = 0;
+                        DWORD big_handle = 0ul;
+                        HRESULT big_hr_value;
+                        WORD left_raw = 0u;
+                        WORD right_raw = 0u;
+                        HRESULT left_hr = 0x80004005ul;
+                        HRESULT right_hr = 0x80004005ul;
+
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                        desc.dwWidth = big_sizes[big_index];
+                        desc.dwHeight = big_sizes[big_index];
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                        desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                        desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                        desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                        desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                        desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                        big_hr_value = ddraw->vtbl->CreateSurface(
+                            ddraw, &desc, &big, 0);
+                        v9x_write_hresult(big_hr[big_index], big_hr_value);
+                        if (big_hr_value == 0 && big != 0) {
+                            v9x_fill_surface_halves(big, 0x83e0u, 0x801fu);
+                            big_hr_value = big->vtbl->QueryInterface(
+                                big, &v9x_iid_d3d_texture2,
+                                (void **)&big_texture);
+                        }
+                        if (big_hr_value == 0 && big_texture != 0) {
+                            big_hr_value = big_texture->vtbl->GetHandle(
+                                big_texture, d3d_device, &big_handle);
+                        }
+                        if (big_hr_value == 0 && big_handle != 0ul) {
+                            big_hr_value = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                big_handle);
+                            if (big_hr_value == 0) {
+                                big_hr_value = d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                    V9X_D3DTBLEND_COPY);
+                            }
+                            /* Left half: every coordinate inside u < 0.5. */
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.10f; triangle[2].tv = 0.40f;
+                            begin_hr = big_hr_value == 0
+                                ? d3d_device->vtbl->BeginScene(d3d_device)
+                                : big_hr_value;
+                            if (begin_hr == 0) {
+                                left_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) left_hr = end_hr;
+                            }
+                            left_raw = v9x_surface_pixel16(d3d_target,
+                                                           16ul, 16ul);
+                            /* Right half: every coordinate inside u > 0.5. */
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.60f; triangle[2].tv = 0.40f;
+                            begin_hr = big_hr_value == 0
+                                ? d3d_device->vtbl->BeginScene(d3d_device)
+                                : big_hr_value;
+                            if (begin_hr == 0) {
+                                right_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) right_hr = end_hr;
+                            }
+                            right_raw = v9x_surface_pixel16(d3d_target,
+                                                            16ul, 16ul);
+                            v9x_write_uint(big_left[big_index], left_raw);
+                            v9x_write_uint(big_right[big_index], right_raw);
+                            v9x_write_uint(big_ok[big_index],
+                                left_hr == 0 && right_hr == 0 &&
+                                target_layout.valid != 0ul &&
+                                v9x_layout_green(&target_layout,
+                                                 left_raw) >= 197ul &&
+                                v9x_layout_blue(&target_layout,
+                                                left_raw) <= 33ul &&
+                                v9x_layout_blue(&target_layout,
+                                                right_raw) >= 197ul &&
+                                v9x_layout_green(&target_layout,
+                                                 right_raw) <= 33ul
+                                ? 1ul : 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        }
+                        if (big_texture != 0) {
+                            big_texture->vtbl->Release(big_texture);
+                        }
+                        if (big != 0) {
+                            big->vtbl->Release(big);
+                        }
+                    }
+                    triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
+                    triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
+                    triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
                 }
 
                 /*
