@@ -1,9 +1,10 @@
 # A 5:5:5 desktop needs three places to agree, and finding the third took a day
 
 Date: 2026-09-02
-Status: mechanism complete and automatic under hardware Direct3D, with a page
-control, measured in software on 2026-09-03; the hardware experiment it exists
-for has **not** been run (A8U4I5 unreachable)
+Status: complete. Automatic under hardware Direct3D with a page control;
+measured in software and, on 2026-09-03, on the emulated ViRGE with hardware
+Direct3D, where nine colour keys flipped to 1 with no engine change. Real S3D
+silicon (A8U4I5) still unmeasured - unreachable since 2026-09-02
 
 ## What this was for
 
@@ -169,13 +170,57 @@ for - needs a chip that resolves to HARDWARE, and the only two available are an
 since 2026-09-02. On this Trio64 automatic can only ever say 5:6:5, and did.
 The host tests cover the rule; the machine does not yet.
 
+## Measured, 2026-09-03: automatic 5:5:5 on the emulated ViRGE
+
+The 86Box ViRGE/DX guest (`Win86SE`, port 9869, S3 ViRGE/DX 86C375 5333:8A01,
+`Direct3D=0`) was started for this. Same build, two boots, and the only
+difference between them is one SYSTEM.INI line.
+
+**Control, `HighColor=16` forced** (boot 529):
+
+```
+Colour=hc=16 ini=16 row=279 set=279 is555=0 mask=63488   ColourLayout=565-ini
+Direct3DMode=hardware   D3DTargetRMask=63488
+D3DTrianglePixelRaw=31744 (0x7C00 into a 565 target)   D3DTrianglePixelOk=0
+```
+
+**Automatic, key absent** (boot 530):
+
+```
+Colour=hc=15 ini=0  row=279 set=278 is555=1 mask=31744   ColourLayout=555-auto
+Direct3DMode=hardware   D3DTargetRMask=31744
+D3DTrianglePixelRaw=31744 (0x7C00 into a 555 target)   D3DTrianglePixelOk=1
+```
+
+Mode 0x117 became 0x116 on its own, because the chip resolved to HARDWARE.
+Nothing in the engine changed - the raw values are identical between the two
+runs - and **nine keys went 0 to 1**: `D3DTrianglePixelOk`,
+`D3DSubpixelTriangleOk`, `D3DSpecularGouraudOk`, `D3DZCompareOk`,
+`D3DBaseTextureOk`, `Tex4444PixelOk`, `D3DVertexAlphaBlendOk`,
+`D3DTrilinearBlendOk`, and `D3DMipmapLevelSelectOk` stayed 1. That is the
+experiment the 1555 record defined, run on the emulator: the engine was never
+wrong, the target's description was.
+
+One key stayed 0, and it is a new finding rather than a leftover:
+`D3DZWriteMaskOk`. With colours now comparable, the emulator leaves the masked
+green draw's depth in the buffer and the real Trio3D does not - see
+[`../issues/2026-09-03-86box-virge-ignores-depth-write-disable.md`](../issues/2026-09-03-86box-virge-ignores-depth-write-disable.md).
+The mismatch was invisible while every colour key failed for the same reason.
+
+The guest was left in the automatic state, which is its SYSTEM.INI as found.
+Still not measured: the same on A8U4I5, the only real S3D silicon, unreachable
+since 2026-09-02. On the emulator the S3D model's 1555 packing is by
+construction; on the card it is a measurement (2026-09-02, one run, 5:6:5
+desktop), and the 5:5:5 desktop closing it there is the one thing this record
+still owes.
+
 ## What remains
 
 1. ~~Declare the layout to GDI.~~ Done above; it was the `FIVE6FIVE` PDEVICE
    flag, and the `BI_RGB` header turned out not to be what the DIB engine reads.
-2. **Run the experiment**, which now needs no INI edit at all: boot A8U4I5
-   with `Direct3D` absent or 0 and the desktop should come up `555-auto`.
-   Then On A8U4I5 with hardware Direct3D and
+2. **Run the experiment on silicon.** Done on the emulator above. On A8U4I5
+   it needs no INI edit: boot with `Direct3D` absent or 0 and the desktop
+   should come up `555-auto`. Then On A8U4I5 with hardware Direct3D and
    `HighColor=15`, every failing colour key should turn to 1 with no change to
    the engine. If it does not, the engine is packing something other than what
    both the emulator and S3's header say, which would be a more interesting
@@ -184,7 +229,8 @@ The host tests cover the rule; the machine does not yet.
    able to override either way.
 
 A8U4I5 stopped answering on `10.0.1.172:9869` partway through this work and was
-not reachable for any of it. Every measurement above is from the 86Box guest.
+not reachable for any of it. Every measurement above is from the two 86Box
+guests: the Trio64 for the software engine, the ViRGE/DX for the S3D one.
 
 ## Scope note
 
