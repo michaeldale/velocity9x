@@ -110,6 +110,12 @@ typedef struct v9x_d3d_context {
      */
     DWORD texture_address;
     DWORD texture_border;
+    /*
+     * D3DRENDERSTATE_COLORKEYENABLE. The key itself lives in the HAL's
+     * per-surface table (v9x_d3d_color_key_find); this only says whether the
+     * application wants it applied.
+     */
+    DWORD color_key_enable;
 } V9X_D3D_CONTEXT;
 
 /*

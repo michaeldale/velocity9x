@@ -366,6 +366,38 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("D3dMipChainGaps", snapshot.d3d.mip_chain_gaps);
     v9x_write_uint("D3dMipChainLevels", snapshot.d3d.mip_chain_levels);
     v9x_write_uint("D3dMipChainDelta", snapshot.d3d.mip_chain_delta);
+    v9x_write_uint("D3dTextureRefusedFormat",
+                   snapshot.d3d.texture_refused_format);
+    v9x_write_uint("D3dTextureRefusedShape",
+                   snapshot.d3d.texture_refused_shape);
+    v9x_write_hex("D3dTextureRefusedLast", snapshot.d3d.texture_refused_last);
+    v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
+    v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
+    v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);
+    v9x_write_hex("D3dColorKeyRaw0", snapshot.d3d.color_key_raw[0]);
+    v9x_write_hex("D3dColorKeyRaw1", snapshot.d3d.color_key_raw[1]);
+    v9x_write_hex("D3dColorKeyRaw2", snapshot.d3d.color_key_raw[2]);
+    v9x_write_hex("D3dColorKeyRaw3", snapshot.d3d.color_key_raw[3]);
+    v9x_write_hex("D3dColorKeyRaw4", snapshot.d3d.color_key_raw[4]);
+    v9x_write_hex("D3dColorKeyRaw5", snapshot.d3d.color_key_raw[5]);
+    v9x_write_uint("D3dColorKeyDraws", snapshot.d3d.color_key_draws);
+    v9x_write_uint("D3dColorKeyRewrites", snapshot.d3d.color_key_rewrites);
+    v9x_write_uint("D3dLclTailCaptures", snapshot.d3d.lcl_tail_captures);
+    {
+        DWORD tail_index;
+        char tail_name[16];
+
+        for (tail_index = 0ul; tail_index < 16ul; ++tail_index) {
+            tail_name[0] = 'D'; tail_name[1] = '3'; tail_name[2] = 'd';
+            tail_name[3] = 'L'; tail_name[4] = 'c'; tail_name[5] = 'l';
+            tail_name[6] = 'T'; tail_name[7] = 'a'; tail_name[8] = 'i';
+            tail_name[9] = 'l';
+            tail_name[10] = (char)('0' + (tail_index / 10ul));
+            tail_name[11] = (char)('0' + (tail_index % 10ul));
+            tail_name[12] = 0;
+            v9x_write_hex(tail_name, snapshot.d3d.lcl_tail_raw[tail_index]);
+        }
+    }
     v9x_write_uint("D3dDepthReject", snapshot.d3d.depth_reject);
     v9x_write_text("D3dDepthRejectName",
                    v9x_depth_reject_name(snapshot.d3d.depth_reject));

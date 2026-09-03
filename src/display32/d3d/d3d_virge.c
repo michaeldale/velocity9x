@@ -58,17 +58,44 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
  * sample. Reading the field unconditionally would also read past the
  * allocation, since the DDK only allocates it in the differing case.
  */
+/*
+ * Why a texture was not sampled, for the trace block. 3DMark 99's picture
+ * could not be read without these: a refused texture draws as untextured
+ * Gouraud in the vertex colour, which looks like a texture full of that
+ * colour, and nothing said which of the sampler's rules had refused it.
+ */
+static void v9x_d3d_refuse_format(DWORD detail)
+{
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_format;
+        v9x_hal->d3d_diagnostics.texture_refused_last = detail;
+    }
+}
+
+static void v9x_d3d_refuse_shape(const V9X_DD_SURFACE_LCL *surface)
+{
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_shape;
+        v9x_hal->d3d_diagnostics.texture_refused_last =
+            ((DWORD)surface->lpGbl->wWidth << 16) |
+            ((DWORD)surface->lpGbl->lPitch & 0xfffful);
+    }
+}
+
 static int v9x_d3d_texture_format(const V9X_DD_SURFACE_LCL *surface,
                                   DWORD *format_out)
 {
     const V9X_DDPIXELFORMAT *pixel;
 
     if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul) {
+        v9x_d3d_refuse_format(0xfffffffful);
         return 0;
     }
     pixel = &surface->lpGbl->ddpfSurface;
     if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
         pixel->dwRGBBitCount != 16ul) {
+        v9x_d3d_refuse_format((pixel->dwRGBBitCount << 24) |
+                              (pixel->dwRBitMask & 0x00fffffful));
         return 0;
     }
     if (pixel->dwRBitMask == 0x00007c00ul &&
@@ -83,6 +110,8 @@ static int v9x_d3d_texture_format(const V9X_DD_SURFACE_LCL *surface,
         *format_out = V9X_TEX_FORMAT_ARGB4444;
         return 1;
     }
+    v9x_d3d_refuse_format((pixel->dwRGBBitCount << 24) |
+                          (pixel->dwRBitMask & 0x00fffffful));
     return 0;
 }
 
@@ -198,9 +227,11 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     if (surface->lpGbl->wWidth != surface->lpGbl->wHeight ||
         (DWORD)surface->lpGbl->wWidth < v9x_d3d_virge_limits.texture_size_min ||
         (DWORD)surface->lpGbl->wWidth > v9x_d3d_virge_limits.texture_size_max) {
+        v9x_d3d_refuse_shape(surface);
         return 0;
     }
     if (surface->lpGbl->lPitch != (LONG)surface->lpGbl->wWidth * 2l) {
+        v9x_d3d_refuse_shape(surface);
         return 0;
     }
     if (!v9x_d3d_texture_format(surface, format_out)) {
@@ -211,6 +242,7 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
         ++size_log;
     }
     if ((1ul << size_log) != size) {
+        v9x_d3d_refuse_shape(surface);
         return 0;
     }
     offset = v9x_surface_offset(surface);
@@ -230,6 +262,127 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
                                                   levels_out) &&
                      *levels_out != 0ul;
     return 1;
+}
+
+/*
+ * What the S3D unit can do with a Direct3D blend pair, and what it cannot.
+ *
+ * The engine has one blend: destination = source * A + destination * (1 - A),
+ * with A from the vertex (ABC_SRC|ABC_ENABLE) or from the texel (ABC_ENABLE
+ * alone). That is SRCALPHA over INVSRCALPHA and nothing else. ONE over ZERO is
+ * no blend, and ZERO over ONE draws nothing. Every other pair - the
+ * multiplicative DESTCOLOR/ZERO and ZERO/SRCCOLOR that lightmaps use, the
+ * additive ONE/ONE - has no expression here. Until 2026-09-03 those were drawn
+ * opaque, and 3DMark 99's lightmap pass then fought its own base pass for
+ * depth: coplanar, opaque, and saw-toothed where the two interleaved. A pass
+ * that cannot be blended is now not drawn, and counted, which leaves the
+ * scene unlit where it would have been garbage. The software engine is where a
+ * multiplicative blend can be honoured, and that is recorded as the next step
+ * rather than done here.
+ *
+ * Returns the alpha bits for the command word; *skip_out is set when the
+ * triangle must not be drawn at all.
+ */
+static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
+                                      int textured, int *skip_out)
+{
+    *skip_out = 0;
+    if (context->alpha_blend_enable == 0ul) {
+        return 0ul;
+    }
+    if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&
+        context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
+        /*
+         * Where A comes from. Direct3D takes it from the texture when the
+         * texture blend asks for texture alpha (DECALALPHA, MODULATEALPHA)
+         * and from the vertex otherwise; the unit cannot multiply the two,
+         * so MODULATEALPHA gets the texel's. Not "from the texture whenever
+         * the texture has an alpha channel": both formats this engine samples
+         * have one, and what DirectDraw's own upload leaves in that bit for a
+         * texture that never asked for alpha is not known here - a wrong
+         * guess would make every blended textured draw vanish.
+         */
+        if (textured &&
+            (context->texture_blend == V9X_D3DTBLEND_DECALALPHA ||
+             context->texture_blend == V9X_D3DTBLEND_MODULATEALPHA)) {
+            return V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+        }
+        return V9X_VIRGE_3D_CMD_ALPHA_SOURCE | V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+    }
+    if (context->src_blend == V9X_D3DBLEND_ONE &&
+        context->dest_blend == V9X_D3DBLEND_ZERO) {
+        return 0ul;
+    }
+    *skip_out = 1;
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.blend_skipped;
+        v9x_hal->d3d_diagnostics.blend_last_pair =
+            (context->src_blend << 16) | (context->dest_blend & 0xfffful);
+    }
+    return 0ul;
+}
+
+/*
+ * A source colour key, honoured the only way this unit can: by the texels.
+ *
+ * The S3D texture unit has no chroma key. What it has is texture alpha - one
+ * bit in ARGB1555, four in ARGB4444 - and a blend that keeps the destination
+ * where that alpha is zero. So when the application enables COLORKEYENABLE
+ * and the bound texture carries a source key, every texel equal to the key
+ * (alpha excluded from the comparison) has its alpha cleared and every other
+ * texel has it set, and the draw uses texture alpha. The rewrite runs once
+ * per upload, not per draw: the HAL marks the surface dirty on Unlock, on a
+ * Blt into it, on a TextureSwap and on SetColorKey itself, and the pass here
+ * clears the flag. A HEL blit the HAL never sees is the recorded gap.
+ *
+ * Every level the engine will read is rewritten - `levels` of them below the
+ * top, laid out contiguously as v9x_d3d_mip_chain_contiguous verified - and
+ * the engine is idle first, because the texels may still be being read.
+ */
+static void v9x_d3d_virge_apply_color_key(V9X_D3D_COLOR_KEY *key,
+                                          DWORD offset, DWORD size,
+                                          DWORD levels, DWORD format)
+{
+    volatile WORD *texel;
+    DWORD level;
+    DWORD count;
+    WORD compare_mask;
+    WORD alpha_mask;
+    WORD key_value;
+
+    if (key->dirty == 0ul) {
+        return;
+    }
+    if (format == V9X_TEX_FORMAT_ARGB4444) {
+        compare_mask = 0x0fffu;
+        alpha_mask = 0xf000u;
+    } else {
+        compare_mask = 0x7fffu;
+        alpha_mask = 0x8000u;
+    }
+    key_value = (WORD)(key->low & compare_mask);
+    if (!v9x_wait_idle(1)) {
+        return;
+    }
+    texel = (volatile WORD *)(v9x_hal->fb.linear_base + offset);
+    for (level = 0ul; level <= levels; ++level) {
+        count = size * size;
+        while (count-- != 0ul) {
+            WORD value = *texel;
+
+            if ((WORD)(value & compare_mask) == key_value) {
+                *texel = (WORD)(value & compare_mask);
+            } else {
+                *texel = (WORD)(value | alpha_mask);
+            }
+            ++texel;
+        }
+        size /= 2ul;
+    }
+    key->dirty = 0ul;
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.color_key_rewrites;
+    }
 }
 
 static LONG v9x_d3d_fixed_12_20(float value)
@@ -308,6 +461,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     int texture_mipmapped = 0;
     DWORD texture_levels = 0ul;
     DWORD texture_format = V9X_TEX_FORMAT_ARGB1555;
+    DWORD alpha_bits = 0ul;
+    int skip_blend = 0;
     int textured;
 
     if (!(p0->sx >= 0.0f && p0->sx <= (float)(context->width - 1ul) &&
@@ -393,6 +548,58 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     textured = v9x_d3d_texture_info(context, &texture_offset,
                                     &texture_size_log, &texture_mipmapped,
                                     &texture_levels, &texture_format);
+    alpha_bits = v9x_d3d_virge_alpha_bits(context, textured, &skip_blend);
+    if (skip_blend) {
+        return 1;   /* a blend the unit has no expression for: not drawn */
+    }
+    if (textured && context->color_key_enable != 0ul) {
+        const V9X_DD_SURFACE_LCL *keyed_surface =
+            v9x_d3d_context_texture_surface(context);
+        V9X_D3D_COLOR_KEY *key = v9x_d3d_color_key_find(keyed_surface);
+
+        /* Instrument: where in the LCL does DirectDraw keep the key? Kept
+         * after the answer was found, because it is what will show a
+         * DirectDraw build that lays the record out differently. */
+        if (v9x_hal != 0 && keyed_surface != 0) {
+            const DWORD *raw = (const DWORD *)&keyed_surface->dwFlags;
+            DWORD index;
+
+            for (index = 0ul; index < 16ul; ++index) {
+                v9x_hal->d3d_diagnostics.lcl_tail_raw[index] = raw[index];
+            }
+            ++v9x_hal->d3d_diagnostics.lcl_tail_captures;
+        }
+        /*
+         * The key lives in the surface record, not in a callback. DirectDraw
+         * did not call the HAL's SetColorKey for this texture (measured:
+         * color_key_sets stayed at zero while the probe set one), and stored
+         * the key in the LCL instead, where it was found by the instrument
+         * above. So the table entry is made here, from the record, the first
+         * time a keyed texture is drawn - and remade if the key changes.
+         */
+        if (keyed_surface != 0 &&
+            (keyed_surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul &&
+            (key == 0 || key->low != keyed_surface->ddckCKSrcBltLow ||
+             key->high != keyed_surface->ddckCKSrcBltHigh)) {
+            v9x_d3d_color_key_set(keyed_surface, V9X_DDCKEY_SRCBLT,
+                                  keyed_surface->ddckCKSrcBltLow,
+                                  keyed_surface->ddckCKSrcBltHigh);
+            key = v9x_d3d_color_key_find(keyed_surface);
+        }
+
+        if (key != 0) {
+            v9x_d3d_virge_apply_color_key(
+                key, texture_offset, 1ul << texture_size_log,
+                texture_mipmapped ? texture_levels : 0ul, texture_format);
+            /* Texture alpha: keyed texels have alpha zero and keep the
+             * destination. This replaces a vertex-alpha blend if one was
+             * also asked for; the unit has one alpha source per draw. */
+            alpha_bits = V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.color_key_draws;
+            }
+        }
+    }
     if (textured) {
         dudy = (p2->tu - p0->tu) * 134217728.0f * fdy02r;
         dvdy = (p2->tv - p0->tv) * 134217728.0f * fdy02r;
@@ -612,12 +819,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             command |= V9X_VIRGE_3D_CMD_TEXTURE_WRAP;
         }
     }
-    if (context->alpha_blend_enable != 0ul &&
-        context->src_blend == V9X_D3DBLEND_SRCALPHA &&
-        context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
-        command |= V9X_VIRGE_3D_CMD_ALPHA_SOURCE |
-                   V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
-    }
+    command |= alpha_bits;
     v9x_mmio_write(V9X_VIRGE_3D_COMMAND, command);
     gs_bs = (((color >> 8) & 0xfful) << 23) |
             ((color & 0xfful) << 7);
@@ -889,9 +1091,9 @@ static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
     shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
-        V9X_D3DPBLENDCAPS_SRCALPHA;
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_ONE;
     shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps =
-        V9X_D3DPBLENDCAPS_INVSRCALPHA;
+        V9X_D3DPBLENDCAPS_INVSRCALPHA | V9X_D3DPBLENDCAPS_ZERO;
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
@@ -923,7 +1125,8 @@ static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPTEXTURECAPS_PERSPECTIVE |
         V9X_D3DPTEXTURECAPS_POW2 |
         V9X_D3DPTEXTURECAPS_SQUAREONLY |
-        V9X_D3DPTEXTURECAPS_ALPHA;
+        V9X_D3DPTEXTURECAPS_ALPHA |
+        V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
         V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR |
         V9X_D3DPTFILTERCAPS_MIPNEAREST |

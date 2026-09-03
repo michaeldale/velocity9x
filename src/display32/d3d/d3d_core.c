@@ -33,6 +33,79 @@ static const BYTE v9x_guid_d3d_callbacks2[16] = {
 
 static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
+
+/* Source colour keys by surface; see ddhal_internal.h. */
+static V9X_D3D_COLOR_KEY v9x_d3d_color_keys[V9X_D3D_COLOR_KEY_COUNT];
+
+V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD index;
+
+    if (surface == 0) {
+        return 0;
+    }
+    for (index = 0ul; index < V9X_D3D_COLOR_KEY_COUNT; ++index) {
+        if (v9x_d3d_color_keys[index].surface == surface) {
+            return &v9x_d3d_color_keys[index];
+        }
+    }
+    return 0;
+}
+
+void v9x_d3d_color_key_set(const V9X_DD_SURFACE_LCL *surface, DWORD flags,
+                           DWORD low, DWORD high)
+{
+    V9X_D3D_COLOR_KEY *entry;
+
+    /* Only a source blit key means "these texels are transparent". A
+     * destination key or an overlay key is something else, and a call that
+     * clears the source key (no SRCBLT flag) is treated as removal below
+     * only when it names that key. */
+    if (surface == 0 || (flags & V9X_DDCKEY_SRCBLT) == 0ul) {
+        return;
+    }
+    entry = v9x_d3d_color_key_find(surface);
+    if (entry == 0) {
+        /* First free slot. Not through v9x_d3d_color_key_find(0): that
+         * refuses a null surface by design, and asking it for one found
+         * nothing - measured as color_key_draws staying at zero on the
+         * probe's keyed rung while the draw path had reached this table. */
+        DWORD index;
+
+        for (index = 0ul; index < V9X_D3D_COLOR_KEY_COUNT; ++index) {
+            if (v9x_d3d_color_keys[index].surface == 0) {
+                entry = &v9x_d3d_color_keys[index];
+                break;
+            }
+        }
+    }
+    if (entry == 0) {
+        return;                              /* table full: key not honoured */
+    }
+    entry->surface = surface;
+    entry->low = low;
+    entry->high = high;
+    entry->dirty = 1ul;
+}
+
+void v9x_d3d_color_key_touch(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_COLOR_KEY *entry = v9x_d3d_color_key_find(surface);
+
+    if (entry != 0) {
+        entry->dirty = 1ul;
+    }
+}
+
+void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_COLOR_KEY *entry = v9x_d3d_color_key_find(surface);
+
+    if (entry != 0) {
+        entry->surface = 0;
+        entry->dirty = 0ul;
+    }
+}
 static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
 
 /*
@@ -848,6 +921,10 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
     surface = first->surface;
     first->surface = second->surface;
     second->surface = surface;
+    /* A swap is how a texture manager gets new texels into an old slot:
+     * whichever keyed surface is involved must be rewritten before use. */
+    v9x_d3d_color_key_touch(v9x_d3d_surface_lcl(first->surface));
+    v9x_d3d_color_key_touch(v9x_d3d_surface_lcl(second->surface));
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.texture_swaps;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, data->ddrval);
@@ -931,6 +1008,9 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
                 break;
             case V9X_D3DRENDERSTATE_ALPHABLENDENABLE:
                 context->alpha_blend_enable = states[index].argument != 0ul;
+                break;
+            case V9X_D3DRENDERSTATE_COLORKEYENABLE:
+                context->color_key_enable = states[index].argument != 0ul;
                 break;
             case V9X_D3DRENDERSTATE_FOGENABLE:
                 context->fog_enable = states[index].argument != 0ul;

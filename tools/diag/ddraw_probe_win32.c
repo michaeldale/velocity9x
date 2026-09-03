@@ -331,6 +331,10 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DCMP_ALWAYS                     8ul
 #define V9X_D3DBLEND_SRCALPHA                5ul
 #define V9X_D3DBLEND_INVSRCALPHA             6ul
+#define V9X_D3DBLEND_ZERO_F                  1ul
+#define V9X_D3DBLEND_ONE_F                   2ul
+#define V9X_D3DBLEND_DESTCOLOR               9ul
+#define V9X_D3DRENDERSTATE_COLORKEYENABLE    41ul
 #define V9X_D3DFILTER_NEAREST                 1ul
 #define V9X_D3DFILTER_LINEAR                  2ul
 #define V9X_D3DFILTER_MIPNEAREST              3ul
@@ -3325,6 +3329,169 @@ void __stdcall V9xDdrawProbeEntry(void)
 
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+
+                /*
+                 * A source colour key on a texture.
+                 *
+                 * The texture is one solid colour and that colour is the
+                 * key, so a driver that honours the key draws nothing and
+                 * the target keeps its fill; one that ignores it paints the
+                 * triangle in the key colour. The key is set through
+                 * IDirectDrawSurface::SetColorKey, which reaches the HAL's
+                 * SetColorKey callback - whose data-block layout the trace
+                 * block records raw so that these known values (low 0x7c1f,
+                 * high 0x7c1f, DDCKEY_SRCBLT) can be found in it.
+                 */
+                {
+                    struct v9x_dds *keyed = 0;
+                    struct v9x_d3d_texture2 *keyed_texture = 0;
+                    DWORD keyed_handle = 0ul;
+                    V9X_DDCOLORKEY key;
+                    HRESULT key_hr;
+                    HRESULT set_key_hr = 0x80004005ul;
+                    WORD keyed_raw = 0u;
+
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                    desc.dwWidth = 64ul;
+                    desc.dwHeight = 64ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                    key_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                        &keyed, 0);
+                    v9x_write_hresult("ColorKeySurfaceHr", key_hr);
+                    if (key_hr == 0 && keyed != 0) {
+                        /* Magenta with the alpha bit set: opaque to a
+                         * driver that does not rewrite it. */
+                        v9x_fill_surface(keyed, 0xfc1ffc1ful);
+                        key.dwColorSpaceLowValue = 0x7c1ful;
+                        key.dwColorSpaceHighValue = 0x7c1ful;
+                        set_key_hr = keyed->vtbl->SetColorKey(
+                            keyed, V9X_DDCKEY_SRCBLT, &key);
+                        v9x_write_hresult("ColorKeySetHr", set_key_hr);
+                        key_hr = keyed->vtbl->QueryInterface(
+                            keyed, &v9x_iid_d3d_texture2,
+                            (void **)&keyed_texture);
+                    }
+                    if (key_hr == 0 && keyed_texture != 0) {
+                        key_hr = keyed_texture->vtbl->GetHandle(
+                            keyed_texture, d3d_device, &keyed_handle);
+                    }
+                    if (key_hr == 0 && keyed_handle != 0ul) {
+                        v9x_fill_surface(d3d_target, 0ul);
+                        key_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                            keyed_handle);
+                        if (key_hr == 0) {
+                            key_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_COPY);
+                        }
+                        if (key_hr == 0) {
+                            key_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_COLORKEYENABLE, 1ul);
+                        }
+                        triangle[0].tu = 0.125f;
+                        triangle[0].tv = 0.125f;
+                        triangle[1].tu = 0.875f;
+                        triangle[1].tv = 0.125f;
+                        triangle[2].tu = 0.125f;
+                        triangle[2].tv = 0.875f;
+                        begin_hr = key_hr == 0
+                            ? d3d_device->vtbl->BeginScene(d3d_device)
+                            : key_hr;
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        }
+                        keyed_raw = v9x_surface_pixel16(d3d_target,
+                                                        16ul, 16ul);
+                        v9x_write_hresult("ColorKeyDrawHr", draw_hr);
+                        v9x_write_uint("ColorKeyRaw", keyed_raw);
+                        v9x_write_uint("ColorKeyOk",
+                            begin_hr == 0 && draw_hr == 0 && end_hr == 0 &&
+                            set_key_hr == 0 && keyed_raw == 0u ? 1ul : 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device,
+                            V9X_D3DRENDERSTATE_COLORKEYENABLE, 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                    }
+                    if (keyed_texture != 0) {
+                        keyed_texture->vtbl->Release(keyed_texture);
+                    }
+                    if (keyed != 0) {
+                        keyed->vtbl->Release(keyed);
+                    }
+                }
+
+                /*
+                 * A blend the S3D unit cannot express: DESTCOLOR over ZERO,
+                 * the multiplicative pass lightmaps use. The target is
+                 * filled green and the triangle is white, so a correct
+                 * multiply leaves green, a driver that declines the pass
+                 * leaves green, and a driver that draws it opaque - which is
+                 * what produced 3DMark 99's saw-toothed panels - leaves
+                 * white. Green is the only acceptable answer; how it was
+                 * reached is what D3dBlendSkipped in the trace block says.
+                 */
+                {
+                    HRESULT blend_hr;
+                    WORD blend_raw;
+
+                    v9x_fill_surface(d3d_target, 0x03e003e0ul);
+                    blend_hr = d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                    if (blend_hr == 0) {
+                        blend_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                            V9X_D3DBLEND_DESTCOLOR);
+                    }
+                    if (blend_hr == 0) {
+                        blend_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                            V9X_D3DBLEND_ZERO_F);
+                    }
+                    triangle[0].color = 0xffffffff;
+                    triangle[1].color = 0xffffffff;
+                    triangle[2].color = 0xffffffff;
+                    begin_hr = blend_hr == 0
+                        ? d3d_device->vtbl->BeginScene(d3d_device)
+                        : blend_hr;
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    }
+                    blend_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                    v9x_write_hresult("BlendModulateHr", blend_hr);
+                    v9x_write_uint("BlendModulateRaw", blend_raw);
+                    v9x_write_uint("BlendModulateOk",
+                        begin_hr == 0 && draw_hr == 0 && end_hr == 0 &&
+                        blend_raw == 0x03e0u ? 1ul : 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                        V9X_D3DBLEND_ONE_F);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                        V9X_D3DBLEND_ZERO_F);
+                }
 
                 /*
                  * Depth buffering, on the device that has already drawn

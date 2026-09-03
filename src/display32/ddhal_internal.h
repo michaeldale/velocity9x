@@ -312,6 +312,33 @@ void v9x_cpu_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
  * not include the D3D internals to ask one number.
  */
 void v9x_d3d_publish(V9X_DD_SHARED *shared);
+
+/*
+ * Source colour keys, per surface.
+ *
+ * DirectDraw tells the driver about a colour key once, through the surface
+ * SetColorKey callback, and never again; the key is not in any structure the
+ * D3D entry points receive. The HAL therefore keeps a small table, keyed by
+ * the surface's LCL pointer, which the ViRGE engine consults at draw time.
+ * `dirty` says the texels may have changed since the engine last rewrote
+ * their alpha bits from the key: set by SetColorKey itself, by Unlock and by
+ * a Blt into the surface, and by a TextureSwap. A HEL blit the HAL never
+ * sees does not set it - recorded as a limit, not hidden.
+ */
+typedef struct v9x_d3d_color_key {
+    const V9X_DD_SURFACE_LCL *surface;
+    DWORD low;
+    DWORD high;
+    DWORD dirty;
+} V9X_D3D_COLOR_KEY;
+
+#define V9X_D3D_COLOR_KEY_COUNT 128ul
+
+void v9x_d3d_color_key_set(const V9X_DD_SURFACE_LCL *surface, DWORD flags,
+                           DWORD low, DWORD high);
+void v9x_d3d_color_key_touch(const V9X_DD_SURFACE_LCL *surface);
+void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface);
+V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 DWORD v9x_d3d_depth_bytes_per_pixel(void);
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data);
 

@@ -471,10 +471,41 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     v9x_trace_enter(V9X_TRACE_DESTROYSURFACE,
                     data != 0 ? data->lpDDSurface : 0ul);
     if (data != 0) {
+        v9x_d3d_color_key_forget(
+            (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         data->ddRVal = V9X_DD_OK;
     }
     v9x_trace_exit(V9X_TRACE_DESTROYSURFACE, V9X_DD_OK);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
+}
+
+/*
+ * The application set a colour key on a surface.
+ *
+ * Recorded, not acted on: the ViRGE has no chroma key in its texture unit, so
+ * a source key on a texture is honoured at draw time by rewriting the texels'
+ * alpha bits and drawing with texture alpha (d3d_virge.c). The first six
+ * DWORDs of the block are copied raw so the layout assumed in the ABI header
+ * can be checked against a key the probe set on purpose.
+ */
+DWORD __stdcall V9xHalSetColorKey(V9X_DDHAL_SETCOLORKEYDATA *data)
+{
+    if (data == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (v9x_hal != 0) {
+        const DWORD *raw = (const DWORD *)data;
+        DWORD index;
+
+        ++v9x_hal->d3d_diagnostics.color_key_sets;
+        for (index = 0ul; index < 6ul; ++index) {
+            v9x_hal->d3d_diagnostics.color_key_raw[index] = raw[index];
+        }
+    }
+    v9x_d3d_color_key_set(data->lpDDSurface, data->dwFlags,
+                          data->ckLow, data->ckHigh);
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall V9xHalAddAttachedSurface(
@@ -594,6 +625,9 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_UNLOCK, 0ul);
+    /* The CPU may have written texels: a keyed texture must be rewritten
+     * before its next draw. Cheap - a table walk - and only a flag. */
+    v9x_d3d_color_key_touch(data->lpDDSurface);
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_UNLOCK, data->ddRVal);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1023,6 +1057,9 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     int engine_used = 0;
 
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
+    if (data != 0) {
+        v9x_d3d_color_key_touch(data->lpDDDestSurface);
+    }
     result = v9x_blt_body(data, &engine_used);
     /* Three outcomes have to stay distinguishable, and ddRVal is DD_OK for
      * all of them: the engine executed the blit (BltEngine), the HAL
@@ -1238,9 +1275,11 @@ DWORD __stdcall DriverInit(DWORD context)
         V9X_DDHAL_SURFCB32_FLIP | V9X_DDHAL_SURFCB32_GETFLIPSTATUS |
         V9X_DDHAL_SURFCB32_LOCK | V9X_DDHAL_SURFCB32_UNLOCK |
         V9X_DDHAL_SURFCB32_BLT | V9X_DDHAL_SURFCB32_ADDATTACHEDSURFACE |
-        V9X_DDHAL_SURFCB32_GETBLTSTATUS;
+        V9X_DDHAL_SURFCB32_GETBLTSTATUS | V9X_DDHAL_SURFCB32_SETCOLORKEY;
     shared->surface_callbacks.DestroySurface =
         (V9X_DD_CODE_PTR)V9xHalDestroySurface;
+    shared->surface_callbacks.SetColorKey =
+        (V9X_DD_CODE_PTR)V9xHalSetColorKey;
     shared->surface_callbacks.Flip = (V9X_DD_CODE_PTR)V9xHalFlip;
     shared->surface_callbacks.GetFlipStatus =
         (V9X_DD_CODE_PTR)V9xHalGetFlipStatus;

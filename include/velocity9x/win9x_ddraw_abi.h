@@ -114,6 +114,7 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDHAL_SURFCB32_LOCK          0x00000008ul
 #define V9X_DDHAL_SURFCB32_UNLOCK        0x00000010ul
 #define V9X_DDHAL_SURFCB32_BLT           0x00000020ul
+#define V9X_DDHAL_SURFCB32_SETCOLORKEY   0x00000040ul
 #define V9X_DDHAL_SURFCB32_ADDATTACHEDSURFACE 0x00000080ul
 #define V9X_DDHAL_SURFCB32_GETBLTSTATUS  0x00000100ul
 #define V9X_DDHAL_SURFCB32_GETFLIPSTATUS 0x00000200ul
@@ -457,6 +458,8 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DPMISCCAPS_CULLCCW          0x00000040ul
 #define V9X_D3DPRASTERCAPS_DITHER         0x00000001ul
 #define V9X_D3DPBLENDCAPS_ZERO            0x00000001ul
+/* D3DCAPS.H: the driver honours a source colour key on textures. */
+#define V9X_D3DPTEXTURECAPS_TRANSPARENCY  0x00000008ul
 #define V9X_D3DPBLENDCAPS_ONE             0x00000002ul
 #define V9X_D3DPSHADECAPS_SPECULARFLATRGB 0x00000080ul
 #define V9X_D3DPRASTERCAPS_ZTEST          0x00000010ul
@@ -482,6 +485,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_SRCBLEND                19ul
 #define V9X_D3DRENDERSTATE_DESTBLEND               20ul
 #define V9X_D3DRENDERSTATE_ALPHABLENDENABLE        27ul
+#define V9X_D3DRENDERSTATE_COLORKEYENABLE          41ul
 #define V9X_D3DRENDERSTATE_FOGENABLE              28ul
 #define V9X_D3DRENDERSTATE_SPECULARENABLE         29ul
 #define V9X_D3DRENDERSTATE_FOGCOLOR               34ul
@@ -528,6 +532,8 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DTBLEND_DECAL                          1ul
 #define V9X_D3DTBLEND_MODULATE                       2ul
 #define V9X_D3DTBLEND_COPY                           7ul
+#define V9X_D3DTBLEND_DECALALPHA                     3ul
+#define V9X_D3DTBLEND_MODULATEALPHA                  4ul
 #define V9X_D3DPTEXTURECAPS_PERSPECTIVE   0x00000001ul
 #define V9X_D3DPTEXTURECAPS_POW2          0x00000002ul
 #define V9X_D3DPTEXTURECAPS_ALPHA         0x00000004ul
@@ -716,7 +722,18 @@ typedef struct v9x_dd_surface_gbl {
     V9X_DDPIXELFORMAT ddpfSurface;
 } V9X_DD_SURFACE_GBL;
 
-/* DDRAWI_DDRAWSURFACE_LCL prefix: lpGbl at +4, ddsCaps at +32. */
+/*
+ * DDRAWI_DDRAWSURFACE_LCL prefix: lpGbl at +4, ddsCaps at +32.
+ *
+ * The fields past ddsCaps were placed by measurement, not by reading a
+ * header: on 2026-09-03 the HAL copied the sixteen DWORDs from dwFlags onward
+ * of a texture the probe had given a source colour key of 0x7c1f/0x7c1f, and
+ * the values landed at dwFlags+32 and +36 (docs/decisions/2026-09-03-
+ * colour-key-and-blend-on-the-virge.md). The two zero DWORDs before them are
+ * the destination blit key, which the probe had not set; the four before that
+ * are the palette, clipper, mode and back-buffer count of the public DDRAWI
+ * layout, whose order this agrees with. Only ddckCKSrcBlt is read.
+ */
 typedef struct v9x_dd_surface_lcl {
     DWORD lpSurfMore;
     V9X_DD_SURFACE_GBL *lpGbl;
@@ -727,7 +744,19 @@ typedef struct v9x_dd_surface_lcl {
     DWORD dwProcessId;
     DWORD dwFlags;
     DWORD ddsCaps;
+    DWORD lpDDPalette;
+    DWORD lpDDClipper;
+    DWORD dwModeCreatedIn;
+    DWORD dwBackBufferCount;
+    DWORD ddckCKDestBltLow;
+    DWORD ddckCKDestBltHigh;
+    DWORD ddckCKSrcBltLow;
+    DWORD ddckCKSrcBltHigh;
 } V9X_DD_SURFACE_LCL;
+
+/* dwFlags bit set on that same measured LCL and on no other surface the
+ * probe drew: the surface carries a source blit colour key. */
+#define V9X_DDRAWISURF_HASCKEYSRCBLT 0x00080000ul
 
 /*
  * One node of a surface's attachment list - DDRAWI's DBLNODE (DDRAWI.H),
@@ -783,6 +812,27 @@ typedef struct v9x_ddhal_unlockdata {
     DWORD ddRVal;
     DWORD Unlock;
 } V9X_DDHAL_UNLOCKDATA;
+
+/*
+ * DDHAL_SETCOLORKEYDATA: {lpDD, lpDDSurface, dwFlags, ckNew, ddRVal, fn}, the
+ * colour key being two DWORDs (low, high). dwFlags carries the DDCKEY_* the
+ * application passed. The layout is checked by measurement rather than
+ * trusted: the HAL copies the first six DWORDs of every call into
+ * V9X_D3D_DIAGNOSTICS.color_key_raw, and the probe sets a key whose values it
+ * knows.
+ */
+#define V9X_DDCKEY_COLORSPACE 0x00000001ul
+#define V9X_DDCKEY_SRCBLT     0x00000008ul
+
+typedef struct v9x_ddhal_setcolorkeydata {
+    DWORD lpDD;
+    V9X_DD_SURFACE_LCL *lpDDSurface;
+    DWORD dwFlags;
+    DWORD ckLow;
+    DWORD ckHigh;
+    DWORD ddRVal;
+    DWORD SetColorKey;
+} V9X_DDHAL_SETCOLORKEYDATA;
 
 typedef struct v9x_ddhal_bltdata {
     DWORD lpDD;
@@ -1201,6 +1251,39 @@ typedef struct v9x_d3d_diagnostics {
     DWORD mip_chain_levels; /* levels below the top verified by the last walk */
     DWORD mip_chain_delta;  /* last walk: level-1 offset minus level-0 offset,
                                or 0xffffffff when no level 1 was found        */
+    /*
+     * Appended 2026-09-03, after 3DMark 99. Three questions its picture
+     * raised that the block could not answer: were textures refused, and
+     * why; which blend pairs did the application ask for that the engine
+     * cannot express; and did colour keys reach the driver at all.
+     */
+    DWORD texture_refused_format; /* draws whose texture had a format the
+                                     sampler lacks (not 1555/4444, or no
+                                     format of its own)                      */
+    DWORD texture_refused_shape;  /* ... or a shape it lacks: not square,
+                                     not a power of two, out of range, pitch */
+    DWORD texture_refused_last;   /* format: (bitcount<<24)|dwRBitMask, or
+                                     0xffffffff for no format of its own;
+                                     shape: (width<<16)|(pitch&0xffff)       */
+    DWORD blend_skipped;          /* triangles not drawn because the blend
+                                     pair has no S3D expression              */
+    DWORD blend_last_pair;        /* (src<<16)|dest of the last such pair    */
+    DWORD color_key_sets;         /* HAL SetColorKey calls                   */
+    DWORD color_key_raw[6];       /* the last call's data block, verbatim    */
+    DWORD color_key_draws;        /* textured draws with a source key applied*/
+    DWORD color_key_rewrites;     /* texel-alpha rewrite passes over textures*/
+    /*
+     * Appended 2026-09-03, later the same day. DirectDraw did not call the
+     * SetColorKey callback for a texture key (measured: color_key_sets stayed
+     * 0 across a probe that set one), so the key has to be read from the
+     * surface's own record, whose layout past ddsCaps this ABI does not
+     * mirror. This is the instrument for finding it: the sixteen DWORDs of
+     * the bound texture's LCL from dwFlags onward, copied at the first
+     * textured draw with COLORKEYENABLE set, so a key the probe chose can be
+     * located by its value.
+     */
+    DWORD lcl_tail_raw[16];
+    DWORD lcl_tail_captures;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
