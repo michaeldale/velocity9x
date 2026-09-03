@@ -1,10 +1,9 @@
 # A 5:5:5 desktop needs three places to agree, and finding the third took a day
 
 Date: 2026-09-02
-Status: complete. Automatic under hardware Direct3D with a page control;
-measured in software and, on 2026-09-03, on the emulated ViRGE with hardware
-Direct3D, where nine colour keys flipped to 1 with no engine change. Real S3D
-silicon (A8U4I5) still unmeasured - unreachable since 2026-09-02
+Status: **complete and measured on silicon**, 2026-09-03. Automatic under
+hardware Direct3D with a page control; on a physical Trio3D/2X the desktop came
+up 5:5:5 unasked and eight colour keys flipped to 1 with no engine change
 
 ## What this was for
 
@@ -214,13 +213,59 @@ construction; on the card it is a measurement (2026-09-02, one run, 5:6:5
 desktop), and the 5:5:5 desktop closing it there is the one thing this record
 still owes.
 
+## Measured, 2026-09-03: automatic 5:5:5 on real S3D silicon
+
+A8U4I5 came back online. Same build as the ViRGE runs above, same two-boot
+method, SYSTEM.INI restored to exactly what the machine had (`Direct3D=0`, no
+`HighColor` key) for the second boot. Warm restarts only.
+
+**Control, `HighColor=16` forced** (boot 12):
+
+```
+Colour=hc=16 ini=16 row=276 set=276 is555=0 mask=63488   ColourLayout=565-ini
+D3DTargetRMask=63488   D3DTrianglePixelRaw=31744   D3DTrianglePixelOk=0
+```
+
+**Automatic, key absent** (boot 13):
+
+```
+Colour=hc=15 ini=0  row=276 set=275 is555=1 mask=31744   ColourLayout=555-auto
+Stage=enable-ok   Surface=pitch=1600 bpp=16 w=800 h=600
+D3DTargetRMask=31744   D3DTrianglePixelRaw=31744   D3DTrianglePixelOk=1
+```
+
+VBE 0x114 became 0x113 on a real S3 BIOS, the desktop came up, and every raw
+value is byte-identical between the two boots. **Eight keys went 0 to 1**:
+`D3DTrianglePixelOk`, `D3DSubpixelTriangleOk`, `D3DSpecularGouraudOk`,
+`D3DZCompareOk`, `D3DZWriteMaskOk`, `D3DBaseTextureOk`, `Tex4444PixelOk`, and
+`D3DDepthFogOk` stayed 1.
+
+That is the experiment the 1555 record defined, on the hardware it was defined
+for. The S3D engine on this part writes exactly what the DDK header, the
+emulator and the 09-02 measurement said it writes, and a 5:5:5 desktop is the
+whole of the fix. `docs/issues/2026-09-01-virge-3d-writes-zrgb1555.md` closes.
+
+Two things the silicon says that the emulator did not:
+
+- `D3DZWriteMaskOk` is **1** here and 0 on 86Box with the same command word.
+  The write mask works on the part; the model is what ignores it
+  ([issue](../issues/2026-09-03-86box-virge-ignores-depth-write-disable.md)).
+- `D3DVertexAlphaBlendOk`, `D3DMipmapLevelSelectOk` and `D3DTrilinearBlendOk`
+  stay 0 on the Trio3D/2X and pass on the emulated ViRGE/DX, with raw values
+  that are not a layout problem - the alpha raw wandered between boots. Those
+  are the two units on which the Trio3D is not the ViRGE/DX it is bound as,
+  now visible for the first time
+  ([issue](../issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)).
+
+The machine was left as found: `Direct3D=0`, no `HighColor` key, which under
+this build means a 5:5:5 desktop and correct hardware Direct3D colours.
+
 ## What remains
 
 1. ~~Declare the layout to GDI.~~ Done above; it was the `FIVE6FIVE` PDEVICE
    flag, and the `BI_RGB` header turned out not to be what the DIB engine reads.
-2. **Run the experiment on silicon.** Done on the emulator above. On A8U4I5
-   it needs no INI edit: boot with `Direct3D` absent or 0 and the desktop
-   should come up `555-auto`. Then On A8U4I5 with hardware Direct3D and
+2. ~~Run the experiment on silicon.~~ Done above, 2026-09-03: `555-auto`,
+   eight keys flipped. What was left of the paragraph: On A8U4I5 with hardware Direct3D and
    `HighColor=15`, every failing colour key should turn to 1 with no change to
    the engine. If it does not, the engine is packing something other than what
    both the emulator and S3's header say, which would be a more interesting

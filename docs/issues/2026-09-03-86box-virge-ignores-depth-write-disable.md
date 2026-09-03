@@ -1,7 +1,7 @@
 # 86Box's ViRGE writes depth with Z-write disabled; the Trio3D does not
 
 Filed: 2026-09-03
-Status: open, measured on the emulator and on silicon, not a driver defect
+Status: open against the emulator; silicon confirmed correct 2026-09-03
 Component: 86Box `vid_s3_virge.c` (S3D depth path); instrument
 `tools\diag\ddraw_probe_win32.c` ladder two
 
@@ -22,12 +22,12 @@ XRGB1555.
 | Target | `D3DZNoWriteRaw` | `D3DZMaskRaw` | `D3DZWriteMaskOk` |
 |---|---|---|---|
 | 86Box ViRGE/DX, `Win86SE`, boot 530 | 992 (green) | **992 (green)** | 0 |
-| A8U4I5, physical Trio3D/2X, boot 8 | 992 (green) | **31744 (red)** | 0 * |
+| A8U4I5, physical Trio3D/2X, boot 13, 5:5:5 desktop | 992 (green) | **31744 (red)** | **1** |
 
-\* The Trio3D row was read on a 5:6:5 desktop on 2026-09-02, so the probe's
-derived expectation was `0xF800` and the key reads 0 for the colour reason
-alone. Its raw value is the one that matters: red, in the engine's own layout,
-meaning the masked draw did *not* update the buffer and the write mask works.
+The Trio3D row was first read on a 5:6:5 desktop on 2026-09-02, where the key
+read 0 for the colour reason alone; on a 5:5:5 desktop the same day this was
+filed it reads 1 outright. The masked draw did *not* update the buffer, the red
+draw was accepted, and the write mask works on the part.
 
 On the emulator the final pixel is still green: the masked draw wrote Z 0.125
 regardless, and the red draw at 0.1875 was then rejected. Every other rung of
@@ -50,7 +50,6 @@ will look wrong on the emulator and not on the card. A regression seen only on
 
 ## Next
 
-1. Confirm on A8U4I5 with a 5:5:5 desktop, where the key should read 1
-   outright. The machine has been unreachable since 2026-09-02.
+1. ~~Confirm on A8U4I5 with a 5:5:5 desktop.~~ Done: 1.
 2. Read 86Box's S3D depth-update path against this: if `Z_UP_EN` is not
    consulted there, this is a one-line report upstream.

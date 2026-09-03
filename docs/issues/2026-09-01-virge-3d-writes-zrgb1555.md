@@ -1,14 +1,14 @@
 # The ViRGE's S3D triangle engine writes ZRGB1555 into an RGB565 target
 
 Date: 2026-09-01
-Status: **cause established 2026-09-02** from the Windows 98 DDK's own S3
-ViRGE driver. The engine has no RGB565 destination format. Not a defect in
-`d3d_virge.c`; the fix is a 5:5:5 desktop, which the driver now selects
-automatically under hardware Direct3D, and on the emulated ViRGE that turned
-nine of these keys to 1 with no engine change
-([record](../decisions/2026-09-02-a-555-desktop-needs-three-places-to-agree.md)).
-**Not yet measured on S3D silicon** - A8U4I5 has been unreachable. See
-[the cause](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md).
+Status: **closed 2026-09-03.** Cause established from the Windows 98 DDK's
+own S3 ViRGE driver - the engine has no RGB565 destination format - and the fix
+is a 5:5:5 desktop, which the driver now selects automatically under hardware
+Direct3D. Measured on a physical Trio3D/2X: eight of these keys went 0 to 1
+with no change to the engine
+([record](../decisions/2026-09-02-a-555-desktop-needs-three-places-to-agree.md),
+[cause](../decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md)).
+Not a defect in `d3d_virge.c`, and it was never one.
 Component: `src\display32\d3d\d3d_virge.c`
 
 ## The defect
