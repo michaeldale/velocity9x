@@ -2,7 +2,7 @@
 
 Date: 2026-09-03
 Status: three changes, each measured on the emulated ViRGE with a new probe
-rung; 3DMark 99's own picture on this build is pending
+rung; 3DMark 99 judged improved by eye, with refused textures the open item
 
 ## The picture
 
@@ -42,12 +42,15 @@ depth, which is the saw-tooth.
 
 `v9x_d3d_virge_alpha_bits` now classifies the pair. A pair the unit cannot
 express is not drawn and is counted. The scene is then unlit where it would
-have been garbage. Where A comes from for SRCALPHA/INVSRCALPHA also changed:
-the texel when the texture blend asks for texture alpha (DECALALPHA,
-MODULATEALPHA), the vertex otherwise - not "the texel whenever the format has
-an alpha channel", because both formats this engine samples have one and what
-DirectDraw's own upload leaves in that bit for a texture that never asked for
-alpha is not known here.
+have been garbage. Where A comes from for SRCALPHA/INVSRCALPHA: the texel for
+any textured draw, the vertex for an untextured one. The first version took
+the vertex's unless the texture blend was DECALALPHA or MODULATEALPHA, out of
+caution about what DirectDraw leaves in the alpha bit of a texture uploaded
+from data without alpha; 3DMark 99's lights and HUD, ARGB textures blended
+with MODULATE, then drew as opaque black squares, and the spec's rule - the
+texture's alpha whenever the texture has one - is what the unit's own model
+does when ABC_SRC is clear. A vertex-alpha fade of a textured polygon is what
+is given up.
 
 Probe rung: target filled green, white triangle, ALPHABLENDENABLE with
 DESTCOLOR/ZERO. Green is the only acceptable answer.
