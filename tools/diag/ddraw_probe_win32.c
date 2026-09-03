@@ -341,6 +341,7 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DFILTER_MIPLINEAR               4ul
 #define V9X_D3DFILTER_LINEARMIPLINEAR         6ul
 #define V9X_D3DTBLEND_COPY                    7ul
+#define V9X_D3DTBLEND_MODULATE                2ul
 
 struct v9x_d3d2 {
     const V9X_D3D2_VTBL *vtbl;
@@ -3605,6 +3606,262 @@ void __stdcall V9xDdrawProbeEntry(void)
                     triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
                     triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
                     triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+                }
+
+                /*
+                 * Texel alpha, per format, under a MODULATE blend.
+                 *
+                 * 3DMark 99's sprites on the Trio3D/2X draw with opaque black
+                 * boxes where the emulated ViRGE/DX draws them transparent;
+                 * they are ARGB4444 textures blended with MODULATE. Each
+                 * rung here fills a texture opaque green on the left and
+                 * alpha-zero blue on the right, enables SRCALPHA over
+                 * INVSRCALPHA with MODULATE and white vertices, and draws each
+                 * half over a black target. A sampler that honours texel
+                 * alpha reads green then black; one that does not reads green
+                 * then blue.
+                 */
+                {
+                    static const char *alpha_names[2][4] = {
+                        { "Alpha4444SurfaceHr", "Alpha4444LeftRaw",
+                          "Alpha4444RightRaw", "Alpha4444Ok" },
+                        { "Alpha1555SurfaceHr", "Alpha1555LeftRaw",
+                          "Alpha1555RightRaw", "Alpha1555Ok" } };
+                    DWORD alpha_index;
+
+                    for (alpha_index = 0ul; alpha_index < 2ul; ++alpha_index) {
+                        struct v9x_dds *asurf = 0;
+                        struct v9x_d3d_texture2 *atex = 0;
+                        DWORD ahandle = 0ul;
+                        HRESULT ahr;
+                        WORD left_raw = 0u;
+                        WORD right_raw = 0u;
+                        HRESULT left_hr = 0x80004005ul;
+                        HRESULT right_hr = 0x80004005ul;
+
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                        desc.dwWidth = 64ul;
+                        desc.dwHeight = 64ul;
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                        desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                        if (alpha_index == 0ul) {
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x0000f000ul;
+                        } else {
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                        }
+                        ahr = ddraw->vtbl->CreateSurface(ddraw, &desc, &asurf, 0);
+                        v9x_write_hresult(alpha_names[alpha_index][0], ahr);
+                        if (ahr == 0 && asurf != 0) {
+                            if (alpha_index == 0ul) {
+                                v9x_fill_surface_halves(asurf, 0xf0f0u, 0x000fu);
+                            } else {
+                                v9x_fill_surface_halves(asurf, 0x83e0u, 0x001fu);
+                            }
+                            ahr = asurf->vtbl->QueryInterface(
+                                asurf, &v9x_iid_d3d_texture2, (void **)&atex);
+                        }
+                        if (ahr == 0 && atex != 0) {
+                            ahr = atex->vtbl->GetHandle(atex, d3d_device, &ahandle);
+                        }
+                        if (ahr == 0 && ahandle != 0ul) {
+                            ahr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                ahandle);
+                            if (ahr == 0) ahr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_MODULATE);
+                            if (ahr == 0) ahr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                V9X_D3DBLEND_SRCALPHA);
+                            if (ahr == 0) ahr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                V9X_D3DBLEND_INVSRCALPHA);
+                            if (ahr == 0) ahr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
+                                1ul);
+                            triangle[0].color = 0xffffffff;
+                            triangle[1].color = 0xffffffff;
+                            triangle[2].color = 0xffffffff;
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.10f; triangle[2].tv = 0.40f;
+                            begin_hr = ahr == 0
+                                ? d3d_device->vtbl->BeginScene(d3d_device) : ahr;
+                            if (begin_hr == 0) {
+                                left_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) left_hr = end_hr;
+                            }
+                            left_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.60f; triangle[2].tv = 0.40f;
+                            begin_hr = ahr == 0
+                                ? d3d_device->vtbl->BeginScene(d3d_device) : ahr;
+                            if (begin_hr == 0) {
+                                right_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) right_hr = end_hr;
+                            }
+                            right_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            v9x_write_uint(alpha_names[alpha_index][1], left_raw);
+                            v9x_write_uint(alpha_names[alpha_index][2], right_raw);
+                            v9x_write_uint(alpha_names[alpha_index][3],
+                                left_hr == 0 && right_hr == 0 &&
+                                target_layout.valid != 0ul &&
+                                v9x_layout_green(&target_layout, left_raw) >= 197ul &&
+                                right_raw == 0u ? 1ul : 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        }
+                        if (atex != 0) atex->vtbl->Release(atex);
+                        if (asurf != 0) asurf->vtbl->Release(asurf);
+                    }
+                }
+
+                /*
+                 * A texture with no mip chain, and known memory after it.
+                 *
+                 * The Trio3D record of mip-level differences was taken with
+                 * the texture stride wrong; this re-asks the question with an
+                 * instrument. A 64-texel green texture is created, then a
+                 * 32x32 blue texture straight after it - DirectDraw's linear
+                 * heap will usually place it where a level 1 would sit, and
+                 * MipGapDelta records the actual byte distance so the reading
+                 * can be trusted only when it is 8192. The green texture is
+                 * drawn with plain LINEAR filtering, and again with
+                 * MIPNEAREST, at a size that would want level 1 if there were
+                 * one. Green both times is the top level being read; blue is
+                 * the memory after it.
+                 */
+                {
+                    struct v9x_dds *top = 0;
+                    struct v9x_dds *after = 0;
+                    struct v9x_d3d_texture2 *top_tex = 0;
+                    DWORD top_handle = 0ul;
+                    HRESULT mhr;
+                    DWORD top_addr = 0ul;
+                    DWORD after_addr = 0ul;
+                    WORD linear_raw = 0u;
+                    WORD mipnear_raw = 0u;
+                    V9X_DDSURFACEDESC adesc;
+
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                    desc.dwWidth = 64ul;
+                    desc.dwHeight = 64ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                    mhr = ddraw->vtbl->CreateSurface(ddraw, &desc, &top, 0);
+                    if (mhr == 0) {
+                        desc.dwWidth = 32ul;
+                        desc.dwHeight = 32ul;
+                        mhr = ddraw->vtbl->CreateSurface(ddraw, &desc, &after, 0);
+                    }
+                    v9x_write_hresult("MipGapSurfaceHr", mhr);
+                    if (mhr == 0 && top != 0 && after != 0) {
+                        v9x_fill_surface(top, 0x83e083e0ul);
+                        v9x_fill_surface(after, 0x801f801ful);
+                        v9x_zero(&adesc, sizeof(adesc));
+                        adesc.dwSize = sizeof(adesc);
+                        if (top->vtbl->Lock(top, 0, &adesc, V9X_DDLOCK_WAIT, 0) == 0) {
+                            top_addr = (DWORD)adesc.lpSurface;
+                            top->vtbl->Unlock(top, 0);
+                        }
+                        v9x_zero(&adesc, sizeof(adesc));
+                        adesc.dwSize = sizeof(adesc);
+                        if (after->vtbl->Lock(after, 0, &adesc, V9X_DDLOCK_WAIT, 0) == 0) {
+                            after_addr = (DWORD)adesc.lpSurface;
+                            after->vtbl->Unlock(after, 0);
+                        }
+                        v9x_write_uint("MipGapDelta", after_addr - top_addr);
+                        mhr = top->vtbl->QueryInterface(
+                            top, &v9x_iid_d3d_texture2, (void **)&top_tex);
+                    }
+                    if (mhr == 0 && top_tex != 0) {
+                        mhr = top_tex->vtbl->GetHandle(top_tex, d3d_device, &top_handle);
+                    }
+                    if (mhr == 0 && top_handle != 0ul) {
+                        mhr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, top_handle);
+                        if (mhr == 0) mhr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                            V9X_D3DTBLEND_COPY);
+                        if (mhr == 0) mhr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            V9X_D3DFILTER_LINEAR);
+                        /* Coordinates spanning the whole texture over a small
+                         * triangle: what would want a lower level. */
+                        triangle[0].tu = 0.0f; triangle[0].tv = 0.0f;
+                        triangle[1].tu = 4.0f; triangle[1].tv = 0.0f;
+                        triangle[2].tu = 0.0f; triangle[2].tv = 4.0f;
+                        v9x_fill_surface(d3d_target, 0ul);
+                        begin_hr = mhr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : mhr;
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        }
+                        linear_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                        v9x_write_uint("MipGapLinearRaw", linear_raw);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            V9X_D3DFILTER_MIPNEAREST);
+                        v9x_fill_surface(d3d_target, 0ul);
+                        begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        }
+                        mipnear_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                        v9x_write_uint("MipGapMipNearestRaw", mipnear_raw);
+                        v9x_write_uint("MipGapOk",
+                            target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout, linear_raw) >= 197ul &&
+                            v9x_layout_green(&target_layout, mipnear_raw) >= 197ul
+                            ? 1ul : 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            V9X_D3DFILTER_NEAREST);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
+                        triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
+                        triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+                    }
+                    if (top_tex != 0) top_tex->vtbl->Release(top_tex);
+                    if (after != 0) after->vtbl->Release(after);
+                    if (top != 0) top->vtbl->Release(top);
                 }
 
                 /*
