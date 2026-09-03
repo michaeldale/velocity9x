@@ -192,6 +192,15 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
         if (next_offset != expected) {
             break;
         }
+        /* The level is where the engine will read it; it must also end
+         * inside VRAM. The top level's bound no longer reserves room for a
+         * chain, so this is where each level earns its own. */
+        if (v9x_hal != 0 &&
+            ((size / 2ul) * (size / 2ul) * 2ul > v9x_hal->fb.vram_bytes ||
+             next_offset > v9x_hal->fb.vram_bytes -
+                           (size / 2ul) * (size / 2ul) * 2ul)) {
+            break;
+        }
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.mip_chain_levels;
         }
@@ -257,10 +266,23 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
         return 0;
     }
     offset = v9x_surface_offset(surface);
+    /*
+     * The bound is the top level's own extent, and nothing more.
+     *
+     * Until 2026-09-03 a texture with DDSCAPS_MIPMAP was required to have
+     * room for a full chain below it - a third again - whether or not a
+     * chain was there. DirectDraw allocates each level as its own surface
+     * and makes no such promise, and 3DMark 99's chains are almost never
+     * contiguous (202,947 gaps in 1,678,427 checks on the Trio3D). So a
+     * 256-texel top level allocated in the last 142 KB of a 4 MB card was
+     * refused for lacking 43 KB of mip room it would never have used, and
+     * its polygons drew as untextured Gouraud - the flat green wall. 3,990
+     * such refusals in one run, all of them this rule, none of them the
+     * format, the shape, system memory or a missing cap. The levels below
+     * the top are bounded one by one in v9x_d3d_mip_chain_contiguous, where
+     * their addresses are actually known.
+     */
     last_byte = size * size * 2ul;
-    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
-        last_byte += last_byte / 3ul;
-    }
     if (offset == 0xfffffffful || last_byte > v9x_hal->fb.vram_bytes ||
         offset > v9x_hal->fb.vram_bytes - last_byte) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
