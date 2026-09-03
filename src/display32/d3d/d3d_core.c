@@ -89,6 +89,37 @@ DWORD v9x_d3d_depth_bytes_per_pixel(void)
     return ops->limits->depth_bits_per_pixel >> 3;
 }
 
+/*
+ * Re-read the render target's address from DirectDraw before it is used.
+ *
+ * A flip does not move pixels: DDRAW swaps the fpVidMem of the front and
+ * back surface objects, so the same back-buffer object the application (and
+ * this context) holds points at a different page after every flip. The
+ * address recorded at ContextCreate/SetRenderTarget is therefore right for
+ * exactly one frame; from the second frame on, every other frame was being
+ * rendered straight into the page on the monitor. Final Reality on the
+ * emulated ViRGE flickered for that reason on 2026-09-03, after its flips
+ * were correctly paced - the stock driver on the same emulator did not.
+ *
+ * The lookup is the one place every draw entry passes through, and both
+ * engines read target_offset per draw, so this is the whole fix. Pitch,
+ * size and format are the chain's, identical on both pages; an offset the
+ * registers cannot express keeps the validated one rather than a sentinel.
+ */
+static void v9x_d3d_refresh_target(V9X_D3D_CONTEXT *context)
+{
+    DWORD offset;
+
+    if (context->target == 0) {
+        return;
+    }
+    offset = v9x_surface_offset(context->target);
+    if (offset == 0xfffffffful) {
+        return;
+    }
+    context->target_offset = offset;
+}
+
 static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
 {
     DWORD index;
@@ -96,6 +127,7 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
     for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
         if ((DWORD)&v9x_d3d_contexts[index] == handle &&
             v9x_d3d_contexts[index].active != 0ul) {
+            v9x_d3d_refresh_target(&v9x_d3d_contexts[index]);
             return &v9x_d3d_contexts[index];
         }
     }

@@ -1,8 +1,8 @@
 # A flip is not done when its registers are written
 
 Date: 2026-09-03
-Status: fixed; paced flips measured on the emulated ViRGE; the application's
-own judgement of the flicker is pending as this is written
+Status: two causes, both fixed; paced flips and an unchanged probe measured on
+the emulated ViRGE; the application's judgement of the second fix is pending
 
 ## The symptom
 
@@ -77,11 +77,33 @@ build id).
 Gates: check-tree, vga survey safety gate, host tests and family packages all
 green (run-checks).
 
+## It was not enough: the second cause
+
+With flips paced (the trace after the run read 24,758 Flip entries for 9,378
+RenderPrimitive calls - the retries DDRAW makes while the answer is
+WASSTILLDRAWING, so the pacing was in force), Final Reality still flickered.
+
+The second cause is in the Direct3D core. A flip does not move pixels: DDRAW
+swaps the `fpVidMem` of the front and back surface objects, so the back-buffer
+object the application renders to points at a different page after every flip.
+`v9x_d3d_set_target` recorded the target's address once, at ContextCreate or
+SetRenderTarget, and both engines rendered to that address on every draw. Right
+for one frame; from the second frame on, every other frame went straight to the
+page on the monitor, which is the flicker exactly - and the first fix made it
+more regular, not less.
+
+`d3d_core.c` now re-reads the target's address from its surface object in the
+context lookup that every draw entry passes through
+(`v9x_d3d_refresh_target`). Pitch, size and format are the chain's and are the
+same on both pages, so nothing else recorded at bind time needs to move. Probe
+on the ViRGE, this pair against the previous: every key unchanged apart from
+`D3DZWriteMaskOk`, which alternates between runs on this emulator independently
+of the driver (`docs/issues/2026-09-03-86box-virge-ignores-depth-write-disable.md`).
+
 ## What this does not settle
 
-- Whether Final Reality's flicker is gone is the application's call, on the
-  ViRGE VM and then on the Trio3D; this build has not yet had either run
-  judged by eye.
+- Whether Final Reality's flicker is gone with the second fix is the
+  application's call, on the ViRGE VM and then on the Trio3D.
 - `DDFLIP_NOVSYNC` still writes the address and returns, so an application that
   asks for it gets tearing on purpose. That is the documented meaning.
 - The blank-status bit is read from INPUT_STATUS_1 on every poll. On a very fast
