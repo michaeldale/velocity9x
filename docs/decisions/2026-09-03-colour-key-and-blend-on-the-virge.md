@@ -159,6 +159,27 @@ that counter and not before: 804 textures for a 4 MB card whose heap holds
 about 2 MB after the flip pair and the depth buffer, so some were created in
 system memory, which the S3D unit cannot read.
 
+## On the silicon
+
+Deployed to A8U4I5 (S3 Trio3D/2X, `ColourLayout=555-auto`,
+`Direct3DMode=hardware`) the same evening, with every change of the day in one
+pair. Probe, first run:
+
+```
+D3DTiledNegativeOk=1   D3DTiledNegativeRaw=992     the wrap bit, on the card
+ColorKeyOk=1           ColorKeyRaw=0               texel-alpha keying, D3dColorKeyRewrites=1
+BlendModulateOk=1      BlendModulateRaw=992        D3dBlendSkipped=1
+Flip20Ms=326                                        paced flips, 16.3 ms each
+D3DShapesOk=12  Tex4444PixelOk=1  D3DBaseTextureOk=1  D3DTiledTextureOk=1
+EngineFifoTimeouts=0  EngineIdleTimeouts=0  EngineResets=0
+```
+
+Unchanged from before on the card, and still open there:
+`D3DVertexAlphaBlendOk=0` (raw 527; the Trio3D vertex-alpha issue,
+`docs/issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md`),
+`D3DMipmapLevelSelectOk=0`, `D3DTrilinearBlendOk=0`, and `FlipPixelOk=0`, which
+also reads 0 on the emulator and predates this work.
+
 ## Open
 
 - Which of the three uncounted refusals the 14,005 were, and what to do about
