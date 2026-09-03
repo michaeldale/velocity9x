@@ -1128,12 +1128,24 @@ DWORD __stdcall V9xD3dRenderPrimitive(
         tl->lpGbl != 0 && ops->ready() &&
         data->diInstruction.bOpcode == 3u &&
         data->diInstruction.bSize >= sizeof(V9X_D3DTRIANGLE) &&
-        data->diInstruction.wCount <= V9X_D3D_MAX_BATCH_TRIANGLES) {
+        data->diInstruction.wCount != 0u) {
+        ok = 1;
+    } else if (data != 0) {
+        /* A refused instruction is a whole mesh not drawn, and until now it
+         * left nothing behind but an HRESULT the application ignores. The
+         * detail word is the same packing the enter event uses, so the ring
+         * shows what was refused. */
+        v9x_trace_push(V9X_TRACE_D3D_PRIMREJECT,
+                       0x80000000ul |
+                       ((DWORD)data->diInstruction.bOpcode << 24) |
+                       ((DWORD)data->diInstruction.bSize << 16) |
+                       (DWORD)data->diInstruction.wCount);
+    }
+    if (ok) {
         triangles = (const V9X_D3DTRIANGLE *)
             (exe->lpGbl->fpVidMem + data->dwOffset);
         vertices = (const V9X_D3DTLVERTEX *)
             (tl->lpGbl->fpVidMem + data->dwTLOffset);
-        ok = 1;
         for (index = 0ul; index < data->diInstruction.wCount; ++index) {
             const V9X_D3DTRIANGLE *triangle =
                 (const V9X_D3DTRIANGLE *)

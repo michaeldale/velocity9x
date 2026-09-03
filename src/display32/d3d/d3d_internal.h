@@ -32,7 +32,17 @@
  * instruction. A core limit, not an engine one: it bounds what an execute
  * buffer can ask for before any engine is consulted.
  */
-#define V9X_D3D_MAX_BATCH_TRIANGLES 256u
+/*
+ * The most triangles one RenderPrimitive instruction can carry: wCount is a
+ * WORD, so this is the runtime's own ceiling and the core no longer tests it
+ * - an empty instruction is the only count it refuses. The previous value,
+ * 256, bounded nothing - the loop indexes the triangle records by bSize and
+ * clips each on its own - and quietly dropped every instruction above it.
+ * Final Reality's 3D scene on the emulated ViRGE lost its larger meshes whole
+ * to that on 2026-09-03, drawn as the clear colour, with no reject in the
+ * trace because none was pushed. Kept as documentation of the bound.
+ */
+#define V9X_D3D_MAX_BATCH_TRIANGLES 65535u
 
 /*
  * The most triangles one clipped input triangle can fan into. The clipper

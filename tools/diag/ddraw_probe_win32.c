@@ -312,6 +312,9 @@ typedef struct v9x_d3dtlvertex {
 } V9X_D3DTLVERTEX;
 
 #define V9X_D3DRENDERSTATE_TEXTUREHANDLE      1ul
+#define V9X_D3DRENDERSTATE_CULLMODE          22ul
+#define V9X_D3DCULL_NONE                      1ul
+#define V9X_D3DCULL_CCW                       3ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAG        17ul
 #define V9X_D3DRENDERSTATE_TEXTUREMIN        18ul
 #define V9X_D3DRENDERSTATE_SRCBLEND          19ul
@@ -2241,7 +2244,11 @@ void __stdcall V9xDdrawProbeEntry(void)
                     ddraw, &desc, &texture_surface2, 0);
                 v9x_write_hresult("TexSurface2Hr", texture2_hr);
                 if (texture_hr == 0 && texture_surface != 0) {
-                    v9x_fill_surface(texture_surface, 0x83e0ul);
+                    /* Both 16-bit halves of the DWORD pattern: a pattern of 0x83e0 alone
+                     * filled every other texel black, and every texture rung
+                     * that sampled an odd column read the fill, not the
+                     * engine. Caught 2026-09-03. */
+                    v9x_fill_surface(texture_surface, 0x83e083e0ul);
                 }
                 if (texture2_hr == 0 && texture_surface2 != 0) {
                     V9X_DDSURFACEDESC mip_desc;
@@ -2257,7 +2264,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_uint("TexMipTopCaps",
                                        mip_desc.ddsCaps.dwCaps);
                     }
-                    v9x_fill_surface(texture_surface2, 0x83e0ul);
+                    v9x_fill_surface(texture_surface2, 0x83e083e0ul);
                     caps.dwCaps = V9X_DDSCAPS_MIPMAP;
                     texture2_hr = texture_surface2->vtbl->GetAttachedSurface(
                         texture_surface2, &caps, &texture_mip_level);
@@ -2276,7 +2283,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             v9x_write_uint("TexMipLevelCaps",
                                            mip_desc.ddsCaps.dwCaps);
                         }
-                        v9x_fill_surface(texture_mip_level, 0x801ful);
+                        v9x_fill_surface(texture_mip_level, 0x801f801ful);
                     }
                 }
 
@@ -2314,10 +2321,10 @@ void __stdcall V9xDdrawProbeEntry(void)
                 }
                 v9x_write_hresult("TexSwapHr", swap_hr);
                 if (texture_surface2 != 0) {
-                    v9x_fill_surface(texture_surface2, 0x83e0ul);
+                    v9x_fill_surface(texture_surface2, 0x83e083e0ul);
                 }
                 if (texture_mip_level != 0) {
-                    v9x_fill_surface(texture_mip_level, 0x801ful);
+                    v9x_fill_surface(texture_mip_level, 0x801f801ful);
                 }
 
                 viewport_hr = d3d->vtbl->CreateViewport(
@@ -2385,6 +2392,221 @@ void __stdcall V9xDdrawProbeEntry(void)
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
                                                expect_red) ? 1ul : 0ul);
+
+                /*
+                 * The same triangle with its vertex order reversed, then the
+                 * other half of the same square in both orders.
+                 *
+                 * Every triangle this probe drew before 2026-09-03 was wound
+                 * the same way, and the software rasterizer's independence
+                 * from vertex order is host-tested while the ViRGE engine's
+                 * never was. A quad's two triangles are commonly wound in
+                 * opposite directions, and Final Reality's 3D scene on the
+                 * emulated ViRGE lost one triangle of every quad as the clear
+                 * colour while the same scene on the software engine lost
+                 * none. An engine whose span setup walks the wrong way for one
+                 * winding puts those spans outside the clip rectangle and
+                 * draws nothing - which is exactly what that looks like.
+                 */
+                {
+                    V9X_D3DTLVERTEX wound[3];
+                    HRESULT cull_hr;
+
+                    /*
+                     * Culling off first. Direct3D's default is CULLMODE=CCW
+                     * and the runtime applies it before the HAL sees the
+                     * triangle, so without this the reversed rungs below
+                     * measure the runtime, not the driver: they read 0 on the
+                     * software engine too, whose rasterizer is order-
+                     * independent by host test. Restored to CCW afterwards so
+                     * the rungs that follow see the state they were written
+                     * against.
+                     */
+                    cull_hr = d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_CULLMODE,
+                        V9X_D3DCULL_NONE);
+                    v9x_write_hresult("D3DCullNoneHr", cull_hr);
+
+                    v9x_fill_surface(d3d_target, 0ul);
+                    wound[0] = triangle[0];
+                    wound[1] = triangle[2];
+                    wound[2] = triangle[1];
+                    begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, wound, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    } else {
+                        draw_hr = begin_hr;
+                        end_hr = begin_hr;
+                    }
+                    v9x_write_uint("D3DTriangleReverseRaw",
+                                   v9x_surface_pixel16(d3d_target, 16ul,
+                                                       16ul));
+                    v9x_write_uint("D3DTriangleReverseOk",
+                        draw_hr == 0 && end_hr == 0 &&
+                        v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
+                                                   expect_red) ? 1ul : 0ul);
+
+                    /* The other half of the square: (55.75,8.25),
+                     * (55.75,55.75), (8.25,55.75), sampled at (48,48). First
+                     * in that order, then reversed. */
+                    v9x_fill_surface(d3d_target, 0ul);
+                    wound[0] = triangle[0];
+                    wound[0].sx = 55.75f;
+                    wound[0].sy = 8.25f;
+                    wound[1] = triangle[0];
+                    wound[1].sx = 55.75f;
+                    wound[1].sy = 55.75f;
+                    wound[2] = triangle[0];
+                    wound[2].sx = 8.25f;
+                    wound[2].sy = 55.75f;
+                    begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, wound, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    } else {
+                        draw_hr = begin_hr;
+                        end_hr = begin_hr;
+                    }
+                    v9x_write_uint("D3DTriangleOtherHalfRaw",
+                                   v9x_surface_pixel16(d3d_target, 48ul,
+                                                       48ul));
+                    v9x_write_uint("D3DTriangleOtherHalfOk",
+                        draw_hr == 0 && end_hr == 0 &&
+                        v9x_surface_pixel16_equals(d3d_target, 48ul, 48ul,
+                                                   expect_red) ? 1ul : 0ul);
+
+                    v9x_fill_surface(d3d_target, 0ul);
+                    {
+                        V9X_D3DTLVERTEX swap = wound[1];
+                        wound[1] = wound[2];
+                        wound[2] = swap;
+                    }
+                    begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, wound, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    } else {
+                        draw_hr = begin_hr;
+                        end_hr = begin_hr;
+                    }
+                    v9x_write_uint("D3DTriangleOtherHalfReverseRaw",
+                                   v9x_surface_pixel16(d3d_target, 48ul,
+                                                       48ul));
+                    v9x_write_uint("D3DTriangleOtherHalfReverseOk",
+                        draw_hr == 0 && end_hr == 0 &&
+                        v9x_surface_pixel16_equals(d3d_target, 48ul, 48ul,
+                                                   expect_red) ? 1ul : 0ul);
+
+                    /*
+                     * A ladder of triangle shapes, still with culling off.
+                     *
+                     * Every triangle this probe drew before this ladder was
+                     * the same comfortable right-angled shape. The core's
+                     * clipper hands the engine something else entirely for a
+                     * polygon that leaves the screen: a fan of slivers, flat-
+                     * topped and flat-bottomed pieces, obtuse triangles whose
+                     * long edge lies on either side, and edges running along
+                     * the target border. Final Reality's scene on the emulated
+                     * ViRGE lost whole triangles of that kind while the
+                     * software engine, fed the same clipped fans, lost none.
+                     * Each entry is a shape class, sampled at a point well
+                     * inside it, in a 64x64 target.
+                     */
+                    {
+                        static const struct v9x_shape {
+                            float x0, y0, x1, y1, x2, y2;
+                            DWORD px, py;
+                            const char *key;
+                        } shapes[] = {
+                            /* flat top, apex below, long edge left */
+                            {  4.f,  4.f, 60.f,  4.f,  4.f, 60.f, 12ul, 12ul, "D3DShapeFlatTopLRaw" },
+                            /* flat top, apex below, long edge right */
+                            {  4.f,  4.f, 60.f,  4.f, 60.f, 60.f, 52ul, 12ul, "D3DShapeFlatTopRRaw" },
+                            /* flat bottom, apex above, long edge left */
+                            {  4.f, 60.f, 60.f, 60.f,  4.f,  4.f, 12ul, 52ul, "D3DShapeFlatBotLRaw" },
+                            /* flat bottom, apex above, long edge right */
+                            {  4.f, 60.f, 60.f, 60.f, 60.f,  4.f, 52ul, 52ul, "D3DShapeFlatBotRRaw" },
+                            /* obtuse, middle vertex far right of long edge */
+                            {  4.f,  4.f, 60.f, 20.f,  8.f, 60.f, 20ul, 20ul, "D3DShapeObtuseRRaw" },
+                            /* obtuse, middle vertex far left of long edge */
+                            { 60.f,  4.f,  4.f, 20.f, 56.f, 60.f, 44ul, 20ul, "D3DShapeObtuseLRaw" },
+                            /* acute, middle vertex right */
+                            { 30.f,  4.f, 40.f, 32.f, 30.f, 60.f, 33ul, 32ul, "D3DShapeAcuteRRaw" },
+                            /* acute, middle vertex left */
+                            { 34.f,  4.f, 24.f, 32.f, 34.f, 60.f, 31ul, 32ul, "D3DShapeAcuteLRaw" },
+                            /* wide sliver, three scanlines tall */
+                            {  2.f, 30.f, 62.f, 31.f,  2.f, 33.f, 20ul, 31ul, "D3DShapeSliverRaw" },
+                            /* edge on the left border */
+                            {  0.f,  4.f,  0.f, 60.f, 40.f, 32.f,  8ul, 32ul, "D3DShapeBorderLRaw" },
+                            /* edge on the right border (63 = width-1) */
+                            { 63.f,  4.f, 63.f, 60.f, 24.f, 32.f, 55ul, 32ul, "D3DShapeBorderRRaw" },
+                            /* edge on the bottom border (63 = height-1) */
+                            {  4.f, 63.f, 60.f, 63.f, 32.f, 24.f, 32ul, 55ul, "D3DShapeBorderBRaw" }
+                        };
+                        DWORD shape;
+                        DWORD shapes_ok = 0ul;
+
+                        for (shape = 0ul;
+                             shape < sizeof(shapes) / sizeof(shapes[0]);
+                             ++shape) {
+                            WORD raw;
+
+                            v9x_fill_surface(d3d_target, 0ul);
+                            wound[0] = triangle[0];
+                            wound[0].sx = shapes[shape].x0;
+                            wound[0].sy = shapes[shape].y0;
+                            wound[1] = triangle[0];
+                            wound[1].sx = shapes[shape].x1;
+                            wound[1].sy = shapes[shape].y1;
+                            wound[2] = triangle[0];
+                            wound[2].sx = shapes[shape].x2;
+                            wound[2].sy = shapes[shape].y2;
+                            begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                            if (begin_hr == 0) {
+                                draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, wound, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                            } else {
+                                draw_hr = begin_hr;
+                                end_hr = begin_hr;
+                            }
+                            raw = v9x_surface_pixel16(d3d_target,
+                                                      shapes[shape].px,
+                                                      shapes[shape].py);
+                            v9x_write_uint(shapes[shape].key, raw);
+                            if (draw_hr == 0 && end_hr == 0 &&
+                                raw == (WORD)expect_red) {
+                                ++shapes_ok;
+                            }
+                        }
+                        v9x_write_uint("D3DShapesOk", shapes_ok);
+                        v9x_write_uint("D3DShapesCount",
+                                       (DWORD)(sizeof(shapes) /
+                                               sizeof(shapes[0])));
+                    }
+
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_CULLMODE,
+                        V9X_D3DCULL_CCW);
+
+                    /* Put the original back for the rungs that follow. */
+                    v9x_fill_surface(d3d_target, 0ul);
+                    begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    }
+                }
                 v9x_write_uint("D3DSubpixelTriangleOk",
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
@@ -2838,6 +3060,74 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                expect_green) ? 1ul : 0ul);
                 v9x_write_uint("D3DBaseTextureRaw",
                     v9x_surface_pixel16(d3d_target, 16ul, 16ul));
+
+                /*
+                 * The same texture, tiled: coordinates from 0 to 2 across
+                 * the triangle, then from -0.5 to 0.5. Every texel is green,
+                 * so a green pixel anywhere says the sampler wrapped and a
+                 * black one says it returned the border colour instead. The
+                 * default address mode is WRAP and nothing here sets it,
+                 * which is how every application that tiles a texture uses
+                 * it. Final Reality's black wedges on the emulated ViRGE were
+                 * this rung failing, drawn a thousand times.
+                 */
+                v9x_fill_surface(d3d_target, 0ul);
+                triangle[0].tu = 0.0f;
+                triangle[0].tv = 0.0f;
+                triangle[1].tu = 2.0f;
+                triangle[1].tv = 0.0f;
+                triangle[2].tu = 0.0f;
+                triangle[2].tv = 2.0f;
+                begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                if (begin_hr == 0) {
+                    draw_hr = d3d_device->vtbl->DrawPrimitive(
+                        d3d_device, V9X_D3DPT_TRIANGLELIST,
+                        V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                    end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                } else {
+                    draw_hr = begin_hr;
+                    end_hr = begin_hr;
+                }
+                v9x_write_hresult("D3DTiledTextureDrawHr", draw_hr);
+                v9x_write_uint("D3DTiledTextureRaw",
+                    v9x_surface_pixel16(d3d_target, 40ul, 12ul));
+                v9x_write_uint("D3DTiledTextureRaw2",
+                    v9x_surface_pixel16(d3d_target, 12ul, 12ul));
+                v9x_write_uint("D3DTiledTextureOk",
+                    draw_hr == 0 && end_hr == 0 &&
+                    v9x_surface_pixel16_equals(d3d_target, 40ul, 12ul,
+                                               expect_green) &&
+                    v9x_surface_pixel16_equals(d3d_target, 12ul, 12ul,
+                                               expect_green) ? 1ul : 0ul);
+
+                v9x_fill_surface(d3d_target, 0ul);
+                triangle[0].tu = -0.5f;
+                triangle[0].tv = -0.5f;
+                triangle[1].tu = 0.5f;
+                triangle[1].tv = -0.5f;
+                triangle[2].tu = -0.5f;
+                triangle[2].tv = 0.5f;
+                begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                if (begin_hr == 0) {
+                    draw_hr = d3d_device->vtbl->DrawPrimitive(
+                        d3d_device, V9X_D3DPT_TRIANGLELIST,
+                        V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                    end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                } else {
+                    draw_hr = begin_hr;
+                    end_hr = begin_hr;
+                }
+                v9x_write_hresult("D3DTiledNegativeDrawHr", draw_hr);
+                v9x_write_hresult("D3DTiledNegativeEndHr", end_hr);
+                v9x_write_uint("D3DTiledNegativeRaw",
+                    v9x_surface_pixel16(d3d_target, 12ul, 12ul));
+                v9x_write_uint("D3DTiledNegativeRaw2",
+                    v9x_surface_pixel16(d3d_target, 30ul, 20ul));
+                v9x_write_uint("D3DTiledNegativeOk",
+                    draw_hr == 0 && end_hr == 0 &&
+                    v9x_surface_pixel16_equals(d3d_target, 12ul, 12ul,
+                                               expect_green) ? 1ul : 0ul);
+                /* The rungs below set their own coordinates. */
 
                 v9x_fill_surface(d3d_target, 0ul);
                 /*

@@ -116,13 +116,15 @@ static int v9x_d3d_texture_format(const V9X_DD_SURFACE_LCL *surface,
 #define V9X_D3D_MIP_LEVELS_MAX 10ul
 
 static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
-                                        DWORD top_offset, DWORD top_size)
+                                        DWORD top_offset, DWORD top_size,
+                                        DWORD *levels_out)
 {
     const V9X_DD_SURFACE_LCL *level = top;
     DWORD expected = top_offset + top_size * top_size * 2ul;
     DWORD size = top_size;
     DWORD depth;
 
+    *levels_out = 0ul;
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.mip_chain_checks;
         v9x_hal->d3d_diagnostics.mip_chain_levels = 0ul;
@@ -164,6 +166,7 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.mip_chain_levels;
         }
+        ++*levels_out;
         size /= 2ul;
         expected = next_offset + size * size * 2ul;
         level = next;
@@ -176,7 +179,8 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
 
 static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
                                 DWORD *offset_out, DWORD *size_log_out,
-                                int *mipmapped_out, DWORD *format_out)
+                                int *mipmapped_out, DWORD *levels_out,
+                                DWORD *format_out)
 {
     V9X_DD_SURFACE_LCL *surface = v9x_d3d_context_texture_surface(context);
     DWORD size;
@@ -220,8 +224,11 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     }
     *offset_out = offset;
     *size_log_out = size_log;
+    *levels_out = 0ul;
     *mipmapped_out = (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
-                     v9x_d3d_mip_chain_contiguous(surface, offset, size);
+                     v9x_d3d_mip_chain_contiguous(surface, offset, size,
+                                                  levels_out) &&
+                     *levels_out != 0ul;
     return 1;
 }
 
@@ -299,6 +306,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     BYTE trilinear_alpha = 0u;
     int trilinear_blend = 0;
     int texture_mipmapped = 0;
+    DWORD texture_levels = 0ul;
     DWORD texture_format = V9X_TEX_FORMAT_ARGB1555;
     int textured;
 
@@ -384,7 +392,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     }
     textured = v9x_d3d_texture_info(context, &texture_offset,
                                     &texture_size_log, &texture_mipmapped,
-                                    &texture_format);
+                                    &texture_levels, &texture_format);
     if (textured) {
         dudy = (p2->tu - p0->tu) * 134217728.0f * fdy02r;
         dvdy = (p2->tv - p0->tv) * 134217728.0f * fdy02r;
@@ -406,7 +414,18 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             if (derivative > rho) rho = derivative;
             derivative = dvdy < 0.0f ? -dvdy : dvdy;
             if (derivative > rho) rho = derivative;
-            while (level < texture_size_log && rho >= level_base * 2.0f) {
+            /*
+             * Bounded by the levels the chain actually has, not by the top
+             * level's size. A 256-texel texture can carry eight levels below
+             * the top and Final Reality's carry four; the S3D unit derives
+             * every level's address from TEX_BASE, so asking for level five of
+             * a five-level chain points past the last surface into whatever
+             * follows - unallocated video memory, which reads as zero. On the
+             * emulated ViRGE that was every distant, steeply-angled panel in
+             * Final Reality's 3D scene drawn black, for as long as the engine
+             * has existed. Measured 2026-09-03.
+             */
+            while (level < texture_levels && rho >= level_base * 2.0f) {
                 level_base *= 2.0f;
                 ++level;
             }
@@ -414,14 +433,14 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             texture_level = level;
             if ((context->texture_min == V9X_D3DFILTER_MIPLINEAR ||
                  context->texture_min == V9X_D3DFILTER_LINEARMIPLINEAR) &&
-                level < texture_size_log && rho > level_base) {
+                level < texture_levels && rho > level_base) {
                 texture_d += (DWORD)v9x_float_to_long(
                     ((rho - level_base) / level_base) * 134217727.0f);
             }
             if (context->texture_min ==
                     V9X_D3DFILTER_LINEARMIPLINEAR &&
                 context->alpha_blend_enable == 0ul &&
-                level < texture_size_log &&
+                level < texture_levels &&
                 (texture_d & 0x07fffffful) != 0ul) {
                 trilinear_alpha = (BYTE)v9x_float_to_long(
                     ((float)(texture_d & 0x07fffffful) /
@@ -563,7 +582,33 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         } else {
             command |= V9X_VIRGE_3D_CMD_FILTER_NEAREST;
         }
-        if (context->texture_wrap != 0ul) {
+        /*
+         * The wrap bit, from the texture ADDRESS mode and not from
+         * WRAPU/WRAPV.
+         *
+         * Until 2026-09-03 this bit followed D3DRENDERSTATE_WRAPU/WRAPV,
+         * which is a different render state - it says how a coordinate is
+         * interpolated across a triangle, not what the sampler does past the
+         * edge of the texture - and almost no application sets it. Without
+         * the bit the S3D unit returns the border colour for any texel
+         * coordinate outside the first repeat (86Box's *_nowrap fetches,
+         * build\reference-vid_s3_virge.c around 3618), and the border colour
+         * defaults to black. Final Reality tiles its walls and floors, so
+         * every panel whose coordinates ran past 1.0 drew as a black wedge on
+         * the emulated ViRGE while the software engine, which wraps by
+         * arithmetic, drew the whole scene. The stock driver on the same
+         * emulator drew it too.
+         *
+         * WRAP is Direct3D's default address mode and is what the core
+         * initialises texture_address to. CLAMP gets the bit as well: the
+         * recorded fact from S3's own driver is that it sets this bit for
+         * both modes, and the alternative here is a border colour nobody
+         * asked for. WRAPU/WRAPV still set it, as before, so nothing that
+         * worked stops working.
+         */
+        if (context->texture_wrap != 0ul ||
+            context->texture_address == V9X_D3DTADDRESS_WRAP ||
+            context->texture_address == V9X_D3DTADDRESS_CLAMP) {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_WRAP;
         }
     }
