@@ -1,8 +1,8 @@
 # A flip is not done when its registers are written
 
 Date: 2026-09-03
-Status: two causes, both fixed; paced flips and an unchanged probe measured on
-the emulated ViRGE; the application's judgement of the second fix is pending
+Status: two causes, both fixed; confirmed by eye in Final Reality on the
+emulated ViRGE on 2026-09-03 after the second fix; not yet run on the Trio3D
 
 ## The symptom
 
@@ -102,8 +102,8 @@ of the driver (`docs/issues/2026-09-03-86box-virge-ignores-depth-write-disable.m
 
 ## What this does not settle
 
-- Whether Final Reality's flicker is gone with the second fix is the
-  application's call, on the ViRGE VM and then on the Trio3D.
+- Final Reality on the ViRGE VM no longer flickers with the second fix
+  (judged by eye, 2026-09-03). The Trio3D has not yet run this build.
 - `DDFLIP_NOVSYNC` still writes the address and returns, so an application that
   asks for it gets tearing on purpose. That is the documented meaning.
 - The blank-status bit is read from INPUT_STATUS_1 on every poll. On a very fast
