@@ -105,3 +105,54 @@ the probe's own comment corrected it.
   own comparison database was set to `<none>`.
 - **Nothing about the desktop path.** The 2D and bus scores exercise DirectDraw
   and the CPU, not the S3D unit.
+
+## 2026-09-03: run again on a 5:5:5 desktop, and monitored from the host
+
+Same machine, today's build, `ColourLayout=555-auto` chosen by the driver
+(`docs/decisions/2026-09-02-a-555-desktop-needs-three-places-to-agree.md`).
+The user ran the advanced benchmark first and reported "black screen, maybe some
+flicking" and that it "finished half way"; when the host looked, the desktop
+was at 640x480 with GDI's primary reading black while FR's launcher dialogs were
+listed as visible - an unrepainted desktop after `FlipToGDISurface`, which
+resolved itself before the next capture. The advanced benchmark was then run
+from the host with the user's selection: Radial blur, Chaos zoomer, 25 pixel,
+Robots, on `Direct3D On-board Accelerator`.
+
+Monitored every 20 s through `V9XTRACE.EXE` snapshots of the HAL's shared
+block rather than screenshots, which are blind during flips:
+
+```
+t+ 23s scr=640 fifoTO=0 idleTO=0 resets=0 ctx=12/11 prims=207334 tex=72  last=D3dRenderPrimitive
+t+ 44s scr=640 fifoTO=0 idleTO=0 resets=0 ctx=12/11 prims=247729 tex=139 last=Flip
+t+ 65s scr=640 fifoTO=0 idleTO=0 resets=0 ctx=12/11 prims=383520 tex=139 last=D3dRenderState
+t+ 85s scr=800 fifoTO=0 idleTO=0 resets=0 ctx=12/12 prims=400077 tex=139 last=FlipToGDISurface
+```
+
+Eighty-five seconds, one Direct3D context, 200,270 primitives and 67 textures
+in this run, **zero FIFO timeouts, zero idle timeouts, zero engine resets, zero
+context rejects**, every depth offer accepted, and a ring that ends in the
+ordinary teardown - context destroyed, `FlipToGDISurface`, surfaces destroyed,
+a fresh `Dd16CreateObject`, exclusive mode released, the primary re-created.
+Every selected test produced a score:
+
+| Test | 2026-09-02 (5:6:5) | 2026-09-03 (5:5:5) |
+|---|---|---|
+| 25 pixel | 89.21 Kpolys/s, 2.85 | 89.48 Kpolys/s, 2.86 |
+| Robots | 6.35 images/s, 1.64 | **8.81 images/s, 2.28** |
+| Visual appearance | 74.07 % | 74.07 % |
+| 2D image processing | - | 6.25 |
+
+The 25-pixel figure is the engine's triangle rate and did not move, as it
+should not: the layout changed what the colours mean, not how many triangles go
+through. Robots is textured and depth-tested and went up 39 %; whether that is
+the layout, a warmer machine, or run-to-run variance is not established by one
+sample each. `Visual appearance` is identical to the digit, and it is an
+image-quality check - it says nothing about colour, since it is the same number
+with every colour channel shifted and with none.
+
+The screen was black on the user's own run and could not be seen from the host
+on this one. What this run does establish is narrower and useful: **the 3D
+section runs to completion with the engine healthy**, on a 5:5:5 desktop as on
+a 5:6:5 one, and returns to a desktop that repaints. Whether the black is the
+CRTC, the flip chain or the monitor's sync remains a question for a camera or a
+capture card, not for anything this driver can read about itself.
