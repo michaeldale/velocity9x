@@ -1312,6 +1312,16 @@ typedef struct v9x_d3d_diagnostics {
     DWORD texture_refused_bounds;  /* offset unresolved or outside VRAM      */
     DWORD texture_refused_caps;    /* ddsCaps of the last surface so refused */
     DWORD texture_refused_vidmem;  /* its fpVidMem                           */
+    /*
+     * Appended 2026-09-03, for the 3D-done wait. done_seen counts idle waits
+     * that found the 3D-done bit set after a launch; done_missing counts
+     * idle waits that saw the engine idle for the whole spin and never the
+     * done bit, and gave up - without a reset, because an engine that says
+     * idle is not one to reset. If done_missing is ever non-zero the bit is
+     * not doing what the wait assumes, on that chip or that emulator.
+     */
+    DWORD done_seen;
+    DWORD done_missing;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

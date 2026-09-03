@@ -960,6 +960,13 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     v9x_mmio_write(V9X_VIRGE_3D_XSTART02,
                    (DWORD)v9x_d3d_fixed_12_20(p0->sx + dxdy02 * fdycc));
     v9x_mmio_write(V9X_VIRGE_3D_YSTART, (DWORD)i0y);
+    /* Clear 3D-done, then launch; v9x_wait_idle will want to see it set
+     * again before it believes the engine idle. Writing bit 1 of
+     * SUBSYS_CNTL clears bit 1 of SUBSYS_STAT and leaves the interrupt
+     * enables in the high byte at zero, which is where this driver keeps
+     * them. */
+    v9x_mmio_write(V9X_VIRGE_ENGINE_STATUS, V9X_VIRGE_STATUS_3D_DONE);
+    v9x_engine_3d_launched();
     v9x_mmio_write(V9X_VIRGE_3D_Y01_Y12,
                    ((DWORD)dy01 << 16) |
                    (DWORD)(dy12 + (p2->sy == (float)i2y ? 1l : 0l)) |
@@ -1082,7 +1089,14 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                        (DWORD)v9x_d3d_fixed_12_20(
                            p0->sx + dxdy02 * fdycc));
         v9x_mmio_write(V9X_VIRGE_3D_YSTART, (DWORD)i0y);
-        v9x_mmio_write(V9X_VIRGE_3D_Y01_Y12,
+        /* Clear 3D-done, then launch; v9x_wait_idle will want to see it set
+     * again before it believes the engine idle. Writing bit 1 of
+     * SUBSYS_CNTL clears bit 1 of SUBSYS_STAT and leaves the interrupt
+     * enables in the high byte at zero, which is where this driver keeps
+     * them. */
+    v9x_mmio_write(V9X_VIRGE_ENGINE_STATUS, V9X_VIRGE_STATUS_3D_DONE);
+    v9x_engine_3d_launched();
+    v9x_mmio_write(V9X_VIRGE_3D_Y01_Y12,
                        ((DWORD)dy01 << 16) |
                        (DWORD)(dy12 +
                            (p2->sy == (float)i2y ? 1l : 0l)) |

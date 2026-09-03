@@ -1,0 +1,4 @@
+# S3 ViRGE/DX as emulated by 86Box 6.0, Velocity9x driver.
+# Keys whose difference between runs or against another chip is known and accepted.
+D3DZWriteMaskOk   # alternates run to run: 86Box ignores depth-write-disable on alternate runs (docs/issues/2026-09-03-86box-virge-ignores-depth-write-disable.md)
+D3DZMaskRaw       # the raw behind D3DZWriteMaskOk

@@ -151,6 +151,17 @@
 #define V9X_VIRGE_STATUS_FIFO_SHIFT             8u
 #define V9X_VIRGE_STATUS_FIFO_MASK       0x00001f00ul
 #define V9X_VIRGE_STATUS_IDLE            0x00002000ul
+/*
+ * SUBSYS_STAT bit 1: the 3D engine has finished the triangles queued to it.
+ * Set by the engine on completion, cleared by writing a 1 to the same bit of
+ * SUBSYS_CNTL (the same register, written). The idle bit alone is not enough
+ * to know a triangle has landed: on 86Box the triangle is handed to a render
+ * thread, and between the queueing and that thread marking itself busy the
+ * status register reads idle with a triangle still pending. Measured
+ * 2026-09-03 as probe cells that read the target before the triangle was
+ * drawn - a quarter of the texture matrix, a different quarter each run.
+ */
+#define V9X_VIRGE_STATUS_3D_DONE         0x00000002ul
 
 /*
  * CMD_SET fields. The ROP256 byte occupies bits 24:17, which is why both ROP

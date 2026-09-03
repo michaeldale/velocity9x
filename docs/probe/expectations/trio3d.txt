@@ -1,0 +1,3 @@
+# S3 Trio3D/2X on A8U4I5, Velocity9x driver. Differences from the emulated ViRGE/DX that are the card, not the driver.
+D3DVertexAlphaBlendOk   # card blends vertex alpha differently; open (docs/issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)
+D3DVertexAlphaBlendRaw  # the raw behind it

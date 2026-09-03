@@ -222,6 +222,10 @@ int v9x_engine_status_validated(void);
 int v9x_engine_validate_status(void);
 int v9x_wait_fifo(DWORD entries, int wait);
 int v9x_wait_idle(int wait);
+/* The 3D engine has been given a triangle: v9x_wait_idle must now also see
+ * SUBSYS_STAT's 3D-done bit before it reports idle. The caller clears that
+ * bit before launching. */
+void v9x_engine_3d_launched(void);
 
 /* Byte offset of a surface within the framebuffer, or 0xffffffff. */
 DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface);

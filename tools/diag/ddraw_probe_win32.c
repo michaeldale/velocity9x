@@ -339,6 +339,9 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DFILTER_LINEAR                  2ul
 #define V9X_D3DFILTER_MIPNEAREST              3ul
 #define V9X_D3DFILTER_MIPLINEAR               4ul
+#define V9X_D3DRENDERSTATE_TEXTUREADDRESS    3ul
+#define V9X_D3DRENDERSTATE_COLORKEYENABLE_R  41ul
+#define V9X_D3DTADDRESS_WRAP_R                1ul
 #define V9X_D3DFILTER_LINEARMIPLINEAR         6ul
 #define V9X_D3DTBLEND_COPY                    7ul
 #define V9X_D3DTBLEND_MODULATE                2ul
@@ -1303,6 +1306,56 @@ static void v9x_fill_surface_halves(struct v9x_dds *surface, WORD left,
     surface->vtbl->Unlock(surface, 0);
 }
 
+/*
+ * Every render state a rung may leave behind, put back to what Direct3D
+ * starts a device with. Called at the start of each rung group and of each
+ * matrix cell, so a key means one draw under one known state. Before this
+ * existed, the first probe run after a reboot twice read rungs as undrawn
+ * that the next run read correctly - a texture handle or a blend left on by
+ * the previous rung, landing on whichever rung followed. Depth state is
+ * left alone: the depth ladders own it and reset it themselves.
+ */
+static void v9x_probe_reset_state(struct v9x_d3d_device2 *device,
+                                  V9X_D3DTLVERTEX *triangle)
+{
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, V9X_D3DTBLEND_MODULATE);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_SRCBLEND, V9X_D3DBLEND_ONE_F);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_DESTBLEND, V9X_D3DBLEND_ZERO_F);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_TEXTUREMIN, V9X_D3DFILTER_NEAREST);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_TEXTUREMAG, V9X_D3DFILTER_NEAREST);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_TEXTUREADDRESS, V9X_D3DTADDRESS_WRAP_R);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_COLORKEYENABLE_R, 0ul);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
+    (void)device->vtbl->SetRenderState(device,
+        V9X_D3DRENDERSTATE_CULLMODE, V9X_D3DCULL_CCW);
+    triangle[0].color = 0xffffffff; triangle[0].specular = 0ul;
+    triangle[1].color = 0xffffffff; triangle[1].specular = 0ul;
+    triangle[2].color = 0xffffffff; triangle[2].specular = 0ul;
+    triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
+    triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
+    triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+}
+
+/* Key names for the matrix are assembled, not listed: there are ninety. */
+static void v9x_probe_cat(char *dest, const char *src)
+{
+    while (*dest != 0) ++dest;
+    while (*src != 0) *dest++ = *src++;
+    *dest = 0;
+}
+
 static DWORD v9x_time_surface_fill(struct v9x_dds *surface)
 {
     DWORD started;
@@ -1526,6 +1579,37 @@ static DWORD v9x_layout_blue(const V9X_PIXEL_LAYOUT *layout, DWORD pixel)
 {
     return v9x_layout_channel(layout, pixel, layout->blue_mask);
 }
+
+/* Which of the matrix's colours a target pixel is, on 0..255 channels. */
+#define V9X_PROBE_HUE_OTHER   0ul
+#define V9X_PROBE_HUE_GREEN   1ul
+#define V9X_PROBE_HUE_BLUE    2ul
+#define V9X_PROBE_HUE_MAGENTA 3ul
+#define V9X_PROBE_HUE_CYAN    4ul
+#define V9X_PROBE_HUE_BLACK   5ul
+
+static DWORD v9x_probe_hue(const V9X_PIXEL_LAYOUT *layout, WORD raw)
+{
+    DWORD r;
+    DWORD g;
+    DWORD b;
+
+    if (layout->valid == 0ul) {
+        return V9X_PROBE_HUE_OTHER;
+    }
+    if (raw == 0u) {
+        return V9X_PROBE_HUE_BLACK;
+    }
+    r = v9x_layout_red(layout, raw);
+    g = v9x_layout_green(layout, raw);
+    b = v9x_layout_blue(layout, raw);
+    if (g >= 197ul && r <= 33ul && b <= 33ul) return V9X_PROBE_HUE_GREEN;
+    if (b >= 197ul && r <= 33ul && g <= 33ul) return V9X_PROBE_HUE_BLUE;
+    if (r >= 197ul && b >= 197ul && g <= 33ul) return V9X_PROBE_HUE_MAGENTA;
+    if (g >= 197ul && b >= 197ul && r <= 33ul) return V9X_PROBE_HUE_CYAN;
+    return V9X_PROBE_HUE_OTHER;
+}
+
 
 /* Three 0..255 channels as the surface would store them. Rounding is
  * to nearest so 255 lands on the full field rather than one short of it. */
@@ -2988,6 +3072,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
 
+                v9x_probe_reset_state(d3d_device, triangle);
                 v9x_fill_surface(d3d_target,
                                  ((DWORD)expect_blue << 16) |
                                  (DWORD)expect_blue);
@@ -3364,6 +3449,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
 
+                v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * A source colour key on a texture.
                  *
@@ -3472,6 +3558,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                     }
                 }
 
+                v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * Textures larger than the 64 texels every rung above uses.
                  *
@@ -3608,6 +3695,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                     triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
                 }
 
+                v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * Texel alpha, per format, under a MODULATE blend.
                  *
@@ -3738,6 +3826,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                     }
                 }
 
+                v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * A texture with no mip chain, and known memory after it.
                  *
@@ -3864,6 +3953,294 @@ void __stdcall V9xDdrawProbeEntry(void)
                     if (top != 0) top->vtbl->Release(top);
                 }
 
+                v9x_probe_reset_state(d3d_device, triangle);
+                /*
+                 * THE TEXTURE MATRIX.
+                 *
+                 * Every texture rung above tests one point; the faults found
+                 * on the Trio3D/2X on 2026-09-03 lived between the points -
+                 * a stride that only mattered above 64 texels, alpha that
+                 * only mattered in one format. This walks the space:
+                 *
+                 *   size    64, 128, 256
+                 *   format  ARGB1555, ARGB4444
+                 *   layout  plain; a two-level chain DirectDraw built
+                 *           (contiguous); a two-level chain built by hand
+                 *           with a filler surface between the levels (gapped)
+                 *   filter  NEAREST, LINEAR, MIPNEAREST, LINEARMIPLINEAR;
+                 *           and NEAREST once more with texel alpha blended
+                 *
+                 * Level 0 is green on the left and blue on the right; level 1
+                 * is magenta and cyan. Each cell draws the left half and the
+                 * right half over black and classifies both pixels by hue. A
+                 * cell passes when the left is green or magenta and the right
+                 * is blue or cyan - either level, correctly addressed - or,
+                 * for the alpha cell, when the right is black (its texels
+                 * have alpha 0). Anything else is a wrong address, a wrong
+                 * format, a level that was never allocated, or alpha ignored,
+                 * and the raw values say which.
+                 *
+                 * Keys: TexM_<size>_<fmt>_<layout>_<filter>_L, _R, _Ok, and
+                 * TexMatrixOk / TexMatrixCount as the summary. Gapped chains
+                 * also record TexM_..._Delta, the byte distance from level 0
+                 * to level 1, so a reading is trusted only when the gap is
+                 * real; a contiguous chain's delta is the level-0 size.
+                 */
+                {
+                    static const DWORD m_sizes[3] = { 64ul, 128ul, 256ul };
+                    static const char *m_size_names[3] = { "64", "128", "256" };
+                    static const char *m_fmt_names[2] = { "1555", "4444" };
+                    static const char *m_layout_names[3] = { "plain", "chain", "gapped" };
+                    static const DWORD m_filters[5] = {
+                        V9X_D3DFILTER_NEAREST, V9X_D3DFILTER_LINEAR,
+                        V9X_D3DFILTER_MIPNEAREST, V9X_D3DFILTER_LINEARMIPLINEAR,
+                        V9X_D3DFILTER_NEAREST };
+                    static const char *m_filter_names[5] = {
+                        "near", "lin", "mipnear", "trilin", "alpha" };
+                    DWORD m_ok = 0ul;
+                    DWORD m_count = 0ul;
+                    DWORD si, fi, li, ti;
+
+                    for (si = 0ul; si < 3ul; ++si)
+                    for (fi = 0ul; fi < 2ul; ++fi)
+                    for (li = 0ul; li < 3ul; ++li) {
+                        struct v9x_dds *m_top = 0;
+                        struct v9x_dds *m_level = 0;
+                        struct v9x_dds *m_filler = 0;
+                        struct v9x_d3d_texture2 *m_tex = 0;
+                        DWORD m_handle = 0ul;
+                        HRESULT m_hr;
+                        DWORD top_addr = 0ul;
+                        DWORD level_addr = 0ul;
+                        WORD left0, right0, left1, right1, right0_alpha;
+                        char m_prefix[48];
+                        char m_key[64];
+                        V9X_DDSURFACEDESC m_desc;
+
+                        m_prefix[0] = 0;
+                        v9x_probe_cat(m_prefix, "TexM_");
+                        v9x_probe_cat(m_prefix, m_size_names[si]);
+                        v9x_probe_cat(m_prefix, "_");
+                        v9x_probe_cat(m_prefix, m_fmt_names[fi]);
+                        v9x_probe_cat(m_prefix, "_");
+                        v9x_probe_cat(m_prefix, m_layout_names[li]);
+
+                        if (fi == 0ul) {
+                            left0 = 0x83e0u; right0 = 0x801fu; right0_alpha = 0x001fu;
+                            left1 = 0xfc1fu; right1 = 0x83ffu;
+                        } else {
+                            left0 = 0xf0f0u; right0 = 0xf00fu; right0_alpha = 0x000fu;
+                            left1 = 0xff0fu; right1 = 0xf0ffu;
+                        }
+
+                        /* Level 0. */
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                        desc.dwWidth = m_sizes[si];
+                        desc.dwHeight = m_sizes[si];
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE |
+                                              V9X_DDSCAPS_VIDEOMEMORY;
+                        if (li == 1ul) {
+                            desc.dwFlags |= V9X_DDSD_MIPMAPCOUNT;
+                            desc.dwMipMapCount = 2ul;
+                            desc.ddsCaps.dwCaps |= V9X_DDSCAPS_COMPLEX |
+                                                   V9X_DDSCAPS_MIPMAP;
+                        } else if (li == 2ul) {
+                            desc.ddsCaps.dwCaps |= V9X_DDSCAPS_MIPMAP;
+                        }
+                        desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                        if (fi == 0ul) {
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                        } else {
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x0000f000ul;
+                        }
+                        m_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &m_top, 0);
+
+                        /* Level 1: from the chain, or built by hand across a
+                         * filler so it cannot be where the engine expects. */
+                        if (m_hr == 0 && li == 1ul) {
+                            caps.dwCaps = V9X_DDSCAPS_MIPMAP;
+                            m_hr = m_top->vtbl->GetAttachedSurface(m_top, &caps, &m_level);
+                        } else if (m_hr == 0 && li == 2ul) {
+                            V9X_DDSURFACEDESC l_desc = desc;
+
+                            l_desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                             V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                            l_desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE |
+                                                    V9X_DDSCAPS_VIDEOMEMORY;
+                            l_desc.dwWidth = 64ul;
+                            l_desc.dwHeight = 64ul;
+                            m_hr = ddraw->vtbl->CreateSurface(ddraw, &l_desc, &m_filler, 0);
+                            if (m_hr == 0) {
+                                l_desc.dwWidth = m_sizes[si] / 2ul;
+                                l_desc.dwHeight = m_sizes[si] / 2ul;
+                                l_desc.ddsCaps.dwCaps |= V9X_DDSCAPS_MIPMAP;
+                                m_hr = ddraw->vtbl->CreateSurface(ddraw, &l_desc, &m_level, 0);
+                            }
+                            if (m_hr == 0) {
+                                m_hr = m_top->vtbl->AddAttachedSurface(m_top, m_level);
+                                m_key[0] = 0;
+                                v9x_probe_cat(m_key, m_prefix);
+                                v9x_probe_cat(m_key, "_AttachHr");
+                                v9x_write_hresult(m_key, m_hr);
+                            }
+                        }
+                        if (m_hr == 0 && m_top != 0) {
+                            v9x_fill_surface_halves(m_top, left0, right0);
+                            v9x_zero(&m_desc, sizeof(m_desc));
+                            m_desc.dwSize = sizeof(m_desc);
+                            if (m_top->vtbl->Lock(m_top, 0, &m_desc, V9X_DDLOCK_WAIT, 0) == 0) {
+                                top_addr = (DWORD)m_desc.lpSurface;
+                                m_top->vtbl->Unlock(m_top, 0);
+                            }
+                        }
+                        if (m_hr == 0 && m_level != 0) {
+                            v9x_fill_surface_halves(m_level, left1, right1);
+                            v9x_zero(&m_desc, sizeof(m_desc));
+                            m_desc.dwSize = sizeof(m_desc);
+                            if (m_level->vtbl->Lock(m_level, 0, &m_desc, V9X_DDLOCK_WAIT, 0) == 0) {
+                                level_addr = (DWORD)m_desc.lpSurface;
+                                m_level->vtbl->Unlock(m_level, 0);
+                            }
+                            m_key[0] = 0;
+                            v9x_probe_cat(m_key, m_prefix);
+                            v9x_probe_cat(m_key, "_Delta");
+                            v9x_write_uint(m_key, level_addr - top_addr);
+                        }
+                        if (m_hr == 0 && m_top != 0) {
+                            m_hr = m_top->vtbl->QueryInterface(
+                                m_top, &v9x_iid_d3d_texture2, (void **)&m_tex);
+                        }
+                        if (m_hr == 0 && m_tex != 0) {
+                            m_hr = m_tex->vtbl->GetHandle(m_tex, d3d_device, &m_handle);
+                        }
+                        m_key[0] = 0;
+                        v9x_probe_cat(m_key, m_prefix);
+                        v9x_probe_cat(m_key, "_Hr");
+                        v9x_write_hresult(m_key, m_hr);
+
+                        for (ti = 0ul; ti < 5ul && m_hr == 0 && m_handle != 0ul; ++ti) {
+                            WORD l_raw = 0u;
+                            WORD r_raw = 0u;
+                            HRESULT l_hr = 0x80004005ul;
+                            HRESULT r_hr = 0x80004005ul;
+                            DWORD l_hue, r_hue;
+                            DWORD cell_ok;
+                            HRESULT c_hr;
+
+                            v9x_probe_reset_state(d3d_device, triangle);
+                            if (ti == 4ul) {
+                                /* Right half alpha 0, then blended. */
+                                v9x_fill_surface_halves(m_top, left0, right0_alpha);
+                            } else if (ti == 0ul) {
+                                v9x_fill_surface_halves(m_top, left0, right0);
+                            }
+                            c_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, m_handle);
+                            if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                ti == 4ul ? V9X_D3DTBLEND_MODULATE : V9X_D3DTBLEND_COPY);
+                            if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN, m_filters[ti]);
+                            if (c_hr == 0 && ti == 4ul) {
+                                c_hr = d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                    V9X_D3DBLEND_SRCALPHA);
+                                if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                    V9X_D3DBLEND_INVSRCALPHA);
+                                if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                            }
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.10f; triangle[2].tv = 0.40f;
+                            begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
+                            if (begin_hr == 0) {
+                                l_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) l_hr = end_hr;
+                            }
+                            l_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
+                            triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
+                            triangle[2].tu = 0.60f; triangle[2].tv = 0.40f;
+                            begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
+                            if (begin_hr == 0) {
+                                r_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) r_hr = end_hr;
+                            }
+                            r_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            l_hue = v9x_probe_hue(&target_layout, l_raw);
+                            r_hue = v9x_probe_hue(&target_layout, r_raw);
+                            /* LINEARMIPLINEAR may blend the two levels'
+                             * colours, which is neither hue; a chain cell
+                             * under it passes on "something was drawn on
+                             * both halves" and the raw values carry the
+                             * rest. Every other cell must be one of the
+                             * exact hues. */
+                            if (ti == 3ul && li != 0ul) {
+                                cell_ok = l_hr == 0 && r_hr == 0 &&
+                                    l_hue != V9X_PROBE_HUE_BLACK &&
+                                    r_hue != V9X_PROBE_HUE_BLACK ? 1ul : 0ul;
+                            } else {
+                                cell_ok = l_hr == 0 && r_hr == 0 &&
+                                    (l_hue == V9X_PROBE_HUE_GREEN ||
+                                     l_hue == V9X_PROBE_HUE_MAGENTA) &&
+                                    (ti == 4ul ? r_hue == V9X_PROBE_HUE_BLACK
+                                               : (r_hue == V9X_PROBE_HUE_BLUE ||
+                                                  r_hue == V9X_PROBE_HUE_CYAN))
+                                    ? 1ul : 0ul;
+                            }
+                            m_key[0] = 0;
+                            v9x_probe_cat(m_key, m_prefix);
+                            v9x_probe_cat(m_key, "_");
+                            v9x_probe_cat(m_key, m_filter_names[ti]);
+                            v9x_probe_cat(m_key, "_L");
+                            v9x_write_uint(m_key, l_raw);
+                            m_key[0] = 0;
+                            v9x_probe_cat(m_key, m_prefix);
+                            v9x_probe_cat(m_key, "_");
+                            v9x_probe_cat(m_key, m_filter_names[ti]);
+                            v9x_probe_cat(m_key, "_R");
+                            v9x_write_uint(m_key, r_raw);
+                            m_key[0] = 0;
+                            v9x_probe_cat(m_key, m_prefix);
+                            v9x_probe_cat(m_key, "_");
+                            v9x_probe_cat(m_key, m_filter_names[ti]);
+                            v9x_probe_cat(m_key, "_Ok");
+                            v9x_write_uint(m_key, cell_ok);
+                            ++m_count;
+                            m_ok += cell_ok;
+                        }
+                        v9x_probe_reset_state(d3d_device, triangle);
+                        if (m_tex != 0) m_tex->vtbl->Release(m_tex);
+                        if (li == 2ul && m_level != 0) m_level->vtbl->Release(m_level);
+                        if (m_filler != 0) m_filler->vtbl->Release(m_filler);
+                        if (m_top != 0) m_top->vtbl->Release(m_top);
+                    }
+                    v9x_write_uint("TexMatrixOk", m_ok);
+                    v9x_write_uint("TexMatrixCount", m_count);
+                }
+
+                v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * A blend the S3D unit cannot express: DESTCOLOR over ZERO,
                  * the multiplicative pass lightmaps use. The target is

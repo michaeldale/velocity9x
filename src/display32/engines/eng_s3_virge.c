@@ -144,6 +144,62 @@ int v9x_wait_fifo(DWORD entries, int wait)
     return 0;
 }
 
+/*
+ * Non-zero from the moment a triangle is launched until an idle wait has seen
+ * the 3D-done bit. See V9X_VIRGE_STATUS_3D_DONE for why the idle bit alone is
+ * not the answer once the 3D engine is involved.
+ */
+static int v9x_virge_3d_pending = 0;
+
+void v9x_engine_3d_launched(void)
+{
+    v9x_virge_3d_pending = 1;
+}
+
+/*
+ * Idle, and - if a triangle is pending - done with it.
+ *
+ * Two answers are kept apart. The idle bit missing is the engine still
+ * working, and the caller's spin, timeout and reset apply as they always
+ * have. The idle bit present but the done bit missing after a launch is the
+ * narrow case this exists for - the emulator's queued-but-not-yet-busy gap -
+ * and it is waited out here, bounded, and never escalated: an engine that
+ * reports idle is not one to reset, and if the done bit simply never comes on
+ * some chip the wait must degrade to what it was, not to a reset storm. The
+ * first version of this escalated, and wedged the emulated ViRGE's desktop
+ * on the first probe run (2026-09-03).
+ */
+#define V9X_VIRGE_DONE_SPIN_LIMIT 4096ul
+
+static int v9x_virge_settled(void)
+{
+    DWORD status = v9x_engine_status();
+    DWORD spins;
+
+    if ((status & V9X_VIRGE_STATUS_IDLE) == 0ul) {
+        return 0;
+    }
+    if (!v9x_virge_3d_pending) {
+        return 1;
+    }
+    spins = V9X_VIRGE_DONE_SPIN_LIMIT;
+    while (spins-- != 0ul) {
+        status = v9x_engine_status();
+        if ((status & V9X_VIRGE_STATUS_3D_DONE) != 0ul) {
+            v9x_virge_3d_pending = 0;
+            ++v9x_hal->d3d_diagnostics.done_seen;
+            /* The engine may have gone busy again while we looked. */
+            return (status & V9X_VIRGE_STATUS_IDLE) != 0ul;
+        }
+        if ((status & V9X_VIRGE_STATUS_IDLE) == 0ul) {
+            return 0;   /* it is working after all; the outer wait handles it */
+        }
+    }
+    v9x_virge_3d_pending = 0;
+    ++v9x_hal->d3d_diagnostics.done_missing;
+    return 1;
+}
+
 int v9x_wait_idle(int wait)
 {
     DWORD spins;
@@ -152,7 +208,7 @@ int v9x_wait_idle(int wait)
         return 0;
     }
     if (!(wait && v9x_fault_injected())) {
-        if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
+        if (v9x_virge_settled()) {
             return 1;
         }
         if (!wait) {
@@ -160,7 +216,7 @@ int v9x_wait_idle(int wait)
         }
         spins = V9X_VIRGE_IDLE_SPIN_LIMIT;
         while (spins-- != 0ul) {
-            if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
+            if (v9x_virge_settled()) {
                 return 1;
             }
         }
