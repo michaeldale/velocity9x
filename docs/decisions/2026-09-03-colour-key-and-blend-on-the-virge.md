@@ -127,10 +127,41 @@ read twelve of twelve. Recorded, not explained.
 Gates: check-tree, vga survey safety gate, host tests and family packages all
 green (run-checks) for each pair.
 
+## 3DMark 99 on the build, and what the new counters said
+
+Two runs by eye: the saw-tooth is gone (it went with the render-target fix,
+not with the blend classifier - `D3dBlendSkipped` counted only the probe's
+own three rungs across both runs), the lights and HUD stopped drawing as black
+squares once blended textured draws took texel alpha
+(`D3dTextureAlphaDraws=16676`), and 3DMark set no colour key at all
+(`D3dColorKeyDraws` = the probe's). "Improvements, still issues, looking
+better" was the verdict.
+
+What is left is texture memory the sampler reads that the application did not
+write, and the counters narrowed it in one run:
+
+```
+D3dTextureRefusedFormat=0   D3dTextureRefusedShape=0
+D3dTextureRefusedOther=14005          <- system memory, no TEXTURE cap, or out of VRAM
+D3dTextureGreenDraws=15               <- the probe's residue: fifteen draws, not a wall
+D3dRenderPrimitiveCalls=38675   D3dTextureCreates=804   CountLock=4226
+```
+
+So the green wall is not stale memory in the main; it is 14,005 draws whose
+texture the sampler refused for one of the three reasons that were not counted
+until this build - and a refused texture draws as untextured Gouraud in the
+vertex colour. The build after this one splits the three and records the
+refused surface's caps and address. The likely reading, to be confirmed by
+that counter and not before: 804 textures for a 4 MB card whose heap holds
+about 2 MB after the flip pair and the depth buffer, so some were created in
+system memory, which the S3D unit cannot read.
+
 ## Open
 
-- 3DMark 99 on this build, by eye. `D3dTextureRefusedFormat/Shape` will say
-  whether the solid green was a refused texture; both were zero for the probe.
+- Which of the three uncounted refusals the 14,005 were, and what to do about
+  it: a system-memory texture cannot be sampled by the S3D unit, so the answer
+  is either a heap that holds more textures, or the software engine for those
+  triangles, or an honest cap that stops DirectDraw creating them there.
 - Multiplicative and additive blends are skipped, not drawn. The software
   engine is where they can be honoured.
 - The software engine does not key. Its rung reads `ColorKeyOk=0`, honestly.

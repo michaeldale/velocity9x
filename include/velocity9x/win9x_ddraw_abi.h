@@ -1301,6 +1301,17 @@ typedef struct v9x_d3d_diagnostics {
     DWORD texture_green_draws;    /* draws whose both sampled texels were
                                      0x83e0, the probe's fill               */
     DWORD texture_alpha_draws;    /* draws blended by texel alpha           */
+    /*
+     * Appended 2026-09-03, once texture_refused_other had read 14,005 for a
+     * 3DMark 99 run and could not say which of its three reasons fired. It
+     * still counts the sum; these split it, and the last refused surface's
+     * caps say what kind of surface it was.
+     */
+    DWORD texture_refused_sysmem;  /* DDSCAPS_SYSTEMMEMORY set               */
+    DWORD texture_refused_nocap;   /* DDSCAPS_TEXTURE absent                 */
+    DWORD texture_refused_bounds;  /* offset unresolved or outside VRAM      */
+    DWORD texture_refused_caps;    /* ddsCaps of the last surface so refused */
+    DWORD texture_refused_vidmem;  /* its fpVidMem                           */
 } V9X_D3D_DIAGNOSTICS;
 
 /*

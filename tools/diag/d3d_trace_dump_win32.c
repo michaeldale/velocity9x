@@ -391,6 +391,15 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("D3dTextureLastTexels", snapshot.d3d.texture_last_texels);
     v9x_write_uint("D3dTextureGreenDraws", snapshot.d3d.texture_green_draws);
     v9x_write_uint("D3dTextureAlphaDraws", snapshot.d3d.texture_alpha_draws);
+    v9x_write_uint("D3dTextureRefusedSysmem",
+                   snapshot.d3d.texture_refused_sysmem);
+    v9x_write_uint("D3dTextureRefusedNoCap",
+                   snapshot.d3d.texture_refused_nocap);
+    v9x_write_uint("D3dTextureRefusedBounds",
+                   snapshot.d3d.texture_refused_bounds);
+    v9x_write_hex("D3dTextureRefusedCaps", snapshot.d3d.texture_refused_caps);
+    v9x_write_hex("D3dTextureRefusedVidMem",
+                  snapshot.d3d.texture_refused_vidmem);
     {
         DWORD tail_index;
         char tail_name[16];

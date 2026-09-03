@@ -224,6 +224,14 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.texture_refused_other;
+            if ((surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+                ++v9x_hal->d3d_diagnostics.texture_refused_sysmem;
+            } else {
+                ++v9x_hal->d3d_diagnostics.texture_refused_nocap;
+            }
+            v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+            v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+                surface->lpGbl->fpVidMem;
         }
         return 0;
     }
@@ -256,6 +264,10 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     if (offset == 0xfffffffful || last_byte > v9x_hal->fb.vram_bytes ||
         offset > v9x_hal->fb.vram_bytes - last_byte) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
+        v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+        v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+            surface->lpGbl->fpVidMem;
         return 0;
     }
     /*
