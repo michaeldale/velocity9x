@@ -729,6 +729,20 @@ typedef struct v9x_dd_surface_lcl {
     DWORD ddsCaps;
 } V9X_DD_SURFACE_LCL;
 
+/*
+ * One node of a surface's attachment list - DDRAWI's DBLNODE (DDRAWI.H),
+ * mirrored here as an ABI shape the same way the surface structs above are.
+ * lpAttachList on an LCL points at the first of these; `object` is the
+ * attached surface and `next` the following node. Only the mip-chain walk
+ * reads it, and only `next` and `object`.
+ */
+typedef struct v9x_dd_attach_node {
+    struct v9x_dd_attach_node *next;
+    struct v9x_dd_attach_node *prev;
+    V9X_DD_SURFACE_LCL *object;
+    DWORD object_int;
+} V9X_DD_ATTACH_NODE;
+
 /* DDRAWI_DDRAWSURFACE_INT prefix. D3D HAL callbacks receive this wrapper. */
 typedef struct v9x_dd_surface_int {
     DWORD lpVtbl;
@@ -1167,6 +1181,16 @@ typedef struct v9x_d3d_diagnostics {
     DWORD depth_caps;       /* ddsCaps of that surface                     */
     DWORD depth_offset;     /* its VRAM offset, or 0 if it had no lpGbl    */
     DWORD depth_pitch;      /* its lPitch as DirectDraw reported it        */
+    /*
+     * Appended 2026-09-03. The S3D engine has one TEX_BASE and reads every
+     * mip level at a fixed offset from it - largest level first, each level
+     * following the last - while DirectDraw allocates each level as its own
+     * surface and promises nothing about where. Every mipmapped draw checks
+     * the chain; a chain with a gap is drawn from level 0 alone rather than
+     * fetched from whatever lies past the top level.
+     */
+    DWORD mip_chain_checks; /* mipmapped textures examined at draw time    */
+    DWORD mip_chain_gaps;   /* ... of which were not laid out contiguously */
 } V9X_D3D_DIAGNOSTICS;
 
 /*

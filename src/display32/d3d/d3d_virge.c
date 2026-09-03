@@ -86,6 +86,85 @@ static int v9x_d3d_texture_format(const V9X_DD_SURFACE_LCL *surface,
     return 0;
 }
 
+/*
+ * Is this texture's mip chain laid out where the engine will read it?
+ *
+ * The S3D unit takes one TEX_BASE and derives every level from it: the largest
+ * level at the base, each smaller level immediately after the one before,
+ * down to the level the command word's size field names. That is how the
+ * emulator models it (build\reference-vid_s3_virge.c around 4479, the loop
+ * that walks tex_base up through the levels) and it is the only reading of a
+ * single base register. DirectDraw, meanwhile, creates each level as its own
+ * surface through the ordinary allocator and attaches it to the level above;
+ * nothing in that promises the second surface starts where the first ends.
+ *
+ * Until 2026-09-03 the engine assumed it did, on the strength of the emulated
+ * ViRGE passing the probe's mip rung - which it passes because its allocator
+ * happened to place the two levels back to back. A physical Trio3D/2X read
+ * black for the same rung: the level-1 fetch went to whatever sat past level 0.
+ *
+ * So the chain is walked and checked, and a chain with a gap draws from level
+ * 0 with mip selection off. Wrong - the texture will shimmer at distance - but
+ * visibly so and from the right texels, where fetching past the top level is
+ * an out-of-surface read that happens to land on zeroed VRAM today and on
+ * somebody else's surface tomorrow. Both outcomes are counted so V9XTRACE can
+ * say which one a machine is seeing.
+ *
+ * The walk is bounded: a 512-texel top level has at most eight levels below
+ * it, and a malformed list is treated as a gap rather than followed.
+ */
+#define V9X_D3D_MIP_LEVELS_MAX 10ul
+
+static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
+                                        DWORD top_offset, DWORD top_size)
+{
+    const V9X_DD_SURFACE_LCL *level = top;
+    DWORD expected = top_offset + top_size * top_size * 2ul;
+    DWORD size = top_size;
+    DWORD depth;
+
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    }
+    for (depth = 0ul; depth < V9X_D3D_MIP_LEVELS_MAX; ++depth) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+        DWORD next_offset;
+
+        /* The next level is the attached surface that is itself a mip
+         * level. A texture may carry other attachments - a Z buffer never,
+         * but the walk does not assume - so the caps are tested. */
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0) {
+            return 1;   /* the chain ends here, and everything so far fit */
+        }
+        if (next->lpGbl == 0 || size < 2ul ||
+            (DWORD)next->lpGbl->wWidth != size / 2ul ||
+            (DWORD)next->lpGbl->wHeight != size / 2ul) {
+            break;
+        }
+        next_offset = v9x_surface_offset(next);
+        if (next_offset != expected) {
+            break;
+        }
+        size /= 2ul;
+        expected = next_offset + size * size * 2ul;
+        level = next;
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+    }
+    return 0;
+}
+
 static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
                                 DWORD *offset_out, DWORD *size_log_out,
                                 int *mipmapped_out, DWORD *format_out)
@@ -132,7 +211,8 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
     }
     *offset_out = offset;
     *size_log_out = size_log;
-    *mipmapped_out = (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul;
+    *mipmapped_out = (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
+                     v9x_d3d_mip_chain_contiguous(surface, offset, size);
     return 1;
 }
 
@@ -356,7 +436,22 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     v9x_mmio_write(V9X_VIRGE_3D_DEST_BASE, context->target_offset);
     v9x_mmio_write(V9X_VIRGE_3D_CLIP_L_R, context->width - 1ul);
     v9x_mmio_write(V9X_VIRGE_3D_CLIP_T_B, context->height - 1ul);
-    v9x_mmio_write(V9X_VIRGE_3D_DEST_SRC_STRIDE, context->pitch << 16);
+    /*
+     * Both halves. The register is destination stride in the high word and
+     * source stride in the low, and this wrote only the high one - which the
+     * emulator forgave, because its 3D blend reads the destination back
+     * through the destination stride (build\reference-vid_s3_virge.c around
+     * 4379). Real silicon does not have to: an alpha blend that fetches the
+     * pixel it is blending over through a source stride of zero reads the
+     * wrong row every time, and the Trio3D/2X's vertex-alpha result on
+     * 2026-09-03 was exactly that shape - a colour no weighting of red over
+     * blue produces, and different on every boot
+     * (docs\issues\2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md).
+     * The 3D engine has one surface to read back from, and it is the one it
+     * writes to, so the two strides are the same number.
+     */
+    v9x_mmio_write(V9X_VIRGE_3D_DEST_SRC_STRIDE,
+                   (context->pitch << 16) | (context->pitch & 0xfffful));
     v9x_mmio_write(V9X_VIRGE_3D_Z_STRIDE,
                    z_active ? context->depth_pitch : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BASE,

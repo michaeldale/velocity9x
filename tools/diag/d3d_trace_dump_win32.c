@@ -362,6 +362,8 @@ void __stdcall V9xTraceDumpEntry(void)
      */
     v9x_write_uint("D3dDepthOffered", snapshot.d3d.depth_offered);
     v9x_write_uint("D3dDepthAccepted", snapshot.d3d.depth_accepted);
+    v9x_write_uint("D3dMipChainChecks", snapshot.d3d.mip_chain_checks);
+    v9x_write_uint("D3dMipChainGaps", snapshot.d3d.mip_chain_gaps);
     v9x_write_uint("D3dDepthReject", snapshot.d3d.depth_reject);
     v9x_write_text("D3dDepthRejectName",
                    v9x_depth_reject_name(snapshot.d3d.depth_reject));

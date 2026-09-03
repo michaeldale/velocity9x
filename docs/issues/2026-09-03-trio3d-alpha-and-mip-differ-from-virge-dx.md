@@ -54,9 +54,26 @@ difference or split the descriptor. The two differences already recorded -
 FIFO depth and the aperture decode mask - are the first suspects for the mip
 fetch.
 
+## Tested, 2026-09-03: two hypotheses, both dead
+
+Recorded in full in
+[`../decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md`](../decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md).
+
+- **Source stride.** `DEST_SRC_STRIDE` was written with a zero low half.
+  Written with both halves: `D3DVertexAlphaBlendRaw` 25352 before and after.
+  Not the cause. The change is kept because the register has two halves.
+- **Mip chain layout.** The engine assumed the levels were contiguous after
+  `TEX_BASE`. A draw-time walk of the attachment list now checks: on A8U4I5,
+  `D3dMipChainChecks=2 D3dMipChainGaps=0` and `D3DMipmapLevelRaw=0` still.
+  The chain is where the engine expects it and the fetch still returns nothing.
+  Not the cause. The guard is kept because a gap would be an out-of-surface
+  read.
+
 ## Next
 
-1. Diff 86Box's S3D alpha-blend and texture-fetch code by chip id.
+1. ~~Diff 86Box's S3D alpha-blend and texture-fetch code by chip id.~~ Done:
+   there is no chip-conditional code in the S3D unit at all. The emulator
+   cannot answer this; only the card can.
 2. Re-run the alpha rung on A8U4I5 several boots in a row and record the raw
    each time; a value that wanders is a read of something uninitialised.
 3. Until one of those lands, treat `D3DVertexAlphaBlendOk`,

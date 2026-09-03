@@ -53,6 +53,8 @@ provenance is a matter of record rather than of memory.
 |---|---|---|
 | 2026-09-02 | `src\display\mini\s3v\` - `VIRGE1.H`, `D3DRENDR.C`, `D3DDRV.C`, `DDDRV.C`, `VGA.ASM`, `INIT.ASM`, `S3DATA.H`, `S3_DD32.C` | That the S3D engine's 3D command word has no RGB565 destination format, that S3's driver selects the destination on bit depth alone, that a `HighColor` key in `SYSTEM.INI` selects a 5:5:5 desktop, and the capability set S3 published for this silicon. Recorded in [`decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md`](decisions/2026-09-02-s3d-writes-1555-because-it-can-only-write-1555.md). |
 
+| 2026-09-03 | `inc\win98\DDRAWI.H` | The field order of `DBLNODE`, the surface attachment-list node, mirrored as `V9X_DD_ATTACH_NODE` so the ViRGE engine can walk a texture's mip levels. ABI shape only, the same use the surface structs in `win9x_ddraw_abi.h` have always made of that header. |
+
 Two things about that entry are worth stating plainly.
 
 **The rule above was applied late.** The first version of that decision document

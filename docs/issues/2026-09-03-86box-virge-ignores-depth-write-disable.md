@@ -1,7 +1,15 @@
-# 86Box's ViRGE writes depth with Z-write disabled; the Trio3D does not
+# 86Box's ViRGE failed the Z-write-disable rung, and stopped when the stride word was fully written
 
 Filed: 2026-09-03
-Status: open against the emulator; silicon confirmed correct 2026-09-03
+Status: **amended the same day.** The rung now passes on the emulator, twice
+in a row, after `DEST_SRC_STRIDE`'s low half was written
+(`docs/decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-left.md`).
+The claim below that the model ignores `Z_UP_EN` is withdrawn. The mechanism by
+which a zero source stride reached this rung is not established; the emulator's
+Z address is derived from `z_str`, so it is not the obvious one. Kept as a
+record of a wrong conclusion and of what corrected it.
+
+Original text follows.
 Component: 86Box `vid_s3_virge.c` (S3D depth path); instrument
 `tools\diag\ddraw_probe_win32.c` ladder two
 
