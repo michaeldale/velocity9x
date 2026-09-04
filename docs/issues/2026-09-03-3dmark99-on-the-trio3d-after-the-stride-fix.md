@@ -114,3 +114,70 @@ from garbage), could be depth. Take the mip test first.
 - `tools/diag/ddraw_probe_win32.c` - the `Tex*HalvesOk`, `ColorKeyOk`,
   `Tex4444PixelOk` rungs; the alpha-4444 rung proposed above does not exist yet.
 - Trace snapshot: scratchpad `trio3d_3dm3.ini` from this session; not in the tree.
+
+## Second run, 2026-09-04: a score, a screenshot route, and which items survive
+
+Driver pair at 4e228fe (the counters escape, the alpha-curve probe rung and the
+learning 3D-done wait), A8U4I5 boot 26, 800x600x16, `Direct3DMode=hardware`.
+The benchmark completed: **335 3DMarks, 13,186 CPU 3DMarks** - the first score
+this card has produced on this driver.
+
+Screenshots are possible after all. `v9xctl screenshot` returns the real
+primary while 3DMark is in full-screen exclusive mode, so the photographs the
+first run needed are not needed again; frames are in `docs\images`.
+
+### Counters for the run
+
+```
+D3dRenderPrimitiveCalls=58619  D3dTextureCreates=27290  CountFlip=13193
+D3dTextureRefusedFormat=0  Shape=0  Other=0 (sysmem 0, no-cap 0, bounds 0)
+D3dBlendSkipped=1 (the probe's)  D3dColorKeyDraws=1 (the probe's)
+D3dTextureAlphaDraws=23355
+EngineFifoTimeouts=0  EngineIdleTimeouts=0  EngineResets=0
+D3dDoneSeen=0  D3dDoneMissing=64  D3dDoneSkipped=483491
+D3dMipChainChecks=481514  D3dMipChainGaps=427851
+D3dTextureLastTexels=0x00000FFF
+```
+
+Again not one refusal, not one engine fault, and no blend pair the S3D lacks.
+`D3dDoneSkipped=483,491` is the learning wait's payoff on one benchmark run:
+that many full 4,096-read spins not taken
+(`../decisions/2026-09-04-the-idle-wait-learns-the-done-bit.md`).
+
+### The list, re-read
+
+- **1, 5 - sprites and HUD in opaque black boxes: still there**, and now
+  explained. The alpha curve says a blended texel of alpha 0 writes **black**
+  on this part where it should keep the destination
+  (`AlphaCurve_0_Raw=0` against the emulator's 31744,
+  `../decisions/2026-09-04-what-the-trio3d-blend-does-with-its-operands.md`).
+  A sprite's transparent border is exactly that draw. The black box is the
+  alpha defect seen in an application; it needs no separate investigation.
+- **2 - ground and roadside textures as noise: still there.** The race scene's
+  track is white and grey chevrons. This is *not* the alpha defect and not the
+  stride: the probe now draws 64-, 128- and 256-texel textures correctly under
+  every filter and layout, and the corridor's walls, floor and ceiling in the
+  same run are right. Hypothesis B in this issue is answered separately - mip
+  selection matches the emulator now - so item 2 is the open one, and it is
+  what to instrument next.
+- **3, 7 - panels in solid magenta: still there** (the ammo panel, bottom left
+  of the corridor frame).
+- **4 - textured walls correct: confirmed**, and the synthetic texture-rendering
+  test draws its tiled, lit grid correctly.
+- **6 - large flat triangles: present as one large flat green panel** on the
+  corridor's left wall, which is the same open item the stride decision left
+  ("flat green panels ... with zero refusals and zero probe-green draws").
+  `D3dTextureGreenDraws=7` for the whole run: the probe's own, so still not the
+  driver's green fill.
+
+Frames: `../images/3dmark99-trio3d-2026-09-04-race.png`,
+`../images/3dmark99-trio3d-2026-09-04-corridor.png`,
+`../images/3dmark99-trio3d-2026-09-04-score.png`.
+
+### What is left here
+
+Two things, and neither is alpha: the noise ground (2) and the flat green panel
+(6). Both draw with textures the sampler handles correctly elsewhere in the
+same frame, with nothing refused and no fault, so the next move is an
+instrument rather than a hypothesis - what those particular draws bind and with
+what state.
