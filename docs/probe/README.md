@@ -206,3 +206,22 @@ It is what stated the Trio3D/2X's partial-alpha fault exactly - the
 destination's term correct, the source's channel saturated, and the
 destination's value duplicated into whichever channel neither operand uses:
 `docs/decisions/2026-09-04-the-ramp-and-the-shape-of-the-blend-fault.md`.
+
+## The primary chain
+
+`Solo_x<n>_Raw`, with `SoloWallRaw`, `SoloFrontRaw`, `SoloStage` and the
+HRESULTs beside each call. The ramp draw again, on the back buffer of the
+exclusive-mode flipping chain - the surface an application actually blends onto,
+and the one this probe had never used.
+
+It runs where the offscreen device has just been released, because three
+earlier attempts all had a second Direct3D device alive and this driver does
+not support two at once: one of them crashed, one drew nowhere, and
+`SetRenderTarget` onto the chain succeeded and was ignored
+(`docs/issues/2026-09-05-setrendertarget-is-accepted-and-ignored.md`). The rung
+therefore carries its own Z surface, textures, viewport and vertices.
+
+Every call is preceded by `v9x_write_stage`, which writes one key and flushes
+it. Ordinary keys are cached by Windows and a fault loses the cached tail, so
+without it a crash names the wrong call - which is exactly what happened the
+first time.

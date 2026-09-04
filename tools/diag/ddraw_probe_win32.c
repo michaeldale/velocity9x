@@ -6694,6 +6694,288 @@ void __stdcall V9xDdrawProbeEntry(void)
                 d3d_device->vtbl->Release(d3d_device);
                 d3d_device = 0;
                 v9x_write_uint("D3DContextCycleOk", 1ul);
+
+                /*
+                 * THE CHAIN, WITH NOTHING ELSE ALIVE.
+                 *
+                 * Two attempts to draw on the primary chain's back buffer have
+                 * failed in two different ways, and both had a second Direct3D
+                 * device alive at the time. Pointing the existing device at it
+                 * with SetRenderTarget succeeds and is ignored - the draw lands
+                 * on the previous target
+                 * (docs\issues\2026-09-05-setrendertarget-is-accepted-and-ignored.md).
+                 * Making a second device on it accepts every call and draws
+                 * nowhere. Neither says whether a device on a chain works,
+                 * because both measured "two devices at once" as well.
+                 *
+                 * This runs where that variable is gone. The offscreen device
+                 * has just been released, its viewport and textures with it,
+                 * and IDirect3D2 and the chain are still alive - so the device
+                 * made here is the only one, which is the arrangement a game
+                 * is in. It carries its own everything: Z surface, textures,
+                 * viewport, vertices.
+                 *
+                 * Stage markers throughout, flushed, because the last attempt
+                 * at this crashed and the file could not say where.
+                 */
+                if (backbuffer != 0 && d3d != 0) {
+                    static const DWORD solo_x[7] = {
+                        12ul, 18ul, 24ul, 30ul, 36ul, 42ul, 48ul };
+                    static const char *solo_keys[7] = {
+                        "Solo_x12_Raw", "Solo_x18_Raw", "Solo_x24_Raw",
+                        "Solo_x30_Raw", "Solo_x36_Raw", "Solo_x42_Raw",
+                        "Solo_x48_Raw" };
+                    struct v9x_dds *solo_z = 0;
+                    struct v9x_dds *solo_wall = 0;
+                    struct v9x_dds *solo_sprite = 0;
+                    struct v9x_d3d_texture2 *solo_wall_tex = 0;
+                    struct v9x_d3d_texture2 *solo_sprite_tex = 0;
+                    struct v9x_d3d_device2 *solo_device = 0;
+                    struct v9x_d3d_viewport2 *solo_viewport = 0;
+                    V9X_D3D_VIEWPORT_DESC2 solo_view;
+                    V9X_DDSURFACEDESC solo_back;
+                    V9X_D3DTLVERTEX solo_tri[3];
+                    DWORD solo_wall_handle = 0ul;
+                    DWORD solo_sprite_handle = 0ul;
+                    HRESULT solo_hr;
+                    HRESULT solo_draw_hr = 0;
+                    DWORD si3;
+
+                    v9x_write_stage("SoloStage", 1ul);
+                    v9x_zero(&solo_back, sizeof(solo_back));
+                    solo_back.dwSize = sizeof(solo_back);
+                    solo_hr = backbuffer->vtbl->GetSurfaceDesc(backbuffer,
+                                                               &solo_back);
+                    if (solo_hr == 0) {
+                        v9x_write_uint("SoloBackW", solo_back.dwWidth);
+                        v9x_write_uint("SoloBackH", solo_back.dwHeight);
+                        v9x_write_stage("SoloStage", 2ul);
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT |
+                                       V9X_DDSD_ZBUFFERBITDEPTH;
+                        desc.dwWidth = solo_back.dwWidth;
+                        desc.dwHeight = solo_back.dwHeight;
+                        desc.dwMipMapCount = 16ul;   /* dwZBufferBitDepth */
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_ZBUFFER |
+                                              V9X_DDSCAPS_VIDEOMEMORY;
+                        solo_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                             &solo_z, 0);
+                        v9x_write_hresult("SoloZHr", solo_hr);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 3ul);
+                        solo_hr = backbuffer->vtbl->AddAttachedSurface(
+                            backbuffer, solo_z);
+                        v9x_write_hresult("SoloAttachHr", solo_hr);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 4ul);
+                        solo_hr = d3d->vtbl->CreateDevice(
+                            d3d, &v9x_iid_d3d_hal, backbuffer, &solo_device);
+                        v9x_write_hresult("SoloDeviceHr", solo_hr);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 5ul);
+                        solo_hr = d3d->vtbl->CreateViewport(
+                            d3d, (void **)&solo_viewport, 0);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 6ul);
+                        solo_hr = solo_device->vtbl->AddViewport(solo_device,
+                                                                 solo_viewport);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 7ul);
+                        v9x_zero(&solo_view, sizeof(solo_view));
+                        solo_view.dwSize = sizeof(solo_view);
+                        solo_view.dwWidth = 64ul;
+                        solo_view.dwHeight = 64ul;
+                        solo_view.dvClipX = -1.0f;
+                        solo_view.dvClipY = 1.0f;
+                        solo_view.dvClipWidth = 2.0f;
+                        solo_view.dvClipHeight = 2.0f;
+                        solo_view.dvMinZ = 0.0f;
+                        solo_view.dvMaxZ = 1.0f;
+                        solo_hr = solo_viewport->vtbl->SetViewport2(
+                            solo_viewport, &solo_view);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 8ul);
+                        solo_hr = solo_device->vtbl->SetCurrentViewport(
+                            solo_device, solo_viewport);
+                    }
+                    v9x_write_hresult("SoloViewportHr", solo_hr);
+                    /* The wall, opaque green ARGB1555. */
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 9ul);
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                        desc.dwWidth = 64ul;
+                        desc.dwHeight = 64ul;
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                        desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                        desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                        desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                        desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                        desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                        solo_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                             &solo_wall, 0);
+                    }
+                    /* The sprite, blue ARGB4444 with alpha 0 to 15 across u. */
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 10ul);
+                        v9x_fill_surface(solo_wall, 0x83e083e0ul);
+                        v9x_zero(&desc, sizeof(desc));
+                        desc.dwSize = sizeof(desc);
+                        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                       V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                        desc.dwWidth = 64ul;
+                        desc.dwHeight = 64ul;
+                        desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                        desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                        desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                        desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                        desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                        desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x0000f000ul;
+                        solo_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                             &solo_sprite, 0);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 11ul);
+                        v9x_fill_surface_alpha_ramp(solo_sprite, 0x000fu);
+                        solo_hr = solo_wall->vtbl->QueryInterface(
+                            solo_wall, &v9x_iid_d3d_texture2,
+                            (void **)&solo_wall_tex);
+                    }
+                    if (solo_hr == 0) {
+                        solo_hr = solo_sprite->vtbl->QueryInterface(
+                            solo_sprite, &v9x_iid_d3d_texture2,
+                            (void **)&solo_sprite_tex);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 12ul);
+                        solo_hr = solo_wall_tex->vtbl->GetHandle(
+                            solo_wall_tex, solo_device, &solo_wall_handle);
+                    }
+                    if (solo_hr == 0) {
+                        solo_hr = solo_sprite_tex->vtbl->GetHandle(
+                            solo_sprite_tex, solo_device, &solo_sprite_handle);
+                    }
+                    v9x_write_hresult("SoloSetupHr", solo_hr);
+
+                    if (solo_hr == 0) {
+                        v9x_write_stage("SoloStage", 13ul);
+                        v9x_zero(solo_tri, sizeof(solo_tri));
+                        solo_tri[0].sx = 8.25f;  solo_tri[0].sy = 8.25f;
+                        solo_tri[0].sz = 0.0f;   solo_tri[0].rhw = 1.0f;
+                        solo_tri[0].color = 0xfffffffful;
+                        solo_tri[0].tu = 0.0f;   solo_tri[0].tv = 0.5f;
+                        solo_tri[1] = solo_tri[0];
+                        solo_tri[1].sx = 55.75f; solo_tri[1].tu = 1.0f;
+                        solo_tri[2] = solo_tri[0];
+                        solo_tri[2].sy = 55.75f;
+
+                        v9x_probe_reset_state(solo_device, solo_tri);
+                        solo_tri[0].tu = 0.0f;   solo_tri[0].tv = 0.5f;
+                        solo_tri[1].tu = 1.0f;   solo_tri[1].tv = 0.5f;
+                        solo_tri[2].tu = 0.0f;   solo_tri[2].tv = 0.5f;
+                        v9x_fill_surface(backbuffer, 0ul);
+
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                            solo_wall_handle);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                            V9X_D3DTBLEND_COPY);
+                        v9x_write_stage("SoloStage", 14ul);
+                        begin_hr = solo_device->vtbl->BeginScene(solo_device);
+                        if (begin_hr == 0) {
+                            solo_draw_hr = solo_device->vtbl->DrawPrimitive(
+                                solo_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, solo_tri, 3ul, 0ul);
+                            end_hr = solo_device->vtbl->EndScene(solo_device);
+                            if (end_hr != 0) solo_draw_hr = end_hr;
+                        }
+                        v9x_write_stage("SoloStage", 15ul);
+                        v9x_write_uint("SoloWallRaw",
+                            v9x_surface_pixel16(backbuffer, 16ul, 12ul));
+
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                            solo_sprite_handle);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                            V9X_D3DTBLEND_MODULATE);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_SRCBLEND,
+                            V9X_D3DBLEND_SRCALPHA);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_DESTBLEND,
+                            V9X_D3DBLEND_INVSRCALPHA);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                        v9x_write_stage("SoloStage", 16ul);
+                        begin_hr = solo_device->vtbl->BeginScene(solo_device);
+                        if (begin_hr == 0) {
+                            HRESULT s_hr = solo_device->vtbl->DrawPrimitive(
+                                solo_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, solo_tri, 3ul, 0ul);
+                            end_hr = solo_device->vtbl->EndScene(solo_device);
+                            if (end_hr != 0) s_hr = end_hr;
+                            if (s_hr != 0) solo_draw_hr = s_hr;
+                        }
+                        v9x_write_stage("SoloStage", 17ul);
+                        for (si3 = 0ul; si3 < 7ul; ++si3) {
+                            v9x_write_uint(solo_keys[si3],
+                                v9x_surface_pixel16(backbuffer,
+                                                    solo_x[si3], 12ul));
+                        }
+                        v9x_write_uint("SoloFrontRaw",
+                            v9x_surface_pixel16(primary, 16ul, 12ul));
+                    }
+                    v9x_write_hresult("SoloHr", solo_draw_hr);
+
+                    v9x_write_stage("SoloStage", 18ul);
+                    if (solo_sprite_tex != 0) {
+                        solo_sprite_tex->vtbl->Release(solo_sprite_tex);
+                    }
+                    if (solo_wall_tex != 0) {
+                        solo_wall_tex->vtbl->Release(solo_wall_tex);
+                    }
+                    if (solo_sprite != 0) {
+                        solo_sprite->vtbl->Release(solo_sprite);
+                    }
+                    if (solo_wall != 0) {
+                        solo_wall->vtbl->Release(solo_wall);
+                    }
+                    v9x_write_stage("SoloStage", 19ul);
+                    if (solo_viewport != 0) {
+                        if (solo_device != 0) {
+                            (void)solo_device->vtbl->DeleteViewport(
+                                solo_device, solo_viewport);
+                        }
+                        solo_viewport->vtbl->Release(solo_viewport);
+                    }
+                    v9x_write_stage("SoloStage", 20ul);
+                    if (solo_device != 0) {
+                        solo_device->vtbl->Release(solo_device);
+                    }
+                    v9x_write_stage("SoloStage", 21ul);
+                    if (solo_z != 0) {
+                        (void)backbuffer->vtbl->DeleteAttachedSurface(
+                            backbuffer, 0ul, solo_z);
+                        solo_z->vtbl->Release(solo_z);
+                    }
+                    v9x_write_stage("SoloStage", 22ul);
+                }
             } else {
                 v9x_write_uint("D3DContextCycleOk", 0ul);
             }
