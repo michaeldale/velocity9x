@@ -59,6 +59,18 @@ static int v9x_d3d_virge_two_pass_ok(void)
            (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_S3D_TWO_PASS) != 0ul;
 }
 
+/*
+ * Whether a draw with TEXTURE_UNLIT and the alpha field enabled keeps its
+ * texel's colour here; see V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA. Absent means the
+ * pair is broken on this part and the draw has to be expressed the other way.
+ */
+static int v9x_d3d_virge_unlit_alpha_ok(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps &
+            V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA) != 0ul;
+}
+
 /* Which ViRGE texture format a surface is sampled as. */
 #define V9X_TEX_FORMAT_ARGB1555 0
 #define V9X_TEX_FORMAT_ARGB4444 1
@@ -613,6 +625,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     BYTE trilinear_alpha = 0u;
     int trilinear_blend = 0;
     int trilinear_degrade = 0;
+    int unlit_alpha_lit = 0;
     int texture_mipmapped = 0;
     DWORD texture_levels = 0ul;
     DWORD texture_format = V9X_TEX_FORMAT_ARGB1555;
@@ -826,6 +839,37 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     }
     color = p0->color;
 
+    /*
+     * An unlit blend, expressed as a lit one, on a part where the first does
+     * not work.
+     *
+     * The S3D takes its fragment from the texel alone under TEXTURE_UNLIT and
+     * from texel x Gouraud under TEXTURE_LIT with MODULATE. Those are the same
+     * fragment when the Gouraud colour is flat white - so a part that loses
+     * the texel's colour on the first pairing can be given the second and draw
+     * the picture the application asked for
+     * (docs\decisions\2026-09-04-an-unlit-blend-loses-its-texture-on-the-trio3d.md).
+     *
+     * The colour has to be *forced*, not inherited. DECAL and COPY ignore the
+     * vertex colour by definition, so an application is entitled to leave
+     * anything in it; modulating by whatever it left would tint a draw that
+     * should not be tinted. White with zero gradients is the identity, and it
+     * is the only substitution that is one.
+     *
+     * Only where a blend is actually happening. TEXTURE_UNLIT on its own is
+     * correct on every part this engine drives, and the unblended unlit path
+     * is most of what any application draws.
+     */
+    if (textured && alpha_bits != 0ul &&
+        context->texture_blend != V9X_D3DTBLEND_MODULATE &&
+        !v9x_d3d_virge_unlit_alpha_ok()) {
+        unlit_alpha_lit = 1;
+        color = 0xfffffffful;
+        dgdx = 0.0f; dbdx = 0.0f; drdx = 0.0f;
+        dgdy = 0.0f; dbdy = 0.0f; drdy = 0.0f;
+        dadx = 0.0f; dady = 0.0f;
+    }
+
     if (!v9x_wait_idle(1) || !v9x_wait_fifo(9ul, 1)) {
         return 0;
     }
@@ -953,7 +997,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                         ? V9X_VIRGE_3D_CMD_TEX_ARGB4444
                         : V9X_VIRGE_3D_CMD_TEX_ARGB1555) |
                    (texture_size_log << 8);
-        if (context->texture_blend == V9X_D3DTBLEND_MODULATE) {
+        if (context->texture_blend == V9X_D3DTBLEND_MODULATE ||
+            unlit_alpha_lit) {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_LIT |
                        V9X_VIRGE_3D_CMD_TEX_MODULATE;
         } else {

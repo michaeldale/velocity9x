@@ -57,7 +57,8 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VBLANK |
                    V9X_DD_ENGINE_CAP_D3D |
-                   V9X_DD_ENGINE_CAP_S3D_TWO_PASS;
+                   V9X_DD_ENGINE_CAP_S3D_TWO_PASS |
+                   V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA;
 }
 
 /*
@@ -66,11 +67,18 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
  * The first place this project has had to say that two parts sharing an
  * engine are not the same part. Everything about the S3D core here is the
  * ViRGE's - the MMIO window, the register file, the triangle command, and the
- * alpha blend, which this part does perform. What it does not survive is the
- * engine drawing one triangle twice and blending the second over the first,
- * which is how trilinear filtering is synthesised: measured on A8U4I5 on a
- * boot where every single-pass blend the probe takes is correct
- * (docs\decisions\2026-09-04-the-trilinear-two-pass-and-a-retraction.md).
+ * alpha blend, which this part does perform. Two things it does not do are
+ * cleared here, both measured on A8U4I5 and both about a *combination* rather
+ * than a feature:
+ *
+ *   - one triangle drawn twice with the second blended over the first, which
+ *     is how trilinear filtering is synthesised
+ *     (docs\decisions\2026-09-04-the-trilinear-two-pass-and-a-retraction.md);
+ *   - TEXTURE_UNLIT together with the alpha field, which keeps the texel's
+ *     alpha and loses its colour
+ *     (docs\decisions\2026-09-04-an-unlit-blend-loses-its-texture-on-the-trio3d.md).
+ *
+ * Either half of each pair on its own is correct here.
  *
  * So the descriptor is split here rather than in the 32-bit HAL, which is
  * where every other chip fact is decided: the 16-bit side is the single
@@ -84,7 +92,8 @@ static void v9x_trio3d2x_fill_engine(unsigned long framebuffer_linear_base,
 {
     v9x_virge_fill_engine(framebuffer_linear_base, control_linear_base,
                           mapped_aperture_bytes, engine_type, engine_caps);
-    *engine_caps &= ~V9X_DD_ENGINE_CAP_S3D_TWO_PASS;
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_S3D_TWO_PASS |
+                      V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA);
 }
 
 /* Not static: the family table points at it, and the link map is where the

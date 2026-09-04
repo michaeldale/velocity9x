@@ -62,5 +62,20 @@
  * than emit a second pass whose result is wrong.
  */
 #define V9X_DD_ENGINE_CAP_S3D_TWO_PASS  0x00000040ul
+/*
+ * A draw with TEXTURE_UNLIT and the alpha field enabled keeps its texel's
+ * colour on this part.
+ *
+ * The ViRGE/DX does. The Trio3D/2X samples the texel's alpha, honours it, and
+ * drops the colour: an opaque texel draws black over whatever was there, while
+ * an alpha-zero texel correctly leaves the destination alone. Measured over
+ * eight cells crossing depth, filter and shade mode, where depth and filter
+ * made no difference and the shade mode made all of it
+ * (docs\decisions\2026-09-04-an-unlit-blend-loses-its-texture-on-the-trio3d.md).
+ *
+ * TEXTURE_UNLIT *without* the alpha field is correct on both parts, so this is
+ * about the pair and not about the unlit path in general.
+ */
+#define V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA 0x00000080ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

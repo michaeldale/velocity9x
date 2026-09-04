@@ -1,8 +1,9 @@
 # A blended UNLIT draw loses its texture colour on the Trio3D/2X
 
 Date: 2026-09-04
-Status: measured on A8U4I5 against the emulated ViRGE/DX; the defect is one
-axis wide and the driver has an obvious answer that is not made here
+Status: measured on A8U4I5 against the emulated ViRGE/DX, fixed and re-measured.
+The defect is real and the fix holds; it is **not** what draws 3DMark 99's
+black boxes, which are still there.
 
 ## The rung
 
@@ -66,25 +67,65 @@ round - the opaque part black. Either the visible sprites come from the
 `LIT MODULATE` population and the `UNLIT` ones are wholly black quads, or there
 is a second mechanism. The rung says what it says and no more.
 
-## The answer the driver has, and why it is not taken here
+## The fix, made and measured
 
-`LIT` with `MODULATE` and a white vertex colour is texel x white, which is the
-texel - arithmetically the same picture `UNLIT` should draw, through the path
-this card gets right. Substituting it for a blended `UNLIT` draw is a small
-change in `v9x_d3d_virge_alpha_bits`' caller.
+`V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA` says the pairing works on a part;
+the ViRGE/DX sets it and the Trio3D/2X does not. Where it is absent and a
+textured draw is both blended and not `MODULATE`, the engine emits
+`TEXTURE_LIT | TEX_MODULATE` instead of `TEXTURE_UNLIT` and **forces the
+Gouraud colour to flat white with zero gradients**. Texel x white is the texel,
+so the fragment is the one the application asked for, through the pairing this
+card gets right.
 
-It is not free. `DECAL` and `COPY` ignore the vertex colour by definition, so
-the substitution is only equivalent if the engine also forces the vertex colour
-white and its gradients to zero for those draws - otherwise an application that
-set a colour it expected to be ignored would suddenly see it applied. That is
-three more registers and a behaviour change on a path other chips share.
+The forcing is the part that matters. `DECAL` and `COPY` ignore the vertex
+colour by definition, so an application may leave anything in it; modulating by
+whatever it left would tint a draw that should not be tinted. White with zero
+gradients is the only substitution that is the identity.
 
-Today has already produced one confident chip fact that a controlled A/B
-retracted (`2026-09-04-the-trilinear-two-pass-and-a-retraction.md`). This one
-is one run old. The rung to confirm it exists now and costs nothing to re-run,
-so the change should be made against it deliberately rather than tonight.
+It applies only where a blend is actually happening. `TEXTURE_UNLIT` on its own
+is correct on every part this engine drives, and that is most of what anything
+draws.
+
+Measured, A8U4I5 boot 33 against boot 32, nothing else changed:
+
+```
+                     before        after
+SpriteOk                  0            1
+Spr_*_copy cells    BLACK/red    green/red    all four
+Spr_*_mod cells     green/red    green/red    unchanged
+TexMatrixOk             108          108
+AlphaCurveOk / MipLadderOk / MipTriDegradedOk   1 / 1 / 1 both
+```
+
+Emulated ViRGE/DX, same binaries, boot 558: byte-identical to the run before
+the change. The substitution does not fire where the capability is set.
+
+In a 3DMark 99 run at 640x480 the census shows the whole population moved:
+**25,439 `UNLIT`-with-alpha draws before, zero after**, all of them now
+`LIT MODULATE` with alpha. The score is 472 against 475, which is the same
+number twice.
+
+## What it did not fix
+
+**3DMark 99's black boxes are still there.** The frame after the change has the
+same black rectangle behind the targeting reticle and the same black panel
+under the speedometer as the frame before it
+(`../images/3dmark99-trio3d-2026-09-04-640x480-race-after-unlit-fix.png`
+against `../images/3dmark99-trio3d-2026-09-04-640x480-race.png`).
+
+That is the caveat this document was written with, confirmed: the rung's
+failure was the opposite way round from the picture's - opaque going black,
+where the picture has a black border round visible art - and the two were never
+the same defect. Every blended draw in that run is now `LIT MODULATE`, which is
+the pairing the probe says this card handles correctly in all four of its
+cells, so whatever draws those rectangles is something the sprite rung still
+does not reach. The nine `halfa` cells - partial alpha, the one thing the
+matrix still calls wrong on this part - are the next place to look.
+
+The change is kept regardless. It is a real defect, measured on one axis, fixed
+at no cost, and confirmed by three independent readings.
 
 ## Gates
 
 check-tree, vga survey safety gate, host tests and family packages
-(run-checks). The change is to the probe only; no driver code moved.
+(run-checks), for the probe and again for the driver change.
