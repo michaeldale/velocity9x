@@ -738,6 +738,23 @@ static void v9x_flush_results(void)
     WritePrivateProfileStringA(0, 0, 0, V9X_RESULT_PATH);
 }
 
+/*
+ * A stage marker that survives the process dying on the next instruction.
+ *
+ * Ordinary keys are cached by Windows and a crash loses the cached tail, which
+ * is why the run that killed the probe on the primary chain named
+ * `ChainDeviceHr` as its last key without that being where it died
+ * (docs\issues\2026-09-04-a-second-d3d-device-on-the-primary-chain-kills-the-caller.md).
+ * This writes one key and flushes it, so the value in the file is the last
+ * stage actually reached and not the last one that happened to be flushed.
+ * One key, overwritten, because the highest value is the whole answer.
+ */
+static void v9x_write_stage(const char *key, DWORD stage)
+{
+    v9x_write_uint(key, stage);
+    v9x_flush_results();
+}
+
 static void v9x_write_d3d_devices(const V9X_D3D_ENUM_RESULT *result)
 {
     char key[64];
@@ -6398,6 +6415,239 @@ void __stdcall V9xDdrawProbeEntry(void)
                             if (ramp_dst_tex != 0) {
                                 ramp_dst_tex->vtbl->Release(ramp_dst_tex);
                             }
+                            /*
+                             * THE PRIMARY CHAIN, ONE CALL AT A TIME.
+                             *
+                             * The same draw as the ramp, on the back buffer of
+                             * the exclusive-mode flipping chain - which is what
+                             * a game blends onto and what this probe has never
+                             * used. The first attempt got three successes and
+                             * then killed the process, and the file's last key
+                             * named the wrong call, because Windows caches INI
+                             * writes and a crash loses the cached tail
+                             * (docs\issues\2026-09-04-a-second-d3d-device-on-the-primary-chain-kills-the-caller.md).
+                             *
+                             * So every call here is preceded by a ChainStage
+                             * that is written *and flushed*. If the process
+                             * dies, the value left in the file is the stage it
+                             * was entering, which is the one fact the first
+                             * attempt could not produce. Nothing else about
+                             * this rung is new; it is the previous one with
+                             * markers.
+                             */
+                            {
+                                static const DWORD chain_x[7] = {
+                                    12ul, 18ul, 24ul, 30ul, 36ul, 42ul, 48ul };
+                                static const char *chain_keys[7] = {
+                                    "Chain_x12_Raw", "Chain_x18_Raw",
+                                    "Chain_x24_Raw", "Chain_x30_Raw",
+                                    "Chain_x36_Raw", "Chain_x42_Raw",
+                                    "Chain_x48_Raw" };
+                                struct v9x_dds *chain_z = 0;
+                                struct v9x_d3d_device2 *chain_device;
+                                V9X_DDSURFACEDESC chain_desc;
+                                DWORD chain_dst_handle = 0ul;
+                                DWORD chain_src_handle = 0ul;
+                                HRESULT chain_hr = 0x80004005ul;
+                                HRESULT chain_draw_hr = 0;
+                                WORD chain_raw[7];
+                                DWORD ci2;
+
+                                for (ci2 = 0ul; ci2 < 7ul; ++ci2) {
+                                    chain_raw[ci2] = 0u;
+                                }
+                                v9x_write_stage("ChainStage", 1ul);
+                                v9x_zero(&chain_desc, sizeof(chain_desc));
+                                chain_desc.dwSize = sizeof(chain_desc);
+                                if (backbuffer != 0 && ramp_src_tex != 0 &&
+                                    backbuffer->vtbl->GetSurfaceDesc(
+                                        backbuffer, &chain_desc) == 0) {
+                                    chain_hr = 0;
+                                    v9x_write_uint("ChainBackW",
+                                                   chain_desc.dwWidth);
+                                    v9x_write_uint("ChainBackH",
+                                                   chain_desc.dwHeight);
+                                }
+                                if (chain_hr == 0) {
+                                    v9x_write_stage("ChainStage", 2ul);
+                                    v9x_zero(&desc, sizeof(desc));
+                                    desc.dwSize = sizeof(desc);
+                                    desc.dwFlags = V9X_DDSD_CAPS |
+                                                   V9X_DDSD_WIDTH |
+                                                   V9X_DDSD_HEIGHT |
+                                                   V9X_DDSD_ZBUFFERBITDEPTH;
+                                    desc.dwWidth = chain_desc.dwWidth;
+                                    desc.dwHeight = chain_desc.dwHeight;
+                                    desc.dwMipMapCount = 16ul; /* Z depth */
+                                    desc.ddsCaps.dwCaps =
+                                        V9X_DDSCAPS_ZBUFFER |
+                                        V9X_DDSCAPS_VIDEOMEMORY;
+                                    chain_hr = ddraw->vtbl->CreateSurface(
+                                        ddraw, &desc, &chain_z, 0);
+                                    v9x_write_hresult("ChainZHr", chain_hr);
+                                }
+                                if (chain_hr == 0) {
+                                    v9x_write_stage("ChainStage", 3ul);
+                                    chain_hr =
+                                        backbuffer->vtbl->AddAttachedSurface(
+                                            backbuffer, chain_z);
+                                    v9x_write_hresult("ChainAttachHr",
+                                                      chain_hr);
+                                }
+                                /*
+                                 * The device already in hand, pointed at the
+                                 * chain - not a second one.
+                                 *
+                                 * A second device made on the back buffer
+                                 * accepted every call and drew nothing:
+                                 * ChainStage 19, every HRESULT zero, and every
+                                 * pixel including the opaque unblended wall
+                                 * still black. Two devices alive at once is a
+                                 * thing this driver does not do, and measuring
+                                 * that is not what this rung is for.
+                                 *
+                                 * SetRenderTarget was refused earlier only
+                                 * because the offscreen target carried a Z
+                                 * surface and the back buffer did not. Both
+                                 * have one now, so the mismatch is gone and
+                                 * the existing device - with its viewport and
+                                 * its texture handles already valid - can be
+                                 * pointed at the chain and back again.
+                                 */
+                                if (chain_hr == 0) {
+                                    v9x_write_stage("ChainStage", 4ul);
+                                    chain_hr =
+                                        d3d_device->vtbl->SetRenderTarget(
+                                            d3d_device, backbuffer, 0ul);
+                                    v9x_write_hresult("ChainSetTargetHr",
+                                                      chain_hr);
+                                }
+                                chain_dst_handle = ramp_dst_handle;
+                                chain_src_handle = ramp_src_handle;
+                                chain_device = d3d_device;
+                                v9x_write_hresult("ChainTargetHr", chain_hr);
+                                if (chain_hr == 0) {
+                                    v9x_write_stage("ChainStage", 11ul);
+                                    v9x_probe_reset_state(chain_device,
+                                                          triangle);
+                                    triangle[0].color = 0xfffffffful;
+                                    triangle[1].color = 0xfffffffful;
+                                    triangle[2].color = 0xfffffffful;
+                                    triangle[0].tu = 0.0f;
+                                    triangle[0].tv = 0.5f;
+                                    triangle[1].tu = 1.0f;
+                                    triangle[1].tv = 0.5f;
+                                    triangle[2].tu = 0.0f;
+                                    triangle[2].tv = 0.5f;
+                                    v9x_fill_surface(backbuffer, 0ul);
+
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                        chain_dst_handle);
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                        V9X_D3DTBLEND_COPY);
+                                    v9x_write_stage("ChainStage", 12ul);
+                                    begin_hr = chain_device->vtbl->BeginScene(
+                                        chain_device);
+                                    if (begin_hr == 0) {
+                                        chain_draw_hr =
+                                            chain_device->vtbl->DrawPrimitive(
+                                                chain_device,
+                                                V9X_D3DPT_TRIANGLELIST,
+                                                V9X_D3DVT_TLVERTEX, triangle,
+                                                3ul, 0ul);
+                                        end_hr = chain_device->vtbl->EndScene(
+                                            chain_device);
+                                        if (end_hr != 0) {
+                                            chain_draw_hr = end_hr;
+                                        }
+                                    }
+                                    v9x_write_stage("ChainStage", 13ul);
+                                    v9x_write_uint("ChainWallRaw",
+                                        v9x_surface_pixel16(backbuffer,
+                                                            16ul, 12ul));
+
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                        chain_src_handle);
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                        V9X_D3DTBLEND_MODULATE);
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_SRCBLEND,
+                                        V9X_D3DBLEND_SRCALPHA);
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_DESTBLEND,
+                                        V9X_D3DBLEND_INVSRCALPHA);
+                                    (void)chain_device->vtbl->SetRenderState(
+                                        chain_device,
+                                        V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
+                                        1ul);
+                                    v9x_write_stage("ChainStage", 14ul);
+                                    begin_hr = chain_device->vtbl->BeginScene(
+                                        chain_device);
+                                    if (begin_hr == 0) {
+                                        HRESULT c_hr =
+                                            chain_device->vtbl->DrawPrimitive(
+                                                chain_device,
+                                                V9X_D3DPT_TRIANGLELIST,
+                                                V9X_D3DVT_TLVERTEX, triangle,
+                                                3ul, 0ul);
+                                        end_hr = chain_device->vtbl->EndScene(
+                                            chain_device);
+                                        if (end_hr != 0) c_hr = end_hr;
+                                        if (c_hr != 0) chain_draw_hr = c_hr;
+                                    }
+                                    v9x_write_stage("ChainStage", 15ul);
+                                    for (ci2 = 0ul; ci2 < 7ul; ++ci2) {
+                                        chain_raw[ci2] = v9x_surface_pixel16(
+                                            backbuffer, chain_x[ci2], 12ul);
+                                        v9x_write_uint(chain_keys[ci2],
+                                                       chain_raw[ci2]);
+                                    }
+                                    /*
+                                     * Where did it go? Three places it could
+                                     * be if it is not on the back buffer: the
+                                     * front of the same chain, the offscreen
+                                     * target the device had before, or
+                                     * nowhere. Reading all three is what tells
+                                     * "the driver drew somewhere else" from
+                                     * "the driver drew nothing".
+                                     */
+                                    v9x_write_uint("ChainFrontRaw",
+                                        v9x_surface_pixel16(primary,
+                                                            16ul, 12ul));
+                                    v9x_write_uint("ChainOffscreenRaw",
+                                        v9x_surface_pixel16(d3d_target,
+                                                            16ul, 12ul));
+                                }
+                                v9x_write_hresult("ChainHr", chain_draw_hr);
+                                /* Back to the offscreen target, or every rung
+                                 * after this one measures the chain without
+                                 * saying so. */
+                                v9x_write_stage("ChainStage", 16ul);
+                                if (chain_hr == 0) {
+                                    v9x_write_hresult("ChainRestoreHr",
+                                        d3d_device->vtbl->SetRenderTarget(
+                                            d3d_device, d3d_target, 0ul));
+                                }
+                                v9x_write_stage("ChainStage", 18ul);
+                                if (chain_z != 0) {
+                                    (void)backbuffer->vtbl->
+                                        DeleteAttachedSurface(backbuffer, 0ul,
+                                                              chain_z);
+                                    chain_z->vtbl->Release(chain_z);
+                                }
+                                v9x_write_stage("ChainStage", 19ul);
+                            }
+
                             if (ramp_src_surf != 0) {
                                 ramp_src_surf->vtbl->Release(ramp_src_surf);
                             }

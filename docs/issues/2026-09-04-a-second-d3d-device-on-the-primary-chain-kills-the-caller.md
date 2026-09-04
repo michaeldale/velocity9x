@@ -1,8 +1,12 @@
 # A second Direct3D device, on the primary chain's back buffer, kills the caller
 
 Filed: 2026-09-04
-Status: OPEN. Reproduced on the emulated ViRGE/DX; not yet tried on silicon,
-deliberately. The rung that found it is backed out and not committed.
+Status: SUPERSEDED 2026-09-05 by
+`2026-09-05-setrendertarget-is-accepted-and-ignored.md`. Stage markers located
+the run properly and the crash did not reproduce once the second device was
+dropped; the large-render-target guess below is dead, because the back buffer
+measured 640x480. What the rung found instead is that SetRenderTarget onto the
+chain is accepted and ignored.
 Component: `src/display32/d3d/d3d_core.c` device and render-target lifetime,
 as driven through `IDirect3D2::CreateDevice`
 
