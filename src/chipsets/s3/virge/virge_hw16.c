@@ -57,18 +57,20 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VBLANK |
                    V9X_DD_ENGINE_CAP_D3D |
-                   V9X_DD_ENGINE_CAP_S3D_ALPHA;
+                   V9X_DD_ENGINE_CAP_S3D_TWO_PASS;
 }
 
 /*
- * The Trio3D/2X's engine is the ViRGE/DX's, less the alpha blend.
+ * The Trio3D/2X's engine is the ViRGE/DX's, less the two-pass blend.
  *
  * The first place this project has had to say that two parts sharing an
  * engine are not the same part. Everything about the S3D core here is the
- * ViRGE's - the MMIO window, the register file, the triangle command - and
- * measurement on A8U4I5 says the one thing it does not have is the blend:
- * none of the four encodings of the command word's alpha field performs one
- * (docs\decisions\2026-09-04-no-encoding-of-the-alpha-field-blends-on-the-trio3d.md).
+ * ViRGE's - the MMIO window, the register file, the triangle command, and the
+ * alpha blend, which this part does perform. What it does not survive is the
+ * engine drawing one triangle twice and blending the second over the first,
+ * which is how trilinear filtering is synthesised: measured on A8U4I5 on a
+ * boot where every single-pass blend the probe takes is correct
+ * (docs\decisions\2026-09-04-the-trilinear-two-pass-and-a-retraction.md).
  *
  * So the descriptor is split here rather than in the 32-bit HAL, which is
  * where every other chip fact is decided: the 16-bit side is the single
@@ -82,7 +84,7 @@ static void v9x_trio3d2x_fill_engine(unsigned long framebuffer_linear_base,
 {
     v9x_virge_fill_engine(framebuffer_linear_base, control_linear_base,
                           mapped_aperture_bytes, engine_type, engine_caps);
-    *engine_caps &= ~V9X_DD_ENGINE_CAP_S3D_ALPHA;
+    *engine_caps &= ~V9X_DD_ENGINE_CAP_S3D_TWO_PASS;
 }
 
 /* Not static: the family table points at it, and the link map is where the
@@ -118,8 +120,8 @@ const V9X_HW16_DEVICE v9x_virge_device = {
  * docs\decisions\2026-09-02-trio3d-on-the-s3-path.md.
  *
  * A third difference is no longer modelled but measured, and it is why this
- * entry has an engine function of its own: the part does not perform the S3D
- * alpha blend. See v9x_trio3d2x_fill_engine above.
+ * entry has an engine function of its own: the two-pass form the engine builds
+ * trilinear out of does not work here. See v9x_trio3d2x_fill_engine above.
  */
 const V9X_HW16_DEVICE v9x_trio3d2x_device = {
     0x5333u, 0x8a13u,

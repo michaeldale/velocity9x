@@ -43,23 +43,24 @@
  */
 #define V9X_DD_ENGINE_CAP_D3D_SOFTWARE  0x00000020ul
 /*
- * The S3D unit on this part performs the alpha blend its command word
- * advertises: destination = source * A + destination * (1 - A).
+ * Two passes over one triangle, blended together, produce the right answer on
+ * this part.
  *
  * A chip fact, and the first one this word has carried that is a negative. The
- * ViRGE/DX does it. The Trio3D/2X does not: all four encodings of the command
- * word's alpha field were put through one draw on A8U4I5 and none of them is a
- * blend - two draw the fragment opaque, one draws nothing, and one produces a
- * value that ignores the source's colour entirely
- * (docs\decisions\2026-09-04-no-encoding-of-the-alpha-field-blends-on-the-trio3d.md).
+ * engine synthesises trilinear filtering that way - level N, then level N+1
+ * blended over it at the LOD fraction - and on the emulated ViRGE/DX the
+ * result is a clean mix of the two levels, three times over. On the S3
+ * Trio3D/2X it is not: the second pass lands wrong, and it does so on a boot
+ * where every single-pass alpha blend the probe can measure is correct
+ * (docs\decisions\2026-09-04-the-trilinear-two-pass-and-a-retraction.md).
  *
- * It is not only about a draw the application asked to blend. Anything the
- * engine *builds* out of that blend is unavailable too, which is what this bit
- * exists for: trilinear filtering is synthesised from two passes with an alpha
- * blend between them, and on a part without this bit it has to degrade to
- * something the chip can do on its own rather than emit a second pass that
- * draws garbage.
+ * The bit is deliberately about the two-pass form and not about alpha. An
+ * earlier version of it said the part could not blend at all; a controlled A/B
+ * on one machine, two boots apart, disproved that and is recorded in the
+ * decision above. What survives the A/B is only this: on a part without this
+ * bit, trilinear has to degrade to a filter the chip does in one pass rather
+ * than emit a second pass whose result is wrong.
  */
-#define V9X_DD_ENGINE_CAP_S3D_ALPHA     0x00000040ul
+#define V9X_DD_ENGINE_CAP_S3D_TWO_PASS  0x00000040ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

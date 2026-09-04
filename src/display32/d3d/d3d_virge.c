@@ -45,16 +45,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
 };
 
 /*
- * Whether this part's S3D performs the alpha blend its command word
- * advertises. The 16-bit side is the authority - it knows which chip it bound
- * - and publishes the answer in the engine descriptor; see
- * V9X_DD_ENGINE_CAP_S3D_ALPHA. Absent means the ViRGE/DX's engine on a part
- * that is not a ViRGE/DX, which today is the Trio3D/2X.
+ * Whether drawing one triangle twice and blending the second pass over the
+ * first produces the right answer on this part. The 16-bit side is the
+ * authority - it knows which chip it bound - and publishes the answer in the
+ * engine descriptor; see V9X_DD_ENGINE_CAP_S3D_TWO_PASS. Absent means the
+ * ViRGE/DX's engine on a part that is not a ViRGE/DX, which today is the
+ * Trio3D/2X. It says nothing about a single-pass blend, which that part does
+ * perform.
  */
-static int v9x_d3d_virge_has_alpha(void)
+static int v9x_d3d_virge_two_pass_ok(void)
 {
     return v9x_hal != 0 &&
-           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_S3D_ALPHA) != 0ul;
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_S3D_TWO_PASS) != 0ul;
 }
 
 /* Which ViRGE texture format a surface is sampled as. */
@@ -802,20 +804,19 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                 context->alpha_blend_enable == 0ul &&
                 level < texture_levels &&
                 (texture_d & 0x07fffffful) != 0ul) {
-                if (v9x_d3d_virge_has_alpha()) {
+                if (v9x_d3d_virge_two_pass_ok()) {
                     trilinear_alpha = (BYTE)v9x_float_to_long(
                         ((float)(texture_d & 0x07fffffful) /
                          134217727.0f) * 255.0f);
                     trilinear_blend = 1;
                 } else {
                     /*
-                     * No blend on this part, so no second pass: the two
-                     * passes would draw level N and then whatever encoding 11
-                     * does here, which is not a blend of anything
-                     * (docs\decisions\2026-09-04-the-mip-ladder.md). Bilinear
-                     * on the level the chip selected is what it can do on its
-                     * own, and it is the honest half of trilinear rather than
-                     * a wrong whole.
+                     * The second pass lands wrong on this part, on a boot
+                     * where every single-pass blend the probe takes is right
+                     * (docs\decisions\2026-09-04-the-trilinear-two-pass-and-a-retraction.md).
+                     * So: no second pass. Bilinear on the level the chip
+                     * selected is what it can do in one, and it is the honest
+                     * half of trilinear rather than a wrong whole.
                      */
                     trilinear_degrade = 1;
                 }

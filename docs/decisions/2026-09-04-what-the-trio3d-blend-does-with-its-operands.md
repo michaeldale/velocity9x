@@ -4,6 +4,15 @@ Date: 2026-09-04
 Status: measured on A8U4I5 and on the emulated ViRGE/DX; the alpha defect is
 one mechanism, and it is not where A comes from
 
+> **RETRACTED 2026-09-04.** The Trio3D/2X does perform the S3D alpha
+> blend. Every reading below was taken on a machine that had been warm
+> restarted rather than power cycled, and its blend is wrong only in that
+> state; a cold boot makes all of it correct. See
+> `2026-09-04-the-trilinear-two-pass-and-a-retraction.md`. What the
+> readings still document is the shape of the failure in that state, and
+> the instruments built to take them.
+
+
 ## Why a curve
 
 The matrix said every blended cell fails on this card and every unblended one

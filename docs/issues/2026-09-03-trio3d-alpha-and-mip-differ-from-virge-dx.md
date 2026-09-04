@@ -127,3 +127,28 @@ Next item 2 is still open: `D3DVertexAlphaBlendRaw` read 25352 today against
 527 in the committed 2026-09-03 capture on the same 800x600x16 desktop, but the
 driver changed between them, so it is not the controlled repeat that item asks
 for.
+
+## Fourth round, 2026-09-04: the alpha readings were a warm-boot artefact
+
+Retracted, with the A/B that did it, in
+[`../decisions/2026-09-04-the-trilinear-two-pass-and-a-retraction.md`](../decisions/2026-09-04-the-trilinear-two-pass-and-a-retraction.md).
+
+The Trio3D/2X performs the S3D alpha blend, and performs it exactly as the
+emulated ViRGE/DX does. On a cold-booted machine `AlphaCurveOk`,
+`AlphaCurveBOk`, `AlphaCurveCOk`, `Alpha1555Ok` and `Alpha4444Ok` are all 1,
+the transfer curve is a clean interpolation between the measured ends, the
+forced-encoding sweep reads as it does on the emulator, and all eighteen
+`alpha` cells of the matrix pass - `TexMatrixOk` 90 of 117 to 108 of 117.
+
+Every alpha measurement in the three rounds above, and in today's two retracted
+decisions, was taken after a **warm restart**. A power cycle clears whatever
+state makes the blend wrong. That also disposes of the wandering
+`D3DVertexAlphaBlendRaw`: 527 is the cold-boot value and 25352 the warm one,
+and four warm boots in a row gave 25352 every time, which is what made it look
+settled.
+
+What is left on this part, by the probe: the nine `halfa` cells - ARGB4444 at
+alpha 8 of 15, all sizes, all layouts - whose right half reads 15871
+(`0x3DFF`) where a half-blended blue is wanted. And the open question is now a
+better one than the old ones: **what does this card carry across a warm restart
+that breaks its blend, and what clears it?**
