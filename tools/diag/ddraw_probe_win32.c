@@ -346,6 +346,16 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DFILTER_LINEARMIPLINEAR         6ul
 #define V9X_D3DTBLEND_COPY                    7ul
 #define V9X_D3DTBLEND_MODULATE                2ul
+/*
+ * Velocity9x's private render state for forcing the S3D command word's alpha
+ * encoding - an instrument, described at V9X_D3DRENDERSTATE_V9X_ALPHAFORCE in
+ * include\velocity9x\win9x_ddraw_abi.h. This file cannot include that header,
+ * so the number is repeated here and scripts\check-tree.ps1 asserts the two
+ * agree. Any other driver ignores the state, and the rung that uses it says so
+ * in its own results rather than assuming it took.
+ */
+#define V9X_PROBE_RS_ALPHAFORCE      0x0000005ful
+#define V9X_PROBE_ALPHAFORCE_MAGIC   0x56390000ul
 
 struct v9x_d3d2 {
     const V9X_D3D2_VTBL *vtbl;
@@ -4216,6 +4226,153 @@ void __stdcall V9xDdrawProbeEntry(void)
                         (void)v9x_probe_counts(&curve_after);
                         v9x_probe_write_deltas("AlphaCurve", &curve_before,
                                                &curve_after);
+                    }
+
+                    /*
+                     * THE FORCED ENCODINGS.
+                     *
+                     * The S3D command word carries the alpha control in two
+                     * bits, and the driver sets one of two encodings from the
+                     * blend states. On the Trio3D/2X neither produces a blend
+                     * and both give the same wrong answer, so what those bits
+                     * mean on that part is open - and the emulator cannot say,
+                     * because 86Box's S3D unit has no chip-conditional code.
+                     * Only the card can, and answering means putting all four
+                     * encodings through the same draw.
+                     *
+                     * V9X_D3DRENDERSTATE_V9X_ALPHAFORCE is the driver's
+                     * instrument for that: 0 leaves the engine's own choice
+                     * alone, 1..4 force the bits to 00, 01, 10 and 11. It is
+                     * a private state number no application will reach, and a
+                     * driver that does not have it ignores the write - which
+                     * is why each sweep records its own value rather than
+                     * assuming it took, and why AlphaCurveF3 (the encoding the
+                     * engine itself uses for a textured blend) must reproduce
+                     * AlphaCurve above on any driver where the state works.
+                     *
+                     * Keys: AlphaCurveF<1..4>_<a>_Raw, over the first pair's
+                     * operands - blue over red.
+                     */
+                    {
+                        static const char *force_keys[4][9] = {
+                            { "AlphaCurveF1_0_Raw", "AlphaCurveF1_2_Raw",
+                              "AlphaCurveF1_4_Raw", "AlphaCurveF1_6_Raw",
+                              "AlphaCurveF1_8_Raw", "AlphaCurveF1_10_Raw",
+                              "AlphaCurveF1_12_Raw", "AlphaCurveF1_14_Raw",
+                              "AlphaCurveF1_15_Raw" },
+                            { "AlphaCurveF2_0_Raw", "AlphaCurveF2_2_Raw",
+                              "AlphaCurveF2_4_Raw", "AlphaCurveF2_6_Raw",
+                              "AlphaCurveF2_8_Raw", "AlphaCurveF2_10_Raw",
+                              "AlphaCurveF2_12_Raw", "AlphaCurveF2_14_Raw",
+                              "AlphaCurveF2_15_Raw" },
+                            { "AlphaCurveF3_0_Raw", "AlphaCurveF3_2_Raw",
+                              "AlphaCurveF3_4_Raw", "AlphaCurveF3_6_Raw",
+                              "AlphaCurveF3_8_Raw", "AlphaCurveF3_10_Raw",
+                              "AlphaCurveF3_12_Raw", "AlphaCurveF3_14_Raw",
+                              "AlphaCurveF3_15_Raw" },
+                            { "AlphaCurveF4_0_Raw", "AlphaCurveF4_2_Raw",
+                              "AlphaCurveF4_4_Raw", "AlphaCurveF4_6_Raw",
+                              "AlphaCurveF4_8_Raw", "AlphaCurveF4_10_Raw",
+                              "AlphaCurveF4_12_Raw", "AlphaCurveF4_14_Raw",
+                              "AlphaCurveF4_15_Raw" } };
+                        static const char *force_ok_keys[4] = {
+                            "AlphaCurveF1Ok", "AlphaCurveF2Ok",
+                            "AlphaCurveF3Ok", "AlphaCurveF4Ok" };
+                        /*
+                         * Whether the state was accepted at all. A driver
+                         * without the instrument, or a runtime that refuses
+                         * the state, makes every forced curve a copy of the
+                         * unforced one - which would read as a finding rather
+                         * than as nothing having happened.
+                         */
+                        static const char *force_hr_keys[4] = {
+                            "AlphaCurveF1Hr", "AlphaCurveF2Hr",
+                            "AlphaCurveF3Hr", "AlphaCurveF4Hr" };
+                        DWORD fi;
+
+                        if (curve_hr == 0 && curve_handle != 0ul) {
+                            curve_fill = target_layout.valid != 0ul
+                                ? (DWORD)v9x_layout_pack(&target_layout,
+                                                         255ul, 0ul, 0ul)
+                                : 0x7c00ul;
+                            curve_fill |= curve_fill << 16;
+                            for (fi = 0ul; fi < 4ul; ++fi) {
+                                HRESULT force_hr;
+
+                                v9x_probe_reset_state(d3d_device, triangle);
+                                force_hr = d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_PROBE_RS_ALPHAFORCE,
+                                    V9X_PROBE_ALPHAFORCE_MAGIC | (fi + 1ul));
+                                v9x_write_hresult(force_hr_keys[fi], force_hr);
+                                curve_draw_hr =
+                                    d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                        curve_handle);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                    V9X_D3DTBLEND_MODULATE);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                    V9X_D3DBLEND_SRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                    V9X_D3DBLEND_INVSRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                                for (ci = 0ul; ci < 9ul; ++ci) {
+                                    DWORD texel =
+                                        (curve_texel_alpha[ci] << 12) |
+                                        0x0000000ful;
+
+                                    v9x_fill_surface(curve_surface,
+                                                     texel | (texel << 16));
+                                    v9x_fill_surface(d3d_target, curve_fill);
+                                    begin_hr = d3d_device->vtbl->BeginScene(
+                                        d3d_device);
+                                    if (begin_hr == 0) {
+                                        HRESULT step_hr =
+                                            d3d_device->vtbl->DrawPrimitive(
+                                                d3d_device,
+                                                V9X_D3DPT_TRIANGLELIST,
+                                                V9X_D3DVT_TLVERTEX, triangle,
+                                                3ul, 0ul);
+                                        end_hr = d3d_device->vtbl->EndScene(
+                                            d3d_device);
+                                        if (end_hr != 0) step_hr = end_hr;
+                                        if (step_hr != 0) {
+                                            curve_draw_hr = step_hr;
+                                        }
+                                    }
+                                    curve_tex_raw[ci] = v9x_surface_pixel16(
+                                        d3d_target, 16ul, 16ul);
+                                    v9x_write_uint(force_keys[fi][ci],
+                                                   curve_tex_raw[ci]);
+                                }
+                                v9x_write_uint(force_ok_keys[fi],
+                                    curve_draw_hr == 0 &&
+                                    target_layout.valid != 0ul &&
+                                    v9x_layout_red(&target_layout,
+                                        curve_tex_raw[0]) >= curve_present &&
+                                    v9x_layout_blue(&target_layout,
+                                        curve_tex_raw[8]) >= curve_present
+                                    ? 1ul : 0ul);
+                            }
+                            /* Put the instrument back before anything else
+                             * draws: it is per-context state and the rungs
+                             * after this one expect the engine's own choice. */
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_PROBE_RS_ALPHAFORCE,
+                                V9X_PROBE_ALPHAFORCE_MAGIC);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        }
                     }
 
                     if (curve_texture != 0) {

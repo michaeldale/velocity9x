@@ -116,6 +116,13 @@ typedef struct v9x_d3d_context {
      * application wants it applied.
      */
     DWORD color_key_enable;
+    /*
+     * V9X_D3DRENDERSTATE_V9X_ALPHAFORCE: the instrument that puts all four
+     * encodings of the command word's alpha field through one draw. Zero -
+     * what every application leaves it at - means the engine chooses, which
+     * is the shipping behaviour.
+     */
+    DWORD alpha_force;
 } V9X_D3D_CONTEXT;
 
 /*

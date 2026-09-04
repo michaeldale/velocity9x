@@ -387,6 +387,81 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
 }
 
 /*
+ * The command-word census: one row per distinct word a run used.
+ *
+ * Counters say how many triangles were drawn; this says what they were drawn
+ * with. 3DMark 99 on the Trio3D/2X has two defects whose draws no counter
+ * separates from the correct draws beside them, and a ring of the last N
+ * draws is no help when 58,619 go past. A run uses few distinct words, so the
+ * whole set fits in a small table with no aiming and no sampling.
+ *
+ * The texture-size field, bits 11:8, is masked out of the key and accumulated
+ * as a bitmask instead: it is the one field that varies per texture, and
+ * leaving it in the key would split every word into a dozen rows and overflow
+ * the table on the first scene. The last texture bound under each word is kept
+ * with it, which is what says whether a suspicious word came from a
+ * suspicious surface.
+ *
+ * Linear scan of at most V9X_D3D_CENSUS_SLOTS entries per triangle. On the
+ * measured run that is 58,619 scans of a table that reached far fewer rows;
+ * the same run spends 483,491 idle waits.
+ */
+#define V9X_VIRGE_CENSUS_SIZE_MASK 0x00000f00ul
+
+/* The bound texture's ddsCaps, or zero when there is no record to read. */
+static DWORD v9x_d3d_virge_census_caps(const V9X_D3D_CONTEXT *context)
+{
+    const V9X_DD_SURFACE_LCL *surface =
+        v9x_d3d_context_texture_surface((V9X_D3D_CONTEXT *)context);
+
+    if (surface == 0) {
+        return 0ul;
+    }
+    return surface->ddsCaps;
+}
+
+static void v9x_d3d_virge_census(DWORD command, int textured,
+                                 DWORD texture_size_log,
+                                 DWORD texture_offset,
+                                 const V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_DRAW_CENSUS *census;
+    DWORD key;
+    DWORD index;
+
+    if (v9x_hal == 0) {
+        return;
+    }
+    census = &v9x_hal->census;
+    key = command & ~V9X_VIRGE_CENSUS_SIZE_MASK;
+    for (index = 0ul; index < census->slots_used; ++index) {
+        if (census->entries[index].command != key) {
+            continue;
+        }
+        ++census->entries[index].draws;
+        if (textured) {
+            census->entries[index].size_mask |= 1ul << (texture_size_log & 31ul);
+            census->entries[index].tex_offset = texture_offset;
+            census->entries[index].tex_caps =
+                v9x_d3d_virge_census_caps(context);
+        }
+        return;
+    }
+    if (census->slots_used >= (DWORD)V9X_D3D_CENSUS_SLOTS) {
+        ++census->overflow;
+        return;
+    }
+    index = census->slots_used++;
+    census->entries[index].command = key;
+    census->entries[index].draws = 1ul;
+    census->entries[index].size_mask =
+        textured ? 1ul << (texture_size_log & 31ul) : 0ul;
+    census->entries[index].tex_offset = textured ? texture_offset : 0ul;
+    census->entries[index].tex_caps =
+        textured ? v9x_d3d_virge_census_caps(context) : 0ul;
+}
+
+/*
  * A source colour key, honoured the only way this unit can: by the texels.
  *
  * The S3D texture unit has no chroma key. What it has is texture alpha - one
@@ -908,7 +983,37 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             command |= V9X_VIRGE_3D_CMD_TEXTURE_WRAP;
         }
     }
+    /*
+     * The instrument, applied last so it is the encoding that reaches the
+     * chip whatever chose the bits - the blend states or the colour key -
+     * and applied only where a blend was going to happen: a forced encoding
+     * must not blend a draw that asked for none, nor revive one the unit has
+     * no expression for. Zero is what every application leaves the state at,
+     * and is this block doing nothing. See V9X_D3DRENDERSTATE_V9X_ALPHAFORCE.
+     */
+    if (context->alpha_force != V9X_D3D_ALPHAFORCE_ENGINE &&
+        alpha_bits != 0ul) {
+        switch (context->alpha_force) {
+        case V9X_D3D_ALPHAFORCE_NONE:
+            alpha_bits = 0ul;
+            break;
+        case V9X_D3D_ALPHAFORCE_SOURCE:
+            alpha_bits = V9X_VIRGE_3D_CMD_ALPHA_SOURCE;
+            break;
+        case V9X_D3D_ALPHAFORCE_ENABLE:
+            alpha_bits = V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+            break;
+        case V9X_D3D_ALPHAFORCE_BOTH:
+            alpha_bits = V9X_VIRGE_3D_CMD_ALPHA_SOURCE |
+                         V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
+            break;
+        default:
+            break;      /* out of range: the engine's choice stands */
+        }
+    }
     command |= alpha_bits;
+    v9x_d3d_virge_census(command, textured, texture_size_log, texture_offset,
+                         context);
     v9x_mmio_write(V9X_VIRGE_3D_COMMAND, command);
     gs_bs = (((color >> 8) & 0xfful) << 23) |
             ((color & 0xfful) << 7);

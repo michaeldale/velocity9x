@@ -121,3 +121,17 @@ with vertex alpha on an untextured triangle - the engine's other alpha path -
 so a defect common to both is told apart from one that is not. That rotation is
 what identified the Trio3D/2X defect:
 `docs/decisions/2026-09-04-what-the-trio3d-blend-does-with-its-operands.md`.
+
+## Forced alpha encodings
+
+`AlphaCurveF<1..4>_<a>_Raw`, with `*Hr` and `*Ok`. The same curve as above,
+taken four times with the S3D command word's alpha field forced to each of its
+four encodings through `V9X_D3DRENDERSTATE_V9X_ALPHAFORCE` - a real render
+state the runtime passes through, carrying a magic argument, because a private
+state number outside Direct3D's range is rejected before the driver ever sees
+it. `AlphaCurveF3` is the encoding the engine itself chooses for a textured
+blend, so on any driver where the instrument works it must reproduce
+`AlphaCurve`; that equality is the rung's own self-check, and the `*Hr` keys
+say whether the state was accepted at all rather than leaving it to be
+inferred. A driver without the instrument writes four copies of the unforced
+curve, which would otherwise read as a finding.

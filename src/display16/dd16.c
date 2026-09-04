@@ -779,6 +779,11 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             for (index = 0u; index < sizeof(V9X_DD_TRACE); ++index) {
                 destination[index] = source[index];
             }
+            source = (const BYTE FAR *)&v9x_dd_shared->census;
+            destination = (BYTE FAR *)&snapshot->census;
+            for (index = 0u; index < sizeof(V9X_D3D_DRAW_CENSUS); ++index) {
+                destination[index] = source[index];
+            }
         }
         return 1;
     case V9X_DDGETCOUNTS:

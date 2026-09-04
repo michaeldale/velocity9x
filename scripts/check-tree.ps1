@@ -426,6 +426,46 @@ foreach ($engine in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\displ
     }
 }
 
+# The probe carries its own DirectDraw vocabulary on purpose - it must run
+# against any driver - so Velocity9x's private render state number is written
+# out twice. A copy that drifts would leave the instrument silently doing
+# nothing, with the probe writing plausible keys from unforced draws.
+$alphaForceHeader = Join-Path $repoRoot "include\velocity9x\win9x_ddraw_abi.h"
+$alphaForceProbe = Join-Path $repoRoot "tools\diag\ddraw_probe_win32.c"
+$alphaForceValues = @{}
+foreach ($pair in @(
+        @{ Path = $alphaForceHeader; Name = 'V9X_D3DRENDERSTATE_V9X_ALPHAFORCE' },
+        @{ Path = $alphaForceProbe; Name = 'V9X_PROBE_RS_ALPHAFORCE' },
+        @{ Path = $alphaForceHeader; Name = 'V9X_D3D_ALPHAFORCE_MAGIC' },
+        @{ Path = $alphaForceProbe; Name = 'V9X_PROBE_ALPHAFORCE_MAGIC' })) {
+    $pattern = "^\s*#define\s+$($pair.Name)\s+(0[xX][0-9A-Fa-f]+)ul\s*$"
+    $found = $null
+    foreach ($line in (Get-Content -LiteralPath $pair.Path)) {
+        if ($line -match $pattern) {
+            $found = [Convert]::ToUInt32($Matches[1], 16)
+            break
+        }
+    }
+    if ($null -eq $found) {
+        throw ("$($pair.Name) is not defined in $($pair.Path). The private " +
+               "render state is written out in both the ABI header and the " +
+               "probe; removing it from one is a change that updates this " +
+               "check with it.")
+    }
+    $alphaForceValues[$pair.Name] = $found
+}
+if ($alphaForceValues['V9X_D3DRENDERSTATE_V9X_ALPHAFORCE'] -ne
+    $alphaForceValues['V9X_PROBE_RS_ALPHAFORCE']) {
+    throw ("V9X_D3DRENDERSTATE_V9X_ALPHAFORCE and V9X_PROBE_RS_ALPHAFORCE " +
+           "disagree: the driver would never see the state the probe sets.")
+}
+if ($alphaForceValues['V9X_D3D_ALPHAFORCE_MAGIC'] -ne
+    $alphaForceValues['V9X_PROBE_ALPHAFORCE_MAGIC']) {
+    throw ("V9X_D3D_ALPHAFORCE_MAGIC and V9X_PROBE_ALPHAFORCE_MAGIC " +
+           "disagree: the driver would read the probe's argument as an " +
+           "ordinary stipple pattern and force nothing.")
+}
+
 # Stage A writes no MTRR, and that is a property worth holding rather than
 # trusting to review: the write instructions must not appear in the mini-VDD
 # at all. WRMSR is the one that matters; CR0/CR4 handling would arrive with it.

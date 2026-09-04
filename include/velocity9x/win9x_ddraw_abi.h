@@ -507,6 +507,47 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DTADDRESS_MIRROR                       2ul
 #define V9X_D3DTADDRESS_CLAMP                        3ul
 #define V9X_D3DRENDERSTATE_BORDERCOLOR              43ul
+/*
+ * A private render state, and an instrument rather than a feature.
+ *
+ * The S3D command word carries the alpha control in bits 19:18, and the
+ * engine sets one of two encodings from the blend states
+ * (v9x_d3d_virge_alpha_bits). On the Trio3D/2X neither encoding produces a
+ * blend: the source's colour has no effect on the result and both encodings
+ * give the same wrong answer, byte for byte
+ * (docs\decisions\2026-09-04-what-the-trio3d-blend-does-with-its-operands.md).
+ * What the field means on that part is therefore an open question that only
+ * the card can answer, and answering it means putting all four encodings
+ * through the same draw.
+ *
+ * This state does that without a driver build per encoding: the argument
+ * V9X_D3D_ALPHAFORCE_MAGIC | n forces the two bits to n's encoding, and
+ * anything else - every value any application will ever write - leaves the
+ * engine's own choice alone. It applies only where the engine would have
+ * blended anyway, so it cannot turn on a blend that would otherwise be
+ * refused.
+ *
+ * The state number is a real one. A number outside Direct3D's own range does
+ * not work: IDirect3DDevice2::SetRenderState validates the type before the
+ * HAL is ever asked, so 0x56394146 was rejected by the runtime and the
+ * instrument's first four curves came back as one flat white
+ * (measured on the emulated ViRGE/DX, 2026-09-04). D3DRENDERSTATE_STIPPLEPATTERN31
+ * is a legal state the runtime passes through, this driver publishes no
+ * stipple capability and ignores it, and the magic in the argument is what
+ * keeps an application that does set a stipple pattern from tripping the
+ * instrument by accident.
+ *
+ * The probe carries the same two numbers in its own definitions; the pairs are
+ * asserted equal by scripts\check-tree.ps1.
+ */
+#define V9X_D3DRENDERSTATE_V9X_ALPHAFORCE   0x0000005ful
+#define V9X_D3D_ALPHAFORCE_MAGIC            0x56390000ul
+#define V9X_D3D_ALPHAFORCE_MASK             0xffff0000ul
+#define V9X_D3D_ALPHAFORCE_ENGINE                    0ul
+#define V9X_D3D_ALPHAFORCE_NONE                      1ul
+#define V9X_D3D_ALPHAFORCE_SOURCE                    2ul
+#define V9X_D3D_ALPHAFORCE_ENABLE                    3ul
+#define V9X_D3D_ALPHAFORCE_BOTH                      4ul
 /* Depth-buffer state. Values from the Windows 98 DDK's own ViRGE driver,
  * C:\98DDK\src\display\mini\s3v\D3DSTATE.C:73/95/130. */
 #define V9X_D3DRENDERSTATE_ZENABLE                   7ul
@@ -1062,11 +1103,12 @@ typedef struct v9x_ddhal_destroydriverdata {
  * framebuffer descriptor, which the 16-bit side refreshes on every enable.
  */
 /* Bumped for the generalized engine descriptor, again when the mode table
- * became variable-length, and again for the depth-surface diagnostics below.
+ * became variable-length, again for the depth-surface diagnostics below, and
+ * again on 2026-09-04 for the command-word census at the end of the block.
  * A mixed old/new DRV+DLL pair fails safe: DriverInit rejects on the
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
-#define V9X_DD_SHARED_ABI   2026083001ul
+#define V9X_DD_SHARED_ABI   2026090401ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1416,6 +1458,43 @@ typedef struct v9x_dd_trace {
     V9X_DD_TRACE_ENTRY ring[V9X_DD_TRACE_RING_COUNT];
 } V9X_DD_TRACE;
 
+/*
+ * A census of the S3D command words a run used.
+ *
+ * The counters say how many triangles were drawn and the ring says which
+ * callbacks ran, but neither says what state a wrong-looking draw was made
+ * with - and 3DMark 99 on the Trio3D/2X has two defects left whose draws are
+ * indistinguishable, by every counter, from the draws beside them that are
+ * right (docs\issues\2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md).
+ * A ring of the last N draws does not help either: 58,619 of them go by and
+ * the interesting ones are in the middle.
+ *
+ * So this counts distinct command words instead. A run uses few - the word is
+ * assembled from a handful of render states - so a small table holds the
+ * whole set, in any order, without aiming at anything. The texture-size field
+ * (bits 11:8) is masked out of the key and accumulated separately, because it
+ * is the one field that varies per texture and would otherwise split every
+ * word into a dozen.
+ *
+ * It is an instrument, not a counter: read it beside a picture, and the bits
+ * of a word say what produced the picture.
+ */
+#define V9X_D3D_CENSUS_SLOTS 32u
+
+typedef struct v9x_d3d_census_entry {
+    DWORD command;      /* the word, texture-size field cleared           */
+    DWORD draws;        /* triangles launched with it                     */
+    DWORD size_mask;    /* bit n: texture_size_log n was used with it     */
+    DWORD tex_offset;   /* the last texture bound under it                */
+    DWORD tex_caps;     /* that surface's ddsCaps                         */
+} V9X_D3D_CENSUS_ENTRY;
+
+typedef struct v9x_d3d_draw_census {
+    DWORD slots_used;
+    DWORD overflow;     /* draws whose word found no free slot            */
+    V9X_D3D_CENSUS_ENTRY entries[V9X_D3D_CENSUS_SLOTS];
+} V9X_D3D_DRAW_CENSUS;
+
 /* V9X_DDGETTRACE output. Field-for-field copy of the live shared state;
  * dwSize/abi let the reader reject a mismatched driver build. */
 typedef struct v9x_dd_trace_snapshot {
@@ -1426,6 +1505,7 @@ typedef struct v9x_dd_trace_snapshot {
     V9X_DD_ENGINE engine;
     V9X_D3D_DIAGNOSTICS d3d;
     V9X_DD_TRACE trace;
+    V9X_D3D_DRAW_CENSUS census;
 } V9X_DD_TRACE_SNAPSHOT;
 
 /*
@@ -1644,6 +1724,7 @@ typedef struct v9x_dd_shared {
     DWORD mode_count;
     V9X_DDHALMODEINFO modes[V9X_DD_MODE_COUNT];
     V9X_DD_TRACE trace;
+    V9X_D3D_DRAW_CENSUS census;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)

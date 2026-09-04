@@ -1012,6 +1012,21 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
             case V9X_D3DRENDERSTATE_COLORKEYENABLE:
                 context->color_key_enable = states[index].argument != 0ul;
                 break;
+            case V9X_D3DRENDERSTATE_V9X_ALPHAFORCE:
+                /*
+                 * An instrument riding on a real render state; see the
+                 * header. Only the magic argument is taken, so a stipple
+                 * pattern - which is what this state is - leaves the engine's
+                 * choice alone however it is written.
+                 */
+                if ((states[index].argument & V9X_D3D_ALPHAFORCE_MASK) ==
+                    V9X_D3D_ALPHAFORCE_MAGIC) {
+                    context->alpha_force =
+                        states[index].argument & ~V9X_D3D_ALPHAFORCE_MASK;
+                } else {
+                    context->alpha_force = V9X_D3D_ALPHAFORCE_ENGINE;
+                }
+                break;
             case V9X_D3DRENDERSTATE_FOGENABLE:
                 context->fog_enable = states[index].argument != 0ul;
                 break;

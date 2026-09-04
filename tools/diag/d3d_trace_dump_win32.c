@@ -73,6 +73,27 @@ static void v9x_write_hex(const char *key, DWORD value)
     v9x_write_text(key, text);
 }
 
+/*
+ * "Census<nn><field>" for the command-word table, assembled rather than
+ * listed: five fields times up to thirty-two rows is too many names to spell
+ * out, and this tool links no runtime string routines.
+ */
+static void v9x_census_name(char *out, DWORD index, const char *field)
+{
+    DWORD at = 0ul;
+    const char *prefix = "Census";
+
+    while (*prefix != 0) {
+        out[at++] = *prefix++;
+    }
+    out[at++] = (char)('0' + (index / 10ul));
+    out[at++] = (char)('0' + (index % 10ul));
+    while (*field != 0) {
+        out[at++] = *field++;
+    }
+    out[at] = 0;
+}
+
 static const char *v9x_trace_name(WORD id)
 {
     switch (id & (WORD)~V9X_DD_TRACE_EXIT_FLAG) {
@@ -403,6 +424,36 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("D3dDoneSeen", snapshot.d3d.done_seen);
     v9x_write_uint("D3dDoneMissing", snapshot.d3d.done_missing);
     v9x_write_uint("D3dDoneSkipped", snapshot.d3d.done_skipped);
+    /*
+     * The command-word census. One row per distinct S3D command word the run
+     * used, with the texture-size field masked out of the key and carried in
+     * SizeMask instead. Read it beside a picture: the bits of a word say what
+     * state produced the draws that look wrong.
+     */
+    v9x_write_uint("CensusSlots", snapshot.census.slots_used);
+    v9x_write_uint("CensusOverflow", snapshot.census.overflow);
+    {
+        DWORD census_index;
+        char census_name[24];
+
+        for (census_index = 0ul; census_index < snapshot.census.slots_used &&
+                                 census_index < (DWORD)V9X_D3D_CENSUS_SLOTS;
+             ++census_index) {
+            const V9X_D3D_CENSUS_ENTRY *entry =
+                &snapshot.census.entries[census_index];
+
+            v9x_census_name(census_name, census_index, "Cmd");
+            v9x_write_hex(census_name, entry->command);
+            v9x_census_name(census_name, census_index, "Draws");
+            v9x_write_uint(census_name, entry->draws);
+            v9x_census_name(census_name, census_index, "SizeMask");
+            v9x_write_hex(census_name, entry->size_mask);
+            v9x_census_name(census_name, census_index, "TexOffset");
+            v9x_write_hex(census_name, entry->tex_offset);
+            v9x_census_name(census_name, census_index, "TexCaps");
+            v9x_write_hex(census_name, entry->tex_caps);
+        }
+    }
     {
         DWORD tail_index;
         char tail_name[16];
