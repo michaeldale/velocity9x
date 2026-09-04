@@ -6747,8 +6747,30 @@ void __stdcall V9xDdrawProbeEntry(void)
                     solo_hr = backbuffer->vtbl->GetSurfaceDesc(backbuffer,
                                                                &solo_back);
                     if (solo_hr == 0) {
+                        V9X_DDSURFACEDESC solo_lock;
+
                         v9x_write_uint("SoloBackW", solo_back.dwWidth);
                         v9x_write_uint("SoloBackH", solo_back.dwHeight);
+                        /*
+                         * The back buffer's own address and pitch, by Lock -
+                         * the desc of a video-memory surface carries
+                         * lpSurface = 0 until it is locked. These are what
+                         * D3dTargetOffset and D3dTargetPitch have to agree
+                         * with: the driver publishes what it programmed into
+                         * DEST_BASE and the stride register, and if a blend
+                         * onto this surface draws nothing, the first question
+                         * is whether the engine was pointed at it at all.
+                         */
+                        v9x_zero(&solo_lock, sizeof(solo_lock));
+                        solo_lock.dwSize = sizeof(solo_lock);
+                        if (backbuffer->vtbl->Lock(backbuffer, 0, &solo_lock,
+                                                   V9X_DDLOCK_WAIT, 0) == 0) {
+                            v9x_write_uint("SoloBackAddr",
+                                           (DWORD)solo_lock.lpSurface);
+                            v9x_write_uint("SoloBackPitch",
+                                           (DWORD)solo_lock.lPitch);
+                            backbuffer->vtbl->Unlock(backbuffer, 0);
+                        }
                         v9x_write_stage("SoloStage", 2ul);
                         v9x_zero(&desc, sizeof(desc));
                         desc.dwSize = sizeof(desc);
@@ -6940,6 +6962,39 @@ void __stdcall V9xDdrawProbeEntry(void)
                         }
                         v9x_write_uint("SoloFrontRaw",
                             v9x_surface_pixel16(primary, 16ul, 12ul));
+
+                        /*
+                         * The same blend with no texture at all.
+                         *
+                         * A textured draw puts the *texture's* pitch in the
+                         * low half of DEST_SRC_STRIDE; an untextured one puts
+                         * the destination's. If the low half is what a blend
+                         * reads the destination back through, then on a
+                         * surface whose pitch is not the texture's - which is
+                         * every chain back buffer, 1280 against 128 - the
+                         * textured blend reads the wrong rows and the
+                         * untextured one does not. So this is the
+                         * discriminator: if a vertex-alpha blend lands here
+                         * and the textured one did not, the low half is
+                         * implicated; if neither lands, it is not.
+                         */
+                        v9x_write_stage("SoloStage", 23ul);
+                        (void)solo_device->vtbl->SetRenderState(solo_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        solo_tri[0].color = 0x800000fful;
+                        solo_tri[1].color = 0x800000fful;
+                        solo_tri[2].color = 0x800000fful;
+                        begin_hr = solo_device->vtbl->BeginScene(solo_device);
+                        if (begin_hr == 0) {
+                            HRESULT v_hr = solo_device->vtbl->DrawPrimitive(
+                                solo_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, solo_tri, 3ul, 0ul);
+                            end_hr = solo_device->vtbl->EndScene(solo_device);
+                            if (end_hr != 0) v_hr = end_hr;
+                            v9x_write_hresult("SoloVtxHr", v_hr);
+                        }
+                        v9x_write_uint("SoloVtxRaw",
+                            v9x_surface_pixel16(backbuffer, 16ul, 12ul));
                     }
                     v9x_write_hresult("SoloHr", solo_draw_hr);
 

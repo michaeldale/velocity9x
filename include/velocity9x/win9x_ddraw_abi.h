@@ -1108,7 +1108,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * A mixed old/new DRV+DLL pair fails safe: DriverInit rejects on the
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
-#define V9X_DD_SHARED_ABI   2026090401ul
+#define V9X_DD_SHARED_ABI   2026090501ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1374,6 +1374,24 @@ typedef struct v9x_d3d_diagnostics {
      * would be the rule firing when it should not.
      */
     DWORD done_skipped;
+    /*
+     * Appended 2026-09-05. The render target as the engine last programmed it:
+     * the offset that goes into DEST_BASE and the pitch that goes into the
+     * high half of DEST_SRC_STRIDE, refreshed per draw by
+     * v9x_d3d_refresh_target so a flipping chain's page change is followed.
+     *
+     * A blend onto the primary chain's back buffer draws nothing on the
+     * emulated ViRGE/DX while an opaque draw onto the same surface lands
+     * (docs\decisions\2026-09-05-a-blend-onto-the-primary-chain-draws-nothing.md).
+     * The depth surface has been published this way since the depth work and
+     * the render target never was, so there was no way to ask whether the
+     * engine was pointed where the application thought. Now there is: compare
+     * these against the surface's own address and pitch.
+     */
+    DWORD target_offset;
+    DWORD target_pitch;
+    DWORD target_width;
+    DWORD target_height;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

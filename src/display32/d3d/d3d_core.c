@@ -191,6 +191,12 @@ static void v9x_d3d_refresh_target(V9X_D3D_CONTEXT *context)
         return;
     }
     context->target_offset = offset;
+    if (v9x_hal != 0) {
+        v9x_hal->d3d_diagnostics.target_offset = offset;
+        v9x_hal->d3d_diagnostics.target_pitch = context->pitch;
+        v9x_hal->d3d_diagnostics.target_width = context->width;
+        v9x_hal->d3d_diagnostics.target_height = context->height;
+    }
 }
 
 static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)

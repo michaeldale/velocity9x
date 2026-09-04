@@ -475,6 +475,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("D3dDepthCaps", snapshot.d3d.depth_caps);
     v9x_write_hex("D3dDepthOffset", snapshot.d3d.depth_offset);
     v9x_write_uint("D3dDepthPitch", snapshot.d3d.depth_pitch);
+    /* The render target as the engine last programmed it - DEST_BASE and the
+     * high half of DEST_SRC_STRIDE - so it can be held against the surface's
+     * own address and pitch. */
+    v9x_write_hex("D3dTargetOffset", snapshot.d3d.target_offset);
+    v9x_write_uint("D3dTargetPitch", snapshot.d3d.target_pitch);
+    v9x_write_uint("D3dTargetWidth", snapshot.d3d.target_width);
+    v9x_write_uint("D3dTargetHeight", snapshot.d3d.target_height);
     /*
      * Stage markers, so the file says how far the tool got.
      *
