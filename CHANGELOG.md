@@ -4,6 +4,145 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.8.0 - 2026-09-05
+
+**The S3 Trio3D/2X draws, on the hardware path, on real silicon.** The part is
+bound to the ViRGE/DX's engine and gets hardware Direct3D; Final Reality
+completes at 3.21 overall and 3DMark 99 completes for the first time - 335
+marks on its first clean run, and 313 against 475 in a same-boot comparison of
+800x600 with 640x480. Six engine defects were found by that card and fixed, two
+capabilities became chip-conditional, the DirectDraw probe grew from a checklist
+into an instrument, and one of this release's own findings was measured,
+published and then retracted.
+
+### What the Trio3D reads that the ViRGE does not
+
+`5333:8A13` is an S3D part despite the Trio name, so it runs the ViRGE's hooks
+and its register file. Three differences turned up under measurement, and none
+of them were in 86Box's model - that emulator has no chip-conditional code in
+its S3D unit at all, which is why every one of these needed the card.
+
+- **The 3D stride register's low half is the texture's pitch.** The ViRGE/DX
+  derives texel addresses from the command word's size field and never consults
+  it; the Trio3D's texture unit does. With the screen pitch there, 64-texel
+  textures survived and 128- and 256-texel ones read as scrambled noise -
+  which is why Final Reality, whose textures are all 64 across, drew correctly
+  on this card while 3DMark 99 drew every texture as static.
+- **It never sets SUBSYS_STAT bit 1**, the 3D-done bit the idle wait had been
+  requiring since the emulator needed it. All 117 matrix cells and both render
+  targets wrote a `_Dmiss` delta.
+- **Two passes over one triangle, blended together, do not work here.** That is
+  how trilinear filtering was synthesised, and on this part every step came out
+  carrying the channel neither of its two mip levels has.
+
+### Six defects the hardware path had
+
+Found on the card or on the emulated ViRGE and fixed:
+
+- a texture bounded by a full mip chain it may not have, refusing surfaces near
+  the top of VRAM for room they never used;
+- the S3D wrap bit taken from `WRAPU`/`WRAPV` rather than the texture address
+  mode, which drew Final Reality's tiled walls as black wedges;
+- a flip reported complete before the CRTC had latched it, which is what made
+  Final Reality flicker;
+- the render target's address read once rather than per draw, so a flipping
+  chain rendered into the page on the monitor from the second frame on;
+- the mip-level gradients `TdDdX`/`TdDdY` never written, leaving the level
+  index to drift with whatever the registers last held;
+- blend pairs the S3D cannot express drawn opaque rather than skipped, which
+  set 3DMark's lightmap pass fighting its own base pass for depth.
+
+### A 5:5:5 desktop, end to end
+
+The S3D writes ZRGB1555 and can write nothing else, so a 5:6:5 desktop
+guarantees a mismatch on every 3D pixel. Three places had to agree - the mode
+table, the DirectDraw pixel format and GDI - and the third was found last.
+16-bit now resolves to 5:5:5 automatically under hardware Direct3D and is
+offered on the settings page. Eight colour keys flipped on silicon and nine on
+the emulator.
+
+### Two chip-conditional capabilities
+
+Both are negatives, both measured, and both leave the ViRGE/DX byte-identical
+in the probe as the control:
+
+- `V9X_DD_ENGINE_CAP_S3D_TWO_PASS` - trilinear degrades to bilinear on the
+  level the chip selected rather than emitting a second pass whose result is
+  wrong.
+- `V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA` - a blended `UNLIT` draw is expressed as
+  `LIT` with `MODULATE` and a forced flat-white Gouraud colour, which is the
+  same fragment through the pairing this card gets right. In a 3DMark run the
+  whole population moved: 25,439 such draws before, zero after, at 472 marks
+  against 475.
+
+### The idle wait learns
+
+`src/common/donewait.c` decides, in host-tested arithmetic, whether to keep
+spinning for a 3D-done bit. One sighting retires the question for good; only 64
+consecutive misses with nothing ever seen decide against a part. On A8U4I5 the
+matrix block halves, 840 ms to 435 ms, with no pixel changed, and one 3DMark run
+skips 483,491 full spins. On the emulator the rule never fires.
+
+### The probe became an instrument
+
+`V9XDDP.EXE` now walks spaces rather than sampling points: a 117-cell texture
+matrix over size, format, layout and filter with the driver's own counters
+beside every cell; an alpha transfer curve over three rotated operand pairs; a
+forced-encoding sweep that puts all four encodings of the command word's alpha
+field through one draw; a four-level mip ladder that says which level was read;
+a sprite rung crossing depth, filter and shade mode; an alpha ramp interpolated
+across one triangle over a textured destination; a census of every distinct S3D
+command word a run used; and stage markers that survive the process dying.
+
+`docs/probe/README.md` carries the lesson three of them taught: **an `*Ok` key
+that tests the ends of a range is a regression check, not a measurement.** The
+matrix's alpha cells drew over black, where "kept the destination" and "wrote an
+opaque black box" are the same reading. `AlphaCurveOk` tested A=0, A=15 and
+monotonicity, and passed a part whose every interior step was wrong. In both
+cases the raw values were correct and present, and only the verdict was weak.
+
+### Retracted, in place
+
+Two decision documents of 2026-09-04 concluded that the Trio3D/2X performs no
+alpha blend under any encoding of the command word's alpha field. **That is
+wrong**, and both now carry a banner saying so. A controlled A/B - one variable,
+two boots, the trilinear two-pass restored and nothing else touched - showed the
+two-pass was not the cause, which left the power cycle as the only candidate
+that survived. The card's blend is wrong across warm restarts and correct after
+a cold boot, deterministically either way, which is also what made
+`D3DVertexAlphaBlendRaw` look like it wandered.
+
+Every Trio3D alpha measurement this project took before 2026-09-04 was made in
+that state. The documents stay where they are: a decision that was wrong is
+evidence about how it was reached.
+
+### 4 MiB is what picks the resolution
+
+At 800x600x16 with a triple frame buffer and a 16-bit depth buffer, 3DMark 99's
+own page reports 3,750 KB of 4,096 KB consumed before a single texture. Under
+that pressure DirectDraw cannot lay mip chains out contiguously, the engine's
+contiguity guard correctly falls back to a plain filter, and the card is barely
+mipmapping at all - 2,861 mip-filtered draws against 418,390 at 640x480. That
+is what the race scene's chevron-noise ground was, and it was never a sampler
+defect. **640x480 is the resolution for a 4 MiB Trio3D**, and any number taken
+at 800x600 on this card was taken with mipmapping mostly disabled.
+
+### Not established
+
+- **3DMark 99's sprites still draw in opaque black rectangles.** Four rungs
+  built to reproduce that have failed; each found a real defect and none of them
+  was this one.
+- **`SetRenderTarget` is accepted and ignored** on the emulated ViRGE/DX: it
+  returns success and the driver keeps drawing on the previous target. Filed,
+  unfixed, and not chip-specific.
+- **A blended draw onto the primary chain's back buffer writes nothing**, while
+  an opaque draw onto the same surface through the same registers writes
+  correctly. The destination base, pitch, size and stride register were all
+  measured correct. Not yet run on silicon.
+- The partial-alpha fault's shape on the Trio3D - destination term exact, source
+  channel saturated, destination value duplicated into whichever channel neither
+  operand uses - is stated exactly and explained not at all.
+
 ## 0.7.0 - 2026-09-02
 
 **Direct3D on cards that have never had it.** `Direct3D=2` on the Velocity9x
