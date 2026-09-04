@@ -1318,6 +1318,45 @@ static void v9x_fill_surface_halves(struct v9x_dds *surface, WORD left,
 }
 
 /*
+ * An ARGB4444 texture of one colour whose alpha ramps across it, 0 at the left
+ * edge and 15 at the right.
+ *
+ * This is what a sprite is, and it is the one thing the alpha rungs have never
+ * built: they all hold alpha constant over a draw and vary it between draws.
+ * A ramp puts every alpha value inside one triangle, interpolated by the
+ * sampler rather than set by a render state.
+ */
+static void v9x_fill_surface_alpha_ramp(struct v9x_dds *surface, WORD colour)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+    DWORD y;
+    DWORD x;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return;
+    }
+    row = (BYTE FAR *)desc.lpSurface;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        WORD FAR *texel = (WORD FAR *)row;
+
+        for (x = 0ul; x < desc.dwWidth; ++x) {
+            DWORD alpha = desc.dwWidth > 1ul
+                ? (x * 15ul) / (desc.dwWidth - 1ul)
+                : 15ul;
+
+            texel[x] = (WORD)(((alpha & 0x0ful) << 12) | colour);
+        }
+        row += desc.lPitch;
+    }
+    surface->vtbl->Unlock(surface, 0);
+}
+
+/*
  * Every render state a rung may leave behind, put back to what Direct3D
  * starts a device with. Called at the start of each rung group and of each
  * matrix cell, so a key means one draw under one known state. Before this
@@ -6079,6 +6118,264 @@ void __stdcall V9xDdrawProbeEntry(void)
                             if (spr_tex != 0) spr_tex->vtbl->Release(spr_tex);
                             if (spr_surface != 0) {
                                 spr_surface->vtbl->Release(spr_surface);
+                            }
+                        }
+
+                        /*
+                         * THE RAMP: a sprite, as an application draws one.
+                         *
+                         * Every alpha rung so far holds alpha constant over a
+                         * draw and varies it between draws. A sprite does the
+                         * opposite - one quad, one draw, alpha varying across
+                         * it, interpolated by the sampler - and it lands on a
+                         * destination that is itself textured, not a flat
+                         * fill. Neither of those has been measured.
+                         *
+                         * So: paint the target with an opaque green texture,
+                         * then draw a blue ARGB4444 texture over it whose
+                         * alpha runs 0 to 15 across u, and read seven points
+                         * along the result. Correct is green fading to blue
+                         * with no red anywhere, since neither operand has any.
+                         *
+                         * This is the rung that says whether the partial-alpha
+                         * defect - the source's channel saturating while the
+                         * destination's term stays exact
+                         * (docs\decisions\2026-09-04-the-halfa-cells-were-right.md)
+                         * - is what draws 3DMark 99's black boxes.
+                         */
+                        {
+                            /*
+                             * The triangle's u axis runs x = 8.25 to 55.75, so
+                             * a sample at x has alpha (x - 8.25) / 47.5 of
+                             * full. These are those seven fractions as 0..255,
+                             * which is what the layout helpers return.
+                             */
+                            static const DWORD ramp_x[7] = {
+                                12ul, 18ul, 24ul, 30ul, 36ul, 42ul, 48ul };
+                            static const DWORD ramp_expect_src[7] = {
+                                20ul, 52ul, 85ul, 117ul, 149ul, 181ul, 213ul };
+                            static const char *ramp_keys[7] = {
+                                "Ramp_x12_Raw", "Ramp_x18_Raw", "Ramp_x24_Raw",
+                                "Ramp_x30_Raw", "Ramp_x36_Raw", "Ramp_x42_Raw",
+                                "Ramp_x48_Raw" };
+                            /*
+                             * Looser than the curve's tolerance, and for a
+                             * reason: alpha here is interpolated across a
+                             * triangle and quantised by a 64-wide texture, so
+                             * the value at a sample point carries the
+                             * geometry's error as well as the chip's. Four
+                             * 5-bit steps still cannot hide a saturated
+                             * channel.
+                             */
+                            static const DWORD ramp_slack = 34ul;
+                            struct v9x_dds *ramp_dst_surf = 0;
+                            struct v9x_dds *ramp_src_surf = 0;
+                            struct v9x_d3d_texture2 *ramp_dst_tex = 0;
+                            struct v9x_d3d_texture2 *ramp_src_tex = 0;
+                            DWORD ramp_dst_handle = 0ul;
+                            DWORD ramp_src_handle = 0ul;
+                            WORD ramp_raw[7];
+                            HRESULT ramp_hr;
+                            HRESULT ramp_draw_hr = 0;
+                            DWORD ri;
+                            DWORD ramp_ok;
+
+                            for (ri = 0ul; ri < 7ul; ++ri) {
+                                ramp_raw[ri] = 0u;
+                            }
+
+                            /* The destination texture: opaque green, 1555. */
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                           V9X_DDSD_HEIGHT |
+                                           V9X_DDSD_PIXELFORMAT;
+                            desc.dwWidth = 64ul;
+                            desc.dwHeight = 64ul;
+                            desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                            desc.ddpfPixelFormat.dwSize =
+                                sizeof(V9X_DDPIXELFORMAT);
+                            desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                            desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask =
+                                0x00008000ul;
+                            ramp_hr = ddraw->vtbl->CreateSurface(
+                                ddraw, &desc, &ramp_dst_surf, 0);
+
+                            /* The sprite: blue, alpha 0 to 15 across u. */
+                            if (ramp_hr == 0) {
+                                v9x_zero(&desc, sizeof(desc));
+                                desc.dwSize = sizeof(desc);
+                                desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                               V9X_DDSD_HEIGHT |
+                                               V9X_DDSD_PIXELFORMAT;
+                                desc.dwWidth = 64ul;
+                                desc.dwHeight = 64ul;
+                                desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                                desc.ddpfPixelFormat.dwSize =
+                                    sizeof(V9X_DDPIXELFORMAT);
+                                desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                                desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                                desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                                desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                                desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                                desc.ddpfPixelFormat.dwRGBAlphaBitMask =
+                                    0x0000f000ul;
+                                ramp_hr = ddraw->vtbl->CreateSurface(
+                                    ddraw, &desc, &ramp_src_surf, 0);
+                            }
+                            v9x_write_hresult("RampSurfaceHr", ramp_hr);
+                            if (ramp_hr == 0) {
+                                v9x_fill_surface(ramp_dst_surf, 0x83e083e0ul);
+                                v9x_fill_surface_alpha_ramp(ramp_src_surf,
+                                                            0x000fu);
+                                ramp_hr =
+                                    ramp_dst_surf->vtbl->QueryInterface(
+                                        ramp_dst_surf, &v9x_iid_d3d_texture2,
+                                        (void **)&ramp_dst_tex);
+                            }
+                            if (ramp_hr == 0) {
+                                ramp_hr = ramp_src_surf->vtbl->QueryInterface(
+                                    ramp_src_surf, &v9x_iid_d3d_texture2,
+                                    (void **)&ramp_src_tex);
+                            }
+                            if (ramp_hr == 0) {
+                                ramp_hr = ramp_dst_tex->vtbl->GetHandle(
+                                    ramp_dst_tex, d3d_device,
+                                    &ramp_dst_handle);
+                            }
+                            if (ramp_hr == 0) {
+                                ramp_hr = ramp_src_tex->vtbl->GetHandle(
+                                    ramp_src_tex, d3d_device,
+                                    &ramp_src_handle);
+                            }
+
+                            if (ramp_hr == 0 && ramp_src_handle != 0ul) {
+                                v9x_probe_reset_state(d3d_device, triangle);
+                                triangle[0].color = 0xfffffffful;
+                                triangle[1].color = 0xfffffffful;
+                                triangle[2].color = 0xfffffffful;
+                                triangle[0].tu = 0.0f; triangle[0].tv = 0.5f;
+                                triangle[1].tu = 1.0f; triangle[1].tv = 0.5f;
+                                triangle[2].tu = 0.0f; triangle[2].tv = 0.5f;
+                                v9x_fill_surface(d3d_target, 0ul);
+
+                                /* The wall: opaque, textured, unblended. */
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                    ramp_dst_handle);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                    V9X_D3DTBLEND_COPY);
+                                begin_hr =
+                                    d3d_device->vtbl->BeginScene(d3d_device);
+                                if (begin_hr == 0) {
+                                    ramp_draw_hr =
+                                        d3d_device->vtbl->DrawPrimitive(
+                                            d3d_device,
+                                            V9X_D3DPT_TRIANGLELIST,
+                                            V9X_D3DVT_TLVERTEX, triangle,
+                                            3ul, 0ul);
+                                    end_hr =
+                                        d3d_device->vtbl->EndScene(d3d_device);
+                                    if (end_hr != 0) ramp_draw_hr = end_hr;
+                                }
+                                v9x_write_uint("RampWallRaw",
+                                    v9x_surface_pixel16(d3d_target,
+                                                        16ul, 12ul));
+
+                                /* The sprite over it. */
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                    ramp_src_handle);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                    V9X_D3DTBLEND_MODULATE);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                    V9X_D3DBLEND_SRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                    V9X_D3DBLEND_INVSRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                                begin_hr =
+                                    d3d_device->vtbl->BeginScene(d3d_device);
+                                if (begin_hr == 0) {
+                                    HRESULT s_hr =
+                                        d3d_device->vtbl->DrawPrimitive(
+                                            d3d_device,
+                                            V9X_D3DPT_TRIANGLELIST,
+                                            V9X_D3DVT_TLVERTEX, triangle,
+                                            3ul, 0ul);
+                                    end_hr =
+                                        d3d_device->vtbl->EndScene(d3d_device);
+                                    if (end_hr != 0) s_hr = end_hr;
+                                    if (s_hr != 0) ramp_draw_hr = s_hr;
+                                }
+                                for (ri = 0ul; ri < 7ul; ++ri) {
+                                    ramp_raw[ri] = v9x_surface_pixel16(
+                                        d3d_target, ramp_x[ri], 12ul);
+                                    v9x_write_uint(ramp_keys[ri],
+                                                   ramp_raw[ri]);
+                                }
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                            }
+                            v9x_write_hresult("RampHr", ramp_draw_hr);
+
+                            ramp_ok = ramp_draw_hr == 0 &&
+                                      ramp_src_handle != 0ul &&
+                                      target_layout.valid != 0ul ? 1ul : 0ul;
+                            if (ramp_ok != 0ul) {
+                                for (ri = 0ul; ri < 7ul; ++ri) {
+                                    DWORD want_src = ramp_expect_src[ri];
+                                    DWORD want_dst = 255ul - want_src;
+                                    DWORD got_src = v9x_layout_blue(
+                                        &target_layout, ramp_raw[ri]);
+                                    DWORD got_dst = v9x_layout_green(
+                                        &target_layout, ramp_raw[ri]);
+                                    DWORD got_red = v9x_layout_red(
+                                        &target_layout, ramp_raw[ri]);
+
+                                    if (got_src + ramp_slack < want_src ||
+                                        want_src + ramp_slack < got_src) {
+                                        ramp_ok = 0ul;
+                                    }
+                                    if (got_dst + ramp_slack < want_dst ||
+                                        want_dst + ramp_slack < got_dst) {
+                                        ramp_ok = 0ul;
+                                    }
+                                    if (got_red > ramp_slack) {
+                                        ramp_ok = 0ul;
+                                    }
+                                }
+                            }
+                            v9x_write_uint("RampOk", ramp_ok);
+
+                            if (ramp_src_tex != 0) {
+                                ramp_src_tex->vtbl->Release(ramp_src_tex);
+                            }
+                            if (ramp_dst_tex != 0) {
+                                ramp_dst_tex->vtbl->Release(ramp_dst_tex);
+                            }
+                            if (ramp_src_surf != 0) {
+                                ramp_src_surf->vtbl->Release(ramp_src_surf);
+                            }
+                            if (ramp_dst_surf != 0) {
+                                ramp_dst_surf->vtbl->Release(ramp_dst_surf);
                             }
                         }
 

@@ -191,3 +191,18 @@ values, and in all three the raws were right there and correct:
 
 A key that tests the ends of a range is a regression check, not a measurement.
 When a rung produces a curve, check the curve.
+
+## The ramp
+
+`Ramp_x<n>_Raw` for seven points across one triangle, with `RampWallRaw`,
+`RampHr` and `RampOk`. A sprite as an application draws one: an opaque green
+texture painted over the target first, then a blue ARGB4444 texture over it
+whose alpha runs 0 to 15 across u. Every alpha rung before it holds alpha
+constant over a draw and varies it between draws; this one varies it inside a
+single triangle, interpolated by the sampler, and lands it on a destination
+that is textured rather than a flat fill.
+
+It is what stated the Trio3D/2X's partial-alpha fault exactly - the
+destination's term correct, the source's channel saturated, and the
+destination's value duplicated into whichever channel neither operand uses:
+`docs/decisions/2026-09-04-the-ramp-and-the-shape-of-the-blend-fault.md`.
