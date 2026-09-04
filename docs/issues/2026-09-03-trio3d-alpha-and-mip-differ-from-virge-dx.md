@@ -95,3 +95,35 @@ Record: [`../decisions/2026-09-03-two-hypotheses-on-the-trio3d-and-what-they-lef
 3. Until one of those lands, treat `D3DVertexAlphaBlendOk`,
    `D3DMipmapLevelSelectOk` and `D3DTrilinearBlendOk` as open on the Trio3D,
    not as regressions.
+
+## Third round, 2026-09-04: mip is not a difference; alpha is, across the whole space
+
+The 117-cell matrix ran on A8U4I5 for the first time, with the pair at 6797d93
+(`../decisions/2026-09-04-the-trio3d-runs-the-matrix.md`,
+`../probe/references/trio3d-a8u4i5-v9x-2026-09-04.ini`).
+
+**Mip selection is no longer a Trio3D-versus-ViRGE/DX difference.**
+`D3DMipmapLevelRaw` reads 992 on the card and 992 on the emulator,
+`D3DTrilinearRaw` 992 on both, and every `mipnear` and `trilin` cell in the
+matrix passes on the card at 64, 128 and 256 texels, in both formats, plain and
+chained and gapped. The rows in the table above were taken with the wrong
+texture stride on every mipmapped draw. `D3DMipmapLevelSelectOk=0` and
+`D3DTrilinearBlendOk=0` stay open on both machines, as one question rather than
+two.
+
+**Alpha is the only difference the probe can still see, and it is every blended
+cell.** All 27 fail; all 90 unblended cells pass. In each `alpha` cell the
+opaque half reads 0 where the emulator reads 992, and the alpha-0 half
+correctly reads 0. The `halfa` cell's right half reads 23254 (`0x5AD6`,
+r22 g22 b22) against the emulator's 16 (blue at half), so blended fragments are
+not simply discarded. The driver refused no texture, skipped no blend and
+suffered no engine fault during the run (`TexMatrixCountsOk=1`, no `_Dref`,
+`_Dskip` or `_Dfault` key written).
+
+Also measured: the card never sets SUBSYS_STAT bit 1. `_Dmiss` is written for
+every cell, so every 3D-done wait degraded to the idle bit.
+
+Next item 2 is still open: `D3DVertexAlphaBlendRaw` read 25352 today against
+527 in the committed 2026-09-03 capture on the same 800x600x16 desktop, but the
+driver changed between them, so it is not the controlled repeat that item asks
+for.
