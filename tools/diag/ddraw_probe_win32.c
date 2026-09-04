@@ -1661,6 +1661,26 @@ static DWORD v9x_layout_blue(const V9X_PIXEL_LAYOUT *layout, DWORD pixel)
     return v9x_layout_channel(layout, pixel, layout->blue_mask);
 }
 
+/*
+ * The same three by index, for a rung that walks the channels rather than
+ * naming one: 0 red, 1 green, 2 blue.
+ */
+#define V9X_PROBE_CHANNEL_RED   0ul
+#define V9X_PROBE_CHANNEL_GREEN 1ul
+#define V9X_PROBE_CHANNEL_BLUE  2ul
+
+static DWORD v9x_layout_rgb(const V9X_PIXEL_LAYOUT *layout, DWORD pixel,
+                            DWORD channel)
+{
+    if (channel == V9X_PROBE_CHANNEL_RED) {
+        return v9x_layout_red(layout, pixel);
+    }
+    if (channel == V9X_PROBE_CHANNEL_GREEN) {
+        return v9x_layout_green(layout, pixel);
+    }
+    return v9x_layout_blue(layout, pixel);
+}
+
 /* Which of the matrix's colours a target pixel is, on 0..255 channels. */
 #define V9X_PROBE_HUE_OTHER   0ul
 #define V9X_PROBE_HUE_GREEN   1ul
@@ -3904,6 +3924,406 @@ void __stdcall V9xDdrawProbeEntry(void)
                         }
                         if (atex != 0) atex->vtbl->Release(atex);
                         if (asurf != 0) asurf->vtbl->Release(asurf);
+                    }
+                }
+
+                v9x_probe_reset_state(d3d_device, triangle);
+                /*
+                 * THE ALPHA TRANSFER CURVE.
+                 *
+                 * The matrix says every blended cell fails on the Trio3D/2X
+                 * and every unblended one passes, but not what value of A the
+                 * part used. Its three readings tell three different stories:
+                 * an opaque texel drew nothing, an alpha-0 texel correctly
+                 * drew nothing, and a half-alpha texel drew a neutral grey
+                 * out of a texel that has colour in one channel
+                 * (docs/decisions/2026-09-04-the-trio3d-runs-the-matrix.md).
+                 *
+                 * This walks A instead of sampling it at one point. The
+                 * destination is filled red - not black, so the destination's
+                 * own contribution is visible and separable from the
+                 * source's - and one uniform blue ARGB4444 texture is drawn
+                 * over it nine times with the texel's alpha stepped 0, 2, 4
+                 * ... 14, 15. Under destination = source * A + destination *
+                 * (1 - A) the blue rises and the red falls, monotonically,
+                 * between the two ends. Both ends are measured rather than
+                 * assumed: AlphaCurveDstRaw is the fill read back with
+                 * nothing drawn over it, AlphaCurveSrcRaw the same texel
+                 * drawn with the blend off.
+                 *
+                 * The walk is then repeated with vertex alpha on an
+                 * untextured triangle, which is the engine's other alpha path
+                 * - ALPHA_SOURCE|ALPHA_ENABLE where the textured one sets
+                 * ALPHA_ENABLE alone - so a defect common to both is told
+                 * apart from one that is not.
+                 *
+                 * The walk is taken three times over rotated operand pairs -
+                 * blue over red, red over green, green over blue - so a
+                 * blend that mishandles A is told from one the operands never
+                 * reach.
+                 *
+                 * Keys: AlphaCurve_<a>_Raw, AlphaCurveB_<a>_Raw and
+                 * AlphaCurveC_<a>_Raw for the three pairs,
+                 * VtxAlphaCurve_<a>_Raw for the vertex walk, each with
+                 * *DstRaw, *SrcRaw, *Hr and *Ok. Ok means both ends landed
+                 * where the blend equation puts them and the source's channel
+                 * never fell as A rose.
+                 */
+                {
+                    /*
+                     * The steps. Texel alpha is four bits, so 0..15 by twos
+                     * with the endpoint; vertex alpha is eight, stepped to
+                     * the same nine points so the two curves line up.
+                     */
+                    static const DWORD curve_texel_alpha[9] = {
+                        0ul, 2ul, 4ul, 6ul, 8ul, 10ul, 12ul, 14ul, 15ul };
+                    static const DWORD curve_vertex_alpha[9] = {
+                        0ul, 34ul, 68ul, 102ul, 136ul, 170ul, 204ul,
+                        238ul, 255ul };
+                    /*
+                     * Three operand pairs, not one. A curve taken with a
+                     * single pair of colours cannot tell a blend that
+                     * mishandles alpha from one that never sees the operands
+                     * at all: rotate them, and if the output's channels do
+                     * not rotate with them, the operands are not what is
+                     * reaching the blender. Each pair's source is an opaque
+                     * primary in the texture and its destination a different
+                     * primary in the target.
+                     */
+                    static const char *curve_tex_keys[3][9] = {
+                        { "AlphaCurve_0_Raw", "AlphaCurve_2_Raw",
+                          "AlphaCurve_4_Raw", "AlphaCurve_6_Raw",
+                          "AlphaCurve_8_Raw", "AlphaCurve_10_Raw",
+                          "AlphaCurve_12_Raw", "AlphaCurve_14_Raw",
+                          "AlphaCurve_15_Raw" },
+                        { "AlphaCurveB_0_Raw", "AlphaCurveB_2_Raw",
+                          "AlphaCurveB_4_Raw", "AlphaCurveB_6_Raw",
+                          "AlphaCurveB_8_Raw", "AlphaCurveB_10_Raw",
+                          "AlphaCurveB_12_Raw", "AlphaCurveB_14_Raw",
+                          "AlphaCurveB_15_Raw" },
+                        { "AlphaCurveC_0_Raw", "AlphaCurveC_2_Raw",
+                          "AlphaCurveC_4_Raw", "AlphaCurveC_6_Raw",
+                          "AlphaCurveC_8_Raw", "AlphaCurveC_10_Raw",
+                          "AlphaCurveC_12_Raw", "AlphaCurveC_14_Raw",
+                          "AlphaCurveC_15_Raw" } };
+                    static const char *curve_pair_keys[3][4] = {
+                        { "AlphaCurveDstRaw", "AlphaCurveSrcRaw",
+                          "AlphaCurveHr", "AlphaCurveOk" },
+                        { "AlphaCurveBDstRaw", "AlphaCurveBSrcRaw",
+                          "AlphaCurveBHr", "AlphaCurveBOk" },
+                        { "AlphaCurveCDstRaw", "AlphaCurveCSrcRaw",
+                          "AlphaCurveCHr", "AlphaCurveCOk" } };
+                    /* Destination r,g,b; source texel; dst then src channel. */
+                    static const DWORD curve_pairs[3][6] = {
+                        { 255ul, 0ul, 0ul, 0x0000000ful,
+                          V9X_PROBE_CHANNEL_RED, V9X_PROBE_CHANNEL_BLUE },
+                        { 0ul, 255ul, 0ul, 0x00000f00ul,
+                          V9X_PROBE_CHANNEL_GREEN, V9X_PROBE_CHANNEL_RED },
+                        { 0ul, 0ul, 255ul, 0x000000f0ul,
+                          V9X_PROBE_CHANNEL_BLUE, V9X_PROBE_CHANNEL_GREEN } };
+                    static const char *curve_vtx_keys[9] = {
+                        "VtxAlphaCurve_0_Raw", "VtxAlphaCurve_34_Raw",
+                        "VtxAlphaCurve_68_Raw", "VtxAlphaCurve_102_Raw",
+                        "VtxAlphaCurve_136_Raw", "VtxAlphaCurve_170_Raw",
+                        "VtxAlphaCurve_204_Raw", "VtxAlphaCurve_238_Raw",
+                        "VtxAlphaCurve_255_Raw" };
+                    /*
+                     * A channel is 0..255 after the layout expands it. 197
+                     * and 33 are the thresholds the hue classifier already
+                     * uses for "present" and "absent"; a curve that rises
+                     * must not fall by more than one 5-bit step, which is 8.
+                     */
+                    static const DWORD curve_present = 197ul;
+                    static const DWORD curve_absent = 33ul;
+                    static const DWORD curve_step_slack = 8ul;
+                    struct v9x_dds *curve_surface = 0;
+                    struct v9x_d3d_texture2 *curve_texture = 0;
+                    DWORD curve_handle = 0ul;
+                    WORD curve_dst_raw = 0u;
+                    WORD curve_src_raw = 0u;
+                    WORD curve_tex_raw[9];
+                    WORD curve_vtx_raw[9];
+                    DWORD curve_fill;
+                    DWORD ci;
+                    DWORD curve_pair;
+                    DWORD curve_ok;
+                    HRESULT curve_hr;
+                    HRESULT curve_draw_hr = 0;
+                    V9X_PROBE_COUNTS curve_before;
+                    V9X_PROBE_COUNTS curve_after;
+                    int curve_counts_ok = v9x_probe_counts(&curve_before);
+
+                    for (ci = 0ul; ci < 9ul; ++ci) {
+                        curve_tex_raw[ci] = 0u;
+                        curve_vtx_raw[ci] = 0u;
+                    }
+
+                    curve_fill = 0ul;
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT;
+                    desc.dwWidth = 64ul;
+                    desc.dwHeight = 64ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                    desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                    desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                    desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x0000f000ul;
+                    curve_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                          &curve_surface, 0);
+                    v9x_write_hresult("AlphaCurveSurfaceHr", curve_hr);
+                    if (curve_hr == 0 && curve_surface != 0) {
+                        curve_hr = curve_surface->vtbl->QueryInterface(
+                            curve_surface, &v9x_iid_d3d_texture2,
+                            (void **)&curve_texture);
+                    }
+                    if (curve_hr == 0 && curve_texture != 0) {
+                        curve_hr = curve_texture->vtbl->GetHandle(
+                            curve_texture, d3d_device, &curve_handle);
+                    }
+
+                    for (curve_pair = 0ul; curve_pair < 3ul; ++curve_pair) {
+                        DWORD dst_channel = curve_pairs[curve_pair][4];
+                        DWORD src_channel = curve_pairs[curve_pair][5];
+                        DWORD opaque_texel = curve_pairs[curve_pair][3] |
+                                             0x0000f000ul;
+
+                        curve_fill = target_layout.valid != 0ul
+                            ? (DWORD)v9x_layout_pack(&target_layout,
+                                                     curve_pairs[curve_pair][0],
+                                                     curve_pairs[curve_pair][1],
+                                                     curve_pairs[curve_pair][2])
+                            : 0x7c00ul;
+                        curve_fill |= curve_fill << 16;
+                        curve_draw_hr = 0;
+
+                        /* The destination on its own: nothing drawn over it. */
+                        v9x_fill_surface(d3d_target, curve_fill);
+                        curve_dst_raw = v9x_surface_pixel16(d3d_target,
+                                                            16ul, 16ul);
+                        v9x_write_uint(curve_pair_keys[curve_pair][0],
+                                       curve_dst_raw);
+
+                        if (curve_hr == 0 && curve_handle != 0ul) {
+                            /*
+                             * The source on its own: the opaque texel with the
+                             * blend off, which is the value the curve must
+                             * reach at A = 15 and nowhere else.
+                             */
+                            v9x_fill_surface(curve_surface,
+                                opaque_texel | (opaque_texel << 16));
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, curve_handle);
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_COPY);
+                            v9x_fill_surface(d3d_target, curve_fill);
+                            begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                            if (begin_hr == 0) {
+                                curve_draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) curve_draw_hr = end_hr;
+                            }
+                            curve_src_raw = v9x_surface_pixel16(d3d_target,
+                                                                16ul, 16ul);
+
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_MODULATE);
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_SRCBLEND,
+                                V9X_D3DBLEND_SRCALPHA);
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_DESTBLEND,
+                                V9X_D3DBLEND_INVSRCALPHA);
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                            for (ci = 0ul; ci < 9ul; ++ci) {
+                                DWORD texel = (curve_texel_alpha[ci] << 12) |
+                                              curve_pairs[curve_pair][3];
+
+                                v9x_fill_surface(curve_surface,
+                                                 texel | (texel << 16));
+                                v9x_fill_surface(d3d_target, curve_fill);
+                                begin_hr =
+                                    d3d_device->vtbl->BeginScene(d3d_device);
+                                if (begin_hr == 0) {
+                                    HRESULT step_hr =
+                                        d3d_device->vtbl->DrawPrimitive(
+                                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                            V9X_D3DVT_TLVERTEX, triangle,
+                                            3ul, 0ul);
+                                    end_hr =
+                                        d3d_device->vtbl->EndScene(d3d_device);
+                                    if (end_hr != 0) step_hr = end_hr;
+                                    if (step_hr != 0) curve_draw_hr = step_hr;
+                                }
+                                curve_tex_raw[ci] =
+                                    v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            }
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                        }
+
+                        v9x_write_uint(curve_pair_keys[curve_pair][1],
+                                       curve_src_raw);
+                        for (ci = 0ul; ci < 9ul; ++ci) {
+                            v9x_write_uint(curve_tex_keys[curve_pair][ci],
+                                           curve_tex_raw[ci]);
+                        }
+                        v9x_write_hresult(curve_pair_keys[curve_pair][2],
+                                          curve_draw_hr);
+
+                        curve_ok = curve_draw_hr == 0 && curve_handle != 0ul &&
+                            target_layout.valid != 0ul ? 1ul : 0ul;
+                        if (curve_ok != 0ul) {
+                            /* A = 0 must leave the destination standing. */
+                            if (v9x_layout_rgb(&target_layout, curve_tex_raw[0],
+                                    dst_channel) < curve_present ||
+                                v9x_layout_rgb(&target_layout, curve_tex_raw[0],
+                                    src_channel) > curve_absent) {
+                                curve_ok = 0ul;
+                            }
+                            /* A = 15 must be the source and nothing else. */
+                            if (v9x_layout_rgb(&target_layout, curve_tex_raw[8],
+                                    src_channel) < curve_present ||
+                                v9x_layout_rgb(&target_layout, curve_tex_raw[8],
+                                    dst_channel) > curve_absent) {
+                                curve_ok = 0ul;
+                            }
+                            for (ci = 1ul; ci < 9ul; ++ci) {
+                                DWORD prev = v9x_layout_rgb(&target_layout,
+                                    curve_tex_raw[ci - 1ul], src_channel);
+                                DWORD here = v9x_layout_rgb(&target_layout,
+                                    curve_tex_raw[ci], src_channel);
+
+                                if (here + curve_step_slack < prev) {
+                                    curve_ok = 0ul;  /* fell as A rose */
+                                }
+                            }
+                        }
+                        v9x_write_uint(curve_pair_keys[curve_pair][3], curve_ok);
+                    }
+                    if (curve_counts_ok) {
+                        (void)v9x_probe_counts(&curve_after);
+                        v9x_probe_write_deltas("AlphaCurve", &curve_before,
+                                               &curve_after);
+                    }
+
+                    if (curve_texture != 0) {
+                        curve_texture->vtbl->Release(curve_texture);
+                    }
+                    if (curve_surface != 0) {
+                        curve_surface->vtbl->Release(curve_surface);
+                    }
+
+                    /*
+                     * The same walk with vertex alpha and no texture. The
+                     * engine's other alpha path: the untextured blend takes A
+                     * from the vertex, and D3DVertexAlphaBlendOk has read 0
+                     * on this card since the part was first driven.
+                     */
+                    v9x_probe_reset_state(d3d_device, triangle);
+                    if (curve_counts_ok) {
+                        (void)v9x_probe_counts(&curve_before);
+                    }
+                    /* Back to the first pair's operands: red under blue. */
+                    curve_fill = target_layout.valid != 0ul
+                        ? (DWORD)v9x_layout_pack(&target_layout, 255ul, 0ul, 0ul)
+                        : 0x7c00ul;
+                    curve_fill |= curve_fill << 16;
+                    v9x_fill_surface(d3d_target, curve_fill);
+                    curve_dst_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                    curve_draw_hr = 0;
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                    triangle[0].color = 0xff0000fful;
+                    triangle[1].color = 0xff0000fful;
+                    triangle[2].color = 0xff0000fful;
+                    v9x_fill_surface(d3d_target, curve_fill);
+                    begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (begin_hr == 0) {
+                        curve_draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        if (end_hr != 0) curve_draw_hr = end_hr;
+                    }
+                    v9x_write_uint("VtxAlphaCurveSrcRaw",
+                                   v9x_surface_pixel16(d3d_target, 16ul, 16ul));
+                    v9x_write_uint("VtxAlphaCurveDstRaw", curve_dst_raw);
+
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_SRCBLEND, V9X_D3DBLEND_SRCALPHA);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_DESTBLEND,
+                        V9X_D3DBLEND_INVSRCALPHA);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                    for (ci = 0ul; ci < 9ul; ++ci) {
+                        DWORD vertex_colour =
+                            (curve_vertex_alpha[ci] << 24) | 0x000000fful;
+
+                        triangle[0].color = vertex_colour;
+                        triangle[1].color = vertex_colour;
+                        triangle[2].color = vertex_colour;
+                        v9x_fill_surface(d3d_target, curve_fill);
+                        begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                        if (begin_hr == 0) {
+                            HRESULT step_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                            if (end_hr != 0) step_hr = end_hr;
+                            if (step_hr != 0) curve_draw_hr = step_hr;
+                        }
+                        curve_vtx_raw[ci] =
+                            v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                        v9x_write_uint(curve_vtx_keys[ci], curve_vtx_raw[ci]);
+                    }
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                    v9x_write_hresult("VtxAlphaCurveHr", curve_draw_hr);
+
+                    curve_ok = curve_draw_hr == 0 &&
+                        target_layout.valid != 0ul ? 1ul : 0ul;
+                    if (curve_ok != 0ul) {
+                        if (v9x_layout_red(&target_layout,
+                                           curve_vtx_raw[0]) < curve_present ||
+                            v9x_layout_blue(&target_layout,
+                                            curve_vtx_raw[0]) > curve_absent) {
+                            curve_ok = 0ul;
+                        }
+                        if (v9x_layout_blue(&target_layout,
+                                            curve_vtx_raw[8]) < curve_present ||
+                            v9x_layout_red(&target_layout,
+                                           curve_vtx_raw[8]) > curve_absent) {
+                            curve_ok = 0ul;
+                        }
+                        for (ci = 1ul; ci < 9ul; ++ci) {
+                            DWORD prev = v9x_layout_blue(&target_layout,
+                                                         curve_vtx_raw[ci - 1ul]);
+                            DWORD here = v9x_layout_blue(&target_layout,
+                                                         curve_vtx_raw[ci]);
+
+                            if (here + curve_step_slack < prev) {
+                                curve_ok = 0ul;
+                            }
+                        }
+                    }
+                    v9x_write_uint("VtxAlphaCurveOk", curve_ok);
+                    if (curve_counts_ok) {
+                        (void)v9x_probe_counts(&curve_after);
+                        v9x_probe_write_deltas("VtxAlphaCurve", &curve_before,
+                                               &curve_after);
                     }
                 }
 

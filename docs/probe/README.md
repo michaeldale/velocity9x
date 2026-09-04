@@ -101,3 +101,23 @@ first run after a reboot twice read rungs as undrawn that the next run read
 correctly, because a texture handle or a blend left on by the previous rung
 landed on whichever rung came next. A rung that needs a non-default state sets
 it after the reset, visibly.
+
+## The alpha transfer curve
+
+`AlphaCurve_<a>_Raw`, `AlphaCurveB_*`, `AlphaCurveC_*` and
+`VtxAlphaCurve_<a>_Raw`. A `*Ok` key says a rung's expectation was met; it does
+not say what a failing part did instead. This rung says that. A known primary
+fills the target, a uniform ARGB4444 texture is drawn over it nine times with
+the texel's alpha stepped 0, 2, 4 ... 14, 15, and both ends are measured rather
+than assumed - `*DstRaw` is the fill read back with nothing over it, `*SrcRaw`
+the same texel drawn with the blend off. On a correct part the raws interpolate
+linearly between the two.
+
+The walk is taken three times over rotated operand pairs (blue over red, red
+over green, green over blue), which is what separates a blend that mishandles
+alpha from one an operand never reaches: if the output does not rotate with the
+operands, they are not what the blender is using. It is then taken once more
+with vertex alpha on an untextured triangle - the engine's other alpha path -
+so a defect common to both is told apart from one that is not. That rotation is
+what identified the Trio3D/2X defect:
+`docs/decisions/2026-09-04-what-the-trio3d-blend-does-with-its-operands.md`.
