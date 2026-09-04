@@ -44,6 +44,19 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
     16ul            /* depth_bits_per_pixel */
 };
 
+/*
+ * Whether this part's S3D performs the alpha blend its command word
+ * advertises. The 16-bit side is the authority - it knows which chip it bound
+ * - and publishes the answer in the engine descriptor; see
+ * V9X_DD_ENGINE_CAP_S3D_ALPHA. Absent means the ViRGE/DX's engine on a part
+ * that is not a ViRGE/DX, which today is the Trio3D/2X.
+ */
+static int v9x_d3d_virge_has_alpha(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_S3D_ALPHA) != 0ul;
+}
+
 /* Which ViRGE texture format a surface is sampled as. */
 #define V9X_TEX_FORMAT_ARGB1555 0
 #define V9X_TEX_FORMAT_ARGB4444 1
@@ -597,6 +610,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     DWORD texture_level = 0ul;
     BYTE trilinear_alpha = 0u;
     int trilinear_blend = 0;
+    int trilinear_degrade = 0;
     int texture_mipmapped = 0;
     DWORD texture_levels = 0ul;
     DWORD texture_format = V9X_TEX_FORMAT_ARGB1555;
@@ -788,10 +802,23 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                 context->alpha_blend_enable == 0ul &&
                 level < texture_levels &&
                 (texture_d & 0x07fffffful) != 0ul) {
-                trilinear_alpha = (BYTE)v9x_float_to_long(
-                    ((float)(texture_d & 0x07fffffful) /
-                     134217727.0f) * 255.0f);
-                trilinear_blend = 1;
+                if (v9x_d3d_virge_has_alpha()) {
+                    trilinear_alpha = (BYTE)v9x_float_to_long(
+                        ((float)(texture_d & 0x07fffffful) /
+                         134217727.0f) * 255.0f);
+                    trilinear_blend = 1;
+                } else {
+                    /*
+                     * No blend on this part, so no second pass: the two
+                     * passes would draw level N and then whatever encoding 11
+                     * does here, which is not a blend of anything
+                     * (docs\decisions\2026-09-04-the-mip-ladder.md). Bilinear
+                     * on the level the chip selected is what it can do on its
+                     * own, and it is the honest half of trilinear rather than
+                     * a wrong whole.
+                     */
+                    trilinear_degrade = 1;
+                }
                 texture_d = level << 27;
             }
         }
@@ -944,7 +971,13 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         } else if (texture_mipmapped &&
                    context->texture_min ==
                        V9X_D3DFILTER_LINEARMIPLINEAR) {
-            command |= trilinear_blend
+            /*
+             * The two-pass form draws level N here and blends N+1 over it, so
+             * this pass is bilinear on one level. The degraded form is that
+             * same pass with no second one. Only a part that is going to do
+             * neither gets the chip's own LINEAR_MIP_LINEAR.
+             */
+            command |= (trilinear_blend || trilinear_degrade)
                 ? V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST
                 : V9X_VIRGE_3D_CMD_LINEAR_MIP_LINEAR;
         } else if (context->texture_min == V9X_D3DFILTER_LINEAR ||

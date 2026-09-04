@@ -1721,6 +1721,30 @@ static DWORD v9x_probe_hue(const V9X_PIXEL_LAYOUT *layout, WORD raw)
     return V9X_PROBE_HUE_OTHER;
 }
 
+/*
+ * Is this pixel exactly the mip ladder's level n - red, green, blue, magenta
+ * for 0..3? Red has no name in the hue classifier, so it is the one checked
+ * by channel. It tells a trilinear result that is a genuine mix of two levels
+ * from one that is a single level, which is what a part whose engine cannot
+ * blend correctly degrades to.
+ */
+static int v9x_probe_is_level(const V9X_PIXEL_LAYOUT *layout, WORD raw,
+                              DWORD level)
+{
+    static const DWORD level_hue[4] = {
+        V9X_PROBE_HUE_OTHER, V9X_PROBE_HUE_GREEN,
+        V9X_PROBE_HUE_BLUE, V9X_PROBE_HUE_MAGENTA };
+
+    if (level > 3ul) {
+        return 0;
+    }
+    if (level == 0ul) {
+        return v9x_layout_red(layout, raw) >= 197ul &&
+               v9x_layout_green(layout, raw) <= 33ul &&
+               v9x_layout_blue(layout, raw) <= 33ul;
+    }
+    return v9x_probe_hue(layout, raw) == level_hue[level] ? 1 : 0;
+}
 
 /* Three 0..255 channels as the surface would store them. Rounding is
  * to nearest so 255 lands on the full field rather than one short of it. */
@@ -4901,6 +4925,35 @@ void __stdcall V9xDdrawProbeEntry(void)
                         }
                     }
                     v9x_write_uint("MipTriOk", ladder_ok);
+
+                    /*
+                     * And the other acceptable answer: no blend at all.
+                     *
+                     * A part whose engine cannot blend degrades trilinear to
+                     * bilinear on the level it selected, which is the honest
+                     * half of trilinear rather than a wrong whole. That reads
+                     * as one of the two levels' own colours, exactly - not as
+                     * a mix, and not as the rotation a broken blend produces.
+                     * A run where both MipTriOk and MipTriDegradedOk are zero
+                     * is the defect; either one alone is a driver doing what
+                     * its chip allows.
+                     */
+                    ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
+                                ladder_shape_ok != 0ul &&
+                                target_layout.valid != 0ul ? 1ul : 0ul;
+                    if (ladder_ok != 0ul) {
+                        for (li2 = 0ul; li2 < 3ul; ++li2) {
+                            if (!v9x_probe_is_level(&target_layout,
+                                                    ladder_tri_raw[li2],
+                                                    li2) &&
+                                !v9x_probe_is_level(&target_layout,
+                                                    ladder_tri_raw[li2],
+                                                    li2 + 1ul)) {
+                                ladder_ok = 0ul;
+                            }
+                        }
+                    }
+                    v9x_write_uint("MipTriDegradedOk", ladder_ok);
 
                     if (ladder_tex != 0) ladder_tex->vtbl->Release(ladder_tex);
                     for (li2 = 4ul; li2 > 0ul; --li2) {

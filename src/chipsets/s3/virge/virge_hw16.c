@@ -56,7 +56,33 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VBLANK |
-                   V9X_DD_ENGINE_CAP_D3D;
+                   V9X_DD_ENGINE_CAP_D3D |
+                   V9X_DD_ENGINE_CAP_S3D_ALPHA;
+}
+
+/*
+ * The Trio3D/2X's engine is the ViRGE/DX's, less the alpha blend.
+ *
+ * The first place this project has had to say that two parts sharing an
+ * engine are not the same part. Everything about the S3D core here is the
+ * ViRGE's - the MMIO window, the register file, the triangle command - and
+ * measurement on A8U4I5 says the one thing it does not have is the blend:
+ * none of the four encodings of the command word's alpha field performs one
+ * (docs\decisions\2026-09-04-no-encoding-of-the-alpha-field-blends-on-the-trio3d.md).
+ *
+ * So the descriptor is split here rather than in the 32-bit HAL, which is
+ * where every other chip fact is decided: the 16-bit side is the single
+ * authority on what may be advertised.
+ */
+static void v9x_trio3d2x_fill_engine(unsigned long framebuffer_linear_base,
+                                     unsigned long *control_linear_base,
+                                     unsigned long *mapped_aperture_bytes,
+                                     unsigned long *engine_type,
+                                     unsigned long *engine_caps)
+{
+    v9x_virge_fill_engine(framebuffer_linear_base, control_linear_base,
+                          mapped_aperture_bytes, engine_type, engine_caps);
+    *engine_caps &= ~V9X_DD_ENGINE_CAP_S3D_ALPHA;
 }
 
 /* Not static: the family table points at it, and the link map is where the
@@ -75,7 +101,7 @@ const V9X_HW16_DEVICE v9x_virge_device = {
 };
 
 /*
- * The Trio3D/2X, driven by the ViRGE's hooks.
+ * The Trio3D/2X, driven by the ViRGE's hooks - all but one of them.
  *
  * It sits in this object rather than the Trio64's deliberately, and the name
  * is the reason it is easy to put in the wrong one: despite "Trio" it is an
@@ -90,6 +116,10 @@ const V9X_HW16_DEVICE v9x_virge_device = {
  * it misbehaves: a 16-slot command FIFO where the ViRGE/DX has 8, and an
  * 8 MiB decode mask where the ViRGE/DX has 4 MiB. See
  * docs\decisions\2026-09-02-trio3d-on-the-s3-path.md.
+ *
+ * A third difference is no longer modelled but measured, and it is why this
+ * entry has an engine function of its own: the part does not perform the S3D
+ * alpha blend. See v9x_trio3d2x_fill_engine above.
  */
 const V9X_HW16_DEVICE v9x_trio3d2x_device = {
     0x5333u, 0x8a13u,
@@ -100,5 +130,5 @@ const V9X_HW16_DEVICE v9x_trio3d2x_device = {
     "directdraw-fill-blt",
     "hardware-s3d",
     v9x_virge_enable_aperture,
-    v9x_virge_fill_engine
+    v9x_trio3d2x_fill_engine
 };
