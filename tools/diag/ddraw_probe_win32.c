@@ -2349,13 +2349,40 @@ void __stdcall V9xDdrawProbeEntry(void)
         v9x_write_mode("AfterMode", &desc);
     }
 
+    /*
+     * The flipping chain, asked for as a 3D-capable one first.
+     *
+     * A game in exclusive mode renders onto the back buffer of this chain, and
+     * Direct3D will only point a device at a surface created with
+     * DDSCAPS_3DDEVICE - without it, SetRenderTarget refuses the back buffer
+     * (measured on the emulated ViRGE/DX: 0x88760064). Every render target
+     * this probe used before was an offscreen surface, so the cap was never
+     * needed and never asked for, and the whole of what an application
+     * actually draws onto went unmeasured.
+     *
+     * The fall-back matters as much as the request. A driver that refuses a
+     * 3D-capable primary chain must not take the rest of the probe down with
+     * it, so the plain chain is created instead and PrimaryChain3dHr says
+     * which one this run got. The Chain_* rung is skipped on the fall-back
+     * rather than reporting a failure it did not measure.
+     */
     v9x_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_BACKBUFFERCOUNT;
     desc.ddsCaps.dwCaps = V9X_DDSCAPS_PRIMARYSURFACE | V9X_DDSCAPS_FLIP |
-                          V9X_DDSCAPS_COMPLEX;
+                          V9X_DDSCAPS_COMPLEX | V9X_DDSCAPS_3DDEVICE;
     desc.dwBackBufferCount = 1ul;
     hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &primary, 0);
+    v9x_write_hresult("PrimaryChain3dHr", hr);
+    if (hr != 0) {
+        v9x_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_BACKBUFFERCOUNT;
+        desc.ddsCaps.dwCaps = V9X_DDSCAPS_PRIMARYSURFACE | V9X_DDSCAPS_FLIP |
+                              V9X_DDSCAPS_COMPLEX;
+        desc.dwBackBufferCount = 1ul;
+        hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &primary, 0);
+    }
     v9x_write_hresult("PrimaryHr", hr);
     if (hr == 0) {
         v9x_zero(&desc, sizeof(desc));
@@ -6374,6 +6401,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             if (ramp_src_surf != 0) {
                                 ramp_src_surf->vtbl->Release(ramp_src_surf);
                             }
+
                             if (ramp_dst_surf != 0) {
                                 ramp_dst_surf->vtbl->Release(ramp_dst_surf);
                             }
