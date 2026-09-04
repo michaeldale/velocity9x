@@ -1322,6 +1322,16 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD done_seen;
     DWORD done_missing;
+    /*
+     * Appended 2026-09-04, once the S3 Trio3D/2X had written done_missing for
+     * every one of 117 probe cells: the wait now gives up asking a part that
+     * has answered none of a long run of waits, and done_skipped counts the
+     * waits taken after that decision, which spun for the bit not at all. A
+     * run with done_skipped rising and done_seen at zero is a part without the
+     * bit; done_skipped non-zero on a part whose done_seen is also non-zero
+     * would be the rule firing when it should not.
+     */
+    DWORD done_skipped;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

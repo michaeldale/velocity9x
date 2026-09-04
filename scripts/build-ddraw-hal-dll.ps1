@@ -48,6 +48,10 @@ $privateIncludeDir = Join-Path $repoRoot "src\display32"
 # One entry per translation unit. Object names are flattened into one output
 # directory, so two sources may not share a base name.
 $sources = @(
+    # Policy the engine asks rather than decides: whether an idle wait should
+    # keep spinning for a 3D-done bit the part may not have. Pure, and
+    # host-tested in tests\host\test_donewait.c.
+    "src\common\donewait.c",
     "src\display32\ddhal_core.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",

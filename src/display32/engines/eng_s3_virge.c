@@ -14,6 +14,8 @@
  */
 #include "ddhal_internal.h"
 
+#include "velocity9x/donewait.h"
+
 static int v9x_engine_ready(void)
 {
     return v9x_hal != 0 &&
@@ -171,6 +173,18 @@ void v9x_engine_3d_launched(void)
  */
 #define V9X_VIRGE_DONE_SPIN_LIMIT 4096ul
 
+/*
+ * The Trio3D/2X answers none of these waits, so the spin above is 4,096 status
+ * reads a triangle for a bit that never comes
+ * (docs\decisions\2026-09-04-the-trio3d-runs-the-matrix.md). The rule for when
+ * to stop asking is policy and lives in src\common\donewait.c, host-tested;
+ * this file only reports what each wait saw. Zero-initialised static state is
+ * the "spin, having seen nothing" case, which is what a fresh
+ * v9x_done_wait_reset produces, so the DLL needs no init hook to be correct at
+ * load.
+ */
+static struct v9x_done_wait v9x_virge_done_wait;
+
 static int v9x_virge_settled(void)
 {
     DWORD status = v9x_engine_status();
@@ -182,11 +196,21 @@ static int v9x_virge_settled(void)
     if (!v9x_virge_3d_pending) {
         return 1;
     }
+    if (!v9x_done_wait_should_spin(&v9x_virge_done_wait)) {
+        /*
+         * Decided against: this part has never produced the bit. Idle is
+         * taken at its word, as it was before the bit was ever waited for.
+         */
+        v9x_virge_3d_pending = 0;
+        ++v9x_hal->d3d_diagnostics.done_skipped;
+        return 1;
+    }
     spins = V9X_VIRGE_DONE_SPIN_LIMIT;
     while (spins-- != 0ul) {
         status = v9x_engine_status();
         if ((status & V9X_VIRGE_STATUS_3D_DONE) != 0ul) {
             v9x_virge_3d_pending = 0;
+            v9x_done_wait_seen(&v9x_virge_done_wait);
             ++v9x_hal->d3d_diagnostics.done_seen;
             /* The engine may have gone busy again while we looked. */
             return (status & V9X_VIRGE_STATUS_IDLE) != 0ul;
@@ -196,6 +220,7 @@ static int v9x_virge_settled(void)
         }
     }
     v9x_virge_3d_pending = 0;
+    v9x_done_wait_missed(&v9x_virge_done_wait);
     ++v9x_hal->d3d_diagnostics.done_missing;
     return 1;
 }

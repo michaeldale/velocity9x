@@ -402,6 +402,7 @@ void __stdcall V9xTraceDumpEntry(void)
                   snapshot.d3d.texture_refused_vidmem);
     v9x_write_uint("D3dDoneSeen", snapshot.d3d.done_seen);
     v9x_write_uint("D3dDoneMissing", snapshot.d3d.done_missing);
+    v9x_write_uint("D3dDoneSkipped", snapshot.d3d.done_skipped);
     {
         DWORD tail_index;
         char tail_name[16];

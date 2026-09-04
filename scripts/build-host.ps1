@@ -63,6 +63,7 @@ $sourceNames = @(
     "src\common\mtrr.c",
     "src\common\d3dmode.c",
     "src\common\vbe_crtc.c",
+    "src\common\donewait.c",
     # A leaf translation unit that happens to live under src\display32\d3d: it
     # includes nothing from the DDHAL side, so the host build can reach it
     # without dragging in MMIO or the #pragma aux converters. It stays on the
@@ -87,6 +88,7 @@ $sourceNames = @(
     "tests\host\test_vbe_crtc.c",
     "tests\host\test_d3d_zfixed.c",
     "tests\host\test_d3d_raster.c",
+    "tests\host\test_donewait.c",
     "tests\host\test_main.c"
 )
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })
