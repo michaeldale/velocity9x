@@ -181,3 +181,34 @@ Two things, and neither is alpha: the noise ground (2) and the flat green panel
 same frame, with nothing refused and no fault, so the next move is an
 instrument rather than a hypothesis - what those particular draws bind and with
 what state.
+
+## Third run, 2026-09-04: 640x480, and the ground was never a sampler fault
+
+Full record in
+[`../decisions/2026-09-04-four-megabytes-is-the-resolution-limit.md`](../decisions/2026-09-04-four-megabytes-is-the-resolution-limit.md).
+
+**313 3DMarks at 800x600, 475 at 640x480**, same boot, same driver. The card
+has 4 MiB and 3DMark's own settings page reports 3,750 KB of it consumed by a
+triple frame buffer and a 16-bit depth buffer at 800x600, against 2,400 KB at
+640x480.
+
+Item 2 - the race scene's ground as chevron noise - **is resolved, and it was
+not a sampler defect**. Mip-filtered draws go from 2,861 to 418,390 between the
+two resolutions: under 800x600's memory pressure DirectDraw cannot lay a mip
+chain out contiguously often enough, the engine's contiguity guard correctly
+falls back to a plain LINEAR filter, and a large receding ground plane sampled
+without mipmaps aliases into exactly those moving chevrons. At 640x480 the
+ground is smooth. Nothing was refused in either run.
+
+Items 1, 3, 5, 7 - the black boxes and the magenta panels - are **unchanged at
+both resolutions**, and they are now the interesting ones: on this boot the
+probe says the card's alpha blend is correct in every rung it has. So the black
+box is not "the part cannot blend". 3DMark's sprite draws differ from the
+probe's alpha cells in three ways the probe does not cross - `Z:LESS` with no
+depth write against depth-off, LINEAR against NEAREST, and UNLIT against
+LIT+MODULATE. That is the rung to write next.
+
+Frames: `../images/3dmark99-trio3d-2026-09-04-800x600-race.png`,
+`../images/3dmark99-trio3d-2026-09-04-640x480-race.png`,
+`../images/3dmark99-trio3d-2026-09-04-640x480-corridor.png`,
+`../images/3dmark99-trio3d-2026-09-04-640x480-score.png`.
