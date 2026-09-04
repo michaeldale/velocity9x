@@ -4613,6 +4613,309 @@ void __stdcall V9xDdrawProbeEntry(void)
 
                 v9x_probe_reset_state(d3d_device, triangle);
                 /*
+                 * THE MIP LADDER: which level did the sampler actually read.
+                 *
+                 * The probe's mip and trilinear rungs, and the matrix's
+                 * mipnear and trilin cells, do not answer that. The matrix
+                 * loosens its rule for a chained trilinear cell to "something
+                 * was drawn on both halves", because a genuine trilinear
+                 * result is neither level's hue - so a sampler reading a
+                 * wrong but non-black level passes. The command-word census
+                 * showed the cost of that: 3,775 of 3DMark 99's draws use a
+                 * mip filter, they are the only mip usage in the whole run,
+                 * and they are where the race scene's noise ground has to
+                 * live
+                 * (docs\decisions\2026-09-04-the-command-word-census.md).
+                 *
+                 * This rung gives every level its own colour and asks the
+                 * question directly. A four-level chain, 128 down to 16, is
+                 * filled red, green, blue, magenta - four hues the classifier
+                 * separates, and three adjacent pairs each of which leaves one
+                 * channel absent, which is what makes a blend of two levels
+                 * checkable rather than merely non-black.
+                 *
+                 * The triangle's u axis spans 47.5 pixels, the same geometry
+                 * the trilinear rung above is calibrated against, so the
+                 * texel-per-pixel ratio is set by the tu span alone:
+                 * ratio = tu * 128 / 47.5. The four ladder ratios are just
+                 * above 1, 2, 4 and 8, which puts the level index a tenth of
+                 * a level clear of each boundary in either direction - floor
+                 * and nearest agree there, so the reading does not depend on
+                 * which rounding rule a part uses.
+                 *
+                 * Keys: MipLadderAddr<n> and MipLadderDelta<n> say where the
+                 * levels went - a reading is worth nothing if the chain is
+                 * not the shape it was asked for - then MipLadder_<n>_Raw for
+                 * the four MIPNEAREST steps and MipTri_<n>_Raw for the three
+                 * LINEARMIPLINEAR steps half a level between them.
+                 */
+                {
+                    static const WORD ladder_fill[4] = {
+                        0xfc00u,    /* level 0, 128 texels: red     */
+                        0x83e0u,    /* level 1,  64 texels: green   */
+                        0x801fu,    /* level 2,  32 texels: blue    */
+                        0xfc1fu };  /* level 3,  16 texels: magenta */
+                    static const DWORD ladder_hue[4] = {
+                        V9X_PROBE_HUE_OTHER, V9X_PROBE_HUE_GREEN,
+                        V9X_PROBE_HUE_BLUE, V9X_PROBE_HUE_MAGENTA };
+                    /* tu spans: ratio 1.1, 2.2, 4.4 and 8.8 texels a pixel. */
+                    static const float ladder_span[4] = {
+                        0.40820312f, 0.81640625f, 1.6328125f, 3.265625f };
+                    /* And half a level between each pair: 1.56, 3.11, 6.22. */
+                    static const float ladder_half[3] = {
+                        0.578125f, 1.15625f, 2.3125f };
+                    static const char *ladder_keys[4] = {
+                        "MipLadder_0_Raw", "MipLadder_1_Raw",
+                        "MipLadder_2_Raw", "MipLadder_3_Raw" };
+                    static const char *ladder_addr_keys[4] = {
+                        "MipLadderAddr0", "MipLadderAddr1",
+                        "MipLadderAddr2", "MipLadderAddr3" };
+                    static const char *ladder_delta_keys[3] = {
+                        "MipLadderDelta1", "MipLadderDelta2",
+                        "MipLadderDelta3" };
+                    static const char *ladder_tri_keys[3] = {
+                        "MipTri_0_Raw", "MipTri_1_Raw", "MipTri_2_Raw" };
+                    /* The expected byte distance from each level to the next
+                     * on a chain DirectDraw laid out end to end: 128, 64 and
+                     * 32 texels square at two bytes a texel. */
+                    static const DWORD ladder_expect_delta[3] = {
+                        32768ul, 8192ul, 2048ul };
+                    struct v9x_dds *ladder[4];
+                    struct v9x_d3d_texture2 *ladder_tex = 0;
+                    DWORD ladder_handle = 0ul;
+                    DWORD ladder_addr[4];
+                    WORD ladder_raw[4];
+                    WORD ladder_tri_raw[3];
+                    HRESULT ladder_hr;
+                    HRESULT ladder_draw_hr = 0;
+                    DWORD li2;
+                    DWORD ladder_ok;
+                    DWORD ladder_shape_ok;
+
+                    for (li2 = 0ul; li2 < 4ul; ++li2) {
+                        ladder[li2] = 0;
+                        ladder_addr[li2] = 0ul;
+                        ladder_raw[li2] = 0u;
+                    }
+                    for (li2 = 0ul; li2 < 3ul; ++li2) {
+                        ladder_tri_raw[li2] = 0u;
+                    }
+
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT | V9X_DDSD_PIXELFORMAT |
+                                   V9X_DDSD_MIPMAPCOUNT;
+                    desc.dwWidth = 128ul;
+                    desc.dwHeight = 128ul;
+                    desc.dwMipMapCount = 4ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE |
+                                          V9X_DDSCAPS_COMPLEX |
+                                          V9X_DDSCAPS_MIPMAP |
+                                          V9X_DDSCAPS_VIDEOMEMORY;
+                    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+                    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                    ladder_hr = ddraw->vtbl->CreateSurface(ddraw, &desc,
+                                                           &ladder[0], 0);
+                    v9x_write_hresult("MipLadderSurfaceHr", ladder_hr);
+
+                    /* Down the chain, filling and recording as we go. */
+                    for (li2 = 0ul; li2 < 4ul && ladder_hr == 0; ++li2) {
+                        V9X_DDSURFACEDESC ladder_desc;
+
+                        if (ladder[li2] == 0) {
+                            ladder_hr = 0x80004005ul;
+                            break;
+                        }
+                        v9x_fill_surface(ladder[li2],
+                            (DWORD)ladder_fill[li2] |
+                            ((DWORD)ladder_fill[li2] << 16));
+                        /*
+                         * Lock, not GetSurfaceDesc. A video-memory surface's
+                         * desc carries lpSurface = 0 until it is locked -
+                         * which is what TexMipTopAddress and TexMipLevelAddress
+                         * have been reading as zero all along - so the chain's
+                         * shape has to be taken the way the mip-gap rung above
+                         * takes it.
+                         */
+                        v9x_zero(&ladder_desc, sizeof(ladder_desc));
+                        ladder_desc.dwSize = sizeof(ladder_desc);
+                        if (ladder[li2]->vtbl->Lock(ladder[li2], 0,
+                                &ladder_desc, V9X_DDLOCK_WAIT, 0) == 0) {
+                            ladder_addr[li2] = (DWORD)ladder_desc.lpSurface;
+                            ladder[li2]->vtbl->Unlock(ladder[li2], 0);
+                        }
+                        v9x_write_uint(ladder_addr_keys[li2],
+                                       ladder_addr[li2]);
+                        if (li2 == 3ul) {
+                            break;
+                        }
+                        caps.dwCaps = V9X_DDSCAPS_MIPMAP;
+                        ladder_hr = ladder[li2]->vtbl->GetAttachedSurface(
+                            ladder[li2], &caps, &ladder[li2 + 1ul]);
+                    }
+                    v9x_write_hresult("MipLadderChainHr", ladder_hr);
+
+                    ladder_shape_ok = ladder_hr == 0 ? 1ul : 0ul;
+                    for (li2 = 0ul; li2 < 3ul; ++li2) {
+                        DWORD delta = ladder_addr[li2 + 1ul] -
+                                      ladder_addr[li2];
+
+                        v9x_write_uint(ladder_delta_keys[li2], delta);
+                        if (delta != ladder_expect_delta[li2]) {
+                            ladder_shape_ok = 0ul;
+                        }
+                    }
+                    v9x_write_uint("MipLadderShapeOk", ladder_shape_ok);
+
+                    if (ladder_hr == 0 && ladder[0] != 0) {
+                        ladder_hr = ladder[0]->vtbl->QueryInterface(
+                            ladder[0], &v9x_iid_d3d_texture2,
+                            (void **)&ladder_tex);
+                    }
+                    if (ladder_hr == 0 && ladder_tex != 0) {
+                        ladder_hr = ladder_tex->vtbl->GetHandle(
+                            ladder_tex, d3d_device, &ladder_handle);
+                    }
+                    if (ladder_hr == 0 && ladder_handle != 0ul) {
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE, ladder_handle);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                            V9X_D3DTBLEND_COPY);
+                        for (li2 = 0ul; li2 < 7ul; ++li2) {
+                            int trilinear = li2 >= 4ul;
+                            float span = trilinear
+                                ? ladder_half[li2 - 4ul]
+                                : ladder_span[li2];
+
+                            (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMIN,
+                                trilinear ? V9X_D3DFILTER_LINEARMIPLINEAR
+                                          : V9X_D3DFILTER_MIPNEAREST);
+                            v9x_fill_surface(d3d_target, 0ul);
+                            triangle[0].tu = 0.0f; triangle[0].tv = 0.0f;
+                            triangle[1].tu = span; triangle[1].tv = 0.0f;
+                            triangle[2].tu = 0.0f; triangle[2].tv = span;
+                            begin_hr =
+                                d3d_device->vtbl->BeginScene(d3d_device);
+                            if (begin_hr == 0) {
+                                HRESULT step_hr =
+                                    d3d_device->vtbl->DrawPrimitive(
+                                        d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                        V9X_D3DVT_TLVERTEX, triangle, 3ul,
+                                        0ul);
+                                end_hr =
+                                    d3d_device->vtbl->EndScene(d3d_device);
+                                if (end_hr != 0) step_hr = end_hr;
+                                if (step_hr != 0) ladder_draw_hr = step_hr;
+                            }
+                            if (trilinear) {
+                                ladder_tri_raw[li2 - 4ul] =
+                                    v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                                v9x_write_uint(ladder_tri_keys[li2 - 4ul],
+                                               ladder_tri_raw[li2 - 4ul]);
+                            } else {
+                                ladder_raw[li2] =
+                                    v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                                v9x_write_uint(ladder_keys[li2],
+                                               ladder_raw[li2]);
+                            }
+                        }
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            V9X_D3DFILTER_NEAREST);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                    }
+                    v9x_write_hresult("MipLadderHr", ladder_draw_hr);
+
+                    /*
+                     * Level 0 is red and the hue classifier has no name for
+                     * red, so it is checked by channel; the other three are
+                     * hues. Each step must be exactly its own level - this is
+                     * the rule the matrix's loosened one replaced.
+                     */
+                    ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
+                                ladder_shape_ok != 0ul &&
+                                target_layout.valid != 0ul ? 1ul : 0ul;
+                    if (ladder_ok != 0ul) {
+                        if (v9x_layout_red(&target_layout,
+                                           ladder_raw[0]) < 197ul ||
+                            v9x_layout_green(&target_layout,
+                                             ladder_raw[0]) > 33ul ||
+                            v9x_layout_blue(&target_layout,
+                                            ladder_raw[0]) > 33ul) {
+                            ladder_ok = 0ul;
+                        }
+                        for (li2 = 1ul; li2 < 4ul; ++li2) {
+                            if (v9x_probe_hue(&target_layout,
+                                              ladder_raw[li2]) !=
+                                ladder_hue[li2]) {
+                                ladder_ok = 0ul;
+                            }
+                        }
+                    }
+                    v9x_write_uint("MipLadderOk", ladder_ok);
+
+                    /*
+                     * A trilinear step between levels k and k+1 may be any
+                     * mix of their two colours, so what it may not have is
+                     * the channel neither of them has: blue between red and
+                     * green, red between green and blue, green between blue
+                     * and magenta. And it must have both of the channels they
+                     * do share the ends of, or nothing was blended at all.
+                     */
+                    ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
+                                ladder_shape_ok != 0ul &&
+                                target_layout.valid != 0ul ? 1ul : 0ul;
+                    if (ladder_ok != 0ul) {
+                        if (v9x_layout_blue(&target_layout,
+                                            ladder_tri_raw[0]) > 33ul ||
+                            v9x_layout_red(&target_layout,
+                                           ladder_tri_raw[0]) < 33ul ||
+                            v9x_layout_green(&target_layout,
+                                             ladder_tri_raw[0]) < 33ul) {
+                            ladder_ok = 0ul;
+                        }
+                        if (v9x_layout_red(&target_layout,
+                                           ladder_tri_raw[1]) > 33ul ||
+                            v9x_layout_green(&target_layout,
+                                             ladder_tri_raw[1]) < 33ul ||
+                            v9x_layout_blue(&target_layout,
+                                            ladder_tri_raw[1]) < 33ul) {
+                            ladder_ok = 0ul;
+                        }
+                        if (v9x_layout_green(&target_layout,
+                                             ladder_tri_raw[2]) > 33ul ||
+                            v9x_layout_blue(&target_layout,
+                                            ladder_tri_raw[2]) < 197ul ||
+                            v9x_layout_red(&target_layout,
+                                           ladder_tri_raw[2]) < 33ul) {
+                            ladder_ok = 0ul;
+                        }
+                    }
+                    v9x_write_uint("MipTriOk", ladder_ok);
+
+                    if (ladder_tex != 0) ladder_tex->vtbl->Release(ladder_tex);
+                    for (li2 = 4ul; li2 > 0ul; --li2) {
+                        if (ladder[li2 - 1ul] != 0) {
+                            ladder[li2 - 1ul]->vtbl->Release(
+                                ladder[li2 - 1ul]);
+                        }
+                    }
+                    triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
+                    triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
+                    triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+                }
+
+                v9x_probe_reset_state(d3d_device, triangle);
+                /*
                  * THE TEXTURE MATRIX.
                  *
                  * Every texture rung above tests one point; the faults found

@@ -135,3 +135,27 @@ blend, so on any driver where the instrument works it must reproduce
 say whether the state was accepted at all rather than leaving it to be
 inferred. A driver without the instrument writes four copies of the unforced
 curve, which would otherwise read as a finding.
+
+## The mip ladder
+
+`MipLadder_<0..3>_Raw`, `MipTri_<0..2>_Raw`, with `MipLadderShapeOk`,
+`MipLadderOk` and `MipTriOk`. A four-level chain, 128 texels down to 16, each
+level a different colour - red, green, blue, magenta - drawn at four
+texel-per-pixel ratios just above 1, 2, 4 and 8, and at three more half a level
+between them under LINEARMIPLINEAR. Four hues the classifier separates, and
+three adjacent pairs each leaving one channel absent, which is what makes a
+blend of two levels checkable rather than merely non-black. That is the rule
+the matrix's trilinear cells had to loosen, and this rung is where it lives
+instead.
+
+`MipLadderDelta1..3` record the chain's real shape before anything is read from
+it, by `Lock` and not `GetSurfaceDesc`: a video-memory surface's desc carries
+`lpSurface = 0`, which is what `TexMipTopAddress` and `TexMipLevelAddress` have
+always reported.
+
+**`D3DMipmapLevelSelectOk` and `D3DTrilinearBlendOk` are not to be read as
+defects.** Both are 0 on machines where the ladder passes every step, because
+they bind an older two-level texture whose chain is not contiguous and the
+driver correctly falls back to a plain filter. They carry no delta of their
+own, so they cannot tell that apart from a real failure.
+`docs/decisions/2026-09-04-the-mip-ladder.md` has the readings.
