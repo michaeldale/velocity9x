@@ -4070,6 +4070,14 @@ void __stdcall V9xDdrawProbeEntry(void)
                     static const DWORD curve_present = 197ul;
                     static const DWORD curve_absent = 33ul;
                     static const DWORD curve_step_slack = 8ul;
+                    /*
+                     * One 5-bit step is 8 of 255; two of them is the room a
+                     * chip needs for its own rounding of A and of the
+                     * multiply, and is still a twelfth of the range - far too
+                     * tight for a saturated channel or a duplicated one to
+                     * hide in.
+                     */
+                    static const DWORD curve_channel_slack = 17ul;
                     struct v9x_dds *curve_surface = 0;
                     struct v9x_d3d_texture2 *curve_texture = 0;
                     DWORD curve_handle = 0ul;
@@ -4216,31 +4224,55 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_hresult(curve_pair_keys[curve_pair][2],
                                           curve_draw_hr);
 
+                        /*
+                         * Every step against the blend equation, not just the
+                         * two ends.
+                         *
+                         * The first version of this test checked A = 0, A = 15
+                         * and that the source's channel never fell in between,
+                         * and the Trio3D/2X passed it while getting every
+                         * interior step wrong - the destination's term exact,
+                         * the source's saturated in its own channel and
+                         * duplicated into a channel neither operand has. The
+                         * matrix's `halfa` cells had been reporting that all
+                         * along and were disbelieved because this rung said
+                         * otherwise. A curve is only measured if the middle of
+                         * it is.
+                         *
+                         * dst * (1 - A) in the destination's channel, src * A
+                         * in the source's, nothing in the third, to a
+                         * tolerance of one 5-bit step either way.
+                         */
                         curve_ok = curve_draw_hr == 0 && curve_handle != 0ul &&
                             target_layout.valid != 0ul ? 1ul : 0ul;
                         if (curve_ok != 0ul) {
-                            /* A = 0 must leave the destination standing. */
-                            if (v9x_layout_rgb(&target_layout, curve_tex_raw[0],
-                                    dst_channel) < curve_present ||
-                                v9x_layout_rgb(&target_layout, curve_tex_raw[0],
-                                    src_channel) > curve_absent) {
-                                curve_ok = 0ul;
-                            }
-                            /* A = 15 must be the source and nothing else. */
-                            if (v9x_layout_rgb(&target_layout, curve_tex_raw[8],
-                                    src_channel) < curve_present ||
-                                v9x_layout_rgb(&target_layout, curve_tex_raw[8],
-                                    dst_channel) > curve_absent) {
-                                curve_ok = 0ul;
-                            }
-                            for (ci = 1ul; ci < 9ul; ++ci) {
-                                DWORD prev = v9x_layout_rgb(&target_layout,
-                                    curve_tex_raw[ci - 1ul], src_channel);
-                                DWORD here = v9x_layout_rgb(&target_layout,
-                                    curve_tex_raw[ci], src_channel);
+                            DWORD other_channel =
+                                (V9X_PROBE_CHANNEL_RED +
+                                 V9X_PROBE_CHANNEL_GREEN +
+                                 V9X_PROBE_CHANNEL_BLUE) -
+                                dst_channel - src_channel;
 
-                                if (here + curve_step_slack < prev) {
-                                    curve_ok = 0ul;  /* fell as A rose */
+                            for (ci = 0ul; ci < 9ul; ++ci) {
+                                DWORD a = curve_texel_alpha[ci];
+                                DWORD want_src = (255ul * a) / 15ul;
+                                DWORD want_dst = (255ul * (15ul - a)) / 15ul;
+                                DWORD got_src = v9x_layout_rgb(&target_layout,
+                                    curve_tex_raw[ci], src_channel);
+                                DWORD got_dst = v9x_layout_rgb(&target_layout,
+                                    curve_tex_raw[ci], dst_channel);
+                                DWORD got_other = v9x_layout_rgb(&target_layout,
+                                    curve_tex_raw[ci], other_channel);
+
+                                if (got_src + curve_channel_slack < want_src ||
+                                    want_src + curve_channel_slack < got_src) {
+                                    curve_ok = 0ul;
+                                }
+                                if (got_dst + curve_channel_slack < want_dst ||
+                                    want_dst + curve_channel_slack < got_dst) {
+                                    curve_ok = 0ul;
+                                }
+                                if (got_other > curve_channel_slack) {
+                                    curve_ok = 0ul;
                                 }
                             }
                         }

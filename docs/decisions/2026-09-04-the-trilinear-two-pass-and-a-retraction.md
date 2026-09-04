@@ -4,6 +4,14 @@ Date: 2026-09-04
 Status: measured on A8U4I5 with a controlled A/B, one variable, two boots. It
 retracts two of today's decisions.
 
+> **Corrected 2026-09-04**, later the same day: where this says the cold-booted
+> card's transfer curve is "a clean interpolation between the measured ends",
+> only the ends are right. `AlphaCurveOk` tested the endpoints and not the
+> middle, and the middle is wrong - see
+> `2026-09-04-the-halfa-cells-were-right.md`. The finding below is unaffected:
+> every reading in it is of endpoints, and endpoints are exactly what the power
+> cycle changed.
+
 ## What is retracted
 
 `2026-09-04-what-the-trio3d-blend-does-with-its-operands.md` and

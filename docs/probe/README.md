@@ -174,3 +174,20 @@ destination and one that writes an opaque black box both pass them. Over a
 non-black destination those are different readings, and that is what this rung
 is for. It found the Trio3D/2X defect on its first run:
 `docs/decisions/2026-09-04-an-unlit-blend-loses-its-texture-on-the-trio3d.md`.
+
+## A note on `*Ok` keys
+
+Three instruments on 2026-09-04 had an `*Ok` key weaker than its own raw
+values, and in all three the raws were right there and correct:
+
+- the matrix's `alpha` cells draw over **black** and expect the transparent
+  half to read black, which a driver that keeps the destination and one that
+  writes an opaque black box both satisfy - fixed by the sprite rung, which
+  draws over red;
+- the sprite rung's first form crossed no axes at all, and the defect it found
+  lived on the one 3DMark used and the matrix did not;
+- `AlphaCurveOk` tested A = 0, A = 15 and monotonicity, and passed a part whose
+  every interior step was wrong (`docs/decisions/2026-09-04-the-halfa-cells-were-right.md`).
+
+A key that tests the ends of a range is a regression check, not a measurement.
+When a rung produces a curve, check the curve.
