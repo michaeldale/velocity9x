@@ -5816,6 +5816,240 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_uint("D3DZWriteMaskOk",
                                        mask_ok ? 1ul : 0ul);
 
+                        /*
+                         * THE SPRITE RUNG.
+                         *
+                         * 3DMark 99 draws its sprites and HUD in opaque black
+                         * boxes on the Trio3D/2X, at both resolutions, on a
+                         * boot where every alpha rung this probe has reads
+                         * correct
+                         * (docs\decisions\2026-09-04-four-megabytes-is-the-resolution-limit.md).
+                         * So "the part cannot blend" is not the explanation,
+                         * and the difference has to be something the probe
+                         * does not currently cross.
+                         *
+                         * The census says what: 3DMark's blended 4444 draws
+                         * are Z:LESS with no depth write where every alpha
+                         * cell here is depth-off, LINEAR where they are
+                         * NEAREST, and half of them are UNLIT where they are
+                         * LIT with MODULATE. This crosses those three, eight
+                         * cells.
+                         *
+                         * And it draws over **red**, which is the other thing
+                         * the matrix cannot do. Its alpha cells draw over a
+                         * black target and expect the transparent half to
+                         * read black - which a driver that correctly keeps
+                         * the destination and one that writes an opaque black
+                         * box both satisfy. Over red the two are different
+                         * readings, and the black box, if it is here, is
+                         * visible as a right half that is not red.
+                         *
+                         * Keys: Spr_<depth>_<filter>_<shade>_L and _R, _Ok,
+                         * with SpriteOk over all eight.
+                         */
+                        {
+                            static const char *spr_names[8] = {
+                                "Spr_zoff_near_mod", "Spr_zoff_near_copy",
+                                "Spr_zoff_lin_mod",  "Spr_zoff_lin_copy",
+                                "Spr_zon_near_mod",  "Spr_zon_near_copy",
+                                "Spr_zon_lin_mod",   "Spr_zon_lin_copy" };
+                            struct v9x_dds *spr_surface = 0;
+                            struct v9x_d3d_texture2 *spr_tex = 0;
+                            DWORD spr_handle = 0ul;
+                            DWORD spr_fill;
+                            DWORD spr_ok_all = 0ul;
+                            DWORD si2;
+                            HRESULT spr_hr;
+
+                            spr_fill = target_layout.valid != 0ul
+                                ? (DWORD)v9x_layout_pack(&target_layout,
+                                                         255ul, 0ul, 0ul)
+                                : 0x7c00ul;
+                            spr_fill |= spr_fill << 16;
+
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                           V9X_DDSD_HEIGHT |
+                                           V9X_DDSD_PIXELFORMAT;
+                            desc.dwWidth = 64ul;
+                            desc.dwHeight = 64ul;
+                            desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                            desc.ddpfPixelFormat.dwSize =
+                                sizeof(V9X_DDPIXELFORMAT);
+                            desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                            desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                            desc.ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+                            desc.ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+                            desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+                            desc.ddpfPixelFormat.dwRGBAlphaBitMask =
+                                0x0000f000ul;
+                            spr_hr = ddraw->vtbl->CreateSurface(
+                                ddraw, &desc, &spr_surface, 0);
+                            v9x_write_hresult("SpriteSurfaceHr", spr_hr);
+                            if (spr_hr == 0 && spr_surface != 0) {
+                                /* Opaque green, then alpha-zero blue. */
+                                v9x_fill_surface_halves(spr_surface,
+                                                        0xf0f0u, 0x000fu);
+                                spr_hr = spr_surface->vtbl->QueryInterface(
+                                    spr_surface, &v9x_iid_d3d_texture2,
+                                    (void **)&spr_tex);
+                            }
+                            if (spr_hr == 0 && spr_tex != 0) {
+                                spr_hr = spr_tex->vtbl->GetHandle(
+                                    spr_tex, d3d_device, &spr_handle);
+                            }
+                            if (spr_hr == 0 && spr_handle != 0ul) {
+                                spr_ok_all = 1ul;
+                                v9x_probe_depth_fill(z_surface);
+                            }
+                            for (si2 = 0ul;
+                                 si2 < 8ul && spr_hr == 0 && spr_handle != 0ul;
+                                 ++si2) {
+                                int z_on = si2 >= 4ul;
+                                int linear = (si2 & 2ul) != 0ul;
+                                int copy = (si2 & 1ul) != 0ul;
+                                DWORD filter = linear
+                                    ? V9X_D3DFILTER_LINEAR
+                                    : V9X_D3DFILTER_NEAREST;
+                                WORD left_raw;
+                                WORD right_raw;
+                                HRESULT cell_hr = 0;
+                                char spr_key[48];
+
+                                v9x_probe_reset_state(d3d_device, triangle);
+                                triangle[0].color = 0xfffffffful;
+                                triangle[1].color = 0xfffffffful;
+                                triangle[2].color = 0xfffffffful;
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_ZENABLE,
+                                    z_on ? 1ul : 0ul);
+                                if (z_on) {
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_ZFUNC,
+                                        V9X_D3DCMP_LESS);
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_ZWRITEENABLE, 0ul);
+                                }
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                    spr_handle);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                    copy ? V9X_D3DTBLEND_COPY
+                                         : V9X_D3DTBLEND_MODULATE);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMIN, filter);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_TEXTUREMAG, filter);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                    V9X_D3DBLEND_SRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                    V9X_D3DBLEND_INVSRCALPHA);
+                                (void)d3d_device->vtbl->SetRenderState(
+                                    d3d_device,
+                                    V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+
+                                v9x_fill_surface(d3d_target, spr_fill);
+                                triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
+                                triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
+                                triangle[2].tu = 0.10f; triangle[2].tv = 0.40f;
+                                begin_hr =
+                                    d3d_device->vtbl->BeginScene(d3d_device);
+                                if (begin_hr == 0) {
+                                    cell_hr =
+                                        d3d_device->vtbl->DrawPrimitive(
+                                            d3d_device,
+                                            V9X_D3DPT_TRIANGLELIST,
+                                            V9X_D3DVT_TLVERTEX, triangle,
+                                            3ul, 0ul);
+                                    end_hr =
+                                        d3d_device->vtbl->EndScene(d3d_device);
+                                    if (end_hr != 0) cell_hr = end_hr;
+                                }
+                                left_raw = v9x_surface_pixel16(d3d_target,
+                                                               16ul, 16ul);
+
+                                v9x_fill_surface(d3d_target, spr_fill);
+                                triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
+                                triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
+                                triangle[2].tu = 0.60f; triangle[2].tv = 0.40f;
+                                begin_hr =
+                                    d3d_device->vtbl->BeginScene(d3d_device);
+                                if (begin_hr == 0) {
+                                    HRESULT r_hr =
+                                        d3d_device->vtbl->DrawPrimitive(
+                                            d3d_device,
+                                            V9X_D3DPT_TRIANGLELIST,
+                                            V9X_D3DVT_TLVERTEX, triangle,
+                                            3ul, 0ul);
+                                    end_hr =
+                                        d3d_device->vtbl->EndScene(d3d_device);
+                                    if (end_hr != 0) r_hr = end_hr;
+                                    if (r_hr != 0) cell_hr = r_hr;
+                                }
+                                right_raw = v9x_surface_pixel16(d3d_target,
+                                                                16ul, 16ul);
+
+                                spr_key[0] = 0;
+                                v9x_probe_cat(spr_key, spr_names[si2]);
+                                v9x_probe_cat(spr_key, "_L");
+                                v9x_write_uint(spr_key, left_raw);
+                                spr_key[0] = 0;
+                                v9x_probe_cat(spr_key, spr_names[si2]);
+                                v9x_probe_cat(spr_key, "_R");
+                                v9x_write_uint(spr_key, right_raw);
+                                spr_key[0] = 0;
+                                v9x_probe_cat(spr_key, spr_names[si2]);
+                                v9x_probe_cat(spr_key, "_Ok");
+                                {
+                                    /*
+                                     * Left: the opaque half wins outright.
+                                     * Right: the destination survives, red -
+                                     * not black, which is the whole point of
+                                     * filling it red.
+                                     */
+                                    DWORD cell_ok =
+                                        cell_hr == 0 &&
+                                        target_layout.valid != 0ul &&
+                                        v9x_layout_green(&target_layout,
+                                            left_raw) >= 197ul &&
+                                        v9x_layout_red(&target_layout,
+                                            left_raw) <= 33ul &&
+                                        v9x_layout_red(&target_layout,
+                                            right_raw) >= 197ul &&
+                                        v9x_layout_green(&target_layout,
+                                            right_raw) <= 33ul &&
+                                        v9x_layout_blue(&target_layout,
+                                            right_raw) <= 33ul ? 1ul : 0ul;
+
+                                    v9x_write_uint(spr_key, cell_ok);
+                                    if (cell_ok == 0ul) {
+                                        spr_ok_all = 0ul;
+                                    }
+                                }
+                            }
+                            v9x_write_uint("SpriteOk", spr_ok_all);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                            (void)d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+                            if (spr_tex != 0) spr_tex->vtbl->Release(spr_tex);
+                            if (spr_surface != 0) {
+                                spr_surface->vtbl->Release(spr_surface);
+                            }
+                        }
+
                         (void)d3d_device->vtbl->SetRenderState(
                             d3d_device, V9X_D3DRENDERSTATE_ZENABLE, 0ul);
                     }

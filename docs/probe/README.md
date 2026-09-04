@@ -159,3 +159,18 @@ they bind an older two-level texture whose chain is not contiguous and the
 driver correctly falls back to a plain filter. They carry no delta of their
 own, so they cannot tell that apart from a real failure.
 `docs/decisions/2026-09-04-the-mip-ladder.md` has the readings.
+
+## The sprite rung
+
+`Spr_<depth>_<filter>_<shade>_L` and `_R`, with `SpriteOk`. Eight cells over
+three axes an alpha cell of the matrix does not cross - depth off against
+`Z:LESS` with no write, `NEAREST` against `LINEAR`, and `MODULATE` against
+`COPY` - because those are the three ways 3DMark 99's blended ARGB4444 draws
+differ from the matrix's, by the command-word census.
+
+It also draws over **red**. The matrix's alpha cells draw over black and expect
+the transparent half to read black, so a driver that correctly keeps the
+destination and one that writes an opaque black box both pass them. Over a
+non-black destination those are different readings, and that is what this rung
+is for. It found the Trio3D/2X defect on its first run:
+`docs/decisions/2026-09-04-an-unlit-blend-loses-its-texture-on-the-trio3d.md`.
