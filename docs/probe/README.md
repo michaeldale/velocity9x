@@ -33,6 +33,11 @@ Reference files are evidence, so they are committed as captured, never
 edited. A volatile key (heap pointers, handles, build ids, timings) is dropped
 by the comparison, not from the file.
 
+`references/` also holds `V9XSURV.EXE` register captures taken beside a probe
+run, named `<chip>-<machine>-vgasurv-<boot>-<state>-<date>.ini`. They are
+`scripts/parse-vga-survey.ps1` input, not probe input, and the probe file
+from the same boot is what names the state they were taken in.
+
 ## What a first run on a new chip should look like
 
 Run the probe under the vendor driver first and keep that file as the

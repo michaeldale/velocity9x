@@ -94,3 +94,10 @@ defect by anyone not looking. The probe already prints it in every file.
 
 None; no code changed. The evidence is four probe files and the exported
 `055d3c4` build used for the A/B.
+
+## Later the same day
+
+Boot 39 read 108 again, after the machine reset itself with nothing running.
+Both states now have a register capture and the diff between them is in
+`2026-09-05-a-register-capture-of-both-trio3d-blend-states.md`, along with
+what that capture cannot see.

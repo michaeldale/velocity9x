@@ -4,7 +4,13 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.8.0 - 2026-09-05
+## 0.7.0 - 2026-09-05
+
+Two things in one release: the S3 Trio3D/2X on the hardware path, and
+software Direct3D for every chip that has no 3D engine. The second was cut
+as 0.7.0 on 2026-09-02 and never published beyond the private remote; the
+three days of Trio3D work that followed are folded in here rather than
+numbered separately, so this is the first 0.7.0 anyone downloads.
 
 **The S3 Trio3D/2X draws, on the hardware path, on real silicon.** The part is
 bound to the ViRGE/DX's engine and gets hardware Direct3D; Final Reality
@@ -107,14 +113,27 @@ Two decision documents of 2026-09-04 concluded that the Trio3D/2X performs no
 alpha blend under any encoding of the command word's alpha field. **That is
 wrong**, and both now carry a banner saying so. A controlled A/B - one variable,
 two boots, the trilinear two-pass restored and nothing else touched - showed the
-two-pass was not the cause, which left the power cycle as the only candidate
-that survived. The card's blend is wrong across warm restarts and correct after
-a cold boot, deterministically either way, which is also what made
-`D3DVertexAlphaBlendRaw` look like it wandered.
+two-pass was not the cause. The correction that followed, that a power cycle
+clears the state and a warm restart does not, was also wrong and is also
+retracted in place: a deliberate power cycle left the card in the bad state,
+and an A/B of the driver against the pre-diagnostics pair left the driver out
+of it too.
+
+What survives is this: **the card has two states, and blending is correct in
+one and wrong in the other.** `TexMatrixOk` reads 108 of 117 in the good state
+and 90 in the bad one, with only the alpha cells and the sprite rung moving;
+mip selection and every unblended cell are the same in both. The trigger is
+not known. All three transitions on record coincide with the machine going
+away and coming back, once with nothing executing. A VGA survey was taken in
+each state on consecutive boots and differs in two extended CRTC bytes, CR32
+and CR3E, undecoded and with one sample of each; it does not reach the S3D
+engine, where a blend fault would live
+(`docs/decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md`).
 
 Every Trio3D alpha measurement this project took before 2026-09-04 was made in
-that state. The documents stay where they are: a decision that was wrong is
-evidence about how it was reached.
+the bad state, and a Trio3D result is only meaningful beside its `TexMatrixOk`.
+The documents stay where they are: a decision that was wrong is evidence about
+how it was reached.
 
 ### 4 MiB is what picks the resolution
 
@@ -138,12 +157,13 @@ at 800x600 on this card was taken with mipmapping mostly disabled.
 - **A blended draw onto the primary chain's back buffer writes nothing**, while
   an opaque draw onto the same surface through the same registers writes
   correctly. The destination base, pitch, size and stride register were all
-  measured correct. Not yet run on silicon.
+  measured correct. On silicon it has run only in the bad blend state, where a
+  blend that draws nothing cannot be told from the blend fault.
 - The partial-alpha fault's shape on the Trio3D - destination term exact, source
   channel saturated, destination value duplicated into whichever channel neither
   operand uses - is stated exactly and explained not at all.
 
-## 0.7.0 - 2026-09-02
+### Direct3D on cards that have never had it
 
 **Direct3D on cards that have never had it.** `Direct3D=2` on the Velocity9x
 page serves Direct3D from a CPU rasterizer on any supported chip - depth-tested,
@@ -264,7 +284,7 @@ period machine has drawn a triangle through this. No VBE guest ran either: that
 image is in a broken display configuration and reviving it is its own task, so
 the VBE claim rests on the ATI run plus a code chain rather than on the card.
 
-### The download page understates what was tested
+### The download page understates what was tested (software-mode packages)
 
 Every package's `MANIFEST.TXT` still carries the hardcoded
 `Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED`, and the release index's
