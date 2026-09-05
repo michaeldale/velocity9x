@@ -115,11 +115,19 @@ sections, so the same MODES key and the same mini-VDD. It contributes:
 
 **An alias is a binding, not a claim.** It is not a chip precisely because
 chips carry evidence: every chip must have a `Vm.Targets` entry and is covered
-by the family's mode matrix, and an alias by definition has run nowhere. That
+by the family's mode matrix, and an alias has run under neither. That
 distinction is the whole point of the mechanism - the alternative was either
 inventing a guest per id or quietly listing ids among the validated chips.
-Promoting an alias to a chip is what a measurement licenses, and it costs a
-guest profile and a VBE mode inventory of that ROM.
+Promoting an alias to a chip is what a guest profile licenses, and it costs
+that profile and a VBE mode inventory of that ROM.
+
+An alias may carry an optional `MeasuredOn`, a one-line string naming the
+physical machine it has been run on. The generated INF header then reads
+`(alias of <chip>; measured on <MeasuredOn>)` instead of
+`(alias of <chip>, not validated)`. The field says where, not what: the
+measurements themselves live in `docs/decisions/`, and a card that has been
+measured on real silicon but has no emulator profile stays an alias, because
+the mode matrix still does not cover it. The Trio3D/2X `8A13` is the first.
 
 `Objects` and `MapSymbols` stay on the chip. An alias adds no code, so there is
 no separate object for the per-object audit to check.

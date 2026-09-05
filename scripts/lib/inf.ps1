@@ -123,7 +123,10 @@ function New-V9xInfText {
         '; Velocity9x Windows 98SE bring-up package'
         ('; Family {0}: {1}' -f $Family.Id, $Family.DisplayName)
     ) + @(Get-V9xFamilyPciEntries -Family $Family | ForEach-Object {
-        if ($_.IsAlias) {
+        if ($_.IsAlias -and $_.MeasuredOn) {
+            '; Supported adapter: {0}, PCI {1}:{2} (alias of {3}; measured on {4})' -f
+                $_.Name, $_.VendorId, $_.DeviceId, $_.ChipId, $_.MeasuredOn
+        } elseif ($_.IsAlias) {
             '; Supported adapter: {0}, PCI {1}:{2} (alias of {3}, not validated)' -f
                 $_.Name, $_.VendorId, $_.DeviceId, $_.ChipId
         } else {

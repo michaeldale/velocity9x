@@ -111,10 +111,19 @@
             # not fatal: the decoder returns 0 for a code it does not know and
             # enable16.c falls back to the VBE 4F00h total, so the heap is
             # sized from the BIOS instead.
+            #
+            # Still an alias rather than a chip because no 86Box profile exists
+            # for it and the family's mode matrix does not cover it. It is not
+            # unmeasured: A8U4I5 (Trio3D/2X, 4 MiB, AGP) has run this binding
+            # daily since 2026-09-02 - Final Reality, 3DMark 99 and the probe's
+            # full matrix - and the three differences from the ViRGE/DX that
+            # turned up are chip-conditional in the engine. MeasuredOn is what
+            # the INF header says instead of "not validated".
             Aliases = @(
                 @{ DeviceId = '8A13'
                    Name = 'S3 Trio3D/2X'
-                   DeviceDesc = 'Velocity9x S3 Trio3D/2X' }
+                   DeviceDesc = 'Velocity9x S3 Trio3D/2X'
+                   MeasuredOn = 'A8U4I5, physical Trio3D/2X, 2026-09-02 onward' }
             )
         }
         @{

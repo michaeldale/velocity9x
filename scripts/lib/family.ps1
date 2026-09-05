@@ -148,13 +148,31 @@ function Test-V9xFamilyManifest {
         # An alias is a binding, not a claim. It shares the chip's registers,
         # engine, mode list and INF install section, and it is deliberately NOT
         # a chip: chips must each carry a VM target and be covered by the mode
-        # matrix, and an alias by definition has run nowhere. Promoting one to
-        # a chip is what a measurement licenses. See the Aliases section of
+        # matrix, and an alias has run under neither. Promoting one to a chip
+        # is what a guest profile licenses. An alias that a physical card has
+        # nonetheless been measured on says so in MeasuredOn, which the INF
+        # header prints in place of "not validated"; the field records where,
+        # not what, so it is a pointer to the decision docs rather than a
+        # claim in its own right. See the Aliases section of
         # docs\specifications\family-manifest.md.
         foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
             Assert-V9xFamilyKeys -Table $alias -Required @(
                 'DeviceId', 'Name', 'DeviceDesc') `
                 -Context "Family $Id chip $($chip.Id) alias"
+            if ($alias.ContainsKey('MeasuredOn')) {
+                if (-not ($alias.MeasuredOn -is [string]) -or
+                    $alias.MeasuredOn.Trim().Length -eq 0) {
+                    throw ("Family $Id chip $($chip.Id) alias " +
+                           "$($alias.DeviceId) MeasuredOn must be a non-empty " +
+                           "string naming the machine it was measured on.")
+                }
+                # It is emitted into an INF comment line, where a line break
+                # would end the comment and start a directive.
+                if ($alias.MeasuredOn -match '[\r\n]') {
+                    throw ("Family $Id chip $($chip.Id) alias " +
+                           "$($alias.DeviceId) MeasuredOn may not span lines.")
+                }
+            }
             if ($alias.DeviceId -notmatch '^[0-9A-F]{4}$') {
                 throw ("Family $Id chip $($chip.Id) has a non-canonical alias " +
                        "DeviceId '$($alias.DeviceId)'; use four uppercase hex " +
@@ -610,6 +628,7 @@ function Get-V9xFamilyPciEntries {
                 Name = $alias.Name
                 DeviceDesc = $alias.DeviceDesc
                 IsAlias = $true
+                MeasuredOn = if ($alias.ContainsKey('MeasuredOn')) { $alias.MeasuredOn } else { $null }
             })
         }
     }
