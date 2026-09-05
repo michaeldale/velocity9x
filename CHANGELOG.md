@@ -23,7 +23,10 @@ Engine handed the callback. **Verified on the 86Box Trio64 guest**, where the
 first build drew half of every string: the command word lacked the 8514/A
 plane-mode bit that declares CPU data as one bit per pixel, and the fix is
 `53B3H` for `53B1H`. The Trio64 mode matrix then passed 11/11 with every 8-
-and 16-bpp string expanded by the engine. **Not yet run on a card**: the FIFO pacing is recorded as
+and 16-bpp string expanded by the engine, and CrystalMark Retro's Text score
+doubled on that guest, 2 to 4, with the other 2D scores unmoved
+([record](docs/decisions/2026-09-06-crystalmark-86box-trio64-text.md)).
+**Not yet run on a card**: the FIFO pacing is recorded as
 a hypothesis only BARRY can answer, and the default stays off until it has.
 
 ## 0.7.0 - 2026-09-05

@@ -271,6 +271,14 @@ Read that 11/11 with the same boundary the 004 record drew: every check reads
 back through GDI, the emulator does not model a full FIFO, and the one
 behaviour of this build that only silicon can judge is the pacing.
 
+## CrystalMark on the guest
+
+Two runs per column at 800x600x16, text on against text off
+([record](2026-09-06-crystalmark-86box-trio64-text.md)): Text 4 and 4
+against 2 and 2, with Square, Circle and Image within six points across all
+four runs. Directional only - the emulator prices port I/O in its own time -
+and BARRY, unreachable today, is where the number that matters gets taken.
+
 The guest confirmed hypotheses 1, 2 and 4 and the whole dispatcher path, and
 found the plane-mode bit the design had missed. It cannot confirm hypothesis
 3, and it cannot rule out a behaviour the emulator does not model - which is
