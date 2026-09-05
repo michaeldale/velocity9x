@@ -164,12 +164,37 @@ from each other. **Nothing this sweep reaches distinguishes the two states.**
 That is the answer the capture was taken to get, and it points where the
 reach section already pointed: at the engine, which the survey cannot read.
 
+## Boot 41: a fourth sample, and one bit that has tracked every one
+
+The user restarted the machine after installing a game. Boot 41 came up in
+the bad state - `TexMatrixOk=90`, `trio3d-a8u4i5-v9x-2026-09-05j-b41-bad.ini` -
+so the good state does not always survive a warm restart either: b39 to b40
+kept it, b40 to b41 lost it. The survey
+(`trio3d-a8u4i5-vgasurv-b41-bad-2026-09-05.ini`) reads CR32=`80` and
+CR3E=`30`, which finishes CR32 off as a state indicator: it has now read `00`
+and `80` in bad boots and `00` and `80` in good ones.
+
+```
+              b38 bad   b39 good   b40 good   b41 bad
+InputStatus0  19        09         09         19
+CR32          00        80         00         80
+CR3E          24        2A         2D         30
+```
+
+**Input Status 0 bit 4 has matched the state on all four boots.** It was set
+aside above as the VGA switch-sense comparator. Four for four is not a
+comparator wandering, and it is not yet a finding either: it is one bit, read
+through the VDD from a DOS box, on a chip whose databook is not on disk and
+where port 3C2h bit 4 may mean something other than the VGA-standard sense
+line. What it is now is the only thing in the sweep worth another sample.
+Two more boots, whichever way they land, decide whether it stays.
+
 ## What to do with this
 
-- **Stop looking in the VGA register file.** Three boots say the sweep's
-  reachable registers do not carry the state. Taking the survey beside a probe
-  still costs five seconds and would catch a fourth value, but it is no longer
-  where the answer is expected.
+- **Keep taking the survey beside every probe**, for one reason only: Input
+  Status 0 bit 4. If it holds across two more boots it is worth reading from
+  the system VM, where 3C2h is the card and not the VDD; if it breaks, the
+  VGA register file is done as a place to look.
 - **The engine is still unread.** A Win32 instrument that reads the S3D
   setup and status registers through the aperture - or an escape into the HAL
   that dumps them, in the style of `V9X_DDGETCOUNTS` - is what a capture of
