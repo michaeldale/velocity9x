@@ -4,6 +4,12 @@ Date: 2026-09-04
 Status: measured on A8U4I5 with a controlled A/B, one variable, two boots. It
 retracts two of today's decisions.
 
+> **Corrected again 2026-09-05.** "A power cycle clears it" is refuted: the
+> card entered the wrong state at boot 34 and stayed in it through a deliberate
+> power cycle at boot 36, with the driver A/B'd out. Two states exist and
+> blending is wrong in one of them; what moves the card between them is not
+> known. See `2026-09-05-a-power-cycle-does-not-clear-the-trio3d-blend-state.md`.
+
 > **Corrected 2026-09-04**, later the same day: where this says the cold-booted
 > card's transfer curve is "a clean interpolation between the measured ends",
 > only the ends are right. `AlphaCurveOk` tested the endpoints and not the
