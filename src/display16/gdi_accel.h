@@ -55,4 +55,7 @@ WORD v9x_gdi_accel_stats(void FAR *output);
 /* V9X_GDIFAULTINJECT. Arms `count` forced bounded-wait timeouts. */
 WORD v9x_gdi_accel_fault_inject(DWORD count);
 
+/* V9X_GDITEXTDUMP. Non-zero when the block was filled in. */
+WORD v9x_gdi_accel_text_dump(void FAR *output);
+
 #endif /* VELOCITY9X_GDI_ACCEL_H */

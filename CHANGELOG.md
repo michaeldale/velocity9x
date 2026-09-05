@@ -4,6 +4,28 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+Added: **GDI acceleration build `gdi-accel-005` - text on the Trio64**,
+compiled in and **off by default** (`GdiAccelText=0`)
+([record](docs/decisions/2026-09-06-gdi-accel-005-text.md)). Ordinal 14 is a C
+dispatcher now: a plain screen `ExtTextOut` goes through `DIB_ExtTextOutExt`
+with two driver callbacks, and the DIB Engine's realized string bitmap is
+expanded by the engine as a CPU-data rectangle fill through `PIX_TRANS`, mix
+selected per pixel, clipped by the scissors. A callback that cannot draw flags
+the string and the dispatcher has the DIB Engine redraw it in software, so
+text is never lost to the engine path. The ViRGE declines in this build. The
+`/accel` harness draws text, opaque and transparent and clipped, and asserts
+that bitmaps fire, that nothing falls back, and that ordinal 14 is reached on
+every family. `V9X_GDI_STATS` grows eight text counters, to 220 bytes, and a
+`V9X_GDITEXTDUMP` escape with a `V9XGDI /textdump` mode returns what the DIB
+Engine handed the callback. **Verified on the 86Box Trio64 guest**, where the
+first build drew half of every string: the command word lacked the 8514/A
+plane-mode bit that declares CPU data as one bit per pixel, and the fix is
+`53B3H` for `53B1H`. The Trio64 mode matrix then passed 11/11 with every 8-
+and 16-bpp string expanded by the engine. **Not yet run on a card**: the FIFO pacing is recorded as
+a hypothesis only BARRY can answer, and the default stays off until it has.
+
 ## 0.7.0 - 2026-09-05
 
 Two things in one release: the S3 Trio3D/2X on the hardware path, and

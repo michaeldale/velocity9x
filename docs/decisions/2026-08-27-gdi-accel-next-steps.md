@@ -1,9 +1,11 @@
 # GDI acceleration: what comes after the merge
 
 Date: 2026-08-27
-Status: **item 1 recommended and uncontroversial; item 2 is an open decision
-that re-sequences the plan and is not mine to settle.** Items 3 onward are
-recorded so they are not rediscovered.
+Status: **item 1 recommended and uncontroversial; item 2 was decided for text
+on 2026-09-06** - build 005 is text on the Trio64, the chip that can be
+measured here, and the ViRGE follows
+([record](2026-09-06-gdi-accel-005-text.md)). Items 3 onward are recorded so
+they are not rediscovered.
 
 Written immediately after `6f86e94` merged fill, copy and overlap to `main` with
 those three primitives **on by default**. The point of this document is to say

@@ -538,11 +538,87 @@ static void v9x_accel_report_mismatch(const V9X_ACCEL_STATE *state,
  * has to produce the same pixels, which is what makes the decline-noise
  * operations worth issuing.
  */
+/*
+ * Text, build 005. Two kinds: plain TextOut, alternating opaque and
+ * transparent background, and an ExtTextOut with both an opaque rectangle
+ * larger than the string and a clip rectangle that cuts through the glyphs.
+ * The second is what exercises the driver's scissors, and the opaque-rect
+ * callback with it. Fonts alternate between the stock system font and the
+ * fixed-pitch one so glyph widths and byte-alignments vary.
+ *
+ * Both DCs are drawn with the same font, colours and background mode, so the
+ * reference bitmap is the DIB Engine's software rendering of the same string
+ * and the comparison is exactly the engine expansion against it.
+ */
+static const char *const v9x_accel_strings[6] = {
+    "Velocity9x", "The quick brown fox", "0123456789", "GDI text 005",
+    "iiii llll WWWW", "q"
+};
+
+static void v9x_accel_text_operation(V9X_ACCEL_STATE *state, int index,
+                                     int clipped)
+{
+    const char *text = v9x_accel_strings[v9x_accel_random(6ul)];
+    int length = lstrlenA(text);
+    HFONT font = (HFONT)GetStockObject((index & 4) ? SYSTEM_FIXED_FONT
+                                                   : SYSTEM_FONT);
+    HFONT previous_screen = (HFONT)SelectObject(state->screen, font);
+    HFONT previous_reference = (HFONT)SelectObject(state->reference, font);
+    COLORREF foreground = v9x_accel_colors[v9x_accel_random(16ul)];
+    COLORREF background = v9x_accel_colors[v9x_accel_random(16ul)];
+    int transparent = (index & 1) != 0;
+    int x = (int)v9x_accel_random((DWORD)(V9X_ACCEL_WIDTH - 200));
+    int y = (int)v9x_accel_random((DWORD)(V9X_ACCEL_HEIGHT - 40));
+
+    SetTextColor(state->screen, foreground);
+    SetTextColor(state->reference, foreground);
+    SetBkColor(state->screen, background);
+    SetBkColor(state->reference, background);
+    SetBkMode(state->screen, transparent ? TRANSPARENT : OPAQUE);
+    SetBkMode(state->reference, transparent ? TRANSPARENT : OPAQUE);
+    if (clipped) {
+        /*
+         * The opaque rectangle overhangs the string on every side, and a clip
+         * region cuts into the glyphs from the left, the top and the right -
+         * so the driver receives partial characters and partial rows, and an
+         * opaque rectangle that is not the string's own cell. The region is
+         * deselected before any readback, as the clipped pass does.
+         */
+        RECT opaque;
+        HRGN screen_region = CreateRectRgn(
+            state->origin_x + x + 5, state->origin_y + y + 3,
+            state->origin_x + x + 90, state->origin_y + y + 40);
+        HRGN reference_region = CreateRectRgn(x + 5, y + 3, x + 90, y + 40);
+
+        SelectClipRgn(state->screen, screen_region);
+        SelectClipRgn(state->reference, reference_region);
+        SetRect(&opaque, state->origin_x + x - 4, state->origin_y + y - 4,
+                state->origin_x + x + 150, state->origin_y + y + 30);
+        ExtTextOutA(state->screen, state->origin_x + x, state->origin_y + y,
+                    ETO_OPAQUE, &opaque, text, length, 0);
+        SetRect(&opaque, x - 4, y - 4, x + 150, y + 30);
+        ExtTextOutA(state->reference, x, y, ETO_OPAQUE, &opaque, text,
+                    length, 0);
+        SelectClipRgn(state->screen, 0);
+        SelectClipRgn(state->reference, 0);
+        if (screen_region != 0) { DeleteObject(screen_region); }
+        if (reference_region != 0) { DeleteObject(reference_region); }
+    } else {
+        TextOutA(state->screen, state->origin_x + x, state->origin_y + y,
+                 text, length);
+        TextOutA(state->reference, x, y, text, length);
+    }
+    SetBkMode(state->screen, OPAQUE);
+    SetBkMode(state->reference, OPAQUE);
+    SelectObject(state->screen, previous_screen);
+    SelectObject(state->reference, previous_reference);
+}
+
 static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
                                 DWORD *fills, DWORD *copies, DWORD *overlaps,
-                                DWORD *noise)
+                                DWORD *texts, DWORD *noise)
 {
-    int kind = (int)v9x_accel_random(10ul);
+    int kind = (int)v9x_accel_random(12ul);
     int width;
     int height;
     int x;
@@ -718,6 +794,11 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
         DeleteObject(bitmap);
         DeleteDC(memory);
         ++*noise;
+        return;
+    }
+    if (kind == 9 || kind == 10) {
+        v9x_accel_text_operation(state, index, kind == 10);
+        ++*texts;
         return;
     }
     /*
@@ -988,6 +1069,14 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("LastBpp", stats->last_bpp);
     v9x_accel_write_hex("LastAdvFunc", stats->last_advfunc);
     v9x_accel_write_uint("AdvFuncRestores", stats->advfunc_restores);
+    v9x_accel_write_uint("TextCalls", stats->text_calls);
+    v9x_accel_write_uint("TextDeclines", stats->text_declines);
+    v9x_accel_write_uint("TextAccepted", stats->text_accepted);
+    v9x_accel_write_uint("TextBitmaps", stats->text_bitmaps);
+    v9x_accel_write_uint("TextOrects", stats->text_orects);
+    v9x_accel_write_uint("TextFallbacks", stats->text_fallbacks);
+    v9x_accel_write_hex("TextRejectMask", stats->text_reject_mask);
+    v9x_accel_write_hex("TextLastShape", stats->text_last_shape);
 }
 
 /* ------------------------------------------------------------------------
@@ -1168,6 +1257,7 @@ static DWORD v9x_accel_run(HWND window)
     DWORD fills = 0ul;
     DWORD copies = 0ul;
     DWORD overlaps = 0ul;
+    DWORD texts = 0ul;
     DWORD noise = 0ul;
     DWORD compares = 0ul;
     long difference = -1l;
@@ -1243,7 +1333,7 @@ static DWORD v9x_accel_run(HWND window)
     if (error == 0) {
         for (index = 0; index < V9X_ACCEL_OPERATIONS; ++index) {
             v9x_accel_operation(&state, index, &fills, &copies, &overlaps,
-                                &noise);
+                                &texts, &noise);
             if ((index + 1) % V9X_ACCEL_COMPARE_EVERY == 0) {
                 ++compares;
                 if (!v9x_accel_compare(&state, &difference)) {
@@ -1279,10 +1369,21 @@ static DWORD v9x_accel_run(HWND window)
         v9x_accel_write_uint("UploadsDelta", stats.uploads - before.uploads);
         v9x_accel_write_uint("DeclineUploadDelta",
                              stats.decline_upload - before.decline_upload);
+        v9x_accel_write_uint("TextCallsDelta",
+                             stats.text_calls - before.text_calls);
+        v9x_accel_write_uint("TextAcceptedDelta",
+                             stats.text_accepted - before.text_accepted);
+        v9x_accel_write_uint("TextBitmapsDelta",
+                             stats.text_bitmaps - before.text_bitmaps);
+        v9x_accel_write_uint("TextOrectsDelta",
+                             stats.text_orects - before.text_orects);
+        v9x_accel_write_uint("TextFallbacksDelta",
+                             stats.text_fallbacks - before.text_fallbacks);
         v9x_accel_write_uint("Operations", (DWORD)index);
         v9x_accel_write_uint("FillOperations", fills);
         v9x_accel_write_uint("CopyOperations", copies);
         v9x_accel_write_uint("OverlapOperations", overlaps);
+        v9x_accel_write_uint("TextOperations", texts);
         v9x_accel_write_uint("NoiseOperations", noise);
         v9x_accel_write_uint("Comparisons", compares);
         v9x_accel_write_text("Compared", compared_ok ? "PASS" : "FAIL");
@@ -1403,7 +1504,54 @@ static DWORD v9x_accel_run(HWND window)
              * stage refused it; nothing said that was wrong.
              */
             error = "upload-unexpected-reject-reason";
+        } else if ((stats.enabled & V9X_GDI_PRIM_TEXT) != 0ul &&
+                   stats.text_bitmaps == before.text_bitmaps) {
+            /*
+             * Build 005's claim, same shape: with text on, the strings this
+             * run draws must reach the engine as bitmaps. A build whose ordinal
+             * 14 declined everything would pass the comparison on the DIB
+             * Engine's own rendering.
+             */
+            error = "text-enabled-but-never-fired";
+        } else if ((stats.enabled & V9X_GDI_PRIM_TEXT) != 0ul &&
+                   stats.text_fallbacks != before.text_fallbacks) {
+            /*
+             * A fallback is the dispatcher noticing that a callback could not
+             * draw and having the DIB Engine redraw the string. The pixels
+             * are right when that happens, which is exactly why it has to be
+             * asserted on: nothing this run draws is meant to need it, so any
+             * fallback is a callback refusing work this build claims to do.
+             */
+            error = "text-fell-back-to-software";
+        } else if ((stats.enabled & V9X_GDI_PRIM_TEXT) != 0ul &&
+                   (stats.text_reject_mask & ~before.text_reject_mask &
+                    ~0x0015ul) != 0ul) {
+            /*
+             * Three reject reasons are legitimate with text enabled: bit 0 (a
+             * bitmap was expanded), bit 2 (an extent call, which GDI issues
+             * for every string it measures) and bit 4 (a destination that is
+             * not the screen - this run's own reference bitmap). Any other bit
+             * newly set during this run is text being refused for a reason
+             * this build does not intend.
+             *
+             * Newly set, because the mask accumulates over the session and the
+             * desktop sets bit 12 on its own before any run starts: the first
+             * Trio64 guest boot fell back seven strings for a negative origin
+             * during startup, correctly, and this check then failed a run whose
+             * every string had been expanded. The fallback delta check above is
+             * what watches this run's own callbacks.
+             */
+            error = "text-unexpected-reject-reason";
         }
+    }
+    /*
+     * Ordinal 14 has to have been reached, whatever is enabled - the same
+     * claim dispatcher-never-called makes for ordinal 1. This run draws text
+     * on every family; if the count did not move, GDI is not routing text
+     * through the driver's ExtTextOut and no text check above means anything.
+     */
+    if (error == 0 && stats.text_calls <= before.text_calls) {
+        error = "text-dispatcher-never-called";
     }
 
     /*
@@ -1694,6 +1842,179 @@ static DWORD v9x_accel_inject_phase(DWORD count)
 }
 
 /*
+ * /textdump: one known string, and what the driver was handed for it.
+ *
+ * Draws a fixed-pitch string on the screen through GDI, then reads back
+ * through V9X_GDITEXTDUMP the arguments the DIB Engine passed to the driver's
+ * string-bitmap callback and the head of the bitmap itself. Beside it, the
+ * same string rendered by GDI into a 1-bpp memory bitmap on this side, row by
+ * row, so the two encodings can be compared on the host byte for byte. In a
+ * mono DDB GDI maps black text to 0 and white background to 1, so the reference
+ * is expected to be the driver's buffer inverted if the two agree on layout.
+ *
+ * Exists because the first guest run of build 005 drew the left of every
+ * string as garbage and the right correctly, and nothing but the bytes could
+ * say why.
+ */
+#define V9X_TEXT_DUMP_SECTION "Velocity9xTextDump"
+#define V9X_TEXT_DUMP_X 200
+#define V9X_TEXT_DUMP_Y 300
+
+static void v9x_text_dump_write(const char *key, const char *value)
+{
+    WritePrivateProfileStringA(V9X_TEXT_DUMP_SECTION, key, value,
+                               V9X_DIAG_TEXT_INI);
+}
+
+static void v9x_text_dump_write_uint(const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_uint_text(text, (UINT)value);
+    v9x_text_dump_write(key, text);
+}
+
+static void v9x_text_dump_write_hex_row(const char *prefix, unsigned row,
+                                        const unsigned char *bytes,
+                                        unsigned count)
+{
+    static const char digits[] = "0123456789abcdef";
+    char key[16];
+    char value[3 * 64 + 1];
+    unsigned index;
+    unsigned length = 0u;
+
+    lstrcpyA(key, prefix);
+    v9x_uint_text(key + lstrlenA(key), row);
+    if (count > 64u) {
+        count = 64u;
+    }
+    for (index = 0u; index < count; ++index) {
+        value[length++] = digits[bytes[index] >> 4];
+        value[length++] = digits[bytes[index] & 15u];
+        value[length++] = ' ';
+    }
+    value[length] = '\0';
+    v9x_text_dump_write(key, value);
+}
+
+static DWORD v9x_text_dump_phase(void)
+{
+    static const char text[] = "ABCDEFGH";
+    V9X_GDI_TEXT_DUMP dump;
+    V9X_DCICMD command;
+    HDC screen = GetDC(0);
+    HFONT font = (HFONT)GetStockObject(SYSTEM_FIXED_FONT);
+    HFONT previous;
+    SIZE extent;
+    HDC memory;
+    HBITMAP mono;
+    HBITMAP previous_bitmap;
+    unsigned char reference[64 * 32];
+    LONG reference_bytes;
+    unsigned stride;
+    unsigned row;
+    unsigned char *bytes = (unsigned char *)&dump;
+    unsigned index;
+
+    WritePrivateProfileStringA(V9X_TEXT_DUMP_SECTION, 0, 0, V9X_DIAG_TEXT_INI);
+    v9x_text_dump_write("Build", V9X_BUILD_ID);
+    v9x_text_dump_write("Text", text);
+    if (screen == 0) {
+        v9x_text_dump_write("Result", "FAIL");
+        v9x_text_dump_write("Error", "no-screen-dc");
+        return 1ul;
+    }
+    previous = (HFONT)SelectObject(screen, font);
+    SetBkMode(screen, OPAQUE);
+    SetTextColor(screen, RGB(0, 0, 0));
+    SetBkColor(screen, RGB(255, 255, 255));
+    TextOutA(screen, V9X_TEXT_DUMP_X, V9X_TEXT_DUMP_Y, text, lstrlenA(text));
+    GetTextExtentPoint32A(screen, text, lstrlenA(text), &extent);
+    SelectObject(screen, previous);
+    v9x_text_dump_write_uint("ExtentWidth", (DWORD)extent.cx);
+    v9x_text_dump_write_uint("ExtentHeight", (DWORD)extent.cy);
+
+    for (index = 0u; index < sizeof(dump); ++index) {
+        bytes[index] = 0u;
+    }
+    command.dwCommand = V9X_GDITEXTDUMP;
+    command.dwParam1 = 0ul;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_DD_VERSION;
+    command.dwReserved = 0ul;
+    if (ExtEscape(screen, V9X_DCICOMMAND, sizeof(command), (LPCSTR)&command,
+                  sizeof(dump), (LPSTR)&dump) <= 0 ||
+        dump.dwSize != sizeof(dump)) {
+        ReleaseDC(0, screen);
+        v9x_text_dump_write("Result", "FAIL");
+        v9x_text_dump_write("Error", "escape-rejected");
+        return 2ul;
+    }
+    v9x_text_dump_write_uint("Sequence", dump.sequence);
+    v9x_text_dump_write_uint("Buffer", dump.buffer);
+    v9x_text_dump_write_uint("Flags", dump.flags);
+    v9x_text_dump_write_uint("Background", dump.background);
+    v9x_text_dump_write_uint("Foreground", dump.foreground);
+    v9x_text_dump_write_uint("X", dump.x);
+    v9x_text_dump_write_uint("Y", dump.y);
+    v9x_text_dump_write_uint("WidthBytes", dump.width_bytes);
+    v9x_text_dump_write_uint("Height", dump.height);
+    v9x_text_dump_write_uint("ClipPresent", dump.clip_present);
+    v9x_text_dump_write_uint("ClipLeft", dump.clip_left);
+    v9x_text_dump_write_uint("ClipTop", dump.clip_top);
+    v9x_text_dump_write_uint("ClipRight", dump.clip_right);
+    v9x_text_dump_write_uint("ClipBottom", dump.clip_bottom);
+    v9x_text_dump_write_uint("DeviceWidth", dump.device_width);
+    v9x_text_dump_write_uint("DeviceWidthBytes", dump.device_width_bytes);
+    v9x_text_dump_write_uint("DeviceBpp", dump.device_bpp);
+    v9x_text_dump_write_uint("Copied", dump.copied);
+    if (dump.width_bytes != 0ul && dump.copied != 0ul) {
+        for (row = 0u; row * dump.width_bytes < dump.copied && row < 32u;
+             ++row) {
+            unsigned remaining =
+                (unsigned)(dump.copied - row * dump.width_bytes);
+
+            v9x_text_dump_write_hex_row(
+                "Drv", row, dump.bits + row * dump.width_bytes,
+                remaining < (unsigned)dump.width_bytes
+                    ? remaining : (unsigned)dump.width_bytes);
+        }
+    }
+
+    /* The reference: GDI's own rendering of the same string into a mono DDB,
+     * whose rows are word-aligned. */
+    memory = CreateCompatibleDC(screen);
+    mono = CreateBitmap(extent.cx, extent.cy, 1, 1, 0);
+    stride = (unsigned)(((extent.cx + 15) / 16) * 2);
+    if (memory != 0 && mono != 0) {
+        previous_bitmap = (HBITMAP)SelectObject(memory, mono);
+        previous = (HFONT)SelectObject(memory, font);
+        SetBkMode(memory, OPAQUE);
+        SetTextColor(memory, RGB(0, 0, 0));
+        SetBkColor(memory, RGB(255, 255, 255));
+        TextOutA(memory, 0, 0, text, lstrlenA(text));
+        SelectObject(memory, previous);
+        SelectObject(memory, previous_bitmap);
+        reference_bytes = GetBitmapBits(mono, sizeof(reference), reference);
+        v9x_text_dump_write_uint("RefStride", stride);
+        v9x_text_dump_write_uint("RefBytes", (DWORD)reference_bytes);
+        for (row = 0u; row < (unsigned)extent.cy && row < 32u &&
+                       (row + 1u) * stride <= (unsigned)reference_bytes;
+             ++row) {
+            v9x_text_dump_write_hex_row("Ref", row, reference + row * stride,
+                                        stride);
+        }
+    }
+    if (mono != 0) { DeleteObject(mono); }
+    if (memory != 0) { DeleteDC(memory); }
+    ReleaseDC(0, screen);
+    v9x_text_dump_write("Result", dump.sequence != 0ul ? "PASS" : "FAIL");
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_TEXT_INI);
+    return dump.sequence != 0ul ? 0ul : 3ul;
+}
+
+/*
  * The probe phase: the same full-screen window the comparison uses, one fill,
  * and no comparison at all. Separate from /accel on purpose - /accel issues
  * hundreds of operations, and on hardware the first handful already corrupt the
@@ -1888,6 +2209,9 @@ void WINAPI V9xGdiSmokeEntry(void)
     }
     if (v9x_has_switch(command_line, "/stats")) {
         ExitProcess(v9x_accel_inject_phase(0ul));
+    }
+    if (v9x_has_switch(command_line, "/textdump")) {
+        ExitProcess(v9x_text_dump_phase());
     }
     if (v9x_has_switch(command_line, "/probe")) {
         ExitProcess(v9x_accel_probe_phase(instance));

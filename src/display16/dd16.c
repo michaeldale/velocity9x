@@ -878,6 +878,8 @@ static LONG v9x_gdi_command(V9X_DCICMD FAR *command, LPVOID output)
         return v9x_gdi_accel_stats(output) != 0u ? 1 : 0;
     case V9X_GDIFAULTINJECT:
         return v9x_gdi_accel_fault_inject(command->dwParam1) != 0u ? 1 : 0;
+    case V9X_GDITEXTDUMP:
+        return v9x_gdi_accel_text_dump(output) != 0u ? 1 : 0;
     default:
         return 0;
     }
@@ -893,7 +895,8 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
 
         if (command->dwVersion == V9X_DD_VERSION &&
             (command->dwCommand == V9X_GDIGETSTATS ||
-             command->dwCommand == V9X_GDIFAULTINJECT)) {
+             command->dwCommand == V9X_GDIFAULTINJECT ||
+             command->dwCommand == V9X_GDITEXTDUMP)) {
             return v9x_gdi_command(command, output);
         }
     }

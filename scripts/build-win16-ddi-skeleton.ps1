@@ -179,7 +179,9 @@ $linkLines += @(
     "export Disable.4=DISABLE", "export Enable.5=ENABLE", "export EnumDFonts.6",
     "export EnumObj.7", "export Output.8", "export Pixel.9",
     "export RealizeObject.10", "export StrBlt.11", "export ScanLR.12",
-    "export DeviceMode.13", "export ExtTextOut.14",
+    # Ordinal 14 is C too, since build 005 (gdi_accel.c), so it names the
+    # uppercased symbol like ordinal 1 does.
+    "export DeviceMode.13", "export ExtTextOut.14=EXTTEXTOUT",
     "export GetCharWidth.15", "export DeviceBitmap.16",
     "export FastBorder.17", "export SetAttribute.18",
     "export DibBlt.19", "export CreateDIBitmap.20",

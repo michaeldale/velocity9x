@@ -305,6 +305,31 @@ typedef struct v9x_drawmode {
 
 #define V9X_DRAWMODE_HEAD_SIZE      12u
 
+/*
+ * GDI's RECT, from GDIDEFS.INC:298 - four signed 16-bit coordinates, right
+ * and bottom exclusive. ExtTextOut receives two of these (the clip and the
+ * opaque rectangle) and the DIB Engine's text callback receives the clip.
+ */
+typedef struct v9x_rect16 {
+    short left;
+    short top;
+    short right;
+    short bottom;
+} V9X_RECT16;
+
+/*
+ * ExtTextOut option bits, GDIDEFS.INC:1008-1015. ETO_LEVEL_MODE is the one
+ * every DDK text dispatcher forwards unconditionally to the DIB Engine.
+ */
+#define V9X_ETO_LEVEL_MODE          0x1000u
+
+/*
+ * DIB_ExtTextOutExt's text-bitmap callback: Flags bit 0 set means the string
+ * is transparent (background bits leave the destination alone), clear means
+ * opaque. 98DDK\src\display\mini\framebuf\TSENGTXT.ASM:165 names it so.
+ */
+#define V9X_TEXT_BITMAP_TRANSPARENT 0x0001u
+
 typedef struct v9x_display_validate_mode {
     WORD size;
     WORD bits_per_pixel;
@@ -354,6 +379,7 @@ typedef char v9x_assert_dib_brush16_size[
  */
 typedef char v9x_assert_drawmode_head_size[
     sizeof(V9X_DRAWMODE) == V9X_DRAWMODE_HEAD_SIZE ? 1 : -1];
+typedef char v9x_assert_rect16_size[sizeof(V9X_RECT16) == 8u ? 1 : -1];
 typedef char v9x_assert_dib_brush_solid_size[
     sizeof(V9X_DIB_BRUSH_SOLID) == 82u ? 1 : -1];
 

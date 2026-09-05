@@ -31,9 +31,11 @@
  * it never calls the application-side one.
  */
 #define BitBlt V9xUserBitBlt
+#define ExtTextOut V9xUserExtTextOut
 #define SetCursor V9xUserSetCursor
 #include <windows.h>
 #undef SetCursor
+#undef ExtTextOut
 #undef BitBlt
 
 #include "velocity9x/diagpaths.h"
@@ -67,6 +69,37 @@ extern WORD FAR PASCAL V9xDibBitBltCall(V9X_DIB_ENGINE FAR *destination_device,
                                         DWORD rop,
                                         V9X_DIB_BRUSH FAR *brush,
                                         LPVOID draw_mode);
+/*
+ * The DIB Engine's two text entries, typed (runtime.asm forwards). The first
+ * is the plain software path. The second is the same twelve arguments plus
+ * two far pointers to driver callbacks - one that expands the realized string
+ * bitmap, one that fills the opaque rectangle - which the DIB Engine calls
+ * after it has laid the string out and clipped it. That is the hook every
+ * Windows 98 DDK display sample uses for text; the argument order is
+ * transcribed from 98DDK\src\display\mini\xga\STRBLT.ASM:78-89 and the two
+ * appended pointers from :126-135.
+ */
+extern DWORD FAR PASCAL V9xDibExtTextOutCall(V9X_DIB_ENGINE FAR *device,
+                                             WORD x, WORD y,
+                                             V9X_RECT16 FAR *clip_rect,
+                                             LPVOID string, short count,
+                                             LPVOID font, LPVOID draw_mode,
+                                             LPVOID xform, LPVOID dx,
+                                             V9X_RECT16 FAR *opaque_rect,
+                                             WORD options);
+extern DWORD FAR PASCAL V9xDibExtTextOutExtCall(V9X_DIB_ENGINE FAR *device,
+                                                WORD x, WORD y,
+                                                V9X_RECT16 FAR *clip_rect,
+                                                LPVOID string, short count,
+                                                LPVOID font, LPVOID draw_mode,
+                                                LPVOID xform, LPVOID dx,
+                                                V9X_RECT16 FAR *opaque_rect,
+                                                WORD options,
+                                                void FAR *draw_text_bitmap,
+                                                void FAR *draw_opaque_rect);
+/* runtime.asm: `rep outsw` of one run of string-bitmap words to PIX_TRANS. */
+extern void FAR PASCAL V9xTrioPixTransWords(WORD source_selector,
+                                            WORD source_offset, WORD words);
 
 static WORD v9x_gdi_port_in_word(WORD port);
 #pragma aux v9x_gdi_port_in_word = "in ax,dx" parm [dx] value [ax] \
@@ -124,6 +157,10 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
 /* Build 004: monochrome CPU-source expansion, compiled and OFF, which is what
  * the rollout table specifies for this build. */
 #define V9X_GDI_DEFAULT_UPLOAD   0
+/* Build 005: text through DIB_ExtTextOutExt, Trio64 only. Compiled and OFF,
+ * as every new primitive has shipped until a guest and then a card measured
+ * it (docs\decisions\2026-09-06-gdi-accel-005-text.md). */
+#define V9X_GDI_DEFAULT_TEXT     0
 
 /*
  * Smallest rectangle worth handing to the engine, in pixels.
@@ -195,6 +232,15 @@ static WORD v9x_gdi_report_pending;
  * engine-less family stays in for ever.
  */
 static WORD v9x_gdi_engine_live;
+
+/*
+ * Set by a text callback that could not draw what the DIB Engine handed it,
+ * read by the ExtTextOut dispatcher when DIB_ExtTextOutExt returns. The
+ * callbacks have no decline path of their own - by the time one runs, the DIB
+ * Engine has already decided the driver is drawing - so the dispatcher makes
+ * good by having DIB_ExtTextOut draw the whole string again in software.
+ */
+static WORD v9x_gdi_text_failed;
 
 static void v9x_gdi_write(DWORD offset, DWORD value)
 {
@@ -736,6 +782,181 @@ static WORD v9x_gdi_trio_copy(const V9X_GDI_OP *op)
 }
 
 /*
+ * One realized string bitmap, as DIB_ExtTextOutExt hands it to the driver and
+ * as the Trio64 primitive wants it: rows of width_bytes, contiguous, leftmost
+ * pixel in the top bit of each byte, inside one selector. The clip is
+ * inclusive and already in engine coordinates - the surface's base rows are
+ * folded into y and into the two vertical clip edges alike.
+ */
+typedef struct v9x_gdi_text_op {
+    WORD source_selector;
+    WORD source_offset;
+    WORD width_bytes;
+    WORD height;
+    WORD x;
+    WORD y;
+    WORD clip_left;
+    WORD clip_top;
+    WORD clip_right;
+    WORD clip_bottom;
+    DWORD foreground;
+    DWORD background;
+    WORD transparent;
+} V9X_GDI_TEXT_OP;
+
+/*
+ * Wait for the Trio64 command FIFO to report every slot free.
+ *
+ * This is the pacing for CPU-fed data, and it is deliberately the most
+ * conservative reading of a register nobody here has a databook page for: the
+ * low byte of CMD_STATUS is all zero when the FIFO is empty under either of
+ * the two bit conventions the 8514/A family has used, and eight is the depth
+ * the original adapter had. What a write to a full FIFO does on this chip is
+ * not known - held off, or lost - so the text path never finds out. The cost
+ * is one ISA-timed port read per eight words, which on a string of a hundred
+ * words is a tenth of the transfer. Tunable once measured, not before.
+ *
+ * Same shape as the other bounded waits: an expiry counts, poisons, and
+ * returns zero. The caller decides what to do with a transfer already in
+ * flight - see v9x_gdi_trio_text.
+ */
+static WORD v9x_gdi_trio_wait_fifo_empty(void)
+{
+    DWORD spins;
+
+    if (v9x_gdi_engine_live == 0u) {
+        return 0u;
+    }
+    if (v9x_gdi_fault_injected() == 0u) {
+        spins = V9X_GDI_FIFO_SPIN_LIMIT;
+        do {
+            if ((v9x_gdi_port_in_word(V9X_TRIO_CMD_STATUS) &
+                 V9X_TRIO_STATUS_FIFO_MASK) == 0u) {
+                return 1u;
+            }
+        } while (spins-- != 0ul);
+    }
+    ++v9x_gdi.fifo_timeouts;
+    v9x_gdi_poison();
+    return 0u;
+}
+
+/*
+ * Monochrome expansion of a string bitmap on the Trio64: a CPU-data rectangle
+ * fill, mix selected per pixel by the bits written to PIX_TRANS. The register
+ * meanings are with the constants in s3_engine_regs.h.
+ *
+ * The rectangle is words_per_row * 16 pixels wide, not width_bytes * 8: the
+ * engine consumes exactly sixteen pixels per word written and runs rows
+ * together with no padding, so a row that is not a whole number of words
+ * would spill its last word's remaining bits into the next row. Rounding the
+ * width up to whole words keeps every row on a word boundary, and the extra
+ * pixels - eight of them, at most, on an odd width_bytes - are cut off by the
+ * scissors, whose right edge the caller bounds at the true bitmap width. That
+ * odd last byte is written on its own as the low half of a word rather than
+ * read as a word from the buffer, because the byte after it may be the next
+ * row's first byte or, on the last row, past the end of the selector.
+ *
+ * Two things differ from the fill and copy primitives, deliberately. The
+ * scissors are narrowed to the clip rather than opened wide, because clipping
+ * is what the DIB Engine has asked this callback to do and the engine's clip
+ * registers are the one place it can be done without touching the bits. And
+ * the primitive waits for the engine to go idle before returning, where the
+ * fill and copy return with the command still in flight: the DIB Engine ends
+ * its own cursor exclusion the moment the callback returns, with CPU writes
+ * that do not pass through deBeginAccess, so the dirty-flag drain that
+ * protects the other primitives would not run here.
+ *
+ * The scissors and the pixel-control register are restored behind the data,
+ * in FIFO order, because the 32-bit HAL drives this same engine and programs
+ * neither - a narrowed clip left behind would cut the next DirectDraw blit.
+ *
+ * A bounded wait expiring part way through does not stop the feed. The engine
+ * has been told how many pixels to expect, and the remaining words are the
+ * cheapest way to let it finish and settle, whether the wait really failed or
+ * was a fault injection. The caller then flags the string for the software
+ * redraw regardless, so the pixels end up right either way.
+ */
+static WORD v9x_gdi_trio_text(const V9X_GDI_TEXT_OP *op)
+{
+    WORD whole_words = (WORD)(op->width_bytes >> 1);
+    WORD tail_byte = (WORD)(op->width_bytes & 1u);
+    WORD words_per_row = (WORD)(whole_words + tail_byte);
+    WORD ok = 1u;
+    WORD row;
+
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    v9x_gdi_trio_prepare();
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_T | op->clip_top));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_L | op->clip_left));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_B | op->clip_bottom));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_R | op->clip_right));
+    v9x_gdi_port_out_word(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_NEW);
+    v9x_gdi_port_out_word(V9X_TRIO_BKGD_MIX,
+                          op->transparent != 0u ? V9X_TRIO_BKGD_MIX_DEST
+                                                : V9X_TRIO_BKGD_MIX_NEW);
+    v9x_gdi_port_out_word(V9X_TRIO_FRGD_COLOR, (WORD)op->foreground);
+    v9x_gdi_port_out_word(V9X_TRIO_BKGD_COLOR, (WORD)op->background);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          V9X_TRIO_PIXEL_CNTL_CPU_MIX);
+    v9x_gdi_port_out_word(V9X_TRIO_CUR_X, op->x);
+    v9x_gdi_port_out_word(V9X_TRIO_CUR_Y, op->y);
+    v9x_gdi_port_out_word(V9X_TRIO_MAJ_AXIS_PCNT,
+                          (WORD)(words_per_row * 16u - 1u));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, (WORD)(op->height - 1u));
+    v9x_gdi_port_out_word(V9X_TRIO_CMD_STATUS, V9X_TRIO_CMD_RECT_CPU_MONO);
+
+    for (row = 0u; row < op->height; ++row) {
+        WORD offset = (WORD)(op->source_offset + row * op->width_bytes);
+        WORD remaining = whole_words;
+
+        while (remaining != 0u) {
+            WORD burst = remaining < V9X_TRIO_FIFO_BURST_WORDS
+                             ? remaining : V9X_TRIO_FIFO_BURST_WORDS;
+
+            if (ok != 0u && v9x_gdi_trio_wait_fifo_empty() == 0u) {
+                ok = 0u;
+            }
+            V9xTrioPixTransWords(op->source_selector, offset, burst);
+            offset = (WORD)(offset + burst * 2u);
+            remaining = (WORD)(remaining - burst);
+        }
+        if (tail_byte != 0u) {
+            const BYTE FAR *last =
+                (const BYTE FAR *)(((DWORD)op->source_selector << 16) |
+                                   (DWORD)offset);
+
+            if (ok != 0u && v9x_gdi_trio_wait_fifo_empty() == 0u) {
+                ok = 0u;
+            }
+            v9x_gdi_port_out_word(V9X_TRIO_PIX_TRANS, (WORD)*last);
+        }
+    }
+
+    if (ok != 0u && v9x_gdi_trio_wait_fifo_empty() == 0u) {
+        ok = 0u;
+    }
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_SCISSORS_T);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_SCISSORS_L);
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_B | V9X_TRIO_SCISSORS_MAX));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          (WORD)(V9X_TRIO_SCISSORS_R | V9X_TRIO_SCISSORS_MAX));
+    v9x_gdi_port_out_word(V9X_TRIO_MULTIFUNC_CNTL,
+                          V9X_TRIO_PIXEL_CNTL_FRGD_MIX);
+    if (ok != 0u && v9x_gdi_wait_idle() == 0u) {
+        ok = 0u;
+    }
+    return ok;
+}
+
+/*
  * Lift a software cursor out of the rectangle about to be drawn.
  *
  * Called through the PDEVICE, exactly as the reference blitter does
@@ -824,7 +1045,8 @@ void v9x_gdi_accel_configure(void)
      * advertised is a property of the source and not of the chip. What the
      * chip will actually run is `enabled`. */
     v9x_gdi.advertised = V9X_GDI_PRIM_FILL | V9X_GDI_PRIM_COPY |
-                         V9X_GDI_PRIM_OVERLAP | V9X_GDI_PRIM_UPLOAD;
+                         V9X_GDI_PRIM_OVERLAP | V9X_GDI_PRIM_UPLOAD |
+                         V9X_GDI_PRIM_TEXT;
     v9x_gdi_engine_type = V9X_DD_ENGINE_TYPE_NONE;
     v9x_gdi_engine_caps = 0ul;
     v9x_gdi_engine_live = 0u;
@@ -864,11 +1086,18 @@ void v9x_gdi_accel_configure(void)
                                  V9X_SYSTEM_INI) != 0) {
             enabled |= V9X_GDI_PRIM_UPLOAD;
         }
+        if (GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccelText",
+                                 V9X_GDI_DEFAULT_TEXT,
+                                 V9X_SYSTEM_INI) != 0) {
+            enabled |= V9X_GDI_PRIM_TEXT;
+        }
     }
     /* The chip is the authority on capability, and an overlap-capable copy is
-     * still a copy: overlap without copy would enable nothing. */
+     * still a copy: overlap without copy would enable nothing. Text is a fill
+     * variant on the one chip that has it, so it follows the fill capability
+     * and is then narrowed to that chip below. */
     if ((v9x_gdi_engine_caps & V9X_DD_ENGINE_CAP_SOLID_FILL) == 0ul) {
-        enabled &= ~V9X_GDI_PRIM_FILL;
+        enabled &= ~(V9X_GDI_PRIM_FILL | V9X_GDI_PRIM_TEXT);
     }
     if ((v9x_gdi_engine_caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) == 0ul) {
         enabled &= ~(V9X_GDI_PRIM_COPY | V9X_GDI_PRIM_OVERLAP |
@@ -877,6 +1106,12 @@ void v9x_gdi_accel_configure(void)
     /* Only the ViRGE has an implemented upload path; see gate 8. */
     if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         enabled &= ~V9X_GDI_PRIM_UPLOAD;
+    }
+    /* And only the Trio64 has an implemented text path, this build. The ViRGE
+     * has the mechanism (build 004's MONOSRCBLT is the same expansion) but
+     * not the plumbing, and the one physical card here is a Trio64. */
+    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+        enabled &= ~V9X_GDI_PRIM_TEXT;
     }
     if ((enabled & V9X_GDI_PRIM_COPY) == 0ul) {
         enabled &= ~V9X_GDI_PRIM_OVERLAP;
@@ -913,17 +1148,41 @@ const char *v9x_gdi_accel_state_text(void)
     if (v9x_gdi.enabled == 0ul) {
         return "none";
     }
-    if ((v9x_gdi.enabled & V9X_GDI_PRIM_UPLOAD) != 0ul) {
-        return "gdi-fill-copy-overlap-upload";
+    /*
+     * One word per enabled primitive, in rollout order, so the value reads the
+     * same as it did when it was a fixed set of literals ("gdi-fill-copy-
+     * overlap") and grows a suffix as a build turns something on. Built by
+     * hand rather than with a formatting call: this runs at Enable, which is
+     * not a place to pull in the C runtime's string machinery.
+     */
+    {
+        static char text[48];
+        static const char *const names[5] = {
+            "-fill", "-copy", "-overlap", "-upload", "-text"
+        };
+        static const DWORD bits[5] = {
+            V9X_GDI_PRIM_FILL, V9X_GDI_PRIM_COPY, V9X_GDI_PRIM_OVERLAP,
+            V9X_GDI_PRIM_UPLOAD, V9X_GDI_PRIM_TEXT
+        };
+        WORD length = 0u;
+        WORD index;
+
+        text[length++] = 'g';
+        text[length++] = 'd';
+        text[length++] = 'i';
+        for (index = 0u; index < 5u; ++index) {
+            const char *name = names[index];
+
+            if ((v9x_gdi.enabled & bits[index]) == 0ul) {
+                continue;
+            }
+            while (*name != '\0' && length < sizeof(text) - 1u) {
+                text[length++] = *name++;
+            }
+        }
+        text[length] = '\0';
+        return text;
     }
-    if ((v9x_gdi.enabled & V9X_GDI_PRIM_OVERLAP) != 0ul) {
-        return "gdi-fill-copy-overlap";
-    }
-    if ((v9x_gdi.enabled & V9X_GDI_PRIM_COPY) != 0ul) {
-        return (v9x_gdi.enabled & V9X_GDI_PRIM_FILL) != 0ul
-                   ? "gdi-fill-copy" : "gdi-copy";
-    }
-    return "gdi-fill";
 }
 
 WORD v9x_gdi_accel_stats(void FAR *output)
@@ -1419,4 +1678,408 @@ decline:
     return V9xDibBitBltCall(destination_device, destination_x, destination_y,
                             source_device, source_x, source_y, x_extent,
                             y_extent, rop, brush, draw_mode);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Text, build 005.
+ *
+ * The mechanism is the DIB Engine's own. DIB_ExtTextOutExt takes the twelve
+ * ExtTextOut arguments plus two driver callbacks, lays the string out itself -
+ * glyph lookup, character spacing, clipping to the rectangle it is given - and
+ * then calls back with the result: a monochrome bitmap of the whole string, its
+ * position, and the clip it should be drawn through; and separately, if the
+ * call was opaque, the rectangle to paint behind it. That is why text
+ * acceleration on this platform is monochrome expansion and nothing else, and
+ * why the driver never touches a font.
+ *
+ * The one thing the callbacks cannot do is decline. When one runs, the DIB
+ * Engine has already committed to the driver drawing, so a callback that
+ * cannot proceed sets v9x_gdi_text_failed and returns, and the dispatcher -
+ * which owns all twelve original arguments - has DIB_ExtTextOut draw the
+ * string again in software. The opaque rectangle may be painted twice that way,
+ * which is harmless; a glyph is never painted zero times.
+ * ---------------------------------------------------------------------------
+ */
+
+#define V9X_GDI_TEXT_REJECT(bit) (v9x_gdi.text_reject_mask |= 1ul << (bit))
+
+/* Engine coordinates are twelve bits. Anything the fold pushes past that is a
+ * fallback rather than a wrap. */
+#define V9X_TRIO_COORD_LIMIT     4096ul
+
+static void v9x_gdi_text_fail(WORD reason_bit)
+{
+    V9X_GDI_TEXT_REJECT(reason_bit);
+    v9x_gdi_text_failed = 1u;
+}
+
+/*
+ * The last string-bitmap callback's arguments and the head of its bitmap,
+ * kept for V9X_GDITEXTDUMP. Filled before any gate runs, so a callback that
+ * then fell back is captured as faithfully as one that drew.
+ */
+static V9X_GDI_TEXT_DUMP v9x_gdi_text_dump;
+
+static void v9x_gdi_text_capture(const V9X_DIB_ENGINE FAR *device,
+                                 const BYTE FAR *mono_buffer, WORD flags,
+                                 DWORD background, DWORD foreground,
+                                 WORD x, WORD y, WORD width_bytes,
+                                 WORD height, const V9X_RECT16 FAR *clip)
+{
+    V9X_GDI_TEXT_DUMP *dump = &v9x_gdi_text_dump;
+    DWORD total = (DWORD)width_bytes * (DWORD)height;
+    WORD index;
+
+    dump->dwSize = sizeof(V9X_GDI_TEXT_DUMP);
+    ++dump->sequence;
+    dump->buffer = (DWORD)mono_buffer;
+    dump->flags = flags;
+    dump->background = background;
+    dump->foreground = foreground;
+    dump->x = (DWORD)(long)(short)x;
+    dump->y = (DWORD)(long)(short)y;
+    dump->width_bytes = width_bytes;
+    dump->height = height;
+    dump->clip_present = clip != 0 ? 1ul : 0ul;
+    if (clip != 0) {
+        dump->clip_left = (DWORD)(long)clip->left;
+        dump->clip_top = (DWORD)(long)clip->top;
+        dump->clip_right = (DWORD)(long)clip->right;
+        dump->clip_bottom = (DWORD)(long)clip->bottom;
+    }
+    if (device != 0) {
+        dump->device_width = device->deWidth;
+        dump->device_width_bytes = device->deWidthBytes;
+        dump->device_bpp = device->deBitsPixel;
+    }
+    dump->copied = 0ul;
+    if (mono_buffer == 0) {
+        return;
+    }
+    if (total > V9X_GDI_TEXT_DUMP_BYTES) {
+        total = V9X_GDI_TEXT_DUMP_BYTES;
+    }
+    /* Bounded to the selector the same way the feed is, so the diagnostic
+     * cannot fault where the primitive would have declined. */
+    if ((DWORD)(WORD)(DWORD)mono_buffer + total > 0x00010000ul) {
+        return;
+    }
+    for (index = 0u; index < (WORD)total; ++index) {
+        dump->bits[index] = mono_buffer[index];
+    }
+    dump->copied = total;
+}
+
+WORD v9x_gdi_accel_text_dump(void FAR *output)
+{
+    BYTE FAR *destination = (BYTE FAR *)output;
+    const BYTE *source = (const BYTE *)&v9x_gdi_text_dump;
+    WORD index;
+
+    if (output == 0) {
+        return 0u;
+    }
+    v9x_gdi_text_dump.dwSize = sizeof(V9X_GDI_TEXT_DUMP);
+    for (index = 0u; index < sizeof(V9X_GDI_TEXT_DUMP); ++index) {
+        destination[index] = source[index];
+    }
+    return 1u;
+}
+
+/*
+ * DIB_ExtTextOutExt's string-bitmap callback. Argument list transcribed from
+ * 98DDK\src\display\mini\xga\STRBLT.ASM:152-164 (the framebuf sample declares
+ * the same list at TSENGTXT.ASM:162-172 and names Flags bit 0 "transparent").
+ * PASCAL, so the callee pops; __loadds because the DIB Engine calls with its
+ * own DS and everything below is DGROUP.
+ *
+ * x and y arrive as words but mean signed coordinates - a string that starts
+ * left of the surface and is clipped to it has a negative x. The engine's
+ * current-position registers have no such sign, so that case falls back.
+ */
+WORD __loadds FAR PASCAL V9xGdiDrawTextBitmap(V9X_DIB_ENGINE FAR *device,
+                                              const BYTE FAR *mono_buffer,
+                                              WORD flags,
+                                              DWORD background,
+                                              DWORD foreground,
+                                              WORD x, WORD y,
+                                              WORD width_bytes, WORD height,
+                                              const V9X_RECT16 FAR *clip)
+{
+    V9X_GDI_TEXT_OP op;
+    DWORD rows;
+    DWORD buffer_end;
+    long left;
+    long top;
+    long right;
+    long bottom;
+    WORD issued;
+
+    v9x_gdi.text_last_shape = ((DWORD)width_bytes << 16) | (DWORD)height;
+    v9x_gdi_text_capture(device, mono_buffer, flags, background, foreground,
+                         x, y, width_bytes, height, clip);
+    if (device == 0 || device != v9x_driver_pdevice ||
+        v9x_driver_pdevice == 0) {
+        v9x_gdi_text_fail(9u);
+        return 1u;
+    }
+    if (width_bytes == 0u || height == 0u) {
+        /* Nothing to draw is not a failure; there is just nothing to draw. */
+        V9X_GDI_TEXT_REJECT(11u);
+        return 1u;
+    }
+    if (mono_buffer == 0) {
+        v9x_gdi_text_fail(10u);
+        return 1u;
+    }
+    /*
+     * The whole bitmap must sit inside the buffer's selector, because the feed
+     * addresses it with a 16-bit offset - the same bound build 004 placed on
+     * its source and for the same reason.
+     */
+    buffer_end = (DWORD)(WORD)(DWORD)mono_buffer +
+                 (DWORD)width_bytes * (DWORD)height;
+    if (buffer_end > 0x00010000ul) {
+        v9x_gdi_text_fail(10u);
+        return 1u;
+    }
+    if ((short)x < 0 || (short)y < 0) {
+        v9x_gdi_text_fail(12u);
+        return 1u;
+    }
+    /* The dispatcher gated pitch non-zero and base on a scan line, so this
+     * division is exact and cannot fault. */
+    rows = device->deBitsOffset / (DWORD)device->deWidthBytes;
+
+    /*
+     * The visible part: the string's own rectangle, the DIB Engine's clip, and
+     * the surface, intersected. Right and bottom are exclusive here and become
+     * inclusive when they reach the scissors. The clip bounds the drawn width
+     * at width_bytes * 8, which is what keeps the primitive's word rounding
+     * off the screen.
+     */
+    left = (long)x;
+    top = (long)y;
+    right = (long)x + (long)width_bytes * 8l;
+    bottom = (long)y + (long)height;
+    if (clip != 0) {
+        if ((long)clip->left > left) { left = clip->left; }
+        if ((long)clip->top > top) { top = clip->top; }
+        if ((long)clip->right < right) { right = clip->right; }
+        if ((long)clip->bottom < bottom) { bottom = clip->bottom; }
+    }
+    if (left < 0l) { left = 0l; }
+    if (top < 0l) { top = 0l; }
+    if (right > (long)device->deWidth) { right = device->deWidth; }
+    if (bottom > (long)device->deHeight) { bottom = device->deHeight; }
+    if (left >= right || top >= bottom) {
+        /* Entirely clipped away. Correctly drawn, in the sense that matters. */
+        return 1u;
+    }
+    if ((DWORD)x + ((DWORD)width_bytes + 1ul) / 2ul * 16ul >
+            V9X_TRIO_COORD_LIMIT ||
+        rows + (DWORD)bottom > V9X_TRIO_COORD_LIMIT) {
+        v9x_gdi_text_fail(12u);
+        return 1u;
+    }
+
+    op.source_selector = (WORD)((DWORD)mono_buffer >> 16);
+    op.source_offset = (WORD)(DWORD)mono_buffer;
+    op.width_bytes = width_bytes;
+    op.height = height;
+    op.x = x;
+    op.y = (WORD)(rows + (DWORD)y);
+    op.clip_left = (WORD)left;
+    op.clip_top = (WORD)(rows + (DWORD)top);
+    op.clip_right = (WORD)(right - 1l);
+    op.clip_bottom = (WORD)(rows + (DWORD)bottom - 1ul);
+    op.foreground = foreground;
+    op.background = background;
+    op.transparent = (WORD)(flags & V9X_TEXT_BITMAP_TRANSPARENT);
+    v9x_gdi.last_color = foreground;
+
+    /* BUSY across the register programming, as the reference does around its
+     * own text callback (TEXT_BT.ASM:75). The DIB Engine excluded the cursor
+     * before calling; the primitive waits idle before returning, so nothing is
+     * left in flight for the exclusion's end to race. */
+    device->deFlags |= V9X_DE_BUSY;
+    issued = v9x_gdi_trio_text(&op);
+    device->deFlags &= (WORD)~V9X_DE_BUSY;
+    if (issued == 0u) {
+        v9x_gdi_text_fail(13u);
+        return 1u;
+    }
+    ++v9x_gdi.text_bitmaps;
+    v9x_gdi.text_reject_mask |= 1ul;
+    return 1u;
+}
+
+/*
+ * DIB_ExtTextOutExt's opaque-rectangle callback, xga STRBLT.ASM:296-303. The
+ * DIB Engine has clipped the rectangle already; the clamp below is against the
+ * surface only, because a solid fill has no clip of its own and the alternative
+ * to clamping is a fill the engine would wrap.
+ */
+WORD __loadds FAR PASCAL V9xGdiDrawOpaqueRect(V9X_DIB_ENGINE FAR *device,
+                                              DWORD background,
+                                              WORD x, WORD y,
+                                              WORD x_extent, WORD y_extent)
+{
+    V9X_GDI_OP op;
+    long right;
+    long bottom;
+    WORD issued;
+
+    if (device == 0 || device != v9x_driver_pdevice ||
+        v9x_driver_pdevice == 0) {
+        v9x_gdi_text_fail(9u);
+        return 1u;
+    }
+    if (x_extent == 0u || y_extent == 0u) {
+        return 1u;
+    }
+    if ((short)x < 0 || (short)y < 0) {
+        v9x_gdi_text_fail(12u);
+        return 1u;
+    }
+    right = (long)x + (long)x_extent;
+    bottom = (long)y + (long)y_extent;
+    if (right > (long)device->deWidth) { right = device->deWidth; }
+    if (bottom > (long)device->deHeight) { bottom = device->deHeight; }
+    if ((long)x >= right || (long)y >= bottom) {
+        return 1u;
+    }
+    op.base = device->deBitsOffset;
+    op.pitch = (DWORD)device->deWidthBytes;
+    op.color = background;
+    op.rop256 = V9X_ROP256_PATCOPY;
+    op.source_selector = 0u;
+    op.bytes_per_pixel = (WORD)(device->deBitsPixel / 8u);
+    op.destination_x = x;
+    op.destination_y = y;
+    op.source_x = 0u;
+    op.source_y = 0u;
+    op.width = (WORD)(right - (long)x);
+    op.height = (WORD)(bottom - (long)y);
+
+    device->deFlags |= V9X_DE_BUSY;
+    issued = v9x_gdi_trio_fill(&op);
+    device->deFlags &= (WORD)~V9X_DE_BUSY;
+    if (issued == 0u) {
+        v9x_gdi_text_fail(13u);
+        return 1u;
+    }
+    /* Idle before returning, for the same reason the bitmap callback does: the
+     * DIB Engine's cursor un-exclusion follows immediately and bypasses the
+     * drain. A text cell's background is microseconds of engine time. */
+    if (v9x_gdi_wait_idle() == 0u) {
+        v9x_gdi_text_fail(13u);
+        return 1u;
+    }
+    ++v9x_gdi.text_orects;
+    return 1u;
+}
+
+/*
+ * Ordinal 14: the GDI ExtTextOut dispatcher.
+ *
+ * The argument list is transcribed from 98DDK\src\display\mini\xga\STRBLT.ASM:
+ * 78-89, in push order, and the gate sequence from its :95-104 and the S3
+ * sample's STRBLT.ASM:146-168: an extent call (negative count) and
+ * ETO_LEVEL_MODE go to the DIB Engine unconditionally; then the destination
+ * must be the screen, not BUSY, and not under a palette translate. The S3
+ * sample reads deType before deFlags for the reason build 004 learned the hard
+ * way - a memory bitmap destination is a plain BITMAP and has no deFlags - and
+ * so does this, by comparing the pointer against the screen PDEVICE first.
+ *
+ * Returns what the DIB Engine returns, in DX:AX. StrBlt (ordinal 11) still
+ * forwards straight to DIB_StrBlt: it is the Windows 2.x entry, GDI has issued
+ * text through ordinal 14 since 3.0, and the DIB Engine's own StrBlt does not
+ * route back through the driver.
+ */
+DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
+                                     WORD x, WORD y,
+                                     V9X_RECT16 FAR *clip_rect,
+                                     LPVOID string, short count,
+                                     LPVOID font, LPVOID draw_mode,
+                                     LPVOID xform, LPVOID dx,
+                                     V9X_RECT16 FAR *opaque_rect,
+                                     WORD options)
+{
+    DWORD result;
+    WORD flags;
+
+    ++v9x_gdi.text_calls;
+    if (v9x_gdi_report_pending != 0u) {
+        v9x_gdi_accel_flush_report();
+    }
+    /* Gate 1: on at all? This test is the whole cost of ordinal 14 becoming C
+     * on the three families with no engine, and on every S3 build that ships
+     * text off. */
+    if ((v9x_gdi.enabled & V9X_GDI_PRIM_TEXT) == 0ul ||
+        v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u) {
+        V9X_GDI_TEXT_REJECT(1u);
+        goto decline;
+    }
+    if (count < 0) {
+        V9X_GDI_TEXT_REJECT(2u);
+        goto decline;
+    }
+    if ((options & V9X_ETO_LEVEL_MODE) != 0u) {
+        V9X_GDI_TEXT_REJECT(3u);
+        goto decline;
+    }
+    if (device == 0 || device != v9x_driver_pdevice ||
+        v9x_driver_pdevice == 0) {
+        V9X_GDI_TEXT_REJECT(4u);
+        goto decline;
+    }
+    flags = device->deFlags;
+    if ((flags & V9X_DE_VRAM) == 0u) {
+        V9X_GDI_TEXT_REJECT(4u);
+        goto decline;
+    }
+    if ((flags & (V9X_DE_BUSY | V9X_DE_PALETTE_XLAT)) != 0u) {
+        V9X_GDI_TEXT_REJECT(5u);
+        goto decline;
+    }
+    if (device->deBitsPixel != 8u && device->deBitsPixel != 16u) {
+        V9X_GDI_TEXT_REJECT(6u);
+        goto decline;
+    }
+    /* The Trio64 folds the surface base into y, so the base has to be a whole
+     * number of scan lines - the same constraint gate 8 puts on a fill. Gated
+     * here so the callbacks can divide without checking. */
+    if (device->deWidthBytes == 0u ||
+        (device->deBitsOffset % (DWORD)device->deWidthBytes) != 0ul) {
+        V9X_GDI_TEXT_REJECT(7u);
+        goto decline;
+    }
+    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+        V9X_GDI_TEXT_REJECT(8u);
+        goto decline;
+    }
+
+    v9x_gdi_text_failed = 0u;
+    ++v9x_gdi.text_accepted;
+    result = V9xDibExtTextOutExtCall(device, x, y, clip_rect, string, count,
+                                     font, draw_mode, xform, dx, opaque_rect,
+                                     options,
+                                     (void FAR *)V9xGdiDrawTextBitmap,
+                                     (void FAR *)V9xGdiDrawOpaqueRect);
+    if (v9x_gdi_text_failed == 0u) {
+        return result;
+    }
+    /* A callback gave up. The string is drawn again, all of it, in software,
+     * so what reaches the screen is what the DIB Engine would have drawn. */
+    v9x_gdi_text_failed = 0u;
+    ++v9x_gdi.text_fallbacks;
+    return V9xDibExtTextOutCall(device, x, y, clip_rect, string, count, font,
+                                draw_mode, xform, dx, opaque_rect, options);
+
+decline:
+    ++v9x_gdi.text_declines;
+    return V9xDibExtTextOutCall(device, x, y, clip_rect, string, count, font,
+                                draw_mode, xform, dx, opaque_rect, options);
 }

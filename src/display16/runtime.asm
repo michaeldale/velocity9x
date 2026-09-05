@@ -242,6 +242,58 @@ V9XDIBBITBLTCALL PROC FAR
     jmp DIB_BitBlt
 V9XDIBBITBLTCALL ENDP
 
+; The same two-hop route for ordinal 14. ExtTextOut is a C dispatcher in
+; gdi_accel.c since build 005; its decline branch forwards to DIB_ExtTextOut
+; and its accept branch to DIB_ExtTextOutExt, the DIB Engine entry that takes
+; the twelve ExtTextOut arguments plus two driver callbacks and pops all
+; fourteen itself. Both are stack-transparent tail jumps for the reason given
+; above V9XDIBBITBLTCALL.
+EXTRN DIB_ExtTextOut:FAR
+PUBLIC V9XDIBEXTTEXTOUTCALL
+V9XDIBEXTTEXTOUTCALL PROC FAR
+    jmp DIB_ExtTextOut
+V9XDIBEXTTEXTOUTCALL ENDP
+
+EXTRN DIB_ExtTextOutExt:FAR
+PUBLIC V9XDIBEXTTEXTOUTEXTCALL
+V9XDIBEXTTEXTOUTEXTCALL PROC FAR
+    jmp DIB_ExtTextOutExt
+V9XDIBEXTTEXTOUTEXTCALL ENDP
+
+; V9xTrioPixTransWords(WORD source_selector, WORD source_offset, WORD words)
+;
+; Feed one run of string-bitmap words to the Trio64's pixel transfer register.
+; A word port, so `rep outsw` is the whole transfer: no FIFO check in here -
+; the C caller paces bursts against CMD_STATUS - and no tail handling, because
+; the caller hands over whole words only and writes an odd trailing byte itself.
+; The engine takes bit 15 of each word first, and the command's byte-swap bit
+; is what puts the buffer's first byte there; see V9X_TRIO_CMD_RECT_CPU_MONO.
+PUBLIC V9XTRIOPIXTRANSWORDS
+V9XTRIOPIXTRANSWORDS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    si
+    push    cx
+    push    dx
+
+    mov     cx, word ptr [bp+6]     ; words
+    jcxz    short V9xPixTransDone
+    mov     ds, word ptr [bp+10]    ; source selector
+    mov     si, word ptr [bp+8]     ; source offset
+    mov     dx, 0E2E8h              ; V9X_TRIO_PIX_TRANS
+    cld
+    rep     outsw
+
+V9xPixTransDone:
+    pop     dx
+    pop     cx
+    pop     si
+    pop     ds
+    pop     bp
+    retf    6
+V9XTRIOPIXTRANSWORDS ENDP
+
 ; Return the linear address of the mapped framebuffer aperture in DX:AX.
 PUBLIC V9XLINEARBASE
 V9XLINEARBASE PROC FAR

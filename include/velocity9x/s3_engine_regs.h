@@ -117,6 +117,51 @@
 #define V9X_TRIO_CMD_INC_Y             0x0080u
 #define V9X_TRIO_STATUS_BUSY           0x0200u
 #define V9X_TRIO_IDLE_SPIN_LIMIT       0x00400000ul
+/*
+ * Monochrome expansion from CPU data, which is how text reaches the Trio64
+ * (docs\decisions\2026-09-06-gdi-accel-005-text.md).
+ *
+ * The 8514/A command set has no separate text or mono-source opcode. It is a
+ * rectangle fill whose per-pixel mix is chosen by data the CPU writes to the
+ * pixel transfer register: PIX_CNTL (MULTIFUNC_CNTL index 0AH) bits 7:6 set to
+ * 10b select "mix from CPU data", a one bit takes FRGD_MIX and a zero bit
+ * BKGD_MIX, and each mix names its colour source in bits 6:5 (00 = the BKGD
+ * colour register, 01 = the FRGD colour register) and its raster operation in
+ * bits 3:0 (7 = replace, 3 = leave the destination alone). So opaque text is
+ * FRGD_MIX 0027H with BKGD_MIX 0007H, and transparent text is the same with
+ * BKGD_MIX 0003H.
+ *
+ * The command word, 53B3H, is the solid fill's 40B1H plus four bits: 0100H
+ * (wait for CPU data through PIX_TRANS), 0200H (16-bit transfers), 1000H (byte
+ * swap) and 0002H, plane mode, which declares the CPU data to be one bit per
+ * pixel. Without that last bit the transfer data is colour pixels, so at 16
+ * bpp each word is one pixel and only its top byte is ever a mix bit - which
+ * is exactly what the first guest run drew: eight pixels per word, from the
+ * first byte, every second byte of every string skipped, half the rows filled
+ * (docs\decisions\2026-09-06-gdi-accel-005-text.md). 53B1H was the wrong word;
+ * 53B3H is the one the emulator special-cases by name. The swap is there
+ * because the engine consumes bit 15 of each word first and the DIB Engine's
+ * string bitmap is bytes with the leftmost pixel in the top bit, so a word read
+ * from that buffer in the CPU's own byte order has the *second* eight pixels in
+ * its top byte. Both bits are the emulator's model; whether real silicon agrees
+ * is the first thing the hardware run has to say, and a wrong swap shows as
+ * every glyph's byte columns transposed - unmissable, not subtle.
+ *
+ * FIFO status is the low byte of CMD_STATUS: all zero means every slot is
+ * free. Nothing here says what the chip does with a write to a full FIFO, and
+ * the reference driver for this engine is not in the DDK, so the text path
+ * waits for empty before every burst and keeps the burst at the 8514/A's
+ * eight-slot depth. That is the conservative reading and it is unmeasured.
+ */
+#define V9X_TRIO_BKGD_COLOR            0xa2e8u
+#define V9X_TRIO_BKGD_MIX              0xb6e8u
+#define V9X_TRIO_PIX_TRANS             0xe2e8u
+#define V9X_TRIO_PIXEL_CNTL_CPU_MIX    0xa080u
+#define V9X_TRIO_BKGD_MIX_NEW          0x0007u
+#define V9X_TRIO_BKGD_MIX_DEST         0x0003u
+#define V9X_TRIO_CMD_RECT_CPU_MONO     0x53b3u
+#define V9X_TRIO_STATUS_FIFO_MASK      0x00ffu
+#define V9X_TRIO_FIFO_BURST_WORDS           8u
 
 /*
  * ViRGE 2D register offsets inside the new-MMIO window.

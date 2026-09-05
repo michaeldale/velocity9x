@@ -87,7 +87,11 @@ V9X_FORWARD_PDEVICE RealizeObject,     DIB_RealizeObjectExt
 V9X_FORWARD StrBlt,                    DIB_StrBlt
 V9X_FORWARD ScanLR,                    DIB_ScanLR
 V9X_FORWARD DeviceMode,                DIB_DeviceMode
-V9X_FORWARD ExtTextOut,                DIB_ExtTextOut
+; ExtTextOut (ordinal 14) is implemented in C (gdi_accel.c) since build 005:
+; it routes screen text through DIB_ExtTextOutExt with the driver's expansion
+; callbacks, and its decline branch forwards to DIB_ExtTextOut through the
+; typed V9XDIBEXTTEXTOUTCALL wrapper in runtime.asm. StrBlt stays a forward:
+; the DIB Engine's own StrBlt does not come back through the driver.
 V9X_FORWARD GetCharWidth,              DIB_GetCharWidth
 V9X_FORWARD DeviceBitmap,              DIB_DeviceBitmap
 V9X_FORWARD FastBorder,                DIB_FastBorder

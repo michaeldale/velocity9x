@@ -88,6 +88,7 @@ if (-not [System.Text.Encoding]::ASCII.GetString($bytes).Contains($BuildId)) {
 
 $exports = (& $dumper "-x" $driverPath 2>&1) -join "`n"
 $requiredExports = @("Enable", "Disable", "BitBlt", "ReEnable",
+                     "ExtTextOut",
                      "Inquire", "SetCursor", "MoveCursor", "CheckCursor",
                      "ValidateMode")
 foreach ($requiredExport in $requiredExports) {
@@ -253,6 +254,13 @@ if ($thunkDisassembly -match '(?m)^BitBlt:') {
     throw ("dib_thunks.asm still forwards BitBlt. Ordinal 1 belongs to the C " +
            "dispatcher in src\display16\gdi_accel.c.")
 }
+# Ordinal 14 likewise, since build 005 (text). Same failure mode: a restored
+# forward would link ahead of the C dispatcher and text would silently stop
+# reaching the engine while every pixel stayed correct.
+if ($thunkDisassembly -match '(?m)^ExtTextOut:') {
+    throw ("dib_thunks.asm still forwards ExtTextOut. Ordinal 14 belongs to " +
+           "the C dispatcher in src\display16\gdi_accel.c.")
+}
 
 # ---------------------------------------------------------------------------
 # GDI acceleration: the decline path must still reach the DIB Engine.
@@ -288,6 +296,31 @@ if ($gdiDisassembly -notmatch
 if ($runtimeDisassembly -notmatch
     '(?s)V9XDIBBITBLTCALL:\s*jmp\s+far ptr DIB_BitBlt') {
     throw "V9XDIBBITBLTCALL does not forward to the DIB Engine's BitBlt."
+}
+# Ordinal 14, the same two hops. The decline branch must reach DIB_ExtTextOut
+# and the accept branch DIB_ExtTextOutExt; a dispatcher that lost either would
+# still link and still export, and on the three engine-less families the
+# decline branch is every call.
+if ($gdiDisassembly -notmatch '(?m)^\s*PUBLIC\s+EXTTEXTOUT\s*$') {
+    throw "gdi_accel.obj does not export EXTTEXTOUT, so ordinal 14 has no owner."
+}
+if ($gdiDisassembly -notmatch
+    '(?sm)^EXTTEXTOUT:.*?call\s+far ptr V9XDIBEXTTEXTOUTCALL') {
+    throw ("The GDI ExtTextOut dispatcher's decline branch does not reach " +
+           "V9XDIBEXTTEXTOUTCALL, so declined text would draw nothing.")
+}
+if ($gdiDisassembly -notmatch
+    '(?sm)^EXTTEXTOUT:.*?call\s+far ptr V9XDIBEXTTEXTOUTEXTCALL') {
+    throw ("The GDI ExtTextOut dispatcher's accept branch does not reach " +
+           "V9XDIBEXTTEXTOUTEXTCALL, so accelerated text would draw nothing.")
+}
+if ($runtimeDisassembly -notmatch
+    '(?s)V9XDIBEXTTEXTOUTCALL:\s*jmp\s+far ptr DIB_ExtTextOut\b') {
+    throw "V9XDIBEXTTEXTOUTCALL does not forward to the DIB Engine's ExtTextOut."
+}
+if ($runtimeDisassembly -notmatch
+    '(?s)V9XDIBEXTTEXTOUTEXTCALL:\s*jmp\s+far ptr DIB_ExtTextOutExt') {
+    throw "V9XDIBEXTTEXTOUTEXTCALL does not forward to DIB_ExtTextOutExt."
 }
 # Both deBeginAccess entry points carry the dirty check. Reasoning per caller
 # about which one can never race pending engine work is a worse trade than a

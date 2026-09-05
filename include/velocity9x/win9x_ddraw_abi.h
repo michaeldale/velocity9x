@@ -67,6 +67,11 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  */
 #define V9X_GDIGETSTATS          0x56394753ul /* 'V9GS' */
 #define V9X_GDIFAULTINJECT       0x56394749ul /* 'V9GI' */
+/* V9X_GDITEXTDUMP copies a V9X_GDI_TEXT_DUMP: the arguments of the last
+ * string-bitmap callback and the first bytes of its bitmap, so the shape of
+ * what the DIB Engine hands the driver can be read on the host instead of
+ * inferred from a screenshot. */
+#define V9X_GDITEXTDUMP          0x56395444ul /* 'V9TD' */
 
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul
@@ -1559,6 +1564,13 @@ typedef struct v9x_dd_trace_snapshot {
  * unanchored patterns. Do not tidy this back to 0x08.
  */
 #define V9X_GDI_PRIM_UPLOAD         0x00000010ul
+/*
+ * Text (build 005): ordinal 14 routes a screen ExtTextOut through
+ * DIB_ExtTextOutExt with two driver callbacks, and the engine expands the
+ * monochrome string bitmap the DIB Engine hands back. Trio64 only in this
+ * build - see docs/decisions/2026-09-06-gdi-accel-005-text.md.
+ */
+#define V9X_GDI_PRIM_TEXT           0x00000020ul
 
 typedef struct v9x_gdi_stats {
     DWORD dwSize;
@@ -1705,7 +1717,70 @@ typedef struct v9x_gdi_stats {
      */
     DWORD last_advfunc;
     DWORD advfunc_restores;
+    /*
+     * Text, build 005. Ordinal 14 is a dispatcher of its own, with its own
+     * call and decline tallies, because a text call that never reaches it
+     * looks exactly like one it declined: the pixels are right either way.
+     *
+     * text_accepted counts calls routed through DIB_ExtTextOutExt with the
+     * driver's callbacks attached; text_bitmaps and text_orects count what
+     * those callbacks then put on the engine. text_fallbacks counts strings a
+     * callback could not draw - the dispatcher notices and has DIB_ExtTextOut
+     * redraw the whole string in software, so the pixels stay correct and the
+     * count says how often the engine path gave up.
+     *
+     * text_reject_mask is a bitmask of reasons, accumulated over the run, in
+     * the shape upload_reject_mask established:
+     *   bit 1 not enabled   2 extent call (count < 0)   3 ETO_LEVEL_MODE
+     *   bit 4 not the screen   5 busy or palette translate   6 depth
+     *   bit 7 surface base not on a scan line   8 not a Trio64
+     *   bit 9 callback device is not the screen   10 bitmap crosses 64 KiB
+     *   bit 11 empty bitmap   12 coordinate out of the engine's range
+     *   bit 13 a bounded wait expired
+     * bit 0 is set when a string bitmap was expanded by the engine.
+     * text_last_shape is WidthBytes << 16 | Height of the last bitmap seen.
+     */
+    DWORD text_calls;
+    DWORD text_declines;
+    DWORD text_accepted;
+    DWORD text_bitmaps;
+    DWORD text_orects;
+    DWORD text_fallbacks;
+    DWORD text_reject_mask;
+    DWORD text_last_shape;
 } V9X_GDI_STATS;
+
+/*
+ * V9X_GDITEXTDUMP output. Everything the DIB Engine passed to the last
+ * string-bitmap callback, verbatim, plus the leading bytes of the bitmap it
+ * pointed at. A diagnostic, kept because the first guest run of build 005
+ * drew the left part of every string as garbage and the right part correctly,
+ * and no counter could say which of the callback's inputs was misread.
+ */
+#define V9X_GDI_TEXT_DUMP_BYTES  256u
+
+typedef struct v9x_gdi_text_dump {
+    DWORD dwSize;
+    DWORD sequence;          /* callbacks seen; 0 means the dump is empty */
+    DWORD buffer;            /* the far pointer, selector:offset          */
+    DWORD flags;
+    DWORD background;
+    DWORD foreground;
+    DWORD x;                 /* as passed, sign-extended                  */
+    DWORD y;
+    DWORD width_bytes;
+    DWORD height;
+    DWORD clip_left;         /* as passed, sign-extended; clip_present 0 = NULL */
+    DWORD clip_top;
+    DWORD clip_right;
+    DWORD clip_bottom;
+    DWORD clip_present;
+    DWORD device_width;      /* deWidth / deWidthBytes / deBitsPixel     */
+    DWORD device_width_bytes;
+    DWORD device_bpp;
+    DWORD copied;            /* bytes of bitmap actually copied below     */
+    BYTE bits[V9X_GDI_TEXT_DUMP_BYTES];
+} V9X_GDI_TEXT_DUMP;
 
 typedef struct v9x_dd_shared {
     DWORD dwSize;           /* sizeof(V9X_DD_SHARED)                    */
@@ -1803,7 +1878,9 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 188 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 220 ? 1 : -1];
+typedef char v9x_dd_assert_gdi_text_dump[
+    sizeof(V9X_GDI_TEXT_DUMP) == 76 + 256 ? 1 : -1];
 /* 574, not 572: counters[] grew by one WORD so that the highest trace id
  * lands inside the array. The whole header is pack(1), so that is the entire
  * difference - there is no padding to absorb it. */
