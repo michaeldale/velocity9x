@@ -1,6 +1,6 @@
 # Velocity9x 0.7.0
 
-Built from commit `1ded002`: the output of
+Built from commit `8d7ef9e`: the output of
 `scripts\build-all-packages.ps1` and `scripts\build-vga-survey.ps1`,
 zipped for download.
 
@@ -16,7 +16,7 @@ recover it.
 | --- | --- | --- | --- |
 | [`velocity9x-0.7.0-ati.zip`](velocity9x-0.7.0-ati.zip) | ATI Mach64 / Rage | `PCI\VEN_1002&DEV_4C4D<br>PCI\VEN_1002&DEV_5654` | HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED |
 | [`velocity9x-0.7.0-matrox-m2.zip`](velocity9x-0.7.0-matrox-m2.zip) | Matrox Millennium II | `PCI\VEN_102B&DEV_051B` | HOST-AUDITED; PHYSICAL ACTIVATION NOT YET TESTED |
-| [`velocity9x-0.7.0-s3.zip`](velocity9x-0.7.0-s3.zip) | S3 | `PCI\VEN_5333&DEV_8810<br>PCI\VEN_5333&DEV_8811<br>PCI\VEN_5333&DEV_8812<br>PCI\VEN_5333&DEV_8813<br>PCI\VEN_5333&DEV_8814<br>PCI\VEN_5333&DEV_8901<br>PCI\VEN_5333&DEV_8A01` | HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED |
+| [`velocity9x-0.7.0-s3.zip`](velocity9x-0.7.0-s3.zip) | S3 | `PCI\VEN_5333&DEV_8810<br>PCI\VEN_5333&DEV_8811<br>PCI\VEN_5333&DEV_8812<br>PCI\VEN_5333&DEV_8813<br>PCI\VEN_5333&DEV_8814<br>PCI\VEN_5333&DEV_8901<br>PCI\VEN_5333&DEV_8A01<br>PCI\VEN_5333&DEV_8A13` | HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED |
 | [`velocity9x-0.7.0-vbe.zip`](velocity9x-0.7.0-vbe.zip) | VBE tier-0 (generic VESA) | `PCI\VEN_1234&DEV_1111` | HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED |
 
 If your card is not listed, none of these will drive it. Run the survey
