@@ -125,9 +125,10 @@ and 90 in the bad one, with only the alpha cells and the sprite rung moving;
 mip selection and every unblended cell are the same in both. The trigger is
 not known. All three transitions on record coincide with the machine going
 away and coming back, once with nothing executing. A VGA survey was taken in
-each state on consecutive boots and differs in two extended CRTC bytes, CR32
-and CR3E, undecoded and with one sample of each; it does not reach the S3D
-engine, where a blend fault would live
+the bad state and in the good state on two boots each side of a warm restart:
+nothing it reaches distinguishes the states - the two bytes that differed
+between the first pair differ again between two good boots - and it does not
+reach the S3D engine, where a blend fault would live
 (`docs/decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md`).
 
 Every Trio3D alpha measurement this project took before 2026-09-04 was made in

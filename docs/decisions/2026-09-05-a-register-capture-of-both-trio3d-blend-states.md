@@ -139,15 +139,37 @@ same command line completes in a few seconds. The report is then read with
 them, and only a reboot clears them; they hold nothing on the card, because
 the fault is before the first port access.
 
+## Boot 40: the third sample, and what it takes away
+
+A deliberate warm restart through the agent, later the same day. The desktop
+came up on boot 40, the probe read 108 with every alpha rung passing, the
+survey was taken detached, and the probe read 108 again after it
+(`trio3d-a8u4i5-v9x-2026-09-05h-b40-before-survey.ini`,
+`trio3d-a8u4i5-vgasurv-b40-good-2026-09-05.ini`,
+`trio3d-a8u4i5-v9x-2026-09-05i-b40-after-survey.ini`). The good state
+survived a warm restart, as it did across boots 29-33.
+
+```
+             b38 (bad)   b39 (good)   b40 (good)
+CR32         00          80           00
+CR3E         24          2A           2D
+```
+
+**Neither byte tracks the state.** CR32 reads `00` in a bad boot and in a good
+one, and CR3E has taken three values on three boots. Both are boot-to-boot
+noise as far as this sweep can tell. With Input Status 0 already set aside,
+the two good-state files differ from each other only in those bytes and the
+header, and the bad-state file differs from both by no more than they differ
+from each other. **Nothing this sweep reaches distinguishes the two states.**
+That is the answer the capture was taken to get, and it points where the
+reach section already pointed: at the engine, which the survey cannot read.
+
 ## What to do with this
 
-- **Take the survey with every probe run** on this machine, detached, so each
-  state accumulates more than one sample and the boot-to-boot noise in CR32
-  and CR3E is measured rather than guessed. It costs five seconds.
-- **Decode CR32 and CR3E from the Trio3D databook** before assigning them any
-  meaning. If either is a latch the BIOS sets at POST, that is a lead on
-  "BIOS state at POST" from the open list; if either is a comparator or a
-  status bit, it is noise.
+- **Stop looking in the VGA register file.** Three boots say the sweep's
+  reachable registers do not carry the state. Taking the survey beside a probe
+  still costs five seconds and would catch a fourth value, but it is no longer
+  where the answer is expected.
 - **The engine is still unread.** A Win32 instrument that reads the S3D
   setup and status registers through the aperture - or an escape into the HAL
   that dumps them, in the style of `V9X_DDGETCOUNTS` - is what a capture of
