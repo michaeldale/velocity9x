@@ -29,6 +29,16 @@ param(
     # the state every build before 2026-08-29 shipped in. Differential build for
     # the physical Trio64 desktop-doubling fault; not for shipping.
     [switch]$NoVramSize,
+    # -IoTrace traps the 8514/A port file for V86 VMs only, passing every
+    # access through at its original width and logging it for the V9XIOTR
+    # readout tool. Instrument for the physical Trio64 DOS-box desktop
+    # doubling; not for shipping.
+    [switch]$IoTrace,
+    # -ShieldAdvFunc, with -IoTrace: a V86 VM's write to ADVFUNC_CNTL (4AE8H)
+    # is swallowed instead of passed through. The DOS VM's video BIOS writes
+    # 02H there on every windowed DOS box and that write alone drops a Trio64
+    # out of enhanced mode. Candidate fix; measured against the trace.
+    [switch]$ShieldAdvFunc,
     # -NoScreenSwitch refuses the full-screen DOS box outright, through
     # CHECK_SCREEN_SWITCH_OK. The DDK's own XGA mini-VDD does this for a
     # driver in a VESA mode, for the reason that applies to tier-0: the
@@ -356,6 +366,15 @@ if ($NoDpms) {
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments
+}
+if ($IoTrace) {
+    $assemblerArguments = @("-DV9X_IO_TRACE") + $assemblerArguments
+}
+if ($ShieldAdvFunc) {
+    if (-not $IoTrace) {
+        throw "-ShieldAdvFunc is part of the -IoTrace handler; build both."
+    }
+    $assemblerArguments = @("-DV9X_IO_SHIELD") + $assemblerArguments
 }
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments

@@ -47,6 +47,19 @@ screenshot and the hang is whatever a Windows 98 desktop does in the next
 seconds - the taskbar clock's minute tick is a text draw - and the agent's own
 file write for the `put`.
 
+## What the same day established elsewhere
+
+The I/O trace on A8U4I5 measured that a windowed DOS box's video BIOS writes
+02H to 4AE8H and nothing else on the engine file, dropping the Trio64 out of
+enhanced mode ([the DOS-box record](2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md)).
+BARRY's screenshot moments before the hang showed that state. A text
+primitive whose PIX_TRANS feed is in flight when that bit clears is a CPU
+writing data to an engine that will never take it; candidate 2 below, with
+the enabler now measured rather than guessed. Still not reproduced under the
+single-string probe, which was built and never run: A8U4I5 then turned out to
+hard-lock on plain framebuffer read-after-write with no acceleration at all,
+so it cannot host the probe, and BARRY is down.
+
 ## Candidates, in the order to test
 
 1. **The FIFO poll never sees "empty" on silicon.** `v9x_gdi_trio_wait_fifo_empty`

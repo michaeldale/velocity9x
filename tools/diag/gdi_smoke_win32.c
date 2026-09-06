@@ -614,11 +614,56 @@ static void v9x_accel_text_operation(V9X_ACCEL_STATE *state, int index,
     SelectObject(state->reference, previous_reference);
 }
 
+/*
+ * Bisection switches, 2026-09-06: the full /accel run hard-locks a physical
+ * Trio64 (A8U4I5) while the register-level pumps of the same operations do
+ * not, and the disk cache loses the progress key. /kinds:N is a bitmask of the
+ * operation kinds to issue (1 fill, 2 copy, 4 overlap, 8 memory source, 16
+ * text, 32 decline noise; masked kinds are skipped, the seed still advances);
+ * /ops:N caps the operation count; /nocompare skips every readback so the
+ * comparisons themselves can be ruled in or out. The anti-vacuous checks are
+ * expected to fail on a restricted run - the verdict that matters is whether
+ * the machine is still there.
+ */
+static DWORD v9x_accel_kind_mask = 0xfffful;
+static DWORD v9x_accel_op_limit = V9X_ACCEL_OPERATIONS;
+static int v9x_accel_no_compare;
+
+static DWORD v9x_accel_parse_number(const char *command_line,
+                                    const char *option, DWORD fallback)
+{
+    int offset;
+    int index;
+    DWORD value;
+
+    for (offset = 0; command_line[offset] != '\0'; ++offset) {
+        for (index = 0; option[index] != '\0'; ++index) {
+            if (!v9x_ascii_equal_ci(command_line[offset + index],
+                                    option[index])) {
+                break;
+            }
+        }
+        if (option[index] != '\0') {
+            continue;
+        }
+        offset += index;
+        value = 0ul;
+        while (command_line[offset] >= '0' && command_line[offset] <= '9') {
+            value = value * 10ul + (DWORD)(command_line[offset] - '0');
+            ++offset;
+        }
+        return value;
+    }
+    return fallback;
+}
+
 static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
                                 DWORD *fills, DWORD *copies, DWORD *overlaps,
                                 DWORD *texts, DWORD *noise)
 {
     int kind = (int)v9x_accel_random(12ul);
+    DWORD kind_bit = kind <= 4 ? 1ul : kind <= 6 ? 2ul : kind == 7 ? 4ul
+                   : kind == 8 ? 8ul : kind <= 10 ? 16ul : 32ul;
     int width;
     int height;
     int x;
@@ -627,6 +672,10 @@ static void v9x_accel_operation(V9X_ACCEL_STATE *state, int index,
     HBRUSH previous_screen;
     HBRUSH previous_reference;
     COLORREF color = v9x_accel_colors[v9x_accel_random(16ul)];
+
+    if ((v9x_accel_kind_mask & kind_bit) == 0ul) {
+        return;
+    }
 
     if (kind <= 4) {
         /* Solid fill. One in five is deliberately below the driver's
@@ -1077,6 +1126,8 @@ static void v9x_accel_report_stats(const V9X_GDI_STATS *stats)
     v9x_accel_write_uint("TextFallbacks", stats->text_fallbacks);
     v9x_accel_write_hex("TextRejectMask", stats->text_reject_mask);
     v9x_accel_write_hex("TextLastShape", stats->text_last_shape);
+    v9x_accel_write_uint("Sync", stats->sync);
+    v9x_accel_write_uint("SyncTimeouts", stats->sync_timeouts);
 }
 
 /* ------------------------------------------------------------------------
@@ -1331,10 +1382,19 @@ static DWORD v9x_accel_run(HWND window)
     }
 
     if (error == 0) {
-        for (index = 0; index < V9X_ACCEL_OPERATIONS; ++index) {
+        for (index = 0; index < (int)v9x_accel_op_limit; ++index) {
+            /*
+             * Progress, flushed to disk every operation. Added 2026-09-06
+             * after this phase hard-locked a physical Trio64 twice with no
+             * record of how far it got; the cost is a file write per
+             * operation on a run whose timing is not the measurement.
+             */
+            v9x_accel_write_uint("Progress", (DWORD)index);
+            WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
             v9x_accel_operation(&state, index, &fills, &copies, &overlaps,
                                 &texts, &noise);
-            if ((index + 1) % V9X_ACCEL_COMPARE_EVERY == 0) {
+            if ((index + 1) % V9X_ACCEL_COMPARE_EVERY == 0 &&
+                !v9x_accel_no_compare) {
                 ++compares;
                 if (!v9x_accel_compare(&state, &difference)) {
                     compared_ok = 0;
@@ -1605,8 +1665,12 @@ static DWORD v9x_accel_run(HWND window)
     if (error == 0 && accelerated_depth && stats.enabled != 0ul) {
         V9X_GDI_STATS clipped;
         DWORD clip_operations = 0ul;
-        int clip_ok = v9x_accel_clipped_pass(&state, &clip_operations,
-                                             &difference);
+        int clip_ok;
+
+        v9x_accel_write_text("Progress", "clipped-pass");
+        WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+        clip_ok = v9x_accel_clipped_pass(&state, &clip_operations,
+                                         &difference);
 
         v9x_accel_write_uint("ClipOperations", clip_operations);
         if (!v9x_accel_read_stats(state.screen, &clipped)) {
@@ -1693,6 +1757,8 @@ static DWORD v9x_accel_run(HWND window)
         HBRUSH previous_reference = (HBRUSH)SelectObject(state.reference,
                                                         brush);
 
+        v9x_accel_write_text("Progress", "inject");
+        WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
         v9x_accel_write_uint("InjectArmed",
                              v9x_accel_arm_fault(state.screen, 1ul) ? 1ul
                                                                     : 0ul);
@@ -2184,7 +2250,17 @@ static DWORD v9x_accel_phase(HINSTANCE instance)
     DWORD result;
     int screen_width = GetSystemMetrics(SM_CXSCREEN);
     int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    const char *command_line = GetCommandLineA();
     unsigned index;
+
+    v9x_accel_kind_mask = v9x_accel_parse_number(command_line, "/kinds:",
+                                                 0xfffful);
+    v9x_accel_op_limit = v9x_accel_parse_number(command_line, "/ops:",
+                                                V9X_ACCEL_OPERATIONS);
+    if (v9x_accel_op_limit > V9X_ACCEL_OPERATIONS) {
+        v9x_accel_op_limit = V9X_ACCEL_OPERATIONS;
+    }
+    v9x_accel_no_compare = v9x_has_switch(command_line, "/nocompare");
 
     WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
     v9x_accel_write_text("Build", V9X_BUILD_ID);

@@ -1,9 +1,71 @@
 # A DOS box rewrites the desktop at twice its stride on physical Trio64 silicon
 
 Date: 2026-09-06
-Status: **open, reproduced on demand, mechanism unknown.** Rate measured;
-every driver-side hypothesis tested today is dead. The next instrument is
-named at the end.
+Status: **root cause measured (see "What the I/O trace found"); a fix was
+measured working and is not merged, because the same machine then hard-locked
+for a reason that turned out to be unrelated - see "The hard locks".**
+
+## What the I/O trace found (later the same day)
+
+The `-IoTrace` mini-VDD build traps the whole 8514/A port file for V86 VMs and
+logs every access. Across one windowed DOS box the DOS VM makes **exactly one
+access to the engine file: a byte write of 02H to 4AE8H**, ADVFUNC_CNTL, by
+its video BIOS. No engine command, no data port. That write clears ENB EHFC.
+
+So the "doubling" is not a copy. Once the Trio64 leaves enhanced mode with the
+desktop still displayed, CPU and CRTC both address the same DRAM as VGA planes:
+everything drawn before appears interleaved - twice side by side at half size -
+anything drawn after looks right, and a repaint "repairs" it because the two
+sides agree again. It is also why the engine stops landing writes (2026-08-27)
+and why a CPU-data text command caught mid-transfer never completes (BARRY).
+The intermittency is whether anything repaints before someone looks.
+
+**Fix, measured:** the `-ShieldAdvFunc` variant swallows a V86 VM's write to
+4AE8H (reads pass through, the System VM passes through). Six DOS boxes with
+acceleration on, six intact desktops, against five doubled of five without
+it. Not merged as a default: the machine then hard-locked under the harness,
+and until that was traced (below, unrelated) nothing new could be trusted.
+The always-on form of the shield in `loader.asm` was proposed and declined
+for now.
+
+## The hard locks
+
+A8U4I5 hard-locked, no ICMP, seven times running the `/accel` harness or
+parts of it. Bisected on the machine:
+
+| Run | Outcome |
+|---|---|
+| `/accel` via a DOS box, shield mini-VDD | lock |
+| `/accel` via Win32 exec, no DOS box, shield mini-VDD | lock |
+| `/accel` via exec, trap-free mini-VDD | lock |
+| probe `pump` 2000 fills, idle wait each | done |
+| probe `pumpn` 2000 fills, no waits at all | done |
+| probe `pumpc` 2000 overlapping BitBLTs | done |
+| `/accel /kinds:1 /nocompare` (500 fills, no readback) | done |
+| `/accel /kinds:1` (fills + readback), `GdiAccelSync=0` | lock |
+| `/accel /kinds:1`, `GdiAccelSync=1` (engine idle before every return) | lock |
+| **`/accel /kinds:1` with `GdiAccel=0`** (DIB Engine fills, same readback) | **lock** |
+
+The last row is the verdict: with the engine never touched by the driver, CPU
+writes through the linear aperture followed closely by CPU reads of the same
+region lock this host. Screenshots (reads only) and the desktop (writes) both
+survive; the harness is what mixes them at full speed. The same card ran this
+harness clean in BARRY's Pentium on 2026-08-27 and the Trio3D in this same
+slot ran 3DMark 99. This is the PCI Trio64 against a Pentium III board - the
+fault class a board's PCI delayed-transaction and passive-release settings
+decide, and the one S3's own driver carried a `BusThrottle` switch for.
+
+Not established: whether the stock S3 driver locks the same way here, and
+whether a BIOS PCI setting cures it. Those are the two controls before any
+further driver work is judged on this machine. Nothing about GDI acceleration
+or text is implicated by these locks.
+
+## The original record follows
+
+Status at the time of writing, superseded above: open, reproduced on demand,
+mechanism unknown. Rate measured; every driver-side hypothesis tested that
+afternoon was dead. The next instrument was named at the end, was built, and
+answered.
 Severity: high. On A8U4I5 with the shipping defaults, the first DOS box after
 boot destroyed the desktop in five of five boots.
 

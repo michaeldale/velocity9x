@@ -53,6 +53,7 @@
 #define V9X_DIAG_MGAMM_INI   V9X_DIAG_PATH("V9XMGAMM.INI")  /* matrox_mmio_query_win32.c */
 #define V9X_DIAG_GDI_INI     V9X_DIAG_PATH("V9XGDI.INI")    /* gdi_smoke_win32.c */
 #define V9X_DIAG_TEXT_INI    V9X_DIAG_PATH("V9XTEXT.INI")   /* gdi_smoke_win32.c /textdump */
+#define V9X_DIAG_IOTR_INI    V9X_DIAG_PATH("V9XIOTR.INI")   /* io_trace_win32.c */
 #define V9X_DIAG_ACCEL_INI   V9X_DIAG_PATH("V9XACCE.INI")   /* gdi_smoke_win32.c */
 #define V9X_DIAG_SYNC_INI    V9X_DIAG_PATH("V9XSYNC.INI")   /* settings_syncmodes.c */
 #define V9X_DIAG_TC32_INI    V9X_DIAG_PATH("V9XTC32.INI")   /* trio_ctx_probe.c (Win32 arm) */

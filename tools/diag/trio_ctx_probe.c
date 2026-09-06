@@ -567,6 +567,99 @@ static void v9x_flood(HDC screen, int width, int height)
     v9x_flush();
 }
 
+/*
+ * Pump mode: two thousand small fills back to back in the display driver's
+ * own register pattern - the full latched-state setup, then the command -
+ * with progress written every hundred so a machine that locks leaves the
+ * count. Built 2026-09-06 when the /accel harness hard-locked A8U4I5, a
+ * Pentium III with the Trio64 that had passed the same harness on BARRY's
+ * Pentium, with and without the mini-VDD port trap. Three variants separate
+ * the candidates:
+ *   pump   - idle wait before each fill, then the writes unpaced: the driver.
+ *   pumpf  - idle wait, then wait for the command FIFO to read empty (low
+ *            byte of 9AE8H all zero) before the writes.
+ *   pumpn  - no waiting of any kind: the worst case, if it locks fastest.
+ * A machine that locks in `pump` and survives `pumpf` has a FIFO the CPU can
+ * overrun, and the fix is a FIFO poll in every Trio64 primitive.
+ */
+static int v9x_pump_mode;
+
+static int v9x_wait_fifo_empty(void)
+{
+    DWORD spins = V9X_IDLE_SPINS;
+
+    do {
+        if ((v9x_inpw(V9X_CMD_STATUS) & 0x00ffu) == 0u) {
+            return 1;
+        }
+    } while (--spins != 0ul);
+    return 0;
+}
+
+static void v9x_pump(void)
+{
+    int index;
+
+    v9x_write_uint("PumpMode", (DWORD)v9x_pump_mode);
+    v9x_write_uint("PumpOps", 0ul);
+    v9x_write_hex("PumpStatusEntry", (DWORD)v9x_inpw(V9X_CMD_STATUS));
+    v9x_flush();
+    for (index = 0; index < 2000; ++index) {
+        int x = 100 + (index % 20) * 12;
+        int y = 100 + ((index / 20) % 10) * 12;
+
+        if (v9x_pump_mode != 3 && !v9x_wait_idle()) {
+            v9x_write_text("PumpResult", "engine-stuck");
+            v9x_write_uint("PumpOps", (DWORD)index);
+            v9x_flush();
+            return;
+        }
+        if (v9x_pump_mode == 2 && !v9x_wait_fifo_empty()) {
+            v9x_write_text("PumpResult", "fifo-never-empty");
+            v9x_write_uint("PumpOps", (DWORD)index);
+            v9x_write_hex("PumpStatus", (DWORD)v9x_inpw(V9X_CMD_STATUS));
+            v9x_flush();
+            return;
+        }
+        if (v9x_pump_mode == 4) {
+            /* pumpc: the driver's screen-to-screen copy, overlapping by
+             * eight pixels down and right, so the engine walks from the far
+             * corner as the driver's overlap logic makes it. */
+            v9x_outreg(V9X_MULTIFUNC, V9X_MULT_MISC2);
+            v9x_outreg(V9X_MULTIFUNC, V9X_MULT_MISC);
+            v9x_outreg(V9X_WRT_MASK, 0xffffu);
+            v9x_outreg(V9X_MULTIFUNC, 0x1000u);
+            v9x_outreg(V9X_MULTIFUNC, 0x2000u);
+            v9x_outreg(V9X_MULTIFUNC, 0x3fffu);
+            v9x_outreg(V9X_MULTIFUNC, 0x4fffu);
+            v9x_outreg(V9X_FRGD_MIX, 0x0067u);
+            v9x_outreg(V9X_MULTIFUNC, V9X_PIX_CNTL_FRGD);
+            v9x_outreg(V9X_CUR_X, (unsigned short)(x + 63));
+            v9x_outreg(V9X_CUR_Y, (unsigned short)(y + 63));
+            v9x_outreg(0x8ee8u, (unsigned short)(x + 71));
+            v9x_outreg(0x8ae8u, (unsigned short)(y + 71));
+            v9x_outreg(V9X_MAJ_AXIS, 63u);
+            v9x_outreg(V9X_MULTIFUNC, 63u);
+            v9x_outreg(V9X_CMD_STATUS, 0xc011u);   /* BITBLT, -X -Y, draw */
+        } else {
+            v9x_program_fill(x, y, 32, 32);
+            v9x_outreg(V9X_CMD_STATUS, V9X_CMD_RECT_SOLID);
+        }
+        if ((index % 100) == 99) {
+            v9x_write_uint("PumpOps", (DWORD)(index + 1));
+            v9x_write_hex("PumpStatus", (DWORD)v9x_inpw(V9X_CMD_STATUS));
+            v9x_flush();
+        }
+    }
+    if (!v9x_wait_idle()) {
+        v9x_write_text("PumpResult", "engine-stuck-at-end");
+    } else {
+        v9x_write_text("PumpResult", "done");
+    }
+    v9x_write_uint("PumpOps", 2000ul);
+    v9x_flush();
+}
+
 static void v9x_run(int alt)
 {
     HDC screen = GetDC(0);
@@ -609,6 +702,11 @@ static void v9x_run(int alt)
 
     if (v9x_flood_mode) {
         v9x_flood(screen, width, height);
+        ReleaseDC(0, screen);
+        return;
+    }
+    if (v9x_pump_mode) {
+        v9x_pump();
         ReleaseDC(0, screen);
         return;
     }
@@ -817,6 +915,11 @@ static int v9x_has_alt(const char *command)
         }
         if (command[0] == 'n' && command[1] == 'o' && command[2] == 'c') {
             v9x_no_command = 1;
+        }
+        if (command[0] == 'p' && command[1] == 'u' && command[2] == 'm' &&
+            command[3] == 'p') {
+            v9x_pump_mode = command[4] == 'f' ? 2 : command[4] == 'n' ? 3
+                          : command[4] == 'c' ? 4 : 1;
         }
         if (command[0] == 'p' && command[1] == 'u' && command[2] == 't') {
             if (command[3] == 'm') {

@@ -171,6 +171,9 @@ static void v9x_gdi_port_out(WORD port, BYTE value);
  * rather than argued about.
  */
 #define V9X_GDI_DEFAULT_THRESHOLD  1024ul
+/* Synchronous operations off by default until the Trio64 hang is understood
+ * on both physical machines; see the note at the end of BitBlt. */
+#define V9X_GDI_DEFAULT_SYNC       0
 
 /*
  * Bounded waits, in iterations. The same numbers the 32-bit HAL uses, and that
@@ -241,6 +244,8 @@ static WORD v9x_gdi_engine_live;
  * good by having DIB_ExtTextOut draw the whole string again in software.
  */
 static WORD v9x_gdi_text_failed;
+/* GdiAccelSync: wait for every accelerated operation before returning. */
+static WORD v9x_gdi_sync;
 
 /*
  * Text calls the dispatcher will accept with GdiAccelText off. Armed by
@@ -1069,6 +1074,10 @@ void v9x_gdi_accel_configure(void)
     master = (WORD)GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccel",
                                         V9X_GDI_DEFAULT_MASTER,
                                         V9X_SYSTEM_INI);
+    v9x_gdi_sync = (WORD)GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccelSync",
+                                              V9X_GDI_DEFAULT_SYNC,
+                                              V9X_SYSTEM_INI);
+    v9x_gdi.sync = (DWORD)v9x_gdi_sync;
     v9x_gdi.threshold = (DWORD)GetPrivateProfileInt(
         V9X_INI_SECTION, "GdiAccelThreshold",
         (int)V9X_GDI_DEFAULT_THRESHOLD, V9X_SYSTEM_INI);
@@ -1671,7 +1680,27 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
          * which is what keeps the pixels correct through a timeout. */
         goto decline;
     }
-    v9x_gdi_engine_dirty = 1u;
+    /*
+     * GdiAccelSync=1: wait for the engine before returning, so no CPU access
+     * to the framebuffer can ever overlap it. Added 2026-09-06 after a
+     * Pentium III driving a physical Trio64 hard-locked within two seconds of
+     * a run that mixed accelerated fills with GDI readbacks of the same
+     * surface, and survived five hundred fills with the readbacks removed.
+     * The dirty-flag drain covers the DIB Engine's deBeginAccess callers; a
+     * readback path that reaches the aperture without it, on a CPU fast
+     * enough to get there while the engine is still writing, is what the
+     * evidence describes. Synchronous costs one bounded port poll per
+     * operation and an operation's own duration; a GDI-sized fill is
+     * microseconds.
+     */
+    if (v9x_gdi_sync != 0u) {
+        if (v9x_gdi_wait_idle() == 0u) {
+            /* Poisoned; the pixels are already on screen, so no decline. */
+            ++v9x_gdi.sync_timeouts;
+        }
+    } else {
+        v9x_gdi_engine_dirty = 1u;
+    }
     if (upload != 0u) {
         ++v9x_gdi.uploads;
     } else if (rop256 == V9X_ROP256_SRCCOPY) {

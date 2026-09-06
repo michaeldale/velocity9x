@@ -15,6 +15,10 @@
 .xlist
 include VMM.INC
 include MINIVDD.INC
+IFDEF V9X_IO_TRACE
+; DIOCParams, for the trace readout's Win32 DeviceIoControl channel.
+include VWIN32.INC
+ENDIF
 .list
 
 ; The device id, handshake magic, contract version, function numbers, cache
@@ -129,9 +133,261 @@ V9xVbeEntryMode dw 0
 V9xTotalVramBytes dd 0
 ; One-shot latch for the size query's trace line.
 V9xVramAsked    dw 0
+IFDEF V9X_IO_TRACE
+; -IoTrace: port I/O traps on the 8514/A register file, V86 VMs only.
+;
+; Instrument for docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-
+; physical-trio64.md. A windowed DOS box on a physical Trio64 rewrites the
+; visible framebuffer at twice its stride, more readily once the engine ports
+; have been touched from ring 3. The only actors with the framebuffer in reach
+; are the DOS VM's real video BIOS, whose non-VGA port writes the main VDD does
+; not trap, and the main VDD itself at ring 0. Trapping the engine ports for
+; V86 VMs and logging every access - value, direction, width, VM - says which:
+; a log with the BIOS driving the engine names the first, an empty log across
+; a doubling names the second. Every access is passed through unchanged, in
+; its original width, so the trace does not alter what it observes.
+;
+; The System VM is exempted with Disable_Local_Trapping at Sys_VM_Init, so the
+; display driver's own port I/O never enters the handler. Ring-0 I/O is never
+; trapped by the VMM at all, which is why an empty log is informative.
+V9X_IOTRACE_ENTRIES equ 512
+V9X_IOTRACE_PORTS   equ 21
+V9xIoTraceCount  dd 0          ; accesses seen, including those not logged
+V9xIoTraceNext   dd 0          ; next log slot, saturates at ENTRIES
+V9xIoTraceInstalled dd 0       ; ports whose handler installed
+V9xIoTraceSysVmOff dd 0        ; ports whose System-VM trapping was disabled
+; Three dwords per entry: VM handle; type in the high word and port in the
+; low; the value written, or the value read back.
+V9xIoTraceLog    dd V9X_IOTRACE_ENTRIES * 3 dup (0)
+; The 8514/A register file at its ..E8H stride, plus the two pixel transfer
+; ports. Word ports; the handler passes any width through.
+V9xIoTracePorts  dw 042e8h, 046e8h, 04ae8h, 082e8h, 086e8h, 08ae8h, 08ee8h
+                 dw 092e8h, 096e8h, 09ae8h, 09ee8h, 0a2e8h, 0a6e8h, 0aae8h
+                 dw 0aee8h, 0b2e8h, 0b6e8h, 0bae8h, 0bee8h, 0e2e8h, 0e2eah
+ENDIF
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
+
+IFDEF V9X_IO_TRACE
+; The trapped-port handler. VMM entry: EAX = data for an output, EBX = the VM,
+; ECX = the I/O type, EDX = the port, EBP -> the client registers. Exit: EAX =
+; the value for an input. String and repeated forms go back to Simulate_IO,
+; which breaks them into single accesses that re-enter here, so the log sees
+; every word of a REP OUTSW at its true width.
+BeginProc V9xMini_IoTrace_Handler
+    test    ecx, STRING_IO OR REP_IO
+    jz      short V9xMini_IoTrace_Single
+    VMMJmp  Simulate_IO
+
+V9xMini_IoTrace_Single:
+    push    esi
+    push    edi
+    ; The System VM is not what this watches, and Disable_Local_Trapping at
+    ; Sys_VM_Init was measured not to take (SysVmOff=0 with Installed=21), so
+    ; it is told apart here instead: its accesses pass through unlogged.
+    push    ebx
+    push    eax
+    VMMcall Get_Sys_VM_Handle
+    mov     edi, ebx
+    pop     eax
+    pop     ebx
+    cmp     edi, ebx
+    je      short V9xMini_IoTrace_Passthrough
+IFDEF V9X_IO_SHIELD
+    ; -ShieldAdvFunc: a V86 VM's write to ADVFUNC_CNTL (4AE8H) is swallowed.
+    ; Measured 2026-09-06 on A8U4I5: the DOS VM's video BIOS writes 02H there
+    ; and nothing else on the engine file, and that single write drops the
+    ; Trio64 out of enhanced mode - after which the same framebuffer bytes are
+    ; addressed as VGA planes by CPU and CRTC alike, which is the "doubled
+    ; desktop", and an in-flight CPU-data engine command never completes,
+    ; which is the BARRY hang. The VM's BIOS believes its write landed; the
+    ; hardware stays in the mode the display driver set. Reads still return the
+    ; real register. Logged like everything else, so the count says how often
+    ; the shield fired.
+    cmp     dx, 04ae8h
+    jne     short V9xMini_IoTrace_Perform
+    test    ecx, OUTPUT
+    jz      short V9xMini_IoTrace_Perform
+    jmp     short V9xMini_IoTrace_Log
+ENDIF
+V9xMini_IoTrace_Perform:
+    mov     edi, ecx
+    and     edi, 018h                   ; width field: 0 byte, 8 word, 10h dword
+    test    ecx, OUTPUT
+    jnz     short V9xMini_IoTrace_Out
+    cmp     edi, WORD_INPUT
+    je      short V9xMini_IoTrace_InW
+    cmp     edi, DWORD_INPUT
+    je      short V9xMini_IoTrace_InD
+    in      al, dx
+    jmp     short V9xMini_IoTrace_Log
+V9xMini_IoTrace_InW:
+    in      ax, dx
+    jmp     short V9xMini_IoTrace_Log
+V9xMini_IoTrace_InD:
+    in      eax, dx
+    jmp     short V9xMini_IoTrace_Log
+
+V9xMini_IoTrace_Out:
+    cmp     edi, WORD_OUTPUT AND 018h
+    je      short V9xMini_IoTrace_OutW
+    cmp     edi, DWORD_OUTPUT AND 018h
+    je      short V9xMini_IoTrace_OutD
+    out     dx, al
+    jmp     short V9xMini_IoTrace_Log
+V9xMini_IoTrace_OutW:
+    out     dx, ax
+    jmp     short V9xMini_IoTrace_Log
+V9xMini_IoTrace_OutD:
+    out     dx, eax
+
+V9xMini_IoTrace_Log:
+    inc     V9xIoTraceCount
+    mov     edi, V9xIoTraceNext
+    cmp     edi, V9X_IOTRACE_ENTRIES
+    jae     short V9xMini_IoTrace_Done
+    inc     V9xIoTraceNext
+    lea     edi, [edi + edi * 2]        ; entry * 3 dwords
+    shl     edi, 2
+    add     edi, OFFSET32 V9xIoTraceLog
+    mov     [edi], ebx
+    mov     esi, ecx
+    shl     esi, 16
+    mov     si, dx
+    mov     [edi + 4], esi
+    mov     [edi + 8], eax
+
+V9xMini_IoTrace_Done:
+    pop     edi
+    pop     esi
+    ret
+
+    ; System VM: the access at its width, nothing recorded.
+V9xMini_IoTrace_Passthrough:
+    mov     edi, ecx
+    and     edi, 018h
+    test    ecx, OUTPUT
+    jnz     short V9xMini_IoTrace_PassOut
+    cmp     edi, 8
+    je      short V9xMini_IoTrace_PassInW
+    cmp     edi, 010h
+    je      short V9xMini_IoTrace_PassInD
+    in      al, dx
+    jmp     short V9xMini_IoTrace_Done
+V9xMini_IoTrace_PassInW:
+    in      ax, dx
+    jmp     short V9xMini_IoTrace_Done
+V9xMini_IoTrace_PassInD:
+    in      eax, dx
+    jmp     short V9xMini_IoTrace_Done
+V9xMini_IoTrace_PassOut:
+    cmp     edi, 8
+    je      short V9xMini_IoTrace_PassOutW
+    cmp     edi, 010h
+    je      short V9xMini_IoTrace_PassOutD
+    out     dx, al
+    jmp     short V9xMini_IoTrace_Done
+V9xMini_IoTrace_PassOutW:
+    out     dx, ax
+    jmp     short V9xMini_IoTrace_Done
+V9xMini_IoTrace_PassOutD:
+    out     dx, eax
+    jmp     short V9xMini_IoTrace_Done
+EndProc V9xMini_IoTrace_Handler
+
+; Sys_VM_Init: EBX = the System VM. Turn the traps off for it alone, so the
+; display driver's ring-3 port I/O runs at full speed and never appears here.
+BeginProc MiniVDD_Sys_VM_Init
+    pushad
+    mov     esi, OFFSET32 V9xIoTracePorts
+    mov     ecx, V9X_IOTRACE_PORTS
+V9xMini_IoTrace_SysVm_Next:
+    movzx   edx, word ptr [esi]
+    VMMcall Disable_Local_Trapping
+    jc      short V9xMini_IoTrace_SysVm_Skip
+    inc     V9xIoTraceSysVmOff
+V9xMini_IoTrace_SysVm_Skip:
+    add     esi, 2
+    dec     ecx
+    jnz     short V9xMini_IoTrace_SysVm_Next
+    popad
+    clc
+    ret
+EndProc MiniVDD_Sys_VM_Init
+
+; Win32 readout. CreateFile("\\.\V9XMINI") reaches this statically loaded
+; device by name; code 1 copies the header and the log into the caller's
+; buffer, code 2 clears the log. ESI -> DIOCParams.
+V9X_IOTRACE_DIOC_READ  equ 1
+V9X_IOTRACE_DIOC_RESET equ 2
+BeginProc MiniVDD_W32_DeviceIoControl
+    ; Near jumps: the read path below is longer than a short jump reaches.
+    cmp     ecx, DIOC_OPEN
+    je      V9xMini_Dioc_Ok
+    cmp     ecx, DIOC_CLOSEHANDLE
+    je      V9xMini_Dioc_Ok
+    cmp     ecx, V9X_IOTRACE_DIOC_RESET
+    je      V9xMini_Dioc_Reset
+    cmp     ecx, V9X_IOTRACE_DIOC_READ
+    jne     V9xMini_Dioc_Fail
+
+    pushad
+    mov     ebp, esi                    ; DIOCParams
+    mov     edi, [ebp.lpvOutBuffer]
+    mov     ecx, [ebp.cbOutBuffer]
+    xor     edx, edx                    ; bytes returned
+    test    edi, edi
+    jz      short V9xMini_Dioc_Read_Done
+    ; Header: count, logged, installed, sys-vm-off. Then the log, as many
+    ; whole bytes of it as the buffer has room for.
+    cmp     ecx, 16
+    jb      short V9xMini_Dioc_Read_Done
+    mov     eax, V9xIoTraceCount
+    mov     [edi], eax
+    mov     eax, V9xIoTraceNext
+    mov     [edi + 4], eax
+    mov     eax, V9xIoTraceInstalled
+    mov     [edi + 8], eax
+    mov     eax, V9xIoTraceSysVmOff
+    mov     [edi + 12], eax
+    sub     ecx, 16
+    add     edi, 16
+    mov     edx, 16
+    mov     eax, V9xIoTraceNext
+    lea     eax, [eax + eax * 2]
+    shl     eax, 2                      ; bytes of log in use
+    cmp     ecx, eax
+    jb      short V9xMini_Dioc_Read_Copy
+    mov     ecx, eax
+V9xMini_Dioc_Read_Copy:
+    add     edx, ecx
+    shr     ecx, 2
+    mov     esi, OFFSET32 V9xIoTraceLog
+    cld
+    rep     movsd
+V9xMini_Dioc_Read_Done:
+    mov     eax, [ebp.lpcbBytesReturned]
+    test    eax, eax
+    jz      short V9xMini_Dioc_Read_Exit
+    mov     [eax], edx
+V9xMini_Dioc_Read_Exit:
+    popad
+    xor     eax, eax
+    ret
+
+V9xMini_Dioc_Reset:
+    mov     V9xIoTraceCount, 0
+    mov     V9xIoTraceNext, 0
+V9xMini_Dioc_Ok:
+    xor     eax, eax
+    ret
+
+V9xMini_Dioc_Fail:
+    mov     eax, 1
+    ret
+EndProc MiniVDD_W32_DeviceIoControl
+ENDIF
 
 ; ESI points to ECX bytes. Preserve all registers and bound every UART wait.
 BeginProc V9xMini_Serial_Write
@@ -1953,6 +2209,29 @@ V9xMini_Power_Defaults:
     mov     ecx, V9xMiniDefaultsLineLength
     call    V9xMini_Serial_Write
 V9xMini_Init_Succeeded:
+IFDEF V9X_IO_TRACE
+    ; Install the port traps. Global for every VM; the System VM is exempted
+    ; at Sys_VM_Init. A port whose install fails is counted by omission -
+    ; Installed says how many took.
+    push    esi
+    push    ecx
+    push    edx
+    mov     ecx, V9X_IOTRACE_PORTS
+    mov     edi, OFFSET32 V9xIoTracePorts
+V9xMini_IoTrace_Install_Next:
+    movzx   edx, word ptr [edi]
+    mov     esi, OFFSET32 V9xMini_IoTrace_Handler
+    VMMcall Install_IO_Handler
+    jc      short V9xMini_IoTrace_Install_Skip
+    inc     V9xIoTraceInstalled
+V9xMini_IoTrace_Install_Skip:
+    add     edi, 2
+    dec     ecx
+    jnz     short V9xMini_IoTrace_Install_Next
+    pop     edx
+    pop     ecx
+    pop     esi
+ENDIF
     ; Read-only, and no BIOS call, so it runs for every family and cannot fail
     ; the init any more than the collection below can.
     call    V9xMini_Mtrr_Inspect
@@ -1990,6 +2269,10 @@ VxD_LOCKED_CODE_SEG
 Begin_Control_Dispatch MiniVDD
     Control_Dispatch Device_Init, MiniVDD_Dynamic_Init
     Control_Dispatch Sys_Dynamic_Device_Init, MiniVDD_Dynamic_Init
+IFDEF V9X_IO_TRACE
+    Control_Dispatch Sys_VM_Init, MiniVDD_Sys_VM_Init
+    Control_Dispatch W32_DeviceIoControl, MiniVDD_W32_DeviceIoControl
+ENDIF
 End_Control_Dispatch MiniVDD
 VxD_LOCKED_CODE_ENDS
 

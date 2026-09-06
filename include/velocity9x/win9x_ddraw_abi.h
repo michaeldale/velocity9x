@@ -1754,6 +1754,10 @@ typedef struct v9x_gdi_stats {
     DWORD text_fallbacks;
     DWORD text_reject_mask;
     DWORD text_last_shape;
+    /* GdiAccelSync as configured, and bounded idle waits that expired while
+     * finishing an operation synchronously. */
+    DWORD sync;
+    DWORD sync_timeouts;
 } V9X_GDI_STATS;
 
 /*
@@ -1884,7 +1888,7 @@ typedef char v9x_dd_assert_trace_entry[
 /* The GDI stats block crosses the 16-bit/32-bit boundary through ExtEscape,
  * so both compilers have to lay it out the same way. */
 typedef char v9x_dd_assert_gdi_stats[
-    sizeof(V9X_GDI_STATS) == 220 ? 1 : -1];
+    sizeof(V9X_GDI_STATS) == 228 ? 1 : -1];
 typedef char v9x_dd_assert_gdi_text_dump[
     sizeof(V9X_GDI_TEXT_DUMP) == 76 + 256 ? 1 : -1];
 /* 574, not 572: counters[] grew by one WORD so that the highest trace id
