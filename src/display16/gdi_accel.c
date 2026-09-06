@@ -242,6 +242,14 @@ static WORD v9x_gdi_engine_live;
  */
 static WORD v9x_gdi_text_failed;
 
+/*
+ * Text calls the dispatcher will accept with GdiAccelText off. Armed by
+ * V9X_GDITEXTPROBE, spent one per accepted call, so a probe can make a single
+ * known string the first accelerated string a machine draws
+ * (docs\issues\2026-09-06-text-acceleration-hangs-physical-trio64.md).
+ */
+static DWORD v9x_gdi_text_probe_calls;
+
 static void v9x_gdi_write(DWORD offset, DWORD value)
 {
     V9xEngineWrite((WORD)offset, value);
@@ -1771,6 +1779,12 @@ static void v9x_gdi_text_capture(const V9X_DIB_ENGINE FAR *device,
     dump->copied = total;
 }
 
+WORD v9x_gdi_accel_text_probe(DWORD count)
+{
+    v9x_gdi_text_probe_calls = count;
+    return 1u;
+}
+
 WORD v9x_gdi_accel_text_dump(void FAR *output)
 {
     BYTE FAR *destination = (BYTE FAR *)output;
@@ -2009,6 +2023,7 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
 {
     DWORD result;
     WORD flags;
+    WORD probing = 0u;
 
     ++v9x_gdi.text_calls;
     if (v9x_gdi_report_pending != 0u) {
@@ -2016,9 +2031,17 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
     }
     /* Gate 1: on at all? This test is the whole cost of ordinal 14 becoming C
      * on the three families with no engine, and on every S3 build that ships
-     * text off. */
-    if ((v9x_gdi.enabled & V9X_GDI_PRIM_TEXT) == 0ul ||
-        v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u) {
+     * text off. An armed probe is the one way past it with text off, and it
+     * is spent only when a call is actually accepted below, so the extent
+     * calls GDI issues first do not consume it. */
+    if ((v9x_gdi.enabled & V9X_GDI_PRIM_TEXT) == 0ul) {
+        if (v9x_gdi_text_probe_calls == 0ul) {
+            V9X_GDI_TEXT_REJECT(1u);
+            goto decline;
+        }
+        probing = 1u;
+    }
+    if (v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u) {
         V9X_GDI_TEXT_REJECT(1u);
         goto decline;
     }
@@ -2061,6 +2084,9 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
         goto decline;
     }
 
+    if (probing != 0u) {
+        --v9x_gdi_text_probe_calls;
+    }
     v9x_gdi_text_failed = 0u;
     ++v9x_gdi.text_accepted;
     result = V9xDibExtTextOutExtCall(device, x, y, clip_rect, string, count,

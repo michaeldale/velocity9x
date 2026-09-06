@@ -1894,8 +1894,16 @@ ENDIF
     ; measured reserving nothing for itself - so a full-screen DOS box has no
     ; off-screen area for its state to be saved into. Neither is on the
     ; screen-switch path: one runs at registration, the other answers a query.
+IFNDEF V9X_NO_VRAM_SIZE
+    ; -NoVramSize leaves the pair out. Differential build for
+    ; docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md:
+    ; a windowed DOS box on real Trio64 silicon rewrites the framebuffer at
+    ; twice its stride, first seen with the build that added these two entries,
+    ; and the dispatch entry alone has already been measured changing the main
+    ; VDD's behaviour on a related path.
     MiniVDDDispatch REGISTER_DISPLAY_DRIVER, RegisterDisplayDriver
     MiniVDDDispatch GET_TOTAL_VRAM_SIZE, GetTotalVRAMSize
+ENDIF
 
 IFDEF V9X_VGA_RETURN
     ; Experiment only; see MiniVDD_PreHiResToVGA above. Function 4 is in the

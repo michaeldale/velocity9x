@@ -72,6 +72,12 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * what the DIB Engine hands the driver can be read on the host instead of
  * inferred from a screenshot. */
 #define V9X_GDITEXTDUMP          0x56395444ul /* 'V9TD' */
+/* V9X_GDITEXTPROBE arms ordinal 14 to accept dwParam1 screen text calls
+ * through the engine path while GdiAccelText is off, so one known string can
+ * be the first accelerated string a machine draws - and if it hangs, the one
+ * with known arguments. Requires the engine to be live (another primitive
+ * enabled) and the chip to be one the text path serves. */
+#define V9X_GDITEXTPROBE         0x56395450ul /* 'V9TP' */
 
 /* Driver-side return conventions. */
 #define V9X_DDHAL_DRIVER_NOTHANDLED  0x00000000ul

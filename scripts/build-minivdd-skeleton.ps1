@@ -24,6 +24,11 @@ param(
     # whatever silicon it is loaded against.
     [switch]$VgaReturn,
     [switch]$NoDpms,
+    # -NoVramSize leaves out the REGISTER_DISPLAY_DRIVER and GET_TOTAL_VRAM_SIZE
+    # dispatch entries, so the main VDD is never told the card's memory size -
+    # the state every build before 2026-08-29 shipped in. Differential build for
+    # the physical Trio64 desktop-doubling fault; not for shipping.
+    [switch]$NoVramSize,
     # -NoScreenSwitch refuses the full-screen DOS box outright, through
     # CHECK_SCREEN_SWITCH_OK. The DDK's own XGA mini-VDD does this for a
     # driver in a VESA mode, for the reason that applies to tier-0: the
@@ -349,6 +354,9 @@ if ($VgaReturn) {
 if ($NoDpms) {
     $assemblerArguments = @("-DV9X_NO_DPMS") + $assemblerArguments
 }
+if ($NoVramSize) {
+    $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments
+}
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
 }
@@ -435,8 +443,8 @@ $expectedDispatches = @(
     "/VESA_CALL_POST_PROCESSING,VESACallPostProcessing",
     "/SET_MONITOR_POWER_STATE,SetMonitorPowerState",
     "/GET_MONITOR_POWER_STATE_CAPS,GetMonitorPowerStateCaps",
-    "/REGISTER_DISPLAY_DRIVER,RegisterDisplayDriver",
-    "/GET_TOTAL_VRAM_SIZE,GetTotalVRAMSize",
+    "!V9X_NO_VRAM_SIZE/REGISTER_DISPLAY_DRIVER,RegisterDisplayDriver",
+    "!V9X_NO_VRAM_SIZE/GET_TOTAL_VRAM_SIZE,GetTotalVRAMSize",
     "V9X_VGA_RETURN/PRE_HIRES_TO_VGA,PreHiResToVGA",
     "V9X_NO_SCREEN_SWITCH/CHECK_SCREEN_SWITCH_OK,CheckScreenSwitchOK",
     "V9X_SCREEN_SWITCH_HOOKS/CHECK_SCREEN_SWITCH_OK,TraceCheckScreenSwitchOK",

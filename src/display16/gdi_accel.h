@@ -58,4 +58,8 @@ WORD v9x_gdi_accel_fault_inject(DWORD count);
 /* V9X_GDITEXTDUMP. Non-zero when the block was filled in. */
 WORD v9x_gdi_accel_text_dump(void FAR *output);
 
+/* V9X_GDITEXTPROBE. Arms `count` text calls to take the engine path with
+ * GdiAccelText off. */
+WORD v9x_gdi_accel_text_probe(DWORD count);
+
 #endif /* VELOCITY9X_GDI_ACCEL_H */

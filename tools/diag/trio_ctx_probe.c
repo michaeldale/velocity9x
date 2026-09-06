@@ -133,6 +133,21 @@ static int v9x_no_vga_dump;
  * side-effectful, so each is a separate arm. */
 static int v9x_cure_ge;
 static int v9x_cure_af;
+static int v9x_cure_off;
+static int v9x_cure_nop;
+/*
+ * 'put' restores every engine register this tool writes to the value it read
+ * before touching anything, at exit; 'putm', 'putw' and 'putg' restore only
+ * the MULTIFUNC set (scissors, pixel control, misc control, min axis), only
+ * the write mask, or only geometry, colour and mix. For bisecting which
+ * latched register a DOS box turns into a damaged desktop.
+ */
+static int v9x_no_command;
+static int v9x_put_multifunc;
+static int v9x_put_wrtmask;
+static int v9x_put_geometry;
+static unsigned short v9x_pre_direct[6];
+static unsigned short v9x_pre_multi[11];
 
 static void v9x_outreg(unsigned short port, unsigned short value)
 {
@@ -390,6 +405,71 @@ static void v9x_program_fill(int x, int y, int w, int h)
     v9x_outreg(V9X_MULTIFUNC, (unsigned short)(h - 1));
 }
 
+/*
+ * Capture the engine's latched state before this tool writes any of it, and
+ * report it as Pre* keys. Read Register Select is the only write involved, and
+ * it selects a readback rather than changing drawing state.
+ */
+static void v9x_capture_pre(void)
+{
+    static const char *names[11] = {
+        "PreMinAxis", "PreScisT", "PreScisL", "PreScisB", "PreScisR",
+        "PrePixCntl", "PreMultMisc", "Pre9AE8", "Pre42E8", "Pre46E8",
+        "PreMultMisc2"
+    };
+    unsigned short select;
+
+    v9x_pre_direct[0] = v9x_inpw(V9X_CUR_X);
+    v9x_pre_direct[1] = v9x_inpw(V9X_CUR_Y);
+    v9x_pre_direct[2] = v9x_inpw(V9X_MAJ_AXIS);
+    v9x_pre_direct[3] = v9x_inpw(V9X_FRGD_COLOR);
+    v9x_pre_direct[4] = v9x_inpw(V9X_FRGD_MIX);
+    v9x_pre_direct[5] = v9x_inpw(V9X_WRT_MASK);
+    v9x_write_hex("PreCurX", (DWORD)v9x_pre_direct[0]);
+    v9x_write_hex("PreCurY", (DWORD)v9x_pre_direct[1]);
+    v9x_write_hex("PreMajAxis", (DWORD)v9x_pre_direct[2]);
+    v9x_write_hex("PreFrgdColor", (DWORD)v9x_pre_direct[3]);
+    v9x_write_hex("PreFrgdMix", (DWORD)v9x_pre_direct[4]);
+    v9x_write_hex("PreWrtMask", (DWORD)v9x_pre_direct[5]);
+    for (select = 0u; select < 11u; ++select) {
+        v9x_outpw(V9X_MULTIFUNC, (unsigned short)(V9X_READ_SEL | select));
+        v9x_pre_multi[select] = v9x_inpw(V9X_MULTIFUNC);
+        v9x_write_hex(names[select], (DWORD)v9x_pre_multi[select]);
+    }
+}
+
+/*
+ * Put the captured state back, group by group. The MULTIFUNC readbacks carry
+ * their index in bits 15-12 (measured: scissors top reads 1000H, pixel
+ * control A000H), so they are written back verbatim; min axis is index 0.
+ */
+static void v9x_restore_pre(void)
+{
+    if (v9x_put_multifunc) {
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0xd000u | (v9x_pre_multi[10] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0xe000u | (v9x_pre_multi[6] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0x1000u | (v9x_pre_multi[1] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0x2000u | (v9x_pre_multi[2] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0x3000u | (v9x_pre_multi[3] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0x4000u | (v9x_pre_multi[4] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(0xa000u | (v9x_pre_multi[5] & 0x0fffu)));
+        v9x_outreg(V9X_MULTIFUNC, (unsigned short)(v9x_pre_multi[0] & 0x0fffu));
+        v9x_write_text("PutMultifunc", "1");
+    }
+    if (v9x_put_wrtmask) {
+        v9x_outreg(V9X_WRT_MASK, v9x_pre_direct[5]);
+        v9x_write_text("PutWrtMask", "1");
+    }
+    if (v9x_put_geometry) {
+        v9x_outreg(V9X_FRGD_MIX, v9x_pre_direct[4]);
+        v9x_outreg(V9X_FRGD_COLOR, v9x_pre_direct[3]);
+        v9x_outreg(V9X_CUR_X, v9x_pre_direct[0]);
+        v9x_outreg(V9X_CUR_Y, v9x_pre_direct[1]);
+        v9x_outreg(V9X_MAJ_AXIS, v9x_pre_direct[2]);
+        v9x_write_text("PutGeometry", "1");
+    }
+}
+
 /* Read the directly readable engine registers. */
 static void v9x_read_direct(char suffix)
 {
@@ -534,7 +614,48 @@ static void v9x_run(int alt)
     }
 
     v9x_sample(screen, "Before1_", x, y, w, h, 0);
+    v9x_capture_pre();
+    /* 'nocmd': capture and dump only - no engine command of any kind, not
+     * even the readback NOP. Separates "the engine has executed since boot"
+     * from everything else this tool does. */
+    if (v9x_no_command) {
+        v9x_write_text("Result", "NOCMD");
+        v9x_flush();
+        ReleaseDC(0, screen);
+        return;
+    }
+    /*
+     * The standard CRTC file too, CR00-CR2F, added 2026-09-06 when a
+     * physical Trio64 came up doubled horizontally and halved vertically
+     * after DOS-box activity. The horizontal geometry, the offset (CR13) and
+     * the maximum scan line (CR09) live here, and the extended dump below
+     * cannot see them. Same key scheme, no overlap with Cr30-Cr70.
+     */
+    v9x_dump_indexed("Cr", 0x3d4u, 0x3d5u, 0x00u, 0x2fu);
     v9x_dump_crtc("Cr");
+    if (!v9x_no_vga_dump) {
+        /*
+         * The S3 extended sequencer, SR09-SR1F, reads back its own index
+         * while SR08 is locked - which is what every earlier dump recorded.
+         * Unlock (SR08 = 06H), read, relock to what was there. The clock
+         * synthesizer (SR10-SR13, SR15, SR18) is what decides whether the
+         * CRTC runs at the pixel rate the mode was set for.
+         */
+        unsigned char sr08;
+
+        v9x_outpb(0x3c4u, 0x08u);
+        sr08 = v9x_inpb(0x3c5u);
+        v9x_outpb(0x3c5u, 0x06u);
+        v9x_dump_indexed("SrU", 0x3c4u, 0x3c5u, 0x09u, 0x1fu);
+        v9x_outpb(0x3c4u, 0x08u);
+        v9x_outpb(0x3c5u, sr08);
+        v9x_write_hex("Sr08Locked", (DWORD)sr08);
+        /* CR67 is the extended miscellaneous control 2: bits 7:4 are the
+         * pixel format the DAC path is in. Dumped above as Cr67; named here
+         * so a diff reader does not have to know that. */
+        v9x_outpb(0x3d4u, 0x67u);
+        v9x_write_hex("PixelFormatCr67", (DWORD)v9x_inpb(0x3d5u));
+    }
     if (!v9x_no_vga_dump) {
         /* The VGA core's memory-path state: sequencer (incl. the S3 extended
          * SR08-1F behind the SR08 unlock, read-only here), graphics
@@ -622,6 +743,36 @@ static void v9x_run(int alt)
                    (green1 == 5 && green2 == 5) ? "PASS"
                    : (green1 == 0 && green2 == 0) ? "FAIL-NOTHING-LANDED"
                                                   : "FAIL-PARTIAL");
+    /*
+     * 'off': leave the chip with ENB EHFC clear, everything else in 4AE8H as
+     * read. The 2026-09-06 experiment: a windowed DOS box on a physical Trio64
+     * rewrites the desktop at twice its stride when GDI acceleration is on and
+     * not when it is off, with no accelerated operation in between - so the
+     * one persistent difference is whether the enhanced engine is enabled
+     * while the DOS VM's real video BIOS runs. Clearing the bit by hand and
+     * then opening a box separates that from everything else acceleration
+     * leaves behind. The next accelerated operation's prepare sets it again.
+     */
+    if (v9x_cure_off) {
+        unsigned short advfunc = v9x_inpw(0x4ae8u);
+
+        v9x_outpw(0x4ae8u, (unsigned short)(advfunc & ~0x0001u));
+        v9x_write_hex("AdvFuncCleared", (DWORD)v9x_inpw(0x4ae8u));
+    }
+    /*
+     * 'nop': leave a NOP latched in the command register after the last real
+     * operation. The hypothesis under test is that the system VDD's chip-aware
+     * save and restore around a DOS VM writes the 8514/A command register back
+     * and so re-issues whatever command was last latched, with whatever
+     * geometry its own restore had just written - which a NOP survives and a
+     * fill or copy does not. Ordered behind the copy test by the FIFO, so it
+     * executes only after that copy has completed.
+     */
+    v9x_restore_pre();
+    if (v9x_cure_nop) {
+        v9x_outreg(V9X_CMD_STATUS, V9X_CMD_NOP);
+        v9x_write_text("LeftLatched", "nop");
+    }
     v9x_flush();
     ReleaseDC(0, screen);
 }
@@ -657,6 +808,28 @@ static int v9x_has_alt(const char *command)
         if (command[0] == 'a' && command[1] == 'f' &&
             (command[2] == ' ' || command[2] == ' ')) {
             v9x_cure_af = 1;
+        }
+        if (command[0] == 'o' && command[1] == 'f' && command[2] == 'f') {
+            v9x_cure_off = 1;
+        }
+        if (command[0] == 'n' && command[1] == 'o' && command[2] == 'p') {
+            v9x_cure_nop = 1;
+        }
+        if (command[0] == 'n' && command[1] == 'o' && command[2] == 'c') {
+            v9x_no_command = 1;
+        }
+        if (command[0] == 'p' && command[1] == 'u' && command[2] == 't') {
+            if (command[3] == 'm') {
+                v9x_put_multifunc = 1;
+            } else if (command[3] == 'w') {
+                v9x_put_wrtmask = 1;
+            } else if (command[3] == 'g') {
+                v9x_put_geometry = 1;
+            } else {
+                v9x_put_multifunc = 1;
+                v9x_put_wrtmask = 1;
+                v9x_put_geometry = 1;
+            }
         }
         ++command;
     }

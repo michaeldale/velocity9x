@@ -1898,11 +1898,61 @@ static void v9x_text_dump_write_hex_row(const char *prefix, unsigned row,
     v9x_text_dump_write(key, value);
 }
 
-static DWORD v9x_text_dump_phase(void)
+/*
+ * /textprobe is /textdump with the driver armed first through
+ * V9X_GDITEXTPROBE, so the one string this draws is accepted by the engine
+ * path while GdiAccelText is off - the first accelerated string the machine
+ * has drawn, with known arguments. The INI is written in stages, so if the
+ * machine hangs on the string the last key present says how far it got.
+ */
+static int v9x_text_probe_arm(HDC screen, DWORD count)
+{
+    V9X_DCICMD command;
+
+    command.dwCommand = V9X_GDITEXTPROBE;
+    command.dwParam1 = count;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_DD_VERSION;
+    command.dwReserved = 0ul;
+    return ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                     (LPCSTR)&command, 0, 0) > 0;
+}
+
+static void v9x_text_dump_stats(const char *prefix, const V9X_GDI_STATS *s)
+{
+    char key[40];
+
+    lstrcpyA(key, prefix); lstrcatA(key, "Enabled");
+    v9x_text_dump_write_uint(key, s->enabled);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextCalls");
+    v9x_text_dump_write_uint(key, s->text_calls);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextAccepted");
+    v9x_text_dump_write_uint(key, s->text_accepted);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextBitmaps");
+    v9x_text_dump_write_uint(key, s->text_bitmaps);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextOrects");
+    v9x_text_dump_write_uint(key, s->text_orects);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextFallbacks");
+    v9x_text_dump_write_uint(key, s->text_fallbacks);
+    lstrcpyA(key, prefix); lstrcatA(key, "TextRejectMask");
+    v9x_text_dump_write_uint(key, s->text_reject_mask);
+    lstrcpyA(key, prefix); lstrcatA(key, "FifoTimeouts");
+    v9x_text_dump_write_uint(key, s->fifo_timeouts);
+    lstrcpyA(key, prefix); lstrcatA(key, "IdleTimeouts");
+    v9x_text_dump_write_uint(key, s->idle_timeouts);
+    lstrcpyA(key, prefix); lstrcatA(key, "Poisoned");
+    v9x_text_dump_write_uint(key, s->poisoned);
+    lstrcpyA(key, prefix); lstrcatA(key, "LastAdvFunc");
+    v9x_text_dump_write_uint(key, s->last_advfunc);
+}
+
+static DWORD v9x_text_dump_phase(int probe)
 {
     static const char text[] = "ABCDEFGH";
     V9X_GDI_TEXT_DUMP dump;
     V9X_DCICMD command;
+    V9X_GDI_STATS before;
+    V9X_GDI_STATS after;
     HDC screen = GetDC(0);
     HFONT font = (HFONT)GetStockObject(SYSTEM_FIXED_FONT);
     HFONT previous;
@@ -1920,18 +1970,58 @@ static DWORD v9x_text_dump_phase(void)
     WritePrivateProfileStringA(V9X_TEXT_DUMP_SECTION, 0, 0, V9X_DIAG_TEXT_INI);
     v9x_text_dump_write("Build", V9X_BUILD_ID);
     v9x_text_dump_write("Text", text);
+    v9x_text_dump_write_uint("Probe", probe ? 1ul : 0ul);
+    v9x_text_dump_write_uint("DrawX", V9X_TEXT_DUMP_X);
+    v9x_text_dump_write_uint("DrawY", V9X_TEXT_DUMP_Y);
+    v9x_text_dump_write("Font", "SYSTEM_FIXED_FONT");
+    v9x_text_dump_write("BkMode", "OPAQUE");
     if (screen == 0) {
         v9x_text_dump_write("Result", "FAIL");
         v9x_text_dump_write("Error", "no-screen-dc");
         return 1ul;
     }
+    if (!v9x_accel_read_stats(screen, &before)) {
+        ReleaseDC(0, screen);
+        v9x_text_dump_write("Result", "FAIL");
+        v9x_text_dump_write("Error", "stats-escape-rejected");
+        return 2ul;
+    }
+    v9x_text_dump_stats("Before", &before);
+    if (probe) {
+        if (!v9x_text_probe_arm(screen, 1ul)) {
+            ReleaseDC(0, screen);
+            v9x_text_dump_write("Result", "FAIL");
+            v9x_text_dump_write("Error", "probe-escape-rejected");
+            return 2ul;
+        }
+        v9x_text_dump_write("Phase", "armed");
+    }
+    /* Flush the INI to disk before the string is drawn: if the machine hangs
+     * on it, this is the record that survives. */
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_TEXT_INI);
     previous = (HFONT)SelectObject(screen, font);
     SetBkMode(screen, OPAQUE);
     SetTextColor(screen, RGB(0, 0, 0));
     SetBkColor(screen, RGB(255, 255, 255));
     TextOutA(screen, V9X_TEXT_DUMP_X, V9X_TEXT_DUMP_Y, text, lstrlenA(text));
+    v9x_text_dump_write("Phase", "returned");
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_TEXT_INI);
     GetTextExtentPoint32A(screen, text, lstrlenA(text), &extent);
     SelectObject(screen, previous);
+    if (v9x_accel_read_stats(screen, &after)) {
+        v9x_text_dump_stats("After", &after);
+        v9x_text_dump_write_uint("AcceptedDelta",
+                                 after.text_accepted - before.text_accepted);
+        v9x_text_dump_write_uint("BitmapsDelta",
+                                 after.text_bitmaps - before.text_bitmaps);
+        v9x_text_dump_write_uint("FallbacksDelta",
+                                 after.text_fallbacks - before.text_fallbacks);
+    }
+    /* Disarm whatever the string did not consume, so the desktop does not
+     * draw its next string through the probe. */
+    if (probe) {
+        v9x_text_probe_arm(screen, 0ul);
+    }
     v9x_text_dump_write_uint("ExtentWidth", (DWORD)extent.cx);
     v9x_text_dump_write_uint("ExtentHeight", (DWORD)extent.cy);
 
@@ -2210,8 +2300,11 @@ void WINAPI V9xGdiSmokeEntry(void)
     if (v9x_has_switch(command_line, "/stats")) {
         ExitProcess(v9x_accel_inject_phase(0ul));
     }
+    if (v9x_has_switch(command_line, "/textprobe")) {
+        ExitProcess(v9x_text_dump_phase(1));
+    }
     if (v9x_has_switch(command_line, "/textdump")) {
-        ExitProcess(v9x_text_dump_phase());
+        ExitProcess(v9x_text_dump_phase(0));
     }
     if (v9x_has_switch(command_line, "/probe")) {
         ExitProcess(v9x_accel_probe_phase(instance));
