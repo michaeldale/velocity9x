@@ -1,11 +1,12 @@
 # GDI acceleration, build 005: text on the Trio64
 
 Date: 2026-09-06
-Status: **implemented; verified on the 86Box Trio64 guest after one defect
-found and fixed there; default off; not yet run on a card.** The defect and
-what killed it are in "What the guest run found" below. Every remaining
-hardware statement is a hypothesis with the measurement that would confirm or
-kill it named beside it.
+Status: **implemented on the Trio64 and the ViRGE; verified on the 86Box
+Trio64 guest after one defect found and fixed there, and on a physical
+ViRGE/DX after a second; default off; unmeasured on physical Trio64.** The
+defects and what killed them are in "What the guest run found" and "The
+ViRGE" below. Every remaining hardware statement is a hypothesis with the
+measurement that would confirm or kill it named beside it.
 
 Build 005 was planned as extra ROPs and re-targeted by
 [the next-steps record](2026-08-27-gdi-accel-next-steps.md): CrystalMark on
@@ -23,7 +24,7 @@ can measure it, and the ViRGE declines for now.
 | Key | `GdiAccelText` in `[Velocity9x]`, **default 0** |
 | Advertised | `V9X_GDI_PRIM_TEXT` = `0x20`, so `Advertised=55` everywhere |
 | Trio64 | implemented: ordinal 14 dispatcher, two DIB Engine callbacks, one engine primitive |
-| ViRGE/DX | declines at the engine-type gate (reject bit 8) |
+| ViRGE/DX | implemented later the same day: the same callbacks, a `MONOSRCBLT` primitive (see "The ViRGE") |
 | ati, vbe, matrox-m2 | decline at the first gate; one flag test per call |
 | `Acceleration=` | gains a `-text` suffix when on: `gdi-fill-copy-overlap-text` |
 
@@ -249,6 +250,7 @@ fallback delta check is what watches the run's own callbacks.
 | 86Box Trio64 guest, full mode matrix | **11/11 PASS** - see below |
 | BARRY, physical Trio64 | **hung within a minute of the desktop with text on**, cause fits the DOS-box ADVFUNC write ([issue](../issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)); the single-string probe built for it is unrun |
 | A8U4I5, the same card | **cannot host the measurement**: the machine hard-locks on framebuffer read-after-write under any driver ([issue](../issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)) |
+| A8U4I5, physical ViRGE/DX `5333:8A01`, 800x600x16, `GdiAccelText=1`, `V9XGDI /accel` | **PASS**: 500 operations, 20 comparisons clean, `TextBitmapsDelta=84` of 84, `TextOrectsDelta=50`, `TextFallbacksDelta=0`, 48 clipped strings accelerated, `Poisoned=0`, injection recovered. The first build failed the transparent strings - see "The ViRGE". Five DOS boxes opened during the runs left the desktop intact. |
 
 ## The mode matrix
 
@@ -287,11 +289,38 @@ exactly how the ADVFUNC defect reached hardware with 11/11 emulated modes
 passing. BARRY is the second run, and the decision to turn the default on
 waits for it.
 
+## The ViRGE
+
+Added once a PCI ViRGE/DX went into A8U4I5 in the Trio64's place (the Trio64
+having proved unmeasurable there). The primitive is a `MONOSRCBLT` with
+`SRC_SYS | SRC_MONO | CPU_ALIGN_DWORD | CLIP_ENABLE`, `RECT_WH` set to the
+padded row width in bits, the clip registers set to the DIB Engine's string
+rectangle, and `TRANSPARENT` (bit 9) for the transparent case so background
+bits leave the destination alone; the rows are pushed through the image
+transfer window one dword-padded row at a time, the same path build 004's
+monochrome upload uses. The callback shares everything else with the Trio64:
+only the coordinate limit (`V9X_VIRGE_COORD_MAX`) and the primitive differ,
+and the dispatcher's surface gate is the ViRGE's (`DEST_BASE` on 8 bytes,
+stride a multiple of 8 under 4096) rather than the Trio64's whole-scanline
+base.
+
+**What the first ViRGE build got wrong, and what it taught.** It wrote the
+text colour to `SRC_BG_COLOR` and the background to `SRC_FG_COLOR`, copying
+the monochrome upload of build 004, whose comment said the ViRGE reads a set
+source bit as background. On the card every opaque string drew inverted and
+every transparent string vanished - `TRANSPARENT` skips background bits, and
+the glyph bits were now the background. Straight colours (`SRC_FG_COLOR` =
+text) pass. So the swap in the upload path is not the chip's: a GDI
+monochrome BitBlt source carries a set bit for the *background* colour and a
+clear bit for the text colour, where the DIB Engine's string bitmap carries a
+set bit per glyph pixel. The chip reads a set bit as foreground both times;
+the two sources disagree. The upload's comment is corrected to say so.
+
+Unmeasured for the ViRGE: the 86Box ViRGE guest's mode matrix (the guest was
+not running during this work) and CrystalMark on the card.
+
 ## Not in this build
 
-- The ViRGE. Its `MONOSRCBLT` path exists from build 004 and would take the
-  same callbacks; what it needs is the primitive and a guest run. Deferred so
-  the first text build lands on the chip that can be measured here.
 - A size threshold. A one-character string costs about fifteen port writes and
   two idle waits against a few microseconds of software expansion, and the
   crossover should be measured before it is guessed at. Compile-time only for

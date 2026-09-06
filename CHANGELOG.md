@@ -34,7 +34,12 @@ with two driver callbacks, and the DIB Engine's realized string bitmap is
 expanded by the engine as a CPU-data rectangle fill through `PIX_TRANS`, mix
 selected per pixel, clipped by the scissors. A callback that cannot draw flags
 the string and the dispatcher has the DIB Engine redraw it in software, so
-text is never lost to the engine path. The ViRGE declines in this build. The
+text is never lost to the engine path. The ViRGE takes the same callbacks
+with a `MONOSRCBLT` primitive, **verified on a physical ViRGE/DX** (A8U4I5,
+`/accel` PASS, 84 of 84 strings by the engine, none fallen back) after a first
+build that swapped the colours: the swap build 004's monochrome upload does
+is GDI's mono-BitBlt convention, not the chip's, and a string bitmap must
+not be swapped. The
 `/accel` harness draws text, opaque and transparent and clipped, and asserts
 that bitmaps fire, that nothing falls back, and that ordinal 14 is reached on
 every family. `V9X_GDI_STATS` grows eight text counters, to 220 bytes, and a

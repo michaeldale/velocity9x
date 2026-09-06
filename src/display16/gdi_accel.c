@@ -585,10 +585,14 @@ static WORD v9x_gdi_virge_copy(const V9X_GDI_OP *op)
  * Two things here are counter-intuitive and both are copied from the reference
  * driver's MonoSourceBlt rather than reasoned out:
  *
- * 1. THE COLOURS ARE SWAPPED. The ViRGE treats a set bit as *background* and a
- *    clear bit as *foreground*, the opposite of every other convention, so the
- *    reference writes DRAWMODE.TextColor to SRC_BG and DRAWMODE.bkColor to
- *    SRC_FG to get the conventional result. Its own comment says so: "the
+ * 1. THE COLOURS ARE SWAPPED - for THIS source. A GDI monochrome BitBlt source
+ *    uses a set bit for the background colour and a clear bit for the text
+ *    colour, so the reference writes DRAWMODE.TextColor to SRC_BG and
+ *    DRAWMODE.bkColor to SRC_FG to get the conventional result. This comment
+ *    used to blame the ViRGE for reading a set bit as background; the text
+ *    primitive measured otherwise on 2026-09-06 (a DIB Engine string bitmap,
+ *    set bit = glyph, needs the registers straight), so the convention is
+ *    GDI's, not the chip's. The reference's own comment describes it: "the
  *    monochrome foreground/background bit designations are reversed from the
  *    typical designation ... The foreground/background color settings are
  *    reversed to convert bits back to the expected designations." Getting this
@@ -815,6 +819,12 @@ typedef struct v9x_gdi_text_op {
     DWORD foreground;
     DWORD background;
     WORD transparent;
+    /* The ViRGE addresses a surface by base and stride rather than folding
+     * rows into y, so it carries these; the Trio64 ignores them and reads its
+     * fold from y and the clip. */
+    DWORD base;
+    DWORD pitch;
+    WORD bytes_per_pixel;
 } V9X_GDI_TEXT_OP;
 
 /*
@@ -967,6 +977,72 @@ static WORD v9x_gdi_trio_text(const V9X_GDI_TEXT_OP *op)
         ok = 0u;
     }
     return ok;
+}
+
+/*
+ * The same string bitmap on the ViRGE: build 004's monochrome expansion
+ * (MONOSRCBLT - a BitBLT with a CPU-supplied 1-bpp source through the
+ * image-transfer window) with the clip set to the DIB Engine's rectangle and
+ * the transparent bit following the callback's flag.
+ *
+ * The colours are NOT crossed here, and the first build had them crossed the
+ * way build 004's upload does. Measured on the ViRGE/DX in A8U4I5, 2026-09-06:
+ * opaque labels drew and every transparent label vanished - the TRANSPARENT
+ * bit skips the pixels that take SRC_BG_COLOR, and with the text colour in that
+ * register those were the glyphs. Which also corrects build 004's explanation
+ * of its own swap: the ViRGE does not read a set mono bit as "background";
+ * GDI's monochrome BitBlt source convention does - a 1 there is the background
+ * colour and a 0 the text colour, so the upload crosses the registers to match
+ * GDI. The DIB Engine's string bitmap uses the opposite convention, a set bit
+ * is a glyph pixel, which the text dump showed byte for byte. Straight colours,
+ * then: SRC_FG_COLOR is the text colour and SRC_BG_COLOR the background, and
+ * transparency skips the background. The S3 sample writes them the same way
+ * (TEXT_BT.ASM).
+ *
+ * Rows are fed with V9xEngineImageRow, which writes whole dwords and
+ * assembles a short tail without reading past the row; the command is told
+ * width_bytes * 8 pixels per row and discards the padding bits itself. Waits
+ * idle before returning for the reason the Trio64 primitive gives: the DIB
+ * Engine un-excludes the cursor the moment the callback returns.
+ */
+static WORD v9x_gdi_virge_text(const V9X_GDI_TEXT_OP *op)
+{
+    DWORD command;
+    DWORD row;
+    DWORD source_offset = op->source_offset;
+
+    if (v9x_gdi_wait_fifo(V9X_GDI_FIFO_SLOTS) == 0u) {
+        return 0u;
+    }
+    command = ((DWORD)V9X_ROP256_SRCCOPY << V9X_VIRGE_CMD_ROP_SHIFT) |
+              V9X_VIRGE_CMD_SRC_SYS | V9X_VIRGE_CMD_SRC_MONO |
+              V9X_VIRGE_CMD_CPU_ALIGN_DWORD | V9X_VIRGE_CMD_CLIP_ENABLE |
+              V9X_VIRGE_CMD_X_POSITIVE | V9X_VIRGE_CMD_Y_POSITIVE |
+              V9X_VIRGE_CMD_DRAW_ENABLE |
+              ((DWORD)(op->bytes_per_pixel - 1u) << 2);
+    if (op->transparent != 0u) {
+        command |= V9X_VIRGE_CMD_TRANSPARENT;
+    }
+    v9x_gdi_write(V9X_VIRGE_DEST_BASE, op->base);
+    v9x_gdi_write(V9X_VIRGE_DEST_SRC_STRIDE, op->pitch << 16);
+    v9x_gdi_write(V9X_VIRGE_CLIP_L_R,
+                  ((DWORD)op->clip_left << 16) | (DWORD)op->clip_right);
+    v9x_gdi_write(V9X_VIRGE_CLIP_T_B,
+                  ((DWORD)op->clip_top << 16) | (DWORD)op->clip_bottom);
+    v9x_gdi_write(V9X_VIRGE_SRC_BG_COLOR, op->background);
+    v9x_gdi_write(V9X_VIRGE_SRC_FG_COLOR, op->foreground);
+    v9x_gdi_write(V9X_VIRGE_RECT_WH,
+                  (((DWORD)op->width_bytes * 8ul - 1ul) << 16) |
+                  (DWORD)op->height);
+    v9x_gdi_write(V9X_VIRGE_RECT_DEST_XY,
+                  ((DWORD)op->x << 16) | (DWORD)op->y);
+    v9x_gdi_write(V9X_VIRGE_COMMAND, command);
+    for (row = 0ul; row < (DWORD)op->height; ++row) {
+        V9xEngineImageRow(op->source_selector, (WORD)source_offset,
+                          op->width_bytes);
+        source_offset += (DWORD)op->width_bytes;
+    }
+    return v9x_gdi_wait_idle();
 }
 
 /*
@@ -1124,10 +1200,10 @@ void v9x_gdi_accel_configure(void)
     if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         enabled &= ~V9X_GDI_PRIM_UPLOAD;
     }
-    /* And only the Trio64 has an implemented text path, this build. The ViRGE
-     * has the mechanism (build 004's MONOSRCBLT is the same expansion) but
-     * not the plumbing, and the one physical card here is a Trio64. */
-    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+    /* Text has a primitive on both S3 chips: the Trio64's CPU-data fill and
+     * the ViRGE's monochrome-source BitBLT. Anything else declines. */
+    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64 &&
+        v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         enabled &= ~V9X_GDI_PRIM_TEXT;
     }
     if ((enabled & V9X_GDI_PRIM_COPY) == 0ul) {
@@ -1891,9 +1967,11 @@ WORD __loadds FAR PASCAL V9xGdiDrawTextBitmap(V9X_DIB_ENGINE FAR *device,
         v9x_gdi_text_fail(12u);
         return 1u;
     }
-    /* The dispatcher gated pitch non-zero and base on a scan line, so this
-     * division is exact and cannot fault. */
-    rows = device->deBitsOffset / (DWORD)device->deWidthBytes;
+    /* The Trio64 folds the surface base into y; the dispatcher gated pitch
+     * non-zero and base on a scan line, so this division is exact and cannot
+     * fault. The ViRGE takes the base as a register and folds nothing. */
+    rows = v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
+               ? device->deBitsOffset / (DWORD)device->deWidthBytes : 0ul;
 
     /*
      * The visible part: the string's own rectangle, the DIB Engine's clip, and
@@ -1920,13 +1998,22 @@ WORD __loadds FAR PASCAL V9xGdiDrawTextBitmap(V9X_DIB_ENGINE FAR *device,
         /* Entirely clipped away. Correctly drawn, in the sense that matters. */
         return 1u;
     }
-    if ((DWORD)x + ((DWORD)width_bytes + 1ul) / 2ul * 16ul >
-            V9X_TRIO_COORD_LIMIT ||
-        rows + (DWORD)bottom > V9X_TRIO_COORD_LIMIT) {
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+        if ((DWORD)x + ((DWORD)width_bytes + 1ul) / 2ul * 16ul >
+                V9X_TRIO_COORD_LIMIT ||
+            rows + (DWORD)bottom > V9X_TRIO_COORD_LIMIT) {
+            v9x_gdi_text_fail(12u);
+            return 1u;
+        }
+    } else if ((DWORD)x + (DWORD)width_bytes * 8ul > V9X_VIRGE_COORD_MAX ||
+               (DWORD)bottom > V9X_VIRGE_COORD_MAX) {
         v9x_gdi_text_fail(12u);
         return 1u;
     }
 
+    op.base = device->deBitsOffset;
+    op.pitch = (DWORD)device->deWidthBytes;
+    op.bytes_per_pixel = (WORD)(device->deBitsPixel / 8u);
     op.source_selector = (WORD)((DWORD)mono_buffer >> 16);
     op.source_offset = (WORD)(DWORD)mono_buffer;
     op.width_bytes = width_bytes;
@@ -1947,7 +2034,8 @@ WORD __loadds FAR PASCAL V9xGdiDrawTextBitmap(V9X_DIB_ENGINE FAR *device,
      * before calling; the primitive waits idle before returning, so nothing is
      * left in flight for the exclusion's end to race. */
     device->deFlags |= V9X_DE_BUSY;
-    issued = v9x_gdi_trio_text(&op);
+    issued = v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
+                 ? v9x_gdi_trio_text(&op) : v9x_gdi_virge_text(&op);
     device->deFlags &= (WORD)~V9X_DE_BUSY;
     if (issued == 0u) {
         v9x_gdi_text_fail(13u);
@@ -2007,7 +2095,8 @@ WORD __loadds FAR PASCAL V9xGdiDrawOpaqueRect(V9X_DIB_ENGINE FAR *device,
     op.height = (WORD)(bottom - (long)y);
 
     device->deFlags |= V9X_DE_BUSY;
-    issued = v9x_gdi_trio_fill(&op);
+    issued = v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
+                 ? v9x_gdi_trio_fill(&op) : v9x_gdi_virge_fill(&op);
     device->deFlags &= (WORD)~V9X_DE_BUSY;
     if (issued == 0u) {
         v9x_gdi_text_fail(13u);
@@ -2103,12 +2192,24 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
     /* The Trio64 folds the surface base into y, so the base has to be a whole
      * number of scan lines - the same constraint gate 8 puts on a fill. Gated
      * here so the callbacks can divide without checking. */
-    if (device->deWidthBytes == 0u ||
-        (device->deBitsOffset % (DWORD)device->deWidthBytes) != 0ul) {
+    if (device->deWidthBytes == 0u) {
         V9X_GDI_TEXT_REJECT(7u);
         goto decline;
     }
-    if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64) {
+        if ((device->deBitsOffset % (DWORD)device->deWidthBytes) != 0ul) {
+            V9X_GDI_TEXT_REJECT(7u);
+            goto decline;
+        }
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
+        /* The ViRGE's own surface constraints, the ones gate 8 puts on a
+         * fill: stride masked to 0xff8, base on an 8-byte boundary. */
+        if (((DWORD)device->deWidthBytes & ~V9X_VIRGE_STRIDE_MASK) != 0ul ||
+            (device->deBitsOffset & 7ul) != 0ul) {
+            V9X_GDI_TEXT_REJECT(7u);
+            goto decline;
+        }
+    } else {
         V9X_GDI_TEXT_REJECT(8u);
         goto decline;
     }
