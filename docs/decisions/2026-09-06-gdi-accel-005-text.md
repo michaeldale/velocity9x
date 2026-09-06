@@ -247,7 +247,8 @@ fallback delta check is what watches the run's own callbacks.
 | `run-checks.ps1`, all families | pass: ati, matrox-m2, s3, vbe built and audited from the same tree |
 | 86Box Trio64 guest (`:9871`), 800x600x16, `GdiAccelText=1`, `V9XGDI /accel` | **PASS** with `53B3H`: 500 operations, 20 comparisons clean, `TextBitmapsDelta=84` of 84 text operations, `TextOrectsDelta=50`, `TextFallbacksDelta=0`, clipped pass 48 accelerated, injection poisoned and recovered. `Compared=FAIL` at operation 25 with `53B1H`. |
 | 86Box Trio64 guest, full mode matrix | **11/11 PASS** - see below |
-| BARRY, physical Trio64 | **not run** |
+| BARRY, physical Trio64 | **hung within a minute of the desktop with text on**, cause fits the DOS-box ADVFUNC write ([issue](../issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)); the single-string probe built for it is unrun |
+| A8U4I5, the same card | **cannot host the measurement**: the machine hard-locks on framebuffer read-after-write under any driver ([issue](../issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)) |
 
 ## The mode matrix
 

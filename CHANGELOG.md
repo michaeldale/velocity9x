@@ -6,6 +6,26 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+Found on physical Trio64 silicon, both boards, 2026-09-06 - two faults that
+arrived tangled and left separate:
+
+- **A windowed DOS box drops the Trio64 out of enhanced mode.** The DOS VM's
+  video BIOS writes 02H to ADVFUNC_CNTL, which the system VDD does not trap;
+  the "doubled desktop" is the same DRAM seen as VGA planes, and a text
+  command caught mid-transfer never completes. Measured with a new V86 port
+  trace in the mini-VDD (`-IoTrace`, `V9XIOTR`); a mini-VDD that swallows
+  that one write fixed it six for six and is **not yet shipped**
+  ([issue](docs/issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md)).
+- **A8U4I5 with the PCI Trio64 hard-locks on framebuffer read-after-write
+  under any driver**, Microsoft's included. Not a Velocity9x defect; the
+  board's PCI configuration is the open variable
+  ([issue](docs/issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)).
+
+Instruments from the same day, all kept: `V9XGDI /accel` bisection switches
+(`/kinds`, `/ops`, `/nocompare`, `/noescape`) and a per-operation progress key;
+`V9XTC32` register capture and `pump` arms; `GdiAccelSync`; `V9X_GDITEXTPROBE`
+and `V9XGDI /textprobe`, built for BARRY and not yet run.
+
 Added: **GDI acceleration build `gdi-accel-005` - text on the Trio64**,
 compiled in and **off by default** (`GdiAccelText=0`)
 ([record](docs/decisions/2026-09-06-gdi-accel-005-text.md)). Ordinal 14 is a C

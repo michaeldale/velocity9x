@@ -30,7 +30,13 @@ for now.
 
 ## The hard locks
 
-A8U4I5 hard-locked, no ICMP, seven times running the `/accel` harness or
+Now their own record:
+[`2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md`](2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md),
+which carries the full table including the stock-driver control. Summary kept
+here because the two faults were untangled in one afternoon and this record's
+"fix not merged" status depends on it.
+
+A8U4I5 hard-locked, no ICMP, eight times running the `/accel` harness or
 parts of it. Bisected on the machine:
 
 | Run | Outcome |
