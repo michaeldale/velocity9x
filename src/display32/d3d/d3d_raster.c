@@ -19,12 +19,10 @@
  * one-pixel crack, which is visible immediately and looks like a maths bug
  * somewhere else entirely.
  *
- * The second is that every edge crossing is computed from the edge's two
- * endpoints rather than stepped from the previous scanline. A stepped
- * rasterizer needs a reciprocal slope, which needs either a wider intermediate
- * than 32 bits or a precision compromise that accumulates down the triangle.
- * Recomputing costs two divides per scanline and has no error to accumulate,
- * and mode 2 is the mode whose stated trade is "slow, correct".
+ * The second is that edge stepping carries the exact division remainder.
+ * There is no rounded reciprocal slope and no accumulated precision loss:
+ * each crossing equals floor(from + delta * offset / span), including falling
+ * gradients. Divisions occur at edge setup, not on every scanline.
  */
 #include "d3d_raster.h"
 
@@ -71,9 +69,8 @@ static v9x_s32 v9x_d3d_raster_first_centre(v9x_s32 edge)
  * at most 1,072,693,504, and n <= d bounds q * n by |delta|. So the largest
  * intermediate no longer depends on the value being interpolated at all.
  *
- * It costs a second division. The file already spends two per scanline
- * recomputing edge crossings rather than stepping them, on the argument that
- * mode 2's trade is "slow, correct"; this is the same trade again.
+ * Edge setup also splits the sixteen-subpixel step into quotient/remainder.
+ * Advancing then needs only additions and a carry when the error reaches d.
  *
  * Floor and not truncation, and the sign fix-up is what makes it so. C89
  * leaves both / and % implementation defined for a negative operand, and the
@@ -85,8 +82,10 @@ static v9x_s32 v9x_d3d_raster_first_centre(v9x_s32 edge)
  *
  * Callers guarantee denominator > 0 and 0 <= numerator <= denominator.
  */
-static v9x_s32 v9x_d3d_raster_lerp(v9x_s32 from, v9x_s32 to,
-                                   v9x_s32 numerator, v9x_s32 denominator)
+static v9x_s32 v9x_d3d_raster_edge_component(v9x_s32 from, v9x_s32 to,
+                                           v9x_s32 numerator, v9x_s32 denominator,
+                                           v9x_s32 *step, v9x_s32 *remainder,
+                                           v9x_s32 *error)
 {
     v9x_s32 delta = to - from;
     v9x_s32 whole = delta / denominator;
@@ -97,6 +96,10 @@ static v9x_s32 v9x_d3d_raster_lerp(v9x_s32 from, v9x_s32 to,
         part += denominator;
     }
 
+    *step = whole * V9X_D3D_RASTER_SUBPIXEL_ONE +
+            (part * V9X_D3D_RASTER_SUBPIXEL_ONE) / denominator;
+    *remainder = (part * V9X_D3D_RASTER_SUBPIXEL_ONE) % denominator;
+    *error = (part * numerator) % denominator;
     return from + whole * numerator + (part * numerator) / denominator;
 }
 
@@ -468,10 +471,18 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_TEXTURE *texture,
  * division by zero here is a fault inside a display driver's draw path, so it
  * is answered rather than assumed.
  */
-static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
+typedef struct V9X_D3D_RASTER_EDGE {
+    V9X_D3D_RASTER_VERTEX value;
+    V9X_D3D_RASTER_VERTEX step;
+    V9X_D3D_RASTER_VERTEX remainder;
+    V9X_D3D_RASTER_VERTEX error;
+    v9x_s32 span;
+} V9X_D3D_RASTER_EDGE;
+
+static int v9x_d3d_raster_edge_start(const V9X_D3D_RASTER_VERTEX *from,
                                   const V9X_D3D_RASTER_VERTEX *to,
                                   v9x_s32 sample,
-                                  V9X_D3D_RASTER_VERTEX *result)
+                                  V9X_D3D_RASTER_EDGE *edge)
 {
     v9x_s32 span = to->y - from->y;
     v9x_s32 offset = sample - from->y;
@@ -486,22 +497,46 @@ static int v9x_d3d_raster_edge_at(const V9X_D3D_RASTER_VERTEX *from,
         offset = span;
     }
 
-    result->y = sample;
-    result->x = v9x_d3d_raster_lerp(from->x, to->x, offset, span);
-    /* Depth is the widest thing interpolated here and the one that decides
-     * the lerp's headroom: 65535 * 32752 is 2,146,631,520, which is 852,127
-     * short of the largest signed 32-bit integer. That margin is the reason
-     * V9X_D3D_RASTER_DIMENSION_MAX is 2048 and not 4096, and a target one
-     * pixel wider than the cap would exhaust it here rather than in the
-     * coordinate arithmetic that motivated the cap in the first place. */
-    result->z = v9x_d3d_raster_lerp(from->z, to->z, offset, span);
-    result->u = v9x_d3d_raster_lerp(from->u, to->u, offset, span);
-    result->v = v9x_d3d_raster_lerp(from->v, to->v, offset, span);
-    result->red = v9x_d3d_raster_lerp(from->red, to->red, offset, span);
-    result->green = v9x_d3d_raster_lerp(from->green, to->green, offset, span);
-    result->blue = v9x_d3d_raster_lerp(from->blue, to->blue, offset, span);
-    result->alpha = v9x_d3d_raster_lerp(from->alpha, to->alpha, offset, span);
+    edge->span = span;
+    edge->value.y = sample;
+#define V9X_EDGE_START(member) \
+    edge->value.member = v9x_d3d_raster_edge_component( \
+        from->member, to->member, offset, span, &edge->step.member, \
+        &edge->remainder.member, &edge->error.member)
+    V9X_EDGE_START(x);
+    V9X_EDGE_START(z);
+    V9X_EDGE_START(u);
+    V9X_EDGE_START(v);
+    V9X_EDGE_START(red);
+    V9X_EDGE_START(green);
+    V9X_EDGE_START(blue);
+    V9X_EDGE_START(alpha);
+#undef V9X_EDGE_START
     return 1;
+}
+
+/* Called only when the next sample is still on this edge. Error stays below
+ * span, and error + remainder is below 2 * span (at most 65504). */
+static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
+{
+#define V9X_EDGE_NEXT(member) do { \
+    edge->value.member += edge->step.member; \
+    edge->error.member += edge->remainder.member; \
+    if (edge->error.member >= edge->span) { \
+        edge->error.member -= edge->span; \
+        ++edge->value.member; \
+    } \
+} while (0)
+    V9X_EDGE_NEXT(x);
+    V9X_EDGE_NEXT(z);
+    V9X_EDGE_NEXT(u);
+    V9X_EDGE_NEXT(v);
+    V9X_EDGE_NEXT(red);
+    V9X_EDGE_NEXT(green);
+    V9X_EDGE_NEXT(blue);
+    V9X_EDGE_NEXT(alpha);
+#undef V9X_EDGE_NEXT
+    edge->value.y += V9X_D3D_RASTER_SUBPIXEL_ONE;
 }
 
 /*
@@ -818,6 +853,10 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 row;
     v9x_u32 index;
 
+    V9X_D3D_RASTER_EDGE along;
+    V9X_D3D_RASTER_EDGE across;
+    int lower = 0;
+
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
     }
@@ -878,34 +917,39 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         last_row = (v9x_s32)target->height;
     }
 
-    for (row = first_row; row < last_row; ++row) {
-        v9x_s32 sample = (row << V9X_D3D_RASTER_SUBPIXEL_BITS) +
+    if (first_row >= last_row) {
+        return 1;
+    }
+    {
+        v9x_s32 sample = (first_row << V9X_D3D_RASTER_SUBPIXEL_BITS) +
                          V9X_D3D_RASTER_SUBPIXEL_HALF;
-        V9X_D3D_RASTER_VERTEX along;
-        V9X_D3D_RASTER_VERTEX across;
-
-        /* The long edge spans the whole triangle; which short edge is opposite
-         * it changes at the middle vertex, and the comparison is the same
-         * half-open rule the scanline range uses. */
-        if (!v9x_d3d_raster_edge_at(top, bottom, sample, &along)) {
-            continue;
+        lower = sample >= middle->y;
+        if (!v9x_d3d_raster_edge_start(top, bottom, sample, &along) ||
+            !v9x_d3d_raster_edge_start(lower ? middle : top,
+                                       lower ? bottom : middle, sample, &across)) {
+            return 1;
         }
-        if (sample < middle->y) {
-            if (!v9x_d3d_raster_edge_at(top, middle, sample, &across)) {
-                continue;
-            }
-        } else {
-            if (!v9x_d3d_raster_edge_at(middle, bottom, sample, &across)) {
-                continue;
-            }
-        }
-
-        if (along.x <= across.x) {
+    }
+    for (row = first_row; row < last_row; ++row) {
+        if (along.value.x <= across.value.x) {
             v9x_d3d_raster_span(target, depth, texture, alpha, row,
-                                &along, &across);
+                                &along.value, &across.value);
         } else {
             v9x_d3d_raster_span(target, depth, texture, alpha, row,
-                                &across, &along);
+                                &across.value, &along.value);
+        }
+        if (row + 1l < last_row) {
+            v9x_d3d_raster_edge_next(&along);
+            /* Reinitialize exactly at the first sample on the lower edge;
+             * stepping the upper edge past the middle would extrapolate. */
+            if (!lower && along.value.y >= middle->y) {
+                lower = 1;
+                if (!v9x_d3d_raster_edge_start(middle, bottom, along.value.y, &across)) {
+                    return 1;
+                }
+            } else {
+                v9x_d3d_raster_edge_next(&across);
+            }
         }
     }
     return 1;

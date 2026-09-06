@@ -1909,6 +1909,76 @@ static void test_texture_refusals(void)
     raster_texture_check_margins();
 }
 
+static v9x_u32 raster_corpus_random(v9x_u32 *state)
+{
+    *state = *state * 1664525ul + 1013904223ul;
+    return *state;
+}
+
+/* Frozen output from the pre-stepping rasterizer (f21d703). Each group has
+ * 256 independently cleared triangles, including subpixel middle crossings,
+ * flat edges, clipping, descending attributes and wide wrapped coordinates.
+ * Hash all colour/depth cells, including row padding and outer guards. */
+static void test_edge_stepping_corpus(void)
+{
+    static const v9x_u32 expected[8] = {
+        198227654ul, 707242822ul, 2141481193ul, 3499734057ul,
+        398047134ul, 1277391294ul, 306584495ul, 1414672431ul
+    };
+    unsigned int group;
+    for (group = 0u; group < 8u; ++group) {
+        v9x_u32 seed = 0x12345678ul;
+        v9x_u32 hash = 2166136261ul;
+        unsigned int draw;
+        for (draw = 0u; draw < 256u; ++draw) {
+            V9X_D3D_RASTER_TARGET target;
+            V9X_D3D_RASTER_DEPTH depth;
+            V9X_D3D_RASTER_TEXTURE texture;
+            V9X_D3D_RASTER_ALPHA alpha;
+            V9X_D3D_RASTER_VERTEX triangle[3];
+            unsigned int i;
+            raster_reset(&target);
+            target.format = (group & 1u) ? V9X_D3D_RASTER_PIXFMT_XRGB1555 :
+                                           V9X_D3D_RASTER_PIXFMT_RGB565;
+            raster_depth_reset(&depth, (draw % 8u) + 1ul, (draw >> 3) & 1u, 32768u);
+            raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                (group & 2u) ? V9X_D3D_RASTER_FILTER_LINEAR : V9X_D3D_RASTER_FILTER_POINT,
+                V9X_D3D_RASTER_BLEND_MODULATE);
+            for (i = 0u; i < RASTER_TEX_SIZE * RASTER_TEX_SIZE; ++i) {
+                raster_texture_cells[RASTER_TEX_GUARD + i] = (v9x_u16)(i * 4139u);
+            }
+            alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+            alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+            for (i = 0u; i < 3u; ++i) {
+                triangle[i].x = (v9x_s32)(raster_corpus_random(&seed) % 768ul);
+                triangle[i].y = (v9x_s32)(raster_corpus_random(&seed) % 576ul);
+                triangle[i].z = (v9x_s32)(raster_corpus_random(&seed) & 65535ul);
+                triangle[i].u = (v9x_s32)(raster_corpus_random(&seed) % (V9X_D3D_RASTER_TEXCOORD_MAX + 1ul));
+                triangle[i].v = (v9x_s32)(raster_corpus_random(&seed) % (V9X_D3D_RASTER_TEXCOORD_MAX + 1ul));
+                triangle[i].red = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
+                triangle[i].green = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
+                triangle[i].blue = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
+                triangle[i].alpha = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
+            }
+            if (draw % 4u == 0u) {
+                triangle[1].y = triangle[0].y;
+            }
+            if (draw % 4u == 1u) {
+                triangle[2].y = triangle[1].y;
+            }
+            RCHECK(v9x_d3d_raster_triangle(&target, (group & 4u) ? &depth : 0,
+                group >= 2u ? &texture : 0, group >= 6u ? &alpha : 0, triangle) != 0);
+            for (i = 0u; i < RASTER_CELLS; ++i) {
+                hash = (hash ^ (v9x_u32)raster_cells[i]) * 16777619ul;
+                hash = (hash ^ (v9x_u32)raster_depth_cells[i]) * 16777619ul;
+            }
+            raster_check_untouched_margins();
+            raster_texture_check_margins();
+        }
+        RCHECK(hash == expected[group]);
+    }
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -1947,5 +2017,6 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_bilinear_blends();
     test_texture_blend_modes();
     test_texture_refusals();
+    test_edge_stepping_corpus();
     return raster_failures;
 }

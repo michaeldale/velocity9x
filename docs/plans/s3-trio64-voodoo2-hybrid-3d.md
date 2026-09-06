@@ -7,7 +7,9 @@ with caps that publish exactly what a pixel test holds them to, measured on a
 Trio64 - see the
 [rasterizer](../decisions/2026-09-01-software-rasterizer-depth.md) and
 [texture](../decisions/2026-09-01-software-textures-and-caps.md) records. It
-has never been measured for speed. Modes 3 and 4 are planning only.
+now has an [86Box timing baseline and exact edge optimization](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)
+as of 2026-09-07. Physical and named-game speed remain unmeasured. The
+2026-09-01 status below is historical. Modes 3 and 4 are planning only.
 
 Reviewed against the tree the same day: two open questions closed by reading
 code, one target named, the development order re-cut around what that changed,

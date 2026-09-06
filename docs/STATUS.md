@@ -1,6 +1,6 @@
 # Current status and next work
 
-Reviewed against the checkout and recorded evidence on 2026-09-06. Update this
+Reviewed against the checkout and recorded evidence on 2026-09-07. Update this
 page when a default, validation result or next step changes; keep the dated
 decision records as the history. [PLAN.md](../PLAN.md) is the original planning
 baseline, not the current backlog.
@@ -19,7 +19,7 @@ on the named builds and machines; it does not certify every current binary.
 | GDI text acceleration | Software text only | Trio64 and ViRGE implementation, off by default (`GdiAccelText=0`) | [Build 005](decisions/2026-09-06-gdi-accel-005-text.md): 86Box mode matrices pass; physical ViRGE/DX passes; physical Trio64 remains unverified after its hang |
 | DOS-box ADVFUNC shield | Absent | Included by default in the mini-VDD | [Shipping record](decisions/2026-09-06-advfunc-shield-ships.md): traced variant fixed 6/6 physical Trio64 trials; shipping form passed ViRGE/86Box checks but still needs physical Trio64 verification |
 | Hardware Direct3D | Default on ViRGE/DX and Trio3D/2X; matching 5:5:5 selected automatically | Same | [0.7.0 results](../CHANGELOG.md#070---2026-09-05); Trio3D uses bilinear instead of two-pass trilinear, and blend faults remain open |
-| Software Direct3D | Opt-in in the S3, ATI and VBE packages through the settings page or `Direct3D=2` | Same | [Mode selection](decisions/2026-09-02-software-mode-reaches-its-own-audience.md); pixel evidence on 86Box Trio64, no period-machine speed baseline |
+| Software Direct3D | Opt-in in the S3, ATI and VBE packages through the settings page or `Direct3D=2` | Same defaults; exact incremental edges reduce small-triangle cost | [86Box timings and unchanged pixel results](decisions/2026-09-07-software-rasterizer-edge-stepping.md): about 2.2x for the synthetic small-triangle scene; no physical or game-speed claim |
 
 Software mode includes depth testing, Gouraud shading, point/bilinear sampling,
 ARGB1555/ARGB4444/RGB565 textures, WRAP/CLAMP and vertex-alpha blending. It does
@@ -59,7 +59,7 @@ hardware flipping on ATI or VBE. All targets use software cursors.
 | Close Trio64 shield/text validation | On BARRY, start with text off and the shipping shield installed; run the bounded text probe, DOS-box cycles and acceleration harness before deciding the text default | [Text issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md) and [DOS-box issue](issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md) updated with the exact binaries and results |
 | Make desktop/DOS transitions dependable | Finish the remaining physical fullscreen-DOS return and live-mode repaint investigations; keep scanout checks independent of GDI readback | [Fullscreen DOS](issues/2026-08-28-fullscreen-dos-scanout.md), [BARRY repaint](issues/2026-08-20-live-mode-switch-no-repaint-barry.md), [VBE scanout](issues/2026-08-27-vbe-1024x768x16-scanout-stripes.md) |
 | Close Direct3D compatibility holes | Reproduce the target switch in the emulator; identify Incoming's requested texture format before adding one; isolate Trio3D blend state | [SetRenderTarget](issues/2026-09-05-setrendertarget-is-accepted-and-ignored.md), [Incoming](issues/2026-09-05-incoming-refuses-the-hal-texture-formats.md), [latest blend investigation](decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md) |
-| Measure and improve software Direct3D | Benchmark RAM versus aperture reads/writes and scenes, decide texture/Z residency, then optimize scalar arithmetic against unchanged pixel expectations | [Scalar plan](plans/software-rasterizer-scalar-fixes.md); hybrid assistance and [SMP workers](plans/software-d3d-smp-workers.md) follow measurements |
+| Make software Direct3D practical | Edge stepping and an 86Box RAM/aperture benchmark are done; next measure mixed texture/Z residency, optimize textured pixels and run a named-game gate | [Measured first scalar change](decisions/2026-09-07-software-rasterizer-edge-stepping.md), [remaining scalar plan](plans/software-rasterizer-scalar-fixes.md); physical timings still needed before residency policy, hybrid assistance or [SMP workers](plans/software-d3d-smp-workers.md) |
 | Add Voodoo3 as the next native family | Physical survey and 86Box setup, then tier-0, 2D and D3D with a named-game gate | [Voodoo3 plan](plans/3dfx-voodoo3-family.md); the shared D3D core/engine split is already complete |
 
 MTRR write-combining remains inspect-only; writing registers needs the physical

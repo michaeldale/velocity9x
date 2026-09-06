@@ -1,10 +1,12 @@
 # Mode 2 scalar fixes: make the rasterizer cheap before making it wide
 
-Status: 2026-09-06. Planning only. Nothing here has been built or measured.
-Cycle figures are Pentium P5 instruction timings from Intel's databook,
-quoted to rank the work, not measurements of this code. The rasterizer has
-never been timed on any machine
-([parent plan](s3-trio64-voodoo2-hybrid-3d.md), mode 2, step 1 unrun).
+Status: 2026-09-07. Exact incremental edges are implemented and measured on
+86Box Trio64 and ViRGE/DX: about 2.2x for the small-triangle scene, with
+unchanged pixel hashes. See the [measurement record](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)
+and [benchmark instructions](../probe/software-d3d-2026-09-07/README.md).
+The other changes below remain proposals. Cycle figures are planning estimates,
+not measurements. Physical timing in the [parent plan](s3-trio64-voodoo2-hybrid-3d.md)
+remains unrun; emulator aperture costs do not settle physical residency policy.
 
 Parent: [`s3-trio64-voodoo2-hybrid-3d.md`](s3-trio64-voodoo2-hybrid-3d.md),
 mode 2. Sibling: [`software-d3d-smp-workers.md`](software-d3d-smp-workers.md),
@@ -28,7 +30,7 @@ Three reasons, in order of weight.
    reports a gain that disappears when the division goes. The order
    matters for the record as much as for the speed.
 
-## What the loop does today
+## Baseline before the edge change (f21d703)
 
 Per triangle (`d3d_raster.c:806`): sort three vertices, walk rows.
 
@@ -60,11 +62,15 @@ table holds it.
 
 ### 1. Incremental edges and per-triangle gradients
 
-Compute each edge's eight slopes once, in the same fixed point the lerp
-produces, and step them by addition per row. Compute the seven column
-gradients once per triangle: under linear interpolation every attribute is
-affine in screen space, so the step per column is the same on every span,
-and the seven divisions at `:569` move from per span to per triangle.
+The edge portion is implemented: compute each edge's eight quotient/remainder
+pairs once and carry their exact remainder per row. This preserves the old
+floored interpolation without drift. The frozen host corpus and guest hashes
+match the original rasterizer.
+
+The proposed seven column gradients per triangle are deferred. Attributes are
+ideally affine, but the existing renderer floors its edge values before it
+derives each span's gradient. Replacing those quantized spans with ideal
+per-triangle gradients is not automatically pixel-identical.
 
 The lerp's floor semantics are the risk. `v9x_d3d_raster_lerp` divides
 before it multiplies so that a wide texture coordinate cannot overflow, and
@@ -76,8 +82,9 @@ alongside the slope. The shared-edge test
 test are the ones most likely to move; a pixel that differs is a bug in
 the new stepping, not a tolerance to widen.
 
-Removes: up to 55 divisions per row. Largest single item, and the one that
-helps small triangles most.
+Removed: repeated edge divisions, with setup cost paid per edge. The seven
+span divisions remain. Measured Small scene gains are 2.21x in RAM and 2.15x
+in Trio64 emulated VRAM; heavy bilinear VRAM scenes show little change.
 
 ### 2. Exact division by 255
 

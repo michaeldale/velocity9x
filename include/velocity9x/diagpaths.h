@@ -42,6 +42,7 @@
 
 /* Win32 diagnostics (tools\diag). */
 #define V9X_DIAG_DD_INI      V9X_DIAG_PATH("V9XDD.INI")     /* ddraw_probe_win32.c */
+#define V9X_DIAG_SOFTBENCH_INI V9X_DIAG_PATH("V9XSOFT.INI") /* software_bench_win32.c */
 #define V9X_DIAG_SNAP_INI    V9X_DIAG_PATH("V9XSNAP.INI")   /* d3d_trace_dump_win32.c */
 #define V9X_DIAG_MSW_INI     V9X_DIAG_PATH("V9XMSW.INI")    /* mode_switch_win32.c */
 #define V9X_DIAG_PWR_INI     V9X_DIAG_PATH("V9XPWR.INI")    /* power_cycle_win32.c */
