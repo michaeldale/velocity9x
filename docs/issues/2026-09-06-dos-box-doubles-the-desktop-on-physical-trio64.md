@@ -55,10 +55,19 @@ slot ran 3DMark 99. This is the PCI Trio64 against a Pentium III board - the
 fault class a board's PCI delayed-transaction and passive-release settings
 decide, and the one S3's own driver carried a `BusThrottle` switch for.
 
-Not established: whether the stock S3 driver locks the same way here, and
-whether a BIOS PCI setting cures it. Those are the two controls before any
-further driver work is judged on this machine. Nothing about GDI acceleration
-or text is implicated by these locks.
+**The stock driver control was run.** Windows 98's own `S3.DRV` and `S3.VXD`,
+extracted from the CABs on the Trio64 guest and bound through the display
+class key, brought A8U4I5 up to a normal 800x600x16 desktop - and
+`V9XGDI /accel /kinds:1 /noescape` (the same fills and readbacks, with the
+V9X escape skipped) hard-locked it within seconds exactly as under Velocity9x.
+Same card, same board, Microsoft's driver: the lock is the machine's. No
+Velocity9x code is implicated by any A8U4I5 hang recorded today.
+
+Still open: whether a BIOS PCI setting (delayed transaction, passive release,
+PCI burst) cures it. Until then A8U4I5 with the Trio64 is not a test target
+for anything that reads the framebuffer back at speed, under any driver.
+Restoring Velocity9x on it is `REGEDIT /S C:\V9XBACK.REG` and a reboot; the
+stock files stay in `C:\WINDOWS\SYSTEM` beside ours.
 
 ## The original record follows
 

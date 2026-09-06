@@ -628,6 +628,7 @@ static void v9x_accel_text_operation(V9X_ACCEL_STATE *state, int index,
 static DWORD v9x_accel_kind_mask = 0xfffful;
 static DWORD v9x_accel_op_limit = V9X_ACCEL_OPERATIONS;
 static int v9x_accel_no_compare;
+static int v9x_accel_no_escape;
 
 static DWORD v9x_accel_parse_number(const char *command_line,
                                     const char *option, DWORD fallback)
@@ -1375,7 +1376,11 @@ static DWORD v9x_accel_run(HWND window)
                V9X_ACCEL_HEIGHT, BLACKNESS);
         PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
                BLACKNESS);
-        stats_ok = v9x_accel_read_stats(state.screen, &before);
+        /* /noescape: a foreign display driver has no V9X escape. The fill and
+         * readback loop still runs, which is the point on a machine whose
+         * lock is being blamed on one driver or the other. */
+        stats_ok = v9x_accel_no_escape ? 1
+                 : v9x_accel_read_stats(state.screen, &before);
         if (!stats_ok) {
             error = "escape-rejected";
         }
@@ -1404,6 +1409,21 @@ static DWORD v9x_accel_run(HWND window)
                 }
             }
         }
+    }
+
+    if (v9x_accel_no_escape) {
+        /* No counters to judge; the verdict is the comparison and the fact
+         * that the machine is still here to write it. */
+        v9x_accel_write_uint("Operations", (DWORD)index);
+        v9x_accel_write_uint("Comparisons", compares);
+        v9x_accel_write_text("Compared", compared_ok ? "PASS" : "FAIL");
+        v9x_accel_write_text("Result",
+                             (error == 0 && compared_ok) ? "PASS" : "FAIL");
+        if (error != 0) {
+            v9x_accel_write_text("Error", error);
+        }
+        WritePrivateProfileStringA(0, 0, 0, V9X_ACCEL_PATH);
+        return (error == 0 && compared_ok) ? 0ul : 5ul;
     }
 
     if (error == 0 && !v9x_accel_read_stats(state.screen, &stats)) {
@@ -2261,6 +2281,7 @@ static DWORD v9x_accel_phase(HINSTANCE instance)
         v9x_accel_op_limit = V9X_ACCEL_OPERATIONS;
     }
     v9x_accel_no_compare = v9x_has_switch(command_line, "/nocompare");
+    v9x_accel_no_escape = v9x_has_switch(command_line, "/noescape");
 
     WritePrivateProfileStringA(V9X_ACCEL_SECTION, 0, 0, V9X_ACCEL_PATH);
     v9x_accel_write_text("Build", V9X_BUILD_ID);
