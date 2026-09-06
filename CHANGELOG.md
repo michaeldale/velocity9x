@@ -39,7 +39,7 @@ with a `MONOSRCBLT` primitive, **verified on a physical ViRGE/DX** (A8U4I5,
 `/accel` PASS, 84 of 84 strings by the engine, none fallen back) after a first
 build that swapped the colours: the swap build 004's monochrome upload does
 is GDI's mono-BitBlt convention, not the chip's, and a string bitmap must
-not be swapped. The
+not be swapped. The 86Box ViRGE mode matrix then passed 11/11 with text on. The
 `/accel` harness draws text, opaque and transparent and clipped, and asserts
 that bitmaps fire, that nothing falls back, and that ordinal 14 is reached on
 every family. `V9X_GDI_STATS` grows eight text counters, to 220 bytes, and a

@@ -251,6 +251,7 @@ fallback delta check is what watches the run's own callbacks.
 | BARRY, physical Trio64 | **hung within a minute of the desktop with text on**, cause fits the DOS-box ADVFUNC write ([issue](../issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)); the single-string probe built for it is unrun |
 | A8U4I5, the same card | **cannot host the measurement**: the machine hard-locks on framebuffer read-after-write under any driver ([issue](../issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)) |
 | A8U4I5, physical ViRGE/DX `5333:8A01`, 800x600x16, `GdiAccelText=1`, `V9XGDI /accel` | **PASS**: 500 operations, 20 comparisons clean, `TextBitmapsDelta=84` of 84, `TextOrectsDelta=50`, `TextFallbacksDelta=0`, 48 clipped strings accelerated, `Poisoned=0`, injection recovered. The first build failed the transparent strings - see "The ViRGE". Five DOS boxes opened during the runs left the desktop intact. |
+| 86Box ViRGE/DX guest (`:9869`), full mode matrix | **11/11 PASS**, 84 strings by the engine in every 8- and 16-bpp mode, depth gate at 32 bpp - see "The ViRGE" |
 
 ## The mode matrix
 
@@ -316,8 +317,18 @@ clear bit for the text colour, where the DIB Engine's string bitmap carries a
 set bit per glyph pixel. The chip reads a set bit as foreground both times;
 the two sources disagree. The upload's comment is corrected to say so.
 
-Unmeasured for the ViRGE: the 86Box ViRGE guest's mode matrix (the guest was
-not running during this work) and CrystalMark on the card.
+**The 86Box ViRGE guest's mode matrix** (`run-vm-mode-matrix.ps1 -Family s3
+-ChipId virge-dx`, reboot path, one pass, `GdiAccelText=1`, the package from
+commit `e1ac677` deployed by WININIT rename, boots 562-572) then passed
+**11/11**, results in `build\driver-results\mode-matrix-s3-virge-text005`:
+every 8- and 16-bpp mode reports `TextBitmapsDelta=84`, `TextOrectsDelta=50`,
+`TextFallbacksDelta=0`, `Compared=PASS`; the three 32-bpp modes report 0
+bitmaps with `TextRejectMask=0x54` - the depth gate, as on the Trio64. The
+same boundary applies as for the Trio64 matrix: 86Box does not model the
+ViRGE's command FIFO pacing, which is what the physical card's run above is
+for.
+
+Unmeasured for the ViRGE: CrystalMark on the card.
 
 ## Not in this build
 
