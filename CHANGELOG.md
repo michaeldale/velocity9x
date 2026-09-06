@@ -14,8 +14,15 @@ arrived tangled and left separate:
   the "doubled desktop" is the same DRAM seen as VGA planes, and a text
   command caught mid-transfer never completes. Measured with a new V86 port
   trace in the mini-VDD (`-IoTrace`, `V9XIOTR`); a mini-VDD that swallows
-  that one write fixed it six for six and is **not yet shipped**
+  that one write fixed it six for six
   ([issue](docs/issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md)).
+  **Fixed: the mini-VDD now traps `4AE8H` in every build** and swallows a
+  V86 VM's write while passing the System VM and all reads through
+  (`-NoShieldAdvFunc` for the A/B; `-ShieldAdvFunc` is gone). Measured
+  harmless on a physical ViRGE/DX - whose BIOS, the trace shows, never
+  touches the 8514/A ports - and the 86Box Trio64 guest; its first boot on a
+  physical Trio64 is still owed
+  ([record](docs/decisions/2026-09-06-advfunc-shield-ships.md)).
 - **A8U4I5 with the PCI Trio64 hard-locks on framebuffer read-after-write
   under any driver**, Microsoft's included. Not a Velocity9x defect; the
   board's PCI configuration is the open variable

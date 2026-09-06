@@ -1,9 +1,14 @@
 # A DOS box rewrites the desktop at twice its stride on physical Trio64 silicon
 
 Date: 2026-09-06
-Status: **root cause measured (see "What the I/O trace found"); a fix was
-measured working and is not merged, because the same machine then hard-locked
-for a reason that turned out to be unrelated - see "The hard locks".**
+Status: **root cause measured (see "What the I/O trace found"); the fix
+shipped in the default mini-VDD later the same day
+([decision](../decisions/2026-09-06-advfunc-shield-ships.md)). Measured 6/6
+as the traced variant on this card; the shipping form is measured harmless
+on a ViRGE/DX and the 86Box Trio64 guest and still owes its first boot on a
+physical Trio64.** The paragraph below on the fix being held back describes
+the afternoon; the hold was lifted once the hard locks were traced to the
+board.
 
 ## What the I/O trace found (later the same day)
 

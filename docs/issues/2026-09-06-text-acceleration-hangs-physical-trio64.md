@@ -1,8 +1,13 @@
 # Text acceleration hangs the physical Trio64 within a minute of the desktop
 
 Date: 2026-09-06
-Status: **open. Machine hung, awaiting a physical reset; cause not yet
-measured.** Read with
+Status: **cause measured, fix shipped, unverified on this machine.** The hang
+fits a CPU-data text command caught by the DOS VM's BIOS write to ADVFUNC_CNTL
+(the DOS-box issue's trace); the mini-VDD now swallows that write
+([decision](../decisions/2026-09-06-advfunc-shield-ships.md)). BARRY has
+not booted since; on its next boot, remove `GdiAccelText=1` from its
+`SYSTEM.INI` before anything else, then re-enable it only with the shield
+mini-VDD installed. Read with
 [the DOS-box desktop-doubling issue](2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md),
 found the same day on the same card: the screenshot this record calls a
 capture artefact was the real display, the DOS boxes the agent spawned had

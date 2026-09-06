@@ -27,6 +27,18 @@ ENDIF
 ; these numbers; the include itself says why it is included rather than copied.
 include V9XMAPI.INC
 
+; The ADVFUNC shield (a V86 VM's write to 4AE8H is swallowed; see the handler)
+; ships in every build unless -NoShieldAdvFunc takes it out. It has two forms
+; because Install_IO_Handler admits one handler per port: with -IoTrace the
+; trace handler owns 4AE8H and carries the shield as a branch; without it a
+; single-port handler of its own is installed. V9X_ADVFUNC_SHIELD selects the
+; second form.
+IFNDEF V9X_NO_IO_SHIELD
+IFNDEF V9X_IO_TRACE
+V9X_ADVFUNC_SHIELD equ 1
+ENDIF
+ENDIF
+
 ; Stage 1 deliberately makes fewer no-timeout BIOS calls than the frozen ABI
 ; maximum permits. QEMU's measured 93-entry list still fits; later rollout can
 ; raise this toward V9X_VBE_MODE_QUERY_MAX after the guest gate is stable.
@@ -165,6 +177,11 @@ V9xIoTracePorts  dw 042e8h, 046e8h, 04ae8h, 082e8h, 086e8h, 08ae8h, 08ee8h
                  dw 092e8h, 096e8h, 09ae8h, 09ee8h, 0a2e8h, 0a6e8h, 0aae8h
                  dw 0aee8h, 0b2e8h, 0b6e8h, 0bae8h, 0bee8h, 0e2e8h, 0e2eah
 ENDIF
+IFDEF V9X_ADVFUNC_SHIELD
+; V86 writes to ADVFUNC_CNTL swallowed since boot. Not read out by anything
+; yet; the -IoTrace build's log is the instrument that counts them.
+V9xAdvFuncShieldCount dd 0
+ENDIF
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -194,8 +211,9 @@ V9xMini_IoTrace_Single:
     pop     ebx
     cmp     edi, ebx
     je      short V9xMini_IoTrace_Passthrough
-IFDEF V9X_IO_SHIELD
-    ; -ShieldAdvFunc: a V86 VM's write to ADVFUNC_CNTL (4AE8H) is swallowed.
+IFNDEF V9X_NO_IO_SHIELD
+    ; The ADVFUNC shield, trace form: a V86 VM's write to ADVFUNC_CNTL (4AE8H)
+    ; is swallowed. -NoShieldAdvFunc restores the pass-through for an A/B.
     ; Measured 2026-09-06 on A8U4I5: the DOS VM's video BIOS writes 02H there
     ; and nothing else on the engine file, and that single write drops the
     ; Trio64 out of enhanced mode - after which the same framebuffer bytes are
@@ -387,6 +405,95 @@ V9xMini_Dioc_Fail:
     mov     eax, 1
     ret
 EndProc MiniVDD_W32_DeviceIoControl
+ENDIF
+
+IFDEF V9X_ADVFUNC_SHIELD
+; The ADVFUNC shield, shipping form: one trap on 4AE8H, ADVFUNC_CNTL.
+;
+; Why: a windowed DOS box on a physical Trio64 writes 02H to 4AE8H from its
+; V86 VM's video BIOS - the one access that VM makes to the 8514/A file, per
+; the -IoTrace log of 2026-09-06 on A8U4I5 - and that write clears ENB EHFC.
+; The chip leaves enhanced mode with the desktop still displayed, so CPU and
+; CRTC address the same DRAM as VGA planes (the "doubled desktop"), and a
+; CPU-data engine command caught mid-transfer never completes (the BARRY
+; hang). The system VDD traps the VGA ports for a V86 VM and not this one, so
+; the write reaches the hardware unless something else stands in the way.
+; docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md.
+;
+; What: the System VM's accesses pass through at their width, so the display
+; driver's own writes to 4AE8H (its mode set) land unchanged. Any other VM's
+; write is swallowed and counted; its reads still return the real register,
+; so a BIOS that reads back sees the display driver's state rather than a
+; shadow that disagrees with the hardware. String and repeated forms go back
+; to Simulate_IO, which re-enters here one access at a time.
+;
+; The mini-VDD is one binary for every family, so the trap is installed on
+; cards that do not decode 4AE8H too (ati, matrox-m2, vbe). There the write
+; would have reached nothing, and swallowing it changes nothing; the one
+; card class where it would matter, an 8514/A-compatible driven by its own
+; DOS software, is not one this project drives.
+;
+; VMM entry: EAX = data for an output, EBX = the VM, ECX = the I/O type,
+; EDX = the port. Exit: EAX = the value for an input.
+BeginProc V9xMini_AdvFunc_Handler
+    test    ecx, STRING_IO OR REP_IO
+    jz      short V9xMini_AdvFunc_Single
+    VMMJmp  Simulate_IO
+
+V9xMini_AdvFunc_Single:
+    push    edi
+    ; Disable_Local_Trapping for the System VM was measured not to take
+    ; (SysVmOff=0 with Installed=21 on the trace build), so the System VM is
+    ; told apart by handle on every access instead.
+    push    ebx
+    push    eax
+    VMMcall Get_Sys_VM_Handle
+    mov     edi, ebx
+    pop     eax
+    pop     ebx
+    cmp     edi, ebx
+    je      short V9xMini_AdvFunc_Perform
+    test    ecx, OUTPUT
+    jz      short V9xMini_AdvFunc_Perform
+    inc     V9xAdvFuncShieldCount
+    jmp     short V9xMini_AdvFunc_Done
+
+    ; The access at its width. Bits 3-4 of the type are the width field:
+    ; 0 byte, 8 word, 10H dword.
+V9xMini_AdvFunc_Perform:
+    mov     edi, ecx
+    and     edi, 018h
+    test    ecx, OUTPUT
+    jnz     short V9xMini_AdvFunc_Out
+    cmp     edi, 8
+    je      short V9xMini_AdvFunc_InW
+    cmp     edi, 010h
+    je      short V9xMini_AdvFunc_InD
+    in      al, dx
+    jmp     short V9xMini_AdvFunc_Done
+V9xMini_AdvFunc_InW:
+    in      ax, dx
+    jmp     short V9xMini_AdvFunc_Done
+V9xMini_AdvFunc_InD:
+    in      eax, dx
+    jmp     short V9xMini_AdvFunc_Done
+V9xMini_AdvFunc_Out:
+    cmp     edi, 8
+    je      short V9xMini_AdvFunc_OutW
+    cmp     edi, 010h
+    je      short V9xMini_AdvFunc_OutD
+    out     dx, al
+    jmp     short V9xMini_AdvFunc_Done
+V9xMini_AdvFunc_OutW:
+    out     dx, ax
+    jmp     short V9xMini_AdvFunc_Done
+V9xMini_AdvFunc_OutD:
+    out     dx, eax
+
+V9xMini_AdvFunc_Done:
+    pop     edi
+    ret
+EndProc V9xMini_AdvFunc_Handler
 ENDIF
 
 ; ESI points to ECX bytes. Preserve all registers and bound every UART wait.
@@ -2228,6 +2335,26 @@ V9xMini_IoTrace_Install_Skip:
     add     edi, 2
     dec     ecx
     jnz     short V9xMini_IoTrace_Install_Next
+    pop     edx
+    pop     ecx
+    pop     esi
+ENDIF
+IFDEF V9X_ADVFUNC_SHIELD
+    ; Install the ADVFUNC shield on its one port, global for every VM; the
+    ; handler exempts the System VM by handle. The serial line is written
+    ; only when the install took, so its absence from a boot log is the
+    ; report of a failure.
+    push    esi
+    push    ecx
+    push    edx
+    mov     edx, 04ae8h
+    mov     esi, OFFSET32 V9xMini_AdvFunc_Handler
+    VMMcall Install_IO_Handler
+    jc      short V9xMini_AdvFunc_Install_Skip
+    mov     esi, OFFSET32 V9xMiniShieldLine
+    mov     ecx, V9xMiniShieldLineLength
+    call    V9xMini_Serial_Write
+V9xMini_AdvFunc_Install_Skip:
     pop     edx
     pop     ecx
     pop     esi

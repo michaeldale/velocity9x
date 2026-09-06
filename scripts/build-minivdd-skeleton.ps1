@@ -34,11 +34,15 @@ param(
     # readout tool. Instrument for the physical Trio64 DOS-box desktop
     # doubling; not for shipping.
     [switch]$IoTrace,
-    # -ShieldAdvFunc, with -IoTrace: a V86 VM's write to ADVFUNC_CNTL (4AE8H)
-    # is swallowed instead of passed through. The DOS VM's video BIOS writes
-    # 02H there on every windowed DOS box and that write alone drops a Trio64
-    # out of enhanced mode. Candidate fix; measured against the trace.
-    [switch]$ShieldAdvFunc,
+    # -NoShieldAdvFunc removes the ADVFUNC shield, which every build otherwise
+    # carries: a V86 VM's write to ADVFUNC_CNTL (4AE8H) is swallowed instead
+    # of passed through, because the DOS VM's video BIOS writes 02H there on
+    # every windowed DOS box and that write alone drops a Trio64 out of
+    # enhanced mode (docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-
+    # physical-trio64.md). Differential build for the A/B; not for shipping.
+    # With -IoTrace the shield is a branch of the trace handler, so this
+    # switch works in both builds.
+    [switch]$NoShieldAdvFunc,
     # -NoScreenSwitch refuses the full-screen DOS box outright, through
     # CHECK_SCREEN_SWITCH_OK. The DDK's own XGA mini-VDD does this for a
     # driver in a VESA mode, for the reason that applies to tier-0: the
@@ -179,6 +183,17 @@ if ($DisableVbeCollect) {
     $buildIncludeLines += @(
         "V9xMiniVbeDisabledLine db `"V9X-MINI vbe-collect disabled build=$BuildId`", 13, 10",
         "V9xMiniVbeDisabledLineLength equ `$ - V9xMiniVbeDisabledLine"
+    )
+}
+# The shield's own handler, and so its boot line, exist only in the shipping
+# form: the -IoTrace build carries the shield inside the trace handler and
+# reports through V9XIOTR instead. The line is a marker below, so it is added
+# only when the source references it.
+$shieldStandalone = (-not $NoShieldAdvFunc) -and (-not $IoTrace)
+if ($shieldStandalone) {
+    $buildIncludeLines += @(
+        "V9xMiniShieldLine db `"V9X-MINI advfunc-shield on build=$BuildId`", 13, 10",
+        "V9xMiniShieldLineLength equ `$ - V9xMiniShieldLine"
     )
 }
 if ($NoDpms) {
@@ -370,11 +385,8 @@ if ($NoVramSize) {
 if ($IoTrace) {
     $assemblerArguments = @("-DV9X_IO_TRACE") + $assemblerArguments
 }
-if ($ShieldAdvFunc) {
-    if (-not $IoTrace) {
-        throw "-ShieldAdvFunc is part of the -IoTrace handler; build both."
-    }
-    $assemblerArguments = @("-DV9X_IO_SHIELD") + $assemblerArguments
+if ($NoShieldAdvFunc) {
+    $assemblerArguments = @("-DV9X_NO_IO_SHIELD") + $assemblerArguments
 }
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
@@ -444,6 +456,14 @@ if ($DisableVbeCollect) {
     }
 } elseif ($imageText.Contains($disabledMarker)) {
     throw "A default mini-VDD build must not carry the vbe-collect disabled marker."
+}
+$shieldMarker = "V9X-MINI advfunc-shield on"
+if ($shieldStandalone) {
+    if (-not $imageText.Contains($shieldMarker)) {
+        throw "The mini-VDD is missing its ADVFUNC shield marker."
+    }
+} elseif ($imageText.Contains($shieldMarker)) {
+    throw "A -NoShieldAdvFunc or -IoTrace mini-VDD must not carry the shield marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
 # Every dispatch the source declares, paired with the IFDEF it sits inside.

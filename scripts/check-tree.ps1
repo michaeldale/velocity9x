@@ -23,6 +23,7 @@ $required = @(
     "docs\decisions\2026-08-27-gdi-accel-003.md",
     "docs\decisions\2026-08-27-gdi-accel-004-design.md",
     "docs\decisions\2026-09-06-gdi-accel-005-text.md",
+    "docs\decisions\2026-09-06-advfunc-shield-ships.md",
     "docs\decisions\2026-08-27-crystalmark-barry-baseline.md",
     "docs\issues\2026-08-26-gdi-fill-brush-colour-not-physical.md",
     "docs\plans\gdi-acceleration.md",
