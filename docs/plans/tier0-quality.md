@@ -2,7 +2,10 @@
 
 Date: 2026-08-28
 
-Status: proposed
+Status: updated 2026-09-06. D1 Stage A is inspect-only; D2 is proposed.
+D3's original premise was incorrect and is deferred unless a target needs
+it. D4 has progressed to a shipping DOS-box shield, with physical Trio64
+verification still pending. See [current status](../STATUS.md).
 
 Roadmap Track D (`family-structure-and-next-d3d-roadmap.md`). Four items that
 came out of surveying JHRobotics' vmdisp9x/vmhal9x for capabilities Velocity9x
@@ -84,11 +87,13 @@ path unchanged for hook-less families.
 
 ## D3. Synthetic vblank for tier-0
 
-Tier-0 publishes no `CAP_VBLANK`, so `WaitForVerticalBlank` and
-`DDGBS_ISBLTDONE`-adjacent timing on the vbe family fall to whatever DDRAW
-emulates. A timer-derived beam position — refresh period from the mode's
-declared refresh rate, phase free-running — gives tier-0 games a plausible
-vblank without touching hardware.
+**Deferred; premise corrected 2026-09-06.** A missing `CAP_VBLANK` does not
+mean the HAL lacks vblank service: `V9xHalWaitForVerticalBlank` reads the
+standard VGA status port through `v9x_in_vblank`, independently of the S3
+display-start capability. The [physical GMA 950 run](../issues/2026-08-27-netbook-gma950-findings.md)
+measured its refresh through this path. No target-specific need for synthetic
+vblank has been established. The scope below is retained as a possible fallback
+if a future target cannot supply that status.
 
 Scope: 32-bit HAL, one shared module; used only when the engine descriptor
 carries no vblank capability. Honest by construction: it is a pacing aid,
@@ -98,12 +103,14 @@ set) paces correctly on the vbe guest instead of free-running.
 
 ## D4. DOS-box mode-set guard, and a windowed-DOS test
 
-vmdisp9x deliberately restricts INT 10h handling so a windowed DOS box
-cannot confuse the BIOS/driver mode state. Velocity9x has never tested
-windowed DOS boxes against the dynamic mode pipeline — the mini-VDD collects
-at boot, but a DOS box's INT 10h traffic flows through the VDD at runtime.
+**Implemented guard; physical verification pending, 2026-09-06.** The
+test-first work found the physical Trio64's DOS VM writing ADVFUNC_CNTL and
+dropping enhanced mode. The mini-VDD now swallows that write by default.
+The traced variant fixed six physical trials; the shipping form needs its
+first physical Trio64 retest. See [the shipping record](../decisions/2026-09-06-advfunc-shield-ships.md).
+Fullscreen DOS and mode-return behavior remain separate investigations.
 
-Scope, deliberately test-first: add a windowed-DOS-box step to the VM mode
+Original scope, deliberately test-first: add a windowed-DOS-box step to the VM mode
 matrix (open a DOS window, run a mode-touching DOS program, close, assert
 desktop intact via the scanout check). Only if that fails does a guard get
 designed — the failure shape decides where it lives. Exit gate: the test in
@@ -111,7 +118,7 @@ the matrix, green or a filed issue.
 
 ## Sequencing
 
-D1 first (biggest win, smallest surface), then D4's test (cheap, and the
-answer shapes confidence in everything else), then D2, then D3. Nothing here
-blocks the 3dfx tier-0 plan; D1 and D4 land before it ships its packages so
-the new family inherits them.
+Close D4's physical verification first, then pursue D2 and D1 only with their
+required measurements. D3 is deferred. The older ordering assumed an
+unmeasured MTRR gain and missing vblank service; neither is an established
+reason to delay the Voodoo3 survey or emulator setup.

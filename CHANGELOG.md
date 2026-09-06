@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **Host builds work under Windows PowerShell 5.1 and PowerShell 7.** Shared
+  setup preserves the compiler argument quoting; both compilers now use one
+  portable source list, including the idle-wait tests. MSVC explicitly skips
+  the Watcom-only x87 depth-conversion group, which Watcom still runs.
+- **Current support and roadmap status** lives in [docs/STATUS.md](docs/STATUS.md),
+  separating release defaults, opt-in work, recorded hardware coverage and
+  pending validation. README and active plans now point to the current evidence.
+
 Found on physical Trio64 silicon, both boards, 2026-09-06 - two faults that
 arrived tangled and left separate:
 

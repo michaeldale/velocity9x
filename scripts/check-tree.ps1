@@ -52,6 +52,7 @@ $required = @(
     "scripts\common.ps1",
     "scripts\lib\family.ps1",
     "scripts\lib\family-matrix.ps1",
+    "scripts\lib\host-sources.ps1",
     "scripts\lib\backend-registry.ps1",
     "scripts\update-backend-registry.ps1",
     "scripts\lib\inf.ps1",

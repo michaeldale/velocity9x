@@ -4,6 +4,11 @@ All build scripts are PowerShell and live in `scripts/`. None of them download
 toolchains or licensed SDK/DDK material; a missing prerequisite is reported as
 a prerequisite failure.
 
+Use Windows PowerShell 5.1 or PowerShell 7 on Windows. The shared build setup
+selects legacy native argument handling within each script on PowerShell 7.3+
+so the compilers receive the same quoted build identifiers under either shell.
+No caller-side preference change is needed.
+
 ## Prerequisites
 
 | Component | Needed for |
@@ -33,14 +38,18 @@ of `NONE`, and every mode a family's INF advertises can be laid out in the VRAM
 that family declares. It needs no emulator and no Windows guest, so it is the
 first thing to run after editing a manifest.
 
-For an independent set of warnings, the same suite can be built with MSVC at
-`/W4 /WX`:
+For an independent set of warnings, the portable tests can be built with MSVC
+at `/W4 /WX`:
 
 ```powershell
 ./scripts/build-host-msvc.ps1
 ```
 
 This locates MSVC directly or via `vswhere` and builds into `build/host-msvc`.
+Both builds use the source list in `scripts/lib/host-sources.ps1`, including
+the idle-wait policy tests. The ViRGE depth-conversion group is Watcom-only:
+it exercises the HAL's actual x87 `fistp` implementation through Watcom's
+`#pragma aux`. MSVC prints an explicit skip for that group; Watcom runs it.
 Both scripts default the embedded build identifier to the current git revision,
 with a `-dirty` suffix for a modified tree.
 
@@ -53,6 +62,9 @@ with a `-dirty` suffix for a modified tree.
 The local CI gate: tree check, host tests, every family package with its
 post-link audits and INF assertions, then the floppy. Run this before calling a
 change done.
+
+This gate runs the Watcom host suite. Run `build-host-msvc.ps1` separately for
+the optional second-compiler pass.
 
 It builds every family package and it passes, and that is worth being precise
 about: **a package that builds is not a package that enables.** That gap is how

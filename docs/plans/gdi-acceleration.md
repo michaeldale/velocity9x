@@ -1,14 +1,18 @@
 # Conservative GDI acceleration (PLAN.md Phase 5)
 
-Status: in progress (2026-08-28) — build `gdi-accel-000` shipped
-([decision](../decisions/2026-08-26-gdi-accel-000.md)) and its physical-Trio64
-corruption was fixed in 0.6.0; the remaining builds of the `000`..`005`
-rollout table are pending. The "Corrections" section below records where this
-document has drifted from the refactored tree; read
+Status: updated 2026-09-06. Builds `000` through `004` are implemented;
+fill/copy/overlap default on and ViRGE monochrome upload defaults off.
+Build `005` text is implemented on Trio64 and ViRGE, still default-off;
+physical Trio64 verification of the shipping DOS-box shield is pending.
+See [current status](../STATUS.md). The "Corrections" section below records
+earlier differences from the refactored tree; read
 [gdi-accel-000-and-harness.md](gdi-accel-000-and-harness.md) for the
 implementation-accurate account of build 000.
 
 ## Context
+
+The context and design below describe the pre-implementation baseline.
+Use the current status and rollout table for what is implemented and enabled now.
 
 Velocity9x's GDI path today is a pure DIB Engine passthrough: every drawing ordinal in `src/display16/dib_thunks.asm` is an unconditional `jmp DIB_*` (e.g. line 74 `V9X_FORWARD BitBlt, DIB_BitBlt`). Meanwhile the 32-bit DirectDraw HAL (`src/display32/ddhal.c`) already drives the ViRGE S3D and Trio64 8514/A 2D engines successfully — screen-to-screen SRCCOPY with overlap handling and solid fills, with bounded waits, engine reset, and measured wins (Ironfield BltFast 3→18 FPS, see `docs/decisions/2026-08-14-virge-blitter.md`). This plan brings that engine to GDI: desktop fills and window scrolls/moves go to hardware, everything else declines to the DIB Engine unchanged. It implements PLAN.md Phase 5 ("Conservative GDI acceleration", one primitive at a time, DIB fallback for every unsupported case, desktop must survive engine timeouts).
 
@@ -61,14 +65,11 @@ Key constraint: the HAL is 32-bit flat code loaded only when DirectDraw asks for
 > `PALETTE_XLAT` gate, and the reasoning for why 000's exit gate must also run
 > on an engine-less family.
 
-**Stopped 2026-08-27, before build 005.** The `Default` column below records
-what each build earned *in emulation*. All of it is now unreachable: the master
-`GdiAccel` switch compiles to **0** because the fill path corrupts the display on
-physical S3 Trio64 silicon
-([issue](../issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)),
-while 86Box passes 11/11 modes on both S3 chips at the very mode that fails.
-Build 005 does not start until that is understood - adding ROPs to a fill path
-that mis-addresses on hardware would only widen the blast radius.
+**Current defaults, 2026-09-06.** The August 27 stop was lifted after the
+physical Trio64 corruption fix in 0.6.0. The master, fill, copy and overlap
+switches now default to 1; upload and text default to 0. The later DOS-box
+ADVFUNC fault has a [shipping shield](../decisions/2026-09-06-advfunc-shield-ships.md),
+whose physical Trio64 retest remains the next gate for text.
 
 | Build | Content | Default | Exit gate |
 |---|---|---|---|
@@ -77,8 +78,8 @@ that mis-addresses on hardware would only widen the blast radius.
 | gdi-accel-002 **(done)** | Screen SRCCOPY, non-overlapping (overlap declines) | +copy on | Randomized non-overlap copy PASS; window-drag/scroll soak |
 | gdi-accel-003 **(done)** | Overlap in all 8 directions | +overlap on | Randomized overlap PASS both chips; **full PLAN.md Phase 5 exit gate** - met except clipping regions, see the 003 record |
 | gdi-accel-004 **(done)** | CPU-to-screen upload, narrowed to **monochrome expansion**; colour upload deliberately not implemented (see the design record). ViRGE only - the Trio64 declines | off | Same harness with memory-source ops: mono accelerates when on, declines when off, colour declines always, and the reject mask carries no unintended reason |
-| gdi-accel-005 **(done in emulation; hardware pending)** | **Text**, re-targeted from extra ROPs on the CrystalMark evidence ([next steps](../decisions/2026-08-27-gdi-accel-next-steps.md)): ordinal 14 through `DIB_ExtTextOutExt` with two driver callbacks, monochrome expansion on the Trio64's CPU-data rectangle fill (`53B3H` - the first build's `53B1H` lacked the plane-mode bit and drew half of every string). ViRGE declines. Trio64 guest 11/11 modes. [Record](../decisions/2026-09-06-gdi-accel-005-text.md) | off (`GdiAccelText`) | Same harness with text operations: bitmaps fire when on, no fallbacks, no new reject reason - **met on the guest**; then BARRY, which is the only place the FIFO pacing hypothesis can be answered and the default decided |
-| gdi-accel-006 (not started) | Extra ROPs, or text on the ViRGE, or the hardware cursor - whichever the 005 measurements argue for | | |
+| gdi-accel-005 **(implemented; physical Trio64 gate pending)** | **Text**: ordinal 14 through `DIB_ExtTextOutExt`, Trio64 CPU-data rectangle fill and ViRGE `MONOSRCBLT`. [Record](../decisions/2026-09-06-gdi-accel-005-text.md) | off (`GdiAccelText`) | Both 86Box mode matrices pass; physical ViRGE/DX `/accel` passes. BARRY must verify the shipping shield and bounded text probe before deciding its default |
+| gdi-accel-006 (not started) | Extra ROPs or hardware cursor, selected after the 005 measurements | | |
 
 ## Verification
 

@@ -44,8 +44,11 @@ unsigned int v9x_run_d3dmode_tests(void);
 unsigned int v9x_run_vbe_crtc_tests(void);
 
 /* The ViRGE 1.31 depth conversion: the clamp that keeps sz = 1.0 from
- * becoming the x87 integer indefinite, and with it the near plane. */
+ * becoming the x87 integer indefinite, and with it the near plane. The
+ * converter uses Watcom's #pragma aux to test the HAL's actual x87 code. */
+#ifdef __WATCOMC__
 unsigned int v9x_run_d3d_zfixed_tests(void);
+#endif
 
 /* tests\host\test_d3d_raster.c: the CPU rasterizer's coverage rule, its
  * refusals and its Gouraud interpolation, same convention. */
@@ -613,7 +616,11 @@ int main(void)
     failures += v9x_run_mtrr_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vbe_crtc_tests();
+#ifdef __WATCOMC__
     failures += v9x_run_d3d_zfixed_tests();
+#else
+    puts("SKIP: ViRGE x87 depth conversion (requires Open Watcom)");
+#endif
     failures += v9x_run_d3d_raster_tests();
     failures += v9x_run_donewait_tests();
 

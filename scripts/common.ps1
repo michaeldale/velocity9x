@@ -1,5 +1,13 @@
 # Shared helpers dot-sourced by the Velocity9x build scripts.
 
+# Compiler arguments below use Windows PowerShell's native quoting rules.
+# PowerShell 7.3+ otherwise escapes the embedded C-string quotes differently:
+# Watcom treats -dV9X_BUILD_ID as a filename and MSVC receives stray escapes.
+# Set this in the calling script's scope, leaving the interactive shell alone.
+if (Test-Path Variable:PSNativeCommandArgumentPassing) {
+    $PSNativeCommandArgumentPassing = 'Legacy'
+}
+
 function Get-V9xBuildId {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,

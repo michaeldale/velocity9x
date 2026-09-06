@@ -9,7 +9,10 @@ Track C resolved to 3dfx: the card is a confirmed Voodoo3, planned in
 Track B seam already in place. Track D (tier-0 quality: MTRR write-combining,
 hardware cursor, synthetic vblank, DOS-box guard) added 2026-08-28 from the
 vmdisp9x/vmhal9x survey, planned in [tier0-quality.md](tier0-quality.md);
-its D1/D4 land before the 3dfx packages ship.
+its current state is recorded in [STATUS.md](../STATUS.md). D1 remains
+inspect-only, D4's shield needs a physical Trio64 retest, and D3's original
+missing-vblank premise was incorrect. These are not gates on the Voodoo3
+survey or emulator setup.
 
 This roadmap came out of three reviews on 2026-08-28: the stale
 `intel-gma-tier0` branch (what to salvage), the cost of adding a new VGA
@@ -198,6 +201,11 @@ exit gate.
 ---
 
 ## Sequencing
+
+**Historical ordering from 2026-08-28.** For the current order, use
+[STATUS.md](../STATUS.md#open-work-in-order). In particular, Track B is done,
+D4 has reached a shipping shield, and D3 is deferred; do not restart those
+items from the original list below.
 
 Track A shipped in full on 2026-08-28; the list below is the program order
 from that date forward. Two lanes run in parallel: a software lane that needs

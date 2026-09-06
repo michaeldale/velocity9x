@@ -4,28 +4,25 @@ A replacement display driver for Windows 9x, for 1990s PCI and VESA Local
 Bus graphics cards — S3 ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic
 VESA cards it has never been told about. It gives a supported card
 256-colour, High Color and — on the S3 targets — True Color modes up to
-1280x1024, a DirectDraw HAL with real page flipping and vertical-blank
-waits, and — on the ViRGE — a hardware Direct3D path.
+1280x1024, a DirectDraw HAL with vertical-blank waits and hardware page
+flipping on S3, and a hardware Direct3D path on ViRGE/DX and Trio3D/2X.
 
 It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
 HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Version 0.7.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Latest release: 0.7.0.** The checkout also contains unreleased work. See
+[current status and roadmap](docs/STATUS.md) for defaults, validation coverage
+and open work, and [CHANGELOG.md](CHANGELOG.md) for the history.
 
-> **0.6.0 is the release where this stops being an engineering bring-up and
-> becomes a working driver.** The full stack — display driver, DirectDraw HAL,
-> mini-VDD, GDI acceleration — runs on three physical machines across three
-> buses and two chip vendors: an S3 Trio64 on PCI under Windows 98 SE
-> (benchmarked faster than the stock S3 driver in DirectDraw and ahead of its
-> own software baseline in CrystalMark 2D), the same chip on VESA Local Bus
-> under Windows 95, and an Intel GMA 950 netbook driven by the generic VBE
-> package on silicon the driver had never been told about. Development and
-> regression testing still happen under [86Box](https://86box.net/) and QEMU,
-> the ATI target remains emulator-only, and the per-target caveats below are
-> real — so still install it on a machine you have backed up cold, and read
-> [docs/INSTALL.md](docs/INSTALL.md) first.
+> Physical results include Trio64 on PCI under Windows 98 SE, Trio64 on VLB
+> under Windows 95, Intel GMA 950 through generic VBE, and S3 Trio3D/2X and
+> ViRGE/DX. Coverage differs by feature and build: the Win95 path omits the
+> mini-VDD, text acceleration remains opt-in, and ATI is emulator-only.
+> Development and regression testing use [86Box](https://86box.net/) and QEMU.
+> Read the [verification matrix](docs/STATUS.md) and
+> [installation guide](docs/INSTALL.md), and keep a cold backup before installing.
 
 ![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
 at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
@@ -45,13 +42,14 @@ at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/image
 | Help add support for your chip | [Helping add native support](#helping-add-native-support) |
 | Understand the design | [docs/specifications/win9x-driver-boundaries.md](docs/specifications/win9x-driver-boundaries.md) |
 | See what changed | [CHANGELOG.md](CHANGELOG.md) |
+| See current verification and next work | [docs/STATUS.md](docs/STATUS.md) |
 
 ## What it does
 
 Velocity9x replaces the Windows 98 display driver for a supported card. How much
 you get depends on the card: an S3 ViRGE gets the full stack down to Direct3D,
-while an unlisted VESA card gets a working unaccelerated desktop. What every
-target gets:
+while an unlisted VESA card can get an unaccelerated desktop through its BIOS.
+The main features, subject to each target's limits:
 
 - **Display modes** — 640x480, 800x600 and 1024x768 at 256 colours and High
   Color (16-bit), plus 640x400 at 256 colours. On the S3 targets, also True
@@ -67,19 +65,28 @@ target gets:
   linearly. On both S3 chips, GDI solid fills and screen-to-screen copies
   (window moves and scrolls, including overlapping copies in all eight
   directions) run on the 2D engine, with a DIB Engine fallback and a poison
-  latch that turns acceleration off for the session if the engine ever wedges.
-  Text, lines and CPU-to-screen uploads remain software everywhere, and the
-  engineless targets (ATI, generic VESA) are all-software by definition.
+  latch that turns acceleration off for the session after a detected timeout.
+  Text, lines and uploads use software by default. ViRGE monochrome uploads
+  are opt-in (`GdiAccelUpload=1`); the unreleased checkout also adds opt-in
+  text on Trio64 and ViRGE (`GdiAccelText=1`). Physical Trio64 text validation
+  remains open, so its default stays off. ATI and generic VESA currently have
+  no native acceleration backend.
 - **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory
-  surfaces, CRTC display-start page flipping and genuine vertical-blank
-  services on every target. Solid colour fills and screen-to-screen BitBLT run
+  surfaces and vertical-blank services through the VGA status port. S3 targets
+  also implement CRTC display-start page flipping; the HAL declines primary
+  flips on ATI and generic VESA, which lack a native scanout backend. The
+  guarded Matrox candidate does not package this HAL.
+  Solid colour fills and screen-to-screen BitBLT run
   on the chip's 2D engine where there is a backend for one (both S3 parts) and
   fall back to the CPU where there is not (ATI, generic VESA).
-- **Direct3D acceleration** (S3 ViRGE only) — a deliberately narrow but real
+- **Direct3D acceleration** (S3 ViRGE/DX and Trio3D/2X) — a deliberately narrow but real
   hardware path through the S3D engine: textured, Gouraud-shaded,
   perspective-correct triangles with mipmapping, trilinear filtering, alpha
-  blending, specular highlights, fog and Z testing, with depth-buffer clears
-  served by the blitter rather than by the CPU.
+  blending, colour-key transparency, specular highlights, fog and Z testing,
+  with depth-buffer clears served by the blitter rather than by the CPU.
+  Hardware Direct3D selects a matching 5:5:5 High Color desktop automatically.
+  Trio3D/2X uses bilinear filtering in place of the ViRGE's two-pass trilinear
+  path and has unresolved blend behavior; see [current status](docs/STATUS.md).
 - **A Direct3D mode selector** on the Velocity9x page in Display Properties,
   offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
@@ -101,19 +108,22 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | PCI ID | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
 | Status | Primary target | Conservative baseline, verified on 2 physical machines | Tier-0 bring-up | Tier-0 fallback, verified on a physical Intel GMA 950 and an S3 Trio3D |
-| Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same | 640x400x8, 640/800/1024 at 8 and 16 bpp | same as ATI |
+| Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
 | Live resolution change | Yes | Yes | Yes | Yes |
 | Live colour-depth change | Yes | Yes | Yes | Yes |
-| DirectDraw surfaces / page flip / vblank | Yes | Yes | Yes | Yes |
+| DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes |
+| Hardware primary page flip | Yes | Yes | No; HAL declines | No; HAL declines |
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | same |
 | Direct3D mode selector | Hardware / Software / Disabled | Software / Disabled | same | same |
-| GDI acceleration | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | **No**, and permanently: no 2D engine | same as ATI |
+| GDI acceleration by default | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
 | Hardware cursor | No (software cursor) | No | No | No |
 
-The Trio32/64 target is intentionally a software-GDI plus DirectDraw baseline.
-The ViRGE-only new-MMIO window, the S3D engine and Direct3D are not exposed on
+The Trio32/64 target accelerates GDI fills and screen copies, plus DirectDraw
+fills and blits, at supported depths. Other GDI drawing uses the DIB Engine
+by default; Direct3D uses the opt-in software rasterizer.
+The ViRGE-only new-MMIO window, S3D engine and hardware Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
 
@@ -244,10 +254,12 @@ native engine buys.
 correct at every resolution. Tracked as `D5` in
 [docs/issues/2026-08-16-tier0-defects-deferred.md](docs/issues/2026-08-16-tier0-defects-deferred.md).
 
-The **Matrox Millennium II** family (`102B:051B`) builds as a guarded drop-in
-candidate rather than an INF package, because the machine it targets has no
-recoverable install path. It has never been run on its physical card and should
-not be treated as supported.
+The **Matrox Millennium II** family (`102B:051B`) uses a guarded drop-in
+package. Its historical mixed pair — Velocity9x's display driver with the
+board's stock Matrox mini-VDD — passed physical software-GDI tests at
+640x480x16 and 1024x768x16. That evidence does not validate the current release
+archive or replacement of the stock mini-VDD; see the
+[bring-up boundary](docs/specifications/matrox-millennium2-bringup.md).
 
 ## Have an unsupported card?
 
@@ -368,7 +380,8 @@ what the vendor's driver for this chip does. And every bias in the environment
 these numbers come from favours the arm it lost to: 86Box's framebuffer is host
 RAM, so the CPU clear never pays the uncached-aperture cost that dominates CPU
 drawing on real cards, and its command FIFO runs on a host thread with no
-silicon analogue. No physical ViRGE exists on this project to check that.
+silicon analogue. This depth-fill A/B has not been repeated on a physical
+ViRGE; later physical ViRGE testing does not establish its throughput.
 Why the fill rate falls is still not established; see
 [docs/decisions/2026-08-30-ddblt-depthfill.md](docs/decisions/2026-08-30-ddblt-depthfill.md).
 
@@ -380,8 +393,9 @@ capability set rather than the rendered image. See
 
 ## How it compares to the retail S3 drivers
 
-Honest summary: for 2D desktop use Velocity9x is close to the retail driver on
-both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
+For 2D desktop use Velocity9x is close to the retail driver on both chips in
+the recorded comparisons. Its hardware Direct3D remains a smaller subset;
+Trio64 also offers an opt-in software rasterizer whose speed is unmeasured.
 
 **Where it matches the retail driver**
 
@@ -403,48 +417,50 @@ both chips; for 3D it is far behind, and on the Trio64 there is no 3D at all.
   for DirectDraw. Of those, **solid rectangle fills and screen-to-screen copies,
   including overlapping ones in all eight directions, are now accelerated on
   both S3 chips** (builds `gdi-accel-001` through `003`) — the operations behind
-  a desktop fill and a window scroll or move. Line drawing, text and
-  CPU-to-screen uploads still go through the DIB Engine in software. On ATI, VBE and Matrox every operation declines and always will:
-  those chips have no 2D engine. Every accelerated case keeps a DIB Engine
-  fallback, a bounded wait, and a session-long poison latch that turns
-  acceleration off for good if the engine ever fails to respond - so the desktop
-  survives a wedged engine rather than following it down. See
+  a desktop fill and a window scroll or move. Line drawing and colour uploads
+  remain software. ViRGE monochrome uploads are implemented but off by default;
+  the unreleased checkout adds text on Trio64 and ViRGE, also off by default.
+  ATI, VBE and Matrox currently use software GDI because this driver has no
+  native 2D backend for them. Accelerated cases retain a DIB Engine fallback,
+  bounded polling and a session-long poison latch. Those guards do not prevent
+  every hardware bus stall: the physical Trio64 text/DOS-box interaction is
+  still awaiting verification of the shipping fix. See [current status](docs/STATUS.md) and
   [docs/decisions/2026-08-26-gdi-accel-000.md](docs/decisions/2026-08-26-gdi-accel-000.md).
 - **No hardware cursor.** The retail drivers use the chip's cursor; Velocity9x
   draws a software cursor.
-- **Direct3D is a subset.** Against the retail S3 ViRGE driver's Direct3D
-  device description, Velocity9x declares `dwTextureCaps` `0x27` versus
-  `0x2F`; the difference is colour-key transparency. It also lacks
-  `SORTINCREASINGZ` and `SPECULARFLATRGB`, accepts only pre-transformed and
-  pre-lit vertices, and does no clipping, backface culling, lines or indexed
-  primitives. The S3D triangle engine writes native ZRGB1555 into a surface
-  described as RGB565 — an unresolved mismatch, and since 2026-09-01 a
-  measured one rather than an observation: it fails every probe key whose
-  expected colour is not blue, blue being the one value the two formats agree
-  on. See
-  [`docs/issues/2026-09-01-virge-3d-writes-zrgb1555.md`](docs/issues/2026-09-01-virge-3d-writes-zrgb1555.md),
-  which names the two hypotheses and the machine that can tell them apart.
+- **Direct3D is a subset.** The hardware path now supports colour-key
+  transparency, and the ZRGB1555/RGB565 mismatch was fixed in 0.7.0 by making
+  the desktop, GDI and DirectDraw agree on 5:5:5 under hardware Direct3D.
+  Texture formats and blend operations remain limited; additive and
+  multiplicative blends are unsupported, and Trio3D/2X has additional
+  measured restrictions. `SetRenderTarget` onto a flipping chain is also an
+  open correctness issue. See [current limitations](docs/STATUS.md) and the
+  [5:5:5 fix record](docs/decisions/2026-09-02-a-555-desktop-needs-three-places-to-agree.md).
 
-- **The software rasterizer is opt-in and slow.** `Direct3D=2` in
-  `SYSTEM.INI`'s `[Velocity9x]` section serves Direct3D from a CPU rasterizer
-  on any supported card, including the ones with no 3D hardware at all. It
-  draws depth-tested Gouraud triangles with one texture, point or bilinear,
-  decal or modulate, from ARGB1555 or ARGB4444 — every one of those verified by
-  a pixel on a Trio64. It has no alpha blending, no mip selection, no fog and
-  no texture tiling, it clamps texture coordinates instead of wrapping, and its
-  capabilities advertise exactly that list and nothing more. **No performance
-  measurement of it exists**: it has been run on an emulated guest and never on
-  a period machine.
+- **The software rasterizer is opt-in; speed is unmeasured.** Select Software
+  on the Velocity9x settings page, or set `Direct3D=2` in
+  `SYSTEM.INI`'s `[Velocity9x]` section and restart. This serves Direct3D from
+  a CPU rasterizer in the S3, ATI and VBE packages, including cards with no
+  3D hardware. The guarded Matrox candidate does not package the HAL. The
+  rasterizer draws depth-tested Gouraud triangles with one texture, point or
+  bilinear, decal or modulate, from ARGB1555, ARGB4444 or RGB565. It supports texture
+  WRAP/CLAMP and vertex-alpha blending with a limited set of factors, verified
+  on the emulated Trio64. Texture alpha, perspective correction, mip selection
+  and fog remain absent. See the [alpha](docs/decisions/2026-09-02-software-alpha-blending.md),
+  [wrap](docs/decisions/2026-09-02-software-texture-wrap.md) and
+  [RGB565](docs/decisions/2026-09-02-software-rgb565-textures.md) records.
+  No period-machine performance measurement is recorded.
 - **Depth gradients are exercised but unverified.** Depth comparison and
   depth-write masking are both pixel-verified. The per-pixel depth slope is
   not: the emulator this is tested on doubles a triangle's start depth but not
   its X gradient, so a sloped test there would measure the emulator rather than
   the driver. Final Reality drives the gradients across sloped scenes without
   faulting, which is not the same as computing the right depth.
-- **Fewer modes.** No 24-bpp modes anywhere: no S3 BIOS measured offers one —
-  the VESA "24-bit" numbers are all 32 bpp on these cards — so there is nothing
-  to drive. The ATI and generic-VESA targets have no high-colour modes above
-  16 bpp at all yet, and nothing goes above 1280x1024.
+- **Fewer modes.** Packed 24-bpp output is not implemented, even when a BIOS
+  offers it. The S3 VESA "24-bit" mode numbers measured here are actually
+  32 bpp. ATI's baseline stops at 16 bpp. Generic VESA
+  adds validated BIOS modes dynamically, including widescreen and True Color
+  modes; availability depends on the card's BIOS and framebuffer limits.
 - **No hardware acceleration above 16 bpp.** Both S3 blitters decline at 24 and
   32 bpp and the CPU fallback serves those depths, so DirectDraw fills and blits
   are software there. Direct3D is 16-bpp only. This is a limit of this driver
@@ -493,9 +509,11 @@ corrupted in transit.
 ## Common questions
 
 **Will it run on Windows 95 or Windows Me?**
-Treat them as untested rather than supported. Everything here has been built and
-verified against Windows 98, Second Edition is what the packaging targets, and
-there is no INF for 95 or Me.
+Windows 98 SE is the main target. The manual VLB install is also verified on
+one physical Trio64 under Windows 95, without the mini-VDD; see the
+[VLB result](#verified-on-physical-hardware-s3-trio64-on-vesa-local-bus-under-windows-95).
+That does not establish general Win95 compatibility. Windows Me has no
+validated configuration.
 
 **Can I get 32-bit colour, or a resolution above 1024x768?**
 On the S3 targets, yes: True Color (32-bit) at 640x480, 800x600 and 1024x768,
@@ -503,38 +521,38 @@ and 1280x1024 at 256 colours and High Color. On a 2 MB card the largest of
 those are refused for want of memory, which is expected rather than a fault —
 1024x768 at 32 bpp needs 3 MB.
 
-On the ATI and generic-VESA targets, not yet. Those depend on what the card's
-BIOS reports, and no dump has been taken for them.
+ATI's baseline stops at 16 bpp. Generic VESA can add True Color and other
+resolutions from the BIOS mode list; the exact choices depend on the card and
+the modes the driver validates at boot.
 
-24-bpp is offered nowhere, and that is deliberate. No S3 BIOS measured has a
+The S3 baseline has no packed 24-bpp modes. No S3 BIOS measured has a
 packed 24-bpp mode at all — the VESA numbers usually described as 24-bit
 (0x112, 0x115, 0x118) all report 32 bpp on these cards.
 
 **Will my Direct3D games work?**
-Most likely not. The Direct3D path is real hardware acceleration through the
-ViRGE's S3D engine, but a narrow slice of the API: pre-transformed and pre-lit
-vertices only, no clipping, backface culling, lines or indexed primitives, and
-no colour-key transparency. It is enough to satisfy an application that asks
-only for what the driver advertises. It is not a general-purpose Direct3D
-device, and there is no Direct3D at all on the Trio32/64, ATI or generic VESA
-targets.
+Compatibility is limited and title-specific. Final Reality and 3DMark 99 run
+on the S3 hardware path, while Incoming currently refuses its texture formats.
+The S3, ATI and VBE packages also offer opt-in software Direct3D, with their
+own capability limits and no recorded period-machine performance baseline.
+Start with the
+[current status and open issues](docs/STATUS.md), and use Disabled if you want
+applications to fall back to another Direct3D device or Microsoft's rasterizers.
 
 **Will the desktop feel faster than with the card's retail driver?**
 On the S3 chips, fills and window moves/scrolls now run on the 2D engine —
 CrystalMark 2D measures the gain over the driver's own software path on a
-physical Trio64 — but text and line drawing are still software, so a retail
+physical Trio64 — but text and line drawing are software by default, so a retail
 driver keeps an edge on text-heavy work. DirectDraw is the other way round on
 the Trio64, where measured frame rates beat the stock S3 driver. The numbers
 are in [Verified on physical hardware](#verified-on-physical-hardware-s3-trio64-on-pci)
 and [How it compares](#how-it-compares-to-the-retail-s3-drivers).
 
 **Can I run this on real hardware, or only in an emulator?**
-Three physical machines run it today: an S3 Trio64 on PCI (Windows 98 SE), the
-same chip on VESA Local Bus (Windows 95), and an Intel GMA 950 netbook on the
-generic VESA package. The ATI target is still emulator-only, and the Matrox
-Millennium II candidate has never been run on its physical card at all. Real
-hardware is welcome and is where the best bugs have been found — just read
-[docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
+Both. Physical evidence covers Trio64 PCI and VLB, generic VBE on Intel GMA
+950 and Trio3D, hardware Direct3D on Trio3D/2X, and recent ViRGE/DX GDI tests.
+Matrox has historical physical software-GDI evidence with its stock mini-VDD;
+ATI remains emulator-only. The [verification matrix](docs/STATUS.md) names the
+limits. Read [docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
 
 **Do I uninstall the existing display driver first?**
 No — and do not remove the display adapter in Device Manager either, because
@@ -560,10 +578,10 @@ capture is the most useful single artefact — [docs/INSTALL.md](docs/INSTALL.md
 explains how to set one up.
 
 One thing worth reporting even when the driver claims success: **if the desktop
-is visibly wrong — shredded, repeated, wrong colours — say so.** The driver's own
-tests all run through GDI, so they agree with whatever the driver decided and
-cannot see a display the hardware is scanning out incorrectly. Your eyes are
-currently the only check that covers that.
+is visibly wrong — shredded, repeated, wrong colours — say so.** Pixel readback
+can pass while the hardware scans out the wrong layout. The mode matrix has a
+separate scanout check, but it does not cover every visible fault; include a
+screenshot or photograph alongside the diagnostic files.
 
 ## Safety and licensing
 

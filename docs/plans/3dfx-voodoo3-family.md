@@ -2,7 +2,8 @@
 
 Date: 2026-08-28
 
-Status: proposed — Phase 0 not yet run
+Status: proposed — Phase 0 not yet run. Reviewed 2026-09-06: the shared
+Direct3D core/engine split is already complete; see [current status](../STATUS.md).
 
 Roadmap Track C (`family-structure-and-next-d3d-roadmap.md`). The card on hand
 is confirmed a Voodoo3, which selects 3dfx as the next family and, later, the
@@ -13,9 +14,8 @@ device models, so this is the first family since s3 whose bring-up can run
 emulator-first with physical verification behind it, the methodology every
 hard ViRGE problem was solved with.
 
-This plan covers tier-0 only. The 2D engine, the Track B D3D core/engine
-split, and the D3D implementation are later plans, sketched at the end so
-tier-0 decisions do not paint over them.
+This plan covers tier-0 only. The 2D engine and D3D implementation are later
+plans, sketched at the end so tier-0 decisions do not paint over them.
 
 ## What is already true
 
@@ -91,9 +91,9 @@ issue's check applies verbatim.
   register. It becomes `V9X_DD_ENGINE_TYPE_TDFX`, an `engines\eng_tdfx.c` ops
   table, and a `gdi-accel` arm, developed against 86Box first. New engine
   vocabulary means new `engine_abi.h` values and manifest EngineType names.
-- **Track B lands here**: before the D3D phase, `d3d_virge.c` splits into the
-  chip-neutral core and `V9X_D3D_ENGINE_OPS`, per the roadmap's two fixed
-  rules (batch granularity, behavior-change-free against the ViRGE matrix).
+- **Track B is complete (2026-08-29)**: the chip-neutral core and
+  `V9X_D3D_ENGINE_OPS` are available for the new backend; see the
+  [split record](../decisions/2026-08-29-d3d-core-engine-split.md).
 - **D3D.** The Voodoo3 3D engine is FIFO command-stream, renders to the
   linear framebuffer (no V1/V2-style separate 3D-only device), DX6-native
   era. Milestone shape: a named game, the Hellbender-plan pattern — chosen
