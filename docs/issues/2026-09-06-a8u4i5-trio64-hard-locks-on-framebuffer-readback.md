@@ -4,6 +4,19 @@ Date: 2026-09-06
 Status: **open, not a Velocity9x defect.** Reproduced eight times on the
 machine; reproduced once under Microsoft's own S3 driver. The remaining
 variable is the board's PCI configuration, untested.
+
+**Update, 2026-09-08:** the card itself is now exonerated. The same Trio64 was
+moved to a Linux host on an AMD RS780/SB710 chipset and driven through the same
+workload class under instrumentation: interleaved CPU write/read-back to the
+linear framebuffer, 12,012,288 accesses, no lock, no corruption, no PCI master
+abort — and posting measured at 285 ns for a posted write against 1622 ns for a
+non-posted read, interleaving merely additive. See
+[the cross-platform evidence](../handoffs/2026-09-08-a8u4i5-trio64-cross-platform-evidence.md).
+That leaves the platform as the surviving candidate, and raises one experiment
+ahead of the BIOS toggles below: establish whether A8U4I5's framebuffer aperture
+is mapped **write-combining**. The Linux runs used uncached individually posted
+writes, which is the conservative case and not the one most likely to wedge a
+bridge.
 Severity: for the project, a lost test target. A8U4I5 cannot host anything
 that reads the framebuffer back at speed until this is cured.
 
