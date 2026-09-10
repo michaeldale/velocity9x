@@ -6,6 +6,25 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **Two Direct3D "driver defects" were one uncleared depth buffer in the
+  probe.** `IDirect3DDevice2::SetRenderTarget` never reaches
+  `V9xD3dSetRenderTarget` on this runtime - measured, `ChainSetTargetCalls=0` -
+  because the runtime destroys the context and creates another one on the new
+  surface, after which the engine is pointed exactly at the back buffer
+  (614400, pitch 1280, the offset the `Solo_*` rung's pixels land on). The
+  black back buffer was the probe's own doing: it attaches a Z surface, nothing
+  clears it, and every vertex carries `sz = 0`, which loses `D3DCMP_LESS`
+  against a stored zero. A two-by-two over depth and the viewport named depth
+  as the cause, and with depth off the same blend produced the alpha ramp the
+  chain was said not to be able to draw. Both
+  [SetRenderTarget](docs/issues/2026-09-05-setrendertarget-is-accepted-and-ignored.md)
+  and the [primary-chain blend](docs/decisions/2026-09-05-a-blend-onto-the-primary-chain-draws-nothing.md)
+  are withdrawn
+  ([record](docs/decisions/2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md)).
+  No driver behaviour changed: the escape that serves the probe's counters
+  gained six fields, of which the SetRenderTarget call count comes from the
+  trace ring, because two more DWORDs in the diagnostics block took the shared
+  block past the 4096 bytes the 16-bit side allocates.
 - **The software sampler's per-draw work moves out of the pixel loop, and its
   bilinear weights come from one multiply.** The texture size, wrap mask,
   bilinear bias and format now resolve once per triangle into a sampler

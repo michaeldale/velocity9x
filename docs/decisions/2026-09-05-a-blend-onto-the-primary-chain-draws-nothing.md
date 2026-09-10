@@ -1,5 +1,14 @@
 # A device on the primary chain works; a blend onto it draws nothing
 
+> **Conclusion withdrawn 2026-09-10.** A blend onto the chain's back buffer
+> draws correctly with depth testing off, and produced the expected seven-sample
+> alpha ramp in the same rung on the same guest. The wall draw, at `sz = 0`
+> with depth writing on, had put zero into the uncleared depth buffer, and the
+> sprite that followed lost `D3DCMP_LESS` against it. The two hypotheses this
+> record kills - the destination base and the stride register's low half -
+> stand; the finding does not. See
+> [the render-target switch and the uncleared depth buffer](2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md).
+
 Date: 2026-09-05
 Status: measured on the emulated ViRGE/DX, which is the control machine. **Not
 yet run on the Trio3D** - it went off the network before the run, as it did the

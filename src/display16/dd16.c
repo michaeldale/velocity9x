@@ -813,6 +813,16 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             counts->texture_green_draws = d3d->texture_green_draws;
             counts->color_key_draws = d3d->color_key_draws;
             counts->texture_alpha_draws = d3d->texture_alpha_draws;
+            /* From the trace ring's per-id enter count, because the
+             * diagnostics block has no room left: see probe_counts.h. */
+            counts->set_render_target_calls =
+                v9x_dd_shared->trace.counters[V9X_TRACE_D3D_SETRENDERTARGET];
+            counts->depth_offered = d3d->depth_offered;
+            counts->depth_accepted = d3d->depth_accepted;
+            counts->context_creates = d3d->context_creates;
+            counts->context_destroys = d3d->context_destroys;
+            counts->target_offset = d3d->target_offset;
+            counts->target_pitch = d3d->target_pitch;
         }
         return 1;
     case V9X_DDFAULTINJECT:

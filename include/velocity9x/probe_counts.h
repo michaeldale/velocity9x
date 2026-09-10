@@ -32,6 +32,30 @@ typedef struct v9x_probe_counts {
     unsigned long texture_green_draws;
     unsigned long color_key_draws;
     unsigned long texture_alpha_draws;
+    /*
+     * Appended 2026-09-10, for the render-target switch that is accepted and
+     * ignored. A probe reading only surfaces cannot separate the two faults
+     * that produce its pixels - a runtime that never calls the driver, and a
+     * driver that takes the call and draws on the old target anyway - and
+     * these do.
+     *
+     * `set_render_target_calls` is the trace ring's per-id enter count for
+     * V9xD3dSetRenderTarget rather than a counter of its own: two more DWORDs
+     * in the diagnostics block took the shared block past the 4096 bytes the
+     * 16-bit side allocates. `depth_offered` and `depth_accepted` say whether
+     * the driver's set_target ran and what it made of the attached Z surface,
+     * and the last two are not counters at all but the render target the
+     * engine last programmed - which is the other half of the question, since
+     * a driver that took the call and a driver that draws where it is
+     * pointed are separate claims.
+     */
+    unsigned long set_render_target_calls;
+    unsigned long depth_offered;
+    unsigned long depth_accepted;
+    unsigned long context_creates;
+    unsigned long context_destroys;
+    unsigned long target_offset;
+    unsigned long target_pitch;
 } V9X_PROBE_COUNTS;
 
 #endif

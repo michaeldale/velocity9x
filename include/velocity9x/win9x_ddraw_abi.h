@@ -1403,6 +1403,16 @@ typedef struct v9x_d3d_diagnostics {
     DWORD target_pitch;
     DWORD target_width;
     DWORD target_height;
+    /*
+     * Nothing is appended here for the render-target switch, and that is a
+     * measured constraint rather than a choice: two more DWORDs took
+     * V9X_DD_SHARED past the 4096 bytes the 16-bit side DPMI-allocates, and
+     * the assert at the bottom of this header caught it. The question - was
+     * V9xD3dSetRenderTarget entered at all - is answered by
+     * trace.counters[V9X_TRACE_D3D_SETRENDERTARGET], which this block
+     * already carries, so the probe's compact view reads it from there
+     * (docs\issues\2026-09-05-setrendertarget-is-accepted-and-ignored.md).
+     */
 } V9X_D3D_DIAGNOSTICS;
 
 /*

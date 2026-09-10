@@ -6409,12 +6409,17 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                             v9x_write_uint("RampOk", ramp_ok);
 
-                            if (ramp_src_tex != 0) {
-                                ramp_src_tex->vtbl->Release(ramp_src_tex);
-                            }
-                            if (ramp_dst_tex != 0) {
-                                ramp_dst_tex->vtbl->Release(ramp_dst_tex);
-                            }
+                            /*
+                             * The ramp's textures are released after the
+                             * chain rung, not here, because the chain rung
+                             * draws with their handles. Releasing first left
+                             * that rung drawing through two IDirect3DTexture2
+                             * objects it had let go of - the surfaces behind
+                             * them outlive the block, so the handles may well
+                             * still resolve, but "may well" is not a control,
+                             * and the rung's whole purpose is to attribute a
+                             * black back buffer to one cause.
+                             */
                             /*
                              * THE PRIMARY CHAIN, ONE CALL AT A TIME.
                              *
@@ -6452,6 +6457,21 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 HRESULT chain_draw_hr = 0;
                                 WORD chain_raw[7];
                                 DWORD ci2;
+                                /*
+                                 * The driver's own account of the switch.
+                                 *
+                                 * Everything else in this rung is read from
+                                 * surfaces, and surfaces cannot distinguish
+                                 * the two faults that produce these pixels: a
+                                 * runtime that never calls the driver's
+                                 * SetRenderTarget, and a driver that takes
+                                 * the call and draws on the old target
+                                 * anyway. These counters name which
+                                 * (docs\issues\2026-09-05-setrendertarget-is-accepted-and-ignored.md).
+                                 */
+                                V9X_PROBE_COUNTS chain_counts_before;
+                                V9X_PROBE_COUNTS chain_counts_after;
+                                int chain_counts_ok = 0;
 
                                 for (ci2 = 0ul; ci2 < 7ul; ++ci2) {
                                     chain_raw[ci2] = 0u;
@@ -6515,6 +6535,16 @@ void __stdcall V9xDdrawProbeEntry(void)
                                  * pointed at the chain and back again.
                                  */
                                 if (chain_hr == 0) {
+                                    chain_counts_ok = v9x_probe_counts(
+                                        &chain_counts_before);
+                                    v9x_write_uint("ChainCountsOk",
+                                        chain_counts_ok ? 1ul : 0ul);
+                                    if (chain_counts_ok) {
+                                        v9x_write_uint("ChainTargetOffsetPre",
+                                            chain_counts_before.target_offset);
+                                        v9x_write_uint("ChainTargetPitchPre",
+                                            chain_counts_before.target_pitch);
+                                    }
                                     v9x_write_stage("ChainStage", 4ul);
                                     chain_hr =
                                         d3d_device->vtbl->SetRenderTarget(
@@ -6539,7 +6569,27 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     triangle[1].tv = 0.5f;
                                     triangle[2].tu = 0.0f;
                                     triangle[2].tv = 0.5f;
-                                    v9x_fill_surface(backbuffer, 0ul);
+                                    /*
+                                     * Filled with a value, not with zero, and
+                                     * read straight back.
+                                     *
+                                     * A zero fill cannot tell a draw that did
+                                     * nothing from a probe reading memory
+                                     * nobody drew into - both read zero. With
+                                     * a fill of 0x18E3 in every pixel,
+                                     * ChainFillRaw says the read reaches the
+                                     * memory the fill wrote, and a wall pixel
+                                     * that still carries the fill afterwards
+                                     * says the draw did not land there.
+                                     */
+                                    v9x_fill_surface(backbuffer, 0x18e318e3ul);
+                                    v9x_write_uint("ChainFillRaw",
+                                        v9x_surface_pixel16(backbuffer,
+                                                            16ul, 12ul));
+                                    v9x_write_uint("ChainDstHandle",
+                                                   chain_dst_handle);
+                                    v9x_write_uint("ChainSrcHandle",
+                                                   chain_src_handle);
 
                                     (void)chain_device->vtbl->SetRenderState(
                                         chain_device,
@@ -6569,6 +6619,110 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     v9x_write_uint("ChainWallRaw",
                                         v9x_surface_pixel16(backbuffer,
                                                             16ul, 12ul));
+
+                                    /*
+                                     * THE SAME WALL, THREE MORE TIMES, ONE
+                                     * VARIABLE AT A TIME.
+                                     *
+                                     * The wall above writes nothing while the
+                                     * Solo_* rung's identical wall - same
+                                     * texture, same blend, same back buffer,
+                                     * same DEST_BASE - writes green. Two
+                                     * things differ, and both are properties
+                                     * of the device this rung reuses rather
+                                     * than of the target it was pointed at.
+                                     *
+                                     * Depth. The runtime rebuilds the context
+                                     * on a target switch (measured:
+                                     * ChainCtxCreates), the new one carries
+                                     * the Z surface this rung attached, and
+                                     * attaching a Z turns testing on with
+                                     * D3DCMP_LESS. Nothing clears that
+                                     * surface - this driver implements no
+                                     * depth clear - so every fragment is
+                                     * compared against whatever VRAM held,
+                                     * and every vertex here has sz = 0, which
+                                     * loses LESS against a stored zero.
+                                     *
+                                     * The viewport. It was sized 64x64 for
+                                     * the offscreen target and never re-set,
+                                     * and the runtime clips a TLVERTEX draw
+                                     * to it.
+                                     *
+                                     * A pixel per cell of the two-by-two says
+                                     * which, and a fill before each says the
+                                     * read is of memory this rung wrote.
+                                     */
+                                    {
+                                        static const DWORD chain_ctl_z[4] = {
+                                            0ul, 1ul, 0ul, 1ul };
+                                        static const DWORD chain_ctl_view[4] =
+                                            { 0ul, 0ul, 1ul, 1ul };
+                                        static const char *chain_ctl_key[4] = {
+                                            "ChainWallNoZRaw",
+                                            "ChainWallZRaw",
+                                            "ChainWallNoZViewRaw",
+                                            "ChainWallZViewRaw" };
+                                        DWORD cc;
+                                        int chain_view_set = 0;
+
+                                        for (cc = 0ul; cc < 4ul; ++cc) {
+                                            if (chain_ctl_view[cc] != 0ul &&
+                                                !chain_view_set) {
+                                                V9X_D3D_VIEWPORT_DESC2 cv;
+
+                                                v9x_zero(&cv, sizeof(cv));
+                                                cv.dwSize = sizeof(cv);
+                                                cv.dwWidth =
+                                                    chain_desc.dwWidth;
+                                                cv.dwHeight =
+                                                    chain_desc.dwHeight;
+                                                cv.dvClipX = -1.0f;
+                                                cv.dvClipY = 1.0f;
+                                                cv.dvClipWidth = 2.0f;
+                                                cv.dvClipHeight = 2.0f;
+                                                cv.dvMinZ = 0.0f;
+                                                cv.dvMaxZ = 1.0f;
+                                                v9x_write_hresult(
+                                                    "ChainViewportHr",
+                                                    d3d_viewport->vtbl->
+                                                        SetViewport2(
+                                                            d3d_viewport,
+                                                            &cv));
+                                                chain_view_set = 1;
+                                            }
+                                            (void)chain_device->vtbl->
+                                                SetRenderState(chain_device,
+                                                    V9X_D3DRENDERSTATE_ZENABLE,
+                                                    chain_ctl_z[cc]);
+                                            v9x_fill_surface(backbuffer,
+                                                             0x18e318e3ul);
+                                            begin_hr = chain_device->vtbl->
+                                                BeginScene(chain_device);
+                                            if (begin_hr == 0) {
+                                                (void)chain_device->vtbl->
+                                                    DrawPrimitive(
+                                                        chain_device,
+                                                        V9X_D3DPT_TRIANGLELIST,
+                                                        V9X_D3DVT_TLVERTEX,
+                                                        triangle, 3ul, 0ul);
+                                                (void)chain_device->vtbl->
+                                                    EndScene(chain_device);
+                                            }
+                                            v9x_write_uint(chain_ctl_key[cc],
+                                                v9x_surface_pixel16(
+                                                    backbuffer, 16ul, 12ul));
+                                        }
+                                        /* Left as the rung found it, so the
+                                         * sprite cell below measures the
+                                         * blend and not a control. */
+                                        (void)chain_device->vtbl->
+                                            SetRenderState(chain_device,
+                                                V9X_D3DRENDERSTATE_ZENABLE,
+                                                1ul);
+                                        v9x_fill_surface(backbuffer,
+                                                         0x18e318e3ul);
+                                    }
 
                                     (void)chain_device->vtbl->SetRenderState(
                                         chain_device,
@@ -6627,6 +6781,57 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     v9x_write_uint("ChainOffscreenRaw",
                                         v9x_surface_pixel16(d3d_target,
                                                             16ul, 12ul));
+                                    /*
+                                     * Read after the draws rather than
+                                     * straight after the switch, so the
+                                     * target the engine reports is the one it
+                                     * drew with: v9x_d3d_refresh_target
+                                     * reprograms DEST_BASE per draw, and a
+                                     * value read before any draw would be the
+                                     * switch's intent rather than its effect.
+                                     */
+                                    if (chain_counts_ok) {
+                                        chain_counts_ok = v9x_probe_counts(
+                                            &chain_counts_after);
+                                    }
+                                    if (chain_counts_ok) {
+                                        v9x_write_uint("ChainSetTargetCalls",
+                                            chain_counts_after.
+                                                set_render_target_calls -
+                                            chain_counts_before.
+                                                set_render_target_calls);
+                                        v9x_write_uint("ChainDepthOffered",
+                                            chain_counts_after.depth_offered -
+                                            chain_counts_before.
+                                                depth_offered);
+                                        v9x_write_uint("ChainDepthAccepted",
+                                            chain_counts_after.
+                                                depth_accepted -
+                                            chain_counts_before.
+                                                depth_accepted);
+                                        v9x_write_uint("ChainCtxCreates",
+                                            chain_counts_after.
+                                                context_creates -
+                                            chain_counts_before.
+                                                context_creates);
+                                        v9x_write_uint("ChainCtxDestroys",
+                                            chain_counts_after.
+                                                context_destroys -
+                                            chain_counts_before.
+                                                context_destroys);
+                                        v9x_write_uint("ChainDrawCalls",
+                                            chain_counts_after.
+                                                render_primitive_calls -
+                                            chain_counts_before.
+                                                render_primitive_calls);
+                                        v9x_write_uint("ChainTargetOffsetPost",
+                                            chain_counts_after.target_offset);
+                                        v9x_write_uint("ChainTargetPitchPost",
+                                            chain_counts_after.target_pitch);
+                                        v9x_probe_write_deltas("Chain",
+                                            &chain_counts_before,
+                                            &chain_counts_after);
+                                    }
                                 }
                                 v9x_write_hresult("ChainHr", chain_draw_hr);
                                 /* Back to the offscreen target, or every rung
@@ -6646,6 +6851,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     chain_z->vtbl->Release(chain_z);
                                 }
                                 v9x_write_stage("ChainStage", 19ul);
+                            }
+
+                            if (ramp_src_tex != 0) {
+                                ramp_src_tex->vtbl->Release(ramp_src_tex);
+                            }
+                            if (ramp_dst_tex != 0) {
+                                ramp_dst_tex->vtbl->Release(ramp_dst_tex);
                             }
 
                             if (ramp_src_surf != 0) {
@@ -6995,6 +7207,101 @@ void __stdcall V9xDdrawProbeEntry(void)
                         }
                         v9x_write_uint("SoloVtxRaw",
                             v9x_surface_pixel16(backbuffer, 16ul, 12ul));
+
+                        /*
+                         * THE WHOLE CELL AGAIN WITH DEPTH OFF.
+                         *
+                         * Because the Chain_* rung's two-by-two showed that
+                         * an opaque wall onto this same back buffer writes
+                         * nothing with depth on and writes with it off, and
+                         * the reason applies here in full: attaching a Z
+                         * surface turns testing on at D3DCMP_LESS with
+                         * writing on, nothing clears it, and every vertex
+                         * above has sz = 0. So the wall wrote zero into the
+                         * depth buffer and the sprite that followed lost
+                         * LESS against it, at every pixel.
+                         *
+                         * If the blend lands here, "a blend onto the primary
+                         * chain draws nothing"
+                         * (docs\decisions\2026-09-05-a-blend-onto-the-primary-chain-draws-nothing.md)
+                         * is this probe's uncleared depth buffer and not a
+                         * driver defect. The fill before each draw keeps the
+                         * read honest.
+                         */
+                        {
+                            static const char *solo_noz_keys[7] = {
+                                "SoloNoZ_x12_Raw", "SoloNoZ_x18_Raw",
+                                "SoloNoZ_x24_Raw", "SoloNoZ_x30_Raw",
+                                "SoloNoZ_x36_Raw", "SoloNoZ_x42_Raw",
+                                "SoloNoZ_x48_Raw" };
+
+                            v9x_write_stage("SoloStage", 24ul);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device, V9X_D3DRENDERSTATE_ZENABLE, 0ul);
+                            solo_tri[0].color = 0xfffffffful;
+                            solo_tri[1].color = 0xfffffffful;
+                            solo_tri[2].color = 0xfffffffful;
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                solo_wall_handle);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_COPY);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                            v9x_fill_surface(backbuffer, 0x18e318e3ul);
+                            begin_hr = solo_device->vtbl->BeginScene(
+                                solo_device);
+                            if (begin_hr == 0) {
+                                (void)solo_device->vtbl->DrawPrimitive(
+                                    solo_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, solo_tri, 3ul, 0ul);
+                                (void)solo_device->vtbl->EndScene(
+                                    solo_device);
+                            }
+                            v9x_write_uint("SoloWallNoZRaw",
+                                v9x_surface_pixel16(backbuffer, 16ul, 12ul));
+
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                solo_sprite_handle);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_MODULATE);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                V9X_D3DBLEND_SRCALPHA);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                V9X_D3DBLEND_INVSRCALPHA);
+                            (void)solo_device->vtbl->SetRenderState(
+                                solo_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                            v9x_write_stage("SoloStage", 25ul);
+                            begin_hr = solo_device->vtbl->BeginScene(
+                                solo_device);
+                            if (begin_hr == 0) {
+                                HRESULT n_hr = solo_device->vtbl->
+                                    DrawPrimitive(solo_device,
+                                        V9X_D3DPT_TRIANGLELIST,
+                                        V9X_D3DVT_TLVERTEX, solo_tri, 3ul,
+                                        0ul);
+
+                                (void)solo_device->vtbl->EndScene(
+                                    solo_device);
+                                v9x_write_hresult("SoloNoZHr", n_hr);
+                            }
+                            for (si3 = 0ul; si3 < 7ul; ++si3) {
+                                v9x_write_uint(solo_noz_keys[si3],
+                                    v9x_surface_pixel16(backbuffer,
+                                                        solo_x[si3], 12ul));
+                            }
+                        }
                     }
                     v9x_write_hresult("SoloHr", solo_draw_hr);
 

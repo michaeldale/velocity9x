@@ -1,10 +1,19 @@
 # SetRenderTarget onto the primary chain is accepted and ignored
 
 Filed: 2026-09-05
-Status: OPEN, measured on the emulated ViRGE/DX. Not chip-specific: this is the
-control machine, on which everything else the probe measures is correct.
-Component: `src/display32/d3d/d3d_core.c`, `v9x_d3d_set_target` and whatever
-carries the current render target to a draw
+Status: **CLOSED 2026-09-10, refuted.** The driver's `V9xD3dSetRenderTarget` is
+never called at all - the runtime destroys the context and creates another one
+on the new surface - and the engine ends up pointed exactly at the back buffer,
+614400 with pitch 1280, which is the offset the `Solo_*` rung's draws visibly
+land on. Nothing was ignored. What made the back buffer look black was this
+probe's own depth buffer: the rung attaches a Z surface, nothing clears it, and
+every vertex carries `sz = 0`, which loses `D3DCMP_LESS` against a stored zero.
+With depth off the identical draw lands. The reading below that the draw
+"landed on the previous target" was a stale pixel from the preceding ramp rung,
+and a fill of the back buffer before the draw is what showed that
+([record](../decisions/2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md)).
+Component: none. The declaration in `v9x_d3d_callbacks2` is correct and this
+runtime does not use it.
 
 ## What was measured
 
