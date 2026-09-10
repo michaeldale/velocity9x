@@ -1529,13 +1529,76 @@ static void test_alpha_gouraud_varies(void)
 }
 
 /*
+ * DESTCOLOR with ZERO multiplies the destination by the source, per channel.
+ *
+ * This is the lightmap pass, and the three ways an engine can get it wrong
+ * are all distinguishable here rather than only two of them: over a magenta
+ * destination, a driver that skipped the draw leaves magenta, one that drew
+ * it opaque leaves the source colour, and only a real multiply lands on the
+ * product. The probe's own BlendModulate cell cannot separate the first from
+ * the third - it draws white, and white times anything is that thing - which
+ * is why the arithmetic is pinned here.
+ *
+ * Green is zero in the destination, so the source's full-scale green has to
+ * vanish: a per-channel factor is what this checks, not a scalar one taken
+ * from any single channel.
+ */
+static void test_alpha_destcolor_multiplies(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0xf81fu);       /* magenta: 255, 0, 255 after expansion */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
+    RCHECK(raster_blended_quad(&target, &alpha, 128l, 255l, 64l, 0l) != 0);
+
+    /* 128*255/255, 255*0/255, 64*255/255 - and the alpha above is zero to
+     * say that neither factor consults it. */
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(128l, 0l, 64l));
+    raster_check_untouched_margins_value(0xf81fu);
+}
+
+/*
+ * A white multiply leaves the frame exactly as it was.
+ *
+ * The identity case, and the one the pass is for: a lightmap that lights
+ * nothing must return the destination bit for bit, not one level darker. The
+ * exact divide is what makes that true - 255 * c + 127 over 255 is c for
+ * every c in range - and a shift-by-eight approximation fails this on almost
+ * every channel value, which is the haze the ONE/SRCALPHA weight correction
+ * already exists to avoid.
+ */
+static void test_alpha_destcolor_white_is_identity(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0x18e3u);       /* the probe's own fill colour */
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0x18e3u);
+
+    /* And the probe's own pair, white over green, which has to stay green. */
+    raster_reset(&target);
+    raster_fill(0x07e0u);
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0x07e0u);
+}
+
+/*
  * The factor pairs this engine does not implement are refused, not
  * approximated.
  *
  * A driver that substituted the nearest factor it had would draw a plausible
  * wrong picture with nothing anywhere to say so, and the caps published in
- * d3d_soft.c claim exactly these four. The engine there turns a refused pair
- * into an opaque draw before it reaches here; this is the layer that says no.
+ * d3d_soft.c claim exactly the five this rasterizer implements. The engine
+ * there skips a refused pair rather than reaching here with it; this is the
+ * layer that says no.
  */
 static void test_alpha_refusals(void)
 {
@@ -2076,6 +2139,8 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_alpha_zero_keeps_destination();
     test_alpha_half_blends();
     test_alpha_gouraud_varies();
+    test_alpha_destcolor_multiplies();
+    test_alpha_destcolor_white_is_identity();
     test_alpha_refusals();
     test_texture_wrap_tiles();
     test_texture_wrap_extreme_coordinate();

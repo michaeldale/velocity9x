@@ -110,7 +110,7 @@ typedef char v9x_assert_soft_filter[
      V9X_D3D_RASTER_BLEND_MODULATE == V9X_D3DTBLEND_MODULATE) ? 1 : -1];
 
 /*
- * The four blend factors travel untranslated as well, and the assertion
+ * The five blend factors travel untranslated as well, and the assertion
  * carries more weight here than for the filters: an application sets
  * SRCBLEND and DESTBLEND to numbers from the same enumeration, and a
  * disagreement would not fail - it would blend with the wrong factor and put
@@ -119,6 +119,7 @@ typedef char v9x_assert_soft_filter[
 typedef char v9x_assert_soft_blend_factor[
     (V9X_D3D_RASTER_BLEND_SRC_ONE == V9X_D3DBLEND_ONE &&
      V9X_D3D_RASTER_BLEND_SRC_SRCALPHA == V9X_D3DBLEND_SRCALPHA &&
+     V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR == V9X_D3DBLEND_DESTCOLOR &&
      V9X_D3D_RASTER_BLEND_DST_ZERO == V9X_D3DBLEND_ZERO &&
      V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA == V9X_D3DBLEND_INVSRCALPHA)
         ? 1 : -1];
@@ -536,11 +537,18 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
     /*
-     * Source and destination blend, the same four factors S3's own ViRGE
-     * driver publishes (98DDK D3DDRV.C:239-242). ONE with ZERO is opaque and
-     * SRCALPHA with INVSRCALPHA is ordinary transparency; the rasterizer
-     * refuses any other pair rather than substituting one, so these four are
-     * exactly what it will do.
+     * Source and destination blend. Four of these are what S3's own ViRGE
+     * driver publishes (98DDK D3DDRV.C:239-242) - ONE with ZERO is opaque
+     * and SRCALPHA with INVSRCALPHA is ordinary transparency - and DESTCOLOR
+     * is the one this engine has that the silicon does not.
+     *
+     * It is advertised rather than merely tolerated because an application
+     * reads these caps to decide whether to attempt a multiplicative
+     * lightmap pass at all. Leaving it out and accepting it anyway would
+     * mean the pass never gets asked for; leaving it out and refusing it
+     * meant a lightmapped scene simply lost its lighting. The rasterizer
+     * refuses any pair outside these rather than substituting one, so what
+     * is published is exactly what it will do.
      *
      * The alpha comes from the vertex colour's top byte only. There is still
      * no D3DPTEXTURECAPS_ALPHA below, because the sampler still discards a
@@ -548,7 +556,8 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
      * pixel test.
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
-        V9X_D3DPBLENDCAPS_ONE | V9X_D3DPBLENDCAPS_SRCALPHA;
+        V9X_D3DPBLENDCAPS_ONE | V9X_D3DPBLENDCAPS_SRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR;
     shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps =
         V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_INVSRCALPHA;
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =

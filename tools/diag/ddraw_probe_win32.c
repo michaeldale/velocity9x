@@ -5745,7 +5745,9 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * leaves green, and a driver that draws it opaque - which is
                  * what produced 3DMark 99's saw-toothed panels - leaves
                  * white. Green is the only acceptable answer; how it was
-                 * reached is what D3dBlendSkipped in the trace block says.
+                 * reached is what D3dBlendSkipped in the trace block says,
+                 * and BlendMultiply below asks it with a source that is not
+                 * white so that the two ways of passing separate.
                  */
                 {
                     HRESULT blend_hr;
@@ -5782,6 +5784,85 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_write_uint("BlendModulateOk",
                         begin_hr == 0 && draw_hr == 0 && end_hr == 0 &&
                         blend_raw == 0x03e0u ? 1ul : 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                        V9X_D3DBLEND_ONE_F);
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                        V9X_D3DBLEND_ZERO_F);
+                }
+
+                v9x_probe_reset_state(d3d_device, triangle);
+                /*
+                 * The same pass again with a source that is not white, which
+                 * is the only way to see whether the multiply happened.
+                 *
+                 * The cell above cannot tell a correct multiply from a
+                 * skipped draw, and that is not a flaw in it - white times
+                 * anything is that thing, so both leave the fill and both
+                 * are acceptable answers to the question it asks, which is
+                 * whether the frame survives. This asks the other question.
+                 * Green over magenta has no channel in common: a driver that
+                 * multiplies leaves black, one that skips leaves magenta,
+                 * one that draws it opaque leaves green. Three outcomes,
+                 * three hues, no arithmetic that depends on 5:6:5 against
+                 * 5:5:5.
+                 *
+                 * The destination is read back before the draw as well.
+                 * Black is also what an empty surface looks like, so the
+                 * fill has to be shown to have landed before its
+                 * disappearance means anything.
+                 */
+                {
+                    HRESULT mul_hr;
+                    DWORD mul_fill;
+                    WORD mul_dst_raw;
+                    WORD mul_raw;
+
+                    mul_fill = target_layout.valid != 0ul
+                        ? (DWORD)v9x_layout_pack(&target_layout, 255ul, 0ul,
+                                                 255ul)
+                        : 0x7c1ful;
+                    mul_fill |= mul_fill << 16;
+                    v9x_fill_surface(d3d_target, mul_fill);
+                    mul_dst_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+
+                    mul_hr = d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                    if (mul_hr == 0) {
+                        mul_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                            V9X_D3DBLEND_DESTCOLOR);
+                    }
+                    if (mul_hr == 0) {
+                        mul_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                            V9X_D3DBLEND_ZERO_F);
+                    }
+                    triangle[0].color = 0xff00ff00ul;
+                    triangle[1].color = 0xff00ff00ul;
+                    triangle[2].color = 0xff00ff00ul;
+                    begin_hr = mul_hr == 0
+                        ? d3d_device->vtbl->BeginScene(d3d_device)
+                        : mul_hr;
+                    if (begin_hr == 0) {
+                        draw_hr = d3d_device->vtbl->DrawPrimitive(
+                            d3d_device, V9X_D3DPT_TRIANGLELIST,
+                            V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                        end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                    }
+                    mul_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                    v9x_write_hresult("BlendMultiplyHr", mul_hr);
+                    v9x_write_uint("BlendMultiplyDstRaw", mul_dst_raw);
+                    v9x_write_uint("BlendMultiplyRaw", mul_raw);
+                    v9x_write_uint("BlendMultiplyOk",
+                        begin_hr == 0 && draw_hr == 0 && end_hr == 0 &&
+                        v9x_probe_hue(&target_layout, mul_dst_raw) ==
+                            V9X_PROBE_HUE_MAGENTA &&
+                        v9x_probe_hue(&target_layout, mul_raw) ==
+                            V9X_PROBE_HUE_BLACK ? 1ul : 0ul);
                     (void)d3d_device->vtbl->SetRenderState(
                         d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
                     (void)d3d_device->vtbl->SetRenderState(

@@ -162,19 +162,31 @@
  * selects a mip level, and `describe_caps` advertises none of them.
  */
 /*
- * The blend factors, numbered as D3DBLEND_* numbers them, and only the four
+ * The blend factors, numbered as D3DBLEND_* numbers them, and only the five
  * the engine implements.
  *
- * Four rather than eleven, and the four are not an arbitrary subset: they are
- * the ones S3's own ViRGE driver publishes on this generation of silicon -
- * D3DPBLENDCAPS_ONE | SRCALPHA for source, ZERO | INVSRCALPHA for destination
- * (98DDK D3DDRV.C:239-242). ONE with ZERO is opaque, SRCALPHA with INVSRCALPHA
- * is ordinary transparency, and between them they are what a period
- * application actually asks for. Anything else is refused rather than
- * approximated, and describe_caps advertises exactly these.
+ * Four of them are not an arbitrary subset: they are the ones S3's own ViRGE
+ * driver publishes on this generation of silicon - D3DPBLENDCAPS_ONE |
+ * SRCALPHA for source, ZERO | INVSRCALPHA for destination (98DDK
+ * D3DDRV.C:239-242). ONE with ZERO is opaque, SRCALPHA with INVSRCALPHA is
+ * ordinary transparency, and between them they are what a period application
+ * usually asks for.
+ *
+ * DESTCOLOR is the fifth, and it is here because this engine is a CPU
+ * rasterizer rather than an imitation of the S3D unit. The four above were
+ * inherited by copying what the silicon could do; a multiply against the
+ * destination costs this engine one product per channel and nothing else, and
+ * without it the multiplicative lightmap pass - the one that produced
+ * 3DMark 99's saw-toothed panels on the hardware path - has no expression at
+ * all. It applies per channel, so it cannot use the scalar weight pair the
+ * other factors share.
+ *
+ * Anything outside these is refused rather than approximated, and
+ * describe_caps advertises exactly these.
  */
 #define V9X_D3D_RASTER_BLEND_SRC_ONE         2ul
 #define V9X_D3D_RASTER_BLEND_SRC_SRCALPHA    5ul
+#define V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR   9ul
 #define V9X_D3D_RASTER_BLEND_DST_ZERO        1ul
 #define V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA 6ul
 

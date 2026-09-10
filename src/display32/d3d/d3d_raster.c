@@ -398,7 +398,8 @@ int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
         return 0;
     }
     if (alpha->src != V9X_D3D_RASTER_BLEND_SRC_ONE &&
-        alpha->src != V9X_D3D_RASTER_BLEND_SRC_SRCALPHA) {
+        alpha->src != V9X_D3D_RASTER_BLEND_SRC_SRCALPHA &&
+        alpha->src != V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR) {
         return 0;
     }
     if (alpha->dst != V9X_D3D_RASTER_BLEND_DST_ZERO &&
@@ -766,6 +767,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
      * constant 256 whatever the fragment's alpha is, so only SRCALPHA has to
      * be recomputed per pixel, and the flag says which. */
     int alpha_varies = 0;
+    /* DESTCOLOR is not a weight. It scales each channel by that channel's own
+     * stored value, so it cannot join the pair below and is carried as its
+     * own per-span flag; the weights then apply to the product. */
+    int modulate_destination = 0;
     v9x_s32 source_weight = 256l;
     v9x_s32 destination_weight = 0l;
     /* The three per-pixel dispatches the loop used to make, made once here.
@@ -827,6 +832,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     if (alpha != 0) {
         alpha_varies = alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA ||
                        alpha->dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+        modulate_destination =
+            alpha->src == V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
     }
 
     if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
@@ -1002,6 +1009,21 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     }
                 }
                 unpack(stored, &dst_red, &dst_green, &dst_blue);
+                if (modulate_destination) {
+                    /* Both factors are 0..255 - the source by the span clamp
+                     * above, the destination by expand5/expand6 - so the
+                     * rounded product is inside the exact divide's range.
+                     * The divide has to be exact rather than a shift by
+                     * eight: a lightmap that lights nothing multiplies by
+                     * white, and an approximate divide would return the
+                     * frame one level darker everywhere it passed. */
+                    out_red =
+                        V9X_D3D_RASTER_DIV255(out_red * dst_red + 127l);
+                    out_green =
+                        V9X_D3D_RASTER_DIV255(out_green * dst_green + 127l);
+                    out_blue =
+                        V9X_D3D_RASTER_DIV255(out_blue * dst_blue + 127l);
+                }
                 out_red = v9x_d3d_raster_blend(out_red, dst_red,
                                                source_weight,
                                                destination_weight);

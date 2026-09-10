@@ -497,6 +497,9 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DPSHADECAPS_FOGGOURAUD      0x00080000ul
 #define V9X_D3DPBLENDCAPS_SRCALPHA        0x00000010ul
 #define V9X_D3DPBLENDCAPS_INVSRCALPHA     0x00000020ul
+/* D3DCAPS.H: the source is scaled by the destination colour, per channel.
+ * The software engine publishes this one; the S3D unit cannot express it. */
+#define V9X_D3DPBLENDCAPS_DESTCOLOR       0x00000100ul
 #define V9X_D3DRENDERSTATE_SRCBLEND                19ul
 #define V9X_D3DRENDERSTATE_DESTBLEND               20ul
 #define V9X_D3DRENDERSTATE_ALPHABLENDENABLE        27ul
@@ -508,6 +511,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DBLEND_ONE                            2ul
 #define V9X_D3DBLEND_SRCALPHA                       5ul
 #define V9X_D3DBLEND_INVSRCALPHA                    6ul
+#define V9X_D3DBLEND_DESTCOLOR                      9ul
 #define V9X_D3DRENDERSTATE_TEXTUREHANDLE             1ul
 #define V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE        4ul
 #define V9X_D3DRENDERSTATE_WRAPU                     5ul

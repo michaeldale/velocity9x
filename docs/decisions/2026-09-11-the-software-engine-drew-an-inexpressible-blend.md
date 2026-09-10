@@ -83,6 +83,13 @@ generation and what `describe_caps` advertises. Anything else now draws
 nothing rather than something wrong. Implementing DESTCOLOR is a separate
 change with its own evidence, and the caps say plainly that it is not there.
 
+> **Superseded the same day.** DESTCOLOR is now implemented as a source
+> factor in the software engine and advertised by its `describe_caps`, so
+> the lightmap pass draws the product rather than nothing:
+> [the lightmap pass now draws](2026-09-11-the-lightmap-pass-now-draws.md).
+> The skip-and-count above is unchanged and still covers every factor pair
+> outside the five. The hardware path still has four.
+
 ## Corrections to yesterday's record
 
 [The system-memory texture record](2026-09-10-software-d3d-system-memory-textures.md)

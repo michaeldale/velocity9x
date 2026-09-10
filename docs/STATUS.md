@@ -25,10 +25,14 @@ Software mode includes depth testing, Gouraud shading, point/bilinear sampling,
 ARGB1555/ARGB4444/RGB565 textures, WRAP/CLAMP and vertex-alpha blending. It does
 not implement texture alpha, perspective correction, mip selection or fog.
 Its blend factors are the four S3's own driver publishes - ONE and SRCALPHA
-for source, ZERO and INVSRCALPHA for destination - and a pair outside them now
-draws nothing rather than drawing opaque, which is the hardware path's
-behaviour and the reason a lightmap pass no longer paints over the frame
+for source, ZERO and INVSRCALPHA for destination - plus DESTCOLOR as a source
+factor, which the S3D unit cannot express and a CPU rasterizer gets for one
+product per channel, so the multiplicative lightmap pass draws
+([record](decisions/2026-09-11-the-lightmap-pass-now-draws.md)). A pair
+outside those five draws nothing and is counted, rather than drawing opaque
+and painting over the frame
 ([record](decisions/2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)).
+The hardware path still publishes and implements the original four.
 The [alpha](decisions/2026-09-02-software-alpha-blending.md),
 [wrap](decisions/2026-09-02-software-texture-wrap.md) and
 [RGB565](decisions/2026-09-02-software-rgb565-textures.md) records distinguish
