@@ -6,6 +6,35 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **`fail-hardware-aperture` could mean four different things, and two of them
+  set no stage code at all.** The DPMI selector allocation failing and a live
+  selector whose aperture has moved both returned from `V9XMAPAPERTURE`
+  without touching the stage code, so they inherited the aperture read's 3 and
+  reported as it - the helper's own header says it owns codes 4 to 7, and two
+  of its exits owned nothing. The allocation failure now sets 4, the moved
+  aperture a new 11, and the PCI BAR read numbers its own four refusals: 12
+  index, 13 the configuration read, 14 an I/O-flagged BAR, 15 out of range or
+  misaligned, with 3 restored on success so a later failure cannot be blamed
+  on a read that worked. Any earlier investigation that trusted that name was
+  reading one of four faults.
+- **No diagnostic written from inside a failing Enable reaches the disk.**
+  Measured three times on a Millennium guest - the aperture value, a pre-call
+  marker, and both again with an explicit profile flush - while the coarse
+  stage, written later from ddi.c, lands every time. The serial trace is no
+  alternative there: the guest's COM1 reads 0xFF from the driver's port check
+  through both the File and named-pipe devices. So the stage code is the only
+  channel out of that window, and `v9x_write_ini_key` now flushes anyway
+  ([record](docs/decisions/2026-09-10-the-2064w-in-a-guest.md)).
+- **Windows 98 has an inbox driver for the MGA-2064W**, and it is the one this
+  family replaces: `DXMGA.INF` binds `PCI\VEN_102B&DEV_0519` to
+  `MGAPDX64.DRV` with its own `mgapdx64.vxd` mini-VDD. So the guarded
+  candidate's install route exists on a stock machine with no vendor download,
+  and the accepted mixed-pair boundary is reachable. Observed in an 86Box
+  Millennium guest, where the candidate loads, refuses, and leaves Windows to
+  fall back to VGA without corruption - the designed behaviour, seen on this
+  chip for the first time. It is not a working driver on that card yet: the
+  refusal is not localised.
+
 - **The Matrox candidate carries a second chip: the original Millennium,
   MGA-2064W (`102B:0519`).** Its own BIOS, executed on an emulated CPU with
   I/O passed through to the card, advertises `0101h`, `0111h`, `0114h` and

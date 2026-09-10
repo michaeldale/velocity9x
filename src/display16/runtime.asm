@@ -1458,6 +1458,7 @@ V9XPCIREADBAR PROC FAR
     push    es
 
     ; A BAR index above 5 is not a slot this header has.
+    mov     _v9x_hardware_stage_code, 12
     mov     di, word ptr 6[bp]
     cmp     di, 5
     ja      short V9xPciReadBar0Failed
@@ -1473,13 +1474,23 @@ V9XPCIREADBAR PROC FAR
     add     di, 0010h
     mov     ax, 0b10ah
     int     1ah
+    ; Each refusal sets its own stage code before leaving.
+    ;
+    ; The stage code is the only diagnostic that survives a failing Enable:
+    ; an INI write from inside this window never reaches the file, measured
+    ; three times on the Millennium guest, while ddi.c's later write of the
+    ; stage name always does. So the reasons are numbered rather than
+    ; described (docs\decisions6-09-10-the-2064w-in-a-guest.md).
+    mov     _v9x_hardware_stage_code, 13
     jc      short V9xPciReadBar0Failed
     or      ah, ah
     jne     short V9xPciReadBar0Failed
     ; Bit 0 set marks an I/O BAR; this must be the memory aperture.
+    mov     _v9x_hardware_stage_code, 14
     test    cl, 1
     jnz     short V9xPciReadBar0Failed
 
+    mov     _v9x_hardware_stage_code, 15
     mov     eax, ecx
     and     eax, 0fffffff0h
     cmp     eax, 01000000h
@@ -1488,6 +1499,9 @@ V9XPCIREADBAR PROC FAR
     ja      short V9xPciReadBar0Failed
     test    eax, 00ffffffh
     jnz     short V9xPciReadBar0Failed
+    ; Nothing refused: put the stage back so a later failure is not blamed
+    ; on the read that worked.
+    mov     _v9x_hardware_stage_code, 3
 
     les     bx, dword ptr 8[bp]
     mov     es:[bx], eax
@@ -1608,6 +1622,10 @@ V9XMAPAPERTURE PROC FAR
     cmp     eax, V9xPhysicalBase
     je      short V9xMapReuse
     ; A live selector against a moved aperture cannot be reconciled here.
+    ; Stage 11, because reporting it as whatever the C side last set - which
+    ; is 3, the aperture read - sent one guest investigation after a BAR that
+    ; had worked.
+    mov     _v9x_hardware_stage_code, 11
     jmp     V9xMapDone
 V9xMapReuse:
     mov     _v9x_hardware_stage_code, 0
@@ -1621,6 +1639,9 @@ V9xMapAllocate:
     mov     cx, 1
     int     31h
     jnc     short V9xMapSelectorAllocated
+    ; Stage 4 - the selector allocation - for the same reason as stage 11
+    ; above: this path set no code at all and inherited the aperture read's.
+    mov     _v9x_hardware_stage_code, 4
     jmp     V9xMapFailed
 V9xMapSelectorAllocated:
     mov     _v9x_hardware_stage_code, 5

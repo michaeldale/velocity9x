@@ -51,6 +51,12 @@ extern WORD FAR PASCAL V9xHardwarePresent(void);
 extern WORD FAR PASCAL V9xPciBiosPresent(void);
 extern WORD FAR PASCAL V9xMapAperture(void);
 
+/* ddi.c: which family entry the PCI scan matched, 0xFFFF for none, and
+ * the chip that follows from it. Read here only to say why stage 3
+ * refused. */
+extern WORD v9x_pci_match;
+extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
+
 /*
  * Shared with the assembly helper.
  *
@@ -323,6 +329,18 @@ static void v9x_write_ini_key(const char FAR *key, const char FAR *value)
 {
     V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", key, value, V9X_DIAG_BOOT_INI);
+    /*
+     * Flushed, because Windows caches profile writes and a diagnostic written
+     * during a failing Enable is exactly the one that never reaches the disk:
+     * the driver is torn down and the display falls back before the cache is
+     * written. Measured on the Millennium guest - a key written immediately
+     * before a stage-3 refusal was absent from the file while the coarse
+     * stage, written later from ddi.c, was there. The DirectDraw probe
+     * learned the same lesson the same way and its v9x_write_stage flushes
+     * for the same reason
+     * (docs\issues\2026-09-05-setrendertarget-is-accepted-and-ignored.md).
+     */
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
 }
 
 static void v9x_vbe_trace(const char FAR *detail)
@@ -422,6 +440,48 @@ static void v9x_vbe_trace_record(WORD index)
     text[at] = '\0';
     v9x_write_ini_key(key, text);
 }
+
+/*
+ * What stage 3 obtained, beside the coarse stage code.
+ *
+ * Written on every enable, not only on a refusal, because a zero aperture
+ * and a wrong one look the same from outside and because a *successful*
+ * read is what tells the next failure apart from this one. A zero has two
+ * causes the stage name cannot separate: the family's PCI scan never
+ * matched, so the hook was asked about the wrong chip or none at all, or it
+ * matched and the configuration read came back unusable. On a family whose chips disagree about which BAR holds the
+ * framebuffer that difference is the whole diagnosis, and it cost a guest
+ * reboot to guess at once
+ * (docs\decisions\2026-09-10-the-2064w-is-drivable-by-the-vbe-path.md).
+ *
+ * m= is the matched device index or "none", bar= the index that chip asked
+ * for, and pci= whether a PCI BIOS answered at all.
+ */
+static void v9x_trace_aperture(unsigned long base)
+{
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    char text[48];
+    WORD at = 0u;
+
+    text[at++] = 'm'; text[at++] = '=';
+    if (v9x_pci_match == 0xffffu) {
+        text[at++] = 'n'; text[at++] = 'o'; text[at++] = 'n'; text[at++] = 'e';
+    } else {
+        at = v9x_append_decimal(text, at, v9x_pci_match);
+    }
+    text[at++] = ' '; text[at++] = 'b'; text[at++] = 'a'; text[at++] = 'r';
+    text[at++] = '=';
+    at = v9x_append_decimal(text, at,
+                            device != 0 ? device->framebuffer_bar : 0xffffu);
+    text[at++] = ' '; text[at++] = 'p'; text[at++] = 'c'; text[at++] = 'i';
+    text[at++] = '=';
+    at = v9x_append_decimal(text, at, V9xPciBiosPresent());
+    text[at++] = ' '; text[at++] = 'b'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, base);
+    text[at] = '\0';
+    v9x_write_ini_key("Aperture", text);
+}
+
 
 /*
  * A real-mode addressable buffer for the buffered VBE calls, as
@@ -861,10 +921,17 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     }
 
     v9x_hardware_stage_code = 3u;
+    /* Written before the call and overwritten after it, so a hook that does
+     * not return is told apart from one that returns zero. The first is not
+     * hypothetical: on the Millennium guest this stage reported a refusal
+     * with no diagnostic of its own, which is what a fault looks like. */
+    v9x_write_ini_key("ApertureStage", "pre");
     /* NULL means "ask the BIOS", which is the whole of the tier-0 backend.
      * Either way a zero base is the same stage 3 refusal. */
     base = v9x_hw16.read_aperture != 0 ? v9x_hw16.read_aperture()
                                        : v9x_vbe_default_aperture();
+    v9x_write_ini_key("ApertureStage", "post");
+    v9x_trace_aperture(base);
     if (base == 0ul) {
         return 0u;
     }

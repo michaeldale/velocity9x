@@ -9,7 +9,16 @@
 #endif
 
 #define V9X_RESULT_PATH V9X_DIAG_MGA_INI
-#define V9X_TARGET_PREFIX "VEN_102B&DEV_051B"
+/*
+ * Both Millennium generations. The tool was written for the MGA-2164W
+ * alone; the MGA-2064W takes the same family, and its Windows resource
+ * list is the reason this tool exists - the two chips order their BARs
+ * differently and the driver has to be told which one holds the
+ * framebuffer
+ * (docs\decisions6-09-09-millennium-2064w-bar-ordering.md).
+ */
+#define V9X_TARGET_PREFIX_2164W "VEN_102B&DEV_051B"
+#define V9X_TARGET_PREFIX_2064W "VEN_102B&DEV_0519"
 #define V9X_MAX_RESOURCE_DATA 256u
 #define V9X_MAX_MEMORY_RANGES 8u
 
@@ -118,8 +127,9 @@ static LONG v9x_find_device(char *device_id, DWORD capacity)
         status = RegEnumKeyExA(pci_key, adapter_index++, adapter,
                                &adapter_length, 0, 0, 0, 0);
         if (status == ERROR_NO_MORE_ITEMS) break;
-        if (status != ERROR_SUCCESS || !v9x_starts_with_ci(adapter,
-                                                           V9X_TARGET_PREFIX)) {
+        if (status != ERROR_SUCCESS ||
+            (!v9x_starts_with_ci(adapter, V9X_TARGET_PREFIX_2164W) &&
+             !v9x_starts_with_ci(adapter, V9X_TARGET_PREFIX_2064W))) {
             continue;
         }
         if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) ==

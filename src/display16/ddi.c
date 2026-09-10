@@ -346,6 +346,19 @@ static void v9x_trace_hardware_failure(void)
     case 8u: v9x_boot_trace("fail-hardware-s3-linear-aperture"); break;
     case 9u: v9x_boot_trace("fail-hardware-vbe-pitch"); break;
     case 10u: v9x_boot_trace("fail-hardware-matrox-direct-format"); break;
+    /* A live selector whose aperture has moved under it. Its own name because
+     * V9XMAPAPERTURE used to leave the stage code alone on this path, so it
+     * reported as the aperture read and cost a guest investigation. */
+    case 11u: v9x_boot_trace("fail-hardware-aperture-moved"); break;
+    /*
+     * Inside the PCI BAR read, which is the one place a diagnostic cannot be
+     * written: an INI write from within a failing Enable never reaches the
+     * file, so the reason has to travel in the stage code itself.
+     */
+    case 12u: v9x_boot_trace("fail-hardware-bar-index"); break;
+    case 13u: v9x_boot_trace("fail-hardware-bar-read"); break;
+    case 14u: v9x_boot_trace("fail-hardware-bar-is-io"); break;
+    case 15u: v9x_boot_trace("fail-hardware-bar-range"); break;
     default: v9x_boot_trace("fail-hardware-unknown"); break;
     }
 }

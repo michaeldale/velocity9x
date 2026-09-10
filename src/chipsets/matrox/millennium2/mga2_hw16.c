@@ -176,11 +176,17 @@ static unsigned long v9x_mga2_read_aperture(void)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
     DWORD base = 0ul;
+    /*
+     * BAR0 when the chip is not known, which is what this hook read before
+     * the index existed. A refusal here would be indistinguishable from the
+     * read failing, and the guarded candidate is better served by the old
+     * behaviour than by a stage nobody can name: the alignment guard inside
+     * the read still refuses a 16 KiB control aperture, which is what a wrong
+     * BAR looks like on the 2064W.
+     */
+    WORD bar = device != 0 ? device->framebuffer_bar : 0u;
 
-    if (device == 0) {
-        return 0ul;
-    }
-    if (V9xPciReadBar(&base, device->framebuffer_bar) == 0u) {
+    if (V9xPciReadBar(&base, bar) == 0u) {
         return 0ul;
     }
     return base;
