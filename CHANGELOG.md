@@ -6,6 +6,25 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The software sampler's per-draw work moves out of the pixel loop, and its
+  bilinear weights come from one multiply.** The texture size, wrap mask,
+  bilinear bias and format now resolve once per triangle into a sampler
+  object; a bilinear pixel's four texel decodes are inline rather than four
+  calls with four format tests, and two of its four pitch multiplies are gone.
+  All three texel formats share one decode path, because each is a field of w
+  bits replicated to eight. Texture coordinates reach the sampler in texel
+  units, scaled by a shift, and a WRAP coordinate is folded into the first
+  repeat unconditionally. Measured against the commit below, on the Trio64
+  guest in RAM: bilinear 1.28x, depth-tested 1.25x, alpha-blended 1.19x,
+  point-sampled 1.19x, untextured scenes unmoved. Cumulative on one boot
+  against `c4988fe`: point 1.75x, bilinear 1.53x, depth 1.48x, alpha 1.41x,
+  and about half of each in emulated video memory. Hashes and the host table
+  unchanged, plus a new host test for bilinear ARGB4444, which the corpus did
+  not cover
+  ([record](docs/decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md)).
+  Two of the plan's proposals were declined on evidence: the nested lerp is
+  not pixel-identical in its cheap form and costs more in its exact one, and
+  packed two-channel arithmetic does not fit 32 bits at these weights.
 - **The software rasterizer's inner loop loses three divides, two clamps and
   two per-pixel dispatches.** `(texel * channel + 127) / 255` becomes a
   multiply and a shift, exact for every value the modulate arm can form and

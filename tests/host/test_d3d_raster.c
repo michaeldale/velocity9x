@@ -1819,6 +1819,77 @@ static void test_texture_bilinear_blends(void)
 }
 
 /*
+ * A uniform texture filtered bilinearly is exactly that texel, in every
+ * format.
+ *
+ * Four identical texels with weights that sum to 65536 must come back as the
+ * texel itself, with nothing left over from the rounding - so this asserts an
+ * exact pixel rather than a range, and the expected channels are written out
+ * by the replication rule rather than read back from the sampler: a 4-bit
+ * field reaches eight bits as v * 17, so 0xa is 170, 0x5 is 85 and 0xc is 204.
+ *
+ * What the assertion can see is five or six bits, because that is what the
+ * target stores. So it catches a channel taken from the wrong field, a wrong
+ * shift, and a replication dropped entirely - 0xa reaching 160 instead of 170
+ * lands a level low - but not the bottom bits of an eight-bit decode. Checked
+ * by making each of those errors on purpose.
+ *
+ * ARGB4444 under the linear filter is the combination nothing else covers.
+ * The corpus draws RGB565 textures, the two-colour bilinear test above uses
+ * ARGB1555, and the format-decode tests point-sample. That gap opened when
+ * the sampler stopped testing the format per texel and started carrying a
+ * per-channel field descriptor instead: the decode is now the same code for
+ * all three formats, so a format that no linear draw exercises is a format
+ * whose descriptor nothing checks.
+ */
+static void test_texture_bilinear_uniform_formats(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    unsigned int x;
+    unsigned int y;
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                         V9X_D3D_RASTER_FILTER_LINEAR,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, 0x0a5cu);
+        }
+    }
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) ==
+           v9x_d3d_raster_rgb565(170l, 85l, 204l));
+
+    /* RGB565's 6-bit green takes the other replication shift: 32 of 63
+     * reaches 130, and red's 16 of 31 reaches 132. */
+    raster_reset(&target);
+    texture.format = V9X_D3D_RASTER_TEXFMT_RGB565;
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, 0x8400u);
+        }
+    }
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) == v9x_d3d_raster_rgb565(132l, 130l, 0l));
+
+    /* And 1555, whose green is 5 bits where 565's is 6: 0x03e0 is green at
+     * full scale, which must reach 255 and not 248. */
+    raster_reset(&target);
+    texture.format = V9X_D3D_RASTER_TEXFMT_ARGB1555;
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, 0x03e0u);
+        }
+    }
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) == v9x_d3d_raster_rgb565(0l, 255l, 0l));
+    raster_check_untouched_margins();
+    raster_texture_check_margins();
+}
+
+/*
  * Modulate scales the texel by the vertex colour; decal ignores it.
  *
  * The same white texture and the same half-bright red vertex, twice. Under
@@ -2015,6 +2086,7 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_blend_reads_target_format();
     test_target_format_refusals();
     test_texture_bilinear_blends();
+    test_texture_bilinear_uniform_formats();
     test_texture_blend_modes();
     test_texture_refusals();
     test_edge_stepping_corpus();

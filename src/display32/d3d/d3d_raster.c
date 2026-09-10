@@ -441,94 +441,204 @@ static v9x_s32 v9x_d3d_raster_blend(v9x_s32 source, v9x_s32 destination,
 }
 
 /*
- * One texel, decoded to three 0..255 channels.
+ * Half a texel, in the sampler's 16.16 texel-unit coordinate.
  *
- * Alpha is read by neither format's arm. The sampler has no alpha blending
- * behind it, and describe_caps advertises no texture alpha to match - a
- * channel decoded and discarded would be the beginning of exactly the
- * advertise-then-ignore pattern this driver has paid for twice.
+ * The bilinear arm samples about the texel centre, so it steps back half a
+ * texel before it splits the coordinate into an index and a fraction.
  */
-static void v9x_d3d_raster_texel(const V9X_D3D_RASTER_TEXTURE *texture,
-                                 v9x_s32 x, v9x_s32 y,
-                                 v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
+#define V9X_D3D_RASTER_TEXEL_HALF 32768l
+
+/*
+ * The sampler's per-draw constants, resolved once and read per pixel.
+ *
+ * Everything here is derived from the bound texture and cannot change while
+ * one triangle is drawn, and all of it used to be recomputed per pixel: the
+ * size, the wrap mask, the bilinear bias, and a chain of format tests inside
+ * a function called once per *texel* - four times over for a bilinear pixel,
+ * each call also multiplying its own row offset by the pitch. Nothing in this
+ * build inlines, so those were four calls, four tests and four multiplies
+ * that a bilinear pixel did not need
+ * (docs\decisions\2026-09-10-rasterizer-scalar-fixes.md).
+ *
+ * `shift` is log2 of the texture edge, so the caller scales a texture
+ * coordinate into texel units with a shift rather than a multiply. The size
+ * is a power of two, which v9x_d3d_raster_texture_valid checks rather than
+ * assumes.
+ *
+ * The three channel descriptors are what replace the format tests. All three
+ * texel formats are a field of w bits replicated up to eight -
+ * `(field << (8 - w)) | (field >> (2w - 8))` - which is what expand5 and
+ * expand6 do for five and six bits, and what the multiply by 17 does for
+ * four, since 17 * v is (v << 4) | v. One decode path with a per-channel
+ * shift, mask and pair of replication shifts therefore covers every format
+ * exactly, with no branch left in the pixel path.
+ *
+ * Alpha is described by nothing, as before. The sampler has no alpha blending
+ * behind it and describe_caps advertises no texture alpha to match; a channel
+ * decoded and discarded would be the beginning of exactly the
+ * advertise-then-ignore pattern this driver has paid for twice.
+ *
+ * `clamp` and `modulate` are the two render states the span loop reads, held
+ * here so that the loop needs no second pointer to the texture.
+ */
+typedef struct V9X_D3D_RASTER_FIELD {
+    v9x_s32 shift;
+    v9x_u32 mask;
+    v9x_s32 left;
+    v9x_s32 right;
+} V9X_D3D_RASTER_FIELD;
+
+typedef struct V9X_D3D_RASTER_SAMPLER {
+    const v9x_u8 *pixels;
+    v9x_u32 pitch;
+    v9x_s32 shift;
+    v9x_s32 mask;
+    v9x_s32 bias;
+    int linear;
+    int clamp;
+    int modulate;
+    V9X_D3D_RASTER_FIELD red;
+    V9X_D3D_RASTER_FIELD green;
+    V9X_D3D_RASTER_FIELD blue;
+} V9X_D3D_RASTER_SAMPLER;
+
+static void v9x_d3d_raster_field(V9X_D3D_RASTER_FIELD *field, v9x_s32 shift,
+                                 v9x_s32 width)
 {
-    const v9x_u16 *row = (const v9x_u16 *)((const v9x_u8 *)texture->pixels +
-                                           (v9x_u32)y * texture->pitch);
-    v9x_u32 texel = (v9x_u32)row[x];
+    field->shift = shift;
+    field->mask = (1ul << width) - 1ul;
+    field->left = 8l - width;
+    field->right = 2l * width - 8l;
+}
+
+static void v9x_d3d_raster_sampler_start(
+    const V9X_D3D_RASTER_TEXTURE *texture, V9X_D3D_RASTER_SAMPLER *sampler)
+{
+    v9x_s32 shift = 0l;
+
+    while ((1ul << shift) < texture->size) {
+        ++shift;
+    }
+
+    sampler->pixels = (const v9x_u8 *)texture->pixels;
+    sampler->pitch = texture->pitch;
+    sampler->shift = shift;
+    sampler->mask = (v9x_s32)texture->size - 1l;
+    sampler->bias = (v9x_s32)texture->size << 16;
+    sampler->linear = texture->filter == V9X_D3D_RASTER_FILTER_LINEAR;
+    sampler->clamp = texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP;
+    sampler->modulate = texture->blend == V9X_D3D_RASTER_BLEND_MODULATE;
 
     if (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444) {
-        *red = (v9x_s32)(((texel >> 8) & 0x0ful) * 17ul);
-        *green = (v9x_s32)(((texel >> 4) & 0x0ful) * 17ul);
-        *blue = (v9x_s32)((texel & 0x0ful) * 17ul);
+        v9x_d3d_raster_field(&sampler->red, 8l, 4l);
+        v9x_d3d_raster_field(&sampler->green, 4l, 4l);
+        v9x_d3d_raster_field(&sampler->blue, 0l, 4l);
         return;
     }
     if (texture->format == V9X_D3D_RASTER_TEXFMT_RGB565) {
-        *red = v9x_d3d_raster_expand5((texel >> 11) & 0x1ful);
-        *green = v9x_d3d_raster_expand6((texel >> 5) & 0x3ful);
-        *blue = v9x_d3d_raster_expand5(texel & 0x1ful);
+        v9x_d3d_raster_field(&sampler->red, 11l, 5l);
+        v9x_d3d_raster_field(&sampler->green, 5l, 6l);
+        v9x_d3d_raster_field(&sampler->blue, 0l, 5l);
         return;
     }
-    *red = v9x_d3d_raster_expand5((texel >> 10) & 0x1ful);
-    *green = v9x_d3d_raster_expand5((texel >> 5) & 0x1ful);
-    *blue = v9x_d3d_raster_expand5(texel & 0x1ful);
+    v9x_d3d_raster_field(&sampler->red, 10l, 5l);
+    v9x_d3d_raster_field(&sampler->green, 5l, 5l);
+    v9x_d3d_raster_field(&sampler->blue, 0l, 5l);
 }
 
 /*
- * Sample the texture at a normalised coordinate, point or bilinear.
+ * One texel word decoded into three 0..255 channels, and one whole texel.
  *
- * Every product here is bounded and the bounds are worth stating, because they
- * are the reason the coordinate range is what it is. u is at most
- * V9X_D3D_RASTER_TEXCOORD_MAX, 2,162,687, and size at most 512, so u * size is
- * at most 1,107,295,744. The bilinear arm adds a whole texture's worth of bias
- * to keep the half-texel offset from going negative - an arithmetic right
- * shift of a negative value is implementation defined, and the wrap mask below
- * would then index backwards off the surface - which takes it to
- * 1,140,817,408, about half of what a signed 32-bit integer holds. The
- * weighted sum of four texels is at most 255 * 256 * 256, which is 16,711,680.
+ * Macros for the reason the clamp above is one: a bilinear pixel decodes four
+ * texels, and in a build that inlines nothing each of these would otherwise
+ * be a call. V9X_D3D_RASTER_DECODE names `sampler` implicitly, in the manner
+ * of V9X_EDGE_START below.
+ */
+#define V9X_D3D_RASTER_FIELD_DECODE(out, field, word) do { \
+    v9x_u32 field_value = ((word) >> (field).shift) & (field).mask; \
+    (out) = (v9x_s32)((field_value << (field).left) | \
+                      (field_value >> (field).right)); \
+} while (0)
+
+#define V9X_D3D_RASTER_DECODE(word, out_red, out_green, out_blue) do { \
+    V9X_D3D_RASTER_FIELD_DECODE(out_red, sampler->red, (word)); \
+    V9X_D3D_RASTER_FIELD_DECODE(out_green, sampler->green, (word)); \
+    V9X_D3D_RASTER_FIELD_DECODE(out_blue, sampler->blue, (word)); \
+} while (0)
+
+/*
+ * Sample the texture at a texel-unit coordinate, point or bilinear.
+ *
+ * The coordinate arrives in 16.16 texel units - whole texels in the top bits
+ * - because the caller has already folded the texture size in with a shift.
+ * That is also what bounds everything here: the caller wraps or clamps into
+ * the first repeat first, so the coordinate is at most 65535 << 9, about 33.5
+ * million, where it used to be a texture coordinate times a size and reached
+ * 1.1 billion. The bilinear arm still adds a whole texture's worth of bias
+ * before it shifts, because an arithmetic right shift of a negative value is
+ * implementation defined and the wrap mask would then index backwards off the
+ * surface. The weighted sum of four texels is at most 255 * 256 * 256, which
+ * is 16,711,680.
+ *
+ * The four weights come from one multiply rather than four. w11 is fu * fv;
+ * the other three follow by subtraction, since (256 - fu) * (256 - fv) is
+ * 65536 - 256fu - 256fv + fu*fv. Every term is an exact integer, so the sum
+ * is the same sum - which is the reason the plan's nested-lerp form was *not*
+ * taken: lerping the rows and then the column costs one multiply per channel
+ * instead of four, but each step truncates, and the pixel table holds this
+ * function to the untruncated result.
  *
  * The `& mask` on every texel index is what performs the wrap, and it was
- * already here when the coordinate could only express one repeat, where it was
- * a no-op guarding against a coordinate that had drifted a fraction past the
- * end. Tiling did not need a second code path in the sampler; it needed a
+ * already here when the coordinate could only express one repeat, where it
+ * was a no-op guarding against a coordinate that had drifted a fraction past
+ * the end. Tiling did not need a second code path in the sampler; it needed a
  * coordinate wide enough to reach one.
  */
-static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_TEXTURE *texture,
-                                  v9x_s32 u, v9x_s32 v,
+static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
+                                  v9x_s32 su, v9x_s32 sv,
                                   v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
 {
-    v9x_s32 size = (v9x_s32)texture->size;
-    v9x_s32 mask = size - 1l;
-    v9x_s32 su = u * size;
-    v9x_s32 sv = v * size;
+    const v9x_u16 *row;
+    v9x_u32 word;
 
-    if (texture->filter == V9X_D3D_RASTER_FILTER_LINEAR) {
-        v9x_s32 bias = size << 16;
-        v9x_s32 bu = su + bias - 32768l;
-        v9x_s32 bv = sv + bias - 32768l;
-        v9x_s32 x0 = (bu >> 16) & mask;
-        v9x_s32 y0 = (bv >> 16) & mask;
-        v9x_s32 x1 = (x0 + 1l) & mask;
-        v9x_s32 y1 = (y0 + 1l) & mask;
+    if (sampler->linear) {
+        v9x_s32 bu = su + sampler->bias - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 bv = sv + sampler->bias - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 x0 = (bu >> 16) & sampler->mask;
+        v9x_s32 y0 = (bv >> 16) & sampler->mask;
+        v9x_s32 x1 = (x0 + 1l) & sampler->mask;
+        v9x_s32 y1 = (y0 + 1l) & sampler->mask;
         v9x_s32 fu = (bu >> 8) & 0xffl;
         v9x_s32 fv = (bv >> 8) & 0xffl;
-        v9x_s32 w00 = (256l - fu) * (256l - fv);
-        v9x_s32 w10 = fu * (256l - fv);
-        v9x_s32 w01 = (256l - fu) * fv;
         v9x_s32 w11 = fu * fv;
+        v9x_s32 w10 = (fu << 8) - w11;
+        v9x_s32 w01 = (fv << 8) - w11;
+        v9x_s32 w00 = 65536l - (fu << 8) - (fv << 8) + w11;
+        const v9x_u16 *row0 = (const v9x_u16 *)(sampler->pixels +
+                                                (v9x_u32)y0 * sampler->pitch);
+        const v9x_u16 *row1 = (const v9x_u16 *)(sampler->pixels +
+                                                (v9x_u32)y1 * sampler->pitch);
+        v9x_u32 t00 = (v9x_u32)row0[x0];
+        v9x_u32 t10 = (v9x_u32)row0[x1];
+        v9x_u32 t01 = (v9x_u32)row1[x0];
+        v9x_u32 t11 = (v9x_u32)row1[x1];
         v9x_s32 r00, g00, b00, r10, g10, b10, r01, g01, b01, r11, g11, b11;
 
-        v9x_d3d_raster_texel(texture, x0, y0, &r00, &g00, &b00);
-        v9x_d3d_raster_texel(texture, x1, y0, &r10, &g10, &b10);
-        v9x_d3d_raster_texel(texture, x0, y1, &r01, &g01, &b01);
-        v9x_d3d_raster_texel(texture, x1, y1, &r11, &g11, &b11);
+        V9X_D3D_RASTER_DECODE(t00, r00, g00, b00);
+        V9X_D3D_RASTER_DECODE(t10, r10, g10, b10);
+        V9X_D3D_RASTER_DECODE(t01, r01, g01, b01);
+        V9X_D3D_RASTER_DECODE(t11, r11, g11, b11);
         *red = (r00 * w00 + r10 * w10 + r01 * w01 + r11 * w11) >> 16;
         *green = (g00 * w00 + g10 * w10 + g01 * w01 + g11 * w11) >> 16;
         *blue = (b00 * w00 + b10 * w10 + b01 * w01 + b11 * w11) >> 16;
         return;
     }
 
-    v9x_d3d_raster_texel(texture, (su >> 16) & mask, (sv >> 16) & mask,
-                         red, green, blue);
+    row = (const v9x_u16 *)(sampler->pixels +
+                            (v9x_u32)((sv >> 16) & sampler->mask) *
+                                sampler->pitch);
+    word = (v9x_u32)row[(su >> 16) & sampler->mask];
+    V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
 }
 
 /*
@@ -625,7 +735,7 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
  */
 static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_DEPTH *depth,
-                                const V9X_D3D_RASTER_TEXTURE *texture,
+                                const V9X_D3D_RASTER_SAMPLER *sampler,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
@@ -788,7 +898,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             V9X_D3D_RASTER_CLAMP255(out_green);
             V9X_D3D_RASTER_CLAMP255(out_blue);
 
-            if (texture != 0) {
+            if (sampler != 0) {
                 v9x_s32 tex_red;
                 v9x_s32 tex_green;
                 v9x_s32 tex_blue;
@@ -796,9 +906,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_s32 texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
 
                 /*
-                 * Under CLAMP a coordinate past either end takes the edge
-                 * texel; under WRAP it is left alone and the sampler's mask
-                 * carries it round.
+                 * Under CLAMP a coordinate past the end takes the edge texel;
+                 * under WRAP it is folded into the first repeat.
                  *
                  * The lower bound is applied either way and it is not the
                  * address mode talking. The sampler shifts right to find a
@@ -816,7 +925,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 if (texel_v < 0l) {
                     texel_v = 0l;
                 }
-                if (texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP) {
+                if (sampler->clamp) {
                     /* To the last texel of the FIRST repeat, which is what
                      * clamping means - not to TEXCOORD_MAX, which is the
                      * widest coordinate the arithmetic carries and is
@@ -830,21 +939,29 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         texel_v = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                     }
                 } else {
-                    /* Still bounded, because the sampler's products are sized
-                     * against TEXCOORD_MAX and nothing else keeps a drifted
-                     * interpolator under it. Wrapping the value here rather
-                     * than clamping it would change which texel is read; the
-                     * mask does that correctly a few lines further on. */
-                    if (texel_u > V9X_D3D_RASTER_TEXCOORD_MAX) {
-                        texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
-                    }
-                    if (texel_v > V9X_D3D_RASTER_TEXCOORD_MAX) {
-                        texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
-                    }
+                    /*
+                     * Folded unconditionally, where this used to test against
+                     * TEXCOORD_MAX first and fold only past it. The two are
+                     * the same picture: the sampler's `& mask` already
+                     * discards everything above the first repeat, so dropping
+                     * those bits here cannot change which texel is read, and
+                     * it cannot change a bilinear fraction either - the bits
+                     * removed are a multiple of a whole texture, which is a
+                     * multiple of both 65536 and 256.
+                     *
+                     * What it buys is the bound. The coordinate handed to the
+                     * sampler is now under one repeat rather than under
+                     * thirty-three, so scaling it into texel units is a shift
+                     * that cannot overflow rather than a multiply sized
+                     * against TEXCOORD_MAX.
+                     */
+                    texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+                    texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                 }
-                v9x_d3d_raster_sample(texture, texel_u, texel_v,
+                v9x_d3d_raster_sample(sampler, texel_u << sampler->shift,
+                                      texel_v << sampler->shift,
                                       &tex_red, &tex_green, &tex_blue);
-                if (texture->blend == V9X_D3D_RASTER_BLEND_MODULATE) {
+                if (sampler->modulate) {
                     /* Both factors are 0..255 - the texel by decode, the
                      * interpolant by the clamp above - which is what puts the
                      * rounded product inside the exact divide's range. */
@@ -930,6 +1047,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     V9X_D3D_RASTER_EDGE along;
     V9X_D3D_RASTER_EDGE across;
     int lower = 0;
+    /* The sampler is built once for the whole triangle rather than per row,
+     * because nothing in it depends on the row. `bound` is what the spans
+     * receive, and a null one is what untextured means. */
+    V9X_D3D_RASTER_SAMPLER sampler;
+    const V9X_D3D_RASTER_SAMPLER *bound = 0;
 
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
@@ -961,6 +1083,13 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
             vertices[index].v > V9X_D3D_RASTER_TEXCOORD_MAX) {
             return 0;
         }
+    }
+
+    /* After validation, never before: the sampler reads the size, format and
+     * render states as facts. */
+    if (texture != 0) {
+        v9x_d3d_raster_sampler_start(texture, &sampler);
+        bound = &sampler;
     }
 
     top = &vertices[0];
@@ -1006,10 +1135,10 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
-            v9x_d3d_raster_span(target, depth, texture, alpha, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, row,
                                 &along.value, &across.value);
         } else {
-            v9x_d3d_raster_span(target, depth, texture, alpha, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, row,
                                 &across.value, &along.value);
         }
         if (row + 1l < last_row) {

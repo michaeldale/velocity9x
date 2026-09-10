@@ -1,18 +1,28 @@
 # Mode 2 scalar fixes: make the rasterizer cheap before making it wide
 
-Status: 2026-09-10. Fixes 1 to 4 are implemented and measured on 86Box Trio64
-and ViRGE/DX, with unchanged pixel hashes throughout: about 2.2x for the
+Status: 2026-09-10. Fixes 1 to 6 are implemented and measured on 86Box Trio64
+and ViRGE/DX, with unchanged pixel hashes throughout. About 2.2x for the
 small-triangle scene from exact incremental edges
-([record](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)), then
-1.45x on point-sampled modulate and 1.04x to 1.20x elsewhere from the exact
-divide, the single clamp and the hoisted dispatch
-([record](../decisions/2026-09-10-rasterizer-scalar-fixes.md),
-[artefacts](../probe/software-d3d-2026-09-10/README.md)). Fixes 5 to 7 remain
-proposals. Cycle figures below are planning estimates, not measurements, and
-one of their assumptions is now known to be wrong: **nothing in this build
-inlines**, so a helper added to the per-pixel path costs a real call - see the
-work order. Physical timing in the [parent plan](s3-trio64-voodoo2-hybrid-3d.md)
-remains unrun; emulator aperture costs do not settle physical residency policy.
+([record](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)); then
+1.45x on point-sampled modulate from the exact divide, the single clamp and
+the hoisted dispatch ([record](../decisions/2026-09-10-rasterizer-scalar-fixes.md),
+[artefacts](../probe/software-d3d-2026-09-10/README.md)); then a further 1.19x
+to 1.28x on every textured scene from the per-triangle sampler and the
+rederived bilinear weights
+([record](../decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md),
+[artefacts](../probe/software-d3d-2026-09-10-sampler/README.md)). Cumulative
+and measured on one boot rather than multiplied: point sampling 1.75x,
+bilinear 1.53x, depth 1.48x, alpha 1.41x in RAM, roughly half those gains in
+emulated video memory.
+
+Only fix 7 remains, and its own text defers it until the physical aperture
+measurement exists. Cycle figures below are planning estimates, not
+measurements, and two of their assumptions turned out wrong: **nothing in this
+build inlines**, so a helper added to the per-pixel path costs a real call,
+and the sampler's cost was mostly the setup around its memory accesses rather
+than the accesses or the arithmetic. Physical timing in the
+[parent plan](s3-trio64-voodoo2-hybrid-3d.md) remains unrun; emulator aperture
+costs do not settle physical residency policy.
 
 Parent: [`s3-trio64-voodoo2-hybrid-3d.md`](s3-trio64-voodoo2-hybrid-3d.md),
 mode 2. Sibling: [`software-d3d-smp-workers.md`](software-d3d-smp-workers.md),
@@ -160,7 +170,16 @@ rasterizer sees it. CLAMP keeps a branchless min and max.
 
 The wrap test entries from the 2026-09-02 record hold this.
 
-Removes: two multiplies and several branches per textured pixel.
+Removes: two multiplies and several branches per textured pixel. Implemented,
+with the fold moved: putting the size into the span's *interpolant* is not
+pixel-identical, because the pixel path truncates a texture coordinate to
+whole units before it scales, and folding earlier keeps precision the old code
+threw away - a better coordinate and a different bilinear fraction. The scale
+is therefore a shift in the pixel path, after that truncation. The WRAP mask
+did become unconditional, and the bound it buys is larger than the multiply it
+removes: the coordinate is under one repeat rather than thirty-three, so the
+scale cannot overflow. CLAMP keeps its compare, because a branchless min and
+max here would need `value >> 31`, which C89 leaves implementation defined.
 
 ### 6. Cheaper bilinear
 
@@ -172,6 +191,20 @@ are the same and only the order of operations changes; if rounding differs
 by one anywhere, keep the current order and take only the packed decode.
 
 Removes: three multiplies and six channel decodes per bilinear pixel.
+Implemented, and both halves of the proposal were declined on measurement or
+arithmetic - see the
+[record](../decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md).
+The nested lerp is not pixel-identical: its cheap form truncates at each step
+where the four-weight sum truncates once, and its exact form costs *six*
+multiplies per channel rather than four. The packed-channel arithmetic does
+not fit: a channel weighted by the bilinear weights reaches 255 * 65536, which
+needs 24 bits, so two channels cannot share a 32-bit word.
+
+What was taken instead: the four weights derived from one multiply by
+subtraction, which is exact, and the four per-texel calls replaced by inline
+decodes with the format resolved per triangle into per-channel field
+descriptors. Bilinear measured 1.28x, the largest gain of the two fixes, and
+none of it came from the texel reads.
 
 ### 7. Paired stores
 
@@ -222,20 +255,29 @@ not a rasterizer one, and it is out of scope here beyond naming it.
    attempt's untextured scenes 13 per cent slower. The clamp and the divide
    ship as macros for that reason. Steps 4 and 6 should be measured on the
    same understanding rather than reasoned about.
-4. **Fixes 5 and 6.** Textured path only. Table unchanged.
+4. **Fixes 5 and 6.** Done, in one commit, table and guest hashes unchanged,
+   plus one new host test for the format-and-filter combination the corpus did
+   not cover. Both of the proposals' cheap forms were declined - the nested
+   lerp on rounding, the packed channels on range - and what paid instead was
+   removing the setup around the texel reads rather than the reads or the
+   arithmetic: bilinear 1.28x
+   ([record](../decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md)).
 5. **Time it.** `dispbench`
    ([`dispbench-as-the-measurement-instrument.md`](dispbench-as-the-measurement-instrument.md))
    before and after on the Trio64 guest and, when available, on BARRY.
    Record per-scene frame times. The guest number measures the emulator's
-   CPU model and says so.
+   CPU model and says so. **Not run.** The synthetic benchmark carried steps 2
+   to 4 on its own, and dispbench's value now is the frame time of something
+   that looks like a scene rather than a scene the rasterizer was tuned on.
 6. **Fix 7**, only if step 1's write number says the aperture is the
    bound and the read number has not sent the work elsewhere.
 7. **Decision record**, `docs/decisions/YYYY-MM-DD-rasterizer-scalar-fixes.md`,
    with the before and after times, what step 1 measured, and which of
-   the rankings above the measurement disputed.
+   the rankings above the measurement disputed. Two records rather than one,
+   dated 2026-09-10, one per commit.
 
-Steps 2 to 4 are two to three days of host-tested work. Steps 1 and 5 need
-BARRY and are the ones that can slip.
+Steps 2 to 4 are done. Steps 1 and 5 need BARRY, which has not answered since
+2026-09-06, and they are the ones that have slipped.
 
 ## What this plan does not do
 
