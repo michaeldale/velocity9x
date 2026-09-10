@@ -1,106 +1,62 @@
 # A render-target switch silently loses every texture
 
 Filed: 2026-09-10
-Status: **OPEN, cause measured and read in the source, fix not made** - it is a
-change to how the driver's texture table is keyed, and there are two ways to
-make it.
-Severity: high for any application that switches render target. Every draw
-after the switch loses its texture, with no error and no counter moving.
-Component: `src/display32/d3d/d3d_core.c` -
-`v9x_d3d_textures_destroy_context`, `v9x_d3d_texture_from_handle`,
-`V9xD3dContextDestroy`.
-
-## What happens
-
-A texture record is keyed by the pair (handle, context):
-
-```c
-if ((DWORD)&v9x_d3d_textures[index] == handle &&
-    v9x_d3d_textures[index].active != 0ul &&
-    v9x_d3d_textures[index].context == context)
-```
-
-and `V9xD3dContextDestroy` calls `v9x_d3d_textures_destroy_context`, which
-marks every record belonging to that context inactive.
-
-This runtime performs `IDirect3DDevice2::SetRenderTarget` by destroying the
-HAL context and creating another one on the new surface - it never calls
-`V9xD3dSetRenderTarget`
+Status: **CLOSED the same day, refuted.** The driver is right and the probe was
+wrong: the runtime retires its own texture handles when it destroys the context
+to perform the switch, and re-creates them on the next `GetHandle`. An
+application that caches handle values across a target switch is using values
+the runtime has retired, which is what this rung did. Re-fetching the handles
+after the switch makes the same draws land - wall green, blend a clean ramp -
+with no driver change
 ([record](../decisions/2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md)).
-So the switch drops every texture the application created, the application's
-handles are unchanged and still valid as far as the runtime is concerned, and
-the lookup above fails for all of them. The draw proceeds untextured.
+Component: none. `tools\diag\ddraw_probe_win32.c` now re-fetches.
 
-## Measured
+## What was seen, and what it meant
 
-Emulated ViRGE/DX, `Win86SE`, agent port 9869, boot 578, 640x480 at 5:5:5,
-`V9XDISP.DRV` 45,562 bytes. The probe's chain rung, whose depth buffer is now
-cleared and whose vertices carry a wall depth and a nearer sprite depth, so
-nothing here is the depth test:
+The chain rung's draws landed untextured after the switch: `ChainWallRaw`
+`0x7FFF`, the white vertex colour, where the wall texture is green (`0x03E0`,
+which the `Solo_*` rung reads), and `ChainSpriteAlpha=0` against the solo
+rung's `1`. The texture table is keyed by (handle, context) and
+`ContextDestroy` drops every record of its context, so the reading fitted a
+driver that had thrown the application's textures away.
+
+The measurement that decided it, boot 580 with a build that kept the records
+past `ContextDestroy`:
 
 ```
-ChainSetTargetCalls   0     the driver's SetRenderTarget was never called
-ChainCtxDestroys      1     the runtime destroyed the context
-ChainCtxCreates       1     ... and created another
-ChainTexCreates       0     and did NOT re-create its textures
-ChainTexDestroys      0     nor destroy them; it expects the handles to hold
-
-ChainWallRaw      32767     white: the vertex colour, untextured
-SoloWallRaw         992     green: the same kind of draw, textured, on a
-                            device created on the back buffer
-
-ChainSpriteAlpha      0     the driver saw no texel alpha to blend with
-SoloSpriteAlpha       1     the control: it did
+ChainTexDestroys   2     the runtime called TextureDestroy itself, twice
+ChainTexCreates    0     ... and created nothing while nothing asked it to
+ChainWallRaw   32767     still white: keeping the records changed nothing
 ```
 
-32767 is `0x7FFF`, white in this 5:5:5 mode; 992 is `0x03E0`, the green the
-wall texture is filled with. The chain rung's wall is drawn with the same
-handle it used before the switch, and it comes out the vertex colour.
+So the runtime is not relying on the driver to hold those records - it retires
+its handles deliberately. Then, with the handles re-fetched by `GetHandle`
+after the switch and the shipping driver restored:
 
-No counter moves for it: `ChainSprite_Dref` and `ChainSprite_Dskip` are
-absent, so nothing was refused and no blend was skipped. A handle that
-resolves to no texture is not counted anywhere - the draw is simply untextured.
+```
+ChainRehandleDstHr / SrcHr   0x00000000      both re-fetched
+ChainTexCreates              2               the runtime re-created them
+ChainWallRaw               992               green: textured
+ChainSpriteAlpha             1
+Chain_x12 .. Chain_x48     930 806 682 620 464 341 217
+```
 
-## Why the pixel keys could not see it
+The ramp, matching `Solo_x12..x48` exactly. Boot 581, `V9XHAL.DLL` 44,032.
 
-The chain rung's wall texture is green and its sprite is a white-ish alpha
-ramp, and an untextured draw takes the white vertex colour. So "the blend left
-no mark" and "both draws painted white" produce the same seven readings, and
-the rung read them as the former for three sessions. `texture_alpha_draws`,
-bracketed around the one draw, is what separated them.
+One detail worth keeping: the handle *values* were unchanged across the switch
+(`2957024348` and `2957024364` both times), because the records were freed and
+the same two slots re-used. A stale handle that still resolves by value is why
+the pixel keys looked like a blend problem for three sessions.
 
-## Two ways to fix it, and why neither is obviously right
+## What the driver kept from the attempt
 
-1. **Stop dropping the records on `ContextDestroy`.** Closest to what this
-   runtime evidently assumes: it hands the handles back out unchanged and
-   never re-creates. The cost is lifetime - the records would then outlive
-   their context and be reclaimed only by `TextureDestroy`, `ContextDestroyAll`
-   or a process teardown, and a title that leaks handles would exhaust
-   `V9X_D3D_TEXTURE_COUNT`.
-2. **Stop keying the lookup by context.** The record already carries its
-   surface, and a handle is the address of the record, so the context term is
-   not what makes a handle unique. The cost is that a stale handle from a
-   *different* application would resolve rather than fail, which the context
-   term currently prevents.
+Only `v9x_d3d_textures_forget_surface`, called from `V9xHalDestroySurface`
+beside the colour-key equivalent, and justified on its own terms rather than
+by this issue: the runtime destroys texture handles with their context, not
+with their surface, so an application that releases a texture's surface
+without a `TextureDestroy` left a record holding a pointer to a freed `lpLcl`
+for the sampler to read. That is reachable today and is now closed.
 
-The DDK creates textures with a context handle
-(`V9xD3dTextureCreate(data->dwhContext, ...)`), which is where the pairing
-came from, and it is not wrong on its face - it is wrong in combination with a
-runtime that rebuilds the context under the application.
-
-## What it might explain
-
-3DMark 99's black boxes on the Trio3D are a sprite-shaped region that is drawn
-and black
-([issue](2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md)). An
-untextured sprite blended over black would be exactly that shape, and 3DMark
-renders to a chain. This is a hypothesis and nothing more: that machine has
-not run any of this, and the counter that would settle it - `ChainSpriteAlpha`
-or its equivalent during a 3DMark run - has never been read there.
-
-## Next
-
-1. Decide between the two fixes above, then measure the chain rung again: the
-   wall must read 992 and `ChainSpriteAlpha` must read 1.
-2. The `Chain_x*` samples should then show the ramp, as `Solo_x*` now does.
-3. Only after the emulator agrees, the same rung on silicon.
+The per-process keying the attempt introduced is reverted. The DDK's pairing -
+a texture belongs to the context that created it - is correct, and the
+measurement above is why.

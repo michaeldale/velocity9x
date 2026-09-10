@@ -138,6 +138,18 @@ typedef struct v9x_d3d_context {
 #define V9X_D3D_TARGET_FORMAT_RGB565   1ul
 #define V9X_D3D_TARGET_FORMAT_XRGB1555 2ul
 
+/*
+ * A texture handle is the address of one of these, and it is valid for the
+ * context that created it and no other.
+ *
+ * That pairing was suspected of losing every texture at a render-target
+ * switch, because this runtime performs the switch by destroying the context.
+ * It does not: the runtime destroys its texture handles along with the
+ * context and re-creates them on the next GetHandle, so the pairing is
+ * exactly right and an application that caches handle values across a switch
+ * is holding values the runtime has retired
+ * (docs\issues\2026-09-10-a-target-switch-loses-every-texture.md).
+ */
 typedef struct v9x_d3d_texture {
     DWORD active;
     DWORD context;

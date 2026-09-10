@@ -473,6 +473,8 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     if (data != 0) {
         v9x_d3d_color_key_forget(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
+        v9x_d3d_textures_forget_surface(
+            (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         data->ddRVal = V9X_DD_OK;
     }
     v9x_trace_exit(V9X_TRACE_DESTROYSURFACE, V9X_DD_OK);

@@ -245,6 +245,34 @@ static void v9x_d3d_textures_destroy_context(DWORD context)
 }
 
 /*
+ * A surface is going away; no texture record may still name it.
+ *
+ * Not part of the context lifetime, and that is the point. An application can
+ * release a texture's surface without calling TextureDestroy - the runtime
+ * destroys handles with their context, not with their surface - and the
+ * record then held a pointer to a freed lpLcl for the sampler to read. That
+ * is reachable today and this closes it; DestroySurface already forgets a
+ * colour key by surface, and this is the same call beside it for the same
+ * reason.
+ */
+void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD index;
+
+    if (surface == 0) {
+        return;
+    }
+    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
+        if (v9x_d3d_textures[index].active != 0ul &&
+            v9x_d3d_surface_lcl(v9x_d3d_textures[index].surface) == surface) {
+            v9x_d3d_textures[index].active = 0ul;
+            v9x_d3d_textures[index].context = 0ul;
+            v9x_d3d_textures[index].surface = 0;
+        }
+    }
+}
+
+/*
  * The surface the context has a texture bound to, or null.
  *
  * The one service the engine asks of the core: the handle table is core
@@ -767,6 +795,14 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
         v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, 0x80070057ul);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /*
+     * The context's textures go with it, and that is right even though the
+     * runtime destroys a context to switch render target: it retires its own
+     * texture handles at the same moment and re-creates them on the next
+     * GetHandle, so a record that outlived the context would be a record no
+     * caller can name
+     * (docs\issues\2026-09-10-a-target-switch-loses-every-texture.md).
+     */
     v9x_d3d_textures_destroy_context(data->dwhContext);
     context->active = 0ul;
     context->pid = 0ul;

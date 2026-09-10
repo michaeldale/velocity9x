@@ -342,6 +342,10 @@ void v9x_d3d_color_key_set(const V9X_DD_SURFACE_LCL *surface, DWORD flags,
                            DWORD low, DWORD high);
 void v9x_d3d_color_key_touch(const V9X_DD_SURFACE_LCL *surface);
 void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface);
+/* And every texture record naming it, for the same reason and at the same
+ * moment: a record outlives the context that created it now, so a destroyed
+ * surface has to be what ends one. */
+void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface);
 V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 DWORD v9x_d3d_depth_bytes_per_pixel(void);
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data);

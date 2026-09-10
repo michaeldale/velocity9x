@@ -160,6 +160,54 @@ draw takes the white vertex colour, the sprite texture is a white-ish ramp,
 and "the blend left no mark" and "both draws painted white" read identically.
 One counter, bracketed around one draw, separated them.
 
+## And that one was the probe too
+
+The issue was filed with two candidate fixes and the first was tried: keep the
+records past `ContextDestroy`, keyed by the owning process instead of the
+context. It changed nothing - `ChainWallRaw` still white on boot 580 - and the
+counter that explains why is the one the attempt made visible:
+
+```
+ChainTexDestroys   2     the runtime called TextureDestroy itself, twice
+ChainTexCreates    0     ... and re-created nothing, because nothing asked
+```
+
+The runtime is not leaving those records to the driver. It retires its own
+texture handles when it destroys the context, and re-creates them on the next
+`GetHandle`. So a handle cached across a target switch is a handle the runtime
+has retired, and the driver's (handle, context) pairing - the DDK's own - is
+right. With the attempt reverted and the probe re-fetching its handles after
+the switch, boot 581:
+
+```
+ChainRehandleDstHr / SrcHr   0x00000000
+ChainTexCreates              2
+ChainWallRaw               992           green, textured
+ChainSpriteAlpha             1
+Chain_x12 .. Chain_x48     930 806 682 620 464 341 217
+```
+
+Identical to `Solo_x12..x48`. The chain rung now measures a depth-tested,
+alpha-blended, textured draw onto the primary chain's back buffer, and it is
+correct.
+
+The handle values were the same before and after the switch - `2957024348` and
+`2957024364` in both - because the records were freed and the same two slots
+re-used. A stale handle that still resolves by value is exactly how this hid.
+
+One byproduct: with the shipping driver the runtime's `TextureDestroy` calls
+arrive after `ContextDestroy` has already released the records, so they fail
+their lookup and `texture_destroys` does not count them. The count reads 0
+where the calls are really being made, and only the kept-records build showed
+them. A counter that counts accepted calls says nothing about refused ones.
+
+The driver keeps one thing from the attempt: `v9x_d3d_textures_forget_surface`,
+called from `V9xHalDestroySurface` beside the colour-key equivalent. Its
+justification is separate and stands on its own - handles are retired with
+their context, not with their surface, so an application that releases a
+texture's surface without a `TextureDestroy` left a record pointing at a freed
+`lpLcl`. Reachable today; closed now.
+
 ## The instrument, and what it should learn
 
 Both fixes named here were made the same day, in the section above: the rungs

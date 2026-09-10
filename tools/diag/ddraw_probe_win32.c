@@ -6617,8 +6617,52 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     v9x_write_hresult("ChainSetTargetHr",
                                                       chain_hr);
                                 }
+                                /*
+                                 * Handles fetched again, after the switch.
+                                 *
+                                 * The runtime destroys the context to perform
+                                 * the switch and destroys its texture handles
+                                 * with it - measured, ChainTexDestroys=2 -
+                                 * and re-creates none. So the values this
+                                 * rung carried across the switch named
+                                 * nothing, every draw went untextured, and
+                                 * the wall came out the white vertex colour;
+                                 * three sessions read that as a blend leaving
+                                 * no mark
+                                 * (docs\issues\2026-09-10-a-target-switch-loses-every-texture.md).
+                                 *
+                                 * GetHandle on the surviving IDirect3DTexture2
+                                 * objects is what an application does after a
+                                 * target change, and the old values are kept
+                                 * beside the new ones so a run says whether
+                                 * they moved.
+                                 */
                                 chain_dst_handle = ramp_dst_handle;
                                 chain_src_handle = ramp_src_handle;
+                                if (chain_hr == 0 && ramp_dst_tex != 0 &&
+                                    ramp_src_tex != 0) {
+                                    DWORD fresh_dst = 0ul;
+                                    DWORD fresh_src = 0ul;
+
+                                    v9x_write_hresult("ChainRehandleDstHr",
+                                        ramp_dst_tex->vtbl->GetHandle(
+                                            ramp_dst_tex, d3d_device,
+                                            &fresh_dst));
+                                    v9x_write_hresult("ChainRehandleSrcHr",
+                                        ramp_src_tex->vtbl->GetHandle(
+                                            ramp_src_tex, d3d_device,
+                                            &fresh_src));
+                                    v9x_write_uint("ChainStaleDstHandle",
+                                                   ramp_dst_handle);
+                                    v9x_write_uint("ChainStaleSrcHandle",
+                                                   ramp_src_handle);
+                                    if (fresh_dst != 0ul) {
+                                        chain_dst_handle = fresh_dst;
+                                    }
+                                    if (fresh_src != 0ul) {
+                                        chain_src_handle = fresh_src;
+                                    }
+                                }
                                 chain_device = d3d_device;
                                 v9x_write_hresult("ChainTargetHr", chain_hr);
                                 if (chain_hr == 0) {
