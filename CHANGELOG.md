@@ -21,6 +21,17 @@ build identifier so exact guest-tested binaries remain traceable.
   a build that kept the records past `ContextDestroy` changed nothing, and
   `ChainTexDestroys=2` on it showed the runtime retiring the handles itself.
   The DDK's (handle, context) pairing stands.
+- **The rasterizer work is exercised through the installed driver, not only
+  through the benchmark.** The Trio64 guest has no S3D engine, so under
+  `Direct3D=2` - `Direct3DMode=software` - every Direct3D draw goes through
+  the CPU rasterizer. The DirectDraw probe on that guest reports zero
+  differences across 1117 keys between the preceding HAL and the one carrying
+  both rasterizer commits, `Result=COMPLETE` on both, with the four
+  texel-alpha and mip rungs reading 0 in each as they have since 2026-09-07
+  ([artefacts](docs/probe/software-d3d-2026-09-10-sampler/README.md)). The
+  benchmark links the rasterizer directly and never loads the driver, so this
+  is the run that says the engine's own vertex conversion and caps still
+  agree with it.
 - **A destroyed surface no longer leaves a texture record pointing at it.**
   `V9xHalDestroySurface` now forgets texture records by surface, beside the
   colour-key equivalent it already called. Handles are retired with their

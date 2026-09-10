@@ -173,6 +173,10 @@ still a scene that takes 114 ms.
   Visual Studio, so `vswhere.exe` is absent and the second compiler's pass
   over the same table is owed.
 - `run-checks.ps1` passed on the final source, so the HAL that carries this
-  code builds for all four families. No family package was installed in a
-  guest and no driver-level Direct3D run was made - the benchmark links the
-  rasterizer directly and never loads the HAL.
+  code builds for all four families. The benchmark links the rasterizer
+  directly and never loads the HAL, so it makes no driver-level claim - but
+  the installed HAL carrying this commit and the sampler one was afterwards
+  run through the DirectDraw probe on the Trio64 guest under `Direct3D=2`,
+  with zero differences across 1117 keys against the preceding HAL. See the
+  [sampler record's limits](2026-09-10-rasterizer-texel-units-and-bilinear.md)
+  for the run.

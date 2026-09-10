@@ -186,8 +186,20 @@ an emulated Pentium MMX. A bilinear scene that took 137 ms now takes 108.
   `build-host-msvc.ps1` still cannot run on this host: no Visual Studio, so no
   `vswhere.exe`.
 - `run-checks.ps1` passed on the final source, so the HAL builds for all four
-  families. No family package was installed in a guest: the benchmark links
-  the rasterizer directly and never loads the HAL, so nothing here exercises
-  the engine's own vertex conversion or caps.
+  families.
+- **The installed HAL was then run, and agrees.** The benchmark links the
+  rasterizer directly and never loads the driver, so it says nothing about the
+  engine's own vertex conversion or caps. The DirectDraw probe through the
+  installed HAL does: on the Trio64 guest with `Direct3D=2` -
+  `Direct3DMode=software`, which is the configuration in which every Direct3D
+  draw goes through this rasterizer, the Trio64 having no S3D engine -
+  `compare-probe.ps1` reports zero differences across 1117 keys between the
+  43,520-byte `soft-edge-01` HAL and the 44,032-byte HAL carrying both of this
+  day's commits, `Result=COMPLETE` on both. `RampOk`, `SpriteOk`,
+  `MipLadderOk` and `AlphaCurveOk` read 0 in both, as they did in both
+  2026-09-07 runs: they are texel-alpha and mip rungs and this engine
+  implements neither. `VtxAlphaCurveOk` reads 1.
+  [Artefacts](../probe/software-d3d-2026-09-10-sampler/README.md), boots 337
+  and 338.
 - The plan's remaining item is fix 7, paired stores, which its own text defers
   until the physical aperture write measurement exists.

@@ -17,6 +17,31 @@ are synthetic timings, not game FPS.
 | `trio64-drift.csv` | the two baseline runs |
 | `virge-baseline-1.ini`, `virge-baseline-2.ini`, `virge-candidate-1.ini` | the same A/B and drift check on the ViRGE guest, boot 574, RAM only |
 | `virge-comparison.csv`, `virge-drift.csv` | those |
+| `trio64-probe-before.ini`, `trio64-probe-after.ini` | the DirectDraw probe through the *installed* HAL on the Trio64 guest, `Direct3D=2`, boots 337 and 338 - the run the benchmark cannot make, because it links the rasterizer directly and never loads the driver |
+| `trio64-hw-after.ini` | that guest's `V9XHW.INI`, which says `Direct3DMode=software` and `ColourLayout=565-auto` |
+
+## The installed-HAL run
+
+`compare-probe.ps1` over the pair reports **0 unexpected, 0 expected, 0
+only-left, 0 only-right** across 1117 keys, with `Result=COMPLETE` on both.
+The HAL changed from 43,520 bytes - the `soft-edge-01` build from
+[2026-09-07](../software-d3d-2026-09-07/README.md) - to 44,032, which carries
+both of this day's rasterizer commits. Nothing else on the guest was touched:
+the 16-bit driver and the mini-VDD are as they were, so the diff is the HAL's
+arithmetic alone.
+
+`RampOk`, `SpriteOk`, `MipLadderOk` and `AlphaCurveOk` read 0 in both runs and
+in both of the 2026-09-07 runs. That is the documented software capability
+set, not a regression: the rasterizer implements no texture alpha and selects
+no mip level, and those four rungs are texel-alpha and mip rungs.
+`VtxAlphaCurveOk` - vertex alpha, which it does implement - reads 1, as does
+`ZDepthFillOk`.
+
+```powershell
+./scripts/compare-probe.ps1 `
+    -Left docs/probe/software-d3d-2026-09-10-sampler/trio64-probe-before.ini `
+    -Right docs/probe/software-d3d-2026-09-10-sampler/trio64-probe-after.ini
+```
 
 ## Reproduce this A/B
 
