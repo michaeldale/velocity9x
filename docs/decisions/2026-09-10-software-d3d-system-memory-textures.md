@@ -107,12 +107,19 @@ The plan's step 1 - the physical aperture read timing - remains unrun, and it
 is the number that should decide whether this becomes a default.
 
 **One thing seen in passing and not explained.** On this guest in software
-mode the probe's video-memory `BlendModulate` cell draws white, and it read
-the same in both of this morning's pre-change runs, so it is neither new nor
-caused by this work. It is not a texture refusal either: every refusal counter
-reads zero on the run where it happened. Filed here as an observation rather
-than an issue, because nothing has yet distinguished a cell whose expectation
-software mode cannot meet from a defect.
+mode the probe's `BlendModulate` cell draws white, and it read the same in
+both of this morning's pre-change runs, so it is neither new nor caused by
+this work. It is not a texture refusal either: every refusal counter reads
+zero on the run where it happened.
+
+> **Explained on 2026-09-11, and it was a defect.** Two things in the
+> paragraph above are wrong: the cell is not a texture cell and is not
+> video-memory-specific. It draws an *untextured* triangle with
+> `DESTCOLOR`/`ZERO` - the multiplicative pass a lightmap uses - and the
+> software engine drew a blend it cannot express as opaque, painting white
+> over the frame, where the hardware path skips and counts. Fixed and
+> verified: [the software engine drew a blend it cannot express,
+> opaque](2026-09-11-the-software-engine-drew-an-inexpressible-blend.md).
 
 ## Gates
 

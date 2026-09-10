@@ -925,19 +925,43 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     }
 
     /*
-     * A blend the rasterizer will not do draws opaque rather than refusing the
-     * batch, on the same argument the texture makes above: the factor pair is
-     * render state an application may set to anything in the enumeration, and
-     * a refusal would report failure for a legal draw. Opaque is the wrong
-     * picture, but it is a picture, and the caps say which four factors this
-     * engine actually applies.
+     * A blend this rasterizer cannot express draws nothing, and the batch
+     * still succeeds.
+     *
+     * It used to draw opaque, on the argument that the factor pair is render
+     * state an application may set to anything and that a refusal would
+     * report failure for a legal draw. The second half of that is right and
+     * the first half does not follow from it: skipping the triangles is not
+     * refusing the batch - the HRESULT stays zero, exactly as it does on the
+     * ViRGE path, which has skipped and counted since 3DMark 99.
+     *
+     * Opaque is not "the wrong picture but a picture". For the multiplicative
+     * pass a lightmap uses - DESTCOLOR over ZERO - the destination is what
+     * the frame already drew, a correct multiply by white leaves it alone,
+     * and drawing the pass opaque paints white over the scene. That is what
+     * produced 3DMark 99's saw-toothed panels on the hardware path, and the
+     * probe has carried a cell for it ever since: fill green, blend a white
+     * triangle with DESTCOLOR/ZERO, and green is the only acceptable answer
+     * whether the driver multiplied or declined. The emulated ViRGE returns
+     * green and this engine returned white
+     * (docs\decisions\2026-09-11-the-software-engine-drew-an-inexpressible-blend.md).
+     *
+     * Counted in the same two fields the ViRGE path uses, because a boot runs
+     * one engine and a skipped blend is the same fact either way.
      */
     if (context->alpha_blend_enable != 0ul) {
         alpha.src = context->src_blend;
         alpha.dst = context->dest_blend;
-        if (v9x_d3d_raster_alpha_valid(&alpha)) {
-            alpha_arg = &alpha;
+        if (!v9x_d3d_raster_alpha_valid(&alpha)) {
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.blend_skipped;
+                v9x_hal->d3d_diagnostics.blend_last_pair =
+                    (context->src_blend << 16) |
+                    (context->dest_blend & 0xfffful);
+            }
+            return 1;
         }
+        alpha_arg = &alpha;
     }
 
     /* Wrapping decides how the texture coordinates are converted, so it has

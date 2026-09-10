@@ -6,6 +6,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The software Direct3D engine drew a blend it cannot express as opaque,
+  and now draws nothing.** `DESTCOLOR` over `ZERO` is the multiplicative pass
+  a lightmap uses: the destination is what the frame already drew, a correct
+  multiply by white leaves it alone, and drawing the pass opaque paints white
+  over the scene - the failure that produced 3DMark 99's saw-toothed panels on
+  the hardware path, which has skipped and counted such a pair since. The
+  software engine took the other choice deliberately, arguing that refusing
+  would report failure for a legal draw; skipping the triangles is not
+  refusing, and the HRESULT stays zero either way. The probe's `BlendModulate`
+  cell read 992 on the emulated ViRGE and 65535 here, and now reads 992 on
+  both, with `D3dBlendSkipped=1` and `D3dBlendLastPair=0x00090001` naming the
+  pair
+  ([record](docs/decisions/2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)).
+  The four expressible factors are unchanged and still what the caps
+  advertise.
+
 - **The software Direct3D engine can sample a texture in system memory, if
   `[Velocity9x] D3DSoftSysMem=1` says so.** It refused any
   `DDSCAPS_SYSTEMMEMORY` texture before, because it reaches a texture through
