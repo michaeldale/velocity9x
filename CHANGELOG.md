@@ -6,6 +6,24 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The software rasterizer's inner loop loses three divides, two clamps and
+  two per-pixel dispatches.** `(texel * channel + 127) / 255` becomes a
+  multiply and a shift, exact for every value the modulate arm can form and
+  asserted against that bound; the colour clamp happens once after the
+  interpolator instead of before modulate, before the blend and inside the
+  packer; the depth comparison is a three-bit relation mask resolved per span
+  - D3DCMP's own numbering, minus one - and the pixel format resolves to a
+  pack and unpack pointer per span. Measured in the existing 86Box guests
+  against `c4988fe`: point-sampled modulate 1.45x, bilinear 1.19x,
+  depth-tested 1.18x, alpha-blended 1.17x, Gouraud 1.14x in RAM, each smaller
+  on the VRAM target, with the host pixel table and all eighteen guest
+  colour/Z hashes unchanged
+  ([record](docs/decisions/2026-09-10-rasterizer-scalar-fixes.md)).
+  The first attempt wrote the clamp and the divide as `static` helpers and was
+  **slower** on every untextured scene: nothing in this build inlines - the
+  HAL passes no `-o` option - so each helper was a call per pixel. Both ship
+  as macros, and that cost is now recorded for the rest of the plan. No
+  physical timing: BARRY has not answered since 2026-09-06.
 - **Host builds work under Windows PowerShell 5.1 and PowerShell 7.** Shared
   setup preserves the compiler argument quoting; both compilers now use one
   portable source list, including the idle-wait tests. MSVC explicitly skips

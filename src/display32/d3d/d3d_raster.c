@@ -118,117 +118,191 @@ static v9x_s32 v9x_d3d_raster_expand6(v9x_u32 value)
     return (v9x_s32)((value << 2) | (value >> 4));
 }
 
-v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+/*
+ * A channel saturated to 0..255, and value / 255 without the divide, both as
+ * macros.
+ *
+ * Macros because the span loop below runs them per pixel and this tree's
+ * Watcom command line asks for no optimization at all - the HAL is built with
+ * `-bt=nt -bd -zq -wx -we -zl -s` and the benchmark executable matches it - so
+ * a static helper is a real CALL on every pixel and not a hint. That is not a
+ * guess: the first form of this change used functions, and the 86Box A/B
+ * measured the untextured scenes 13 per cent *slower* while the textured ones
+ * gained, which is three calls per pixel and nothing else
+ * (docs\decisions\2026-09-10-rasterizer-scalar-fixes.md).
+ *
+ * V9X_D3D_RASTER_CLAMP255 takes an lvalue and names it three times, in the
+ * manner of V9X_EDGE_NEXT further down; every use below passes a plain local.
+ * The unsigned compare is the trick: a negative value converts to something
+ * far above 255, so one test catches both ends, and on the pixels of a
+ * well-formed span it is the test that passes. The usual branchless form -
+ * masks built from `value >> 31` - is not available here, because C89 leaves
+ * the right shift of a negative signed value implementation defined and the
+ * sampler already refuses to rely on that.
+ *
+ * V9X_D3D_RASTER_DIV255 evaluates its argument once. (value * 0x8081) >> 23
+ * equals value / 255 for every value from 0 to 66298 and differs from it at
+ * 66299 - checked exhaustively rather than derived. The modulate numerator is
+ * at most 255 * 255 + 127, which is 65152, so the identity covers it with
+ * about a thousand to spare; a margin that thin is worth an assert rather
+ * than a comment. The multiply is unsigned because the product is what needs
+ * the room: 65152 * 0x8081 is 2,143,305,344, four million short of what a
+ * signed 32-bit integer holds. It fits, and leaving the next caller to find
+ * that margin by overflowing it is the wrong trade - unsigned takes the bound
+ * to 2^32, and the operand is non-negative by construction, both factors
+ * having been clamped to 0..255 first. A P5's integer divide is about 46
+ * cycles against a pipelined 10 for its multiply, so this removes three
+ * divides from every modulated pixel, bit-identically.
+ */
+#define V9X_D3D_RASTER_CLAMP255(channel) do { \
+    if ((v9x_u32)(channel) > 255ul) { \
+        (channel) = ((channel) < 0l) ? 0l : 255l; \
+    } \
+} while (0)
+
+#define V9X_D3D_RASTER_DIV255(value) \
+    ((v9x_s32)(((v9x_u32)(value) * 0x8081ul) >> 23))
+
+#define V9X_D3D_RASTER_DIV255_MAX 66298l
+
+typedef char v9x_assert_raster_div255[
+    (255l * 255l + 127l <= V9X_D3D_RASTER_DIV255_MAX) ? 1 : -1];
+
+/*
+ * The two packers' arithmetic, on channels the caller has already saturated.
+ *
+ * Split from the exported functions so that the span loop, which clamps its
+ * own channels before the texture stage needs them clamped, does not pay for
+ * the same three tests twice. The exported forms below are the same routines
+ * with the guard back on.
+ */
+static v9x_u16 v9x_d3d_raster_pack565(v9x_s32 red, v9x_s32 green,
+                                      v9x_s32 blue)
 {
-    /* Saturating at both ends, because the span interpolator's last pixel can
-     * land a fraction of a level outside the endpoint colours and a wrapped
-     * channel is a bright speck at the end of every span. */
-    if (red < 0l) {
-        red = 0l;
-    }
-    if (red > 255l) {
-        red = 255l;
-    }
-    if (green < 0l) {
-        green = 0l;
-    }
-    if (green > 255l) {
-        green = 255l;
-    }
-    if (blue < 0l) {
-        blue = 0l;
-    }
-    if (blue > 255l) {
-        blue = 255l;
-    }
     return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 8) |
                      ((v9x_u16)(green & 0xfcl) << 3) |
                      ((v9x_u16)(blue & 0xf8l) >> 3));
 }
 
-v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+static v9x_u16 v9x_d3d_raster_pack1555(v9x_s32 red, v9x_s32 green,
+                                       v9x_s32 blue)
 {
-    /* Saturating on the same argument as the 565 packer above. */
-    if (red < 0l) {
-        red = 0l;
-    }
-    if (red > 255l) {
-        red = 255l;
-    }
-    if (green < 0l) {
-        green = 0l;
-    }
-    if (green > 255l) {
-        green = 255l;
-    }
-    if (blue < 0l) {
-        blue = 0l;
-    }
-    if (blue > 255l) {
-        blue = 255l;
-    }
     return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 7) |
                      ((v9x_u16)(green & 0xf8l) << 2) |
                      ((v9x_u16)(blue & 0xf8l) >> 3));
 }
 
-/* One target pixel, packed as the target's own format wants it. */
-static v9x_u16 v9x_d3d_raster_pack(v9x_u32 format, v9x_s32 red,
-                                   v9x_s32 green, v9x_s32 blue)
+v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
 {
-    if (format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
-        return v9x_d3d_raster_xrgb1555(red, green, blue);
-    }
-    return v9x_d3d_raster_rgb565(red, green, blue);
+    /* Saturating at both ends, because the span interpolator's last pixel can
+     * land a fraction of a level outside the endpoint colours and a wrapped
+     * channel is a bright speck at the end of every span. */
+    V9X_D3D_RASTER_CLAMP255(red);
+    V9X_D3D_RASTER_CLAMP255(green);
+    V9X_D3D_RASTER_CLAMP255(blue);
+    return v9x_d3d_raster_pack565(red, green, blue);
 }
 
-/* And back again, for the destination term of a blend. */
-static void v9x_d3d_raster_unpack(v9x_u32 format, v9x_u16 pixel,
-                                  v9x_s32 *red, v9x_s32 *green,
-                                  v9x_s32 *blue)
+v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
 {
-    if (format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
-        *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 10) & 0x1ful);
-        *green = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 5) & 0x1ful);
-        *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
-        return;
-    }
+    /* Saturating on the same argument as the 565 packer above. */
+    V9X_D3D_RASTER_CLAMP255(red);
+    V9X_D3D_RASTER_CLAMP255(green);
+    V9X_D3D_RASTER_CLAMP255(blue);
+    return v9x_d3d_raster_pack1555(red, green, blue);
+}
+
+/*
+ * The target's pixel format, resolved once per span instead of per pixel.
+ *
+ * The format is a property of the surface and cannot change between two
+ * pixels of one scanline, so the test that chose an arm belongs outside the
+ * loop. A pointer rather than a flag because a flag still costs a branch per
+ * pixel, and it replaces a pair of calls - the old per-pixel dispatcher
+ * called the packer - with one indirect call.
+ *
+ * The unpackers stay in this file's own decode terms - expand5 and expand6
+ * replicate high bits into low ones so that a full-scale field reaches 255,
+ * which a plain shift does not.
+ */
+typedef v9x_u16 (*V9X_D3D_RASTER_PACK)(v9x_s32 red, v9x_s32 green,
+                                       v9x_s32 blue);
+typedef void (*V9X_D3D_RASTER_UNPACK)(v9x_u16 pixel, v9x_s32 *red,
+                                      v9x_s32 *green, v9x_s32 *blue);
+
+static void v9x_d3d_raster_unpack565(v9x_u16 pixel, v9x_s32 *red,
+                                     v9x_s32 *green, v9x_s32 *blue)
+{
     *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 11) & 0x1ful);
     *green = v9x_d3d_raster_expand6(((v9x_u32)pixel >> 5) & 0x3ful);
     *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
 }
 
-/*
- * Does this fragment survive the depth test?
- *
- * The default arm is ALWAYS rather than a fallthrough, and it is the same
- * decision `v9x_d3d_z_compare` makes in the ViRGE engine for the same reason:
- * NEVER is a legal value at the low end of the range, so an unrecognised
- * function that fell through to it would discard every pixel and render black
- * with nothing anywhere to say why. Drawing something wrong is a bug someone
- * can see; drawing nothing looks like a different bug entirely.
- */
-static int v9x_d3d_raster_depth_passes(v9x_u32 compare, v9x_s32 value,
-                                       v9x_s32 stored)
+static void v9x_d3d_raster_unpack1555(v9x_u16 pixel, v9x_s32 *red,
+                                      v9x_s32 *green, v9x_s32 *blue)
 {
-    switch (compare) {
-    case V9X_D3D_RASTER_CMP_NEVER:
-        return 0;
-    case V9X_D3D_RASTER_CMP_LESS:
-        return value < stored;
-    case V9X_D3D_RASTER_CMP_EQUAL:
-        return value == stored;
-    case V9X_D3D_RASTER_CMP_LESSEQUAL:
-        return value <= stored;
-    case V9X_D3D_RASTER_CMP_GREATER:
-        return value > stored;
-    case V9X_D3D_RASTER_CMP_NOTEQUAL:
-        return value != stored;
-    case V9X_D3D_RASTER_CMP_GREATEREQUAL:
-        return value >= stored;
-    default:
-        return 1;
+    *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 10) & 0x1ful);
+    *green = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 5) & 0x1ful);
+    *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
+}
+
+/*
+ * The depth comparison as a three-bit relation mask, resolved once per span.
+ *
+ * Bit 0 admits a fragment nearer than the stored value, bit 1 an equal one,
+ * bit 2 a farther one. D3DCMP's numbering is already that mask offset by one
+ * - NEVER is 1 and admits nothing, LESS 2, EQUAL 3, LESSEQUAL 4 which is
+ * less-or-equal, on to ALWAYS at 8 which admits all three - so the conversion
+ * is a subtraction. What licenses it is the header's note that these
+ * constants are deliberately the D3DCMP_* values and that d3d_soft.c asserts
+ * the equality at compile time; the mask below would be a silent lie if
+ * either changed, so it is asserted here too.
+ *
+ * An unrecognised function becomes ALWAYS rather than NEVER. That is the same
+ * decision `v9x_d3d_z_compare` makes in the ViRGE engine, for the same
+ * reason: NEVER is a legal value at the low end of the range, so a function
+ * that fell through to it would discard every pixel and render black with
+ * nothing anywhere to say why. Drawing something wrong is a bug someone can
+ * see; drawing nothing looks like a different bug entirely.
+ *
+ * What this removes is the per-pixel switch. The two comparisons that place
+ * the fragment against the stored value remain, because they are the test
+ * itself.
+ */
+#define V9X_D3D_RASTER_RELATION_LESS    1l
+#define V9X_D3D_RASTER_RELATION_EQUAL   2l
+#define V9X_D3D_RASTER_RELATION_GREATER 4l
+#define V9X_D3D_RASTER_RELATION_ANY \
+    (V9X_D3D_RASTER_RELATION_LESS | V9X_D3D_RASTER_RELATION_EQUAL | \
+     V9X_D3D_RASTER_RELATION_GREATER)
+
+typedef char v9x_assert_raster_relation[
+    (V9X_D3D_RASTER_CMP_NEVER == 1ul &&
+     V9X_D3D_RASTER_CMP_LESS - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)V9X_D3D_RASTER_RELATION_LESS &&
+     V9X_D3D_RASTER_CMP_EQUAL - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)V9X_D3D_RASTER_RELATION_EQUAL &&
+     V9X_D3D_RASTER_CMP_GREATER - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)V9X_D3D_RASTER_RELATION_GREATER &&
+     V9X_D3D_RASTER_CMP_LESSEQUAL - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)(V9X_D3D_RASTER_RELATION_LESS |
+                   V9X_D3D_RASTER_RELATION_EQUAL) &&
+     V9X_D3D_RASTER_CMP_NOTEQUAL - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)(V9X_D3D_RASTER_RELATION_LESS |
+                   V9X_D3D_RASTER_RELATION_GREATER) &&
+     V9X_D3D_RASTER_CMP_GREATEREQUAL - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)(V9X_D3D_RASTER_RELATION_EQUAL |
+                   V9X_D3D_RASTER_RELATION_GREATER) &&
+     V9X_D3D_RASTER_CMP_ALWAYS - V9X_D3D_RASTER_CMP_NEVER ==
+         (v9x_u32)V9X_D3D_RASTER_RELATION_ANY) ? 1 : -1];
+
+static v9x_s32 v9x_d3d_raster_depth_mask(v9x_u32 compare)
+{
+    if (compare < V9X_D3D_RASTER_CMP_NEVER ||
+        compare > V9X_D3D_RASTER_CMP_ALWAYS) {
+        return V9X_D3D_RASTER_RELATION_ANY;
     }
+    return (v9x_s32)(compare - V9X_D3D_RASTER_CMP_NEVER);
 }
 
 int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
@@ -347,12 +421,7 @@ int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
  */
 static v9x_s32 v9x_d3d_raster_weight(v9x_s32 value)
 {
-    if (value < 0l) {
-        value = 0l;
-    }
-    if (value > 255l) {
-        value = 255l;
-    }
+    V9X_D3D_RASTER_CLAMP255(value);
     return value + (value >> 7);
 }
 
@@ -589,6 +658,12 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     int alpha_varies = 0;
     v9x_s32 source_weight = 256l;
     v9x_s32 destination_weight = 0l;
+    /* The three per-pixel dispatches the loop used to make, made once here.
+     * Target format is validated to one of the two, so 565 is the remaining
+     * case rather than a guess at an unknown one. */
+    V9X_D3D_RASTER_PACK pack = v9x_d3d_raster_pack565;
+    V9X_D3D_RASTER_UNPACK unpack = v9x_d3d_raster_unpack565;
+    v9x_s32 depth_mask = 0l;
 
     if (first < 0l) {
         first = 0l;
@@ -644,11 +719,17 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                        alpha->dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
     }
 
+    if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
+        pack = v9x_d3d_raster_pack1555;
+        unpack = v9x_d3d_raster_unpack1555;
+    }
+
     pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
                          (v9x_u32)row * target->pitch);
     if (depth != 0) {
         depths = (v9x_u16 *)((v9x_u8 *)depth->pixels +
                              (v9x_u32)row * depth->pitch);
+        depth_mask = v9x_d3d_raster_depth_mask(depth->compare);
     }
     for (column = first; column < last; ++column) {
         int visible = 1;
@@ -657,8 +738,12 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             /* Clamped before the comparison, not after: the interpolator can
              * land a fraction of a level outside the endpoints, and a depth
              * that wrapped would compare against the wrong end of the buffer
-             * rather than merely being one level out. */
+             * rather than merely being one level out. This clamp stays a pair
+             * of compares against its own bound - it is not a colour channel,
+             * and 0..65535 is the buffer's whole range rather than 0..255. */
             v9x_s32 fragment = z >> V9X_D3D_RASTER_DEPTH_BITS;
+            v9x_s32 stored;
+            v9x_s32 relation;
 
             if (fragment < 0l) {
                 fragment = 0l;
@@ -666,17 +751,42 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             if (fragment > V9X_D3D_RASTER_DEPTH_MAX) {
                 fragment = V9X_D3D_RASTER_DEPTH_MAX;
             }
-            visible = v9x_d3d_raster_depth_passes(depth->compare, fragment,
-                                                  (v9x_s32)depths[column]);
+            stored = (v9x_s32)depths[column];
+            relation = V9X_D3D_RASTER_RELATION_EQUAL;
+            if (fragment < stored) {
+                relation = V9X_D3D_RASTER_RELATION_LESS;
+            } else if (fragment > stored) {
+                relation = V9X_D3D_RASTER_RELATION_GREATER;
+            }
+            visible = (depth_mask & relation) != 0l;
             if (visible && depth->write != 0ul) {
                 depths[column] = (v9x_u16)fragment;
             }
         }
 
         if (visible) {
+            /*
+             * Clamped once, here, and the position is load-bearing: it has to
+             * be before the texture stage, because modulate multiplies by
+             * this channel and a negative factor would brighten rather than
+             * darken - the reason the clamp was written where the modulate
+             * arm used to hold it.
+             *
+             * Doing it here instead is what lets the blend arm's copy and the
+             * packer's go. A modulated channel is already inside 0..255 by
+             * the time it reaches the blend, a decalled one is a decoded
+             * texel, and an untextured one has been clamped on these three
+             * lines, so neither stage had anything left to correct. The
+             * exported packers keep the guard for callers that are not this
+             * loop.
+             */
             v9x_s32 out_red = red >> V9X_D3D_RASTER_COLOUR_BITS;
             v9x_s32 out_green = green >> V9X_D3D_RASTER_COLOUR_BITS;
             v9x_s32 out_blue = blue >> V9X_D3D_RASTER_COLOUR_BITS;
+
+            V9X_D3D_RASTER_CLAMP255(out_red);
+            V9X_D3D_RASTER_CLAMP255(out_green);
+            V9X_D3D_RASTER_CLAMP255(out_blue);
 
             if (texture != 0) {
                 v9x_s32 tex_red;
@@ -735,30 +845,14 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_d3d_raster_sample(texture, texel_u, texel_v,
                                       &tex_red, &tex_green, &tex_blue);
                 if (texture->blend == V9X_D3D_RASTER_BLEND_MODULATE) {
-                    /* Clamped first: the interpolator's endpoints can sit a
-                     * fraction outside 0..255, and a negative factor here
-                     * would brighten rather than darken. */
-                    if (out_red < 0l) {
-                        out_red = 0l;
-                    }
-                    if (out_red > 255l) {
-                        out_red = 255l;
-                    }
-                    if (out_green < 0l) {
-                        out_green = 0l;
-                    }
-                    if (out_green > 255l) {
-                        out_green = 255l;
-                    }
-                    if (out_blue < 0l) {
-                        out_blue = 0l;
-                    }
-                    if (out_blue > 255l) {
-                        out_blue = 255l;
-                    }
-                    out_red = (tex_red * out_red + 127l) / 255l;
-                    out_green = (tex_green * out_green + 127l) / 255l;
-                    out_blue = (tex_blue * out_blue + 127l) / 255l;
+                    /* Both factors are 0..255 - the texel by decode, the
+                     * interpolant by the clamp above - which is what puts the
+                     * rounded product inside the exact divide's range. */
+                    out_red = V9X_D3D_RASTER_DIV255(tex_red * out_red + 127l);
+                    out_green =
+                        V9X_D3D_RASTER_DIV255(tex_green * out_green + 127l);
+                    out_blue =
+                        V9X_D3D_RASTER_DIV255(tex_blue * out_blue + 127l);
                 } else {
                     out_red = tex_red;
                     out_green = tex_green;
@@ -772,30 +866,12 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_s32 dst_green;
                 v9x_s32 dst_blue;
 
-                /* Clamped before the weights are applied, not after. The
-                 * interpolator's endpoints can land a fraction outside
-                 * 0..255, and a negative source channel here would subtract
-                 * from the destination instead of adding to it - which shows
-                 * up as a dark fringe along the edge of every blended
-                 * triangle rather than as an obviously wrong colour. */
-                if (out_red < 0l) {
-                    out_red = 0l;
-                }
-                if (out_red > 255l) {
-                    out_red = 255l;
-                }
-                if (out_green < 0l) {
-                    out_green = 0l;
-                }
-                if (out_green > 255l) {
-                    out_green = 255l;
-                }
-                if (out_blue < 0l) {
-                    out_blue = 0l;
-                }
-                if (out_blue > 255l) {
-                    out_blue = 255l;
-                }
+                /* No clamp here any more. A source channel outside 0..255
+                 * would subtract from the destination instead of adding to
+                 * it - a dark fringe along the edge of every blended triangle
+                 * rather than an obviously wrong colour - and that is still
+                 * true; it is the span's own clamp, above, that now
+                 * guarantees the range on every path into this arm. */
                 if (alpha_varies) {
                     v9x_s32 weight = v9x_d3d_raster_weight(
                         fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS);
@@ -808,8 +884,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         destination_weight = 256l - weight;
                     }
                 }
-                v9x_d3d_raster_unpack(target->format, stored,
-                                      &dst_red, &dst_green, &dst_blue);
+                unpack(stored, &dst_red, &dst_green, &dst_blue);
                 out_red = v9x_d3d_raster_blend(out_red, dst_red,
                                                source_weight,
                                                destination_weight);
@@ -821,8 +896,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                                 destination_weight);
             }
 
-            pixels[column] = v9x_d3d_raster_pack(target->format, out_red,
-                                                 out_green, out_blue);
+            pixels[column] = pack(out_red, out_green, out_blue);
         }
 
         /* Stepped for every pixel, drawn or not. A failed depth test skips

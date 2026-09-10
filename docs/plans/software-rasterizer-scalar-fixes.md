@@ -1,11 +1,17 @@
 # Mode 2 scalar fixes: make the rasterizer cheap before making it wide
 
-Status: 2026-09-07. Exact incremental edges are implemented and measured on
-86Box Trio64 and ViRGE/DX: about 2.2x for the small-triangle scene, with
-unchanged pixel hashes. See the [measurement record](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)
-and [benchmark instructions](../probe/software-d3d-2026-09-07/README.md).
-The other changes below remain proposals. Cycle figures are planning estimates,
-not measurements. Physical timing in the [parent plan](s3-trio64-voodoo2-hybrid-3d.md)
+Status: 2026-09-10. Fixes 1 to 4 are implemented and measured on 86Box Trio64
+and ViRGE/DX, with unchanged pixel hashes throughout: about 2.2x for the
+small-triangle scene from exact incremental edges
+([record](../decisions/2026-09-07-software-rasterizer-edge-stepping.md)), then
+1.45x on point-sampled modulate and 1.04x to 1.20x elsewhere from the exact
+divide, the single clamp and the hoisted dispatch
+([record](../decisions/2026-09-10-rasterizer-scalar-fixes.md),
+[artefacts](../probe/software-d3d-2026-09-10/README.md)). Fixes 5 to 7 remain
+proposals. Cycle figures below are planning estimates, not measurements, and
+one of their assumptions is now known to be wrong: **nothing in this build
+inlines**, so a helper added to the per-pixel path costs a real call - see the
+work order. Physical timing in the [parent plan](s3-trio64-voodoo2-hybrid-3d.md)
 remains unrun; emulator aperture costs do not settle physical residency policy.
 
 Parent: [`s3-trio64-voodoo2-hybrid-3d.md`](s3-trio64-voodoo2-hybrid-3d.md),
@@ -93,7 +99,11 @@ modulate products at `:724-726` are at most 255 * 255 + 127, inside that
 range. The replacement is bit-identical, so no table entry may change and
 the test run is the proof.
 
-Removes: three divisions per textured modulated pixel.
+Removes: three divisions per textured modulated pixel. Implemented as
+`V9X_D3D_RASTER_DIV255`; the identity was checked exhaustively and holds to
+66298, and an assert ties that bound to the numerator. Measured 1.45x on the
+point-sampled modulate scene, the largest single gain in this plan after the
+edges.
 
 ### 3. One clamp, branchless
 
@@ -108,7 +118,14 @@ should fail.
 The table already contains Gouraud triangles whose corners hit 0 and 255;
 those entries are the check.
 
-Removes: six to twelve branches per pixel.
+Removes: six to twelve branches per pixel. Implemented, with two departures.
+The clamp is one *unsigned* compare rather than a mask: C89 leaves the right
+shift of a negative signed value implementation defined, which is the same
+reason the sampler shifts coordinates non-negative first. And the single
+clamp sits after the interpolator rather than in pack, because modulate
+multiplies by the channel and needs it clamped before the texture stage; the
+exported packers keep their own guard for callers outside the loop, and the
+loop no longer pays for it.
 
 ### 4. Hoist the per-pixel dispatch
 
@@ -127,7 +144,11 @@ Take the second. It keeps one loop body, which is what the table is
 written against. Revisit the first only if a measurement says the
 remaining tests matter.
 
-Removes: three or four tests per pixel.
+Removes: three or four tests per pixel. Implemented as the second option, and
+the mask turned out to need no table: D3DCMP's numbering *is* the three-bit
+relation mask offset by one, so the conversion is a subtraction, asserted
+against the constants. The format pointers also collapsed a two-call chain -
+the old dispatcher called the packer - into one indirect call.
 
 ### 5. Texel-unit texture coordinates
 
@@ -192,8 +213,15 @@ not a rasterizer one, and it is out of scope here beyond naming it.
 2. **Fix 1, incremental edges.** Land alone. Full table must pass
    unchanged. Record any entry whose expected pixels had to change, with
    the reason; there should be none.
-3. **Fixes 2, 3, 4 together.** They touch the same loop body and are each
-   bit-identical by construction. One commit, table unchanged.
+3. **Fixes 2, 3, 4 together.** Done, in one commit, with the table and all
+   eighteen guest hashes unchanged. Two things the work taught, both in the
+   [record](../decisions/2026-09-10-rasterizer-scalar-fixes.md): the divide
+   was the dominant cost of the three, not the last of them as ranked below;
+   and a `static` helper in the per-pixel path is a CALL, because the HAL and
+   the benchmark are both compiled with no `-o` option, which made the first
+   attempt's untextured scenes 13 per cent slower. The clamp and the divide
+   ship as macros for that reason. Steps 4 and 6 should be measured on the
+   same understanding rather than reasoned about.
 4. **Fixes 5 and 6.** Textured path only. Table unchanged.
 5. **Time it.** `dispbench`
    ([`dispbench-as-the-measurement-instrument.md`](dispbench-as-the-measurement-instrument.md))
