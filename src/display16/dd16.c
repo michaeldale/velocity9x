@@ -45,6 +45,16 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 extern DWORD FAR PASCAL V9xLinearBase(void);
 
 static v9x_u16 v9x_dd_d3d_state = V9X_D3D_STATE_NONE;
+/*
+ * [Velocity9x] D3DSoftSysMem, latched beside the Direct3D mode.
+ *
+ * Only the software engine can act on it, and it is read unconditionally
+ * anyway: reading a key costs nothing and a machine running the hardware path
+ * publishes the resolved answer in V9XHW.INI either way, which is what a bug
+ * report needs.
+ */
+#define V9X_D3D_SOFT_SYSMEM_KEY "D3DSoftSysMem"
+static v9x_u16 v9x_dd_d3d_soft_sysmem = V9X_FALSE;
 
 void v9x_dd_d3d_configure(void)
 {
@@ -72,6 +82,13 @@ void v9x_dd_d3d_configure(void)
     v9x_dd_d3d_state = v9x_d3d_mode_resolve(
         (v9x_u16)requested,
         (engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul ? V9X_TRUE : V9X_FALSE);
+
+    /* Same section and the same enable-time timing again. Absent is off, so
+     * this setting cannot change a machine that has not asked for it. */
+    v9x_dd_d3d_soft_sysmem =
+        GetPrivateProfileInt(V9X_SETTINGS_SECTION, V9X_D3D_SOFT_SYSMEM_KEY,
+                             0, V9X_SETTINGS_INI) != 0
+            ? V9X_TRUE : V9X_FALSE;
 }
 
 const char *v9x_dd_d3d_state_text(void)
@@ -84,6 +101,22 @@ const char *v9x_dd_d3d_state_text(void)
 WORD v9x_dd_d3d_state_code(void)
 {
     return (WORD)v9x_dd_d3d_state;
+}
+
+/*
+ * What D3DSoftSysMem resolved to, for V9XHW.INI.
+ *
+ * Three answers rather than two, for the same reason Direct3DMode has more
+ * states than the setting does: "you turned it off" and "it cannot apply to
+ * this mode" are different facts, and a settings page or a bug report that
+ * conflated them would send someone looking in the wrong place.
+ */
+const char *v9x_dd_d3d_soft_sysmem_text(void)
+{
+    if (v9x_dd_d3d_state != V9X_D3D_STATE_SOFTWARE) {
+        return "not-applicable";
+    }
+    return v9x_dd_d3d_soft_sysmem != V9X_FALSE ? "allowed" : "refused";
 }
 
 #ifndef V9X_TARGET_MATROX_MILLENNIUM2
@@ -322,6 +355,11 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     if (v9x_dd_d3d_state == V9X_D3D_STATE_SOFTWARE) {
         engine_caps |= V9X_DD_ENGINE_CAP_D3D |
                        V9X_DD_ENGINE_CAP_D3D_SOFTWARE;
+        /* Only with the software engine: the bit says the CPU may sample a
+         * system-memory texture, and no chip can. */
+        if (v9x_dd_d3d_soft_sysmem != V9X_FALSE) {
+            engine_caps |= V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM;
+        }
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
     shared->engine.engine_caps = engine_caps;
@@ -493,6 +531,24 @@ static void v9x_dd_refresh_framebuffer(void)
     if (v9x_dd_d3d_state == V9X_D3D_STATE_SOFTWARE) {
         shared->engine.engine_caps |= V9X_DD_ENGINE_CAP_D3D |
                                       V9X_DD_ENGINE_CAP_D3D_SOFTWARE;
+        /*
+         * And the system-memory permission, which must be set in both places
+         * that stamp this word.
+         *
+         * It was added to v9x_dd_stamp_engine_caps alone at first, and this
+         * function - which runs on every DirectDraw session setup and
+         * rewrites engine_caps from scratch above - erased it every time. The
+         * symptom was a setting that V9XHW.INI reported as `allowed` while
+         * the engine went on refusing, which took a guest A/B and the
+         * engine's new refusal counters to see
+         * (docs\decisions\2026-09-10-software-d3d-system-memory-textures.md).
+         * The header comment on the split says both callers must agree; this
+         * is what that costs when they do not.
+         */
+        if (v9x_dd_d3d_soft_sysmem != V9X_FALSE) {
+            shared->engine.engine_caps |=
+                V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM;
+        }
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
 

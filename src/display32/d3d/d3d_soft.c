@@ -241,6 +241,64 @@ static int v9x_d3d_soft_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * sampled, which is what the filter mapping below already implies, and no mip
  * filter cap is published.
  */
+/*
+ * Why this engine did not sample a texture.
+ *
+ * The ViRGE path has counted its refusals since 3DMark 99, for the reason its
+ * own comment gives: a refused texture draws as untextured Gouraud in the
+ * vertex colour, which looks exactly like a texture full of that colour, and
+ * nothing says which rule refused it. The software engine refused in silence
+ * until now, and it cost a whole A/B: a probe cell that drew white could not
+ * be told apart from a texture placement the engine had declined
+ * (docs\decisions\2026-09-10-software-d3d-system-memory-textures.md).
+ *
+ * The two engines share the counters because a boot runs one of them, never
+ * both: the mode decides, and V9XHW.INI records which.
+ */
+static void v9x_d3d_soft_refuse(const V9X_DD_SURFACE_LCL *surface,
+                                DWORD kind, DWORD detail)
+{
+    if (v9x_hal == 0) {
+        return;
+    }
+    if (kind == 0ul) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_format;
+    } else if (kind == 1ul) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_shape;
+    } else {
+        ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        if (kind == 3ul) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_sysmem;
+        } else if (kind == 4ul) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_nocap;
+        } else if (kind == 5ul) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
+        }
+    }
+    v9x_hal->d3d_diagnostics.texture_refused_last = detail;
+    if (surface != 0) {
+        v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+        if (surface->lpGbl != 0) {
+            v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+                surface->lpGbl->fpVidMem;
+        }
+    }
+}
+
+/*
+ * May the CPU sample a texture the runtime placed in system memory?
+ *
+ * The 16-bit side decides and publishes the answer in the engine capability
+ * word, the same channel that selects this engine at all. Read here rather
+ * than cached, because the driver re-stamps the word on a mode change.
+ */
+static int v9x_d3d_soft_sysmem_allowed(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps &
+            V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM) != 0ul;
+}
+
 static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
                                       V9X_D3D_RASTER_TEXTURE *texture)
 {
@@ -252,39 +310,83 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
     DWORD last_byte;
 
     if (surface == 0 || surface->lpGbl == 0) {
+        v9x_d3d_soft_refuse(surface, 2ul, 0xfffffffful);
         return 0;
     }
-    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul) {
+        v9x_d3d_soft_refuse(surface, 4ul, surface->ddsCaps);
+        return 0;
+    }
+    /*
+     * A system-memory texture is refused unless the setting allows it.
+     *
+     * The refusal is not about the sampler's arithmetic - the CPU can read
+     * either memory - but about the address. A video-memory surface is named
+     * by an offset into the aperture and bounded against it; a system-memory
+     * one carries a linear address of its own and can only be bounded by its
+     * own extent. Both paths are below; which one is legal is the 16-bit
+     * side's decision, published as V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM.
+     */
+    if ((surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul &&
+        !v9x_d3d_soft_sysmem_allowed()) {
+        v9x_d3d_soft_refuse(surface, 3ul, surface->ddsCaps);
         return 0;
     }
     if (surface->lpGbl->wWidth != surface->lpGbl->wHeight) {
+        v9x_d3d_soft_refuse(surface, 1ul,
+                            ((DWORD)surface->lpGbl->wWidth << 16) |
+                            (DWORD)surface->lpGbl->wHeight);
         return 0;
     }
     size = (DWORD)surface->lpGbl->wWidth;
     if (size < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
         size > V9X_D3D_RASTER_TEXTURE_SIZE_MAX) {
+        v9x_d3d_soft_refuse(surface, 1ul, size);
         return 0;
     }
     if (!v9x_d3d_soft_texture_format(surface, &format)) {
+        v9x_d3d_soft_refuse(surface, 0ul,
+                            (surface->dwFlags &
+                             V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+                                ? surface->lpGbl->ddpfSurface.dwRBitMask
+                                : 0xfffffffful);
         return 0;
     }
 
     /* The whole surface has to sit inside video memory, because the sampler
      * indexes it with a wrapped texel index and never re-checks. A mipmapped
      * chain adds a third again, the same arithmetic the ViRGE path uses. */
-    offset = v9x_surface_offset(surface);
     last_byte = (DWORD)surface->lpGbl->lPitch * size;
     if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
         last_byte += last_byte / 3ul;
     }
-    if (offset == 0xfffffffful || v9x_hal == 0 ||
-        last_byte > v9x_hal->fb.vram_bytes ||
-        offset > v9x_hal->fb.vram_bytes - last_byte) {
-        return 0;
+    if ((surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        /*
+         * A system-memory surface's fpVidMem is a linear address in the
+         * calling process's space, which is where this callback runs, so it
+         * is used as it stands. There is no aperture to translate through and
+         * no aperture to bound it against: what remains is that the pointer
+         * exists and that the pitch spans the row the sampler will index,
+         * which v9x_d3d_raster_texture_valid checks at the end.
+         *
+         * That is a weaker guarantee than the video-memory arm below, and it
+         * is the whole reason this needs a setting to reach.
+         */
+        if (surface->lpGbl->fpVidMem == 0ul) {
+            v9x_d3d_soft_refuse(surface, 2ul, 0ul);
+            return 0;
+        }
+        texture->pixels = (void *)surface->lpGbl->fpVidMem;
+    } else {
+        offset = v9x_surface_offset(surface);
+        if (offset == 0xfffffffful || v9x_hal == 0 ||
+            last_byte > v9x_hal->fb.vram_bytes ||
+            offset > v9x_hal->fb.vram_bytes - last_byte) {
+            v9x_d3d_soft_refuse(surface, 5ul, offset);
+            return 0;
+        }
+        texture->pixels = (void *)(v9x_hal->fb.linear_base + offset);
     }
-
-    texture->pixels = (void *)(v9x_hal->fb.linear_base + offset);
     texture->pitch = (DWORD)surface->lpGbl->lPitch;
     texture->size = size;
     texture->format = format;
@@ -318,7 +420,14 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
      */
     texture->address = context->texture_address == V9X_D3DTADDRESS_CLAMP
         ? V9X_D3D_RASTER_ADDRESS_CLAMP : V9X_D3D_RASTER_ADDRESS_WRAP;
-    return v9x_d3d_raster_texture_valid(texture);
+    if (!v9x_d3d_raster_texture_valid(texture)) {
+        /* The rasterizer's own validation, which the arms above cannot
+         * anticipate: a pitch too narrow for the row it claims, or a size
+         * that is not a power of two. */
+        v9x_d3d_soft_refuse(surface, 1ul, texture->pitch);
+        return 0;
+    }
+    return 1;
 }
 
 /*
@@ -391,13 +500,22 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DDEVCAPS_FLOATTLVERTEX |
         V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
         /*
-         * "Device can texture from device memory", and only from there:
-         * v9x_d3d_soft_texture_setup rejects any surface carrying
-         * DDSCAPS_SYSTEMMEMORY, because the sampler reaches the texture
-         * through the framebuffer's linear aperture. That is a constraint the
-         * software engine inherits from how it addresses memory rather than
-         * from any hardware, and it is real either way.
+         * "Device can texture from device memory", which this engine always
+         * can: it reaches such a surface through the framebuffer's linear
+         * aperture.
+         *
+         * System memory is added beside it only when [Velocity9x]
+         * D3DSoftSysMem is on, because that is the one the engine's addressing
+         * had to grow a second arm for, and because advertising a placement
+         * v9x_d3d_soft_texture_setup would then refuse is the
+         * advertise-then-ignore pattern this driver has paid for twice. The
+         * two caps are not exclusive: with both published the runtime may put
+         * a texture in either, and every textured pixel this engine draws
+         * reads its texels with the CPU either way - one of them just does
+         * not cross the PCI aperture to do it.
          */
+        (v9x_d3d_soft_sysmem_allowed()
+            ? V9X_D3DDEVCAPS_TEXTURESYSTEMMEMORY : 0ul) |
         V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY |
         V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
         V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;

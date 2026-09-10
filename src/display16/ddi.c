@@ -629,6 +629,10 @@ static void v9x_publish_hardware_diagnostics(void)
      * it off", and neither key can express both.
      */
     v9x_write_hardware_info("Direct3DMode", v9x_dd_d3d_state_text());
+    /* And whether the software engine may sample a texture the runtime put in
+     * system memory, which changes what DirectDraw is told it can do. */
+    v9x_write_hardware_info("D3DSoftSysMem",
+                            v9x_dd_d3d_soft_sysmem_text());
     /* The 16 bpp layout and how it was decided, for the same reader. */
     v9x_write_hardware_info("ColourLayout", v9x_modes16_layout_text());
 }

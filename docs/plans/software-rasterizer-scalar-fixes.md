@@ -237,6 +237,18 @@ memory becomes the first change to make and this plan's items 2 to 7 fall
 behind it. That change is an engine and caps change with its own record,
 not a rasterizer one, and it is out of scope here beyond naming it.
 
+**Half of it is now possible, off by default.** `[Velocity9x]
+D3DSoftSysMem=1` lets the engine sample a texture the runtime placed in
+system memory, verified through the installed driver on the Trio64 guest
+([record](../decisions/2026-09-10-software-d3d-system-memory-textures.md)).
+The depth buffer and the blend destination are untouched: both are still
+read and written through the aperture, and the target's placement is
+DirectDraw's decision rather than a setting. What is still missing is the
+number - no measurement of what the option buys through the driver exists,
+because the benchmark never loads the HAL and the probe times no draws. A
+timed probe rung is the next instrument, and the physical aperture read in
+step 1 is what should decide whether any of it becomes a default.
+
 ## Work order
 
 1. **Add a read to the parent's step 1 measurement.** The instrument that

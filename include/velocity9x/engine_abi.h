@@ -78,4 +78,30 @@
  */
 #define V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA 0x00000080ul
 
+/*
+ * Let the CPU rasterizer sample a texture that lives in system memory.
+ *
+ * Set by the 16-bit driver from [Velocity9x] D3DSoftSysMem, and meaningless
+ * without V9X_DD_ENGINE_CAP_D3D_SOFTWARE beside it: no chip samples system
+ * memory, the CPU does.
+ *
+ * Off by default, and the default is the conservative one rather than the
+ * fast one. The software engine has always refused a DDSCAPS_SYSTEMMEMORY
+ * texture, because it reaches a texture through the framebuffer aperture and
+ * a system-memory surface is not in it. That refusal costs: every textured
+ * pixel then reads one or four texels through the PCI aperture, and the same
+ * synthetic scenes measured about twice as slow against a video-memory
+ * target as against a RAM one on the 86Box guests
+ * (docs\decisions\2026-09-10-rasterizer-texel-units-and-bilinear.md).
+ *
+ * What the bit buys is the *option*, published to DirectDraw as
+ * D3DDEVCAPS_TEXTURESYSTEMMEMORY, so the runtime may place a texture where
+ * the CPU can read it cheaply. What it costs is the containment check: a
+ * video-memory texture is bounded against the aperture, and a system-memory
+ * one can only be bounded by its own pitch and extent. That is why it is a
+ * setting and not the default, and why the default stays where the evidence
+ * is (docs\plans\software-rasterizer-scalar-fixes.md, the non-scalar finding).
+ */
+#define V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM 0x00000100ul
+
 #endif /* VELOCITY9X_ENGINE_ABI_H */

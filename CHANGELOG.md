@@ -6,6 +6,32 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The software Direct3D engine can sample a texture in system memory, if
+  `[Velocity9x] D3DSoftSysMem=1` says so.** It refused any
+  `DDSCAPS_SYSTEMMEMORY` texture before, because it reaches a texture through
+  the framebuffer aperture - which is why every textured pixel read its texels
+  across the PCI bus, the cost the scalar plan names as probably dominant. The
+  setting publishes `D3DDEVCAPS_TEXTURESYSTEMMEMORY` beside the video-memory
+  cap and gives the engine a second addressing arm: an offset into the
+  aperture as before, or the surface's own linear address. Off by default,
+  because that second arm can only bound a surface by its own extent where the
+  first bounds it against the aperture. Verified through the installed driver
+  on the Trio64 guest with a pixel - white when refused, green when allowed
+  ([record](docs/decisions/2026-09-10-software-d3d-system-memory-textures.md)).
+  No speed claim through the driver yet: the benchmark that measured the
+  RAM-versus-VRAM gap never loads the HAL, and a timed rung is owed.
+- **The software engine counts its texture refusals now**, in the diagnostics
+  the ViRGE path has used since 3DMark 99. It refused in silence, and a
+  refused texture draws as untextured Gouraud in the vertex colour - which
+  looks exactly like a texture full of that colour. The counters named a
+  capability bit that was being erased within one boot, in one read.
+- **A capability stamped in only one of the two places that write
+  `engine_caps` is erased by the other.** `v9x_dd_refresh_framebuffer` runs on
+  every DirectDraw session setup and rewrites the word from scratch, so the
+  new system-memory permission - added to `v9x_dd_stamp_engine_caps` alone -
+  never survived to the engine, while `V9XHW.INI` reported it as allowed
+  because that reads the setting rather than the word. Both sites set it now.
+
 - **`fail-hardware-aperture` could mean four different things, and two of them
   set no stage code at all.** The DPMI selector allocation failing and a live
   selector whose aperture has moved both returned from `V9XMAPAPERTURE`

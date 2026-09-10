@@ -36,5 +36,8 @@ void v9x_dd_d3d_configure(void);
  * it reports the card's answer rather than nothing at all.
  */
 const char *v9x_dd_d3d_state_text(void);
+/* And what D3DSoftSysMem resolved to beside it: allowed, refused, or
+ * not-applicable on a machine not running the software engine. */
+const char *v9x_dd_d3d_soft_sysmem_text(void);
 
 #endif /* VELOCITY9X_DD16_H */

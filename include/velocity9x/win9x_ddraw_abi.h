@@ -462,6 +462,10 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY 0x00000010ul
 #define V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY 0x00000040ul
 #define V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX  0x00000400ul
+/* D3DDEVCAPS_TEXTURESYSTEMMEMORY, DDK D3DCAPS.H. The software engine
+ * publishes it beside the video-memory cap when its own setting allows a
+ * system-memory texture; no hardware path here can. */
+#define V9X_D3DDEVCAPS_TEXTURESYSTEMMEMORY 0x00000100ul
 #define V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY 0x00000200ul
 #define V9X_D3DDD_LINECAPS               0x00000020ul
 #define V9X_D3DPMISCCAPS_CULLNONE         0x00000010ul

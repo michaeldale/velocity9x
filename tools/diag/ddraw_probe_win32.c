@@ -7040,6 +7040,120 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 v9x_write_stage("ChainStage", 19ul);
                             }
 
+                            /*
+                             * A TEXTURE THE RUNTIME PUT IN SYSTEM MEMORY.
+                             *
+                             * The software engine has always refused one,
+                             * because it reaches a texture through the
+                             * framebuffer aperture, and that refusal is what
+                             * makes every textured pixel read its texels
+                             * across the PCI bus. [Velocity9x] D3DSoftSysMem
+                             * lifts it; this cell is the pixel that says
+                             * whether the second addressing arm works.
+                             *
+                             * Asked for explicitly with DDSCAPS_SYSTEMMEMORY
+                             * rather than left to the runtime's preference,
+                             * because the question is whether the *driver*
+                             * can sample one, not which placement DirectDraw
+                             * favours. The expected readings are opposite by
+                             * design: with the setting off the texel must not
+                             * appear and the driver must count a refusal;
+                             * with it on the texel must appear and nothing
+                             * must be refused.
+                             */
+                            {
+                                struct v9x_dds *sys_surf = 0;
+                                struct v9x_d3d_texture2 *sys_tex = 0;
+                                DWORD sys_handle = 0ul;
+                                V9X_PROBE_COUNTS sys_before;
+                                V9X_PROBE_COUNTS sys_after;
+                                int sys_counts_ok;
+                                HRESULT sys_hr;
+
+                                v9x_zero(&desc, sizeof(desc));
+                                desc.dwSize = sizeof(desc);
+                                desc.dwFlags = V9X_DDSD_CAPS |
+                                               V9X_DDSD_WIDTH |
+                                               V9X_DDSD_HEIGHT |
+                                               V9X_DDSD_PIXELFORMAT;
+                                desc.dwWidth = 64ul;
+                                desc.dwHeight = 64ul;
+                                desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE |
+                                                      V9X_DDSCAPS_SYSTEMMEMORY;
+                                desc.ddpfPixelFormat.dwSize =
+                                    sizeof(V9X_DDPIXELFORMAT);
+                                desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                                desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+                                desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+                                desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+                                desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+                                desc.ddpfPixelFormat.dwRGBAlphaBitMask =
+                                    0x00008000ul;
+                                sys_hr = ddraw->vtbl->CreateSurface(
+                                    ddraw, &desc, &sys_surf, 0);
+                                v9x_write_hresult("SysMemTexCreateHr", sys_hr);
+
+                                if (sys_hr == 0) {
+                                    v9x_fill_surface(sys_surf, 0x83e083e0ul);
+                                    sys_hr = sys_surf->vtbl->QueryInterface(
+                                        sys_surf, &v9x_iid_d3d_texture2,
+                                        (void **)&sys_tex);
+                                }
+                                if (sys_hr == 0) {
+                                    sys_hr = sys_tex->vtbl->GetHandle(
+                                        sys_tex, d3d_device, &sys_handle);
+                                    v9x_write_hresult("SysMemTexHandleHr",
+                                                      sys_hr);
+                                }
+                                if (sys_hr == 0) {
+                                    v9x_probe_reset_state(d3d_device,
+                                                          triangle);
+                                    triangle[0].tu = 0.5f;
+                                    triangle[0].tv = 0.5f;
+                                    triangle[1].tu = 0.5f;
+                                    triangle[1].tv = 0.5f;
+                                    triangle[2].tu = 0.5f;
+                                    triangle[2].tv = 0.5f;
+                                    v9x_fill_surface(d3d_target, 0x18e318e3ul);
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                        sys_handle);
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                        V9X_D3DTBLEND_COPY);
+                                    sys_counts_ok =
+                                        v9x_probe_counts(&sys_before);
+                                    if (d3d_device->vtbl->BeginScene(
+                                            d3d_device) == 0) {
+                                        sys_hr =
+                                            d3d_device->vtbl->DrawPrimitive(
+                                                d3d_device,
+                                                V9X_D3DPT_TRIANGLELIST,
+                                                V9X_D3DVT_TLVERTEX, triangle,
+                                                3ul, 0ul);
+                                        (void)d3d_device->vtbl->EndScene(
+                                            d3d_device);
+                                    }
+                                    v9x_write_hresult("SysMemTexHr", sys_hr);
+                                    v9x_write_uint("SysMemTexRaw",
+                                        v9x_surface_pixel16(d3d_target,
+                                                            16ul, 12ul));
+                                    if (sys_counts_ok &&
+                                        v9x_probe_counts(&sys_after)) {
+                                        v9x_probe_write_deltas("SysMemTex",
+                                            &sys_before, &sys_after);
+                                    }
+                                }
+                                if (sys_tex != 0) {
+                                    sys_tex->vtbl->Release(sys_tex);
+                                }
+                                if (sys_surf != 0) {
+                                    sys_surf->vtbl->Release(sys_surf);
+                                }
+                            }
+
                             if (ramp_src_tex != 0) {
                                 ramp_src_tex->vtbl->Release(ramp_src_tex);
                             }
