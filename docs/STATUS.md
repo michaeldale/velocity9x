@@ -42,6 +42,7 @@ Software is selected.
 | ATI Mach64 / Rage | Mach64 VT2 emulator bring-up | [Mach64 16-bpp scanout is wrong](issues/2026-08-16-tier0-defects-deferred.md); no physical ATI validation or native 2D backend |
 | Generic VESA | QEMU/86Box plus [physical GMA 950](issues/2026-08-27-netbook-gma950-findings.md) and physical Trio3D | Dynamic BIOS modes, software drawing; Have-Disk permits unlisted cards, whose behavior still needs measurement |
 | Matrox Millennium II | Historical physical and 86Box software-GDI passes with the stock Matrox mini-VDD | [Guarded mixed-pair boundary](specifications/matrox-millennium2-bringup.md); no claim that the current archive or replacement mini-VDD is physically validated |
+| Matrox Millennium (MGA-2064W) | Card and BIOS measured at rest: the BIOS advertises the family's modes with a linear framebuffer at its BAR1 base, and a guarded candidate carries the chip | [Evidence and the candidate](decisions/2026-09-10-the-2064w-is-drivable-by-the-vbe-path.md); no mode has been set on this card by anything, its aperture takes only 2-byte accesses in the mode it was measured in, and its installed VRAM is unmeasured |
 
 DirectDraw surface allocation and VGA-port vblank services are shared by the
 S3, ATI and VBE packages. The guarded Matrox candidate packages the display

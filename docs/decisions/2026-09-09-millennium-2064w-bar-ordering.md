@@ -1,5 +1,13 @@
 # The Millennium 2064W puts its framebuffer in BAR1, not BAR0
 
+> **Both open questions were answered on 2026-09-10.** The card's own BIOS,
+> executed on an emulated CPU with I/O passed through, advertises `0101h`,
+> `0111h`, `0114h` and `0117h` with a linear framebuffer at `FD000000h` -
+> which is this card's BAR1 base, so the BIOS confirms the inversion below
+> independently - and a guarded `0519` candidate now exists with the per-chip
+> BAR index this record said it would need. See
+> [the 2064W is drivable by the VBE path](2026-09-10-the-2064w-is-drivable-by-the-vbe-path.md).
+
 A bring-up-kit baseline was taken on an original Matrox Millennium
 (`102B:0519`) to see whether the `matrox-m2` family could be extended to it.
 The run answers one question with measurement and leaves the decisive one

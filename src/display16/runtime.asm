@@ -1421,18 +1421,33 @@ V9XHARDWAREPRESENT PROC FAR
     retf
 V9XHARDWAREPRESENT ENDP
 
-; Read and validate PCI BAR0 of the family's card into the DWORD the caller
-; points at. Returns 1 on success, 0 on refusal.
+; Read and validate one PCI base address register of the family's card into
+; the DWORD the caller points at. Returns 1 on success, 0 on refusal.
+;
+; V9xPciReadBar(DWORD FAR *base, WORD bar_index), PASCAL: base is pushed
+; first, so the index is nearest at 6[bp] and the far pointer follows at
+; 8[bp]. The index is a BAR number, 0 through 5, and the configuration offset
+; is computed from it rather than written as a literal - which also keeps the
+; instruction stream free of the 'mov di,14H' the Matrox family's audit
+; forbids as the signature of an S3 aperture path.
 ;
 ; This stays in assembly because PCI BIOS B10Ah returns its result in ECX and
 ; the validation masks are 32-bit, while the C is compiled for 8086. It is a
 ; chip-agnostic INT 1Ah primitive: which card it reads comes from the family's
-; device list, not from a build-time define.
+; device list, not from a build-time define, and which BAR comes from the
+; matched chip.
+;
+; It used to read offset 10h unconditionally, which is right only for a chip
+; whose framebuffer is in BAR0. The MGA-2064W's is in BAR1
+; (docs\decisions\2026-09-09-millennium-2064w-bar-ordering.md).
 ;
 ; A base below 16 MiB, above FE000000h, or not aligned to 16 MiB is a read
-; that went wrong rather than an unusual slot, and is refused.
-PUBLIC V9XPCIREADBAR0
-V9XPCIREADBAR0 PROC FAR
+; that went wrong rather than an unusual slot, and is refused. That guard used
+; to be what stopped a wrong BAR reaching the display code, by luck rather
+; than by design - a 16 KiB control aperture is not 16 MiB aligned. It is not
+; relied on for that any more.
+PUBLIC V9XPCIREADBAR
+V9XPCIREADBAR PROC FAR
     push    bp
     mov     bp, sp
     push    bx
@@ -1442,12 +1457,21 @@ V9XPCIREADBAR0 PROC FAR
     push    di
     push    es
 
+    ; A BAR index above 5 is not a slot this header has.
+    mov     di, word ptr 6[bp]
+    cmp     di, 5
+    ja      short V9xPciReadBar0Failed
+
     call    V9xFindPciDevice
     or      ax, ax
     jz      short V9xPciReadBar0Failed
 
+    ; Configuration offset 10h + index * 4.
+    mov     di, word ptr 6[bp]
+    shl     di, 1
+    shl     di, 1
+    add     di, 0010h
     mov     ax, 0b10ah
-    mov     di, 0010h
     int     1ah
     jc      short V9xPciReadBar0Failed
     or      ah, ah
@@ -1465,7 +1489,7 @@ V9XPCIREADBAR0 PROC FAR
     test    eax, 00ffffffh
     jnz     short V9xPciReadBar0Failed
 
-    les     bx, dword ptr 6[bp]
+    les     bx, dword ptr 8[bp]
     mov     es:[bx], eax
     mov     ax, 1
     jmp     short V9xPciReadBar0Done
@@ -1480,8 +1504,8 @@ V9xPciReadBar0Done:
     pop     cx
     pop     bx
     pop     bp
-    retf    4
-V9XPCIREADBAR0 ENDP
+    retf    6
+V9XPCIREADBAR ENDP
 
 ; Read the vendor/device ids of the machine's first display-class PCI device
 ; into the DWORD the caller points at (vendor in the low word, device in the

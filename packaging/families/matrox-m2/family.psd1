@@ -69,6 +69,57 @@
             }
             MapSymbols = @('v9x_mga2_device')
         }
+        @{
+            Id = 'mga2064w'
+            Name = 'Matrox Millennium MGA-2064W'
+            VendorId = '102B'
+            DeviceId = '0519'
+            DeviceDesc = 'Velocity9x Matrox Millennium MGA-2064W (guarded candidate)'
+            Adapter = 'Matrox Millennium MGA-2064W'
+            ClockDetector = 'matrox-mga2064w-unavailable-v1'
+            ModeSwitching = 'single-mode'
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # A floor, not a measurement. The card's BIOS reports 8 MiB
+            # through 4F00h, which is exactly its BAR1 window and therefore a
+            # report rather than a confirmation; the aperture probe measured a
+            # 1 MiB alias period in the card's current VGA mapping and refused
+            # to call it installed memory. 2 MiB is the base Millennium
+            # configuration and covers every mode claimed below - 1024x768x16
+            # needs 1.57 MiB - so under-reporting here cannot hand DirectDraw
+            # memory the card may not have.
+            VideoMemoryBytes = 2097152
+
+            # Three modes, not the sibling's four. 800x600x16 is left out on
+            # measurement: this BIOS reports 1920 bytes per scan line for
+            # 0114h where the driver's table asks for a packed 1600, so the
+            # post-mode-set check would have to force it and would refuse the
+            # mode if the BIOS declined. Claiming a mode whose stride the card
+            # has already contradicted is not a claim this package should make
+            # before someone has set it.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Audit = @{
+                # The same two patterns as the sibling: this chip module's own
+                # width and pitch comparison, which no other object performs.
+                # Both chips share the module, so both share its signatures.
+                Required = @(
+                    'mov\s+cx,word ptr _v9x_active_width'
+                    'cmp\s+cx,word ptr _v9x_active_pitch'
+                )
+                Forbidden = @(
+                    'mov\s+di,14H'
+                    'dword ptr es:\[1E54H\]'
+                )
+            }
+            MapSymbols = @('v9x_mga2064w_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.

@@ -56,8 +56,14 @@ v9x_status v9x_matrox_millennium2_probe(
     state->pci.device_id = 0u;
     state->pci.revision = 0u;
 
-    if (pci->vendor_id != V9X_PCI_VENDOR_MATROX ||
-        pci->device_id != V9X_PCI_DEVICE_MILLENNIUM_II) {
+    if (pci->vendor_id != V9X_PCI_VENDOR_MATROX) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    /* Both Millennium generations, because the policy is the same for both
+     * and the only difference the driver acts on - the framebuffer's BAR
+     * index - is hw16 data rather than anything this file decides. */
+    if (pci->device_id != V9X_PCI_DEVICE_MILLENNIUM_II &&
+        pci->device_id != V9X_PCI_DEVICE_MILLENNIUM) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

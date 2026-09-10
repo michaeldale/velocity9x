@@ -6,6 +6,25 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The Matrox candidate carries a second chip: the original Millennium,
+  MGA-2064W (`102B:0519`).** Its own BIOS, executed on an emulated CPU with
+  I/O passed through to the card, advertises `0101h`, `0111h`, `0114h` and
+  `0117h` with a linear framebuffer at `FD000000h` - this card's BAR1 base,
+  which confirms the BAR inversion the chip was suspected of and settles
+  whether the family's VBE path can reach it. `V9X_HW16_DEVICE` gains a
+  per-chip `framebuffer_bar` (appended last and zero, so every other family
+  reads BAR0 exactly as before), `V9XPCIREADBAR0` becomes `V9XPCIREADBAR` and
+  computes its configuration offset from the index, and the policy backend
+  takes both Millennium ids. The manifest claims three modes rather than four:
+  this BIOS pads `0114h` to 1920 bytes per scan line where the driver's table
+  asks for 1600, so that mode is not claimed until someone has set it.
+  `VideoMemoryBytes` is a 2 MiB floor, because the BIOS's 8 MiB figure is its
+  own BAR window and the aperture probe refused to call anything installed
+  memory
+  ([record](docs/decisions/2026-09-10-the-2064w-is-drivable-by-the-vbe-path.md)).
+  Guarded candidate only: no mode has been set on this card by anything, and
+  its framebuffer aperture accepted only 2-byte accesses in the mode it was
+  measured in.
 - **The DirectDraw probe's chain rung works end to end, and everything it was
   blaming on the driver was its own.** It clears its Z surface through
   `DDBLT_DEPTHFILL` before attaching it and gives the wall and the sprite two

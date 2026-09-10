@@ -79,15 +79,18 @@ foreach ($name in @("ACTIVATE.BAT", "ARM.BAT", "DISARM.BAT", "PREPARE.BAT", "REA
 }
 
 $manifest = @(
-    "Velocity9x guarded Matrox Millennium II candidate",
+    "Velocity9x guarded Matrox Millennium candidate",
     "Build: $BuildId",
-    "Target: PCI 102B:051B only (MGA-2164W)",
+    # Two chips share this binary now, and which BAR each takes its
+    # framebuffer from is the difference between them - which is the fact an
+    # operator staring at a black screen will want.
+    "Target: PCI 102B:051B (MGA-2164W) and 102B:0519 (MGA-2064W)",
     $(if ($BitsPerPixel -eq 16) {
         "Mode: forced $($selectedMode.Width)x$($selectedMode.Height)x16, VBE $($selectedMode.Vbe), $($selectedMode.Pitch)-byte pitch"
     } else {
         "Mode: forced 640x480x8, VBE 0101h, 640-byte pitch"
     }),
-    "Framebuffer: PCI BAR0 / MGABASE2, 4 MiB DPMI mapping",
+    "Framebuffer: MGABASE2 - BAR0 on the 2164W, BAR1 on the 2064W - 4 MiB DPMI mapping",
     "Hardware writes: VBE 4F02h/4F06h only; OPMODE endian swapping remains little-endian",
     "DIB Engine: explicit screen PDevice geometry, pitch, selector and zero surface offset",
     $(if ($PreserveStockMiniVdd) {
@@ -111,7 +114,8 @@ if ($forbidden.Count -ne 0) {
 $driverBytes = [System.IO.File]::ReadAllBytes((Join-Path $outputDir "MGAPDX64.DRV"))
 $driverText = [System.Text.Encoding]::ASCII.GetString($driverBytes)
 if (-not $driverText.Contains($BuildId) -or
-    -not $driverText.Contains("Matrox Millennium II MGA-2164W")) {
+    -not $driverText.Contains("Matrox Millennium II MGA-2164W") -or
+    -not $driverText.Contains("Matrox Millennium MGA-2064W")) {
     throw "The Matrox display driver is missing its target/build markers."
 }
 if (-not $PreserveStockMiniVdd) {

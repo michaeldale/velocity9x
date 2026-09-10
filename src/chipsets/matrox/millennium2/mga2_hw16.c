@@ -1,5 +1,11 @@
 /*
- * Matrox Millennium II MGA-2164W hardware table.
+ * Matrox Millennium hardware table: the MGA-2164W and the MGA-2064W.
+ *
+ * Both chips take the same path - a VBE mode set, a scan-line pitch forced
+ * through 4F06h, a framebuffer aperture read from PCI configuration space,
+ * and no MGA register written at all - so they share this file the way the
+ * Trio64 aliases share theirs rather than getting one each. They differ in
+ * two things: the strings, and which BAR carries the framebuffer.
  *
  * Two things set this family apart from the S3 ones, and both used to be
  * #ifdef'd into src\display16\ddi.c:
@@ -20,16 +26,22 @@ extern void FAR PASCAL V9xDibBeginAccess(void);
 extern void FAR PASCAL V9xDibEndAccess(void);
 
 /*
- * PCI BAR0 read, and the aperture the driver settled on.
+ * PCI BAR read, and the aperture the driver settled on.
  *
  * The configuration read stays in runtime.asm: PCI BIOS B10Ah returns its
  * dword in ECX and the masks below are 32-bit, while this file is compiled
  * for 8086. It is a chip-agnostic INT 1Ah primitive parametrized by the
- * family's device list, so it belongs there anyway.
+ * family's device list and by the BAR index the matched chip names, so it
+ * belongs there anyway.
  *
  * Returns non-zero on success and stores the validated base.
  */
-extern WORD FAR PASCAL V9xPciReadBar0(DWORD FAR *base);
+extern WORD FAR PASCAL V9xPciReadBar(DWORD FAR *base,
+                                     WORD bar_index);
+
+/* Which chip the PCI scan matched, so the aperture read knows which BAR to
+ * ask for. Published by ddi.c and already read by dd16.c and enable16.c. */
+extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 
 /* The active mode's geometry, published by ddi.c for the runtime. */
 extern WORD v9x_active_width;
@@ -47,11 +59,54 @@ const V9X_HW16_DEVICE v9x_mga2_device = {
     0,
     0,
     0,
-    0
+    0,
+    /* MGABASE2, the framebuffer, is BAR0 on this chip - which is what the
+     * aperture read assumed before the field existed. Stated rather than
+     * left to the default, because its sibling below is the reason the field
+     * exists. */
+    0u
+};
+
+/*
+ * The original Millennium, MGA-2064W plus a TI TVP3026.
+ *
+ * A candidate on the same terms as its sibling and no further: nothing has
+ * set a mode on this card, in Windows or anywhere else. What is measured is
+ * the card's own BIOS, executed on an emulated CPU with I/O passed through to
+ * the hardware - VBE 2.0, and 0101h, 0111h, 0114h and 0117h all advertising a
+ * linear framebuffer at FD000000h, which is this card's BAR1 base
+ * (C:\everything\bringupkit\runs\handoff-matrox-2064w-full).
+ *
+ * Two facts from that run bear on this entry directly. The framebuffer is in
+ * BAR1, hence the index below. And the BIOS reports 1920 bytes per scan line
+ * for 0114h where the family's table asks for a packed 1600, so on this chip
+ * v9x_mga2_post_mode_set will either force it to 1600 or refuse the mode with
+ * stage 9 - the second is the designed outcome and is why 800x600x16 is not
+ * claimed for this chip in the manifest.
+ *
+ * The subsystem id reads 0000 on this part, so its hardware ID carries no
+ * &SUBSYS_ suffix; the Millennium II's physical sample reported
+ * SUBSYS_1200102B and can.
+ */
+const V9X_HW16_DEVICE v9x_mga2064w_device = {
+    0x102bu, 0x0519u,
+    "Matrox Millennium MGA-2064W",
+    "102B", "0519",
+    "matrox-mga2064w-unavailable-v1",
+    "single-mode",
+    0,
+    0,
+    0,
+    0,
+    /* MGABASE1, the 16 KiB control aperture, is BAR0 here; the framebuffer is
+     * BAR1. Reading BAR0 would hand the display code a 16 KiB MMIO window as
+     * its framebuffer. */
+    1u
 };
 
 static const V9X_HW16_DEVICE * const v9x_mga2_devices[] = {
-    &v9x_mga2_device
+    &v9x_mga2_device,
+    &v9x_mga2064w_device
 };
 
 static const V9X_HW16_MODE v9x_mga2_modes[] = {
@@ -112,15 +167,20 @@ static unsigned short v9x_mga2_post_mode_set(void)
 }
 
 /*
- * BAR0 is MGABASE2, the direct framebuffer aperture. No MGA MMIO register is
- * touched during this conservative activation - the VBE mode set is the only
- * thing that has programmed the card.
+ * The direct framebuffer aperture, from the BAR the matched chip names -
+ * MGABASE2, which is BAR0 on the MGA-2164W and BAR1 on the MGA-2064W. No MGA
+ * MMIO register is touched during this conservative activation; the VBE mode
+ * set is the only thing that has programmed the card.
  */
 static unsigned long v9x_mga2_read_aperture(void)
 {
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
     DWORD base = 0ul;
 
-    if (V9xPciReadBar0(&base) == 0u) {
+    if (device == 0) {
+        return 0ul;
+    }
+    if (V9xPciReadBar(&base, device->framebuffer_bar) == 0u) {
         return 0ul;
     }
     return base;

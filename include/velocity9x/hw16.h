@@ -111,6 +111,27 @@ typedef struct v9x_hw16_device {
                                    unsigned long *mapped_aperture_bytes,
                                    unsigned long *engine_type,
                                    unsigned long *engine_caps);
+
+    /*
+     * Which PCI base address register carries the framebuffer aperture, as a
+     * configuration-space BAR index: 0 is offset 10h, 1 is 14h.
+     *
+     * Appended last, and zero is the pre-existing assumption, so every device
+     * initialiser that does not mention it keeps reading BAR0 exactly as
+     * before - the field is only consulted by a family whose read_aperture
+     * hook asks for it, and that hook learns which chip matched from
+     * v9x_hw16_active_device().
+     *
+     * It is per chip because the ordering is not a property of the board or
+     * the family: the MGA-2064W puts its 16 KiB control aperture in BAR0 and
+     * its framebuffer in BAR1, where the MGA-2164W has them the other way
+     * round, and 86Box's own device model puts the boundary at the chip
+     * generation
+     * (docs\decisions\2026-09-09-millennium-2064w-bar-ordering.md). The
+     * 2064W's BIOS agrees: every linear-framebuffer mode it advertises
+     * reports PhysBasePtr FD000000h, which is that card's BAR1 base.
+     */
+    unsigned short framebuffer_bar;
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
