@@ -1627,6 +1627,57 @@ static void v9x_probe_depth_fill(struct v9x_dds *z_surface)
     v9x_write_uint("ZDepthFillOk", ok ? 1ul : 0ul);
 }
 
+/*
+ * Clear a depth surface, the way an application does.
+ *
+ * Through DDBLT_DEPTHFILL, which this driver serves and advertises with
+ * DDCAPS_BLTDEPTHFILL (docs\decisions\2026-08-30-ddblt-depthfill.md), so the
+ * clear is one engine fill rather than a CPU pass over the aperture - and,
+ * far more important to this file, so that a rung measuring a draw is not
+ * measuring an uncleared depth buffer instead.
+ *
+ * That is not hypothetical. Three rungs attached a Z surface, cleared
+ * nothing, and sent sz = 0 on every vertex; attaching a Z is what turns
+ * testing on, at D3DCMP_LESS with writing on, so the first draw lost against
+ * whatever the last owner of that video memory had left and every later one
+ * lost against the zero the first had written. Two records called the result
+ * a driver defect
+ * (docs\decisions\2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md).
+ *
+ * 0xFFFF is the far plane: every fragment a LESS test can carry passes
+ * against it.
+ */
+#define V9X_PROBE_DEPTH_FAR 0xfffful
+
+static HRESULT v9x_probe_clear_depth(struct v9x_dds *z_surface)
+{
+    V9X_DDBLTFX fx;
+
+    if (z_surface == 0) {
+        return (HRESULT)0x80004005ul;
+    }
+    v9x_zero(&fx, sizeof(fx));
+    fx.dwSize = sizeof(fx);
+    /* The member DDBLTFX unions between dwFillColor, dwFillDepth and
+     * dwFillPixel; it is the depth one under DDBLT_DEPTHFILL. */
+    fx.dwFillColor = V9X_PROBE_DEPTH_FAR;
+    return z_surface->vtbl->Blt(z_surface, 0, 0, 0,
+                                V9X_DDBLT_DEPTHFILL | V9X_DDBLT_WAIT, &fx);
+}
+
+/*
+ * Where a rung's two draws sit in depth: the wall halfway into the range and
+ * the sprite in front of it.
+ *
+ * Both were 0.0 - the near plane - which made every rung's second draw fail
+ * the test its first draw had just written, and made the first fail too on a
+ * buffer that happened to hold zeros. A wall behind and a sprite in front is
+ * what an application does, and it exercises the test rather than degenerating
+ * it: the sprite has to pass LESS against a value the wall put there.
+ */
+#define V9X_PROBE_SZ_WALL   0.5f
+#define V9X_PROBE_SZ_SPRITE 0.25f
+
 static int v9x_surface_pixel16_equals(struct v9x_dds *surface,
                                       DWORD x, DWORD y, WORD expected)
 {
@@ -6471,6 +6522,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                                  */
                                 V9X_PROBE_COUNTS chain_counts_before;
                                 V9X_PROBE_COUNTS chain_counts_after;
+                                /* Their own pair. Bracketing the sprite draw
+                                 * with the switch's snapshot would overwrite
+                                 * it, and the switch's deltas are read after
+                                 * the sprite - which is a window of one draw
+                                 * reported as if it were the switch. */
+                                V9X_PROBE_COUNTS chain_sprite_before;
+                                V9X_PROBE_COUNTS chain_sprite_after;
                                 int chain_counts_ok = 0;
 
                                 for (ci2 = 0ul; ci2 < 7ul; ++ci2) {
@@ -6513,6 +6571,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                                             backbuffer, chain_z);
                                     v9x_write_hresult("ChainAttachHr",
                                                       chain_hr);
+                                }
+                                if (chain_hr == 0) {
+                                    /* Cleared before it is attached to a
+                                     * context, not after the draws have
+                                     * failed against it. */
+                                    v9x_write_hresult("ChainZClearHr",
+                                        v9x_probe_clear_depth(chain_z));
                                 }
                                 /*
                                  * The device already in hand, pointed at the
@@ -6569,6 +6634,9 @@ void __stdcall V9xDdrawProbeEntry(void)
                                     triangle[1].tv = 0.5f;
                                     triangle[2].tu = 0.0f;
                                     triangle[2].tv = 0.5f;
+                                    triangle[0].sz = V9X_PROBE_SZ_WALL;
+                                    triangle[1].sz = V9X_PROBE_SZ_WALL;
+                                    triangle[2].sz = V9X_PROBE_SZ_WALL;
                                     /*
                                      * Filled with a value, not with zero, and
                                      * read straight back.
@@ -6624,34 +6692,30 @@ void __stdcall V9xDdrawProbeEntry(void)
                                      * THE SAME WALL, THREE MORE TIMES, ONE
                                      * VARIABLE AT A TIME.
                                      *
-                                     * The wall above writes nothing while the
-                                     * Solo_* rung's identical wall - same
-                                     * texture, same blend, same back buffer,
-                                     * same DEST_BASE - writes green. Two
-                                     * things differ, and both are properties
-                                     * of the device this rung reuses rather
-                                     * than of the target it was pointed at.
+                                     * This two-by-two is what found the
+                                     * uncleared depth buffer: with sz = 0 on
+                                     * every vertex and nothing cleared, the
+                                     * wall wrote nothing with depth on and
+                                     * wrote with it off, either viewport,
+                                     * while the Solo_* rung's identical wall
+                                     * landed. The viewport - still 64x64 from
+                                     * the offscreen target - was ruled out by
+                                     * the same table
+                                     * (docs\decisions\2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md).
                                      *
-                                     * Depth. The runtime rebuilds the context
-                                     * on a target switch (measured:
-                                     * ChainCtxCreates), the new one carries
-                                     * the Z surface this rung attached, and
-                                     * attaching a Z turns testing on with
-                                     * D3DCMP_LESS. Nothing clears that
-                                     * surface - this driver implements no
-                                     * depth clear - so every fragment is
-                                     * compared against whatever VRAM held,
-                                     * and every vertex here has sz = 0, which
-                                     * loses LESS against a stored zero.
+                                     * It is kept, and it now measures the
+                                     * fixed rung: the depth surface is
+                                     * cleared to the far plane before each
+                                     * cell and the wall sits halfway into the
+                                     * range, so all four cells must draw.
+                                     * Two that draw and two that do not is
+                                     * the old fault returning; a depth-off
+                                     * cell that draws while its depth-on twin
+                                     * does not is the depth path itself.
                                      *
-                                     * The viewport. It was sized 64x64 for
-                                     * the offscreen target and never re-set,
-                                     * and the runtime clips a TLVERTEX draw
-                                     * to it.
-                                     *
-                                     * A pixel per cell of the two-by-two says
-                                     * which, and a fill before each says the
-                                     * read is of memory this rung wrote.
+                                     * The fill before each draw is what makes
+                                     * "nothing drew" a statement about the
+                                     * pixel rather than about the read.
                                      */
                                     {
                                         static const DWORD chain_ctl_z[4] = {
@@ -6695,6 +6759,8 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                 SetRenderState(chain_device,
                                                     V9X_D3DRENDERSTATE_ZENABLE,
                                                     chain_ctl_z[cc]);
+                                            (void)v9x_probe_clear_depth(
+                                                chain_z);
                                             v9x_fill_surface(backbuffer,
                                                              0x18e318e3ul);
                                             begin_hr = chain_device->vtbl->
@@ -6713,15 +6779,35 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                 v9x_surface_pixel16(
                                                     backbuffer, 16ul, 12ul));
                                         }
-                                        /* Left as the rung found it, so the
-                                         * sprite cell below measures the
-                                         * blend and not a control. */
+                                        /*
+                                         * Put the frame back the way the
+                                         * sprite cell below needs it: depth
+                                         * on, the buffer cleared, and the
+                                         * wall drawn once more so the blend
+                                         * has something to blend onto and
+                                         * something to be in front of.
+                                         */
                                         (void)chain_device->vtbl->
                                             SetRenderState(chain_device,
                                                 V9X_D3DRENDERSTATE_ZENABLE,
                                                 1ul);
+                                        (void)v9x_probe_clear_depth(chain_z);
                                         v9x_fill_surface(backbuffer,
                                                          0x18e318e3ul);
+                                        begin_hr = chain_device->vtbl->
+                                            BeginScene(chain_device);
+                                        if (begin_hr == 0) {
+                                            (void)chain_device->vtbl->
+                                                DrawPrimitive(chain_device,
+                                                    V9X_D3DPT_TRIANGLELIST,
+                                                    V9X_D3DVT_TLVERTEX,
+                                                    triangle, 3ul, 0ul);
+                                            (void)chain_device->vtbl->
+                                                EndScene(chain_device);
+                                        }
+                                        v9x_write_uint("ChainWallUnderRaw",
+                                            v9x_surface_pixel16(backbuffer,
+                                                                16ul, 12ul));
                                     }
 
                                     (void)chain_device->vtbl->SetRenderState(
@@ -6744,6 +6830,31 @@ void __stdcall V9xDdrawProbeEntry(void)
                                         chain_device,
                                         V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
                                         1ul);
+                                    /* In front of the wall, so the blend has
+                                     * a depth test to pass rather than a tie
+                                     * to lose. */
+                                    triangle[0].sz = V9X_PROBE_SZ_SPRITE;
+                                    triangle[1].sz = V9X_PROBE_SZ_SPRITE;
+                                    triangle[2].sz = V9X_PROBE_SZ_SPRITE;
+                                    /*
+                                     * This one draw, bracketed on its own.
+                                     *
+                                     * With the depth buffer cleared and the
+                                     * wall in front of nothing, this rung's
+                                     * wall lands and its blend still does
+                                     * not, while the Solo_* rung's blend -
+                                     * same kind of texture, same back buffer,
+                                     * same pitch - lands. So the question is
+                                     * no longer about depth: it is whether
+                                     * the driver saw an alpha-blended
+                                     * textured draw here at all, and the
+                                     * counters that say so are per draw, not
+                                     * per rung.
+                                     */
+                                    if (chain_counts_ok) {
+                                        (void)v9x_probe_counts(
+                                            &chain_sprite_before);
+                                    }
                                     v9x_write_stage("ChainStage", 14ul);
                                     begin_hr = chain_device->vtbl->BeginScene(
                                         chain_device);
@@ -6758,6 +6869,23 @@ void __stdcall V9xDdrawProbeEntry(void)
                                             chain_device);
                                         if (end_hr != 0) c_hr = end_hr;
                                         if (c_hr != 0) chain_draw_hr = c_hr;
+                                    }
+                                    if (chain_counts_ok &&
+                                        v9x_probe_counts(
+                                            &chain_sprite_after)) {
+                                        v9x_write_uint("ChainSpriteDraws",
+                                            chain_sprite_after.
+                                                render_primitive_calls -
+                                            chain_sprite_before.
+                                                render_primitive_calls);
+                                        v9x_write_uint("ChainSpriteAlpha",
+                                            chain_sprite_after.
+                                                texture_alpha_draws -
+                                            chain_sprite_before.
+                                                texture_alpha_draws);
+                                        v9x_probe_write_deltas("ChainSprite",
+                                            &chain_sprite_before,
+                                            &chain_sprite_after);
                                     }
                                     v9x_write_stage("ChainStage", 15ul);
                                     for (ci2 = 0ul; ci2 < 7ul; ++ci2) {
@@ -6819,6 +6947,21 @@ void __stdcall V9xDdrawProbeEntry(void)
                                                 context_destroys -
                                             chain_counts_before.
                                                 context_destroys);
+                                        /* Whether the runtime re-created its
+                                         * textures for the rebuilt context,
+                                         * or left the driver's records
+                                         * dropped and the application's
+                                         * handles pointing at nothing. */
+                                        v9x_write_uint("ChainTexCreates",
+                                            chain_counts_after.
+                                                texture_creates -
+                                            chain_counts_before.
+                                                texture_creates);
+                                        v9x_write_uint("ChainTexDestroys",
+                                            chain_counts_after.
+                                                texture_destroys -
+                                            chain_counts_before.
+                                                texture_destroys);
                                         v9x_write_uint("ChainDrawCalls",
                                             chain_counts_after.
                                                 render_primitive_calls -
@@ -6949,6 +7092,8 @@ void __stdcall V9xDdrawProbeEntry(void)
                     V9X_D3DTLVERTEX solo_tri[3];
                     DWORD solo_wall_handle = 0ul;
                     DWORD solo_sprite_handle = 0ul;
+                    V9X_PROBE_COUNTS solo_counts_before;
+                    V9X_PROBE_COUNTS solo_counts_after;
                     HRESULT solo_hr;
                     HRESULT solo_draw_hr = 0;
                     DWORD si3;
@@ -7003,6 +7148,10 @@ void __stdcall V9xDdrawProbeEntry(void)
                         solo_hr = backbuffer->vtbl->AddAttachedSurface(
                             backbuffer, solo_z);
                         v9x_write_hresult("SoloAttachHr", solo_hr);
+                    }
+                    if (solo_hr == 0) {
+                        v9x_write_hresult("SoloZClearHr",
+                            v9x_probe_clear_depth(solo_z));
                     }
                     if (solo_hr == 0) {
                         v9x_write_stage("SoloStage", 4ul);
@@ -7109,7 +7258,8 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_stage("SoloStage", 13ul);
                         v9x_zero(solo_tri, sizeof(solo_tri));
                         solo_tri[0].sx = 8.25f;  solo_tri[0].sy = 8.25f;
-                        solo_tri[0].sz = 0.0f;   solo_tri[0].rhw = 1.0f;
+                        solo_tri[0].sz = V9X_PROBE_SZ_WALL;
+                        solo_tri[0].rhw = 1.0f;
                         solo_tri[0].color = 0xfffffffful;
                         solo_tri[0].tu = 0.0f;   solo_tri[0].tv = 0.5f;
                         solo_tri[1] = solo_tri[0];
@@ -7156,6 +7306,14 @@ void __stdcall V9xDdrawProbeEntry(void)
                             V9X_D3DBLEND_INVSRCALPHA);
                         (void)solo_device->vtbl->SetRenderState(solo_device,
                             V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                        /* In front of the wall, as in the chain rung. */
+                        solo_tri[0].sz = V9X_PROBE_SZ_SPRITE;
+                        solo_tri[1].sz = V9X_PROBE_SZ_SPRITE;
+                        solo_tri[2].sz = V9X_PROBE_SZ_SPRITE;
+                        /* Bracketed like the chain rung's blend, and for its
+                         * sake: this one lands, so its counters are what a
+                         * working alpha-blended textured draw looks like. */
+                        v9x_probe_counts(&solo_counts_before);
                         v9x_write_stage("SoloStage", 16ul);
                         begin_hr = solo_device->vtbl->BeginScene(solo_device);
                         if (begin_hr == 0) {
@@ -7165,6 +7323,16 @@ void __stdcall V9xDdrawProbeEntry(void)
                             end_hr = solo_device->vtbl->EndScene(solo_device);
                             if (end_hr != 0) s_hr = end_hr;
                             if (s_hr != 0) solo_draw_hr = s_hr;
+                        }
+                        if (v9x_probe_counts(&solo_counts_after)) {
+                            v9x_write_uint("SoloSpriteDraws",
+                                solo_counts_after.render_primitive_calls -
+                                solo_counts_before.render_primitive_calls);
+                            v9x_write_uint("SoloSpriteAlpha",
+                                solo_counts_after.texture_alpha_draws -
+                                solo_counts_before.texture_alpha_draws);
+                            v9x_probe_write_deltas("SoloSprite",
+                                &solo_counts_before, &solo_counts_after);
                         }
                         v9x_write_stage("SoloStage", 17ul);
                         for (si3 = 0ul; si3 < 7ul; ++si3) {
@@ -7196,6 +7364,12 @@ void __stdcall V9xDdrawProbeEntry(void)
                         solo_tri[0].color = 0x800000fful;
                         solo_tri[1].color = 0x800000fful;
                         solo_tri[2].color = 0x800000fful;
+                        /* Nearer again, because the sprite above wrote its
+                         * own depth: at the sprite's own sz this draw would
+                         * tie, and LESS loses a tie. */
+                        solo_tri[0].sz = V9X_PROBE_SZ_SPRITE / 2.0f;
+                        solo_tri[1].sz = V9X_PROBE_SZ_SPRITE / 2.0f;
+                        solo_tri[2].sz = V9X_PROBE_SZ_SPRITE / 2.0f;
                         begin_hr = solo_device->vtbl->BeginScene(solo_device);
                         if (begin_hr == 0) {
                             HRESULT v_hr = solo_device->vtbl->DrawPrimitive(

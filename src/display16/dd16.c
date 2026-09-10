@@ -823,6 +823,8 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             counts->context_destroys = d3d->context_destroys;
             counts->target_offset = d3d->target_offset;
             counts->target_pitch = d3d->target_pitch;
+            counts->texture_creates = d3d->texture_creates;
+            counts->texture_destroys = d3d->texture_destroys;
         }
         return 1;
     case V9X_DDFAULTINJECT:

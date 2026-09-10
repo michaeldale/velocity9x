@@ -6,6 +6,24 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+- **The DirectDraw probe now clears its depth buffer, and behind the artefact
+  was a real defect: a render-target switch loses every texture.** Both chain
+  rungs clear their Z surface through `DDBLT_DEPTHFILL` before it is attached
+  and give the wall and the sprite two different depths, so the test is
+  exercised rather than degenerated. Depth-tested blending onto the primary
+  chain's back buffer then works, measured positively: `Solo_x12..x48` read
+  `930 806 682 620 464 341 217`, and all four cells of the depth/viewport
+  table draw. The chain rung's blend still left no mark, and one counter
+  bracketed around that draw said why - `ChainSpriteAlpha=0` against the solo
+  rung's `1`, with the wall reading white rather than its texture's green. A
+  texture record is keyed by (handle, context), `ContextDestroy` drops every
+  record of the context it destroys, this runtime performs the switch by
+  destroying the context, and `ChainTexCreates=0` says it does not re-create
+  its textures afterwards - so every texture an application owns is lost at a
+  target switch, silently
+  ([issue](docs/issues/2026-09-10-a-target-switch-loses-every-texture.md)).
+  Filed with two candidate fixes and their costs; not fixed, because it is a
+  change to how that table is keyed.
 - **Two Direct3D "driver defects" were one uncleared depth buffer in the
   probe.** `IDirect3DDevice2::SetRenderTarget` never reaches
   `V9xD3dSetRenderTarget` on this runtime - measured, `ChainSetTargetCalls=0` -

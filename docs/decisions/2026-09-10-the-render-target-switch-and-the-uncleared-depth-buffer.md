@@ -116,17 +116,59 @@ Not standing:
   register's low half, both still correctly programmed - but its conclusion is
   withdrawn.
 
+## The instrument was then fixed, and found a real defect behind the artefact
+
+Written the same day, after the above. Both rungs now clear their depth
+surface through `DDBLT_DEPTHFILL` before it is attached to a context, and
+their vertices carry two depths - the wall halfway into the range, the sprite
+in front of it - so the test is exercised rather than degenerated. Boot 577
+and 578 of the same guest:
+
+```
+ChainZClearHr       0x00000000     the clear works on a 640x480 Z
+ChainWallRaw            32767      the wall lands with depth ON (was the fill)
+ChainWall{,No}Z{,View}  32767 x4   all four control cells draw
+Solo_x12 .. Solo_x48    930 806 682 620 464 341 217
+                                   the blend lands with depth ON
+SoloVtxRaw                434      so does the untextured vertex-alpha blend
+```
+
+So depth-tested blending onto the primary chain's back buffer works, measured
+positively rather than only by turning depth off. That is the finding the
+2026-09-05 record was reaching for.
+
+The chain rung's blend still left its seven samples unchanged, and this time
+the reason is not depth. Bracketing that one draw with the driver's counters:
+`ChainSpriteDraws=1` with **`ChainSpriteAlpha=0`**, against the solo rung's
+`1` and `1`. The driver saw the draw and had no texel alpha to blend with -
+because it had no texture at all. `ChainWallRaw` reads `0x7FFF`, white, which
+is the vertex colour in this 5:5:5 mode, where the wall texture is green
+(`0x03E0`, which is what the solo rung reads).
+
+The cause is in the source and now measured: a texture record is keyed by
+(handle, context), `ContextDestroy` drops every record of the context it
+destroys, and this runtime performs the target switch by destroying the
+context - while `ChainTexCreates=0` says it does not re-create its textures
+afterwards. Every texture an application owns is therefore lost at a target
+switch, silently, with no counter moving. Filed as
+[a render-target switch silently loses every texture](../issues/2026-09-10-a-target-switch-loses-every-texture.md),
+with the two candidate fixes and their costs; the fix is a change to how that
+table is keyed and is not made here.
+
+Worth stating plainly: the pixel keys could not have found this. An untextured
+draw takes the white vertex colour, the sprite texture is a white-ish ramp,
+and "the blend left no mark" and "both draws painted white" read identically.
+One counter, bracketed around one draw, separated them.
+
 ## The instrument, and what it should learn
 
-The probe's rungs now measure both states: as inherited, and with depth off.
-Neither is what an application does - a Direct3D application clears its depth
-buffer per frame through the viewport, and this driver serves that with
-`DDBLT_DEPTHFILL` and advertises `DDCAPS_BLTDEPTHFILL`
+Both fixes named here were made the same day, in the section above: the rungs
+clear their depth surface through `DDBLT_DEPTHFILL` - which this driver serves
+and advertises with `DDCAPS_BLTDEPTHFILL`
 ([record](2026-08-30-ddblt-depthfill.md)), so the clear is a hardware fill
-rather than a CPU pass over the aperture. The probe should clear it too, and
-should vary `sz` rather than sending zero for every vertex; both are worth
-doing before the next chain measurement, and neither changes what this run
-establishes.
+rather than a CPU pass over the aperture - and they carry two depths instead
+of sending zero for every vertex. The depth-off cells are kept as controls,
+and the four-cell table is now a regression check: all four must draw.
 
 A general lesson for the rest of this suite: a rung that attaches a Z surface
 and does not clear it is measuring the depth test, whatever else it thinks it

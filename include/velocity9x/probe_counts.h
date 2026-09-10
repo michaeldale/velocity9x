@@ -56,6 +56,17 @@ typedef struct v9x_probe_counts {
     unsigned long context_destroys;
     unsigned long target_offset;
     unsigned long target_pitch;
+    /*
+     * Appended 2026-09-10, later the same day. The chain rung's draws land
+     * untextured after a render-target switch, because the driver keys a
+     * texture record by (handle, context) and drops every one of them when
+     * the runtime destroys the context - which is how this runtime performs
+     * the switch. Whether the fix belongs in ContextDestroy or in the handle
+     * turns on whether the runtime re-creates its textures afterwards, and
+     * these two say.
+     */
+    unsigned long texture_creates;
+    unsigned long texture_destroys;
 } V9X_PROBE_COUNTS;
 
 #endif
