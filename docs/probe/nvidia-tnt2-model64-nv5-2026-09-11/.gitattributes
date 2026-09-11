@@ -1,0 +1,10 @@
+# This bundle's evidence is CRLF as the exporter wrote it, and the sha256sums
+# beside it are over those exact bytes. core.autocrlf is true on the machine
+# these were committed from, which normalised them to LF in the object store
+# and broke verification for anyone checking out with LF. Store them verbatim.
+baseline.json -text
+capture.ndjson -text
+report.md -text
+rom-capture.ndjson -text
+tnt2-aperture-3.ndjson -text
+sha256sums.txt -text
