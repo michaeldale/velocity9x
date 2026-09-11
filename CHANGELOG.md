@@ -6,6 +6,102 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## Unreleased
 
+## 0.7.1 - 2026-09-11
+
+A correctness release for the software Direct3D engine, and the first one
+whose headline defect was found by running a game rather than a probe. Final
+Reality drew its Robots scene with no textures at all through this driver and
+fully textured through Microsoft's software rasterizer, on the same guest in
+the same boot, with every call returning success the whole way. Everything
+else here is either the fix for that, the lightmap pass it sat next to, or a
+measurement that changes what an existing setting is worth.
+
+- **Every texture an application created without naming a pixel format was
+  dropped.** `DDRAWISURF_HASPIXELFORMAT` being clear does not mean the format
+  is unknown; it means the surface does not *differ* from the primary, which
+  is why `ddpfSurface` must not be read without it - and not a reason to
+  refuse the surface. Both texture classifiers refused it anyway, so a
+  texture created the ordinary way, letting the runtime pick, was silently
+  never sampled: Final Reality's Robots scene refused 39,793 of them and drew
+  the whole scene in untextured Gouraud. `v9x_d3d_target_layout` has resolved
+  the same flag correctly for the render target since 2026-09-02, falling
+  back to `vmiData.ddpfDisplay`; the texture functions are the siblings that
+  never got the fallback, and they have it now in both engines. After the
+  fix the same scene runs textured with every refusal counter at zero across
+  466 textures and 8,753 primitive calls
+  ([record](docs/decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md),
+  [issue](docs/issues/2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md)).
+  The hardware path changes too, and deliberately: its comment argued the
+  refusal was right because the display is 5:6:5, which is false on the 5:5:5
+  desktop this driver selects for hardware Direct3D. That half is read from
+  the source and has not been run on a ViRGE.
+
+- **The multiplicative lightmap pass draws.** `DESTCOLOR` is implemented as a
+  source factor in the software engine and advertised in `dwSrcBlendCaps`,
+  which now reads `ONE | SRCALPHA | DESTCOLOR`. The four factors it had were
+  copied from what S3's own ViRGE driver publishes - a fact about the S3D
+  unit, not about a CPU rasterizer, which gets this one for a single product
+  per channel on pixels already being blended. The divide is the exact one,
+  because a lightmap that lights nothing multiplies by white and an
+  approximate divide would hand the frame back a level darker everywhere the
+  pass touched. Advertised as well as implemented, because an application
+  reads the caps to decide whether to attempt the pass at all. Measured on
+  the Trio64 guest with a cell that can tell a multiply from a skip - green
+  over magenta, which share no channel - and free on the benchmark, the alpha
+  rung identical to the millisecond in RAM and VRAM
+  ([record](docs/decisions/2026-09-11-the-lightmap-pass-now-draws.md)). The
+  hardware engine keeps its four factors and its own `describe_caps`.
+
+- **`D3DSoftSysMem` is worth nothing to Final Reality, and the reason is
+  placement rather than cost.** The option shipped unmeasured with a guess
+  behind it - that texel reads across the aperture are what a textured draw
+  waits for - and a new guest confirmed the guess: an aperture read costs
+  what the aperture costs, and a 2.7x faster CPU buys only 1.4x on a
+  video-memory target. The option still moves nothing, because DirectDraw
+  never puts that application's textures in system memory and advertising
+  `D3DDEVCAPS_TEXTURESYSTEMMEMORY` does not make it. The proof is the
+  **off**-run: a system-memory texture offered while the option is off is
+  refused and counted, and a whole run of the scene created 349 textures with
+  every refusal counter at zero
+  ([record](docs/decisions/2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)).
+  No code changed; the 2026-09-10 record is amended so it no longer reads as
+  promising an unmeasured gain. The option remains off by default and remains
+  correct for an application that asks for the placement itself.
+
+- **The probe gained the two cells that could see any of this.** `BlendMultiply`
+  draws green over magenta so that a correct multiply, a skipped draw and an
+  opaque draw are three different hues - the older `BlendModulate` cell draws
+  white, and white times anything is that thing, so it cannot separate the
+  first two. `DisplayFmtTex*` creates a texture without naming a format, the
+  case every real application hits and no cell covered, and reports what
+  DirectDraw chose for it. **That one carries no verdict key**: with the fix
+  in and the application rendering the same kind of texture correctly, the
+  cell's own draw still writes nothing, and an `Ok` key would assert a
+  failure the driver demonstrably does not have. It reports and does not
+  judge until that is explained.
+
+- **A guest for measuring the rasterizer rather than a card.**
+  `Win98SE-Fast-D3D` on agent port 9878: ASUS CUBX 440BX, Celeron Mendocino
+  533 - the fastest CPU this 86Box build has for the job, since the binary
+  carries no Pentium III family at all - 256 MiB, and a Voodoo3 3500 AGP
+  driven through the `vbe` package. Against the Pentium MMX 200 guest the
+  rasterizer runs 3.6x to 5.0x faster on a RAM target and 1.4x to 1.8x on a
+  video-memory one, with all 24 pixel and depth hashes identical. Swapping
+  the ViRGE/DX for the Voodoo3 on the same CPU isolates the bus: AGP reads
+  2.09x quicker, writes 0.61x, so textured and depth-tested scenes gain 1.5x
+  to 1.8x and untextured fills lose ([guest](docs/vm-environment.md)).
+  Also recorded there: build 9001 does carry `trio3d2x_agp`, so the `8A13`
+  alias's note that no emulator profile exists for it is stale.
+
+### Not in this release
+
+The per-family smoke pass is still owed. `runtime.asm`, `enable16.c`,
+`ddi.c` and `dd16.c` all changed since 0.7.0 and only some guests were
+exercised, so the ATI, VBE and Matrox archives carry the same host-audited,
+activation-untested label they carried in 0.7.0. The ADVFUNC shield still
+has no physical Trio64 boot, and text acceleration is still off by default
+for the reason the 0.7.0 notes give.
+
 - **The software Direct3D engine drew a blend it cannot express as opaque,
   and now draws nothing.** `DESTCOLOR` over `ZERO` is the multiplicative pass
   a lightmap uses: the destination is what the frame already drew, a correct
@@ -19,8 +115,9 @@ build identifier so exact guest-tested binaries remain traceable.
   both, with `D3dBlendSkipped=1` and `D3dBlendLastPair=0x00090001` naming the
   pair
   ([record](docs/decisions/2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)).
-  The four expressible factors are unchanged and still what the caps
-  advertise.
+  Superseded the same day for this particular pair, which is now implemented
+  rather than skipped - see the lightmap entry above. The skip-and-count
+  remains, and still covers every factor pair outside the five.
 
 - **The software Direct3D engine can sample a texture in system memory, if
   `[Velocity9x] D3DSoftSysMem=1` says so.** It refused any

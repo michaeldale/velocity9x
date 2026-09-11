@@ -12,7 +12,7 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Latest release: 0.7.0.** The checkout also contains unreleased work. See
+**Latest release: 0.7.1.** See
 [current status and roadmap](docs/STATUS.md) for defaults, validation coverage
 and open work, and [CHANGELOG.md](CHANGELOG.md) for the history.
 
