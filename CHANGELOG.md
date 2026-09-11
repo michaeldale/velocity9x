@@ -93,15 +93,6 @@ measurement that changes what an existing setting is worth.
   Also recorded there: build 9001 does carry `trio3d2x_agp`, so the `8A13`
   alias's note that no emulator profile exists for it is stale.
 
-### Not in this release
-
-The per-family smoke pass is still owed. `runtime.asm`, `enable16.c`,
-`ddi.c` and `dd16.c` all changed since 0.7.0 and only some guests were
-exercised, so the ATI, VBE and Matrox archives carry the same host-audited,
-activation-untested label they carried in 0.7.0. The ADVFUNC shield still
-has no physical Trio64 boot, and text acceleration is still off by default
-for the reason the 0.7.0 notes give.
-
 - **The software Direct3D engine drew a blend it cannot express as opaque,
   and now draws nothing.** `DESTCOLOR` over `ZERO` is the multiplicative pass
   a lightmap uses: the destination is what the frame already drew, a correct
