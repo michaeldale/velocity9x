@@ -91,6 +91,14 @@ the new one. After the fix, every refusal counter reads zero on the same run.
 
 ## What this does not establish
 
+> **Measured on 2026-09-11, and the answer is zero for Final Reality** -
+> not because the sampling is no cheaper, but because DirectDraw never puts
+> that application's textures in system memory, so the arm is never entered:
+> [D3DSoftSysMem buys Final Reality
+> nothing](2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md). The
+> paragraph below should not be read as promising a gain that merely had not
+> been measured yet; advertising the capability does not move the placement.
+
 **No speed measurement through the driver.** The motivation is the benchmark's
 RAM-versus-VRAM gap - the same synthetic scenes ran about twice as slow
 against a video-memory target, and point-sampled modulate 1.46x against 1.29x

@@ -327,8 +327,12 @@ this guest the aperture, not the processor, is now what a textured draw waits
 for. The gap between the two columns was about 2x on the Socket 7 guests; here
 it reaches 7x for bilinear.
 
-That makes this the guest on which `D3DSoftSysMem=1` should be worth the most,
-and the one to time it on. It is off in this profile.
+That made this the guest on which `D3DSoftSysMem=1` should have been worth
+the most. It was timed here on 2026-09-11 and is worth **nothing** to Final
+Reality, because DirectDraw never puts that application's textures in system
+memory and advertising the capability does not move them
+([record](decisions/2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)).
+It is off in this profile.
 
 ### Building it
 
