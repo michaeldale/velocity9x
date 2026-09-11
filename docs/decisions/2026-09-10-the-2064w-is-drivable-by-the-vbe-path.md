@@ -88,10 +88,23 @@ engine writes dwords. It is not evidence against the linear modes the BIOS
 advertises; it is evidence that nobody has yet measured the aperture in one of
 them.
 
+> **Superseded 2026-09-11, and the reasoning above is wrong twice.** The
+> aperture is gated by CRTCEXT3 bit 7 (`mgamode`), which the firmware leaves
+> clear; setting that one bit - no mode set, no memory controller
+> configuration - makes 32-bit accesses round-trip faithfully to 4 MiB. The
+> open DIB risk is closed:
+> [the 2064W's aperture opens with mgamode](2026-09-11-the-2064w-aperture-opens-with-mgamode.md).
+
 **Installed memory is not measured.** The BIOS reports 8 MiB through 4F00h,
 which is exactly the BAR1 window and so a report rather than a confirmation;
 the ROM's own info-block template carries 2 MiB. The bundle records the
 disagreement rather than preferring a side, and so does this record.
+
+> **Superseded 2026-09-11.** It is measured now, at 8 MiB, by an alias probe
+> that is direct MMIO and does not go through the BIOS. That is a fact about
+> this card and not about the part, which shipped in several memory sizes -
+> so the manifest's conservative figure stands and only this reasoning is
+> retracted.
 
 **The RAMDAC is proved, not assumed**: the probe read the part's ID at BAR0
 offset `0x3c00` index `0x3f` and required `0x26` before decoding anything. It
@@ -153,6 +166,12 @@ framebuffer from, and the build now fails if either chip's string is missing
 from the driver image.
 
 ## What is still owed
+
+> **All three were discharged on 2026-09-11**, by a run that reused this
+> bundle's directory path:
+> [the 2064W's aperture opens with mgamode](2026-09-11-the-2064w-aperture-opens-with-mgamode.md).
+> Item 2 did not need a graphics mode after all - one register bit was
+> enough. Windows has still not set a mode and no pixel has been drawn.
 
 1. **A mode set.** Nothing has set one on this card - not the kit, which
    refuses to, and not Windows. Everything above is what the card and its

@@ -189,6 +189,15 @@ measurement of an option added here.
   its framebuffer aperture accepted only 2-byte accesses in the mode it was
   measured in.
 
+  **Corrected 2026-09-11, after this release shipped.** The last two
+  sentences are wrong and the memory reasoning with them. The aperture is
+  gated by CRTCEXT3 bit 7, which the firmware leaves clear; with that one bit
+  set it round-trips 32-bit accesses, and the card measures 8 MiB by an alias
+  probe that never touches the BIOS. The kit has since set `0117h` and
+  restored it. The manifest is unchanged - 8 MiB is this card, and the part
+  shipped in several memory sizes
+  ([record](docs/decisions/2026-09-11-the-2064w-aperture-opens-with-mgamode.md)).
+
 - **The DirectDraw probe's chain rung works; the faults it reported were its
   own.** It clears its Z surface through `DDBLT_DEPTHFILL` before attaching
   it and gives the wall and the sprite two different depths, so the depth
