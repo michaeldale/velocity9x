@@ -48,7 +48,7 @@ Software is selected.
 
 | Target | Recorded coverage | Boundary |
 |---|---|---|
-| S3 ViRGE/DX | Extensive 86Box regression; [physical ViRGE GDI/text and DOS-box checks](decisions/2026-09-06-advfunc-shield-ships.md) | Recent physical GDI success does not establish physical 3D throughput |
+| S3 ViRGE/DX | Extensive 86Box regression; [physical ViRGE GDI/text and DOS-box checks](decisions/2026-09-06-advfunc-shield-ships.md); [CR36, CR59/CR5A and a 32-bit aperture read off a physical card](decisions/2026-09-11-virge-dx-registers-confirmed-on-silicon.md) | Recent physical GDI success does not establish physical 3D throughput, and the ZRGB1555-into-RGB565 mismatch is still unanswered |
 | S3 Trio3D/2X (`5333:8A13`) | Physical hardware Direct3D: Final Reality and 3DMark 99 complete in [0.7.0](../CHANGELOG.md#070---2026-09-05); [generic VBE also tested](decisions/2026-09-02-vbe-tier0-on-a-real-trio3d.md) | Uses the S3D backend with measured chip-specific restrictions; no matching Trio3D emulator validation |
 | S3 Trio64 / Trio32 | Trio64 86Box regression, [physical PCI GDI](decisions/2026-08-27-crystalmark-barry-accelerated.md), [physical VLB Win95 bring-up](handoffs/2026-08-22-vlb-manual-select-handover.md), [Trio32 guest](decisions/2026-08-29-s3-trio32-alias-guest.md) | VLB Win95 omits the mini-VDD. Text remains off. Trio32 BIOS refuses 800x600x32 |
 | S3 aliases `8810`, `8812`, `8813`, `8814`, `8901` | Bound to the Trio64 path by the manifest | [Installation aliases, not validated targets](decisions/2026-08-29-s3-device-id-survey.md); `8811` is also shared by Trio32 and Trio64V+ |
