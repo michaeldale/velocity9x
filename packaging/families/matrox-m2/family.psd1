@@ -82,27 +82,52 @@
             Direct3D = 'not-advertised'
             EngineType = 'NONE'
             EngineCaps = @()
-            # A floor, not a measurement. The card's BIOS reports 8 MiB
-            # through 4F00h, which is exactly its BAR1 window and therefore a
-            # report rather than a confirmation; the aperture probe measured a
-            # 1 MiB alias period in the card's current VGA mapping and refused
-            # to call it installed memory. 2 MiB is the base Millennium
-            # configuration and covers every mode claimed below - 1024x768x16
-            # needs 1.57 MiB - so under-reporting here cannot hand DirectDraw
-            # memory the card may not have.
+            # A floor, and deliberately still 2 MiB after the card was
+            # measured at 8. The 2026-09-11 aperture probe wrote a distinct
+            # marker at every power of two to 4 MiB with none folding back to
+            # offset 0, which is a real measurement and not the BAR window -
+            # but it is a measurement of *one* card, and the MGA-2064W
+            # shipped in several memory configurations. 2 MiB is the base
+            # Millennium and covers every mode claimed below, so
+            # under-reporting cannot hand DirectDraw memory a smaller card
+            # does not have. The runtime heap does not read this in any case:
+            # enable16.c sizes from the 4F00h total on the VBE path.
+            # docs\decisions\2026-09-11-the-2064w-aperture-opens-with-mgamode.md
             VideoMemoryBytes = 2097152
 
-            # Three modes, not the sibling's four. 800x600x16 is left out on
-            # measurement: this BIOS reports 1920 bytes per scan line for
-            # 0114h where the driver's table asks for a packed 1600, so the
-            # post-mode-set check would have to force it and would refuse the
-            # mode if the BIOS declined. Claiming a mode whose stride the card
-            # has already contradicted is not a claim this package should make
-            # before someone has set it.
+            # Nine modes. Every one is advertised by this card's BIOS with a
+            # linear framebuffer at its BAR1 base and a scan line length
+            # equal to width x bytes per pixel, measured by emulated int10 on
+            # 2026-09-11; and every one fits the 2 MiB floor above, which is
+            # what keeps 1280x1024x16 and 1024x768x32 out despite the BIOS
+            # offering both.
+            #
+            # The bar for claiming a mode here is that the BIOS advertises it
+            # and its stride matches the driver's packed table - not that
+            # someone has set it. Only 0117h has been set on this card, by
+            # the kit. The two 800-wide entries the BIOS pads are excluded on
+            # measurement: it reports 1920 bytes per scan line for 0114h and
+            # 960 for 0103h where the table asks for 1600 and 800, so the
+            # post-mode-set check would have to force the pitch and would
+            # refuse the mode if the BIOS declined. 800x600x32 is *not*
+            # padded - 3200 is exactly 800 x 4 - so it is claimed.
+            #
+            # This list is latent in the shipped artifact. The packaged
+            # candidate is built with a forced single mode - its MANIFEST.TXT
+            # says "forced 640x480x8, VBE 0101h" - so widening the table here
+            # changes what the driver image carries and not what anyone
+            # installing that zip is offered. It matters when the guard comes
+            # off.
             Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
                 @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 1280; Height = 1024; RefreshRate = 60; VbeMode = '0107' }
+                @{ BitsPerPixel = 8; Width = 1600; Height = 1200; RefreshRate = 60; VbeMode = '011C' }
                 @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+                @{ BitsPerPixel = 32; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0112' }
+                @{ BitsPerPixel = 32; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0115' }
             )
 
             Audit = @{

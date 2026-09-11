@@ -46,8 +46,21 @@ setting was written, and the probe is the same code that produced the 2-byte
 result without the bit, so the difference is in the card rather than in the
 measurement.
 
-**The open DIB risk is closed, and the driver now knows which bit closes it.**
-Nothing in `src/` sets CRTCEXT3 bit 7 today.
+**The open DIB risk is closed.** Whether the *driver* has to do anything
+about it is a separate question this run does not answer, and the first
+version of this record overstated it.
+
+`mgamode` appears nowhere in the mode probe: it was read only by the aperture
+probe, with the card at rest in mode 3. A VBE linear-framebuffer mode exists
+to expose that aperture, so the likeliest reading by far is that the card's
+own BIOS sets the bit as part of setting `0117h`, and that the probe saw it
+clear because text mode is where it found the card. Nothing in `src/` writes
+CRTCEXT3, and on this evidence nothing should: the family is a guarded
+candidate whose whole boundary is VBE calls and no chip register writes, and
+adding one on an inference would spend that boundary for nothing.
+
+**What would settle it** is one more run: read CRTCEXT3 while the card is in
+`0117h`. That is a register read in a mode the kit can already set.
 
 ## Installed memory is 8 MiB on this card
 
