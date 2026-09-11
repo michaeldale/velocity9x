@@ -4,8 +4,6 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
-
 ## 0.7.1 - 2026-09-11
 
 A correctness release for the software Direct3D engine, and the first one
@@ -53,9 +51,10 @@ measurement that changes what an existing setting is worth.
   hardware engine keeps its four factors and its own `describe_caps`.
 
 - **`D3DSoftSysMem` is worth nothing to Final Reality, and the reason is
-  placement rather than cost.** The option shipped unmeasured with a guess
-  behind it - that texel reads across the aperture are what a textured draw
-  waits for - and a new guest confirmed the guess: an aperture read costs
+  placement rather than cost.** The option itself is new in this release -
+  the entry below adds it - and it went in with a guess behind it rather
+  than a timing: that texel reads across the aperture are what a textured
+  draw waits for. A new guest confirmed the guess: an aperture read costs
   what the aperture costs, and a 2.7x faster CPU buys only 1.4x on a
   video-memory target. The option still moves nothing, because DirectDraw
   never puts that application's textures in system memory and advertising
@@ -122,8 +121,10 @@ measurement that changes what an existing setting is worth.
   first bounds it against the aperture. Verified through the installed driver
   on the Trio64 guest with a pixel - white when refused, green when allowed
   ([record](docs/decisions/2026-09-10-software-d3d-system-memory-textures.md)).
-  No speed claim through the driver yet: the benchmark that measured the
-  RAM-versus-VRAM gap never loads the HAL, and a timed rung is owed.
+  It went in with no speed claim through the driver, because the benchmark
+  that measured the RAM-versus-VRAM gap never loads the HAL. That timing was
+  taken before this release shipped and came out at zero for Final Reality,
+  for a reason the option cannot fix - see the entry above.
 - **The software engine counts its texture refusals now**, in the diagnostics
   the ViRGE path has used since 3DMark 99. It refused in silence, and a
   refused texture draws as untextured Gouraud in the vertex colour - which
