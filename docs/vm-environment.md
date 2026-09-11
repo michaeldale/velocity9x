@@ -75,6 +75,11 @@ than the controller's default port.
 | `ati` / `-ChipId mach64-vt2` | `Win98SE-Mach64VT2` | 9873 | Cloned from `Win98SE-Native-S3` 2026-08-16, so it too reports ComputerName `WIN98-S3NATIVE`. Identify it by port. |
 | `ati` / `-ChipId rage-mobility-m` | none | - | Per-target `Emulator = 'none'`: 86Box emulates no Rage. Real hardware only, at `10.0.1.22`. |
 
+`Win98SE-Fast-D3D` on 9878 is not in that table either, for the same reason
+and one more: it is not a chip target at all. It is a ViRGE/DX forced into
+software Direct3D on the fastest CPU here, kept to measure the rasterizer
+rather than a card. See its section below.
+
 `Win98SE-Trio32` on 9875 is not in that table on purpose: it validates a PCI id
 the `trio64` chip already binds rather than a chip of its own, so no manifest
 `Vm.Targets` row names it. See below.
@@ -220,3 +225,84 @@ Measured on the first boot
   (`docs\issues\2026-08-29-trio32-lacks-vbe-0115.md`).
 
 The guest still reports the parent's ComputerName. Identify it by port.
+
+## Win98SE-Fast-D3D (added 2026-09-11)
+
+The fleet's fastest guest, built to exercise the CPU rasterizer rather than a
+chip. Cloned from `Win86SE`, so it arrives with Velocity9x already bound to a
+ViRGE/DX and needs no display-driver install.
+
+- Profile: `<86Box VMs>\Win98SE-Fast-D3D`
+- `machine = cubx` (ASUS CUBX, 440BX), `cpu_family = celeron_mendocino`,
+  `cpu_speed = 533 MHz`, 256 MiB
+- `gfxcard = virge_dx_pci`, `[S3 ViRGE/DX PCI] memory = 4`
+- `[Velocity9x] Direct3D=2` in the guest's `SYSTEM.INI`, so
+  `V9XHW.INI` reads `Direct3DMode=software` and every Direct3D draw is served
+  by the CPU
+- Agent port: host **9878** -> guest 9869; COM1 pipe `fast-d3d-com1`
+
+It reports ComputerName `WIN98-86BOX` from its parent. Identify it by port.
+
+### Why this CPU and this card
+
+**The CPU is the fastest this 86Box build has for the job, not the fastest
+number it offers.** Build 9001 contains no Pentium III family at all - the
+binary has no `katmai`, `coppermine` or `tualatin` string, and its P6 line
+ends at `celeron_mendocino`. Two families clock higher and were rejected:
+`c3_samuel` reaches 733 MHz (measured: a disk-less POST on `6via90ap` printed
+"VIA CyrixIII / CPU Speed: 733MHz"), and the Socket 7 K6 parts reach the low
+500s. The Cyrix III core is in-order with a weak FPU, so its extra clock is
+not expected to beat a Mendocino's full-speed on-die 128 KiB L2 on this
+workload - **expected, not measured**, and the cheap way to settle it is to
+point this profile at `6via90ap`/`c3_samuel` and rerun `V9XSOFT`.
+
+**The card is the fastest our driver actually claims.** Every AGP part 86Box
+emulates - ViRGE/GX2, Voodoo3, Banshee - is absent from all four family
+manifests, and the two Matrox profiles ship without `V9XHAL.DLL`, so they have
+no Direct3D at all. That leaves PCI S3 and ATI, and the ViRGE/DX is the
+best-validated of them. It also earns its place a second way: it is the only
+card here that can run the same scene through our hardware engine and our
+software one, by flipping `Direct3D` between 1 and 2.
+
+A faster framebuffer is reachable by putting an AGP card behind the `vbe`
+package through Have Disk. Nothing has tried it.
+
+### What the first boot measured
+
+`V9XSOFT` at boot 584, against the same binary on `Win98SE-Trio64` (Pentium
+MMX 200, Trio64 PCI) earlier the same day. All 24 pixel and depth hashes are
+identical between the two machines, which is the cross-check that this is the
+same rasterizer and not a different one:
+
+| Target | Small | Gouraud | Point | Bilinear | Depth | Alpha | Read | Write |
+|---|---|---|---|---|---|---|---|---|
+| RAM | 3.61x | 3.63x | 4.72x | 4.99x | 4.99x | 4.76x | 3.57x | 4.35x |
+| VRAM | 3.30x | 2.83x | 1.79x | 1.49x | 1.41x | 1.43x | **0.95x** | 1.72x |
+
+The RAM column is roughly the CPU ratio and a bit more. The VRAM column is the
+point of the machine: **a 2.7x faster CPU buys 1.4x on a video-memory target,
+and an aperture read is fractionally slower than it was on the Pentium MMX.**
+Reading a texel across the PCI aperture costs what the aperture costs, and on
+this guest the aperture, not the processor, is now what a textured draw waits
+for. The gap between the two columns was about 2x on the Socket 7 guests; here
+it reaches 7x for bilinear.
+
+That makes this the guest on which `D3DSoftSysMem=1` should be worth the most,
+and the one to time it on. It is off in this profile.
+
+### Building it
+
+Two things cost time and are worth writing down.
+
+**Synthetic keyboard input does not reach the emulated machine on build 9001,
+but synthetic relative mouse motion does** - at twice the requested
+magnitude. The chipset change from the parent's 430TX raises Win98's
+"Add New Hardware Wizard" for the 440BX bridge before the shell starts, so the
+agent is not up to drive it; it has to be clicked through from the host with
+`mouse_event` while 86Box holds the mouse capture. The driver came from
+`C:\WINDOWS\INF\MACHINE2.INF` with no install media.
+
+**The first boot after that wizard's restart came up with no Explorer** - the
+agent answered, `DesktopReady` stayed false, and the agent's own reboot verb
+could not work because it needs the shell. A hard reset of the emulator
+process cleared it and every boot since has been clean.
