@@ -1,7 +1,16 @@
 # Every Final Reality texture is refused for having no pixel format
 
 Found 2026-09-11 on the 86Box Trio64 guest, agent 9871, boot 349, with
-`Direct3D=2` so every draw is served by the CPU rasterizer. Open.
+`Direct3D=2` so every draw is served by the CPU rasterizer.
+
+> **Fixed the same day**, in both engines, by resolving the absent flag to
+> the display's format instead of refusing:
+> [a texture with no pixel format is in the display's
+> format](../decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md).
+> Boot 351 runs the same scene textured with `D3dTextureRefusedFormat=0`
+> against this boot's 39793. Two things below are **not** closed: the ViRGE
+> path is changed but unmeasured, and the probe rung this issue asks for
+> exists but disagrees with the application and carries no verdict yet.
 
 Final Reality 1.01's Robots scene, run once through each rendering platform
 one after the other in the same boot:

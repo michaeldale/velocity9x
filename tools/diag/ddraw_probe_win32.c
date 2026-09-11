@@ -7235,6 +7235,194 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 }
                             }
 
+                            /*
+                             * A TEXTURE THAT NAMES NO PIXEL FORMAT.
+                             *
+                             * Every other texture cell in this probe passes
+                             * DDSD_PIXELFORMAT, because the question they
+                             * were written to ask is which formats the
+                             * driver accepts. That is not how an application
+                             * ordinarily creates one: it asks for a texture
+                             * and takes what the runtime gives, which is the
+                             * display's format, and DirectDraw then does not
+                             * set DDRAWISURF_HASPIXELFORMAT on it because
+                             * the surface does not differ from the primary.
+                             *
+                             * The driver refused every such texture until
+                             * 2026-09-11, reading the absent flag as an
+                             * unknown format - so Final Reality's Robots
+                             * scene drew entirely untextured while every
+                             * call returned success. No cell here could see
+                             * it. This is that cell.
+                             *
+                             * Green over the 0x18E3 fill: green would be the
+                             * texel, and anything else means the texture was
+                             * not sampled.
+                             *
+                             * NO VERDICT KEY, DELIBERATELY. This cell does
+                             * not yet agree with the application it was
+                             * written for. On the Trio64 guest, boot 351,
+                             * with the fix in place and Final Reality
+                             * rendering the same kind of texture correctly,
+                             * the draw here writes nothing at all - both
+                             * sampled pixels read back the fill, while
+                             * BeginScene and DrawPrimitive return zero and
+                             * every refusal counter stays at zero. The
+                             * neighbouring system-memory cell, same
+                             * geometry, same target, draws fine in the same
+                             * run. Swapping COPY for MODULATE changed
+                             * nothing.
+                             *
+                             * So the readings below are reported and the
+                             * judgement is not: what DirectDraw chose for
+                             * the surface, and what came back. An Ok key
+                             * here would currently claim the driver fails a
+                             * case the application demonstrably passes.
+                             * Until the disagreement is explained this is an
+                             * observation, not a gate
+                             * (docs\issues\2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md).
+                             */
+                            {
+                                struct v9x_dds *dfmt_surf = 0;
+                                struct v9x_d3d_texture2 *dfmt_tex = 0;
+                                DWORD dfmt_handle = 0ul;
+                                DWORD dfmt_fill;
+                                WORD dfmt_raw = 0u;
+                                HRESULT dfmt_hr;
+                                HRESULT dfmt_begin_hr = 0;
+
+                                v9x_zero(&desc, sizeof(desc));
+                                desc.dwSize = sizeof(desc);
+                                desc.dwFlags = V9X_DDSD_CAPS |
+                                               V9X_DDSD_WIDTH |
+                                               V9X_DDSD_HEIGHT;
+                                desc.dwWidth = 64ul;
+                                desc.dwHeight = 64ul;
+                                desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+                                dfmt_hr = ddraw->vtbl->CreateSurface(
+                                    ddraw, &desc, &dfmt_surf, 0);
+                                v9x_write_hresult("DisplayFmtTexCreateHr",
+                                                  dfmt_hr);
+
+                                if (dfmt_hr == 0) {
+                                    /* Where DirectDraw put it and in which
+                                     * format, both of which this cell leaves
+                                     * to the runtime on purpose - so the
+                                     * report has to say what it chose, or a
+                                     * failure here is unreadable. */
+                                    V9X_DDSURFACEDESC dfmt_desc;
+
+                                    v9x_zero(&dfmt_desc, sizeof(dfmt_desc));
+                                    dfmt_desc.dwSize = sizeof(dfmt_desc);
+                                    if (dfmt_surf->vtbl->GetSurfaceDesc(
+                                            dfmt_surf, &dfmt_desc) == 0) {
+                                        v9x_write_uint("DisplayFmtTexCaps",
+                                            dfmt_desc.ddsCaps.dwCaps);
+                                        v9x_write_uint("DisplayFmtTexPitch",
+                                            (DWORD)dfmt_desc.lPitch);
+                                        v9x_write_uint("DisplayFmtTexPfFlags",
+                                            dfmt_desc.ddpfPixelFormat.dwFlags);
+                                        v9x_write_uint("DisplayFmtTexPfBits",
+                                            dfmt_desc.ddpfPixelFormat.
+                                                dwRGBBitCount);
+                                        v9x_write_uint("DisplayFmtTexPfRed",
+                                            dfmt_desc.ddpfPixelFormat.
+                                                dwRBitMask);
+                                    }
+
+                                    dfmt_fill = target_layout.valid != 0ul
+                                        ? (DWORD)v9x_layout_pack(
+                                              &target_layout, 0ul, 255ul, 0ul)
+                                        : 0x03e0ul;
+                                    dfmt_fill |= dfmt_fill << 16;
+                                    v9x_fill_surface(dfmt_surf, dfmt_fill);
+                                    /* Read the texel back before drawing it.
+                                     * v9x_fill_surface returns nothing and
+                                     * gives up silently on a failed Lock, so
+                                     * without this a texture that was never
+                                     * filled and a texture that was never
+                                     * sampled produce the same key. */
+                                    v9x_write_uint("DisplayFmtTexTexelRaw",
+                                        v9x_surface_pixel16(dfmt_surf,
+                                                            8ul, 8ul));
+                                    dfmt_hr =
+                                        dfmt_surf->vtbl->QueryInterface(
+                                            dfmt_surf,
+                                            &v9x_iid_d3d_texture2,
+                                            (void **)&dfmt_tex);
+                                }
+                                if (dfmt_hr == 0) {
+                                    dfmt_hr = dfmt_tex->vtbl->GetHandle(
+                                        dfmt_tex, d3d_device, &dfmt_handle);
+                                    v9x_write_hresult("DisplayFmtTexHandleHr",
+                                                      dfmt_hr);
+                                }
+                                if (dfmt_hr == 0) {
+                                    v9x_probe_reset_state(d3d_device,
+                                                          triangle);
+                                    triangle[0].tu = 0.5f;
+                                    triangle[0].tv = 0.5f;
+                                    triangle[1].tu = 0.5f;
+                                    triangle[1].tv = 0.5f;
+                                    triangle[2].tu = 0.5f;
+                                    triangle[2].tv = 0.5f;
+                                    v9x_fill_surface(d3d_target, 0x18e318e3ul);
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                                        dfmt_handle);
+                                    /* MODULATE against the white vertices
+                                     * reset_state leaves, not COPY: this
+                                     * cell is modelled on what an
+                                     * application does, and white times the
+                                     * texel is the texel either way. */
+                                    (void)d3d_device->vtbl->SetRenderState(
+                                        d3d_device,
+                                        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                        V9X_D3DTBLEND_MODULATE);
+                                    /* Reported separately. A failed
+                                     * BeginScene skips the draw without
+                                     * touching dfmt_hr, which would leave
+                                     * the cell claiming success for a draw
+                                     * that never happened. */
+                                    dfmt_begin_hr =
+                                        d3d_device->vtbl->BeginScene(
+                                            d3d_device);
+                                    v9x_write_hresult("DisplayFmtTexBeginHr",
+                                                      dfmt_begin_hr);
+                                    if (dfmt_begin_hr == 0) {
+                                        dfmt_hr =
+                                            d3d_device->vtbl->DrawPrimitive(
+                                                d3d_device,
+                                                V9X_D3DPT_TRIANGLELIST,
+                                                V9X_D3DVT_TLVERTEX, triangle,
+                                                3ul, 0ul);
+                                        (void)d3d_device->vtbl->EndScene(
+                                            d3d_device);
+                                    } else {
+                                        dfmt_hr = dfmt_begin_hr;
+                                    }
+                                    /* The corner the triangle certainly
+                                     * covers as well as the sample point, so
+                                     * a geometry miss and an unsampled
+                                     * texture are different readings. */
+                                    dfmt_raw = v9x_surface_pixel16(
+                                        d3d_target, 16ul, 12ul);
+                                    v9x_write_uint("DisplayFmtTexNearRaw",
+                                        v9x_surface_pixel16(d3d_target,
+                                                            6ul, 6ul));
+                                    v9x_write_hresult("DisplayFmtTexHr",
+                                                      dfmt_hr);
+                                }
+                                v9x_write_uint("DisplayFmtTexRaw", dfmt_raw);
+                                if (dfmt_tex != 0) {
+                                    dfmt_tex->vtbl->Release(dfmt_tex);
+                                }
+                                if (dfmt_surf != 0) {
+                                    dfmt_surf->vtbl->Release(dfmt_surf);
+                                }
+                            }
+
                             if (ramp_src_tex != 0) {
                                 ramp_src_tex->vtbl->Release(ramp_src_tex);
                             }

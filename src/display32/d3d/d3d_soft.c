@@ -182,22 +182,48 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
  * through the context and never interprets it.
  *
  * ddpfSurface exists only when the surface carries its own format, which
- * DDRAWISURF_HASPIXELFORMAT reports; without it the surface is in the
- * primary's format, and reading the field anyway would also read past the
- * allocation, since the DDK only allocates it in the differing case.
+ * DDRAWISURF_HASPIXELFORMAT reports, and reading the field without the flag
+ * would read past the allocation, since the DDK only allocates it in the
+ * differing case.
  */
+/*
+ * Which pixel format describes this surface.
+ *
+ * A missing DDRAWISURF_HASPIXELFORMAT is not a missing format. It says the
+ * surface does not *differ* from the primary, so the display's own format is
+ * the answer - and this driver's display is 5:6:5 or 5:5:5, both of which
+ * the classifier below accepts. Refusing on the absent flag instead dropped
+ * every texture an application created without naming a format, which is
+ * what an application ordinarily does: Final Reality's Robots scene refused
+ * 39793 of them and drew the whole scene in untextured Gouraud
+ * (docs\issues\2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md).
+ *
+ * `v9x_d3d_target_layout` in the core has resolved the same flag this way
+ * since 2026-09-02. This is the sibling that was not given the fallback.
+ */
+static const V9X_DDPIXELFORMAT *v9x_d3d_soft_texture_pixel(
+    const V9X_DD_SURFACE_LCL *surface)
+{
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        return &surface->lpGbl->ddpfSurface;
+    }
+    if (v9x_hal == 0) {
+        return 0;
+    }
+    return &v9x_hal->info.vmiData.ddpfDisplay;
+}
+
 static int v9x_d3d_soft_texture_format(const V9X_DD_SURFACE_LCL *surface,
                                        DWORD *format_out)
 {
-    const V9X_DDPIXELFORMAT *pixel;
+    const V9X_DDPIXELFORMAT *pixel = v9x_d3d_soft_texture_pixel(surface);
 
-    if (surface == 0 || surface->lpGbl == 0 || format_out == 0) {
+    if (pixel == 0 || format_out == 0) {
         return 0;
     }
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul) {
-        return 0;
-    }
-    pixel = &surface->lpGbl->ddpfSurface;
     if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
         pixel->dwRGBBitCount != 16ul) {
         return 0;
@@ -346,11 +372,14 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
         return 0;
     }
     if (!v9x_d3d_soft_texture_format(surface, &format)) {
+        /* The mask actually classified, whichever format described the
+         * surface, so the counter names the layout that was refused rather
+         * than which of the two places it was read from. 0xffffffff now
+         * means only that neither was available. */
+        const V9X_DDPIXELFORMAT *pixel = v9x_d3d_soft_texture_pixel(surface);
+
         v9x_d3d_soft_refuse(surface, 0ul,
-                            (surface->dwFlags &
-                             V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
-                                ? surface->lpGbl->ddpfSurface.dwRBitMask
-                                : 0xfffffffful);
+                            pixel != 0 ? pixel->dwRBitMask : 0xfffffffful);
         return 0;
     }
 

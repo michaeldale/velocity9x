@@ -80,10 +80,19 @@ static int v9x_d3d_virge_unlit_alpha_ok(void)
  * Classify the surface's pixel format.
  *
  * ddpfSurface exists only when the surface carries its own format, which
- * DDRAWISURF_HASPIXELFORMAT reports; without it the surface is in the
- * primary's format, which is RGB565 here and not a format this engine can
- * sample. Reading the field unconditionally would also read past the
- * allocation, since the DDK only allocates it in the differing case.
+ * DDRAWISURF_HASPIXELFORMAT reports, and reading the field unconditionally
+ * would read past the allocation, since the DDK only allocates it in the
+ * differing case.
+ *
+ * Without the flag the surface is in the display's format, and that is the
+ * format to classify rather than a reason to refuse. It used to be a reason
+ * to refuse here, on the argument that the display is RGB565 and the S3D
+ * unit cannot sample it - true of a 5:6:5 desktop, and wrong on the 5:5:5
+ * one this driver selects for hardware Direct3D, where the display format is
+ * exactly what the texture unit wants. Handing it to the masks below settles
+ * it either way, and a 5:6:5 refusal now records the mask instead of a
+ * sentinel that said only "no format was read"
+ * (docs\issues\2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md).
  */
 /*
  * Why a texture was not sampled, for the trace block. 3DMark 99's picture
@@ -114,11 +123,14 @@ static int v9x_d3d_texture_format(const V9X_DD_SURFACE_LCL *surface,
 {
     const V9X_DDPIXELFORMAT *pixel;
 
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul) {
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        pixel = &surface->lpGbl->ddpfSurface;
+    } else if (v9x_hal != 0) {
+        pixel = &v9x_hal->info.vmiData.ddpfDisplay;
+    } else {
         v9x_d3d_refuse_format(0xfffffffful);
         return 0;
     }
-    pixel = &surface->lpGbl->ddpfSurface;
     if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
         pixel->dwRGBBitCount != 16ul) {
         v9x_d3d_refuse_format((pixel->dwRGBBitCount << 24) |

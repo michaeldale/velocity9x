@@ -24,6 +24,10 @@ on the named builds and machines; it does not certify every current binary.
 Software mode includes depth testing, Gouraud shading, point/bilinear sampling,
 ARGB1555/ARGB4444/RGB565 textures, WRAP/CLAMP and vertex-alpha blending. It does
 not implement texture alpha, perspective correction, mip selection or fog.
+A texture that names no pixel format is in the display's, and is classified
+as such rather than refused - until 2026-09-11 both engines refused it, which
+dropped every texture Final Reality created and drew its scenes untextured
+([record](decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md)).
 Its blend factors are the four S3's own driver publishes - ONE and SRCALPHA
 for source, ZERO and INVSRCALPHA for destination - plus DESTCOLOR as a source
 factor, which the S3D unit cannot express and a CPU rasterizer gets for one
