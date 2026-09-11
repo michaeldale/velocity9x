@@ -6,167 +6,170 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.7.1 - 2026-09-11
 
-A correctness release for the software Direct3D engine, and the first one
-whose headline defect was found by running a game rather than a probe. Final
-Reality drew its Robots scene with no textures at all through this driver and
-fully textured through Microsoft's software rasterizer, on the same guest in
-the same boot, with every call returning success the whole way. Everything
-else here is either the fix for that, the lightmap pass it sat next to, or a
-measurement that changes what an existing setting is worth.
+Bug fixes for the software Direct3D engine. The main one was found by running
+Final Reality rather than the probe: it drew the Robots scene with no textures
+at all through this driver, and fully textured through Microsoft's software
+rasterizer, on the same guest in the same boot. Every call returned success.
+The rest of the release is that fix, a related blending fix, and a
+measurement of an option added here.
 
-- **Every texture an application created without naming a pixel format was
-  dropped.** `DDRAWISURF_HASPIXELFORMAT` being clear does not mean the format
-  is unknown; it means the surface does not *differ* from the primary, which
-  is why `ddpfSurface` must not be read without it - and not a reason to
-  refuse the surface. Both texture classifiers refused it anyway, so a
-  texture created the ordinary way, letting the runtime pick, was silently
-  never sampled: Final Reality's Robots scene refused 39,793 of them and drew
-  the whole scene in untextured Gouraud. `v9x_d3d_target_layout` has resolved
-  the same flag correctly for the render target since 2026-09-02, falling
-  back to `vmiData.ddpfDisplay`; the texture functions are the siblings that
-  never got the fallback, and they have it now in both engines. After the
-  fix the same scene runs textured with every refusal counter at zero across
-  466 textures and 8,753 primitive calls
+- **Textures created without an explicit pixel format were never sampled.**
+  When `DDRAWISURF_HASPIXELFORMAT` is clear, the surface uses the primary's
+  format. That is why `ddpfSurface` must not be read without the flag, but it
+  is not a reason to refuse the surface. Both texture classifiers refused it
+  anyway, so a texture created the ordinary way - letting the runtime pick
+  the format - was silently never sampled. Final Reality's Robots scene
+  refused 39,793 of them and drew the whole scene in untextured Gouraud.
+  `v9x_d3d_target_layout` has handled the same flag correctly for the render
+  target since 2026-09-02, falling back to `vmiData.ddpfDisplay`; the texture
+  functions never got that fallback, and they have it now in both engines.
+  After the fix the same scene runs textured, with every refusal counter at
+  zero across 466 textures and 8,753 primitive calls
   ([record](docs/decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md),
   [issue](docs/issues/2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md)).
-  The hardware path changes too, and deliberately: its comment argued the
-  refusal was right because the display is 5:6:5, which is false on the 5:5:5
-  desktop this driver selects for hardware Direct3D. That half is read from
-  the source and has not been run on a ViRGE.
+  The hardware path is changed too. Its comment claimed the refusal was
+  correct because the display is 5:6:5, which is wrong on the 5:5:5 desktop
+  this driver selects for hardware Direct3D. That change has not been run on
+  a ViRGE.
 
-- **The multiplicative lightmap pass draws.** `DESTCOLOR` is implemented as a
-  source factor in the software engine and advertised in `dwSrcBlendCaps`,
-  which now reads `ONE | SRCALPHA | DESTCOLOR`. The four factors it had were
-  copied from what S3's own ViRGE driver publishes - a fact about the S3D
-  unit, not about a CPU rasterizer, which gets this one for a single product
-  per channel on pixels already being blended. The divide is the exact one,
-  because a lightmap that lights nothing multiplies by white and an
-  approximate divide would hand the frame back a level darker everywhere the
-  pass touched. Advertised as well as implemented, because an application
-  reads the caps to decide whether to attempt the pass at all. Measured on
-  the Trio64 guest with a cell that can tell a multiply from a skip - green
-  over magenta, which share no channel - and free on the benchmark, the alpha
-  rung identical to the millisecond in RAM and VRAM
+- **The software engine now supports DESTCOLOR blending.** It is implemented
+  as a source factor and advertised, so `dwSrcBlendCaps` reads
+  `ONE | SRCALPHA | DESTCOLOR`. The four factors it had were copied from
+  S3's own ViRGE driver, which describes the S3D unit rather than a CPU
+  rasterizer; DESTCOLOR costs this engine one multiply per channel, on pixels
+  that are already being blended. It uses the exact divide rather than a
+  shift, because a lightmap that lights nothing multiplies by white, and an
+  approximate divide would darken the frame by one level everywhere the pass
+  touched. It is advertised as well as implemented because applications check
+  the caps before attempting the pass. Tested on the Trio64 guest with a new
+  probe cell that can tell a multiply from a skip - green over magenta, which
+  share no channel - and there is no measurable cost: the benchmark's alpha
+  rung is identical in RAM and VRAM
   ([record](docs/decisions/2026-09-11-the-lightmap-pass-now-draws.md)). The
   hardware engine keeps its four factors and its own `describe_caps`.
 
-- **`D3DSoftSysMem` is worth nothing to Final Reality, and the reason is
-  placement rather than cost.** The option itself is new in this release -
-  the entry below adds it - and it went in with a guess behind it rather
-  than a timing: that texel reads across the aperture are what a textured
-  draw waits for. A new guest confirmed the guess: an aperture read costs
-  what the aperture costs, and a 2.7x faster CPU buys only 1.4x on a
-  video-memory target. The option still moves nothing, because DirectDraw
-  never puts that application's textures in system memory and advertising
-  `D3DDEVCAPS_TEXTURESYSTEMMEMORY` does not make it. The proof is the
-  **off**-run: a system-memory texture offered while the option is off is
-  refused and counted, and a whole run of the scene created 349 textures with
-  every refusal counter at zero
+- **`D3DSoftSysMem` makes no difference to Final Reality.** The option is new
+  in this release - the entry below adds it - and it was added on the
+  assumption that texel reads across the aperture are the main cost in a
+  textured draw, without timing it. A new test guest confirmed that
+  assumption: aperture reads do not get faster with a faster CPU, and a 2.7x
+  faster CPU gives only 1.4x on a video-memory target. The option still makes
+  no difference, because DirectDraw never puts Final Reality's textures in
+  system memory, and advertising `D3DDEVCAPS_TEXTURESYSTEMMEMORY` does not
+  change that. The run with the option **off** shows it: system-memory
+  textures are refused and counted when it is off, and a full run of the
+  scene created 349 textures with every refusal counter at zero
   ([record](docs/decisions/2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)).
-  No code changed; the 2026-09-10 record is amended so it no longer reads as
-  promising an unmeasured gain. The option remains off by default and remains
-  correct for an application that asks for the placement itself.
+  No code changed. The 2026-09-10 record is amended so it no longer implies
+  an unmeasured speed-up. The option stays off by default, and still works
+  for an application that asks for system-memory textures itself.
 
-- **The probe gained the two cells that could see any of this.** `BlendMultiply`
-  draws green over magenta so that a correct multiply, a skipped draw and an
-  opaque draw are three different hues - the older `BlendModulate` cell draws
-  white, and white times anything is that thing, so it cannot separate the
-  first two. `DisplayFmtTex*` creates a texture without naming a format, the
-  case every real application hits and no cell covered, and reports what
-  DirectDraw chose for it. **That one carries no verdict key**: with the fix
-  in and the application rendering the same kind of texture correctly, the
-  cell's own draw still writes nothing, and an `Ok` key would assert a
-  failure the driver demonstrably does not have. It reports and does not
-  judge until that is explained.
+- **Two new probe cells.** `BlendMultiply` draws green over magenta, so a
+  correct multiply, a skipped draw and an opaque draw each produce a
+  different colour. The older `BlendModulate` cell draws white, and white
+  multiplied by anything is that thing, so it cannot tell a multiply from a
+  skip. `DisplayFmtTex*` creates a texture without specifying a format - the
+  case real applications hit, which no cell covered - and reports what
+  DirectDraw chose for it. **That cell has no pass/fail key.** With the fix
+  in place, and Final Reality rendering the same kind of texture correctly,
+  its own draw still writes nothing. A pass/fail key would report a failure
+  the driver does not have, so the cell reports its readings and nothing else
+  until that is explained.
 
-- **A guest for measuring the rasterizer rather than a card.**
+- **New test guest for benchmarking the software rasterizer.**
   `Win98SE-Fast-D3D` on agent port 9878: ASUS CUBX 440BX, Celeron Mendocino
-  533 - the fastest CPU this 86Box build has for the job, since the binary
-  carries no Pentium III family at all - 256 MiB, and a Voodoo3 3500 AGP
-  driven through the `vbe` package. Against the Pentium MMX 200 guest the
-  rasterizer runs 3.6x to 5.0x faster on a RAM target and 1.4x to 1.8x on a
-  video-memory one, with all 24 pixel and depth hashes identical. Swapping
-  the ViRGE/DX for the Voodoo3 on the same CPU isolates the bus: AGP reads
-  2.09x quicker, writes 0.61x, so textured and depth-tested scenes gain 1.5x
-  to 1.8x and untextured fills lose ([guest](docs/vm-environment.md)).
-  Also recorded there: build 9001 does carry `trio3d2x_agp`, so the `8A13`
-  alias's note that no emulator profile exists for it is stale.
+  533 - the fastest CPU in this 86Box build, whose binary has no Pentium III
+  family at all - 256 MiB, and a Voodoo3 3500 AGP driven through the `vbe`
+  package. Against the Pentium MMX 200 guest the rasterizer runs 3.6x to 5.0x
+  faster on a RAM target and 1.4x to 1.8x on a video-memory one, with all 24
+  pixel and depth hashes identical. Swapping the ViRGE/DX for the Voodoo3 on
+  the same CPU isolates the bus: AGP reads are 2.09x quicker and writes 0.61x,
+  so textured and depth-tested scenes gain 1.5x to 1.8x while untextured
+  fills get slower ([guest](docs/vm-environment.md)). Also recorded there:
+  build 9001 does have `trio3d2x_agp`, so the `8A13` alias's note that no
+  emulator profile exists for it is out of date.
 
-- **The software Direct3D engine drew a blend it cannot express as opaque,
-  and now draws nothing.** `DESTCOLOR` over `ZERO` is the multiplicative pass
-  a lightmap uses: the destination is what the frame already drew, a correct
-  multiply by white leaves it alone, and drawing the pass opaque paints white
-  over the scene - the failure that produced 3DMark 99's saw-toothed panels on
-  the hardware path, which has skipped and counted such a pair since. The
-  software engine took the other choice deliberately, arguing that refusing
-  would report failure for a legal draw; skipping the triangles is not
-  refusing, and the HRESULT stays zero either way. The probe's `BlendModulate`
-  cell read 992 on the emulated ViRGE and 65535 here, and now reads 992 on
-  both, with `D3dBlendSkipped=1` and `D3dBlendLastPair=0x00090001` naming the
-  pair
+- **The software engine skips blend factor pairs it cannot express, instead
+  of drawing them opaque.** `DESTCOLOR` over `ZERO` is the multiplicative
+  pass a lightmap uses. The destination is what the frame has already drawn,
+  so a correct multiply by white leaves it unchanged, and drawing the pass
+  opaque paints white over the scene. That is what produced 3DMark 99's
+  saw-toothed panels on the hardware path, which has skipped and counted
+  these pairs ever since. The software engine deliberately did the opposite,
+  on the argument that refusing would report failure for a legal draw; but
+  skipping the triangles is not refusing, and the HRESULT stays zero either
+  way. The probe's `BlendModulate` cell read 992 on the emulated ViRGE and
+  65535 here, and now reads 992 on both, with `D3dBlendSkipped=1` and
+  `D3dBlendLastPair=0x00090001` naming the pair
   ([record](docs/decisions/2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)).
-  Superseded the same day for this particular pair, which is now implemented
-  rather than skipped - see the lightmap entry above. The skip-and-count
-  remains, and still covers every factor pair outside the five.
+  Superseded the same day for this pair, which is now implemented rather than
+  skipped - see the DESTCOLOR entry above. The skip and its counter remain,
+  and still cover every factor pair outside the five.
 
-- **The software Direct3D engine can sample a texture in system memory, if
-  `[Velocity9x] D3DSoftSysMem=1` says so.** It refused any
-  `DDSCAPS_SYSTEMMEMORY` texture before, because it reaches a texture through
-  the framebuffer aperture - which is why every textured pixel read its texels
-  across the PCI bus, the cost the scalar plan names as probably dominant. The
-  setting publishes `D3DDEVCAPS_TEXTURESYSTEMMEMORY` beside the video-memory
-  cap and gives the engine a second addressing arm: an offset into the
-  aperture as before, or the surface's own linear address. Off by default,
-  because that second arm can only bound a surface by its own extent where the
-  first bounds it against the aperture. Verified through the installed driver
-  on the Trio64 guest with a pixel - white when refused, green when allowed
+- **The software engine can sample textures in system memory, with
+  `[Velocity9x] D3DSoftSysMem=1`.** It used to refuse any
+  `DDSCAPS_SYSTEMMEMORY` texture, because it reaches textures through the
+  framebuffer aperture - which meant every textured pixel read its texels
+  across the PCI bus, the cost the scalar plan identifies as probably
+  dominant. The setting publishes `D3DDEVCAPS_TEXTURESYSTEMMEMORY` beside the
+  video-memory cap and gives the engine a second addressing path: an offset
+  into the aperture as before, or the surface's own linear address. Off by
+  default, because that second path can only bounds-check a surface against
+  its own extent, where the first checks it against the aperture. Tested
+  through the installed driver on the Trio64 guest: the test pixel is white
+  when refused and green when allowed
   ([record](docs/decisions/2026-09-10-software-d3d-system-memory-textures.md)).
   It went in with no speed claim through the driver, because the benchmark
   that measured the RAM-versus-VRAM gap never loads the HAL. That timing was
   taken before this release shipped and came out at zero for Final Reality,
   for a reason the option cannot fix - see the entry above.
-- **The software engine counts its texture refusals now**, in the diagnostics
-  the ViRGE path has used since 3DMark 99. It refused in silence, and a
-  refused texture draws as untextured Gouraud in the vertex colour - which
-  looks exactly like a texture full of that colour. The counters named a
-  capability bit that was being erased within one boot, in one read.
-- **A capability stamped in only one of the two places that write
-  `engine_caps` is erased by the other.** `v9x_dd_refresh_framebuffer` runs on
-  every DirectDraw session setup and rewrites the word from scratch, so the
-  new system-memory permission - added to `v9x_dd_stamp_engine_caps` alone -
-  never survived to the engine, while `V9XHW.INI` reported it as allowed
-  because that reads the setting rather than the word. Both sites set it now.
 
-- **`fail-hardware-aperture` could mean four different things, and two of them
-  set no stage code at all.** The DPMI selector allocation failing and a live
-  selector whose aperture has moved both returned from `V9XMAPAPERTURE`
-  without touching the stage code, so they inherited the aperture read's 3 and
-  reported as it - the helper's own header says it owns codes 4 to 7, and two
-  of its exits owned nothing. The allocation failure now sets 4, the moved
-  aperture a new 11, and the PCI BAR read numbers its own four refusals: 12
-  index, 13 the configuration read, 14 an I/O-flagged BAR, 15 out of range or
-  misaligned, with 3 restored on success so a later failure cannot be blamed
-  on a read that worked. Any earlier investigation that trusted that name was
-  reading one of four faults.
-- **No diagnostic written from inside a failing Enable reaches the disk.**
+- **The software engine now counts its texture refusals**, in the diagnostics
+  the ViRGE path has used since 3DMark 99. It used to refuse silently, and a
+  refused texture draws as untextured Gouraud in the vertex colour, which
+  looks exactly like a texture full of that colour. The counters immediately
+  identified a capability bit that was being erased within one boot.
+
+- **`engine_caps` is written in two places, and the second erased the new
+  capability bit.** `v9x_dd_refresh_framebuffer` runs on every DirectDraw
+  session setup and rewrites the word from scratch, so the new system-memory
+  permission - added to `v9x_dd_stamp_engine_caps` alone - never reached the
+  engine. `V9XHW.INI` reported it as allowed, because that reads the setting
+  rather than the word. Both sites set it now.
+
+- **`fail-hardware-aperture` covered four different failures, two of which
+  set no stage code.** A failed DPMI selector allocation, and a live selector
+  whose aperture has moved, both returned from `V9XMAPAPERTURE` without
+  touching the stage code, so they inherited the aperture read's 3 and were
+  reported as that. The helper's own header says it owns codes 4 to 7, but
+  two of its exits set nothing. The allocation failure now sets 4, the moved
+  aperture sets a new 11, and the PCI BAR read numbers its own four refusals:
+  12 index, 13 the configuration read, 14 an I/O-flagged BAR, 15 out of range
+  or misaligned, with 3 restored on success so that a later failure cannot be
+  blamed on a read that worked. Any earlier investigation that trusted that
+  stage name could have been looking at any of four faults.
+
+- **Diagnostics written during a failing Enable never reach the disk.**
   Measured three times on a Millennium guest - the aperture value, a pre-call
   marker, and both again with an explicit profile flush - while the coarse
-  stage, written later from ddi.c, lands every time. The serial trace is no
-  alternative there: the guest's COM1 reads 0xFF from the driver's port check
-  through both the File and named-pipe devices. So the stage code is the only
-  channel out of that window, and `v9x_write_ini_key` now flushes anyway
+  stage, written later from `ddi.c`, lands every time. The serial trace is no
+  alternative there: that guest's COM1 reads 0xFF from the driver's port
+  check through both the File and named-pipe devices. So the stage code is
+  the only way to get information out of that window, and `v9x_write_ini_key`
+  now flushes anyway
   ([record](docs/decisions/2026-09-10-the-2064w-in-a-guest.md)).
-- **Windows 98 has an inbox driver for the MGA-2064W**, and it is the one this
-  family replaces: `DXMGA.INF` binds `PCI\VEN_102B&DEV_0519` to
-  `MGAPDX64.DRV` with its own `mgapdx64.vxd` mini-VDD. So the guarded
-  candidate's install route exists on a stock machine with no vendor download,
-  and the accepted mixed-pair boundary is reachable. Observed in an 86Box
-  Millennium guest, where the candidate loads, refuses, and leaves Windows to
-  fall back to VGA without corruption - the designed behaviour, seen on this
-  chip for the first time. It is not a working driver on that card yet: the
-  refusal is not localised.
 
-- **The Matrox candidate carries a second chip: the original Millennium,
+- **Windows 98 has an inbox driver for the MGA-2064W**, and it is the one
+  this family replaces: `DXMGA.INF` binds `PCI\VEN_102B&DEV_0519` to
+  `MGAPDX64.DRV` with its own `mgapdx64.vxd` mini-VDD. So the guarded
+  candidate's install route exists on a stock machine with no vendor
+  download, and the accepted mixed-pair boundary is reachable. Observed in an
+  86Box Millennium guest, where the candidate loads, refuses, and leaves
+  Windows to fall back to VGA without corruption - the designed behaviour,
+  seen on this chip for the first time. It is not a working driver on that
+  card yet, and the refusal is not localised.
+
+- **The Matrox candidate now covers a second chip: the original Millennium,
   MGA-2064W (`102B:0519`).** Its own BIOS, executed on an emulated CPU with
   I/O passed through to the card, advertises `0101h`, `0111h`, `0114h` and
   `0117h` with a linear framebuffer at `FD000000h` - this card's BAR1 base,
@@ -175,9 +178,9 @@ measurement that changes what an existing setting is worth.
   per-chip `framebuffer_bar` (appended last and zero, so every other family
   reads BAR0 exactly as before), `V9XPCIREADBAR0` becomes `V9XPCIREADBAR` and
   computes its configuration offset from the index, and the policy backend
-  takes both Millennium ids. The manifest claims three modes rather than four:
-  this BIOS pads `0114h` to 1920 bytes per scan line where the driver's table
-  asks for 1600, so that mode is not claimed until someone has set it.
+  takes both Millennium ids. The manifest claims three modes rather than
+  four: this BIOS pads `0114h` to 1920 bytes per scan line where the driver's
+  table asks for 1600, so that mode is not claimed until someone has set it.
   `VideoMemoryBytes` is a 2 MiB floor, because the BIOS's 8 MiB figure is its
   own BAR window and the aperture probe refused to call anything installed
   memory
@@ -185,22 +188,24 @@ measurement that changes what an existing setting is worth.
   Guarded candidate only: no mode has been set on this card by anything, and
   its framebuffer aperture accepted only 2-byte accesses in the mode it was
   measured in.
-- **The DirectDraw probe's chain rung works end to end, and everything it was
-  blaming on the driver was its own.** It clears its Z surface through
-  `DDBLT_DEPTHFILL` before attaching it and gives the wall and the sprite two
-  different depths - so the depth test is exercised rather than degenerated by
-  `sz = 0` everywhere - and it re-fetches its texture handles after a target
-  switch, because the runtime retires its handles when it destroys the context
-  to perform one and re-creates them on the next `GetHandle`. With both,
-  `ChainWallRaw` reads its texture's green and `Chain_x12..x48` read
-  `930 806 682 620 464 341 217`, matching `Solo_x12..x48`: a depth-tested,
-  alpha-blended, textured draw onto the primary chain's back buffer, correct.
-  The suspicion that the driver was losing every texture at a switch was
+
+- **The DirectDraw probe's chain rung works; the faults it reported were its
+  own.** It clears its Z surface through `DDBLT_DEPTHFILL` before attaching
+  it and gives the wall and the sprite two different depths, so the depth
+  test is exercised rather than degenerated by `sz = 0` everywhere. It also
+  re-fetches its texture handles after a target switch, because the runtime
+  retires them when it destroys the context to perform one, and re-creates
+  them on the next `GetHandle`. With both, `ChainWallRaw` reads its texture's
+  green and `Chain_x12..x48` read `930 806 682 620 464 341 217`, matching
+  `Solo_x12..x48`: a depth-tested, alpha-blended, textured draw onto the
+  primary chain's back buffer, drawn correctly. The suspicion that the driver
+  was losing every texture at a switch was
   [filed and refuted the same day](docs/issues/2026-09-10-a-target-switch-loses-every-texture.md):
   a build that kept the records past `ContextDestroy` changed nothing, and
   `ChainTexDestroys=2` on it showed the runtime retiring the handles itself.
   The DDK's (handle, context) pairing stands.
-- **The rasterizer work is exercised through the installed driver, not only
+
+- **The rasterizer changes are tested through the installed driver, not only
   through the benchmark.** The Trio64 guest has no S3D engine, so under
   `Direct3D=2` - `Direct3DMode=software` - every Direct3D draw goes through
   the CPU rasterizer. The DirectDraw probe on that guest reports zero
@@ -209,95 +214,103 @@ measurement that changes what an existing setting is worth.
   texel-alpha and mip rungs reading 0 in each as they have since 2026-09-07
   ([artefacts](docs/probe/software-d3d-2026-09-10-sampler/README.md)). The
   benchmark links the rasterizer directly and never loads the driver, so this
-  is the run that says the engine's own vertex conversion and caps still
+  is the run that shows the engine's own vertex conversion and caps still
   agree with it.
-- **A destroyed surface no longer leaves a texture record pointing at it.**
-  `V9xHalDestroySurface` now forgets texture records by surface, beside the
+
+- **Destroying a surface now clears its texture records.**
+  `V9xHalDestroySurface` forgets texture records by surface, alongside the
   colour-key equivalent it already called. Handles are retired with their
-  context, not with their surface, so an application that released a texture's
-  surface without a `TextureDestroy` left the sampler a freed `lpLcl` to read.
-  Found while investigating the above; reachable before it.
-- **Two Direct3D "driver defects" were one uncleared depth buffer in the
+  context rather than with their surface, so an application that released a
+  texture's surface without a `TextureDestroy` left the sampler a freed
+  `lpLcl` to read. Found while investigating the entry above, and reachable
+  before it.
+
+- **Two reported Direct3D defects were both an uncleared depth buffer in the
   probe.** `IDirect3DDevice2::SetRenderTarget` never reaches
-  `V9xD3dSetRenderTarget` on this runtime - measured, `ChainSetTargetCalls=0` -
-  because the runtime destroys the context and creates another one on the new
-  surface, after which the engine is pointed exactly at the back buffer
+  `V9xD3dSetRenderTarget` on this runtime - measured, `ChainSetTargetCalls=0`
+  - because the runtime destroys the context and creates another one on the
+  new surface, after which the engine is pointed exactly at the back buffer
   (614400, pitch 1280, the offset the `Solo_*` rung's pixels land on). The
-  black back buffer was the probe's own doing: it attaches a Z surface, nothing
-  clears it, and every vertex carries `sz = 0`, which loses `D3DCMP_LESS`
-  against a stored zero. A two-by-two over depth and the viewport named depth
-  as the cause, and with depth off the same blend produced the alpha ramp the
-  chain was said not to be able to draw. Both
+  black back buffer was the probe's own doing: it attaches a Z surface,
+  nothing clears it, and every vertex carries `sz = 0`, which loses
+  `D3DCMP_LESS` against a stored zero. A two-by-two over depth and the
+  viewport identified depth as the cause, and with depth off the same blend
+  produced the alpha ramp the chain was said to be unable to draw. Both
   [SetRenderTarget](docs/issues/2026-09-05-setrendertarget-is-accepted-and-ignored.md)
   and the [primary-chain blend](docs/decisions/2026-09-05-a-blend-onto-the-primary-chain-draws-nothing.md)
   are withdrawn
   ([record](docs/decisions/2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md)).
   No driver behaviour changed: the escape that serves the probe's counters
   gained six fields, of which the SetRenderTarget call count comes from the
-  trace ring, because two more DWORDs in the diagnostics block took the shared
-  block past the 4096 bytes the 16-bit side allocates.
-- **The software sampler's per-draw work moves out of the pixel loop, and its
-  bilinear weights come from one multiply.** The texture size, wrap mask,
-  bilinear bias and format now resolve once per triangle into a sampler
-  object; a bilinear pixel's four texel decodes are inline rather than four
-  calls with four format tests, and two of its four pitch multiplies are gone.
-  All three texel formats share one decode path, because each is a field of w
-  bits replicated to eight. Texture coordinates reach the sampler in texel
-  units, scaled by a shift, and a WRAP coordinate is folded into the first
-  repeat unconditionally. Measured against the commit below, on the Trio64
-  guest in RAM: bilinear 1.28x, depth-tested 1.25x, alpha-blended 1.19x,
-  point-sampled 1.19x, untextured scenes unmoved. Cumulative on one boot
-  against `c4988fe`: point 1.75x, bilinear 1.53x, depth 1.48x, alpha 1.41x,
-  and about half of each in emulated video memory. Hashes and the host table
-  unchanged, plus a new host test for bilinear ARGB4444, which the corpus did
-  not cover
+  trace ring, because two more DWORDs in the diagnostics block took the
+  shared block past the 4096 bytes the 16-bit side allocates.
+
+- **The software sampler does its per-draw setup once per triangle instead of
+  per pixel, and its bilinear weights now take one multiply.** The texture
+  size, wrap mask, bilinear bias and format resolve once per triangle into a
+  sampler object; a bilinear pixel's four texel decodes are inline rather
+  than four calls with four format tests, and two of its four pitch
+  multiplies are gone. All three texel formats share one decode path, because
+  each is a field of w bits replicated to eight. Texture coordinates reach
+  the sampler in texel units, scaled by a shift, and a WRAP coordinate is
+  folded into the first repeat unconditionally. Measured against the commit
+  below, on the Trio64 guest in RAM: bilinear 1.28x, depth-tested 1.25x,
+  alpha-blended 1.19x, point-sampled 1.19x, untextured scenes unchanged.
+  Cumulative on one boot against `c4988fe`: point 1.75x, bilinear 1.53x,
+  depth 1.48x, alpha 1.41x, and about half of each in emulated video memory.
+  Hashes and the host table unchanged, plus a new host test for bilinear
+  ARGB4444, which the corpus did not cover
   ([record](docs/decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md)).
   Two of the plan's proposals were declined on evidence: the nested lerp is
   not pixel-identical in its cheap form and costs more in its exact one, and
   packed two-channel arithmetic does not fit 32 bits at these weights.
-- **The software rasterizer's inner loop loses three divides, two clamps and
+
+- **The software rasterizer's inner loop drops three divides, two clamps and
   two per-pixel dispatches.** `(texel * channel + 127) / 255` becomes a
   multiply and a shift, exact for every value the modulate arm can form and
-  asserted against that bound; the colour clamp happens once after the
-  interpolator instead of before modulate, before the blend and inside the
-  packer; the depth comparison is a three-bit relation mask resolved per span
+  asserted against that bound. The colour clamp happens once after the
+  interpolator, instead of before modulate, before the blend and inside the
+  packer. The depth comparison is a three-bit relation mask resolved per span
   - D3DCMP's own numbering, minus one - and the pixel format resolves to a
   pack and unpack pointer per span. Measured in the existing 86Box guests
   against `c4988fe`: point-sampled modulate 1.45x, bilinear 1.19x,
   depth-tested 1.18x, alpha-blended 1.17x, Gouraud 1.14x in RAM, each smaller
   on the VRAM target, with the host pixel table and all eighteen guest
   colour/Z hashes unchanged
-  ([record](docs/decisions/2026-09-10-rasterizer-scalar-fixes.md)).
-  The first attempt wrote the clamp and the divide as `static` helpers and was
+  ([record](docs/decisions/2026-09-10-rasterizer-scalar-fixes.md)). The first
+  attempt wrote the clamp and the divide as `static` helpers and was
   **slower** on every untextured scene: nothing in this build inlines - the
-  HAL passes no `-o` option - so each helper was a call per pixel. Both ship
-  as macros, and that cost is now recorded for the rest of the plan. No
+  HAL passes no `-o` option - so each helper became a call per pixel. Both
+  ship as macros, and that cost is now recorded for the rest of the plan. No
   physical timing: BARRY has not answered since 2026-09-06.
+
 - **Host builds work under Windows PowerShell 5.1 and PowerShell 7.** Shared
   setup preserves the compiler argument quoting; both compilers now use one
   portable source list, including the idle-wait tests. MSVC explicitly skips
   the Watcom-only x87 depth-conversion group, which Watcom still runs.
+
 - **Current support and roadmap status** lives in [docs/STATUS.md](docs/STATUS.md),
   separating release defaults, opt-in work, recorded hardware coverage and
   pending validation. README and active plans now point to the current evidence.
 
-Found on physical Trio64 silicon, both boards, 2026-09-06 - two faults that
-arrived tangled and left separate:
+Two faults found on physical Trio64 silicon, on both boards, 2026-09-06. They
+arrived tangled and turned out to be separate:
 
 - **A windowed DOS box drops the Trio64 out of enhanced mode.** The DOS VM's
-  video BIOS writes 02H to ADVFUNC_CNTL, which the system VDD does not trap;
-  the "doubled desktop" is the same DRAM seen as VGA planes, and a text
+  video BIOS writes 02H to ADVFUNC_CNTL, which the system VDD does not trap.
+  The "doubled desktop" is the same DRAM seen as VGA planes, and a text
   command caught mid-transfer never completes. Measured with a new V86 port
   trace in the mini-VDD (`-IoTrace`, `V9XIOTR`); a mini-VDD that swallows
-  that one write fixed it six for six
+  that one write fixed it six times out of six
   ([issue](docs/issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md)).
-  **Fixed: the mini-VDD now traps `4AE8H` in every build** and swallows a
-  V86 VM's write while passing the System VM and all reads through
+  **Fixed: the mini-VDD now traps `4AE8H` in every build** and swallows a V86
+  VM's write while passing the System VM and all reads through
   (`-NoShieldAdvFunc` for the A/B; `-ShieldAdvFunc` is gone). Measured
   harmless on a physical ViRGE/DX - whose BIOS, the trace shows, never
-  touches the 8514/A ports - and the 86Box Trio64 guest; its first boot on a
-  physical Trio64 is still owed
+  touches the 8514/A ports - and on the 86Box Trio64 guest. Its first boot on
+  a physical Trio64 is still owed
   ([record](docs/decisions/2026-09-06-advfunc-shield-ships.md)).
+
 - **A8U4I5 with the PCI Trio64 hard-locks on framebuffer read-after-write
   under any driver**, Microsoft's included. Not a Velocity9x defect; the
   board's PCI configuration is the open variable
@@ -315,14 +328,14 @@ dispatcher now: a plain screen `ExtTextOut` goes through `DIB_ExtTextOutExt`
 with two driver callbacks, and the DIB Engine's realized string bitmap is
 expanded by the engine as a CPU-data rectangle fill through `PIX_TRANS`, mix
 selected per pixel, clipped by the scissors. A callback that cannot draw flags
-the string and the dispatcher has the DIB Engine redraw it in software, so
-text is never lost to the engine path. The ViRGE takes the same callbacks
-with a `MONOSRCBLT` primitive, **verified on a physical ViRGE/DX** (A8U4I5,
+the string, and the dispatcher has the DIB Engine redraw it in software, so
+text is never lost to the engine path. The ViRGE takes the same callbacks with
+a `MONOSRCBLT` primitive, **verified on a physical ViRGE/DX** (A8U4I5,
 `/accel` PASS, 84 of 84 strings by the engine, none fallen back) after a first
-build that swapped the colours: the swap build 004's monochrome upload does
-is GDI's mono-BitBlt convention, not the chip's, and a string bitmap must
-not be swapped. The 86Box ViRGE mode matrix then passed 11/11 with text on. The
-`/accel` harness draws text, opaque and transparent and clipped, and asserts
+build that swapped the colours: the swap build 004's monochrome upload does is
+GDI's mono-BitBlt convention, not the chip's, and a string bitmap must not be
+swapped. The 86Box ViRGE mode matrix then passed 11/11 with text on. The
+`/accel` harness draws text - opaque, transparent and clipped - and asserts
 that bitmaps fire, that nothing falls back, and that ordinal 14 is reached on
 every family. `V9X_GDI_STATS` grows eight text counters, to 220 bytes, and a
 `V9X_GDITEXTDUMP` escape with a `V9XGDI /textdump` mode returns what the DIB
@@ -333,8 +346,8 @@ plane-mode bit that declares CPU data as one bit per pixel, and the fix is
 and 16-bpp string expanded by the engine, and CrystalMark Retro's Text score
 doubled on that guest, 2 to 4, with the other 2D scores unmoved
 ([record](docs/decisions/2026-09-06-crystalmark-86box-trio64-text.md)).
-**Not yet run on a card**: the FIFO pacing is recorded as
-a hypothesis only BARRY can answer, and the default stays off until it has.
+**Not yet run on a card**: the FIFO pacing is recorded as a hypothesis only
+BARRY can answer, and the default stays off until it has.
 
 ## 0.7.0 - 2026-09-05
 
@@ -344,7 +357,7 @@ as 0.7.0 on 2026-09-02 and never published beyond the private remote; the
 three days of Trio3D work that followed are folded in here rather than
 numbered separately, so this is the first 0.7.0 anyone downloads.
 
-**The S3 Trio3D/2X draws, on the hardware path, on real silicon.** The part is
+**The S3 Trio3D/2X works on the hardware path, on real silicon.** The part is
 bound to the ViRGE/DX's engine and gets hardware Direct3D; Final Reality
 completes at 3.21 overall and 3DMark 99 completes for the first time - 335
 marks on its first clean run, and 313 against 475 in a same-boot comparison of
@@ -353,25 +366,26 @@ capabilities became chip-conditional, the DirectDraw probe grew from a checklist
 into an instrument, and one of this release's own findings was measured,
 published and then retracted.
 
-### What the Trio3D reads that the ViRGE does not
+### Three differences from the ViRGE
 
 `5333:8A13` is an S3D part despite the Trio name, so it runs the ViRGE's hooks
 and its register file. Three differences turned up under measurement, and none
 of them were in 86Box's model - that emulator has no chip-conditional code in
 its S3D unit at all, which is why every one of these needed the card.
 
-- **The 3D stride register's low half is the texture's pitch.** The ViRGE/DX
-  derives texel addresses from the command word's size field and never consults
-  it; the Trio3D's texture unit does. With the screen pitch there, 64-texel
-  textures survived and 128- and 256-texel ones read as scrambled noise -
-  which is why Final Reality, whose textures are all 64 across, drew correctly
-  on this card while 3DMark 99 drew every texture as static.
-- **It never sets SUBSYS_STAT bit 1**, the 3D-done bit the idle wait had been
-  requiring since the emulator needed it. All 117 matrix cells and both render
-  targets wrote a `_Dmiss` delta.
-- **Two passes over one triangle, blended together, do not work here.** That is
-  how trilinear filtering was synthesised, and on this part every step came out
-  carrying the channel neither of its two mip levels has.
+- **The Trio3D's 3D stride register needs the texture pitch, not the screen
+  pitch.** The ViRGE/DX derives texel addresses from the command word's size
+  field and never consults it; the Trio3D's texture unit does. With the screen
+  pitch there, 64-texel textures survived and 128- and 256-texel ones read as
+  scrambled noise - which is why Final Reality, whose textures are all 64
+  across, drew correctly on this card while 3DMark 99 drew every texture as
+  static.
+- **The Trio3D never sets SUBSYS_STAT bit 1**, the 3D-done bit the idle wait
+  had been requiring since the emulator needed it. All 117 matrix cells and both
+  render targets wrote a `_Dmiss` delta.
+- **Two-pass trilinear filtering does not work on this part.** That is how
+  trilinear was synthesised, and here every step came out carrying the channel
+  neither of its two mip levels has.
 
 ### Six defects the hardware path had
 
@@ -390,7 +404,7 @@ Found on the card or on the emulated ViRGE and fixed:
 - blend pairs the S3D cannot express drawn opaque rather than skipped, which
   set 3DMark's lightmap pass fighting its own base pass for depth.
 
-### A 5:5:5 desktop, end to end
+### 5:5:5 desktop support
 
 The S3D writes ZRGB1555 and can write nothing else, so a 5:6:5 desktop
 guarantees a mismatch on every 3D pixel. Three places had to agree - the mode
@@ -413,7 +427,7 @@ in the probe as the control:
   whole population moved: 25,439 such draws before, zero after, at 472 marks
   against 475.
 
-### The idle wait learns
+### The idle wait adapts to the part
 
 `src/common/donewait.c` decides, in host-tested arithmetic, whether to keep
 spinning for a 3D-done bit. One sighting retires the question for good; only 64
@@ -421,7 +435,7 @@ consecutive misses with nothing ever seen decide against a part. On A8U4I5 the
 matrix block halves, 840 ms to 435 ms, with no pixel changed, and one 3DMark run
 skips 483,491 full spins. On the emulator the rule never fires.
 
-### The probe became an instrument
+### The probe now sweeps ranges instead of sampling points
 
 `V9XDDP.EXE` now walks spaces rather than sampling points: a 117-cell texture
 matrix over size, format, layout and filter with the driver's own counters
@@ -432,14 +446,14 @@ a sprite rung crossing depth, filter and shade mode; an alpha ramp interpolated
 across one triangle over a textured destination; a census of every distinct S3D
 command word a run used; and stage markers that survive the process dying.
 
-`docs/probe/README.md` carries the lesson three of them taught: **an `*Ok` key
-that tests the ends of a range is a regression check, not a measurement.** The
+`docs/probe/README.md` records what three of them taught: **an `*Ok` key that
+tests the ends of a range is a regression check, not a measurement.** The
 matrix's alpha cells drew over black, where "kept the destination" and "wrote an
 opaque black box" are the same reading. `AlphaCurveOk` tested A=0, A=15 and
 monotonicity, and passed a part whose every interior step was wrong. In both
 cases the raw values were correct and present, and only the verdict was weak.
 
-### Retracted, in place
+### Two findings retracted
 
 Two decision documents of 2026-09-04 concluded that the Trio3D/2X performs no
 alpha blend under any encoding of the command word's alpha field. **That is
@@ -451,8 +465,8 @@ retracted in place: a deliberate power cycle left the card in the bad state,
 and an A/B of the driver against the pre-diagnostics pair left the driver out
 of it too.
 
-What survives is this: **the card has two states, and blending is correct in
-one and wrong in the other.** `TexMatrixOk` reads 108 of 117 in the good state
+What stands is that **the card has two states, and blending is correct in one
+and wrong in the other.** `TexMatrixOk` reads 108 of 117 in the good state
 and 90 in the bad one, with only the alpha cells and the sprite rung moving;
 mip selection and every unblended cell are the same in both. The trigger is
 not known. All three transitions on record coincide with the machine going
@@ -465,10 +479,10 @@ reach the S3D engine, where a blend fault would live
 
 Every Trio3D alpha measurement this project took before 2026-09-04 was made in
 the bad state, and a Trio3D result is only meaningful beside its `TexMatrixOk`.
-The documents stay where they are: a decision that was wrong is evidence about
-how it was reached.
+The documents stay where they are, because a wrong decision is still evidence
+about how it was reached.
 
-### 4 MiB is what picks the resolution
+### 4 MiB limits the usable resolution
 
 At 800x600x16 with a triple frame buffer and a 16-bit depth buffer, 3DMark 99's
 own page reports 3,750 KB of 4,096 KB consumed before a single texture. Under
@@ -492,18 +506,18 @@ at 800x600 on this card was taken with mipmapping mostly disabled.
   correctly. The destination base, pitch, size and stride register were all
   measured correct. On silicon it has run only in the bad blend state, where a
   blend that draws nothing cannot be told from the blend fault.
-- The partial-alpha fault's shape on the Trio3D - destination term exact, source
-  channel saturated, destination value duplicated into whichever channel neither
-  operand uses - is stated exactly and explained not at all.
+- The partial-alpha fault on the Trio3D has an exact shape - destination term
+  exact, source channel saturated, destination value duplicated into whichever
+  channel neither operand uses - and no explanation.
 
-### Direct3D on cards that have never had it
+### Software Direct3D on cards with no 3D engine
 
-**Direct3D on cards that have never had it.** `Direct3D=2` on the Velocity9x
-page serves Direct3D from a CPU rasterizer on any supported chip - depth-tested,
-textured, Gouraud-shaded triangles on a Trio64 and an ATI Mach64 VT2, neither of
-which has a 3D engine and the second of which has no 2D engine this driver
-drives either. It is slow, its capabilities advertise exactly what it renders
-and nothing more, and **it has never been timed on a period machine.**
+`Direct3D=2` on the Velocity9x page serves Direct3D from a CPU rasterizer on any
+supported chip - depth-tested, textured, Gouraud-shaded triangles on a Trio64
+and an ATI Mach64 VT2, neither of which has a 3D engine, and the second of
+which has no 2D engine this driver drives either. It is slow, its capabilities
+advertise exactly what it renders and nothing more, and **it has never been
+timed on a period machine.**
 
 ### The rasterizer
 
@@ -511,24 +525,26 @@ and nothing more, and **it has never been timed on a period machine.**
 but `velocity9x\types.h`, holds no state, touches no register, and takes its
 render target as a pointer, a pitch and an extent. The host suite
 (`tests\host\test_d3d_raster.c`) holds it to properties rather than to a
-picture, because a rasterizer looks right long before it is right - two
+picture, because a rasterizer can look right long before it is right - two
 triangles sharing an edge cover it exactly once, nothing is written outside the
 target, a flat-coloured triangle is exactly one colour, the same triangle in all
 six vertex orders draws identical pixels, and a refused triangle draws nothing.
 
-Three numbers in it are decisions rather than mechanics, and each is an overflow
-bound rather than a taste:
+Three numbers in it are decisions rather than mechanics, and each one is an
+overflow bound:
 
-- **Integer only, 28.4 screen coordinates.** The float-to-fixed conversion stays
-  in the engine, where the `#pragma aux` fistp lives, so the arithmetic compiles
-  under both host passes.
-- **A 2048-pixel target cap.** Every interpolation product is bounded by
-  coordinate squared; 32752 squared is 1,072,693,504 and fits, 4096 pixels would
-  not, and the failure would be wrong spans on large modes only with nothing
-  reported. `d3d_soft.c` asserts its own limit against it at compile time.
-- **One texture repeat, so the sampler clamps and the caps publish CLAMP without
-  WRAP.** The edge interpolator's denominator is at most 32752, so anything it
-  carries must stay under 65566; depth already sits at 65535 against that bound.
+- **Integer arithmetic only, with 28.4 screen coordinates.** The float-to-fixed
+  conversion stays in the engine, where the `#pragma aux` fistp lives, so the
+  arithmetic compiles under both host passes.
+- **The render target is capped at 2048 pixels.** Every interpolation product is
+  bounded by coordinate squared; 32752 squared is 1,072,693,504 and fits, 4096
+  pixels would not, and the failure would be wrong spans on large modes only,
+  with nothing reported. `d3d_soft.c` asserts its own limit against it at
+  compile time.
+- **Only one texture repeat, so the sampler clamps and the caps publish CLAMP
+  but not WRAP.** The edge interpolator's denominator is at most 32752, so
+  anything it carries must stay under 65566; depth already sits at 65535 against
+  that bound.
 
 Coverage is pixel centres with half-open intervals in both axes. Depth is
 16-bit with all eight comparison functions and a write mask, numbered as
@@ -548,19 +564,19 @@ Withheld, each with its reason in the file: WRAP, the four mip filters, texture
 alpha and every alpha blend cap, PERSPECTIVE, COPY, and the fog caps - fog
 works, but on one probe rung, and it goes in when there is a ladder behind it.
 
-### The mode is now selectable, on the cards it was written for
+### The mode selector now offers Software
 
 The Display Properties selector offered Hardware and Disabled, and greyed itself
 out entirely on any chip without an S3D unit - which is every chip the software
-mode exists for. **The mode worked and only the page could not reach it.**
+mode exists for. **The mode worked; only the page could not reach it.**
 
-It now offers Software everywhere and Hardware only where there is hardware
+It now offers Software everywhere, and Hardware only where there is hardware
 Direct3D to select: a ViRGE sees three entries, a Trio64, ATI or VESA card sees
-Software and Disabled. A card sitting on the default is shown its own words for
-what it is doing - "Not advertised on this chip" - carrying the loaded value, so
-opening the page and pressing OK still writes nothing.
+Software and Disabled. A card on the default shows what it is actually doing -
+"Not advertised on this chip" - and carries the loaded value, so opening the
+page and pressing OK still writes nothing.
 
-### The probe stopped certifying a bug
+### The probe was checking against the wrong pixel format
 
 Every "did it draw the right colour" verdict compared against a ZRGB1555
 literal, against an RGB565 render target. Those constants were written to match
@@ -574,14 +590,15 @@ Six Trio64 keys went from 0 to 1 with no driver change, specular Gouraud among
 them - the core folds specular into the vertex colour, so the software engine
 had it without a line written for it.
 
-**Six ViRGE keys went the other way, and that is the defect rather than the
-probe.** Every ViRGE key whose expected colour is blue still passes, blue being
-`0x001F` in both formats and the one colour they agree on; every key carrying
-red, green or white fails. The S3D unit writes ZRGB1555 into a surface described
-as RGB565, which README has recorded as an unresolved mismatch since the first
-Direct3D work and which is now measured from outside instead of noted in a
-comment. 86Box cannot settle whether the chip has a destination-format control
-its model omits, because the emulator is the model; the physical ViRGE can.
+**Six ViRGE keys went the other way, and that one is a real defect rather than
+a probe fault.** Every ViRGE key whose expected colour is blue still passes,
+blue being `0x001F` in both formats and the one colour they agree on; every key
+carrying red, green or white fails. The S3D unit writes ZRGB1555 into a surface
+described as RGB565, which README has recorded as an unresolved mismatch since
+the first Direct3D work and which is now measured from outside instead of noted
+in a comment. 86Box cannot settle whether the chip has a destination-format
+control its model omits, because the emulator is the model. The physical ViRGE
+can.
 
 ### Found by measuring
 
@@ -643,8 +660,8 @@ smoothed over: it is a trade-off that leaves Final Reality's composite score
 unchanged, not the improvement it was argued to be. It is kept because S3's own
 ViRGE driver in the Windows 98 DDK serves the same call, and because every bias
 in the environment it was measured in favours the arm it lost to.
-**`DDBLT_DEPTHFILL` is served, and a controlled A/B says it is a trade-off
-rather than a win.** Nothing in `src/` handled it and `DDCAPS_BLTDEPTHFILL` was
+**`DDBLT_DEPTHFILL` is implemented, and a controlled A/B shows it is a
+trade-off rather than a win.** Nothing in `src/` handled it and `DDCAPS_BLTDEPTHFILL` was
 not advertised, so DirectDraw locked the Z buffer and wrote every word itself.
 That clear is now one blit.
 
@@ -664,7 +681,7 @@ The control reproduces the previously recorded run to within 1% on every test,
 which is what makes this a measurement rather than two sessions compared; the
 depth-fill column was run twice.
 
-**Two things this refutes, both of them ours.** The Final Reality plan said the
+**This refutes two of our own claims.** The Final Reality plan said the
 28.54 to 23.62 Kpolys/s drop was the cost of depth work "and partly of
 DirectDraw clearing the depth buffer on the CPU every frame", separable only by
 implementing the fill and re-running. They are separated now and **25 pixel does
@@ -687,7 +704,7 @@ cost is the engine's, and the two cannot be separated by choosing a different
 fill path. 25 pixel reads 23.4 in all three arms, which is a third independent
 confirmation that the clear was never part of that figure.
 
-**And the fill-rate figure may not be about this chip at all.** Published
+**The fill-rate figure may not be about this chip at all.** Published
 per-cycle rates for the family put a 55 MHz ViRGE 325 at 44 Mpixels/s on
 non-textured polygons with no Z buffer, 23 with Z, and single figures for
 perspective-correct textured pixels, the DX improving only the textured path.
@@ -698,7 +715,7 @@ but the order of magnitude says 86Box is not reproducing this part's fill
 throughput, and a 38% swing in a figure the silicon could not produce is not a
 performance result about the silicon.
 
-**It is kept, on grounds that are not this benchmark's.** S3's own ViRGE driver
+**It is kept, for reasons other than this benchmark.** S3's own ViRGE driver
 in the Windows 98 DDK advertises `DDCAPS_BLTDEPTHFILL` and handles
 `DDBLT_DEPTHFILL` in the same branch as its colour fill, from `dwFillDepth`,
 which is the design this driver reached independently - so serving it is what
@@ -772,8 +789,8 @@ whatever the last owner left and a single-value test passes by accident; two
 positions because a rectangle blit with the wrong pitch writes the first row
 and nothing else.
 
-**That test proves less than it looks like it proves, and this was measured
-rather than assumed.** A HAL built without any of this work - no depth-fill
+**That test proves less than it appears to, and that was measured rather
+than assumed.** A HAL built without any of this work - no depth-fill
 body, no cap - passes it identically: DirectDraw emulates `DDBLT_DEPTHFILL`
 when the driver declines and returns `S_OK` either way. So the test establishes
 that the fill is *correct*, not that the driver *performed* it. A path that
@@ -781,7 +798,7 @@ returned `DDHAL_DRIVER_NOTHANDLED` on every call would pass unchanged. The
 discriminator is counting `Blt` callbacks across the two builds, and that has
 now been done.
 
-**The driver does serve it, and on the blitter.** The probe issues exactly two
+**The driver does perform the fill, and it goes to the blitter.** The probe issues exactly two
 depth fills; the control build reports `CountBlt=7` / `CountBltEngine=7` and
 the depth-fill build `CountBlt=9` / `CountBltEngine=9`. So without the cap
 DirectDraw never dispatches the call to the driver at all - the control is a
@@ -845,7 +862,7 @@ have to test the mode first. And the shared block is allocated and stamped on
 the `DDGET32BITDRIVERNAME` escape, before DriverInit, so there is already a
 place to put a mode where the 32-bit side can see it at publish time.
 
-**A change takes effect on restart, and the reason is not laziness.** A
+**A mode change only takes effect after a restart.** A
 re-enable does move the driver - `Direct3DMode=` republishes and
 `TexFormatCount` drops to 0 - but DDRAW keeps offering the `Direct3D HAL`
 device it enumerated from the previous session, and every attempt to use it
@@ -901,8 +918,8 @@ restored every key. The three existing rules - delete the result, check the
 exit code, check `Build=` - all pass on that bad run, so none of them catches
 it.
 
-**Hardware Z-buffering works on the ViRGE, and the reason it did not was one
-expression.** The driver had advertised depth testing since the first Direct3D
+**Hardware Z-buffering works on the ViRGE. One expression was stopping
+it.** The driver had advertised depth testing since the first Direct3D
 work - `D3DPRASTERCAPS_ZTEST`, all eight compare functions, `DDBD_16`, and a
 fully validated attached depth surface - and then written `Z_BASE = 0`, set no
 depth bits in the command word and never read `context->zbuffer`. That was
@@ -926,7 +943,7 @@ than the FIFO holds was not going to work on the chip either. The fix takes the
 eighteen in two bites, in both the main emit and the trilinear second pass,
 leaving the depth-off reservation and its stall behaviour untouched.
 
-**Three hypotheses died on the guest**, all of them from the handoff written
+**Three hypotheses were disproved on the guest**, all of them from the handoff written
 the day before, and all of them plausible readings of the same symptom -
 `S_OK` everywhere, no pixels, driver counters that did not move. The runtime
 *does* hand the driver a depth surface, once, in `lpDDSZ` at context creation,
@@ -941,7 +958,7 @@ the runtime binds the depth surface on that path by creating a new context
 instead.
 
 Instruments added, because each of those wrong readings was cheap to make and
-expensive to unmake: `d3d_diagnostics` gains `depth_offered`, `depth_accepted`,
+expensive to undo: `d3d_diagnostics` gains `depth_offered`, `depth_accepted`,
 `depth_reject`, `depth_caps`, `depth_offset` and `depth_pitch`, with every arm
 of the depth validation recording its own reason, so "the runtime never passed
 a depth surface" and "the driver refused the one it passed" stop looking alike;
@@ -1006,8 +1023,8 @@ for 2.7 million primitives without a fault, but "it did not fault" is not "it
 computed the right depth". Closing it needs a 86Box fix or a second ViRGE
 target.
 
-**The Direct3D block splits into a chip-neutral core and one engine, and the
-probe cannot tell.** Roadmap Track B, executed ahead of its scheduled slot -
+**The Direct3D block is split into a chip-neutral core and one engine, with
+no change the probe can see.** Roadmap Track B, executed ahead of its scheduled slot -
 the plan puts it immediately before the 3dfx D3D phase precisely so the
 abstraction is drawn around two engines rather than one, and that caveat still
 stands.
@@ -1105,8 +1122,7 @@ from the Trio line, so binding them would be a claim rather than an alias.
 
 ## 0.6.1 - 2026-08-28
 
-**A third party ran 0.6.0 on hardware nobody here owns, and this is what that
-cost and bought.** An Acer NAV50 - Intel Pineview, a class of chip this
+**A third party ran 0.6.0 on hardware nobody here owns.** An Acer NAV50 - Intel Pineview, a class of chip this
 project had never seen - produced four defects and one measurement. The
 defects: the hardware survey was pointing the video BIOS at its own null
 pointer zone and corrupting the machine it promised not to touch; a
@@ -1260,8 +1276,8 @@ the reports that come back can be attributed to the right driver.
 
 ## 0.6.0 - 2026-08-27
 
-**The milestone this version number marks: Velocity9x is no longer an
-engineering bring-up driver — it is a working driver.** The full stack runs on
+**Velocity9x is no longer an engineering bring-up driver — it is a working
+driver.** The full stack runs on
 three physical machines across three buses and two chip vendors: the S3 Trio64
 on PCI under Windows 98 SE (with GDI acceleration measured faster than
 baseline in CrystalMark Retro and faster than the stock S3 driver in Ironfield
@@ -1921,7 +1937,7 @@ builds is the same image as before, which is the stage's own exit condition.
   runtime table was wired to GDI rather than discovered at that gate. The
   refusal is a quiet omission from the table, tested as such.
 
-- **The dynamic-VBE plan now carries the BIOS evidence that argues against it.**
+- **The dynamic-VBE plan now includes the BIOS evidence against it.**
   The plan is built on asking the BIOS what it supports and believing the
   answer, so the conformance corpus is the closest thing available to an
   adversarial review of it, and five findings changed something. *Newer is not
@@ -2081,7 +2097,7 @@ trap, all below.
   the same file: CRTC 38h/39h are S3 extensions plain VGA does not implement,
   and both are saved and restored.
 
-- **A driver that refuses every mode now says why.** `ValidateMode` gates every
+- **The driver now records why it refused every mode.** `ValidateMode` gates every
   mode on `v9x_hardware_acceptable`, and GDI asks it before it ever calls
   Enable — so when the answer is no, Windows is told a cleanly loaded driver
   supports nothing, falls back to the INF's 4-bpp `vga.drv` row, and the Enable
@@ -2101,7 +2117,7 @@ trap, all below.
   On the 486 this distinguishes the two remaining candidates for the VLB
   failure on one boot, which is what it was built for.
 
-- **A manifest comment that claimed a refusal the code cannot make.** The s3
+- **Removed a manifest comment claiming a refusal the code cannot make.** The s3
   `Vm.Modes` note said a 2 MiB Trio64 has 1024x768x32 and 1280x1024x16 refused
   by `ValidateMode`. It does not: that test reads `v9x_vbe_vram_reported`, which
   `enable16.c` assigns only on the tier-0 VBE path, and this family has a
@@ -2186,7 +2202,7 @@ trap, all below.
   deliberately broken copies of the source, needs no compiler, and is now a
   `run-checks` step rather than a check performed once.
 
-- **The 486 VLB run happened, and the aperture question is still open.** An S3
+- **The 486 VLB test ran, and the aperture question is still open.** An S3
   Trio64 on a Diamond Stealth 64 DRAM in a 486: the no-PCI branch executed for
   the first time on any target, the locked-read identification named the card,
   and the register restore is proven byte-identical across three runs. Two
@@ -2224,13 +2240,13 @@ trap, all below.
   says which call declined to answer, and attaches a caveat to any positive
   aperture result it could not check.
 
-- **The survey could not say whose INT 10h answered.** The 486 run reported VBE
+- **The survey could not say which ROM answered INT 10h.** The 486 run reported VBE
   2.00 from a machine whose card ROM contains no VBE strings in plaintext, with
   a `PhysBasePtr` contradicting the card's own aperture registers - and the
   report had no way to distinguish the ROM from a resident hook. `[BiosData]`
   now carries the INT 10h and INT 42h vectors, so it can.
 
-- **The report could not say whose VBE it was describing, and the answer was
+- **The report could not say which VBE it was describing, and the answer was
   already in it.** `[VBEModes] ModeListPointer` is a far pointer, and its segment
   names the provider: the 486 VLB card's own BIOS returns `C000534F`, into its own
   option ROM, while the S3VBE TSR on the same machine returned `0DC62612` in low
@@ -2239,7 +2255,7 @@ trap, all below.
   rather than a property of the card. It works on every schema-2 report,
   including ones taken before the `Int10Vector` key existed.
 
-- **A non-PCI card's own ROM can name it, and the parser now looks.** The VLB
+- **A non-PCI card's ROM can name the card, and the parser now reads it.** The VLB
   Stealth 64's option ROM carries a valid `PCIR` header reporting `5333:8811`,
   because Diamond shipped one image for both bus variants. That is a read-only
   identification route needing no bus at all.
@@ -2439,7 +2455,7 @@ hardware with a Windows protection error that no 86Box guest had ever produced.
   clean boots. Tier-0 families (`vbe`, `ati`) keep the fixed collection.
   Decision record:
   [docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md](docs/decisions/2026-08-18-minivdd-vbe-collect-gating.md).
-- **The collection narrates itself over COM1 now.** `vbe-collect start`, one
+- **The collection reports its progress over COM1 now.** `vbe-collect start`, one
   `vbe-call fn=/arg=` line before every BIOS call, `ret=` after it, and
   `vbe-collect done` - all bounded writes. `Exec_Int` into a BIOS that never
   returns cannot be timed out at ring 0, so if a tier-0 machine ever hangs in
