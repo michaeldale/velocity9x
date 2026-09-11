@@ -1,9 +1,15 @@
 # CR36 and the aperture base, confirmed on a physical ViRGE/DX
 
-Date: 2026-09-11. One BringupKit run on the FX-6300 Debian host, card at
-`0000:04:06.0`, boot `8d292e50-3ff0-4a29-85dd-20a857b0100c`. `5333:8a01`, no
-kernel driver bound. Evidence in
-[`docs/probe/virge-dx-registers-2026-09-11`](../probe/virge-dx-registers-2026-09-11/).
+Date: 2026-09-11. Two BringupKit runs on the FX-6300 Debian host, card at
+`0000:04:06.0`, `5333:8a01`, no kernel driver bound - boots
+`8d292e50-3ff0-4a29-85dd-20a857b0100c` and
+`b8ee9ffc-d9f9-4970-a6af-324bc6cb567c`. Evidence in
+[`docs/probe/virge-dx-registers-2026-09-11`](../probe/virge-dx-registers-2026-09-11/),
+which holds the second.
+
+Every register value and aperture reading below is identical across both
+boots. This record originally cited only the first; the bundle was then
+re-run at the same path, which is how it came to have two.
 
 Two decoders this driver has relied on since the first S3 work had only the
 databook and 86Box's model behind them. Both are now checked against the
@@ -53,21 +59,31 @@ Only the pixel form is usable, which is what the driver calls: `BL=03h` fails
 outright with `0x14F`, and the run's own byte-form attempts also came back
 `0x14F`.
 
-## Two claims in the bundle's write-up are wrong
+## The bundle's write-up: one claim fixed, one still wrong
 
-Worth recording because the bundle is the citation, and both would mislead.
+Worth recording because the bundle is the citation.
 
-**"This BIOS does not implement 4F06h" is false.** The raw event says
-`"called": false` - the call was never issued, and the `status: 0` the
-write-up reads as a failure is an uninitialised default. The mode probe on the
-same card then exercises 4F06h successfully. This is the same error as the
-2064W's `mgamode`: a conclusion drawn from a measurement that was not taken.
+**Fixed.** The first version headlined "This BIOS does not implement 4F06h",
+which the raw event contradicted with `"called": false`. The current text is
+better than that correction: the calls "did not complete under emulation, so
+the call returned no status at all", and it says outright that this is a fact
+about running the handler there and **not** evidence the BIOS lacks the
+function, with a pointer to the mode-set section as the stronger evidence.
+That is the right shape - it is the same error as the 2064W's `mgamode`, a
+conclusion drawn from a measurement that was not taken, and it now says so.
 
-**The `BL=02h` table's prose is carried over from the Matrox run.** It says
-the byte form "returns success and leaves the length alone", but the status
-shown is `0x014f`, and `AH=0x01` is failure. On the Matrox BIOS the byte form
-really did return `0x004f` and do nothing, which is the dangerous case; this
-BIOS reports the failure honestly.
+**Still wrong: the `BL=02h` prose.** It reads "returns success and leaves the
+length alone" and warns that a driver using it "will get a success code and an
+unchanged pitch". The table directly above shows status `0x014f`, and
+`AH=0x01` is failure, not success. That paragraph is carried over from the
+Matrox run, where the byte form really did return `0x004f` and do nothing -
+which is the dangerous case. **This BIOS reports the failure honestly**, so on
+a ViRGE/DX the byte form is merely useless rather than treacherous. The
+paragraph beginning "This took three attempts to establish" is Matrox history
+too.
+
+Either way the driver calls the pixel form, so nothing depends on which
+reading is right.
 
 ## Also true, and smaller
 
@@ -93,8 +109,10 @@ The run enumerated 25 VBE modes and queried none of them, so there is no
 pitch or linear-framebuffer data in it at all.
 
 **This is not A8U4I5's card.** It is a ViRGE/DX on the kit host at the same
-BDF the 2064W used, so the two runs are the same machine with cards swapped.
+BDF the 2064W used, so those runs are the same machine with cards swapped.
 Nothing here was measured through the driver.
 
-The run left the scan-line length at 2304 bytes, not restored. Harmless with
-the card back in mode 3.
+The first boot left the scan-line length at 2304 bytes, unrestored; the second
+restores it to 2048, `pitch_restored: true`. An earlier version of this record
+reported the unrestored figure as the run's side effect, which is now only
+true of the boot it cited.
