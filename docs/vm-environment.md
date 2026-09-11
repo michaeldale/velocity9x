@@ -235,7 +235,10 @@ ViRGE/DX and needs no display-driver install.
 - Profile: `<86Box VMs>\Win98SE-Fast-D3D`
 - `machine = cubx` (ASUS CUBX, 440BX), `cpu_family = celeron_mendocino`,
   `cpu_speed = 533 MHz`, 256 MiB
-- `gfxcard = virge_dx_pci`, `[S3 ViRGE/DX PCI] memory = 4`
+- `gfxcard = voodoo3_3500_agp` on the **`vbe` package**, installed by Have
+  Disk from `C:\V9XVBE`. `86box.cfg.virge-backup` in the same directory is
+  the ViRGE/DX configuration it was built with; the two are one `gfxcard`
+  line apart and both boot from this image.
 - `[Velocity9x] Direct3D=2` in the guest's `SYSTEM.INI`, so
   `V9XHW.INI` reads `Direct3DMode=software` and every Direct3D draw is served
   by the CPU
@@ -256,16 +259,53 @@ not expected to beat a Mendocino's full-speed on-die 128 KiB L2 on this
 workload - **expected, not measured**, and the cheap way to settle it is to
 point this profile at `6via90ap`/`c3_samuel` and rerun `V9XSOFT`.
 
-**The card is the fastest our driver actually claims.** Every AGP part 86Box
-emulates - ViRGE/GX2, Voodoo3, Banshee - is absent from all four family
-manifests, and the two Matrox profiles ship without `V9XHAL.DLL`, so they have
-no Direct3D at all. That leaves PCI S3 and ATI, and the ViRGE/DX is the
-best-validated of them. It also earns its place a second way: it is the only
-card here that can run the same scene through our hardware engine and our
-software one, by flipping `Direct3D` between 1 and 2.
+**The card is the fastest framebuffer the driver can reach at all**, which
+is not the same as the fastest card it has a chip module for.
 
-A faster framebuffer is reachable by putting an AGP card behind the `vbe`
-package through Have Disk. Nothing has tried it.
+By *native* family, the ceiling is PCI: the ViRGE/DX this guest was built
+with, which also runs the same scene through both of our engines by flipping
+`Direct3D` between 1 and 2, and is why its configuration is kept beside the
+current one. One correction to an earlier reading of the manifests: build
+9001 **does** carry `trio3d2x_agp` with an 8 MiB ROM
+(`video/s3virge/TRIO3D2X_8mbsdr.VBI`), so the `8A13` alias's note that "no
+86Box profile exists for it" is stale and the s3 family does have an AGP
+option. It has not been booted here.
+
+By *any* family, the `vbe` package takes whatever has a VBE 2.0+ BIOS and a
+linear framebuffer, which opens the AGP parts no chip module names. The
+fastest of those is the Voodoo3 3500, and that is what this guest now runs:
+`Adapter=Generic VESA adapter (no chip-specific support)`,
+`PciVendorId=121A`, `PciDeviceId=0005`, `ModeSwitching=vbe-lfb`,
+`VbeVramBytes=16777216`, `Acceleration=none`, `Direct3DMode=software`.
+1024x768x16 sets and draws correctly.
+
+### The AGP aperture reads twice as fast and writes slower
+
+`V9XSOFT` on the two cards, same CPU, same boot-to-boot method, all 24 pixel
+and depth hashes identical between them and the RAM column **exactly 1.00 on
+every rung** - which is the control that says the only thing that changed is
+the aperture:
+
+| VRAM rung | ViRGE/DX PCI | Voodoo3 3500 AGP | |
+|---|---|---|---|
+| Read | 65.83 ms | 31.46 ms | **2.09x** |
+| Bilinear | 152.0 ms | 85.0 ms | 1.79x |
+| Depth | 187.5 ms | 106.3 ms | 1.77x |
+| Alpha | 227.5 ms | 128.3 ms | 1.77x |
+| Point | 44.41 ms | 29.04 ms | 1.53x |
+| Small | 5.86 ms | 6.41 ms | 0.91x |
+| Gouraud | 7.08 ms | 8.88 ms | 0.80x |
+| Write | 5.64 ms | 9.26 ms | **0.61x** |
+
+Reads across the AGP aperture are twice as quick and writes are two thirds
+the speed, and every rung falls out of those two facts: the textured and
+depth-tested scenes fetch far more than they store and gain 1.5x to 1.8x,
+while the untextured fills are pure stores and lose. So the "fastest GPU"
+question has no single answer for this renderer - it depends whether the
+scene is reading texels or filling pixels.
+
+Against the Pentium MMX 200 Trio64 guest this leaves software Direct3D about
+2.5x faster on a video-memory target where the CPU alone bought 1.4x.
 
 ### What the first boot measured
 
@@ -306,3 +346,14 @@ agent is not up to drive it; it has to be clicked through from the host with
 agent answered, `DesktopReady` stayed false, and the agent's own reboot verb
 could not work because it needs the shell. A hard reset of the emulator
 process cleared it and every boot since has been clean.
+
+Swapping to the Voodoo3 afterwards was much easier, because by then the agent
+was up and its own `input` verb drives the guest properly. Windows fell back
+to `vga.drv` on the card change, and the `vbe` package went on through
+Display Properties -> Advanced -> Adapter -> Change -> "Display a list of all
+the drivers" -> Have Disk -> `C:\V9XVBE`, which offers exactly one model:
+"Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)". Two notes for
+next time: the Have Disk path box starts at `A:\` and does not respond to
+Ctrl+A, so clear it with End and a run of backspaces before typing; and the
+first mode change after the install raises a Plug and Play Monitor wizard
+that blocks the agent's screenshot verb until it is dismissed.

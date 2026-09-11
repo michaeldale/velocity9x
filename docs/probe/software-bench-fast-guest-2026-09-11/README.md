@@ -8,6 +8,14 @@
 | `trio64-pentium200-trio64.ini` | `Win98SE-Trio64`, port 9871: Pentium MMX 200, 430TX, S3 Trio64 PCI 4 MiB |
 | `fast-d3d-celeron533-virgedx.ini` | `Win98SE-Fast-D3D`, port 9878, boot 584: Celeron Mendocino 533, 440BX (ASUS CUBX), S3 ViRGE/DX PCI 4 MiB |
 | `fast-d3d-v9xhw.ini` | that boot's `V9XHW.INI`: `Direct3DMode=software`, `ColourLayout=565-auto` |
+| `fast-d3d-celeron533-voodoo3-vbe.ini` | the same guest and CPU at boot 587 with `gfxcard = voodoo3_3500_agp` on the `vbe` package |
+| `fast-d3d-voodoo3-v9xhw.ini` | that boot's `V9XHW.INI`: `ModeSwitching=vbe-lfb`, `VbeVramBytes=16777216`, `PciDeviceId=0005` |
+
+The ViRGE/DX and Voodoo3 files are the pair that isolates the aperture: same
+machine, same CPU, same binary, and the RAM column compares **1.00 on every
+rung**, so every difference in the VRAM column is the bus and the card.
+Reads come back 2.09x quicker on AGP and writes 0.61x, which is why the
+textured rungs gain and the untextured fills lose.
 
 ```powershell
 ./scripts/compare-software-bench.ps1 `
