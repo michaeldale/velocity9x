@@ -609,23 +609,22 @@ V9xMini_Vram_Unknown:
     ret
 EndProc MiniVDD_GetTotalVRAMSize
 
-; Update the S3 ViRGE DPMS state without changing the active video mode.
+; Update the S3 DPMS state without changing the active video mode.
 ;
 ; CL contains the S3 SR0D DPMS bits: bit 4 disables horizontal sync and bit 6
 ; disables vertical sync.  Windows power states map to 00h (D0), 10h (D1),
 ; 40h (D2), and 50h (D3).  The routine also clears CR56[2:1], the alternate
 ; S3 DPMS controls, and clears SR01[5] on wake in case the BIOS used the
 ; generic VGA screen-off bit.  All registers and flags are preserved.
+;
+; This is a positive family gate: only an S3 package build defines
+; V9X_S3_DPMS.  The generic VBE mini-VDD runs on unknown silicon, including
+; Intel, where these indexes do not name the registers above.  Keeping the
+; body out of every non-S3 image makes an accidental foreign-register write
+; impossible even if one of the four callers is reached.
 BeginProc V9xMini_Set_Dpms
-IFDEF V9X_NO_DPMS
-    ; Differential build for
-    ; docs\issues\2026-08-28-dos-box-entry-hang-gma950.md.
-    ;
-    ; The body below writes the S3 extended sequencer unlock, SR0D and CR56
-    ; with no family or chip guard, so the generic VBE mini-VDD issues them on
-    ; whatever silicon it is loaded against. This build removes them to take
-    ; that off the table as a cause. A bare ret satisfies the documented
-    ; contract by construction: all registers and flags preserved.
+IFNDEF V9X_S3_DPMS
+    ; A bare ret satisfies the documented contract by construction.
     ret
 ELSE
     pushfd
@@ -2301,9 +2300,9 @@ ENDIF
     mov     esi, OFFSET32 V9xMiniPowerCallbacksLine
     mov     ecx, V9xMiniPowerCallbacksLineLength
     call    V9xMini_Serial_Write
-IFDEF V9X_NO_DPMS
-    ; Names the experiment in the image, so the build audit can assert this is
-    ; the no-DPMS build and a capture says which one is running.
+IFNDEF V9X_S3_DPMS
+    ; Names the family guard in the image, so the build audit can assert that
+    ; the S3 register body is absent and a capture says which image is running.
     mov     esi, OFFSET32 V9xMiniDpmsDisabledLine
     mov     ecx, V9xMiniDpmsDisabledLineLength
     call    V9xMini_Serial_Write

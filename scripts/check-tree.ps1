@@ -540,6 +540,28 @@ $miniSource = Get-Content -LiteralPath `
 if ($miniSource -notmatch '(?m)^\s*include\s+V9XPROBE\.INC\s*$') {
     throw "loader.asm does not consume the generated baseline rescue list."
 }
+# The mini-VDD is also used by the chip-agnostic VBE family. Its DPMS helper
+# contains S3 extended-register writes, so the safe default must be a no-op and
+# only the S3 family build may opt the body in. This is deliberately a positive
+# guard: adding a family cannot make foreign register writes appear by default.
+if ($miniSource -notmatch
+    '(?ms)BeginProc\s+V9xMini_Set_Dpms\s*\r?\nIFNDEF\s+V9X_S3_DPMS\s*\r?\n\s*;[^\r\n]*\r?\n\s*ret\s*\r?\nELSE') {
+    throw ("V9xMini_Set_Dpms must put its no-op path first behind " +
+           "IFNDEF V9X_S3_DPMS; non-S3 images may not contain S3 writes.")
+}
+$miniBuildSource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "scripts\build-minivdd-skeleton.ps1") -Raw
+if ($miniBuildSource -notmatch
+    '(?m)^\$s3Dpms = \(\$Family -eq ''s3''\) -and \(-not \$NoDpms\)\s*$' -or
+    $miniBuildSource -notmatch
+    '(?m)^\s*\$assemblerArguments = @\("-DV9X_S3_DPMS"\) \+ \$assemblerArguments\s*$') {
+    throw ("build-minivdd-skeleton.ps1 must define V9X_S3_DPMS only for " +
+           "the s3 family (and not for its -NoDpms experiment).")
+}
+if ($miniSource -match '\bV9X_NO_DPMS\b' -or
+    $miniBuildSource -match '\bV9X_NO_DPMS\b') {
+    throw "The obsolete negative DPMS guard has returned; use V9X_S3_DPMS."
+}
 if ($miniSource -match '\bV9xVbeModeList\b|\bV9X_VBE_CACHE_COUNT\b') {
     throw "loader.asm still contains the removed fixed v1 mode cache."
 }

@@ -63,6 +63,11 @@ a chip's render engine while another part of the same driver scribbles foreign
 registers at DPMS time makes every hang ambiguous. This is small, cheap and
 independently shippable. Do it first.
 
+**Completed 2026-09-12:** only the S3-family mini-VDD now assembles the SR0D
+and CR56 body; every other family gets a one-byte no-op. The decision and build
+evidence are in
+[2026-09-12-intel-prerequisite-s3-dpms-guard.md](../decisions/2026-09-12-intel-prerequisite-s3-dpms-guard.md).
+
 ## Phases
 
 Each phase has a done-criterion and an artefact readable after a reboot, since

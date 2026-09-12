@@ -222,9 +222,12 @@ callbacks; the driver advertises D0 only, because the legacy BIOS resume path
 does not reliably restore the active framebuffer.
 
 `build-minivdd-skeleton.ps1` also generates the mini-VDD's rescue-probe mode
-list from a family manifest, so it takes `-Family <id>`. The image is otherwise
-family-independent, and a standalone run defaults to `vbe` and says which family
-it used; `build-active-package.ps1` passes the family it is packaging.
+list from a family manifest, so it takes `-Family <id>`. The family selects one
+other hardware-specific feature: only `-Family s3` assembles the S3 SR0D/CR56
+DPMS register path. Every other family gets a no-op DPMS body, so the generic
+VBE image cannot issue S3 register writes on Intel or other unknown silicon. A
+standalone run defaults to `vbe`; `build-active-package.ps1` passes the family
+it is packaging.
 
 ### Single-source diagnostic tools
 

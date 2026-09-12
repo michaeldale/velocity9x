@@ -19,9 +19,9 @@ param(
     # runs the real video BIOS with no timeout and can hang a machine that did
     # not hang before.
     #
-    # -NoDpms removes the unguarded S3 sequencer and CRTC writes from
-    # V9xMini_Set_Dpms, which the generic VBE build otherwise issues on
-    # whatever silicon it is loaded against.
+    # -NoDpms also removes the S3 sequencer and CRTC writes from an S3-family
+    # build. Non-S3 images never assemble those writes, independently of this
+    # experimental switch.
     [switch]$VgaReturn,
     [switch]$NoDpms,
     # -NoVramSize leaves out the REGISTER_DISPLAY_DRIVER and GET_TOTAL_VRAM_SIZE
@@ -112,6 +112,7 @@ $definitionFile = Join-Path $outputDir "v9xmini.def"
 $objectPath = Join-Path $outputDir "loader.obj"
 $vxdPath = Join-Path $outputDir "v9xmini.vxd"
 $mapPath = Join-Path $outputDir "v9xmini.map"
+$s3Dpms = ($Family -eq 's3') -and (-not $NoDpms)
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -196,9 +197,9 @@ if ($shieldStandalone) {
         "V9xMiniShieldLineLength equ `$ - V9xMiniShieldLine"
     )
 }
-if ($NoDpms) {
+if (-not $s3Dpms) {
     $buildIncludeLines += @(
-        "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-disabled build=$BuildId`", 13, 10",
+        "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-guarded family=$Family build=$BuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
     )
 }
@@ -376,8 +377,8 @@ if ($VgaReturn) {
     }
     $assemblerArguments = @("-DV9X_VGA_RETURN") + $assemblerArguments
 }
-if ($NoDpms) {
-    $assemblerArguments = @("-DV9X_NO_DPMS") + $assemblerArguments
+if ($s3Dpms) {
+    $assemblerArguments = @("-DV9X_S3_DPMS") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments
@@ -584,13 +585,13 @@ if ($VesaTrace -ne $imageText.Contains($vesaTraceMarker)) {
     throw ("The mini-VDD image " + $(if ($imageText.Contains($vesaTraceMarker)) { "carries" } else { "lacks" }) +
            " the VESA trace strings, which is not what -VesaTrace asked for.")
 }
-$dpmsDisabledMarker = "V9X-MINI dpms-disabled"
-if ($NoDpms) {
+$dpmsDisabledMarker = "V9X-MINI dpms-guarded"
+if (-not $s3Dpms) {
     if (-not $imageText.Contains($dpmsDisabledMarker)) {
-        throw "The no-DPMS mini-VDD is missing its disabled marker."
+        throw "The non-S3/no-DPMS mini-VDD is missing its family-guard marker."
     }
 } elseif ($imageText.Contains($dpmsDisabledMarker)) {
-    throw "A default mini-VDD build must not carry the DPMS disabled marker."
+    throw "An S3 DPMS mini-VDD must not carry the family-guard marker."
 }
 $mapText = Get-Content -LiteralPath $mapPath -Raw
 foreach ($symbol in @("V9xMini_Serial_Write", "V9xMini_Set_Dpms",
