@@ -71,12 +71,17 @@ void v9x_dd_d3d_configure(void)
                                        &engine_caps);
     }
 
-    /* Same section, same call and same enable-time timing as the GdiAccel
-     * keys. An absent key is V9X_D3D_REQUEST_HARDWARE, so a machine that
-     * never heard of this setting behaves exactly as it did before it. */
+    /*
+     * Same section, same call and same enable-time timing as the GdiAccel
+     * keys. An absent key is V9X_D3D_DEFAULT_REQUEST, which is
+     * V9X_D3D_REQUEST_HARDWARE unless the family manifest overrode it - see
+     * the macro's comment in include\velocity9x\d3dmode.h. On every family
+     * that does not override it, a machine that never heard of this setting
+     * behaves exactly as it did before the setting existed.
+     */
     requested = (WORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
                                            V9X_D3D_SETTING_KEY,
-                                           (int)V9X_D3D_REQUEST_HARDWARE,
+                                           (int)V9X_D3D_DEFAULT_REQUEST,
                                            V9X_SETTINGS_INI);
 
     v9x_dd_d3d_state = v9x_d3d_mode_resolve(

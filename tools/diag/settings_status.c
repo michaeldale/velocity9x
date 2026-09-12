@@ -314,9 +314,24 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
          * be reversed back into either. */
         status->direct3d_capable =
             lstrcmpiA(direct3d, "hardware-s3d") == 0 ? 1 : 0;
+        /*
+         * The absent-key default is the driver's, not this tool's.
+         *
+         * It is a build property of the package - the vbe family ships the
+         * CPU rasterizer on - so the driver publishes the number it used and
+         * this reads it back. Defaulting to HARDWARE here instead would show
+         * the wrong entry selected on exactly the packages that set it, and
+         * an OK on that page would then write the wrong value.
+         *
+         * A V9XHW.INI from before the key existed has none, and 0 is then
+         * both this default and what those builds actually did.
+         */
         status->direct3d_request = (int)GetPrivateProfileIntA(
             V9X_SETTINGS_SECTION, V9X_D3D_SETTING_KEY,
-            (INT)V9X_D3D_REQUEST_HARDWARE, V9X_SETTINGS_INI);
+            GetPrivateProfileIntA("Velocity9xHardware", "Direct3DDefault",
+                                  (INT)V9X_D3D_REQUEST_HARDWARE,
+                                  V9X_DIAG_HW_INI),
+            V9X_SETTINGS_INI);
 
         /*
          * The 16-bit layout: the setting, and what the driver made of it.

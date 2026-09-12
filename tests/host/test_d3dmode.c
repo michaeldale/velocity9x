@@ -169,6 +169,85 @@ static void test_state_text_is_stable(void)
     }
 }
 
+/*
+ * The request text, which is what V9XHW.INI's Direct3DDefault= carries and
+ * what settings_propsheet.c preselects its selector from.
+ *
+ * Every known request must round-trip to its own number, because the page
+ * matches the value against its combo entries: a request that printed
+ * another request's digit would select the wrong entry, and an OK on that
+ * page writes the selection back. An unknown request prints "0", the number
+ * v9x_d3d_mode_resolve will actually treat it as.
+ */
+static void test_request_text_is_stable(void)
+{
+    D3CHECK(strcmp(v9x_d3d_request_text(V9X_D3D_REQUEST_HARDWARE), "0") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text(V9X_D3D_REQUEST_DISABLED), "1") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text(V9X_D3D_REQUEST_SOFTWARE), "2") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text(V9X_D3D_REQUEST_HYBRID), "3") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text(V9X_D3D_REQUEST_OFFLOAD), "4") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text((v9x_u16)5u), "0") == 0);
+    D3CHECK(strcmp(v9x_d3d_request_text((v9x_u16)0xffffu), "0") == 0);
+}
+
+/*
+ * The build's absent-key default.
+ *
+ * The host build defines no family override, so this asserts the fallback
+ * that every family except vbe ships: an absent key is the chip's own
+ * engine, which is the behaviour the driver had before the key existed. The
+ * vbe package's override to SOFTWARE is asserted against its manifest by
+ * scripts\check-tree.ps1, because the value only exists on that compile.
+ *
+ * The second assertion is the one with teeth: whatever the default is, it
+ * must be a request the resolve table knows. A default of, say, 7 would
+ * compile, would resolve to the chip's answer, and would leave the settings
+ * page preselecting an entry that is not in its list.
+ */
+static void test_the_default_request_is_a_known_request(void)
+{
+    /* Through a variable, not the macro directly: the operands are compile
+     * time constants and Watcom folds the comparison, then reports the rest
+     * of the chain as unreachable code, which this build treats as an
+     * error. */
+    v9x_u16 build_default = (v9x_u16)V9X_D3D_DEFAULT_REQUEST;
+
+    D3CHECK(build_default == V9X_D3D_REQUEST_HARDWARE);
+
+    D3CHECK(build_default == V9X_D3D_REQUEST_HARDWARE ||
+            build_default == V9X_D3D_REQUEST_DISABLED ||
+            build_default == V9X_D3D_REQUEST_SOFTWARE ||
+            build_default == V9X_D3D_REQUEST_HYBRID ||
+            build_default == V9X_D3D_REQUEST_OFFLOAD);
+
+    /* And it must print as a digit the page can match, which is the same
+     * round trip test_request_text_is_stable makes for every other value. */
+    D3CHECK(strcmp(v9x_d3d_request_text(build_default), "0") == 0);
+}
+
+/*
+ * What the vbe family's override actually buys, resolved rather than assumed.
+ *
+ * A tier-0 card claims no 3D engine, so this is the pair of outcomes the
+ * default chooses between: nothing at all, or the rasterizer. Written as a
+ * test rather than a comment because the first arm is what shipped for every
+ * release up to 0.7.1, and a later change to the resolve table that quietly
+ * restored it would otherwise pass every other row here.
+ */
+static void test_the_vbe_default_serves_direct3d_on_a_chip_with_none(void)
+{
+    v9x_u16 without_override =
+        v9x_d3d_mode_resolve(V9X_D3D_REQUEST_HARDWARE, V9X_FALSE);
+    v9x_u16 with_override =
+        v9x_d3d_mode_resolve(V9X_D3D_REQUEST_SOFTWARE, V9X_FALSE);
+
+    D3CHECK(without_override == V9X_D3D_STATE_NONE);
+    D3CHECK(v9x_d3d_mode_advertises(without_override) == V9X_FALSE);
+
+    D3CHECK(with_override == V9X_D3D_STATE_SOFTWARE);
+    D3CHECK(v9x_d3d_mode_advertises(with_override) == V9X_TRUE);
+}
+
 unsigned int v9x_run_d3dmode_tests(void)
 {
     test_resolve_on_a_chip_with_3d();
@@ -177,5 +256,8 @@ unsigned int v9x_run_d3dmode_tests(void)
     test_only_hardware_advertises();
     test_the_chip_is_the_authority();
     test_state_text_is_stable();
+    test_request_text_is_stable();
+    test_the_default_request_is_a_known_request();
+    test_the_vbe_default_serves_direct3d_on_a_chip_with_none();
     return d3dmode_failures;
 }

@@ -52,6 +52,29 @@
 #define V9X_D3D_REQUEST_OFFLOAD  ((v9x_u16)4u)
 
 /*
+ * What an absent key means, which is a per-family build decision.
+ *
+ * HARDWARE unless a family manifest overrides it through Build.Defines, and
+ * that override is the only way this moves: the value is a property of the
+ * package, not of the machine it lands on.
+ *
+ * A family with a 3D engine has no reason to change it - HARDWARE already
+ * resolves to that engine. A family with none resolves HARDWARE to NONE, so
+ * it can choose instead to ship the CPU rasterizer switched on, which is what
+ * packaging\families\vbe does. The tier-0 package exists for cards this
+ * driver knows nothing about, where "no Direct3D at all" is the outcome of a
+ * default rather than of a measurement.
+ *
+ * The number is also published to C:\V9XDIAG\V9XHW.INI as Direct3DDefault=,
+ * because the settings page reads the raw SYSTEM.INI key and would otherwise
+ * apply its own default to an absent one and disagree with the driver that
+ * wrote the file.
+ */
+#ifndef V9X_D3D_DEFAULT_REQUEST
+#define V9X_D3D_DEFAULT_REQUEST V9X_D3D_REQUEST_HARDWARE
+#endif
+
+/*
  * What the driver will actually do, which is not the same thing.
  *
  * NONE and DISABLED both end with no Direct3D advertised and are deliberately
@@ -95,5 +118,13 @@ v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state);
  * compares against these spellings.
  */
 const char *v9x_d3d_mode_text(v9x_u16 state);
+
+/*
+ * A request number as the decimal text written to V9XHW.INI's
+ * Direct3DDefault=. Separate from v9x_d3d_mode_text because that one names a
+ * resolved state and this one names what was asked for; the page needs the
+ * request to preselect its own control, and cannot recover it from the state.
+ */
+const char *v9x_d3d_request_text(v9x_u16 request);
 
 #endif /* VELOCITY9X_D3DMODE_H */

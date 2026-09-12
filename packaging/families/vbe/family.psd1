@@ -129,7 +129,29 @@
             # runtime symbols it calls are declared.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        # An absent [Velocity9x] Direct3D key means the CPU rasterizer on this
+        # family, where every other family reads it as the chip's own engine.
+        #
+        # Tier-0 is the package for cards this driver has never been told
+        # about, and none of them has a 3D backend here by definition - the
+        # resolve turns a HARDWARE request into NONE. So the choice this
+        # default makes is not "hardware or software", it is "software or
+        # nothing at all", and nothing at all is a poor default for the one
+        # package whose whole premise is serving a card it cannot accelerate.
+        #
+        # What it costs: Direct3D is advertised on machines whose owner did
+        # not ask for it, and the rasterizer is slow - no period-machine
+        # measurement exists (docs\decisions\2026-09-12-vbe-defaults-to-the
+        # -software-rasterizer.md). It is a settings-page entry away from off,
+        # and the page now preselects correctly because ddi.c publishes this
+        # number as V9XHW.INI Direct3DDefault=.
+        #
+        # It also does nothing at the family's own default depth: the software
+        # engine is 16 bpp only and this family's INF DefaultMode is 8,640,480.
+        # A fresh install therefore has to reach a 16 bpp mode before the
+        # setting changes anything, which is the same condition the opt-in
+        # route always had.
+        Defines = @('V9X_D3D_DEFAULT_REQUEST=2')
         RuntimeDefines = @()
         SkeletonOutput = 'build\win16-ddi-vbe'
         PackageOutput = 'build\win98se-vbe'

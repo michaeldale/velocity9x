@@ -13,10 +13,15 @@ run of every archive on every card. The evidence below establishes particular
 features on the named builds and machines; it does not certify every current
 binary.
 
-Since that build the checkout carries one packaging change and no code change:
-the Matrox candidate's 2064W mode list widened from three modes to nine, and
+Since that build the checkout carries two packaging changes and one code change.
+The Matrox candidate's 2064W mode list widened from three modes to nine, and
 CRTCEXT3 bit 7 is deliberately still not written
-([record](decisions/2026-09-11-the-2064w-aperture-opens-with-mgamode.md)).
+([record](decisions/2026-09-11-the-2064w-aperture-opens-with-mgamode.md)). The
+VBE package now reads an absent `Direct3D` key as the software rasterizer
+rather than as the chip's own engine, which on that family is the difference
+between the CPU rasterizer and no Direct3D at all
+([record](decisions/2026-09-12-vbe-defaults-to-the-software-rasterizer.md)); the
+code change is the per-family default behind it, which no other family sets.
 Everything else below is released.
 
 | Feature | Released 0.7.1 | Current checkout | Evidence and limit |
@@ -26,7 +31,7 @@ Everything else below is released.
 | GDI text acceleration | Trio64 and ViRGE implementation, off by default (`GdiAccelText=0`) | Same | [Build 005](decisions/2026-09-06-gdi-accel-005-text.md): 86Box mode matrices pass; physical ViRGE/DX passes; physical Trio64 remains unverified after its hang |
 | DOS-box ADVFUNC shield | Included by default in the mini-VDD | Same | [Shipping record](decisions/2026-09-06-advfunc-shield-ships.md): traced variant fixed 6/6 physical Trio64 trials; shipping form passed ViRGE/86Box checks but still needs physical Trio64 verification |
 | Hardware Direct3D | Default on ViRGE/DX and Trio3D/2X; matching 5:5:5 selected automatically | Same | [0.7.0 results](../CHANGELOG.md#070---2026-09-05); Trio3D uses bilinear instead of two-pass trilinear, and blend faults remain open. The 0.7.1 texture-format fix changed this path too and **has not been run on a ViRGE** |
-| Software Direct3D | Opt-in in the S3, ATI and VBE packages through the settings page or `Direct3D=2`; exact incremental edges, an exact divide-by-255, a single colour clamp, per-span format/compare dispatch, a per-triangle sampler, DESTCOLOR blending, and system-memory textures behind `D3DSoftSysMem=1` | Same | [Edge timings](decisions/2026-09-07-software-rasterizer-edge-stepping.md) about 2.2x for the synthetic small-triangle scene, then [scalar fixes](decisions/2026-09-10-rasterizer-scalar-fixes.md) and [sampler fixes](decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md) reaching 1.75x point-sampled, 1.53x bilinear, 1.48x depth-tested and 1.41x alpha-blended in RAM and about half those in emulated VRAM; pixel hashes unchanged; no physical or game-speed claim |
+| Software Direct3D | Opt-in in the S3 and ATI packages through the settings page or `Direct3D=2`, and **on by default in the VBE package** since 2026-09-12 ([record](decisions/2026-09-12-vbe-defaults-to-the-software-rasterizer.md)), where the alternative is no Direct3D at all - it takes effect only at 16 bpp, and that family's default mode is 8 bpp; exact incremental edges, an exact divide-by-255, a single colour clamp, per-span format/compare dispatch, a per-triangle sampler, DESTCOLOR blending, and system-memory textures behind `D3DSoftSysMem=1` | Same | [Edge timings](decisions/2026-09-07-software-rasterizer-edge-stepping.md) about 2.2x for the synthetic small-triangle scene, then [scalar fixes](decisions/2026-09-10-rasterizer-scalar-fixes.md) and [sampler fixes](decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md) reaching 1.75x point-sampled, 1.53x bilinear, 1.48x depth-tested and 1.41x alpha-blended in RAM and about half those in emulated VRAM; pixel hashes unchanged; no physical or game-speed claim |
 
 Software mode includes depth testing, Gouraud shading, point/bilinear sampling,
 ARGB1555/ARGB4444/RGB565 textures, WRAP/CLAMP and vertex-alpha blending. It does

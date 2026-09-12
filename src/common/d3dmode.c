@@ -78,3 +78,31 @@ const char *v9x_d3d_mode_text(v9x_u16 state)
     }
     return "unknown";
 }
+
+const char *v9x_d3d_request_text(v9x_u16 request)
+{
+    /*
+     * Spelled out rather than computed, because the caller is a 16-bit
+     * driver writing an INI key and has no formatting routine linked: ddi.c
+     * hands these to WritePrivateProfileString directly.
+     *
+     * A request this build does not know is reported as the request it will
+     * be treated as, which is HARDWARE - the same reading v9x_d3d_mode_resolve
+     * gives an unrecognised value. A page that saw the raw number instead
+     * would offer to keep a setting that does nothing.
+     */
+    if (request == V9X_D3D_REQUEST_DISABLED) {
+        return "1";
+    }
+    if (request == V9X_D3D_REQUEST_SOFTWARE) {
+        return "2";
+    }
+    if (request == V9X_D3D_REQUEST_HYBRID) {
+        return "3";
+    }
+    if (request == V9X_D3D_REQUEST_OFFLOAD) {
+        return "4";
+    }
+
+    return "0";
+}

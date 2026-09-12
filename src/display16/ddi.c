@@ -15,6 +15,9 @@
 #undef SetCursor
 
 #include "velocity9x/build.h"
+/* v9x_d3d_request_text and the build's V9X_D3D_DEFAULT_REQUEST, both written
+ * to V9XHW.INI below. */
+#include "velocity9x/d3dmode.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 /* v9x_vbe_mode_555: the 15 bpp sibling of a 16 bpp VESA mode number. */
@@ -629,6 +632,18 @@ static void v9x_publish_hardware_diagnostics(void)
      * it off", and neither key can express both.
      */
     v9x_write_hardware_info("Direct3DMode", v9x_dd_d3d_state_text());
+    /*
+     * And what this build reads an absent Direct3D= key as, which the page
+     * cannot work out for itself.
+     *
+     * settings_propsheet.c preselects its selector from the raw SYSTEM.INI
+     * value, so on a package whose default is not HARDWARE an absent key
+     * would leave the page showing one thing and the driver doing another.
+     * The default is a build property of the package the page shipped in, so
+     * the package is what has to say it.
+     */
+    v9x_write_hardware_info("Direct3DDefault",
+                            v9x_d3d_request_text(V9X_D3D_DEFAULT_REQUEST));
     /* And whether the software engine may sample a texture the runtime put in
      * system memory, which changes what DirectDraw is told it can do. */
     v9x_write_hardware_info("D3DSoftSysMem",

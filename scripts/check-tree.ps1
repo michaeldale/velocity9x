@@ -613,6 +613,54 @@ foreach ($request in @(@('V9X_D3D_REQUEST_HARDWARE', 0),
     }
 }
 
+# What an absent Direct3D= key means is a per-family build decision, and the
+# two halves of it live in different files: the fallback in d3dmode.h and the
+# override in a family manifest's Build.Defines. Neither half can see the
+# other, and a mismatch is silent - a manifest naming a macro the header
+# stopped honouring would compile and change nothing.
+#
+# The host suite asserts the fallback, because the host build takes no family
+# define. Only a family compile has the override, so it is asserted here.
+if ($d3dModeHeader -notmatch
+    '(?m)^#ifndef\s+V9X_D3D_DEFAULT_REQUEST\r?\n#define\s+V9X_D3D_DEFAULT_REQUEST\s+V9X_D3D_REQUEST_HARDWARE\r?\n#endif') {
+    throw ("d3dmode.h must define V9X_D3D_DEFAULT_REQUEST as " +
+           "V9X_D3D_REQUEST_HARDWARE behind an #ifndef; a family manifest's " +
+           "Build.Defines override depends on that guard, and every family " +
+           "that sets nothing depends on the value.")
+}
+$d3dModeReader = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\display16\dd16.c") -Raw
+if ($d3dModeReader -notmatch 'V9X_D3D_SETTING_KEY,\s*\r?\n\s*\(int\)V9X_D3D_DEFAULT_REQUEST,') {
+    throw ("dd16.c must read the Direct3D key with V9X_D3D_DEFAULT_REQUEST " +
+           "as the absent-key default, or a family's Build.Defines override " +
+           "changes nothing on the machine.")
+}
+# The page preselects from the raw SYSTEM.INI value, so it has to learn the
+# driver's default rather than apply its own; ddi.c publishes it and
+# settings_status.c reads it back. One key name, two files, spelled here once.
+foreach ($defaultKeyFile in @("src\display16\ddi.c",
+                              "tools\diag\settings_status.c")) {
+    $defaultKeyText = Get-Content -LiteralPath `
+        (Join-Path $repoRoot $defaultKeyFile) -Raw
+    if ($defaultKeyText -notmatch '"Direct3DDefault"') {
+        throw ("$defaultKeyFile no longer names the V9XHW.INI " +
+               "Direct3DDefault key; the settings page would then preselect " +
+               "a Direct3D entry the driver did not choose.")
+    }
+}
+
+# The one family that overrides the default today, asserted against the
+# manifest rather than against a comment. Tier-0 has no 3D backend on any
+# card, so this define is the difference between the CPU rasterizer and no
+# Direct3D at all; see
+# docs\decisions\2026-09-12-vbe-defaults-to-the-software-rasterizer.md.
+$vbeManifestPath = Join-Path $repoRoot "packaging\families\vbe\family.psd1"
+$vbeManifestText = Get-Content -LiteralPath $vbeManifestPath -Raw
+if ($vbeManifestText -notmatch "V9X_D3D_DEFAULT_REQUEST=2") {
+    throw ("The vbe family manifest must define V9X_D3D_DEFAULT_REQUEST=2: " +
+           "the tier-0 package ships the software rasterizer on by default.")
+}
+
 # The packaged instructions are read on the target, in Notepad, on a machine
 # whose display driver may be the thing that just failed. Notepad on Windows 9x
 # does not break lines on a bare LF, so an LF-only file arrives as one

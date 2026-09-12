@@ -115,7 +115,7 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 | Hardware primary page flip | Yes | Yes | No; HAL declines | No; HAL declines |
 | Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
 | Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
-| Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | same |
+| Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | Software rasterizer, **on by default** at 16 bpp |
 | Direct3D mode selector | Hardware / Software / Disabled | Software / Disabled | same | same |
 | GDI acceleration by default | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
 | Hardware cursor | No (software cursor) | No | No | No |
@@ -123,6 +123,12 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 The Trio32/64 target accelerates GDI fills and screen copies, plus DirectDraw
 fills and blits, at supported depths. Other GDI drawing uses the DIB Engine
 by default; Direct3D uses the opt-in software rasterizer.
+
+The generic VESA package is the one that does not wait to be asked: it has no
+3D backend on any card, so "hardware Direct3D" is not a thing it can fall back
+to, and it ships with the software rasterizer already selected. That only takes
+effect at 16 bpp, which is not its default mode, and it is one settings-page
+entry away from off.
 The ViRGE-only new-MMIO window, S3D engine and hardware Direct3D are not exposed on
 it. Its bring-up and boundaries are recorded in
 [docs/decisions/2026-08-14-trio64-bringup.md](docs/decisions/2026-08-14-trio64-bringup.md).
@@ -369,8 +375,11 @@ packed 24-bpp mode at all — the VESA numbers usually described as 24-bit
 **Will my Direct3D games work?**
 Compatibility is limited and title-specific. Final Reality and 3DMark 99 run
 on the S3 hardware path, while Incoming currently refuses its texture formats.
-The S3, ATI and VBE packages also offer opt-in software Direct3D, with their
-own capability limits and no recorded period-machine performance baseline.
+The S3, ATI and VBE packages also offer software Direct3D, with their own
+capability limits and no recorded period-machine performance baseline. It is
+opt-in on S3 and ATI, and already on in the VBE package, where the alternative
+is no Direct3D at all. Expect it to be slow; nothing has measured it on a
+period machine.
 Start with the
 [current status and open issues](docs/STATUS.md), and use Disabled if you want
 applications to fall back to another Direct3D device or Microsoft's rasterizers.
