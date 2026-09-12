@@ -51,6 +51,7 @@
             @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c' }
             @{ Name = 'i9xx_gtt'; Path = 'src\chipsets\intel\i9xx_gtt.c' }
             @{ Name = 'i9xx_ring'; Path = 'src\chipsets\intel\i9xx_ring.c' }
+            @{ Name = 'i9xx_arm'; Path = 'src\chipsets\intel\i9xx_arm.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c' }
             @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c' }

@@ -184,6 +184,14 @@ framebuffer. It proves nothing about the ring.
 
 First write to Intel silicon. Requires the one-shot arm token below.
 
+**Implementation started 2026-09-12; hardware execution remains gated:** the
+stolen-memory layout, heap exclusion, ring arithmetic, packet builders, exact
+decoder, command CRC and arm-contract leaf units are being built. Intel's
+public specification update confirms the internal-buffer flush erratum applies
+to this A3 945GSE but does not disclose its workaround, so the separate errata
+input to the arm state machine remains false. Record:
+`docs/decisions/2026-09-12-intel-phase4-errata-gate.md`.
+
 Carve the ring, a hardware status page and a scratch page from the top of the
 VBE-reported usable region, inside the range phase 2 proved valid. Reduce the
 published DirectDraw heap so nothing allocates over it. **No GTT writes, no

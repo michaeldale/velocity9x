@@ -67,6 +67,9 @@ unsigned int v9x_run_i9xx_gtt_tests(void);
 /* tests\host\test_i9xx_ring.c: Phase 4 sandbox and packet policy. */
 unsigned int v9x_run_i9xx_ring_tests(void);
 
+/* tests\host\test_i9xx_arm.c: one-shot Phase 4 arm contract. */
+unsigned int v9x_run_i9xx_arm_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -635,6 +638,7 @@ int main(void)
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();
     failures += v9x_run_i9xx_ring_tests();
+    failures += v9x_run_i9xx_arm_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

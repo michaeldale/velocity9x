@@ -23,6 +23,17 @@
 #define V9X_I9XX_XY_COLOR_BLT            ((v9x_u32)0x54300004ul)
 #define V9X_I9XX_BLT_ROP_PATCOPY         ((v9x_u32)0x00f00000ul)
 #define V9X_I9XX_BLT_DEPTH_32            ((v9x_u32)0x03000000ul)
+#define V9X_I9XX_PHASE4                  ((v9x_u16)4u)
+#define V9X_I9XX_ARM_TOKEN_MAX           ((v9x_u16)63u)
+
+#define V9X_I9XX_ARM_REJECT_NONE         ((v9x_u16)0u)
+#define V9X_I9XX_ARM_REJECT_DISABLED     ((v9x_u16)1u)
+#define V9X_I9XX_ARM_REJECT_SAFE_MODE    ((v9x_u16)2u)
+#define V9X_I9XX_ARM_REJECT_ERRATA       ((v9x_u16)3u)
+#define V9X_I9XX_ARM_REJECT_IDENTITY     ((v9x_u16)4u)
+#define V9X_I9XX_ARM_REJECT_PHASE        ((v9x_u16)5u)
+#define V9X_I9XX_ARM_REJECT_TOKEN        ((v9x_u16)6u)
+#define V9X_I9XX_ARM_REJECT_CRC          ((v9x_u16)7u)
 #define V9X_I9XX_PIPE_COUNT              ((v9x_u16)2u)
 #define V9X_I9XX_PIPE_NONE               ((v9x_u16)0xffffu)
 #define V9X_I9XX_SNAPSHOT_DWORDS         ((v9x_u16)20u)
@@ -183,6 +194,20 @@ struct v9x_i9xx_ring_plan {
     v9x_u32 consumed_bytes;
 };
 
+struct v9x_i9xx_arm_request {
+    const char *token;
+    const char *in_flight;
+    v9x_u32 configured_crc;
+    v9x_u32 packet_crc;
+    v9x_u16 enable_this_boot;
+    v9x_u16 safe_mode;
+    v9x_u16 errata_gate;
+    v9x_u16 vendor_id;
+    v9x_u16 device_id;
+    v9x_u16 revision;
+    v9x_u16 phase;
+};
+
 /* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
 struct v9x_i9xx_gtt_inventory {
     v9x_u16 flags;
@@ -255,6 +280,10 @@ v9x_status v9x_i9xx_build_color_blt(
 v9x_status v9x_i9xx_decode_phase4_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     v9x_u32 scratch_offset, v9x_u32 scratch_bytes);
+v9x_u32 v9x_i9xx_crc32_dwords(const v9x_u32 *stream,
+                               v9x_u32 dword_count);
+v9x_status v9x_i9xx_arm_evaluate(
+    const struct v9x_i9xx_arm_request *request, v9x_u16 *rejection);
 
 v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
                                const struct v9x_pci_identity *pci);

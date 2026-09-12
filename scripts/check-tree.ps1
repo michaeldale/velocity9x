@@ -118,6 +118,8 @@ $required = @(
     "tests\host\test_i9xx_gtt.c",
     "src\chipsets\intel\i9xx_ring.c",
     "tests\host\test_i9xx_ring.c",
+    "src\chipsets\intel\i9xx_arm.c",
+    "tests\host\test_i9xx_arm.c",
     "tools\diag\serial_smoke.c",
     "tools\diag\serial_smoke_win32.c",
     "tools\diag\vxd_probe.asm",
