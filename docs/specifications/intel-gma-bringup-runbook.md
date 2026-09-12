@@ -82,6 +82,20 @@ binaries over another family's binding: that produces `query-ok` and an enable
 that never runs, which is the second half of defect D3 and cost a day once
 already.
 
+**Install on PCI function 0, not function 1.** The 945GSE IGD is two PCI
+functions: `8086:27AE` (function 0, VGA class, the one Windows lists as
+"Standard PCI Graphics Adapter (VGA)" under Display adapters) and `8086:27A6`
+(function 1, class 0380, which Win98 shows as an "(Unknown Device)" with no
+driver). Measured 2026-09-12 on the netbook: a Have Disk install forced onto
+the Unknown Device node warns "not written for the selected hardware", creates
+`Display\0004` bound to function 1, and leaves function 0 on the stock VGA
+binding with no `minivdd`. The driver then loads, `V9XBOOT.INI` stops at
+`Stage=libmain` with `VbeDetail=minivdd-no-api` and `Aperture=... b=00000000`,
+Windows falls back to the INF's 4-bpp `vga.drv` row, and a later resolution
+change garbles the panel. Update the driver on the VGA-class node instead; the
+INF's `VEN_8086&DEV_27AE` is in that node's compatible-id list, so no forcing
+is needed. Remove the Velocity9x binding from function 1 before rebooting.
+
 This netbook has no usable serial port and no Win98 network path. Diagnostics
 must survive to disk and return by USB mass storage. On a boot that fails before
 the desktop, photograph the visible state before recovery; there is no serial
