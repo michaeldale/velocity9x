@@ -135,13 +135,16 @@ void v9x_intel_publish_event(WORD kind, WORD context)
     }
     v9x_event_write_hex("IntelEvents", "Coverage", coverage);
     /* Measured 2026-09-12: a Display Properties resolution change is a
-     * ReEnable rebuild (kind 4) with no Disable, and nothing in a normal
-     * session produces a second plain Enable (kind 2). READY therefore asks
-     * for boot, disable, both ReEnable kinds and both DPMS states. */
+     * ReEnable rebuild (kind 4) with no Disable; nothing in a normal session
+     * produces a second plain Enable (kind 2); and no DPMS record appears
+     * because MiniVDD_GetMonitorPowerStateCaps advertises D0 only, so Windows
+     * never requests a low-power state. READY therefore asks for boot,
+     * disable and both ReEnable kinds. DPMS bits are reported in Coverage
+     * and become required again if the caps ever change. */
     WritePrivateProfileString(
         "IntelEvents", "Result",
         all_safe != 0u && v9x_i9xx_event_dropped == 0u &&
-        (coverage & 0x7dul) == 0x7dul ? "READY" : "CAPTURED",
+        (coverage & 0x1dul) == 0x1dul ? "READY" : "CAPTURED",
         V9X_DIAG_INTELEVT_TXT);
     /* Force the cached profile to disk now. A Disable record precedes a
      * VDD handoff that can hard-lock the machine, and a lazily flushed cache

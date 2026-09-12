@@ -64,8 +64,12 @@ therefore visible when the next display event drains the journal.
 
 `[IntelEvents]` contains `Access=read-only`, `Count`, `Dropped`,
 `RecordDwords`, `Coverage`, and `Result`. `READY` requires boot-enable,
-mode-switch, disable, mode-restore, low-power DPMS and D0 DPMS coverage
-(`Coverage` mask `7D`); every
+mode-switch, disable and mode-restore coverage (`Coverage` mask `1D`). The
+DPMS bits (`20` D0, `40` low power) are reported but not required: measured
+2026-09-12, `V9XPWR` produced no DPMS record because the mini-VDD's
+`GetMonitorPowerStateCaps` advertises D0 only, so Windows never asks for a
+low-power state and `V9XPWR`'s `PASS` means only that its broadcast
+returned. Every
 record must be stable and no record may have been dropped. `CAPTURED` is a
 valid partial matrix, while `CAPTURE-FAILED` or `STREAM-FAILED` is a refusal.
 

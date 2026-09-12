@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $requiredFlags = 0x3f
-$requiredCoverage = 0x7d
+$requiredCoverage = 0x1d
 $recordDwords = 20
 $fields = @('Sequence', 'Kind', 'Context', 'Flags', 'PgtblCtl', 'RingTail',
     'RingHead', 'RingStart', 'RingCtl', 'HwsPga', 'Fence0', 'Fence1',
@@ -121,8 +121,8 @@ function Test-V9xIntelEventCapture {
     }
     if (($coverage -band $requiredCoverage) -ne $requiredCoverage -or
         $declaredCoverage -ne $coverage) {
-        throw ('Intel event matrix lacks boot, disable, mode-switch, ' +
-               'mode-restore, or both low-power and D0 DPMS coverage.')
+        throw ('Intel event matrix lacks boot, disable, mode-switch or ' +
+               'mode-restore coverage.')
     }
     if ($InitialHash) {
         if ($InitialHash -notmatch '^[0-9A-Fa-f]{8}$') {

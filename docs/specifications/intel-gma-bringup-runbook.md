@@ -204,9 +204,13 @@ package, cold boot once, and exercise this sequence before copying evidence:
 1. Switch from 1024x576x16 to 640x480x16 and back. Measured 2026-09-12:
    each change is one ReEnable rebuild, so this yields two `mode-switch`
    (kind 4) records and nothing else. Every ReEnable also drains the journal.
-2. Run `V9XPWR` through low power and D0. The two DPMS records stay in the
-   mini-VDD until the next drain.
-3. Change resolution and back once more to drain them.
+2. Run `V9XPWR`. Measured 2026-09-12: it produces **no** DPMS record and
+   the panel state should be noted by eye, because the mini-VDD advertises
+   D0-only power capabilities and Windows therefore never requests a
+   low-power state. `V9XPWR`'s `PASS` is the broadcast returning, nothing
+   more. The DPMS row is inert until that capability changes.
+3. Change resolution and back once more, so anything retained in the
+   mini-VDD is drained.
 4. **Last, and only with everything above already copied off:** open a
    full-screen DOS box and return to the desktop, for the `disable` (kind 3)
    and `mode-restore` (kind 5) records. On 2026-09-12 the return hard-locked
