@@ -1929,6 +1929,56 @@ V9xPciReadIntelGttConfigDone:
     pop     bx
     retf
 V9XPCIREADINTELGTTCONFIG ENDP
+
+; WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value)
+; Read D0:F0 offset 60h on the measured 8086:27AC host bridge.  Linux names
+; this I915_IFPADDR; here it is only a raw read for the Phase-4 plan file.
+; Refuse a matching ID at any BDF other than 00:00.0.  No config write or
+; access to the physical flush page is issued.
+PUBLIC V9XPCIREADINTELFLUSHPAGE
+V9XPCIREADINTELFLUSHPAGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+
+    mov     cx, 027ach
+    mov     dx, 08086h
+    xor     si, si
+    mov     ax, 0b102h
+    int     1ah
+    jc      short V9xPciReadIntelFlushPageFailed
+    or      ah, ah
+    jnz     short V9xPciReadIntelFlushPageFailed
+    or      bx, bx
+    jnz     short V9xPciReadIntelFlushPageFailed
+
+    mov     di, 0060h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadIntelFlushPageFailed
+    or      ah, ah
+    jnz     short V9xPciReadIntelFlushPageFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], ecx
+    mov     ax, 1
+    jmp     short V9xPciReadIntelFlushPageDone
+V9xPciReadIntelFlushPageFailed:
+    xor     ax, ax
+V9xPciReadIntelFlushPageDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADINTELFLUSHPAGE ENDP
 ENDIF
 
 ; Read the vendor/device ids of the machine's first display-class PCI device

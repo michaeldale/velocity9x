@@ -246,6 +246,12 @@ The first Phase 4 package still cannot write Intel MMIO: the public 945GSE
 specification update does not disclose the internal-buffer erratum workaround,
 and the errata gate is therefore closed. It does reserve the top 128 KiB from
 DirectDraw and writes `C:\V9XDIAG\INTELRNG.TXT` after the Phase 2 inventory.
+The file includes two fresh, read-only PCI BIOS reads of host bridge D0:F0
+offset `60h` (`FlushPageCfg0` and `FlushPageCfg1`). `FlushPageRead=STABLE`
+means both reads succeeded and matched. Bit 0 of the raw dword indicates
+whether the BIOS enabled the Intel Flush Page; bits 31:12 give its configured
+physical page address. Neither the probe nor the ring-plan publisher writes
+PCI configuration or the flush page.
 
 Copy that file and validate it before any later package opens the write gate:
 
@@ -253,8 +259,9 @@ Copy that file and validate it before any later package opens the write gate:
 .\scripts\check-intel-ring-plan.ps1 -Path <usb-copy>\INTELRNG.TXT
 ```
 
-Require `Access=no-hardware-writes`, `ErrataGate=0` and
-`Result=ERRATA-GATED`. The validator independently reconstructs the 64 KiB
+Require `Access=no-hardware-writes`, `ErrataGate=0`,
+`FlushPageRead=STABLE` and `Result=ERRATA-GATED`. The validator independently
+checks the two `60h` reads and reconstructs the 64 KiB
 ring, HWS and scratch placement, checks that all ten dwords are the exact
 reviewed MI/BLT streams, and recomputes `ArmPacketCrc`. On the measured Phase 2
 layout it should report ring `00790000`, HWS `007A0000` and scratch `007A1000`.

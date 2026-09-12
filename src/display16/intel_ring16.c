@@ -13,6 +13,7 @@
 
 extern unsigned long v9x_vbe_vram_reported;
 extern DWORD v9x_i9xx_bsm;
+extern WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 
 static void v9x_ring_hex32(char *text, DWORD value)
@@ -53,8 +54,13 @@ void v9x_intel_publish_ring_plan(void)
     DWORD probe[2];
     DWORD blt[8];
     DWORD combined[10];
+    DWORD flush_page_0 = 0ul;
+    DWORD flush_page_1 = 0ul;
     DWORD written;
     WORD index;
+    WORD flush_page_read_0;
+    WORD flush_page_read_1;
+    WORD flush_page_stable;
     char key[4];
 
     V9xEnsureDiagDir();
@@ -62,6 +68,16 @@ void v9x_intel_publish_ring_plan(void)
     WritePrivateProfileString("IntelRing", "Access", "no-hardware-writes",
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "ErrataGate", "0",
+                              V9X_DIAG_INTELRNG_TXT);
+    flush_page_read_0 = V9xPciReadIntelFlushPage(&flush_page_0);
+    flush_page_read_1 = V9xPciReadIntelFlushPage(&flush_page_1);
+    flush_page_stable = flush_page_read_0 != 0u &&
+        flush_page_read_1 != 0u && flush_page_0 == flush_page_1 &&
+        flush_page_0 != 0xfffffffful;
+    v9x_ring_write_hex("FlushPageCfg0", flush_page_0);
+    v9x_ring_write_hex("FlushPageCfg1", flush_page_1);
+    WritePrivateProfileString("IntelRing", "FlushPageRead",
+                              flush_page_stable != 0u ? "STABLE" : "REVIEW",
                               V9X_DIAG_INTELRNG_TXT);
     if (v9x_vbe_vram_reported == 0ul || v9x_i9xx_bsm == 0ul ||
         v9x_i9xx_sandbox_calculate(v9x_vbe_vram_reported, v9x_i9xx_bsm,
@@ -121,7 +137,9 @@ void v9x_intel_publish_ring_plan(void)
     v9x_ring_write_hex("BltCrc", v9x_i9xx_crc32_dwords(blt, 8ul));
     v9x_ring_write_hex("ArmPacketCrc",
                        v9x_i9xx_crc32_dwords(combined, 10ul));
-    WritePrivateProfileString("IntelRing", "Result", "ERRATA-GATED",
+    WritePrivateProfileString("IntelRing", "Result",
+                              flush_page_stable != 0u ? "ERRATA-GATED" :
+                                                       "FLUSH-PROBE-REVIEW",
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTELRNG_TXT);
 }

@@ -67,10 +67,17 @@ function Test-V9xIntelRingPlan {
     foreach ($pair in @(
         @('Access', 'no-hardware-writes'),
         @('ErrataGate', '0'),
+        @('FlushPageRead', 'STABLE'),
         @('Result', 'ERRATA-GATED'))) {
         if (-not $Values.ContainsKey($pair[0]) -or $Values[$pair[0]] -cne $pair[1]) {
             throw "Intel ring plan $($pair[0]) must be $($pair[1])."
         }
+    }
+
+    [uint32]$flushPage0 = ConvertFrom-V9xRingHex32 $Values 'FlushPageCfg0'
+    [uint32]$flushPage1 = ConvertFrom-V9xRingHex32 $Values 'FlushPageCfg1'
+    if ($flushPage0 -ne $flushPage1 -or $flushPage0 -eq [uint32]::MaxValue) {
+        throw 'Intel host-bridge D0:F0 60h reads are unstable or invalid.'
     }
 
     [uint32]$heap = ConvertFrom-V9xRingHex32 $Values 'HeapBytes'
@@ -124,6 +131,9 @@ function Test-V9xIntelRingPlan {
         RingOffset = ('{0:X8}' -f $ring)
         HwsOffset = ('{0:X8}' -f $hws)
         ScratchOffset = ('{0:X8}' -f $scratch)
+        FlushPageCfg60 = ('{0:X8}' -f $flushPage0)
+        FlushPageEnabled = [bool]($flushPage0 -band 1)
+        FlushPageAddress = ('{0:X8}' -f ($flushPage0 -band 0xfffff000L))
         ArmPacketCrc = ('{0:X8}' -f (Get-V9xCrc32Dwords $combined))
     }
 }
@@ -131,6 +141,8 @@ function Test-V9xIntelRingPlan {
 if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
     $sample = ConvertFrom-V9xIntelRingIni @(
         '[IntelRing]', 'Access=no-hardware-writes', 'ErrataGate=0',
+        'FlushPageCfg0=00000000', 'FlushPageCfg1=00000000',
+        'FlushPageRead=STABLE',
         'HeapBytes=00790000', 'ReserveOffset=00790000',
         'ReservePhysical=7FF90000', 'RingOffset=00790000',
         'RingPhysical=7FF90000', 'RingBytes=00010000', 'RingCtl=0000F001',
@@ -142,6 +154,14 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         'ProbeCrc=8B2CBE45', 'BltCrc=B97BAB96', 'ArmPacketCrc=2478E26C',
         'Result=ERRATA-GATED')
     $result = Test-V9xIntelRingPlan $sample
+    $sample.FlushPageCfg1 = '00000001'
+    try {
+        $null = Test-V9xIntelRingPlan $sample
+        throw 'The ring-plan validator accepted mismatched 60h reads.'
+    } catch {
+        if ($_.Exception.Message -eq
+                'The ring-plan validator accepted mismatched 60h reads.') { throw }
+    }
     Write-Host "Intel ring-plan validator self-test passed ($($result.ArmPacketCrc))."
     return
 }
