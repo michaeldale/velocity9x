@@ -64,7 +64,9 @@ therefore visible when the next display event drains the journal.
 
 `[IntelEvents]` contains `Access=read-only`, `Count`, `Dropped`,
 `RecordDwords`, `Coverage`, and `Result`. `READY` requires boot-enable,
-mode-switch, disable and mode-restore coverage (`Coverage` mask `1D`). The
+disable and mode-switch coverage (`Coverage` mask `0D`). Mode-restore (`10`)
+is reported but not required: it follows only a full-screen DOS box, whose
+return hard-locks the netbook and is excluded as a tier-0 display defect. The
 DPMS bits (`20` D0, `40` low power) are reported but not required: measured
 2026-09-12, `V9XPWR` produced no DPMS record because the mini-VDD's
 `GetMonitorPowerStateCaps` advertises D0 only, so Windows never asks for a

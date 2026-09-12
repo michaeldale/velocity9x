@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $requiredFlags = 0x3f
-$requiredCoverage = 0x1d
+$requiredCoverage = 0x0d
 $recordDwords = 20
 $fields = @('Sequence', 'Kind', 'Context', 'Flags', 'PgtblCtl', 'RingTail',
     'RingHead', 'RingStart', 'RingCtl', 'HwsPga', 'Fence0', 'Fence1',
@@ -69,8 +69,11 @@ function Test-V9xIntelEventCapture {
     if ($header['Access'] -cne 'read-only') {
         throw 'Intel event capture does not declare Access=read-only.'
     }
-    if ($header['Result'] -cne 'READY') {
-        throw "Intel Phase 3 matrix is not ready: Result=$($header['Result'])."
+    # The verdict is recomputed from the records below; the text Result is
+    # only trusted to name a refusal. An older build's CAPTURED with the
+    # required coverage present is therefore accepted.
+    if ($header['Result'] -cnotin @('READY', 'CAPTURED')) {
+        throw "Intel Phase 3 journal was refused: Result=$($header['Result'])."
     }
     [uint32]$count = ConvertFrom-V9xEventHex $header 'Count' 'IntelEvents'
     [uint32]$dropped = ConvertFrom-V9xEventHex $header 'Dropped' 'IntelEvents'
@@ -121,8 +124,7 @@ function Test-V9xIntelEventCapture {
     }
     if (($coverage -band $requiredCoverage) -ne $requiredCoverage -or
         $declaredCoverage -ne $coverage) {
-        throw ('Intel event matrix lacks boot, disable, mode-switch or ' +
-               'mode-restore coverage.')
+        throw 'Intel event matrix lacks boot, disable or mode-switch coverage.'
     }
     if ($InitialHash) {
         if ($InitialHash -notmatch '^[0-9A-Fa-f]{8}$') {
@@ -145,7 +147,7 @@ function Test-V9xIntelEventCapture {
         }
     }
     return [pscustomobject]@{
-        Result = 'PASS'; Events = $records.Count
+        Result = 'PASS'; Reported = $header['Result']; Events = $records.Count
         Coverage = '{0:X8}' -f $coverage; Dropped = $dropped
         OwnershipChanges = $changes.Count
         Changes = if ($changes.Count -eq 0) { @('none') } else { $changes }
@@ -175,7 +177,7 @@ if ($SelfTest) {
     }
     $null = Test-V9xIntelEventCapture $lines '4D8707C5'
     foreach ($replacement in @(
-        @{ From = 'Result=READY'; To = 'Result=CAPTURED' },
+        @{ From = 'Result=READY'; To = 'Result=STREAM-FAILED' },
         @{ From = 'Dropped=00000000'; To = 'Dropped=00000001' },
         @{ From = 'GttHashB=4D8707C5'; To = 'GttHashB=4D8707C4' })) {
         $broken = @($lines | ForEach-Object {

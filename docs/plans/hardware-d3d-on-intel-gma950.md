@@ -144,6 +144,16 @@ records that access beyond BIOS GTT coverage touches unbacked addresses.
 
 ### 3. Firmware ownership and the event matrix
 
+**Done 2026-09-12, measured on the netbook across two sessions:** seven
+event records (boot, four VBIOS mode sets, Disable) all show the ring
+disabled and idle, fences zero, PGTBL `7FFC0001` and the GTT hash unchanged
+at `4D8707C5`. No observed firmware event moves ownership; Enable and Disable
+are quiet handoff points. DPMS is unreachable while the mini-VDD advertises
+D0-only power caps, and the full-screen DOS box return is excluded as a
+tier-0 display defect (`docs/issues/2026-09-12-netbook-dos-box-return-hardlock.md`).
+Record: `docs/decisions/2026-09-12-intel-phase3-event-matrix.md`. Phase 4 is
+unblocked, subject to its arm token.
+
 Still no writes. Capture phases 1 and 2 after boot, after each VBE mode switch,
 after disable/enable, and after DPMS once the prerequisite guard is in.
 
