@@ -96,6 +96,7 @@ v9x_status v9x_i9xx_analyze_fingerprint(
     struct v9x_i9xx_fingerprint *result)
 {
     v9x_u16 pipe;
+    v9x_u16 plane;
     v9x_u16 candidates = 0u;
 
     if (first == 0 || second == 0 || expected == 0 || result == 0 ||
@@ -106,6 +107,7 @@ v9x_status v9x_i9xx_analyze_fingerprint(
 
     result->flags = 0u;
     result->live_pipe = V9X_I9XX_PIPE_NONE;
+    result->live_plane = V9X_I9XX_PIPE_NONE;
     result->timing_width = 0u;
     result->timing_height = 0u;
     result->total_width = 0u;
@@ -129,13 +131,13 @@ v9x_status v9x_i9xx_analyze_fingerprint(
         result->flags |= V9X_I9XX_FP_RING_QUIESCENT;
     }
 
+    /* Gen3 has a free plane-to-pipe mapping: DSPxCNTR bits 25:24 select the
+     * pipe a plane feeds, and mobile VBIOS commonly scans the LVDS on pipe B
+     * through plane A. So the live pipe is found from PIPECONF alone, and the
+     * live plane is whichever enabled plane selects it, in any pairing. Either
+     * side being other than exactly one is ambiguous and decodes nothing. */
     for (pipe = 0u; pipe < V9X_I9XX_PIPE_COUNT; ++pipe) {
-        const struct v9x_i9xx_pipe_snapshot *p = &first->pipe[pipe];
-        v9x_u16 plane_pipe = (v9x_u16)
-            ((p->plane_control & V9X_I9XX_DSPCNTR_PIPE_MASK) >> 24);
-        if ((p->pipe_conf & V9X_I9XX_PIPECONF_ENABLE) != 0ul &&
-            (p->plane_control & V9X_I9XX_DSPCNTR_ENABLE) != 0ul &&
-            plane_pipe == pipe) {
+        if ((first->pipe[pipe].pipe_conf & V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
             result->live_pipe = pipe;
             ++candidates;
         }
@@ -145,10 +147,29 @@ v9x_status v9x_i9xx_analyze_fingerprint(
         return V9X_STATUS_OK;
     }
 
+    candidates = 0u;
+    for (plane = 0u; plane < V9X_I9XX_PIPE_COUNT; ++plane) {
+        v9x_u32 control = first->pipe[plane].plane_control;
+        v9x_u16 selected = (v9x_u16)
+            ((control & V9X_I9XX_DSPCNTR_PIPE_MASK) >> 24);
+        if ((control & V9X_I9XX_DSPCNTR_ENABLE) != 0ul &&
+            selected == result->live_pipe) {
+            result->live_plane = plane;
+            ++candidates;
+        }
+    }
+    if (candidates != 1u) {
+        result->live_pipe = V9X_I9XX_PIPE_NONE;
+        result->live_plane = V9X_I9XX_PIPE_NONE;
+        return V9X_STATUS_OK;
+    }
+
     result->flags |= V9X_I9XX_FP_LIVE_PIPE;
     {
         const struct v9x_i9xx_pipe_snapshot *p =
             &first->pipe[result->live_pipe];
+        const struct v9x_i9xx_pipe_snapshot *pl =
+            &first->pipe[result->live_plane];
         v9x_status hstatus = v9x_i9xx_decode_total(
             p->htotal, &result->timing_width, &result->total_width);
         v9x_status vstatus = v9x_i9xx_decode_total(
@@ -156,9 +177,9 @@ v9x_status v9x_i9xx_analyze_fingerprint(
         v9x_status sstatus = v9x_i9xx_decode_source(
             p->pipe_src, &result->source_width, &result->source_height);
 
-        result->plane_bits_per_pixel = v9x_i9xx_plane_bpp(p->plane_control);
-        result->plane_stride = (v9x_u16)(p->plane_stride & 0xfffful);
-        result->plane_address = p->plane_address;
+        result->plane_bits_per_pixel = v9x_i9xx_plane_bpp(pl->plane_control);
+        result->plane_stride = (v9x_u16)(pl->plane_stride & 0xfffful);
+        result->plane_address = pl->plane_address;
 
         if (hstatus == V9X_STATUS_OK && vstatus == V9X_STATUS_OK) {
             result->flags |= V9X_I9XX_FP_TIMING_VALID;

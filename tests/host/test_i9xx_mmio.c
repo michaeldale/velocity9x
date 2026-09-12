@@ -60,6 +60,44 @@ static void test_native_pipe_b(void)
     CHECK(result.plane_address == 0x00100000ul);
 }
 
+/* Gen3 has a free plane-to-pipe mapping and mobile VBIOS commonly drives the
+ * LVDS on pipe B through plane A. The decoder must pair the enabled pipe with
+ * whichever enabled plane selects it, not assume plane N belongs to pipe N. */
+static void test_plane_a_on_pipe_b(void)
+{
+    struct v9x_i9xx_mmio_snapshot first;
+    struct v9x_i9xx_mmio_snapshot second;
+    struct v9x_i9xx_mode_expectation expected;
+    struct v9x_i9xx_fingerprint result;
+
+    make_native_snapshot(&first);
+    /* Move the plane registers to plane A, still selecting pipe B (1 << 24);
+     * pipe B keeps its timing and PIPECONF; plane B is left disabled. */
+    first.pipe[0].plane_control = first.pipe[1].plane_control;
+    first.pipe[0].plane_address = first.pipe[1].plane_address;
+    first.pipe[0].plane_stride = first.pipe[1].plane_stride;
+    first.pipe[1].plane_control = 0ul;
+    first.pipe[1].plane_address = 0ul;
+    first.pipe[1].plane_stride = 0ul;
+    second = first;
+    expected.width = 1024u;
+    expected.height = 576u;
+    expected.bits_per_pixel = 16u;
+    expected.pitch_bytes = 2048u;
+    expected.gmadr_aperture_bytes = 256ul * 1024ul * 1024ul;
+
+    CHECK(v9x_i9xx_analyze_fingerprint(&first, &second, &expected, &result) ==
+          V9X_STATUS_OK);
+    CHECK(result.live_pipe == 1u);
+    CHECK((result.flags & V9X_I9XX_FP_PHASE1_REQUIRED) ==
+          V9X_I9XX_FP_PHASE1_REQUIRED);
+    CHECK(result.live_plane == 0u);
+    CHECK(result.timing_width == 1024u && result.source_height == 576u);
+    CHECK(result.plane_bits_per_pixel == 16u);
+    CHECK(result.plane_stride == 2048u);
+    CHECK(result.plane_address == 0x00100000ul);
+}
+
 static void test_deltas_and_contradictions(void)
 {
     struct v9x_i9xx_mmio_snapshot first;
@@ -130,6 +168,7 @@ unsigned int v9x_run_i9xx_mmio_tests(void)
 {
     failures = 0u;
     test_native_pipe_b();
+    test_plane_a_on_pipe_b();
     test_deltas_and_contradictions();
     test_refusals_and_ambiguity();
     return failures;

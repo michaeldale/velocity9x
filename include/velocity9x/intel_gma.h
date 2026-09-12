@@ -81,6 +81,7 @@ struct v9x_i9xx_mode_expectation {
 struct v9x_i9xx_fingerprint {
     v9x_u16 flags;
     v9x_u16 live_pipe;
+    v9x_u16 live_plane;
     v9x_u16 timing_width;
     v9x_u16 timing_height;
     v9x_u16 total_width;

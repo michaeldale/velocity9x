@@ -148,6 +148,7 @@ void v9x_intel_publish_mmio_fingerprint(void)
     }
     v9x_write_hex("Flags", result.flags);
     v9x_write_hex("LivePipe", result.live_pipe);
+    v9x_write_hex("LivePlane", result.live_plane);
     v9x_write_hex("TimingWidth", result.timing_width);
     v9x_write_hex("TimingHeight", result.timing_height);
     v9x_write_hex("TotalWidth", result.total_width);

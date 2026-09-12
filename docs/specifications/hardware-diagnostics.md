@@ -40,7 +40,10 @@ settings UI contract above.
   XOR delta for allowlist index `nn` (two hexadecimal digits). All values are
   eight-digit hexadecimal.
 - `Flags`: fingerprint relationship bits from `intel_gma.h`.
-- `LivePipe`: zero or one, or `0000FFFF` when there is no unique live pipe.
+- `LivePipe`: zero or one, or `0000FFFF` when there is no unique enabled pipe.
+- `LivePlane`: the enabled plane whose pipe select names `LivePipe`, or
+  `0000FFFF` when that is not exactly one plane. Gen3 planes are not tied
+  to their same-letter pipe; plane A on pipe B is a common VBIOS layout.
 - `TimingWidth`, `TimingHeight`, `TotalWidth`, `TotalHeight`, `SourceWidth`,
   `SourceHeight`, `PlaneBpp`, `PlaneStride`, `PlaneAddress`: decoded fields for
   the unique live pipe, also written as eight-digit hexadecimal values.
