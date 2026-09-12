@@ -41,6 +41,7 @@ $required = @(
     "scripts\golden-baseline.ps1",
     "scripts\build-host.ps1",
     "scripts\build-host-msvc.ps1",
+    "scripts\check-intel-mmio-capture.ps1",
     "scripts\run-vm-mode-matrix.ps1",
     "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",

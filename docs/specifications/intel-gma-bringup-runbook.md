@@ -135,6 +135,19 @@ explain the missing relationship. `CAPTURE-FAILED`, `CONTRACT-FAILED`, or
 dated decision record contains the physical capture and explains its BAR and
 decoded relationships.
 
+On the development host, validate the copied file with:
+
+```powershell
+.\scripts\check-intel-mmio-capture.ps1 `
+    -Path <usb-copy>\INTELMM.TXT `
+    -ExpectedWidth 1024 -ExpectedHeight 576 `
+    -ExpectedBitsPerPixel 16 -ExpectedPitch 2048
+```
+
+The validator independently checks the allowlist order, all repeat-read
+deltas, BAR bounds/alignment, Phase 1 flags, decoded geometry and plane format.
+Its own clean and corrupted fixtures run in `run-checks.ps1`.
+
 ### 3.3 Per-mode checklist
 
 Four modes. Run every row for each; a mode is not "done" until all of them are
