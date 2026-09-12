@@ -3,6 +3,7 @@
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
 extern void v9x_intel_publish_mmio_fingerprint(void);
+extern void v9x_intel_publish_gtt_inventory(void);
 
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma950_device
@@ -53,6 +54,7 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
         write("VbeVramBytes", "unavailable");
     }
     v9x_intel_publish_mmio_fingerprint();
+    v9x_intel_publish_gtt_inventory();
 }
 
 const V9X_HW16_OPS v9x_hw16 = {

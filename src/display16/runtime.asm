@@ -82,6 +82,13 @@ EXTRN _v9x_i9xx_first:DWORD
 EXTRN _v9x_i9xx_second:DWORD
 EXTRN _v9x_i9xx_offset:DWORD
 EXTRN _v9x_i9xx_bar0:DWORD
+EXTRN _v9x_i9xx_gtt_chunk:DWORD
+EXTRN _v9x_i9xx_gtt_bar3:DWORD
+EXTRN _v9x_i9xx_gmadr_bar2:DWORD
+EXTRN _v9x_i9xx_bsm:DWORD
+EXTRN _v9x_i9xx_ggc:WORD
+EXTRN _v9x_i9xx_gtt_hash_a:DWORD
+EXTRN _v9x_i9xx_gtt_hash_b:DWORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -474,6 +481,41 @@ V9xEngineReadDone:
     pop     bp
     retf    2
 V9XENGINEREAD ENDP
+
+IFDEF V9X_INTEL_GMA_FAMILY
+; DWORD FAR PASCAL V9xGmadrRead(DWORD offset)
+;
+; Read one diagnostic dword through the framebuffer selector that
+; V9XMAPAPERTURE already established over GMADR.  The C caller is responsible
+; for proving the corresponding GTT PTE present before it comes here and for
+; keeping the offset inside the VBE-reported aperture.  Keeping those policy
+; checks out of this primitive also keeps this routine incapable of probing
+; beyond the mapping in search of a boundary.
+PUBLIC V9XGMADRREAD
+V9XGMADRREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xGmadrReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xGmadrReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    4
+V9XGMADRREAD ENDP
+ENDIF
 
 ; V9xEngineWrite(WORD offset, DWORD value). One 32-bit store, or nothing.
 ;
@@ -1010,6 +1052,84 @@ V9xMiniI9xxCaptureDone:
     pop     bp
     retf    4
 V9XMINII9XXCAPTURE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxGttCapture(DWORD bar3)
+PUBLIC V9XMINII9XXGTTCAPTURE
+V9XMINII9XXGTTCAPTURE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxGttCaptureFailed
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_GTT_CAPTURE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxGttCaptureFailed
+    mov     eax, V9XMINI_FN_I9XX_GTT_INFO
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxGttCaptureFailed
+    cmp     ebx, V9X_I9XX_GTT_ENTRY_COUNT
+    jne     short V9xMiniI9xxGttCaptureFailed
+    mov     _v9x_i9xx_gtt_hash_a, ecx
+    mov     _v9x_i9xx_gtt_hash_b, edx
+    mov     _v9x_i9xx_gtt_bar3, esi
+    mov     ax, 1
+    jmp     short V9xMiniI9xxGttCaptureDone
+V9xMiniI9xxGttCaptureFailed:
+    xor     ax, ax
+V9xMiniI9xxGttCaptureDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINII9XXGTTCAPTURE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxGttChunk(WORD chunk)
+PUBLIC V9XMINII9XXGTTCHUNK
+V9XMINII9XXGTTCHUNK PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_GTT_CHUNK
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxGttChunkFailed
+    mov     _v9x_i9xx_gtt_chunk, ebx
+    mov     _v9x_i9xx_gtt_chunk[4], ecx
+    mov     _v9x_i9xx_gtt_chunk[8], edx
+    mov     _v9x_i9xx_gtt_chunk[12], esi
+    mov     ax, 1
+    jmp     short V9xMiniI9xxGttChunkDone
+V9xMiniI9xxGttChunkFailed:
+    xor     ax, ax
+V9xMiniI9xxGttChunkDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    2
+V9XMINII9XXGTTCHUNK ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)
@@ -1636,6 +1756,96 @@ V9xPciReadIntelMmioBarDone:
     pop     bp
     retf    4
 V9XPCIREADINTELMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xPciReadIntelGttConfig(void)
+; Fresh reads of the exact 27AE function-0 BAR2/3 and BSM, plus host-bridge
+; GGC. No PCI config write is issued. Results land in the Intel diagnostic's
+; DGROUP globals only after the corresponding read validates.
+PUBLIC V9XPCIREADINTELGTTCONFIG
+V9XPCIREADINTELGTTCONFIG PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    mov     _v9x_i9xx_gmadr_bar2, 0
+    mov     _v9x_i9xx_gtt_bar3, 0
+    mov     _v9x_i9xx_bsm, 0
+    mov     _v9x_i9xx_ggc, 0
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xPciReadIntelGttConfigFailed
+
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    test    cl, 7
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      V9xPciReadIntelGttConfigFailed
+    test    eax, 0fffffffh
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     _v9x_i9xx_gmadr_bar2, eax
+
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    test    cl, 7
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      V9xPciReadIntelGttConfigFailed
+    cmp     eax, 0fffC0000h
+    ja      V9xPciReadIntelGttConfigFailed
+    test    eax, 0003ffffh
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     _v9x_i9xx_gtt_bar3, eax
+
+    mov     di, 005ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     eax, ecx
+    and     eax, 0fff00000h
+    cmp     eax, 01000000h
+    jb      V9xPciReadIntelGttConfigFailed
+    mov     _v9x_i9xx_bsm, eax
+
+    xor     bx, bx
+    mov     di, 0052h
+    mov     ax, 0b109h
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     _v9x_i9xx_ggc, cx
+    mov     ax, 1
+    jmp     short V9xPciReadIntelGttConfigDone
+V9xPciReadIntelGttConfigFailed:
+    mov     _v9x_i9xx_gmadr_bar2, 0
+    mov     _v9x_i9xx_gtt_bar3, 0
+    mov     _v9x_i9xx_bsm, 0
+    mov     _v9x_i9xx_ggc, 0
+    xor     ax, ax
+V9xPciReadIntelGttConfigDone:
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XPCIREADINTELGTTCONFIG ENDP
 ENDIF
 
 ; Read the vendor/device ids of the machine's first display-class PCI device

@@ -134,6 +134,17 @@ V9xI9xxOffsets dd 00002020h, 00002030h, 00002034h, 00002038h
                 dd 00071180h, 00071184h, 00071188h
 V9xI9xxFirst  dd V9X_I9XX_SNAPSHOT_DWORDS dup (0)
 V9xI9xxSecond dd V9X_I9XX_SNAPSHOT_DWORDS dup (0)
+
+; Intel Gen3 Phase 2: BAR3 is a separate 256-KiB, 65536-entry GTT. Keep no
+; table copy in the VxD: hash two complete passes, then serve four live PTEs
+; per query so the Win16 side can stream the binary artefact.
+V9X_I9XX_GTT_BYTES equ 00040000h
+V9X_I9XX_GTT_CHUNKS equ V9X_I9XX_GTT_ENTRY_COUNT / V9X_I9XX_GTT_CHUNK_DWORDS
+V9xI9xxGttBase    dd 0
+V9xI9xxGttLinear  dd 0
+V9xI9xxGttHashA   dd 0
+V9xI9xxGttHashB   dd 0
+V9xI9xxGttValid   dw 0
 ENDIF
 
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
@@ -981,6 +992,78 @@ V9xMini_I9xx_Capture_Done:
     movzx   eax, V9xI9xxValid
     ret
 EndProc V9xMini_I9xx_Capture
+
+; EAX=value, EDX=FNV-1a state. Returns the updated state in EDX.
+BeginProc V9xMini_I9xx_Hash_Dword
+    push    ecx
+    mov     ecx, 4
+V9xMini_I9xx_Hash_Byte:
+    movzx   ebx, al
+    xor     edx, ebx
+    imul    edx, edx, 01000193h
+    shr     eax, 8
+    loop    V9xMini_I9xx_Hash_Byte
+    pop     ecx
+    ret
+EndProc V9xMini_I9xx_Hash_Dword
+
+; EAX = current BAR3 physical base. Maps exactly 256 KiB, then hashes two
+; complete read-only passes. A moved BAR is refused rather than mapped again.
+BeginProc V9xMini_I9xx_Gtt_Capture
+    pushad
+    mov     V9xI9xxGttValid, 0
+    cmp     eax, 01000000h
+    jb      V9xMini_I9xx_Gtt_Done
+    cmp     eax, 0fffC0000h
+    ja      V9xMini_I9xx_Gtt_Done
+    test    eax, V9X_I9XX_GTT_BYTES - 1
+    jnz     V9xMini_I9xx_Gtt_Done
+
+    cmp     V9xI9xxGttLinear, 0
+    je      short V9xMini_I9xx_Gtt_Map
+    cmp     eax, V9xI9xxGttBase
+    jne     V9xMini_I9xx_Gtt_Done
+    jmp     short V9xMini_I9xx_Gtt_Read
+V9xMini_I9xx_Gtt_Map:
+    mov     V9xI9xxGttBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_I9XX_GTT_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_I9xx_Gtt_Map_Failed
+    mov     V9xI9xxGttLinear, eax
+    jmp     short V9xMini_I9xx_Gtt_Read
+V9xMini_I9xx_Gtt_Map_Failed:
+    mov     V9xI9xxGttBase, 0
+    jmp     V9xMini_I9xx_Gtt_Done
+
+V9xMini_I9xx_Gtt_Read:
+    mov     edi, V9xI9xxGttLinear
+    mov     edx, 0811c9dc5h
+    mov     ecx, V9X_I9XX_GTT_ENTRY_COUNT
+V9xMini_I9xx_Gtt_Hash_A:
+    mov     eax, [edi]
+    call    V9xMini_I9xx_Hash_Dword
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Gtt_Hash_A
+    mov     V9xI9xxGttHashA, edx
+
+    mov     edi, V9xI9xxGttLinear
+    mov     edx, 0811c9dc5h
+    mov     ecx, V9X_I9XX_GTT_ENTRY_COUNT
+V9xMini_I9xx_Gtt_Hash_B:
+    mov     eax, [edi]
+    call    V9xMini_I9xx_Hash_Dword
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Gtt_Hash_B
+    mov     V9xI9xxGttHashB, edx
+    mov     V9xI9xxGttValid, 1
+
+V9xMini_I9xx_Gtt_Done:
+    popad
+    movzx   eax, V9xI9xxGttValid
+    ret
+EndProc V9xMini_I9xx_Gtt_Capture
 ENDIF
 
 ; Protected-mode API, reached from the 16-bit display driver through
@@ -1018,6 +1101,12 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxCapture
     cmp     ax, V9XMINI_FN_I9XX_DWORD
     je      V9xMini_Api_I9xxDword
+    cmp     ax, V9XMINI_FN_I9XX_GTT_CAPTURE
+    je      V9xMini_Api_I9xxGttCapture
+    cmp     ax, V9XMINI_FN_I9XX_GTT_INFO
+    je      V9xMini_Api_I9xxGttInfo
+    cmp     ax, V9XMINI_FN_I9XX_GTT_CHUNK
+    je      V9xMini_Api_I9xxGttChunk
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -1051,6 +1140,58 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     [ebp.Client_AX], 1
     ret
 V9xMini_Api_I9xxDword_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxGttCapture:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, [ebp.Client_EBX]
+    call    V9xMini_I9xx_Gtt_Capture
+    mov     [ebp.Client_AX], ax
+ELSE
+    mov     [ebp.Client_AX], 0
+ENDIF
+    ret
+
+V9xMini_Api_I9xxGttInfo:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxGttValid, 0
+    je      short V9xMini_Api_I9xxGttInfo_Missing
+    mov     [ebp.Client_EBX], V9X_I9XX_GTT_ENTRY_COUNT
+    mov     eax, V9xI9xxGttHashA
+    mov     [ebp.Client_ECX], eax
+    mov     eax, V9xI9xxGttHashB
+    mov     [ebp.Client_EDX], eax
+    mov     eax, V9xI9xxGttBase
+    mov     [ebp.Client_ESI], eax
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxGttInfo_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxGttChunk:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxGttValid, 0
+    je      short V9xMini_Api_I9xxGttChunk_Missing
+    movzx   eax, [ebp.Client_CX]
+    cmp     eax, V9X_I9XX_GTT_CHUNKS
+    jae     short V9xMini_Api_I9xxGttChunk_Missing
+    shl     eax, 4
+    add     eax, V9xI9xxGttLinear
+    mov     ebx, [eax]
+    mov     [ebp.Client_EBX], ebx
+    mov     ecx, [eax+4]
+    mov     [ebp.Client_ECX], ecx
+    mov     edx, [eax+8]
+    mov     [ebp.Client_EDX], edx
+    mov     esi, [eax+12]
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxGttChunk_Missing:
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

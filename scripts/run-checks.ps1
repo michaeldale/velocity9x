@@ -54,6 +54,10 @@ Invoke-CheckStep "Intel MMIO capture validator" {
     & (Join-Path $PSScriptRoot "check-intel-mmio-capture.ps1") -SelfTest
 }
 
+Invoke-CheckStep "Intel GTT capture validator" {
+    & (Join-Path $PSScriptRoot "check-intel-gtt-capture.ps1") -SelfTest
+}
+
 if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")

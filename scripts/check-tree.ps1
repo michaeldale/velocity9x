@@ -42,6 +42,7 @@ $required = @(
     "scripts\build-host.ps1",
     "scripts\build-host-msvc.ps1",
     "scripts\check-intel-mmio-capture.ps1",
+    "scripts\check-intel-gtt-capture.ps1",
     "scripts\run-vm-mode-matrix.ps1",
     "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",
@@ -112,6 +113,8 @@ $required = @(
     "tests\host\test_vbe_parse.c",
     "tests\host\test_vbe_modes.c",
     "tests\host\test_vbe_cache.c",
+    "src\chipsets\intel\i9xx_gtt.c",
+    "tests\host\test_i9xx_gtt.c",
     "tools\diag\serial_smoke.c",
     "tools\diag\serial_smoke_win32.c",
     "tools\diag\vxd_probe.asm",
@@ -166,6 +169,7 @@ $allowedOsBoundaries = @(
     # Intel Phase 1 writes its captured MMIO fingerprint with the same Win16
     # profile API. The decoder it calls remains OS-free in the chipset tree.
     (Join-Path $repoRoot "src\display16\intel_diag16.c"),
+    (Join-Path $repoRoot "src\display16\intel_gtt16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
@@ -343,7 +347,8 @@ foreach ($line in (Get-Content -LiteralPath $cContract)) {
 # never speaks the handshake itself.
 $contractAliases = @{ 'V9X_VBE_API_V1' = 'V9XMINI_API_V1'
                       'V9X_VBE_API_V2' = 'V9XMINI_API_V2'
-                      'V9X_VBE_API_V3' = 'V9XMINI_API_V3' }
+                      'V9X_VBE_API_V3' = 'V9XMINI_API_V3'
+                      'V9X_VBE_API_V4' = 'V9XMINI_API_V4' }
 $contractChecked = 0
 foreach ($name in $cValues.Keys) {
     $asmName = if ($contractAliases.ContainsKey($name)) { $contractAliases[$name] } else { $name }
@@ -479,7 +484,7 @@ if ($mtrrSource -match '(?im)^\s*wrmsr\b') {
 
 # A renamed or deleted constant would otherwise shrink the checked set to
 # nothing and still pass, so the load-bearing names are named here.
-foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_API_V3',
+foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_API_V3', 'V9X_VBE_API_V4',
                         'V9X_VBE_MODE_LIST_MAX',
                         'V9X_VBE_MODE_QUERY_MAX', 'V9X_VBE_CACHE_MAX',
                         'V9X_VBE_BASELINE_PROBE_MAX', 'V9X_VBE_EDID_BYTES',
@@ -547,11 +552,11 @@ foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm"))
     }
 }
 
-# The mini-VDD API is an exact v3 package pair. Reverting only the advertised version
+# The mini-VDD API is an exact v4 package pair. Reverting only the advertised version
 # would make the indexed implementation unreachable while all layouts still
 # agreed numerically, so assert the selected version as well as the constants.
-if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V3']) {
-    throw "V9XMINI_API_VERSION must advertise the implemented v3 contract."
+if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V4']) {
+    throw "V9XMINI_API_VERSION must advertise the implemented v4 contract."
 }
 $miniSource = Get-Content -LiteralPath `
     (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
@@ -584,8 +589,8 @@ if ($miniBuildSource -notmatch
            "V9X_INTEL_MMIO_FINGERPRINT only for the intel-gma family.")
 }
 if ($miniSource -notmatch
-    '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture\s*\r?\nENDIF') {
-    throw "The Intel MMIO capture must remain behind its positive family guard."
+    '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture\s*\r?\nENDIF') {
+    throw "The Intel MMIO/GTT captures must remain behind their positive family guard."
 }
 $intelCapture = [regex]::Match(
     $miniSource,
@@ -594,6 +599,14 @@ if ([regex]::Matches($intelCapture, '(?im)^\s*mov\s+eax,\s*\[esi\+ebx\]\s*$').Co
     $intelCapture -match '(?im)^\s*mov\s+\[esi\+ebx\]') {
     throw ("The Intel fingerprint must contain exactly two allowlist MMIO " +
            "reads and no MMIO write through ESI+EBX.")
+}
+$intelGttCapture = [regex]::Match(
+    $miniSource,
+    '(?ms)^BeginProc\s+V9xMini_I9xx_Gtt_Capture\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Gtt_Capture').Groups[1].Value
+if ([regex]::Matches($intelGttCapture, '(?im)^\s*mov\s+eax,\s*\[edi\]\s*$').Count -ne 2 -or
+    $intelGttCapture -match '(?im)^\s*mov\s+\[edi\]') {
+    throw ("The Intel GTT fingerprint must contain exactly two full-table " +
+           "MMIO read sites and no write through its mapped pointer.")
 }
 if ($miniSource -match '\bV9X_NO_DPMS\b' -or
     $miniBuildSource -match '\bV9X_NO_DPMS\b') {
@@ -610,6 +623,15 @@ if (-not $snapshotCountMatch.Success -or
         $asmValues['V9X_I9XX_SNAPSHOT_DWORDS']) {
     throw ("The C and assembly Intel MMIO snapshot counts must agree with " +
            "V9X_I9XX_SNAPSHOT_DWORDS.")
+}
+$contractChecked++
+$gttCountMatch = [regex]::Match(
+    $intelHeader,
+    '(?m)^#define\s+V9X_I9XX_GTT_ENTRY_COUNT\s+\(\(v9x_u32\)([0-9]+)ul\)\s*$')
+if (-not $gttCountMatch.Success -or
+    [int]$gttCountMatch.Groups[1].Value -ne
+        $asmValues['V9X_I9XX_GTT_ENTRY_COUNT']) {
+    throw "The C and assembly Intel GTT entry counts must agree."
 }
 $contractChecked++
 if ($miniSource -match '\bV9xVbeModeList\b|\bV9X_VBE_CACHE_COUNT\b') {

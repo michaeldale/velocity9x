@@ -37,6 +37,8 @@
 #define V9X_DIAG_MODES_INI   V9X_DIAG_PATH("V9XMODES.INI")  /* modes16.c */
 #define V9X_DIAG_DDHOOK_INI  V9X_DIAG_PATH("V9XDDH.INI")    /* dd16.c */
 #define V9X_DIAG_INTELMM_TXT V9X_DIAG_PATH("INTELMM.TXT")   /* intel_diag16.c */
+#define V9X_DIAG_INTELGTT_BIN V9X_DIAG_PATH("INTELGTT.BIN") /* intel_gtt16.c */
+#define V9X_DIAG_INTELGTT_TXT V9X_DIAG_PATH("INTELGTT.TXT") /* intel_gtt16.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

@@ -13,6 +13,12 @@ if (-not $BuildId) {
 }
 
 $cl = Get-Command "cl.exe" -ErrorAction SilentlyContinue
+# Open Watcom also ships a cl.exe compatibility driver. build-host.ps1 adds
+# that directory to PATH, so a sequential dual-compiler run must not mistake
+# it for Visual C++ merely because the command name matches.
+if ($cl -and $cl.Source -notmatch '\\VC\\Tools\\MSVC\\') {
+    $cl = $null
+}
 if (-not $cl) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} `
         "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -39,8 +45,10 @@ if (-not $cl) {
             if ($developerPath) {
                 $env:Path = $developerPath
             }
-            $cl = Get-Command "cl.exe" -ErrorAction SilentlyContinue
-            if (-not $cl -and $env:VCToolsInstallDir) {
+            # Resolve the tool by its VS installation path. Get-Command may
+            # retain the Open Watcom cl.exe it resolved before VsDevCmd
+            # changed PATH within this PowerShell process.
+            if ($env:VCToolsInstallDir) {
                 $clPath = Join-Path $env:VCToolsInstallDir `
                     "bin\Hostx64\x64\cl.exe"
                 if (Test-Path -LiteralPath $clPath) {
@@ -78,21 +86,34 @@ $null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
 $sourceNames = @(Get-V9xHostSourceNames -RepoRoot $repoRoot -Compiler MSVC)
 $executable = Join-Path $outputDir "v9x-host-tests.exe"
 $sources = @($sourceNames | ForEach-Object { Join-Path $repoRoot $_ })
+$objects = @($sources | ForEach-Object {
+    Join-Path $outputDir (([IO.Path]::GetFileNameWithoutExtension($_)) + ".obj")
+})
+if (@($objects | Group-Object | Where-Object Count -ne 1).Count -ne 0) {
+    throw "MSVC host sources contain duplicate object base names."
+}
 $arguments = @(
     "/nologo",
+    "/c",
     "/W4",
     "/WX",
     "/I$(Join-Path $repoRoot 'include')",
     "/I$outputDir",
-    "/DV9X_BUILD_ID=\`"$BuildId\`"",
-    "/Fe$executable"
+    "/DV9X_BUILD_ID=\`"$BuildId\`""
 ) + $sources
 
 Push-Location $outputDir
 try {
+    if (Test-Path -LiteralPath $executable) {
+        Remove-Item -LiteralPath $executable -Force
+    }
     & $cl.Source @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "MSVC compilation failed with exit code $LASTEXITCODE."
+    }
+    & $msvcLink "/nologo" "/OUT:$executable" @objects
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSVC link failed with exit code $LASTEXITCODE."
     }
     & $executable
     if ($LASTEXITCODE -ne 0) {

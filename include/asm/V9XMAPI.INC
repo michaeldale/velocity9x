@@ -49,10 +49,13 @@ V9XMINI_API_MAGIC   EQU 39583956h
 ; v3 adds the Intel-only, read-only i9xx MMIO fingerprint capture. Other
 ; family images implement the function numbers as clean refusals, so the
 ; version remains one exact-match package contract across every family.
+;
+; v4 adds the Intel-only read-only Gen3 GTT snapshot hash and four-PTE chunks.
 V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
 V9XMINI_API_V3      EQU 0003h
-V9XMINI_API_VERSION EQU V9XMINI_API_V3
+V9XMINI_API_V4      EQU 0004h
+V9XMINI_API_VERSION EQU V9XMINI_API_V4
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
@@ -161,6 +164,20 @@ V9XMINI_FN_MTRR_RANGE EQU 0008h
 V9XMINI_FN_I9XX_CAPTURE  EQU 0009h
 V9XMINI_FN_I9XX_DWORD    EQU 000Ah
 V9X_I9XX_SNAPSHOT_DWORDS EQU 20
+
+; v4: map the 256-KiB Gen3 BAR3 GTT, hash two complete read passes, and expose
+; four live PTEs per register-only query. The caller hashes the streamed dump
+; as a third pass, so a changed table cannot be called stable. Other families
+; return AX=0.
+; GTT_CAPTURE in: EBX = current PCI BAR3 physical base; out AX=1 on success.
+; GTT_INFO out: EBX=entry count, ECX=first FNV-1a, EDX=second FNV-1a,
+;               ESI=BAR3 provenance.
+; GTT_CHUNK in: CX=chunk index; out EBX/ECX/EDX/ESI=four consecutive PTEs.
+V9XMINI_FN_I9XX_GTT_CAPTURE EQU 000Bh
+V9XMINI_FN_I9XX_GTT_INFO    EQU 000Ch
+V9XMINI_FN_I9XX_GTT_CHUNK   EQU 000Dh
+V9X_I9XX_GTT_ENTRY_COUNT    EQU 65536
+V9X_I9XX_GTT_CHUNK_DWORDS   EQU 4
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

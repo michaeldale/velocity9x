@@ -8,6 +8,10 @@
 #define V9X_PCI_DEVICE_GMA950_945GSE     ((v9x_u16)0x27aeu)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
+#define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)
+#define V9X_I9XX_GTT_ENTRY_COUNT         ((v9x_u32)65536ul)
+#define V9X_I9XX_GTT_PAGE_BYTES          ((v9x_u32)4096ul)
+#define V9X_I9XX_GTT_RESERVE_BYTES       ((v9x_u32)0x00020000ul)
 #define V9X_I9XX_PIPE_COUNT              ((v9x_u16)2u)
 #define V9X_I9XX_PIPE_NONE               ((v9x_u16)0xffffu)
 #define V9X_I9XX_SNAPSHOT_DWORDS         ((v9x_u16)20u)
@@ -27,6 +31,22 @@
 #define V9X_I9XX_FP_PLANE_MATCH          ((v9x_u16)0x0020u)
 #define V9X_I9XX_FP_RING_QUIESCENT       ((v9x_u16)0x0040u)
 #define V9X_I9XX_FP_PHASE1_REQUIRED      ((v9x_u16)0x003fu)
+
+#define V9X_I9XX_PTE_VALID               ((v9x_u32)0x00000001ul)
+#define V9X_I9XX_PTE_LOCAL               ((v9x_u32)0x00000002ul)
+#define V9X_I9XX_PTE_CACHE_MASK          ((v9x_u32)0x00000006ul)
+#define V9X_I9XX_PTE_SYSTEM_CACHED       ((v9x_u32)0x00000006ul)
+#define V9X_I9XX_PTE_ADDRESS_MASK        ((v9x_u32)0xfffff000ul)
+#define V9X_I9XX_PTE_ATTRIBUTE_MASK      ((v9x_u32)0x00000ffful)
+
+#define V9X_I9XX_GTT_COMPLETE            ((v9x_u16)0x0001u)
+#define V9X_I9XX_GTT_STABLE              ((v9x_u16)0x0002u)
+#define V9X_I9XX_GTT_NONTRIVIAL          ((v9x_u16)0x0004u)
+#define V9X_I9XX_GTT_BSM_START           ((v9x_u16)0x0008u)
+#define V9X_I9XX_GTT_VBE_BACKED          ((v9x_u16)0x0010u)
+#define V9X_I9XX_GTT_RESERVE_BACKED      ((v9x_u16)0x0020u)
+#define V9X_I9XX_GTT_PGTBL_MATCH         ((v9x_u16)0x0040u)
+#define V9X_I9XX_GTT_PHASE2_REQUIRED     ((v9x_u16)0x007fu)
 
 /* Offsets are documentation-derived and deliberately centralized. */
 #define V9X_I9XX_REG_PGTBL_CTL           ((v9x_u32)0x00002020ul)
@@ -93,11 +113,67 @@ struct v9x_i9xx_fingerprint {
     v9x_u32 plane_address;
 };
 
+struct v9x_i9xx_pte {
+    v9x_u32 raw;
+    v9x_u32 physical_page;
+    v9x_u16 present;
+    v9x_u16 cache_bits;
+    v9x_u16 known_attributes;
+};
+
+/* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
+struct v9x_i9xx_gtt_inventory {
+    v9x_u16 flags;
+    v9x_u16 reserve_ok;
+    v9x_u32 expected_entries;
+    v9x_u32 next_entry;
+    v9x_u32 bsm;
+    v9x_u32 stolen_bytes;
+    v9x_u32 pgtbl_ctl;
+    v9x_u32 gtt_storage_physical;
+    v9x_u32 vbe_pages;
+    v9x_u32 hash_stream;
+    v9x_u32 hash_first;
+    v9x_u32 hash_second;
+    v9x_u32 present_entries;
+    v9x_u32 uncached_entries;
+    v9x_u32 local_entries;
+    v9x_u32 cached_entries;
+    v9x_u32 unknown_attribute_entries;
+    v9x_u32 run_count;
+    v9x_u32 backed_prefix_entries;
+    v9x_u32 reserve_first_entry;
+    v9x_u32 reserve_entry_count;
+    v9x_u32 reserve_aperture_offset;
+    v9x_u32 reserve_physical;
+    v9x_u32 first_raw;
+    v9x_u32 previous_raw;
+    v9x_u32 previous_physical;
+    v9x_u32 previous_stride;
+    v9x_u32 run_length;
+    v9x_u16 previous_present;
+    v9x_u16 previous_attributes;
+    v9x_u16 prefix_open;
+    v9x_u16 all_zero;
+    v9x_u16 all_ones;
+};
+
 v9x_status v9x_i9xx_analyze_fingerprint(
     const struct v9x_i9xx_mmio_snapshot *first,
     const struct v9x_i9xx_mmio_snapshot *second,
     const struct v9x_i9xx_mode_expectation *expected,
     struct v9x_i9xx_fingerprint *result);
+v9x_status v9x_i9xx_decode_pte(v9x_u32 raw, struct v9x_i9xx_pte *pte);
+v9x_status v9x_i9xx_gtt_inventory_begin(
+    struct v9x_i9xx_gtt_inventory *inventory,
+    v9x_u32 entry_count, v9x_u32 bsm, v9x_u32 stolen_bytes,
+    v9x_u32 vbe_bytes, v9x_u32 pgtbl_ctl);
+v9x_status v9x_i9xx_gtt_inventory_add(
+    struct v9x_i9xx_gtt_inventory *inventory,
+    v9x_u32 entry, v9x_u32 raw);
+v9x_status v9x_i9xx_gtt_inventory_finish(
+    struct v9x_i9xx_gtt_inventory *inventory,
+    v9x_u32 hash_first, v9x_u32 hash_second);
 
 v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
                                const struct v9x_pci_identity *pci);
