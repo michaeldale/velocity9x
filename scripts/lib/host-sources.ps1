@@ -26,6 +26,8 @@ function Get-V9xHostSourceNames {
         'src\common\d3dmode.c',
         'src\common\vbe_crtc.c',
         'src\common\donewait.c',
+        # Intel Gen3 read-only fingerprint decoding; no MMIO access here.
+        'src\chipsets\intel\i9xx_mmio.c',
         # Pure rasterizer arithmetic: no DDHAL, MMIO or assembly dependencies.
         'src\display32\d3d\d3d_raster.c'
     ) + $backendSourceNames + @(
@@ -42,6 +44,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_crtc.c',
         'tests\host\test_d3d_raster.c',
         'tests\host\test_donewait.c',
+        'tests\host\test_i9xx_mmio.c',
         'tests\host\test_main.c'
     )
 

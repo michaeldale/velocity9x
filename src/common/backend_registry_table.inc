@@ -8,6 +8,7 @@
  * struct and owns the allowlist policy this table carries.
  */
 #include "velocity9x/ati_mach64.h"
+#include "velocity9x/intel_gma.h"
 #include "velocity9x/matrox_millennium2.h"
 #include "velocity9x/s3_virge.h"
 #include "velocity9x/vbe_generic.h"
@@ -15,6 +16,7 @@
 static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x5654u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 */
     { 0x1002u, 0x4C4Du, v9x_ati_mach64_backend }, /* ati / rage-mobility-m */
+    { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
     { 0x102Bu, 0x051Bu, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2164w */
     { 0x102Bu, 0x0519u, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2064w */
     { 0x5333u, 0x8A01u, v9x_s3_virge_backend }, /* s3 / virge-dx */
