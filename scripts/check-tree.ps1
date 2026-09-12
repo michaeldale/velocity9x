@@ -134,6 +134,18 @@ if ($missing.Count -ne 0) {
     throw "Required repository files are missing: $($missing -join ', ')"
 }
 
+# PowerShell 7 installs pwsh.exe under PSHOME, not powershell.exe. Controller
+# launchers must resolve an available executable rather than constructing the
+# Windows PowerShell name and silently treating that launch failure as an
+# offline Win98 agent.
+foreach ($script in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "scripts") `
+                         -Filter "*.ps1" -Recurse -File)) {
+    if ((Get-Content -LiteralPath $script.FullName -Raw) -match
+        'Join-Path\s+\$PSHOME\s+["'']powershell\.exe["'']') {
+        throw "$($script.FullName) assumes powershell.exe exists under PSHOME."
+    }
+}
+
 $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $repoRoot "src") -Recurse -File
 $sourceFiles += Get-ChildItem -LiteralPath (Join-Path $repoRoot "include") -Recurse -File
 $allowedOsBoundaries = @(

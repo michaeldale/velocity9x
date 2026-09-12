@@ -54,6 +54,17 @@ if (-not $cl) {
     throw "MSVC cl.exe was not found. Run from a Developer PowerShell or install the VS Build Tools."
 }
 
+# cl.exe launches link.exe by name. A host that also has Open Watcom installed
+# can otherwise compile with MSVC and then accidentally hand the objects to
+# Watcom's linker, depending on the caller's PATH ordering. Keep the compiler
+# and linker from the same Visual C++ tools directory as an inseparable pair.
+$msvcBin = Split-Path -Parent $cl.Source
+$msvcLink = Join-Path $msvcBin "link.exe"
+if (-not (Test-Path -LiteralPath $msvcLink)) {
+    throw "The MSVC linker was not found beside cl.exe: $msvcLink"
+}
+$env:Path = $msvcBin + ";" + $env:Path
+
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 # Generated into this pass's own output directory so it never compiles against

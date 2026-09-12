@@ -63,7 +63,14 @@ if (-not $ControllerPath) {
 if (-not (Test-Path -LiteralPath $ControllerPath)) {
     throw "Required path does not exist: $ControllerPath"
 }
-$powershell = Join-Path $PSHOME "powershell.exe"
+$powershellCommand = Get-Command "powershell.exe" -ErrorAction SilentlyContinue
+if (-not $powershellCommand) {
+    $powershellCommand = Get-Command "pwsh.exe" -ErrorAction SilentlyContinue
+}
+if (-not $powershellCommand) {
+    throw "Neither powershell.exe nor pwsh.exe is available for controller calls."
+}
+$powershell = $powershellCommand.Source
 
 $families = @(Get-V9xFamilies -RepoRoot $repoRoot)
 if ($Family) {

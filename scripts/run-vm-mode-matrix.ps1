@@ -112,7 +112,14 @@ foreach ($file in @("V9XDISP.DRV", "V9XMINI.VXD", "V9XGDI.EXE",
 
 $results = [IO.Path]::GetFullPath($ResultsDirectory)
 New-Item -ItemType Directory -Force -Path $results | Out-Null
-$powershell = Join-Path $PSHOME "powershell.exe"
+$powershellCommand = Get-Command "powershell.exe" -ErrorAction SilentlyContinue
+if (-not $powershellCommand) {
+    $powershellCommand = Get-Command "pwsh.exe" -ErrorAction SilentlyContinue
+}
+if (-not $powershellCommand) {
+    throw "Neither powershell.exe nor pwsh.exe is available for controller calls."
+}
+$powershell = $powershellCommand.Source
 
 function Invoke-V9xCtlJson {
     param([string]$Operation, [string[]]$OperationArguments = @())
