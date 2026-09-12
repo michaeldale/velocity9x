@@ -24,3 +24,4 @@
 - [Survey tool v2: a 486 with an S3 Trio VLB](vlb-survey-tool.md) - Historical.
 - [Hardware Direct3D on the Intel GMA 950](hardware-d3d-on-intel-gma950.md) - In progress; Phases 1-3 measured, Phase 4 errata-gated.
 - [Finding the erratum 12 workaround in Intel's XP miniport](intel-xp-miniport-disassembly.md) - Open; desk work that decides the Phase 4 gate.
+- [Intel Phase 4: the first write, designed to make one boot answer everything](intel-phase4-first-write-design.md) - Design for approval; nothing coded.
