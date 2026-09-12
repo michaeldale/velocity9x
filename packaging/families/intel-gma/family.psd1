@@ -56,6 +56,7 @@
             @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c' }
             @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c' }
             @{ Name = 'intel_event16'; Path = 'src\display16\intel_event16.c' }
+            @{ Name = 'intel_ring16'; Path = 'src\display16\intel_ring16.c' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }

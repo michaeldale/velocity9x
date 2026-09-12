@@ -40,6 +40,7 @@
 #define V9X_DIAG_INTELGTT_BIN V9X_DIAG_PATH("INTELGTT.BIN") /* intel_gtt16.c */
 #define V9X_DIAG_INTELGTT_TXT V9X_DIAG_PATH("INTELGTT.TXT") /* intel_gtt16.c */
 #define V9X_DIAG_INTELEVT_TXT V9X_DIAG_PATH("INTELEVT.TXT") /* intel_event16.c */
+#define V9X_DIAG_INTELRNG_TXT V9X_DIAG_PATH("INTELRNG.TXT") /* intel_ring16.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

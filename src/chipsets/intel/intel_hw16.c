@@ -6,6 +6,7 @@ extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
 extern void v9x_intel_publish_mmio_fingerprint(void);
 extern void v9x_intel_publish_gtt_inventory(void);
+extern void v9x_intel_publish_ring_plan(void);
 extern void v9x_intel_publish_event(unsigned short kind,
                                     unsigned short context);
 
@@ -59,6 +60,7 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     v9x_intel_publish_mmio_fingerprint();
     v9x_intel_publish_gtt_inventory();
+    v9x_intel_publish_ring_plan();
 }
 
 const V9X_HW16_OPS v9x_hw16 = {
