@@ -25,3 +25,29 @@ backend decodes the PLL using the 14.318 MHz reference clock and range-checks
 the result. The ViRGE graphics engine shares MCLK, so the same detected value is
 published for core and memory with `shared-memory-clock`; it is not represented
 as an independently programmable core clock.
+
+## Intel Gen3 read-only fingerprint
+
+The strict `intel-gma` family additionally writes
+`C:\V9XDIAG\INTELMM.TXT`, section `[IntelMmio]`. This is an experimental
+hardware-evidence contract and is deliberately separate from the versioned
+settings UI contract above.
+
+- `Access`: always `read-only`.
+- `BarProvenance`: always `PCI-BAR0-runtime`; BAR0 is reread for every capture.
+- `Bar0`: the physical MMIO base returned with the capture.
+- `RnnO`, `RnnA`, `RnnB`, `RnnD`: register offset, first read, second read and
+  XOR delta for allowlist index `nn` (two hexadecimal digits). All values are
+  eight-digit hexadecimal.
+- `Flags`: fingerprint relationship bits from `intel_gma.h`.
+- `LivePipe`: zero or one, or `0000FFFF` when there is no unique live pipe.
+- `TimingWidth`, `TimingHeight`, `TotalWidth`, `TotalHeight`, `SourceWidth`,
+  `SourceHeight`, `PlaneBpp`, `PlaneStride`, `PlaneAddress`: decoded fields for
+  the unique live pipe, also written as eight-digit hexadecimal values.
+- `Result`: `PASS` only when all Phase 1 bits (`0000003F`) are present;
+  `REVIEW` for a decoded but incomplete relationship; or `CAPTURE-FAILED`,
+  `CONTRACT-FAILED`, or `DECODE-FAILED` for the named refusal.
+
+The ring-quiescent bit (`00000040`) is collected in Phase 1 but is not part of
+its `PASS` verdict. It becomes a takeover gate in Phase 3. No result in this
+file authorizes an Intel MMIO write.
