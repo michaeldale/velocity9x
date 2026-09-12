@@ -242,9 +242,11 @@ complete the phase.
 
 ### 3.2d Phase 4 no-write command-plan capture
 
-The first Phase 4 package still cannot write Intel MMIO: the public 945GSE
-specification update does not disclose the internal-buffer erratum workaround,
-and the errata gate is therefore closed. It does reserve the top 128 KiB from
+The first Phase 4 package still cannot write Intel MMIO. The errata gate was
+opened by risk decision on 2026-09-13
+(`docs\decisions\2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`),
+but the execution half of Phase 4 is not yet built, so this package has no
+write path regardless of arm keys. It does reserve the top 128 KiB from
 DirectDraw and writes `C:\V9XDIAG\INTELRNG.TXT` after the Phase 2 inventory.
 The file includes two fresh, read-only PCI BIOS reads of host bridge D0:F0
 offset `60h` (`FlushPageCfg0` and `FlushPageCfg1`). `FlushPageRead=STABLE`

@@ -184,12 +184,22 @@ framebuffer. It proves nothing about the ring.
 
 First write to Intel silicon. Requires the one-shot arm token below.
 
-**Implementation started 2026-09-12; hardware execution remains gated:** the
-stolen-memory layout, heap exclusion, ring arithmetic, packet builders, exact
-decoder, command CRC and arm-contract leaf units are being built. Intel's
-public specification update confirms the internal-buffer flush erratum applies
-to this A3 945GSE but does not disclose its workaround, so the separate errata
-input to the arm state machine remains false. Record:
+**Gate opened 2026-09-13 by risk decision:** the errata input to the arm
+contract may be supplied true for this machine, with a hang-interpretation
+rule (first hang: record and repeat once; reproducible: ours, kill; not
+reproducible: ambiguous, erratum 12 a named suspect, continue; third hang:
+stop) and AC power only. Record:
+`docs/decisions/2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`.
+**The execution half is not yet written:** nothing calls the arm contract,
+no arm keys are read, the DOS pre-boot helper does not exist, and no ring or
+tail store exists in either binary. The first write to silicon is agreed in a
+design note before it is coded.
+
+**Implementation started 2026-09-12:** the stolen-memory layout, heap
+exclusion, ring arithmetic, packet builders, exact decoder, command CRC and
+arm-contract leaf units are built and host-tested. Intel's public
+specification update confirms the internal-buffer flush erratum applies to
+this A3 945GSE but does not disclose its workaround. Record:
 `docs/decisions/2026-09-12-intel-phase4-errata-gate.md`.
 
 Carve the ring, a hardware status page and a scratch page from the top of the
@@ -363,9 +373,13 @@ re-init is not a GPU reset. Safe Mode ignores every arm key.
   battery-mode 3D hang tied to Dual-Frequency Graphics Technology, and an
   internal-buffer flush erratum affecting 945GSE that can hang the system,
   stating only that a workaround exists in later Intel Windows drivers. That
-  workaround is not public. If it cannot be reconstructed from
-  licence-compatible sources, or AC success turns into unexplained battery
-  failure, stop. Audit this before phase 4, not after.
+  workaround is not public. **Superseded 2026-09-13** for Phase 4 by
+  `docs/decisions/2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`:
+  the erratum's cost is a hang on a scratch install, so Phase 4 proceeds on AC
+  under the hang-interpretation rule there. A reproducible hang from the same
+  stream is ours and kills; a non-reproducible one is recorded as ambiguous;
+  a third hang of any kind stops the phase. Unexplained battery failure after
+  AC success still stops.
 - **Identity.** The chip is 27AE; the ROM's PCIR says 27A2. Select from the
   measured PCI identity, never the ROM string. If phases 1-3 do not match the
   documented model, stop.
