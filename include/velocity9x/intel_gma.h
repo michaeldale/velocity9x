@@ -12,6 +12,17 @@
 #define V9X_I9XX_GTT_ENTRY_COUNT         ((v9x_u32)65536ul)
 #define V9X_I9XX_GTT_PAGE_BYTES          ((v9x_u32)4096ul)
 #define V9X_I9XX_GTT_RESERVE_BYTES       ((v9x_u32)0x00020000ul)
+#define V9X_I9XX_RING_BYTES              ((v9x_u32)0x00010000ul)
+#define V9X_I9XX_SANDBOX_PAGE_BYTES      ((v9x_u32)0x00001000ul)
+#define V9X_I9XX_RING_GUARD_BYTES        ((v9x_u32)8ul)
+
+/* Phase 4's complete command allowlist.  These values are intentionally
+ * exact: the decoder rejects even a known opcode carrying unreviewed bits. */
+#define V9X_I9XX_MI_NOOP                 ((v9x_u32)0x00000000ul)
+#define V9X_I9XX_MI_FLUSH                ((v9x_u32)0x02000000ul)
+#define V9X_I9XX_XY_COLOR_BLT            ((v9x_u32)0x54300004ul)
+#define V9X_I9XX_BLT_ROP_PATCOPY         ((v9x_u32)0x00f00000ul)
+#define V9X_I9XX_BLT_DEPTH_32            ((v9x_u32)0x03000000ul)
 #define V9X_I9XX_PIPE_COUNT              ((v9x_u16)2u)
 #define V9X_I9XX_PIPE_NONE               ((v9x_u16)0xffffu)
 #define V9X_I9XX_SNAPSHOT_DWORDS         ((v9x_u16)20u)
@@ -146,6 +157,32 @@ struct v9x_i9xx_pte {
     v9x_u16 known_attributes;
 };
 
+/* The first-write sandbox borrows the top 128 KiB already proved to be a
+ * linear BSM mapping in Phase 2.  DirectDraw may publish only heap_bytes. */
+struct v9x_i9xx_sandbox_layout {
+    v9x_u32 heap_bytes;
+    v9x_u32 reserve_offset;
+    v9x_u32 reserve_physical;
+    v9x_u32 ring_offset;
+    v9x_u32 ring_physical;
+    v9x_u32 ring_bytes;
+    v9x_u32 hws_offset;
+    v9x_u32 hws_physical;
+    v9x_u32 scratch_offset;
+    v9x_u32 scratch_physical;
+    v9x_u32 scratch_bytes;
+};
+
+/* A command is never split across the physical end of the ring.  pad_dwords
+ * are MI_NOOPs to the end; command_tail is then zero. */
+struct v9x_i9xx_ring_plan {
+    v9x_u32 command_tail;
+    v9x_u32 next_tail;
+    v9x_u32 pad_dwords;
+    v9x_u32 command_dwords;
+    v9x_u32 consumed_bytes;
+};
+
 /* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
 struct v9x_i9xx_gtt_inventory {
     v9x_u16 flags;
@@ -199,6 +236,25 @@ v9x_status v9x_i9xx_gtt_inventory_add(
 v9x_status v9x_i9xx_gtt_inventory_finish(
     struct v9x_i9xx_gtt_inventory *inventory,
     v9x_u32 hash_first, v9x_u32 hash_second);
+v9x_status v9x_i9xx_sandbox_calculate(
+    v9x_u32 vbe_bytes, v9x_u32 bsm,
+    struct v9x_i9xx_sandbox_layout *layout);
+v9x_status v9x_i9xx_ring_free_space(
+    v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
+    v9x_u32 *free_bytes);
+v9x_status v9x_i9xx_ring_plan(
+    v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
+    v9x_u32 command_dwords, struct v9x_i9xx_ring_plan *plan);
+v9x_status v9x_i9xx_build_mi_probe(v9x_u32 *stream, v9x_u32 capacity,
+                                    v9x_u32 *written);
+v9x_status v9x_i9xx_build_color_blt(
+    v9x_u32 destination, v9x_u16 width, v9x_u16 height,
+    v9x_u16 pitch, v9x_u32 color,
+    v9x_u32 scratch_offset, v9x_u32 scratch_bytes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_i9xx_decode_phase4_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    v9x_u32 scratch_offset, v9x_u32 scratch_bytes);
 
 v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
                                const struct v9x_pci_identity *pci);

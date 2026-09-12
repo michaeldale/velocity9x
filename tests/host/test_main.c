@@ -64,6 +64,9 @@ unsigned int v9x_run_i9xx_mmio_tests(void);
 /* tests\host\test_i9xx_gtt.c: streaming Gen3 GTT inventory. */
 unsigned int v9x_run_i9xx_gtt_tests(void);
 
+/* tests\host\test_i9xx_ring.c: Phase 4 sandbox and packet policy. */
+unsigned int v9x_run_i9xx_ring_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -631,6 +634,7 @@ int main(void)
     failures += v9x_run_donewait_tests();
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();
+    failures += v9x_run_i9xx_ring_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);
