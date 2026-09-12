@@ -1,0 +1,25 @@
+# Plans
+
+- [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
+- [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.
+- [dispbench as the instrument mode 3 needs, and the four other products proposed alongside it](dispbench-as-the-measurement-instrument.md) - Open.
+- [Making the main VDD willing to manage the DOS-box round trip](dos-box-vdd-virtualization.md) - Open.
+- [Dynamic VBE pipeline](dynamic-vbe-pipeline.md) - Shipped in 0.5.0.
+- [Review of docs/plans/dynamic-vbe-pipeline.md](dynamic-vbe-pipeline-review.md) - Historical.
+- [Roadmap: family-structure fixes and the next Direct3D engine](family-structure-and-next-d3d-roadmap.md) - In progress.
+- [Final Reality 1.01 hardware Direct3D](final-reality-101-hardware.md) - Historical.
+- [GDI acceleration, build 000: a provably free decline path and the harness that can judge it](gdi-accel-000-and-harness.md) - Shipped in 0.5.0.
+- [Conservative GDI acceleration (PLAN.md Phase 5)](gdi-acceleration.md) - In progress.
+- [Hellbender hardware Direct3D compatibility plan](hellbender-hardware-d3d.md) - Historical.
+- [Hellbender pre-ContextCreate wedge: diagnosis plan](hellbender-pre-context-wedge.md) - Historical.
+- [Velocity9x: 24/32-bit colour + dynamic mode discovery (widescreen included)](high-depth-dynamic-modes.md) - Shipped in 0.6.0.
+- [Multi-chip restructure plan](multi-chip-restructure.md) - Shipped in 0.5.0.
+- [Validating the dynamic VBE pipeline is inert on physical S3 silicon](s3-physical-pipeline-validation.md) - Shipped in 0.6.0.
+- [Direct3D rendering modes: one settings-page selector, four back ends](s3-trio64-voodoo2-hybrid-3d.md) - In progress.
+- [Mode 2 on a second CPU: banded rasterization through smp.vxd](software-d3d-smp-workers.md) - Open.
+- [Mode 2 scalar fixes: make the rasterizer cheap before making it wide](software-rasterizer-scalar-fixes.md) - In progress.
+- [Tier-0 quality: write-combining, hardware cursor, synthetic vblank, DOS-box guard](tier0-quality.md) - In progress.
+- [ViRGE 325 on VESA Local Bus, through old MMIO](virge-vlb-old-mmio.md) - Open.
+- [A manual-select INF model, then the first driver run on the 486](vlb-manual-select-inf.md) - Shipped in 0.4.4.
+- [Survey tool v2: a 486 with an S3 Trio VLB](vlb-survey-tool.md) - Historical.
+

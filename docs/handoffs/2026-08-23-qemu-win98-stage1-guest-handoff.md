@@ -1,5 +1,7 @@
 # Dynamic VBE Stage 1 guest handoff — QEMU 4.2, Win98 SE, remote-agent setup
 
+> Status: Historical. The Stage 1 gate was subsequently closed.
+
 Date: 2026-08-23  
 Branch: `dynamic-vbe-stage0`  
 Stage 1 implementation commit: `43fcb3a Implement bounded mini-VDD VBE enumeration`

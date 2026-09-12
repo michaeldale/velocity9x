@@ -1,5 +1,7 @@
 # Dynamic VBE pipeline: Stage 0 handoff — contracts frozen, evidence captured
 
+> Status: Historical. The dynamic VBE pipeline later shipped in 0.5.0.
+
 Date: 2026-08-23
 Branch: `dynamic-vbe-stage0`, two commits on top of `main` at `c25b9a5`, pushed
 to `origin` and not merged:

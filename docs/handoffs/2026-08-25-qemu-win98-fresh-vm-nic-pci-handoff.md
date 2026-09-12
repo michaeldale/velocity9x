@@ -1,5 +1,7 @@
 # Fresh Win98 QEMU VM handoff — NIC and PCI findings, 2026-08-25
 
+> Status: Historical. A fresh guest enabled the later Stage 1 result.
+
 Date: 2026-08-25
 Branch: `dynamic-vbe-stage0`
 

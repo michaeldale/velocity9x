@@ -1,5 +1,7 @@
 # ViRGE Z-buffer handoff — implemented, host-tested, never exercised on a guest
 
+> Status: Superseded by [2026-08-30 depth FIFO reservation](../decisions/2026-08-30-virge-depth-fifo-reservation.md). Guest testing established the actual cause.
+
 > **Superseded the same day by
 > [`2026-08-30-virge-depth-fifo-reservation.md`](../decisions/2026-08-30-virge-depth-fifo-reservation.md).**
 > Depth testing now works on the guest and both probe designs pass. The cause

@@ -1,5 +1,7 @@
 # Hellbender Direct3D review and test handoff
 
+> Status: Historical. The later compatibility plan records the outcome.
+
 Date: 2026-08-13
 
 Scope: review the current uncommitted DirectDraw/Direct3D changes, run the

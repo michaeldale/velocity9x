@@ -226,6 +226,18 @@ list from a family manifest, so it takes `-Family <id>`. The image is otherwise
 family-independent, and a standalone run defaults to `vbe` and says which family
 it used; `build-active-package.ps1` passes the family it is packaging.
 
+### Single-source diagnostic tools
+
+The guest-side probes under `tools/diag/` are each one C source built by a
+matching `scripts/build-<tool>.ps1`. Those scripts share
+`scripts/lib/diag-tool.ps1`, which owns the Open Watcom resolution, compile,
+link and import listing; each script keeps only its own inputs and its own
+post-link audit (the import allow-list or MZ marker check), because that
+audit is the tool's contract rather than build plumbing. To add a probe,
+copy the shortest existing caller, such as `build-mode-switch.ps1`, and change
+the source, output name and audit. `tools/diag/README.md` lists the sources
+kept without a builder.
+
 ## The probe folder CD
 
 ```powershell

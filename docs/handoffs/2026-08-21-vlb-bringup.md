@@ -1,5 +1,7 @@
 # S3 Trio64 VLB bring-up handoff
 
+> Status: Historical. The VLB survey and aperture work were completed.
+
 Date: 2026-08-21
 Merged to `main` on 2026-08-21 as a fast-forward of 12 commits, the last
 of which is `9949144`.

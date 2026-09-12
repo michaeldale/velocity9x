@@ -1,5 +1,7 @@
 # Dynamic VBE Stage 2 handoff — runtime table live, Stage 1 gate closed
 
+> Status: Historical. The dynamic VBE pipeline later shipped in 0.5.0.
+
 Date: 2026-08-25
 Branch: `dynamic-vbe-stage0`
 

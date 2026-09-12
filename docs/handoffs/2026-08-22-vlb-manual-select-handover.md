@@ -1,5 +1,7 @@
 # VLB manual-select handover: the model installs, the devnode will not start
 
+> Status: Historical. The manual-select work is recorded as implemented.
+
 Date: 2026-08-22
 Branch: `vlb-manual-select-inf`, `716420d` through the branch tip, not merged
 (12 commits at this update; `018e536` is titled "Update plan." but actually

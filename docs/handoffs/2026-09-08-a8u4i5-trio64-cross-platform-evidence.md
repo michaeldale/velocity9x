@@ -1,5 +1,7 @@
 # A8U4I5 Trio64 lock: the same card, the same workload, a different host
 
+> Status: Historical. The evidence narrows the lock to the original host platform.
+
 Date: 2026-09-08
 
 Scope: measured evidence from BringupKit bearing on

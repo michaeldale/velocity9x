@@ -1,5 +1,7 @@
 # DOS-box display fault handoff — reproduced in 86Box, driver never entered
 
+> Status: Historical. The DOS-box display fault remains tracked as an open issue.
+
 Date: 2026-08-28
 Branch: `main`, eleven commits ahead of both remotes and **unpushed**
 Issue: [`docs/issues/2026-08-28-dos-box-entry-hang-gma950.md`](../issues/2026-08-28-dos-box-entry-hang-gma950.md)

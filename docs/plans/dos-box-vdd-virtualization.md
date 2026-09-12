@@ -1,5 +1,7 @@
 # Making the main VDD willing to manage the DOS-box round trip
 
+> Status: Open. The fullscreen DOS return fault remains under investigation.
+
 Branch: `dos-box-vdd-virtualization`
 Issue: [`docs/issues/2026-08-28-dos-box-entry-hang-gma950.md`](../issues/2026-08-28-dos-box-entry-hang-gma950.md)
 Evidence this rests on:

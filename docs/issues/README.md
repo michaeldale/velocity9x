@@ -1,0 +1,53 @@
+# Issue records
+
+An issue record is a dated defect report or investigation. Its body is appended to as the investigation moves, never rewritten. The split below is a reading of each record and of docs/STATUS.md as of 2026-09-12; the record itself is authoritative.
+
+## Open
+
+- [2026-08-15 Doom95 renders half-width in garbage colours](2026-08-15-doom95-low-resolution-modes.md)
+- [2026-08-20 A live mode switch leaves the desktop unrepainted on the physical Trio64](2026-08-20-live-mode-switch-no-repaint-barry.md)
+- [2026-08-23 The S3 pedestal bit: black comes out dark grey](2026-08-23-s3-pedestal-black-level.md)
+- [2026-08-27 GDI acceleration corrupts the display on physical S3 Trio64 silicon](2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)
+- [2026-08-27 Full-screen GetDIBits capture renders doubled and squeezed at 640x480 on BARRY](2026-08-27-getdibits-fullscreen-doubled-at-640-barry.md)
+- [2026-08-27 Netbook GMA 950 first run: what the on-disk reports say to change](2026-08-27-netbook-gma950-findings.md)
+- [2026-08-27 The vbe QEMU guest hangs on reset, and only a fresh process recovers](2026-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md)
+- [2026-08-27 vbe 1024x768x16: the scanout shows stripes while GDI reads a clean desktop](2026-08-27-vbe-1024x768x16-scanout-stripes.md)
+- [2026-08-27 The vbe QEMU guest will not boot into Windows: registry/configuration error](2026-08-27-vbe-qemu-guest-registry-error.md)
+- [2026-08-28 A full-screen DOS box destroys the picture, on the Mini 110 and in 86Box](2026-08-28-dos-box-entry-hang-gma950.md)
+- [2026-08-28 A full-screen DOS box comes back with a corrupt band across the top](2026-08-28-fullscreen-dos-scanout.md)
+- [2026-08-28 The survey pointed the video BIOS at DS:0000 and corrupted the machine](2026-08-28-survey-null-assignment.md)
+- [2026-08-28 Two survey reports arrived missing the same section headers and the Result](2026-08-28-survey-report-sections-missing.md)
+- [2026-08-29 The installer asks where to find V9XDISP.DRV](2026-08-29-inf-asks-for-v9xdisp-drv.md)
+- [2026-08-29 The driver would not load again after the DOS survey, and safe mode was needed](2026-08-29-pineview-driver-will-not-load-after-survey.md)
+- [2026-08-29 The Trio32 is offered 800x600x32 and its BIOS refuses it](2026-08-29-trio32-lacks-vbe-0115.md)
+- [2026-08-30 Every package claims "GUEST ACTIVATION NOT YET TESTED", including ones activated on guests](2026-08-30-package-status-string-is-hardcoded.md)
+- [2026-08-30 V9XTRACE.EXE faults in KRNL386 once DirectDraw has run](2026-08-30-trace-dump-krnl386-flush-gpf.md)
+- [2026-08-30 XFree86 says the ViRGE cannot do 32 bpp at 1024 wide, and this driver ships that mode](2026-08-30-virge-1024x768x32-xfree86-limit.md)
+- [2026-08-30 The ViRGE needs a dummy blit after a 3D command, and this driver does not issue one](2026-08-30-virge-2d-after-3d-dummy-blit.md)
+- [2026-09-02 DxDiag's Direct3D test fails at step 44, EnumTextureFormats](2026-09-02-dxdiag-fails-at-enumtextureformats.md)
+- [2026-09-02 FlipPixelOk reads 0 on every target, including ones whose flips work](2026-09-02-flippixelok-is-uninterpretable.md)
+- [2026-09-03 3DMark 99 on the Trio3D/2X after the texture-stride fix: what is still wrong](2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md)
+- [2026-09-03 86Box's ViRGE failed the Z-write-disable rung, and stopped when the stride word was fully written](2026-09-03-86box-virge-ignores-depth-write-disable.md)
+- [2026-09-03 Trio3D/2X on the ViRGE path: alpha blend and mip selection do not match the ViRGE/DX](2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)
+- [2026-09-05 Incoming (1998) cannot create a texture on the hardware path: no format it wants is enumerated](2026-09-05-incoming-refuses-the-hal-texture-formats.md)
+- [2026-09-06 A8U4I5 with the PCI Trio64 hard-locks on framebuffer read-after-write, under any driver](2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)
+- [2026-09-06 A DOS box rewrites the desktop at twice its stride on physical Trio64 silicon](2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md)
+- [2026-09-06 Text acceleration hangs the physical Trio64 within a minute of the desktop](2026-09-06-text-acceleration-hangs-physical-trio64.md)
+
+## Closed/explained
+
+- [2026-08-14 DirectDraw accepts `SetInfo` but reports `DDCAPS_NOHARDWARE`](2026-08-14-directdraw-hal-nohardware.md)
+- [2026-08-14 Hellbender faults in `DIBENG.DLL` leaving the intro cinematic](2026-08-14-hellbender-dibeng-gpf.md)
+- [2026-08-15 Hellbender renders in software despite accepting the Direct3D HAL](2026-08-15-hellbender-software-fallback.md)
+- [2026-08-16 Five tier-0 backend defects](2026-08-16-tier0-defects-deferred.md)
+- [2026-08-18 V9XMINI.VXD hangs the boot on a physical S3 Trio64](2026-08-18-trio64-minivdd-boot-hang.md)
+- [2026-08-20 The physical Trio64's "high-colour tiling" was a screenshot race](2026-08-20-barry-tiling-was-a-screenshot-race.md)
+- [2026-08-26 A freshly built `ati` package cannot enable: no collection and no aperture](2026-08-26-ati-package-cannot-enable.md)
+- [2026-08-26 The GDI solid fill takes a logical RGB where the engine wants a physical colour](2026-08-26-gdi-fill-brush-colour-not-physical.md)
+- [2026-09-01 The D3D clipper loses the last row and column of any full-target triangle](2026-09-01-clipper-loses-last-row-and-column.md)
+- [2026-09-01 The ViRGE's S3D triangle engine writes ZRGB1555 into an RGB565 target](2026-09-01-virge-3d-writes-zrgb1555.md)
+- [2026-09-02 RETRACTED: "DrawPrimitive into a 640x480 render target terminates the caller"](2026-09-02-large-render-target-kills-the-caller.md)
+- [2026-09-04 A second Direct3D device, on the primary chain's back buffer, kills the caller](2026-09-04-a-second-d3d-device-on-the-primary-chain-kills-the-caller.md)
+- [2026-09-05 SetRenderTarget onto the primary chain is accepted and ignored](2026-09-05-setrendertarget-is-accepted-and-ignored.md)
+- [2026-09-10 A render-target switch silently loses every texture](2026-09-10-a-target-switch-loses-every-texture.md)
+- [2026-09-11 Every Final Reality texture is refused for having no pixel format](2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md)

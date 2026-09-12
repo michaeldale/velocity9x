@@ -1,5 +1,7 @@
 # Fresh Windows 98 SE QEMU VM — current state and rebuild handoff
 
+> Status: Historical. The later Stage 2 handoff records the resolved gate.
+
 Date: 2026-08-25  
 Workspace: `C:\everything\velocity9x`  
 VM state at handoff: **shut down; do not launch or modify it as part of this handoff**

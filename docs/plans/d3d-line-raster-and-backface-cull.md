@@ -1,5 +1,7 @@
 # Direct3D gaps: backface culling and line rasterisation
 
+> Status: Open. The two capabilities remain unimplemented compatibility gaps.
+
 Two capabilities the HAL does not have. Neither is a defect — nothing is
 broken, and nothing regressed. They came out of a caps-level comparison
 against L10GL (`linuxid10t/L10GL`), a Linux-console OpenGL framework whose

@@ -1,5 +1,7 @@
 # The first Velocity9x driver run on the 486, and where it stopped
 
+> Status: Historical. Later notes correct this session's provisional conclusions.
+
 > **Superseded by
 > [the 2026-08-22 handover](2026-08-22-vlb-manual-select-handover.md).** This
 > file was written and then corrected as the session went, so it contains
