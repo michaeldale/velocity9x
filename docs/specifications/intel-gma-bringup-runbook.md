@@ -240,6 +240,26 @@ an automatic failure: this phase exists to discover which firmware events
 change ownership state. Preserve partial `CAPTURED` files too, but they do not
 complete the phase.
 
+### 3.2d Phase 4 no-write command-plan capture
+
+The first Phase 4 package still cannot write Intel MMIO: the public 945GSE
+specification update does not disclose the internal-buffer erratum workaround,
+and the errata gate is therefore closed. It does reserve the top 128 KiB from
+DirectDraw and writes `C:\V9XDIAG\INTELRNG.TXT` after the Phase 2 inventory.
+
+Copy that file and validate it before any later package opens the write gate:
+
+```powershell
+.\scripts\check-intel-ring-plan.ps1 -Path <usb-copy>\INTELRNG.TXT
+```
+
+Require `Access=no-hardware-writes`, `ErrataGate=0` and
+`Result=ERRATA-GATED`. The validator independently reconstructs the 64 KiB
+ring, HWS and scratch placement, checks that all ten dwords are the exact
+reviewed MI/BLT streams, and recomputes `ArmPacketCrc`. On the measured Phase 2
+layout it should report ring `00790000`, HWS `007A0000` and scratch `007A1000`.
+Any difference is a capture to understand, not permission to arm.
+
 ### 3.3 Per-mode checklist
 
 Four modes. Run every row for each; a mode is not "done" until all of them are

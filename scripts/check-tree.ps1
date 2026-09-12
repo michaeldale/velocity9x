@@ -44,6 +44,7 @@ $required = @(
     "scripts\check-intel-mmio-capture.ps1",
     "scripts\check-intel-gtt-capture.ps1",
     "scripts\check-intel-event-capture.ps1",
+    "scripts\check-intel-ring-plan.ps1",
     "scripts\run-vm-mode-matrix.ps1",
     "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",
@@ -177,6 +178,9 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\intel_diag16.c"),
     (Join-Path $repoRoot "src\display16\intel_gtt16.c"),
     (Join-Path $repoRoot "src\display16\intel_event16.c"),
+    # Phase 4's no-write plan publisher uses the Win16 profile API; packet
+    # construction and validation remain OS-free in src\chipsets\intel.
+    (Join-Path $repoRoot "src\display16\intel_ring16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
