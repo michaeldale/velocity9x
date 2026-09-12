@@ -151,6 +151,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-12 Intel Phase 3 measured on the netbook: no firmware event moves ownership, and the takeover point is quiet](2026-09-12-intel-phase3-event-matrix.md)
 - [2026-09-12 Intel Phase 4: the 945GSE internal-buffer erratum keeps the write gate closed](2026-09-12-intel-phase4-errata-gate.md)
 - [2026-09-12 The 945 "Intel Flush Page": what it is, and what it does not explain](2026-09-12-intel-flush-page-lead.md)
+- [2026-09-13 The XP miniport across the erratum-fix boundary: 4864 removes render-clock switching; erratum 12 is not visible in strings](2026-09-13-intel-xp-miniport-diff-across-the-erratum-fix.md)
 
 ## NVIDIA and other surveyed cards
 
