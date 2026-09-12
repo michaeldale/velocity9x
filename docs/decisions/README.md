@@ -150,6 +150,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-12 Intel Phase 3 event-matrix implementation is ready for physical measurement](2026-09-12-intel-phase3-event-matrix-implementation.md)
 - [2026-09-12 Intel Phase 3 measured on the netbook: no firmware event moves ownership, and the takeover point is quiet](2026-09-12-intel-phase3-event-matrix.md)
 - [2026-09-12 Intel Phase 4: the 945GSE internal-buffer erratum keeps the write gate closed](2026-09-12-intel-phase4-errata-gate.md)
+- [2026-09-12 The 945 "Intel Flush Page": what it is, and what it does not explain](2026-09-12-intel-flush-page-lead.md)
 
 ## NVIDIA and other surveyed cards
 
