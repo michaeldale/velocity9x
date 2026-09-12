@@ -111,7 +111,14 @@ them from PCI config at run time and never cache one across a boot.
 
 ### 2. Read-only GTT inventory
 
-**Implementation ready 2026-09-12, not measured:** the Intel package reads
+**Done 2026-09-12, measured on the netbook across two cold boots:** all
+65536 PTEs valid and uncached, hash `4D8707C5` both times, linear from BSM
+for 1983 pages then a fill page, PGTBL_CTL matches, reservation and both
+samples backed. Every aperture page is backed at boot. Record:
+`docs/decisions/2026-09-12-intel-phase2-gtt-inventory.md`. Phase 3 is
+unblocked.
+
+**Implementation ready 2026-09-12:** the Intel package reads
 BAR2, BAR3, BSM and host-bridge GGC fresh from PCI config, has the mini-VDD
 map exactly 256 KiB at BAR3 and hash two full read passes, streams the table
 through four-PTE register queries into `INTELGTT.BIN` while hashing a third

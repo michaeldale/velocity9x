@@ -146,6 +146,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-17 intel-gma Phase 0 evidence - the Windows half, measured](2026-08-17-intel-gma-phase0-windows-evidence.md)
 - [2026-09-12 Intel Phase 1 is code-ready, not hardware-complete](2026-09-12-intel-phase1-readonly-mmio-implementation.md)
 - [2026-09-12 Intel Phase 1 measured on the netbook: the fingerprint passes, and the offsets are confirmed](2026-09-12-intel-phase1-physical-capture.md)
+- [2026-09-12 Intel Phase 2 measured on the netbook: the VBIOS maps the whole aperture into stolen memory, identically on two cold boots](2026-09-12-intel-phase2-gtt-inventory.md)
 
 ## NVIDIA and other surveyed cards
 
