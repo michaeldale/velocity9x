@@ -36,6 +36,9 @@ static void test_native_pipe_b(void)
                   V9X_I9XX_FP_LIVE_PIPE | V9X_I9XX_FP_TIMING_VALID |
                   V9X_I9XX_FP_SOURCE_MATCH | V9X_I9XX_FP_PLANE_MATCH |
                   V9X_I9XX_FP_RING_QUIESCENT;
+    v9x_u16 phase1 = all & (v9x_u16)~V9X_I9XX_FP_RING_QUIESCENT;
+
+    CHECK(V9X_I9XX_FP_PHASE1_REQUIRED == phase1);
 
     make_native_snapshot(&first);
     second = first;

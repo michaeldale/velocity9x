@@ -118,6 +118,24 @@ V9xMtrrDefType  dd 0
 V9xMtrrBase     dd V9X_MTRR_RANGE_MAX dup (0)
 V9xMtrrMask     dd V9X_MTRR_RANGE_MAX dup (0)
 
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
+; supplied from a fresh PCI config read by the display driver on each enable;
+; this layer owns the physical mapping and never writes through it.
+V9X_I9XX_MMIO_BYTES equ 00080000h
+V9xI9xxMmioBase   dd 0
+V9xI9xxMmioLinear dd 0
+V9xI9xxValid      dw 0
+V9xI9xxOffsets dd 00002020h, 00002030h, 00002034h, 00002038h
+                dd 0000203ch, 00002080h
+                dd 00070008h, 00060000h, 0006000ch, 0006001ch
+                dd 00070180h, 00070184h, 00070188h
+                dd 00071008h, 00061000h, 0006100ch, 0006101ch
+                dd 00071180h, 00071184h, 00071188h
+V9xI9xxFirst  dd V9X_I9XX_SNAPSHOT_DWORDS dup (0)
+V9xI9xxSecond dd V9X_I9XX_SNAPSHOT_DWORDS dup (0)
+ENDIF
+
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
 ; be had. Allocated at init and never freed.
 V9xVbeBufSeg    dw 0
@@ -900,16 +918,80 @@ V9xMini_Vesa_Post_Done:
     ret
 EndProc MiniVDD_VESACallPostProcessing
 
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; EAX = current BAR0 physical base. Returns AX=1 after two complete reads.
+; Refuses a moved BAR rather than leaking another permanent physical mapping.
+BeginProc V9xMini_I9xx_Capture
+    pushad
+    mov     V9xI9xxValid, 0
+
+    cmp     eax, 01000000h
+    jb      V9xMini_I9xx_Capture_Done
+    cmp     eax, 0fff80000h
+    ja      V9xMini_I9xx_Capture_Done
+    test    eax, V9X_I9XX_MMIO_BYTES - 1
+    jnz     V9xMini_I9xx_Capture_Done
+
+    cmp     V9xI9xxMmioLinear, 0
+    je      short V9xMini_I9xx_Capture_Map
+    cmp     eax, V9xI9xxMmioBase
+    jne     V9xMini_I9xx_Capture_Done
+    jmp     short V9xMini_I9xx_Capture_Read
+
+V9xMini_I9xx_Capture_Map:
+    mov     V9xI9xxMmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_I9XX_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_I9xx_Capture_Map_Failed
+    mov     V9xI9xxMmioLinear, eax
+    jmp     short V9xMini_I9xx_Capture_Read
+V9xMini_I9xx_Capture_Map_Failed:
+    mov     V9xI9xxMmioBase, 0
+    jmp     V9xMini_I9xx_Capture_Done
+
+V9xMini_I9xx_Capture_Read:
+    mov     esi, V9xI9xxMmioLinear
+    mov     edi, OFFSET32 V9xI9xxOffsets
+    mov     edx, OFFSET32 V9xI9xxFirst
+    mov     ecx, V9X_I9XX_SNAPSHOT_DWORDS
+V9xMini_I9xx_Capture_First:
+    mov     ebx, [edi]
+    mov     eax, [esi+ebx]
+    mov     [edx], eax
+    add     edi, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Capture_First
+
+    mov     edi, OFFSET32 V9xI9xxOffsets
+    mov     edx, OFFSET32 V9xI9xxSecond
+    mov     ecx, V9X_I9XX_SNAPSHOT_DWORDS
+V9xMini_I9xx_Capture_Second:
+    mov     ebx, [edi]
+    mov     eax, [esi+ebx]
+    mov     [edx], eax
+    add     edi, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Capture_Second
+    mov     V9xI9xxValid, 1
+
+V9xMini_I9xx_Capture_Done:
+    popad
+    movzx   eax, V9xI9xxValid
+    ret
+EndProc V9xMini_I9xx_Capture
+ENDIF
+
 ; Protected-mode API, reached from the 16-bit display driver through
 ; INT 2Fh AX=1684h BX=V9XMINI_DEVICE_ID.
 ;
 ; Entry: EBP = Client_Reg_Struc, client AX = function.
 ;
-; Every function is a read of the table collected at init. Nothing here calls
-; the BIOS, allocates, or touches a register of the card: the caller is a
-; display driver part-way through GDI initialisation, and the whole reason the
-; queries happen at init is so that this path cannot do anything that might
-; fault one. An unknown function returns AX=0 rather than failing the call.
+; The v1/v2 functions read tables collected at init. The Intel-only v3 capture
+; maps a freshly supplied PCI BAR0 and performs two reads of its fixed MMIO
+; allowlist; it writes no card state. Nothing here calls the BIOS or allocates.
+; An unknown function returns AX=0 rather than failing the call.
 BeginProc MiniVDD_PM_API
 
     movzx   eax, [ebp.Client_AX]
@@ -932,8 +1014,44 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_MtrrInfo
     cmp     ax, V9XMINI_FN_MTRR_RANGE
     je      V9xMini_Api_MtrrRange
+    cmp     ax, V9XMINI_FN_I9XX_CAPTURE
+    je      V9xMini_Api_I9xxCapture
+    cmp     ax, V9XMINI_FN_I9XX_DWORD
+    je      V9xMini_Api_I9xxDword
 
     ; Unknown function.
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxCapture:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, [ebp.Client_EBX]
+    call    V9xMini_I9xx_Capture
+    mov     [ebp.Client_AX], ax
+ELSE
+    mov     [ebp.Client_AX], 0
+ENDIF
+    ret
+
+V9xMini_Api_I9xxDword:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxValid, 0
+    je      short V9xMini_Api_I9xxDword_Missing
+    movzx   eax, [ebp.Client_CX]
+    cmp     ax, V9X_I9XX_SNAPSHOT_DWORDS
+    jae     short V9xMini_Api_I9xxDword_Missing
+    mov     ebx, V9xI9xxFirst[eax*4]
+    mov     [ebp.Client_EBX], ebx
+    mov     ecx, V9xI9xxSecond[eax*4]
+    mov     [ebp.Client_ECX], ecx
+    mov     edx, V9xI9xxOffsets[eax*4]
+    mov     [ebp.Client_EDX], edx
+    mov     esi, V9xI9xxMmioBase
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxDword_Missing:
+ENDIF
     mov     [ebp.Client_AX], 0
     ret
 
@@ -2305,6 +2423,11 @@ IFNDEF V9X_S3_DPMS
     ; the S3 register body is absent and a capture says which image is running.
     mov     esi, OFFSET32 V9xMiniDpmsDisabledLine
     mov     ecx, V9xMiniDpmsDisabledLineLength
+    call    V9xMini_Serial_Write
+ENDIF
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     esi, OFFSET32 V9xMiniIntelMmioLine
+    mov     ecx, V9xMiniIntelMmioLineLength
     call    V9xMini_Serial_Write
 ENDIF
     jmp     short V9xMini_Init_Succeeded

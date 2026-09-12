@@ -10,6 +10,7 @@
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_PIPE_COUNT              ((v9x_u16)2u)
 #define V9X_I9XX_PIPE_NONE               ((v9x_u16)0xffffu)
+#define V9X_I9XX_SNAPSHOT_DWORDS         ((v9x_u16)20u)
 
 #define V9X_I9XX_PIPECONF_ENABLE         ((v9x_u32)0x80000000ul)
 #define V9X_I9XX_DSPCNTR_ENABLE          ((v9x_u32)0x80000000ul)
@@ -25,6 +26,7 @@
 #define V9X_I9XX_FP_SOURCE_MATCH         ((v9x_u16)0x0010u)
 #define V9X_I9XX_FP_PLANE_MATCH          ((v9x_u16)0x0020u)
 #define V9X_I9XX_FP_RING_QUIESCENT       ((v9x_u16)0x0040u)
+#define V9X_I9XX_FP_PHASE1_REQUIRED      ((v9x_u16)0x003fu)
 
 /* Offsets are documentation-derived and deliberately centralized. */
 #define V9X_I9XX_REG_PGTBL_CTL           ((v9x_u32)0x00002020ul)

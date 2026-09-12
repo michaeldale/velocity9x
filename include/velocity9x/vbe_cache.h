@@ -22,12 +22,13 @@
 
 #include "velocity9x/types.h"
 
-/* Contract versions. v1 is retained as history; v2 is the exact-match packaged
- * API and adds indexed enumeration, VBE 3 linear stride and colour fields, and
- * EDID chunks. A display driver refuses any other contract rather than guessing
- * at a register layout. */
+/* Contract versions. v1 and v2 are retained as history. v2 added indexed
+ * enumeration, VBE 3 linear stride and colour fields, and EDID chunks. v3 adds
+ * the Intel-only read-only MMIO fingerprint functions. A display driver
+ * refuses any other contract rather than guessing at a register layout. */
 #define V9X_VBE_API_V1 ((v9x_u16)1u)
 #define V9X_VBE_API_V2 ((v9x_u16)2u)
+#define V9X_VBE_API_V3 ((v9x_u16)3u)
 
 /*
  * Bounds. Separate limits so one corrupt BIOS field cannot become an

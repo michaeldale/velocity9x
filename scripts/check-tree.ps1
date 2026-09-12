@@ -150,6 +150,9 @@ $allowedOsBoundaries = @(
     # (C:\V9XDIAG\V9XMODES.INI) through WritePrivateProfileString; the table logic
     # itself stays in src\common\vbe_modes.c, which remains OS-free.
     (Join-Path $repoRoot "src\display16\modes16.c"),
+    # Intel Phase 1 writes its captured MMIO fingerprint with the same Win16
+    # profile API. The decoder it calls remains OS-free in the chipset tree.
+    (Join-Path $repoRoot "src\display16\intel_diag16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
@@ -326,7 +329,8 @@ foreach ($line in (Get-Content -LiteralPath $cContract)) {
 # The version constants are the one pair whose names differ, because the C side
 # never speaks the handshake itself.
 $contractAliases = @{ 'V9X_VBE_API_V1' = 'V9XMINI_API_V1'
-                      'V9X_VBE_API_V2' = 'V9XMINI_API_V2' }
+                      'V9X_VBE_API_V2' = 'V9XMINI_API_V2'
+                      'V9X_VBE_API_V3' = 'V9XMINI_API_V3' }
 $contractChecked = 0
 foreach ($name in $cValues.Keys) {
     $asmName = if ($contractAliases.ContainsKey($name)) { $contractAliases[$name] } else { $name }
@@ -462,7 +466,8 @@ if ($mtrrSource -match '(?im)^\s*wrmsr\b') {
 
 # A renamed or deleted constant would otherwise shrink the checked set to
 # nothing and still pass, so the load-bearing names are named here.
-foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_MODE_LIST_MAX',
+foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_API_V3',
+                        'V9X_VBE_MODE_LIST_MAX',
                         'V9X_VBE_MODE_QUERY_MAX', 'V9X_VBE_CACHE_MAX',
                         'V9X_VBE_BASELINE_PROBE_MAX', 'V9X_VBE_EDID_BYTES',
                         'V9X_VBE_EDID_CHUNKS', 'V9X_VBE_RF_ORIGIN_LIST',
@@ -529,11 +534,11 @@ foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm"))
     }
 }
 
-# Stage 1 is an exact v2 package pair. Reverting only the advertised version
+# The mini-VDD API is an exact v3 package pair. Reverting only the advertised version
 # would make the indexed implementation unreachable while all layouts still
 # agreed numerically, so assert the selected version as well as the constants.
-if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V2']) {
-    throw "V9XMINI_API_VERSION must advertise the implemented v2 contract."
+if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V3']) {
+    throw "V9XMINI_API_VERSION must advertise the implemented v3 contract."
 }
 $miniSource = Get-Content -LiteralPath `
     (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
@@ -558,10 +563,42 @@ if ($miniBuildSource -notmatch
     throw ("build-minivdd-skeleton.ps1 must define V9X_S3_DPMS only for " +
            "the s3 family (and not for its -NoDpms experiment).")
 }
+if ($miniBuildSource -notmatch
+    '(?m)^\$intelMmio = \(\$Family -eq ''intel-gma''\)\s*$' -or
+    $miniBuildSource -notmatch
+    '(?m)^\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*$') {
+    throw ("build-minivdd-skeleton.ps1 must define " +
+           "V9X_INTEL_MMIO_FINGERPRINT only for the intel-gma family.")
+}
+if ($miniSource -notmatch
+    '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture\s*\r?\nENDIF') {
+    throw "The Intel MMIO capture must remain behind its positive family guard."
+}
+$intelCapture = [regex]::Match(
+    $miniSource,
+    '(?ms)^BeginProc\s+V9xMini_I9xx_Capture\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Capture').Groups[1].Value
+if ([regex]::Matches($intelCapture, '(?im)^\s*mov\s+eax,\s*\[esi\+ebx\]\s*$').Count -ne 2 -or
+    $intelCapture -match '(?im)^\s*mov\s+\[esi\+ebx\]') {
+    throw ("The Intel fingerprint must contain exactly two allowlist MMIO " +
+           "reads and no MMIO write through ESI+EBX.")
+}
 if ($miniSource -match '\bV9X_NO_DPMS\b' -or
     $miniBuildSource -match '\bV9X_NO_DPMS\b') {
     throw "The obsolete negative DPMS guard has returned; use V9X_S3_DPMS."
 }
+
+$intelHeader = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "include\velocity9x\intel_gma.h") -Raw
+$snapshotCountMatch = [regex]::Match(
+    $intelHeader,
+    '(?m)^#define\s+V9X_I9XX_SNAPSHOT_DWORDS\s+\(\(v9x_u16\)([0-9]+)u\)\s*$')
+if (-not $snapshotCountMatch.Success -or
+    [int]$snapshotCountMatch.Groups[1].Value -ne
+        $asmValues['V9X_I9XX_SNAPSHOT_DWORDS']) {
+    throw ("The C and assembly Intel MMIO snapshot counts must agree with " +
+           "V9X_I9XX_SNAPSHOT_DWORDS.")
+}
+$contractChecked++
 if ($miniSource -match '\bV9xVbeModeList\b|\bV9X_VBE_CACHE_COUNT\b') {
     throw "loader.asm still contains the removed fixed v1 mode cache."
 }

@@ -77,6 +77,12 @@ EXTRN _v9x_minivdd_edid0:DWORD
 EXTRN _v9x_minivdd_edid1:DWORD
 EXTRN _v9x_minivdd_edid2:DWORD
 EXTRN _v9x_minivdd_edid3:DWORD
+IFDEF V9X_INTEL_GMA_FAMILY
+EXTRN _v9x_i9xx_first:DWORD
+EXTRN _v9x_i9xx_second:DWORD
+EXTRN _v9x_i9xx_offset:DWORD
+EXTRN _v9x_i9xx_bar0:DWORD
+ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
 V9xPhysicalBase   dd 0
@@ -947,6 +953,65 @@ V9xMiniMtrrRangeDone:
     retf    2
 V9XMINIMTRRRANGE ENDP
 
+IFDEF V9X_INTEL_GMA_FAMILY
+; WORD FAR PASCAL V9xMiniI9xxCapture(DWORD bar0)
+; Captures through the Intel-only mini-VDD body, then copies the fixed result
+; into DGROUP so ordinary 16-bit C can decode and publish it.
+PUBLIC V9XMINII9XXCAPTURE
+V9XMINII9XXCAPTURE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxCaptureFailed
+
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_CAPTURE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxCaptureFailed
+
+    xor     di, di
+V9xMiniI9xxCaptureNext:
+    movzx   ecx, di
+    mov     eax, V9XMINI_FN_I9XX_DWORD
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxCaptureFailed
+    movzx   edi, di
+    mov     _v9x_i9xx_first[edi*4], ebx
+    mov     _v9x_i9xx_second[edi*4], ecx
+    mov     _v9x_i9xx_offset[edi*4], edx
+    mov     _v9x_i9xx_bar0, esi
+    inc     di
+    cmp     di, V9X_I9XX_SNAPSHOT_DWORDS
+    jb      short V9xMiniI9xxCaptureNext
+    mov     ax, 1
+    jmp     short V9xMiniI9xxCaptureDone
+V9xMiniI9xxCaptureFailed:
+    xor     ax, ax
+V9xMiniI9xxCaptureDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINII9XXCAPTURE ENDP
+ENDIF
+
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)
 PUBLIC V9XMINIVBEMODEAT
 V9XMINIVBEMODEAT PROC FAR
@@ -1520,6 +1585,58 @@ V9xPciReadBar0Done:
     pop     bp
     retf    6
 V9XPCIREADBAR ENDP
+
+IFDEF V9X_INTEL_GMA_FAMILY
+; WORD FAR PASCAL V9xPciReadIntelMmioBar(DWORD FAR *base)
+; Fresh BAR0 config read for each Phase-1 capture. Unlike the framebuffer BAR
+; helper above, this accepts the 512-KiB alignment of MMADR and changes no
+; hardware-stage code because a diagnostic refusal must not fail Enable.
+PUBLIC V9XPCIREADINTELMMIOBAR
+V9XPCIREADINTELMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadIntelMmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadIntelMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadIntelMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadIntelMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadIntelMmioBarFailed
+    cmp     eax, 0fff80000h
+    ja      short V9xPciReadIntelMmioBarFailed
+    test    eax, 0007ffffh
+    jnz     short V9xPciReadIntelMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadIntelMmioBarDone
+V9xPciReadIntelMmioBarFailed:
+    xor     ax, ax
+V9xPciReadIntelMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADINTELMMIOBAR ENDP
+ENDIF
 
 ; Read the vendor/device ids of the machine's first display-class PCI device
 ; into the DWORD the caller points at (vendor in the low word, device in the

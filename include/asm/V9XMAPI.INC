@@ -44,18 +44,25 @@ V9XMINI_API_MAGIC   EQU 39583956h
 ; v2 adds indexed enumeration of a bounded scan cache, the VBE 3 linear stride
 ; and colour fields, the packed record below, and EDID block 0 in register-only
 ; chunks. V9XMINI_API_VERSION is what both packaged binaries implement and
-; advertise; Stage 1 makes v2 an exact-match package-pair contract.
+; advertise; Stage 1 made v2 an exact-match package-pair contract.
+;
+; v3 adds the Intel-only, read-only i9xx MMIO fingerprint capture. Other
+; family images implement the function numbers as clean refusals, so the
+; version remains one exact-match package contract across every family.
 V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
-V9XMINI_API_VERSION EQU V9XMINI_API_V2
+V9XMINI_API_V3      EQU 0003h
+V9XMINI_API_VERSION EQU V9XMINI_API_V3
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
 ; ---------------------------------------------------------------------------
 ;
-; Every function is a bounds-checked read of locked data. None calls the BIOS,
-; allocates, or touches a register of the card: the caller is a display driver
-; part-way through GDI initialisation. An unknown function returns AX=0.
+; Every function is bounds checked. The v1/v2 functions read locked data
+; collected at mini-VDD initialisation. The Intel-only v3 capture maps the
+; caller's freshly read PCI BAR0 and reads a fixed allowlist twice; it never
+; writes card state. No function calls the BIOS or allocates. An unknown
+; function returns AX=0.
 ;
 ; v1 functions. MODE_INFO is retained in v2 rather than replaced: the static
 ; LFB path looks its active mode up by VBE number, and that lookup must also
@@ -146,6 +153,14 @@ V9XMINI_FN_EDID_CHUNK EQU 0006h
 ;                          more than 32 physical address bits.
 V9XMINI_FN_MTRR_INFO  EQU 0007h
 V9XMINI_FN_MTRR_RANGE EQU 0008h
+
+; v3: Intel builds alone capture a fixed, read-only MMIO allowlist.
+; I9XX_CAPTURE in: EBX = current PCI BAR0 physical base; out AX=1 on success.
+; I9XX_DWORD in: CX = index; out EBX=first, ECX=second, EDX=offset,
+; ESI=BAR0 provenance. Other family builds return AX=0.
+V9XMINI_FN_I9XX_CAPTURE  EQU 0009h
+V9XMINI_FN_I9XX_DWORD    EQU 000Ah
+V9X_I9XX_SNAPSHOT_DWORDS EQU 20
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

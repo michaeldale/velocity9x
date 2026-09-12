@@ -48,7 +48,9 @@
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
+            @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
@@ -60,7 +62,7 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        RuntimeDefines = @('V9X_INTEL_GMA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-intel-gma'
         PackageOutput = 'build\win98se-intel-gma'
         VmStageDirectory = 'build\vm-probe\INTELGMA'

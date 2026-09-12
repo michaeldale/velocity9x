@@ -75,6 +75,15 @@ there is no serial port. Phases 1-3 perform no writes.
 
 ### 1. Read-only MMIO fingerprint
 
+**Implementation ready 2026-09-12:** the Intel package now reads BAR0 freshly
+from PCI configuration on each diagnostic publication, asks the Intel-only
+mini-VDD path to map exactly 512 KiB, reads the fixed 20-dword allowlist twice,
+and writes raw values, deltas, decoded relationships, BAR provenance and a
+`PASS`/`REVIEW` verdict to `C:\V9XDIAG\INTELMM.TXT`. The mini-VDD has no Intel
+MMIO write instruction; tree checks enforce the positive family gate, the two
+allowlist reads and the shared snapshot count. This is code-ready, not phase
+completion: the physical netbook capture below remains the done-criterion.
+
 Map BAR0 (512 KiB) through the mini-VDD and read a small allowlist twice:
 `PGTBL_CTL 0x2020`, ring `TAIL/HEAD/START/CTL 0x2030-0x203C`, `HWS_PGA 0x2080`,
 plus pipe timing, plane address and stride. Every offset is documentation-

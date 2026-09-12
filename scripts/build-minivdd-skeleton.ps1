@@ -113,6 +113,7 @@ $objectPath = Join-Path $outputDir "loader.obj"
 $vxdPath = Join-Path $outputDir "v9xmini.vxd"
 $mapPath = Join-Path $outputDir "v9xmini.map"
 $s3Dpms = ($Family -eq 's3') -and (-not $NoDpms)
+$intelMmio = ($Family -eq 'intel-gma')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -201,6 +202,12 @@ if (-not $s3Dpms) {
     $buildIncludeLines += @(
         "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-guarded family=$Family build=$BuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
+    )
+}
+if ($intelMmio) {
+    $buildIncludeLines += @(
+        "V9xMiniIntelMmioLine db `"V9X-MINI intel-mmio read-only family=$Family build=$BuildId`", 13, 10",
+        "V9xMiniIntelMmioLineLength equ `$ - V9xMiniIntelMmioLine"
     )
 }
 if ($VesaTrace) {
@@ -379,6 +386,9 @@ if ($VgaReturn) {
 }
 if ($s3Dpms) {
     $assemblerArguments = @("-DV9X_S3_DPMS") + $assemblerArguments
+}
+if ($intelMmio) {
+    $assemblerArguments = @("-DV9X_INTEL_MMIO_FINGERPRINT") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments
@@ -592,6 +602,12 @@ if (-not $s3Dpms) {
     }
 } elseif ($imageText.Contains($dpmsDisabledMarker)) {
     throw "An S3 DPMS mini-VDD must not carry the family-guard marker."
+}
+$intelMmioMarker = "V9X-MINI intel-mmio read-only"
+if ($intelMmio -ne $imageText.Contains($intelMmioMarker)) {
+    throw ("The mini-VDD image " +
+           $(if ($imageText.Contains($intelMmioMarker)) { "carries" } else { "lacks" }) +
+           " the Intel MMIO marker, which must match -Family intel-gma.")
 }
 $mapText = Get-Content -LiteralPath $mapPath -Raw
 foreach ($symbol in @("V9xMini_Serial_Write", "V9xMini_Set_Dpms",
