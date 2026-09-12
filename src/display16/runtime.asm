@@ -89,6 +89,9 @@ EXTRN _v9x_i9xx_bsm:DWORD
 EXTRN _v9x_i9xx_ggc:WORD
 EXTRN _v9x_i9xx_gtt_hash_a:DWORD
 EXTRN _v9x_i9xx_gtt_hash_b:DWORD
+EXTRN _v9x_i9xx_event_value:DWORD
+EXTRN _v9x_i9xx_event_count:WORD
+EXTRN _v9x_i9xx_event_dropped:WORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -1130,6 +1133,86 @@ V9xMiniI9xxGttChunkDone:
     pop     bp
     retf    2
 V9XMINII9XXGTTCHUNK ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxEventCapture(WORD kind, WORD context)
+; Captures the caller's lifecycle point, then returns the complete retained
+; journal dimensions. A DPMS record may already be present from ring 0.
+PUBLIC V9XMINII9XXEVENTCAPTURE
+V9XMINII9XXEVENTCAPTURE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxEventCaptureFailed
+    movzx   ecx, word ptr [bp+8]
+    movzx   edx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_EVENT_CAPTURE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxEventCaptureFailed
+    mov     eax, V9XMINI_FN_I9XX_EVENT_INFO
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxEventCaptureFailed
+    cmp     edx, V9X_I9XX_EVENT_DWORDS
+    jne     short V9xMiniI9xxEventCaptureFailed
+    cmp     esi, V9X_I9XX_EVENT_MAX
+    jne     short V9xMiniI9xxEventCaptureFailed
+    mov     _v9x_i9xx_event_count, bx
+    mov     _v9x_i9xx_event_dropped, cx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxEventCaptureDone
+V9xMiniI9xxEventCaptureFailed:
+    xor     ax, ax
+V9xMiniI9xxEventCaptureDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINII9XXEVENTCAPTURE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxEventDword(WORD event, WORD field)
+PUBLIC V9XMINII9XXEVENTDWORD
+V9XMINII9XXEVENTDWORD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    movzx   ecx, word ptr [bp+8]
+    movzx   edx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_EVENT_DWORD
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxEventDwordFailed
+    mov     _v9x_i9xx_event_value, ebx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxEventDwordDone
+V9xMiniI9xxEventDwordFailed:
+    xor     ax, ax
+V9xMiniI9xxEventDwordDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINII9XXEVENTDWORD ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)

@@ -4,6 +4,8 @@ extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
 extern void v9x_intel_publish_mmio_fingerprint(void);
 extern void v9x_intel_publish_gtt_inventory(void);
+extern void v9x_intel_publish_event(unsigned short kind,
+                                    unsigned short context);
 
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma950_device
@@ -67,6 +69,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* Map only 16 MiB of GMADR; VBE's usable-memory answer clamps further. */
     0x00ffu, 0xffffu,
     v9x_intel_publish_diagnostics,
+    v9x_intel_publish_event,
     0,
     0,
     0,

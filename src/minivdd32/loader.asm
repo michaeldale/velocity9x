@@ -145,6 +145,21 @@ V9xI9xxGttLinear  dd 0
 V9xI9xxGttHashA   dd 0
 V9xI9xxGttHashB   dd 0
 V9xI9xxGttValid   dw 0
+
+; Phase 3 retains a bounded chronological journal in locked VxD storage.
+; Once full it stops rather than overwriting the cold-boot baseline; Dropped
+; makes an incomplete matrix impossible to mistake for a complete one.
+V9xI9xxEventOffsets dd 00002020h, 00002030h, 00002034h, 00002038h
+                     dd 0000203ch, 00002080h
+                     dd 00002000h, 00002004h, 00002008h, 0000200ch
+                     dd 00002010h, 00002014h, 00002018h, 0000201ch
+V9xI9xxEventRecords dd V9X_I9XX_EVENT_MAX * V9X_I9XX_EVENT_DWORDS dup (0)
+V9xI9xxEventCount   dw 0
+V9xI9xxEventDropped dw 0
+V9xI9xxEventBusy    dw 0
+V9xI9xxEventResult  dw 0
+V9xI9xxEventKind    dd 0
+V9xI9xxEventContext dd 0
 ENDIF
 
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
@@ -794,6 +809,11 @@ BeginProc MiniVDD_SetMonitorPowerState
 V9xMini_Set_Monitor_D0:
     xor     ecx, ecx
     call    V9xMini_Set_Dpms
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, V9X_I9XX_EVENT_KIND_DPMS
+    xor     ebx, ebx
+    call    V9xMini_I9xx_Event_Capture
+ENDIF
     mov     esi, OFFSET32 V9xMiniPowerOnLine
     mov     ecx, V9xMiniPowerOnLineLength
     call    V9xMini_Serial_Write
@@ -809,6 +829,11 @@ V9xMini_Set_Monitor_D3:
     mov     ecx, 50h
 V9xMini_Set_Monitor_Low_Power:
     call    V9xMini_Set_Dpms
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, V9X_I9XX_EVENT_KIND_DPMS
+    movzx   ebx, cx
+    call    V9xMini_I9xx_Event_Capture
+ENDIF
     mov     esi, OFFSET32 V9xMiniPowerOffLine
     mov     ecx, V9xMiniPowerOffLineLength
     call    V9xMini_Serial_Write
@@ -880,6 +905,11 @@ V9xMini_Vesa_D3:
     mov     ecx, 50h
 V9xMini_Vesa_Apply:
     call    V9xMini_Set_Dpms
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, V9X_I9XX_EVENT_KIND_DPMS
+    movzx   ebx, byte ptr [ebp.Client_BH]
+    call    V9xMini_I9xx_Event_Capture
+ENDIF
     mov     [ebp.Client_AX], 004fh      ; VESA call supported and successful
     pop     ecx
     stc
@@ -922,6 +952,11 @@ ENDIF
     push    ecx
     xor     ecx, ecx
     call    V9xMini_Set_Dpms
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, V9X_I9XX_EVENT_KIND_DPMS
+    xor     ebx, ebx
+    call    V9xMini_I9xx_Event_Capture
+ENDIF
     pop     ecx
 V9xMini_Vesa_Post_Restore:
     pop     eax
@@ -1064,6 +1099,125 @@ V9xMini_I9xx_Gtt_Done:
     movzx   eax, V9xI9xxGttValid
     ret
 EndProc V9xMini_I9xx_Gtt_Capture
+
+; EAX=event kind, EBX=event context. Capture only after both Phase 1 mappings
+; exist. Every MMIO field is read twice and the full GTT is hashed twice; no
+; store targets either mapped aperture. Returns EAX=1 when retained.
+BeginProc V9xMini_I9xx_Event_Capture
+    cmp     V9xI9xxEventBusy, 0
+    jne     V9xMini_I9xx_Event_Drop
+    mov     V9xI9xxEventBusy, 1
+    mov     V9xI9xxEventResult, 0
+    mov     V9xI9xxEventKind, eax
+    mov     V9xI9xxEventContext, ebx
+    pushad
+
+    cmp     V9xI9xxValid, 0
+    je      V9xMini_I9xx_Event_Unavailable_Saved
+    cmp     V9xI9xxGttValid, 0
+    je      V9xMini_I9xx_Event_Unavailable_Saved
+    movzx   eax, V9xI9xxEventCount
+    cmp     eax, V9X_I9XX_EVENT_MAX
+    jae     V9xMini_I9xx_Event_Drop_Saved
+    imul    eax, eax, V9X_I9XX_EVENT_BYTES
+    mov     edi, OFFSET32 V9xI9xxEventRecords
+    add     edi, eax
+    movzx   eax, V9xI9xxEventCount
+    inc     eax
+    mov     [edi], eax
+    mov     eax, V9xI9xxEventKind
+    mov     [edi+4], eax
+    mov     eax, V9xI9xxEventContext
+    mov     [edi+8], eax
+
+    mov     ebp, V9X_I9XX_EVENT_COMPLETE or V9X_I9XX_EVENT_MMIO_STABLE
+    mov     esi, V9xI9xxMmioLinear
+    mov     edx, OFFSET32 V9xI9xxEventOffsets
+    lea     ebx, [edi+16]
+    mov     ecx, 14
+V9xMini_I9xx_Event_Mmio_First:
+    mov     eax, [edx]
+    mov     eax, [esi+eax]
+    mov     [ebx], eax
+    add     edx, 4
+    add     ebx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Event_Mmio_First
+
+    mov     edx, OFFSET32 V9xI9xxEventOffsets
+    lea     ebx, [edi+16]
+    mov     ecx, 14
+V9xMini_I9xx_Event_Mmio_Second:
+    mov     eax, [edx]
+    mov     eax, [esi+eax]
+    cmp     eax, [ebx]
+    je      short V9xMini_I9xx_Event_Mmio_Same
+    and     ebp, 0fffffffdh
+V9xMini_I9xx_Event_Mmio_Same:
+    add     edx, 4
+    add     ebx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Event_Mmio_Second
+
+    mov     esi, V9xI9xxGttLinear
+    mov     edx, 0811c9dc5h
+    mov     ecx, V9X_I9XX_GTT_ENTRY_COUNT
+V9xMini_I9xx_Event_Gtt_A:
+    mov     eax, [esi]
+    call    V9xMini_I9xx_Hash_Dword
+    add     esi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Event_Gtt_A
+    mov     [edi+72], edx
+
+    mov     esi, V9xI9xxGttLinear
+    mov     edx, 0811c9dc5h
+    mov     ecx, V9X_I9XX_GTT_ENTRY_COUNT
+V9xMini_I9xx_Event_Gtt_B:
+    mov     eax, [esi]
+    call    V9xMini_I9xx_Hash_Dword
+    add     esi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Event_Gtt_B
+    mov     [edi+76], edx
+    cmp     edx, [edi+72]
+    jne     short V9xMini_I9xx_Event_Gtt_Compared
+    or      ebp, V9X_I9XX_EVENT_GTT_STABLE
+V9xMini_I9xx_Event_Gtt_Compared:
+    mov     eax, [edi+20]
+    and     eax, 001ffff8h
+    mov     ebx, [edi+24]
+    and     ebx, 001ffff8h
+    cmp     eax, ebx
+    jne     short V9xMini_I9xx_Event_Ring_Compared
+    or      ebp, V9X_I9XX_EVENT_RING_IDLE
+V9xMini_I9xx_Event_Ring_Compared:
+    test    dword ptr [edi+32], 1
+    jnz     short V9xMini_I9xx_Event_Ring_Controlled
+    or      ebp, V9X_I9XX_EVENT_RING_DISABLED
+V9xMini_I9xx_Event_Ring_Controlled:
+    test    dword ptr [edi+16], 1
+    jz      short V9xMini_I9xx_Event_Pgtbl_Checked
+    or      ebp, V9X_I9XX_EVENT_PGTBL_VALID
+V9xMini_I9xx_Event_Pgtbl_Checked:
+    mov     [edi+12], ebp
+    inc     V9xI9xxEventCount
+    mov     V9xI9xxEventResult, 1
+    jmp     short V9xMini_I9xx_Event_Done_Saved
+
+V9xMini_I9xx_Event_Drop_Saved:
+    inc     V9xI9xxEventDropped
+V9xMini_I9xx_Event_Unavailable_Saved:
+V9xMini_I9xx_Event_Done_Saved:
+    popad
+    mov     V9xI9xxEventBusy, 0
+    movzx   eax, V9xI9xxEventResult
+    ret
+V9xMini_I9xx_Event_Drop:
+    inc     V9xI9xxEventDropped
+    xor     eax, eax
+    ret
+EndProc V9xMini_I9xx_Event_Capture
 ENDIF
 
 ; Protected-mode API, reached from the 16-bit display driver through
@@ -1107,6 +1261,12 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxGttInfo
     cmp     ax, V9XMINI_FN_I9XX_GTT_CHUNK
     je      V9xMini_Api_I9xxGttChunk
+    cmp     ax, V9XMINI_FN_I9XX_EVENT_CAPTURE
+    je      V9xMini_Api_I9xxEventCapture
+    cmp     ax, V9XMINI_FN_I9XX_EVENT_INFO
+    je      V9xMini_Api_I9xxEventInfo
+    cmp     ax, V9XMINI_FN_I9XX_EVENT_DWORD
+    je      V9xMini_Api_I9xxEventDword
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -1192,6 +1352,49 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     [ebp.Client_AX], 1
     ret
 V9xMini_Api_I9xxGttChunk_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxEventCapture:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    movzx   eax, [ebp.Client_CX]
+    movzx   ebx, [ebp.Client_DX]
+    call    V9xMini_I9xx_Event_Capture
+    mov     [ebp.Client_AX], ax
+ELSE
+    mov     [ebp.Client_AX], 0
+ENDIF
+    ret
+
+V9xMini_Api_I9xxEventInfo:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    movzx   eax, V9xI9xxEventCount
+    mov     [ebp.Client_EBX], eax
+    movzx   eax, V9xI9xxEventDropped
+    mov     [ebp.Client_ECX], eax
+    mov     [ebp.Client_EDX], V9X_I9XX_EVENT_DWORDS
+    mov     [ebp.Client_ESI], V9X_I9XX_EVENT_MAX
+    mov     [ebp.Client_AX], 1
+ELSE
+    mov     [ebp.Client_AX], 0
+ENDIF
+    ret
+
+V9xMini_Api_I9xxEventDword:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    movzx   eax, [ebp.Client_CX]
+    cmp     ax, V9xI9xxEventCount
+    jae     short V9xMini_Api_I9xxEventDword_Missing
+    imul    eax, eax, V9X_I9XX_EVENT_BYTES
+    movzx   ebx, [ebp.Client_DX]
+    cmp     ebx, V9X_I9XX_EVENT_DWORDS
+    jae     short V9xMini_Api_I9xxEventDword_Missing
+    mov     ebx, V9xI9xxEventRecords[eax+ebx*4]
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxEventDword_Missing:
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

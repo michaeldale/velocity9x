@@ -55,7 +55,8 @@ V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
 V9XMINI_API_V3      EQU 0003h
 V9XMINI_API_V4      EQU 0004h
-V9XMINI_API_VERSION EQU V9XMINI_API_V4
+V9XMINI_API_V5      EQU 0005h
+V9XMINI_API_VERSION EQU V9XMINI_API_V5
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
@@ -178,6 +179,24 @@ V9XMINI_FN_I9XX_GTT_INFO    EQU 000Ch
 V9XMINI_FN_I9XX_GTT_CHUNK   EQU 000Dh
 V9X_I9XX_GTT_ENTRY_COUNT    EQU 65536
 V9X_I9XX_GTT_CHUNK_DWORDS   EQU 4
+
+; v5: bounded Phase 3 ownership-event journal. EVENT_CAPTURE records a
+; twice-read MMIO ownership snapshot and two complete GTT hashes. DPMS calls
+; use the same internal capture path at ring 0; the display driver drains all
+; retained records to INTELEVT.TXT at its next lifecycle event.
+V9XMINI_FN_I9XX_EVENT_CAPTURE EQU 000Eh
+V9XMINI_FN_I9XX_EVENT_INFO    EQU 000Fh
+V9XMINI_FN_I9XX_EVENT_DWORD   EQU 0010h
+V9X_I9XX_EVENT_MAX            EQU 32
+V9X_I9XX_EVENT_DWORDS         EQU 20
+V9X_I9XX_EVENT_BYTES          EQU V9X_I9XX_EVENT_DWORDS * 4
+V9X_I9XX_EVENT_COMPLETE       EQU 0001h
+V9X_I9XX_EVENT_MMIO_STABLE    EQU 0002h
+V9X_I9XX_EVENT_GTT_STABLE     EQU 0004h
+V9X_I9XX_EVENT_RING_IDLE      EQU 0008h
+V9X_I9XX_EVENT_RING_DISABLED  EQU 0010h
+V9X_I9XX_EVENT_PGTBL_VALID    EQU 0020h
+V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

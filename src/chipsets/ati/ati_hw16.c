@@ -130,6 +130,7 @@ const V9X_HW16_OPS v9x_hw16 = {
      * has to stay inside the mapping. */
     0x00ffu, 0xffffu,
     v9x_ati_publish_diagnostics,
+    0,
     /* NULL: the mode set is sufficient at tier-0. */
     0,
     /* NULL: ask the BIOS through 4F01h, and that is enough here. Measured from

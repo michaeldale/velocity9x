@@ -146,6 +146,13 @@ typedef struct v9x_hw16_device {
  */
 typedef void (*v9x_hw16_write_fn)(const char *key, const char *value);
 
+#define V9X_HW16_EVENT_BOOT_ENABLE  1u
+#define V9X_HW16_EVENT_ENABLE       2u
+#define V9X_HW16_EVENT_DISABLE      3u
+#define V9X_HW16_EVENT_MODE_SWITCH  4u
+#define V9X_HW16_EVENT_MODE_RESTORE 5u
+#define V9X_HW16_EVENT_DPMS         6u
+
 typedef struct v9x_hw16_ops {
     /* Family id, matching packaging\families\<id>. Diagnostic only. */
     const char *family_id;
@@ -189,6 +196,11 @@ typedef struct v9x_hw16_ops {
      */
     void (*publish_diagnostics)(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write);
+
+    /* Optional read-only hardware-ownership event publisher. Intel Gen3 uses
+     * it for Phase 3; other families leave it null. Context is the VBE mode
+     * number for display events. */
+    void (*publish_event)(unsigned short kind, unsigned short context);
 
     /*
      * Runs immediately after the VBE 4F02h mode set and before the aperture is

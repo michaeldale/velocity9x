@@ -652,6 +652,14 @@ static void v9x_publish_hardware_diagnostics(void)
     v9x_write_hardware_info("ColourLayout", v9x_modes16_layout_text());
 }
 
+static void v9x_publish_hardware_event(WORD kind,
+                                       const V9X_HW16_MODE *mode)
+{
+    if (v9x_hw16.publish_event != 0) {
+        v9x_hw16.publish_event(kind, mode != 0 ? mode->vbe_mode : 0u);
+    }
+}
+
 void v9x_serial_write(const char FAR *message)
 {
     BYTE saved_lcr;
@@ -1291,6 +1299,11 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_serial_write_mode("V9X-DRV enable-ok mode=");
     v9x_serial_write(" lfb-mapped\r\n");
     v9x_publish_hardware_diagnostics();
+    v9x_publish_hardware_event(
+        v9x_reenabling != 0u ? V9X_HW16_EVENT_MODE_SWITCH :
+        (v9x_enable_count == 1u ? V9X_HW16_EVENT_BOOT_ENABLE :
+                                  V9X_HW16_EVENT_ENABLE),
+        v9x_active_mode);
     /* A live ReEnable owns a DIBENGINE BeginAccessRect exclusion until the
      * rebuilt PDEVICE has been finalized below. Calling DIBENGINE's SetInfo
      * from inside that exclusion re-enters DIBENG and can fault. The
@@ -1326,6 +1339,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
         (V9X_DIB_ENGINE FAR *)destination_device;
 
     v9x_dosbox_trace("disable-enter");
+    v9x_publish_hardware_event(V9X_HW16_EVENT_DISABLE, v9x_active_mode);
     if (device != 0) {
         device->deFlags |= V9X_DE_BUSY;
     }
@@ -1468,6 +1482,8 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
         }
         v9x_publish_hardware_diagnostics();
+        v9x_publish_hardware_event(V9X_HW16_EVENT_MODE_RESTORE,
+                                   v9x_active_mode);
         V9xVddPostMode();
         v9x_serial_write("V9X-DRV reenable-ok\r\n");
         v9x_dosbox_trace("reenable-exit");

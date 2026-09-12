@@ -48,6 +48,31 @@
 #define V9X_I9XX_GTT_PGTBL_MATCH         ((v9x_u16)0x0040u)
 #define V9X_I9XX_GTT_PHASE2_REQUIRED     ((v9x_u16)0x007fu)
 
+#define V9X_I9XX_EVENT_MAX               ((v9x_u16)32u)
+#define V9X_I9XX_EVENT_DWORDS            ((v9x_u16)20u)
+#define V9X_I9XX_EVENT_COMPLETE          ((v9x_u16)0x0001u)
+#define V9X_I9XX_EVENT_MMIO_STABLE       ((v9x_u16)0x0002u)
+#define V9X_I9XX_EVENT_GTT_STABLE        ((v9x_u16)0x0004u)
+#define V9X_I9XX_EVENT_RING_IDLE         ((v9x_u16)0x0008u)
+#define V9X_I9XX_EVENT_RING_DISABLED     ((v9x_u16)0x0010u)
+#define V9X_I9XX_EVENT_PGTBL_VALID       ((v9x_u16)0x0020u)
+#define V9X_I9XX_EVENT_REQUIRED          ((v9x_u16)0x003fu)
+
+/* Fixed dword layout of one Phase 3 event record. */
+#define V9X_I9XX_EVENT_SEQUENCE          ((v9x_u16)0u)
+#define V9X_I9XX_EVENT_KIND              ((v9x_u16)1u)
+#define V9X_I9XX_EVENT_CONTEXT           ((v9x_u16)2u)
+#define V9X_I9XX_EVENT_FLAGS             ((v9x_u16)3u)
+#define V9X_I9XX_EVENT_PGTBL_CTL         ((v9x_u16)4u)
+#define V9X_I9XX_EVENT_RING_TAIL         ((v9x_u16)5u)
+#define V9X_I9XX_EVENT_RING_HEAD         ((v9x_u16)6u)
+#define V9X_I9XX_EVENT_RING_START        ((v9x_u16)7u)
+#define V9X_I9XX_EVENT_RING_CTL          ((v9x_u16)8u)
+#define V9X_I9XX_EVENT_HWS_PGA           ((v9x_u16)9u)
+#define V9X_I9XX_EVENT_FENCE0            ((v9x_u16)10u)
+#define V9X_I9XX_EVENT_GTT_HASH_A        ((v9x_u16)18u)
+#define V9X_I9XX_EVENT_GTT_HASH_B        ((v9x_u16)19u)
+
 /* Offsets are documentation-derived and deliberately centralized. */
 #define V9X_I9XX_REG_PGTBL_CTL           ((v9x_u32)0x00002020ul)
 #define V9X_I9XX_REG_RING_TAIL           ((v9x_u32)0x00002030ul)

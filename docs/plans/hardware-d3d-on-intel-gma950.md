@@ -147,6 +147,17 @@ records that access beyond BIOS GTT coverage touches unbacked addresses.
 Still no writes. Capture phases 1 and 2 after boot, after each VBE mode switch,
 after disable/enable, and after DPMS once the prerequisite guard is in.
 
+**Implementation ready 2026-09-12:** mini-VDD API v5 retains a bounded
+32-record journal. Each record reads PGTBL, ring, HWS and all eight Gen3 fence
+registers twice, hashes the complete GTT twice, and records whether the ring is
+disabled and idle. Boot enable, ordinary enable, disable, mode switch and mode
+restore are captured by the display lifecycle; DPMS is captured inside the
+mini-VDD callback and drained to disk at the next display event. The resulting
+`C:\V9XDIAG\INTELEVT.TXT` reaches `Result=READY` only after the required
+event coverage is present with no dropped record. The host validator reports
+every field-level ownership change. This is code-ready, not phase completion:
+the physical event matrix remains the done-criterion below.
+
 This phase answers the question the whole plan rests on: **does the VBIOS leave
 the render ring disabled and idle?** A working display proves the GTT maps the
 framebuffer. It proves nothing about the ring.

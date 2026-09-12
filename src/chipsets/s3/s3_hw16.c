@@ -128,6 +128,7 @@ const V9X_HW16_OPS v9x_hw16 = {
      * span and simply uses less of it. */
     0x03ffu, 0xffffu,
     v9x_s3_publish_diagnostics,
+    0,
     /* The mode set needs no follow-up on either chip. */
     0,
     v9x_s3_read_aperture,

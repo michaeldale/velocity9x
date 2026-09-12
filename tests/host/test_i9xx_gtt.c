@@ -11,6 +11,13 @@ static unsigned int failures = 0u;
     } \
 } while (0)
 
+typedef char v9x_event_contract_is_stable[
+    V9X_I9XX_EVENT_MAX == 32u && V9X_I9XX_EVENT_DWORDS == 20u &&
+    V9X_I9XX_EVENT_SEQUENCE == 0u && V9X_I9XX_EVENT_FENCE0 == 10u &&
+    V9X_I9XX_EVENT_GTT_HASH_A == 18u &&
+    V9X_I9XX_EVENT_GTT_HASH_B == 19u &&
+    V9X_I9XX_EVENT_REQUIRED == 0x003fu ? 1 : -1];
+
 static void test_pte_decode(void)
 {
     struct v9x_i9xx_pte pte;

@@ -3,12 +3,12 @@
 Provenance: originally written on the archived `intel-gma-tier0` branch and
 salvaged to main in 2026-08. The strict `8086:27AE` family was restored on
 2026-09-12 for the hardware-Direct3D investigation. Its display remains the
-VBE tier-0 path; the only Intel-specific hardware operation is the Phase 1
-read-only MMIO fingerprint.
+VBE tier-0 path; the Intel-specific hardware operations through Phase 3 are
+read-only MMIO, GTT and ownership-event captures.
 
 Status: current, 2026-09-12
 Applies to: the `intel-gma` family on the HP Mini 110-1000 (945GSE, GMA 950,
-`8086:27AE`), Win98 tier-0 bring-up and hardware-D3D Phase 1
+`8086:27AE`), Win98 tier-0 bring-up and hardware-D3D Phases 1 through 3
 
 ## Why this document exists
 
@@ -195,6 +195,34 @@ It recomputes every count, run, hash and sample relationship from the binary.
 The Phase 2 done-criterion needs this to pass on at least two cold boots with
 identical hashes, so take the second boot before writing the decision record.
 Its own clean and corrupted fixtures run in `run-checks.ps1`.
+
+### 3.2c Phase 3 read-only ownership event matrix
+
+Phase 2 passed twice on this machine on 2026-09-12. Install the Phase 3
+package, cold boot once, and exercise this sequence before copying evidence:
+
+1. Switch from 1024x576x16 to 640x480x16 and back.
+2. Run an enable/disable cycle (the normal Display Properties path is enough).
+3. Run `V9XPWR` through low power and D0.
+4. Perform one same-mode restore or mode switch after `V9XPWR`; this drains
+   the DPMS records retained by the mini-VDD to disk.
+
+Copy `C:\V9XDIAG\INTELEVT.TXT`. Require `Result=READY`, `Dropped=00000000`,
+and `Flags=0000003F` in every event section. Then validate it on the host,
+pinning the Phase 2 baseline hash:
+
+```powershell
+.\scripts\check-intel-event-capture.ps1 `
+    -Path <usb-copy>\INTELEVT.TXT `
+    -ExpectedInitialGttHash 4D8707C5
+```
+
+The validator checks chronology, coverage, repeat-read/hash stability, ring
+idle/disabled state and PGTBL validity, then prints every ownership-field
+change between adjacent events. A reported change is evidence to explain, not
+an automatic failure: this phase exists to discover which firmware events
+change ownership state. Preserve partial `CAPTURED` files too, but they do not
+complete the phase.
 
 ### 3.3 Per-mode checklist
 

@@ -55,6 +55,28 @@ The ring-quiescent bit (`00000040`) is collected in Phase 1 but is not part of
 its `PASS` verdict. It becomes a takeover gate in Phase 3. No result in this
 file authorizes an Intel MMIO write.
 
+## Intel Gen3 firmware-ownership events
+
+Phase 3 writes `C:\V9XDIAG\INTELEVT.TXT`. The mini-VDD keeps the source
+journal in locked memory and the 16-bit driver rewrites this text projection
+after every display lifecycle event. A DPMS callback records at ring 0 and is
+therefore visible when the next display event drains the journal.
+
+`[IntelEvents]` contains `Access=read-only`, `Count`, `Dropped`,
+`RecordDwords`, `Coverage`, and `Result`. `READY` requires boot-enable,
+mode-switch, disable, later enable, low-power DPMS and D0 DPMS coverage; every
+record must be stable and no record may have been dropped. `CAPTURED` is a
+valid partial matrix, while `CAPTURE-FAILED` or `STREAM-FAILED` is a refusal.
+
+Sections `[IntelEvent00]` through `[IntelEvent1F]` contain 20 hexadecimal
+dwords: `Sequence`, `Kind`, `Context`, `Flags`, `PgtblCtl`, `RingTail`,
+`RingHead`, `RingStart`, `RingCtl`, `HwsPga`, `Fence0` through `Fence7`, and
+`GttHashA`/`GttHashB`. `Context` is the VBE mode for display events and the
+requested power state for DPMS. Required flags (`0000003F`) mean the MMIO
+repeat reads and GTT hashes were stable, the ring was disabled and idle, and
+PGTBL_CTL remained enabled. These are observations only; neither the capture
+nor a `READY` result authorizes an Intel register or GTT write.
+
 ## Intel Gen3 read-only GTT inventory
 
 Phase 2 writes `C:\V9XDIAG\INTELGTT.BIN` (the 65536 PTEs, 256 KiB, read

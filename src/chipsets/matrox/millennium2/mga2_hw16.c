@@ -241,6 +241,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     V9X_HW16_VBE_LINEAR,
     0x03ffu, 0xffffu,
     v9x_mga2_publish_diagnostics,
+    0,
     v9x_mga2_post_mode_set,
     v9x_mga2_read_aperture,
     /* NULL: no Millennium II memory-size decode has been written, and this

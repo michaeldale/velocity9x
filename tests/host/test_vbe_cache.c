@@ -153,7 +153,8 @@ typedef char v9x_assert_edid_chunks[
 typedef char v9x_assert_api_versions[
     V9X_VBE_API_V2 == V9X_VBE_API_V1 + 1u &&
     V9X_VBE_API_V3 == V9X_VBE_API_V2 + 1u &&
-    V9X_VBE_API_V4 == V9X_VBE_API_V3 + 1u ? 1 : -1];
+    V9X_VBE_API_V4 == V9X_VBE_API_V3 + 1u &&
+    V9X_VBE_API_V5 == V9X_VBE_API_V4 + 1u ? 1 : -1];
 /* A record says where it came from and where its colour layout came from at the
  * same time, so the two groups of flags may not share a bit. */
 typedef char v9x_assert_origin_flags[

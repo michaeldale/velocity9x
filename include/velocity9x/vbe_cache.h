@@ -30,6 +30,7 @@
 #define V9X_VBE_API_V2 ((v9x_u16)2u)
 #define V9X_VBE_API_V3 ((v9x_u16)3u)
 #define V9X_VBE_API_V4 ((v9x_u16)4u)
+#define V9X_VBE_API_V5 ((v9x_u16)5u)
 
 /*
  * Bounds. Separate limits so one corrupt BIOS field cannot become an

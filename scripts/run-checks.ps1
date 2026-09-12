@@ -58,6 +58,10 @@ Invoke-CheckStep "Intel GTT capture validator" {
     & (Join-Path $PSScriptRoot "check-intel-gtt-capture.ps1") -SelfTest
 }
 
+Invoke-CheckStep "Intel event capture validator" {
+    & (Join-Path $PSScriptRoot "check-intel-event-capture.ps1") -SelfTest
+}
+
 if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")
