@@ -22,4 +22,5 @@
 - [ViRGE 325 on VESA Local Bus, through old MMIO](virge-vlb-old-mmio.md) - Open.
 - [A manual-select INF model, then the first driver run on the 486](vlb-manual-select-inf.md) - Shipped in 0.4.4.
 - [Survey tool v2: a 486 with an S3 Trio VLB](vlb-survey-tool.md) - Historical.
-
+- [Hardware Direct3D on the Intel GMA 950](hardware-d3d-on-intel-gma950.md) - In progress; Phases 1-3 measured, Phase 4 errata-gated.
+- [Finding the erratum 12 workaround in Intel's XP miniport](intel-xp-miniport-disassembly.md) - Open; desk work that decides the Phase 4 gate.
