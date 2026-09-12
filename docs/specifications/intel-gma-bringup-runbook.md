@@ -201,15 +201,23 @@ Its own clean and corrupted fixtures run in `run-checks.ps1`.
 Phase 2 passed twice on this machine on 2026-09-12. Install the Phase 3
 package, cold boot once, and exercise this sequence before copying evidence:
 
-1. Switch from 1024x576x16 to 640x480x16 and back. A live resolution change
-   is Disable then Enable, so this yields `disable` (kind 3) and `enable`
-   (kind 2) records.
-2. Open a full-screen DOS box and return to the desktop. Only the ReEnable
-   path emits `mode-switch` (kind 4) and `mode-restore` (kind 5); Display
-   Properties never does, and `READY` needs kind 4.
-3. Run `V9XPWR` through low power and D0.
-4. Perform one more full-screen DOS box round trip after `V9XPWR`; this
-   drains the DPMS records retained by the mini-VDD to disk.
+1. Switch from 1024x576x16 to 640x480x16 and back. Measured 2026-09-12:
+   each change is one ReEnable rebuild, so this yields two `mode-switch`
+   (kind 4) records and nothing else. Every ReEnable also drains the journal.
+2. Run `V9XPWR` through low power and D0. The two DPMS records stay in the
+   mini-VDD until the next drain.
+3. Change resolution and back once more to drain them.
+4. **Last, and only with everything above already copied off:** open a
+   full-screen DOS box and return to the desktop, for the `disable` (kind 3)
+   and `mode-restore` (kind 5) records. On 2026-09-12 the return hard-locked
+   the netbook (`docs\issues\2026-09-12-netbook-dos-box-return-hardlock.md`);
+   the Disable record is flushed to disk before the handoff, so a lock still
+   leaves evidence. Photograph the screen before power-cycling.
+
+Because of step 4, `READY` may not be reachable on this machine until the
+lock is understood. A `CAPTURED` file with boot, mode-switch and both DPMS
+records is the deliverable for the mode and power rows; the DOS box row is
+its own finding.
 
 Copy `C:\V9XDIAG\INTELEVT.TXT`. Require `Result=READY`, `Dropped=00000000`,
 and `Flags=0000003F` in every event section. Then validate it on the host,

@@ -64,7 +64,8 @@ therefore visible when the next display event drains the journal.
 
 `[IntelEvents]` contains `Access=read-only`, `Count`, `Dropped`,
 `RecordDwords`, `Coverage`, and `Result`. `READY` requires boot-enable,
-mode-switch, disable, later enable, low-power DPMS and D0 DPMS coverage; every
+mode-switch, disable, mode-restore, low-power DPMS and D0 DPMS coverage
+(`Coverage` mask `7D`); every
 record must be stable and no record may have been dropped. `CAPTURED` is a
 valid partial matrix, while `CAPTURE-FAILED` or `STREAM-FAILED` is a refusal.
 
@@ -74,10 +75,12 @@ dwords: `Sequence`, `Kind`, `Context`, `Flags`, `PgtblCtl`, `RingTail`,
 first eight fence registers at `2000`-`201C`; the 945's second bank of eight at
 `3000`-`301C` is not captured), and
 `GttHashA`/`GttHashB`. `Context` is the VBE mode for display events and the
-requested power state for DPMS. Kinds: 1 boot enable, 2 later Enable, 3
-Disable (captured before the teardown), 4 ReEnable pdevice rebuild
-(full-screen DOS box return), 5 ReEnable completion, 6 DPMS. A live
-resolution change produces kinds 3 and 2, not 4. Required flags (`0000003F`) mean the MMIO
+requested power state for DPMS. Kinds: 1 boot enable, 2 a later plain
+Enable, 3 Disable (captured before the teardown), 4 ReEnable with a mode
+change (a Display Properties resolution change; measured 2026-09-12 to
+produce kind 4 alone, with no Disable), 5 ReEnable in the same mode (return
+from a full-screen DOS box, preceded by a kind 3 Disable), 6 DPMS. Nothing in
+a normal session produces kind 2. Required flags (`0000003F`) mean the MMIO
 repeat reads and GTT hashes were stable, the ring was disabled and idle, and
 PGTBL_CTL remained enabled. These are observations only; neither the capture
 nor a `READY` result authorizes an Intel register or GTT write.
