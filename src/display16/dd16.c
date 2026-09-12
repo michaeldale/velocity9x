@@ -456,6 +456,10 @@ static void v9x_dd_refresh_framebuffer(void)
     shared->fb.height = height;
     shared->fb.bits_per_pixel = bpp;
     shared->fb.visible_bytes = (DWORD)pitch * (DWORD)height;
+    if (v9x_hw16.reserve_video_memory != 0) {
+        shared->fb.vram_bytes = v9x_hw16.reserve_video_memory(
+            shared->fb.vram_bytes, shared->fb.visible_bytes);
+    }
     shared->fb.screen_selector = (DWORD)v9x_dd_screen_selector();
     shared->fb.enable_count = (DWORD)v9x_dd_enable_count();
     shared->fb.disable_count = (DWORD)v9x_dd_disable_count();

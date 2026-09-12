@@ -316,6 +316,16 @@ typedef struct v9x_hw16_ops {
      * why a locked read is trustworthy on these parts.
      */
     unsigned short (*identify_without_pci)(void);
+
+    /*
+     * Reduce the framebuffer bytes exposed to DirectDraw by a family-owned
+     * top-of-memory reservation.  The raw BIOS/chip answer remains available
+     * to diagnostics and the VDD; this affects only surface allocation and
+     * address containment in the shared DirectDraw block.  NULL publishes the
+     * complete usable range, as every pre-Intel family does.
+     */
+    unsigned long (*reserve_video_memory)(unsigned long usable_bytes,
+                                           unsigned long visible_bytes);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */
