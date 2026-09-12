@@ -201,11 +201,15 @@ Its own clean and corrupted fixtures run in `run-checks.ps1`.
 Phase 2 passed twice on this machine on 2026-09-12. Install the Phase 3
 package, cold boot once, and exercise this sequence before copying evidence:
 
-1. Switch from 1024x576x16 to 640x480x16 and back.
-2. Run an enable/disable cycle (the normal Display Properties path is enough).
+1. Switch from 1024x576x16 to 640x480x16 and back. A live resolution change
+   is Disable then Enable, so this yields `disable` (kind 3) and `enable`
+   (kind 2) records.
+2. Open a full-screen DOS box and return to the desktop. Only the ReEnable
+   path emits `mode-switch` (kind 4) and `mode-restore` (kind 5); Display
+   Properties never does, and `READY` needs kind 4.
 3. Run `V9XPWR` through low power and D0.
-4. Perform one same-mode restore or mode switch after `V9XPWR`; this drains
-   the DPMS records retained by the mini-VDD to disk.
+4. Perform one more full-screen DOS box round trip after `V9XPWR`; this
+   drains the DPMS records retained by the mini-VDD to disk.
 
 Copy `C:\V9XDIAG\INTELEVT.TXT`. Require `Result=READY`, `Dropped=00000000`,
 and `Flags=0000003F` in every event section. Then validate it on the host,

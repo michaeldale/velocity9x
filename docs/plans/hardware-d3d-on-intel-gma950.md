@@ -148,8 +148,8 @@ Still no writes. Capture phases 1 and 2 after boot, after each VBE mode switch,
 after disable/enable, and after DPMS once the prerequisite guard is in.
 
 **Implementation ready 2026-09-12:** mini-VDD API v5 retains a bounded
-32-record journal. Each record reads PGTBL, ring, HWS and all eight Gen3 fence
-registers twice, hashes the complete GTT twice, and records whether the ring is
+32-record journal. Each record reads PGTBL, ring, HWS and the first eight fence
+registers (`2000`-`201C`; the 945's second bank at `3000` is not captured) twice, hashes the complete GTT twice, and records whether the ring is
 disabled and idle. Boot enable, ordinary enable, disable, mode switch and mode
 restore are captured by the display lifecycle; DPMS is captured inside the
 mini-VDD callback and drained to disk at the next display event. The resulting

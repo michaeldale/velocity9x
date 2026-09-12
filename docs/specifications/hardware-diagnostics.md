@@ -70,9 +70,14 @@ valid partial matrix, while `CAPTURE-FAILED` or `STREAM-FAILED` is a refusal.
 
 Sections `[IntelEvent00]` through `[IntelEvent1F]` contain 20 hexadecimal
 dwords: `Sequence`, `Kind`, `Context`, `Flags`, `PgtblCtl`, `RingTail`,
-`RingHead`, `RingStart`, `RingCtl`, `HwsPga`, `Fence0` through `Fence7`, and
+`RingHead`, `RingStart`, `RingCtl`, `HwsPga`, `Fence0` through `Fence7` (the
+first eight fence registers at `2000`-`201C`; the 945's second bank of eight at
+`3000`-`301C` is not captured), and
 `GttHashA`/`GttHashB`. `Context` is the VBE mode for display events and the
-requested power state for DPMS. Required flags (`0000003F`) mean the MMIO
+requested power state for DPMS. Kinds: 1 boot enable, 2 later Enable, 3
+Disable (captured before the teardown), 4 ReEnable pdevice rebuild
+(full-screen DOS box return), 5 ReEnable completion, 6 DPMS. A live
+resolution change produces kinds 3 and 2, not 4. Required flags (`0000003F`) mean the MMIO
 repeat reads and GTT hashes were stable, the ring was disabled and idle, and
 PGTBL_CTL remained enabled. These are observations only; neither the capture
 nor a `READY` result authorizes an Intel register or GTT write.

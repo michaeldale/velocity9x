@@ -86,9 +86,15 @@ void v9x_intel_publish_event(WORD kind, WORD context)
 
     /* Rebuild the text from the retained VxD journal. That journal includes
      * DPMS records captured at ring 0 since the previous display event. */
+    /* Win9x caches the most recently used profile file in memory. Flush that
+     * cache before truncating behind its back, or the previous boot's sections
+     * can be merged back into the rewritten file; flush again afterwards so
+     * the new contents are read from disk. */
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTELEVT_TXT);
     file = _lcreat(V9X_DIAG_INTELEVT_TXT, 0);
     if (file == HFILE_ERROR) { return; }
     _lclose(file);
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTELEVT_TXT);
     WritePrivateProfileString("IntelEvents", "Access", "read-only",
                               V9X_DIAG_INTELEVT_TXT);
     v9x_event_write_hex("IntelEvents", "Count", v9x_i9xx_event_count);
