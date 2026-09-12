@@ -75,6 +75,12 @@ there is no serial port. Phases 1-3 perform no writes.
 
 ### 1. Read-only MMIO fingerprint
 
+**Done 2026-09-12, measured on the netbook:** `INTELMM.TXT` at 1024x576x16
+reports `Result=PASS`, `Flags=0000007F`, pipe B / plane B live, 1344x672
+totals, stride 2048, plane address 0, GTT at `7FFC0000`, ring idle. Record and
+raw files: `docs/decisions/2026-09-12-intel-phase1-physical-capture.md`.
+Phase 2 is unblocked.
+
 **Implementation ready 2026-09-12:** the Intel package now reads BAR0 freshly
 from PCI configuration on each diagnostic publication, asks the Intel-only
 mini-VDD path to map exactly 512 KiB, reads the fixed 20-dword allowlist twice,
