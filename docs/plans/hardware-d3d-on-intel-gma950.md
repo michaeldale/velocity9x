@@ -111,6 +111,17 @@ them from PCI config at run time and never cache one across a boot.
 
 ### 2. Read-only GTT inventory
 
+**Implementation ready 2026-09-12, not measured:** the Intel package reads
+BAR2, BAR3, BSM and host-bridge GGC fresh from PCI config, has the mini-VDD
+map exactly 256 KiB at BAR3 and hash two full read passes, streams the table
+through four-PTE register queries into `INTELGTT.BIN` while hashing a third
+time, and writes counts, a run map, the proposed top-of-VBE 128 KiB
+reservation and two GMADR samples to `INTELGTT.TXT`. The samples are the only
+GMADR reads and are taken through the existing framebuffer selector, each
+only after its PTE decoded present and BSM-linear.
+`scripts\check-intel-gtt-capture.ps1` recomputes everything from the binary.
+The done-criterion below still needs the netbook capture on two cold boots.
+
 Gen3 puts the GTT in its own BAR3, so this needs a second independent mapping.
 Dump every PTE. Decode present and cache bits, physical page, contiguous runs,
 and relate them to BSM, the visible framebuffer and the VBE-reported end of

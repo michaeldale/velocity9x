@@ -75,7 +75,10 @@ static void test_inventory(void)
     CHECK(inventory.run_count == 3ul);
 }
 
-static void test_measured_netbook_shape(void)
+/* The shape Phase 0 and Phase 1 predict for the netbook: stolen memory mapped
+ * linearly from BSM for the VBE-reported size, then a scratch page. This is a
+ * hypothesis until INTELGTT.BIN is read off the machine, not a measurement. */
+static void test_expected_netbook_shape(void)
 {
     struct v9x_i9xx_gtt_inventory inventory;
     v9x_u32 index;
@@ -108,6 +111,6 @@ unsigned int v9x_run_i9xx_gtt_tests(void)
 {
     test_pte_decode();
     test_inventory();
-    test_measured_netbook_shape();
+    test_expected_netbook_shape();
     return failures;
 }

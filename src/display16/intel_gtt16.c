@@ -211,22 +211,6 @@ void v9x_intel_publish_gtt_inventory(void)
     }
     if (run.count != 0ul) { v9x_write_run(&run, run_number++); }
 
-    /* These are the only GMADR reads in this phase.  Both offsets are within
-     * the VBE-reported mapping, and each read is reached only after the PTE
-     * decoded present and to the physical page expected from BSM. */
-    if ((inventory.first_raw & V9X_I9XX_PTE_VALID) == 0ul ||
-        (inventory.first_raw & V9X_I9XX_PTE_ADDRESS_MASK) != inventory.bsm ||
-        (reserve_raw & V9X_I9XX_PTE_VALID) == 0ul ||
-        (reserve_raw & V9X_I9XX_PTE_ADDRESS_MASK) !=
-            inventory.reserve_physical ||
-        inventory.reserve_aperture_offset > v9x_vbe_vram_reported - 4ul) {
-        WritePrivateProfileString("IntelGtt", "Result", "SAMPLE-REFUSED",
-                                  V9X_DIAG_INTELGTT_TXT);
-        return;
-    }
-    sample_zero = V9xGmadrRead(0ul);
-    sample_reserve = V9xGmadrRead(inventory.reserve_aperture_offset);
-
     v9x_write_hex("Bar3", v9x_i9xx_gtt_bar3);
     v9x_write_hex("GmadrBar2", v9x_i9xx_gmadr_bar2);
     v9x_write_hex("Bsm", v9x_i9xx_bsm);
@@ -253,6 +237,24 @@ void v9x_intel_publish_gtt_inventory(void)
     v9x_write_hex("ReserveEntries", inventory.reserve_entry_count);
     v9x_write_hex("ReserveOffset", inventory.reserve_aperture_offset);
     v9x_write_hex("ReservePhysical", inventory.reserve_physical);
+    /* These are the only GMADR reads in this phase.  Both offsets are within
+     * the VBE-reported mapping, and each read is reached only after the PTE
+     * decoded present and to the physical page expected from BSM. */
+    /* The inventory above is written first so a refused sample still leaves
+     * the whole table's evidence on disk; only the two data reads are withheld. */
+    if ((inventory.first_raw & V9X_I9XX_PTE_VALID) == 0ul ||
+        (inventory.first_raw & V9X_I9XX_PTE_ADDRESS_MASK) != inventory.bsm ||
+        (reserve_raw & V9X_I9XX_PTE_VALID) == 0ul ||
+        (reserve_raw & V9X_I9XX_PTE_ADDRESS_MASK) !=
+            inventory.reserve_physical ||
+        inventory.reserve_aperture_offset > v9x_vbe_vram_reported - 4ul) {
+        v9x_write_hex("SampleCount", 0ul);
+        WritePrivateProfileString("IntelGtt", "Result", "SAMPLE-REFUSED",
+                                  V9X_DIAG_INTELGTT_TXT);
+        return;
+    }
+    sample_zero = V9xGmadrRead(0ul);
+    sample_reserve = V9xGmadrRead(inventory.reserve_aperture_offset);
     v9x_write_hex("SampleCount", 2ul);
     v9x_write_hex("Sample0Offset", 0ul);
     v9x_write_hex("Sample0Pte", inventory.first_raw);

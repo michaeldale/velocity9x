@@ -238,8 +238,12 @@ function Test-V9xIntelGttCapture {
         }
     }
 
-    $sha256 = [Convert]::ToHexString(
-        [Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant()
+    # Windows PowerShell 5.1 has neither SHA256.HashData nor Convert.ToHexString.
+    $sha256Algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $sha256 = -join ($sha256Algorithm.ComputeHash($Bytes) |
+                         ForEach-Object { $_.ToString('x2') })
+    } finally { $sha256Algorithm.Dispose() }
     return [pscustomobject]@{
         Result = 'PASS'; Bar3 = '{0:X8}' -f $bar3; GmadrBar2 = '{0:X8}' -f $gmadr
         Bsm = '{0:X8}' -f $bsm; Fnv1a32 = '{0:X8}' -f $fnv; Sha256 = $sha256

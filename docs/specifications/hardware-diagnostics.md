@@ -54,3 +54,37 @@ settings UI contract above.
 The ring-quiescent bit (`00000040`) is collected in Phase 1 but is not part of
 its `PASS` verdict. It becomes a takeover gate in Phase 3. No result in this
 file authorizes an Intel MMIO write.
+
+## Intel Gen3 read-only GTT inventory
+
+Phase 2 writes `C:\V9XDIAG\INTELGTT.BIN` (the 65536 PTEs, 256 KiB, read
+through PCI BAR3 by the mini-VDD) and `C:\V9XDIAG\INTELGTT.TXT`, section
+`[IntelGtt]`. All values are eight-digit hexadecimal.
+
+- `Access`: always `read-only`. `BarProvenance`: always `PCI-BAR3-runtime`.
+- `Bar3`, `GmadrBar2`, `Bsm`, `Ggc`, `StolenBytes`, `VbeBytes`, `PgtblCtl`,
+  `GttStorage`: the configuration the table was decoded against. `GttStorage`
+  is the inferred top-of-stolen GTT location, `Bsm + StolenBytes - 40000`.
+- `HashA`, `HashB`: FNV-1a over two complete passes in the mini-VDD.
+  `HashStream`: the same hash over the dump as streamed to the display driver.
+  A stable table has all three equal.
+- `Present`, `Uncached`, `Local`, `Cached`, `UnknownAttrs`: PTE counts.
+- `Runs`, `RunsLogged`, `RunnnnnS/N/P/D/A`: contiguous runs (start, count,
+  first physical page, stride, attribute bits). At most 256 are logged.
+- `BackedPrefix`: PTEs from entry 0 that map `Bsm + n * 1000` in order.
+- `ReserveEntry`, `ReserveEntries`, `ReserveOffset`, `ReservePhysical`: the
+  proposed 128 KiB reservation at the top of the VBE-reported framebuffer.
+- `SampleCount`, `Sample0*`, `SampleReserve*`: the only GMADR reads in this
+  phase, taken through the framebuffer selector at offsets 0 and
+  `ReserveOffset`, each only after its PTE decoded present and BSM-linear.
+  `SampleCount=0` with `Result=SAMPLE-REFUSED` means the table was captured
+  but neither PTE qualified.
+- `Flags`: `0001` complete, `0002` stable, `0004` nontrivial, `0008` entry 0
+  maps BSM, `0010` VBE framebuffer fully backed, `0020` reservation backed,
+  `0040` PGTBL_CTL selects `GttStorage`. `Result=PASS` needs all of `007F`,
+  no unknown attributes, and a complete run log. Other results:
+  `CONFIG-FAILED`, `CAPTURE-FAILED`, `FILE-FAILED`, `STREAM-FAILED`,
+  `SAMPLE-REFUSED`, `REVIEW`.
+
+`scripts\check-intel-gtt-capture.ps1` recomputes every count, run, hash and
+sample relationship from `INTELGTT.BIN` rather than trusting the text.

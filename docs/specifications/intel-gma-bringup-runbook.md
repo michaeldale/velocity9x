@@ -130,10 +130,18 @@ folder. Its 22 files total less than 400 KiB. After installing its INF and
 rebooting into a stable 1024x576 mode, copy these files back before changing
 mode or package:
 
-- `C:\V9XBOOT.INI`
-- `C:\V9XHW.INI`
+- `C:\V9XDIAG\V9XBOOT.INI`
+- `C:\V9XDIAG\V9XHW.INI`
 - `C:\V9XDIAG\V9XMODES.INI`
 - `C:\V9XDIAG\INTELMM.TXT`
+- `C:\V9XDIAG\INTELGTT.TXT` and `C:\V9XDIAG\INTELGTT.BIN` (Phase 2; the
+  pair must be copied together, the validator recomputes the text from the
+  binary)
+
+All driver diagnostics live under `C:\V9XDIAG` since 2026-09; the earlier
+root-level paths in older records are historical. The live USB stick is a
+plain FAT32 volume, so the simplest return path is to shut down, pull the
+stick and read `\V9XDIAG` on the development host.
 
 In `INTELMM.TXT`, require `Access=read-only`,
 `BarProvenance=PCI-BAR0-runtime`, a plausible aligned `Bar0`, and
@@ -160,6 +168,32 @@ On the development host, validate the copied file with:
 
 The validator independently checks the allowlist order, all repeat-read
 deltas, BAR bounds/alignment, Phase 1 flags, decoded geometry and plane format.
+
+### 3.2b Phase 2 read-only GTT inventory
+
+Phase 1 passed on this machine on 2026-09-12
+(`docs\decisions\2026-09-12-intel-phase1-physical-capture.md`). The same
+package publishes the Phase 2 artefacts on every enable, immediately after
+`INTELMM.TXT`. Field meanings are in `hardware-diagnostics.md`.
+
+Require `Result=PASS`, `HashA`, `HashB` and `HashStream` equal, `Flags`
+containing `0000007F`, `UnknownAttrs=00000000`, and `GttStorage` equal to
+the `PgtblCtl` page. Read the run map before believing the verdict: the
+expected shape from Phase 0 and Phase 1 is one linear run from entry 0 mapping
+`Bsm` upward for the VBE-reported size, then a scratch-page run. Anything else
+is a finding to record. `SAMPLE-REFUSED` means the table was captured but
+entry 0 or the reservation entry did not decode as present and BSM-linear;
+the inventory keys are still written, so preserve the file.
+
+Validate both files together on the host:
+
+```powershell
+.\scripts\check-intel-gtt-capture.ps1 -Path <usb-copy>\INTELGTT.TXT
+```
+
+It recomputes every count, run, hash and sample relationship from the binary.
+The Phase 2 done-criterion needs this to pass on at least two cold boots with
+identical hashes, so take the second boot before writing the decision record.
 Its own clean and corrupted fixtures run in `run-checks.ps1`.
 
 ### 3.3 Per-mode checklist
