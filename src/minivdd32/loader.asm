@@ -169,6 +169,9 @@ V9xI9xxRingResult   dw 0
 V9xI9xxRingExpected dd 00000000h, 02000000h
                     dd 54300004h, 03f00020h, 00000000h, 00080008h
                     dd 007a1100h, 55aa33cch, 02000000h, 00000000h
+V9xI9xxRingDiagOffsets dd 00002088h, 0000208ch, 00002090h
+                        dd 000020c8h, 000020b0h, 000020b4h, 000020b8h
+                        dd 0000203ch, 00002038h
 V9xI9xxRingStep     dw 0
 V9xI9xxRingPoison   dw 0
 V9xI9xxRingBusy     dw 0
@@ -1378,6 +1381,21 @@ BeginProc V9xMini_I9xx_Ring_Execute
 V9xMini_I9xx_Ring_Execute_Program:
     cmp     V9xI9xxRingStep, 0
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     ecx, 10
+    mov     ebx, OFFSET32 V9xI9xxRingExpected
+    mov     edx, edi
+V9xMini_I9xx_Ring_Execute_CheckStream:
+    mov     eax, [ebx]
+    cmp     eax, [edx]
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    add     ebx, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Execute_CheckStream
+    cmp     dword ptr [edi+00011000h], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [edi+00011ffch], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
     cmp     dword ptr [esi+02030h], 0
     jne     V9xMini_I9xx_Ring_Execute_Done
     cmp     dword ptr [esi+02034h], 0
@@ -1400,7 +1418,9 @@ V9xMini_I9xx_Ring_Execute_Program:
     cmp     dword ptr [esi+02038h], 00790000h
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [esi+0203ch], 0000f001h
-    cmp     dword ptr [esi+0203ch], 0000f001h
+    mov     eax, [esi+0203ch]
+    and     eax, 0fffff7ffh     ; ignore dynamic RING_WAIT status bit 11
+    cmp     eax, 0000f001h
     jne     V9xMini_I9xx_Ring_Execute_Poison
     jmp     V9xMini_I9xx_Ring_Execute_Success
 
@@ -1596,6 +1616,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingMemory
     cmp     ax, V9XMINI_FN_I9XX_RING_EXECUTE
     je      V9xMini_Api_I9xxRingExecute
+    cmp     ax, V9XMINI_FN_I9XX_RING_DIAG
+    je      V9xMini_Api_I9xxRingDiag
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -1677,6 +1699,26 @@ IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
     mov     [ebp.Client_EDI], edi
     mov     [ebp.Client_AX], ax
     ret
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxRingDiag:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxValid, 1
+    jne     short V9xMini_Api_I9xxRingDiag_Missing
+    movzx   ecx, [ebp.Client_CX]
+    cmp     ecx, 9
+    jae     short V9xMini_Api_I9xxRingDiag_Missing
+    mov     edx, V9xI9xxRingDiagOffsets[ecx*4]
+    mov     eax, V9xI9xxMmioLinear
+    test    eax, eax
+    jz      short V9xMini_Api_I9xxRingDiag_Missing
+    mov     ebx, [eax+edx]
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxRingDiag_Missing:
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

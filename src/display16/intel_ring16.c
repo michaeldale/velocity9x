@@ -3,6 +3,7 @@
 #undef SetCursor
 
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/build.h"
 #include "velocity9x/intel_gma.h"
 
 #define V9X_I9XX_SCRATCH_TARGET_DELTA 0x100ul
@@ -16,12 +17,16 @@ extern DWORD v9x_i9xx_bsm;
 extern WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern const char *v9x_intel_boot_token_mover_state(void);
+extern void v9x_intel_phase4_maybe_run(
+    const struct v9x_i9xx_sandbox_layout *layout,
+    const DWORD *probe, const DWORD *blt, WORD flush_stable);
 DWORD v9x_i9xx_ring_memory_value;
 DWORD v9x_i9xx_ring_exec_head;
 DWORD v9x_i9xx_ring_exec_tail;
 DWORD v9x_i9xx_ring_exec_elapsed;
 DWORD v9x_i9xx_ring_exec_polls;
 DWORD v9x_i9xx_ring_exec_failure;
+DWORD v9x_i9xx_ring_diag_value;
 
 static void v9x_ring_hex32(char *text, DWORD value)
 {
@@ -51,12 +56,12 @@ static void v9x_ring_dword_key(char *key, char prefix, WORD index)
 
 /*
  * Publish the complete proposed Phase 4 stream without touching ring memory
- * or MMIO.  This remains useful while the errata gate is closed: the exact
- * addresses and CRC can be reviewed on the physical machine before any write
- * is made reachable.
+ * or MMIO. The guarded executor can run only after this first, no-write
+ * capture has been collected on the exact binary and separately armed.
  */
 void v9x_intel_publish_ring_plan(void)
 {
+    static WORD published_this_load;
     struct v9x_i9xx_sandbox_layout layout;
     DWORD probe[2];
     DWORD blt[8];
@@ -70,12 +75,19 @@ void v9x_intel_publish_ring_plan(void)
     WORD flush_page_stable;
     char key[4];
 
+    /* Enable and mode restore both publish diagnostics. Preserve the first
+     * armed step log (or partial failure) across every later call. */
+    if (published_this_load != 0u) { return; }
+    published_this_load = 1u;
     V9xEnsureDiagDir();
     WritePrivateProfileString("IntelRing", 0, 0, V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "Access", "no-hardware-writes",
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "TokenMover",
                               v9x_intel_boot_token_mover_state(),
+                              V9X_DIAG_INTELRNG_TXT);
+    WritePrivateProfileString("IntelRing", "CaptureBuildId",
+                              v9x_get_build_identity()->build_id,
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "ErrataGate", "0",
                               V9X_DIAG_INTELRNG_TXT);
@@ -156,4 +168,5 @@ void v9x_intel_publish_ring_plan(void)
                                                        "FLUSH-PROBE-REVIEW",
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTELRNG_TXT);
+    v9x_intel_phase4_maybe_run(&layout, probe, blt, flush_page_stable);
 }

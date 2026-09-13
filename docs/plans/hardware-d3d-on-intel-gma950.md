@@ -190,10 +190,11 @@ rule (first hang: record and repeat once; reproducible: ours, kill; not
 reproducible: ambiguous, erratum 12 a named suspect, continue; third hang:
 stop) and AC power only. Record:
 `docs/decisions/2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`.
-**The execution half is not yet written:** nothing calls the arm contract,
-no arm keys are read, the approved `DriverInit` token transfer does not yet
-exist, and no ring or tail store exists in either binary. The first-write
-sequence is specified in `intel-phase4-first-write-design.md` before coding.
+**Guarded execution built; physical test pending:** the Intel-only package now
+contains the `DriverInit` token transfer, Enable-side arm contract, mini-VDD
+ring executor and armed capture validator. Its unarmed first boot remains
+no-write. The token's build ID must match that capture before the second boot
+can arm. See `intel-phase4-first-write-design.md` for the exact two-boot test.
 
 **Implementation started 2026-09-12:** the stolen-memory layout, heap
 exclusion, ring arithmetic, packet builders, exact decoder, command CRC and

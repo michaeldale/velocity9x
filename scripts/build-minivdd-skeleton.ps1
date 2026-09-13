@@ -389,6 +389,7 @@ if ($s3Dpms) {
 }
 if ($intelMmio) {
     $assemblerArguments = @("-DV9X_INTEL_MMIO_FINGERPRINT") + $assemblerArguments
+    $assemblerArguments = @("-DV9X_I9XX_FIRST_WRITE_EXECUTOR") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

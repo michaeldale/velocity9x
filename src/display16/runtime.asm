@@ -98,6 +98,7 @@ EXTRN _v9x_i9xx_ring_exec_tail:DWORD
 EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
 EXTRN _v9x_i9xx_ring_exec_polls:DWORD
 EXTRN _v9x_i9xx_ring_exec_failure:DWORD
+EXTRN _v9x_i9xx_ring_diag_value:DWORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -1330,6 +1331,41 @@ V9xMiniI9xxRingExecuteDone:
     pop     bp
     retf    6
 V9XMINII9XXRINGEXECUTE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxRingDiag(WORD index)
+PUBLIC V9XMINII9XXRINGDIAG
+V9XMINII9XXRINGDIAG PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingDiagFailed
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_RING_DIAG
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxRingDiagFailed
+    mov     _v9x_i9xx_ring_diag_value, ebx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingDiagDone
+V9xMiniI9xxRingDiagFailed:
+    xor     ax, ax
+V9xMiniI9xxRingDiagDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    2
+V9XMINII9XXRINGDIAG ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)
@@ -1956,6 +1992,36 @@ V9xPciReadIntelMmioBarDone:
     pop     bp
     retf    4
 V9XPCIREADINTELMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xPciReadIntelRevision(void)
+; The selected 8086:27AE function's class/revision dword is a read-only
+; config access. Return FFFFh on failure, never an inferred revision.
+PUBLIC V9XPCIREADINTELREVISION
+V9XPCIREADINTELREVISION PROC FAR
+    push    bx
+    push    cx
+    push    dx
+    push    di
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadIntelRevisionFailed
+    mov     di, 0008h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadIntelRevisionFailed
+    or      ah, ah
+    jnz     short V9xPciReadIntelRevisionFailed
+    movzx   eax, cl
+    jmp     short V9xPciReadIntelRevisionDone
+V9xPciReadIntelRevisionFailed:
+    mov     ax, 0ffffh
+V9xPciReadIntelRevisionDone:
+    pop     di
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XPCIREADINTELREVISION ENDP
 
 ; WORD FAR PASCAL V9xPciReadIntelGttConfig(void)
 ; Fresh reads of the exact 27AE function-0 BAR2/3 and BSM, plus host-bridge

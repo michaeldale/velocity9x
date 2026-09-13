@@ -5,6 +5,8 @@ param(
     [string]$Path,
     [Parameter(ParameterSetName = 'Capture')]
     [switch]$Json,
+    [Parameter(ParameterSetName = 'Capture')]
+    [switch]$Armed,
     [Parameter(Mandatory = $true, ParameterSetName = 'SelfTest')]
     [switch]$SelfTest
 )
@@ -63,16 +65,24 @@ function Get-V9xCrc32Dwords {
 }
 
 function Test-V9xIntelRingPlan {
-    param([hashtable]$Values)
-    foreach ($pair in @(
-        @('Access', 'no-hardware-writes'),
-        @('TokenMover', 'READY'),
-        @('ErrataGate', '0'),
-        @('FlushPageRead', 'STABLE'),
-        @('Result', 'ERRATA-GATED'))) {
+    param([hashtable]$Values, [switch]$Armed)
+    $modePairs = if ($Armed) {
+        @(@('Access', 'armed-hardware-write'), @('TokenMover', 'ARMED'),
+          @('ErrataGate', '1'), @('FlushPageRead', 'STABLE'),
+          @('Result', 'PASS'))
+    } else {
+        @(@('Access', 'no-hardware-writes'), @('TokenMover', 'READY'),
+          @('ErrataGate', '0'), @('FlushPageRead', 'STABLE'),
+          @('Result', 'ERRATA-GATED'))
+    }
+    foreach ($pair in $modePairs) {
         if (-not $Values.ContainsKey($pair[0]) -or $Values[$pair[0]] -cne $pair[1]) {
             throw "Intel ring plan $($pair[0]) must be $($pair[1])."
         }
+    }
+    if (-not $Values.ContainsKey('CaptureBuildId') -or
+        $Values.CaptureBuildId -cnotmatch '^[A-Za-z0-9._+-]{1,63}$') {
+        throw 'Intel ring plan has no valid capture build ID.'
     }
 
     [uint32]$flushPage0 = ConvertFrom-V9xRingHex32 $Values 'FlushPageCfg0'
@@ -136,6 +146,65 @@ function Test-V9xIntelRingPlan {
     if ((ConvertFrom-V9xRingHex32 $Values 'ArmExecutionCrc') -ne $executionCrc) {
         throw 'Intel ring plan execution CRC does not cover the full wrap stream.'
     }
+    if ($Armed) {
+        foreach ($pair in @(
+            @('StageMirror', 'PASS'), @('PreSnapshot', 'PASS'),
+            @('ScratchGuard', 'PASS'), @('PostSnapshot', 'PASS'),
+            @('S10Result', 'PASS'), @('S12Result', 'PASS'),
+            @('IntentStep', 'S11'))) {
+            if (-not $Values.ContainsKey($pair[0]) -or
+                $Values[$pair[0]] -cne $pair[1]) {
+                throw "Intel armed capture $($pair[0]) must be $($pair[1])."
+            }
+        }
+        if (-not $Values.ContainsKey('Intent') -or
+            $Values.Intent -cnotmatch '^[A-Za-z0-9._-]{1,63}$' -or
+            -not $Values.ContainsKey('IntentBuildId') -or
+            $Values.IntentBuildId -cne $Values.CaptureBuildId -or
+            (ConvertFrom-V9xRingHex32 $Values 'IntentCrc') -ne $executionCrc) {
+            throw 'Intel armed capture token, build ID or intent CRC is invalid.'
+        }
+        $heads = @{ 5 = 0; 6 = 8; 7 = 0; 8 = 8; 9 = 40; 11 = 0 }
+        foreach ($step in 5, 6, 7, 8, 9, 11) {
+            $prefix = 'S{0:D2}' -f $step
+            if (-not $Values.ContainsKey("${prefix}Result") -or
+                $Values["${prefix}Result"] -cne 'PASS') {
+                throw "Intel armed capture $prefix did not complete."
+            }
+            [uint32]$head = ConvertFrom-V9xRingHex32 $Values "${prefix}Head"
+            [uint32]$tail = ConvertFrom-V9xRingHex32 $Values "${prefix}Tail"
+            [uint32]$failure = ConvertFrom-V9xRingHex32 $Values "${prefix}Failure"
+            [uint32]$elapsed = ConvertFrom-V9xRingHex32 $Values "${prefix}Ms"
+            [uint32]$polls = ConvertFrom-V9xRingHex32 $Values "${prefix}Polls"
+            [uint32]$ctl = ConvertFrom-V9xRingHex32 $Values "${prefix}Ctl"
+            [uint32]$start = ConvertFrom-V9xRingHex32 $Values "${prefix}Start"
+            [uint32]$expectedCtl = if ($step -eq 11) { 0 } else { 0x0000f001 }
+            [uint32]$expectedStart = if ($step -eq 11) { 0 } else { 0x00790000 }
+            if (($head -band 0x001ffffc) -ne $heads[$step] -or
+                $tail -ne $heads[$step] -or $failure -ne 0 -or
+                $elapsed -gt 200 -or $polls -gt 1000000 -or
+                ($ctl -band 0xfffff7ffL) -ne $expectedCtl -or
+                $start -ne $expectedStart) {
+                throw "Intel armed capture $prefix readback or bound failed."
+            }
+        }
+        for ($index = 0; $index -lt 7; ++$index) {
+            if ((ConvertFrom-V9xRingHex32 $Values "PreErr$index") -ne
+                (ConvertFrom-V9xRingHex32 $Values "PostErr$index")) {
+                throw "Intel armed capture error register $index changed."
+            }
+        }
+        for ($index = 0; $index -lt 20; ++$index) {
+            $suffix = '{0:D2}' -f $index
+            [uint32]$before = ConvertFrom-V9xRingHex32 $Values "PreM$suffix"
+            [uint32]$after = ConvertFrom-V9xRingHex32 $Values "PostM$suffix"
+            if ($before -ne $after -or
+                ($index -eq 0 -and $before -ne 0x7ffc0001) -or
+                ($index -ge 1 -and $index -le 4 -and $before -ne 0)) {
+                throw "Intel armed capture MMIO fingerprint $suffix changed or is unexpected."
+            }
+        }
+    }
     return [ordered]@{
         Result = $Values.Result
         HeapBytes = $heap
@@ -154,6 +223,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
     $sample = ConvertFrom-V9xIntelRingIni @(
         '[IntelRing]', 'Access=no-hardware-writes', 'ErrataGate=0',
         'TokenMover=READY',
+        'CaptureBuildId=p4-self-test-build',
         'FlushPageCfg0=00000000', 'FlushPageCfg1=00000000',
         'FlushPageRead=STABLE',
         'HeapBytes=00790000', 'ReserveOffset=00790000',
@@ -176,11 +246,70 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         if ($_.Exception.Message -eq
                 'The ring-plan validator accepted mismatched 60h reads.') { throw }
     }
+    $armedFixture = $sample.Clone()
+    $armedFixture.FlushPageCfg1 = '00000000'
+    $armedFixture.Access = 'armed-hardware-write'
+    $armedFixture.TokenMover = 'ARMED'
+    $armedFixture.ErrataGate = '1'
+    $armedFixture.Result = 'PASS'
+    $armedFixture.Intent = 'p4-self-test'
+    $armedFixture.IntentBuildId = 'p4-self-test-build'
+    $armedFixture.IntentCrc = '3EAA137B'
+    $armedFixture.IntentStep = 'S11'
+    foreach ($key in 'StageMirror', 'PreSnapshot', 'ScratchGuard',
+                   'PostSnapshot', 'S10Result', 'S12Result') {
+        $armedFixture[$key] = 'PASS'
+    }
+    foreach ($step in 5, 6, 7, 8, 9, 11) {
+        $prefix = 'S{0:D2}' -f $step
+        $head = @{ 5 = 0; 6 = 8; 7 = 0; 8 = 8; 9 = 40; 11 = 0 }[$step]
+        $armedFixture["${prefix}Result"] = 'PASS'
+        $armedFixture["${prefix}Head"] = '{0:X8}' -f $head
+        $armedFixture["${prefix}Tail"] = '{0:X8}' -f $head
+        $armedFixture["${prefix}Failure"] = '00000000'
+        $armedFixture["${prefix}Ms"] = '00000001'
+        $armedFixture["${prefix}Polls"] = '00000001'
+        $armedFixture["${prefix}Ctl"] = if ($step -eq 11) {
+            '00000000'
+        } else { '0000F001' }
+        $armedFixture["${prefix}Start"] = if ($step -eq 11) {
+            '00000000'
+        } else { '00790000' }
+    }
+    for ($index = 0; $index -lt 7; ++$index) {
+        $armedFixture["PreErr$index"] = '00000000'
+        $armedFixture["PostErr$index"] = '00000000'
+    }
+    for ($index = 0; $index -lt 20; ++$index) {
+        $suffix = '{0:D2}' -f $index
+        $value = if ($index -eq 0) { '7FFC0001' } else { '00000000' }
+        $armedFixture["PreM$suffix"] = $value
+        $armedFixture["PostM$suffix"] = $value
+    }
+    $null = Test-V9xIntelRingPlan $armedFixture -Armed
+    foreach ($mutation in @(
+        @{ Key = 'S07Head'; Value = '00200008' },
+        @{ Key = 'ScratchGuard'; Value = 'FAIL' },
+        @{ Key = 'S06Result'; Value = 'FAIL' },
+        @{ Key = 'S06Ms'; Value = '000000C9' },
+        @{ Key = 'S05Ctl'; Value = '00000000' },
+        @{ Key = 'PostErr4'; Value = '00000001' },
+        @{ Key = 'PostM08'; Value = '00000001' })) {
+        $changed = $armedFixture.Clone()
+        $changed[$mutation.Key] = $mutation.Value
+        try {
+            $null = Test-V9xIntelRingPlan $changed -Armed
+            throw "Armed validator accepted $($mutation.Key) mutation."
+        } catch {
+            if ($_.Exception.Message -eq
+                    "Armed validator accepted $($mutation.Key) mutation.") { throw }
+        }
+    }
     Write-Host "Intel ring-plan validator self-test passed ($($result.ArmPacketCrc))."
     return
 }
 
 $resolved = (Resolve-Path -LiteralPath $Path).Path
 $result = Test-V9xIntelRingPlan (ConvertFrom-V9xIntelRingIni (
-    Get-Content -LiteralPath $resolved))
+    Get-Content -LiteralPath $resolved)) -Armed:$Armed
 if ($Json) { $result | ConvertTo-Json } else { $result | Format-List }

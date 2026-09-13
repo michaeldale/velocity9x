@@ -53,6 +53,8 @@ static const char *v9x_event_kind_text(WORD kind)
     case V9X_HW16_EVENT_MODE_SWITCH: return "mode-switch";
     case V9X_HW16_EVENT_MODE_RESTORE: return "mode-restore";
     case V9X_HW16_EVENT_DPMS: return "dpms";
+    case 7u: return "ring-pre";
+    case 8u: return "ring-post";
     default: return "unknown";
     }
 }

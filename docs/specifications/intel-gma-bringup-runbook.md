@@ -242,11 +242,10 @@ complete the phase.
 
 ### 3.2d Phase 4 no-write command-plan capture
 
-The first Phase 4 package still cannot write Intel MMIO. The errata gate was
-opened by risk decision on 2026-09-13
-(`docs\decisions\2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`),
-but the execution half of Phase 4 is not yet built, so this package has no
-write path regardless of arm keys. It does reserve the top 128 KiB from
+The Phase 4 capture boot must be unarmed, even when using a package that
+contains the guarded first-write executor. The errata gate was opened by the
+2026-09-13 risk decision, but an empty `IntelArmOnce` still prevents any Intel
+MMIO write. The package reserves the top 128 KiB from
 DirectDraw and writes `C:\V9XDIAG\INTELRNG.TXT` after the Phase 2 inventory.
 The file includes two fresh, read-only PCI BIOS reads of host bridge D0:F0
 offset `60h` (`FlushPageCfg0` and `FlushPageCfg1`). `FlushPageRead=STABLE`
@@ -268,9 +267,44 @@ ring, HWS and scratch placement, checks that all ten dwords are the exact
 reviewed MI/BLT streams, and recomputes both the ten-dword `ArmPacketCrc`
 and `ArmExecutionCrc` over the probe, exact 16,382-dword NOOP wrap, repeated
 probe and BLT. Only the latter is a candidate for `IntelArmCrc` on the later
-armed boot; the current package still makes no GPU writes. On the measured Phase 2
+armed boot. On the measured Phase 2
 layout it should report ring `00790000`, HWS `007A0000` and scratch `007A1000`.
 Any difference is a capture to understand, not permission to arm.
+
+### 3.2e Phase 4 two-boot first-write test
+
+Use the exact package whose build ID appears in the unarmed capture. Do not
+install arm keys during package deployment. Boot once on AC power, collect
+`V9XDIAG`, and require the no-write validator above, `TokenMover=READY`, and
+Phase 1/2/3 PASS captures. Then copy `ArmExecutionCrc` and `CaptureBuildId`
+from that boot's `INTELRNG.TXT` into the stick's `WINDOWS\SYSTEM.INI`:
+
+```ini
+[Velocity9x]
+IntelAccelDefault=0
+IntelArmOnce=p4-20260913-a
+IntelArmCrc=<ArmExecutionCrc>
+IntelArmBuildId=<CaptureBuildId>
+IntelInFlight=
+IntelEnableThisBoot=0
+IntelLastResult=
+```
+
+Boot the same package a second time on AC, leave the desktop idle, photograph
+it, shut down, and collect `V9XDIAG`. Validate the armed capture with:
+
+```powershell
+.\scripts\check-intel-ring-plan.ps1 -Path <usb-copy>\INTELRNG.TXT -Armed
+```
+
+This checks the exact command stream and whole-execution CRC, ordered ring
+readbacks and bounded polls, scratch guard, unchanged errors, and the full
+pre/post MMIO fingerprint. If the machine hangs, photograph it and power-cycle;
+the next load is unarmed because `IntelInFlight` remains set. Collect the
+partial capture before considering the single identical retry allowed by the
+risk decision. Never silently clear `IntelInFlight` or substitute a new token.
+The detailed ordering and retry limits are in
+`docs\plans\intel-phase4-first-write-design.md`.
 
 ### 3.3 Per-mode checklist
 

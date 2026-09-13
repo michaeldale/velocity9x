@@ -3,6 +3,7 @@
 #undef SetCursor
 
 #include <string.h>
+#include "velocity9x/build.h"
 #include "velocity9x/intel_gma.h"
 
 #define V9X_I9XX_BOOT_INI     "SYSTEM.INI"
@@ -48,6 +49,9 @@ void v9x_intel_boot_arm_prepare(void)
     char in_flight[65];
     char arm_once[65];
     char crc_text[16];
+#ifdef V9X_I9XX_FIRST_WRITE_EXECUTOR
+    char build_text[65];
+#endif
     char last_result[96];
     DWORD crc = 0ul;
 
@@ -92,6 +96,12 @@ void v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_state = "EXECUTOR-ABSENT";
     return;
 #else
+    if (!v9x_intel_boot_read("IntelArmBuildId", build_text,
+                             sizeof(build_text)) ||
+        strcmp(build_text, v9x_get_build_identity()->build_id) != 0) {
+        v9x_intel_boot_state = "BAD-BUILD";
+        return;
+    }
     if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
         !v9x_intel_boot_set("IntelArmOnce", "") ||
         !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {

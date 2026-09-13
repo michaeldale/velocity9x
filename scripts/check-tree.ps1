@@ -122,6 +122,7 @@ $required = @(
     "src\chipsets\intel\i9xx_arm.c",
     "tests\host\test_i9xx_arm.c",
     "src\display16\intel_ring16.c",
+    "src\display16\intel_exec16.c",
     "src\display16\intel_boot16.c",
     "tools\diag\serial_smoke.c",
     "tools\diag\serial_smoke_win32.c",
@@ -182,6 +183,7 @@ $allowedOsBoundaries = @(
     # Phase 4's no-write plan publisher uses the Win16 profile API; packet
     # construction and validation remain OS-free in src\chipsets\intel.
     (Join-Path $repoRoot "src\display16\intel_ring16.c"),
+    (Join-Path $repoRoot "src\display16\intel_exec16.c"),
     (Join-Path $repoRoot "src\display16\intel_boot16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
@@ -604,8 +606,19 @@ if ($miniBuildSource -notmatch
     throw ("build-minivdd-skeleton.ps1 must define " +
            "V9X_INTEL_MMIO_FINGERPRINT only for the intel-gma family.")
 }
-if ($miniBuildSource -match 'V9X_I9XX_FIRST_WRITE_EXECUTOR') {
-    throw "The Phase 4 register executor is not package-enabled before its 16-bit arm and validator are complete."
+if ($miniBuildSource -notmatch
+    '(?ms)^if \(\$intelMmio\) \{\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*\$assemblerArguments = @\("-DV9X_I9XX_FIRST_WRITE_EXECUTOR"\) \+ \$assemblerArguments\s*\}' -or
+    [regex]::Matches($miniBuildSource,
+        '"-DV9X_I9XX_FIRST_WRITE_EXECUTOR"').Count -ne 1) {
+    throw "The Phase 4 mini-VDD executor must be defined exactly once, only for Intel."
+}
+$intelFamilySource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot 'packaging\families\intel-gma\family.psd1') -Raw
+if ($intelFamilySource -notmatch
+    "Defines = @\('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR'\)" -or
+    $intelFamilySource -match
+    "RuntimeDefines = @\([^)]*V9X_I9XX_FIRST_WRITE_EXECUTOR") {
+    throw "The Phase 4 Win16 executor must be in the paired Intel build only."
 }
 if ($miniSource -notmatch
     '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture.*?^EndProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n\s*IFDEF\s+V9X_I9XX_FIRST_WRITE_EXECUTOR.*?^EndProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\nENDIF\s*\r?\nENDIF') {
@@ -662,6 +675,25 @@ foreach ($store in @(
 if ([regex]::Matches($intelRingExecute,
         '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 13) {
     throw "Intel Phase 4 executor has an unreviewed MMIO store."
+}
+foreach ($dispatch in @(
+        @('7', 'Wrap'), @('8', 'Reprobe'), @('9', 'Blt'))) {
+    if ($intelRingExecute -notmatch
+        ("(?m)^\s*cmp\s+ecx,\s*" + $dispatch[0] +
+         "\s*\r?\n\s*je\s+V9xMini_I9xx_Ring_Execute_" +
+         $dispatch[1] + "\s*$")) {
+        throw "Intel Phase 4 ring step $($dispatch[0]) dispatch changed."
+    }
+}
+if ($miniSource -notmatch
+    '(?ms)^V9xMini_Api_I9xxRingDiag:\s*IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*cmp\s+V9xI9xxValid,\s*1\s*jne\s+short\s+V9xMini_Api_I9xxRingDiag_Missing\s*movzx\s+ecx,\s*\[ebp.Client_CX\]\s*cmp\s+ecx,\s*9\s*jae') {
+    throw "Intel Phase 4 diagnostic allowlist must include CTL and START."
+}
+$intelRingSource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot 'src\display16\intel_ring16.c') -Raw
+if ($intelRingSource -notmatch
+    '(?ms)static WORD published_this_load;.*?if \(published_this_load != 0u\) \{ return; \}\s*published_this_load = 1u;') {
+    throw "Intel Phase 4 ring log must survive later Enable diagnostics."
 }
 if ($miniSource -match '\bV9X_NO_DPMS\b' -or
     $miniBuildSource -match '\bV9X_NO_DPMS\b') {

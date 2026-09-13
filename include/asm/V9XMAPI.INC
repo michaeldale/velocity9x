@@ -213,6 +213,10 @@ V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 V9XMINI_FN_I9XX_RING_STAGE   EQU 0011h
 V9XMINI_FN_I9XX_RING_MEMORY  EQU 0012h
 V9XMINI_FN_I9XX_RING_EXECUTE EQU 0013h
+; RING_DIAG in: CX=0..6 exact error/instruction offset index,
+;               7=RING_CTL, 8=RING_START;
+;           out AX=1 and EBX=value. It is read-only even in no-write builds.
+V9XMINI_FN_I9XX_RING_DIAG   EQU 0014h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
