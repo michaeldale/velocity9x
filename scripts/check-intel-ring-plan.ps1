@@ -75,6 +75,47 @@ function Test-V9xIntelRingPlan {
           @('ErrataGate', '0'), @('FlushPageRead', 'STABLE'),
           @('Result', 'ERRATA-GATED'))
     }
+    # Name the precondition before the generic mismatch below does, because
+    # "Result must be PASS" is what made a refusal cost a boot to interpret.
+    if ($Values.ContainsKey('PreconditionCode')) {
+        $preconditionNames = @{
+            '00000001' = 'an arm key could not be read from the arm file'
+            '00000002' = 'IntelArmBuildId is not the running build'
+            '00000003' = 'IntelAccelDefault is not 0'
+            '00000004' = 'IntelArmCrc is not eight hexadecimal digits'
+            '00000005' = 'the arm contract rejected it'
+            '00000006' = 'the armed CRC does not match the one latched at load'
+            '00000007' = 'the two flush-page config reads disagreed'
+            '00000008' = 'the sandbox layout is not the measured one'
+            '00000009' = 'BSM is not 7F800000'
+            '0000000A' = 'PGTBL_CTL is not 7FFC0001'
+            '0000000B' = 'a ring register was not zero at entry'
+            '0000000C' = 'the GTT hash is not the Phase 2 baseline'
+            '0000000D' = 'the event journal is full or dropped a record'
+            '0000000E' = 'INTELMM.TXT does not say PASS'
+            '0000000F' = 'INTELGTT.TXT does not say PASS'
+            '00000010' = 'a mini-VDD diagnostic register read failed'
+            '00000011' = 'EIR is not clear'
+            '00000012' = 'ESR is not clear'
+        }
+        $armRejectNames = @{
+            '00000001' = 'not enabled this boot'; '00000002' = 'Safe Mode'
+            '00000003' = 'errata gate closed';    '00000004' = 'PCI identity'
+            '00000005' = 'phase';                 '00000006' = 'token'
+            '00000007' = 'command CRC'
+        }
+        $code = $Values.PreconditionCode
+        $detail = if ($preconditionNames.ContainsKey($code)) {
+            $preconditionNames[$code]
+        } else { "unknown precondition code $code" }
+        if ($code -ceq '00000005' -and $Values.ContainsKey('PreconditionArmReject')) {
+            $reject = $Values.PreconditionArmReject
+            if ($armRejectNames.ContainsKey($reject)) {
+                $detail += ": $($armRejectNames[$reject])"
+            }
+        }
+        throw "Intel Phase 4 refused before any write: $detail."
+    }
     foreach ($pair in $modePairs) {
         if (-not $Values.ContainsKey($pair[0]) -or $Values[$pair[0]] -cne $pair[1]) {
             throw "Intel ring plan $($pair[0]) must be $($pair[1])."

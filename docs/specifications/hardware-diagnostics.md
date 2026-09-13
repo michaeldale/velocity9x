@@ -124,3 +124,54 @@ through PCI BAR3 by the mini-VDD) and `C:\V9XDIAG\INTELGTT.TXT`, section
 
 `scripts\check-intel-gtt-capture.ps1` recomputes every count, run, hash and
 sample relationship from `INTELGTT.BIN` rather than trusting the text.
+
+## Intel Gen3 Phase 4 ring plan and first write
+
+Phase 4 writes `C:\V9XDIAG\INTELRNG.TXT`, section `[IntelRing]`, and keeps its
+one-shot arm state in `C:\V9XDIAG\INTELARM.TXT`, section `[Velocity9x]`. The
+arm file is written by `scripts\arm-intel-phase4.ps1` on the host and by the
+driver at load and at refusal; it is deliberately not `SYSTEM.INI`.
+
+`Access` is `no-hardware-writes` on an unarmed boot and `armed-hardware-write`
+once the executor has committed. `TokenMover` reports the load-time
+transaction: `READY` (nothing armed, the normal unarmed boot), `ARMED`,
+`INCOMPLETE` (a previous attempt left `IntelInFlight` set), `BAD-TOKEN`,
+`BAD-CRC`, `BAD-BUILD`, `EXECUTOR-ABSENT` or `IO-FAILED`.
+
+`Result=ERRATA-GATED` is the complete, healthy unarmed capture. An armed boot
+ends at `PASS`, or at one of the named refusals in the design note.
+
+### PreconditionCode
+
+A refusal before any hardware write publishes `PreconditionCode`, and
+`RefErr0` through `RefErr6` beside it, which are the read-only registers
+IPEIR, IPEHR, INSTDONE, ACTHD, EIR, ESR and EMR in that order.
+
+| Code | Meaning |
+|---|---|
+| `01` | An arm key could not be read from the arm file |
+| `02` | `IntelArmBuildId` is not this driver's build |
+| `03` | `IntelAccelDefault` is not `0` |
+| `04` | `IntelArmCrc` is not eight hexadecimal digits |
+| `05` | The arm contract rejected; `PreconditionArmReject` gives its reason |
+| `06` | The armed CRC does not match the one latched at load |
+| `07` | The two flush-page config reads disagreed |
+| `08` | The sandbox layout is not the measured one |
+| `09` | BSM is not `7F800000` |
+| `0A` | PGTBL_CTL is not `7FFC0001` |
+| `0B` | A ring register was not zero at entry |
+| `0C` | The GTT hash is not the Phase 2 baseline |
+| `0D` | The event journal is full or dropped a record |
+| `0E` | `INTELMM.TXT` does not say `PASS` |
+| `0F` | `INTELGTT.TXT` does not say `PASS` |
+| `10` | A diagnostic register read through the mini-VDD failed |
+| `11` | EIR is not clear |
+| `12` | ESR is not clear |
+
+`PreconditionArmReject` is meaningful only for code `05`: 1 not enabled this
+boot, 2 Safe Mode, 3 errata gate closed, 4 PCI identity, 5 phase, 6 token,
+7 command CRC.
+
+EMR is the error *mask* and is non-zero at reset on this part. It is reported
+and never required to be clear; an earlier build required it and refused a
+healthy machine.

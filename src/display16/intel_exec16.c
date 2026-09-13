@@ -173,6 +173,35 @@ static void v9x_p4_clean_refusal(const char *reason)
     (void)v9x_p4_profile("IntelInFlight", "");
 }
 
+/*
+ * Preflight reason codes, published as PreconditionCode. Twenty-odd
+ * conditions behind one boolean cost a boot on 2026-09-13 because the file
+ * said only PRECONDITION-REFUSED; a machine with no serial port cannot afford
+ * that. The names live in docs\specifications\hardware-diagnostics.md rather
+ * than in the driver, which is close to its 64K code segment limit.
+ */
+#define V9X_P4_PRE_OK           0u
+#define V9X_P4_PRE_PROFILE      1u
+#define V9X_P4_PRE_BUILD        2u
+#define V9X_P4_PRE_ACCEL        3u
+#define V9X_P4_PRE_CRC_TEXT     4u
+#define V9X_P4_PRE_ARM          5u
+#define V9X_P4_PRE_CRC_MATCH    6u
+#define V9X_P4_PRE_FLUSH        7u
+#define V9X_P4_PRE_LAYOUT       8u
+#define V9X_P4_PRE_BSM          9u
+#define V9X_P4_PRE_PGTBL       10u
+#define V9X_P4_PRE_RING        11u
+#define V9X_P4_PRE_GTT_HASH    12u
+#define V9X_P4_PRE_EVENTS      13u
+#define V9X_P4_PRE_MMIO_RESULT 14u
+#define V9X_P4_PRE_GTT_RESULT  15u
+#define V9X_P4_PRE_DIAG_READ   16u
+#define V9X_P4_PRE_EIR         17u
+#define V9X_P4_PRE_ESR         18u
+
+static WORD v9x_p4_pre_rejection;
+
 static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
                              const DWORD *probe, const DWORD *blt,
                              WORD flush_stable)
@@ -186,6 +215,8 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     char arm_build[65];
     DWORD crc;
     WORD rejection;
+
+    v9x_p4_pre_rejection = 0u;
     if (!v9x_p4_read_profile("IntelInFlight", in_flight,
                               sizeof(in_flight)) ||
         !v9x_p4_read_profile("IntelEnableThisBoot", enabled,
@@ -195,11 +226,17 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
         !v9x_p4_read_profile("IntelAccelDefault", accel_default,
                               sizeof(accel_default)) ||
         !v9x_p4_read_profile("IntelArmBuildId", arm_build,
-                              sizeof(arm_build)) ||
-        strcmp(arm_build, v9x_get_build_identity()->build_id) != 0 ||
-        strcmp(accel_default, "0") != 0 ||
-        v9x_i9xx_parse_crc_hex(crc_text, &crc) == V9X_FALSE) {
-        return 0u;
+                              sizeof(arm_build))) {
+        return V9X_P4_PRE_PROFILE;
+    }
+    if (strcmp(arm_build, v9x_get_build_identity()->build_id) != 0) {
+        return V9X_P4_PRE_BUILD;
+    }
+    if (strcmp(accel_default, "0") != 0) {
+        return V9X_P4_PRE_ACCEL;
+    }
+    if (v9x_i9xx_parse_crc_hex(crc_text, &crc) == V9X_FALSE) {
+        return V9X_P4_PRE_CRC_TEXT;
     }
     request.token = v9x_intel_boot_arm_token;
     request.in_flight = in_flight;
@@ -221,32 +258,49 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.device_id = 0x27aeu;
     request.revision = V9xPciReadIntelRevision();
     request.phase = V9X_I9XX_PHASE4;
-    if (v9x_i9xx_arm_evaluate(&request, &rejection) != V9X_STATUS_OK ||
-        crc != v9x_intel_boot_arm_crc || flush_stable == 0u ||
-        layout->reserve_offset != 0x00790000ul ||
+    if (v9x_i9xx_arm_evaluate(&request, &rejection) != V9X_STATUS_OK) {
+        v9x_p4_pre_rejection = rejection;
+        return V9X_P4_PRE_ARM;
+    }
+    if (crc != v9x_intel_boot_arm_crc) { return V9X_P4_PRE_CRC_MATCH; }
+    if (flush_stable == 0u) { return V9X_P4_PRE_FLUSH; }
+    if (layout->reserve_offset != 0x00790000ul ||
         layout->reserve_physical != 0x7ff90000ul ||
-        layout->scratch_offset != 0x007a1000ul ||
-        v9x_i9xx_bsm != 0x7f800000ul ||
-        v9x_i9xx_first[0] != 0x7ffc0001ul ||
-        v9x_i9xx_first[1] != 0ul ||
-        v9x_i9xx_first[2] != 0ul ||
-        v9x_i9xx_first[3] != 0ul ||
-        v9x_i9xx_first[4] != 0ul ||
-        v9x_i9xx_gtt_hash_a != 0x4d8707c5ul ||
-        v9x_i9xx_gtt_hash_b != 0x4d8707c5ul ||
-        v9x_i9xx_event_count > V9X_I9XX_EVENT_MAX - 2u ||
-        v9x_i9xx_event_dropped != 0u) { return 0u; }
+        layout->scratch_offset != 0x007a1000ul) {
+        return V9X_P4_PRE_LAYOUT;
+    }
+    if (v9x_i9xx_bsm != 0x7f800000ul) { return V9X_P4_PRE_BSM; }
+    if (v9x_i9xx_first[0] != 0x7ffc0001ul) { return V9X_P4_PRE_PGTBL; }
+    if (v9x_i9xx_first[1] != 0ul || v9x_i9xx_first[2] != 0ul ||
+        v9x_i9xx_first[3] != 0ul || v9x_i9xx_first[4] != 0ul) {
+        return V9X_P4_PRE_RING;
+    }
+    if (v9x_i9xx_gtt_hash_a != 0x4d8707c5ul ||
+        v9x_i9xx_gtt_hash_b != 0x4d8707c5ul) {
+        return V9X_P4_PRE_GTT_HASH;
+    }
+    if (v9x_i9xx_event_count > V9X_I9XX_EVENT_MAX - 2u ||
+        v9x_i9xx_event_dropped != 0u) {
+        return V9X_P4_PRE_EVENTS;
+    }
     GetPrivateProfileString("IntelMmio", "Result", "", status,
                             sizeof(status), V9X_DIAG_INTELMM_TXT);
-    if (strcmp(status, "PASS") != 0) { return 0u; }
+    if (strcmp(status, "PASS") != 0) { return V9X_P4_PRE_MMIO_RESULT; }
     GetPrivateProfileString("IntelGtt", "Result", "", status,
                             sizeof(status), V9X_DIAG_INTELGTT_TXT);
-    if (strcmp(status, "PASS") != 0 ||
-        !V9xMiniI9xxRingDiag(4u) || v9x_i9xx_ring_diag_value != 0ul ||
-        !V9xMiniI9xxRingDiag(6u) || v9x_i9xx_ring_diag_value != 0ul) {
-        return 0u;
-    }
-    return 1u;
+    if (strcmp(status, "PASS") != 0) { return V9X_P4_PRE_GTT_RESULT; }
+
+    /*
+     * EIR (2088h index 4) and ESR (index 5) are latched error state and must
+     * be clear. EMR (index 6) is the error *mask* and is non-zero at reset on
+     * this part, so requiring it to be zero was simply wrong: it refused a
+     * healthy machine on 2026-09-13. It is still published beside these.
+     */
+    if (!V9xMiniI9xxRingDiag(4u)) { return V9X_P4_PRE_DIAG_READ; }
+    if (v9x_i9xx_ring_diag_value != 0ul) { return V9X_P4_PRE_EIR; }
+    if (!V9xMiniI9xxRingDiag(5u)) { return V9X_P4_PRE_DIAG_READ; }
+    if (v9x_i9xx_ring_diag_value != 0ul) { return V9X_P4_PRE_ESR; }
+    return V9X_P4_PRE_OK;
 }
 
 static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
@@ -349,6 +403,7 @@ void v9x_intel_phase4_maybe_run(
     WORD clean_pass;
     WORD blit_pass;
     WORD index;
+    WORD precondition;
     DWORD pre_mmio[V9X_I9XX_SNAPSHOT_DWORDS];
     DWORD pre_errors[7];
     DWORD post_errors[7];
@@ -356,7 +411,13 @@ void v9x_intel_phase4_maybe_run(
     char last[96];
     if (v9x_intel_boot_arm_latch == 0u) { return; }
     v9x_i9xx_phase4_sequence_begin(&sequence);
-    if (!v9x_p4_preflight(layout, probe, blt, flush_stable)) {
+    precondition = v9x_p4_preflight(layout, probe, blt, flush_stable);
+    if (precondition != V9X_P4_PRE_OK) {
+        /* Say which one, and dump the read-only error registers with it, so a
+         * refusal on a blind machine is a finding rather than another boot. */
+        (void)v9x_p4_ring_hex("PreconditionCode", precondition);
+        (void)v9x_p4_ring_hex("PreconditionArmReject", v9x_p4_pre_rejection);
+        (void)v9x_p4_capture_errors("RefErr", 0);
         v9x_p4_clean_refusal("PRECONDITION-REFUSED");
         return;
     }
