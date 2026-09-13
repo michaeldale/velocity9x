@@ -149,3 +149,31 @@ v9x_status v9x_i9xx_arm_evaluate(
     }
     return V9X_STATUS_OK;
 }
+
+void v9x_i9xx_phase4_sequence_begin(struct v9x_i9xx_phase4_sequence *state)
+{
+    if (state == 0) { return; }
+    state->completed_step = 0u;
+    state->poisoned = V9X_FALSE;
+}
+
+v9x_status v9x_i9xx_phase4_sequence_commit(
+    struct v9x_i9xx_phase4_sequence *state, v9x_u16 step)
+{
+    if (state == 0) { return V9X_STATUS_INVALID_ARGUMENT; }
+    if (state->poisoned != V9X_FALSE ||
+        step < V9X_I9XX_P4_PREFLIGHT ||
+        step > V9X_I9XX_P4_POST_SNAPSHOT ||
+        step != state->completed_step + 1u) {
+        state->poisoned = V9X_TRUE;
+        return V9X_STATUS_INVALID_STATE;
+    }
+    state->completed_step = step;
+    return V9X_STATUS_OK;
+}
+
+void v9x_i9xx_phase4_sequence_poison(
+    struct v9x_i9xx_phase4_sequence *state)
+{
+    if (state != 0) { state->poisoned = V9X_TRUE; }
+}

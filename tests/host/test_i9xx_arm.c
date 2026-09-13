@@ -114,9 +114,40 @@ static void test_arm_contract(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_phase4_sequence(void)
+{
+    struct v9x_i9xx_phase4_sequence state;
+    v9x_u16 step;
+    CHECK(v9x_i9xx_phase4_sequence_commit(0, V9X_I9XX_P4_PREFLIGHT) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_i9xx_phase4_sequence_begin(&state);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, V9X_I9XX_P4_BLT_DRAINED) ==
+          V9X_STATUS_INVALID_STATE);
+    CHECK(state.poisoned == V9X_TRUE);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, V9X_I9XX_P4_PREFLIGHT) ==
+          V9X_STATUS_INVALID_STATE);
+    v9x_i9xx_phase4_sequence_begin(&state);
+    for (step = V9X_I9XX_P4_PREFLIGHT;
+         step <= V9X_I9XX_P4_POST_SNAPSHOT; ++step) {
+        CHECK(v9x_i9xx_phase4_sequence_commit(&state, step) == V9X_STATUS_OK);
+    }
+    CHECK(state.completed_step == V9X_I9XX_P4_POST_SNAPSHOT);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, V9X_I9XX_P4_POST_SNAPSHOT) ==
+          V9X_STATUS_INVALID_STATE);
+    v9x_i9xx_phase4_sequence_begin(&state);
+    for (step = V9X_I9XX_P4_PREFLIGHT;
+         step <= V9X_I9XX_P4_PROBE_DRAINED; ++step) {
+        CHECK(v9x_i9xx_phase4_sequence_commit(&state, step) == V9X_STATUS_OK);
+    }
+    v9x_i9xx_phase4_sequence_poison(&state);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, V9X_I9XX_P4_WRAP_DRAINED) ==
+          V9X_STATUS_INVALID_STATE);
+}
+
 unsigned int v9x_run_i9xx_arm_tests(void)
 {
     test_crc();
     test_arm_contract();
+    test_phase4_sequence();
     return failures;
 }

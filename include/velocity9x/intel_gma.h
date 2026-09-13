@@ -34,6 +34,20 @@
 #define V9X_I9XX_ARM_REJECT_PHASE        ((v9x_u16)5u)
 #define V9X_I9XX_ARM_REJECT_TOKEN        ((v9x_u16)6u)
 #define V9X_I9XX_ARM_REJECT_CRC          ((v9x_u16)7u)
+/* Pure Phase 4 sequence gate. A step is recorded only after its work and
+ * diagnostic flush complete; timeout/misordering permanently poisons it. */
+#define V9X_I9XX_P4_PREFLIGHT            ((v9x_u16)1u)
+#define V9X_I9XX_P4_INTENT               ((v9x_u16)2u)
+#define V9X_I9XX_P4_STAGE                ((v9x_u16)3u)
+#define V9X_I9XX_P4_PRE_SNAPSHOT         ((v9x_u16)4u)
+#define V9X_I9XX_P4_PROGRAM              ((v9x_u16)5u)
+#define V9X_I9XX_P4_PROBE_DRAINED        ((v9x_u16)6u)
+#define V9X_I9XX_P4_WRAP_DRAINED         ((v9x_u16)7u)
+#define V9X_I9XX_P4_REPROBE_DRAINED      ((v9x_u16)8u)
+#define V9X_I9XX_P4_BLT_DRAINED          ((v9x_u16)9u)
+#define V9X_I9XX_P4_VERIFY              ((v9x_u16)10u)
+#define V9X_I9XX_P4_TEARDOWN            ((v9x_u16)11u)
+#define V9X_I9XX_P4_POST_SNAPSHOT        ((v9x_u16)12u)
 #define V9X_I9XX_PIPE_COUNT              ((v9x_u16)2u)
 #define V9X_I9XX_PIPE_NONE               ((v9x_u16)0xffffu)
 #define V9X_I9XX_SNAPSHOT_DWORDS         ((v9x_u16)20u)
@@ -208,6 +222,11 @@ struct v9x_i9xx_arm_request {
     v9x_u16 phase;
 };
 
+struct v9x_i9xx_phase4_sequence {
+    v9x_u16 completed_step;
+    v9x_u16 poisoned;
+};
+
 /* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
 struct v9x_i9xx_gtt_inventory {
     v9x_u16 flags;
@@ -289,6 +308,11 @@ v9x_u16 v9x_i9xx_token_valid(const char *text);
 v9x_u16 v9x_i9xx_parse_crc_hex(const char *text, v9x_u32 *value);
 v9x_status v9x_i9xx_arm_evaluate(
     const struct v9x_i9xx_arm_request *request, v9x_u16 *rejection);
+void v9x_i9xx_phase4_sequence_begin(struct v9x_i9xx_phase4_sequence *state);
+v9x_status v9x_i9xx_phase4_sequence_commit(
+    struct v9x_i9xx_phase4_sequence *state, v9x_u16 step);
+void v9x_i9xx_phase4_sequence_poison(
+    struct v9x_i9xx_phase4_sequence *state);
 
 v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
                                const struct v9x_pci_identity *pci);
