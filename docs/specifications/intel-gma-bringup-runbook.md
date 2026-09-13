@@ -261,11 +261,14 @@ Copy that file and validate it before any later package opens the write gate:
 .\scripts\check-intel-ring-plan.ps1 -Path <usb-copy>\INTELRNG.TXT
 ```
 
-Require `Access=no-hardware-writes`, `ErrataGate=0`,
+Require `Access=no-hardware-writes`, `TokenMover=READY`, `ErrataGate=0`,
 `FlushPageRead=STABLE` and `Result=ERRATA-GATED`. The validator independently
 checks the two `60h` reads and reconstructs the 64 KiB
 ring, HWS and scratch placement, checks that all ten dwords are the exact
-reviewed MI/BLT streams, and recomputes `ArmPacketCrc`. On the measured Phase 2
+reviewed MI/BLT streams, and recomputes both the ten-dword `ArmPacketCrc`
+and `ArmExecutionCrc` over the probe, exact 16,382-dword NOOP wrap, repeated
+probe and BLT. Only the latter is a candidate for `IntelArmCrc` on the later
+armed boot; the current package still makes no GPU writes. On the measured Phase 2
 layout it should report ring `00790000`, HWS `007A0000` and scratch `007A1000`.
 Any difference is a capture to understand, not permission to arm.
 

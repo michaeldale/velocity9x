@@ -61,11 +61,19 @@ Holding Phase 4 indefinitely for that is judged the wrong trade.
 4. The disassembly plan continues as background work. It becomes a
    prerequisite again only if Phase 4 produces a non-reproducible hang.
 
+Implementation clarification, 2026-09-13: the one-shot token transfer in item
+1 is performed by the Intel display driver's `DriverInit`, rather than by a
+DOS helper. It starts with a false in-memory arm latch, persists and verifies
+`IntelEnableThisBoot=0` first, and treats any surviving `IntelInFlight` as an
+incomplete attempt. The complete transaction and two-boot procedure are in
+`docs/plans/intel-phase4-first-write-design.md`. This changes the transport,
+not the risk decision or any remaining arm check.
+
 ## What this does not do
 
 It does not make the package capable of a write today. As of `b087acd` no
 code calls `v9x_i9xx_arm_evaluate()`, no code reads the `IntelArmOnce`
-family of keys, the DOS pre-boot helper does not exist, and neither the
+family of keys, the `DriverInit` token transaction does not exist, and neither the
 mini-VDD nor the 16-bit driver contains a ring-memory or tail-register store.
 The Phase 4 work committed so far is the safe half: layout, exclusion,
 packet builders, decoder, CRC and the arm contract as a pure function. The

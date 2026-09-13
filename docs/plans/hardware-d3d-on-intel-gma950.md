@@ -191,9 +191,9 @@ reproducible: ambiguous, erratum 12 a named suspect, continue; third hang:
 stop) and AC power only. Record:
 `docs/decisions/2026-09-13-intel-phase4-gate-opened-by-risk-decision.md`.
 **The execution half is not yet written:** nothing calls the arm contract,
-no arm keys are read, the DOS pre-boot helper does not exist, and no ring or
-tail store exists in either binary. The first write to silicon is agreed in a
-design note before it is coded.
+no arm keys are read, the approved `DriverInit` token transfer does not yet
+exist, and no ring or tail store exists in either binary. The first-write
+sequence is specified in `intel-phase4-first-write-design.md` before coding.
 
 **Implementation started 2026-09-12:** the stolen-memory layout, heap
 exclusion, ring arithmetic, packet builders, exact decoder, command CRC and
@@ -345,11 +345,17 @@ IntelEnableThisBoot=0
 IntelLastResult=
 ```
 
-A DOS helper runs before Windows. If `IntelInFlight` is non-empty a previous
-attempt did not complete: it records `incomplete-reset:<token>`, forces
-`IntelEnableThisBoot=0` and that boot is unaccelerated. Otherwise it moves
-`IntelArmOnce` to `IntelInFlight` and sets `IntelEnableThisBoot=1`. The driver
-arms only when the token, PCI id, revision, phase and packet CRC all match.
+A 2026-09-13 Phase 4 design decision moves the one-shot transfer into the
+Intel display driver's `DriverInit` (its actual load entry, rather than a DOS
+helper or `LibMain`). A volatile latch starts false on each load. `DriverInit`
+first persists `IntelEnableThisBoot=0`; if `IntelInFlight` is non-empty it
+records `incomplete-reset:<token>` and leaves that boot unarmed. Otherwise it
+moves a valid `IntelArmOnce` to `IntelInFlight`, clears `IntelArmOnce`, then
+persists `IntelEnableThisBoot=1`, verifying each write before setting the
+volatile latch. The driver arms only when that latch, token, PCI id, revision,
+phase and packet CRC all match. See
+[the first-write design](intel-phase4-first-write-design.md) for the complete
+two-boot transaction and failure ordering.
 Immediately before the first risky write the 16-bit side persists
 `IntelEnableThisBoot=0` and re-reads it, so the on-disk state is already
 disarmed while the session stays armed. Clean shutdown records `pass:<token>`

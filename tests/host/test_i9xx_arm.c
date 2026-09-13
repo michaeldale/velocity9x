@@ -16,14 +16,36 @@ static void test_crc(void)
     static const v9x_u32 stream[2] = {
         V9X_I9XX_MI_NOOP, V9X_I9XX_MI_FLUSH
     };
+    static const v9x_u32 blt[8] = {
+        0x54300004ul, 0x03f00020ul, 0ul, 0x00080008ul,
+        0x007a1100ul, 0x55aa33ccul, V9X_I9XX_MI_FLUSH,
+        V9X_I9XX_MI_NOOP
+    };
+    v9x_u32 changed[8];
+    v9x_u16 index;
     CHECK(v9x_i9xx_crc32_dwords(stream, 2ul) == 0x8b2cbe45ul);
     CHECK(v9x_i9xx_crc32_dwords(0, 2ul) == 0ul);
+    CHECK(v9x_i9xx_phase4_execution_crc(stream, blt) == 0x3eaa137bul);
+    CHECK(v9x_i9xx_phase4_execution_crc(0, blt) == 0ul);
+    for (index = 0u; index < 8u; ++index) { changed[index] = blt[index]; }
+    changed[5] ^= 1ul;
+    CHECK(v9x_i9xx_phase4_execution_crc(stream, changed) != 0x3eaa137bul);
 }
 
 static void test_arm_contract(void)
 {
     struct v9x_i9xx_arm_request request;
     v9x_u16 rejection;
+    v9x_u32 parsed_crc;
+
+    CHECK(v9x_i9xx_token_valid("phase4-test-001") == V9X_TRUE);
+    CHECK(v9x_i9xx_token_valid("bad token") == V9X_FALSE);
+    CHECK(v9x_i9xx_token_valid("") == V9X_FALSE);
+    CHECK(v9x_i9xx_parse_crc_hex("3EAA137B", &parsed_crc) == V9X_TRUE);
+    CHECK(parsed_crc == 0x3eaa137bul);
+    CHECK(v9x_i9xx_parse_crc_hex("3EAA137", &parsed_crc) == V9X_FALSE);
+    CHECK(v9x_i9xx_parse_crc_hex("3EAA137BG", &parsed_crc) == V9X_FALSE);
+    CHECK(v9x_i9xx_parse_crc_hex("00000000", &parsed_crc) == V9X_FALSE);
 
     request.token = "phase4-test-001";
     request.in_flight = "phase4-test-001";

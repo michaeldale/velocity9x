@@ -282,6 +282,11 @@ v9x_status v9x_i9xx_decode_phase4_stream(
     v9x_u32 scratch_offset, v9x_u32 scratch_bytes);
 v9x_u32 v9x_i9xx_crc32_dwords(const v9x_u32 *stream,
                                v9x_u32 dword_count);
+/* CRC of probe, full-ring NOOP wrap, repeated probe and BLT; no large buffer. */
+v9x_u32 v9x_i9xx_phase4_execution_crc(const v9x_u32 *probe,
+                                        const v9x_u32 *blt);
+v9x_u16 v9x_i9xx_token_valid(const char *text);
+v9x_u16 v9x_i9xx_parse_crc_hex(const char *text, v9x_u32 *value);
 v9x_status v9x_i9xx_arm_evaluate(
     const struct v9x_i9xx_arm_request *request, v9x_u16 *rejection);
 

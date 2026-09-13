@@ -122,6 +122,7 @@ $required = @(
     "src\chipsets\intel\i9xx_arm.c",
     "tests\host\test_i9xx_arm.c",
     "src\display16\intel_ring16.c",
+    "src\display16\intel_boot16.c",
     "tools\diag\serial_smoke.c",
     "tools\diag\serial_smoke_win32.c",
     "tools\diag\vxd_probe.asm",
@@ -181,6 +182,7 @@ $allowedOsBoundaries = @(
     # Phase 4's no-write plan publisher uses the Win16 profile API; packet
     # construction and validation remain OS-free in src\chipsets\intel.
     (Join-Path $repoRoot "src\display16\intel_ring16.c"),
+    (Join-Path $repoRoot "src\display16\intel_boot16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only

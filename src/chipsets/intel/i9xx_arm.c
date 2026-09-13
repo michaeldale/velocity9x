@@ -30,6 +30,48 @@ static v9x_u16 v9x_i9xx_token_equal(const char *left, const char *right,
     return V9X_TRUE;
 }
 
+v9x_u16 v9x_i9xx_token_valid(const char *text)
+{
+    return v9x_i9xx_token_length(text) != 0u;
+}
+
+v9x_u16 v9x_i9xx_parse_crc_hex(const char *text, v9x_u32 *value)
+{
+    v9x_u32 parsed = 0ul;
+    v9x_u16 index;
+    if (text == 0 || value == 0) { return V9X_FALSE; }
+    *value = 0ul;
+    for (index = 0u; index < 8u; ++index) {
+        char ch = text[index];
+        v9x_u16 digit;
+        if (ch >= '0' && ch <= '9') { digit = (v9x_u16)(ch - '0'); }
+        else if (ch >= 'A' && ch <= 'F') {
+            digit = (v9x_u16)(ch - 'A' + 10);
+        } else if (ch >= 'a' && ch <= 'f') {
+            digit = (v9x_u16)(ch - 'a' + 10);
+        } else { return V9X_FALSE; }
+        parsed = (parsed << 4) | digit;
+    }
+    if (text[8] != '\0' || parsed == 0ul) { return V9X_FALSE; }
+    *value = parsed;
+    return V9X_TRUE;
+}
+
+static v9x_u32 v9x_i9xx_crc32_update(v9x_u32 crc, v9x_u32 value)
+{
+    v9x_u16 byte_index;
+    for (byte_index = 0u; byte_index < 4u; ++byte_index) {
+        v9x_u16 bit;
+        crc ^= value & 0xfful;
+        for (bit = 0u; bit < 8u; ++bit) {
+            crc = (crc >> 1) ^
+                ((crc & 1ul) != 0ul ? 0xedb88320ul : 0ul);
+        }
+        value >>= 8;
+    }
+    return crc;
+}
+
 v9x_u32 v9x_i9xx_crc32_dwords(const v9x_u32 *stream,
                                v9x_u32 dword_count)
 {
@@ -37,17 +79,30 @@ v9x_u32 v9x_i9xx_crc32_dwords(const v9x_u32 *stream,
     v9x_u32 index;
     if (stream == 0) { return 0ul; }
     for (index = 0ul; index < dword_count; ++index) {
-        v9x_u32 value = stream[index];
-        v9x_u16 byte_index;
-        for (byte_index = 0u; byte_index < 4u; ++byte_index) {
-            v9x_u16 bit;
-            crc ^= value & 0xfful;
-            for (bit = 0u; bit < 8u; ++bit) {
-                crc = (crc >> 1) ^
-                    ((crc & 1ul) != 0ul ? 0xedb88320ul : 0ul);
-            }
-            value >>= 8;
-        }
+        crc = v9x_i9xx_crc32_update(crc, stream[index]);
+    }
+    return crc ^ 0xfffffffful;
+}
+
+v9x_u32 v9x_i9xx_phase4_execution_crc(const v9x_u32 *probe,
+                                        const v9x_u32 *blt)
+{
+    v9x_u32 crc = 0xfffffffful;
+    v9x_u32 index;
+    if (probe == 0 || blt == 0) { return 0ul; }
+    for (index = 0ul; index < 2ul; ++index) {
+        crc = v9x_i9xx_crc32_update(crc, probe[index]);
+    }
+    for (index = 0ul; index <
+         (V9X_I9XX_RING_BYTES - V9X_I9XX_RING_GUARD_BYTES) / 4ul;
+         ++index) {
+        crc = v9x_i9xx_crc32_update(crc, V9X_I9XX_MI_NOOP);
+    }
+    for (index = 0ul; index < 2ul; ++index) {
+        crc = v9x_i9xx_crc32_update(crc, probe[index]);
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        crc = v9x_i9xx_crc32_update(crc, blt[index]);
     }
     return crc ^ 0xfffffffful;
 }

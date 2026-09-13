@@ -15,6 +15,9 @@ static struct v9x_component_state v9x_display_component;
 static const struct v9x_build_identity *v9x_display_build_identity;
 
 extern void v9x_display_boot_log(void);
+#ifdef V9X_INTEL_GMA_FAMILY
+extern void v9x_intel_boot_arm_prepare(void);
+#endif
 
 /* The display-driver loader supplies heap size in CX, module handle in DI,
  * and the command line in ES:SI. This is the entry contract used by the
@@ -27,6 +30,9 @@ UINT FAR DriverInit(UINT heap_size,
                     LPSTR command_line)
 #pragma on (unreferenced)
 {
+#ifdef V9X_INTEL_GMA_FAMILY
+    v9x_intel_boot_arm_prepare();
+#endif
     v9x_display_boot_log();
     v9x_display_build_identity = v9x_get_build_identity();
     v9x_log_init(&v9x_display_logger, 0, 0);

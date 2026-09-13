@@ -57,6 +57,7 @@
             @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c' }
             @{ Name = 'intel_event16'; Path = 'src\display16\intel_event16.c' }
             @{ Name = 'intel_ring16'; Path = 'src\display16\intel_ring16.c' }
+            @{ Name = 'intel_boot16'; Path = 'src\display16\intel_boot16.c' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
@@ -67,7 +68,7 @@
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        Defines = @('V9X_INTEL_GMA_FAMILY')
         RuntimeDefines = @('V9X_INTEL_GMA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-intel-gma'
         PackageOutput = 'build\win98se-intel-gma'

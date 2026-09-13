@@ -15,6 +15,7 @@ extern unsigned long v9x_vbe_vram_reported;
 extern DWORD v9x_i9xx_bsm;
 extern WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
+extern const char *v9x_intel_boot_token_mover_state(void);
 
 static void v9x_ring_hex32(char *text, DWORD value)
 {
@@ -66,6 +67,9 @@ void v9x_intel_publish_ring_plan(void)
     V9xEnsureDiagDir();
     WritePrivateProfileString("IntelRing", 0, 0, V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "Access", "no-hardware-writes",
+                              V9X_DIAG_INTELRNG_TXT);
+    WritePrivateProfileString("IntelRing", "TokenMover",
+                              v9x_intel_boot_token_mover_state(),
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "ErrataGate", "0",
                               V9X_DIAG_INTELRNG_TXT);
@@ -137,6 +141,10 @@ void v9x_intel_publish_ring_plan(void)
     v9x_ring_write_hex("BltCrc", v9x_i9xx_crc32_dwords(blt, 8ul));
     v9x_ring_write_hex("ArmPacketCrc",
                        v9x_i9xx_crc32_dwords(combined, 10ul));
+    v9x_ring_write_hex("WrapNoopDwords",
+                       (layout.ring_bytes - V9X_I9XX_RING_GUARD_BYTES) / 4ul);
+    v9x_ring_write_hex("ArmExecutionCrc",
+                       v9x_i9xx_phase4_execution_crc(probe, blt));
     WritePrivateProfileString("IntelRing", "Result",
                               flush_page_stable != 0u ? "ERRATA-GATED" :
                                                        "FLUSH-PROBE-REVIEW",

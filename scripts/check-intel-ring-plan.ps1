@@ -66,6 +66,7 @@ function Test-V9xIntelRingPlan {
     param([hashtable]$Values)
     foreach ($pair in @(
         @('Access', 'no-hardware-writes'),
+        @('TokenMover', 'READY'),
         @('ErrataGate', '0'),
         @('FlushPageRead', 'STABLE'),
         @('Result', 'ERRATA-GATED'))) {
@@ -125,6 +126,16 @@ function Test-V9xIntelRingPlan {
             (Get-V9xCrc32Dwords $combined)) {
         throw 'Intel ring plan command CRC does not match its dwords.'
     }
+    [uint32]$wrapNoops = ConvertFrom-V9xRingHex32 $Values 'WrapNoopDwords'
+    if ($wrapNoops -ne (($ringBytes - 8) / 4)) {
+        throw 'Intel ring plan wrap fill does not occupy the legal free space.'
+    }
+    [uint32[]]$execution = $probe + ([uint32[]](1..$wrapNoops | ForEach-Object { 0 })) +
+        $probe + $blt
+    [uint32]$executionCrc = Get-V9xCrc32Dwords $execution
+    if ((ConvertFrom-V9xRingHex32 $Values 'ArmExecutionCrc') -ne $executionCrc) {
+        throw 'Intel ring plan execution CRC does not cover the full wrap stream.'
+    }
     return [ordered]@{
         Result = $Values.Result
         HeapBytes = $heap
@@ -135,12 +146,14 @@ function Test-V9xIntelRingPlan {
         FlushPageEnabled = [bool]($flushPage0 -band 1)
         FlushPageAddress = ('{0:X8}' -f ($flushPage0 -band 0xfffff000L))
         ArmPacketCrc = ('{0:X8}' -f (Get-V9xCrc32Dwords $combined))
+        ArmExecutionCrc = ('{0:X8}' -f $executionCrc)
     }
 }
 
 if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
     $sample = ConvertFrom-V9xIntelRingIni @(
         '[IntelRing]', 'Access=no-hardware-writes', 'ErrataGate=0',
+        'TokenMover=READY',
         'FlushPageCfg0=00000000', 'FlushPageCfg1=00000000',
         'FlushPageRead=STABLE',
         'HeapBytes=00790000', 'ReserveOffset=00790000',
@@ -152,6 +165,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         'BD0=54300004', 'BD1=03F00020', 'BD2=00000000', 'BD3=00080008',
         'BD4=007A1100', 'BD5=55AA33CC', 'BD6=02000000', 'BD7=00000000',
         'ProbeCrc=8B2CBE45', 'BltCrc=B97BAB96', 'ArmPacketCrc=2478E26C',
+        'WrapNoopDwords=00003FFE', 'ArmExecutionCrc=3EAA137B',
         'Result=ERRATA-GATED')
     $result = Test-V9xIntelRingPlan $sample
     $sample.FlushPageCfg1 = '00000001'
