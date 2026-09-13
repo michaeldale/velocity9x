@@ -4,9 +4,10 @@
 
 #include <string.h>
 #include "velocity9x/build.h"
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
 
-#define V9X_I9XX_BOOT_INI     "SYSTEM.INI"
+#define V9X_I9XX_BOOT_INI     V9X_DIAG_INTELARM_TXT
 #define V9X_I9XX_BOOT_SECTION "Velocity9x"
 
 /* Never infer this from an on-disk key: it starts false on every driver load. */
@@ -14,6 +15,8 @@ WORD v9x_intel_boot_arm_latch;
 DWORD v9x_intel_boot_arm_crc;
 char v9x_intel_boot_arm_token[64];
 static const char *v9x_intel_boot_state = "NOT-RUN";
+
+extern void FAR PASCAL V9xEnsureDiagDir(void);
 
 const char *v9x_intel_boot_token_mover_state(void)
 {
@@ -42,8 +45,10 @@ static WORD v9x_intel_boot_set(const char *key, const char *value)
     return strcmp(check, value) == 0;
 }
 
-/* Intel build only. Called from DriverInit before v9x_display_boot_log and
- * before any Enable. This transfers authority, but can reach no GPU write. */
+/* Intel build only. Called from DriverInit immediately after
+ * v9x_display_boot_log and before any Enable, so the `libmain` trace is
+ * already on disk if this function is what stops the load. It transfers
+ * authority, but can reach no GPU write. */
 void v9x_intel_boot_arm_prepare(void)
 {
     char in_flight[65];
@@ -59,6 +64,7 @@ void v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
     v9x_intel_boot_state = "IO-FAILED";
+    V9xEnsureDiagDir();
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
         !v9x_intel_boot_read("IntelInFlight", in_flight,
                              sizeof(in_flight))) {

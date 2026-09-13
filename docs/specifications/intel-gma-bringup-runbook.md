@@ -276,7 +276,7 @@ Any difference is a capture to understand, not permission to arm.
 Use the exact package whose build ID appears in the unarmed capture. Do not
 install arm keys during package deployment. Boot once on AC power, collect
 `V9XDIAG`, and require the no-write validator above, `TokenMover=READY`, and
-Phase 1/2/3 PASS captures. Then arm the stick from the host. Do not hand-edit `SYSTEM.INI`: the arm
+Phase 1/2/3 PASS captures. Then arm the stick from the host. Do not hand-edit the arm file: the arm
 script re-validates the whole capture set, cross-checks the stick's package
 build against the capture, refuses a stick whose `IntelInFlight` is still set,
 writes the keys, and reads them back.
@@ -290,7 +290,7 @@ The first form is a dry run that prints the exact block. The keys it installs
 are `IntelAccelDefault`, `IntelArmOnce`, `IntelArmCrc`, `IntelArmBuildId`,
 `IntelInFlight`, `IntelEnableThisBoot` and `IntelLastResult`; the token
 defaults to `p4-<date>-a` and `-Token` overrides it. The previous
-`SYSTEM.INI` is kept as `WINDOWS\SYSTEM.V9X`. `-Disarm -Confirm` returns the
+arm file is kept as `V9XDIAG\INTELARM.V9X`. `-Disarm -Confirm` returns the
 stick to an unarmed boot.
 
 Boot the same package a second time on AC, leave the desktop idle, photograph

@@ -41,6 +41,14 @@
 #define V9X_DIAG_INTELGTT_TXT V9X_DIAG_PATH("INTELGTT.TXT") /* intel_gtt16.c */
 #define V9X_DIAG_INTELEVT_TXT V9X_DIAG_PATH("INTELEVT.TXT") /* intel_event16.c */
 #define V9X_DIAG_INTELRNG_TXT V9X_DIAG_PATH("INTELRNG.TXT") /* intel_ring16.c */
+/*
+ * Phase 4 arm state. Deliberately not SYSTEM.INI: writing the file GDI is
+ * reading in order to load this very driver stopped DriverInit returning on
+ * the netbook (2026-09-13), and the driver has no evidence it can write
+ * SYSTEM.INI at any point. It has written the diagnostic directory at every
+ * load for weeks, so the one-shot transaction lives here instead.
+ */
+#define V9X_DIAG_INTELARM_TXT V9X_DIAG_PATH("INTELARM.TXT") /* intel_boot16.c, intel_exec16.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

@@ -30,10 +30,17 @@ UINT FAR DriverInit(UINT heap_size,
                     LPSTR command_line)
 #pragma on (unreferenced)
 {
+    /*
+     * The boot trace goes first. Measured on the netbook 2026-09-13: running
+     * the Intel arm transaction ahead of it left no trace at all when
+     * DriverInit failed, which cost a boot to diagnose. With this order a
+     * `libmain` marker on disk and nothing after it names the arm transaction
+     * as the failure, exactly as an absent marker names this function.
+     */
+    v9x_display_boot_log();
 #ifdef V9X_INTEL_GMA_FAMILY
     v9x_intel_boot_arm_prepare();
 #endif
-    v9x_display_boot_log();
     v9x_display_build_identity = v9x_get_build_identity();
     v9x_log_init(&v9x_display_logger, 0, 0);
     return v9x_display16_start(&v9x_display_component,

@@ -8,7 +8,8 @@
 #include "velocity9x/intel_gma.h"
 
 #define V9X_P4_SECTION "IntelRing"
-#define V9X_P4_INI     "SYSTEM.INI"
+/* The arm transaction's own file, not SYSTEM.INI; see diagpaths.h. */
+#define V9X_P4_INI     V9X_DIAG_INTELARM_TXT
 #define V9X_P4_GUARD   0xa5a5a5a5ul
 #define V9X_P4_COLOR   0x55aa33ccul
 

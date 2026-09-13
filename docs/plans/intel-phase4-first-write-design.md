@@ -23,9 +23,9 @@ Steps 0 to 3 write no register. Steps 4 onward are the first writes to Intel sil
 
 **0. Preconditions, or refuse.** Phase 1 fingerprint `PASS`, Phase 2 inventory `PASS` with hash `4D8707C5`, Phase 3 boot record with ring disabled and idle, `FlushPageRead=STABLE`, exact identity `8086:27AE` rev 3, not Safe Mode, AC power cannot be sensed so the runbook says so. Any failure: `Result=PRECONDITION-REFUSED`, no GPU write, and the boot continues on the normal Phase 1 to 3 path. If `DriverInit` already moved a token, record the clean refusal, set and verify `IntelEnableThisBoot=0`, then clear `IntelInFlight` only after the refusal record is flushed; never leave a misleading incomplete-reset marker for a known refusal.
 
-**1. Arm contract.** `DriverInit` has already processed `[Velocity9x]` in `SYSTEM.INI` using the transaction below. Enable requires its volatile, per-load armed latch as well as `IntelEnableThisBoot=1`, `IntelInFlight` equal to the token and `IntelArmCrc`. Evaluate `v9x_i9xx_arm_evaluate()` with `errata_gate` true (the risk decision) and `configured_crc` from `IntelArmCrc`. The new boot-1 capture publishes `ArmExecutionCrc`, computed as a streaming CRC over the **whole canonical execution sequence**: first two-dword probe, `16382` wrap `MI_NOOP` dwords, second two-dword probe, and eight-dword BLT stream. Its existing `ArmPacketCrc` remains the ten-dword probe/BLT plan checksum for backwards-readable diagnostics; it is not sufficient to arm the wrap test. The operator copies `ArmExecutionCrc` into `IntelArmCrc`. A stale on-disk `IntelEnableThisBoot=1` alone can never arm a new driver load. Rejection is recorded with its reason code; after a flushed refusal record, disarm and clear the in-flight marker if the profile writes can be verified. Otherwise leave it in place and fail closed.
+**1. Arm contract.** `DriverInit` has already processed `[Velocity9x]` in `C:\V9XDIAG\INTELARM.TXT` using the transaction below. Enable requires its volatile, per-load armed latch as well as `IntelEnableThisBoot=1`, `IntelInFlight` equal to the token and `IntelArmCrc`. Evaluate `v9x_i9xx_arm_evaluate()` with `errata_gate` true (the risk decision) and `configured_crc` from `IntelArmCrc`. The new boot-1 capture publishes `ArmExecutionCrc`, computed as a streaming CRC over the **whole canonical execution sequence**: first two-dword probe, `16382` wrap `MI_NOOP` dwords, second two-dword probe, and eight-dword BLT stream. Its existing `ArmPacketCrc` remains the ten-dword probe/BLT plan checksum for backwards-readable diagnostics; it is not sufficient to arm the wrap test. The operator copies `ArmExecutionCrc` into `IntelArmCrc`. A stale on-disk `IntelEnableThisBoot=1` alone can never arm a new driver load. Rejection is recorded with its reason code; after a flushed refusal record, disarm and clear the in-flight marker if the profile writes can be verified. Otherwise leave it in place and fail closed.
 
-**2. Intent to disk, disarm on disk.** Before even staging memory, `INTELRNG.TXT` gets `Intent=<token>`, `IntentCrc`, `IntentStep=stage`, flushed. `IntelEnableThisBoot=0` is written to `SYSTEM.INI`, flushed and re-read; if the re-read does not say 0, stop. The session's volatile latch remains armed for this one run. From here a power cycle loads an unarmed driver, and the absence of a completion record is the evidence of where it died.
+**2. Intent to disk, disarm on disk.** Before even staging memory, `INTELRNG.TXT` gets `Intent=<token>`, `IntentCrc`, `IntentStep=stage`, flushed. `IntelEnableThisBoot=0` is written to the arm file, flushed and re-read; if the re-read does not say 0, stop. The session's volatile latch remains armed for this one run. From here a power cycle loads an unarmed driver, and the absence of a completion record is the evidence of where it died.
 
 **3. Stage into ring memory, prove the GTT.** The mini-VDD maps the 128 KiB reserve at physical `7FF90000` and writes the guard pattern to scratch and the ten decoded dwords into the ring at offset 0. The 16-bit side reads them back through the framebuffer selector over GMADR at aperture `790000` and `7A1000`. Physical write, aperture read: equality proves the GTT maps our range the way the GPU will fetch it, with no register touched. Mismatch: `Result=GTT-MIRROR-FAILED`, stop. This is the first write to memory the VBIOS owns; it is offscreen heap memory nothing else uses, and it programs no hardware state. Record `IntentStep=execute` and flush before the first register store.
 
@@ -75,7 +75,7 @@ From the Linux register header, documentation-derived and unconfirmed on this ma
 - **Sequence gate detail.** `v9x_i9xx_phase4_sequence_commit()` accepts only the next ordered, fully recorded step from preflight through post-snapshot. An out-of-order or repeated step poisons the session; a timeout stops the caller and permanently poisons the mini-VDD executor. A clean image mismatch can still complete the `VERIFY` step with a failed *result* and proceed to teardown, because the BLT drain was observed.
 - **Mini-VDD execution**, API v6, four functions. `RING_STAGE`: exactly the ten reviewed dwords into the fixed physical reserve, index-bounded, plus the guard pattern. `RING_EXECUTE`: takes the expected `ArmExecutionCrc` and a step selector; requires the fixed `3EAA137B` whole-execution CRC for this one machine, after `RING_STAGE` matched every dword against the reviewed table and rechecked the physical ring immediately before the first register store. The wrap fill and repeated probe are generated only from fixed code, so this exact-table-plus-constant check is equivalent to recomputing the CRC from variable staged data. A stale or altered stream cannot reach a register even with a valid token. It runs exactly one of steps 5, 6, 7, 8, 9 or 11; returns status, read-backs, tick and iteration counts through the register set the existing API already uses. `RING_MEMORY` reads back a ring or scratch dword through the physical mapping, for the diagnostic mirror. `RING_DIAG` reads the fixed error and ring-register allowlist.
 - **Tree checks.** Every store through the BAR0 mapping lives in one procedure, `V9xMini_I9xx_Ring_Execute`, whose store count and offsets are pinned by check-tree the way the read counts are today. That procedure is reachable only from the `RING_EXECUTE` dispatch arm, which is behind the positive Intel family guard and the CRC compare. A `mov [esi+...]` anywhere else in the Intel mini-VDD fails the tree.
-- **Never in the VxD:** string handling, `SYSTEM.INI` access, or any decision about whether to arm. It executes an exact stream whose CRC the 16-bit side was authorised for, or it refuses.
+- **Never in the VxD:** string handling, arm-file access, or any decision about whether to arm. It executes an exact stream whose CRC the 16-bit side was authorised for, or it refuses.
 
 ## Approved deviation: token transfer in `DriverInit`
 
@@ -114,19 +114,19 @@ token from the earlier build still cannot arm this binary: `IntelArmBuildId`
 must match the first capture from the exact guarded binary.
 
 There is no reliance on an early INI write succeeding: a missing or
-unwritable `SYSTEM.INI` yields an ordinary unarmed boot. The same profile API
+unwritable arm file yields an ordinary unarmed boot. The same profile API
 already appears in the driver, but its early-boot success on this machine must
 be proved by the unarmed boot's diagnostic before any token is installed:
 `INTELRNG.TXT` records `TokenMover=READY` only after the step-1 write, flush
 and read-back succeeded with no in-flight or once token. The host validator
 requires that field on boot 1. Safe Mode ignores all arm keys; it does not load
-this display driver. The mini-VDD never reads or writes `SYSTEM.INI`.
+this display driver. The mini-VDD never reads or writes the arm file.
 
 ## Operator procedure for the trip
 
 1. Deploy the package as usual: copy over `WINDOWS\SYSTEM` from F8 DOS, check the build id.
 2. Boot once unarmed. This produces the no-write `INTELRNG.TXT` with this machine's `ArmExecutionCrc`, `CaptureBuildId` and `TokenMover=READY`, and confirms Phases 1 to 3 still pass under the new mini-VDD. Copy `V9XDIAG`. Do not install a token if either the ring-plan validator or the token-mover round trip fails.
-3. On the host, validate the capture, take `ArmExecutionCrc`, and write the arm keys into the stick's `WINDOWS\SYSTEM.INI` from here:
+3. On the host, validate the capture, take `ArmExecutionCrc`, and write the arm keys into the stick's `V9XDIAG\INTELARM.TXT` from here:
 
 ```ini
 [Velocity9x]
@@ -148,8 +148,8 @@ pins the second boot's stream; a hang requires the additional recovery boot.
 
 ## Implementation slices, each gated green before the next
 
-1. Header and contract: API v6 constants, event kinds 7 and 8, error-register offsets, `SYSTEM.INI` key names; check-tree contract entries.
-2. Pure state machine and `SYSTEM.INI` policy in C with host tests, including the incomplete-reset path and the "step 8 without step 6" refusal.
+1. Header and contract: API v6 constants, event kinds 7 and 8, error-register offsets, arm-file key names; check-tree contract entries.
+2. Pure state machine and arm-file policy in C with host tests, including the incomplete-reset path and the "step 8 without step 6" refusal.
 3. Mini-VDD: physical mapping of the reserve, `RING_STAGE`, `RING_MEMORY`, `RING_EXECUTE` with the pinned store table; check-tree pins.
    API v6 and exact ten-dword physical-RAM staging are implemented. The MMIO
    executor is source-guarded by `V9X_I9XX_FIRST_WRITE_EXECUTOR`, a symbol no

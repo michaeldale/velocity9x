@@ -2,9 +2,14 @@
 #
 # Reads the unarmed boot's INTELRNG.TXT, validates that capture and the Phase
 # 1-3 captures beside it, then writes the [Velocity9x] arm keys into the
-# stick's WINDOWS\SYSTEM.INI. Hand-transcribing an eight-digit CRC and a build
-# id onto a machine that must then be booted blind is where an operator error
-# costs a whole trip, so nothing here is typed twice.
+# stick's V9XDIAG\INTELARM.TXT. Hand-transcribing an eight-digit CRC and a
+# build id onto a machine that must then be booted blind is where an operator
+# error costs a whole trip, so nothing here is typed twice.
+#
+# The arm state deliberately does not live in SYSTEM.INI. Writing that file
+# from the display driver stopped DriverInit returning on the netbook on
+# 2026-09-13, and a Win98 boot file is the last thing a host-side script
+# should be rewriting to set up an experiment.
 #
 # Dry run (writes nothing, prints the block it would install):
 #   .\scripts\arm-intel-phase4.ps1 -Capture <usb-copy>\INTELRNG.TXT -StickRoot E:
@@ -39,9 +44,10 @@ $ErrorActionPreference = 'Stop'
 $armSection = 'Velocity9x'
 
 # ---------------------------------------------------------------------------
-# INI editing. SYSTEM.INI is a Win98 boot file: every line this script did not
-# set is preserved byte for byte, the file keeps CRLF and ASCII with no BOM,
-# and the previous contents are copied aside before the first write.
+# INI editing. The driver reads these with GetPrivateProfileString, so the file
+# keeps CRLF and ASCII with no BOM, every line this script did not set is
+# preserved byte for byte, and the previous contents are copied aside before
+# the first write.
 # ---------------------------------------------------------------------------
 function Read-V9xIniLines {
     param([string]$Path)
@@ -149,8 +155,8 @@ function Write-V9xIniLines {
 }
 
 # ---------------------------------------------------------------------------
-# Self-test: the INI rewrite is the only part that can silently corrupt a boot
-# file, so it is the part with a fixture.
+# Self-test: the INI rewrite is the only part that can silently corrupt a file
+# the driver then reads, so it is the part with a fixture.
 # ---------------------------------------------------------------------------
 if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
     $temporary = Join-Path ([IO.Path]::GetTempPath()) `
@@ -217,14 +223,24 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
 }
 
 # ---------------------------------------------------------------------------
-# Locate the stick and its SYSTEM.INI.
+# Locate the stick and its arm file. WINDOWS\SYSTEM.INI is only used to
+# recognise the stick; this script never writes it.
 # ---------------------------------------------------------------------------
 $stick = (Resolve-Path -LiteralPath $StickRoot).Path
-$systemIni = Join-Path $stick 'WINDOWS\SYSTEM.INI'
-if (-not (Test-Path -LiteralPath $systemIni -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath (Join-Path $stick 'WINDOWS\SYSTEM.INI') -PathType Leaf)) {
     throw "No WINDOWS\SYSTEM.INI under $stick. Is that the live USB stick?"
 }
-$current = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $systemIni) `
+$diagDirectory = Join-Path $stick 'V9XDIAG'
+$armFile = Join-Path $diagDirectory 'INTELARM.TXT'
+if (-not (Test-Path -LiteralPath $armFile -PathType Leaf)) {
+    # First arm on a stick that has never run the Phase 4 driver.
+    if (-not (Test-Path -LiteralPath $diagDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $diagDirectory
+    }
+    Write-V9xIniLines -Path $armFile -Lines @("[$armSection]", '')
+    Write-Host "Created $armFile"
+}
+$current = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $armFile) `
     -Section $armSection
 $inFlight = if ($current.ContainsKey('IntelInFlight')) { $current['IntelInFlight'] } else { '' }
 if ($inFlight -and -not $AcknowledgeIncomplete) {
@@ -237,7 +253,7 @@ if ($inFlight -and -not $AcknowledgeIncomplete) {
 if ($Disarm) {
     $keys = [ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0' }
     if ($AcknowledgeIncomplete) { $keys['IntelInFlight'] = '' }
-    Write-Host "Disarm $systemIni" -ForegroundColor Cyan
+    Write-Host "Disarm $armFile" -ForegroundColor Cyan
     foreach ($key in $keys.Keys) { Write-Host ("  {0}={1}" -f $key, $keys[$key]) }
     if (-not $Confirm) {
         Write-Host 'Dry run: nothing written. Re-run with -Confirm.' -ForegroundColor Yellow
@@ -314,7 +330,7 @@ if ($Disarm) {
         IntelEnableThisBoot = '0'
         IntelLastResult    = ''
     }
-    Write-Host "Arm $systemIni" -ForegroundColor Cyan
+    Write-Host "Arm $armFile" -ForegroundColor Cyan
     Write-Host ("  capture      {0}" -f $capturePath)
     Write-Host ("  ring/HWS/scr {0} / {1} / {2}" -f $plan.RingOffset, $plan.HwsOffset, $plan.ScratchOffset)
     Write-Host ''
@@ -330,16 +346,14 @@ if ($Disarm) {
 # ---------------------------------------------------------------------------
 # Write, keeping a copy of what was there.
 # ---------------------------------------------------------------------------
-$backup = Join-Path $stick 'WINDOWS\SYSTEM.V9X'
-if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
-    Copy-Item -LiteralPath $systemIni -Destination $backup
-    Write-Host "Kept the previous SYSTEM.INI as WINDOWS\SYSTEM.V9X"
-}
-$updated = Set-V9xIniValues -Lines (Read-V9xIniLines $systemIni) `
-    -Section $armSection -Values $keys
-Write-V9xIniLines -Path $systemIni -Lines $updated
+$backup = Join-Path $diagDirectory 'INTELARM.V9X'
+Copy-Item -LiteralPath $armFile -Destination $backup -Force
 
-$verify = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $systemIni) `
+$updated = Set-V9xIniValues -Lines (Read-V9xIniLines $armFile) `
+    -Section $armSection -Values $keys
+Write-V9xIniLines -Path $armFile -Lines $updated
+
+$verify = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $armFile) `
     -Section $armSection
 foreach ($key in $keys.Keys) {
     if ($verify[$key] -cne $keys[$key]) {
