@@ -66,6 +66,10 @@ Invoke-CheckStep "Intel ring plan validator" {
     & (Join-Path $PSScriptRoot "check-intel-ring-plan.ps1") -SelfTest
 }
 
+Invoke-CheckStep "Intel Phase 4 arm script" {
+    & (Join-Path $PSScriptRoot "arm-intel-phase4.ps1") -SelfTest
+}
+
 if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")

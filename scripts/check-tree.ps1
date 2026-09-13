@@ -45,6 +45,7 @@ $required = @(
     "scripts\check-intel-gtt-capture.ps1",
     "scripts\check-intel-event-capture.ps1",
     "scripts\check-intel-ring-plan.ps1",
+    "scripts\arm-intel-phase4.ps1",
     "scripts\run-vm-mode-matrix.ps1",
     "scripts\run-family-enable-gate.ps1",
     "scripts\update-associated-driver.ps1",

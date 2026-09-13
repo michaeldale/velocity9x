@@ -276,19 +276,22 @@ Any difference is a capture to understand, not permission to arm.
 Use the exact package whose build ID appears in the unarmed capture. Do not
 install arm keys during package deployment. Boot once on AC power, collect
 `V9XDIAG`, and require the no-write validator above, `TokenMover=READY`, and
-Phase 1/2/3 PASS captures. Then copy `ArmExecutionCrc` and `CaptureBuildId`
-from that boot's `INTELRNG.TXT` into the stick's `WINDOWS\SYSTEM.INI`:
+Phase 1/2/3 PASS captures. Then arm the stick from the host. Do not hand-edit `SYSTEM.INI`: the arm
+script re-validates the whole capture set, cross-checks the stick's package
+build against the capture, refuses a stick whose `IntelInFlight` is still set,
+writes the keys, and reads them back.
 
-```ini
-[Velocity9x]
-IntelAccelDefault=0
-IntelArmOnce=p4-20260913-a
-IntelArmCrc=<ArmExecutionCrc>
-IntelArmBuildId=<CaptureBuildId>
-IntelInFlight=
-IntelEnableThisBoot=0
-IntelLastResult=
+```powershell
+.\scriptsrm-intel-phase4.ps1 -Capture <usb-copy>\INTELRNG.TXT -StickRoot E:
+.\scriptsrm-intel-phase4.ps1 -Capture <usb-copy>\INTELRNG.TXT -StickRoot E: -Confirm
 ```
+
+The first form is a dry run that prints the exact block. The keys it installs
+are `IntelAccelDefault`, `IntelArmOnce`, `IntelArmCrc`, `IntelArmBuildId`,
+`IntelInFlight`, `IntelEnableThisBoot` and `IntelLastResult`; the token
+defaults to `p4-<date>-a` and `-Token` overrides it. The previous
+`SYSTEM.INI` is kept as `WINDOWS\SYSTEM.V9X`. `-Disarm -Confirm` returns the
+stick to an unarmed boot.
 
 Boot the same package a second time on AC, leave the desktop idle, photograph
 it, shut down, and collect `V9XDIAG`. Validate the armed capture with:
@@ -302,7 +305,9 @@ readbacks and bounded polls, scratch guard, unchanged errors, and the full
 pre/post MMIO fingerprint. If the machine hangs, photograph it and power-cycle;
 the next load is unarmed because `IntelInFlight` remains set. Collect the
 partial capture before considering the single identical retry allowed by the
-risk decision. Never silently clear `IntelInFlight` or substitute a new token.
+risk decision. The arm script refuses a stick in that state, and
+`-AcknowledgeIncomplete` is the deliberate override for the one retry; never
+clear `IntelInFlight` by hand or substitute a new token.
 The detailed ordering and retry limits are in
 `docs\plans\intel-phase4-first-write-design.md`.
 
