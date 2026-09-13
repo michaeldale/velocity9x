@@ -331,9 +331,20 @@ static void v9x_dosbox_trace(const char FAR *step)
 #ifdef V9X_BOOT_TRACE
 static BOOL v9x_boot_trace(const char FAR *stage)
 {
+    BOOL written;
+
     V9xEnsureDiagDir();
-    return WritePrivateProfileString("Velocity9x", "Stage", stage,
-                                     V9X_DIAG_BOOT_INI);
+    written = WritePrivateProfileString("Velocity9x", "Stage", stage,
+                                        V9X_DIAG_BOOT_INI);
+    /*
+     * Flush. Without this the marker sits in Windows' profile cache and never
+     * reaches disk when the boot that wrote it does not finish normally,
+     * which is exactly the boot whose trace is wanted. A stale file then reads
+     * as "the driver never loaded" and sends the next person after the wrong
+     * fault; it did that twice on the netbook on 2026-09-13.
+     */
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
+    return written;
 }
 
 static void v9x_trace_hardware_failure(void)

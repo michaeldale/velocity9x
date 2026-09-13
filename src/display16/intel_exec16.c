@@ -204,7 +204,16 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.configured_crc = crc;
     request.packet_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
     request.enable_this_boot = (WORD)(strcmp(enabled, "1") == 0);
-    request.safe_mode = (WORD)(GetSystemMetrics(67) != 0);
+    /*
+     * Not GetSystemMetrics(SM_CLEANBOOT). That lives in USER, and GDI loads a
+     * display driver before USER exists, so importing it made the whole module
+     * unloadable: Windows silently used the INF's 4-bpp vga.drv row and this
+     * driver never ran at all (2026-09-13, see docs\issues). Safe Mode forces
+     * the standard VGA driver, so a boot that reaches this code is already not
+     * a Safe Mode boot; the field stays in the contract for the host tests and
+     * for any future caller that can answer it without USER.
+     */
+    request.safe_mode = V9X_FALSE;
     request.errata_gate = V9X_TRUE;
     request.vendor_id = 0x8086u;
     request.device_id = 0x27aeu;

@@ -1,7 +1,13 @@
 # Writing SYSTEM.INI from DriverInit stops the display driver loading
 
 Filed: 2026-09-13
-Status: fixed in source, not yet confirmed on the machine
+Status: **diagnosis superseded** by
+`2026-09-13-a-user-import-stops-the-display-driver-loading.md`. The real cause
+was a `GetSystemMetrics` call importing USER, which stopped the module loading
+before any code ran. The hazard described below is real and the fix is kept on
+its own merits, but it was not what produced the symptom. The reasoning error
+is that a stale `V9XBOOT.INI` was read as proof the driver had not loaded,
+when `v9x_boot_trace` did not flush; that is now fixed too.
 Machine: MICHAEL-NETBOOK, HP Mini 110-1000, 945GSE / GMA 950, Windows 98 SE
 booted direct from the live USB stick
 Found in: `intel-gma` package build `ebaa1ed-dirty`, the first Phase 4

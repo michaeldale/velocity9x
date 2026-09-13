@@ -110,6 +110,53 @@ if ($image -notmatch "DATA\|FIXED\|(SHARE\|)?PRELOAD\|READWRITE") {
 if ($image -notmatch "(?m)^DISPLAY\s+unknown ordinal 0000$") {
     throw "The Win16 DDI internal module name is not DISPLAY."
 }
+# GDI loads the display driver before USER exists, so a single USER import
+# makes the module unloadable and Windows falls back to the INF's 4-bpp
+# vga.drv row with no diagnostic anywhere. Measured on the netbook 2026-09-13,
+# where one GetSystemMetrics call cost three boots to find. KERNEL and DIBENG
+# are available at that point; nothing else is.
+# wdump prints a "Module Reference Table" heading followed by one bare module
+# name per line, and states the count above it. Read exactly that many so a
+# later section can never be mistaken for a module name.
+if ($image -notmatch
+        "(?m)number of entries in module reference table\s*=\s*([0-9A-Fa-f]+)H") {
+    throw "The Win16 DDI dump has no module reference table count."
+}
+$moduleCount = [Convert]::ToInt32($Matches[1], 16)
+$imageLines = $image -split "`r?`n"
+# The banner line, not the "number of entries in module reference table"
+# line above it, so match the trimmed heading exactly.
+$tableStart = [Array]::FindIndex($imageLines,
+    [Predicate[string]] { param($line) $line.Trim() -ceq 'Module Reference Table' })
+if ($tableStart -lt 0 -or $moduleCount -le 0) {
+    throw "The Win16 DDI dump has no readable module reference table."
+}
+# A rule of '=' separates the banner from the names; take the first
+# $moduleCount bare identifiers after it and refuse anything else.
+$importedModules = @()
+for ($line = $tableStart + 1;
+     $line -lt $imageLines.Count -and $importedModules.Count -lt $moduleCount;
+     ++$line) {
+    $candidate = $imageLines[$line].Trim()
+    if (-not $candidate -or $candidate -match '^=+$') { continue }
+    if ($candidate -notmatch '^[A-Za-z0-9_]+$') {
+        throw ("The Win16 DDI module reference table did not parse at " +
+               "'$candidate'.")
+    }
+    $importedModules += $candidate.ToUpperInvariant()
+}
+if ($importedModules.Count -ne $moduleCount) {
+    throw ("The Win16 DDI module reference table listed " +
+           "$($importedModules.Count) of $moduleCount modules.")
+}
+foreach ($importedModule in $importedModules) {
+    if ($importedModule -notin @('KERNEL', 'DIBENG')) {
+        throw ("The Win16 DDI imports $importedModule. GDI loads a display " +
+               "driver before that module exists, so the whole module fails " +
+               "to load and Windows silently uses the INF's 4-bpp vga.drv " +
+               "row. Only KERNEL and DIBENG are available at that point.")
+    }
+}
 
 $mapText = Get-Content -LiteralPath $mapPath -Raw
 
