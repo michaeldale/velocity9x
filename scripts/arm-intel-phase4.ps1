@@ -232,16 +232,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $stick 'WINDOWS\SYSTEM.INI') -PathTy
 }
 $diagDirectory = Join-Path $stick 'V9XDIAG'
 $armFile = Join-Path $diagDirectory 'INTELARM.TXT'
-if (-not (Test-Path -LiteralPath $armFile -PathType Leaf)) {
-    # First arm on a stick that has never run the Phase 4 driver.
-    if (-not (Test-Path -LiteralPath $diagDirectory -PathType Container)) {
-        $null = New-Item -ItemType Directory -Path $diagDirectory
-    }
-    Write-V9xIniLines -Path $armFile -Lines @("[$armSection]", '')
-    Write-Host "Created $armFile"
+# A dry run must leave the stick exactly as it found it, so an absent arm file
+# is treated as an empty one here and only created under -Confirm below.
+$armFileExists = Test-Path -LiteralPath $armFile -PathType Leaf
+$current = if ($armFileExists) {
+    Get-V9xIniSectionValues -Lines (Read-V9xIniLines $armFile) -Section $armSection
+} else {
+    @{}
 }
-$current = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $armFile) `
-    -Section $armSection
 $inFlight = if ($current.ContainsKey('IntelInFlight')) { $current['IntelInFlight'] } else { '' }
 if ($inFlight -and -not $AcknowledgeIncomplete) {
     throw ("The stick still carries IntelInFlight=$inFlight, so the previous " +
@@ -371,8 +369,17 @@ if ($Disarm) {
 # ---------------------------------------------------------------------------
 # Write, keeping a copy of what was there.
 # ---------------------------------------------------------------------------
-$backup = Join-Path $diagDirectory 'INTELARM.V9X'
-Copy-Item -LiteralPath $armFile -Destination $backup -Force
+if (-not $armFileExists) {
+    # First arm on a stick that has never run the Phase 4 driver.
+    if (-not (Test-Path -LiteralPath $diagDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $diagDirectory
+    }
+    Write-V9xIniLines -Path $armFile -Lines @("[$armSection]", '')
+    Write-Host "Created $armFile"
+} else {
+    $backup = Join-Path $diagDirectory 'INTELARM.V9X'
+    Copy-Item -LiteralPath $armFile -Destination $backup -Force
+}
 
 $updated = Set-V9xIniValues -Lines (Read-V9xIniLines $armFile) `
     -Section $armSection -Values $keys
