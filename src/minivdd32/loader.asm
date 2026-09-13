@@ -160,6 +160,27 @@ V9xI9xxEventBusy    dw 0
 V9xI9xxEventResult  dw 0
 V9xI9xxEventKind    dd 0
 V9xI9xxEventContext dd 0
+
+; Phase 4 staging has a physical-RAM write path but no register write path.
+; The single tested machine's reserve is fixed here; a moved BSM refuses.
+V9xI9xxRingLinear   dd 0
+V9xI9xxRingStaged   dw 0
+V9xI9xxRingResult   dw 0
+V9xI9xxRingExpected dd 00000000h, 02000000h
+                    dd 54300004h, 03f00020h, 00000000h, 00080008h
+                    dd 007a1100h, 55aa33cch, 02000000h, 00000000h
+V9xI9xxRingStep     dw 0
+V9xI9xxRingPoison   dw 0
+V9xI9xxRingBusy     dw 0
+V9xI9xxRingWant     dd 0
+V9xI9xxRingHead     dd 0
+V9xI9xxRingTail     dd 0
+V9xI9xxRingStartMs  dd 0
+V9xI9xxRingElapsed  dd 0
+V9xI9xxRingPolls    dd 0
+V9xI9xxRingFailure  dd 0
+V9xI9xxRingExecStep dd 0
+V9xI9xxRingExecCrc  dd 0
 ENDIF
 
 ; Real-mode segment of the V86 scratch the BIOS fills in, or 0 if it could not
@@ -1218,6 +1239,308 @@ V9xMini_I9xx_Event_Drop:
     xor     eax, eax
     ret
 EndProc V9xMini_I9xx_Event_Capture
+
+; EAX=reserve physical, ECX=next stream index, EDX=dword. Every value is
+; checked against the approved ten-dword stream before entering the ring.
+; Stage 0 also fills the scratch page with the guard pattern. This does not
+; touch MMIO and is reachable only after the 16-bit side persisted intent.
+BeginProc V9xMini_I9xx_Ring_Stage
+    pushad
+    mov     V9xI9xxRingResult, 0
+    cmp     eax, 07ff90000h
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    cmp     V9xI9xxMmioBase, 0fe980000h
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    cmp     V9xI9xxValid, 1
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    movzx   ebx, V9xI9xxRingStaged
+    cmp     ecx, ebx
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    cmp     ecx, 10
+    jae     V9xMini_I9xx_Ring_Stage_Done
+    cmp     edx, V9xI9xxRingExpected[ecx*4]
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    cmp     ecx, 0
+    jne     short V9xMini_I9xx_Ring_Stage_Write
+    cmp     V9xI9xxRingLinear, 0
+    jne     short V9xMini_I9xx_Ring_Stage_Write
+    mov     eax, 07ff90000h
+    VMMcall _MapPhysToLinear,<eax,00020000h,0>
+    cmp     eax, 0ffffffffh
+    je      V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingLinear, eax
+    mov     edi, eax
+    add     edi, 00011000h     ; scratch at GTT 7A1000
+    mov     eax, 0a5a5a5a5h
+    mov     ecx, 1024
+V9xMini_I9xx_Ring_Stage_Guard:
+    mov     [edi], eax
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Stage_Guard
+    xor     ecx, ecx
+    xor     edx, edx          ; stream word 0 is MI_NOOP
+V9xMini_I9xx_Ring_Stage_Write:
+    mov     edi, V9xI9xxRingLinear
+    cmp     edi, 0
+    je      V9xMini_I9xx_Ring_Stage_Done
+    mov     [edi+ecx*4], edx
+    cmp     [edi+ecx*4], edx
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    inc     V9xI9xxRingStaged
+    mov     V9xI9xxRingResult, 1
+V9xMini_I9xx_Ring_Stage_Done:
+    popad
+    movzx   eax, V9xI9xxRingResult
+    ret
+EndProc V9xMini_I9xx_Ring_Stage
+
+IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
+; Poll a submitted tail. Returns EAX=1 only when HEAD reached the exact
+; expected byte offset; time and iteration bounds are both mandatory.
+BeginProc V9xMini_I9xx_Ring_Wait
+    VMMcall Get_System_Time
+    mov     V9xI9xxRingStartMs, eax
+    mov     V9xI9xxRingPolls, 0
+    mov     V9xI9xxRingElapsed, 0
+V9xMini_I9xx_Ring_Wait_Next:
+    mov     esi, V9xI9xxMmioLinear
+    mov     eax, [esi+02034h]
+    mov     V9xI9xxRingHead, eax
+    mov     ecx, [esi+02030h]
+    mov     V9xI9xxRingTail, ecx
+    and     eax, 001ffffch       ; HEAD_ADDR, not HEAD_WRAP_COUNT
+    cmp     eax, V9xI9xxRingWant
+    je      short V9xMini_I9xx_Ring_Wait_Success
+    inc     V9xI9xxRingPolls
+    cmp     V9xI9xxRingPolls, 1000000
+    jae     short V9xMini_I9xx_Ring_Wait_Timeout
+    VMMcall Get_System_Time
+    sub     eax, V9xI9xxRingStartMs
+    mov     V9xI9xxRingElapsed, eax
+    cmp     eax, 200
+    jb      V9xMini_I9xx_Ring_Wait_Next
+V9xMini_I9xx_Ring_Wait_Timeout:
+    xor     eax, eax
+    ret
+V9xMini_I9xx_Ring_Wait_Success:
+    VMMcall Get_System_Time
+    sub     eax, V9xI9xxRingStartMs
+    mov     V9xI9xxRingElapsed, eax
+    mov     eax, 1
+    ret
+EndProc V9xMini_I9xx_Ring_Wait
+
+; The only Intel MMIO write procedure. All card-state stores are the five
+; reviewed ring registers. No handler retries a failed step, and timeout
+; leaves the ring enabled but permanently poisons this session.
+; EBX=full execution CRC, ECX=step (5,6,7,8,9,11).
+BeginProc V9xMini_I9xx_Ring_Execute
+    pushad
+    cmp     V9xI9xxRingBusy, 0
+    jne     V9xMini_I9xx_Ring_Execute_Busy
+    mov     V9xI9xxRingBusy, 1
+    mov     V9xI9xxRingResult, 0
+    mov     V9xI9xxRingElapsed, 0
+    mov     V9xI9xxRingPolls, 0
+    mov     V9xI9xxRingExecCrc, ebx
+    mov     V9xI9xxRingExecStep, ecx
+    mov     V9xI9xxRingFailure, 3
+    cmp     V9xI9xxRingPoison, 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     V9xI9xxRingStaged, 10
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     V9xI9xxRingExecCrc, 03eaa137bh
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     V9xI9xxMmioBase, 0fe980000h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     esi, V9xI9xxMmioLinear
+    test    esi, esi
+    jz      V9xMini_I9xx_Ring_Execute_Done
+    mov     edi, V9xI9xxRingLinear
+    test    edi, edi
+    jz      V9xMini_I9xx_Ring_Execute_Done
+    mov     ecx, V9xI9xxRingExecStep
+    cmp     ecx, 5
+    je      V9xMini_I9xx_Ring_Execute_Program
+    cmp     ecx, 6
+    je      V9xMini_I9xx_Ring_Execute_Probe
+    cmp     ecx, 7
+    je      V9xMini_I9xx_Ring_Execute_Wrap
+    cmp     ecx, 8
+    je      V9xMini_I9xx_Ring_Execute_Reprobe
+    cmp     ecx, 9
+    je      V9xMini_I9xx_Ring_Execute_Blt
+    cmp     ecx, 11
+    je      V9xMini_I9xx_Ring_Execute_Teardown
+    jmp     V9xMini_I9xx_Ring_Execute_Done
+
+V9xMini_I9xx_Ring_Execute_Program:
+    cmp     V9xI9xxRingStep, 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02038h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 1
+    mov     dword ptr [esi+0203ch], 0
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02034h], 0
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02038h], 00790000h
+    cmp     dword ptr [esi+02038h], 00790000h
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+0203ch], 0000f001h
+    cmp     dword ptr [esi+0203ch], 0000f001h
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+V9xMini_I9xx_Ring_Execute_Probe:
+    cmp     V9xI9xxRingStep, 5
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], 8
+    cmp     dword ptr [esi+02030h], 8
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     V9xI9xxRingWant, 8
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_Wrap:
+    cmp     V9xI9xxRingStep, 6
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02034h], 8
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    cmp     dword ptr [esi+02030h], 8
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    add     edi, 8
+    mov     ecx, 16382
+    xor     eax, eax
+V9xMini_I9xx_Ring_Execute_Wrap_Fill:
+    mov     [edi], eax
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Execute_Wrap_Fill
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     V9xI9xxRingWant, 0
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_Reprobe:
+    cmp     V9xI9xxRingStep, 7
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     eax, [esi+02034h]
+    and     eax, 001ffffch
+    cmp     eax, 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [edi], 0
+    mov     dword ptr [edi+4], 02000000h
+    mov     dword ptr [esi+02030h], 8
+    cmp     dword ptr [esi+02030h], 8
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     V9xI9xxRingWant, 8
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_Blt:
+    cmp     V9xI9xxRingStep, 8
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     eax, [esi+02034h]
+    and     eax, 001ffffch
+    cmp     eax, 8
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     ecx, 8
+    mov     ebx, OFFSET32 V9xI9xxRingExpected
+    add     ebx, 8
+    add     edi, 8
+V9xMini_I9xx_Ring_Execute_Blt_Copy:
+    mov     eax, [ebx]
+    mov     [edi], eax
+    add     ebx, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Execute_Blt_Copy
+    mov     dword ptr [esi+02030h], 40
+    cmp     dword ptr [esi+02030h], 40
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     V9xI9xxRingWant, 40
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_Wait:
+    call    V9xMini_I9xx_Ring_Wait
+    or      eax, eax
+    jz      short V9xMini_I9xx_Ring_Execute_Timeout
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+V9xMini_I9xx_Ring_Execute_Timeout:
+    mov     V9xI9xxRingFailure, 2
+    jmp     short V9xMini_I9xx_Ring_Execute_Poison
+
+V9xMini_I9xx_Ring_Execute_Teardown:
+    cmp     V9xI9xxRingStep, 9
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     eax, [esi+02034h]
+    and     eax, 001ffffch
+    cmp     eax, 40
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    cmp     dword ptr [esi+02030h], 40
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+0203ch], 0
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02034h], 0
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02038h], 0
+    cmp     dword ptr [esi+02038h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     short V9xMini_I9xx_Ring_Execute_Success
+
+V9xMini_I9xx_Ring_Execute_Poison:
+    mov     V9xI9xxRingPoison, 1
+    jmp     short V9xMini_I9xx_Ring_Execute_Done
+V9xMini_I9xx_Ring_Execute_Success:
+    mov     eax, V9xI9xxRingExecStep
+    mov     V9xI9xxRingStep, ax
+    mov     V9xI9xxRingFailure, 0
+    mov     V9xI9xxRingResult, 1
+V9xMini_I9xx_Ring_Execute_Done:
+    mov     esi, V9xI9xxMmioLinear
+    test    esi, esi
+    jz      short V9xMini_I9xx_Ring_Execute_NoSnapshot
+    mov     eax, [esi+02034h]
+    mov     V9xI9xxRingHead, eax
+    mov     eax, [esi+02030h]
+    mov     V9xI9xxRingTail, eax
+V9xMini_I9xx_Ring_Execute_NoSnapshot:
+    mov     V9xI9xxRingBusy, 0
+    jmp     short V9xMini_I9xx_Ring_Execute_Return
+V9xMini_I9xx_Ring_Execute_Busy:
+    popad
+    xor     eax, eax
+    ret
+V9xMini_I9xx_Ring_Execute_Return:
+    popad
+    mov     ebx, V9xI9xxRingHead
+    mov     ecx, V9xI9xxRingTail
+    mov     edx, V9xI9xxRingElapsed
+    mov     esi, V9xI9xxRingPolls
+    mov     edi, V9xI9xxRingFailure
+    movzx   eax, V9xI9xxRingResult
+    ret
+EndProc V9xMini_I9xx_Ring_Execute
+ENDIF
 ENDIF
 
 ; Protected-mode API, reached from the 16-bit display driver through
@@ -1267,6 +1590,12 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxEventInfo
     cmp     ax, V9XMINI_FN_I9XX_EVENT_DWORD
     je      V9xMini_Api_I9xxEventDword
+    cmp     ax, V9XMINI_FN_I9XX_RING_STAGE
+    je      V9xMini_Api_I9xxRingStage
+    cmp     ax, V9XMINI_FN_I9XX_RING_MEMORY
+    je      V9xMini_Api_I9xxRingMemory
+    cmp     ax, V9XMINI_FN_I9XX_RING_EXECUTE
+    je      V9xMini_Api_I9xxRingExecute
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -1300,6 +1629,54 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     [ebp.Client_AX], 1
     ret
 V9xMini_Api_I9xxDword_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; v6 stays a clean refusal until each Phase 4 arm and executor gate is wired.
+V9xMini_Api_I9xxRingStage:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     edx, [ebp.Client_EDX]
+    call    V9xMini_I9xx_Ring_Stage
+    mov     [ebp.Client_AX], ax
+ELSE
+    mov     [ebp.Client_AX], 0
+ENDIF
+    ret
+V9xMini_Api_I9xxRingMemory:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxRingStaged, 10
+    jne     short V9xMini_Api_I9xxRingMemory_Missing
+    mov     eax, V9xI9xxRingLinear
+    test    eax, eax
+    jz      short V9xMini_Api_I9xxRingMemory_Missing
+    mov     ecx, [ebp.Client_ECX]
+    cmp     ecx, 0001fffch
+    ja      short V9xMini_Api_I9xxRingMemory_Missing
+    test    ecx, 3
+    jnz     short V9xMini_Api_I9xxRingMemory_Missing
+    mov     ebx, [eax+ecx]
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxRingMemory_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+V9xMini_Api_I9xxRingExecute:
+IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    call    V9xMini_I9xx_Ring_Execute
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_EDI], edi
+    mov     [ebp.Client_AX], ax
+    ret
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

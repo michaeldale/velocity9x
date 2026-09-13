@@ -51,12 +51,15 @@ V9XMINI_API_MAGIC   EQU 39583956h
 ; version remains one exact-match package contract across every family.
 ;
 ; v4 adds the Intel-only read-only Gen3 GTT snapshot hash and four-PTE chunks.
+; v5 adds the bounded Intel ownership-event journal.
+; v6 reserves the Intel-only Phase 4 staging, memory and execution calls.
 V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
 V9XMINI_API_V3      EQU 0003h
 V9XMINI_API_V4      EQU 0004h
 V9XMINI_API_V5      EQU 0005h
-V9XMINI_API_VERSION EQU V9XMINI_API_V5
+V9XMINI_API_V6      EQU 0006h
+V9XMINI_API_VERSION EQU V9XMINI_API_V6
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
@@ -197,6 +200,19 @@ V9X_I9XX_EVENT_RING_IDLE      EQU 0008h
 V9X_I9XX_EVENT_RING_DISABLED  EQU 0010h
 V9X_I9XX_EVENT_PGTBL_VALID    EQU 0020h
 V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
+
+; v6: the first-write sandbox. Calls exist in every family but return AX=0
+; outside the Intel 27AE build. No caller pointer crosses this interface.
+; RING_STAGE in: EBX=reserve physical, ECX=stream index, EDX=dword;
+;            out AX=1 only after the bounded word is accepted.
+; RING_MEMORY in: ECX=byte offset in the mapped 128-KiB reserve;
+;             out AX=1, EBX=dword read from the physical mapping.
+; RING_EXECUTE in: EBX=full execution CRC, ECX=ordered step selector;
+;              out AX=1 on a completed step, EBX=head/readback,
+;              ECX=tail/readback, EDX=elapsed ms, ESI=poll count.
+V9XMINI_FN_I9XX_RING_STAGE   EQU 0011h
+V9XMINI_FN_I9XX_RING_MEMORY  EQU 0012h
+V9XMINI_FN_I9XX_RING_EXECUTE EQU 0013h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

@@ -362,7 +362,8 @@ $contractAliases = @{ 'V9X_VBE_API_V1' = 'V9XMINI_API_V1'
                       'V9X_VBE_API_V2' = 'V9XMINI_API_V2'
                       'V9X_VBE_API_V3' = 'V9XMINI_API_V3'
                       'V9X_VBE_API_V4' = 'V9XMINI_API_V4'
-                      'V9X_VBE_API_V5' = 'V9XMINI_API_V5' }
+                      'V9X_VBE_API_V5' = 'V9XMINI_API_V5'
+                      'V9X_VBE_API_V6' = 'V9XMINI_API_V6' }
 $contractChecked = 0
 foreach ($name in $cValues.Keys) {
     $asmName = if ($contractAliases.ContainsKey($name)) { $contractAliases[$name] } else { $name }
@@ -499,7 +500,7 @@ if ($mtrrSource -match '(?im)^\s*wrmsr\b') {
 # A renamed or deleted constant would otherwise shrink the checked set to
 # nothing and still pass, so the load-bearing names are named here.
 foreach ($required in @('V9X_VBE_API_V2', 'V9X_VBE_API_V3', 'V9X_VBE_API_V4',
-                        'V9X_VBE_API_V5',
+                        'V9X_VBE_API_V5', 'V9X_VBE_API_V6',
                         'V9X_VBE_MODE_LIST_MAX',
                         'V9X_VBE_MODE_QUERY_MAX', 'V9X_VBE_CACHE_MAX',
                         'V9X_VBE_BASELINE_PROBE_MAX', 'V9X_VBE_EDID_BYTES',
@@ -567,11 +568,11 @@ foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm"))
     }
 }
 
-# The mini-VDD API is an exact v4 package pair. Reverting only the advertised version
+# The mini-VDD API is an exact v6 package pair. Reverting only the advertised version
 # would make the indexed implementation unreachable while all layouts still
 # agreed numerically, so assert the selected version as well as the constants.
-if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V5']) {
-    throw "V9XMINI_API_VERSION must advertise the implemented v5 contract."
+if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V6']) {
+    throw "V9XMINI_API_VERSION must advertise the implemented v6 contract."
 }
 $miniSource = Get-Content -LiteralPath `
     (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
@@ -603,9 +604,12 @@ if ($miniBuildSource -notmatch
     throw ("build-minivdd-skeleton.ps1 must define " +
            "V9X_INTEL_MMIO_FINGERPRINT only for the intel-gma family.")
 }
+if ($miniBuildSource -match 'V9X_I9XX_FIRST_WRITE_EXECUTOR') {
+    throw "The Phase 4 register executor is not package-enabled before its 16-bit arm and validator are complete."
+}
 if ($miniSource -notmatch
-    '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture\s*\r?\nENDIF') {
-    throw "The Intel MMIO/GTT captures must remain behind their positive family guard."
+    '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture.*?^EndProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n\s*IFDEF\s+V9X_I9XX_FIRST_WRITE_EXECUTOR.*?^EndProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\nENDIF\s*\r?\nENDIF') {
+    throw "The Intel capture, RAM staging and ring-write executor must remain behind positive guards."
 }
 $intelCapture = [regex]::Match(
     $miniSource,
@@ -633,6 +637,31 @@ if ([regex]::Matches($intelEventCapture,
     $intelEventCapture -match '(?im)^\s*mov\s+\[esi(?:\+[^\]]+)?\]') {
     throw ("The Intel event journal must have exactly two ownership-MMIO and " +
            "two full-GTT read sites, with no write through either mapping.")
+}
+$intelRingStage = [regex]::Match(
+    $miniSource,
+    '(?ms)^BeginProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Ring_Stage').Groups[1].Value
+if ([regex]::Matches($intelRingStage,
+        '(?im)^\s*mov\s+\[edi\],\s*eax\s*$').Count -ne 1 -or
+    [regex]::Matches($intelRingStage,
+        '(?im)^\s*mov\s+\[edi\+ecx\*4\],\s*edx\s*$').Count -ne 1 -or
+    $intelRingStage -match '(?im)^\s*mov\s+\[esi(?:\+[^\]]+)?\]') {
+    throw "Intel ring staging may write only the fixed physical reserve, never MMIO."
+}
+$intelRingExecute = [regex]::Match(
+    $miniSource,
+    '(?ms)^BeginProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Ring_Execute').Groups[1].Value
+foreach ($store in @(
+        @('0203ch', 3), @('02034h', 2), @('02030h', 6),
+        @('02038h', 2))) {
+    $pattern = '(?im)^\s*mov\s+dword ptr\s+\[esi\+' + $store[0] + '\],'
+    if ([regex]::Matches($intelRingExecute, $pattern).Count -ne $store[1]) {
+        throw "Intel Phase 4 ring register store count changed at $($store[0])."
+    }
+}
+if ([regex]::Matches($intelRingExecute,
+        '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 13) {
+    throw "Intel Phase 4 executor has an unreviewed MMIO store."
 }
 if ($miniSource -match '\bV9X_NO_DPMS\b' -or
     $miniBuildSource -match '\bV9X_NO_DPMS\b') {

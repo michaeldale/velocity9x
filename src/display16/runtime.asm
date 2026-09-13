@@ -92,6 +92,12 @@ EXTRN _v9x_i9xx_gtt_hash_b:DWORD
 EXTRN _v9x_i9xx_event_value:DWORD
 EXTRN _v9x_i9xx_event_count:WORD
 EXTRN _v9x_i9xx_event_dropped:WORD
+EXTRN _v9x_i9xx_ring_memory_value:DWORD
+EXTRN _v9x_i9xx_ring_exec_head:DWORD
+EXTRN _v9x_i9xx_ring_exec_tail:DWORD
+EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
+EXTRN _v9x_i9xx_ring_exec_polls:DWORD
+EXTRN _v9x_i9xx_ring_exec_failure:DWORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -1213,6 +1219,117 @@ V9xMiniI9xxEventDwordDone:
     pop     bp
     retf    4
 V9XMINII9XXEVENTDWORD ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxRingStage(DWORD physical, WORD index, DWORD word)
+PUBLIC V9XMINII9XXRINGSTAGE
+V9XMINII9XXRINGSTAGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingStageFailed
+    mov     ebx, dword ptr [bp+12]
+    movzx   ecx, word ptr [bp+10]
+    mov     edx, dword ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_RING_STAGE
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxRingStageFailed
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingStageDone
+V9xMiniI9xxRingStageFailed:
+    xor     ax, ax
+V9xMiniI9xxRingStageDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    10
+V9XMINII9XXRINGSTAGE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxRingMemory(DWORD reserve_byte_offset)
+PUBLIC V9XMINII9XXRINGMEMORY
+V9XMINII9XXRINGMEMORY PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingMemoryFailed
+    mov     ecx, dword ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_RING_MEMORY
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxRingMemoryFailed
+    mov     _v9x_i9xx_ring_memory_value, ebx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingMemoryDone
+V9xMiniI9xxRingMemoryFailed:
+    xor     ax, ax
+V9xMiniI9xxRingMemoryDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINII9XXRINGMEMORY ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step)
+PUBLIC V9XMINII9XXRINGEXECUTE
+V9XMINII9XXRINGEXECUTE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingExecuteFailed
+    mov     ebx, dword ptr [bp+8]
+    movzx   ecx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_RING_EXECUTE
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_ring_exec_head, ebx
+    mov     _v9x_i9xx_ring_exec_tail, ecx
+    mov     _v9x_i9xx_ring_exec_elapsed, edx
+    mov     _v9x_i9xx_ring_exec_polls, esi
+    mov     _v9x_i9xx_ring_exec_failure, edi
+    or      ax, ax
+    jz      short V9xMiniI9xxRingExecuteFailed
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingExecuteDone
+V9xMiniI9xxRingExecuteFailed:
+    xor     ax, ax
+V9xMiniI9xxRingExecuteDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XMINII9XXRINGEXECUTE ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)

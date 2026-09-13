@@ -44,8 +44,15 @@ Steps 0 to 3 write no register. Steps 4 onward are the first writes to Intel sil
 Each write is followed by a read-back; a mismatch stops the sequence before the next write and records `RegisterReadback=<n>`. HWS_PGA is **not** written: the VBIOS's `1FFFF000` stays, the probe needs no status page, and one fewer register is one fewer unknown. After step 5 the ring is enabled with head equal to tail equal to zero, consuming nothing.
 
 **6. The probe.** TAIL `2030` gets `8`: two dwords, `MI_NOOP` then `MI_FLUSH`. Poll HEAD with an iteration bound of one million reads and a wall-clock bound of 200 ms from `Get_System_Time`. Record the tick count and iteration count at which HEAD reached 8. Timeout: record HEAD, TAIL, the error registers and `Result=PROBE-TIMEOUT`, then latch poison for the session. Do not submit again or rewrite HEAD/START/CTL on an engine not proved idle; leave `IntelInFlight` intact and require a power cycle after preserving the log.
+The poll compares `(HEAD & 001FFFFCh)` with the expected byte offset, while
+recording the unmasked HEAD: Linux's [ring register definition](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/i915/gt/intel_engine_regs.h)
+separates `HEAD_ADDR` from `HEAD_WRAP_COUNT`. This matters at the zero wrap.
 
 **7. Wrap.** Only after step 6 drained with HEAD=TAIL=8. The mini-VDD fills every dword from byte offset 8 through the last dword of the 64 KiB ring with `MI_NOOP`, using the physical mapping. This is exactly `ring_bytes - 8` bytes, the maximum legal occupancy with an eight-byte empty slot. It writes TAIL to **0**, not to the last qword; HEAD must consume the final qword and wrap to 0, bounded as in step 6. Only then write a second two-dword probe at offset 0, set TAIL to 8, and require HEAD=8. Stop if the ring-space calculation does not admit each submission. This proves the ring length in RING_CTL is what the hardware believes, which is the one number a wrong RING_CTL would silently break.
+Linux's [ring code](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/i915/gt/intel_ring.c)
+notes that a wrap at offset zero sometimes hangs; on this machine this step
+is an explicit risk test under the accepted hang rule, not a benign capacity
+check.
 
 **8. The blit.** Eight dwords, `XY_COLOR_BLT` of an 8 by 8, 32 bpp block at scratch plus `100h`, colour `55AA33CC`, followed by `MI_FLUSH` and `MI_NOOP`. TAIL advances by 32. After HEAD catches up, the 16-bit side reads the scratch page through GMADR: the 64 target dwords must equal the colour, and every guard dword outside the target must still equal the guard pattern. This is the only step that proves the GPU wrote memory and that a GTT offset in a command means what we think it means. Mismatch is recorded with the first differing offset; `Result=BLIT-MISMATCH`.
 
@@ -139,6 +146,11 @@ pins the second boot's stream; a hang requires the additional recovery boot.
 1. Header and contract: API v6 constants, event kinds 7 and 8, error-register offsets, `SYSTEM.INI` key names; check-tree contract entries.
 2. Pure state machine and `SYSTEM.INI` policy in C with host tests, including the incomplete-reset path and the "step 8 without step 6" refusal.
 3. Mini-VDD: physical mapping of the reserve, `RING_STAGE`, `RING_MEMORY`, `RING_EXECUTE` with the pinned store table; check-tree pins.
+   API v6 and exact ten-dword physical-RAM staging are implemented. The MMIO
+   executor is source-guarded by `V9X_I9XX_FIRST_WRITE_EXECUTOR`, a symbol no
+   package build defines. It was separately syntax-checked with MASM but is
+   not link-reachable in a package until the Enable-side arm and validator
+   slices pass. No current package can submit a ring command.
 4. 16-bit sequencer and `INTELRNG.TXT` schema (intent, per-step results, read-backs, tick counts, mirror and guard results, pre and post).
 5. Validator extended for the armed file; self-test fixtures for a clean run, a read-back mismatch, a guard breach and a timeout.
 6. Runbook 3.2e and the diagnostics contract.

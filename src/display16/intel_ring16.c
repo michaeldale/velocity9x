@@ -16,6 +16,12 @@ extern DWORD v9x_i9xx_bsm;
 extern WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern const char *v9x_intel_boot_token_mover_state(void);
+DWORD v9x_i9xx_ring_memory_value;
+DWORD v9x_i9xx_ring_exec_head;
+DWORD v9x_i9xx_ring_exec_tail;
+DWORD v9x_i9xx_ring_exec_elapsed;
+DWORD v9x_i9xx_ring_exec_polls;
+DWORD v9x_i9xx_ring_exec_failure;
 
 static void v9x_ring_hex32(char *text, DWORD value)
 {
