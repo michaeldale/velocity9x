@@ -36,10 +36,20 @@ static WORD v9x_intel_boot_read(const char *key, char *value, WORD capacity)
 static WORD v9x_intel_boot_set(const char *key, const char *value)
 {
     char check[96];
+
     if (!WritePrivateProfileString(V9X_I9XX_BOOT_SECTION, key, value,
-                                   V9X_I9XX_BOOT_INI) ||
-        !WritePrivateProfileString(0, 0, 0, V9X_I9XX_BOOT_INI) ||
-        !v9x_intel_boot_read(key, check, sizeof(check))) {
+                                   V9X_I9XX_BOOT_INI)) {
+        return 0u;
+    }
+    /*
+     * Flush for durability, but never judge the transaction by its result.
+     * Measured on the netbook 2026-09-13: the first write to a new arm file
+     * landed on disk and this call still reported failure, which aborted the
+     * token transaction with TokenMover=IO-FAILED. The read-back below is the
+     * verification; the flush is a hint.
+     */
+    (void)WritePrivateProfileString(0, 0, 0, V9X_I9XX_BOOT_INI);
+    if (!v9x_intel_boot_read(key, check, sizeof(check))) {
         return 0u;
     }
     return strcmp(check, value) == 0;

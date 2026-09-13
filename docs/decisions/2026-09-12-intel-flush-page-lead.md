@@ -120,13 +120,30 @@ config write and the page store must be brought under the same gate, or the
 gate's guarantee — "the package is incapable of touching the part" — becomes
 false.
 
-## Next probes, all read-only
+## Probe 1, measured 2026-09-13
 
-1. Read D0:F0 `0x60` on MICHAEL-NETBOOK and record the dword. Bit 0 tells us
-   whether this BIOS already placed a flush page, and the address tells us
-   whether a Win9x implementation would have to allocate MMIO space itself —
-   the harder and riskier half of the Linux code. This is a config-space read;
-   it is inside what Phases 1-3 already do.
+The Phase 4 package reads D0:F0 `0x60` twice on every diagnostic publication
+and records both in `INTELRNG.TXT`. On MICHAEL-NETBOOK, build `c1e8729`:
+
+```
+FlushPageCfg0=FED13001
+FlushPageCfg1=FED13001
+FlushPageRead=STABLE
+```
+
+**Bit 0 is set and the page is at `FED13000`.** This BIOS has already placed
+the Intel Flush Page, in the chipset MMIO region below 4 GiB. So a Win9x
+implementation would take the same branch Linux takes when bit 0 is set: claim
+the page and write a dword to it. It would **not** need to allocate MMIO space
+itself, which was the harder and riskier half of `intel_i915_setup_flush()`
+and the main reason this lead looked expensive.
+
+That lowers the cost of implementing the chipset flush if Phase 4 or a later
+phase turns out to need it. It changes nothing about erratum 12: the flush
+page still addresses stale data rather than a hang, and no source ties it to
+the erratum. The gate decision stands on its own record.
+
+## Next probes, all read-only
 2. Binary-diff the Windows XP miniport across the erratum boundary: a build
    before 14.31.1.4864 against 14.31.1.4864 or later, looking for new config
    accesses to D0:F0 `0x60` or new MMIO writes. This is the only route to the

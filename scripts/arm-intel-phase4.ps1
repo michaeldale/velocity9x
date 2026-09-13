@@ -282,9 +282,34 @@ if ($Disarm) {
                        "write-up.")
             }
         }
-        $null = & (Join-Path $PSScriptRoot 'check-intel-mmio-capture.ps1') -Path $mmio
+        # The Phase 1 fingerprint is checked against the mode that was live,
+        # not against this validator's 1024x576x16 defaults. The driver
+        # records it in V9XBOOT.INI as
+        #   Surface=pitch=1024 bpp=8 dwb=1024 dds=1024 w=1024 h=576 debpp=8
+        # and an operator who booted at 8bpp should not have to know that.
+        $mmioArguments = @{ Path = $mmio }
+        $boot = Join-Path $captureDirectory 'V9XBOOT.INI'
+        if (Test-Path -LiteralPath $boot -PathType Leaf) {
+            $surface = Select-String -LiteralPath $boot `
+                -Pattern '^Surface=pitch=(\d+) bpp=(\d+).* w=(\d+) h=(\d+)' |
+                Select-Object -First 1
+            if ($surface) {
+                $mmioArguments.ExpectedPitch = [int]$surface.Matches.Groups[1].Value
+                $mmioArguments.ExpectedBitsPerPixel = [int]$surface.Matches.Groups[2].Value
+                $mmioArguments.ExpectedWidth = [int]$surface.Matches.Groups[3].Value
+                $mmioArguments.ExpectedHeight = [int]$surface.Matches.Groups[4].Value
+                Write-Host ("  live mode     {0}x{1}x{2} pitch {3}" -f
+                    $mmioArguments.ExpectedWidth, $mmioArguments.ExpectedHeight,
+                    $mmioArguments.ExpectedBitsPerPixel, $mmioArguments.ExpectedPitch)
+            }
+        }
+        $null = & (Join-Path $PSScriptRoot 'check-intel-mmio-capture.ps1') @mmioArguments
         $null = & (Join-Path $PSScriptRoot 'check-intel-gtt-capture.ps1') -Path $gtt
-        $null = & (Join-Path $PSScriptRoot 'check-intel-event-capture.ps1') -Path $events
+        # -Preflight: a fresh boot-one journal has the boot record and whatever
+        # else happened, and every record must be stable with ownership
+        # unchanged. The full matrix is Phase 3's own criterion, already met.
+        $null = & (Join-Path $PSScriptRoot 'check-intel-event-capture.ps1') `
+            -Path $events -Preflight
     }
 
     $planValues = Get-V9xIniSectionValues -Lines (Read-V9xIniLines $capturePath) `

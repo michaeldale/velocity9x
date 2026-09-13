@@ -58,8 +58,10 @@ static WORD v9x_p4_set(const char *section, const char *key,
 {
     char check[96];
     WORD length;
-    if (!WritePrivateProfileString(section, key, value, path) ||
-        !WritePrivateProfileString(0, 0, 0, path)) { return 0u; }
+    if (!WritePrivateProfileString(section, key, value, path)) { return 0u; }
+    /* Durability hint only; the read-back is the verification. A failing
+     * flush aborted the whole token transaction once. See intel_boot16.c. */
+    (void)WritePrivateProfileString(0, 0, 0, path);
     length = (WORD)GetPrivateProfileString(section, key, "", check,
                                            sizeof(check), path);
     return length < sizeof(check) - 1u && strcmp(check, value) == 0;

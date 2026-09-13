@@ -5,6 +5,12 @@ param(
     [string]$Path,
     [Parameter(ParameterSetName = 'Capture')]
     [string]$ExpectedInitialGttHash,
+    # Phase 3's own done-criterion needs the whole matrix, and that was met on
+    # 2026-09-12. A later phase arming against a fresh boot only needs the
+    # records it has to be stable with ownership unchanged, so -Preflight asks
+    # for the boot-enable record and nothing more.
+    [Parameter(ParameterSetName = 'Capture')]
+    [switch]$Preflight,
     [Parameter(ParameterSetName = 'Capture')]
     [switch]$Json,
     [Parameter(Mandatory = $true, ParameterSetName = 'SelfTest')]
@@ -60,7 +66,7 @@ function ConvertFrom-V9xEventHex {
 }
 
 function Test-V9xIntelEventCapture {
-    param([string[]]$Lines, [string]$InitialHash)
+    param([string[]]$Lines, [string]$InitialHash, [switch]$BootOnly)
     $sections = ConvertFrom-V9xEventIni $Lines
     if (-not $sections.ContainsKey('IntelEvents')) {
         throw 'Intel event capture has no [IntelEvents] section.'
@@ -122,9 +128,14 @@ function Test-V9xIntelEventCapture {
         }
         $records += [pscustomobject]$record
     }
-    if (($coverage -band $requiredCoverage) -ne $requiredCoverage -or
+    $needed = if ($BootOnly) { 0x01 } else { $requiredCoverage }
+    if (($coverage -band $needed) -ne $needed -or
         $declaredCoverage -ne $coverage) {
-        throw 'Intel event matrix lacks boot, disable or mode-switch coverage.'
+        throw $(if ($BootOnly) {
+            'Intel event capture has no boot-enable record.'
+        } else {
+            'Intel event matrix lacks boot, disable or mode-switch coverage.'
+        })
     }
     if ($InitialHash) {
         if ($InitialHash -notmatch '^[0-9A-Fa-f]{8}$') {
@@ -196,5 +207,5 @@ if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     throw "Intel event capture does not exist: $Path"
 }
 $result = Test-V9xIntelEventCapture @(Get-Content -LiteralPath $Path) `
-    $ExpectedInitialGttHash
+    $ExpectedInitialGttHash -BootOnly:$Preflight
 if ($Json) { $result | ConvertTo-Json -Depth 4 -Compress } else { $result | Format-List }
