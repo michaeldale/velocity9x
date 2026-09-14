@@ -1,12 +1,16 @@
 # Intel Gen3 3D packet audit: what two trees actually agree on
 
 **Date:** 2026-09-14
-**Status:** Step 1 of `docs/plans/intel-gma950-phase5.md` Part 2, **in progress**.
-Sections 3-7 are complete and were cross-checked under the rule in section 2.
-Section 8 lists what is still open; no builder may be written against an open
-item. Revised 2026-09-15: the S0/S1 question and the fragment program, the two
-most important open items, are both closed at the end of section 7 - and the
-second of them reverses section 5's vertex-format recommendation.
+**Status:** Step 1 of `docs/plans/intel-gma950-phase5.md` Part 2, **complete**.
+Opened 2026-09-14, closed 2026-09-15. Every claim was cross-checked under the
+rule in section 2, which had to be tightened because the plan's two sources
+turned out to be one. Nothing here would have to be guessed or swept, so the
+phase is not killed and step 2 may begin.
+
+Two results reverse or qualify what came before: the fragment program reading
+overturns section 5's vertex-format recommendation, and the invariant-state
+question is closed as **unanswerable by reading**, with a recommendation and an
+empirical test in its place.
 **Machine:** none. Every claim here is **documentation-derived and unconfirmed
 on this machine**, and carries that status until the netbook says otherwise.
 
@@ -445,6 +449,153 @@ netbook:
 Seven dwords in total. The header value is the one to check first, since it is
 the only one a length error can hide in.
 
+### `LOAD_STATE_IMMEDIATE_2` is a Gen2 texture packet, not an optional Gen3 one
+
+Closed 2026-09-15, and the answer is stronger than "may be omitted": it has no
+role on Gen3 at all.
+
+`_3DSTATE_LOAD_STATE_IMMEDIATE_2` `(CMD_3D|(0x1d<<24)|(0x03<<16))` is defined
+**only** in xf86's `i830_reg.h` - the Gen2 header. A grep for it across
+`mesa-intel_reg.h`, `mesa-i915_reg.h` and `xf86-i915_reg.h` returns zero in all
+three. Its only use sites are `i830_render.c:307` and `:624`, both of the form
+`_3DSTATE_LOAD_STATE_IMMEDIATE_2 | LOAD_TEXTURE_MAP(unit) | 4` followed by a
+texture map address and its dimensions - it is how Gen2 loads texture maps,
+which Gen3 does through `_3DSTATE_LOAD_INDIRECT` and `MAP_STATE` instead.
+
+Phase 5 is Gen3 and untextured. The packet is not omitted; it is inapplicable.
+
+### Depth: the buffer is declared and left unreferenced, not omitted
+
+Closed 2026-09-15. `BUF_3D_ID_DEPTH` has no use site in xf86 at all - a
+compositor never has a depth buffer - so this one is Mesa-sourced, and is
+recorded as such. It is nevertheless the exact case Phase 5 is in: a GL context
+with no depth attachment.
+
+`i915_vtbl.c:519-540`, `i915_set_buf_info_for_region`, emits the packet
+**unconditionally** and handles the null region explicitly:
+
+- `state[0] = _3DSTATE_BUF_INFO_CMD`
+- `state[1] = BUF_3D_ID_DEPTH`, plus - when the region is null -
+  `BUF_3D_PITCH(4096)`, with the source comment saying **pitch 0 is invalid**
+  and that any valid pitch will do because the buffer is never referenced
+- `state[2]` = address 0
+
+Depth is then inert because the S6 enables are clear: `S6_DEPTH_TEST_ENABLE`
+`(1<<19)` and `S6_DEPTH_WRITE_ENABLE` `(1<<3)`. `_3DSTATE_DST_BUF_VARS` also
+carries a depth format field, where `DEPTH_FRMT_16_FIXED` is `0`, so a zeroed
+field is already the valid 16-bit choice. Both trees additionally emit
+`_3DSTATE_DEPTH_SUBRECT_DISABLE` (Mesa `i915_vtbl.c:210`, xf86
+`i915_3d.c:99`), which **is** double-sourced.
+
+So the rule for Phase 5 is: emit a depth `BUF_INFO` with a dummy-but-valid
+pitch and a zero address, leave the S6 depth bits clear, and emit
+`_3DSTATE_DEPTH_SUBRECT_DISABLE`. Do **not** simply omit the depth buffer -
+nothing in either tree does that, and pitch 0 is documented as invalid.
+
+### Scissor: the two zero dwords are required by the packet's own length field
+
+Closed 2026-09-15, and it is not a matter of convention.
+`_3DSTATE_SCISSOR_RECT_0_CMD` is `(CMD_3D|(0x1d<<24)|(0x81<<16)|1)` - the `|1`
+**is** the length field, so the packet is three dwords by definition. Omitting
+the two zeros would not "skip a rect", it would desynchronise the command
+parser and everything after it would be read as garbage.
+
+Both trees emit command-plus-two-zeros even with scissor disabled: Mesa
+`i915_vtbl.c:202-204`, xf86 `i915_3d.c:97-99` and `i830_3d.c:108`.
+
+Also recorded, because the two bits are easy to transpose:
+`DISABLE_SCISSOR_RECT` is `(1<<1)` and `ENABLE_SCISSOR_RECT` is `((1<<1)|1)`.
+Bit 1 is the modify-enable and bit 0 is the state. Writing `0` would leave the
+scissor untouched rather than disabling it.
+
+### The invariant-state block: reading cannot answer this, and that is the answer
+
+The plan asked which of xf86's ~20 invariant packets are genuinely required
+after a cold ring, versus which are xf86 defending against its own prior state.
+**The sources cannot distinguish these, for a structural reason**, and saying so
+is more useful than a guess.
+
+Mesa's counterpart, `i915_emit_invarient_state` (`i915_vtbl.c:174-215`), is
+`BEGIN_BATCH(15)` - nine packets, fifteen dwords:
+
+| Packet | Dwords |
+|---|---|
+| `_3DSTATE_AA_CMD` with ECAAR and region width enables, both 1.0 | 1 |
+| `_3DSTATE_DFLT_DIFFUSE_CMD` + 0 | 2 |
+| `_3DSTATE_DFLT_SPEC_CMD` + 0 | 2 |
+| `_3DSTATE_DFLT_Z_CMD` + 0 | 2 |
+| `_3DSTATE_COORD_SET_BINDINGS` with `CSB_TCB(0,0)`..`(7,7)` | 1 |
+| `_3DSTATE_SCISSOR_RECT_0_CMD` + 0 + 0 | 3 |
+| `_3DSTATE_SCISSOR_ENABLE_CMD \| DISABLE_SCISSOR_RECT` | 1 |
+| `_3DSTATE_DEPTH_SUBRECT_DISABLE` | 1 |
+| `_3DSTATE_LOAD_INDIRECT \| 0` + 0 | 2 |
+
+Every one of these appears in xf86's block too, with the same flags. Mesa's
+invariant block is a **strict subset** of xf86's.
+
+The tempting conclusion - that xf86's extras are unnecessary - is wrong. Every
+one of them is emitted by Mesa as well, from a dirty-state atom rather than the
+invariant function: `_3DSTATE_INDEPENDENT_ALPHA_BLEND_CMD` at
+`i915_state.c:952`, `_3DSTATE_RASTER_RULES_CMD` at `:988`,
+`_3DSTATE_MODES_4_CMD` at `:943`, `_3DSTATE_STIPPLE` at `:974`,
+`_3DSTATE_BACKFACE_STENCIL_OPS` at `:966`. The two drivers emit the same
+superset; they differ only in how they organise it.
+
+**Why neither can answer the question.** Both are long-running drivers sharing
+a GPU with other clients, so both must assume arbitrary prior state. Neither
+ever runs against a freshly-reset engine with known-clean state, which is
+exactly and only the situation Phase 5 is in. There is no observation in either
+tree of what a cold Gen3 requires, because neither ever sees one.
+
+**Recommendation.** Emit the nine-packet intersection above - it is the largest
+set that is double-sourced *as invariant state*, it is only fifteen dwords, and
+it includes every disable Phase 5 depends on. Do not emit xf86's extras: their
+packets are double-sourced but their **values** are not. xf86 uses fixed
+constants where Mesa computes from GL state, so adopting xf86's blend factors,
+stencil masks and logic op would import single-sourced values for state Phase 5
+does not use.
+
+And make the residual risk answerable rather than argued: the plan already
+numbers the staging steps and flushes `IntentStep` before each action, so a
+hang inside the state block names the packet that caused it. That converts an
+unresolvable reading question into one cheap empirical observation on B2.
+
+### Provoking vertex: moot
+
+`TRI_FAN_PROVOKE_VRTX(2)` and its neighbours in `_3DSTATE_RASTER_RULES_CMD`
+decide which vertex supplies a flat-shaded primitive's colour. Under the
+revised vertex format all three vertices carry the same colour, so no provoking
+rule can change the result. Off the critical path; the field stays on the
+must-not-be-used list and Phase 5 never needs it.
+
+### Two findings that change earlier sections
+
+**`DSTORG` is now double-sourced.** Section 4 recorded the `0x8/0x8` half-pixel
+bias from xf86's `i915_render.c:181` alone. Mesa sets exactly the same value
+independently at `i915_vtbl.c:602-604`, and comments each one `/* .5 */`. The
+pixel-centre sampling convention is now on the same footing as the rest of the
+audit.
+
+**Dithering is on by default and has no clean disable.** The dither mode lives
+at bits 26-27 of `_3DSTATE_DST_BUF_VARS` dword 1, and `DITHER_FULL_ALWAYS` is
+`(0<<26)` - that is, mode zero, full dithering always, is what a zeroed field
+selects. The alternatives are `DITHER_FULL_ON_FB_BLEND` `(1<<26)` and
+`DITHER_CLAMPED_ALWAYS` `(2<<26)`; none is "off". The only disable in either
+header is `DEBUG_DISABLE_ENH_DITHER` `(1<<24)`, which is single-sourced, has no
+use site, and is named `DEBUG`. Mesa ORs `DITHER_FULL_ALWAYS` into its 565,
+1555 and 4444 formats (`i915_vtbl.c:545-549`), which adds no bits but records
+the intent.
+
+**Consequence, and it is a design constraint on the triangle, not a footnote:**
+the hardware may dither when it writes RGB565, which would make a per-pixel
+comparison against `d3d_raster.c` disagree in the interior rather than only at
+the edges the plan licenses. **Choose a triangle colour that is exactly
+representable in RGB565** - low three bits of red and blue zero, low two bits
+of green zero - so that dithering has nothing to dither and the interior must
+match exactly. This composes with the plan's requirement that the colour have
+no repeated bytes, so a channel swap stays visible; both can be satisfied at
+once.
+
 ## 8. Open - nothing may be built against these yet
 
 The plan's rule is that any value that would have to be guessed or swept kills
@@ -452,42 +603,77 @@ the phase. **Nothing in this list is currently in that state**; they are
 unfinished reading, not dead ends. But no builder may be written until each is
 resolved to §2's standard.
 
-1. ~~The minimal fragment program.~~ **Closed 2026-09-15**; see the end of
-   section 7. One thing it raises stays open: whether the derived seven-dword
-   program is byte-correct. That is a host-test obligation, not a reading one.
-2. ~~S0/S1 - the vertex buffer.~~ **Closed 2026-09-15**; see the end of §7.
-   They are not required for an inline primitive.
-3. **Whether `LOAD_STATE_IMMEDIATE_2` may be omitted.** Not yet examined.
-4. **Depth buffer disable.** Phase 5 is un-Z'd. `_3DSTATE_DEPTH_SUBRECT_DISABLE`
-   appears at `i915_3d.c:99`, and `DEPTH_FRMT_*` bits live in `DST_BUF_VARS`,
-   but whether a second `BUF_INFO` with `BUF_3D_ID_DEPTH` must be emitted (and
-   what a null depth buffer looks like) is not established.
-5. **Whether the two zero dwords after `_3DSTATE_SCISSOR_RECT_0_CMD` are
-   required** when scissor is disabled (§5).
-6. **The invariant-state block's necessity.** `I915EmitInvarientState` emits
-   ~20 packets. Which are genuinely required after a cold ring versus which are
-   xf86 defending against its own prior state is not established, and it
-   matters: every packet Phase 5 emits is a packet that can hang it.
-7. **Provoking vertex.** `_3DSTATE_RASTER_RULES_CMD` at `i915_3d.c:75-81` sets
-   `TRI_FAN_PROVOKE_VRTX(2)` and related. Single-sourced, and only relevant if
-   the XY+COLOR vertex format is chosen (§5).
+All seven items raised on 2026-09-14 were closed on 2026-09-15. They are
+listed here with their outcomes rather than deleted, so the record shows what
+was asked as well as what was answered.
 
-### Single-sourced - must not be used
+1. ~~The minimal fragment program.~~ **Closed** - end of section 7.
+2. ~~S0/S1 - the vertex buffer.~~ **Closed** - not required for an inline
+   primitive.
+3. ~~Whether `LOAD_STATE_IMMEDIATE_2` may be omitted.~~ **Closed** - it is a
+   Gen2 texture packet with no Gen3 role at all.
+4. ~~Depth buffer disable.~~ **Closed** - the buffer is declared with a
+   dummy-but-valid pitch and left unreferenced, not omitted.
+5. ~~The two zero dwords after `_3DSTATE_SCISSOR_RECT_0_CMD`.~~ **Closed** -
+   required by the packet's own length field.
+6. ~~The invariant-state block's necessity.~~ **Closed as unanswerable by
+   reading**, with a recommendation and an empirical test. This is the one
+   item where the sources genuinely cannot decide, and the reason is
+   structural: neither driver ever runs against a freshly-reset engine.
+7. ~~Provoking vertex.~~ **Moot** under the revised vertex format.
 
-Values appearing in the shared header and used by only one tree, recorded so a
-later reader does not mistake header presence for evidence:
+**Two obligations carry forward, and neither is a reading task.** The derived
+seven-dword fragment program (end of section 7) is unvalidated and must be
+reproduced by `i9xx_fragprog.c` under a host test. And item 6's residual risk
+is settled only on B2, by the step numbering the plan already specifies.
 
-| Value | Used by | Note |
+Under the plan's own rule, **nothing in this audit would have to be guessed or
+swept**, so the phase is not killed and step 2 may begin.
+
+### Single-sourced values, and the one place the rule cannot be met
+
+Values defined in the shared header and used by only one tree, recorded so a
+later reader does not mistake header presence for evidence.
+
+| Value | Used by | Status |
 |---|---|---|
-| `S4_FLATSHADE_COLOR` `(1<<15)` | Mesa only | irrelevant under the recommended vertex format |
-| `S4_VFMT_COLOR` `(1<<10)` | Mesa only | ditto |
-| `S4_VFMT_XY` `(3<<6)` | xf86 `i915_3d.c:93` only | **needed by the recommended format - must be resolved before use.** Its *meaning* is now corroborated - `i830_render.c:674` and `i915_render.c:703` both start their per-vertex count at `2; /* dest x/y */`, so an XY-only vertex is two dwords in both trees - but the bit value `3<<6` still has one use site. |
-| `MI_FLUSH` bits 1, 3, 4 | xf86 header only, no use site | Phase 5 leaves all three clear |
-| `LOD_PRECLAMP_*`, `DEPTH_FRMT_*` | not used in the read files | out of scope |
+| `S4_VFMT_XYZW` `(2<<6)` | Mesa `i915_fragprog.c:1260` | **used by the chosen design** - see below |
+| `S4_VFMT_COLOR` `(1<<10)` | Mesa `i915_fragprog.c:1268` | **used by the chosen design** - see below |
+| `T_DIFFUSE` read from a shader | Mesa `i915_fragprog.c:121` | **used by the chosen design** - see below |
+| `BUF_3D_ID_DEPTH` `(0x7<<24)` | Mesa `i915_vtbl.c:597` | used; xf86 has no depth buffer at all, so no second site can exist |
+| `S4_VFMT_XY` `(3<<6)` | xf86 `i915_3d.c:93` | not used - the design took the Mesa position format instead |
+| `S4_FLATSHADE_COLOR` `(1<<15)` | Mesa `i915_state.c:741,746` | not used - uniform vertex colour makes shading mode moot |
+| `S4_FORCE_DEFAULT_DIFFUSE` `(1<<5)` | **nobody** | must not be used; header-only, and the reason the default-diffuse design was abandoned |
+| `DEBUG_DISABLE_ENH_DITHER` `(1<<24)` | **nobody** | must not be used; named `DEBUG`, no use site. Dithering is handled by choosing a 565-exact colour instead |
+| `MI_FLUSH` bits 1, 3, 4 | xf86 header only | not used - Phase 5 leaves all three clear |
+| `PRIM3D_INLINE` topology bits other than `TRILIST` | various | out of scope |
 
-`S4_VFMT_XY` is the one entry on this list that the recommended design needs.
-Resolving it - by finding a second use site, or by choosing the Mesa-sourced
-format instead - is a precondition for §5's recommendation, not a detail.
+**The rule in §2 cannot be satisfied for the vertex format, and that must be
+said plainly rather than finessed.** It requires two use sites with different
+authors and purposes. For the position format there are exactly two candidates
+and each has exactly one site: Mesa uses `S4_VFMT_XYZW` and xf86 uses
+`S4_VFMT_XY`. No value satisfies the rule, because the two trees genuinely
+disagree about which format to use - they are not corroborating and failing,
+they are doing different things for different reasons.
+
+So this field is decided by judgement, and the judgement is recorded here so it
+can be overturned by evidence rather than by preference:
+
+- Mesa's `S4_VFMT_XYZW` is the format every OpenGL application on this silicon
+  exercised for roughly a decade. xf86's `S4_VFMT_XY` is used by one function
+  in one compositor.
+- Mesa's own comment (`i915_fragprog.c:1257-1259`) says W is emitted **always**,
+  to get consistent perspective-correct interpolation of primary colours -
+  which is the interpolation the triangle's colour depends on.
+- The same reasoning carries `S4_VFMT_COLOR` and the `T_DIFFUSE` shader read,
+  which are Mesa-only for the same structural reason: xf86 is a compositor and
+  takes its colour from a texture, so it can never corroborate a per-vertex
+  colour path.
+
+The cost of being wrong here is bounded and visible: a vertex format that
+disagrees with S4 produces a wrong or absent triangle, not silent corruption,
+and `INTEL3D0.TXT` carries the vertices both as raw bits and as decoded
+integers precisely so this shows up in the artefact.
 
 ## 9. Consequence for the plan
 
@@ -500,11 +686,27 @@ Two of Part 2's named risks are **reduced** by this audit:
   edges.
 
 One is **raised**: the plan's cross-check methodology assumed two independent
-trees and had one tree plus a fork (§2). Every claim above has been re-derived
-against use sites instead, and the seven open items in §8 must be held to the
-same standard. The audit is not finished, and **step 2 (the memory layout move)
-must not start until §8 is closed** - which is the plan's own ordering rule,
-and the reason it put the audit first.
+trees and had one tree plus a fork (§2). Every claim was re-derived against use
+sites instead.
+
+Three more consequences came out of closing §8, and each changes what gets
+built rather than merely what is known:
+
+- **The vertex format is XYZW plus per-vertex colour, all three vertices the
+  same colour**, not the XY-plus-default-diffuse that §5 first recommended. The
+  colour is one dword of packed BGRA bytes, not four floats.
+- **The triangle's colour must be exactly representable in RGB565**, because
+  dithering is on by default and cannot be cleanly disabled. Without that the
+  software-reference comparison would disagree in the interior, not just at the
+  edges the plan licenses.
+- **The invariant-state block is settled by measurement, not reading.** Emit
+  the nine-packet, fifteen-dword intersection of the two drivers' blocks, and
+  let B2's step numbering attribute any hang inside it.
+
+**Step 2, the memory layout move, may now start.** Two obligations follow the
+audit rather than blocking it: the derived fragment program must be reproduced
+under a host test before it reaches hardware, and the invariant-state residual
+is answered only on B2.
 
 ## 10. Confidence
 
