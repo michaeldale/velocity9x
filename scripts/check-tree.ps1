@@ -25,6 +25,8 @@ $required = @(
     "packaging\win98se\INSTALL.TXT",
     "packaging\win98se\FIRSTBOOT.TXT",
     "packaging\win98se\RECOVER.TXT",
+    "packaging\win98se\V9XCOPY.BAT",
+    "packaging\win98se\V9XARM.BAT",
     # Family manifests are deliberately not listed here: they are discovered
     # by glob and schema-validated below, so a family is added by creating its
     # directory, with no script edit.

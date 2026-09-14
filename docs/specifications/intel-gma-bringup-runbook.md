@@ -300,45 +300,59 @@ different Windows directory is passed as an argument, for example
 Then cold boot and confirm `V9XMODES.INI` reports the package's build before
 trusting anything else in the capture.
 
-### 3.2e Phase 4 two-boot first-write test
+### 3.2e Phase 4 first-write test, one boot
 
-Use the exact package whose build ID appears in the unarmed capture. Do not
-install arm keys during package deployment. Boot once on AC power, collect
-`V9XDIAG`, and require the no-write validator above, `TokenMover=READY`, and
-Phase 1/2/3 PASS captures. Then arm the stick from the host. Do not hand-edit the arm file: the arm
-script re-validates the whole capture set, cross-checks the stick's package
-build against the capture, refuses a stick whose `IntelInFlight` is still set,
-writes the keys, and reads them back.
+Measured 2026-09-14: the no-write capture boot is not needed to arm. The
+command stream is fixed by compile-time constants and a layout derived from
+two values the driver rechecks anyway, so the package build computes the same
+`ArmExecutionCrc` the machine does and stamps it, with its own build id, into
+`V9XARM.BAT`. `scripts\check-intel-ring-plan.ps1 -ComputeArm` prints those
+values on the host if you want to see them.
+
+On the development host, refresh the stick:
 
 ```powershell
-.\scriptsrm-intel-phase4.ps1 -Capture <usb-copy>\INTELRNG.TXT -StickRoot E:
-.\scriptsrm-intel-phase4.ps1 -Capture <usb-copy>\INTELRNG.TXT -StickRoot E: -Confirm
+robocopy .uild\win98se-intel-gma E:\INTELGMA /MIR
 ```
 
-The first form is a dry run that prints the exact block. The keys it installs
-are `IntelAccelDefault`, `IntelArmOnce`, `IntelArmCrc`, `IntelArmBuildId`,
-`IntelInFlight`, `IntelEnableThisBoot` and `IntelLastResult`; the token
-defaults to `p4-<date>-a` and `-Token` overrides it. The previous
-arm file is kept as `V9XDIAG\INTELARM.V9X`. `-Disarm -Confirm` returns the
-stick to an unarmed boot.
+On the netbook, in real DOS (F8, **Command prompt only**):
 
-Boot the same package a second time on AC, leave the desktop idle, photograph
-it, shut down, and collect `V9XDIAG`. Validate the armed capture with:
+```
+C:
+CD \INTELGMA
+V9XCOPY
+V9XARM
+```
+
+`V9XCOPY` installs the four binaries and clears any stale arm state. `V9XARM`
+arms the next boot for exactly that build. It refuses if `IntelInFlight` is
+still set from an unfinished attempt, because that record is the only evidence
+of where the previous run stopped; run `V9XCOPY` first to clear it
+deliberately. Set `V9XARMTOKEN` beforehand to choose your own token.
+
+Then cold boot **once, on AC**, wait for the desktop, photograph it, shut
+down, and copy `C:\V9XDIAG` off the stick. Validate with:
 
 ```powershell
 .\scripts\check-intel-ring-plan.ps1 -Path <usb-copy>\INTELRNG.TXT -Armed
 ```
 
-This checks the exact command stream and whole-execution CRC, ordered ring
-readbacks and bounded polls, scratch guard, unchanged errors, and the full
-pre/post MMIO fingerprint. If the machine hangs, photograph it and power-cycle;
-the next load is unarmed because `IntelInFlight` remains set. Collect the
-partial capture before considering the single identical retry allowed by the
-risk decision. The arm script refuses a stick in that state, and
-`-AcknowledgeIncomplete` is the deliberate override for the one retry; never
-clear `IntelInFlight` by hand or substitute a new token.
-The detailed ordering and retry limits are in
-`docs\plans\intel-phase4-first-write-design.md`.
+`scriptsrm-intel-phase4.ps1` still exists for arming from the host against
+a specific capture, and is the right tool when you want a human gate on a
+particular run rather than on the package.
+
+Do not change resolution and do not open a DOS box on the armed boot.
+
+**Reading the result.** `Result=PASS` is the goal. Everything else names its
+step. `IntentStep` says how far it reached: `stage-write`, `stage-mirror`,
+`stage-guard`, then `S05` to `S12` for the register and command steps.
+`PreconditionCode` and `StageFail` carry their own operands; the code tables
+are in `hardware-diagnostics.md`. A hang leaves `IntentStep` at the last
+flushed marker, which is what locates it on a machine with no serial port.
+
+If the machine hangs: photograph it, power-cycle, and copy `C:\V9XDIAG`
+before anything else. The next boot is unarmed by itself because
+`IntelInFlight` remains set. The risk decision allows one identical retry.
 
 ### 3.3 Per-mode checklist
 

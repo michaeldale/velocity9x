@@ -229,6 +229,28 @@ $deployLines = Get-Content -LiteralPath $deploySource
 Set-Content -LiteralPath (Join-Path $outputDir "V9XCOPY.BAT") `
     -Value $deployLines -Encoding Ascii
 
+# The Intel family ships its own arm batch with this build's id and the
+# canonical command CRC stamped in, so a Phase 4 round trip is one boot and
+# needs no host-side arming step. Every machine-side gate is unchanged: the
+# driver rechecks the build id, re-derives the CRC, and consumes the token
+# once. Other families have no Phase 4 path and get no arm batch.
+if ($familyManifest.Id -eq 'intel-gma') {
+    $armSource = Join-Path $repoRoot "packaging\win98se\V9XARM.BAT"
+    $armFacts = & (Join-Path $PSScriptRoot "check-intel-ring-plan.ps1") `
+        -ComputeArm -Json | ConvertFrom-Json
+    $armToken = 'p4-{0:yyyyMMdd}-{1}' -f (Get-Date), $BuildId
+    $armLines = @(Get-Content -LiteralPath $armSource | ForEach-Object {
+        $_.Replace('@@BUILDID@@', $BuildId).
+           Replace('@@ARMCRC@@', $armFacts.ArmExecutionCrc).
+           Replace('@@TOKEN@@', $armToken)
+    })
+    if (@($armLines | Where-Object { $_ -match '@@' }).Count -ne 0) {
+        throw "V9XARM.BAT still contains an unsubstituted placeholder."
+    }
+    Set-Content -LiteralPath (Join-Path $outputDir "V9XARM.BAT") `
+        -Value $armLines -Encoding Ascii
+}
+
 $manifest = @(
     "Velocity9x active display bring-up package",
     "Version: $ProductVersion",
@@ -278,6 +300,9 @@ $expectedPackageFiles = @(
     "V9XWND.EXE",
     "VELOCITY9X.INF"
 )
+if ($familyManifest.Id -eq 'intel-gma') {
+    $expectedPackageFiles += "V9XARM.BAT"
+}
 $actualPackageFiles = @(Get-ChildItem -LiteralPath $outputDir -File |
     ForEach-Object { $_.Name } | Sort-Object)
 $unexpectedPackageFiles = @($actualPackageFiles |

@@ -364,6 +364,9 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
     v9x_p4_stage_expected = 0ul;
     v9x_p4_stage_memory = 0ul;
     v9x_p4_stage_gmadr = 0ul;
+    /* Three markers, not twenty-two. Enough to locate a hang to a phase of
+     * this step without paying a flushed profile write per dword. */
+    (void)v9x_p4_ring("IntentStep", "stage-write");
     for (index = 0ul; index < 10ul; ++index) {
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
         if (V9xMiniI9xxRingStage(layout->reserve_physical, (WORD)index,
@@ -374,6 +377,7 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
             return 0u;
         }
     }
+    (void)v9x_p4_ring("IntentStep", "stage-mirror");
     for (index = 0ul; index < 10ul; ++index) {
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
         v9x_p4_stage_index = index;
@@ -394,6 +398,7 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
             return 0u;
         }
     }
+    (void)v9x_p4_ring("IntentStep", "stage-guard");
     if (!v9x_p4_stage_guard(layout, 0x11000ul, layout->scratch_offset) ||
         !v9x_p4_stage_guard(layout, 0x11ffcul,
                             layout->scratch_offset + 0xffcul)) {
@@ -411,14 +416,21 @@ static WORD v9x_p4_step(WORD step, DWORD crc)
     DWORD head = step == 6u || step == 8u ? 0ul : 8ul;
     DWORD needed = step == 7u ? V9X_I9XX_RING_BYTES - 8ul :
                    step == 9u ? 32ul : 8ul;
-    if (step >= 6u && step <= 9u &&
-        (v9x_i9xx_ring_free_space(head, head, V9X_I9XX_RING_BYTES,
-                                   &free_bytes) != V9X_STATUS_OK ||
-         free_bytes < needed)) { return 0u; }
     *p++ = 'S'; *p++ = (char)('0' + step / 10u);
     *p++ = (char)('0' + step % 10u);
     *p = '\0';
+    /* The marker goes down before the precheck, not after it. A step that
+     * refused its own arithmetic used to return with nothing written, which
+     * on a machine whose only trace is this file is the same as a hang. */
     if (!v9x_p4_ring("IntentStep", key)) { return 0u; }
+    if (step >= 6u && step <= 9u &&
+        (v9x_i9xx_ring_free_space(head, head, V9X_I9XX_RING_BYTES,
+                                   &free_bytes) != V9X_STATUS_OK ||
+         free_bytes < needed)) {
+        strcpy(p, "Result");
+        (void)v9x_p4_ring(key, "NO-RING-SPACE");
+        return 0u;
+    }
     success = V9xMiniI9xxRingExecute(crc, step);
     strcpy(p, "Result");
     if (!v9x_p4_ring(key, success != 0u ? "PASS" : "FAIL")) { return 0u; }

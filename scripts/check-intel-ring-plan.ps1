@@ -4,9 +4,20 @@ param(
     [Parameter(Mandatory = $true, ParameterSetName = 'Capture')]
     [string]$Path,
     [Parameter(ParameterSetName = 'Capture')]
+    [Parameter(ParameterSetName = 'ComputeArm')]
     [switch]$Json,
     [Parameter(ParameterSetName = 'Capture')]
     [switch]$Armed,
+    # The canonical stream is fixed by compile-time constants and a layout
+    # derived from two measured values, so its CRCs can be computed here with
+    # no machine involved. That is what removes the no-write capture boot from
+    # every arm cycle; the driver still recomputes and refuses on a mismatch.
+    [Parameter(Mandatory = $true, ParameterSetName = 'ComputeArm')]
+    [switch]$ComputeArm,
+    [Parameter(ParameterSetName = 'ComputeArm')]
+    [uint32]$VbeBytes = 0x007b0000,
+    [Parameter(ParameterSetName = 'ComputeArm')]
+    [uint32]$Bsm = 0x7f800000,
     [Parameter(Mandatory = $true, ParameterSetName = 'SelfTest')]
     [switch]$SelfTest
 )
@@ -347,6 +358,43 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         }
     }
     Write-Host "Intel ring-plan validator self-test passed ($($result.ArmPacketCrc))."
+    return
+}
+
+if ($PSCmdlet.ParameterSetName -eq 'ComputeArm') {
+    # Mirrors v9x_i9xx_sandbox_calculate and the Phase 4 stream builders.
+    [uint32]$reserveBytes = 0x20000
+    [uint32]$ringBytes = 0x10000
+    [uint32]$pageBytes = 0x1000
+    if ($VbeBytes -lt $reserveBytes -or ($VbeBytes -band ($pageBytes - 1)) -ne 0 -or
+        ($Bsm -band ($pageBytes - 1)) -ne 0) {
+        throw 'VbeBytes/Bsm are not a page-aligned layout the driver would accept.'
+    }
+    [uint32]$reserveOffset = $VbeBytes - $reserveBytes
+    [uint32]$ringOffset = $reserveOffset
+    [uint32]$hwsOffset = $ringOffset + $ringBytes
+    [uint32]$scratchOffset = $hwsOffset + $pageBytes
+    [uint32[]]$probe = 0x00000000, 0x02000000
+    [uint32[]]$blt = @(
+        0x54300004, 0x03f00020, 0x00000000, 0x00080008,
+        [uint32]($scratchOffset + 0x100), 0x55aa33cc, 0x02000000, 0x00000000)
+    [uint32]$wrapNoops = ($ringBytes - 8) / 4
+    [uint32[]]$execution = $probe + ([uint32[]](1..$wrapNoops | ForEach-Object { 0 })) +
+        $probe + $blt
+    $arm = [ordered]@{
+        VbeBytes = '{0:X8}' -f $VbeBytes
+        Bsm = '{0:X8}' -f $Bsm
+        ReserveOffset = '{0:X8}' -f $reserveOffset
+        ReservePhysical = '{0:X8}' -f ([uint32]($Bsm + $reserveOffset))
+        RingOffset = '{0:X8}' -f $ringOffset
+        HwsOffset = '{0:X8}' -f $hwsOffset
+        ScratchOffset = '{0:X8}' -f $scratchOffset
+        WrapNoopDwords = '{0:X8}' -f $wrapNoops
+        ArmPacketCrc = '{0:X8}' -f (Get-V9xCrc32Dwords ($probe + $blt))
+        ArmExecutionCrc = '{0:X8}' -f (Get-V9xCrc32Dwords $execution)
+    }
+    if ($Json) { [pscustomobject]$arm | ConvertTo-Json -Compress }
+    else { [pscustomobject]$arm | Format-List }
     return
 }
 
