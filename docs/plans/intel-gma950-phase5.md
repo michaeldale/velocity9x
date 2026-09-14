@@ -141,7 +141,8 @@ contract is untouched.
 The rule, for the header comment so it cannot be re-broken by accident:
 
 > The hook tables are near and live in `_TEXT`; `intel_hw16.c` and
-> `intel_bridge16.c` are the only two bridges between `_TEXT` and `I9XXCODE`, so
+> `intel_bridge16.c` own the Intel hook and shared-service bridges; `loader.c`
+> also calls `v9x_intel_boot_arm_prepare` across the segment boundary. Thus
 > a hook slot never holds the address of a function in another code segment — it
 > holds a near forwarder that makes the far call.
 
@@ -411,9 +412,17 @@ maintaining it by hand.
 reimplementation, which is what `check-intel-ring-plan.ps1 -ComputeArm` is today
 and is the copy that will drift. `scripts/gen-intel-3d-stream.ps1` renders
 `src/minivdd32/i9xx3d.inc` (MASM table + CRC + ring start, included by
-`loader.asm`, which deletes its literals) and `scripts/data/intel-3d-stream.psd1`
+`loader.asm`, replacing hand-maintained constants for the new stream) and
+`scripts/data/intel-3d-stream.psd1`
 (consumed by both validators). Both checked in, so a netbook trip is reproducible
 from a clean checkout and a human can read the gate.
+
+The layout move also changes Phase 4's BLT destination and execution CRC.
+Generate or separately verify those revised Phase 4 constants from its compiled
+builder before retaining the standalone Phase 4 gate; do not let the Phase 5
+include silently replace the Phase 4 table or make its CRC refer to the old
+reserve. The combined arm CRC must cover both revised streams in execution
+order, including Phase 4's wrap/probes and Phase 5's pre-draw probe.
 
 Split the reproduce check to respect "check-tree needs no compiler":
 `check-tree.ps1` does the compiler-free half — the `.inc` exists with its
@@ -433,6 +442,19 @@ Phase 5 steps numbered from 20 so a log line is never ambiguous.
 **Phase 4 stays alongside**, because it is the only thing that can distinguish
 "the layout move broke the ring" from "the 3D packets hung the parser", and it
 costs milliseconds.
+
+**Resolve the two-phase arm transaction before implementing the chain.** The
+current `v9x_p4_preflight` compares `IntelArmCrc` with the Phase 4 execution
+CRC, and the current Phase 4 success path records the final result and clears
+`IntelInFlight`. A Phase 5 token carrying a Phase 5 CRC therefore cannot pass
+that preflight or retain its authority until the draw. Define a dispatcher that
+validates `IntelArmPhase`, build ID, token and a CRC covering the reviewed
+*combined* Phase 4 replay and Phase 5 execution before any write. The internal
+Phase 4 replay must still pass its own generated Phase 4 stream/CRC gate, but
+must defer final token completion and in-flight clearing to the Phase 5 result.
+Keep the standalone Phase 4 arm path working with its own CRC. Host tests must
+prove that a Phase 4 token cannot reach Phase 5, a Phase 5 token cannot skip a
+failed replay, and a power cut between phases leaves `IntelInFlight` set.
 
 ## Step 5: mini-VDD API v7
 
@@ -459,10 +481,23 @@ can never be staged into a Phase 5 slot.
 
 New `src/display16/intel_3d16.c` behind its own positive guard
 `V9X_I9XX_PHASE5_EXECUTOR` (separate from Phase 4's, so Phase 5 can be built
-dark), entered from the tail of `v9x_intel_phase4_maybe_run` **only when Phase 4
-passed in the same boot** — which makes "revalidate the layout" a hard
+dark), entered by the two-phase dispatcher **only when Phase 4 passed in the
+same boot** — which makes "revalidate the layout" a hard
 precondition in code rather than an operator instruction. An unarmed boot still
 produces a complete no-write `INTEL3D0.TXT`.
+
+Specify the target initialization before defining the expected hashes: the
+640x480 RGB565 target must be filled with one fixed background word before the
+triangle, and the full target must read back as that word. Use a bounded bulk
+GMADR fill through the existing framebuffer selector after the armed intent is
+durable, with start, length, pitch and reserve bounds checked on both sides of
+the call; this avoids 153,600 individual far writes. It must not touch the
+published heap or MMIO. Hash the filled target twice before submitting 3D, and
+include the fill pattern and its expected hash in the generated golden. The
+unarmed B1 boot does not fill: it checks that two read-only hash passes over
+the unchanged target agree, then samples through `V9xGmadrRead` to validate
+the address path. Keep the fill out of the unarmed path and record its duration
+and first mismatch in the armed capture.
 
 Steps 20-30 with `IntentStep` flushed **before** each action, `P5Marker` bumped
 every 16 staged dwords, and a two-dword `MI_NOOP`/`MI_FLUSH` probe submitted
@@ -484,8 +519,14 @@ per-pixel assertions (centroid, one inside each vertex and edge midpoint; all
 four corners and three outside-edge points still at the pre-fill pattern —
 deliberately avoiding the edges, whose fill rule the plan licenses to differ);
 guard regions; and **`HeapProbe`**, one dword just below the reserve, which is
-the most important guard in the phase because the reserve just moved 896 KiB
-down into memory the heap previously published.
+the most important boundary observation because the reserve just moved 896 KiB
+down into memory the heap previously published. The probe is read-only: that
+dword remains in the published heap and must not be overwritten with a canary.
+Record its value before and after the draw, but do not classify a difference
+alone as GPU corruption unless the heap is proved quiescent or exclusively
+owned for the interval. Place writable guard patterns only inside the reserve;
+the new lower boundary needs an in-reserve guard or another independently
+validated way to detect an overrun into the heap.
 
 `scripts/check-intel-3d-capture.ps1` with `-SelfTest` mutating a good fixture,
 and `scripts/arm-intel-phase5.ps1` as a **separate** script — a single armer that
@@ -500,13 +541,13 @@ sequence machine → mini-VDD → sequencer → validators → docs → flip the
 each gated green before the next, on the Phase 4 slice precedent. Then:
 
 - **B1 unarmed** — validates the layout move, the heap shrink, the 1 MiB
-  mapping, the v7 hash verb against the pre-fill, and both stream plans. A
+  mapping, two stable read-only v7 hash passes, and both stream plans. A
   decoder error is caught here and costs no armed boot.
 - **B2 armed** — Phase 4 replayed at the new base, chained into Phase 5.
-  *Chaining rather than spending a separate boot is safe* because `IntentStep` is
-  flushed before every step and the two phases use disjoint step namespaces
-  (`S05`-`S12` vs `S23`-`S30`) and disjoint failure ranges, so a hang is
-  attributable from the file alone.
+  Chaining uses the combined arm transaction above. `IntentStep` is flushed
+  before every step and the phases use disjoint step namespaces (`S05`-`S12`
+  vs `S23`-`S30`) and failure ranges, so a hang is attributable from the file
+  alone.
 - **B3 armed, cold, identical** — required by "stable across cold boots"; all
   hashes and row CRCs must match B2.
 - **B4 unarmed** — clean return, `IntelLastResult=pass:<token>`.
@@ -541,10 +582,10 @@ automatically a kill** — an indirect buffer is still a fixed, reviewed, CRC'd
 array in the same reserve. The kill fires only if its contents cannot be
 determined from the sources.
 
-Non-hang kills: any guard touched, **especially `HeapProbe`** (silent corruption
-of memory published to DirectDraw is worse than a hang, and is the specific new
-risk the reserve growth creates); a changed GTT hash; the audit failing to
-double-source a required field.
+Non-hang kills: any **in-reserve** guard touched; independently established
+corruption of the published heap (a `HeapProbe` change alone is only an
+observation); a changed GTT hash; the audit failing to double-source a
+required field.
 
 Not failures: a software-vs-hardware mismatch confined to a one-pixel band along
 the edges (explicitly licensed); and **no visible change on the panel** — the
