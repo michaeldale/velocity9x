@@ -48,19 +48,21 @@
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
-            @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c' }
-            @{ Name = 'i9xx_gtt'; Path = 'src\chipsets\intel\i9xx_gtt.c' }
-            @{ Name = 'i9xx_ring'; Path = 'src\chipsets\intel\i9xx_ring.c' }
-            @{ Name = 'i9xx_arm'; Path = 'src\chipsets\intel\i9xx_arm.c' }
+            @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_gtt'; Path = 'src\chipsets\intel\i9xx_gtt.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_ring'; Path = 'src\chipsets\intel\i9xx_ring.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_arm'; Path = 'src\chipsets\intel\i9xx_arm.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
-            @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c' }
-            @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c' }
-            @{ Name = 'intel_event16'; Path = 'src\display16\intel_event16.c' }
-            @{ Name = 'intel_ring16'; Path = 'src\display16\intel_ring16.c' }
-            @{ Name = 'intel_exec16'; Path = 'src\display16\intel_exec16.c' }
-            @{ Name = 'intel_boot16'; Path = 'src\display16\intel_boot16.c' }
+            @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_event16'; Path = 'src\display16\intel_event16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_ring16'; Path = 'src\display16\intel_ring16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_exec16'; Path = 'src\display16\intel_exec16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_boot16'; Path = 'src\display16\intel_boot16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_str16'; Path = 'src\display16\intel_str16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
+            @{ Name = 'intel_bridge16'; Path = 'src\display16\intel_bridge16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }

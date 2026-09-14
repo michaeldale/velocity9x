@@ -2,10 +2,10 @@
 #include <windows.h>
 #undef SetCursor
 
-#include <string.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 #define V9X_I9XX_BOOT_INI     V9X_DIAG_INTELARM_TXT
 #define V9X_I9XX_BOOT_SECTION "Velocity9x"
@@ -52,14 +52,14 @@ static WORD v9x_intel_boot_set(const char *key, const char *value)
     if (!v9x_intel_boot_read(key, check, sizeof(check))) {
         return 0u;
     }
-    return strcmp(check, value) == 0;
+    return v9x_intel_str_equal(check, value) != 0u;
 }
 
 /* Intel build only. Called from DriverInit immediately after
  * v9x_display_boot_log and before any Enable, so the `libmain` trace is
  * already on disk if this function is what stops the load. It transfers
  * authority, but can reach no GPU write. */
-void v9x_intel_boot_arm_prepare(void)
+void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
 {
     char in_flight[65];
     char arm_once[65];
@@ -81,8 +81,8 @@ void v9x_intel_boot_arm_prepare(void)
         return;
     }
     if (in_flight[0] != '\0') {
-        strcpy(last_result, "incomplete-reset:");
-        strcat(last_result, in_flight);
+        v9x_intel_str_copy(last_result, "incomplete-reset:");
+        v9x_intel_str_append(last_result, in_flight);
         if (v9x_intel_boot_set("IntelLastResult", last_result)) {
             v9x_intel_boot_state = "INCOMPLETE";
         }
@@ -114,7 +114,8 @@ void v9x_intel_boot_arm_prepare(void)
 #else
     if (!v9x_intel_boot_read("IntelArmBuildId", build_text,
                              sizeof(build_text)) ||
-        strcmp(build_text, v9x_get_build_identity()->build_id) != 0) {
+        v9x_intel_str_equal(
+            build_text, v9x_intel_bridge_build_identity()->build_id) == 0u) {
         v9x_intel_boot_state = "BAD-BUILD";
         return;
     }
@@ -123,7 +124,7 @@ void v9x_intel_boot_arm_prepare(void)
         !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
         return;
     }
-    strcpy(v9x_intel_boot_arm_token, arm_once);
+    v9x_intel_str_copy(v9x_intel_boot_arm_token, arm_once);
     v9x_intel_boot_arm_crc = crc;
     v9x_intel_boot_arm_latch = 1u;
     v9x_intel_boot_state = "ARMED";

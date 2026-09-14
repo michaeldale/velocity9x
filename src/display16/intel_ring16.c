@@ -5,6 +5,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/build.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 #define V9X_I9XX_SCRATCH_TARGET_DELTA 0x100ul
 #define V9X_I9XX_SCRATCH_WIDTH        8u
@@ -61,7 +62,7 @@ static void v9x_ring_dword_key(char *key, char prefix, WORD index)
  * or MMIO. The guarded executor can run only after this first, no-write
  * capture has been collected on the exact binary and separately armed.
  */
-void v9x_intel_publish_ring_plan(void)
+void V9X_I9XX_FAR v9x_intel_publish_ring_plan(void)
 {
     static WORD published_this_load;
     struct v9x_i9xx_sandbox_layout layout;
@@ -89,7 +90,7 @@ void v9x_intel_publish_ring_plan(void)
                               v9x_intel_boot_token_mover_state(),
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "CaptureBuildId",
-                              v9x_get_build_identity()->build_id,
+                              v9x_intel_bridge_build_identity()->build_id,
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString("IntelRing", "ErrataGate", "0",
                               V9X_DIAG_INTELRNG_TXT);

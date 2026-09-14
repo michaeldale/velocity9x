@@ -1,14 +1,25 @@
 #include "velocity9x/intel_gma.h"
 
 #define V9X_I9XX_FNV_OFFSET ((v9x_u32)2166136261ul)
-#define V9X_I9XX_FNV_PRIME  ((v9x_u32)16777619ul)
 
+/*
+ * The FNV prime as a sum of powers of two: 16777619 = 2^24 + 2^8 + 2^7 + 2^4
+ * + 2^1 + 1. Multiplying by the shifts instead of by the constant keeps this
+ * unit free of __U4M, Open Watcom's 32-bit multiply helper, which lives in
+ * clibc.lib's _TEXT and therefore cannot be reached by a near call from the
+ * I9XXCODE segment this unit is compiled into
+ * (docs\plans\intel-gma950-phase5.md). It is exact, not an approximation:
+ * modular arithmetic distributes over the sum, so every bit of the result is
+ * identical to the multiply it replaces. test_i9xx_gtt.c's hash expectations
+ * are the proof.
+ */
 static v9x_u32 v9x_i9xx_hash_dword(v9x_u32 hash, v9x_u32 value)
 {
     v9x_u16 byte_index;
     for (byte_index = 0u; byte_index < 4u; ++byte_index) {
         hash ^= value & 0xfful;
-        hash *= V9X_I9XX_FNV_PRIME;
+        hash = (hash << 24) + (hash << 8) + (hash << 7) +
+               (hash << 4) + (hash << 1) + hash;
         value >>= 8;
     }
     return hash;

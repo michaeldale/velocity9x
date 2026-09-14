@@ -15,7 +15,7 @@ static v9x_u16 v9x_i9xx_is_power_of_two(v9x_u32 value)
     return value != 0ul && (value & (value - 1ul)) == 0ul;
 }
 
-v9x_status v9x_i9xx_sandbox_calculate(
+v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
     v9x_u32 vbe_bytes, v9x_u32 bsm,
     struct v9x_i9xx_sandbox_layout *layout)
 {
@@ -129,6 +129,31 @@ v9x_status v9x_i9xx_build_mi_probe(v9x_u32 *stream, v9x_u32 capacity,
     return V9X_STATUS_OK;
 }
 
+/*
+ * Shift-add 32-bit multiply. Open Watcom would otherwise emit a call to its
+ * __U4M helper, which lives in clibc.lib's _TEXT and so cannot be reached by
+ * a near call from the I9XXCODE segment this unit is compiled into
+ * (docs\plans\intel-gma950-phase5.md). __U4M is compiler-generated and cannot
+ * be declared __far, so the multiply has to go at source rather than be
+ * redirected. Both call sites are bounds arithmetic run a handful of times per
+ * ring attempt, so the loop's cost is unobservable; test_i9xx_ring.c's
+ * existing expectations are the proof of equivalence.
+ */
+static v9x_u32 v9x_i9xx_mul32(v9x_u32 left, v9x_u32 right)
+{
+    v9x_u32 result = 0ul;
+
+    while (right != 0ul) {
+        if ((right & 1ul) != 0ul) {
+            result += left;
+        }
+        left <<= 1;
+        right >>= 1;
+    }
+
+    return result;
+}
+
 v9x_status v9x_i9xx_build_color_blt(
     v9x_u32 destination, v9x_u16 width, v9x_u16 height,
     v9x_u16 pitch, v9x_u32 color,
@@ -148,7 +173,7 @@ v9x_status v9x_i9xx_build_color_blt(
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     scratch_end = scratch_offset + scratch_bytes;
-    extent = ((v9x_u32)height - 1ul) * (v9x_u32)pitch;
+    extent = v9x_i9xx_mul32((v9x_u32)height - 1ul, (v9x_u32)pitch);
     if (extent > 0xfffffffful - row_bytes ||
         destination < scratch_offset ||
         destination > 0xfffffffful - extent - row_bytes ||
@@ -208,7 +233,7 @@ v9x_status v9x_i9xx_decode_phase4_stream(
                 (pitch & 3ul) != 0ul || width * 4ul > pitch) {
                 return V9X_STATUS_INVALID_ARGUMENT;
             }
-            extent = (height - 1ul) * pitch;
+            extent = v9x_i9xx_mul32(height - 1ul, pitch);
             if (extent > 0xfffffffful - width * 4ul ||
                 destination < scratch_offset ||
                 destination > 0xfffffffful - extent - width * 4ul ||

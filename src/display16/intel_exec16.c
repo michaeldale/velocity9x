@@ -2,10 +2,10 @@
 #include <windows.h>
 #undef SetCursor
 
-#include <string.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 #define V9X_P4_SECTION "IntelRing"
 /* The arm transaction's own file, not SYSTEM.INI; see diagpaths.h. */
@@ -42,9 +42,6 @@ extern WORD FAR PASCAL V9xMiniI9xxRingDiag(WORD index);
 extern WORD FAR PASCAL V9xMiniI9xxEventDword(WORD event, WORD field);
 extern DWORD FAR PASCAL V9xGmadrRead(DWORD offset);
 extern WORD FAR PASCAL V9xGmadrWrite(DWORD offset, DWORD value);
-extern void v9x_intel_publish_event(WORD kind, WORD context);
-extern void v9x_intel_publish_mmio_fingerprint(void);
-extern void v9x_intel_publish_gtt_inventory(void);
 
 #ifdef V9X_I9XX_FIRST_WRITE_EXECUTOR
 static void v9x_p4_hex(char *text, DWORD value)
@@ -68,7 +65,7 @@ static WORD v9x_p4_set(const char *section, const char *key,
     (void)WritePrivateProfileString(0, 0, 0, path);
     length = (WORD)GetPrivateProfileString(section, key, "", check,
                                            sizeof(check), path);
-    return length < sizeof(check) - 1u && strcmp(check, value) == 0;
+    return length < sizeof(check) - 1u && v9x_intel_str_equal(check, value) != 0u;
 }
 
 static WORD v9x_p4_ring(const char *key, const char *value)
@@ -102,9 +99,9 @@ static WORD v9x_p4_capture_errors(const char *prefix, DWORD *values)
     WORD index;
     char key[16];
     for (index = 0u; index < 7u; ++index) {
-        strcpy(key, prefix);
-        key[strlen(prefix)] = (char)('0' + index);
-        key[strlen(prefix) + 1u] = '\0';
+        v9x_intel_str_copy(key, prefix);
+        key[v9x_intel_str_length(prefix)] = (char)('0' + index);
+        key[v9x_intel_str_length(prefix) + 1u] = '\0';
         if (!V9xMiniI9xxRingDiag(index)) { return 0u; }
         if (values != 0) { values[index] = v9x_i9xx_ring_diag_value; }
         if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_diag_value)) { return 0u; }
@@ -117,10 +114,10 @@ static WORD v9x_p4_mmio_dump(const char *prefix, const DWORD *values)
     WORD index;
     char key[12];
     for (index = 0u; index < V9X_I9XX_SNAPSHOT_DWORDS; ++index) {
-        strcpy(key, prefix);
-        key[strlen(prefix)] = (char)('0' + index / 10u);
-        key[strlen(prefix) + 1u] = (char)('0' + index % 10u);
-        key[strlen(prefix) + 2u] = '\0';
+        v9x_intel_str_copy(key, prefix);
+        key[v9x_intel_str_length(prefix)] = (char)('0' + index / 10u);
+        key[v9x_intel_str_length(prefix) + 1u] = (char)('0' + index % 10u);
+        key[v9x_intel_str_length(prefix) + 2u] = '\0';
         if (!v9x_p4_ring_hex(key, values[index])) { return 0u; }
     }
     return 1u;
@@ -168,10 +165,10 @@ static void v9x_p4_clean_refusal(const char *reason)
     char last[96];
     v9x_intel_boot_arm_latch = 0u;
     if (!v9x_p4_ring("Result", reason)) { return; }
-    strcpy(last, "refused:");
-    strcat(last, reason);
-    strcat(last, ":");
-    strcat(last, v9x_intel_boot_arm_token);
+    v9x_intel_str_copy(last, "refused:");
+    v9x_intel_str_append(last, reason);
+    v9x_intel_str_append(last, ":");
+    v9x_intel_str_append(last, v9x_intel_boot_arm_token);
     if (!v9x_p4_profile("IntelLastResult", last) ||
         !v9x_p4_profile("IntelEnableThisBoot", "0")) { return; }
     (void)v9x_p4_profile("IntelInFlight", "");
@@ -233,10 +230,11 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
                               sizeof(arm_build))) {
         return V9X_P4_PRE_PROFILE;
     }
-    if (strcmp(arm_build, v9x_get_build_identity()->build_id) != 0) {
+    if (v9x_intel_str_equal(arm_build,
+                            v9x_intel_bridge_build_identity()->build_id) == 0u) {
         return V9X_P4_PRE_BUILD;
     }
-    if (strcmp(accel_default, "0") != 0) {
+    if (v9x_intel_str_equal(accel_default, "0") == 0u) {
         return V9X_P4_PRE_ACCEL;
     }
     if (v9x_i9xx_parse_crc_hex(crc_text, &crc) == V9X_FALSE) {
@@ -246,7 +244,7 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.in_flight = in_flight;
     request.configured_crc = crc;
     request.packet_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
-    request.enable_this_boot = (WORD)(strcmp(enabled, "1") == 0);
+    request.enable_this_boot = (WORD)(v9x_intel_str_equal(enabled, "1") != 0u);
     /*
      * Not GetSystemMetrics(SM_CLEANBOOT). That lives in USER, and GDI loads a
      * display driver before USER exists, so importing it made the whole module
@@ -289,10 +287,10 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     }
     GetPrivateProfileString("IntelMmio", "Result", "", status,
                             sizeof(status), V9X_DIAG_INTELMM_TXT);
-    if (strcmp(status, "PASS") != 0) { return V9X_P4_PRE_MMIO_RESULT; }
+    if (v9x_intel_str_equal(status, "PASS") == 0u) { return V9X_P4_PRE_MMIO_RESULT; }
     GetPrivateProfileString("IntelGtt", "Result", "", status,
                             sizeof(status), V9X_DIAG_INTELGTT_TXT);
-    if (strcmp(status, "PASS") != 0) { return V9X_P4_PRE_GTT_RESULT; }
+    if (v9x_intel_str_equal(status, "PASS") == 0u) { return V9X_P4_PRE_GTT_RESULT; }
 
     /*
      * The diag table is EIR 20B0h (index 4), EMR 20B4h (index 5) and ESR
@@ -440,28 +438,28 @@ static WORD v9x_p4_step(WORD step, DWORD crc)
         (v9x_i9xx_ring_free_space(head, head, V9X_I9XX_RING_BYTES,
                                    &free_bytes) != V9X_STATUS_OK ||
          free_bytes < needed)) {
-        strcpy(p, "Result");
+        v9x_intel_str_copy(p, "Result");
         (void)v9x_p4_ring(key, "NO-RING-SPACE");
         return 0u;
     }
     success = V9xMiniI9xxRingExecute(crc, step);
-    strcpy(p, "Result");
+    v9x_intel_str_copy(p, "Result");
     if (!v9x_p4_ring(key, success != 0u ? "PASS" : "FAIL")) { return 0u; }
-    strcpy(p, "Head");
+    v9x_intel_str_copy(p, "Head");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_exec_head)) { return 0u; }
-    strcpy(p, "Tail");
+    v9x_intel_str_copy(p, "Tail");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_exec_tail)) { return 0u; }
-    strcpy(p, "Ms");
+    v9x_intel_str_copy(p, "Ms");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_exec_elapsed)) { return 0u; }
-    strcpy(p, "Polls");
+    v9x_intel_str_copy(p, "Polls");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_exec_polls)) { return 0u; }
-    strcpy(p, "Failure");
+    v9x_intel_str_copy(p, "Failure");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_exec_failure)) { return 0u; }
     if (!V9xMiniI9xxRingDiag(7u)) { return 0u; }
-    strcpy(p, "Ctl");
+    v9x_intel_str_copy(p, "Ctl");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_diag_value)) { return 0u; }
     if (!V9xMiniI9xxRingDiag(8u)) { return 0u; }
-    strcpy(p, "Start");
+    v9x_intel_str_copy(p, "Start");
     if (!v9x_p4_ring_hex(key, v9x_i9xx_ring_diag_value)) { return 0u; }
     return success;
 }
@@ -532,7 +530,7 @@ void v9x_intel_phase4_maybe_run(
     }
     if (!v9x_p4_ring("Access", "armed-hardware-write") ||
         !v9x_p4_ring("ErrataGate", "1") ||
-        !v9x_p4_ring("IntentBuildId", v9x_get_build_identity()->build_id) ||
+        !v9x_p4_ring("IntentBuildId", v9x_intel_bridge_build_identity()->build_id) ||
         !v9x_p4_ring("Result", "ARMED-IN-PROGRESS")) {
         v9x_p4_uncertain("ARM-LOG-FAILED"); return;
     }
@@ -674,9 +672,9 @@ void v9x_intel_phase4_maybe_run(
         v9x_intel_boot_arm_latch = 0u;
         return;
     }
-    strcpy(last, clean_pass != 0u ? "pass:" :
+    v9x_intel_str_copy(last, clean_pass != 0u ? "pass:" :
         (blit_pass == 0u ? "fail:blit-mismatch:" : "fail:post-mismatch:"));
-    strcat(last, v9x_intel_boot_arm_token);
+    v9x_intel_str_append(last, v9x_intel_boot_arm_token);
     if (!v9x_p4_profile("IntelLastResult", last) ||
         !v9x_p4_profile("IntelInFlight", "")) {
         v9x_intel_boot_arm_latch = 0u;

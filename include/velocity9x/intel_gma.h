@@ -3,6 +3,7 @@
 #define VELOCITY9X_INTEL_GMA_H
 
 #include "velocity9x/backend.h"
+#include "velocity9x/intel16.h"
 
 #define V9X_PCI_VENDOR_INTEL             ((v9x_u16)0x8086u)
 #define V9X_PCI_DEVICE_GMA950_945GSE     ((v9x_u16)0x27aeu)
@@ -280,7 +281,12 @@ v9x_status v9x_i9xx_gtt_inventory_add(
 v9x_status v9x_i9xx_gtt_inventory_finish(
     struct v9x_i9xx_gtt_inventory *inventory,
     v9x_u32 hash_first, v9x_u32 hash_second);
-v9x_status v9x_i9xx_sandbox_calculate(
+/*
+ * The only i9xx_* entry point called from outside the I9XXCODE segment:
+ * gma950_hw16.c owns the near V9X_HW16_DEVICE table and so stays in _TEXT.
+ * See velocity9x/intel16.h for why the qualifier is here.
+ */
+v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
     v9x_u32 vbe_bytes, v9x_u32 bsm,
     struct v9x_i9xx_sandbox_layout *layout);
 v9x_status v9x_i9xx_ring_free_space(

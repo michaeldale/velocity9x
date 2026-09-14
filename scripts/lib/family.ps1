@@ -285,6 +285,36 @@ function Test-V9xFamilyManifest {
         throw "Family $Id repeats object name(s): $($duplicateNames -join ', ')."
     }
 
+    # Build.Sources[].CodeSegment is the optional per-source text-segment name,
+    # turned into wcc's -nt= by build-win16-ddi-skeleton.ps1. It exists because
+    # the Win16 64 KiB limit is per segment, not per image, and the intel-gma
+    # family reached it (docs\plans\intel-gma950-phase5.md). Optional on the
+    # MiniVddVbeCollect precedent: a family that names none links byte for byte
+    # as before, which is what keeps the s3 and mga2 goldens valid.
+    #
+    # Moving a source is NOT a local change. Every call that crosses the new
+    # boundary becomes a far call, and wcc -mc compiles calls near by default,
+    # so a missed declaration is a wild jump at run time rather than a link
+    # error. The near-call gate in audit-family-binary.ps1 is what catches it.
+    foreach ($source in $sources) {
+        if (-not $source.ContainsKey('CodeSegment')) {
+            continue
+        }
+        $codeSegment = $source.CodeSegment
+        if ($codeSegment -isnot [string] -or $codeSegment -notmatch '^[A-Z][A-Z0-9_]{1,7}$') {
+            throw ("Family $Id source $($source.Name) sets CodeSegment " +
+                   "'$codeSegment'; it must be 2-8 characters of uppercase " +
+                   "letters, digits and underscore, starting with a letter.")
+        }
+        # _TEXT is the compiler's own default and CONST/CONST2/_DATA/_BSS are
+        # the runtime's. Naming one here would either be a no-op that reads
+        # like a move, or would collide a code segment with a data one.
+        if ($codeSegment -in @('_TEXT', 'CONST', 'CONST2', '_DATA', '_BSS', 'DGROUP')) {
+            throw ("Family $Id source $($source.Name) sets CodeSegment " +
+                   "'$codeSegment', which the compiler already owns.")
+        }
+    }
+
     # Chips[].Objects is what makes the per-object audit layer possible: a
     # multi-chip image checked only as a whole cannot tell one sibling's code
     # from another's. Optional, because a single-chip family gains nothing from

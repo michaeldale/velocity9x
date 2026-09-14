@@ -43,7 +43,12 @@ $trackedTrees = @(
 )
 $trackedMaps = @(
     "build\win16-ddi-s3\v9xdisp.map",
-    "build\win16-ddi-mga2\v9xdisp.map"
+    "build\win16-ddi-mga2\v9xdisp.map",
+    # The intel-gma map is the one that was actually at risk: the family
+    # reached 2 KiB of 16-bit code headroom with neither this list nor the
+    # binary auditor watching it (docs\plans\intel-gma950-phase5.md). It now
+    # has two CODE rows, which the parser below already handles.
+    "build\win16-ddi-intel-gma\v9xdisp.map"
 )
 
 # Win32 PE images embed the link timestamp, so two identical builds hash

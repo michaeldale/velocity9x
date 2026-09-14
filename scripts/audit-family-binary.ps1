@@ -34,7 +34,16 @@ param(
     # (64 rows: 896 bytes of V9X_HW16_MODE, 768 of colour masks, 64 of
     # publication flags = 1728), which is why the number is now asserted at
     # every build instead of being watched by hand.
-    [int]$DgroupBudgetBytes = 32768
+    [int]$DgroupBudgetBytes = 32768,
+    # Per-CODE-segment budget, in bytes. The Win16 limit is 65536 per segment
+    # and, unlike DGROUP, a code segment holds no hidden stack or heap - so the
+    # map number is the number and the budget sits just below the hard limit
+    # rather than at half of it. 57344 leaves 8 KiB, which is four steps of the
+    # 2 KiB-per-step review rule in docs\plans\multi-chip-restructure.md: the
+    # warning arrives with room to act, which is what did not happen when the
+    # intel-gma family reached 63410 bytes with nothing watching
+    # (docs\plans\intel-gma950-phase5.md).
+    [int]$CodeSegmentBudgetBytes = 57344
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,8 +110,21 @@ $image = (& $dumper "-e" $driverPath 2>&1) -join "`n"
 if ($image -notmatch "DIBENG") {
     throw "The Win16 DDI output does not import the DIB Engine."
 }
-if ($image -notmatch "CODE\|FIXED\|SHARE\|PRELOAD") {
-    throw "The Win16 DDI code segment is not fixed, shared, and preloaded."
+# Every CODE segment, not merely one of them. The old single-match form was
+# written when there could only be one; with a second code segment it passes
+# whenever either row is right, and FIXED is exactly what must not be missed -
+# an internal far call is fixed up to a real selector at load time, and a
+# MOVEABLE segment may be moved afterwards, leaving that selector stale.
+$codeAttributeLines = @($image -split "`r?`n" |
+    Where-Object { $_ -match '^\s*CODE\|' })
+if ($codeAttributeLines.Count -eq 0) {
+    throw "The Win16 DDI dump has no CODE segment attribute line."
+}
+foreach ($attributeLine in $codeAttributeLines) {
+    if ($attributeLine -notmatch "CODE\|FIXED\|SHARE\|PRELOAD") {
+        throw ("A Win16 DDI code segment is not fixed, shared, and preloaded: " +
+               $attributeLine.Trim())
+    }
 }
 if ($image -notmatch "DATA\|FIXED\|(SHARE\|)?PRELOAD\|READWRITE") {
     throw "The Win16 DDI data segment is not fixed and preloaded."
@@ -189,6 +211,52 @@ if ($dgroupTotal -gt $DgroupBudgetBytes) {
 }
 $dgroupSummary = ("DGROUP $dgroupBytes + heap $heapBytes = $dgroupTotal of " +
                   "$DgroupBudgetBytes budget")
+
+# CODE-segment occupancy, one row per segment, on the same reported-and-
+# asserted footing as DGROUP above. Nothing watched this before: the DGROUP
+# gate parses no _TEXT row and golden-baseline.ps1 tracked only s3 and mga2,
+# so the intel-gma family reached 2 KiB of headroom with no warning anywhere.
+#
+# The expected segment set comes from the manifest - _TEXT plus every distinct
+# Build.Sources[].CodeSegment - and the count is asserted, not just the sizes.
+# That is the check that catches a -nt=/-nc= which silently failed to apply:
+# the sources would then all land back in _TEXT, the image would still link,
+# and only the missing row would say so.
+$expectedCodeSegments = @('_TEXT')
+foreach ($source in @($target.Build.Sources)) {
+    if ($source.ContainsKey('CodeSegment') -and
+        $source.CodeSegment -notin $expectedCodeSegments) {
+        $expectedCodeSegments += $source.CodeSegment
+    }
+}
+$codeSegmentSizes = [ordered]@{}
+foreach ($line in ($mapText -split "`r?`n")) {
+    if ($line -match '^(\S+)\s+(\S+)\s+\S+\s+[0-9A-Fa-f]{4}:[0-9A-Fa-f]+\s+([0-9A-Fa-f]+)\s*$' -and
+        $Matches[1] -in $expectedCodeSegments) {
+        $codeSegmentSizes[$Matches[1]] = [Convert]::ToInt32($Matches[3], 16)
+    }
+}
+$missingCodeSegments = @($expectedCodeSegments |
+    Where-Object { -not $codeSegmentSizes.Contains($_) })
+if ($missingCodeSegments.Count -ne 0) {
+    throw ("The $($target.Id) map has no segment row for " +
+           "$($missingCodeSegments -join ', '). The manifest asks for " +
+           "$($expectedCodeSegments.Count) code segment(s) and the map has " +
+           "$($codeSegmentSizes.Count); a CodeSegment that did not reach the " +
+           "compiler leaves its code in _TEXT and still links.")
+}
+foreach ($codeSegment in $expectedCodeSegments) {
+    if ($codeSegmentSizes[$codeSegment] -gt $CodeSegmentBudgetBytes) {
+        throw ("The $($target.Id) driver's $codeSegment segment is " +
+               "$($codeSegmentSizes[$codeSegment]) bytes, over the " +
+               "$CodeSegmentBudgetBytes-byte budget. The Win16 hard limit is " +
+               "65536 per segment. Move code to another code segment with a " +
+               "Build.Sources[].CodeSegment rather than raising this.")
+    }
+}
+$codeSummary = (@($expectedCodeSegments | ForEach-Object {
+    "$_ $($codeSegmentSizes[$_])"
+}) -join ', ') + " of $CodeSegmentBudgetBytes budget each"
 if ($mapText -notmatch "(?m)^.*DriverInit.*$") {
     throw "The Win16 DDI map is missing the DriverInit entry point."
 }
@@ -493,4 +561,4 @@ Write-Output ("Audited $($target.Id) image: $($requiredPatterns.Count) required 
               "and $($forbiddenPatterns.Count) forbidden signatures, " +
               "$perChipObjects per-chip object(s), " +
               "$(@($requiredSymbols | Where-Object { $_ }).Count) required and " +
-              "$($foreignSymbols.Count) forbidden map symbol(s); $dgroupSummary.")
+              "$($foreignSymbols.Count) forbidden map symbol(s); $dgroupSummary; $codeSummary.")

@@ -5,6 +5,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 DWORD v9x_i9xx_event_value;
 WORD v9x_i9xx_event_count;
@@ -67,7 +68,7 @@ static void v9x_event_write_hex(const char *section, const char *key,
     WritePrivateProfileString(section, key, text, V9X_DIAG_INTELEVT_TXT);
 }
 
-void v9x_intel_publish_event(WORD kind, WORD context)
+void V9X_I9XX_FAR v9x_intel_publish_event(WORD kind, WORD context)
 {
     DWORD record[V9X_I9XX_EVENT_DWORDS];
     DWORD coverage = 0ul;

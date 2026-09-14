@@ -118,6 +118,23 @@ foreach ($source in $sources) {
     foreach ($define in $familyDefines) {
         $arguments = @("-d$define") + $arguments
     }
+    # -nt= renames this object's text segment and -nc= its class. BOTH are
+    # required, which was measured, not assumed: wlink combines same-class
+    # segments into one physical NE segment, so -nt= alone produces a second
+    # map row inside the SAME 64 KiB segment - the map looks split and the
+    # image is not (wdump -s reported two segment-table entries, not three).
+    # With a distinct class the NE segment table gains a real third entry.
+    #
+    # The distinct class buys a second, larger thing: a near call that crosses
+    # the boundary is then a LINK ERROR (wlink E2052, "relocation not in the
+    # same segment"), not the silent wild jump it would otherwise be. That is
+    # what caught the last two missed declarations here. The near-call audit
+    # in audit-family-binary.ps1 remains, because it names the caller and the
+    # callee where E2052 names only a file offset.
+    if ($source.ContainsKey('CodeSegment')) {
+        $arguments = @("-nt=$($source.CodeSegment)",
+                       "-nc=$($source.CodeSegment)") + $arguments
+    }
     & $compiler @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom 16-bit compilation failed for $($source.Path)."
@@ -162,6 +179,20 @@ $linkLines = @(
     "segment type data preload fixed",
     "segment '_TEXT' preload fixed shared"
 )
+# One line per distinct extra code segment, in manifest order so the link is
+# reproducible. FIXED is required rather than stylistic: an internal far call
+# is fixed up to a real selector at load time, and a MOVEABLE segment may be
+# moved afterwards, leaving that selector stale.
+$extraCodeSegments = @()
+foreach ($source in $sources) {
+    if ($source.ContainsKey('CodeSegment') -and
+        $source.CodeSegment -notin $extraCodeSegments) {
+        $extraCodeSegments += $source.CodeSegment
+    }
+}
+foreach ($codeSegment in $extraCodeSegments) {
+    $linkLines += "segment '$codeSegment' preload fixed shared"
+}
 $linkLines += $objectNames | ForEach-Object {
     "file '$(Join-Path $outputDir "$_.obj")'"
 }

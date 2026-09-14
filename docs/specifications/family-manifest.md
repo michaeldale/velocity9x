@@ -216,6 +216,55 @@ Build = @{
 `Sources` is both the compile order and the link order. Reordering it changes
 the linked image, so a reorder needs a golden re-baseline.
 
+### `Sources[].CodeSegment`
+
+Optional per-source key naming the CODE segment that source compiles into:
+
+```powershell
+@{ Name = 'intel_exec16'; Path = 'src\display16\intel_exec16.c'; CodeSegment = 'I9XXCODE' }
+```
+
+It exists because the Win16 64 KiB limit is **per segment, not per image**, and
+the `intel-gma` family reached it - 63,410 bytes of `_TEXT` with 2,126 free,
+with nothing in the tree watching. A family that names no `CodeSegment` links
+byte for byte as before, which is what keeps the other four families' images
+and the s3/mga2 goldens valid; that inertness is measured, not assumed.
+
+The build script turns the key into both `wcc -nt=<name>` (segment) and
+`-nc=<name>` (class), and emits one `segment '<name>' preload fixed shared`
+line into the link file per distinct value. **Both compiler options are
+required**: `wlink` combines same-class segments into one physical NE segment,
+so `-nt=` alone yields a second *map row* inside the same 64 KiB segment - the
+map looks split and the image is not. `FIXED` is not stylistic: an internal far
+call is fixed up to a real selector at load time, and a `MOVEABLE` segment may
+be moved afterwards, leaving that selector stale.
+
+**Moving a source is not a local change.** Open Watcom's compact model compiles
+every C call near, and a near call cannot cross a segment, so every call over
+the new boundary must be declared `__far` on both sides. Three consequences,
+all of which bit during the Intel split:
+
+- Compiler-generated helpers (`__U4M`, the 32-bit multiply) and C library
+  functions (`strcmp`, `strcpy`, `strlen`, `strcat`) live in `clibc.lib`, whose
+  objects declare segment `_TEXT`. There is no linker mechanism to place a
+  second copy elsewhere, and `__U4M` cannot be declared `__far` at all, so a
+  moved source must not reference them. See `src\chipsets\intel\i9xx_ring.c`
+  for the shift-add multiply that replaces one and
+  `src\display16\intel_str16.c` for the four that replace the others.
+- A hook table is near and lives in `_TEXT`, so a slot may not hold the address
+  of a moved function - it holds a near forwarder that makes the far call.
+  `src\chipsets\intel\intel_hw16.c` is the one instance.
+- Declarations must live in one header that both sides read, so a mismatch is a
+  compiler diagnostic rather than a wild jump.
+  `include\velocity9x\intel16.h` is that header for Intel, and
+  `check-tree.ps1` refuses a bare `extern` for anything it declares.
+
+`audit-family-binary.ps1` asserts, on every build, that the map's CODE rows
+match the manifest's expected set - so a `CodeSegment` that never reached the
+compiler is caught there rather than by a link failure three steps later - and
+that each is within `-CodeSegmentBudgetBytes` (default 57,344, i.e. 8 KiB below
+the hard limit).
+
 `MiniVddVbeCollect` is optional; absent means `$true`. `$false` builds the
 family's `V9XMINI.VXD` with the boot-time VBE collection assembled out
 (`build-minivdd-skeleton.ps1 -DisableVbeCollect`), which is correct for any

@@ -4,6 +4,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
 DWORD v9x_i9xx_second[V9X_I9XX_SNAPSHOT_DWORDS];
@@ -13,8 +14,6 @@ DWORD v9x_i9xx_bar0;
 extern WORD FAR PASCAL V9xPciReadIntelMmioBar(DWORD FAR *base);
 extern WORD FAR PASCAL V9xMiniI9xxCapture(DWORD base);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
-extern WORD v9x_selected_mode_geometry(WORD FAR *width, WORD FAR *height,
-                                       WORD FAR *bpp, WORD FAR *pitch);
 extern unsigned long v9x_vbe_vram_reported;
 
 static const DWORD v9x_expected_offsets[V9X_I9XX_SNAPSHOT_DWORDS] = {
@@ -83,7 +82,7 @@ static void v9x_unpack(struct v9x_i9xx_mmio_snapshot *snapshot,
     snapshot->pipe[1].plane_stride = raw[19];
 }
 
-void v9x_intel_publish_mmio_fingerprint(void)
+void V9X_I9XX_FAR v9x_intel_publish_mmio_fingerprint(void)
 {
     struct v9x_i9xx_mmio_snapshot first;
     struct v9x_i9xx_mmio_snapshot second;
@@ -126,7 +125,7 @@ void v9x_intel_publish_mmio_fingerprint(void)
         v9x_write_hex(key, v9x_i9xx_first[index] ^ v9x_i9xx_second[index]);
     }
     if (offsets_ok == 0u ||
-        v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        v9x_intel_bridge_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
         WritePrivateProfileString("IntelMmio", "Result", "CONTRACT-FAILED",
                                   V9X_DIAG_INTELMM_TXT);
         return;

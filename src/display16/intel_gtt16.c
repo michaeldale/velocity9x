@@ -4,6 +4,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel16.h"
 
 #define V9X_GTT_CHUNK_DWORDS 4u
 #define V9X_GTT_BUFFER_DWORDS 256u
@@ -123,7 +124,7 @@ static DWORD v9x_stolen_bytes(WORD ggc)
     return sizes[(ggc >> 4) & 7u] * 1024ul * 1024ul;
 }
 
-void v9x_intel_publish_gtt_inventory(void)
+void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
 {
     struct v9x_i9xx_gtt_inventory inventory;
     struct v9x_gtt_run run;

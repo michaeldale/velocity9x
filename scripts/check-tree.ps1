@@ -891,6 +891,70 @@ foreach ($packagedText in @("packaging\win98se\INSTALL.TXT",
     }
 }
 
+# ---------------------------------------------------------------------------
+# The Intel code-segment boundary.
+#
+# The intel-gma family's 16-bit code is split across two CODE segments, so
+# every call that crosses the boundary must be declared __far on both sides.
+# include\velocity9x\intel16.h is the single place that says so; the whole
+# point of having one place is that a second, unqualified declaration
+# elsewhere is a mismatch, and a mismatched call is a wild jump rather than a
+# diagnosable fault. Open Watcom's linker does refuse a near call across a
+# class boundary (E2052), but only for a call it can see - a declaration that
+# disagrees with the definition compiles to a far call to the wrong target
+# without complaint. So the rule is enforced at source.
+#
+# See docs\plans\intel-gma950-phase5.md.
+# ---------------------------------------------------------------------------
+$boundaryHeaderPath = Join-Path $repoRoot "include\velocity9x\intel16.h"
+if (-not (Test-Path -LiteralPath $boundaryHeaderPath)) {
+    throw "include\velocity9x\intel16.h is missing; it owns the Intel segment boundary."
+}
+$boundaryHeaderText = Get-Content -LiteralPath $boundaryHeaderPath -Raw
+$boundarySymbols = @([regex]::Matches($boundaryHeaderText,
+    '\b(v9x_intel_publish_\w+|v9x_intel_boot_arm_prepare|v9x_intel_bridge_\w+|v9x_intel_str_\w+)\s*\(') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+# v9x_i9xx_sandbox_calculate is declared in intel_gma.h, which the other i9xx_
+# entry points share; it carries the qualifier there for the same reason.
+$boundarySymbols += 'v9x_i9xx_sandbox_calculate'
+if ($boundarySymbols.Count -lt 6) {
+    throw ("include\velocity9x\intel16.h declares only $($boundarySymbols.Count) " +
+           "boundary symbol(s); the parse that finds them has stopped working.")
+}
+$boundaryOwners = @($boundaryHeaderPath,
+                    (Join-Path $repoRoot "include\velocity9x\intel_gma.h"))
+foreach ($file in $sourceFiles) {
+    if ($file.FullName -in $boundaryOwners) { continue }
+    $text = Get-Content -LiteralPath $file.FullName -Raw
+    if (-not $text) { continue }
+    foreach ($line in ($text -split "`r?`n")) {
+        if ($line -notmatch '^\s*extern\b') { continue }
+        foreach ($symbol in $boundarySymbols) {
+            if ($line -match "\b$symbol\b") {
+                throw ("$($file.Name) declares $symbol with a bare extern. It " +
+                       "crosses the Intel code-segment boundary, so its one " +
+                       "declaration lives in velocity9x\intel16.h - include " +
+                       "that instead. A declaration without V9X_I9XX_FAR " +
+                       "compiles a near call into a wild jump.")
+            }
+        }
+    }
+}
+# The definition side: a function the header declares far must be defined far,
+# or the compiler emits a near entry that the far call returns from wrongly.
+foreach ($symbol in @($boundarySymbols | Where-Object { $_ -notlike 'v9x_intel_str_*' })) {
+    $definitions = @($sourceFiles | Where-Object { $_.Extension -eq '.c' } |
+        Select-String -Pattern "^[A-Za-z_].*\b$symbol\s*\(" -AllMatches)
+    foreach ($definition in $definitions) {
+        if ($definition.Line -match '^\s*extern\b') { continue }
+        if ($definition.Line -notmatch '\bV9X_I9XX_FAR\b') {
+            throw ("$($definition.Filename):$($definition.LineNumber) defines " +
+                   "$symbol without V9X_I9XX_FAR, but velocity9x\intel16.h " +
+                   "declares it far. The two must agree.")
+        }
+    }
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,

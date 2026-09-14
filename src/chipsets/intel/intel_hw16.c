@@ -1,14 +1,24 @@
 #include "velocity9x/hw16.h"
+#include "velocity9x/intel16.h"
 
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
-extern void v9x_intel_publish_mmio_fingerprint(void);
-extern void v9x_intel_publish_gtt_inventory(void);
-extern void v9x_intel_publish_ring_plan(void);
-extern void v9x_intel_publish_event(unsigned short kind,
-                                    unsigned short context);
+
+/*
+ * The hook tables are near and live in _TEXT, by the four-family convention
+ * (docs\plans\multi-chip-restructure.md). v9x_intel_publish_event lives in
+ * the I9XXCODE segment, so its address cannot go in the near publish_event
+ * slot - a near pointer to it would be an offset into the wrong segment. The
+ * slot holds this forwarder instead, which makes the far call. See
+ * velocity9x/intel16.h for the rule this is the one instance of.
+ */
+static void v9x_intel_publish_event_near(unsigned short kind,
+                                         unsigned short context)
+{
+    v9x_intel_publish_event(kind, context);
+}
 
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma950_device
@@ -73,7 +83,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* Map only 16 MiB of GMADR; VBE's usable-memory answer clamps further. */
     0x00ffu, 0xffffu,
     v9x_intel_publish_diagnostics,
-    v9x_intel_publish_event,
+    v9x_intel_publish_event_near,
     0,
     0,
     0,

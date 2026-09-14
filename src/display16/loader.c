@@ -8,6 +8,12 @@
 
 #include "velocity9x/build.h"
 #include "velocity9x/components.h"
+#ifdef V9X_INTEL_GMA_FAMILY
+/* v9x_intel_boot_arm_prepare lives in the Intel family's second code segment,
+ * so the call below is far. This is the only reference to a moved Intel unit
+ * anywhere outside the Intel files. */
+#include "velocity9x/intel16.h"
+#endif
 
 static struct v9x_logger v9x_display_logger;
 static struct v9x_backend_state v9x_display_backend;
@@ -15,9 +21,6 @@ static struct v9x_component_state v9x_display_component;
 static const struct v9x_build_identity *v9x_display_build_identity;
 
 extern void v9x_display_boot_log(void);
-#ifdef V9X_INTEL_GMA_FAMILY
-extern void v9x_intel_boot_arm_prepare(void);
-#endif
 
 /* The display-driver loader supplies heap size in CX, module handle in DI,
  * and the command line in ES:SI. This is the entry contract used by the
