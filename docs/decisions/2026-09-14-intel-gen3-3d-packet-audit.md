@@ -4,7 +4,8 @@
 **Status:** Step 1 of `docs/plans/intel-gma950-phase5.md` Part 2, **in progress**.
 Sections 3-7 are complete and were cross-checked under the rule in section 2.
 Section 8 lists what is still open; no builder may be written against an open
-item.
+item. Revised 2026-09-15: the S0/S1 question, §8's most important open item,
+is closed at the end of §7.
 **Machine:** none. Every claim here is **documentation-derived and unconfirmed
 on this machine**, and carries that status until the netbook says otherwise.
 
@@ -252,6 +253,74 @@ Mesa spells the inline form `PRIM3D_INLINE`; xf86 spells the base `PRIM3D` and
 ORs the topology in. Same encoding, different spelling - which is the pattern
 throughout and the reason §2's rule looks at use sites.
 
+### S0 and S1 are not required for an inline primitive
+
+This was §8's most important open item, because it decides the shape of the
+vertex run. It is now closed, double-sourced, and the answer is **no**.
+
+**What S0 and S1 are for.** S0 is the vertex buffer address
+(`S0_VB_OFFSET_MASK`) and S1 the vertex width and pitch
+(`S1_VERTEX_WIDTH_SHIFT` 24, `S1_VERTEX_PITCH_SHIFT` 16, both `0x3f` wide).
+Both are parameters for *striding through a buffer*, and both are meaningless
+when the vertices are already in the command stream.
+
+**Mesa, structurally.** `i915_context.h:79-88` lists the entire emitted context
+state: `I915_CTXREG_LIS2` through `LIS6`. **There is no `LIS0` or `LIS1`.**
+S0 and S1 are not context state at all - they are loaded only by the indirect
+vertex-buffer path in `intel_tris.c:245-279`, which is guarded by
+`vb_bo != i915->current_vb_bo` and `vertex_size != current_vertex_size`. The
+always-emitted state is `i915_state.c:927-930`:
+
+```
+_3DSTATE_LOAD_STATE_IMMEDIATE_1 | I1_LOAD_S(2) | I1_LOAD_S(3) |
+                                  I1_LOAD_S(4) | I1_LOAD_S(5) |
+                                  I1_LOAD_S(6) | 4
+```
+
+Five S registers, length field 4. A fifth independent confirmation of §5's
+`(count - 1)` rule.
+
+**Mesa's inline path, which loads neither.** `intel_start_inline`
+(`intel_tris.c:89-112`) emits state, reserves one dword, and appends vertex
+dwords through `intel_extend_inline`. `intel_flush_inline_primitive`
+(`intel_tris.c:65-87`) then back-patches the reserved dword. It touches no S
+register. `intel_set_prim` and `intel_get_prim_space` select it on
+`intelScreen->no_vbo` alone - **there is no generation guard**, so this is the
+same code on Gen2 and Gen3.
+
+**xf86, independently.** `i830_render.c:788-790` emits
+`PRIM3D_INLINE | PRIM3D_RECTLIST` and then writes vertex floats directly with
+`OUT_BATCH_F`, with nothing between the command dword and the first vertex.
+
+**The length field.** Both trees back-patch it, and the two formulas are
+identical:
+
+| Tree | Code | Reduces to |
+|---|---|---|
+| Mesa | `_3DPRIMITIVE \| primitive \| (used - 2)`, `used = 1 + vertex dwords` | vertex dwords − 1 |
+| xf86 | `batch_ptr[vertex_index] \|= vertex_count - 1`, `vertex_count = 3 * per_vertex` | vertex dwords − 1 |
+
+**Length field = (total vertex dwords) − 1.** Note it counts *dwords*, not
+vertices, and does not include the command dword.
+
+**How the GPU knows the vertex width.** From S2 (texture coordinate formats)
+and S4 (the `S4_VFMT_*` bits) - both of which *are* always-emitted context
+state. This is the structural reason S1 is unnecessary inline: the vertex
+layout is already fully declared, and S1 only tells a buffer-walker how far to
+step.
+
+**Vertices are raw IEEE-754 float dwords in screen pixel units.** `OUT_BATCH_F`
+is a float-to-uint32 pun, and `i830_render.c:791-792` emits `dstX + w` and
+`dstY + h` directly - not normalised, not fixed-point, not clip-space. This
+validates the plan's `i9xx_float.c` design: bit-preserving float transport with
+no FPU is exactly what the hardware wants, and nothing 16-bit needs a `float`
+type.
+
+**Consequence for Phase 5.** The stream is: state packets, then one
+`_3DPRIMITIVE | PRIM3D_TRILIST | (dwords - 1)` dword, then the vertex dwords.
+No vertex buffer, no S0, no S1, no second allocation in the reserve. `i9xx_ring.c`'s
+existing `v9x_i9xx_ring_plan` can size the whole thing as one contiguous run.
+
 ## 8. Open - nothing may be built against these yet
 
 The plan's rule is that any value that would have to be guessed or swept kills
@@ -266,13 +335,8 @@ resolved to §2's standard.
    general shader compiler; xf86 emits fixed shader blobs
    (`i915_composite_emit_shader`), which makes it a genuine independent use
    site for *encoding* even though it never compiles anything.
-2. **S0/S1 - the vertex buffer.** `i915_render.c:956-966` loads S0 as a
-   relocated buffer address and S1 as
-   `(floats_per_vertex << S1_VERTEX_WIDTH_SHIFT) | (floats_per_vertex <<
-   S1_VERTEX_PITCH_SHIFT)`. Whether S0/S1 are required at all for an **inline**
-   primitive, where the vertex data follows the `_3DPRIMITIVE` dword in the
-   ring, is not established. This is the single most important open item,
-   because it decides the shape of the vertex run.
+2. ~~S0/S1 - the vertex buffer.~~ **Closed 2026-09-15**; see the end of §7.
+   They are not required for an inline primitive.
 3. **Whether `LOAD_STATE_IMMEDIATE_2` may be omitted.** Not yet examined.
 4. **Depth buffer disable.** Phase 5 is un-Z'd. `_3DSTATE_DEPTH_SUBRECT_DISABLE`
    appears at `i915_3d.c:99`, and `DEPTH_FRMT_*` bits live in `DST_BUF_VARS`,
@@ -297,7 +361,7 @@ later reader does not mistake header presence for evidence:
 |---|---|---|
 | `S4_FLATSHADE_COLOR` `(1<<15)` | Mesa only | irrelevant under the recommended vertex format |
 | `S4_VFMT_COLOR` `(1<<10)` | Mesa only | ditto |
-| `S4_VFMT_XY` `(3<<6)` | xf86 only | **needed by the recommended format - must be resolved before use** |
+| `S4_VFMT_XY` `(3<<6)` | xf86 `i915_3d.c:93` only | **needed by the recommended format - must be resolved before use.** Its *meaning* is now corroborated - `i830_render.c:674` and `i915_render.c:703` both start their per-vertex count at `2; /* dest x/y */`, so an XY-only vertex is two dwords in both trees - but the bit value `3<<6` still has one use site. |
 | `MI_FLUSH` bits 1, 3, 4 | xf86 header only, no use site | Phase 5 leaves all three clear |
 | `LOD_PRECLAMP_*`, `DEPTH_FRMT_*` | not used in the read files | out of scope |
 
