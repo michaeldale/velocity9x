@@ -308,30 +308,95 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     return V9X_P4_PRE_OK;
 }
 
+/*
+ * Stage failure detail. GTT-MIRROR-FAILED collapsed seven conditions into one
+ * label and cost an armed boot on 2026-09-14, which is the third time that
+ * shape of refusal has been unreadable. The distinction that matters most is
+ * between "the VxD's own read-back of what it wrote differs", which is a
+ * mapping fault, and "the VxD read it back correctly but the GMADR aperture
+ * shows something else", which would be a real coherency finding about CPU
+ * writes to stolen memory and the chipset write buffer the flush page drains.
+ */
+#define V9X_P4_STAGE_WRITE_REFUSED  1u
+#define V9X_P4_STAGE_READ_REFUSED   2u
+#define V9X_P4_STAGE_MEMORY_DIFFERS 3u
+#define V9X_P4_STAGE_GMADR_DIFFERS  4u
+#define V9X_P4_STAGE_GUARD_MEMORY   5u
+#define V9X_P4_STAGE_GUARD_GMADR    6u
+
+static WORD v9x_p4_stage_fail;
+static DWORD v9x_p4_stage_index;
+static DWORD v9x_p4_stage_expected;
+static DWORD v9x_p4_stage_memory;
+static DWORD v9x_p4_stage_gmadr;
+
+static WORD v9x_p4_stage_guard(const struct v9x_i9xx_sandbox_layout *layout,
+                               DWORD reserve_offset, DWORD aperture_offset)
+{
+    v9x_p4_stage_index = reserve_offset;
+    v9x_p4_stage_expected = V9X_P4_GUARD;
+    if (V9xMiniI9xxRingMemory(reserve_offset) == 0u) {
+        v9x_p4_stage_fail = V9X_P4_STAGE_GUARD_MEMORY;
+        return 0u;
+    }
+    v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
+    if (v9x_p4_stage_memory != V9X_P4_GUARD) {
+        v9x_p4_stage_fail = V9X_P4_STAGE_GUARD_MEMORY;
+        return 0u;
+    }
+    v9x_p4_stage_gmadr = V9xGmadrRead(aperture_offset);
+    if (v9x_p4_stage_gmadr != V9X_P4_GUARD) {
+        v9x_p4_stage_fail = V9X_P4_STAGE_GUARD_GMADR;
+        return 0u;
+    }
+    (void)layout;
+    return 1u;
+}
+
 static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
                           const DWORD *probe, const DWORD *blt)
 {
     DWORD index;
     DWORD expected;
+
+    v9x_p4_stage_fail = 0u;
+    v9x_p4_stage_index = 0ul;
+    v9x_p4_stage_expected = 0ul;
+    v9x_p4_stage_memory = 0ul;
+    v9x_p4_stage_gmadr = 0ul;
     for (index = 0ul; index < 10ul; ++index) {
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
         if (V9xMiniI9xxRingStage(layout->reserve_physical, (WORD)index,
-                                  expected) == 0u) { return 0u; }
-    }
-    for (index = 0ul; index < 10ul; ++index) {
-        expected = index < 2ul ? probe[index] : blt[index - 2ul];
-        if (V9xMiniI9xxRingMemory(index * 4ul) == 0u ||
-            v9x_i9xx_ring_memory_value != expected ||
-            V9xGmadrRead(layout->ring_offset + index * 4ul) != expected) {
+                                  expected) == 0u) {
+            v9x_p4_stage_fail = V9X_P4_STAGE_WRITE_REFUSED;
+            v9x_p4_stage_index = index;
+            v9x_p4_stage_expected = expected;
             return 0u;
         }
     }
-    if (V9xMiniI9xxRingMemory(0x11000ul) == 0u ||
-        v9x_i9xx_ring_memory_value != V9X_P4_GUARD ||
-        V9xGmadrRead(layout->scratch_offset) != V9X_P4_GUARD ||
-        V9xMiniI9xxRingMemory(0x11ffcul) == 0u ||
-        v9x_i9xx_ring_memory_value != V9X_P4_GUARD ||
-        V9xGmadrRead(layout->scratch_offset + 0xffcul) != V9X_P4_GUARD) {
+    for (index = 0ul; index < 10ul; ++index) {
+        expected = index < 2ul ? probe[index] : blt[index - 2ul];
+        v9x_p4_stage_index = index;
+        v9x_p4_stage_expected = expected;
+        if (V9xMiniI9xxRingMemory(index * 4ul) == 0u) {
+            v9x_p4_stage_fail = V9X_P4_STAGE_READ_REFUSED;
+            return 0u;
+        }
+        v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
+        if (v9x_p4_stage_memory != expected) {
+            v9x_p4_stage_fail = V9X_P4_STAGE_MEMORY_DIFFERS;
+            return 0u;
+        }
+        v9x_p4_stage_gmadr =
+            V9xGmadrRead(layout->ring_offset + index * 4ul);
+        if (v9x_p4_stage_gmadr != expected) {
+            v9x_p4_stage_fail = V9X_P4_STAGE_GMADR_DIFFERS;
+            return 0u;
+        }
+    }
+    if (!v9x_p4_stage_guard(layout, 0x11000ul, layout->scratch_offset) ||
+        !v9x_p4_stage_guard(layout, 0x11ffcul,
+                            layout->scratch_offset + 0xffcul)) {
         return 0u;
     }
     return 1u;
@@ -467,6 +532,11 @@ void v9x_intel_phase4_maybe_run(
         v9x_p4_uncertain("ORDER-FAILED"); return;
     }
     if (!v9x_p4_stage(layout, probe, blt)) {
+        (void)v9x_p4_ring_hex("StageFail", v9x_p4_stage_fail);
+        (void)v9x_p4_ring_hex("StageIndex", v9x_p4_stage_index);
+        (void)v9x_p4_ring_hex("StageExpected", v9x_p4_stage_expected);
+        (void)v9x_p4_ring_hex("StageMemory", v9x_p4_stage_memory);
+        (void)v9x_p4_ring_hex("StageGmadr", v9x_p4_stage_gmadr);
         v9x_p4_uncertain("GTT-MIRROR-FAILED"); return;
     }
     if (!v9x_p4_ring("StageMirror", "PASS")) {

@@ -172,6 +172,27 @@ earlier in the same file.
 | `11` | EIR is not clear |
 | `12` | ESR is not clear |
 
+### StageFail
+
+`Result=GTT-MIRROR-FAILED` means the ten dwords and the guard pattern were
+staged into the reserve but did not read back. It publishes `StageFail`,
+`StageIndex`, `StageExpected`, `StageMemory` and `StageGmadr`.
+
+| `StageFail` | Meaning |
+|---|---|
+| `01` | The mini-VDD refused to stage a dword; `StageIndex` is which |
+| `02` | The mini-VDD refused a read-back |
+| `03` | The mini-VDD read back its own write and it differed |
+| `04` | The mini-VDD read back correctly but GMADR showed something else |
+| `05` | The scratch guard pattern failed the mini-VDD read-back |
+| `06` | The scratch guard pattern failed the GMADR read |
+
+`03` and `05` are mapping faults. **`04` and `06` are the interesting pair:**
+they would mean a CPU write to stolen memory through the mini-VDD's physical
+mapping is not visible through the graphics aperture, which is what the Intel
+Flush Page at `FED13000` exists to resolve. That would be a finding about this
+chipset, not a driver defect, and it belongs in a decision record.
+
 `PreconditionArmReject` is meaningful only for code `05`: 1 not enabled this
 boot, 2 Safe Mode, 3 errata gate closed, 4 PCI identity, 5 phase, 6 token,
 7 command CRC.
