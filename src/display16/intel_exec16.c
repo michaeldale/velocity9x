@@ -291,14 +291,19 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     if (strcmp(status, "PASS") != 0) { return V9X_P4_PRE_GTT_RESULT; }
 
     /*
-     * EIR (2088h index 4) and ESR (index 5) are latched error state and must
-     * be clear. EMR (index 6) is the error *mask* and is non-zero at reset on
-     * this part, so requiring it to be zero was simply wrong: it refused a
-     * healthy machine on 2026-09-13. It is still published beside these.
+     * The diag table is EIR 20B0h (index 4), EMR 20B4h (index 5) and ESR
+     * 20B8h (index 6), which is the order i915_reg.h defines them in. EIR and
+     * ESR are latched error state and must be clear; EMR is the error *mask*
+     * and reads FFFFFFFF on this machine, measured 2026-09-14. Checking 4 and
+     * 6 was right all along. A guess on 2026-09-13 moved the second check to
+     * index 5 on the theory that 5 was ESR; the capture that followed shows
+     * index 5 is the all-ones mask, so that change would have refused a
+     * healthy machine. Reverted, and the measured values are recorded in the
+     * diagnostics spec so the next person does not have to guess either.
      */
     if (!V9xMiniI9xxRingDiag(4u)) { return V9X_P4_PRE_DIAG_READ; }
     if (v9x_i9xx_ring_diag_value != 0ul) { return V9X_P4_PRE_EIR; }
-    if (!V9xMiniI9xxRingDiag(5u)) { return V9X_P4_PRE_DIAG_READ; }
+    if (!V9xMiniI9xxRingDiag(6u)) { return V9X_P4_PRE_DIAG_READ; }
     if (v9x_i9xx_ring_diag_value != 0ul) { return V9X_P4_PRE_ESR; }
     return V9X_P4_PRE_OK;
 }
@@ -418,6 +423,20 @@ void v9x_intel_phase4_maybe_run(
         (void)v9x_p4_ring_hex("PreconditionCode", precondition);
         (void)v9x_p4_ring_hex("PreconditionArmReject", v9x_p4_pre_rejection);
         (void)v9x_p4_capture_errors("RefErr", 0);
+        /*
+         * What the failing check actually saw. On 2026-09-14 code 8 fired
+         * while the layout this same function had just published matched the
+         * expected constants exactly, and there was no way to tell which of
+         * the two views was wrong. A refusal that names a check but not its
+         * operands is still a trip to the machine.
+         */
+        (void)v9x_p4_ring_hex("RefReserveOffset", layout->reserve_offset);
+        (void)v9x_p4_ring_hex("RefReservePhysical", layout->reserve_physical);
+        (void)v9x_p4_ring_hex("RefScratchOffset", layout->scratch_offset);
+        (void)v9x_p4_ring_hex("RefBsm", v9x_i9xx_bsm);
+        (void)v9x_p4_ring_hex("RefPgtbl", v9x_i9xx_first[0]);
+        (void)v9x_p4_ring_hex("RefGttHashA", v9x_i9xx_gtt_hash_a);
+        (void)v9x_p4_ring_hex("RefEventCount", v9x_i9xx_event_count);
         v9x_p4_clean_refusal("PRECONDITION-REFUSED");
         return;
     }

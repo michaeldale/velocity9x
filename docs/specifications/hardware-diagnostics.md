@@ -143,9 +143,13 @@ ends at `PASS`, or at one of the named refusals in the design note.
 
 ### PreconditionCode
 
-A refusal before any hardware write publishes `PreconditionCode`, and
-`RefErr0` through `RefErr6` beside it, which are the read-only registers
-IPEIR, IPEHR, INSTDONE, ACTHD, EIR, ESR and EMR in that order.
+A refusal before any hardware write publishes `PreconditionCode`, and beside
+it `RefErr0` through `RefErr6`, the read-only registers IPEIR `2088`, IPEHR
+`208C`, INSTDONE `2090`, ACTHD `20C8`, EIR `20B0`, **EMR** `20B4` and **ESR**
+`20B8` in that order, plus `RefReserveOffset`, `RefReservePhysical`,
+`RefScratchOffset`, `RefBsm`, `RefPgtbl`, `RefGttHashA` and `RefEventCount`,
+which are the operands the checks read rather than the values published
+earlier in the same file.
 
 | Code | Meaning |
 |---|---|
@@ -172,6 +176,8 @@ IPEIR, IPEHR, INSTDONE, ACTHD, EIR, ESR and EMR in that order.
 boot, 2 Safe Mode, 3 errata gate closed, 4 PCI identity, 5 phase, 6 token,
 7 command CRC.
 
-EMR is the error *mask* and is non-zero at reset on this part. It is reported
-and never required to be clear; an earlier build required it and refused a
-healthy machine.
+EIR and ESR are latched error state and must be clear. EMR is the error
+*mask*: measured `FFFFFFFF` on the netbook 2026-09-14, reported and never
+required to be clear. Note the register order, which is EIR, EMR, ESR rather
+than the alphabetical one; assuming otherwise briefly moved the second check
+onto the mask.
