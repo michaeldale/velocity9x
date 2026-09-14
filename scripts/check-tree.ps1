@@ -731,6 +731,24 @@ if (-not $gttCountMatch.Success -or
     throw "The C and assembly Intel GTT entry counts must agree."
 }
 $contractChecked++
+# Watcom's 16-bit convention makes SI callee-saved, and it keeps live pointer
+# offsets there across calls. V9xFindPciDevice zeroes SI for INT 1Ah AX=B102h,
+# so any far routine that reaches it must save SI or it silently corrupts the
+# caller's next struct read. One omission cost three armed Phase 4 boots on
+# 2026-09-14; the symptom was a refusal whose operands all looked correct.
+$runtimeSource = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\display16\runtime.asm") -Raw
+foreach ($proc in [regex]::Matches($runtimeSource,
+        '(?ms)^(\w+)\s+PROC\s+FAR\s*\r?\n(.*?)^\1\s+ENDP')) {
+    $body = $proc.Groups[2].Value
+    if ($body -match '(?im)^\s*call\s+V9xFindPciDevice\s*$' -and
+        $body -notmatch '(?im)^\s*push\s+e?si\s*$') {
+        throw ("$($proc.Groups[1].Value) calls V9xFindPciDevice, which zeroes " +
+               "SI, without saving SI. Watcom requires a callee to preserve " +
+               "it and holds live pointer offsets there.")
+    }
+}
+
 if ($miniSource -match '\bV9xVbeModeList\b|\bV9X_VBE_CACHE_COUNT\b') {
     throw "loader.asm still contains the removed fixed v1 mode cache."
 }

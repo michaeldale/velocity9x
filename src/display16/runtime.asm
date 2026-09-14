@@ -2001,6 +2001,13 @@ V9XPCIREADINTELREVISION PROC FAR
     push    bx
     push    cx
     push    dx
+    ; SI is not scratch here. V9xFindPciDevice zeroes it for INT 1Ah AX=B102h,
+    ; and Watcom's 16-bit convention requires a callee to preserve SI, which it
+    ; uses to hold a live pointer offset across calls. Omitting this push made
+    ; the caller's next SI-relative struct read return garbage: three armed
+    ; Phase 4 boots refused with PreconditionCode 8 while every operand the
+    ; same function published was correct (2026-09-14).
+    push    si
     push    di
     call    V9xFindPciDevice
     or      ax, ax
@@ -2017,6 +2024,7 @@ V9xPciReadIntelRevisionFailed:
     mov     ax, 0ffffh
 V9xPciReadIntelRevisionDone:
     pop     di
+    pop     si
     pop     dx
     pop     cx
     pop     bx
