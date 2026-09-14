@@ -94,6 +94,7 @@ EXTRN _v9x_i9xx_event_count:WORD
 EXTRN _v9x_i9xx_event_dropped:WORD
 EXTRN _v9x_i9xx_ring_memory_value:DWORD
 EXTRN _v9x_i9xx_ring_stage_fail:DWORD
+EXTRN _v9x_i9xx_ring_stage_read:DWORD
 EXTRN _v9x_i9xx_ring_exec_head:DWORD
 EXTRN _v9x_i9xx_ring_exec_tail:DWORD
 EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
@@ -526,6 +527,38 @@ V9xGmadrReadDone:
     pop     bp
     retf    4
 V9XGMADRREAD ENDP
+
+; WORD FAR PASCAL V9xGmadrWrite(DWORD offset, DWORD value)
+;
+; The CPU's only working path into stolen memory. Measured 2026-09-14: a ring-0
+; store through a _MapPhysToLinear mapping of BSM does not read back, while the
+; GMADR aperture round-trips, which is what the aperture and the GTT exist for
+; and what the Linux driver uses. Same selector and the same policy split as
+; V9xGmadrRead: the C caller proves the PTE and keeps the offset inside the
+; VBE-reported aperture, and this primitive stays incapable of searching for a
+; boundary. Returns 1 when the selector existed.
+PUBLIC V9XGMADRWRITE
+V9XGMADRWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     ax, ax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xGmadrWriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+    mov     ax, 1
+V9xGmadrWriteDone:
+    pop     es
+    pop     bx
+    pop     bp
+    retf    8
+V9XGMADRWRITE ENDP
 ENDIF
 
 ; V9xEngineWrite(WORD offset, DWORD value). One 32-bit store, or nothing.
@@ -1241,8 +1274,10 @@ V9XMINII9XXRINGSTAGE PROC FAR
     mov     edx, dword ptr [bp+6]
     mov     eax, V9XMINI_FN_I9XX_RING_STAGE
     call    dword ptr V9xMiniApiEntry
-    ; Why the VxD refused, whether or not it did. See V9XMAPI.INC.
+    ; Why the VxD refused, whether or not it did, and what its own physical
+    ; read-back returned. See V9XMAPI.INC.
     mov     _v9x_i9xx_ring_stage_fail, ebx
+    mov     _v9x_i9xx_ring_stage_read, ecx
     or      ax, ax
     jz      short V9xMiniI9xxRingStageFailed
     mov     ax, 1

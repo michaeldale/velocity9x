@@ -22,6 +22,7 @@ extern DWORD v9x_i9xx_gtt_hash_b;
 extern DWORD v9x_i9xx_bsm;
 extern DWORD v9x_i9xx_ring_memory_value;
 extern DWORD v9x_i9xx_ring_stage_fail;
+extern DWORD v9x_i9xx_ring_stage_read;
 extern DWORD v9x_i9xx_ring_exec_head;
 extern DWORD v9x_i9xx_ring_exec_tail;
 extern DWORD v9x_i9xx_ring_exec_elapsed;
@@ -39,6 +40,7 @@ extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
 extern WORD FAR PASCAL V9xMiniI9xxRingDiag(WORD index);
 extern WORD FAR PASCAL V9xMiniI9xxEventDword(WORD event, WORD field);
 extern DWORD FAR PASCAL V9xGmadrRead(DWORD offset);
+extern WORD FAR PASCAL V9xGmadrWrite(DWORD offset, DWORD value);
 extern void v9x_intel_publish_event(WORD kind, WORD context);
 extern void v9x_intel_publish_mmio_fingerprint(void);
 extern void v9x_intel_publish_gtt_inventory(void);
@@ -336,14 +338,8 @@ static WORD v9x_p4_stage_guard(const struct v9x_i9xx_sandbox_layout *layout,
 {
     v9x_p4_stage_index = reserve_offset;
     v9x_p4_stage_expected = V9X_P4_GUARD;
-    if (V9xMiniI9xxRingMemory(reserve_offset) == 0u) {
-        v9x_p4_stage_fail = V9X_P4_STAGE_GUARD_MEMORY;
-        return 0u;
-    }
-    v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
-    if (v9x_p4_stage_memory != V9X_P4_GUARD) {
-        v9x_p4_stage_fail = V9X_P4_STAGE_GUARD_MEMORY;
-        return 0u;
+    if (V9xMiniI9xxRingMemory(reserve_offset) != 0u) {
+        v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
     }
     v9x_p4_stage_gmadr = V9xGmadrRead(aperture_offset);
     if (v9x_p4_stage_gmadr != V9X_P4_GUARD) {
@@ -367,14 +363,31 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
     v9x_p4_stage_gmadr = 0ul;
     /* Three markers, not twenty-two. Enough to locate a hang to a phase of
      * this step without paying a flushed profile write per dword. */
+    /*
+     * Declare each dword to the mini-VDD, which still refuses anything outside
+     * the reviewed stream, then put the bytes there through the GMADR
+     * aperture. The aperture is the CPU's path into stolen memory; the
+     * physical mapping is kept only so its read-back can be recorded, since
+     * measuring that it does not stick is the finding of 2026-09-14.
+     */
     (void)v9x_p4_ring("IntentStep", "stage-write");
     for (index = 0ul; index < 10ul; ++index) {
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
         if (V9xMiniI9xxRingStage(layout->reserve_physical, (WORD)index,
-                                  expected) == 0u) {
+                                  expected) == 0u ||
+            V9xGmadrWrite(layout->ring_offset + index * 4ul, expected) == 0u) {
             v9x_p4_stage_fail = V9X_P4_STAGE_WRITE_REFUSED;
             v9x_p4_stage_index = index;
             v9x_p4_stage_expected = expected;
+            return 0u;
+        }
+    }
+    for (index = 0ul; index < 1024ul; ++index) {
+        if (V9xGmadrWrite(layout->scratch_offset + index * 4ul,
+                          V9X_P4_GUARD) == 0u) {
+            v9x_p4_stage_fail = V9X_P4_STAGE_WRITE_REFUSED;
+            v9x_p4_stage_index = 0x11000ul;
+            v9x_p4_stage_expected = V9X_P4_GUARD;
             return 0u;
         }
     }
@@ -383,14 +396,9 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
         v9x_p4_stage_index = index;
         v9x_p4_stage_expected = expected;
-        if (V9xMiniI9xxRingMemory(index * 4ul) == 0u) {
-            v9x_p4_stage_fail = V9X_P4_STAGE_READ_REFUSED;
-            return 0u;
-        }
-        v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
-        if (v9x_p4_stage_memory != expected) {
-            v9x_p4_stage_fail = V9X_P4_STAGE_MEMORY_DIFFERS;
-            return 0u;
+        /* Recorded, not required: see the comment above the write loop. */
+        if (V9xMiniI9xxRingMemory(index * 4ul) != 0u) {
+            v9x_p4_stage_memory = v9x_i9xx_ring_memory_value;
         }
         v9x_p4_stage_gmadr =
             V9xGmadrRead(layout->ring_offset + index * 4ul);
@@ -551,6 +559,7 @@ void v9x_intel_phase4_maybe_run(
         (void)v9x_p4_ring_hex("StageMemory", v9x_p4_stage_memory);
         (void)v9x_p4_ring_hex("StageGmadr", v9x_p4_stage_gmadr);
         (void)v9x_p4_ring_hex("StageVxdFail", v9x_i9xx_ring_stage_fail);
+        (void)v9x_p4_ring_hex("StagePhysRead", v9x_i9xx_ring_stage_read);
         v9x_p4_uncertain("GTT-MIRROR-FAILED"); return;
     }
     if (!v9x_p4_ring("StageMirror", "PASS")) {

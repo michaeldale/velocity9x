@@ -183,6 +183,7 @@ V9xI9xxRingElapsed  dd 0
 V9xI9xxRingPolls    dd 0
 V9xI9xxRingFailure  dd 0
 V9xI9xxRingStageFail dd 0
+V9xI9xxRingStageRead dd 0
 V9xI9xxRingExecStep dd 0
 V9xI9xxRingExecCrc  dd 0
 ENDIF
@@ -1299,12 +1300,21 @@ V9xMini_I9xx_Ring_Stage_Write:
     mov     edi, V9xI9xxRingLinear
     cmp     edi, 0
     je      V9xMini_I9xx_Ring_Stage_Done
-    mov     V9xI9xxRingStageFail, 9
     mov     [edi+ecx*4], edx
-    cmp     [edi+ecx*4], edx
-    jne     V9xMini_I9xx_Ring_Stage_Done
-    inc     V9xI9xxRingStaged
+    mov     eax, [edi+ecx*4]
+    mov     V9xI9xxRingStageRead, eax
     mov     V9xI9xxRingStageFail, 0
+    cmp     eax, edx
+    je      short V9xMini_I9xx_Ring_Stage_Ok
+    ; Measured 2026-09-14: a ring-0 store to stolen memory through a
+    ; _MapPhysToLinear mapping of BSM does not read back. Recorded rather than
+    ; fatal, because the bytes the GPU fetches are now written through the
+    ; GMADR aperture, which is the CPU's documented path into this memory.
+    ; The value check above is what gates the stream; this round trip never
+    ; was a security property.
+    mov     V9xI9xxRingStageFail, 10
+V9xMini_I9xx_Ring_Stage_Ok:
+    inc     V9xI9xxRingStaged
     mov     V9xI9xxRingResult, 1
 V9xMini_I9xx_Ring_Stage_Done:
     popad
@@ -1678,6 +1688,8 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     call    V9xMini_I9xx_Ring_Stage
     mov     ebx, V9xI9xxRingStageFail
     mov     [ebp.Client_EBX], ebx
+    mov     ecx, V9xI9xxRingStageRead
+    mov     [ebp.Client_ECX], ecx
     mov     [ebp.Client_AX], ax
 ELSE
     mov     [ebp.Client_AX], 0
