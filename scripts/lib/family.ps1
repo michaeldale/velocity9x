@@ -306,6 +306,21 @@ function Test-V9xFamilyManifest {
                    "'$codeSegment'; it must be 2-8 characters of uppercase " +
                    "letters, digits and underscore, starting with a letter.")
         }
+        # The name MUST end in CODE. wlink decides whether an NE segment is
+        # executable from the class-name suffix, and the name is used for both
+        # the segment (-nt=) and the class (-nc=). A name that does not end in
+        # CODE is emitted as a DATA segment - FIXED, SHARE, PRELOAD, READWRITE
+        # and NOT EXECREAD - with no diagnostic from compiler or linker, and
+        # the first call into it faults on the guest. Measured 2026-09-14:
+        # 'S3PROOF' and 'S3PRFCOD' both came out DATA, 'S3CODE' and 'I9XXCODE'
+        # came out CODE (docs\decisions\2026-09-14-intel-16-bit-code-segment-split.md).
+        if ($codeSegment -notmatch 'CODE$') {
+            throw ("Family $Id source $($source.Name) sets CodeSegment " +
+                   "'$codeSegment', which does not end in CODE. Open Watcom's " +
+                   "linker marks an NE segment executable by its class-name " +
+                   "suffix, so this would silently link as a non-executable " +
+                   "DATA segment and fault on the first call into it.")
+        }
         # _TEXT is the compiler's own default and CONST/CONST2/_DATA/_BSS are
         # the runtime's. Naming one here would either be a no-op that reads
         # like a move, or would collide a code segment with a data one.

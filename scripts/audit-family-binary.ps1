@@ -126,6 +126,24 @@ foreach ($attributeLine in $codeAttributeLines) {
                $attributeLine.Trim())
     }
 }
+# How MANY of them, which is the check that catches a code segment silently
+# demoted to data. wlink marks an NE segment executable by its class-name
+# suffix; a class not ending in CODE links as FIXED|SHARE|PRELOAD|READWRITE
+# with no diagnostic anywhere, and the map still shows the row, still shows a
+# plausible size, and still satisfies the budget and row-count gates below.
+# Only the segment-table attributes say otherwise. Measured 2026-09-14 on a
+# throwaway s3 branch: 'S3PROOF' and 'S3PRFCOD' linked as DATA, 'S3CODE' and
+# 'I9XXCODE' as CODE. family.ps1 now refuses such a name; this is the backstop
+# for one that slips past it, or a toolchain that changes the rule.
+$expectedCodeSegmentCount = 1 + @(@($target.Build.Sources |
+    Where-Object { $_.ContainsKey('CodeSegment') } |
+    ForEach-Object { $_.CodeSegment }) | Sort-Object -Unique).Count
+if ($codeAttributeLines.Count -ne $expectedCodeSegmentCount) {
+    throw ("The $($target.Id) image has $($codeAttributeLines.Count) executable " +
+           "code segment(s); the manifest asks for $expectedCodeSegmentCount. " +
+           "A CodeSegment whose class name does not end in CODE links as a " +
+           "non-executable DATA segment and faults on the first call into it.")
+}
 if ($image -notmatch "DATA\|FIXED\|(SHARE\|)?PRELOAD\|READWRITE") {
     throw "The Win16 DDI data segment is not fixed and preloaded."
 }

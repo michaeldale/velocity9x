@@ -1,8 +1,10 @@
 # Split the Intel family's 16-bit code across two segments
 
 **Date:** 2026-09-14
-**Machine:** development host only. No guest, no hardware. Every number below
-comes from Open Watcom 2.0 beta (Jul 21 2026) on the checked-in tree.
+**Machine:** development host for the build numbers (Open Watcom 2.0 beta,
+Jul 21 2026), plus two 86Box guests for the loader proof - `Win86SE`
+(ViRGE/DX, port 9869) and `Win98SE-Trio64` (port 9871). Nothing has run on the
+netbook or on any physical machine.
 **Plan:** `docs/plans/intel-gma950-phase5.md`, Part 1.
 
 ## Why
@@ -37,9 +39,10 @@ Eleven units moved: `i9xx_mmio`, `i9xx_gtt`, `i9xx_ring`, `i9xx_arm`,
 `gma950_hw16.c` stayed, because they own the near `V9X_HW16_OPS` /
 `V9X_HW16_DEVICE` tables.
 
-## Two things the plan got wrong
+## Three things the plan got wrong
 
-Both were found by measurement, and both make the change safer than planned.
+All three were found by measurement. The first two make the change safer than
+planned; the third is a hazard the plan did not know about.
 
 ### The class must differ; `-nt=` alone is not a split
 
@@ -88,6 +91,87 @@ complaint - so the assertion was spent there instead, in `check-tree.ps1`:
 - no definition of such a symbol without `V9X_I9XX_FAR`.
 
 Both were verified to fire by breaking them deliberately.
+
+### The class name must end in `CODE`, or the segment is not executable
+
+Found while running the plan's cheap loader experiment, and not anticipated
+anywhere in the plan. `wlink` decides whether an NE segment is executable from
+the **class-name suffix**. A class not ending in `CODE` is emitted as
+
+```
+DATA|FIXED|SHARE|PRELOAD|READWRITE
+```
+
+with no diagnostic from the compiler or the linker. The map still shows the
+row, with its correct name, class, frame and a plausible size; the budget gate
+and the row-count gate both pass; only the NE segment table says otherwise.
+The first call into it would fault on the guest.
+
+Measured by building the same s3 driver four times, changing only the name:
+
+| Class name | NE segment attributes |
+|---|---|
+| `S3PROOF` | `DATA\|FIXED\|SHARE\|PRELOAD\|READWRITE` |
+| `S3PRFCOD` | `DATA\|FIXED\|SHARE\|PRELOAD\|READWRITE` |
+| `S3CODE` | `CODE\|FIXED\|SHARE\|PRELOAD\|EXECREAD` |
+| `I9XXCODE` | `CODE\|FIXED\|SHARE\|PRELOAD\|EXECREAD\|RELOCS` |
+
+`I9XXCODE` satisfies the rule by luck - the name was chosen for readability,
+not for this. Two gates were added afterwards: `family.ps1` refuses a
+`CodeSegment` not ending in `CODE`, and `audit-family-binary.ps1` asserts the
+**count** of executable CODE segments equals the manifest's expectation, which
+is the backstop that does not depend on knowing the naming rule. Both were
+verified to fire.
+
+## Proof that the Win98 NE loader handles a second FIXED code segment
+
+The plan named this the largest unprovable risk in Part 1 and proposed moving
+it onto emulated hardware, because 86Box has no GMA 950. Done, on a throwaway
+branch (since deleted), giving the **s3** family a second code segment through
+the identical mechanism - the same manifest key, the same `V9X_I9XX_FAR` macro.
+
+Two units moved into `S3CODE`: `src/common/vbe_parse.c` and
+`src/chipsets/s3/virge/memory.c`. The second was chosen deliberately, because
+a segment that merely *loads* proves nothing about a far call into it working.
+`v9x_s3_virge_decode_memory_size` is called far from `s3_regs16.c` in `_TEXT`,
+and its answer is published in `V9XBOOT.INI` where it can be read back.
+
+Result, `BuildId=neproof2`, `run-family-enable-gate.ps1 -Family s3`:
+
+```
+Family ChipId   Profile        Port Started Stage
+s3     virge-dx Win86SE        9869    True enable-ok
+s3     trio64   Win98SE-Trio64 9871    True enable-ok
+```
+
+`V9XBOOT.INI` from the ViRGE/DX guest:
+
+```
+Stage=enable-ok
+Surface=pitch=4096 bpp=32 dwb=4096 dds=4096 w=1024 h=768 debpp=32
+VddReserve=vdd=3145728 visible=3145728 vram=4194304 info=131
+Aperture=m=0 bar=0 pci=1 b=e0000000
+```
+
+and from the Trio64 guest:
+
+```
+Stage=enable-ok
+Surface=pitch=1600 bpp=16 dwb=1600 dds=1600 w=800 h=600 debpp=16
+VddReserve=vdd=960000 visible=960000 vram=4194304 info=131
+Aperture=m=2 bar=0 pci=1 b=e7000000
+```
+
+`vram=4194304` is the moved function's return value, so the loader loaded the
+second segment, fixed up the far call, and the called code ran and returned
+correctly. Both guests reached a working desktop.
+
+**What this does and does not establish.** It establishes the mechanism under
+Windows 98 SE on 86Box: a second `FIXED` code segment in this driver loads, is
+fixed up, and is callable. It does not establish anything about the netbook,
+about the real-mode/protected-mode transitions on that machine, or about the
+intel-gma image specifically - that image was never booted anywhere. The
+netbook regression boot described in the plan is still outstanding.
 
 ## The C-runtime rewrites
 
@@ -150,8 +234,11 @@ None of this existed before.
    segments passes if either is right. It now iterates every CODE row.
 3. **Source-level boundary rules** in `check-tree.ps1`, described above.
 
-All four assertions (1, 2, and both halves of 3) were verified to fire by
-deliberately breaking each one.
+4. **The `CodeSegment` naming rule** in `family.ps1`, and the **executable
+   code-segment count** in the auditor - the pair that closes the silent
+   demotion-to-DATA hole described above.
+
+All six assertions were verified to fire by deliberately breaking each one.
 
 ## Gates run
 
@@ -181,10 +268,12 @@ re-baselined, the map that was actually at risk is covered.
 
 ## Not tested
 
-Nothing here has run on hardware or in a guest. The claim that Win98's NE
-loader loads, fixes up and keeps `FIXED` a second code segment in this driver
-is **untested**; it is the largest remaining risk in Part 1, and the plan's
-cheap experiment for it - giving the s3 family a `CodeSegment` on one leaf unit
-on a throwaway branch and running `run-family-enable-gate.ps1` against the S3
-guest - has not been run. The netbook regression boot described in the plan has
-not been run either.
+The **intel-gma image itself has never been booted**, in a guest or on
+hardware. 86Box has no GMA 950, so the loader proof above is a proxy: it ran
+the s3 image with the same mechanism, not this one. The netbook regression
+boot described in the plan - desktop appears, `Stage=enable-ok`, and
+`INTELMM.TXT`, `INTELGTT.TXT`, `INTELEVT.TXT` and `INTELRNG.TXT` reproduced
+byte-identically modulo `BuildId`, with the GTT hash equal to the 2026-09-12
+capture - has not been run. Two cold boots, per the Phase 2 done-criterion.
+
+Also untested: the `-zc` measurement the plan defers to its own diff.
