@@ -4,8 +4,9 @@
 **Status:** Step 1 of `docs/plans/intel-gma950-phase5.md` Part 2, **in progress**.
 Sections 3-7 are complete and were cross-checked under the rule in section 2.
 Section 8 lists what is still open; no builder may be written against an open
-item. Revised 2026-09-15: the S0/S1 question, §8's most important open item,
-is closed at the end of §7.
+item. Revised 2026-09-15: the S0/S1 question and the fragment program, the two
+most important open items, are both closed at the end of section 7 - and the
+second of them reverses section 5's vertex-format recommendation.
 **Machine:** none. Every claim here is **documentation-derived and unconfirmed
 on this machine**, and carries that status until the netbook says otherwise.
 
@@ -212,11 +213,19 @@ the choice must be made and recorded before `i9xx_vertex.c` is written:
   not exercise per-vertex colour.
 - **XY + COLOR** - 3 dwords per vertex. Closer to what Phase 6 would need.
 
-Recommendation, to be confirmed in the design step: **XY + default diffuse**,
+~~Recommendation, to be confirmed in the design step: **XY + default diffuse**,
 because it minimises the number of simultaneously-unverified things in the
 first triangle, and because the flat-shaded requirement makes per-vertex colour
 redundant. `S4_FLATSHADE_COLOR` is then irrelevant, which removes a field whose
-provoking-vertex semantics are single-sourced.
+provoking-vertex semantics are single-sourced.~~
+
+> **Reversed 2026-09-15. Do not use this.** Reading the shader path showed the
+> reasoning backwards: XY + default diffuse minimises *dwords* while maximising
+> *unsourced behaviour* - the default-diffuse path is used by neither tree and
+> `S4_FORCE_DEFAULT_DIFFUSE` has no use site at all. The replacement is
+> **XYZW + per-vertex colour, all three vertices the same colour**, which keeps
+> `S4_FLATSHADE_COLOR` off the critical path for a better reason. See "This
+> reverses the vertex-format recommendation in section 5" at the end of §7.
 
 ## 6. Established: the indirect-state question the plan flagged as a near-kill
 
@@ -321,6 +330,121 @@ type.
 No vertex buffer, no S0, no S1, no second allocation in the reserve. `i9xx_ring.c`'s
 existing `v9x_i9xx_ring_plan` can size the whole thing as one contiguous run.
 
+### The fragment program
+
+Closed 2026-09-15. The encoding is double-sourced by two **independently
+written emitters**, which is the strongest evidence in this audit: xf86's
+`i915_3d.h` macros expand register fields inline, while Mesa's
+`i915_program.c` lowers from its own `UREG` intermediate form through
+`A0_DEST()` / `A0_SRC0()` helpers with entirely different shift constants. Two
+implementations, one encoding.
+
+**Framing.** `_3DSTATE_PIXEL_SHADER_PROGRAM` = `(CMD_3D|(0x1d<<24)|(0x5<<16))`,
+with the length back-patched after the body:
+
+| Tree | Code | Reduces to |
+|---|---|---|
+| xf86 | `FS_END`: `batch_used - _shader_offset - 2` | payload dwords - 1 |
+| Mesa | `i915_fini_program`: `declarations[0] \|= program_size + decl_size - 2` | payload dwords - 1 |
+
+The same `(count - 1)` convention as every other packet in this audit.
+
+**Every instruction is exactly three dwords.** xf86's `i915_fs_dcl` emits D0
+then two zeros; Mesa's `i915_emit_decl` emits `D0_DCL | D0_DEST(reg) | flags`,
+`D1_MBZ`, `D2_MBZ`. xf86's `_i915_fs_arith_masked` and Mesa's
+`i915_emit_arith` both emit A0, A1, A2. Field placement agrees:
+
+- **DCL**: `D0_DCL` `(0x19<<24)`, type at shift 19, register number at shift
+  14, channel mask at shift 10 (`D0_CHANNEL_ALL` = `0xf<<10`).
+- **ALU**: opcode at shift 24 (`A0_MOV` = `0x2<<24`), dest type at 19, dest
+  number at 14, dest channel mask at 10, src0 type at 7, src0 number at 2;
+  then A1 carries src0's per-channel swizzle at shifts 28/24/20/16 and src1;
+  then A2 carries src1's remainder and src2.
+- Register types: `REG_TYPE_T` 1, `REG_TYPE_OC` 4. `T_DIFFUSE` is T register
+  **8**.
+
+**Errata recorded in the source**, worth carrying into our header: for `T`
+declarations only `(x)`, `(xy)`, `(xyz)`, `(w)` and `(xyzw)` are allowed -
+`(xz)`, `(xw)` and `(xzw)` are forbidden for diffuse or specular. Phase 5 uses
+`(xyzw)`, which is allowed.
+
+### This reverses the vertex-format recommendation in section 5
+
+Section 5 recommended **XY + default diffuse**, on the reasoning that it
+minimises the number of simultaneously-unverified things. Reading the shader
+path shows that reasoning was backwards: it minimises *dwords* while maximising
+*unsourced behaviour*.
+
+**The default-diffuse path is used by neither tree.**
+
+- Mesa declares and reads `T_DIFFUSE` (`i915_fragprog.c:121`, for
+  `VARYING_SLOT_COL0`) - but always with **per-vertex** colour. Its
+  default-diffuse state block (`i915_state.c:997-1004`) is inside `#if 0`.
+- xf86 emits `_3DSTATE_DFLT_DIFFUSE_CMD` with a zero operand
+  (`i915_3d.c:57`, `i830_3d.c:48`) - but its shader never reads `T_DIFFUSE`,
+  because a compositor's colour comes from a texture.
+
+So *nobody* sets a non-zero default diffuse and then reads it from a shader.
+Whether the `T_DIFFUSE` interpolator falls back to the default register when
+the vertex format declares no colour is **unestablished**, and
+`S4_FORCE_DEFAULT_DIFFUSE` `(1<<5)` - the bit that would plausibly control it -
+has **zero use sites in either tree**. It is header-only.
+
+**Revised recommendation: per-vertex colour, with all three vertices the same
+colour.** Every link is then use-site backed:
+
+| Element | Encoding | Source |
+|---|---|---|
+| position | `S4_VFMT_XYZW` `(2<<6)`, 4 floats | Mesa `i915_fragprog.c:1260` |
+| colour | `S4_VFMT_COLOR` `(1<<10)`, **one dword of packed BGRA unsigned bytes** | Mesa `i915_fragprog.c:1268` (`EMIT_4UB_4F_BGRA`, size 4) |
+| shader reads it | `dcl T_DIFFUSE` then `mov OC, T_DIFFUSE` | Mesa `i915_fragprog.c:121` |
+
+Two consequences worth stating plainly:
+
+- **The colour is not four floats.** It is one dword of packed bytes in BGRA
+  order. A builder that emits floats here would be wrong in a way that still
+  produces a plausible picture, which is the worst kind of wrong.
+- **Giving all three vertices the same colour makes flat versus smooth shading
+  moot**, which removes `S4_FLATSHADE_COLOR` and the provoking-vertex rules
+  from the critical path entirely - both were single-sourced. The plan asks for
+  a flat-shaded triangle; a uniformly-coloured one satisfies that under either
+  shading mode, and cannot disagree with the software reference about which
+  vertex provided the colour.
+
+**Why XYZW rather than XY**, despite XY being fewer dwords: both position
+formats are single-sourced at bit level (`S4_VFMT_XY` only in xf86
+`i915_3d.c:93`, `S4_VFMT_XYZW` only in Mesa), so neither is free. XYZW is the
+better bet because Mesa's is the general-purpose path exercised by every GL
+application on this silicon, and because Mesa's own comment at
+`i915_fragprog.c:1257-1259` says W is emitted **"Always ... to get consistent
+perspective correct interpolation of primary/secondary colors"** - which is
+precisely the interpolation Phase 5 depends on. With W = 1.0 at every vertex
+the perspective divide is the identity, so screen coordinates pass through
+unchanged.
+
+Vertex is therefore **5 dwords**: x, y, z, w as floats, then one packed colour
+dword. Three vertices = 15 dwords, and the `_3DPRIMITIVE` length field is 14.
+
+### The minimal program, derived
+
+Per `docs/ddk-inputs.md` these are **derived from the field placements above,
+not transcribed**, and they are **unvalidated** - they must be reproduced by
+`i9xx_fragprog.c` and asserted by a host test before any of them reaches the
+netbook:
+
+```
+7D050005   _3DSTATE_PIXEL_SHADER_PROGRAM, length 5 (6 payload dwords)
+190A3C00   D0: DCL, type T(1)<<19, nr 8<<14, channels xyzw
+00000000   D1_MBZ
+00000000   D2_MBZ
+02203CA0   A0: MOV, dest OC(4)<<19 nr 0, channels xyzw, src0 T(1)<<7 nr 8<<2
+01230000   A1: src0 swizzle .xyzw (X=0<<28, Y=1<<24, Z=2<<20, W=3<<16)
+00000000   A2: no src1, no src2
+```
+
+Seven dwords in total. The header value is the one to check first, since it is
+the only one a length error can hide in.
+
 ## 8. Open - nothing may be built against these yet
 
 The plan's rule is that any value that would have to be guessed or swept kills
@@ -328,13 +452,9 @@ the phase. **Nothing in this list is currently in that state**; they are
 unfinished reading, not dead ends. But no builder may be written until each is
 resolved to §2's standard.
 
-1. **The minimal fragment program.** `i915_fragprog.c` and `i915_program.h`
-   have been fetched but not yet read. Needed: the two-instruction program
-   (declare diffuse, move to output colour), its opcode encoding, and the
-   `_3DSTATE_PIXEL_SHADER_PROGRAM` length field. Mesa is the only tree with a
-   general shader compiler; xf86 emits fixed shader blobs
-   (`i915_composite_emit_shader`), which makes it a genuine independent use
-   site for *encoding* even though it never compiles anything.
+1. ~~The minimal fragment program.~~ **Closed 2026-09-15**; see the end of
+   section 7. One thing it raises stays open: whether the derived seven-dword
+   program is byte-correct. That is a host-test obligation, not a reading one.
 2. ~~S0/S1 - the vertex buffer.~~ **Closed 2026-09-15**; see the end of §7.
    They are not required for an inline primitive.
 3. **Whether `LOAD_STATE_IMMEDIATE_2` may be omitted.** Not yet examined.
