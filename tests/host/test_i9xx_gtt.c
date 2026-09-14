@@ -37,14 +37,14 @@ static void test_inventory(void)
     struct v9x_i9xx_gtt_inventory inventory;
     v9x_u32 index;
     CHECK(v9x_i9xx_gtt_inventory_begin(
-              &inventory, 8ul, 0x10000000ul, 0x00100000ul,
-              8ul * 4096ul, 0x100c0001ul) ==
-          V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_i9xx_gtt_inventory_begin(
               &inventory, 64ul, 0x10000000ul, 0x00100000ul,
               64ul * 4096ul, 0x100c0001ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_gtt_inventory_begin(
+              &inventory, 512ul, 0x10000000ul, 0x00100000ul,
+              512ul * 4096ul, 0x100c0001ul) ==
           V9X_STATUS_OK);
-    for (index = 0ul; index < 64ul; ++index) {
+    for (index = 0ul; index < 512ul; ++index) {
         v9x_u32 raw = 0x10000001ul + index * 4096ul;
         CHECK(v9x_i9xx_gtt_inventory_add(
                   &inventory, index, raw) == V9X_STATUS_OK);
@@ -53,22 +53,22 @@ static void test_inventory(void)
               &inventory, inventory.hash_stream, inventory.hash_stream) ==
           V9X_STATUS_OK);
     CHECK(inventory.flags == V9X_I9XX_GTT_PHASE2_REQUIRED);
-    CHECK(inventory.present_entries == 64ul);
-    CHECK(inventory.uncached_entries == 64ul);
+    CHECK(inventory.present_entries == 512ul);
+    CHECK(inventory.uncached_entries == 512ul);
     CHECK(inventory.run_count == 1ul);
-    CHECK(inventory.backed_prefix_entries == 64ul);
-    CHECK(inventory.reserve_first_entry == 32ul);
-    CHECK(inventory.reserve_entry_count == 32ul);
-    CHECK(inventory.reserve_physical == 0x10020000ul);
+    CHECK(inventory.backed_prefix_entries == 512ul);
+    CHECK(inventory.reserve_first_entry == 256ul);
+    CHECK(inventory.reserve_entry_count == 256ul);
+    CHECK(inventory.reserve_physical == 0x10100000ul);
     CHECK(inventory.hash_first == inventory.hash_second);
 
     CHECK(v9x_i9xx_gtt_inventory_begin(
-              &inventory, 64ul, 0x10000000ul, 0x00100000ul,
-              64ul * 4096ul, 0x100c0001ul) ==
+              &inventory, 512ul, 0x10000000ul, 0x00100000ul,
+              512ul * 4096ul, 0x100c0001ul) ==
           V9X_STATUS_OK);
-    for (index = 0ul; index < 64ul; ++index) {
+    for (index = 0ul; index < 512ul; ++index) {
         v9x_u32 raw = 0x10000001ul + index * 4096ul;
-        if (index == 40ul) { raw = 0ul; }
+        if (index == 320ul) { raw = 0ul; }
         CHECK(v9x_i9xx_gtt_inventory_add(
                   &inventory, index, raw) == V9X_STATUS_OK);
     }
@@ -78,7 +78,7 @@ static void test_inventory(void)
     CHECK((inventory.flags & V9X_I9XX_GTT_STABLE) == 0u);
     CHECK((inventory.flags & V9X_I9XX_GTT_VBE_BACKED) == 0u);
     CHECK((inventory.flags & V9X_I9XX_GTT_RESERVE_BACKED) == 0u);
-    CHECK(inventory.backed_prefix_entries == 40ul);
+    CHECK(inventory.backed_prefix_entries == 320ul);
     CHECK(inventory.run_count == 3ul);
 }
 
@@ -109,8 +109,18 @@ static void test_expected_netbook_shape(void)
           V9X_STATUS_OK);
     CHECK(inventory.flags == V9X_I9XX_GTT_PHASE2_REQUIRED);
     CHECK(inventory.backed_prefix_entries == vbe_pages + 1ul);
-    CHECK(inventory.reserve_first_entry == vbe_pages - 32ul);
-    CHECK(inventory.reserve_physical == 0x7ff90000ul);
+    CHECK(inventory.reserve_first_entry == vbe_pages - 256ul);
+    CHECK(inventory.reserve_physical == 0x7feb0000ul);
+    CHECK(inventory.reserve_entry_count == 256ul);
+    /*
+     * The whole reserve must lie inside the prefix Phase 2 measured as
+     * present and linear. This is the assertion the enlarged reserve
+     * actually needs: it grew downward by 896 KiB into pages the
+     * inventory already covered, and this says so rather than assuming
+     * it. The driver re-derives the same check every boot.
+     */
+    CHECK(inventory.reserve_first_entry + inventory.reserve_entry_count
+          <= inventory.backed_prefix_entries);
     CHECK(inventory.run_count == 2ul);
 }
 

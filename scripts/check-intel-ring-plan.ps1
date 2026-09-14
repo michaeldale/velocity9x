@@ -157,12 +157,12 @@ function Test-V9xIntelRingPlan {
 
     if ($heap -ne $reserve -or $ring -ne $reserve -or $ringBytes -ne 0x10000 -or
         $hws -ne $ring + $ringBytes -or $scratch -ne $hws + 0x1000 -or
-        $scratchBytes -ne 0x1000 -or $scratch + $scratchBytes -gt $reserve + 0x20000 -or
+        $scratchBytes -ne 0x1000 -or $scratch + $scratchBytes -gt $reserve + 0x100000 -or
         $ringPhysical -ne $reservePhysical -or
         $hwsPhysical -ne $reservePhysical + ($hws - $reserve) -or
         $scratchPhysical -ne $reservePhysical + ($scratch - $reserve) -or
         (ConvertFrom-V9xRingHex32 $Values 'RingCtl') -ne 0x0000f001) {
-        throw 'Intel ring plan layout is inconsistent with the reviewed 128-KiB sandbox.'
+        throw 'Intel ring plan layout is inconsistent with the reviewed 1-MiB sandbox.'
     }
 
     [uint32[]]$probe = 0..1 | ForEach-Object {
@@ -231,7 +231,7 @@ function Test-V9xIntelRingPlan {
             [uint32]$ctl = ConvertFrom-V9xRingHex32 $Values "${prefix}Ctl"
             [uint32]$start = ConvertFrom-V9xRingHex32 $Values "${prefix}Start"
             [uint32]$expectedCtl = if ($step -eq 11) { 0 } else { 0x0000f001 }
-            [uint32]$expectedStart = if ($step -eq 11) { 0 } else { 0x00790000 }
+            [uint32]$expectedStart = if ($step -eq 11) { 0 } else { 0x006b0000 }
             if (($head -band 0x001ffffc) -ne $heads[$step] -or
                 $tail -ne $heads[$step] -or $failure -ne 0 -or
                 $elapsed -gt 200 -or $polls -gt 1000000 -or
@@ -278,16 +278,16 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         'CaptureBuildId=p4-self-test-build',
         'FlushPageCfg0=00000000', 'FlushPageCfg1=00000000',
         'FlushPageRead=STABLE',
-        'HeapBytes=00790000', 'ReserveOffset=00790000',
-        'ReservePhysical=7FF90000', 'RingOffset=00790000',
-        'RingPhysical=7FF90000', 'RingBytes=00010000', 'RingCtl=0000F001',
-        'HwsOffset=007A0000', 'HwsPhysical=7FFA0000',
-        'ScratchOffset=007A1000', 'ScratchPhysical=7FFA1000',
+        'HeapBytes=006B0000', 'ReserveOffset=006B0000',
+        'ReservePhysical=7FEB0000', 'RingOffset=006B0000',
+        'RingPhysical=7FEB0000', 'RingBytes=00010000', 'RingCtl=0000F001',
+        'HwsOffset=006C0000', 'HwsPhysical=7FEC0000',
+        'ScratchOffset=006C1000', 'ScratchPhysical=7FEC1000',
         'ScratchBytes=00001000', 'PD0=00000000', 'PD1=02000000',
         'BD0=54300004', 'BD1=03F00020', 'BD2=00000000', 'BD3=00080008',
-        'BD4=007A1100', 'BD5=55AA33CC', 'BD6=02000000', 'BD7=00000000',
-        'ProbeCrc=8B2CBE45', 'BltCrc=B97BAB96', 'ArmPacketCrc=2478E26C',
-        'WrapNoopDwords=00003FFE', 'ArmExecutionCrc=3EAA137B',
+        'BD4=006C1100', 'BD5=55AA33CC', 'BD6=02000000', 'BD7=00000000',
+        'ProbeCrc=8B2CBE45', 'BltCrc=270BDC4C', 'ArmPacketCrc=BA0895B6',
+        'WrapNoopDwords=00003FFE', 'ArmExecutionCrc=A0DA64A1',
         'Result=ERRATA-GATED')
     $result = Test-V9xIntelRingPlan $sample
     $sample.FlushPageCfg1 = '00000001'
@@ -306,7 +306,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
     $armedFixture.Result = 'PASS'
     $armedFixture.Intent = 'p4-self-test'
     $armedFixture.IntentBuildId = 'p4-self-test-build'
-    $armedFixture.IntentCrc = '3EAA137B'
+    $armedFixture.IntentCrc = 'A0DA64A1'
     $armedFixture.IntentStep = 'S11'
     foreach ($key in 'StageMirror', 'PreSnapshot', 'ScratchGuard',
                    'PostSnapshot', 'S10Result', 'S12Result') {
@@ -326,7 +326,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         } else { '0000F001' }
         $armedFixture["${prefix}Start"] = if ($step -eq 11) {
             '00000000'
-        } else { '00790000' }
+        } else { '006B0000' }
     }
     for ($index = 0; $index -lt 7; ++$index) {
         $armedFixture["PreErr$index"] = '00000000'
@@ -363,7 +363,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
 
 if ($PSCmdlet.ParameterSetName -eq 'ComputeArm') {
     # Mirrors v9x_i9xx_sandbox_calculate and the Phase 4 stream builders.
-    [uint32]$reserveBytes = 0x20000
+    [uint32]$reserveBytes = 0x100000
     [uint32]$ringBytes = 0x10000
     [uint32]$pageBytes = 0x1000
     if ($VbeBytes -lt $reserveBytes -or ($VbeBytes -band ($pageBytes - 1)) -ne 0 -or

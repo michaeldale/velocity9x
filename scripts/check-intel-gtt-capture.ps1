@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $gttEntries = 65536
 $gttBytes = 0x40000
 $pageBytes = 4096
-$reserveBytes = 0x20000
+$reserveBytes = 0x100000
 $requiredFlags = 0x7f
 
 function ConvertFrom-V9xIntelGttIni {
@@ -285,11 +285,11 @@ if ($SelfTest) {
             ('Runs={0:X8}' -f $analysis.Runs.Count),
             ('RunsLogged={0:X8}' -f $analysis.Runs.Count),
             ('BackedPrefix={0:X8}' -f $analysis.BackedPrefix),
-            'ReserveEntry=00000790', 'ReserveEntries=00000020',
-            'ReserveOffset=00790000', 'ReservePhysical=7FF90000',
+            'ReserveEntry=000006B0', 'ReserveEntries=00000100',
+            'ReserveOffset=006B0000', 'ReservePhysical=7FEB0000',
             'SampleCount=00000002', 'Sample0Offset=00000000',
             'Sample0Pte=7F800001', 'Sample0Data=00000000',
-            'SampleReserveOffset=00790000', 'SampleReservePte=7FF90001',
+            'SampleReserveOffset=006B0000', 'SampleReservePte=7FEB0001',
             'SampleReserveData=00000000', 'Result=PASS')) { $lines.Add($line) }
         for ($index = 0; $index -lt $analysis.Runs.Count; ++$index) {
             $run = $analysis.Runs[$index]
@@ -303,7 +303,7 @@ if ($SelfTest) {
         $null = Test-V9xIntelGttCapture -Lines $lines -Bytes $bytes
         foreach ($mutation in @(
             @{ Text = $true; Old = 'Result=PASS'; New = 'Result=REVIEW' },
-            @{ Text = $true; Old = 'SampleReservePte=7FF90001'; New = 'SampleReservePte=7FF91001' },
+            @{ Text = $true; Old = 'SampleReservePte=7FEB0001'; New = 'SampleReservePte=7FEB1001' },
             @{ Text = $false; Offset = 0 })) {
             $brokenLines = @($lines)
             $brokenBytes = [byte[]]$bytes.Clone()

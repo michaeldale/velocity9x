@@ -47,6 +47,37 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
                              V9X_I9XX_SANDBOX_PAGE_BYTES;
     layout->scratch_physical = bsm + layout->scratch_offset;
     layout->scratch_bytes = V9X_I9XX_SANDBOX_PAGE_BYTES;
+
+    /*
+     * The render target follows the scratch page, which therefore doubles as
+     * its lower guard, and an upper guard page follows the target. The scratch
+     * page's position is deliberately still reserve + 0x11000 whatever the
+     * reserve size, because loader.asm pins that offset and the two guard
+     * probes at +0x11000 and +0x11ffc; only the base moved at Phase 5.
+     */
+    layout->target_offset = layout->scratch_offset +
+                            V9X_I9XX_SANDBOX_PAGE_BYTES;
+    layout->target_physical = bsm + layout->target_offset;
+    layout->target_bytes = V9X_I9XX_TARGET_BYTES;
+    layout->target_pitch = V9X_I9XX_TARGET_PITCH;
+    layout->guard_upper_offset = layout->target_offset +
+                                 V9X_I9XX_TARGET_BYTES;
+    layout->guard_upper_physical = bsm + layout->guard_upper_offset;
+
+    /*
+     * Everything above must fit inside the reserve. This is arithmetic on
+     * compile-time constants today, but it is checked rather than asserted in
+     * a comment: the target size and the reserve size are separate constants,
+     * and a future mode change that grows one without the other would
+     * otherwise silently place the upper guard - and part of the target - in
+     * the published DirectDraw heap.
+     */
+    if (layout->guard_upper_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
+            reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
+        v9x_i9xx_zero_layout(layout);
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
     return V9X_STATUS_OK;
 }
 

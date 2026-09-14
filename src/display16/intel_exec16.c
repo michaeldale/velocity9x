@@ -17,6 +17,9 @@ extern WORD v9x_intel_boot_arm_latch;
 extern DWORD v9x_intel_boot_arm_crc;
 extern char v9x_intel_boot_arm_token[64];
 extern DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
+extern DWORD v9x_i9xx_gtt_backed_prefix;
+extern DWORD v9x_i9xx_gtt_reserve_first;
+extern DWORD v9x_i9xx_gtt_reserve_count;
 extern DWORD v9x_i9xx_gtt_hash_a;
 extern DWORD v9x_i9xx_gtt_hash_b;
 extern DWORD v9x_i9xx_bsm;
@@ -200,6 +203,12 @@ static void v9x_p4_clean_refusal(const char *reason)
 #define V9X_P4_PRE_DIAG_READ   16u
 #define V9X_P4_PRE_EIR         17u
 #define V9X_P4_PRE_ESR         18u
+/*
+ * The enlarged reserve is not backed by the measured prefix. Phase 5 grew
+ * the reserve eightfold; this refuses rather than assuming the Phase 2
+ * inventory still covers it.
+ */
+#define V9X_P4_PRE_RESERVE_BACKING 19u
 
 static WORD v9x_p4_pre_rejection;
 
@@ -266,10 +275,23 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     }
     if (crc != v9x_intel_boot_arm_crc) { return V9X_P4_PRE_CRC_MATCH; }
     if (flush_stable == 0u) { return V9X_P4_PRE_FLUSH; }
-    if (layout->reserve_offset != 0x00790000ul ||
-        layout->reserve_physical != 0x7ff90000ul ||
-        layout->scratch_offset != 0x007a1000ul) {
+    if (layout->reserve_offset != 0x006b0000ul ||
+        layout->reserve_physical != 0x7feb0000ul ||
+        layout->scratch_offset != 0x006c1000ul) {
         return V9X_P4_PRE_LAYOUT;
+    }
+    /*
+     * Re-derive the reserve's backing every boot. The operands are
+     * published by v9x_p4_ring_hex below, so a refusal names numbers
+     * rather than a bare code - which is the Phase 4 record's own
+     * prescription for why that phase cost eight boots.
+     */
+    if (v9x_i9xx_gtt_reserve_count == 0ul ||
+        v9x_i9xx_gtt_reserve_first >
+            0xfffffffful - v9x_i9xx_gtt_reserve_count ||
+        v9x_i9xx_gtt_reserve_first + v9x_i9xx_gtt_reserve_count >
+            v9x_i9xx_gtt_backed_prefix) {
+        return V9X_P4_PRE_RESERVE_BACKING;
     }
     if (v9x_i9xx_bsm != 0x7f800000ul) { return V9X_P4_PRE_BSM; }
     if (v9x_i9xx_first[0] != 0x7ffc0001ul) { return V9X_P4_PRE_PGTBL; }
@@ -521,6 +543,15 @@ void v9x_intel_phase4_maybe_run(
         (void)v9x_p4_ring_hex("RefReserveOffset", layout->reserve_offset);
         (void)v9x_p4_ring_hex("RefReservePhysical", layout->reserve_physical);
         (void)v9x_p4_ring_hex("RefScratchOffset", layout->scratch_offset);
+        (void)v9x_p4_ring_hex("RefTargetOffset", layout->target_offset);
+        (void)v9x_p4_ring_hex("RefGuardUpper",
+                              layout->guard_upper_offset);
+        (void)v9x_p4_ring_hex("RefBackedPrefix",
+                              v9x_i9xx_gtt_backed_prefix);
+        (void)v9x_p4_ring_hex("RefReserveFirst",
+                              v9x_i9xx_gtt_reserve_first);
+        (void)v9x_p4_ring_hex("RefReserveCount",
+                              v9x_i9xx_gtt_reserve_count);
         (void)v9x_p4_ring_hex("RefBsm", v9x_i9xx_bsm);
         (void)v9x_p4_ring_hex("RefPgtbl", v9x_i9xx_first[0]);
         (void)v9x_p4_ring_hex("RefGttHashA", v9x_i9xx_gtt_hash_a);

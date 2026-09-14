@@ -168,7 +168,7 @@ V9xI9xxRingStaged   dw 0
 V9xI9xxRingResult   dw 0
 V9xI9xxRingExpected dd 00000000h, 02000000h
                     dd 54300004h, 03f00020h, 00000000h, 00080008h
-                    dd 007a1100h, 55aa33cch, 02000000h, 00000000h
+                    dd 006c1100h, 55aa33cch, 02000000h, 00000000h
 V9xI9xxRingDiagOffsets dd 00002088h, 0000208ch, 00002090h
                         dd 000020c8h, 000020b0h, 000020b4h, 000020b8h
                         dd 0000203ch, 00002038h
@@ -1256,7 +1256,7 @@ BeginProc V9xMini_I9xx_Ring_Stage
     pushad
     mov     V9xI9xxRingResult, 0
     mov     V9xI9xxRingStageFail, 1
-    cmp     eax, 0d0790000h
+    cmp     eax, 0d06b0000h
     jne     V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingStageFail, 2
     cmp     V9xI9xxMmioBase, 0fe980000h
@@ -1283,13 +1283,13 @@ BeginProc V9xMini_I9xx_Ring_Stage
     ; access aimed at stolen memory's own physical addresses is not routed,
     ; while the aperture translated by the GTT reaches the same pages. This
     ; window is a device BAR like the two already mapped here.
-    mov     eax, 0d0790000h
-    VMMcall _MapPhysToLinear,<eax,00020000h,0>
+    mov     eax, 0d06b0000h
+    VMMcall _MapPhysToLinear,<eax,00100000h,0>
     cmp     eax, 0ffffffffh
     je      V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingLinear, eax
     mov     edi, eax
-    add     edi, 00011000h     ; scratch at GTT 7A1000
+    add     edi, 00011000h     ; scratch at GTT 6C1000
     mov     eax, 0a5a5a5a5h
     mov     ecx, 1024
 V9xMini_I9xx_Ring_Stage_Guard:
@@ -1386,7 +1386,7 @@ BeginProc V9xMini_I9xx_Ring_Execute
     cmp     V9xI9xxRingStaged, 10
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 6
-    cmp     V9xI9xxRingExecCrc, 03eaa137bh
+    cmp     V9xI9xxRingExecCrc, 0a0da64a1h
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 7
     cmp     V9xI9xxMmioBase, 0fe980000h
@@ -1455,8 +1455,8 @@ V9xMini_I9xx_Ring_Execute_CheckStream:
     mov     dword ptr [esi+02030h], 0
     cmp     dword ptr [esi+02030h], 0
     jne     V9xMini_I9xx_Ring_Execute_Poison
-    mov     dword ptr [esi+02038h], 00790000h
-    cmp     dword ptr [esi+02038h], 00790000h
+    mov     dword ptr [esi+02038h], 006b0000h
+    cmp     dword ptr [esi+02038h], 006b0000h
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [esi+0203ch], 0000f001h
     mov     eax, [esi+0203ch]
@@ -1720,7 +1720,7 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     test    eax, eax
     jz      short V9xMini_Api_I9xxRingMemory_Missing
     mov     ecx, [ebp.Client_ECX]
-    cmp     ecx, 0001fffch
+    cmp     ecx, 000ffffch
     ja      short V9xMini_Api_I9xxRingMemory_Missing
     test    ecx, 3
     jnz     short V9xMini_Api_I9xxRingMemory_Missing

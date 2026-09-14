@@ -170,7 +170,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         Write-V9xIniLines -Path $temporary -Lines $original
         $keys = [ordered]@{
             IntelAccelDefault = '0'; IntelArmOnce = 'p4-test'
-            IntelArmCrc = '3EAA137B'; IntelArmBuildId = 'abc1234'
+            IntelArmCrc = 'A0DA64A1'; IntelArmBuildId = 'abc1234'
             IntelInFlight = ''; IntelEnableThisBoot = '0'
             IntelLastResult = ''
         }
@@ -201,7 +201,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         $created = Set-V9xIniValues -Lines (Read-V9xIniLines $temporary) `
             -Section $armSection -Values $keys
         $values = Get-V9xIniSectionValues -Lines $created -Section $armSection
-        if ($values['IntelArmCrc'] -cne '3EAA137B' -or
+        if ($values['IntelArmCrc'] -cne 'A0DA64A1' -or
             @($created | Where-Object { $_ -ceq 'display.drv=vga.drv' }).Count -ne 1) {
             throw 'Self-test failed to append a missing [Velocity9x] section.'
         }
@@ -210,7 +210,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
             -Values ([ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0' })
         $values = Get-V9xIniSectionValues -Lines $cleared -Section $armSection
         if ($values['IntelArmOnce'] -cne '' -or
-            $values['IntelArmCrc'] -cne '3EAA137B') {
+            $values['IntelArmCrc'] -cne 'A0DA64A1') {
             throw 'Self-test disarm changed the wrong keys.'
         }
         Write-Output 'Intel Phase 4 arm-script self-test passed (rewrite, append, disarm).'

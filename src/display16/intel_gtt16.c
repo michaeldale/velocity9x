@@ -18,6 +18,17 @@ DWORD v9x_i9xx_bsm;
 WORD v9x_i9xx_ggc;
 DWORD v9x_i9xx_gtt_hash_a;
 DWORD v9x_i9xx_gtt_hash_b;
+/*
+ * Retained for the Phase 4/5 preflight, which re-derives the reserve's
+ * backing rather than trusting the 2026-09-12 Phase 2 capture. The
+ * reserve grew from 128 KiB to 1 MiB at Phase 5, moving its base 896 KiB
+ * DOWN into pages that inventory covered - so the claim is still that
+ * the reserve lies inside the measured backed prefix, and it is now
+ * checked on every boot instead of argued once.
+ */
+DWORD v9x_i9xx_gtt_backed_prefix;
+DWORD v9x_i9xx_gtt_reserve_first;
+DWORD v9x_i9xx_gtt_reserve_count;
 
 extern DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
 extern unsigned long v9x_vbe_vram_reported;
@@ -233,6 +244,9 @@ void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
     v9x_write_hex("UnknownAttrs", inventory.unknown_attribute_entries);
     v9x_write_hex("Runs", inventory.run_count);
     v9x_write_hex("RunsLogged", run_number);
+    v9x_i9xx_gtt_backed_prefix = inventory.backed_prefix_entries;
+    v9x_i9xx_gtt_reserve_first = inventory.reserve_first_entry;
+    v9x_i9xx_gtt_reserve_count = inventory.reserve_entry_count;
     v9x_write_hex("BackedPrefix", inventory.backed_prefix_entries);
     v9x_write_hex("ReserveEntry", inventory.reserve_first_entry);
     v9x_write_hex("ReserveEntries", inventory.reserve_entry_count);

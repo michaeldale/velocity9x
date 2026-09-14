@@ -12,10 +12,36 @@
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)
 #define V9X_I9XX_GTT_ENTRY_COUNT         ((v9x_u32)65536ul)
 #define V9X_I9XX_GTT_PAGE_BYTES          ((v9x_u32)4096ul)
-#define V9X_I9XX_GTT_RESERVE_BYTES       ((v9x_u32)0x00020000ul)
+/*
+ * The reserve is carved from the TOP of the VBE-reported region, so growing it
+ * moves its base downward into memory the Phase 2 inventory already proved
+ * backed and linear - it does not extend past anything. It went from 128 KiB
+ * to 1 MiB at Phase 5, because a true 640x480x16 render target does not fit in
+ * 128 KiB (docs\plans\intel-gma950-phase5.md step 2). No PTE is written.
+ *
+ * Changing this moves every offset below it AND the literals in
+ * src\minivdd32\loader.asm that pin the single tested machine's addresses,
+ * including the Phase 4 execution CRC, whose BLT destination is inside the
+ * reserve. Those are asserted against this constant by the host tests and by
+ * check-intel-ring-plan.ps1; none of them derives it independently.
+ */
+#define V9X_I9XX_GTT_RESERVE_BYTES       ((v9x_u32)0x00100000ul)
 #define V9X_I9XX_RING_BYTES              ((v9x_u32)0x00010000ul)
 #define V9X_I9XX_SANDBOX_PAGE_BYTES      ((v9x_u32)0x00001000ul)
 #define V9X_I9XX_RING_GUARD_BYTES        ((v9x_u32)8ul)
+
+/*
+ * Phase 5's render target: 640x480 at 16 bpp, RGB565, linear.
+ *
+ * The pitch is bytes per row and must be a multiple of 4, because
+ * _3DSTATE_BUF_INFO encodes it as BUF_3D_PITCH(x) = ((x)/4)<<2 and the low two
+ * bits are discarded (docs\decisions\2026-09-14-intel-gen3-3d-packet-audit.md
+ * section 4). 1280 satisfies that with no padding.
+ */
+#define V9X_I9XX_TARGET_WIDTH            ((v9x_u32)640ul)
+#define V9X_I9XX_TARGET_HEIGHT           ((v9x_u32)480ul)
+#define V9X_I9XX_TARGET_PITCH            ((v9x_u32)1280ul)
+#define V9X_I9XX_TARGET_BYTES            ((v9x_u32)0x00096000ul)
 
 /* Phase 4's complete command allowlist.  These values are intentionally
  * exact: the decoder rejects even a known opcode carrying unreviewed bits. */
@@ -197,6 +223,21 @@ struct v9x_i9xx_sandbox_layout {
     v9x_u32 scratch_offset;
     v9x_u32 scratch_physical;
     v9x_u32 scratch_bytes;
+    /*
+     * Appended at Phase 5. Every member here must be v9x_u32: the whole struct
+     * is zeroed by walking it as a v9x_u32 array, so a member of any other
+     * width would leave part of itself uninitialised. There is no positional
+     * initialiser of this struct anywhere, which is what makes appending safe.
+     *
+     * The scratch page doubles as the target's lower guard, so it has no
+     * separate member; the upper guard sits immediately above the target.
+     */
+    v9x_u32 target_offset;
+    v9x_u32 target_physical;
+    v9x_u32 target_bytes;
+    v9x_u32 target_pitch;
+    v9x_u32 guard_upper_offset;
+    v9x_u32 guard_upper_physical;
 };
 
 /* A command is never split across the physical end of the ring.  pad_dwords
