@@ -21,6 +21,7 @@ extern DWORD v9x_i9xx_gtt_hash_a;
 extern DWORD v9x_i9xx_gtt_hash_b;
 extern DWORD v9x_i9xx_bsm;
 extern DWORD v9x_i9xx_ring_memory_value;
+extern DWORD v9x_i9xx_ring_stage_fail;
 extern DWORD v9x_i9xx_ring_exec_head;
 extern DWORD v9x_i9xx_ring_exec_tail;
 extern DWORD v9x_i9xx_ring_exec_elapsed;
@@ -549,6 +550,7 @@ void v9x_intel_phase4_maybe_run(
         (void)v9x_p4_ring_hex("StageExpected", v9x_p4_stage_expected);
         (void)v9x_p4_ring_hex("StageMemory", v9x_p4_stage_memory);
         (void)v9x_p4_ring_hex("StageGmadr", v9x_p4_stage_gmadr);
+        (void)v9x_p4_ring_hex("StageVxdFail", v9x_i9xx_ring_stage_fail);
         v9x_p4_uncertain("GTT-MIRROR-FAILED"); return;
     }
     if (!v9x_p4_ring("StageMirror", "PASS")) {

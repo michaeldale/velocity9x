@@ -210,6 +210,10 @@ V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 ; RING_EXECUTE in: EBX=full execution CRC, ECX=ordered step selector;
 ;              out AX=1 on a completed step, EBX=head/readback,
 ;              ECX=tail/readback, EDX=elapsed ms, ESI=poll count.
+; RING_STAGE out: EBX = refusal reason, 0 on success. 1 physical, 2 MMIO base,
+; 3 no Phase 1 capture, 4 out-of-order index, 5 index bound, 6 value not in the
+; reviewed stream, 7 _MapPhysToLinear refused the reserve, 8 no mapping at
+; write time, 9 the store did not read back.
 V9XMINI_FN_I9XX_RING_STAGE   EQU 0011h
 V9XMINI_FN_I9XX_RING_MEMORY  EQU 0012h
 V9XMINI_FN_I9XX_RING_EXECUTE EQU 0013h

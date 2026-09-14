@@ -182,6 +182,7 @@ V9xI9xxRingStartMs  dd 0
 V9xI9xxRingElapsed  dd 0
 V9xI9xxRingPolls    dd 0
 V9xI9xxRingFailure  dd 0
+V9xI9xxRingStageFail dd 0
 V9xI9xxRingExecStep dd 0
 V9xI9xxRingExecCrc  dd 0
 ENDIF
@@ -1247,26 +1248,36 @@ EndProc V9xMini_I9xx_Event_Capture
 ; checked against the approved ten-dword stream before entering the ring.
 ; Stage 0 also fills the scratch page with the guard pattern. This does not
 ; touch MMIO and is reachable only after the 16-bit side persisted intent.
+; Every refusal below records why in V9xI9xxRingStageFail, which the API hands
+; back in Client_EBX. A bare "the VxD said no" cost an armed boot on
+; 2026-09-14: seven conditions, one return value, and no serial port to ask.
 BeginProc V9xMini_I9xx_Ring_Stage
     pushad
     mov     V9xI9xxRingResult, 0
+    mov     V9xI9xxRingStageFail, 1
     cmp     eax, 07ff90000h
     jne     V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 2
     cmp     V9xI9xxMmioBase, 0fe980000h
     jne     V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 3
     cmp     V9xI9xxValid, 1
     jne     V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 4
     movzx   ebx, V9xI9xxRingStaged
     cmp     ecx, ebx
     jne     V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 5
     cmp     ecx, 10
     jae     V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 6
     cmp     edx, V9xI9xxRingExpected[ecx*4]
     jne     V9xMini_I9xx_Ring_Stage_Done
     cmp     ecx, 0
     jne     short V9xMini_I9xx_Ring_Stage_Write
     cmp     V9xI9xxRingLinear, 0
     jne     short V9xMini_I9xx_Ring_Stage_Write
+    mov     V9xI9xxRingStageFail, 7
     mov     eax, 07ff90000h
     VMMcall _MapPhysToLinear,<eax,00020000h,0>
     cmp     eax, 0ffffffffh
@@ -1284,13 +1295,16 @@ V9xMini_I9xx_Ring_Stage_Guard:
     xor     ecx, ecx
     xor     edx, edx          ; stream word 0 is MI_NOOP
 V9xMini_I9xx_Ring_Stage_Write:
+    mov     V9xI9xxRingStageFail, 8
     mov     edi, V9xI9xxRingLinear
     cmp     edi, 0
     je      V9xMini_I9xx_Ring_Stage_Done
+    mov     V9xI9xxRingStageFail, 9
     mov     [edi+ecx*4], edx
     cmp     [edi+ecx*4], edx
     jne     V9xMini_I9xx_Ring_Stage_Done
     inc     V9xI9xxRingStaged
+    mov     V9xI9xxRingStageFail, 0
     mov     V9xI9xxRingResult, 1
 V9xMini_I9xx_Ring_Stage_Done:
     popad
@@ -1662,6 +1676,8 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     ecx, [ebp.Client_ECX]
     mov     edx, [ebp.Client_EDX]
     call    V9xMini_I9xx_Ring_Stage
+    mov     ebx, V9xI9xxRingStageFail
+    mov     [ebp.Client_EBX], ebx
     mov     [ebp.Client_AX], ax
 ELSE
     mov     [ebp.Client_AX], 0

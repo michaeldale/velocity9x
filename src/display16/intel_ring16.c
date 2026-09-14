@@ -21,6 +21,7 @@ extern void v9x_intel_phase4_maybe_run(
     const struct v9x_i9xx_sandbox_layout *layout,
     const DWORD *probe, const DWORD *blt, WORD flush_stable);
 DWORD v9x_i9xx_ring_memory_value;
+DWORD v9x_i9xx_ring_stage_fail;
 DWORD v9x_i9xx_ring_exec_head;
 DWORD v9x_i9xx_ring_exec_tail;
 DWORD v9x_i9xx_ring_exec_elapsed;

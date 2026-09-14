@@ -187,6 +187,11 @@ staged into the reserve but did not read back. It publishes `StageFail`,
 | `05` | The scratch guard pattern failed the mini-VDD read-back |
 | `06` | The scratch guard pattern failed the GMADR read |
 
+`01` publishes `StageVxdFail`, the mini-VDD's own reason: `01` physical base,
+`02` MMIO base, `03` no Phase 1 capture, `04` out-of-order index, `05` index
+bound, `06` value outside the reviewed stream, `07` `_MapPhysToLinear` refused
+the reserve, `08` no mapping at write time, `09` the store did not read back.
+
 `03` and `05` are mapping faults. **`04` and `06` are the interesting pair:**
 they would mean a CPU write to stolen memory through the mini-VDD's physical
 mapping is not visible through the graphics aperture, which is what the Intel

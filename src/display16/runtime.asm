@@ -93,6 +93,7 @@ EXTRN _v9x_i9xx_event_value:DWORD
 EXTRN _v9x_i9xx_event_count:WORD
 EXTRN _v9x_i9xx_event_dropped:WORD
 EXTRN _v9x_i9xx_ring_memory_value:DWORD
+EXTRN _v9x_i9xx_ring_stage_fail:DWORD
 EXTRN _v9x_i9xx_ring_exec_head:DWORD
 EXTRN _v9x_i9xx_ring_exec_tail:DWORD
 EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
@@ -1240,6 +1241,8 @@ V9XMINII9XXRINGSTAGE PROC FAR
     mov     edx, dword ptr [bp+6]
     mov     eax, V9XMINI_FN_I9XX_RING_STAGE
     call    dword ptr V9xMiniApiEntry
+    ; Why the VxD refused, whether or not it did. See V9XMAPI.INC.
+    mov     _v9x_i9xx_ring_stage_fail, ebx
     or      ax, ax
     jz      short V9xMiniI9xxRingStageFailed
     mov     ax, 1
