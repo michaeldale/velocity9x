@@ -182,6 +182,19 @@ framebuffer. It proves nothing about the ring.
 
 ### 4. Ring sandbox in stolen memory
 
+**Done 2026-09-14, measured on the netbook.** One armed boot, `Result=PASS`.
+The ring was programmed at aperture `790000` and read back (`CTL=0000F001`,
+`START=00790000`); a two-dword probe drained; 16382 NOOPs wrapped the ring and
+head came back as `00200000`, address zero with the wrap-count field set; a
+second probe drained; one `XY_COLOR_BLT` filled 8 by 8 of `55AA33CC` into
+scratch with every guard dword intact; the ring was torn down to all zeros.
+Pre and post MMIO snapshots are identical to each other and to the Phase 1
+baseline, and EIR and ESR read zero throughout. Record:
+`docs/decisions/2026-09-14-intel-phase4-first-write-the-gpu-executed-a-blit.md`.
+Phase 5 is unblocked.
+
+#### Original plan for this phase
+
 First write to Intel silicon. Requires the one-shot arm token below.
 
 **Gate opened 2026-09-13 by risk decision:** the errata input to the arm
