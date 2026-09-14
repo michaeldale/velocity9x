@@ -20,6 +20,7 @@ extern DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
 extern DWORD v9x_i9xx_gtt_hash_a;
 extern DWORD v9x_i9xx_gtt_hash_b;
 extern DWORD v9x_i9xx_bsm;
+extern DWORD v9x_i9xx_gmadr_bar2;
 extern DWORD v9x_i9xx_ring_memory_value;
 extern DWORD v9x_i9xx_ring_stage_fail;
 extern DWORD v9x_i9xx_ring_stage_read;
@@ -373,8 +374,11 @@ static WORD v9x_p4_stage(const struct v9x_i9xx_sandbox_layout *layout,
     (void)v9x_p4_ring("IntentStep", "stage-write");
     for (index = 0ul; index < 10ul; ++index) {
         expected = index < 2ul ? probe[index] : blt[index - 2ul];
-        if (V9xMiniI9xxRingStage(layout->reserve_physical, (WORD)index,
-                                  expected) == 0u ||
+        /* The aperture address of the reserve, not its BSM address: the
+         * mini-VDD maps and verifies through the same path the GPU fetches
+         * from, because the BSM one is not routed to the CPU at all. */
+        if (V9xMiniI9xxRingStage(v9x_i9xx_gmadr_bar2 + layout->ring_offset,
+                                  (WORD)index, expected) == 0u ||
             V9xGmadrWrite(layout->ring_offset + index * 4ul, expected) == 0u) {
             v9x_p4_stage_fail = V9X_P4_STAGE_WRITE_REFUSED;
             v9x_p4_stage_index = index;

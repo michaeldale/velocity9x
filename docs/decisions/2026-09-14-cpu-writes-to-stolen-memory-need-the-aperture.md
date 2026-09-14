@@ -80,6 +80,20 @@ register.
   cannot explain a store and a load at the same linear address disagreeing.
   The flush page remains unimplemented and unneeded so far.
 
+## Confirmed the same day
+
+The armed boot on build `ec1b061`, with staging switched to the aperture,
+reported `StageMirror=PASS`: ten dwords and a 4 KiB guard pattern written and
+read back through GMADR. It then failed at `S05Failure=3`, and step 5's only
+memory access is the mini-VDD verifying the staged stream through the *same*
+BSM mapping. Two independent failures on the physical path and success on the
+aperture path, which settles it.
+
+The mini-VDD's ring window is therefore mapped at `GMADR + 790000` rather than
+`BSM + 790000`. It is a device BAR window like the two it already maps, and it
+lets the VxD verify the exact bytes the GPU will fetch, through the path the
+GPU fetches them by.
+
 ## Still unknown
 
 What the physical read actually returns. `StagePhysRead` records it from the

@@ -192,6 +192,14 @@ staged into the reserve but did not read back. It publishes `StageFail`,
 bound, `06` value outside the reviewed stream, `07` `_MapPhysToLinear` refused
 the reserve, `08` no mapping at write time, `09` the store did not read back.
 
+`SnnFailure` is the mini-VDD's reason for a step: `00` success, `01` the ring
+registers were not zero at entry, `02` the poll timed out, `03` refused before
+running, `04` poison latched, `05` fewer than ten dwords declared, `06`
+execution CRC mismatch, `07` MMIO base, `08` MMIO not mapped, `09` ring window
+not mapped, `10` unknown step, `11` out-of-order step, `12` the staged stream
+did not verify, `13` the scratch guard did not verify, `14` reached the
+register writes.
+
 `03` and `05` are mapping faults. **`04` and `06` are the interesting pair:**
 they would mean a CPU write to stolen memory through the mini-VDD's physical
 mapping is not visible through the graphics aperture, which is what the Intel

@@ -1256,7 +1256,7 @@ BeginProc V9xMini_I9xx_Ring_Stage
     pushad
     mov     V9xI9xxRingResult, 0
     mov     V9xI9xxRingStageFail, 1
-    cmp     eax, 07ff90000h
+    cmp     eax, 0d0790000h
     jne     V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingStageFail, 2
     cmp     V9xI9xxMmioBase, 0fe980000h
@@ -1279,7 +1279,11 @@ BeginProc V9xMini_I9xx_Ring_Stage
     cmp     V9xI9xxRingLinear, 0
     jne     short V9xMini_I9xx_Ring_Stage_Write
     mov     V9xI9xxRingStageFail, 7
-    mov     eax, 07ff90000h
+    ; GMADR + the reserve offset, not BSM + it. Measured 2026-09-14: a CPU
+    ; access aimed at stolen memory's own physical addresses is not routed,
+    ; while the aperture translated by the GTT reaches the same pages. This
+    ; window is a device BAR like the two already mapped here.
+    mov     eax, 0d0790000h
     VMMcall _MapPhysToLinear,<eax,00020000h,0>
     cmp     eax, 0ffffffffh
     je      V9xMini_I9xx_Ring_Stage_Done
@@ -1372,21 +1376,30 @@ BeginProc V9xMini_I9xx_Ring_Execute
     mov     V9xI9xxRingPolls, 0
     mov     V9xI9xxRingExecCrc, ebx
     mov     V9xI9xxRingExecStep, ecx
-    mov     V9xI9xxRingFailure, 3
+    ; One code per refusal. Failure 3 used to cover every condition from here
+    ; to the step dispatch, which is how S05Failure=3 said nothing on
+    ; 2026-09-14 beyond "not today".
+    mov     V9xI9xxRingFailure, 4
     cmp     V9xI9xxRingPoison, 0
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 5
     cmp     V9xI9xxRingStaged, 10
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 6
     cmp     V9xI9xxRingExecCrc, 03eaa137bh
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 7
     cmp     V9xI9xxMmioBase, 0fe980000h
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 8
     mov     esi, V9xI9xxMmioLinear
     test    esi, esi
     jz      V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 9
     mov     edi, V9xI9xxRingLinear
     test    edi, edi
     jz      V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 10
     mov     ecx, V9xI9xxRingExecStep
     cmp     ecx, 5
     je      V9xMini_I9xx_Ring_Execute_Program
@@ -1403,8 +1416,10 @@ BeginProc V9xMini_I9xx_Ring_Execute
     jmp     V9xMini_I9xx_Ring_Execute_Done
 
 V9xMini_I9xx_Ring_Execute_Program:
+    mov     V9xI9xxRingFailure, 11
     cmp     V9xI9xxRingStep, 0
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 12
     mov     ecx, 10
     mov     ebx, OFFSET32 V9xI9xxRingExpected
     mov     edx, edi
@@ -1416,10 +1431,12 @@ V9xMini_I9xx_Ring_Execute_CheckStream:
     add     edx, 4
     dec     ecx
     jnz     short V9xMini_I9xx_Ring_Execute_CheckStream
+    mov     V9xI9xxRingFailure, 13
     cmp     dword ptr [edi+00011000h], 0a5a5a5a5h
     jne     V9xMini_I9xx_Ring_Execute_Done
     cmp     dword ptr [edi+00011ffch], 0a5a5a5a5h
     jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 14
     cmp     dword ptr [esi+02030h], 0
     jne     V9xMini_I9xx_Ring_Execute_Done
     cmp     dword ptr [esi+02034h], 0
