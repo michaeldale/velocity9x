@@ -271,6 +271,35 @@ armed boot. On the measured Phase 2
 layout it should report ring `00790000`, HWS `007A0000` and scratch `007A1000`.
 Any difference is a capture to understand, not permission to arm.
 
+### 3.2d-bis Deploying a package to the netbook
+
+Two steps, and neither is a hand-typed copy. On the development host, refresh
+the whole package folder on the stick:
+
+```powershell
+robocopy .\build\win98se-intel-gma E:\INTELGMA /MIR
+```
+
+On the netbook, boot to real DOS (F8, **Command prompt only** - not a DOS box
+inside Windows, where the target files are in use) and run the package's own
+deployment batch:
+
+```
+C:
+CD \INTELGMA
+V9XCOPY
+```
+
+It copies `V9XDISP.DRV`, `V9XMINI.VXD`, `V9XHAL.DLL` and `V9XSETP.DLL` into
+`C:\WINDOWS\SYSTEM`, verifies each landed, and resets `INTELARM.TXT` so a
+token armed against the previous build cannot survive a deployment. A
+different Windows directory is passed as an argument, for example
+`V9XCOPY C:\WIN98\SYSTEM`. Typing the four copies by hand once wrote
+`V9XHAL.DLL` to a file named `C:\WINDOWS\SYSTE`; that is what this replaces.
+
+Then cold boot and confirm `V9XMODES.INI` reports the package's build before
+trusting anything else in the capture.
+
 ### 3.2e Phase 4 two-boot first-write test
 
 Use the exact package whose build ID appears in the unarmed capture. Do not

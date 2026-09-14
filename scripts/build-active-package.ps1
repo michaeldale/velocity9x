@@ -105,6 +105,7 @@ $installSource = Join-Path $repoRoot "packaging\win98se\INSTALL.TXT"
 $recoverSource = Join-Path $repoRoot "packaging\win98se\RECOVER.TXT"
 $firstBootSource = Join-Path $repoRoot "packaging\win98se\FIRSTBOOT.TXT"
 $normalRepairSource = Join-Path $repoRoot "packaging\win98se\V9XFIX.BAT"
+$deploySource = Join-Path $repoRoot "packaging\win98se\V9XCOPY.BAT"
 
 # The INF is now generated from the family manifest rather than rewritten out
 # of packaging\win98se\velocity9x.inf, so a family can carry more than one
@@ -224,6 +225,9 @@ Copy-Item -LiteralPath $firstBootSource `
 $normalRepairLines = Get-Content -LiteralPath $normalRepairSource
 Set-Content -LiteralPath (Join-Path $outputDir "V9XFIX.BAT") `
     -Value $normalRepairLines -Encoding Ascii
+$deployLines = Get-Content -LiteralPath $deploySource
+Set-Content -LiteralPath (Join-Path $outputDir "V9XCOPY.BAT") `
+    -Value $deployLines -Encoding Ascii
 
 $manifest = @(
     "Velocity9x active display bring-up package",
@@ -266,7 +270,8 @@ Set-Content -LiteralPath (Join-Path $outputDir "SHA256.TXT") `
 
 $expectedPackageFiles = @(
     "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
-    "V9X16LD.EXE", "V9XDDP.EXE", "V9XDISP.DRV", "V9XFIX.BAT", "V9XHAL.DLL",
+    "V9X16LD.EXE", "V9XCOPY.BAT", "V9XDDP.EXE", "V9XDISP.DRV",
+    "V9XFIX.BAT", "V9XHAL.DLL",
     "V9XGDI.EXE", "V9XMSW.EXE", "V9XPAL.EXE", "V9XPWR.EXE",
     "V9XMINI.VXD", "V9XPROBE.VXD",
     "V9XSET.EXE", "V9XSETP.DLL", "V9XSTAGE.EXE", "V9XTRACE.EXE",
