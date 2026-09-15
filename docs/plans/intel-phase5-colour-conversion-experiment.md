@@ -128,8 +128,14 @@ matters.
 Two pieces of evidence sit against it, neither conclusive:
 
 - `S5` is zero, leaving `S5_COLOR_DITHER_ENABLE` (bit 1) **clear**.
-- On `6c81c52` all seven interior probes read an identical `F325`. A spatial
-  dither would not produce one value at seven scattered coordinates.
+- On `6c81c52` all seven interior probes read an identical `F325`.
+
+The second is weaker than it looks. Seven sparse samples agreeing does
+**not** exclude spatial dithering: an ordered dither has a period, and seven
+scattered points can all land on cells carrying the same value. Nor would
+samples that differ uniquely establish dithering - interpolation, a
+per-pixel effect, or two genuinely different regions would do the same. The
+probes are weak evidence in one direction and ambiguous in the other.
 
 Against it, `DST_BUF_VARS` bits 26-27 are zero, which Mesa's header names
 `DITHER_FULL_ALWAYS` - a name suggesting dithering is unconditional. The two

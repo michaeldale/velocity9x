@@ -235,11 +235,14 @@
  *
  * It drops the previous colour's 565-exactness, which was chosen because the
  * audit recorded dithering as on by default and not cleanly disableable. Two
- * pieces of evidence now sit against that premise: S5 leaves
- * S5_COLOR_DITHER_ENABLE clear, and on 6c81c52 all seven interior probes read
- * an identical F325, which a spatial dither would not produce. Neither is
- * proof, so the seven probes agreeing is now load-bearing: if they disagree
- * with each other, dithering is active and the conversion reading is void.
+ * observations sit against that premise: S5 leaves S5_COLOR_DITHER_ENABLE
+ * clear, and on 6c81c52 all seven interior probes read an identical F325.
+ *
+ * The second is weak and should not be leaned on. An ordered dither has a
+ * period, so seven scattered points can all land on cells carrying the same
+ * value - agreement does not exclude dithering. Nor would disagreement
+ * uniquely establish it: interpolation or two genuinely different regions
+ * would look the same. The probes are worth reading and cannot settle it.
  */
 #define V9X_I9XX_TRI_COLOR_BGRA          ((v9x_u32)0xff1587f9ul)
 /*

@@ -19,7 +19,13 @@ IF NOT EXIST C:\V9XDIAG\NUL GOTO NODIAG
 REM An unfinished previous attempt leaves IntelInFlight set. Refuse rather
 REM than overwrite it: that record is the only evidence of where it stopped.
 IF NOT EXIST C:\V9XDIAG\INTELARM.TXT GOTO WRITE
-FIND "IntelInFlight=" C:\V9XDIAG\INTELARM.TXT | FIND /V "IntelInFlight=" >NUL
+REM FIND matches SUBSTRINGS, so "IntelInFlight=" matched the empty form and
+REM every non-empty one alike. The previous test piped FIND into FIND /V on
+REM the same string, which always yields nothing, so this guard never fired
+REM in either phase. The driver now writes IntelIncomplete=1 alongside a
+REM non-empty IntelInFlight and clears it on retirement, which is a value a
+REM batch can actually test.
+FIND "IntelIncomplete=1" C:\V9XDIAG\INTELARM.TXT >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
 
 :WRITE
@@ -37,6 +43,7 @@ REM IntelArmPhase as Phase 4 so that sticks written before 2026-09-15 still
 REM boot, but nothing written from here on should depend on that.
 ECHO IntelArmPhase=4>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelInFlight=>>C:\V9XDIAG\INTELARM.TXT
+ECHO IntelIncomplete=0>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelEnableThisBoot=0>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelLastResult=>>C:\V9XDIAG\INTELARM.TXT
 

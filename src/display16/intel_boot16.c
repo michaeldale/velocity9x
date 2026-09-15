@@ -122,6 +122,11 @@ WORD v9x_intel_boot_arm_retire(const char *result)
     if (!v9x_intel_boot_set("IntelInFlight", "")) {
         return 0u;
     }
+    /* Cleared with in-flight and only with it; the two must never
+     * disagree, which is why they are set and cleared together. */
+    if (!v9x_intel_boot_set("IntelIncomplete", "0")) {
+        return 0u;
+    }
     v9x_intel_boot_arm_latch = 0u;
     return 1u;
 }
@@ -252,6 +257,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
                             sizeof(repeat_text)) &&
         v9x_intel_str_equal(repeat_text, "1") != 0u) {
         if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
+            !v9x_intel_boot_set("IntelIncomplete", "1") ||
             !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
             return;
         }
@@ -262,7 +268,16 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         return;
     }
 
+    /*
+     * IntelIncomplete mirrors "IntelInFlight is not empty" as a value a DOS
+     * batch can actually test. FIND matches substrings, so
+     * "IntelInFlight=" matches the empty form and every non-empty one
+     * alike - the armers' guard built on it was a no-op from the day it
+     * was written, in both phases. This key is the driver stating the fact
+     * plainly instead.
+     */
     if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
+        !v9x_intel_boot_set("IntelIncomplete", "1") ||
         !v9x_intel_boot_set("IntelArmOnce", "") ||
         !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
         return;

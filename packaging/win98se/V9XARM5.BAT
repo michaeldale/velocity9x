@@ -30,7 +30,13 @@ REM overwrite it: a chained run leaves the token in flight on EVERY failure
 REM path by design, so that record is the expected state after a hang and the
 REM only evidence of where it stopped. Run V9XCOPY to clear it deliberately.
 IF NOT EXIST C:\V9XDIAG\INTELARM.TXT GOTO WRITE
-FIND "IntelInFlight=" C:\V9XDIAG\INTELARM.TXT | FIND /V "IntelInFlight=" >NUL
+REM FIND matches SUBSTRINGS, so "IntelInFlight=" matched the empty form and
+REM every non-empty one alike. The previous test piped FIND into FIND /V on
+REM the same string, which always yields nothing, so this guard never fired
+REM in either phase. The driver now writes IntelIncomplete=1 alongside a
+REM non-empty IntelInFlight and clears it on retirement, which is a value a
+REM batch can actually test.
+FIND "IntelIncomplete=1" C:\V9XDIAG\INTELARM.TXT >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
 
 :WRITE
@@ -47,13 +53,21 @@ ECHO IntelArmPhase4Crc=@@P4CRC@@>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelArmPhase5Crc=@@P5CRC@@>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelArmBuildId=@@BUILDID@@>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelInFlight=>>C:\V9XDIAG\INTELARM.TXT
+ECHO IntelIncomplete=0>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelEnableThisBoot=1>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelLastResult=>>C:\V9XDIAG\INTELARM.TXT
 REM Repeat mode, set by running V9XARM5 R. IntelArmOnce survives the boot,
 REM so the stick arms again next time without being re-armed. A run that
 REM HANGS still leaves IntelInFlight set and the next boot refuses with
 REM INCOMPLETE, so only successful boots repeat.
-IF /I NOT "%1"=="R" GOTO NOREPEAT
+REM COMMAND.COM has no IF /I. A syntax error there does not halt a batch, so
+REM the next line would have run and set repeat mode unconditionally - the
+REM opposite of opt-in. Explicit comparisons, and anything that is not
+REM exactly R or r branches past.
+IF "%1"=="R" GOTO REPEAT
+IF "%1"=="r" GOTO REPEAT
+GOTO NOREPEAT
+:REPEAT
 ECHO IntelArmRepeat=1>>C:\V9XDIAG\INTELARM.TXT
 ECHO Repeat mode: this stick will arm again on every successful boot.
 :NOREPEAT

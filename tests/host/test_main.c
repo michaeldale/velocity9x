@@ -686,9 +686,19 @@ static void emit_intel_3d_reference(void)
         /* The same colour at every vertex, which is what makes flat versus
          * smooth shading moot on the hardware and makes the interpolator
          * here produce a flat fill rather than a gradient. */
-        vertices[index].red = 0xf8;
-        vertices[index].green = 0x64;
-        vertices[index].blue = 0x28;
+        /*
+         * Derived from V9X_I9XX_TRI_COLOR_BGRA, never typed. These were
+         * literal 0xf8/0x64/0x28 until 2026-09-15, so changing the
+         * triangle colour left the generated reference describing the
+         * old one - the same defect as the packet offsets, a value
+         * hand-copied from its source and then not following it.
+         */
+        vertices[index].red =
+            (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful);
+        vertices[index].green =
+            (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful);
+        vertices[index].blue =
+            (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful);
         vertices[index].alpha = 0xff;
     }
     /*
@@ -713,7 +723,10 @@ static void emit_intel_3d_reference(void)
 
     printf("REFFILL=%08lX\n", (unsigned long)V9X_I9XX_FILL_RGB565);
     printf("REFCOLOR=%08lX\n",
-           (unsigned long)v9x_d3d_raster_rgb565(0xf8, 0x64, 0x28));
+           (unsigned long)v9x_d3d_raster_rgb565(
+               (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful),
+               (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful),
+               (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful)));
 
     /*
      * The fourteen named probes the capture reports, at the same coordinates
