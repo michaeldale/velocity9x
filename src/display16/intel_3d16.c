@@ -165,6 +165,36 @@ static void v9x_p5_text(const char *key, const char *value)
                               V9X_DIAG_INTEL3D0_TXT);
 }
 
+/*
+ * Commit the profile cache to disk.
+ *
+ * Every write above sits in Windows' cache until this is called, so a boot
+ * that does not finish leaves NOTHING in INTEL3D0.TXT - not even the file's
+ * first key. Measured on the netbook 2026-09-15: a hang inside this sequencer
+ * left a 32-byte file holding an unrelated stale cluster, and IntentStep, the
+ * entire mechanism for locating a hang on a machine with no serial port, had
+ * never reached the disk on any boot.
+ *
+ * v9x_boot_trace in ddi.c carries a comment explaining exactly this, written
+ * after it cost two boots in September 2026. This unit was built without it.
+ *
+ * Not called from v9x_p5_text itself: the row-CRC and stream tables write
+ * several hundred keys, and committing after each would turn a capture into a
+ * disk-bound crawl. It is called where a hang has to be locatable - every
+ * intent marker, every progress marker, and every terminal result.
+ */
+static void v9x_p5_flush(void)
+{
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTEL3D0_TXT);
+}
+
+/* A result, then a commit: the last thing written must survive the boot. */
+static void v9x_p5_result(const char *value)
+{
+    v9x_p5_text("Result", value);
+    v9x_p5_flush();
+}
+
 static void v9x_p5_hex_into(char *text, DWORD value)
 {
     static const char digits[] = "0123456789ABCDEF";
@@ -212,6 +242,9 @@ static void v9x_p5_indexed_hex(const char *prefix, WORD index, DWORD value)
 static void v9x_p5_intent(WORD step)
 {
     v9x_p5_hex("IntentStep", (DWORD)step);
+    /* Committed, or the marker names the step on a boot that completes and
+     * says nothing at all on the only boot that needed it. */
+    v9x_p5_flush();
 }
 
 static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
@@ -562,9 +595,9 @@ void v9x_intel_phase5_run(
             v9x_p5_hex("UnarmedSample1",
                        V9xGmadrRead(layout->target_offset +
                                     layout->target_bytes - 4ul));
-            v9x_p5_text("Result", "NO-WRITE");
+            v9x_p5_result("NO-WRITE");
         } else {
-            v9x_p5_text("Result", "REFUSED");
+            v9x_p5_result("REFUSED");
         }
         return;
     }
@@ -592,13 +625,14 @@ void v9x_intel_phase5_run(
                                v9x_p5_stream[index]) == 0u) {
             v9x_p5_hex("StageFailIndex", (DWORD)index);
             v9x_p5_hex("StageFail", v9x_i9xx_ring_stage_fail);
-            v9x_p5_text("Result", "STAGE-REFUSED");
+            v9x_p5_result("STAGE-REFUSED");
             return;
         }
         /* A marker every sixteen dwords, so a hang inside a sixty-six dword
          * loop says roughly where rather than only that it was staging. */
         if ((index & 0x0fu) == 0u) {
             v9x_p5_hex("P5Marker", (DWORD)index);
+            v9x_p5_flush();
         }
     }
     v9x_p5_hex("StageFail", 0ul);
@@ -623,7 +657,7 @@ void v9x_intel_phase5_run(
             v9x_p5_hex("ExecHead", v9x_i9xx_ring_exec_head);
             v9x_p5_hex("ExecTail", v9x_i9xx_ring_exec_tail);
             v9x_p5_hex("ExecPolls", v9x_i9xx_ring_exec_polls);
-            v9x_p5_text("Result", "EXECUTE-REFUSED");
+            v9x_p5_result("EXECUTE-REFUSED");
             return;
         }
         v9x_p5_indexed_hex("EX", step, v9x_i9xx_ring_exec_elapsed);
@@ -684,15 +718,15 @@ void v9x_intel_phase5_run(
         v9x_p5_hex("ChainDrawVerdict", (DWORD)verdict);
         v9x_p5_hex("ChainState", (DWORD)v9x_intel_arm_chain.state);
         if (verdict != V9X_I9XX_CHAIN_OK) {
-            v9x_p5_text("Result", "CHAIN-DRAW-REFUSED");
+            v9x_p5_result("CHAIN-DRAW-REFUSED");
             return;
         }
         if (v9x_intel_boot_arm_retire("pass:phase5") == 0u) {
-            v9x_p5_text("Result", "RETIRE-FAILED");
+            v9x_p5_result("RETIRE-FAILED");
             return;
         }
         v9x_p5_text("TokenRetired", "1");
     }
 #endif
-    v9x_p5_text("Result", "PASS");
+    v9x_p5_result("PASS");
 }
