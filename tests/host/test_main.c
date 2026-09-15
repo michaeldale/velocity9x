@@ -952,6 +952,17 @@ static int emit_intel_3d_stream(void)
                           v9x_i9xx_fragment_program_extent() + 2ul));
     printf("COMBINEDCRC=%08lX\n",
            (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
+    /*
+     * What a Phase 6 arm token must carry: the Phase 4 replay and every
+     * scene in execution order, combined exactly as the Phase 5 token
+     * combines the replay and its single draw. Emitted rather than left for
+     * the packaging script to compute, so the armer and the driver cannot
+     * derive it independently and disagree.
+     */
+    printf("SCENEARMCRC=%08lX\n",
+           (unsigned long)v9x_i9xx_combined_arm_crc(
+               v9x_i9xx_phase4_execution_crc(probe, blt),
+               v9x_i9xx_scene_combined_crc()));
     emit_intel_3d_reference();
     return emit_intel_scenes();
 }

@@ -187,6 +187,8 @@ $incLines.Add(('V9X_I9XX_SCENE_COUNT    EQU {0}' -f $sceneCount))
 $incLines.Add(('V9X_I9XX_SCENE_AUTH     EQU {0}' -f
                [Convert]::ToInt32($values['SCENEAUTHORISED'], 16)))
 $incLines.Add(('V9X_I9XX_SCENE_CRC      EQU 0{0}h' -f $values['SCENECOMBINEDCRC']))
+# What a Phase 6 arm token carries: the replay and every scene combined.
+$incLines.Add(('V9X_I9XX_SCENE_ARM_CRC  EQU 0{0}h' -f $values['SCENEARMCRC']))
 $incLines.Add(('V9X_I9XX_SCENE_PROBES   EQU {0}' -f
                [Convert]::ToInt32($values['SCENETOTALPROBES'], 16)))
 
@@ -287,7 +289,7 @@ $dataLines.Add('    )')
 if ($values.ContainsKey('REFERROR')) {
     throw "The software reference refused to rasterise: $($values['REFERROR'])."
 }
-foreach ($key in @('REFFILL', 'REFCOLOR', 'REFICOLOR', 'P5PRIM')) {
+foreach ($key in @('REFFILL', 'REFCOLOR', 'REFICOLOR', 'P5PRIM', 'SCENEARMCRC')) {
     if (-not $values.ContainsKey($key)) {
         throw "The emitted stream is missing $key."
     }
@@ -310,6 +312,7 @@ $dataLines.Add(('    SceneCount = {0}' -f $sceneCount))
 $dataLines.Add(('    SceneAuthorisedDraws = {0}' -f
                 [Convert]::ToInt32($values['SCENEAUTHORISED'], 16)))
 $dataLines.Add(("    SceneCombinedCrc = '{0}'" -f $values['SCENECOMBINEDCRC']))
+$dataLines.Add(("    SceneArmCrc = '{0}'" -f $values['SCENEARMCRC']))
 $dataLines.Add(('    SceneTotalProbes = {0}' -f
                 [Convert]::ToInt32($values['SCENETOTALPROBES'], 16)))
 $dataLines.Add('    Scenes = @(')

@@ -1465,7 +1465,7 @@ foreach ($code in $chainCodes) {
 # cannot quietly become inert again: both refusals must be present, and the old
 # idiom must not return.
 # ---------------------------------------------------------------------------
-foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
+foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT', 'V9XARM6.BAT')) {
     $armerPath = Join-Path $repoRoot "packaging\win98se\$armer"
     if (-not (Test-Path -LiteralPath $armerPath)) {
         throw "packaging\win98se\$armer is missing."

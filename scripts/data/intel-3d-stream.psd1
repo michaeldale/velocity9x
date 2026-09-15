@@ -104,6 +104,7 @@
     SceneCount = 5
     SceneAuthorisedDraws = 5
     SceneCombinedCrc = '066502FF'
+    SceneArmCrc = '93D6181A'
     SceneTotalProbes = 52
     Scenes = @(
         @{

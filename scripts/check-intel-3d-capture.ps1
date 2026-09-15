@@ -465,6 +465,138 @@ function Test-V9xIntel3dCapture {
                    'measured Intel conversion.')
     }
 
+    # ------------------------------------------------------------------
+    # Schema 3: the Phase 6 scene sections.
+    #
+    # Driven by the GENERATED scene table, not by what the capture happens to
+    # contain. That direction is the whole point and it is the fourth time
+    # this file has had to learn it: a loop over present keys reports on what
+    # is there and calls a capture missing half its evidence complete. Every
+    # scene the build defines must have a section, and every probe that scene
+    # declares must have a reading.
+    # ------------------------------------------------------------------
+    if ($schema -eq '3') {
+        if (-not $generated.ContainsKey('Scenes')) {
+            throw ('A schema-3 INTEL3D0.TXT needs a generated scene table to ' +
+                   'be checked against. Run gen-intel-3d-stream.ps1.')
+        }
+        $sceneCount = [int]$generated.SceneCount
+        $declared = Get-V9x3dHex32 -Values $values -Key 'Scenes'
+        if ($declared -ne $sceneCount) {
+            throw ("INTEL3D0.TXT reports $declared scenes but the build " +
+                   "defines $sceneCount. The capture and the arm tables " +
+                   'describe different boots.')
+        }
+        if ((Get-V9x3dHex32 -Values $values -Key 'SceneCombinedCrc') -ne
+                [Convert]::ToUInt32($generated.SceneCombinedCrc, 16)) {
+            throw ('INTEL3D0.TXT carries a combined scene CRC that is not the ' +
+                   'generated one. What ran is not what was reviewed.')
+        }
+
+        # How far the run got. A capture that stopped early is valid evidence
+        # and must not be failed for the scenes it never reached - but it must
+        # SAY where it stopped, and every scene up to there must be complete.
+        $reached = $sceneCount
+        if ($values.ContainsKey('SceneFailed')) {
+            $reached = (Get-V9x3dHex32 -Values $values -Key 'SceneFailed') + 1
+        } elseif (-not $values.ContainsKey('ScenesCompleted')) {
+            throw ('A schema-3 INTEL3D0.TXT must carry either ScenesCompleted ' +
+                   'or SceneFailed. Without one of them a truncated capture ' +
+                   'and a complete one look identical.')
+        }
+
+        for ($scene = 0; $scene -lt $reached; ++$scene) {
+            $entry = @($generated.Scenes)[$scene]
+            $prefix = "S$scene"
+            foreach ($field in @('Id', 'Dwords', 'Crc', 'GenCrc', 'Probes')) {
+                if (-not $values.ContainsKey($prefix + $field)) {
+                    throw ("INTEL3D0.TXT scene $scene is missing " +
+                           "$prefix$field. A scene that was reached and did " +
+                           'not publish its figures is not a scene that ran.')
+                }
+            }
+            if ((Get-V9x3dHex32 -Values $values -Key ($prefix + 'Id')) -ne
+                    [int]$entry.Id) {
+                throw ("INTEL3D0.TXT scene $scene reports id " +
+                       "$($values[$prefix + 'Id']) where the build assigns " +
+                       "$($entry.Id). Ids are how probe sets are attributed.")
+            }
+            if ((Get-V9x3dHex32 -Values $values -Key ($prefix + 'Dwords')) -ne
+                    [int]$entry.Dwords) {
+                throw ("INTEL3D0.TXT scene $scene submitted " +
+                       "$($values[$prefix + 'Dwords']) dwords where the build " +
+                       "generates $($entry.Dwords).")
+            }
+            # The driver's own CRC against the generated one, both published,
+            # so a disagreement is visible here rather than only as a refusal
+            # on the machine with nothing to say why.
+            $sceneCrc = [Convert]::ToUInt32($entry.Crc, 16)
+            foreach ($which in @('Crc', 'GenCrc')) {
+                if ((Get-V9x3dHex32 -Values $values -Key ($prefix + $which)) -ne
+                        $sceneCrc) {
+                    throw ("INTEL3D0.TXT scene $scene has $prefix$which " +
+                           "disagreeing with the generated $($entry.Crc).")
+                }
+            }
+
+            $probes = @($entry.Probes)
+            if ((Get-V9x3dHex32 -Values $values -Key ($prefix + 'Probes')) -ne
+                    $probes.Count) {
+                throw ("INTEL3D0.TXT scene $scene reports " +
+                       "$($values[$prefix + 'Probes']) probes where the build " +
+                       "declares $($probes.Count). A probe count the capture " +
+                       'chose for itself excuses a partial set.')
+            }
+            for ($probe = 0; $probe -lt $probes.Count; ++$probe) {
+                $key = '{0}PX{1:X4}' -f $prefix, $probe
+                if (-not $values.ContainsKey($key)) {
+                    throw ("INTEL3D0.TXT scene $scene is missing $key. Every " +
+                           'probe the scene declares must have a reading, or ' +
+                           'the set reports on whichever ones happened to be ' +
+                           'written.')
+                }
+                $null = Get-V9x3dHex32 -Values $values -Key $key
+                # The name key carries what the probe EXPECTED. Required, for
+                # the same reason the generator requires probe names: a
+                # reading whose expectation is absent cannot be judged.
+                $named = $prefix + $probes[$probe].Name
+                if (-not $values.ContainsKey($named)) {
+                    throw ("INTEL3D0.TXT scene $scene is missing $named, the " +
+                           "expectation for probe $probe. The same value is a " +
+                           'result in one scene and a regression in another.')
+                }
+            }
+        }
+
+        # The aperture-read budget. Published before the run, so a capture
+        # that reached the end must have spent about what it predicted.
+        foreach ($field in @('ExpectedApertureReads', 'DriverApertureReads',
+                             'MiniApertureReads')) {
+            if (-not $values.ContainsKey($field)) {
+                throw ("A schema-3 INTEL3D0.TXT must carry $field. The read " +
+                       'budget is the measurement this boot exists to take ' +
+                       'as much as the pixels are.')
+            }
+            $null = Get-V9x3dHex32 -Values $values -Key $field
+        }
+        if (-not $values.ContainsKey('SceneFailed')) {
+            $expected = Get-V9x3dHex32 -Values $values -Key 'ProbeApertureReads'
+            $driver = Get-V9x3dHex32 -Values $values -Key 'DriverApertureReads'
+            # Driver-side reads are the probes plus the guards and heap
+            # probes. Bounded rather than pinned, because the guard count
+            # depends on how many scenes ran, but a driver count BELOW the
+            # probe count means probes did not happen.
+            if ($driver -lt $expected) {
+                throw ("INTEL3D0.TXT counted $driver driver aperture reads " +
+                       "for $expected declared probes. Fewer reads than " +
+                       'probes means the set is incomplete however many keys ' +
+                       'are present.')
+            }
+        }
+        $notes += ("Schema 3: $reached of $sceneCount scenes checked against " +
+                   'the generated table.')
+    }
+
     # In-reserve guards must be untouched. These are ours, unlike HeapProbe.
     foreach ($pair in @(@{ Before = 'GLow0'; After = 'GLow1'; What = 'lower' },
                         @{ Before = 'GUpp0'; After = 'GUpp1'; What = 'upper' })) {
@@ -773,6 +905,109 @@ R0000=DEADBEEF'
                    'damaged reference would silently disable the ' +
                    'measured-conversion check.')
         }
+    }
+
+    # ------------------------------------------------------------------
+    # A schema-3 capture, built from the generated scene table.
+    #
+    # Built rather than pasted, so it stays correct when the scene table
+    # changes - and because a hand-written fixture would encode what the
+    # author believed the driver emits rather than what it does.
+    # ------------------------------------------------------------------
+    if ($generated.ContainsKey('Scenes')) {
+        $s3 = New-Object 'System.Collections.Generic.List[string]'
+        foreach ($line in $armedLines) {
+            if ($line -like 'SchemaVersion=*') {
+                $s3.Add('SchemaVersion=3')
+            } else {
+                $s3.Add($line)
+            }
+        }
+        $s3.Add('Scenes={0:X8}' -f [int]$generated.SceneCount)
+        $s3.Add('ScenesAuthorised={0:X8}' -f [int]$generated.SceneAuthorisedDraws)
+        $s3.Add('SceneCombinedCrc=' + $generated.SceneCombinedCrc)
+        $s3.Add('ScenesCompleted={0:X8}' -f [int]$generated.SceneCount)
+        $s3.Add('ProbeApertureReads={0:X8}' -f [int]$generated.SceneTotalProbes)
+        $s3.Add('DriverApertureReads={0:X8}' -f
+                ([int]$generated.SceneTotalProbes + 14))
+        $s3.Add('MiniApertureReads=00000294')
+        $s3.Add('ExpectedApertureReads=000002D6')
+        $sceneIndex = 0
+        foreach ($entry in @($generated.Scenes)) {
+            $prefix = "S$sceneIndex"
+            $s3.Add(('{0}Id={1:X8}' -f $prefix, [int]$entry.Id))
+            $s3.Add(('{0}Dwords={1:X8}' -f $prefix, [int]$entry.Dwords))
+            $s3.Add(('{0}Crc={1}' -f $prefix, $entry.Crc))
+            $s3.Add(('{0}GenCrc={1}' -f $prefix, $entry.Crc))
+            $s3.Add(('{0}Probes={1:X8}' -f $prefix, @($entry.Probes).Count))
+            $probeIndex = 0
+            foreach ($probe in @($entry.Probes)) {
+                $s3.Add(('{0}{1}=measure' -f $prefix, $probe.Name))
+                $s3.Add(('{0}PX{1:X4}=1C3E1C3E' -f $prefix, $probeIndex))
+                ++$probeIndex
+            }
+            ++$sceneIndex
+        }
+        $null = Test-V9xIntel3dCapture -Lines $s3
+
+        # Each of these removes evidence rather than corrupting it, because
+        # reporting on what is present instead of failing on what is absent is
+        # the defect this file has now had four times.
+        $s3Mutations = @(
+            @{ Drop = 'S2Crc='; Why = 'a scene missing its CRC' },
+            @{ Drop = 'S3Probes='; Why = 'a scene missing its probe count' },
+            @{ Drop = 'S4PX0007='; Why = 'the last probe of the last scene' },
+            @{ Drop = 'S0Centroid='; Why = 'a probe missing its expectation' },
+            @{ Drop = 'ScenesCompleted='
+               Why = 'a capture that says neither how far it got nor that it stopped' },
+            @{ Drop = 'ExpectedApertureReads='
+               Why = 'a capture with no read budget' },
+            @{ Drop = 'S1Id='; Why = 'a scene missing its id' }
+        )
+        foreach ($mutation in $s3Mutations) {
+            $broken = @($s3 | Where-Object { $_ -notlike ($mutation.Drop + '*') })
+            if ($broken.Count -eq $s3.Count) {
+                throw ("Self-test mutation '$($mutation.Why)' removed nothing; " +
+                       "it names a key the schema-3 fixture does not carry.")
+            }
+            $rejected = $false
+            try { $null = Test-V9xIntel3dCapture -Lines $broken }
+            catch { $rejected = $true }
+            if (-not $rejected) {
+                throw ('The Intel 3D capture validator accepted a schema-3 ' +
+                       "capture with $($mutation.Why) removed.")
+            }
+        }
+
+        # And two that corrupt rather than remove, so the check is not merely
+        # a presence test.
+        $s3Corruptions = @(
+            @{ From = 'Scenes={0:X8}' -f [int]$generated.SceneCount
+               To = 'Scenes=00000002'
+               Why = 'a scene count that is not the build''s' },
+            @{ From = 'S0Crc=' + @($generated.Scenes)[0].Crc
+               To = 'S0Crc=DEADBEEF'
+               Why = 'a scene CRC that is not the generated one' }
+        )
+        foreach ($mutation in $s3Corruptions) {
+            $broken = @($s3 | ForEach-Object {
+                if ($_ -ceq $mutation.From) { $mutation.To } else { $_ } })
+            if (($broken -join "`n") -ceq ($s3 -join "`n")) {
+                throw ("Self-test corruption '$($mutation.Why)' changed " +
+                       'nothing.')
+            }
+            $rejected = $false
+            try { $null = Test-V9xIntel3dCapture -Lines $broken }
+            catch { $rejected = $true }
+            if (-not $rejected) {
+                throw ('The Intel 3D capture validator accepted ' +
+                       "$($mutation.Why).")
+            }
+        }
+        Write-Output ('Intel 3D schema-3 self-test passed (' +
+                      "$($generated.SceneCount) scenes built from the " +
+                      "generated table, $($s3Mutations.Count) removals and " +
+                      "$($s3Corruptions.Count) corruptions rejected).")
     }
 
     Write-Output ("Intel 3D capture validator self-test passed (clean unarmed " +

@@ -280,6 +280,44 @@ if ($familyManifest.Id -eq 'intel-gma') {
         throw 'V9XARM5.BAT still contains an unsubstituted placeholder.'
     }
     Set-Content -LiteralPath (Join-Path $outputDir 'V9XARM5.BAT') -Value $arm5Lines -Encoding Ascii
+
+    # The Phase 6 armer, on the same terms and one gate further.
+    #
+    # Five draws in one boot is a DIFFERENT risk assessment from one, taken in
+    # the 2026-09-16 amendment to the Phase 5 errata decision. The Phase 5
+    # gate above does not cover it, so this file is produced only when that
+    # amendment is on record - and the check looks for the amendment's own
+    # text rather than merely for the file, because the file existed before
+    # the amendment was written to it.
+    $phase5Doc = @(Get-ChildItem -Path $phase5Glob -ErrorAction SilentlyContinue)
+    $amended = $false
+    foreach ($doc in $phase5Doc) {
+        if ((Get-Content -LiteralPath $doc.FullName -Raw) -match
+                '(?m)^## Amendment, 2026-09-16') {
+            $amended = $true
+        }
+    }
+    if (-not $amended) {
+        throw ('The Phase 5 errata decision carries no 2026-09-16 five-draw ' +
+               'amendment, so V9XARM6.BAT will not be produced. An armed ' +
+               'Phase 6 boot performs five draws and roughly 726 aperture ' +
+               'reads where the last boot that completed did one draw and ' +
+               '45 reads; the Phase 5 decision explicitly does not cover ' +
+               'that.')
+    }
+    $arm6Source = Join-Path $repoRoot 'packaging\win98se\V9XARM6.BAT'
+    $arm6Token = 'p6-{0:yyyyMMdd}-{1}' -f (Get-Date), $BuildId
+    $arm6Lines = @(Get-Content -LiteralPath $arm6Source | ForEach-Object {
+        $_.Replace('@@BUILDID@@', $BuildId).
+           Replace('@@SCENEARMCRC@@', $gen5.SceneArmCrc).
+           Replace('@@P4CRC@@', $gen5.P4Crc).
+           Replace('@@SCENECRC@@', $gen5.SceneCombinedCrc).
+           Replace('@@TOKEN@@', $arm6Token)
+    })
+    if (@($arm6Lines | Where-Object { $_ -match '@@' }).Count -ne 0) {
+        throw 'V9XARM6.BAT still contains an unsubstituted placeholder.'
+    }
+    Set-Content -LiteralPath (Join-Path $outputDir 'V9XARM6.BAT') -Value $arm6Lines -Encoding Ascii
 }
 
 $manifest = @(
@@ -334,6 +372,7 @@ $expectedPackageFiles = @(
 if ($familyManifest.Id -eq 'intel-gma') {
     $expectedPackageFiles += "V9XARM.BAT"
     $expectedPackageFiles += "V9XARM5.BAT"
+    $expectedPackageFiles += "V9XARM6.BAT"
 }
 $actualPackageFiles = @(Get-ChildItem -LiteralPath $outputDir -File |
     ForEach-Object { $_.Name } | Sort-Object)

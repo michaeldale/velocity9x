@@ -37,7 +37,12 @@ $cases = @(
 )
 
 $failures = 0
-foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
+# Named once. The summary line below counts this list rather than
+# restating its length, because a message that said "2 armers" while the
+# loop ran three is a number written in two places - which is the defect
+# this project keeps finding, and it had already happened here.
+$armers = @('V9XARM.BAT', 'V9XARM5.BAT', 'V9XARM6.BAT')
+foreach ($armer in $armers) {
     $source = Join-Path $repoRoot "packaging\win98se\$armer"
     if (-not (Test-Path -LiteralPath $source)) {
         throw "packaging\win98se\$armer is missing."
@@ -157,6 +162,6 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
 if ($failures -ne 0) {
     throw "Intel armer guard self-test: $failures case(s) behaved wrongly."
 }
-Write-Output ("Intel armer guard self-test passed (2 armers x " +
+Write-Output ("Intel armer guard self-test passed ($($armers.Count) armers x " +
               "$($cases.Count) arm-file states; refuses everything but an " +
               "explicit IntelIncomplete=0).")

@@ -84,28 +84,64 @@ Five is a bound, not a target. Raising it needs another decision recorded in
 that file, which is what the authorised-draw constant in the code exists to
 make visible.
 
-## The read budget, stated because it is the known hazard
+## The read budget, and the figure this plan had wrong by ten times
 
 Bulk aperture reads hang this part:
 [record](../decisions/2026-09-15-bulk-aperture-reads-hang-the-945gse.md).
-Three single reads succeeded and 153,600 hung. The current capture performs
-roughly 45 and completes.
+Three single reads succeeded and 153,600 hung. The Phase 5 capture that
+completed performed about 45.
 
-Scenes multiply reads. The budget is therefore explicit, published in the
-capture, and raised one step at a time:
+**This section previously said "four scenes, ~60 reads total". That was the
+probe count mistaken for the read count.** The probes are the smallest part of
+what a boot reads, and the budget rule below was being applied to the wrong
+quantity — which is worse than having no rule, because a tenth of the real
+figure looks like headroom.
 
-- Every capture publishes a running **total aperture read count**, not just a
-  per-scene one. A hang then names both the scene and the cumulative read at
-  which it stopped, which is the number this hazard is actually about.
-- The first bundled boot targets **four scenes, ~60 reads total**. That is
-  within a third of a factor of what already works.
-- No boot raises the total read count by more than roughly double the last
-  boot that completed.
+What a Phase 6 boot actually reads through the aperture:
 
-If a boot hangs, the read count at the stopping point is the measurement, and
-it goes in a decision record. That is the `-zc`-style bounded experiment the
-parent plan wanted and never got, obtained for free from work being done
-anyway.
+| Source | Reads | Why |
+|---|---|---|
+| Staging read-back | 330 | The mini-VDD reads back every dword it stages, one per dword across all five scenes |
+| Scene verify | 330 | Each scene's verify step compares its whole staged stream against the generated table |
+| Pixel probes | 52 | 14 + 14 + 8 + 8 + 8 |
+| Guards and heap | 14 | Both guards before the run and after each scene, heap probe either side |
+| **Total** | **~726** | |
+
+Against 45 on the last boot that completed. That is a factor of sixteen, not
+the factor of one-and-a-third the old figure implied.
+
+**This does not mean the boot is unsafe, and it does not mean it is safe.**
+What it means is that the number nobody had computed is large, and the
+comparison that matters — 726 against a hang measured at 153,600 and a success
+measured at 45 — sits in between with no evidence either side of it. The
+decision to spend the boot is a risk decision like the draw count was, and it
+is recorded as one rather than buried in a table.
+
+Every capture publishes the figures rather than assuming them:
+
+- `ExpectedApertureReads` before any read happens, so a hang is measured
+  against a number already on disk.
+- `DriverApertureReads`, incremented and flushed **before** each read the
+  driver makes, so a lock names the read rather than being inferred from the
+  gap where it stopped.
+- `MiniApertureReads`, computed from the scene table, for the reads the
+  mini-VDD makes on the driver's behalf. These are not observable from the
+  driver as they happen, which is exactly why they are computed and published
+  rather than counted.
+
+The rule stands, now applied to the right quantity: no boot raises the total
+aperture reads by more than roughly double the last boot that completed. This
+one raises it by sixteen times, so **the first Phase 6 boot is itself the
+experiment** — if it hangs, the count at the stopping point is the
+measurement, and it goes in a decision record.
+
+### The cheaper shape, if that is judged too large a step
+
+The verify step is 330 of the 726 and is a defence against staged memory
+changing between staging and submission. Running fewer scenes per boot scales
+everything linearly: two scenes is about 290 reads, which is six times the last
+success rather than sixteen. The scene count is one constant and the
+authorised bound is another, so this is a decision to take, not a rewrite.
 
 ## Build 1: five scenes
 
