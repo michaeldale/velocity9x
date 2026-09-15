@@ -347,7 +347,11 @@ Do not change resolution and do not open a DOS box on the armed boot.
 step. `IntentStep` says how far it reached: `stage-write`, `stage-mirror`,
 `stage-guard`, then `S05` to `S12` for the register and command steps.
 `PreconditionCode` and `StageFail` carry their own operands; the code tables
-are in `hardware-diagnostics.md`. A hang leaves `IntentStep` at the last
+are in `hardware-diagnostics.md`, including the `IntentStep` table
+itself - which that file did not actually contain until 2026-09-15, so
+this pointer resolved to nothing for the whole of Phase 4. Phase 5
+numbers its steps from 20, in hex, with no overlap, so a step number
+names its phase. A hang leaves `IntentStep` at the last
 flushed marker, which is what locates it on a machine with no serial port.
 
 If the machine hangs: photograph it, power-cycle, and copy `C:\V9XDIAG`

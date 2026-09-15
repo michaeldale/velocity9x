@@ -205,6 +205,46 @@ function Test-V9xIntel3dCapture {
                    'draw, so nothing was drawn.')
         }
     }
+    # The software reference, REPORTED and never failed on until a golden is
+    # promoted - the plan is explicit about that. The reference is
+    # src\display32\d3d\d3d_raster.c run host-side by the generator; it samples
+    # at pixel centres, the same convention the hardware's DSTORG half-pixel
+    # bias selects, which is why the two can agree at all.
+    #
+    # A one-pixel band along the triangle's edges is licensed to differ,
+    # because the packet audit did not establish the hardware's fill rule. The
+    # probes deliberately avoid the edges, so a disagreement at one of THEM is
+    # a real difference and worth reading - but it is still reported, because
+    # this comparison has never been run against hardware even once.
+    if ($generated.ContainsKey('ReferencePixels')) {
+        $mismatches = 0
+        for ($index = 0; $index -lt 14; ++$index) {
+            $key = 'PX{0:X4}' -f $index
+            if (-not $values.ContainsKey($key)) { continue }
+            $actual = Get-V9x3dHex32 -Values $values -Key $key
+            $expected = [Convert]::ToUInt32($generated.ReferencePixels[$index], 16)
+            # The capture reads a dword - two 16-bit pixels - so compare the
+            # half the probe's column selects. Both halves should hold the same
+            # value inside a flat-filled region, and comparing the low half is
+            # what the even-column probes address.
+            if (($actual -band 0xffff) -ne $expected) {
+                Write-Warning ("Probe $key reads " +
+                               ('{0:X8}' -f $actual) +
+                               ' where the software reference says ' +
+                               ('{0:X4}' -f $expected) + '.')
+                ++$mismatches
+            }
+        }
+        if ($mismatches -ne 0) {
+            $notes += ("$mismatches of 14 pixel probes disagree with the " +
+                       'software reference. REPORTED, not failed: this ' +
+                       'comparison has never run against hardware, and no ' +
+                       'golden has been promoted.')
+        } else {
+            $notes += 'All 14 pixel probes agree with the software reference.'
+        }
+    }
+
     # In-reserve guards must be untouched. These are ours, unlike HeapProbe.
     foreach ($pair in @(@{ Before = 'GLow0'; After = 'GLow1'; What = 'lower' },
                         @{ Before = 'GUpp0'; After = 'GUpp1'; What = 'upper' })) {

@@ -195,6 +195,44 @@ $dataLines.Add('    )')
 $dataLines.Add("    Phase5Stream = @(")
 foreach ($text in $p5) { $dataLines.Add(("        '{0}'" -f $text)) }
 $dataLines.Add('    )')
+
+# The software reference: what src\display32\d3d\d3d_raster.c produces for the
+# same triangle, run host-side. It is the rasteriser this project already has,
+# already host-tested, and already sampling at pixel centres - the same
+# convention the hardware's DSTORG half-pixel bias selects, which is the whole
+# reason a software reference can agree with this hardware.
+#
+# The validator REPORTS a disagreement rather than failing on it, until a
+# golden is promoted. A one-pixel band along the edges is licensed to differ,
+# because the packet audit did not establish the hardware's fill rule.
+if ($values.ContainsKey('REFERROR')) {
+    throw "The software reference refused to rasterise: $($values['REFERROR'])."
+}
+foreach ($key in @('REFFILL', 'REFCOLOR')) {
+    if (-not $values.ContainsKey($key)) {
+        throw "The emitted stream is missing $key."
+    }
+}
+$dataLines.Add(("    ReferenceFill = '{0}'" -f $values['REFFILL']))
+$dataLines.Add(("    ReferenceColor = '{0}'" -f $values['REFCOLOR']))
+$dataLines.Add('    ReferencePixels = @(')
+for ($index = 0; $index -lt 14; ++$index) {
+    $key = 'REFPX{0:X4}' -f $index
+    if (-not $values.ContainsKey($key)) {
+        throw "The emitted stream is missing $key."
+    }
+    $dataLines.Add(("        '{0}'" -f $values[$key]))
+}
+$dataLines.Add('    )')
+$dataLines.Add('    ReferenceRows = @(')
+for ($index = 0; $index -lt 480; ++$index) {
+    $key = 'REFR{0:X4}' -f $index
+    if (-not $values.ContainsKey($key)) {
+        throw "The emitted stream is missing $key."
+    }
+    $dataLines.Add(("        '{0}'" -f $values[$key]))
+}
+$dataLines.Add('    )')
 $dataLines.Add('}')
 
 $dataText = ($dataLines -join "`r`n") + "`r`n"

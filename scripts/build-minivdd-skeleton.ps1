@@ -3,6 +3,11 @@ param(
     [string]$BuildId,
     [string]$DdkRoot = "C:\98DDK",
     [switch]$DisableVbeCollect,
+    # Assemble the Phase 5 staging and execute arms. Off by
+    # default, and deliberately NOT derived from the family:
+    # an armed Phase 5 boot drives the GPU with 3D packets,
+    # which the 2026-09-13 errata decision does not cover.
+    [switch]$Phase5Submit,
     # Assemble in the set-and-ask-again mode sweep. Off by default and
     # deliberately so: it issues 4F02h into the real video BIOS at
     # Device_Init, which is a heavier call than the collection's and can hang
@@ -395,6 +400,11 @@ if ($s3Dpms) {
 if ($intelMmio) {
     $assemblerArguments = @("-DV9X_INTEL_MMIO_FINGERPRINT") + $assemblerArguments
     $assemblerArguments = @("-DV9X_I9XX_FIRST_WRITE_EXECUTOR") + $assemblerArguments
+    if ($Phase5Submit) {
+        # Turning this on is a choice a human makes per build;
+        # it must never become a property of the family.
+        $assemblerArguments = @("-DV9X_I9XX_PHASE5_SUBMIT") + $assemblerArguments
+    }
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

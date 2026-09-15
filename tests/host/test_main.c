@@ -8,6 +8,7 @@
 #include "velocity9x/s3_virge.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
+#include "../../src/display32/d3d/d3d_raster.h"
 
 /* tests\host\test_family_matrix.c: assertions against the manifest-generated
  * family matrix. It keeps its own failure count and returns it. */
@@ -636,6 +637,120 @@ static void emit_dword_table(const char *prefix, v9x_u32 base,
     }
 }
 
+
+/*
+ * The software reference for Phase 5's triangle.
+ *
+ * src\display32\d3d\d3d_raster.c is the CPU rasteriser this project already
+ * has, already host-tested, and already sampling at (x + 0.5, y + 0.5) - which
+ * is the same pixel-centre convention the hardware's DSTORG half-pixel bias
+ * selects (docs\decisions\2026-09-14-intel-gen3-3d-packet-audit.md section 4).
+ * That correspondence is why a software reference can agree with this hardware
+ * at all, and it is the reason to use this rasteriser rather than write a
+ * fourth point-in-triangle test.
+ *
+ * It runs HOST-SIDE ONLY. Nothing here goes near the netbook: the driver
+ * reports what the GPU produced and this says what it should have been, and
+ * the comparison happens in the validator where a disagreement is cheap.
+ *
+ * The comparison is REPORTED, not failed, until a golden is promoted - the
+ * plan is explicit about that, and so is the validator. A one-pixel band along
+ * the edges is licensed to differ, because the audit did not establish the
+ * hardware's fill rule and this rasteriser's is its own.
+ */
+static void emit_intel_3d_reference(void)
+{
+    static v9x_u16 pixels[V9X_I9XX_TARGET_WIDTH * V9X_I9XX_TARGET_HEIGHT];
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_VERTEX vertices[3];
+    v9x_u32 index;
+    v9x_u32 row;
+    v9x_u32 column;
+
+    /* The fill first, exactly as the sequencer fills before drawing. */
+    for (index = 0ul;
+         index < V9X_I9XX_TARGET_WIDTH * V9X_I9XX_TARGET_HEIGHT; ++index) {
+        pixels[index] = (v9x_u16)V9X_I9XX_FILL_RGB565;
+    }
+
+    target.pixels = pixels;
+    target.pitch = V9X_I9XX_TARGET_PITCH;
+    target.width = V9X_I9XX_TARGET_WIDTH;
+    target.height = V9X_I9XX_TARGET_HEIGHT;
+    target.format = V9X_D3D_RASTER_PIXFMT_RGB565;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        vertices[index].z = 0;
+        vertices[index].u = 0;
+        vertices[index].v = 0;
+        /* The same colour at every vertex, which is what makes flat versus
+         * smooth shading moot on the hardware and makes the interpolator
+         * here produce a flat fill rather than a gradient. */
+        vertices[index].red = 0xf8;
+        vertices[index].green = 0x64;
+        vertices[index].blue = 0x28;
+        vertices[index].alpha = 0xff;
+    }
+    /*
+     * The rasteriser takes SUBPIXEL coordinates - four fractional bits, so
+     * sixteen units per pixel. Passing whole pixels draws the triangle at
+     * one sixteenth scale in the corner, which is what happened first and
+     * which every probe then missed. The hardware takes floats in whole
+     * pixels; this is the one place the two conventions differ, so the
+     * shift is explicit rather than folded into the constants.
+     */
+    vertices[0].x = V9X_I9XX_TRI_X0 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    vertices[0].y = V9X_I9XX_TRI_Y0 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    vertices[1].x = V9X_I9XX_TRI_X1 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    vertices[1].y = V9X_I9XX_TRI_Y1 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    vertices[2].x = V9X_I9XX_TRI_X2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    vertices[2].y = V9X_I9XX_TRI_Y2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
+
+    if (v9x_d3d_raster_triangle(&target, 0, 0, 0, vertices) == 0) {
+        printf("REFERROR=raster\n");
+        return;
+    }
+
+    printf("REFFILL=%08lX\n", (unsigned long)V9X_I9XX_FILL_RGB565);
+    printf("REFCOLOR=%08lX\n",
+           (unsigned long)v9x_d3d_raster_rgb565(0xf8, 0x64, 0x28));
+
+    /*
+     * The fourteen named probes the capture reports, at the same coordinates
+     * intel_3d16.c samples. Emitted as the 16-bit pixel the reference produced,
+     * so the validator compares like with like rather than re-deriving
+     * "inside" from geometry.
+     */
+    for (index = 0ul; index < 14ul; ++index) {
+        static const v9x_u16 probe_x[14] = {
+            320u, 175u, 465u, 320u, 320u, 250u, 390u,
+            0u, 639u, 0u, 639u, 320u, 40u, 600u
+        };
+        static const v9x_u16 probe_y[14] = {
+            213u, 128u, 128u, 385u, 130u, 250u, 250u,
+            0u, 0u, 479u, 479u, 40u, 400u, 400u
+        };
+        printf("REFPX%04X=%08lX\n", (unsigned int)index,
+               (unsigned long)pixels[(v9x_u32)probe_y[index] *
+                                     V9X_I9XX_TARGET_WIDTH +
+                                     (v9x_u32)probe_x[index]]);
+    }
+
+    /* Row checksums, folded exactly as the sequencer folds them: one XOR of
+     * every dword across the row. */
+    for (row = 0ul; row < V9X_I9XX_TARGET_HEIGHT; ++row) {
+        v9x_u32 crc = 0xfffffffful;
+        for (column = 0ul; column < V9X_I9XX_TARGET_WIDTH; column += 2ul) {
+            v9x_u32 pair =
+                (v9x_u32)pixels[row * V9X_I9XX_TARGET_WIDTH + column] |
+                ((v9x_u32)pixels[row * V9X_I9XX_TARGET_WIDTH + column + 1ul]
+                 << 16);
+            crc ^= pair;
+        }
+        printf("REFR%04X=%08lX\n", (unsigned int)row, (unsigned long)crc);
+    }
+}
+
 static int emit_intel_3d_stream(void)
 {
     struct v9x_i9xx_sandbox_layout layout;
@@ -716,6 +831,7 @@ static int emit_intel_3d_stream(void)
     printf("P5CRC=%08lX\n", (unsigned long)phase5_crc);
     printf("COMBINEDCRC=%08lX\n",
            (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
+    emit_intel_3d_reference();
     return 0;
 }
 

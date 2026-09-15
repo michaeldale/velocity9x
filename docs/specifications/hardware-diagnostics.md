@@ -172,6 +172,67 @@ earlier in the same file.
 | `11` | EIR is not clear |
 | `12` | ESR is not clear |
 
+
+### IntentStep
+
+The runbook points here for this table and it was never written, which is
+the kind of gap only a hang reveals. `IntentStep` is flushed **before** each
+action, never after, so a machine that stops leaves the step it was about
+to attempt rather than the last one that finished. On hardware with no
+serial port that distinction is the whole diagnosis.
+
+Phase 4 writes three named markers, then one per numbered step:
+
+| Value | Meaning |
+|---|---|
+| `stage-write` | staging a dword into the ring through the mini-VDD |
+| `stage-mirror` | mirroring the staged stream through GMADR |
+| `stage-guard` | writing the scratch guard pattern |
+| `stage` | the staging sequence as a whole |
+| `execute` | the execution sequence as a whole |
+| `S05` | program the ring registers |
+| `S06` | submit the MI probe and drain |
+| `S07` | wrap the full ring with NOOPs and drain |
+| `S08` | submit the probe again and drain |
+| `S09` | submit the colour BLT and drain |
+| `S10` | verify the scratch contents |
+| `S11` | tear the ring down |
+| `S12` | post-snapshot comparison |
+
+Phase 5 numbers **from 20**, with no overlap, so a step number names its
+phase with no cross-reference. That is deliberate: Phase 4 and Phase 5 run
+in the same boot, and a shared numbering would make a hang ambiguous about
+which one was executing.
+
+| Value | Meaning |
+|---|---|
+| `00000014` (20) | preflight |
+| `00000015` (21) | record the armed intent |
+| `00000016` (22) | bulk-fill the render target |
+| `00000017` (23) | hash the filled target |
+| `00000018` (24) | stage the 3D stream |
+| `00000019` (25) | verify the staged stream against the table |
+| `0000001A` (26) | submit state, shader and MI probe; drain |
+| `0000001B` (27) | submit the primitive and vertices; drain |
+| `0000001C` (28) | hash the drawn target |
+| `0000001D` (29) | 480 row CRCs |
+| `0000001E` (30) | named per-pixel probes |
+
+Phase 5 writes the number in hex rather than an `Snn` name, because its
+capture is machine-read by `check-intel-3d-capture.ps1` and every other
+value in that file is eight hex digits.
+
+**26 and 27 are separate on purpose.** A drain at 26 followed by a stall at
+27 says the ring is alive and the state block was accepted, and the
+primitive is what hung. One submission could not tell those apart, and the
+plan treats them very differently: the second is the reproduce-once-then-kill
+case, because fixing it would mean trying packet variants.
+
+Two step numbers exist but are currently unreachable. Steps 24 and 25 are
+reserved in `intel_3d16.c` and not used, because the sequencer does not yet
+drive the mini-VDD staging that now exists. Reserving them keeps the
+namespace stable so captures from before and after stay comparable.
+
 ### StageFail
 
 `Result=GTT-MIRROR-FAILED` means the ten dwords and the guard pattern were
@@ -188,9 +249,27 @@ staged into the reserve but did not read back. It publishes `StageFail`,
 | `06` | The scratch guard pattern failed the GMADR read |
 
 `01` publishes `StageVxdFail`, the mini-VDD's own reason: `01` physical base,
-`02` MMIO base, `03` no Phase 1 capture, `04` out-of-order index, `05` index
-bound, `06` value outside the reviewed stream, `07` `_MapPhysToLinear` refused
-the reserve, `08` no mapping at write time, `09` the store did not read back.
+`02` MMIO base, `03` no Phase 1 capture, `04` out-of-order index **for
+that phase**, `05` index past **that phase's** table, `06` value outside
+the reviewed stream, `07` `_MapPhysToLinear` refused the reserve, `08`
+no mapping at write time, `10` the store did not read back, `11` the
+phase was neither 4 nor 5, or Phase 5 staging is compiled out.
+
+Two corrections, because this table said otherwise until 2026-09-15.
+
+**There is no `09`.** The read-back refusal is `10`, and it is *non-fatal*.
+The bytes the GPU fetches go through the GMADR aperture, so a store through
+the physical mapping that does not read back is recorded rather than treated
+as a failure. The value check at `06` is what gates the stream; this round
+trip never was a security property. See
+`decisions/2026-09-14-intel-phase4-first-write-the-gpu-executed-a-blit.md`.
+
+**`04` and `05` are per phase.** Staging keeps two tables and two counters,
+and the two streams live in disjoint ring regions, so a Phase 4 dword cannot
+be staged into a Phase 5 slot. A refusal names a bound in *the phase the
+caller asked for* - and the caller cannot get that wrong by accident,
+because the phase is pinned by which thunk was called rather than passed as
+an argument.
 
 `SnnFailure` is the mini-VDD's reason for a step: `00` success, `01` the ring
 registers were not zero at entry, `02` the poll timed out, `03` refused before
