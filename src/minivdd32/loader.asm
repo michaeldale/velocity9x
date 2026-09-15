@@ -166,9 +166,17 @@ V9xI9xxEventContext dd 0
 V9xI9xxRingLinear   dd 0
 V9xI9xxRingStaged   dw 0
 V9xI9xxRingResult   dw 0
-V9xI9xxRingExpected dd 00000000h, 02000000h
-                    dd 54300004h, 03f00020h, 00000000h, 00080008h
-                    dd 006c1100h, 55aa33cch, 02000000h, 00000000h
+; The Intel Phase 4 and Phase 5 arm tables, their CRCs and the reserve
+; offsets, rendered from the compiled C builders in src\chipsets\intel by
+; scripts\gen-intel-3d-stream.ps1. It is included HERE rather than with
+; the contract includes at the top because it emits data and must land in
+; this segment. Hand-maintained copies of these numbers drifted three ways
+; at the Phase 5 layout move; this is the fix.
+include i9xx3d.inc
+
+; Every existing reference keeps working through this alias, and the
+; table itself has exactly one definition.
+V9xI9xxRingExpected EQU V9xI9xxPhase4Table
 V9xI9xxRingDiagOffsets dd 00002088h, 0000208ch, 00002090h
                         dd 000020c8h, 000020b0h, 000020b4h, 000020b8h
                         dd 0000203ch, 00002038h
@@ -1386,7 +1394,7 @@ BeginProc V9xMini_I9xx_Ring_Execute
     cmp     V9xI9xxRingStaged, 10
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 6
-    cmp     V9xI9xxRingExecCrc, 0a0da64a1h
+    cmp     V9xI9xxRingExecCrc, V9X_I9XX_P4_CRC
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 7
     cmp     V9xI9xxMmioBase, 0fe980000h
@@ -1455,8 +1463,8 @@ V9xMini_I9xx_Ring_Execute_CheckStream:
     mov     dword ptr [esi+02030h], 0
     cmp     dword ptr [esi+02030h], 0
     jne     V9xMini_I9xx_Ring_Execute_Poison
-    mov     dword ptr [esi+02038h], 006b0000h
-    cmp     dword ptr [esi+02038h], 006b0000h
+    mov     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [esi+0203ch], 0000f001h
     mov     eax, [esi+0203ch]

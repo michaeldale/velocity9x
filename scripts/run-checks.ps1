@@ -74,6 +74,13 @@ if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")
     }
+    # Immediately after, because it uses the binary build-host just produced.
+    # The checked-in Intel arm tables must be byte-for-byte what the compiled
+    # builders emit; check-tree does the compiler-free half of this, and this
+    # is the half that needs the compiler.
+    Invoke-CheckStep "Intel 3D stream generator" {
+        & (Join-Path $PSScriptRoot "gen-intel-3d-stream.ps1") -Verify -SkipBuild
+    }
 }
 
 # build-all-packages runs each family's builder, which links, audits through

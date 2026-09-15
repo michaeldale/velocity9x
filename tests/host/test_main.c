@@ -6,6 +6,8 @@
 #include "velocity9x/backend_registry.h"
 #include "velocity9x/matrox_millennium2.h"
 #include "velocity9x/s3_virge.h"
+#include "velocity9x/intel_gma.h"
+#include "velocity9x/intel_gen3_3d.h"
 
 /* tests\host\test_family_matrix.c: assertions against the manifest-generated
  * family matrix. It keeps its own failure count and returns it. */
@@ -609,8 +611,121 @@ static void test_build_identity(void)
     CHECK(strcmp(expected, V9X_VERSION_STRING) == 0);
 }
 
-int main(void)
+
+/*
+ * --emit-intel-3d-stream: print the Phase 4 and Phase 5 streams and their
+ * CRCs, from the COMPILED BUILDERS.
+ *
+ * This exists so scripts\gen-intel-3d-stream.ps1 has a source of truth that is
+ * the same code the driver runs, rather than a fourth PowerShell
+ * reimplementation. The layout move at step 2 found three hand-maintained
+ * copies of one CRC stale at once; this is what stops that recurring.
+ *
+ * Output is deliberately flat and machine-readable - one KEY=VALUE per line,
+ * hex without a prefix - so the renderer does no parsing worth the name.
+ */
+static void emit_dword_table(const char *prefix, v9x_u32 base,
+                             const v9x_u32 *stream,
+                             v9x_u32 count)
 {
+    v9x_u32 index;
+    for (index = 0ul; index < count; ++index) {
+        printf("%s%04X=%08lX\n", prefix,
+               (unsigned int)(base + index),
+               (unsigned long)stream[index]);
+    }
+}
+
+static int emit_intel_3d_stream(void)
+{
+    struct v9x_i9xx_sandbox_layout layout;
+    struct v9x_i9xx_phase5_parameters parameters;
+    v9x_u32 phase5[160];
+    v9x_u32 probe[2];
+    v9x_u32 blt[8];
+    v9x_u32 written = 0ul;
+    v9x_u32 phase4_crc;
+    v9x_u32 phase5_crc;
+
+    if (v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) !=
+            V9X_STATUS_OK) {
+        printf("ERROR=layout\n");
+        return 1;
+    }
+    v9x_i9xx_phase5_parameters(&parameters);
+
+    /* Phase 4's stream, so its revised constants are generated from its own
+     * compiled builder rather than re-typed after the layout move. */
+    if (v9x_i9xx_build_mi_probe(probe, 2ul, &written) != V9X_STATUS_OK ||
+        written != 2ul) {
+        printf("ERROR=probe\n");
+        return 1;
+    }
+    if (v9x_i9xx_build_color_blt(
+            layout.scratch_offset + 0x100ul, 8u, 8u, 32u, 0x55aa33ccul,
+            layout.scratch_offset, layout.scratch_bytes,
+            blt, 6ul, &written) != V9X_STATUS_OK || written != 6ul) {
+        printf("ERROR=blt\n");
+        return 1;
+    }
+    blt[6] = V9X_I9XX_MI_FLUSH;
+    blt[7] = V9X_I9XX_MI_NOOP;
+    phase4_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
+
+    if (v9x_i9xx_build_phase5_stream(phase5, 160ul, &written) !=
+            V9X_STATUS_OK) {
+        printf("ERROR=phase5\n");
+        return 1;
+    }
+    phase5_crc = v9x_i9xx_phase5_execution_crc();
+
+    printf("SCHEMA=1\n");
+    printf("RESERVEOFFSET=%08lX\n", (unsigned long)layout.reserve_offset);
+    printf("RINGSTART=%08lX\n", (unsigned long)layout.ring_offset);
+    printf("SCRATCHOFFSET=%08lX\n", (unsigned long)layout.scratch_offset);
+    printf("TARGETOFFSET=%08lX\n", (unsigned long)layout.target_offset);
+    printf("TARGETPITCH=%08lX\n", (unsigned long)layout.target_pitch);
+    printf("TARGETBYTES=%08lX\n", (unsigned long)layout.target_bytes);
+    printf("GUARDUPPER=%08lX\n", (unsigned long)layout.guard_upper_offset);
+    printf("FILLWORD=%08lX\n", (unsigned long)parameters.fill_word);
+    printf("TRICOLOR=%08lX\n", (unsigned long)parameters.triangle_color);
+    printf("P4COUNT=%04X\n", 10u);
+    emit_dword_table("P4", 0ul, probe, 2ul);
+    emit_dword_table("P4", 2ul, blt, 8ul);
+    /*
+     * Two Phase 4 CRCs, because they cover different things. The PACKET
+     * CRC is over the ten staged dwords and is recomputable from the
+     * table, which is what lets check-tree verify the generated file with
+     * no compiler. The EXECUTION CRC additionally covers the full-ring
+     * NOOP wrap the mini-VDD submits between the probes, so it cannot be
+     * derived from the table at all - only the compiled builder knows it.
+     */
+    {
+        v9x_u32 packet[10];
+        v9x_u32 copy;
+        for (copy = 0ul; copy < 2ul; ++copy) { packet[copy] = probe[copy]; }
+        for (copy = 0ul; copy < 8ul; ++copy) {
+            packet[copy + 2ul] = blt[copy];
+        }
+        printf("P4PACKETCRC=%08lX\n",
+               (unsigned long)v9x_i9xx_crc32_dwords(packet, 10ul));
+    }
+    printf("P4CRC=%08lX\n", (unsigned long)phase4_crc);
+    printf("P5COUNT=%04X\n", (unsigned int)written);
+    emit_dword_table("P5", 0ul, phase5, written);
+    printf("P5CRC=%08lX\n", (unsigned long)phase5_crc);
+    printf("COMBINEDCRC=%08lX\n",
+           (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 2 && strcmp(argv[1], "--emit-intel-3d-stream") == 0) {
+        return emit_intel_3d_stream();
+    }
+    (void)argc;
+    (void)argv;
     test_mode_layout();
     test_mode_layout_rejects_bad_arguments();
     test_mode_layout_overflow();

@@ -51,6 +51,14 @@
 #define V9X_I9XX_BLT_ROP_PATCOPY         ((v9x_u32)0x00f00000ul)
 #define V9X_I9XX_BLT_DEPTH_32            ((v9x_u32)0x03000000ul)
 #define V9X_I9XX_PHASE4                  ((v9x_u16)4u)
+/*
+ * Phase 5 is a separate arm phase, not a flag on Phase 4. The whole
+ * purpose is that a token authorising a blitter fill cannot authorise a
+ * 3D draw: the 2026-09-13 risk decision opens the errata gate for Phase 4
+ * specifically, on an argument about minimal processor-to-graphics
+ * interaction that does not transfer to a triangle.
+ */
+#define V9X_I9XX_PHASE5                  ((v9x_u16)5u)
 #define V9X_I9XX_ARM_TOKEN_MAX           ((v9x_u16)63u)
 
 #define V9X_I9XX_ARM_REJECT_NONE         ((v9x_u16)0u)
@@ -262,12 +270,34 @@ struct v9x_i9xx_arm_request {
     v9x_u16 device_id;
     v9x_u16 revision;
     v9x_u16 phase;
+    /*
+     * What the CALLER is arming, as distinct from what the token claims.
+     * v9x_i9xx_arm_evaluate used to hardcode Phase 4 on both sides, so a
+     * Phase 5 caller could not express the question at all. The two must
+     * match, which is what stops a Phase 4 token reaching Phase 5.
+     */
+    v9x_u16 expected_phase;
 };
 
+/*
+ * One sequence machine, parameterised by a step range, so Phase 4 and
+ * Phase 5 can use disjoint step numbers and a log line is never
+ * ambiguous about which phase produced it. Phase 5 numbers from 20.
+ *
+ * The struct keeps its name and the Phase 4 entry points stay as thin
+ * wrappers, so intel_exec16.c and its twelve existing tests are untouched.
+ */
 struct v9x_i9xx_phase4_sequence {
     v9x_u16 completed_step;
     v9x_u16 poisoned;
+    v9x_u16 first_step;
+    v9x_u16 last_step;
 };
+
+/* Phase 5 sequencer steps, numbered from 20 so a hang is attributable to
+ * a phase from the step number alone. */
+#define V9X_I9XX_P5_STEP_FIRST           ((v9x_u16)20u)
+#define V9X_I9XX_P5_STEP_LAST            ((v9x_u16)30u)
 
 /* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
 struct v9x_i9xx_gtt_inventory {
@@ -356,6 +386,62 @@ v9x_u16 v9x_i9xx_parse_crc_hex(const char *text, v9x_u32 *value);
 v9x_status v9x_i9xx_arm_evaluate(
     const struct v9x_i9xx_arm_request *request, v9x_u16 *rejection);
 void v9x_i9xx_phase4_sequence_begin(struct v9x_i9xx_phase4_sequence *state);
+void v9x_i9xx_sequence_begin_range(
+    struct v9x_i9xx_phase4_sequence *state,
+    v9x_u16 first_step, v9x_u16 last_step);
+void v9x_i9xx_phase5_sequence_begin(
+    struct v9x_i9xx_phase4_sequence *state);
+
+/*
+ * The two-phase arm transaction.
+ *
+ * Phase 5 cannot simply reuse the Phase 4 arm path. That path compares
+ * the on-disk CRC with the Phase 4 execution CRC and, on success,
+ * records the final result and clears IntelInFlight. A Phase 5 token
+ * carrying a Phase 5 CRC can therefore neither pass that preflight nor
+ * retain its authority until the draw.
+ *
+ * So a chained run is one transaction over two executions: the Phase 4
+ * replay must still pass its own generated stream and CRC gate, but the
+ * token is not completed and IntelInFlight is not cleared until the
+ * Phase 5 result is known. A power cut between the phases therefore
+ * leaves the token in flight, which is what makes the one-shot property
+ * survive the chain.
+ */
+#define V9X_I9XX_CHAIN_OK               ((v9x_u16)0u)
+#define V9X_I9XX_CHAIN_REJECT_PHASE     ((v9x_u16)1u)
+#define V9X_I9XX_CHAIN_REJECT_ARM       ((v9x_u16)2u)
+#define V9X_I9XX_CHAIN_REJECT_COMBINED  ((v9x_u16)3u)
+#define V9X_I9XX_CHAIN_REJECT_REPLAY    ((v9x_u16)4u)
+#define V9X_I9XX_CHAIN_REJECT_P4_CRC    ((v9x_u16)5u)
+#define V9X_I9XX_CHAIN_REJECT_P5_CRC    ((v9x_u16)6u)
+
+/* Where a chained run has got to. Completion is the ONLY state in which
+ * the token may be retired and IntelInFlight cleared. */
+#define V9X_I9XX_CHAIN_STATE_IDLE       ((v9x_u16)0u)
+#define V9X_I9XX_CHAIN_STATE_ARMED      ((v9x_u16)1u)
+#define V9X_I9XX_CHAIN_STATE_REPLAYED   ((v9x_u16)2u)
+#define V9X_I9XX_CHAIN_STATE_DREW       ((v9x_u16)3u)
+#define V9X_I9XX_CHAIN_STATE_FAILED     ((v9x_u16)4u)
+
+struct v9x_i9xx_chain {
+    v9x_u16 state;
+    v9x_u16 token_retired;
+    v9x_u16 in_flight_cleared;
+};
+
+v9x_u16 v9x_i9xx_chain_begin(
+    struct v9x_i9xx_chain *chain,
+    const struct v9x_i9xx_arm_request *request,
+    v9x_u32 combined_crc, v9x_u32 phase4_crc, v9x_u32 phase5_crc);
+v9x_u16 v9x_i9xx_chain_replay_done(
+    struct v9x_i9xx_chain *chain, v9x_u16 replay_passed,
+    v9x_u32 observed_phase4_crc, v9x_u32 expected_phase4_crc);
+v9x_u16 v9x_i9xx_chain_draw_done(
+    struct v9x_i9xx_chain *chain, v9x_u16 draw_passed,
+    v9x_u32 observed_phase5_crc, v9x_u32 expected_phase5_crc);
+v9x_u32 v9x_i9xx_combined_arm_crc(v9x_u32 phase4_crc,
+                                   v9x_u32 phase5_crc);
 v9x_status v9x_i9xx_phase4_sequence_commit(
     struct v9x_i9xx_phase4_sequence *state, v9x_u16 step);
 void v9x_i9xx_phase4_sequence_poison(

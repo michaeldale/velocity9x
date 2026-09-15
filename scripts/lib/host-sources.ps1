@@ -40,6 +40,7 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_vertex.c',
         'src\chipsets\intel\i9xx_3d_stream.c',
         'src\chipsets\intel\i9xx_3d_decode.c',
+        'src\chipsets\intel\i9xx_chain.c',
         # Pure rasterizer arithmetic: no DDHAL, MMIO or assembly dependencies.
         'src\display32\d3d\d3d_raster.c'
     ) + $backendSourceNames + @(

@@ -131,7 +131,18 @@ v9x_status v9x_i9xx_arm_evaluate(
         *rejection = V9X_I9XX_ARM_REJECT_IDENTITY;
         return V9X_STATUS_UNSUPPORTED;
     }
-    if (request->phase != V9X_I9XX_PHASE4) {
+    /*
+     * The phase the token carries must be one we know AND must be the
+     * phase the caller is arming. This used to compare against a
+     * hardcoded V9X_I9XX_PHASE4 on both sides, which made "is this a
+     * Phase 4 token being used to arm Phase 5?" an unaskable question.
+     */
+    if (request->phase != V9X_I9XX_PHASE4 &&
+        request->phase != V9X_I9XX_PHASE5) {
+        *rejection = V9X_I9XX_ARM_REJECT_PHASE;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (request->phase != request->expected_phase) {
         *rejection = V9X_I9XX_ARM_REJECT_PHASE;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -150,11 +161,34 @@ v9x_status v9x_i9xx_arm_evaluate(
     return V9X_STATUS_OK;
 }
 
-void v9x_i9xx_phase4_sequence_begin(struct v9x_i9xx_phase4_sequence *state)
+void v9x_i9xx_sequence_begin_range(
+    struct v9x_i9xx_phase4_sequence *state,
+    v9x_u16 first_step, v9x_u16 last_step)
 {
     if (state == 0) { return; }
-    state->completed_step = 0u;
+    state->completed_step = (v9x_u16)(first_step - 1u);
     state->poisoned = V9X_FALSE;
+    state->first_step = first_step;
+    state->last_step = last_step;
+    /* An inverted or empty range would accept nothing and poison on the
+     * first commit, which is a confusing way to report a caller bug. */
+    if (first_step == 0u || last_step < first_step) {
+        state->poisoned = V9X_TRUE;
+    }
+}
+
+/* Thin wrappers, so intel_exec16.c and its tests are untouched. */
+void v9x_i9xx_phase4_sequence_begin(struct v9x_i9xx_phase4_sequence *state)
+{
+    v9x_i9xx_sequence_begin_range(state, V9X_I9XX_P4_PREFLIGHT,
+                                  V9X_I9XX_P4_POST_SNAPSHOT);
+}
+
+void v9x_i9xx_phase5_sequence_begin(
+    struct v9x_i9xx_phase4_sequence *state)
+{
+    v9x_i9xx_sequence_begin_range(state, V9X_I9XX_P5_STEP_FIRST,
+                                  V9X_I9XX_P5_STEP_LAST);
 }
 
 v9x_status v9x_i9xx_phase4_sequence_commit(
@@ -162,8 +196,8 @@ v9x_status v9x_i9xx_phase4_sequence_commit(
 {
     if (state == 0) { return V9X_STATUS_INVALID_ARGUMENT; }
     if (state->poisoned != V9X_FALSE ||
-        step < V9X_I9XX_P4_PREFLIGHT ||
-        step > V9X_I9XX_P4_POST_SNAPSHOT ||
+        step < state->first_step ||
+        step > state->last_step ||
         step != state->completed_step + 1u) {
         state->poisoned = V9X_TRUE;
         return V9X_STATUS_INVALID_STATE;

@@ -360,11 +360,16 @@ Set-Content -LiteralPath $definitionFile -Encoding Ascii -Value @(
 $sourcePath = Join-Path $repoRoot "src\minivdd32\loader.asm"
 # include\asm holds V9XMAPI.INC, the mini-VDD API contract this and the 16-bit
 # driver both assemble from. $outputDir holds the generated V9XBUILD.INC.
+# src\minivdd32 also holds i9xx3d.inc, the Intel arm tables
+# rendered from the compiled C builders by gen-intel-3d-stream.ps1.
+# Checked in, so this build needs no generator step; run-checks verifies
+# it byte for byte against what the builders produce.
 $asmIncludeDir = Join-Path $repoRoot "include\asm"
+$minivddSourceDir = Join-Path $repoRoot "src\minivdd32"
 $assemblerArguments = @(
     "-coff", "-DBLD_COFF", "-W2", "-Zd", "-c", "-Cx",
     "-DMASM6", "-Sg", "-DVGA", "-DVGA31", "-DMINIVDD=1",
-    "-I$ddkInclude", "-I$asmIncludeDir", "-I$outputDir",
+    "-I$ddkInclude", "-I$asmIncludeDir", "-I$outputDir", "-I$minivddSourceDir",
     "-Fo$objectPath", $sourcePath
 )
 if ($DisableVbeCollect) {

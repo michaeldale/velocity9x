@@ -58,6 +58,7 @@ static void test_arm_contract(void)
     request.device_id = 0x27aeu;
     request.revision = 3u;
     request.phase = 4u;
+    request.expected_phase = 4u;
     CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) == V9X_STATUS_OK);
     CHECK(rejection == V9X_I9XX_ARM_REJECT_NONE);
 
@@ -85,11 +86,37 @@ static void test_arm_contract(void)
     CHECK(rejection == V9X_I9XX_ARM_REJECT_IDENTITY);
     request.device_id = 0x27aeu;
 
+    /*
+     * A Phase 5 token must not arm a Phase 4 caller, and a Phase 4 token
+     * must not arm a Phase 5 caller. This is the check that keeps the
+     * 2026-09-13 errata-gate decision - which covers Phase 4 only - from
+     * silently authorising a 3D draw.
+     */
     request.phase = 5u;
     CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(rejection == V9X_I9XX_ARM_REJECT_PHASE);
     request.phase = 4u;
+    request.expected_phase = 5u;
+    CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(rejection == V9X_I9XX_ARM_REJECT_PHASE);
+    request.expected_phase = 4u;
+    /* A phase neither side knows is still refused. */
+    request.phase = 6u;
+    request.expected_phase = 6u;
+    CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(rejection == V9X_I9XX_ARM_REJECT_PHASE);
+    request.phase = 4u;
+    request.expected_phase = 4u;
+    /* Phase 5 arming Phase 5 is accepted by the evaluator; whether the
+     * chain lets it RUN is a separate gate, tested below. */
+    request.phase = 5u;
+    request.expected_phase = 5u;
+    CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) == V9X_STATUS_OK);
+    request.phase = 4u;
+    request.expected_phase = 4u;
 
     request.in_flight = "phase4-test-002";
     CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) ==
@@ -144,10 +171,196 @@ static void test_phase4_sequence(void)
           V9X_STATUS_INVALID_STATE);
 }
 
+
+/*
+ * The two-phase arm transaction.
+ *
+ * The plan requires three properties be proved here, and each maps to one
+ * group below: a Phase 4 token cannot reach Phase 5, a Phase 5 token cannot
+ * skip a failed replay, and a power cut between the phases leaves the token
+ * in flight.
+ */
+static void v9x_chain_request(struct v9x_i9xx_arm_request *request,
+                              v9x_u16 phase, v9x_u16 expected_phase,
+                              v9x_u32 crc)
+{
+    request->token = "phase5-test-001";
+    request->in_flight = "phase5-test-001";
+    request->configured_crc = crc;
+    request->packet_crc = crc;
+    request->enable_this_boot = 1u;
+    request->safe_mode = V9X_FALSE;
+    request->errata_gate = V9X_TRUE;
+    request->vendor_id = 0x8086u;
+    request->device_id = 0x27aeu;
+    request->revision = 3u;
+    request->phase = phase;
+    request->expected_phase = expected_phase;
+}
+
+static void test_chain_token_phases(void)
+{
+    struct v9x_i9xx_arm_request request;
+    struct v9x_i9xx_chain chain;
+    const v9x_u32 p4 = 0xa0da64a1ul;
+    const v9x_u32 p5 = 0x78780722ul;
+    const v9x_u32 combined = v9x_i9xx_combined_arm_crc(p4, p5);
+
+    /* A Phase 4 token cannot reach Phase 5, however well-formed. */
+    v9x_chain_request(&request, V9X_I9XX_PHASE4, V9X_I9XX_PHASE5, combined);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_REJECT_PHASE);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_FAILED);
+    CHECK(chain.token_retired == V9X_FALSE);
+    CHECK(chain.in_flight_cleared == V9X_FALSE);
+
+    /* Nor can a Phase 5 token arm a caller that thinks it is doing Phase 4. */
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE4, combined);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_REJECT_PHASE);
+
+    /*
+     * A token carrying only the Phase 4 CRC is refused even with both phase
+     * fields set to 5 - the armed CRC must cover BOTH streams in execution
+     * order, which is what makes "what was reviewed" and "what runs" the same
+     * question.
+     */
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE5, p4);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_REJECT_COMBINED);
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE5, p5);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_REJECT_COMBINED);
+
+    /* The correct combined token is accepted. */
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE5, combined);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_ARMED);
+    CHECK(chain.token_retired == V9X_FALSE);
+}
+
+static void test_chain_cannot_skip_replay(void)
+{
+    struct v9x_i9xx_arm_request request;
+    struct v9x_i9xx_chain chain;
+    const v9x_u32 p4 = 0xa0da64a1ul;
+    const v9x_u32 p5 = 0x78780722ul;
+    const v9x_u32 combined = v9x_i9xx_combined_arm_crc(p4, p5);
+
+    /* Straight to the draw, with no replay reported at all. */
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE5, combined);
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_TRUE, p5, p5) ==
+          V9X_I9XX_CHAIN_REJECT_REPLAY);
+    CHECK(chain.token_retired == V9X_FALSE);
+
+    /* A replay that failed cannot be followed by a draw. */
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_FALSE, p4, p4) ==
+          V9X_I9XX_CHAIN_REJECT_REPLAY);
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_TRUE, p5, p5) ==
+          V9X_I9XX_CHAIN_REJECT_REPLAY);
+    CHECK(chain.token_retired == V9X_FALSE);
+
+    /*
+     * A replay that "passed" but produced the wrong CRC is also a failure:
+     * chaining widens what may be armed, it does not relax what each half has
+     * to prove.
+     */
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, p4 ^ 1ul, p4) ==
+          V9X_I9XX_CHAIN_REJECT_P4_CRC);
+    CHECK(chain.token_retired == V9X_FALSE);
+
+    /* Reporting the replay twice is out of order and refused. */
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, p4, p4) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, p4, p4) ==
+          V9X_I9XX_CHAIN_REJECT_REPLAY);
+}
+
+static void test_chain_power_cut_leaves_in_flight(void)
+{
+    struct v9x_i9xx_arm_request request;
+    struct v9x_i9xx_chain chain;
+    const v9x_u32 p4 = 0xa0da64a1ul;
+    const v9x_u32 p5 = 0x78780722ul;
+    const v9x_u32 combined = v9x_i9xx_combined_arm_crc(p4, p5);
+
+    v9x_chain_request(&request, V9X_I9XX_PHASE5, V9X_I9XX_PHASE5, combined);
+
+    /*
+     * A power cut is modelled as simply stopping: whatever state the chain is
+     * in, the token must not be retired and in-flight must not be cleared
+     * unless the draw completed. A token that silently became reusable after a
+     * hang would defeat the one-shot arm, which is the whole safety model.
+     */
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_ARMED);
+    CHECK(chain.in_flight_cleared == V9X_FALSE);   /* cut here */
+
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, p4, p4) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_REPLAYED);
+    /* The interesting one: Phase 4 has completed successfully, and the token
+     * is STILL in flight because the draw it authorised has not happened. */
+    CHECK(chain.token_retired == V9X_FALSE);
+    CHECK(chain.in_flight_cleared == V9X_FALSE);   /* cut here */
+
+    /* A failed draw leaves it in flight too. */
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_FALSE, p5, p5) ==
+          V9X_I9XX_CHAIN_REJECT_P5_CRC);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_FAILED);
+    CHECK(chain.in_flight_cleared == V9X_FALSE);
+
+    /* Only a completed draw retires the token, and it does both together. */
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, combined, p4, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, p4, p4) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_TRUE, p5, p5) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_DREW);
+    CHECK(chain.token_retired == V9X_TRUE);
+    CHECK(chain.in_flight_cleared == V9X_TRUE);
+}
+
+static void test_phase5_sequence_range(void)
+{
+    struct v9x_i9xx_phase4_sequence state;
+
+    /* Phase 5 numbers from 20, so a log line names its phase unambiguously. */
+    v9x_i9xx_phase5_sequence_begin(&state);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 20u) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 21u) == V9X_STATUS_OK);
+    /* A Phase 4 step number cannot be committed to a Phase 5 sequence. */
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 3u) !=
+          V9X_STATUS_OK);
+
+    v9x_i9xx_phase5_sequence_begin(&state);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 1u) != V9X_STATUS_OK);
+
+    /* And the Phase 4 wrapper still behaves exactly as it did. */
+    v9x_i9xx_phase4_sequence_begin(&state);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 1u) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_phase4_sequence_commit(&state, 20u) != V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_i9xx_arm_tests(void)
 {
     test_crc();
     test_arm_contract();
+    test_chain_token_phases();
+    test_chain_cannot_skip_replay();
+    test_chain_power_cut_leaves_in_flight();
+    test_phase5_sequence_range();
     test_phase4_sequence();
     return failures;
 }

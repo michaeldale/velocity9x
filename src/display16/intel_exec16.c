@@ -269,6 +269,9 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.device_id = 0x27aeu;
     request.revision = V9xPciReadIntelRevision();
     request.phase = V9X_I9XX_PHASE4;
+    /* This is the standalone Phase 4 arm path; it arms Phase 4 and
+     * nothing else. The two-phase chain states its own expectation. */
+    request.expected_phase = V9X_I9XX_PHASE4;
     if (v9x_i9xx_arm_evaluate(&request, &rejection) != V9X_STATUS_OK) {
         v9x_p4_pre_rejection = rejection;
         return V9X_P4_PRE_ARM;
