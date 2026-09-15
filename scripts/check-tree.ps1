@@ -727,11 +727,20 @@ $intelRingExecute = [regex]::Match(
     '(?ms)^BeginProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Ring_Execute').Groups[1].Value
 # One count per ring register, pinned so a new MMIO store cannot appear in
 # the executor unnoticed. Phase 5's arms raised every one: 0203ch 3+2,
-# 02034h 2+2, 02030h 6+4, 02038h 2+2. Updated deliberately rather than
-# relaxed - if a count changes again, the change is what to review.
+# 02034h 2+2, 02030h 6+4, 02038h 2+2.
+#
+# Phase 6's arm raised them again, by SIX in total and each one accounted
+# for: four in its teardown, which returns CTL, HEAD, TAIL and START to zero
+# after every scene, and two submissions - the probe boundary and the draw.
+# The programming sequence is shared with Phase 5 rather than copied, which
+# is why it adds none.
+#
+# Updated deliberately rather than relaxed. If a count changes again, the
+# change is what to review - and the total below must keep accounting for
+# every store, so a new one cannot hide behind a raised per-register count.
 foreach ($store in @(
-        @('0203ch', 5), @('02034h', 4), @('02030h', 10),
-        @('02038h', 4))) {
+        @('0203ch', 6), @('02034h', 5), @('02030h', 13),
+        @('02038h', 5))) {
     $pattern = '(?im)^\s*mov\s+dword ptr\s+\[esi\+' + $store[0] + '\],'
     if ([regex]::Matches($intelRingExecute, $pattern).Count -ne $store[1]) {
         throw ("Intel ring register store count changed at $($store[0]). " +
@@ -740,7 +749,7 @@ foreach ($store in @(
     }
 }
 if ([regex]::Matches($intelRingExecute,
-        '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 23) {
+        '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 29) {
     throw ("The Intel executor has an unreviewed MMIO store. The four "+
            "per-register counts above must account for every one: any "+
            "store to a register NOT in that list would pass them and "+
@@ -1144,6 +1153,38 @@ foreach ($line in $intelIncLines) {
     }
     if ($line.Trim() -eq '') { $currentLabel = $null }
 }
+# The Phase 6 executor must take every bound from the generated directories.
+#
+# Same rule as the Phase 5 boundaries below, and the same reason: a literal
+# that was once correct is indistinguishable from one that still is. Here it
+# would be worse, because each scene has a different length and primitive
+# offset, so one literal cannot even be right for all five at once.
+if ($loaderText -match 'V9xMini_I9xx_Ring_Execute_P6Verify') {
+    foreach ($directory in @('V9xI9xxSceneDwords', 'V9xI9xxSceneCrc',
+                             'V9xI9xxSceneTables', 'V9xI9xxScenePrim')) {
+        if ($loaderText -notmatch [regex]::Escape($directory + '[edi*4]')) {
+            throw ("src\minivdd32\loader.asm has a Phase 6 executor that never " +
+                   "indexes $directory. Every per-scene bound comes from the " +
+                   'generated directories, or the executor and the arm tables ' +
+                   'can describe different scenes.')
+        }
+    }
+    # The scene asked for must be checked against the scene that was staged.
+    # A count alone would let one scene execute against another's staging.
+    if ($loaderText -notmatch 'cmp\s+V9xI9xxSceneStagedFor, edi') {
+        throw ('src\minivdd32\loader.asm does not check that the scene being ' +
+               'executed is the scene that was staged. The staged COUNT alone ' +
+               'does not establish which scene it counted.')
+    }
+    # And Phase 4 and 5 must clear the selection, so a stale scene index
+    # cannot survive into a phase that never looks at it.
+    if ($loaderText -notmatch 'mov\s+V9xI9xxExecScene, 0ffffffffh') {
+        throw ('src\minivdd32\loader.asm never clears V9xI9xxExecScene. A ' +
+               'Phase 6 selection left standing would be read by nothing and ' +
+               'believed by the next capture.')
+    }
+}
+
 # The executor's submission boundaries must come from the generated include.
 #
 # They were literals - 50 and 66 - correct for the 66-dword stream and silently

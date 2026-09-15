@@ -182,6 +182,21 @@ V9xI9xxStagePhase   dd 0
 ; 4's CRC whatever step it was given, so a Phase 5 step could only ever refuse
 ; with failure 6. Measured on the netbook 2026-09-15.
 V9xI9xxExecPhase    dd 0
+; Phase 6 scene staging and execution.
+;
+; ONE staged counter, not one per scene, because scenes are staged and
+; executed strictly one at a time. What replaces the per-phase counter as the
+; safety property is V9xI9xxSceneStagedFor: the counter records WHICH scene it
+; belongs to, and execute refuses unless the scene it was asked for is the one
+; that was staged. A count alone would let scene 2 execute against scene 3's
+; staging if a caller skipped a step.
+;
+; Both start at -1 rather than 0, so "nothing staged" is distinguishable from
+; "scene 0 staged". Zero would have made a missing select look like a valid
+; one, which is the class of defect the phase selector already exists for.
+V9xI9xxSceneStagedFor dd 0ffffffffh
+V9xI9xxSceneStaged  dd 0
+V9xI9xxExecScene    dd 0ffffffffh
 V9xI9xxStageTable   dd 0
 V9xI9xxStageBound   dd 0
 V9xI9xxStageRingOff dd 0
@@ -1334,7 +1349,9 @@ BeginProc V9xMini_I9xx_Ring_Stage
     ; even if a counter were wrong.
     mov     V9xI9xxRingStageFail, 11
     cmp     esi, 4
-    je      short V9xMini_I9xx_Ring_Stage_Phase4
+    je      V9xMini_I9xx_Ring_Stage_Phase4
+    cmp     esi, 6
+    je      V9xMini_I9xx_Ring_Stage_Phase6
     cmp     esi, 5
     jne     V9xMini_I9xx_Ring_Stage_Done
 IFDEF V9X_I9XX_PHASE5_SUBMIT
@@ -1342,12 +1359,48 @@ IFDEF V9X_I9XX_PHASE5_SUBMIT
     mov     V9xI9xxStageBound, V9X_I9XX_P5_DWORDS
     mov     V9xI9xxStageRingOff, V9X_I9XX_P5_RING_OFFSET
     movzx   ebx, V9xI9xxP5Staged
-    jmp     short V9xMini_I9xx_Ring_Stage_Selected
+    jmp     V9xMini_I9xx_Ring_Stage_Selected
 ELSE
     ; Phase 5 staging is compiled out. The verb refuses rather than
     ; silently accepting a dword it would never submit.
     jmp     V9xMini_I9xx_Ring_Stage_Done
 ENDIF
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+; Phase 6: one scene of the generated scene table, selected by EDI.
+;
+; The table, the bound and the primitive boundary all come from the generated
+; directories rather than from constants here, for the reason the executor's
+; submission boundaries now do: a number written in two places drifts, and the
+; literal 50 that survived the stream shrinking from 66 dwords to 63 is what
+; that costs.
+;
+; Scenes share Phase 5's ring region. They run one at a time and each tears
+; the ring down before the next programs it, so reusing the region is what
+; keeps the reserve bounded - and the teardown is what makes it safe.
+V9xMini_I9xx_Ring_Stage_Phase6:
+    mov     V9xI9xxRingStageFail, 12
+    cmp     edi, V9X_I9XX_SCENE_COUNT
+    jae     V9xMini_I9xx_Ring_Stage_Done
+    ; Index zero OPENS a scene; anything else must continue the one already
+    ; open. Without this a caller could stage half of scene 2, half of scene
+    ; 3, and present a full count to execute.
+    cmp     ecx, 0
+    jne     short V9xMini_I9xx_Ring_Stage_Phase6_Cont
+    mov     V9xI9xxSceneStagedFor, edi
+    mov     V9xI9xxSceneStaged, 0
+V9xMini_I9xx_Ring_Stage_Phase6_Cont:
+    mov     V9xI9xxRingStageFail, 13
+    cmp     V9xI9xxSceneStagedFor, edi
+    jne     V9xMini_I9xx_Ring_Stage_Done
+    mov     ebx, V9xI9xxSceneTables[edi*4]
+    mov     V9xI9xxStageTable, ebx
+    mov     ebx, V9xI9xxSceneDwords[edi*4]
+    mov     V9xI9xxStageBound, ebx
+    mov     V9xI9xxStageRingOff, V9X_I9XX_P5_RING_OFFSET
+    mov     ebx, V9xI9xxSceneStaged
+    jmp     V9xMini_I9xx_Ring_Stage_Selected
+ENDIF
+
 V9xMini_I9xx_Ring_Stage_Phase4:
     mov     V9xI9xxStageTable, OFFSET32 V9xI9xxPhase4Table
     mov     V9xI9xxStageBound, V9X_I9XX_P4_DWORDS
@@ -1438,7 +1491,12 @@ V9xMini_I9xx_Ring_Stage_Ok:
     jmp     short V9xMini_I9xx_Ring_Stage_OkDone
 V9xMini_I9xx_Ring_Stage_OkP5:
 IFDEF V9X_I9XX_PHASE5_SUBMIT
+    cmp     V9xI9xxStagePhase, 6
+    je      short V9xMini_I9xx_Ring_Stage_OkScene
     inc     V9xI9xxP5Staged
+    jmp     short V9xMini_I9xx_Ring_Stage_OkDone
+V9xMini_I9xx_Ring_Stage_OkScene:
+    inc     V9xI9xxSceneStaged
 ENDIF
 V9xMini_I9xx_Ring_Stage_OkDone:
     mov     V9xI9xxRingResult, 1
@@ -1505,8 +1563,18 @@ BeginProc V9xMini_I9xx_Ring_Execute
     cmp     ecx, 22
     jb      short V9xMini_I9xx_Ring_Execute_PhaseSet
     cmp     ecx, 26
-    ja      short V9xMini_I9xx_Ring_Execute_PhaseSet
+    ja      short V9xMini_I9xx_Ring_Execute_Phase6Step
     mov     V9xI9xxExecPhase, 5
+    jmp     short V9xMini_I9xx_Ring_Execute_PhaseSet
+V9xMini_I9xx_Ring_Execute_Phase6Step:
+    ; Phase 6, steps 32-36. Disjoint from Phase 4's 1-11 and Phase 5's 22-26
+    ; for the same reason those are disjoint from each other: a failure code
+    ; should name its phase without a cross-reference.
+    cmp     ecx, 32
+    jb      short V9xMini_I9xx_Ring_Execute_PhaseSet
+    cmp     ecx, 36
+    ja      short V9xMini_I9xx_Ring_Execute_PhaseSet
+    mov     V9xI9xxExecPhase, 6
 V9xMini_I9xx_Ring_Execute_PhaseSet:
     ; One code per refusal. Failure 3 used to cover every condition from here
     ; to the step dispatch, which is how S05Failure=3 said nothing on
@@ -1518,14 +1586,38 @@ V9xMini_I9xx_Ring_Execute_PhaseSet:
     ; failure 6 the CRC, in either phase - the codes keep their meanings so an
     ; old capture still reads correctly.
     mov     V9xI9xxRingFailure, 5
+    cmp     V9xI9xxExecPhase, 6
+    je      short V9xMini_I9xx_Ring_Execute_CheckP6
     cmp     V9xI9xxExecPhase, 5
-    je      short V9xMini_I9xx_Ring_Execute_CheckP5
+    je      V9xMini_I9xx_Ring_Execute_CheckP5
     cmp     V9xI9xxRingStaged, 10
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 6
     cmp     V9xI9xxRingExecCrc, V9X_I9XX_P4_CRC
     jne     V9xMini_I9xx_Ring_Execute_Done
+    jmp     V9xMini_I9xx_Ring_Execute_Gated
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+; Phase 6: the scene asked for must be the scene that was staged, staged in
+; full, and its CRC must be the one generated for THAT scene. Three separate
+; refusal codes: "not today" is what cost an armed boot on 2026-09-14.
+V9xMini_I9xx_Ring_Execute_CheckP6:
+    mov     V9xI9xxRingFailure, 30
+    mov     edi, V9xI9xxExecScene
+    cmp     edi, V9X_I9XX_SCENE_COUNT
+    jae     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 31
+    cmp     V9xI9xxSceneStagedFor, edi
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 5
+    mov     eax, V9xI9xxSceneDwords[edi*4]
+    cmp     V9xI9xxSceneStaged, eax
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 6
+    mov     eax, V9xI9xxSceneCrc[edi*4]
+    cmp     V9xI9xxRingExecCrc, eax
+    jne     V9xMini_I9xx_Ring_Execute_Done
     jmp     short V9xMini_I9xx_Ring_Execute_Gated
+ENDIF
 V9xMini_I9xx_Ring_Execute_CheckP5:
     movzx   eax, V9xI9xxP5Staged
     cmp     eax, V9X_I9XX_P5_DWORDS
@@ -1574,6 +1666,17 @@ IFDEF V9X_I9XX_PHASE5_SUBMIT
     je      V9xMini_I9xx_Ring_Execute_P5Draw
     cmp     ecx, 26
     je      V9xMini_I9xx_Ring_Execute_P5Teardown
+    ; Phase 6, one scene per five steps.
+    cmp     ecx, 32
+    je      V9xMini_I9xx_Ring_Execute_P6Verify
+    cmp     ecx, 33
+    je      V9xMini_I9xx_Ring_Execute_P6Program
+    cmp     ecx, 34
+    je      V9xMini_I9xx_Ring_Execute_P6Probe
+    cmp     ecx, 35
+    je      V9xMini_I9xx_Ring_Execute_P6Draw
+    cmp     ecx, 36
+    je      V9xMini_I9xx_Ring_Execute_P6Teardown
 ENDIF
     jmp     V9xMini_I9xx_Ring_Execute_Done
 
@@ -1771,10 +1874,21 @@ V9xMini_I9xx_Ring_Execute_P5Check:
     jne     V9xMini_I9xx_Ring_Execute_Done
     jmp     V9xMini_I9xx_Ring_Execute_Success
 
+; Phase 6 programs the ring identically - same registers, same order, same
+; region. Only the step it must follow differs, so the BODY is shared rather
+; than copied: a second copy of a register-programming sequence is the last
+; thing this file needs two of.
+V9xMini_I9xx_Ring_Execute_P6Program:
+    mov     V9xI9xxRingFailure, 24
+    cmp     V9xI9xxRingStep, 32
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    jmp     short V9xMini_I9xx_Ring_Execute_ProgramBody
+
 V9xMini_I9xx_Ring_Execute_P5Program:
     mov     V9xI9xxRingFailure, 24
     cmp     V9xI9xxRingStep, 22
     jne     V9xMini_I9xx_Ring_Execute_Done
+V9xMini_I9xx_Ring_Execute_ProgramBody:
     ; Phase 4 tore the ring down, so every register is expected at zero
     ; again. Re-programmed rather than reused: a ring left running across
     ; two phases would make a Phase 5 hang indistinguishable from a Phase 4
@@ -1805,6 +1919,114 @@ V9xMini_I9xx_Ring_Execute_P5Program:
     and     eax, 0fffff7ffh     ; ignore dynamic RING_WAIT status bit 11
     cmp     eax, 0000f001h
     jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+; ---------------------------------------------------------------------
+; Phase 6 steps. Every bound comes from the generated scene directories,
+; indexed by the scene the caller asked for and the gate above confirmed was
+; the one staged.
+; ---------------------------------------------------------------------
+V9xMini_I9xx_Ring_Execute_P6Verify:
+    mov     edi, V9xI9xxExecScene
+    mov     V9xI9xxRingFailure, 20
+    mov     eax, V9xI9xxSceneDwords[edi*4]
+    cmp     V9xI9xxSceneStaged, eax
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 21
+    mov     eax, V9xI9xxSceneCrc[edi*4]
+    cmp     V9xI9xxRingExecCrc, eax
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; Every staged dword must still be the one the generated table says
+    ; belongs there. Staging checked it on the way in; this checks it has not
+    ; changed since, which is what makes the armed CRC a statement about what
+    ; the GPU will actually fetch.
+    mov     V9xI9xxRingFailure, 22
+    mov     ecx, V9xI9xxSceneDwords[edi*4]
+    mov     ebx, V9xI9xxSceneTables[edi*4]
+    mov     edx, V9xI9xxRingLinear
+    add     edx, V9X_I9XX_P5_RING_OFFSET
+V9xMini_I9xx_Ring_Execute_P6Check:
+    mov     eax, [ebx]
+    cmp     eax, [edx]
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    add     ebx, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Execute_P6Check
+    ; The in-reserve guards either side of the target, untouched. Checked
+    ; before EVERY scene, not once per boot: a scene that wrote outside its
+    ; target must not have its damage attributed to a later one.
+    mov     edi, V9xI9xxRingLinear
+    mov     V9xI9xxRingFailure, 23
+    cmp     dword ptr [edi+00011000h], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [edi+00011ffch], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+V9xMini_I9xx_Ring_Execute_P6Probe:
+    mov     V9xI9xxRingFailure, 26
+    cmp     V9xI9xxRingStep, 33
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; Everything up to but not including the primitive, from the GENERATED
+    ; boundary. A drain here and a stall on the draw says the ring is alive
+    ; and the state was accepted, and the primitive is what hung.
+    mov     edi, V9xI9xxExecScene
+    mov     eax, V9xI9xxScenePrim[edi*4]
+    shl     eax, 2
+    add     eax, V9X_I9XX_P5_RING_OFFSET
+    mov     V9xI9xxRingWant, eax
+    mov     dword ptr [esi+02030h], eax
+    cmp     dword ptr [esi+02030h], eax
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_P6Draw:
+    mov     V9xI9xxRingFailure, 27
+    cmp     V9xI9xxRingStep, 34
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     edi, V9xI9xxExecScene
+    mov     eax, V9xI9xxSceneDwords[edi*4]
+    shl     eax, 2
+    add     eax, V9X_I9XX_P5_RING_OFFSET
+    mov     V9xI9xxRingWant, eax
+    mov     dword ptr [esi+02030h], eax
+    cmp     dword ptr [esi+02030h], eax
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_P6Teardown:
+    mov     V9xI9xxRingFailure, 28
+    cmp     V9xI9xxRingStep, 35
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 29
+    mov     edi, V9xI9xxExecScene
+    mov     ebx, V9xI9xxSceneDwords[edi*4]
+    shl     ebx, 2
+    add     ebx, V9X_I9XX_P5_RING_OFFSET
+    mov     eax, [esi+02034h]
+    and     eax, 001ffffch
+    cmp     eax, ebx
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    ; The ring goes back to zero after EVERY scene. That is what lets the
+    ; next one program it from a known state, and what makes reusing one ring
+    ; region for all five scenes safe.
+    mov     dword ptr [esi+0203ch], 0
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02034h], 0
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02038h], 0
+    cmp     dword ptr [esi+02038h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    ; The scene is finished: forget which one was staged, so the next scene
+    ; must open its own staging run rather than inheriting this one.
+    mov     V9xI9xxSceneStagedFor, 0ffffffffh
+    mov     V9xI9xxSceneStaged, 0
     jmp     V9xMini_I9xx_Ring_Execute_Success
 
 V9xMini_I9xx_Ring_Execute_P5Probe:
@@ -1959,6 +2181,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingDiag
     cmp     ax, V9XMINI_FN_I9XX_RING_HASH
     je      V9xMini_Api_I9xxRingHash
+    cmp     ax, V9XMINI_FN_I9XX_SCENE_EXECUTE
+    je      V9xMini_Api_I9xxSceneExecute
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2006,6 +2230,8 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     ; 5 and is refused, which is the right default for a verb that writes to
     ; memory a GPU command parser will read.
     mov     esi, [ebp.Client_ESI]
+    ; EDI carries the scene index for phase 6, and is ignored by 4 and 5.
+    mov     edi, [ebp.Client_EDI]
     call    V9xMini_I9xx_Ring_Stage
     mov     ebx, V9xI9xxRingStageFail
     mov     [ebp.Client_EBX], ebx
@@ -2036,10 +2262,35 @@ V9xMini_Api_I9xxRingMemory_Missing:
 ENDIF
     mov     [ebp.Client_AX], 0
     ret
+; Phase 6. Sets the scene, then runs the same executor - one implementation,
+; two entry points, rather than a second copy of the ring logic.
+V9xMini_Api_I9xxSceneExecute:
+IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     eax, [ebp.Client_EDX]
+    mov     V9xI9xxExecScene, eax
+    call    V9xMini_I9xx_Ring_Execute
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_EDI], edi
+    mov     [ebp.Client_AX], ax
+    ret
+ENDIF
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
 V9xMini_Api_I9xxRingExecute:
 IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
     mov     ebx, [ebp.Client_EBX]
     mov     ecx, [ebp.Client_ECX]
+    ; Phase 4 and 5 own no scene. Cleared rather than left, so a Phase 6
+    ; selection cannot survive into a phase that does not check it.
+    mov     V9xI9xxExecScene, 0ffffffffh
     call    V9xMini_I9xx_Ring_Execute
     mov     [ebp.Client_EBX], ebx
     mov     [ebp.Client_ECX], ecx

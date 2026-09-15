@@ -279,6 +279,28 @@ V9XMINI_FN_I9XX_RING_DIAG   EQU 0014h
 ;   7 _MapPhysToLinear refused the reserve
 V9XMINI_FN_I9XX_RING_HASH   EQU 0015h
 
+; Execute one Phase 6 SCENE step. Separate from RING_EXECUTE rather than a
+; flag on it, because it carries an argument that verb has no room for and no
+; use for: the scene index. A verb that ignored an argument on two of its
+; three paths would be one refusal code away from executing the wrong scene.
+;
+; The mini-VDD checks that the scene asked for is the scene that was staged,
+; that it was staged in full, and that the CRC is the one generated for THAT
+; scene. Every bound - the stream length, the primitive boundary - comes from
+; the generated directories in i9xx3d.inc, never from a literal here.
+;
+; in:  EBX = the scene stream CRC the caller believes it staged
+;      ECX = step, 32-36 (verify, program, probe, draw, tear down)
+;      EDX = scene index, below V9X_I9XX_SCENE_COUNT
+; out: AX  = 1 on success, 0 on refusal
+;      EBX = failure code, ECX = head, EDX = tail, ESI = elapsed ms,
+;      EDI = polls - the same shape RING_EXECUTE returns
+;
+; Refusal codes shared with RING_EXECUTE, plus:
+;   30 scene index at or above the scene count
+;   31 the scene asked for is not the scene that was staged
+V9XMINI_FN_I9XX_SCENE_EXECUTE EQU 0016h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR
