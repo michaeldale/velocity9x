@@ -80,9 +80,14 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',
-                    # Phase 5 is COMPILED but cannot reach the ring: the
-                    # submit path is gated separately and is not defined.
-                    'V9X_I9XX_PHASE5_EXECUTOR')
+                    # Phase 5's sequencer and its submit path. Both are now
+                    # family-derived, exactly as Phase 4's executor is,
+                    # because the 2026-09-15 errata-gate decision covers a
+                    # Phase 5 draw. Nothing here arms anything: a run still
+                    # needs IntelArmPhase=5, the combined CRC and the
+                    # one-shot token transfer.
+                    'V9X_I9XX_PHASE5_EXECUTOR',
+                    'V9X_I9XX_PHASE5_SUBMIT')
         RuntimeDefines = @('V9X_INTEL_GMA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-intel-gma'
         PackageOutput = 'build\win98se-intel-gma'

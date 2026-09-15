@@ -606,14 +606,14 @@ if ($miniBuildSource -notmatch
     throw ("build-minivdd-skeleton.ps1 must define V9X_S3_DPMS only for " +
            "the s3 family (and not for its -NoDpms experiment).")
 }
-# The Intel guards in the mini-VDD build, and the one that is NOT derived
-# from the family.
+# The Intel guards in the mini-VDD build. All three are derived from the
+# family and none may be otherwise: a driver and a mini-VDD that disagree
+# about which phases exist is a package pair that half-works, which is the
+# failure mode the exact-match API version exists to prevent.
 #
-# V9X_I9XX_PHASE5_SUBMIT assembles the Phase 5 staging and execute arms.
-# It hangs off an explicit -Phase5Submit switch rather than off $intelMmio,
-# because an armed Phase 5 boot drives the GPU with 3D packets and the
-# 2026-09-13 errata decision covers Phase 4 only. Turning it on is a choice
-# a human makes per build; it must never become a property of the family.
+# V9X_I9XX_PHASE5_SUBMIT was behind a manual switch while no errata decision
+# covered a 3D draw. The 2026-09-15 decision does, and B1 has to exercise
+# the same binary B2 will run - which a manual switch would have prevented.
 if ($miniBuildSource -notmatch
     '(?ms)^if \(\$intelMmio\) \{\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*\$assemblerArguments = @\("-DV9X_I9XX_FIRST_WRITE_EXECUTOR"\) \+ \$assemblerArguments' -or
     [regex]::Matches($miniBuildSource,
@@ -624,41 +624,29 @@ if ([regex]::Matches($miniBuildSource,
         '"-DV9X_I9XX_PHASE5_SUBMIT"').Count -ne 1) {
     throw ("The Phase 5 mini-VDD submit guard must be defined exactly once.")
 }
-if ($miniBuildSource -notmatch
-        '(?ms)if \(\$Phase5Submit\) \{\s*(?:#[^\r\n]*\s*)*\$assemblerArguments = @\("-DV9X_I9XX_PHASE5_SUBMIT"') {
-    throw ("The Phase 5 mini-VDD submit guard must hang off the explicit " +
-           "-Phase5Submit switch, not off the family. An armed Phase 5 " +
-           "boot drives the GPU with 3D packets, which the 2026-09-13 " +
-           "errata decision does not cover.")
+if ($miniBuildSource -match 'Phase5Submit') {
+    throw ("The Phase 5 submit guard must not hang off a build switch. It " +
+           "is family-derived like the Phase 4 executor, so that the " +
+           "unarmed rehearsal boot exercises the same binary the armed " +
+           "boot will run.")
 }
 $intelFamilySource = Get-Content -LiteralPath `
     (Join-Path $repoRoot 'packaging\families\intel-gma\family.psd1') -Raw
 # Phase 5 joins the same list and is held to the same rule: compiled only
 # for intel-gma, and never into runtime.asm. Being present in Defines means
-# the sequencer is BUILT - it does not mean it can reach the ring, which is
-# gated separately by V9X_I9XX_PHASE5_SUBMIT and does not exist yet.
+# the sequencer and its submit path are BUILT - it does not mean anything is
+# armed. A run still needs IntelArmPhase=5, the combined CRC covering both
+# streams in execution order, and the one-shot token transfer, and
+# arm-intel-phase5.ps1 refuses without the errata-gate decision on record.
 if ($intelFamilySource -notmatch
-    "Defines = @\('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',(?s).*?'V9X_I9XX_PHASE5_EXECUTOR'\)" -or
+    "Defines = @\('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',(?s).*?'V9X_I9XX_PHASE5_EXECUTOR',(?s).*?'V9X_I9XX_PHASE5_SUBMIT'\)" -or
     $intelFamilySource -match
     "RuntimeDefines = @\([^)]*V9X_I9XX_FIRST_WRITE_EXECUTOR" -or
     $intelFamilySource -match
-    "RuntimeDefines = @\([^)]*V9X_I9XX_PHASE5_EXECUTOR") {
+    "RuntimeDefines = @\([^)]*V9X_I9XX_PHASE5_") {
     throw ("The Phase 4 and Phase 5 Win16 executors must be in the paired " +
-           "Intel build only.")
-}
-# The submit path must NOT be defined anywhere yet. When it is added it
-# needs its own review; until then this is what stops it appearing by
-# accident alongside the executor guard it looks like.
-# Matched against the Defines LIST, not the whole file: a comment naming
-# the guard is documentation, and a check that cannot tell those apart
-# trains people to work around it.
-if ($intelFamilySource -match "Defines = @\((?s).*?'V9X_I9XX_PHASE5_SUBMIT'.*?\)") {
-    throw ("V9X_I9XX_PHASE5_SUBMIT is defined. The mini-VDD can now STAGE " +
-           "a Phase 5 stream but cannot EXECUTE one - " +
-           "V9xMini_I9xx_Ring_Execute has no arms 20-24 - so an armed " +
-           "boot would stage 59 dwords and then stop, having spent the " +
-           "one-shot token. Add the execute arms, and take the Phase 5 " +
-           "errata-gate decision, first.")
+           "Intel build only, and both Phase 5 guards must be present: the " +
+           "driver and the mini-VDD must agree about which phases exist.")
 }
 if ($miniSource -notmatch
     '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture.*?^EndProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n\s*IFDEF\s+V9X_I9XX_FIRST_WRITE_EXECUTOR.*?^EndProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\nENDIF\s*\r?\nENDIF') {
