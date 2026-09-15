@@ -13,8 +13,11 @@ Boots are the scarce resource. Code is not.
 ## The shape that bundles without losing attribution
 
 **One boot carries many scenes. Each scene is a complete, independent draw with
-its own state block, its own target region, its own probes, and its own results
-flushed to disk before the next scene begins.**
+its own state block, its own probes, and its own results flushed to disk before
+the next scene begins.**
+
+Scenes share the one render target and each fills it before drawing. There is no
+room in the reserve for more, and none is needed: see the host-side section.
 
 That is not the same as stacking features into one scene. The rule that makes
 bundling safe:
@@ -89,6 +92,12 @@ anyway.
 | 1 | Same triangle, colour with a **separating green byte** | none — colour | Closes the green `round`-vs-`trunc` question ([issue](../issues/2026-09-15-intel-565-conversion-outside-measured-values.md)) |
 | 2 | Two triangles sharing an edge, different colours | none — edge rule | First evidence on the fill rule ([issue](../issues/2026-09-15-intel-edge-fill-rule-unmeasured.md)) |
 | 3 | One opaque RGB565 texture, nearest-clamp | **texture** | The parent plan's first real Phase 6 feature |
+
+**Status:** scenes 0-2 are built and host-tested. Scene 0 is currently the
+Phase 5 triangle **with the depth binding still present** - the scene table
+landed first, and the removal is its own diff so that the one change whose
+expected result is "no change at all" is not mixed into the refactor that
+introduced the table. Scene 3, the texture, is not started.
 
 Scenes 0–2 need **no new hardware capability**: they are the same packets with
 different vertices and colours. They close two filed issues and validate one
