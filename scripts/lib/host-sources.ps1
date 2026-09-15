@@ -34,6 +34,12 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_ring.c',
         # One-shot Phase 4 arm contract and packet CRC.
         'src\chipsets\intel\i9xx_arm.c',
+        'src\chipsets\intel\i9xx_float.c',
+        'src\chipsets\intel\i9xx_3d.c',
+        'src\chipsets\intel\i9xx_fragprog.c',
+        'src\chipsets\intel\i9xx_vertex.c',
+        'src\chipsets\intel\i9xx_3d_stream.c',
+        'src\chipsets\intel\i9xx_3d_decode.c',
         # Pure rasterizer arithmetic: no DDHAL, MMIO or assembly dependencies.
         'src\display32\d3d\d3d_raster.c'
     ) + $backendSourceNames + @(
@@ -54,6 +60,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_gtt.c',
         'tests\host\test_i9xx_ring.c',
         'tests\host\test_i9xx_arm.c',
+        'tests\host\test_i9xx_3d.c',
         'tests\host\test_main.c'
     )
 

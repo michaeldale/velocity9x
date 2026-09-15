@@ -52,6 +52,12 @@
             @{ Name = 'i9xx_gtt'; Path = 'src\chipsets\intel\i9xx_gtt.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_ring'; Path = 'src\chipsets\intel\i9xx_ring.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_arm'; Path = 'src\chipsets\intel\i9xx_arm.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_float'; Path = 'src\chipsets\intel\i9xx_float.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_3d'; Path = 'src\chipsets\intel\i9xx_3d.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_fragprog'; Path = 'src\chipsets\intel\i9xx_fragprog.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_vertex'; Path = 'src\chipsets\intel\i9xx_vertex.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_3d_stream'; Path = 'src\chipsets\intel\i9xx_3d_stream.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_3d_decode'; Path = 'src\chipsets\intel\i9xx_3d_decode.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'intel_diag16'; Path = 'src\display16\intel_diag16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'intel_gtt16'; Path = 'src\display16\intel_gtt16.c'; CodeSegment = 'I9XXCODE' }
