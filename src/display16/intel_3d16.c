@@ -33,6 +33,7 @@ extern DWORD v9x_i9xx_bsm;
 extern DWORD v9x_i9xx_hash_pass_a;
 extern DWORD v9x_i9xx_hash_pass_b;
 extern DWORD v9x_i9xx_hash_fail;
+extern DWORD v9x_i9xx_gmadr_bar2;
 extern DWORD v9x_i9xx_gtt_backed_prefix;
 extern DWORD v9x_i9xx_gtt_reserve_first;
 extern DWORD v9x_i9xx_gtt_reserve_count;
@@ -656,6 +657,9 @@ void v9x_intel_phase5_run(
     WORD index;
 #endif
     WORD mapping;
+#ifdef V9X_I9XX_PHASE5_SUBMIT
+    DWORD stage_base;
+#endif
 
     V9xEnsureDiagDir();
     v9x_p5_text("SchemaVersion", "1");
@@ -777,9 +781,26 @@ void v9x_intel_phase5_run(
      * generated table on the way in.
      */
 #ifdef V9X_I9XX_PHASE5_SUBMIT
+    /*
+     * The staging base is the GMADR APERTURE address, not the stolen-memory
+     * physical one: the mini-VDD compares it against
+     * V9X_I9XX_GMADR_BASE + V9X_I9XX_RESERVE_OFFSET and refuses with stage
+     * reason 1 otherwise. Phase 4 has always passed gmadr_bar2 + ring_offset.
+     *
+     * This passed layout->reserve_physical - 7FEB0000, the BSM-relative
+     * address - and was refused on the first dword of the first armed boot,
+     * 2026-09-15. The two names sound interchangeable and address different
+     * spaces; the capture publishes the value so a future mismatch is visible
+     * rather than inferred from a refusal code.
+     */
+    stage_base = v9x_i9xx_gmadr_bar2 + layout->reserve_offset;
+    v9x_p5_hex("StageBase", stage_base);
+    v9x_p5_hex("StageBaseExpected", 0xd0000000ul + layout->reserve_offset);
+    v9x_p5_flush();
+
     v9x_p5_intent(V9X_P5_STEP_STAGE);
     for (index = 0u; index < (WORD)v9x_p5_stream_dwords; ++index) {
-        if (V9xMiniI9xxP5Stage(layout->reserve_physical, index,
+        if (V9xMiniI9xxP5Stage(stage_base, index,
                                v9x_p5_stream[index]) == 0u) {
             v9x_p5_hex("StageFailIndex", (DWORD)index);
             v9x_p5_hex("StageFail", v9x_i9xx_ring_stage_fail);

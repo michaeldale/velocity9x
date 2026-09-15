@@ -1,0 +1,10 @@
+[Velocity9x]
+IntelEnableThisBoot=0
+IntelArmPhase=5
+IntelArmCrc=D0478966
+IntelArmPhase4Crc=A0DA64A1
+IntelArmPhase5Crc=0ED8C9A3
+IntelAccelDefault=0
+IntelArmOnce=
+IntelArmBuildId=318584c
+IntelInFlight=phase5-20260915-190550
