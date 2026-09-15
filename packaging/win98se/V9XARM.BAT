@@ -25,6 +25,17 @@ REM the same string, which always yields nothing, so this guard never fired
 REM in either phase. The driver now writes IntelIncomplete=1 alongside a
 REM non-empty IntelInFlight and clears it on retirement, which is a value a
 REM batch can actually test.
+REM Two refusals, not one. IntelInFlight is authoritative, but FIND cannot
+REM tell its empty form from a non-empty one, so the driver mirrors it into
+REM IntelIncomplete and re-derives that from the authority on every boot.
+REM
+REM An arm file written before that flag existed carries a token with NO
+REM flag, and testing only for =1 would read it as resolved and overwrite the
+REM record of a hang. So a file with no IntelIncomplete line at all is refused
+REM as ambiguous: boot once to let the driver normalise it, or run V9XCOPY to
+REM reset the arm state deliberately.
+FIND "IntelIncomplete=" C:\V9XDIAG\INTELARM.TXT >NUL
+IF ERRORLEVEL 1 GOTO LEGACY
 FIND "IntelIncomplete=1" C:\V9XDIAG\INTELARM.TXT >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
 
@@ -76,6 +87,13 @@ GOTO END
 :FAILED
 ECHO FAIL: could not write C:\V9XDIAG\INTELARM.TXT.
 
+
+:LEGACY
+ECHO FAIL: C:\V9XDIAG\INTELARM.TXT has no IntelIncomplete line.
+ECHO It predates the in-flight flag, so whether the previous run resolved
+ECHO cannot be told from here. Boot once to let the driver normalise it, or
+ECHO run V9XCOPY to reset the arm state deliberately.
+GOTO END
 :END
 ECHO.
 PAUSE

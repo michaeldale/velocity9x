@@ -1269,6 +1269,71 @@ foreach ($code in $chainCodes) {
     }
 }
 
+# ---------------------------------------------------------------------------
+# The armers' in-flight guard.
+#
+# It was inert from the day it was written, in both phases: FIND matches
+# SUBSTRINGS, so "IntelInFlight=" matches the empty form and every non-empty
+# one alike, and piping FIND into FIND /V on the same string always yields
+# nothing. The guard never fired, and both armers would have overwritten the
+# record of an unresolved run - the only evidence of where a hang stopped.
+#
+# It cannot be expressed with FIND on IntelInFlight at all, which is why the
+# driver mirrors it into IntelIncomplete. This pins the replacement so it
+# cannot quietly become inert again: both refusals must be present, and the old
+# idiom must not return.
+# ---------------------------------------------------------------------------
+foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
+    $armerPath = Join-Path $repoRoot "packaging\win98se\$armer"
+    if (-not (Test-Path -LiteralPath $armerPath)) {
+        throw "packaging\win98se\$armer is missing."
+    }
+    $armerText = Get-Content -LiteralPath $armerPath -Raw
+    if ($armerText -match 'FIND\s+/V\s+"IntelInFlight=') {
+        throw ("$armer has returned to piping FIND into FIND /V on " +
+               '"IntelInFlight=". That never fires: FIND matches substrings, so ' +
+               'the second FIND excludes every line the first selected.')
+    }
+    if ($armerText -notmatch '(?m)^FIND "IntelIncomplete=" .*\r?\n\s*IF ERRORLEVEL 1 GOTO LEGACY') {
+        throw ("$armer must refuse an arm file with no IntelIncomplete line. " +
+               'Such a file predates the flag and may carry an unresolved ' +
+               'token, which testing only for =1 would read as resolved.')
+    }
+    if ($armerText -notmatch '(?m)^FIND "IntelIncomplete=1" .*\r?\n\s*IF NOT ERRORLEVEL 1 GOTO INFLIGHT') {
+        throw "$armer must refuse an arm file whose IntelIncomplete is 1."
+    }
+}
+# And the reset must write the flag, or a freshly reset file reads as legacy.
+$copyText = Get-Content -LiteralPath (Join-Path $repoRoot 'packaging\win98se\V9XCOPY.BAT') -Raw
+if ($copyText -notmatch '(?m)^ECHO IntelIncomplete=0>>') {
+    throw ('V9XCOPY.BAT must write IntelIncomplete=0 when it resets the arm ' +
+           'state, or the armers refuse the file it just wrote as ambiguous.')
+}
+# The driver must set the flag BEFORE the value it mirrors, and clear it
+# AFTER. These are separate profile writes with nothing making them atomic, so
+# the order is the safety property: interrupted either way must leave the flag
+# set, which refuses, rather than clear, which would bypass the stop.
+$bootText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\display16\intel_boot16.c') -Raw
+# Stated as a prohibition, not a requirement. A positive match is satisfied by
+# any one correctly ordered site, so with two arming paths - one-shot and
+# repeat - it passed while one of them was swapped. Forbidding the wrong order
+# catches every site.
+if ($bootText -match '(?s)v9x_intel_boot_set\("IntelInFlight", arm_once\).{0,300}?v9x_intel_boot_set\("IntelIncomplete", "1"\)') {
+    throw ('intel_boot16.c writes IntelInFlight before IntelIncomplete=1 on ' +
+           'some path. The flag must be set FIRST: the reverse order leaves a ' +
+           'window where a token is in flight with the flag clear, which is a ' +
+           'silent bypass of the hang stop.')
+}
+if ($bootText -notmatch '(?s)v9x_intel_boot_set\("IntelIncomplete", "1"\).{0,200}?v9x_intel_boot_set\("IntelInFlight", arm_once\)') {
+    throw ('intel_boot16.c must set IntelIncomplete=1 before writing ' +
+           'IntelInFlight on at least one path; neither was found.')
+}
+if ($bootText -notmatch '(?s)v9x_intel_boot_set\("IntelInFlight", ""\).{0,1200}?v9x_intel_boot_set\("IntelIncomplete", "0"\)') {
+    throw ('intel_boot16.c must clear IntelInFlight BEFORE IntelIncomplete, ' +
+           'so an interrupted retirement leaves the flag set and refuses ' +
+           'rather than clear and bypasses.')
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,

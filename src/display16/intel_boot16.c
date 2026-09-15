@@ -122,8 +122,15 @@ WORD v9x_intel_boot_arm_retire(const char *result)
     if (!v9x_intel_boot_set("IntelInFlight", "")) {
         return 0u;
     }
-    /* Cleared with in-flight and only with it; the two must never
-     * disagree, which is why they are set and cleared together. */
+    /*
+     * In-flight first, then the flag. The order is the safety property, not
+     * an accident: these are two separate profile writes and nothing makes
+     * them atomic. Interrupted between them leaves IntelIncomplete=1 with an
+     * empty IntelInFlight, which the armers read as still unresolved and
+     * refuse - a false positive costing one V9XCOPY. The reverse order would
+     * leave the flag clear with a token still in flight, which is a silent
+     * bypass of the hang stop.
+     */
     if (!v9x_intel_boot_set("IntelIncomplete", "0")) {
         return 0u;
     }
@@ -169,12 +176,27 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
                              sizeof(in_flight))) {
         return;
     }
+    /*
+     * IntelInFlight is the authoritative value; IntelIncomplete exists only
+     * because a DOS batch cannot tell an empty INI value from a non-empty one
+     * with FIND. So the flag is re-derived from the authority on every boot.
+     *
+     * That also migrates arm files written before the flag existed: those
+     * carry a token with no flag at all, and an armer testing only the flag
+     * would read them as resolved and overwrite the record of a hang.
+     */
     if (in_flight[0] != '\0') {
+        (void)v9x_intel_boot_set("IntelIncomplete", "1");
         v9x_intel_str_copy(last_result, "incomplete-reset:");
         v9x_intel_str_append(last_result, in_flight);
         if (v9x_intel_boot_set("IntelLastResult", last_result)) {
             v9x_intel_boot_state = "INCOMPLETE";
         }
+        return;
+    }
+    /* Empty, so the flag is false, and it is written even when it was absent:
+     * a legacy file is normalised by the first boot that sees it clean. */
+    if (!v9x_intel_boot_set("IntelIncomplete", "0")) {
         return;
     }
     if (!v9x_intel_boot_read("IntelArmOnce", arm_once,
@@ -256,8 +278,9 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     if (v9x_intel_boot_read("IntelArmRepeat", repeat_text,
                             sizeof(repeat_text)) &&
         v9x_intel_str_equal(repeat_text, "1") != 0u) {
-        if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
-            !v9x_intel_boot_set("IntelIncomplete", "1") ||
+        /* Flag first, for the reason given at the retirement. */
+        if (!v9x_intel_boot_set("IntelIncomplete", "1") ||
+            !v9x_intel_boot_set("IntelInFlight", arm_once) ||
             !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
             return;
         }
@@ -276,8 +299,8 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
      * was written, in both phases. This key is the driver stating the fact
      * plainly instead.
      */
-    if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
-        !v9x_intel_boot_set("IntelIncomplete", "1") ||
+    if (!v9x_intel_boot_set("IntelIncomplete", "1") ||
+        !v9x_intel_boot_set("IntelInFlight", arm_once) ||
         !v9x_intel_boot_set("IntelArmOnce", "") ||
         !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
         return;

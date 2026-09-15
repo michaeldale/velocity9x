@@ -141,10 +141,12 @@ Against it, `DST_BUF_VARS` bits 26-27 are zero, which Mesa's header names
 `DITHER_FULL_ALWAYS` - a name suggesting dithering is unconditional. The two
 controls imply different things and this is not resolved.
 
-**So the seven probes agreeing is now load-bearing.** If they disagree with
-each other on the next boot, dithering is live, and the conversion reading is
-void regardless of what the values are. The capture publishes all fourteen, so
-this is visible rather than assumed.
+**So the probes are worth reading and cannot settle it.** If they disagree
+with each other, something varies across the interior and the conversion
+reading is not safe to draw - dithering being one explanation among several.
+If they agree, dithering is not excluded, only made less likely. Either way
+the capture publishes all fourteen, so the question stays visible rather
+than assumed.
 
 ## Not in this experiment
 

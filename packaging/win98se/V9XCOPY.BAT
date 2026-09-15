@@ -51,6 +51,9 @@ ECHO.
 ECHO Clearing the old arm state (this deployment is a new build) ...
 ECHO [Velocity9x]>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelEnableThisBoot=0>>C:\V9XDIAG\INTELARM.TXT
+REM Written explicitly so a freshly reset file is not mistaken for one that
+REM predates the flag, which the armers refuse as ambiguous.
+ECHO IntelIncomplete=0>>C:\V9XDIAG\INTELARM.TXT
 :NOARM
 
 ECHO.
