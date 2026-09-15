@@ -167,3 +167,36 @@ None of these is discretionary:
 - The stick is re-armed. Step 2's layout move changed the Phase 4 execution CRC
   from `3EAA137B` to `A0DA64A1`, which invalidated the arm in place.
 - AC power connected.
+
+## Amendment, 2026-09-15: the one-shot requirement is relaxed to opt-in repeat
+
+Decided by Michael Dale, after the first successful draw on build `6c81c52`.
+
+The original decision required a one-shot token for every Phase 5 run. That is
+relaxed: with `IntelArmRepeat=1` in the arm file, `IntelArmOnce` survives a
+completed boot and the stick arms again without being re-armed. It is off by
+default and set per stick, by `V9XARM5 R` or by hand.
+
+**What is unchanged.** Every other gate still applies to every boot: the errata
+gate, the build-id match, the combined-CRC match covering both streams in
+execution order, the PCI identity and revision check, `IntelEnableThisBoot`,
+and the Phase 4 replay passing before the draw. Each has caught a real defect -
+the CRC match alone caught a stick still armed to `D0478966` after the S6 fix
+changed the stream.
+
+**What is unchanged and matters most.** The in-flight transfer is kept. A run
+that completes retires the token and clears `IntelInFlight`; a run that
+**hangs** leaves it set, and the next boot reports `INCOMPLETE` and refuses
+exactly as before. So successful boots repeat and a configuration that hangs
+the machine stops the loop instead of repeating it.
+
+**What is given up.** A completed boot no longer requires a deliberate human
+act before the next one. If a configuration draws successfully but is wrong in
+some way that does not hang - writing outside the intended region, say - it
+will do so on every boot until the key is removed. The guards either side of
+the target are the check for that and are published in every capture.
+
+**What is NOT authorised by this amendment.** The scope of the original
+decision is unchanged: one triangle per boot. Nothing here permits sustained or
+repeated 3D work within a boot, which is what erratum 7's word "extended"
+concerns, and nothing here authorises a second draw in the same boot.

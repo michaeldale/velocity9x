@@ -49,6 +49,14 @@ ECHO IntelArmBuildId=@@BUILDID@@>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelInFlight=>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelEnableThisBoot=1>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelLastResult=>>C:\V9XDIAG\INTELARM.TXT
+REM Repeat mode, set by running V9XARM5 R. IntelArmOnce survives the boot,
+REM so the stick arms again next time without being re-armed. A run that
+REM HANGS still leaves IntelInFlight set and the next boot refuses with
+REM INCOMPLETE, so only successful boots repeat.
+IF /I NOT "%1"=="R" GOTO NOREPEAT
+ECHO IntelArmRepeat=1>>C:\V9XDIAG\INTELARM.TXT
+ECHO Repeat mode: this stick will arm again on every successful boot.
+:NOREPEAT
 
 IF NOT EXIST C:\V9XDIAG\INTELARM.TXT GOTO FAILED
 ECHO Armed Phase 5 for build @@BUILDID@@, combined CRC @@COMBINEDCRC@@.

@@ -138,6 +138,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
 #ifdef V9X_I9XX_FIRST_WRITE_EXECUTOR
     char build_text[65];
     char phase_text[8];
+    char repeat_text[8];
 #endif
     char last_result[96];
     DWORD crc = 0ul;
@@ -225,6 +226,42 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_boot_state = "BAD-PHASE";
         return;
     }
+    /*
+     * Repeat mode: the token is still transferred in-flight, but IntelArmOnce
+     * is NOT cleared, so the same stick arms again on the next boot without
+     * being re-armed.
+     *
+     * Requested 2026-09-15 to make the colour and geometry experiments cheap.
+     * It removes only the "once" in one-shot. Everything else still gates every
+     * boot - the errata gate, the build-id match, the combined-CRC match, the
+     * PCI identity check and the Phase 4 replay - and each of those has caught
+     * a real defect today; the stale D0478966 was caught by the CRC match.
+     *
+     * The in-flight transfer is kept deliberately, and it is what makes this
+     * safe to hand to an operator. A run that completes retires the token,
+     * clears in-flight, and the next boot re-arms from the surviving
+     * IntelArmOnce. A run that HANGS leaves in-flight set, and the next boot
+     * reports INCOMPLETE and refuses exactly as it always has. So successful
+     * boots repeat freely and a configuration that hangs the machine stops the
+     * loop rather than repeating it - which is the property worth keeping out
+     * of the one-shot arm.
+     *
+     * Clearing it is one line in the arm file from DOS, or any V9XCOPY.
+     */
+    if (v9x_intel_boot_read("IntelArmRepeat", repeat_text,
+                            sizeof(repeat_text)) &&
+        v9x_intel_str_equal(repeat_text, "1") != 0u) {
+        if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
+            !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
+            return;
+        }
+        v9x_intel_str_copy(v9x_intel_boot_arm_token, arm_once);
+        v9x_intel_boot_arm_crc = crc;
+        v9x_intel_boot_arm_latch = 1u;
+        v9x_intel_boot_state = "ARMED-REPEAT";
+        return;
+    }
+
     if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
         !v9x_intel_boot_set("IntelArmOnce", "") ||
         !v9x_intel_boot_set("IntelEnableThisBoot", "1")) {
