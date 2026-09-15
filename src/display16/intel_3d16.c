@@ -425,7 +425,24 @@ static void v9x_p5_publish_guards(
     v9x_p5_hex(key, V9xGmadrRead(layout->guard_upper_offset));
 }
 
-void V9X_I9XX_FAR v9x_intel_phase5_run(
+/*
+ * Not V9X_I9XX_FAR, despite every other exported function in this file's
+ * neighbours carrying it.
+ *
+ * The qualifier belongs on a call that crosses the _TEXT/I9XXCODE boundary,
+ * and intel16.h is the only place allowed to declare one. This is not such a
+ * call: the sole caller is intel_ring16.c, which the family manifest places in
+ * I9XXCODE alongside this unit, so the call is intra-segment and near - the
+ * same shape as its sibling v9x_intel_phase4_maybe_run.
+ *
+ * It carried the qualifier until 2026-09-15, against a near extern in
+ * intel_ring16.c. Watcom returns from a __far definition with retf while a
+ * near call has pushed no segment, so the ret would have popped the caller's
+ * frame as CS - a wild jump on entry to Phase 5, armed or not. Nothing caught
+ * it: the two declarations are in different translation units, and check-tree
+ * polices only the crossings intel16.h names.
+ */
+void v9x_intel_phase5_run(
     const struct v9x_i9xx_sandbox_layout *layout,
     WORD phase4_passed, WORD armed)
 {

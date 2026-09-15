@@ -1021,6 +1021,46 @@ foreach ($symbol in @($boundarySymbols | Where-Object { $_ -notlike 'v9x_intel_s
         }
     }
 }
+# And the converse, which is the direction that actually bit.
+#
+# The two rules above assume the header is the starting point: they check that
+# what intel16.h calls far is declared and defined far everywhere. Nothing
+# checked a function the header does NOT name being defined far anyway.
+#
+# v9x_intel_phase5_run was, from the day it was written until 2026-09-15. Its
+# only caller, intel_ring16.c, sits in I9XXCODE with it, so the call is near
+# and its extern there is correctly near - but the definition returned with
+# retf. That pops the caller's return offset as CS: a wild jump on entry to
+# Phase 5, on the unarmed rehearsal boot as much as an armed one. Neither
+# compiler saw both halves, and E2052 cannot fire on a call that is genuinely
+# intra-segment, so it would have surfaced as an unexplained hang on the
+# netbook.
+#
+# The qualifier is not decoration for "important Intel function". It means one
+# specific thing, and this says so mechanically.
+#
+# A definition that splits its return type and name across two lines - as
+# intel_bridge16.c does - is not judged here; the name is not on the line.
+foreach ($file in ($sourceFiles | Where-Object { $_.Extension -eq '.c' })) {
+    $text = Get-Content -LiteralPath $file.FullName -Raw
+    if (-not $text) { continue }
+    $lineNumber = 0
+    foreach ($line in ($text -split "`r?`n")) {
+        $lineNumber++
+        if ($line -notmatch '\bV9X_I9XX_FAR\b') { continue }
+        if ($line -match '^\s*(extern|#)') { continue }
+        if ($line -notmatch '\bV9X_I9XX_FAR\b[\s\*]*\b(\w+)\s*\(') { continue }
+        $defined = $matches[1]
+        if ($defined -in $boundarySymbols) { continue }
+        throw ("$($file.Name):$lineNumber defines $defined with " +
+               "V9X_I9XX_FAR, but velocity9x\intel16.h does not declare it. " +
+               "The qualifier marks a call that crosses into or out of " +
+               "I9XXCODE, and the header is the one place that says which " +
+               "calls those are. A far definition reached by the near call " +
+               "its callers compile returns with retf and jumps into " +
+               "nothing. Either add it to the header, or drop the qualifier.")
+    }
+}
 
 # ---------------------------------------------------------------------------
 # The generated Intel arm tables.

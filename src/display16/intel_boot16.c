@@ -12,6 +12,20 @@
 
 /* Never infer this from an on-disk key: it starts false on every driver load. */
 WORD v9x_intel_boot_arm_latch;
+/*
+ * Which phase the consumed token claims, from IntelArmPhase.
+ *
+ * The latch above is deliberately phase-agnostic: it records that a valid
+ * one-shot token was transferred, not what it authorises. Keeping those two
+ * facts separate is what lets a phase ask "was this token issued for me?"
+ * rather than assume it was.
+ *
+ * Zero when the key is absent, which is how every arm stick written before
+ * 2026-09-15 reads. Zero matches no phase, so such a token authorises none by
+ * default - the safe direction for a key that did not exist when they were
+ * written.
+ */
+WORD v9x_intel_boot_arm_phase;
 DWORD v9x_intel_boot_arm_crc;
 char v9x_intel_boot_arm_token[64];
 static const char *v9x_intel_boot_state = "NOT-RUN";
@@ -66,11 +80,13 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     char crc_text[16];
 #ifdef V9X_I9XX_FIRST_WRITE_EXECUTOR
     char build_text[65];
+    char phase_text[8];
 #endif
     char last_result[96];
     DWORD crc = 0ul;
 
     v9x_intel_boot_arm_latch = 0u;
+    v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
     v9x_intel_boot_state = "IO-FAILED";
@@ -117,6 +133,29 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_str_equal(
             build_text, v9x_intel_bridge_build_identity()->build_id) == 0u) {
         v9x_intel_boot_state = "BAD-BUILD";
+        return;
+    }
+    /*
+     * Read the claimed phase before the token transaction, so a stick this
+     * build cannot interpret refuses without consuming its one shot.
+     *
+     * An absent key is not an error: it is what a Phase 4 stick looks like,
+     * and it leaves the phase at zero. A key that is present but says
+     * something other than 4 or 5 is an error - it means the arming script and
+     * this driver disagree about the vocabulary, and guessing which phase was
+     * meant is exactly the kind of inference that costs an armed boot.
+     */
+    if (!v9x_intel_boot_read("IntelArmPhase", phase_text,
+                             sizeof(phase_text))) {
+        v9x_intel_boot_state = "BAD-PHASE";
+        return;
+    }
+    if (v9x_intel_str_equal(phase_text, "4") != 0u) {
+        v9x_intel_boot_arm_phase = V9X_I9XX_PHASE4;
+    } else if (v9x_intel_str_equal(phase_text, "5") != 0u) {
+        v9x_intel_boot_arm_phase = V9X_I9XX_PHASE5;
+    } else if (phase_text[0] != '\0') {
+        v9x_intel_boot_state = "BAD-PHASE";
         return;
     }
     if (!v9x_intel_boot_set("IntelInFlight", arm_once) ||
