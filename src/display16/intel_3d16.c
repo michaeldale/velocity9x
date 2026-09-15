@@ -390,15 +390,20 @@ static void v9x_p5_publish_stream(void)
      * from constants typed here, so they cannot disagree with the stream
      * above.
      */
-    v9x_p5_hex("OffsetState", 0ul);
+    v9x_p5_hex("OffsetFill", 0ul);
+    v9x_p5_hex("LengthFill", v9x_i9xx_phase5_fill_extent());
+    v9x_p5_hex("OffsetState", v9x_i9xx_phase5_fill_extent());
     v9x_p5_hex("LengthState", v9x_i9xx_3d_state_extent());
-    v9x_p5_hex("OffsetShader", v9x_i9xx_3d_state_extent());
+    v9x_p5_hex("OffsetShader",
+               v9x_i9xx_phase5_fill_extent() + v9x_i9xx_3d_state_extent());
     v9x_p5_hex("LengthShader", v9x_i9xx_fragment_program_extent());
     v9x_p5_hex("OffsetProbe",
+               v9x_i9xx_phase5_fill_extent() +
                v9x_i9xx_3d_state_extent() +
                v9x_i9xx_fragment_program_extent());
     v9x_p5_hex("LengthProbe", 2ul);
     v9x_p5_hex("OffsetVertices",
+               v9x_i9xx_phase5_fill_extent() +
                v9x_i9xx_3d_state_extent() +
                v9x_i9xx_fragment_program_extent() + 2ul);
     v9x_p5_hex("LengthVertices", v9x_i9xx_vertex_run_extent());
@@ -414,7 +419,17 @@ static void v9x_p5_publish_stream(void)
 static void v9x_p5_publish_vertices(void)
 {
     WORD vertex;
-    DWORD base = v9x_i9xx_3d_state_extent() +
+    /*
+     * The first vertex dword: the fill prefix, the state block, the fragment
+     * program, the two probe dwords and the _3DPRIMITIVE header.
+     *
+     * The fill prefix was missing here until 2026-09-15, so this read dwords
+     * 44-47 of the stream - fragment-program and probe words - and published
+     * them as vertex bits. The capture said the geometry was wrong when the
+     * stream was correct.
+     */
+    DWORD base = v9x_i9xx_phase5_fill_extent() +
+                 v9x_i9xx_3d_state_extent() +
                  v9x_i9xx_fragment_program_extent() + 3ul;
 
     for (vertex = 0u; vertex < (WORD)V9X_I9XX_VERTEX_COUNT; ++vertex) {

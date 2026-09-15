@@ -268,6 +268,8 @@ v9x_u16 v9x_i9xx_float_from_int(v9x_u32 value, v9x_u32 *bits);
 v9x_u16 v9x_i9xx_float_to_int(v9x_u32 bits, v9x_u32 *value);
 
 /* src\chipsets\intel\i9xx_3d.c */
+/* Dwords before the 3D state block: the GPU fill plus its MI_FLUSH. */
+v9x_u32 v9x_i9xx_phase5_fill_extent(void);
 v9x_u32 v9x_i9xx_3d_state_extent(void);
 v9x_status v9x_i9xx_build_3d_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,

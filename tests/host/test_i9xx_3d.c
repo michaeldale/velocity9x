@@ -481,6 +481,65 @@ static void test_decoder_structural_refusals(void)
     }
 }
 
+/*
+ * The published packet offsets must LOCATE the packets, not merely be arithmetic
+ * that looks plausible.
+ *
+ * intel_3d16.c derives the offsets it publishes and the vertex base it reads
+ * from the builders' extents, under a comment claiming they therefore cannot
+ * disagree with the stream. They did. When the fill moved to the GPU the stream
+ * gained a seven-dword prefix and the derivation was not updated, so the
+ * capture published fragment-program words as vertex bits and reported the
+ * geometry as wrong while the stream was correct. The CRC gate could not catch
+ * it: the stream was right, only the account of it was wrong.
+ *
+ * So this asserts the content at each offset rather than the offset's value.
+ */
+static void test_published_offsets_locate_the_packets(void)
+{
+    v9x_u32 stream[160];
+    v9x_u32 written = 0ul;
+    v9x_u32 fill;
+    v9x_u32 state;
+    v9x_u32 shader;
+    v9x_u32 vertices;
+
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 160ul, &written) ==
+          V9X_STATUS_OK);
+
+    fill = v9x_i9xx_phase5_fill_extent();
+    state = v9x_i9xx_3d_state_extent();
+    shader = v9x_i9xx_fragment_program_extent();
+    /* The fill prefix is the BLT plus one MI_FLUSH, and the flush is the last
+     * dword of it. */
+    CHECK(fill > 1ul);
+    CHECK(stream[fill - 1ul] == V9X_I9XX_MI_FLUSH);
+
+    /* The vertex run: the prefix, the state, the shader, two probe dwords and
+     * the _3DPRIMITIVE header, after which the first vertex begins. */
+    vertices = fill + state + shader + 3ul;
+    CHECK(vertices + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS) - 1ul <
+          written);
+
+    /*
+     * Vertex 0 is (160,120) and vertex 1 is (480,120). Asserting the float bits
+     * at the computed base is what ties the offset to the geometry: an offset
+     * that drifts by any amount stops finding these.
+     */
+    CHECK(stream[vertices + 0ul] == 0x43200000ul);
+    CHECK(stream[vertices + 1ul] == 0x42f00000ul);
+    CHECK(stream[vertices + 3ul] == 0x3f800000ul);
+    CHECK(stream[vertices + 4ul] == V9X_I9XX_TRI_COLOR_BGRA);
+    CHECK(stream[vertices + V9X_I9XX_VERTEX_DWORDS + 0ul] == 0x43f00000ul);
+    CHECK(stream[vertices + V9X_I9XX_VERTEX_DWORDS + 1ul] == 0x42f00000ul);
+
+    /*
+     * And the figure that was actually wrong on hardware. The capture from
+     * 2026-09-15 published vertex bits from dword 44; the geometry is at 51.
+     */
+    CHECK(vertices == 51ul);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -493,5 +552,6 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_accepts_golden();
     test_decoder_rejects_mutations();
     test_decoder_structural_refusals();
+    test_published_offsets_locate_the_packets();
     return failures;
 }

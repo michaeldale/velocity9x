@@ -66,6 +66,42 @@ void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out)
      */
 }
 
+/*
+ * Dwords the stream carries BEFORE the 3D state block: the GPU-side fill and
+ * the MI_FLUSH that separates it from the draw.
+ *
+ * Derived by asking the same builder the stream uses, not by a constant typed
+ * here. A hand-derived figure is exactly what went wrong: when the fill moved
+ * to the GPU the stream gained this prefix, and intel_3d16.c's packet offsets
+ * - which carried a comment claiming they could not disagree with the stream -
+ * were not updated. Every published offset, and the vertex base derived from
+ * it, was seven dwords short. The stream itself was correct throughout; only
+ * the capture's account of it was wrong, which is the harder kind of wrong to
+ * notice.
+ */
+v9x_u32 v9x_i9xx_phase5_fill_extent(void)
+{
+    struct v9x_i9xx_sandbox_layout layout;
+    v9x_u32 scratch[16];
+    v9x_u32 produced = 0ul;
+
+    if (v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) !=
+            V9X_STATUS_OK) {
+        return 0ul;
+    }
+    if (v9x_i9xx_build_color_blt(
+            layout.target_offset,
+            V9X_I9XX_FILL_BLT_WIDTH, V9X_I9XX_FILL_BLT_HEIGHT,
+            (v9x_u16)layout.target_pitch, V9X_I9XX_FILL_DWORD,
+            layout.target_offset, layout.target_bytes,
+            scratch, (v9x_u32)(sizeof(scratch) / sizeof(scratch[0])),
+            &produced) != V9X_STATUS_OK) {
+        return 0ul;
+    }
+    /* Plus the MI_FLUSH the builder writes immediately after it. */
+    return produced + 1ul;
+}
+
 v9x_status v9x_i9xx_build_phase5_stream(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
