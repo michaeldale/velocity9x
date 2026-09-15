@@ -207,31 +207,40 @@ which one was executing.
 | Value | Meaning |
 |---|---|
 | `00000014` (20) | preflight |
-| `00000015` (21) | record the armed intent |
-| `00000016` (22) | bulk-fill the render target |
-| `00000017` (23) | hash the filled target |
-| `00000018` (24) | stage the 3D stream |
-| `00000019` (25) | verify the staged stream against the table |
-| `0000001A` (26) | submit state, shader and MI probe; drain |
-| `0000001B` (27) | submit the primitive and vertices; drain |
-| `0000001C` (28) | hash the drawn target |
-| `0000001D` (29) | 480 row CRCs |
-| `0000001E` (30) | named per-pixel probes |
+| `00000015` (21) | stage the stream into the ring, one dword at a time |
+| `00000016` (22) | **execute**: verify the staged stream against the table |
+| `00000017` (23) | **execute**: program START, HEAD and TAIL, and enable |
+| `00000018` (24) | **execute**: submit the fill, state, shader and probe; drain |
+| `00000019` (25) | **execute**: submit the primitive and vertices; drain |
+| `0000001A` (26) | **execute**: tear the ring down |
+| `0000001B` (27) | hash the drawn target |
+| `0000001C` (28) | 480 row CRCs |
+| `0000001D` (29) | named per-pixel probes |
+
+**22 to 26 are also the mini-VDD's execute selectors**, and that alignment
+is the point: `IntentStep` carries the number the driver is about to ask
+the mini-VDD for, exactly as Phase 4 aligns `S05`-`S12` with its own
+selectors. So a capture saying `IntentStep=00000018` and a mini-VDD
+failure at step 24 name the same thing. They briefly did not, and that
+ambiguity is why this alignment is written down rather than assumed.
+
+20, 21 and 27-29 are driver-side work with no mini-VDD step behind them.
+
+**24 and 25 are separate submissions on purpose.** A drain at 24 followed by
+a stall at 25 says the ring is alive, the fill executed and the state block
+was accepted, and the **primitive** is what hung. One submission could not
+tell those apart, and the plan treats them very differently: the second is
+the reproduce-once-then-kill case, because fixing it would mean trying
+packet variants.
 
 Phase 5 writes the number in hex rather than an `Snn` name, because its
 capture is machine-read by `check-intel-3d-capture.ps1` and every other
 value in that file is eight hex digits.
 
-**26 and 27 are separate on purpose.** A drain at 26 followed by a stall at
-27 says the ring is alive and the state block was accepted, and the
-primitive is what hung. One submission could not tell those apart, and the
-plan treats them very differently: the second is the reproduce-once-then-kill
-case, because fixing it would mean trying packet variants.
-
-Two step numbers exist but are currently unreachable. Steps 24 and 25 are
-reserved in `intel_3d16.c` and not used, because the sequencer does not yet
-drive the mini-VDD staging that now exists. Reserving them keeps the
-namespace stable so captures from before and after stay comparable.
+Two further keys appear only on an armed boot. `P5Marker` is bumped every
+sixteen staged dwords, so a hang inside the sixty-six dword staging loop
+says roughly where rather than only that it was staging. `EXnn` carries the
+elapsed poll time of execute step `nn`.
 
 ### StageFail
 

@@ -1530,17 +1530,19 @@ BeginProc V9xMini_I9xx_Ring_Execute
     cmp     ecx, 11
     je      V9xMini_I9xx_Ring_Execute_Teardown
 IFDEF V9X_I9XX_PHASE5_SUBMIT
-    ; Phase 5, steps 20-24. Disjoint from Phase 4 1-11 so a failure code
+    ; Phase 5, steps 22-26. Each number is the SAME number the driver wrote
+    ; to IntentStep before asking for it, exactly as Phase 4 aligns S05-S12
+    ; with its own selectors. Disjoint from Phase 4's 1-11 so a failure code
     ; names its phase without a cross-reference.
-    cmp     ecx, 20
-    je      V9xMini_I9xx_Ring_Execute_P5Verify
-    cmp     ecx, 21
-    je      V9xMini_I9xx_Ring_Execute_P5Program
     cmp     ecx, 22
-    je      V9xMini_I9xx_Ring_Execute_P5Probe
+    je      V9xMini_I9xx_Ring_Execute_P5Verify
     cmp     ecx, 23
-    je      V9xMini_I9xx_Ring_Execute_P5Draw
+    je      V9xMini_I9xx_Ring_Execute_P5Program
     cmp     ecx, 24
+    je      V9xMini_I9xx_Ring_Execute_P5Probe
+    cmp     ecx, 25
+    je      V9xMini_I9xx_Ring_Execute_P5Draw
+    cmp     ecx, 26
     je      V9xMini_I9xx_Ring_Execute_P5Teardown
 ENDIF
     jmp     V9xMini_I9xx_Ring_Execute_Done
@@ -1741,7 +1743,7 @@ V9xMini_I9xx_Ring_Execute_P5Check:
 
 V9xMini_I9xx_Ring_Execute_P5Program:
     mov     V9xI9xxRingFailure, 24
-    cmp     V9xI9xxRingStep, 20
+    cmp     V9xI9xxRingStep, 22
     jne     V9xMini_I9xx_Ring_Execute_Done
     ; Phase 4 tore the ring down, so every register is expected at zero
     ; again. Re-programmed rather than reused: a ring left running across
@@ -1777,7 +1779,7 @@ V9xMini_I9xx_Ring_Execute_P5Program:
 
 V9xMini_I9xx_Ring_Execute_P5Probe:
     mov     V9xI9xxRingFailure, 26
-    cmp     V9xI9xxRingStep, 21
+    cmp     V9xI9xxRingStep, 23
     jne     V9xMini_I9xx_Ring_Execute_Done
     ; The state block, the shader and the MI probe - everything up to but
     ; not including the primitive. Submitted separately from the draw
@@ -1793,7 +1795,7 @@ V9xMini_I9xx_Ring_Execute_P5Probe:
 
 V9xMini_I9xx_Ring_Execute_P5Draw:
     mov     V9xI9xxRingFailure, 27
-    cmp     V9xI9xxRingStep, 22
+    cmp     V9xI9xxRingStep, 24
     jne     V9xMini_I9xx_Ring_Execute_Done
     ; The primitive and its vertices. If this is where it stops, the
     ; packets are wrong rather than the ring being dead - which is the
@@ -1807,7 +1809,7 @@ V9xMini_I9xx_Ring_Execute_P5Draw:
 
 V9xMini_I9xx_Ring_Execute_P5Teardown:
     mov     V9xI9xxRingFailure, 28
-    cmp     V9xI9xxRingStep, 23
+    cmp     V9xI9xxRingStep, 25
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 29
     mov     eax, [esi+02034h]

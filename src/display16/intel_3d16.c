@@ -36,11 +36,20 @@ extern DWORD v9x_i9xx_hash_fail;
 extern DWORD v9x_i9xx_gtt_backed_prefix;
 extern DWORD v9x_i9xx_gtt_reserve_first;
 extern DWORD v9x_i9xx_gtt_reserve_count;
+extern DWORD v9x_i9xx_ring_stage_fail;
+extern DWORD v9x_i9xx_ring_exec_failure;
+extern DWORD v9x_i9xx_ring_exec_head;
+extern DWORD v9x_i9xx_ring_exec_tail;
+extern DWORD v9x_i9xx_ring_exec_polls;
+extern DWORD v9x_i9xx_ring_exec_elapsed;
 
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern DWORD FAR PASCAL V9xGmadrRead(DWORD offset);
 extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
                                            WORD count_low);
+extern WORD FAR PASCAL V9xMiniI9xxP5Stage(DWORD physical, WORD index,
+                                          DWORD value);
+extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
 
 #define V9X_P5_SECTION "Intel3D"
 
@@ -73,29 +82,29 @@ extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
  */
 #define V9X_P5_PRE_SUBMIT_MISSING 10u
 
-/* Steps 20-30. Disjoint from Phase 4's 1-12 so a hang is attributable to a
- * phase from the step number alone, with no cross-reference. */
-#define V9X_P5_STEP_PREFLIGHT     20u
-#define V9X_P5_STEP_INTENT        21u
-/* 22 and 23 were the CPU fill and its verification. The GPU fills now, so
- * nothing here reaches them; the numbers stay reserved so a capture from
- * before and after remains comparable. */
-#define V9X_P5_STEP_FILL          22u
-#define V9X_P5_STEP_FILL_VERIFY   23u
 /*
- * 24-27 are reserved for stage, compare, probe and submit. They are numbered
- * here and deliberately NOT used: the mini-VDD has no Phase 5 staging, so
- * nothing can reach those steps yet. Reserving the numbers now means the step
- * namespace does not shift when the submit path lands, and a capture from
- * before and after remains comparable.
+ * Steps 20-29, disjoint from Phase 4's 1-12 so a hang is attributable to a
+ * phase from the number alone.
+ *
+ * 22-26 are ALSO the mini-VDD's execute selectors, and that is deliberate:
+ * IntentStep carries the same number the driver is about to ask the mini-VDD
+ * for, exactly as Phase 4 aligns S05-S12 with its own selectors. A capture
+ * saying IntentStep=24 and a mini-VDD failure at step 24 therefore name the
+ * same thing. They did not, briefly, and that ambiguity is the whole reason
+ * the numbering is written down here.
+ *
+ * 20, 21 and 27-29 are driver-side work with no mini-VDD step behind them.
  */
-#define V9X_P5_STEP_STAGE         24u
-#define V9X_P5_STEP_COMPARE       25u
-#define V9X_P5_STEP_PROBE         26u
-#define V9X_P5_STEP_SUBMIT        27u
-#define V9X_P5_STEP_HASH          28u
-#define V9X_P5_STEP_ROWS          29u
-#define V9X_P5_STEP_PIXELS        30u
+#define V9X_P5_STEP_PREFLIGHT     20u
+#define V9X_P5_STEP_STAGE         21u
+#define V9X_P5_STEP_VERIFY        22u
+#define V9X_P5_STEP_PROGRAM       23u
+#define V9X_P5_STEP_PROBE         24u
+#define V9X_P5_STEP_DRAW          25u
+#define V9X_P5_STEP_TEARDOWN      26u
+#define V9X_P5_STEP_HASH          27u
+#define V9X_P5_STEP_ROWS          28u
+#define V9X_P5_STEP_PIXELS        29u
 
 /*
  * Shift-add 32-bit multiply. Open Watcom would otherwise call __U4M, which
@@ -421,6 +430,12 @@ void V9X_I9XX_FAR v9x_intel_phase5_run(
     WORD phase4_passed, WORD armed)
 {
     WORD reason;
+#ifdef V9X_I9XX_PHASE5_SUBMIT
+    /* Only the staging and execute loops use it, and both are behind the
+     * same guard. Declared here rather than in a block so the two loops can
+     * share it, and scoped so a build without submit has no unused local. */
+    WORD index;
+#endif
     WORD row;
     DWORD row_base;
 
@@ -436,9 +451,9 @@ void V9X_I9XX_FAR v9x_intel_phase5_run(
     reason = v9x_p5_preflight(layout, phase4_passed, armed);
 #else
     /*
-     * No submit path exists, so an armed run is refused before it can write
-     * anything. An unarmed run still takes its own branch below and produces
-     * the full no-write capture, which is what B1 needs.
+     * Built without the submit path. An armed run is refused before it can
+     * write anything; an unarmed run still takes its own branch below and
+     * produces the full no-write capture, which is what B1 needs.
      */
     reason = (armed == 0u) ? V9X_P5_PRE_NOT_ARMED : V9X_P5_PRE_SUBMIT_MISSING;
     (void)v9x_p5_preflight;
@@ -500,20 +515,60 @@ void V9X_I9XX_FAR v9x_intel_phase5_run(
      * passed in this boot, and only after the built stream decoded.
      */
     /*
-     * The fill is no longer here. The GPU fills its own target with an
-     * XY_COLOR_BLT at the head of the Phase 5 stream, and the CPU does not
-     * write that memory at all - it only reads it back.
+     * Everything below this line writes. It is reached only with an armed,
+     * one-shot token whose CRC covers this exact stream, only after Phase 4
+     * passed in this boot, and only after the built stream decoded.
      *
-     * That is a condition of the errata gate opening rather than an
-     * implementation preference: 600 KiB of CPU writes through GMADR
-     * immediately before the GPU read adjacent memory was the closest
-     * thing in this design to erratum 12's own description of its trigger
-     * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md).
-     *
-     * The fill and the draw are separate submissions in the mini-VDD, so a
-     * hang during the fill is Phase 4's proven packet failing at a new
-     * address - a layout finding, not a 3D one.
+     * The CPU does not write the render target at all - the GPU fills it with
+     * the XY_COLOR_BLT at the head of this stream. The only thing the CPU
+     * writes is the ring, one dword at a time, each checked against the
+     * generated table on the way in.
      */
+#ifdef V9X_I9XX_PHASE5_SUBMIT
+    v9x_p5_intent(V9X_P5_STEP_STAGE);
+    for (index = 0u; index < (WORD)v9x_p5_stream_dwords; ++index) {
+        if (V9xMiniI9xxP5Stage(layout->reserve_physical, index,
+                               v9x_p5_stream[index]) == 0u) {
+            v9x_p5_hex("StageFailIndex", (DWORD)index);
+            v9x_p5_hex("StageFail", v9x_i9xx_ring_stage_fail);
+            v9x_p5_text("Result", "STAGE-REFUSED");
+            return;
+        }
+        /* A marker every sixteen dwords, so a hang inside a sixty-six dword
+         * loop says roughly where rather than only that it was staging. */
+        if ((index & 0x0fu) == 0u) {
+            v9x_p5_hex("P5Marker", (DWORD)index);
+        }
+    }
+    v9x_p5_hex("StageFail", 0ul);
+
+    /*
+     * The five execute steps, in order, each refusing if the previous did not
+     * complete. IntentStep is flushed before each, carrying the same number
+     * the mini-VDD is about to be asked for.
+     */
+    for (index = 0u; index < 5u; ++index) {
+        static const WORD execute_steps[5] = {
+            V9X_P5_STEP_VERIFY, V9X_P5_STEP_PROGRAM, V9X_P5_STEP_PROBE,
+            V9X_P5_STEP_DRAW, V9X_P5_STEP_TEARDOWN
+        };
+        WORD step = execute_steps[index];
+
+        v9x_p5_intent(step);
+        if (V9xMiniI9xxRingExecute(v9x_i9xx_phase5_execution_crc(), step)
+                == 0u) {
+            v9x_p5_hex("ExecFailStep", (DWORD)step);
+            v9x_p5_hex("ExecFailure", v9x_i9xx_ring_exec_failure);
+            v9x_p5_hex("ExecHead", v9x_i9xx_ring_exec_head);
+            v9x_p5_hex("ExecTail", v9x_i9xx_ring_exec_tail);
+            v9x_p5_hex("ExecPolls", v9x_i9xx_ring_exec_polls);
+            v9x_p5_text("Result", "EXECUTE-REFUSED");
+            return;
+        }
+        v9x_p5_indexed_hex("EX", step, v9x_i9xx_ring_exec_elapsed);
+    }
+    v9x_p5_hex("ExecFailure", 0ul);
+#endif
 
     v9x_p5_intent(V9X_P5_STEP_HASH);
     (void)v9x_p5_hash_target(layout, "DrawHashA", "DrawHashB",

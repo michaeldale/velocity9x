@@ -297,7 +297,7 @@ struct v9x_i9xx_phase4_sequence {
 /* Phase 5 sequencer steps, numbered from 20 so a hang is attributable to
  * a phase from the step number alone. */
 #define V9X_I9XX_P5_STEP_FIRST           ((v9x_u16)20u)
-#define V9X_I9XX_P5_STEP_LAST            ((v9x_u16)30u)
+#define V9X_I9XX_P5_STEP_LAST            ((v9x_u16)29u)
 
 /* Streaming so the 16-bit diagnostic never needs a 256-KiB near array. */
 struct v9x_i9xx_gtt_inventory {
