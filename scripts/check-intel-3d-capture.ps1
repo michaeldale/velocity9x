@@ -311,6 +311,10 @@ function Test-V9xIntel3dCapture {
                 if (-not $values.ContainsKey($key)) {
                     throw ("$group claims a complete read but $key is absent.")
                 }
+                # Parsed, not merely present. Testing for the key alone accepts
+                # PostErr0004=garbage, which is a register value nobody can
+                # read reported as a complete diagnostic.
+                $null = Get-V9x3dHex32 -Values $values -Key $key
             }
         }
     }
@@ -577,6 +581,10 @@ R0000=DEADBEEF'
            Why = 'a diagnostic register count other than nine' },
         @{ Old = 'PostErr0007=00000000'; New = 'PostErrZZZZ=00000000'
            Why = 'a diagnostic register missing from a set claiming nine' },
+        @{ Old = 'PostErr0004=00000000'; New = 'PostErr0004=garbage'
+           Why = 'a diagnostic register value that is not eight hex digits' },
+        @{ Old = 'PreErr0000=00000000'; New = 'PreErr0000=00000'
+           Why = 'a truncated diagnostic register value' },
         @{ Old = 'PreErrOk=1'; New = 'PreErrNote=1'
            Why = 'no completeness status on the pre-draw read' }
     )

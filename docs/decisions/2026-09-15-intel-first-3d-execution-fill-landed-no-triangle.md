@@ -29,9 +29,11 @@ generated table, the ring was programmed, both submissions drained without a
 timeout, and teardown completed.
 
 **The fill reached the probed points.** All fourteen probes read `08420842` -
-`V9X_I9XX_FILL_DWORD`. On the unarmed B1 two hours earlier the same fourteen
-addresses read a mix of `00000000` and `FFFFFFFF`, so the GPU wrote fill colour
-to every point sampled. Fourteen points do not establish that all 614,400 bytes
+`V9X_I9XX_FILL_DWORD`. On the unarmed B1 two hours earlier, samples in the same
+target region read a mix of `00000000` and `FFFFFFFF`. Those were eight sample
+addresses, not these fourteen probe addresses, so the comparison is between two
+different point sets in one region and not a before-and-after of the same
+points. Fourteen points do not establish that all 614,400 bytes
 were written; the bulk read-back that could have is the operation that hard
 locks this part. What is established is that the GPU executed a 3D-pipeline
 command stream and altered the render target, for the first time under this
