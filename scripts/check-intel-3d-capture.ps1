@@ -522,6 +522,7 @@ function Test-V9xIntel3dCapture {
 
         $sceneBad = @()
         $sceneMeasured = @()
+        $scenePredicted = @()
         $sceneChecked = 0
         # The guards as they were BEFORE anything was submitted. Required,
         # not optional: treating their absence as "nothing to compare against"
@@ -686,7 +687,20 @@ function Test-V9xIntel3dCapture {
                                "expects triangle $tri, which the scene does " +
                                'not have.')
                     }
-                    $want = [Convert]::ToUInt32($colors[$tri], 16) -band 0xffff
+                    # A PREDICTED colour is reported, never failed on.
+                    #
+                    # Scene 1 exists to test the conversion rule at channel
+                    # values where it is not established. Requiring its
+                    # predicted store would let the experiment confirm and
+                    # never inform, and would report the most interesting
+                    # possible outcome - green truncating - as a regression.
+                    if (-not $colors[$tri].Measured) {
+                        $scenePredicted += ("$key=" + ('{0:X8}' -f $actual) +
+                                            ' predicted ' +
+                                            $colors[$tri].Value)
+                        continue
+                    }
+                    $want = [Convert]::ToUInt32($colors[$tri].Value, 16) -band 0xffff
                 }
                 if ($null -ne $want) {
                     if ($low -ne $want -or $high -ne $want) {
@@ -713,8 +727,15 @@ function Test-V9xIntel3dCapture {
                    'proves nothing and must not read as a pass.')
         }
         $notes += ("$sceneChecked scene probes matched their established " +
-                   "expectation; $($sceneMeasured.Count) are measurements: " +
+                   "expectation; $($sceneMeasured.Count) are edge measurements: " +
                    ($sceneMeasured -join ' '))
+        if ($scenePredicted.Count -ne 0) {
+            # Reported deliberately and separately. These are the experiment's
+            # actual result, and the only reason the boot is worth taking.
+            $notes += ("$($scenePredicted.Count) probes carry a PREDICTED " +
+                       'colour and are reported, not required: ' +
+                       ($scenePredicted -join ' '))
+        }
 
         # The aperture-read budget. Published before the run, so a capture
         # that reached the end must have spent about what it predicted.
@@ -1133,7 +1154,7 @@ R0000=DEADBEEF'
                     $half = $generated.Referencefill.Substring(4)
                     $value = $half + $half
                 } else {
-                    $half = @($entry.Colors)[$probe.Expect - 1]
+                    $half = @($entry.Colors)[$probe.Expect - 1].Value
                     $value = $half + $half
                 }
                 $s3.Add(('{0}{1}=x' -f $prefix, $probe.Name))
@@ -1204,10 +1225,25 @@ R0000=DEADBEEF'
                Why = 'a scene whose error-register read did not complete' }
             @{ From = 'S0PostErrCount=00000009'; To = 'S0PostErrCount=00000004'
                Why = 'a scene claiming fewer than nine registers' }
-            @{ From = 'S0PX0000=' + ($generated.Scenes[0].Colors[0] * 2)
+            @{ From = 'S0PX0000=' + ($generated.Scenes[0].Colors[0].Value * 2)
                To = 'S0PX0000=DEADBEEF'
                Why = 'a scene pixel that is not what the scene expected' }
         )
+        # Scene 1's colour is a PREDICTION. Its alternative outcomes must be
+        # REPORTED, not rejected - 3018 is what a backend truncating green
+        # would store, and that is the most interesting result the boot could
+        # produce. A checker that called it a regression would let the
+        # experiment confirm and never inform.
+        $predicted = @($s3 | ForEach-Object {
+            if ($_ -clike 'S1PX*=30383038') { ($_ -replace '30383038', '30183018') }
+            else { $_ }
+        })
+        if (($predicted -join "`n") -ceq ($s3 -join "`n")) {
+            throw ('The schema-3 fixture carries no scene-1 predicted colour ' +
+                   'to perturb; the report-only path is untested.')
+        }
+        $null = Test-V9xIntel3dCapture -Lines $predicted
+
         foreach ($mutation in $s3Corruptions) {
             $broken = @($s3 | ForEach-Object {
                 if ($_ -ceq $mutation.From) { $mutation.To } else { $_ } })

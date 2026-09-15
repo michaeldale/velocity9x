@@ -114,7 +114,7 @@
             PrimitiveOffset = 47
             Triangles = 1
             Colors = @(
-                '1C3E'
+                @{ Value = '1C3E'; Measured = $true }
             )
             Probes = @(
                 @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
@@ -140,7 +140,7 @@
             PrimitiveOffset = 47
             Triangles = 1
             Colors = @(
-                '3038'
+                @{ Value = '3038'; Measured = $false }
             )
             Probes = @(
                 @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
@@ -166,7 +166,7 @@
             PrimitiveOffset = 47
             Triangles = 1
             Colors = @(
-                '1C3E'
+                @{ Value = '1C3E'; Measured = $true }
             )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
@@ -186,7 +186,7 @@
             PrimitiveOffset = 47
             Triangles = 1
             Colors = @(
-                'F325'
+                @{ Value = 'F325'; Measured = $true }
             )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
@@ -206,8 +206,8 @@
             PrimitiveOffset = 47
             Triangles = 2
             Colors = @(
-                '1C3E'
-                'F325'
+                @{ Value = '1C3E'; Measured = $true }
+                @{ Value = 'F325'; Measured = $true }
             )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }

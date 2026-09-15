@@ -18,6 +18,8 @@
 
 extern WORD v9x_intel_boot_arm_latch;
 extern WORD v9x_intel_boot_arm_phase;
+/* Publishes the whole boot's aperture-read budget. Profile writes only. */
+extern void v9x_intel_phase6_publish_budget(void);
 extern DWORD v9x_intel_boot_arm_crc;
 extern char v9x_intel_boot_arm_token[64];
 extern WORD v9x_intel_boot_arm_retire(const char *result);
@@ -665,6 +667,17 @@ void v9x_intel_phase4_maybe_run(
     DWORD post_errors[7];
     char crc_text[9];
     if (v9x_intel_boot_arm_latch == 0u) { return; }
+    /*
+     * The aperture-read budget FIRST, before the replay reads a single dword.
+     *
+     * The replay is about a thousand reads on its own - verifying its blit
+     * walks 1024 dwords of scratch - so publishing the budget after it left
+     * the one boot that most needed the number without it. A budget written
+     * after the reads it bounds is a record, not a budget.
+     */
+    if (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE6) {
+        v9x_intel_phase6_publish_budget();
+    }
     v9x_i9xx_phase4_sequence_begin(&sequence);
     precondition = v9x_p4_preflight(layout, probe, blt, flush_stable);
     if (precondition != V9X_P4_PRE_OK) {

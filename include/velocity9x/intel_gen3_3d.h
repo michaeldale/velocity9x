@@ -428,6 +428,18 @@ struct v9x_i9xx_triangle {
     /* BGRA, one colour for all three vertices - see the vertex builder for
      * why that keeps provoking-vertex rules off the critical path. */
     v9x_u32 color;
+    /*
+     * V9X_TRUE when this colour's 565 store has been OBSERVED on this chip,
+     * V9X_FALSE when it is a prediction the boot exists to test.
+     *
+     * The distinction decides whether a probe reading something else is a
+     * regression or a result. Scene 1 carries a colour chosen precisely
+     * because the conversion rule is not established at those channel values;
+     * requiring its predicted store would let the experiment confirm and
+     * never inform, and would report the most interesting possible outcome -
+     * green truncating - as a fault.
+     */
+    v9x_u16 color_measured;
 };
 
 struct v9x_i9xx_scene {

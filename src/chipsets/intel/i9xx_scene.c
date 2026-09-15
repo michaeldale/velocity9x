@@ -139,8 +139,9 @@
 static void v9x_i9xx_scene_triangle(
     struct v9x_i9xx_triangle *out,
     v9x_u32 x0, v9x_u32 y0, v9x_u32 x1, v9x_u32 y1,
-    v9x_u32 x2, v9x_u32 y2, v9x_u32 color)
+    v9x_u32 x2, v9x_u32 y2, v9x_u32 color, v9x_u16 measured)
 {
+    out->color_measured = measured;
     out->x[0] = x0;
     out->y[0] = y0;
     out->x[1] = x1;
@@ -177,7 +178,7 @@ static void v9x_i9xx_scene_clear(struct v9x_i9xx_scene *out)
     out->probe_count = 0ul;
     for (index = 0ul; index < V9X_I9XX_SCENE_MAX_TRIANGLES; ++index) {
         v9x_i9xx_scene_triangle(&out->triangles[index],
-                                0ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul);
+                                0ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul, V9X_FALSE);
     }
     for (index = 0ul; index < V9X_I9XX_SCENE_MAX_PROBES; ++index) {
         out->probes[index].name = "";
@@ -325,7 +326,8 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 (v9x_u32)V9X_I9XX_TRI_Y1,
                                 (v9x_u32)V9X_I9XX_TRI_X2,
                                 (v9x_u32)V9X_I9XX_TRI_Y2,
-                                V9X_I9XX_TRI_COLOR_BGRA);
+                                V9X_I9XX_TRI_COLOR_BGRA,
+                                V9X_TRUE);
         v9x_i9xx_scene_phase5_probes(out);
         return V9X_STATUS_OK;
     }
@@ -346,7 +348,11 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 (v9x_u32)V9X_I9XX_TRI_Y1,
                                 (v9x_u32)V9X_I9XX_TRI_X2,
                                 (v9x_u32)V9X_I9XX_TRI_Y2,
-                                V9X_I9XX_SCENE1_COLOR_BGRA);
+                                V9X_I9XX_SCENE1_COLOR_BGRA,
+                                /* A PREDICTION. 0x3038 is what
+                                 * rounding gives; the point of
+                                 * the scene is to find out. */
+                                V9X_FALSE);
         v9x_i9xx_scene_phase5_probes(out);
         return V9X_STATUS_OK;
     }
@@ -362,7 +368,7 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
                                 V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
                                 V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                                V9X_I9XX_TRI_COLOR_BGRA);
+                                V9X_I9XX_TRI_COLOR_BGRA, V9X_TRUE);
         /* Right of the diagonal is this scene's triangle; left is fill,
          * because the lower triangle is not drawn here at all. */
         v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
@@ -382,7 +388,7 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
                                 V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
                                 V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
-                                V9X_I9XX_MEASURED_COLOR_B);
+                                V9X_I9XX_MEASURED_COLOR_B, V9X_TRUE);
         v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_FILL,
                                    V9X_I9XX_PROBE_TRIANGLE0);
         return V9X_STATUS_OK;
@@ -400,12 +406,12 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                             V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
                             V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
                             V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                            V9X_I9XX_TRI_COLOR_BGRA);
+                            V9X_I9XX_TRI_COLOR_BGRA, V9X_TRUE);
     v9x_i9xx_scene_triangle(&out->triangles[1],
                             V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
                             V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
                             V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
-                            V9X_I9XX_MEASURED_COLOR_B);
+                            V9X_I9XX_MEASURED_COLOR_B, V9X_TRUE);
     v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
                                V9X_I9XX_PROBE_TRIANGLE1);
     return V9X_STATUS_OK;

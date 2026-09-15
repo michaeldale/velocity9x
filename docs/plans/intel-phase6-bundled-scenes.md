@@ -107,8 +107,14 @@ access this hazard concerns.
 
 | | Phase 4 replay | The draw | Boot total |
 |---|---|---|---|
-| Phase 5 boot (`intel42`, completed) | 1057 | 164 | **1221** |
-| Phase 6 boot | 1057 | 736 | **1793** |
+| Phase 5 boot (`intel42`, completed) | 1070 | 164 | **1234** |
+| Phase 6 boot | 1070 | 736 | **1806** |
+
+The replay figure was 1057 until a third pass over it found thirteen more:
+`v9x_p4_stage_guard` is called **twice**, not once, and each call also invokes
+`V9xMiniI9xxRingMemory`, which reads through the same mapped aperture on the
+driver's behalf — once per staged dword and once per guard. Those twelve
+appeared in neither side's tally because the verb belongs to neither.
 
 **About one and a half times a boot this machine has already completed
 twice.** Not sixteen. The step is real but modest, and the figure that makes it
@@ -122,7 +128,7 @@ owns, and `ReadBudgetScope` naming the scope so the next reader does not have
 to reconstruct it from a table.
 
 The rule — no boot raises the total by more than roughly double the last one
-that completed — is satisfied at 1.47x. That is the first time this plan has
+that completed — is satisfied at 1.46x. That is the first time this plan has
 been able to say so honestly.
 
 ## Build 1: five scenes

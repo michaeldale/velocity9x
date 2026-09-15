@@ -858,6 +858,12 @@ static int emit_intel_scenes(void)
                        (scene.triangles[probe].color >> 16) & 0xfful,
                        (scene.triangles[probe].color >> 8) & 0xfful,
                        scene.triangles[probe].color & 0xfful));
+            /* Whether that 565 value has been OBSERVED on this chip or is
+             * a prediction the boot exists to test. The validator fails on
+             * the first and reports the second. */
+            printf("SC%04XT%04XMEASURED=%04X\n", (unsigned int)index,
+                   (unsigned int)probe,
+                   (unsigned int)scene.triangles[probe].color_measured);
         }
         printf("SC%04XPROBES=%04X\n", (unsigned int)index,
                (unsigned int)scene.probe_count);

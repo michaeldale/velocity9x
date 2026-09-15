@@ -490,14 +490,40 @@ static const char *v9x_p6_expectation(WORD expect)
  * is a figure anyone typed.
  */
 
-/* Phase 4 replay, driver side: one reserve guard, one read-back per staged
- * dword, and 1024 dwords of scratch to verify the blit landed. */
-#define V9X_P4_DRIVER_READS  (1ul + 10ul + 1024ul)
-/* Phase 4 replay, mini-VDD side: a read-back per staged dword, the same
- * number again comparing the ring, and the two in-reserve guards. */
-#define V9X_P4_MINI_READS    (10ul + 10ul + 2ul)
+/*
+ * Phase 4 replay, driver side: TWO reserve guards - 0x11000 and 0x11ffc, one
+ * call each - a read-back per staged dword, and 1024 dwords of scratch to
+ * verify the blit landed.
+ *
+ * It said one guard. v9x_p4_stage_guard is called twice.
+ */
+#define V9X_P4_DRIVER_READS  (2ul + 10ul + 1024ul)
+/*
+ * Phase 4 replay, mini-VDD side, and there are two sources of it.
+ *
+ * The executor: a read-back per staged dword, the same number again comparing
+ * the ring in its programming step, and the two in-reserve guards.
+ *
+ * V9xMiniI9xxRingMemory, which the driver calls alongside each of its own
+ * reads - once per staged dword and once per guard check. Those twelve go
+ * through the same mapped aperture and were missing from this count
+ * entirely, because the verb reads on the driver's behalf and so appeared in
+ * neither side's tally.
+ */
+#define V9X_P4_MINI_READS    ((10ul + 10ul + 2ul) + (10ul + 2ul))
 
-static void v9x_p6_publish_read_budget(void)
+/*
+ * Called from the PHASE 4 path, before the replay reads anything.
+ *
+ * It used to run inside the scene loop, which is after the replay and after
+ * the pre-run guard and heap reads - about a thousand reads into a boot whose
+ * budget it claimed to publish "before any of it is spent". A hang in the
+ * replay left no budget at all, which is precisely the boot where the number
+ * would have been the measurement.
+ *
+ * Exported for that reason and no other. It writes only profile keys.
+ */
+void v9x_intel_phase6_publish_budget(void)
 {
     v9x_u32 scene;
     DWORD staged = 0ul;
@@ -1303,8 +1329,8 @@ void v9x_intel_phase5_run(
                    (DWORD)v9x_i9xx_scene_authorised_draws());
         v9x_p5_hex("SceneCombinedCrc", v9x_i9xx_scene_combined_crc());
         v9x_p5_hex("SceneProbeBudget", v9x_i9xx_scene_total_probes());
-        /* The whole boot's read budget, before any of it is spent. */
-        v9x_p6_publish_read_budget();
+        /* The budget itself was published before the Phase 4 replay ran; see
+         * v9x_intel_phase6_publish_budget. */
         v9x_p5_flush();
         /*
          * Zero means the build defines more scenes than the errata decision

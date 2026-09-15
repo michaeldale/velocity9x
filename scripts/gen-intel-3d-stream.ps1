@@ -335,7 +335,17 @@ for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
         if (-not $values.ContainsKey($ctag)) {
             throw "The emitted scene table is missing $ctag."
         }
-        $dataLines.Add(("                '{0}'" -f $values[$ctag]))
+        $mtag = '{0}T{1:X4}MEASURED' -f $tag, $tri
+        if (-not $values.ContainsKey($mtag)) {
+            throw "The emitted scene table is missing $mtag."
+        }
+        # '$true'/'$false' as TEXT. Import-PowerShellDataFile evaluates a
+        # data file rather than running it, and refuses a bare True - it is a
+        # command name there, not a boolean.
+        $measured = '$false'
+        if ([Convert]::ToInt32($values[$mtag], 16) -ne 0) { $measured = '$true' }
+        $dataLines.Add(("                @{{ Value = '{0}'; Measured = {1} }}" -f
+                        $values[$ctag], $measured))
     }
     $dataLines.Add('            )')
     $dataLines.Add('            Probes = @(')
