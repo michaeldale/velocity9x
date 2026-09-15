@@ -459,6 +459,15 @@ v9x_u32 v9x_i9xx_scene_count(void);
 v9x_u32 v9x_i9xx_scene_authorised_draws(void);
 v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out);
 v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene);
+/*
+ * Dwords before the scene's _3DPRIMITIVE - the boundary the executor stops at
+ * between its two submissions. Zero if the scene cannot be built.
+ *
+ * Generated into the mini-VDD's tables rather than written there as a literal.
+ * A literal is what carried the old 66-dword layout's boundary of 50 into a
+ * 63-dword stream whose primitive is at 47.
+ */
+v9x_u32 v9x_i9xx_scene_primitive_offset(const struct v9x_i9xx_scene *scene);
 v9x_status v9x_i9xx_build_scene_stream(
     const struct v9x_i9xx_scene *scene,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);

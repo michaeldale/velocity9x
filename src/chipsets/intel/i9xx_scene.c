@@ -430,6 +430,39 @@ v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene)
            v9x_i9xx_triangle_run_dwords(scene->triangle_count);
 }
 
+/*
+ * Dwords a scene submits BEFORE its _3DPRIMITIVE: the fill, the state block,
+ * the fragment program and the MI probe.
+ *
+ * The executor submits in two halves and stops between them, so that a drain
+ * of the first and a stall on the second says "the ring is alive and the state
+ * was accepted, the PRIMITIVE is what hung". That only holds if the boundary
+ * is exactly the primitive's first dword.
+ *
+ * Derived by SUBTRACTING the triangle run from the scene's own extent, not by
+ * adding the prefix up a second time. The two would be independent
+ * computations of the same number and could disagree - which is precisely what
+ * happened to the executor: loader.asm carried the boundary as a literal 50,
+ * correct for the 66-dword stream, and kept it when the depth BUF_INFO removal
+ * moved the primitive to 47. That submitted three dwords INTO the primitive
+ * and then drew through dwords nobody had staged.
+ */
+v9x_u32 v9x_i9xx_scene_primitive_offset(const struct v9x_i9xx_scene *scene)
+{
+    v9x_u32 extent;
+    v9x_u32 run;
+
+    extent = v9x_i9xx_scene_extent(scene);
+    if (extent == 0ul) {
+        return 0ul;
+    }
+    run = v9x_i9xx_triangle_run_dwords(scene->triangle_count);
+    if (run == 0ul || run >= extent) {
+        return 0ul;
+    }
+    return extent - run;
+}
+
 v9x_status v9x_i9xx_build_scene_stream(
     const struct v9x_i9xx_scene *scene,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)

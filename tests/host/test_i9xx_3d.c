@@ -1177,6 +1177,60 @@ static void test_triangle_run_refusals(void)
           V9X_STATUS_OK);
 }
 
+/*
+ * The submission boundary the executor stops at.
+ *
+ * This existed as a literal 50 in loader.asm, correct for the 66-dword stream,
+ * and stayed 50 when the depth BUF_INFO removal moved the primitive to 47. The
+ * probe submission then ran three dwords INTO the primitive - the parser would
+ * take a _3DPRIMITIVE header and then whatever followed - and the draw
+ * submitted through dword 66 of a 63-dword stream.
+ *
+ * Asserted three ways, because the defect was a second computation of a number
+ * that had drifted from the first: against the literal 47, against the stream
+ * the builder actually produces, and against the primitive header being there.
+ */
+static void test_scene_primitive_offset(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 stream[160];
+    v9x_u32 written = 0ul;
+    v9x_u32 offset;
+    v9x_u32 index;
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        offset = v9x_i9xx_scene_primitive_offset(&scene);
+
+        /* Fill 7 + state 31 + shader 7 + probe 2. The same for every scene:
+         * only the triangle run after it varies. */
+        CHECK(offset == 47ul);
+
+        written = 0ul;
+        CHECK(v9x_i9xx_build_scene_stream(
+                  &scene, stream, 160ul, &written) == V9X_STATUS_OK);
+        CHECK(offset < written);
+
+        /*
+         * And the dword AT the boundary is the primitive header, which is what
+         * makes the boundary the right one rather than merely a number both
+         * sides agree on.
+         */
+        CHECK((stream[offset] & 0xff000000ul) == V9X_I9XX_3DPRIMITIVE_INLINE);
+
+        /* Everything after it is the triangle run, exactly. */
+        CHECK(written - offset ==
+              v9x_i9xx_triangle_run_dwords(scene.triangle_count));
+    }
+
+    /* A scene that cannot be built has no boundary, rather than a plausible
+     * one computed from zero. */
+    CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
+    scene.triangle_count = 0ul;
+    CHECK(v9x_i9xx_scene_primitive_offset(&scene) == 0ul);
+    CHECK(v9x_i9xx_scene_primitive_offset(0) == 0ul);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -1199,6 +1253,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_edge_combined_is_one_primitive();
     test_scene_probe_budget();
     test_scene_combined_crc();
+    test_scene_primitive_offset();
     test_triangle_run_refusals();
     return failures;
 }

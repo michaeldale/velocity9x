@@ -47,12 +47,31 @@ if ($LASTEXITCODE -ne 0) {
     throw "The host binary refused to emit the Intel 3D stream (exit $LASTEXITCODE)."
 }
 
-# One KEY=VALUE per line, hex without a prefix. Deliberately trivial to parse:
-# the builders are the clever part and this should not be.
+# One KEY=VALUE per line. Deliberately trivial to parse: the builders are the
+# clever part and this should not be.
+#
+# TWO tables, not one, because the values have two shapes. Everything numeric
+# is hex without a prefix; probe names are text. A single pattern accepting
+# only hex is what silently dropped every NAME= line - the key matched, the
+# value did not, so the line vanished and all fifty-two probes reached the
+# generated data as Name = ''. Nothing failed, because nothing asked.
+#
+# Keeping them apart also means a name can never be read as a value or a value
+# as a name, whatever either happens to spell.
 $values = @{}
+$names = @{}
 foreach ($line in $emitted) {
     if ($line -match '^([A-Z0-9]+)=([0-9A-F]+)$') {
         $values[$Matches[1]] = $Matches[2]
+    } elseif ($line -match '^([A-Z0-9]+NAME)=([A-Za-z][A-Za-z0-9]*)$') {
+        $names[$Matches[1]] = $Matches[2]
+    } elseif ($line -match '^([A-Z0-9]+)=(.*)$') {
+        # Present, and neither shape. Refused rather than skipped: a value the
+        # parser does not understand is exactly what this whole comment is
+        # about, and the next one should stop the build instead of arriving
+        # as an empty string in a committed artefact.
+        throw ("The emitted stream line '$line' is neither a hex value nor a " +
+               'probe name. Add a shape for it rather than letting it drop.')
     }
 }
 foreach ($required in @('SCHEMA', 'RESERVEOFFSET', 'RINGSTART', 'SCRATCHOFFSET',
@@ -148,6 +167,13 @@ $incLines.Add(('V9X_I9XX_P4_PACKET_CRC  EQU 0{0}h' -f $values['P4PACKETCRC']))
 $incLines.Add(('V9X_I9XX_P4_CRC         EQU 0{0}h' -f $values['P4CRC']))
 $incLines.Add(('V9X_I9XX_P5_DWORDS      EQU {0}' -f $p5Count))
 $incLines.Add(('V9X_I9XX_P5_CRC         EQU 0{0}h' -f $values['P5CRC']))
+# The dword the _3DPRIMITIVE starts at. The executor submits the state,
+# shader and probe up to here, stops, then submits the primitive - so that
+# a drain of the first and a stall on the second distinguishes a dead ring
+# from bad packets. It was a literal 50 in loader.asm, correct for the
+# 66-dword stream and silently wrong for the 63-dword one.
+$incLines.Add(('V9X_I9XX_P5_PRIMITIVE   EQU {0}' -f 
+               [Convert]::ToInt32($values['P5PRIM'], 16)))
 $incLines.Add(('V9X_I9XX_COMBINED_CRC   EQU 0{0}h' -f $values['COMBINEDCRC']))
 
 # Phase 6 scenes. Three parallel directories rather than a struct array: MASM
@@ -167,12 +193,15 @@ $incLines.Add(('V9X_I9XX_SCENE_PROBES   EQU {0}' -f
 $sceneDwords = New-Object 'System.Collections.Generic.List[string]'
 $sceneCrcs = New-Object 'System.Collections.Generic.List[string]'
 $scenePtrs = New-Object 'System.Collections.Generic.List[string]'
+$scenePrims = New-Object 'System.Collections.Generic.List[string]'
 for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
     $tag = 'SC{0:X4}' -f $scene
     $count = [Convert]::ToInt32($values[($tag + 'COUNT')], 16)
     $sceneDwords.Add(('0{0:X8}h' -f $count))
     $sceneCrcs.Add(('0{0}h' -f $values[($tag + 'CRC')]))
     $scenePtrs.Add(('OFFSET32 V9xI9xxScene{0}Table' -f $scene))
+    $scenePrims.Add(('0{0:X8}h' -f 
+                     [Convert]::ToInt32($values[($tag + 'PRIM')], 16)))
 
     $incLines.Add('')
     $incLines.Add(('V9xI9xxScene{0}Table LABEL DWORD' -f $scene))
@@ -197,6 +226,8 @@ $incLines.Add('V9xI9xxSceneCrc LABEL DWORD')
 $incLines.Add('    dd ' + ($sceneCrcs -join ', '))
 $incLines.Add('V9xI9xxSceneTables LABEL DWORD')
 $incLines.Add('    dd ' + ($scenePtrs -join ', '))
+$incLines.Add('V9xI9xxScenePrim LABEL DWORD')
+$incLines.Add('    dd ' + ($scenePrims -join ', '))
 $incLines.Add('')
 
 function Add-V9xMasmTable {
@@ -256,7 +287,7 @@ $dataLines.Add('    )')
 if ($values.ContainsKey('REFERROR')) {
     throw "The software reference refused to rasterise: $($values['REFERROR'])."
 }
-foreach ($key in @('REFFILL', 'REFCOLOR', 'REFICOLOR')) {
+foreach ($key in @('REFFILL', 'REFCOLOR', 'REFICOLOR', 'P5PRIM')) {
     if (-not $values.ContainsKey($key)) {
         throw "The emitted stream is missing $key."
     }
@@ -291,13 +322,20 @@ for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
                     [Convert]::ToInt32($values[($tag + 'ID')], 16)))
     $dataLines.Add(('            Dwords = {0}' -f $count))
     $dataLines.Add(("            Crc = '{0}'" -f $values[($tag + 'CRC')]))
+    $dataLines.Add(('            PrimitiveOffset = {0}' -f
+                    [Convert]::ToInt32($values[($tag + 'PRIM')], 16)))
     $dataLines.Add(('            Triangles = {0}' -f
                     [Convert]::ToInt32($values[($tag + 'TRIS')], 16)))
     $dataLines.Add('            Probes = @(')
     for ($probe = 0; $probe -lt $probes; ++$probe) {
         $ptag = '{0}P{1:X4}' -f $tag, $probe
+        if (-not $names.ContainsKey($ptag + 'NAME')) {
+            throw ("The emitted stream has no name for probe $probe of scene " +
+                   "$scene. Every probe is named, and the capture keys are " +
+                   'those names - an unnamed probe is unreadable evidence.')
+        }
         $dataLines.Add(("                @{{ Name = '{0}'; X = {1}; Y = {2}; Expect = {3} }}" -f
-                        $values[($ptag + 'NAME')],
+                        $names[($ptag + 'NAME')],
                         [Convert]::ToInt32($values[($ptag + 'X')], 16),
                         [Convert]::ToInt32($values[($ptag + 'Y')], 16),
                         [Convert]::ToInt32($values[($ptag + 'EXPECT')], 16)))

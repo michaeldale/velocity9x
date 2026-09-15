@@ -1144,6 +1144,67 @@ foreach ($line in $intelIncLines) {
     }
     if ($line.Trim() -eq '') { $currentLabel = $null }
 }
+# The executor's submission boundaries must come from the generated include.
+#
+# They were literals - 50 and 66 - correct for the 66-dword stream and silently
+# wrong the moment the depth BUF_INFO removal made it 63 dwords with its
+# primitive at 47. That submitted three dwords into the primitive and then drew
+# through three nobody had staged. Nothing caught it, because a literal that
+# used to be right looks exactly like a literal that still is.
+foreach ($boundary in @(
+    @{ Symbol = 'V9X_I9XX_P5_PRIMITIVE'; What = 'the probe/state submission' },
+    @{ Symbol = 'V9X_I9XX_P5_DWORDS'; What = 'the draw submission' })) {
+    if ($loaderText -notmatch [regex]::Escape($boundary.Symbol + ' * 4')) {
+        throw ("src\minivdd32\loader.asm does not use $($boundary.Symbol) for " +
+               "$($boundary.What). The boundary must come from i9xx3d.inc, " +
+               'not be written here as a number that was once correct.')
+    }
+}
+if ($loaderText -match '(?m)V9xI9xxRingWant,\s+V9X_I9XX_P5_RING_OFFSET \+ \d+ \* 4') {
+    throw ('src\minivdd32\loader.asm submits to a literal ring offset. Use the ' +
+           'generated V9X_I9XX_P5_PRIMITIVE and V9X_I9XX_P5_DWORDS.')
+}
+
+# Probe names must survive generation.
+#
+# They did not: the emitter's parser accepted only hex values, so every NAME=
+# line was dropped and all fifty-two probes reached the committed data as
+# Name = ''. Nothing failed, because nothing asked - which is why this asks.
+#
+# The capture keys ARE these names, so an unnamed probe is a row of hex nobody
+# can attribute, and two probes sharing a name silently merge in the capture.
+$intelDataPath = Join-Path $repoRoot 'scripts\data\intel-3d-stream.psd1'
+if (Test-Path -LiteralPath $intelDataPath) {
+    $intelData = Import-PowerShellDataFile -LiteralPath $intelDataPath
+    if ($intelData.ContainsKey('Scenes')) {
+        $sceneIndex = 0
+        foreach ($sceneEntry in @($intelData.Scenes)) {
+            $seen = @{}
+            $probeIndex = 0
+            foreach ($probe in @($sceneEntry.Probes)) {
+                if ([string]::IsNullOrWhiteSpace($probe.Name)) {
+                    throw ("scripts\data\intel-3d-stream.psd1 scene $sceneIndex " +
+                           "probe $probeIndex has no name. The capture keys are " +
+                           'those names; regenerate with gen-intel-3d-stream.ps1.')
+                }
+                if ($seen.ContainsKey($probe.Name)) {
+                    throw ("scripts\data\intel-3d-stream.psd1 scene $sceneIndex " +
+                           "uses the probe name '$($probe.Name)' twice. Two " +
+                           'probes with one name merge in the capture.')
+                }
+                $seen[$probe.Name] = $true
+                ++$probeIndex
+            }
+            if ($probeIndex -lt 1) {
+                throw ("scripts\data\intel-3d-stream.psd1 scene $sceneIndex has " +
+                       'no probes. A scene that reads nothing back measures ' +
+                       'nothing.')
+            }
+            ++$sceneIndex
+        }
+    }
+}
+
 # The Phase 6 scene directories, checked against the scene tables themselves.
 #
 # Three parallel arrays are three chances to disagree with the tables they

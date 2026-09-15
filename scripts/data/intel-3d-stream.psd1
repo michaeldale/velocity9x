@@ -110,92 +110,97 @@
             Id = 0
             Dwords = 63
             Crc = '6B1C2CEF'
+            PrimitiveOffset = 47
             Triangles = 1
             Probes = @(
-                @{ Name = ''; X = 320; Y = 213; Expect = 1 }
-                @{ Name = ''; X = 175; Y = 128; Expect = 1 }
-                @{ Name = ''; X = 465; Y = 128; Expect = 1 }
-                @{ Name = ''; X = 320; Y = 385; Expect = 1 }
-                @{ Name = ''; X = 320; Y = 130; Expect = 1 }
-                @{ Name = ''; X = 250; Y = 250; Expect = 1 }
-                @{ Name = ''; X = 390; Y = 250; Expect = 1 }
-                @{ Name = ''; X = 0; Y = 0; Expect = 0 }
-                @{ Name = ''; X = 639; Y = 0; Expect = 0 }
-                @{ Name = ''; X = 0; Y = 479; Expect = 0 }
-                @{ Name = ''; X = 639; Y = 479; Expect = 0 }
-                @{ Name = ''; X = 320; Y = 40; Expect = 0 }
-                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
-                @{ Name = ''; X = 600; Y = 400; Expect = 0 }
+                @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
+                @{ Name = 'NearV0'; X = 175; Y = 128; Expect = 1 }
+                @{ Name = 'NearV1'; X = 465; Y = 128; Expect = 1 }
+                @{ Name = 'NearV2'; X = 320; Y = 385; Expect = 1 }
+                @{ Name = 'MidTop'; X = 320; Y = 130; Expect = 1 }
+                @{ Name = 'MidLeft'; X = 250; Y = 250; Expect = 1 }
+                @{ Name = 'MidRight'; X = 390; Y = 250; Expect = 1 }
+                @{ Name = 'Corner00'; X = 0; Y = 0; Expect = 0 }
+                @{ Name = 'CornerX0'; X = 639; Y = 0; Expect = 0 }
+                @{ Name = 'Corner0Y'; X = 0; Y = 479; Expect = 0 }
+                @{ Name = 'CornerXY'; X = 639; Y = 479; Expect = 0 }
+                @{ Name = 'OutsideTop'; X = 320; Y = 40; Expect = 0 }
+                @{ Name = 'OutsideLeft'; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'OutsideRight'; X = 600; Y = 400; Expect = 0 }
             )
         }
         @{
             Id = 1
             Dwords = 63
             Crc = '60367BB4'
+            PrimitiveOffset = 47
             Triangles = 1
             Probes = @(
-                @{ Name = ''; X = 320; Y = 213; Expect = 1 }
-                @{ Name = ''; X = 175; Y = 128; Expect = 1 }
-                @{ Name = ''; X = 465; Y = 128; Expect = 1 }
-                @{ Name = ''; X = 320; Y = 385; Expect = 1 }
-                @{ Name = ''; X = 320; Y = 130; Expect = 1 }
-                @{ Name = ''; X = 250; Y = 250; Expect = 1 }
-                @{ Name = ''; X = 390; Y = 250; Expect = 1 }
-                @{ Name = ''; X = 0; Y = 0; Expect = 0 }
-                @{ Name = ''; X = 639; Y = 0; Expect = 0 }
-                @{ Name = ''; X = 0; Y = 479; Expect = 0 }
-                @{ Name = ''; X = 639; Y = 479; Expect = 0 }
-                @{ Name = ''; X = 320; Y = 40; Expect = 0 }
-                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
-                @{ Name = ''; X = 600; Y = 400; Expect = 0 }
+                @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
+                @{ Name = 'NearV0'; X = 175; Y = 128; Expect = 1 }
+                @{ Name = 'NearV1'; X = 465; Y = 128; Expect = 1 }
+                @{ Name = 'NearV2'; X = 320; Y = 385; Expect = 1 }
+                @{ Name = 'MidTop'; X = 320; Y = 130; Expect = 1 }
+                @{ Name = 'MidLeft'; X = 250; Y = 250; Expect = 1 }
+                @{ Name = 'MidRight'; X = 390; Y = 250; Expect = 1 }
+                @{ Name = 'Corner00'; X = 0; Y = 0; Expect = 0 }
+                @{ Name = 'CornerX0'; X = 639; Y = 0; Expect = 0 }
+                @{ Name = 'Corner0Y'; X = 0; Y = 479; Expect = 0 }
+                @{ Name = 'CornerXY'; X = 639; Y = 479; Expect = 0 }
+                @{ Name = 'OutsideTop'; X = 320; Y = 40; Expect = 0 }
+                @{ Name = 'OutsideLeft'; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'OutsideRight'; X = 600; Y = 400; Expect = 0 }
             )
         }
         @{
             Id = 2
             Dwords = 63
             Crc = '4CD82BC9'
+            PrimitiveOffset = 47
             Triangles = 1
             Probes = @(
-                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = ''; X = 322; Y = 270; Expect = 1 }
-                @{ Name = ''; X = 318; Y = 270; Expect = 0 }
-                @{ Name = ''; X = 420; Y = 200; Expect = 1 }
-                @{ Name = ''; X = 210; Y = 380; Expect = 0 }
-                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 1 }
+                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 0 }
+                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 1 }
+                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 0 }
+                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
             )
         }
         @{
             Id = 3
             Dwords = 63
             Crc = '3AE65FF9'
+            PrimitiveOffset = 47
             Triangles = 1
             Probes = @(
-                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = ''; X = 322; Y = 270; Expect = 0 }
-                @{ Name = ''; X = 318; Y = 270; Expect = 1 }
-                @{ Name = ''; X = 420; Y = 200; Expect = 0 }
-                @{ Name = ''; X = 210; Y = 380; Expect = 1 }
-                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 0 }
+                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 1 }
+                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 0 }
+                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 1 }
+                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
             )
         }
         @{
             Id = 4
             Dwords = 78
             Crc = '638E7E0C'
+            PrimitiveOffset = 47
             Triangles = 2
             Probes = @(
-                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = ''; X = 322; Y = 270; Expect = 1 }
-                @{ Name = ''; X = 318; Y = 270; Expect = 2 }
-                @{ Name = ''; X = 420; Y = 200; Expect = 1 }
-                @{ Name = ''; X = 210; Y = 380; Expect = 2 }
-                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 1 }
+                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 2 }
+                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 1 }
+                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 2 }
+                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
             )
         }
     )

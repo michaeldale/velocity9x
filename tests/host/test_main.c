@@ -847,6 +847,8 @@ static int emit_intel_scenes(void)
                (unsigned int)scene.triangle_count);
         printf("SC%04XPROBES=%04X\n", (unsigned int)index,
                (unsigned int)scene.probe_count);
+        printf("SC%04XPRIM=%04X\n", (unsigned int)index,
+               (unsigned int)v9x_i9xx_scene_primitive_offset(&scene));
         for (probe = 0ul; probe < scene.probe_count; ++probe) {
             printf("SC%04XP%04XNAME=%s\n", (unsigned int)index,
                    (unsigned int)probe, scene.probes[probe].name);
@@ -942,6 +944,12 @@ static int emit_intel_3d_stream(void)
     printf("P5COUNT=%04X\n", (unsigned int)written);
     emit_dword_table("P5", 0ul, phase5, written);
     printf("P5CRC=%08lX\n", (unsigned long)phase5_crc);
+    /* The dword the _3DPRIMITIVE starts at. The executor stops between its
+     * two submissions exactly here. */
+    printf("P5PRIM=%04X\n",
+           (unsigned int)(v9x_i9xx_phase5_fill_extent() +
+                          v9x_i9xx_3d_state_extent() +
+                          v9x_i9xx_fragment_program_extent() + 2ul));
     printf("COMBINEDCRC=%08lX\n",
            (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
     emit_intel_3d_reference();
