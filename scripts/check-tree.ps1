@@ -1180,6 +1180,95 @@ if ($combinedRecomputed -ne $combinedDeclared) {
            "two phase CRCs is $combinedRecomputed.")
 }
 
+# ---------------------------------------------------------------------------
+# Every refusal code a capture can carry must be one a reader can interpret.
+#
+# A capture is only worth the trip it saves if its numbers mean something, and
+# the numbers live in two places: the C that emits them and
+# hardware-diagnostics.md that explains them. Nothing kept those in step, and
+# the drift was already there before this rule - PreconditionCode 13 had been
+# emitted since the reserve grew and was in no table.
+#
+# The netbook has no serial port and no network path, so a refusal code that
+# cannot be looked up is a second trip to the machine. That is the cost this
+# prevents.
+# ---------------------------------------------------------------------------
+$diagnosticsPath = Join-Path $repoRoot "docs\specifications\hardware-diagnostics.md"
+$diagnosticsText = Get-Content -LiteralPath $diagnosticsPath -Raw
+
+# Phase 5's preconditions, published as two hex digits by v9x_p5_hex.
+$phase5SourceText = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\display16\intel_3d16.c") -Raw
+$phase5Codes = @([regex]::Matches($phase5SourceText,
+    '(?m)^#define\s+V9X_P5_PRE_(\w+)\s+(\d+)u') | ForEach-Object {
+        [pscustomobject]@{
+            Name = $_.Groups[1].Value
+            Hex  = '{0:X2}' -f [int]$_.Groups[2].Value
+        }
+    })
+if ($phase5Codes.Count -lt 12) {
+    throw ("Only $($phase5Codes.Count) V9X_P5_PRE_* codes were parsed from " +
+           "intel_3d16.c; the parse that finds them has stopped working.")
+}
+# Capture to the next heading or end of file. The doc is CRLF, so nothing here
+# may assume a bare \n - an earlier draft of this rule did and reported a
+# missing table that was present.
+$phase5Section = ''
+if ($diagnosticsText -match '(?ms)### Phase 5 Precondition(.*?)(?=\r?\n### |\z)') {
+    $phase5Section = $Matches[1]
+} else {
+    throw ("hardware-diagnostics.md has no '### Phase 5 Precondition' table. " +
+           "Phase 5 publishes Precondition in its own code space and a reader " +
+           "on a blind machine needs it.")
+}
+foreach ($code in $phase5Codes) {
+    if ($phase5Section -notmatch "(?m)^\|\s*``$($code.Hex)``\s*\|") {
+        throw ("V9X_P5_PRE_$($code.Name) publishes Precondition " +
+               "``$($code.Hex)`` and hardware-diagnostics.md's Phase 5 table " +
+               "has no row for it. A capture from the netbook cannot be read " +
+               "without that row.")
+    }
+}
+$phase5Rows = @([regex]::Matches($phase5Section, '(?m)^\|\s*`([0-9A-F]{2})`\s*\|') |
+    ForEach-Object { $_.Groups[1].Value })
+foreach ($row in $phase5Rows) {
+    if ($row -notin @($phase5Codes | ForEach-Object { $_.Hex })) {
+        throw ("hardware-diagnostics.md documents Phase 5 Precondition " +
+               "``$row``, which intel_3d16.c does not define. A code that " +
+               "cannot be emitted is worse than no row: it invites a reader " +
+               "to explain a number the driver never produced.")
+    }
+}
+
+# The chain's own rejection vocabulary, published as PreconditionChainReject
+# and ChainDrawVerdict. Single digits, so they are matched in prose rather
+# than in a table.
+$chainCodes = @([regex]::Matches($intelHeader,
+    '(?m)^#define\s+V9X_I9XX_CHAIN_REJECT_(\w+)\s+\(\(v9x_u16\)(\d+)u\)') |
+    ForEach-Object {
+        [pscustomobject]@{ Name = $_.Groups[1].Value; Value = $_.Groups[2].Value }
+    })
+if ($chainCodes.Count -lt 6) {
+    throw ("Only $($chainCodes.Count) V9X_I9XX_CHAIN_REJECT_* codes were " +
+           "parsed from intel_gma.h; the parse has stopped working.")
+}
+# Anchored at the start of the explaining paragraph, not at the first mention:
+# the name also appears in the PreconditionCode table row that points here, and
+# matching there caught the table's own digits instead of the vocabulary.
+if ($diagnosticsText -notmatch
+        '(?ms)^`PreconditionChainReject` is meaningful.*?(?=\r?\n\r?\n)') {
+    throw ("hardware-diagnostics.md does not explain PreconditionChainReject, " +
+           "which is the only thing that says why a chained arm refused.")
+}
+$chainProse = $Matches[0]
+foreach ($code in $chainCodes) {
+    if ($chainProse -notmatch "``$($code.Value)``") {
+        throw ("V9X_I9XX_CHAIN_REJECT_$($code.Name) is ``$($code.Value)`` and " +
+               "hardware-diagnostics.md's PreconditionChainReject paragraph " +
+               "does not mention it.")
+    }
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,

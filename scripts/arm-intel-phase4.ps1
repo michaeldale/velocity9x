@@ -171,6 +171,7 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
         $keys = [ordered]@{
             IntelAccelDefault = '0'; IntelArmOnce = 'p4-test'
             IntelArmCrc = 'A0DA64A1'; IntelArmBuildId = 'abc1234'
+            IntelArmPhase = '4'
             IntelInFlight = ''; IntelEnableThisBoot = '0'
             IntelLastResult = ''
         }
@@ -205,15 +206,30 @@ if ($PSCmdlet.ParameterSetName -eq 'SelfTest') {
             @($created | Where-Object { $_ -ceq 'display.drv=vga.drv' }).Count -ne 1) {
             throw 'Self-test failed to append a missing [Velocity9x] section.'
         }
+        # An armed stick says 4, so the driver never has to fall back on
+        # reading an absent key as Phase 4.
+        if ($values['IntelArmPhase'] -cne '4') {
+            throw ("Self-test: an armed Phase 4 stick must carry " +
+                   "IntelArmPhase=4, not '$($values['IntelArmPhase'])'.")
+        }
+        # And it must never say 5, which is the value that authorises a draw.
+        if ($values['IntelArmPhase'] -ceq '5') {
+            throw 'Self-test: the Phase 4 armer wrote a Phase 5 claim.'
+        }
         # Disarm clears only what it names.
         $cleared = Set-V9xIniValues -Lines $updated -Section $armSection `
-            -Values ([ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0' })
+            -Values ([ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0'
+                                 IntelArmPhase = '' })
         $values = Get-V9xIniSectionValues -Lines $cleared -Section $armSection
         if ($values['IntelArmOnce'] -cne '' -or
             $values['IntelArmCrc'] -cne 'A0DA64A1') {
             throw 'Self-test disarm changed the wrong keys.'
         }
-        Write-Output 'Intel Phase 4 arm-script self-test passed (rewrite, append, disarm).'
+        if ($values['IntelArmPhase'] -cne '') {
+            throw 'Self-test disarm left a phase claim on the stick.'
+        }
+        Write-Output ('Intel Phase 4 arm-script self-test passed (rewrite, ' +
+                      'append, disarm, phase claim).')
     } finally {
         if (Test-Path -LiteralPath $temporary) {
             Remove-Item -LiteralPath $temporary -Force
@@ -249,7 +265,10 @@ if ($inFlight -and -not $AcknowledgeIncomplete) {
 }
 
 if ($Disarm) {
-    $keys = [ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0' }
+    # IntelArmPhase is cleared too: a disarmed stick should not still claim a
+    # phase, or the next reader has to work out whether the claim is live.
+    $keys = [ordered]@{ IntelArmOnce = ''; IntelEnableThisBoot = '0'
+                        IntelArmPhase = '' }
     if ($AcknowledgeIncomplete) { $keys['IntelInFlight'] = '' }
     Write-Host "Disarm $armFile" -ForegroundColor Cyan
     foreach ($key in $keys.Keys) { Write-Host ("  {0}={1}" -f $key, $keys[$key]) }
@@ -349,9 +368,23 @@ if ($Disarm) {
         IntelArmOnce       = $Token
         IntelArmCrc        = $crc
         IntelArmBuildId    = $buildId
+        # Which phase this token authorises.
+        #
+        # This armer did not write the key until 2026-09-15, so the driver
+        # still reads an absent IntelArmPhase as Phase 4 - sticks written
+        # before today have to keep working. Writing it explicitly means new
+        # sticks no longer depend on that compatibility reading, and a stick
+        # that says 4 can never reach a Phase 5 draw however the driver's
+        # default is later changed.
+        IntelArmPhase      = '4'
         IntelInFlight      = ''
         IntelEnableThisBoot = '0'
         IntelLastResult    = ''
+    }
+    if ($keys['IntelArmPhase'] -cne '4') {
+        throw ('The Phase 4 armer must write IntelArmPhase=4, or a Phase 5 ' +
+               'stick and a Phase 4 stick become indistinguishable to the ' +
+               'driver.')
     }
     Write-Host "Arm $armFile" -ForegroundColor Cyan
     Write-Host ("  capture      {0}" -f $capturePath)

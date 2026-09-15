@@ -171,6 +171,8 @@ earlier in the same file.
 | `10` | A diagnostic register read through the mini-VDD failed |
 | `11` | EIR is not clear |
 | `12` | ESR is not clear |
+| `13` | The enlarged reserve is not backed by the measured prefix |
+| `14` | The token claims Phase 5 and the chained arm refused; `PreconditionChainReject` gives its reason |
 
 
 ### IntentStep
@@ -297,6 +299,64 @@ chipset, not a driver defect, and it belongs in a decision record.
 `PreconditionArmReject` is meaningful only for code `05`: 1 not enabled this
 boot, 2 Safe Mode, 3 errata gate closed, 4 PCI identity, 5 phase, 6 token,
 7 command CRC.
+
+`PreconditionChainReject` is meaningful only for code `14`, and names which
+part of the two-phase arm refused: `1` the request did not claim Phase 5 on
+both sides, `2` the underlying arm contract refused - the same seven reasons
+as `PreconditionArmReject`, `3` the armed CRC is not the combined CRC over
+both streams in execution order, `4` the replay was reported out of order or
+failed, `5` the replay's own Phase 4 CRC did not match, `6` the draw's Phase 5
+CRC did not match.
+
+`3` is the one worth recognising on sight: it is what a **Phase 4 stick**
+produces if its phase claim is altered to `5`, because the combined CRC covers
+both streams and a Phase 4 token carries only half of it.
+
+Code `14` is deliberately distinct from `05`. Both mean the arm gate refused,
+but they are different gates over different tokens, and a capture that could
+not tell them apart could not distinguish a Phase 4 stick failing identity
+from a Phase 5 stick whose combined CRC does not cover this build.
+
+`PreconditionArmPhase` accompanies both and says what the consumed token
+claimed: `0` the key was absent, which every stick written before 2026-09-15
+reads as and which the driver treats as Phase 4; `4` or `5` otherwise. A stick
+carrying anything else never reaches here - the driver refuses it at load with
+`TokenMover=BAD-PHASE` rather than guessing which phase was meant.
+
+### Phase 5 Precondition
+
+`INTEL3D0.TXT` publishes `Precondition` in its own code space, disjoint from
+Phase 4's, so a refusal never has to be read with a phase in mind.
+
+| Code | Meaning |
+|---|---|
+| `00` | No refusal; the run proceeded |
+| `01` | Not armed. The unarmed rehearsal boot takes this path and still writes a full no-write capture |
+| `02` | Phase 4 did not pass in this boot |
+| `03` | The sandbox layout is not the measured one |
+| `04` | BSM is not `7F800000` |
+| `05` | The reserve is not backed by the measured prefix |
+| `06` | Building the 66-dword stream failed |
+| `07` | The built stream did not decode; see `PreDecodeReason` and `PreDecodeIndex` |
+| `08` | The built stream's CRC is not the generated constant; see `PreBuiltCrc` |
+| `09` | The target or its guard falls outside the reserve |
+| `0A` | This build has no Phase 5 submit path |
+| `0B` | The consumed token does not claim Phase 5 |
+| `0C` | The chain is not in the replayed state a draw may be reported from |
+
+`0B` is the check that stops a Phase 4 stick reaching a 3D draw. The boot latch
+records only that *some* valid one-shot token was transferred, not what it
+authorises, so without this the latch alone would have been the gate.
+
+`0C` means the token claimed Phase 5 but the replay did not complete - the
+chained arm refused, Phase 4 failed, or no chain was begun. `ChainStateOnEntry`
+gives the state: `0` idle, `1` armed, `2` replayed, `3` drew, `4` failed.
+
+On the way out, `ChainDrawVerdict` carries the same vocabulary as
+`PreconditionChainReject`, and `TokenRetired=1` appears only when the token was
+actually retired. A capture with a `PASS` result and no `TokenRetired` line
+means the draw happened but the arm file was not updated, which leaves the
+token in flight and the next boot reporting `INCOMPLETE`.
 
 EIR and ESR are latched error state and must be clear. EMR is the error
 *mask*: measured `FFFFFFFF` on the netbook 2026-09-14, reported and never
