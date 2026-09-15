@@ -116,6 +116,10 @@ GOTO DONE
 
 :FAILED
 ECHO FAIL: could not write %V9XARMFILE%.
+REM Without this the write-failure path fell into :UNRESOLVED and told the
+REM operator to run V9XCOPY, which would discard the arm record for a fault
+REM that has nothing to do with an unresolved run.
+GOTO DONE
 
 
 :UNRESOLVED
