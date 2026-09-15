@@ -206,6 +206,25 @@
 /* The background the target is filled with before the draw. Distinct from the
  * triangle colour in every byte, and likewise 565-exact. */
 #define V9X_I9XX_FILL_RGB565             ((v9x_u32)0x00000842ul)
+/*
+ * The same word duplicated into a dword, because the GPU fills the target
+ * rather than the CPU.
+ *
+ * At 16 bpp a 640x480 target is exactly a 320x480 THIRTY-TWO-BIT surface at
+ * the same 1280-byte pitch, so Phase 4's proven XY_COLOR_BLT fills it with no
+ * new packet type and no unproven depth encoding. The span works out to
+ * V9X_I9XX_TARGET_BYTES to the byte, so the builder's existing bounds check is
+ * the bound.
+ *
+ * The CPU no longer writes the target at all - it only reads it back. That is
+ * a condition of the errata gate opening, not an implementation preference:
+ * 600 KiB of CPU writes immediately before the GPU reads adjacent memory was
+ * the closest thing in this design to erratum 12's own description of its
+ * trigger (docs\decisions6-09-15-intel-phase5-errata-gate.md).
+ */
+#define V9X_I9XX_FILL_DWORD              ((v9x_u32)0x08420842ul)
+#define V9X_I9XX_FILL_BLT_WIDTH          ((v9x_u16)320u)
+#define V9X_I9XX_FILL_BLT_HEIGHT         ((v9x_u16)480u)
 
 /* ------------------------------------------------------------------ */
 /* Decoder refusal reasons. Every one is a distinct number, and the      */

@@ -264,7 +264,8 @@ static void test_phase5_parameters(void)
     CHECK(parameters.height == 480ul);
     CHECK(parameters.triangle_color == 0xfff86428ul);
     /* 34 state + 7 shader + 2 probe + 16 vertices. */
-    CHECK(parameters.stream_dwords == 59ul);
+    /* 7 fill + 34 state + 7 shader + 2 probe + 16 vertices. */
+    CHECK(parameters.stream_dwords == 66ul);
 
     /* The parameters and the layout must describe the same target. */
     CHECK(v9x_i9xx_sandbox_calculate(
@@ -295,36 +296,33 @@ static void test_phase5_parameters(void)
 }
 
 /* The golden stream, in full. See the file header for why. */
-static const v9x_u32 v9x_i9xx_phase5_golden[59] = {
-    0x66014140ul, 0x7d990000ul, 0x00000000ul, 0x7d9a0000ul,
-    0x00000000ul, 0x7d980000ul, 0x00000000ul, 0x76fac688ul,
-    0x7d810001ul, 0x00000000ul, 0x00000000ul, 0x7c800002ul,
-    0x7c880002ul, 0x7d070000ul, 0x00000000ul,
-    0x7d8e0001ul, 0x03000500ul, 0x006c2000ul,
-    0x7d8e0001ul, 0x07001000ul, 0x00000000ul,
-    0x7d850000ul, 0x00880200ul,
+static const v9x_u32 v9x_i9xx_phase5_golden[66] = {
+    0x54300004ul, 0x03f00500ul, 0x00000000ul, 0x01e00140ul, 0x006c2000ul,
+    0x08420842ul, 0x02000000ul, 0x66014140ul, 0x7d990000ul, 0x00000000ul,
+    0x7d9a0000ul, 0x00000000ul, 0x7d980000ul, 0x00000000ul, 0x76fac688ul,
+    0x7d810001ul, 0x00000000ul, 0x00000000ul, 0x7c800002ul, 0x7c880002ul,
+    0x7d070000ul, 0x00000000ul, 0x7d8e0001ul, 0x03000500ul, 0x006c2000ul,
+    0x7d8e0001ul, 0x07001000ul, 0x00000000ul, 0x7d850000ul, 0x00880200ul,
     0x7d800003ul, 0x00000000ul, 0x00000000ul, 0x01df027ful, 0x00000000ul,
-    0x7d0407c4ul, 0xfffffffful, 0x00000000ul, 0x00902480ul,
-    0x00000000ul, 0x00000000ul,
-    0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
-    0x02203ca0ul, 0x01230000ul, 0x00000000ul,
-    0x00000000ul, 0x02000000ul,
-    0x7f00000eul,
-    0x43200000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul, 0xfff86428ul,
-    0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul, 0xfff86428ul,
-    0x43a00000ul, 0x43c80000ul, 0x00000000ul, 0x3f800000ul, 0xfff86428ul
+    0x7d0407c4ul, 0xfffffffful, 0x00000000ul, 0x00902480ul, 0x00000000ul,
+    0x00000000ul, 0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
+    0x02203ca0ul, 0x01230000ul, 0x00000000ul, 0x00000000ul, 0x02000000ul,
+    0x7f00000eul, 0x43200000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
+    0xfff86428ul, 0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
+    0xfff86428ul, 0x43a00000ul, 0x43c80000ul, 0x00000000ul, 0x3f800000ul,
+    0xfff86428ul
 };
 
 static void test_golden_stream(void)
 {
-    v9x_u32 stream[80];
+    v9x_u32 stream[96];
     v9x_u32 written = 0ul;
     v9x_u32 index;
 
-    CHECK(v9x_i9xx_build_phase5_stream(stream, 80ul, &written) ==
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 96ul, &written) ==
           V9X_STATUS_OK);
-    CHECK(written == 59ul);
-    for (index = 0ul; index < 59ul; ++index) {
+    CHECK(written == 66ul);
+    for (index = 0ul; index < 66ul; ++index) {
         CHECK(stream[index] == v9x_i9xx_phase5_golden[index]);
     }
 
@@ -336,12 +334,12 @@ static void test_golden_stream(void)
      * drifting together.
      */
     CHECK(v9x_i9xx_phase5_execution_crc() ==
-          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 59ul));
-    CHECK(v9x_i9xx_phase5_execution_crc() == 0x78780722ul);
+          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 66ul));
+    CHECK(v9x_i9xx_phase5_execution_crc() == 0x0ed8c9a3ul);
 
-    CHECK(v9x_i9xx_build_phase5_stream(stream, 58ul, &written) !=
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 65ul, &written) !=
           V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_phase5_stream(0, 80ul, &written) ==
+    CHECK(v9x_i9xx_build_phase5_stream(0, 96ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -354,12 +352,12 @@ static void test_decoder_accepts_golden(void)
     v9x_u32 index = 0xfffffffful;
 
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 59ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0x00096000ul,
               &index) == V9X_I9XX_P5_OK);
     CHECK(index == 0ul);
     /* The index argument is optional. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 59ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0x00096000ul,
               0) == V9X_I9XX_P5_OK);
 }
 
@@ -377,52 +375,59 @@ static void test_decoder_rejects_mutations(void)
         v9x_u16 reason;
         v9x_u32 rejected_at;
     } mutations[] = {
+        /* The fill BLT, which the GPU now performs instead of the CPU. */
+        /* The BLT's bounds are checked as a packet, so a refusal points at
+         * the command dword rather than the field that was wrong. That is
+         * the right granularity here: the six dwords are one statement. */
+        { 4ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE,       0ul },
+        { 5ul, 0x08420843ul, V9X_I9XX_P5_FORMAT,             5ul },
+        { 3ul, 0x01e00141ul, V9X_I9XX_P5_TARGET_RANGE,       0ul },
         /* Tiled or fenced colour target. */
-        { 16ul, 0x03400500ul, V9X_I9XX_P5_TILED_FORBIDDEN,   16ul },
-        { 16ul, 0x03800500ul, V9X_I9XX_P5_TILED_FORBIDDEN,   16ul },
+        { 23ul, 0x03400500ul, V9X_I9XX_P5_TILED_FORBIDDEN, 23ul },
+        { 23ul, 0x03800500ul, V9X_I9XX_P5_TILED_FORBIDDEN, 23ul },
         /* Wrong colour pitch. */
-        { 16ul, 0x03000200ul, V9X_I9XX_P5_PITCH,             16ul },
+        { 23ul, 0x03000200ul, V9X_I9XX_P5_PITCH, 23ul },
         /* Colour target pointing somewhere else. */
-        { 17ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE,      17ul },
-        { 17ul, 0x006c3000ul, V9X_I9XX_P5_TARGET_RANGE,      17ul },
+        { 24ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE, 24ul },
+        { 24ul, 0x006c3000ul, V9X_I9XX_P5_TARGET_RANGE, 24ul },
         /* A depth buffer with real memory behind it. */
-        { 19ul, 0x07400400ul, V9X_I9XX_P5_TILED_FORBIDDEN,   19ul },
-        { 20ul, 0x006c2000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN,   20ul },
+        { 26ul, 0x07400400ul, V9X_I9XX_P5_TILED_FORBIDDEN, 26ul },
+        { 27ul, 0x006c2000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 27ul },
         /* Wrong destination format, and the bias silently dropped. */
-        { 22ul, 0x00880300ul, V9X_I9XX_P5_FORMAT,            22ul },
-        { 22ul, 0x00000200ul, V9X_I9XX_P5_FORMAT,            22ul },
+        { 29ul, 0x00880300ul, V9X_I9XX_P5_FORMAT, 29ul },
+        { 29ul, 0x00000200ul, V9X_I9XX_P5_FORMAT, 29ul },
         /* Exclusive rather than inclusive draw rect. */
-        { 26ul, 0x01e00280ul, V9X_I9XX_P5_DRAW_RECT,         26ul },
-        { 24ul, 0x00000001ul, V9X_I9XX_P5_DRAW_RECT,         24ul },
+        { 33ul, 0x01e00280ul, V9X_I9XX_P5_DRAW_RECT, 33ul },
+        { 31ul, 0x00000001ul, V9X_I9XX_P5_DRAW_RECT, 31ul },
         /* Scissor turned on. */
-        { 11ul, 0x7c800003ul, V9X_I9XX_P5_SCISSOR_ENABLED,   11ul },
+        { 18ul, 0x7c800003ul, V9X_I9XX_P5_SCISSOR_ENABLED, 18ul },
         /* Indirect state enabled rather than disabled. */
-        { 14ul, 0x00000001ul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 14ul },
+        { 21ul, 0x00000001ul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 21ul },
         /* A texture coordinate declared present. */
-        { 29ul, 0xfffffffeul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 29ul },
+        { 36ul, 0xfffffffeul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 36ul },
         /* S4 disagreeing with the vertex dwords - the silent-hang case. */
-        { 31ul, 0x009024c0ul, V9X_I9XX_P5_VERTEX_FORMAT,     31ul },
-        { 31ul, 0x00902400ul, V9X_I9XX_P5_VERTEX_FORMAT,     31ul },
+        { 38ul, 0x009024c0ul, V9X_I9XX_P5_VERTEX_FORMAT, 38ul },
+        { 38ul, 0x00902400ul, V9X_I9XX_P5_VERTEX_FORMAT, 38ul },
         /* Depth test or write enabled in S6. */
-        { 33ul, 0x00080000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN,   33ul },
-        { 33ul, 0x00000008ul, V9X_I9XX_P5_DEPTH_FORBIDDEN,   33ul },
+        { 40ul, 0x00080000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 40ul },
+        { 40ul, 0x00000008ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 40ul },
         /* A shader of the wrong length. */
-        { 34ul, 0x7d050007ul, V9X_I9XX_P5_SHADER,            34ul },
+        { 41ul, 0x7d050007ul, V9X_I9XX_P5_SHADER, 41ul },
         /* The indirect primitive form, which would fetch from a buffer. */
-        { 43ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 43ul },
+        { 50ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 50ul },
         /* Wrong vertex count. */
-        { 43ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT,      43ul },
+        { 50ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT, 50ul },
         /* A vertex outside the drawing rectangle. */
-        { 44ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE,      44ul },
+        { 51ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE, 51ul },
         /* A fractional coordinate, which the float decoder refuses. */
-        { 45ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE,      45ul },
+        { 52ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE, 52ul },
         /* Non-zero Z, and W other than one. */
-        { 46ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE,      46ul },
-        { 47ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE,      47ul },
+        { 53ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE, 53ul },
+        { 54ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE, 54ul },
         /* One vertex a different colour from the other two. */
-        { 53ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT,     53ul }
+        { 60ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT, 60ul }
     };
-    v9x_u32 stream[59];
+    v9x_u32 stream[66];
     v9x_u32 index;
     v9x_u32 mutation;
     const v9x_u32 count =
@@ -431,12 +436,12 @@ static void test_decoder_rejects_mutations(void)
     for (mutation = 0ul; mutation < count; ++mutation) {
         v9x_u32 rejected = 0xfffffffful;
         v9x_u16 reason;
-        for (index = 0ul; index < 59ul; ++index) {
+        for (index = 0ul; index < 66ul; ++index) {
             stream[index] = v9x_i9xx_phase5_golden[index];
         }
         stream[mutations[mutation].index] = mutations[mutation].value;
         reason = v9x_i9xx_decode_phase5_stream(
-            stream, 59ul, 0x006c2000ul, 0x00096000ul, &rejected);
+            stream, 66ul, 0x006c2000ul, 0x00096000ul, &rejected);
         CHECK(reason == mutations[mutation].reason);
         CHECK(rejected == mutations[mutation].rejected_at);
     }
@@ -448,12 +453,12 @@ static void test_decoder_structural_refusals(void)
 
     /* Truncation anywhere is refused, never read past. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 16ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 23ul, 0x006c2000ul, 0x00096000ul,
               &index) != V9X_I9XX_P5_OK);
     /* A stream missing its target description decodes clean packet by packet
      * and must still be refused. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 15ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 22ul, 0x006c2000ul, 0x00096000ul,
               &index) == V9X_I9XX_P5_MISSING_PACKET);
     CHECK(v9x_i9xx_decode_phase5_stream(
               0, 59ul, 0x006c2000ul, 0x00096000ul, &index) ==
@@ -462,7 +467,7 @@ static void test_decoder_structural_refusals(void)
               v9x_i9xx_phase5_golden, 0ul, 0x006c2000ul, 0x00096000ul,
               &index) == V9X_I9XX_P5_TRUNCATED);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 59ul, 0x006c2000ul, 0ul,
+              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0ul,
               &index) == V9X_I9XX_P5_TRUNCATED);
     /* A Phase 4 stream must not satisfy the Phase 5 decoder. */
     {

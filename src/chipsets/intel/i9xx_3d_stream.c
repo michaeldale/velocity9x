@@ -22,6 +22,23 @@
  * are the problem - which is the reproduce-once-then-kill case.
  */
 #define V9X_I9XX_P5_PROBE_DWORDS  2ul
+/*
+ * The GPU fills its own render target: an XY_COLOR_BLT of six dwords and
+ * one MI_FLUSH, at the head of the stream.
+ *
+ * Phase 4 executed exactly this packet on this machine on 2026-09-14, so
+ * it is the one GPU operation this hardware is known to perform correctly
+ * under this driver. The alternative - the CPU bulk-filling 600 KiB
+ * through GMADR immediately before the GPU read adjacent memory - is the
+ * closest thing in this design to erratum 12's own description of its
+ * trigger, and the errata gate opened on condition that it not be done
+ * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md).
+ *
+ * The MI_FLUSH after it has every bit clear, which is what FLUSHES the
+ * render cache rather than inhibiting it - bit 2 is an inhibit, and this
+ * is the sign-inverted field the packet audit flagged.
+ */
+#define V9X_I9XX_P5_FILL_DWORDS   7ul
 
 void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out)
 {
@@ -35,7 +52,8 @@ void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out)
     out->height = V9X_I9XX_TARGET_HEIGHT;
     out->fill_word = V9X_I9XX_FILL_RGB565;
     out->triangle_color = V9X_I9XX_TRI_COLOR_BGRA;
-    out->stream_dwords = v9x_i9xx_3d_state_extent() +
+    out->stream_dwords = V9X_I9XX_P5_FILL_DWORDS +
+                         v9x_i9xx_3d_state_extent() +
                          v9x_i9xx_fragment_program_extent() +
                          V9X_I9XX_P5_PROBE_DWORDS +
                          v9x_i9xx_vertex_run_extent();
@@ -69,6 +87,26 @@ v9x_status v9x_i9xx_build_phase5_stream(
             V9X_STATUS_OK) {
         return V9X_STATUS_INVALID_STATE;
     }
+
+    /*
+     * The fill, first. Bounds are the target itself, so the builder's
+     * existing extent check is what keeps the BLT inside it - and at
+     * 320x480x32 the span is exactly V9X_I9XX_TARGET_BYTES, so that check
+     * is tight rather than generous.
+     */
+    if (v9x_i9xx_build_color_blt(
+            layout.target_offset,
+            V9X_I9XX_FILL_BLT_WIDTH, V9X_I9XX_FILL_BLT_HEIGHT,
+            (v9x_u16)layout.target_pitch, V9X_I9XX_FILL_DWORD,
+            layout.target_offset, layout.target_bytes,
+            stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    at += produced;
+    if (capacity - at < 1ul) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    stream[at++] = V9X_I9XX_MI_FLUSH;
 
     if (v9x_i9xx_build_3d_state(
             layout.target_offset, layout.target_pitch,

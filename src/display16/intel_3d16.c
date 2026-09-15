@@ -39,7 +39,6 @@ extern DWORD v9x_i9xx_gtt_reserve_count;
 
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern DWORD FAR PASCAL V9xGmadrRead(DWORD offset);
-extern WORD FAR PASCAL V9xGmadrFill(DWORD offset, DWORD value, DWORD dwords);
 extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
                                            WORD count_low);
 
@@ -78,6 +77,9 @@ extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
  * phase from the step number alone, with no cross-reference. */
 #define V9X_P5_STEP_PREFLIGHT     20u
 #define V9X_P5_STEP_INTENT        21u
+/* 22 and 23 were the CPU fill and its verification. The GPU fills now, so
+ * nothing here reaches them; the numbers stay reserved so a capture from
+ * before and after remains comparable. */
 #define V9X_P5_STEP_FILL          22u
 #define V9X_P5_STEP_FILL_VERIFY   23u
 /*
@@ -498,29 +500,20 @@ void V9X_I9XX_FAR v9x_intel_phase5_run(
      * passed in this boot, and only after the built stream decoded.
      */
     /*
-     * No duration is recorded, and that is a deliberate omission rather than
-     * an oversight. The plan asks for the fill's duration; the only Win16 tick
-     * source is GetTickCount, which lives in USER - and GDI loads a display
-     * driver before USER exists, so a single import of it makes the module
-     * unloadable with no diagnostic anywhere. That cost three netbook boots to
-     * find once already, and audit-family-binary.ps1 refuses the import for
-     * exactly that reason. A duration is not worth a second occurrence; the
-     * fill's correctness is established by the hash either side of it.
+     * The fill is no longer here. The GPU fills its own target with an
+     * XY_COLOR_BLT at the head of the Phase 5 stream, and the CPU does not
+     * write that memory at all - it only reads it back.
+     *
+     * That is a condition of the errata gate opening rather than an
+     * implementation preference: 600 KiB of CPU writes through GMADR
+     * immediately before the GPU read adjacent memory was the closest
+     * thing in this design to erratum 12's own description of its trigger
+     * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md).
+     *
+     * The fill and the draw are separate submissions in the mini-VDD, so a
+     * hang during the fill is Phase 4's proven packet failing at a new
+     * address - a layout finding, not a 3D one.
      */
-    v9x_p5_intent(V9X_P5_STEP_FILL);
-    if (V9xGmadrFill(layout->target_offset, V9X_I9XX_FILL_RGB565 |
-                     (V9X_I9XX_FILL_RGB565 << 16),
-                     layout->target_bytes / 4ul) == 0u) {
-        v9x_p5_text("Result", "FILL-REFUSED");
-        return;
-    }
-
-    v9x_p5_intent(V9X_P5_STEP_FILL_VERIFY);
-    if (v9x_p5_hash_target(layout, "FillHashA", "FillHashB",
-                           "FillHashFail") == 0u) {
-        v9x_p5_text("Result", "FILL-HASH-REFUSED");
-        return;
-    }
 
     v9x_p5_intent(V9X_P5_STEP_HASH);
     (void)v9x_p5_hash_target(layout, "DrawHashA", "DrawHashB",

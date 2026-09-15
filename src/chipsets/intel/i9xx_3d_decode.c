@@ -42,6 +42,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_indirect_disable = V9X_FALSE;
     v9x_u16 saw_shader = V9X_FALSE;
     v9x_u16 saw_primitive = V9X_FALSE;
+    /* Without the fill the target holds whatever it held, and "the triangle
+     * drew" becomes indistinguishable from "that memory already looked like
+     * this". Its absence is a refusal, not a warning. */
+    v9x_u16 saw_fill = V9X_FALSE;
 
     if (rejected_index != 0) { *rejected_index = 0ul; }
     if (stream == 0 || dword_count == 0ul || target_bytes == 0ul ||
@@ -238,6 +242,37 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             index += 2ul;
 
+        } else if (command == V9X_I9XX_XY_COLOR_BLT) {
+            /*
+             * The GPU filling its own render target. The CPU does not
+             * write this memory at all - that is a condition of the errata
+             * gate opening, because 600 KiB of CPU writes immediately
+             * before the GPU reads adjacent memory is the closest thing in
+             * this design to erratum 12's own description of its trigger.
+             *
+             * The bounds arithmetic is delegated to the Phase 4 decoder
+             * rather than reimplemented: it is the same packet, and a
+             * second copy of that check is a second thing to get wrong.
+             * Bounded by the TARGET here, not the scratch page.
+             */
+            if (dword_count - index < 6ul) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+            }
+            if (v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
+                                              target_offset,
+                                              target_bytes) !=
+                    V9X_STATUS_OK) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index);
+            }
+            /* And it must fill with the agreed background, or "the
+             * triangle drew" stops being distinguishable from "that
+             * memory already looked like this". */
+            if (stream[index + 5ul] != V9X_I9XX_FILL_DWORD) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
+            }
+            saw_fill = V9X_TRUE;
+            index += 6ul;
+
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH) {
             index += 1ul;
@@ -319,7 +354,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     if (saw_buf_info_color == V9X_FALSE || saw_dst_buf_vars == V9X_FALSE ||
         saw_draw_rect == V9X_FALSE || saw_scissor_disable == V9X_FALSE ||
         saw_indirect_disable == V9X_FALSE || saw_shader == V9X_FALSE ||
-        saw_primitive == V9X_FALSE) {
+        saw_primitive == V9X_FALSE || saw_fill == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     return V9X_I9XX_P5_OK;

@@ -1784,7 +1784,7 @@ V9xMini_I9xx_Ring_Execute_P5Probe:
     ; precisely so that a drain here and a stall after it says "the ring
     ; is alive and the state was accepted, the PRIMITIVE is what hung".
     ; One submission could not distinguish those.
-    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 43 * 4
+    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 50 * 4
     mov     eax, V9xI9xxRingWant
     mov     dword ptr [esi+02030h], eax
     cmp     dword ptr [esi+02030h], eax
@@ -1798,7 +1798,7 @@ V9xMini_I9xx_Ring_Execute_P5Draw:
     ; The primitive and its vertices. If this is where it stops, the
     ; packets are wrong rather than the ring being dead - which is the
     ; reproduce-once-then-kill case in the plan.
-    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 59 * 4
+    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 66 * 4
     mov     eax, V9xI9xxRingWant
     mov     dword ptr [esi+02030h], eax
     cmp     dword ptr [esi+02030h], eax
@@ -1812,7 +1812,7 @@ V9xMini_I9xx_Ring_Execute_P5Teardown:
     mov     V9xI9xxRingFailure, 29
     mov     eax, [esi+02034h]
     and     eax, 001ffffch
-    cmp     eax, V9X_I9XX_P5_RING_OFFSET + 59 * 4
+    cmp     eax, V9X_I9XX_P5_RING_OFFSET + 66 * 4
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [esi+0203ch], 0
     cmp     dword ptr [esi+0203ch], 0
