@@ -1,4 +1,4 @@
-# The GPU executed a Phase 5 3D stream. The fill landed; the triangle did not.
+# The GPU executed a Phase 5 3D stream. Fill reached every probe; the triangle did not.
 
 Measured on MICHAEL-NETBOOK (945GSE A3), 2026-09-15, build `4628b66`.
 Armed one-shot, token `phase5-20260915-192853`, retired.
@@ -28,14 +28,17 @@ retire it.
 generated table, the ring was programmed, both submissions drained without a
 timeout, and teardown completed.
 
-**The fill landed.** Every one of the fourteen pixel probes reads `08420842` -
-`V9X_I9XX_FILL_DWORD`. On the unarmed B1 two hours earlier the same region read
-a mix of `00000000` and `FFFFFFFF`. So the `XY_COLOR_BLT` wrote 614,400 bytes
-of render target, and this is the first time this driver has made the GPU
-execute a 3D-pipeline command stream.
+**The fill reached the probed points.** All fourteen probes read `08420842` -
+`V9X_I9XX_FILL_DWORD`. On the unarmed B1 two hours earlier the same fourteen
+addresses read a mix of `00000000` and `FFFFFFFF`, so the GPU wrote fill colour
+to every point sampled. Fourteen points do not establish that all 614,400 bytes
+were written; the bulk read-back that could have is the operation that hard
+locks this part. What is established is that the GPU executed a 3D-pipeline
+command stream and altered the render target, for the first time under this
+driver.
 
-**The triangle did not appear.** The seven probes inside the triangle read the
-fill colour, not `0000FB25`:
+**The triangle was not observed.** The seven probes inside the expected
+triangle read the fill colour, not `0000FB25`:
 
 | Probe | Expected | Read |
 |---|---|---|
@@ -44,8 +47,23 @@ fill colour, not `0000FB25`:
 | Corner00, CornerX0, Corner0Y, CornerXY | `0842` | `0842` |
 | OutsideTop, OutsideLeft, OutsideRight | `0842` | `0842` |
 
-The outside probes are correct. The inside probes read the fill, not a wrong
-colour, so nothing was rasterised - this is absence, not miscolouring.
+The outside probes are correct. The inside probes read fill rather than some
+third value, which rules out the triangle being rasterised **in a wrong colour
+at those points**.
+
+It does **not** establish that nothing rasterised anywhere. Two explanations
+survive this capture and are not distinguished by it:
+
+- **Displaced geometry.** A triangle drawn somewhere other than where the
+  vertices specify would leave all fourteen probes reading fill, because the
+  probes sample where the triangle was *expected*. Only three of the fourteen
+  are far from the expected shape.
+- **Fill-coloured output.** A triangle rasterised correctly but shaded with the
+  fill value - a fragment program that passes through the wrong register, say -
+  is indistinguishable from absence at every probe.
+
+The honest statement is narrower than "nothing was drawn": the expected
+triangle was not observed at the fourteen sampled points.
 
 ## What this rules out
 
@@ -81,8 +99,8 @@ now the first thing evidence could overturn.
 Phase 5 did not read the GPU's error registers. Phase 4 has read EIR, EMR,
 ESR, PGTBL_ER and the instruction-error trio since its first armed boot; Phase
 5 never did. So the capture cannot say whether the parser **rejected** the
-primitive or **accepted it and rasterised nothing**, and those are different
-faults with different fixes.
+primitive or **accepted it**, and those are different faults with different
+fixes.
 
 Added in the same change as this record: `PreErr0..8` before the first
 submission and `PostErr0..8` after the draw and before any pixel read, nine
@@ -93,5 +111,10 @@ boot answers that question.
 
 Phase 5's objective - one triangle on screen - is **not met**. What is met is
 everything up to and including the GPU executing a reviewed 3D command stream
-against a render target it filled itself, under a one-shot arm that retired
-correctly, on a part whose errata made all of it risky.
+and altering the render target, under a one-shot arm that retired correctly, on
+a part whose errata made all of it risky.
+
+Where the triangle went - if it went anywhere - is not known, and the fourteen
+probes cannot answer it. Locating a displaced or fill-coloured triangle needs
+more sampled points, which is the read-budget question in
+`plans/intel-phase5-bounded-readback.md`, not a free one.

@@ -282,18 +282,58 @@ static void v9x_p5_indexed_hex(const char *prefix, WORD index, DWORD value)
  *
  * Nine reads. Bounded, and nowhere near the scale that hangs this part.
  */
+/* prefix + suffix, for the per-capture status keys. */
+static void v9x_p5_status_key(char *key, const char *prefix,
+                              const char *suffix)
+{
+    v9x_intel_str_copy(key, prefix);
+    v9x_intel_str_append(key, suffix);
+}
+
+/*
+ * The read-only error and ring registers, through the mini-VDD's diagnostic
+ * verb. Nine offsets: EIR, EMR, ESR, PGTBL_ER, the instruction-error trio,
+ * then RING_CTL and RING_START.
+ *
+ * Phase 5 did not read these, and on the first successful draw - 2026-09-15,
+ * build 4628b66 - that was the gap that mattered. The GPU consumed all 66
+ * dwords, the fill landed, and no triangle was observed at the probed points,
+ * and the capture could not say whether the parser had rejected the primitive
+ * or accepted it. Those are different faults with different fixes.
+ *
+ * The COMPLETENESS is published, not just the values. An earlier version wrote
+ * FFFFFFFF and returned silently when the verb refused, so a capture with four
+ * registers in it looked like a capture with nine, and the checker had no
+ * field to test. A diagnostic that degrades quietly is worse than one that is
+ * absent, because absence is visible.
+ *
+ * Nine reads. Bounded, and nowhere near the scale that hangs this part.
+ */
 static void v9x_p5_capture_errors(const char *prefix)
 {
     WORD index;
+    char key[24];
 
     for (index = 0u; index < 9u; ++index) {
         if (V9xMiniI9xxRingDiag(index) == 0u) {
             v9x_p5_indexed_hex(prefix, index, 0xfffffffful);
+            v9x_p5_status_key(key, prefix, "Ok");
+            v9x_p5_text(key, "0");
+            v9x_p5_status_key(key, prefix, "Count");
+            v9x_p5_hex(key, (DWORD)index);
+            v9x_p5_status_key(key, prefix, "FailIndex");
+            v9x_p5_hex(key, (DWORD)index);
             v9x_p5_flush();
             return;
         }
         v9x_p5_indexed_hex(prefix, index, v9x_i9xx_ring_diag_value);
     }
+    v9x_p5_status_key(key, prefix, "Ok");
+    v9x_p5_text(key, "1");
+    v9x_p5_status_key(key, prefix, "Count");
+    v9x_p5_hex(key, 9ul);
+    v9x_p5_status_key(key, prefix, "FailIndex");
+    v9x_p5_hex(key, 0xfffffffful);
     v9x_p5_flush();
 }
 
@@ -692,7 +732,12 @@ void v9x_intel_phase5_run(
 #endif
 
     V9xEnsureDiagDir();
-    v9x_p5_text("SchemaVersion", "1");
+    /*
+     * 2: adds PreErr/PostErr with their completeness status. Bumped so a
+     * checker can REQUIRE those fields of a new capture without rejecting the
+     * schema-1 captures already preserved under docs\probe.
+     */
+    v9x_p5_text("SchemaVersion", "2");
     v9x_p5_text("Access", armed != 0u ? "armed-one-shot" : "no-hardware-writes");
     v9x_p5_text("CaptureBuildId",
                 v9x_intel_bridge_build_identity()->build_id);
@@ -838,6 +883,7 @@ void v9x_intel_phase5_run(
                                v9x_p5_stream[index]) == 0u) {
             v9x_p5_hex("StageFailIndex", (DWORD)index);
             v9x_p5_hex("StageFail", v9x_i9xx_ring_stage_fail);
+            v9x_p5_capture_errors("PostErr");
             v9x_p5_result("STAGE-REFUSED");
             return;
         }
@@ -870,6 +916,14 @@ void v9x_intel_phase5_run(
             v9x_p5_hex("ExecHead", v9x_i9xx_ring_exec_head);
             v9x_p5_hex("ExecTail", v9x_i9xx_ring_exec_tail);
             v9x_p5_hex("ExecPolls", v9x_i9xx_ring_exec_polls);
+            /*
+             * The error registers on the FAILURE path too. A parser fault that
+             * hangs the drain is exactly when this evidence is wanted, and the
+             * loop returns here without reaching the post-draw capture - so
+             * the commit this instrumentation exists for was being lost on the
+             * only runs that needed it.
+             */
+            v9x_p5_capture_errors("PostErr");
             v9x_p5_result("EXECUTE-REFUSED");
             return;
         }

@@ -68,8 +68,14 @@ function Test-V9xIntel3dCapture {
             throw "INTEL3D0.TXT is missing $required."
         }
     }
-    if ($values['SchemaVersion'] -ne '1') {
-        throw "Unknown INTEL3D0.TXT schema $($values['SchemaVersion'])."
+    # Schema 1 is the captures preserved under docs\probe before the error
+    # registers were read; schema 2 adds PreErr/PostErr and their completeness
+    # status. Both are accepted, and the schema-2 requirements below apply only
+    # to schema 2 - a version bump exists so new fields can be REQUIRED without
+    # retroactively rejecting evidence already collected.
+    $schema = $values['SchemaVersion']
+    if ($schema -ne '1' -and $schema -ne '2') {
+        throw "Unknown INTEL3D0.TXT schema $schema."
     }
 
     # The stream the driver built must be the stream that was generated. If
@@ -273,6 +279,42 @@ function Test-V9xIntel3dCapture {
                    'before restoring it.')
         }
     }
+    # The GPU error registers, and whether the read of them COMPLETED. The
+    # helper used to write FFFFFFFF and return silently when the mini-VDD's
+    # diagnostic verb refused, so a capture with four registers looked like one
+    # with nine and there was no field to test. Every run that reached the ring
+    # must now carry a complete set.
+    if ($schema -ne '1') {
+        $needPost = $result -ceq 'PASS' -or $result -ceq 'EXECUTE-REFUSED' -or
+                    $result -ceq 'STAGE-REFUSED'
+        $groups = @('PreErr')
+        if ($needPost) { $groups += 'PostErr' }
+        foreach ($group in $groups) {
+            if (-not $values.ContainsKey("${group}Ok")) {
+                throw ("An armed schema-2 INTEL3D0.TXT must carry ${group}Ok. " +
+                       'A diagnostic that degrades quietly is worse than one ' +
+                       'that is absent, because absence is visible.')
+            }
+            if ($values["${group}Ok"] -cne '1') {
+                $at = Get-V9x3dHex32 -Values $values -Key "${group}FailIndex"
+                throw ("$group is incomplete: the mini-VDD diagnostic verb " +
+                       "refused at index $at. The error registers are the " +
+                       'only thing that separates a rejected primitive from ' +
+                       'an accepted one, so an incomplete set is a failed ' +
+                       'capture rather than a partial one.')
+            }
+            if ((Get-V9x3dHex32 -Values $values -Key "${group}Count") -ne 9) {
+                throw ("$group reports a register count other than nine.")
+            }
+            for ($index = 0; $index -lt 9; ++$index) {
+                $key = '{0}{1:X4}' -f $group, $index
+                if (-not $values.ContainsKey($key)) {
+                    throw ("$group claims a complete read but $key is absent.")
+                }
+            }
+        }
+    }
+
     # The fourteen probes are now the WHOLE of the draw evidence, so a missing
     # one cannot pass. Previously the reference comparison skipped absent keys,
     # which meant a capture with no probes at all reported no mismatches.
@@ -479,6 +521,21 @@ if ($SelfTest) {
         if ($line -clike 'SA*' -or $line -clike 'SB*') { continue }
         $armedLines.Add($line)
     }
+    # Schema 2 with a complete diagnostic set, which is what the armed
+    # assertions now require.
+    for ($i = 0; $i -lt $armedLines.Count; ++$i) {
+        if ($armedLines[$i] -ceq 'SchemaVersion=1') {
+            $armedLines[$i] = 'SchemaVersion=2'
+        }
+    }
+    foreach ($group in @('PreErr', 'PostErr')) {
+        for ($i = 0; $i -lt 9; ++$i) {
+            $armedLines.Add(('{0}{1:X4}=00000000' -f $group, $i))
+        }
+        $armedLines.Add("${group}Ok=1")
+        $armedLines.Add("${group}Count=00000009")
+        $armedLines.Add("${group}FailIndex=FFFFFFFF")
+    }
     $armedLines.Add('Access=armed-one-shot')
     $armedLines.Add('Phase4Passed=00000001')
     $armedLines.Add('HashOmitted=bulk-aperture-read-hang')
@@ -511,7 +568,17 @@ if ($SelfTest) {
 R0000=DEADBEEF'
            Why = 'a bulk row-CRC read-back reintroduced' },
         @{ Old = 'Phase4Passed=00000001'; New = 'Phase4Passed=00000000'
-           Why = 'armed run without Phase 4 passing this boot' }
+           Why = 'armed run without Phase 4 passing this boot' },
+        # The gap reported against 1862916: the helper degraded silently, so a
+        # capture with four registers looked like one with nine.
+        @{ Old = 'PostErrOk=1'; New = 'PostErrOk=0'
+           Why = 'an incomplete post-draw diagnostic read' },
+        @{ Old = 'PostErrCount=00000009'; New = 'PostErrCount=00000004'
+           Why = 'a diagnostic register count other than nine' },
+        @{ Old = 'PostErr0007=00000000'; New = 'PostErrZZZZ=00000000'
+           Why = 'a diagnostic register missing from a set claiming nine' },
+        @{ Old = 'PreErrOk=1'; New = 'PreErrNote=1'
+           Why = 'no completeness status on the pre-draw read' }
     )
     foreach ($mutation in $armedMutations) {
         $broken = @($armedLines | ForEach-Object {
