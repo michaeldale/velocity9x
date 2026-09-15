@@ -213,6 +213,21 @@ V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 ;            out AX=1 only after the bounded word is accepted.
 ; RING_MEMORY in: ECX=byte offset in the mapped 1-MiB reserve;
 ;             out AX=1, EBX=dword read from the physical mapping.
+; RING_EXECUTE steps 20-24 are Phase 5, disjoint from Phase 4's 1-11 so a
+; failure code names its phase with no cross-reference:
+;   20 verify the staged stream against the generated table (ITS OWN STEP -
+;      Phase 4 folded this into its programming step, which is why
+;      S05Failure=12 said only "something in step 5" on 2026-09-14)
+;   21 program START, HEAD and TAIL to the Phase 5 ring region and enable
+;   22 submit the state block, the shader and the MI probe, and drain
+;   23 submit the primitive and its vertices, and drain
+;   24 tear the ring back down to zero
+;
+; 22 and 23 are separate submissions on purpose. A drain at 22 followed by a
+; stall at 23 says the ring is alive and the state was accepted, and the
+; PRIMITIVE is what hung - which one submission could not distinguish, and
+; which is the difference between a diagnosis and a repeat trip.
+;
 ; RING_EXECUTE in: EBX=full execution CRC, ECX=ordered step selector;
 ;              out AX=1 on a completed step, EBX=head/readback,
 ;              ECX=tail/readback, EDX=elapsed ms, ESI=poll count.

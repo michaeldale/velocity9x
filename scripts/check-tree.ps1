@@ -606,18 +606,30 @@ if ($miniBuildSource -notmatch
     throw ("build-minivdd-skeleton.ps1 must define V9X_S3_DPMS only for " +
            "the s3 family (and not for its -NoDpms experiment).")
 }
+# The Intel guards in the mini-VDD build, and the one that is NOT derived
+# from the family.
+#
+# V9X_I9XX_PHASE5_SUBMIT assembles the Phase 5 staging and execute arms.
+# It hangs off an explicit -Phase5Submit switch rather than off $intelMmio,
+# because an armed Phase 5 boot drives the GPU with 3D packets and the
+# 2026-09-13 errata decision covers Phase 4 only. Turning it on is a choice
+# a human makes per build; it must never become a property of the family.
 if ($miniBuildSource -notmatch
-    '(?m)^\$intelMmio = \(\$Family -eq ''intel-gma''\)\s*$' -or
-    $miniBuildSource -notmatch
-    '(?m)^\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*$') {
-    throw ("build-minivdd-skeleton.ps1 must define " +
-           "V9X_INTEL_MMIO_FINGERPRINT only for the intel-gma family.")
-}
-if ($miniBuildSource -notmatch
-    '(?ms)^if \(\$intelMmio\) \{\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*\$assemblerArguments = @\("-DV9X_I9XX_FIRST_WRITE_EXECUTOR"\) \+ \$assemblerArguments\s*\}' -or
+    '(?ms)^if \(\$intelMmio\) \{\s*\$assemblerArguments = @\("-DV9X_INTEL_MMIO_FINGERPRINT"\) \+ \$assemblerArguments\s*\$assemblerArguments = @\("-DV9X_I9XX_FIRST_WRITE_EXECUTOR"\) \+ \$assemblerArguments' -or
     [regex]::Matches($miniBuildSource,
         '"-DV9X_I9XX_FIRST_WRITE_EXECUTOR"').Count -ne 1) {
     throw "The Phase 4 mini-VDD executor must be defined exactly once, only for Intel."
+}
+if ([regex]::Matches($miniBuildSource,
+        '"-DV9X_I9XX_PHASE5_SUBMIT"').Count -ne 1) {
+    throw ("The Phase 5 mini-VDD submit guard must be defined exactly once.")
+}
+if ($miniBuildSource -notmatch
+        '(?ms)if \(\$Phase5Submit\) \{\s*(?:#[^\r\n]*\s*)*\$assemblerArguments = @\("-DV9X_I9XX_PHASE5_SUBMIT"') {
+    throw ("The Phase 5 mini-VDD submit guard must hang off the explicit " +
+           "-Phase5Submit switch, not off the family. An armed Phase 5 " +
+           "boot drives the GPU with 3D packets, which the 2026-09-13 " +
+           "errata decision does not cover.")
 }
 $intelFamilySource = Get-Content -LiteralPath `
     (Join-Path $repoRoot 'packaging\families\intel-gma\family.psd1') -Raw
@@ -725,17 +737,26 @@ if ([regex]::Matches($intelRingStage,
 $intelRingExecute = [regex]::Match(
     $miniSource,
     '(?ms)^BeginProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Ring_Execute').Groups[1].Value
+# One count per ring register, pinned so a new MMIO store cannot appear in
+# the executor unnoticed. Phase 5's arms raised every one: 0203ch 3+2,
+# 02034h 2+2, 02030h 6+4, 02038h 2+2. Updated deliberately rather than
+# relaxed - if a count changes again, the change is what to review.
 foreach ($store in @(
-        @('0203ch', 3), @('02034h', 2), @('02030h', 6),
-        @('02038h', 2))) {
+        @('0203ch', 5), @('02034h', 4), @('02030h', 10),
+        @('02038h', 4))) {
     $pattern = '(?im)^\s*mov\s+dword ptr\s+\[esi\+' + $store[0] + '\],'
     if ([regex]::Matches($intelRingExecute, $pattern).Count -ne $store[1]) {
-        throw "Intel Phase 4 ring register store count changed at $($store[0])."
+        throw ("Intel ring register store count changed at $($store[0]). " +
+               "Every store to the ring registers is counted here so a " +
+               "new one cannot be added without saying so.")
     }
 }
 if ([regex]::Matches($intelRingExecute,
-        '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 13) {
-    throw "Intel Phase 4 executor has an unreviewed MMIO store."
+        '(?im)^\s*mov\s+dword ptr\s+\[esi\+[^\]]+\],').Count -ne 23) {
+    throw ("The Intel executor has an unreviewed MMIO store. The four "+
+           "per-register counts above must account for every one: any "+
+           "store to a register NOT in that list would pass them and "+
+           "fail here.")
 }
 foreach ($dispatch in @(
         @('7', 'Wrap'), @('8', 'Reprobe'), @('9', 'Blt'))) {

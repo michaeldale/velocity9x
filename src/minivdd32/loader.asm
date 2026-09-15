@@ -1529,6 +1529,20 @@ BeginProc V9xMini_I9xx_Ring_Execute
     je      V9xMini_I9xx_Ring_Execute_Blt
     cmp     ecx, 11
     je      V9xMini_I9xx_Ring_Execute_Teardown
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+    ; Phase 5, steps 20-24. Disjoint from Phase 4 1-11 so a failure code
+    ; names its phase without a cross-reference.
+    cmp     ecx, 20
+    je      V9xMini_I9xx_Ring_Execute_P5Verify
+    cmp     ecx, 21
+    je      V9xMini_I9xx_Ring_Execute_P5Program
+    cmp     ecx, 22
+    je      V9xMini_I9xx_Ring_Execute_P5Probe
+    cmp     ecx, 23
+    je      V9xMini_I9xx_Ring_Execute_P5Draw
+    cmp     ecx, 24
+    je      V9xMini_I9xx_Ring_Execute_P5Teardown
+ENDIF
     jmp     V9xMini_I9xx_Ring_Execute_Done
 
 V9xMini_I9xx_Ring_Execute_Program:
@@ -1659,7 +1673,7 @@ V9xMini_I9xx_Ring_Execute_Wait:
     jmp     V9xMini_I9xx_Ring_Execute_Success
 V9xMini_I9xx_Ring_Execute_Timeout:
     mov     V9xI9xxRingFailure, 2
-    jmp     short V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Poison
 
 V9xMini_I9xx_Ring_Execute_Teardown:
     cmp     V9xI9xxRingStep, 9
@@ -1682,7 +1696,138 @@ V9xMini_I9xx_Ring_Execute_Teardown:
     mov     dword ptr [esi+02038h], 0
     cmp     dword ptr [esi+02038h], 0
     jne     V9xMini_I9xx_Ring_Execute_Poison
-    jmp     short V9xMini_I9xx_Ring_Execute_Success
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+; ---------------------------------------------------------------------
+; Phase 5: verify, program, probe, draw, tear down.
+;
+; The stream comparison is its OWN step (20), not folded into the
+; programming step. Phase 4 folded them, which is why S05Failure=12 said
+; only "something in step 5" on 2026-09-14.
+; ---------------------------------------------------------------------
+V9xMini_I9xx_Ring_Execute_P5Verify:
+    mov     V9xI9xxRingFailure, 20
+    cmp     V9xI9xxP5Staged, V9X_I9XX_P5_DWORDS
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 21
+    cmp     V9xI9xxRingExecCrc, V9X_I9XX_P5_CRC
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; Every staged dword must still be the one the generated table says
+    ; belongs there. Staging checked it on the way in; this checks it has
+    ; not changed since, which is the only thing that makes the armed CRC
+    ; a statement about what the GPU will actually fetch.
+    mov     V9xI9xxRingFailure, 22
+    mov     ecx, V9X_I9XX_P5_DWORDS
+    mov     ebx, OFFSET32 V9xI9xxPhase5Table
+    mov     edx, edi
+    add     edx, V9X_I9XX_P5_RING_OFFSET
+V9xMini_I9xx_Ring_Execute_P5Check:
+    mov     eax, [ebx]
+    cmp     eax, [edx]
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    add     ebx, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Ring_Execute_P5Check
+    ; The in-reserve guards either side of the target, untouched.
+    mov     V9xI9xxRingFailure, 23
+    cmp     dword ptr [edi+00011000h], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [edi+00011ffch], 0a5a5a5a5h
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+V9xMini_I9xx_Ring_Execute_P5Program:
+    mov     V9xI9xxRingFailure, 24
+    cmp     V9xI9xxRingStep, 20
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; Phase 4 tore the ring down, so every register is expected at zero
+    ; again. Re-programmed rather than reused: a ring left running across
+    ; two phases would make a Phase 5 hang indistinguishable from a Phase 4
+    ; one that had not finished.
+    mov     V9xI9xxRingFailure, 25
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+02038h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 1
+    mov     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    ; HEAD and TAIL both at the Phase 5 region, so the GPU starts at our
+    ; first dword and not at Phase 4's.
+    mov     dword ptr [esi+02034h], V9X_I9XX_P5_RING_OFFSET
+    cmp     dword ptr [esi+02034h], V9X_I9XX_P5_RING_OFFSET
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], V9X_I9XX_P5_RING_OFFSET
+    cmp     dword ptr [esi+02030h], V9X_I9XX_P5_RING_OFFSET
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+0203ch], 0000f001h
+    mov     eax, [esi+0203ch]
+    and     eax, 0fffff7ffh     ; ignore dynamic RING_WAIT status bit 11
+    cmp     eax, 0000f001h
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+
+V9xMini_I9xx_Ring_Execute_P5Probe:
+    mov     V9xI9xxRingFailure, 26
+    cmp     V9xI9xxRingStep, 21
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; The state block, the shader and the MI probe - everything up to but
+    ; not including the primitive. Submitted separately from the draw
+    ; precisely so that a drain here and a stall after it says "the ring
+    ; is alive and the state was accepted, the PRIMITIVE is what hung".
+    ; One submission could not distinguish those.
+    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 43 * 4
+    mov     eax, V9xI9xxRingWant
+    mov     dword ptr [esi+02030h], eax
+    cmp     dword ptr [esi+02030h], eax
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_P5Draw:
+    mov     V9xI9xxRingFailure, 27
+    cmp     V9xI9xxRingStep, 22
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    ; The primitive and its vertices. If this is where it stops, the
+    ; packets are wrong rather than the ring being dead - which is the
+    ; reproduce-once-then-kill case in the plan.
+    mov     V9xI9xxRingWant, V9X_I9XX_P5_RING_OFFSET + 59 * 4
+    mov     eax, V9xI9xxRingWant
+    mov     dword ptr [esi+02030h], eax
+    cmp     dword ptr [esi+02030h], eax
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Wait
+
+V9xMini_I9xx_Ring_Execute_P5Teardown:
+    mov     V9xI9xxRingFailure, 28
+    cmp     V9xI9xxRingStep, 23
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 29
+    mov     eax, [esi+02034h]
+    and     eax, 001ffffch
+    cmp     eax, V9X_I9XX_P5_RING_OFFSET + 59 * 4
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+0203ch], 0
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02034h], 0
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    mov     dword ptr [esi+02038h], 0
+    cmp     dword ptr [esi+02038h], 0
+    jne     V9xMini_I9xx_Ring_Execute_Poison
+    jmp     V9xMini_I9xx_Ring_Execute_Success
+ENDIF
 
 V9xMini_I9xx_Ring_Execute_Poison:
     mov     V9xI9xxRingPoison, 1
