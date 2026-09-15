@@ -179,7 +179,7 @@ $dataLines.Add('# builders. Consumed by the Intel capture validators so they che
 $dataLines.Add('# the same numbers the mini-VDD was armed with, rather than a')
 $dataLines.Add('# reimplementation of them.')
 $dataLines.Add('@{')
-$dataLines.Add('    SchemaVersion = 1')
+$dataLines.Add('    SchemaVersion = 2')
 foreach ($key in @('RESERVEOFFSET', 'RINGSTART', 'SCRATCHOFFSET',
                    'TARGETOFFSET', 'TARGETPITCH', 'TARGETBYTES',
                    'GUARDUPPER', 'FILLWORD', 'TRICOLOR',
@@ -208,16 +208,36 @@ $dataLines.Add('    )')
 if ($values.ContainsKey('REFERROR')) {
     throw "The software reference refused to rasterise: $($values['REFERROR'])."
 }
-foreach ($key in @('REFFILL', 'REFCOLOR')) {
+foreach ($key in @('REFFILL', 'REFCOLOR', 'REFICOLOR')) {
     if (-not $values.ContainsKey($key)) {
         throw "The emitted stream is missing $key."
     }
 }
 $dataLines.Add(("    ReferenceFill = '{0}'" -f $values['REFFILL']))
 $dataLines.Add(("    ReferenceColor = '{0}'" -f $values['REFCOLOR']))
+# The same triangle under the conversion the Intel colour backend was MEASURED
+# to use, 2026-09-15. Published alongside the software reference rather than
+# replacing it: the two differ by up to one level per channel, that difference
+# is understood and documented, and collapsing them would throw away the only
+# thing that distinguishes "the known conversion difference" from "the hardware
+# has changed".
+$dataLines.Add(("    IntelReferenceColor = '{0}'" -f $values['REFICOLOR']))
 $dataLines.Add('    ReferencePixels = @(')
 for ($index = 0; $index -lt 14; ++$index) {
     $key = 'REFPX{0:X4}' -f $index
+    if (-not $values.ContainsKey($key)) {
+        throw "The emitted stream is missing $key."
+    }
+    $dataLines.Add(("        '{0}'" -f $values[$key]))
+}
+$dataLines.Add('    )')
+# Coverage from the rasteriser, colour from the measurement. Every probe is
+# required, for the reason the validator gives about partial probe sets: a
+# reference that silently carries thirteen of fourteen would let a capture
+# missing one look complete.
+$dataLines.Add('    IntelReferencePixels = @(')
+for ($index = 0; $index -lt 14; ++$index) {
+    $key = 'REFIPX{0:X4}' -f $index
     if (-not $values.ContainsKey($key)) {
         throw "The emitted stream is missing $key."
     }

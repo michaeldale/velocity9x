@@ -579,6 +579,59 @@ static void test_published_offsets_locate_the_packets(void)
     CHECK(vertices == 51ul);
 }
 
+/*
+ * The measured 8-bit-to-565 conversion.
+ *
+ * The two triangle colours are the whole evidential basis of the rule, so they
+ * are the first cases and they assert the OBSERVED value, not a recomputation
+ * of the formula. A test that re-derives the expected number from the same
+ * arithmetic the function uses would pass for any formula.
+ */
+static void test_rgb565_round(void)
+{
+    /*
+     * 0xfff86428, read back as 0xf325 on 6c81c52. Truncation predicted 0xfb25
+     * and was wrong in red alone.
+     */
+    CHECK(v9x_i9xx_rgb565_round(0xf8ul, 0x64ul, 0x28ul) == 0xf325u);
+
+    /*
+     * 0xff1587f9, read back as 0x1c3e on 83f24ec. Truncation predicted 0x143f
+     * and was wrong in red and blue.
+     */
+    CHECK(v9x_i9xx_rgb565_round(0x15ul, 0x87ul, 0xf9ul) == 0x1c3eu);
+
+    /* And the current constant agrees with its header, which is what keeps a
+     * colour change from silently leaving the expectation behind. */
+    CHECK(v9x_i9xx_rgb565_round(
+              (V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful,
+              (V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful,
+              V9X_I9XX_TRI_COLOR_BGRA & 0xfful) ==
+          (v9x_u16)V9X_I9XX_TRI_COLOR_RGB565);
+
+    /* Endpoints must be exact, or a white triangle is not white. */
+    CHECK(v9x_i9xx_rgb565_round(0ul, 0ul, 0ul) == 0x0000u);
+    CHECK(v9x_i9xx_rgb565_round(0xfful, 0xfful, 0xfful) == 0xffffu);
+
+    /*
+     * Where round and truncate differ by construction: the half-way point of
+     * one output level. 0x04 truncates to 0 in a 5-bit channel and rounds to
+     * 1 (4*31+127 = 251, /255 = 0).
+     *
+     * That is 0, not 1 - written out because the boundary is not where a
+     * reading of "rounds up at the half-way point" would put it. The step to
+     * 1 happens at 0x05 (5*31+127 = 282, /255 = 1). Asserting both sides
+     * pins the boundary rather than the direction.
+     */
+    CHECK(v9x_i9xx_rgb565_round(0x04ul, 0ul, 0ul) == 0x0000u);
+    CHECK(v9x_i9xx_rgb565_round(0x05ul, 0ul, 0ul) == 0x0800u);
+
+    /* No channel may bleed into another: each at maximum, alone. */
+    CHECK(v9x_i9xx_rgb565_round(0xfful, 0ul, 0ul) == 0xf800u);
+    CHECK(v9x_i9xx_rgb565_round(0ul, 0xfful, 0ul) == 0x07e0u);
+    CHECK(v9x_i9xx_rgb565_round(0ul, 0ul, 0xfful) == 0x001fu);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -592,5 +645,6 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_rejects_mutations();
     test_decoder_structural_refusals();
     test_published_offsets_locate_the_packets();
+    test_rgb565_round();
     return failures;
 }

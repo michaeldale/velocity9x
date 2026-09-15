@@ -5,7 +5,7 @@
 # the same numbers the mini-VDD was armed with, rather than a
 # reimplementation of them.
 @{
-    SchemaVersion = 1
+    SchemaVersion = 2
     Reserveoffset = '006B0000'
     Ringstart = '006B0000'
     Scratchoffset = '006C1000'
@@ -103,6 +103,7 @@
     )
     ReferenceFill = '00000842'
     ReferenceColor = '0000143F'
+    IntelReferenceColor = '00001C3E'
     ReferencePixels = @(
         '0000143F'
         '0000143F'
@@ -111,6 +112,22 @@
         '0000143F'
         '0000143F'
         '0000143F'
+        '00000842'
+        '00000842'
+        '00000842'
+        '00000842'
+        '00000842'
+        '00000842'
+        '00000842'
+    )
+    IntelReferencePixels = @(
+        '00001C3E'
+        '00001C3E'
+        '00001C3E'
+        '00001C3E'
+        '00001C3E'
+        '00001C3E'
+        '00001C3E'
         '00000842'
         '00000842'
         '00000842'

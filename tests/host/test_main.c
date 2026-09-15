@@ -666,6 +666,8 @@ static void emit_intel_3d_reference(void)
     v9x_u32 index;
     v9x_u32 row;
     v9x_u32 column;
+    v9x_u16 software_color;
+    v9x_u16 intel_color;
 
     /* The fill first, exactly as the sequencer fills before drawing. */
     for (index = 0ul;
@@ -721,12 +723,25 @@ static void emit_intel_3d_reference(void)
         return;
     }
 
+    software_color = v9x_d3d_raster_rgb565(
+        (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful),
+        (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful),
+        (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful));
+    intel_color = v9x_i9xx_rgb565_round(
+        (V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful,
+        (V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful,
+        V9X_I9XX_TRI_COLOR_BGRA & 0xfful);
+
     printf("REFFILL=%08lX\n", (unsigned long)V9X_I9XX_FILL_RGB565);
-    printf("REFCOLOR=%08lX\n",
-           (unsigned long)v9x_d3d_raster_rgb565(
-               (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 16) & 0xfful),
-               (v9x_u8)((V9X_I9XX_TRI_COLOR_BGRA >> 8) & 0xfful),
-               (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful)));
+    printf("REFCOLOR=%08lX\n", (unsigned long)software_color);
+    /*
+     * What this chip is measured to store for the same triangle
+     * colour. Both are published, so a capture that differs from the
+     * software rasteriser can be told apart from one that differs from
+     * the hardware - the first is the known and documented conversion
+     * difference, the second is a regression.
+     */
+    printf("REFICOLOR=%08lX\n", (unsigned long)intel_color);
 
     /*
      * The fourteen named probes the capture reports, at the same coordinates
@@ -743,10 +758,28 @@ static void emit_intel_3d_reference(void)
             213u, 128u, 128u, 385u, 130u, 250u, 250u,
             0u, 0u, 479u, 479u, 40u, 400u, 400u
         };
+        v9x_u16 pixel = pixels[(v9x_u32)probe_y[index] *
+                               V9X_I9XX_TARGET_WIDTH +
+                               (v9x_u32)probe_x[index]];
+
         printf("REFPX%04X=%08lX\n", (unsigned int)index,
-               (unsigned long)pixels[(v9x_u32)probe_y[index] *
-                                     V9X_I9XX_TARGET_WIDTH +
-                                     (v9x_u32)probe_x[index]]);
+               (unsigned long)pixel);
+        /*
+         * The same probe under the conversion the Intel colour backend
+         * was measured to use. COVERAGE comes from the rasteriser and
+         * only the colour is substituted: the two disagree about how a
+         * byte becomes a 565 level, not about which pixels the triangle
+         * covers, and re-deciding "inside" here from geometry would be
+         * a second rasteriser to get wrong.
+         *
+         * The fill needs no conversion - V9X_I9XX_FILL_RGB565 is already
+         * a 565 value and is handed to the blitter as one - so an
+         * outside probe passes through unchanged and the two references
+         * agree there.
+         */
+        printf("REFIPX%04X=%08lX\n", (unsigned int)index,
+               (unsigned long)(pixel == software_color ?
+                               intel_color : pixel));
     }
 
     /* Row checksums, folded exactly as the sequencer folds them: one XOR of

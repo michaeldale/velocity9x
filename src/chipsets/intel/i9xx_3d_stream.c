@@ -198,3 +198,78 @@ v9x_u32 v9x_i9xx_phase5_execution_crc(void)
     }
     return v9x_i9xx_crc32_dwords(stream, written);
 }
+
+/*
+ * One channel of the measured conversion: round(value * max / 255).
+ *
+ * Written as a multiply and a shift, with NO division and no 32-bit
+ * arithmetic, and that is a link-time constraint rather than an optimisation.
+ * This file is compiled into I9XXCODE, the driver's second CODE segment. A
+ * 32-bit divide or multiply on 16-bit Watcom is a call to a runtime helper
+ * (__U4D, __U4M) that lives in the default CODE segment, and a near call
+ * cannot reach it:
+ *
+ *     Error! E2052: ... relocation at 0003:25b5 not in the same segment
+ *
+ * which is what the first version of this function produced.
+ *
+ * The constants are exact for every one of the 256 possible inputs, not
+ * approximations that happen to agree near the endpoints - searched
+ * exhaustively against (value * max + 127) / 255, and the host test pins the
+ * level boundary where round and truncate part company.
+ *
+ *     5-bit: (value * 249 + 1024) >> 11
+ *     6-bit: (value * 253 +  512) >> 10
+ *
+ * The largest intermediate is 255 * 249 + 1024 = 64519, so 16-bit unsigned
+ * arithmetic holds every step and nothing widens.
+ */
+#define V9X_I9XX_R5_MUL   ((v9x_u16)249u)
+#define V9X_I9XX_R5_ADD   ((v9x_u16)1024u)
+#define V9X_I9XX_R5_SHIFT 11
+#define V9X_I9XX_R6_MUL   ((v9x_u16)253u)
+#define V9X_I9XX_R6_ADD   ((v9x_u16)512u)
+#define V9X_I9XX_R6_SHIFT 10
+
+static v9x_u16 v9x_i9xx_round8_to(v9x_u32 value, v9x_u16 multiplier,
+                                  v9x_u16 addend, int shift)
+{
+    v9x_u16 byte;
+
+    byte = (v9x_u16)(value & 0xfful);
+
+    /*
+     * No clamp, and none is needed: byte cannot exceed 255, so the result
+     * cannot exceed the channel maximum. A clamp here would imply an input
+     * this cannot receive.
+     */
+    return (v9x_u16)((v9x_u16)(byte * multiplier + addend) >> shift);
+}
+
+/*
+ * The 8-bit-to-RGB565 conversion MEASURED on the 945GSE colour backend.
+ *
+ * Two triangle colours establish it. 0xfff86428 stored 0xf325 where truncation
+ * predicted 0xfb25, separating the rules on red alone; 0xff1587f9 stored
+ * 0x1c3e where truncation predicted 0x143f, separating them on red and blue
+ * and agreeing on green. Between them every channel is covered, which one
+ * colour could not do - a single sample leaves two of the three channels
+ * satisfied by either rule.
+ *
+ * Intel-only by intent. The shared rasteriser truncates, and that is not a
+ * defect there; see the header for why the expectation lives here instead.
+ */
+v9x_u16 v9x_i9xx_rgb565_round(v9x_u32 red, v9x_u32 green, v9x_u32 blue)
+{
+    v9x_u16 packed;
+
+    packed = (v9x_u16)(
+        (v9x_u16)(v9x_i9xx_round8_to(red, V9X_I9XX_R5_MUL, V9X_I9XX_R5_ADD,
+                                     V9X_I9XX_R5_SHIFT) << 11) |
+        (v9x_u16)(v9x_i9xx_round8_to(green, V9X_I9XX_R6_MUL, V9X_I9XX_R6_ADD,
+                                     V9X_I9XX_R6_SHIFT) << 5) |
+        v9x_i9xx_round8_to(blue, V9X_I9XX_R5_MUL, V9X_I9XX_R5_ADD,
+                           V9X_I9XX_R5_SHIFT));
+
+    return packed;
+}

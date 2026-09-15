@@ -246,10 +246,19 @@
  */
 #define V9X_I9XX_TRI_COLOR_BGRA          ((v9x_u32)0xff1587f9ul)
 /*
- * The PREDICTED store, under the one conversion still standing:
- * round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30 -> 0x1c3e.
- * A prediction, not a measurement. trunc gives 0x143f, floor 0x143e, and
- * round8 and ceil both 0x1c5f.
+ * MEASURED on the 945GSE, 2026-09-15, build 83f24ec: all seven interior probes
+ * read 0x1c3e. round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30.
+ *
+ * This colour was chosen to separate the candidates, and it did. trunc would
+ * have given 0x143f, floor 0x143e, round8 and ceil 0x1c5f; none was observed.
+ * With the previous 0xfff86428 -> 0xf325 - where trunc predicted 0xfb25 and
+ * differed in red alone - the two colours between them separate round from
+ * trunc on red and blue and agree on green, so the rule is established for
+ * every channel rather than inferred from one.
+ *
+ * Seven identical reads also make dithering unlikely here, but do not exclude
+ * it: an ordered dither has a period and scattered points can share a cell.
+ * What this licenses is a claim about the conversion, not about the dither.
  */
 #define V9X_I9XX_TRI_COLOR_RGB565        ((v9x_u32)0x00001c3eul)
 
@@ -316,6 +325,26 @@
 /* src\chipsets\intel\i9xx_float.c */
 v9x_u16 v9x_i9xx_float_from_int(v9x_u32 value, v9x_u32 *bits);
 v9x_u16 v9x_i9xx_float_to_int(v9x_u32 bits, v9x_u32 *value);
+
+/*
+ * src\chipsets\intel\i9xx_3d_stream.c - the 8-bit-to-565 conversion this
+ * chip's colour backend was MEASURED to use, 2026-09-15.
+ *
+ * Intel-specific on purpose. The shared software rasteriser truncates, which
+ * is a legitimate and common choice, and nothing here says it is wrong; the
+ * two simply disagree by up to one level per channel. Changing the shared
+ * rasteriser to match one chip would be a change to every chip's output made
+ * on one chip's evidence, so the expectation lives on the Intel side and the
+ * disagreement is reported rather than hidden.
+ *
+ * round(v * max / 255), evaluated as (v * max + 127) / 255 so it is integer
+ * throughout. Clamping is structural rather than applied: v <= 255 gives a
+ * result <= max for every max here, so no channel can overflow its field.
+ *
+ * docs\decisions6-09-15-intel-565-conversion-rounds.md carries the two
+ * colours that separate this from truncation on all three channels.
+ */
+v9x_u16 v9x_i9xx_rgb565_round(v9x_u32 red, v9x_u32 green, v9x_u32 blue);
 
 /* src\chipsets\intel\i9xx_3d.c */
 /* Dwords before the 3D state block: the GPU fill plus its MI_FLUSH. */

@@ -378,14 +378,69 @@ function Test-V9xIntel3dCapture {
             }
         }
         if ($mismatches -ne 0) {
+            # No longer "never run against hardware": it has, twice, and the
+            # cause is known. The software rasteriser truncates 8-bit channels
+            # to 565 and this chip rounds, so an interior probe differing by
+            # one level per channel is the expected disagreement rather than
+            # an open question. The Intel comparison below is the one that
+            # fails; this one stays a note because the software rasteriser is
+            # not wrong, only different.
             $notes += ("$mismatches of $compared pixel probes disagree with the " +
-                       'software reference. REPORTED, not failed: this ' +
-                       'comparison has never run against hardware, and no ' +
-                       'golden has been promoted.')
+                       'software reference. REPORTED, not failed: the software ' +
+                       'rasteriser truncates where this chip is measured to ' +
+                       'round, so up to one level per channel is expected. ' +
+                       'The measured-conversion check is what fails on a real ' +
+                       'change.')
         } else {
             $notes += ("All $compared pixel probes agree with the software " +
                        'reference.')
         }
+    }
+
+    # The Intel reference: the same probes under the conversion this chip's
+    # colour backend was MEASURED to use (2026-09-15, two triangle colours
+    # covering all three channels). Unlike the software comparison above this
+    # one FAILS, because it is no longer a prediction.
+    #
+    # Two references, deliberately. The software rasteriser truncates and this
+    # chip rounds; that difference is understood, documented and expected, so
+    # reporting it every run while failing on a real change is the only way
+    # either signal stays readable. Folding them into one would mean either
+    # failing on a known difference or reporting a regression as a warning.
+    #
+    # Guarded on presence so a capture checked against a schema-1 generated
+    # file - one produced before the measurement - is not failed for a field
+    # that did not exist when it was written.
+    if ($generated.ContainsKey('IntelReferencePixels')) {
+        if ($generated.IntelReferencePixels.Count -ne $script:V9xExpectedProbes) {
+            throw ('The generated Intel reference carries ' +
+                   "$($generated.IntelReferencePixels.Count) probes where the " +
+                   "driver publishes $($script:V9xExpectedProbes). A partial " +
+                   'reference would silently excuse a partial capture.')
+        }
+        $bad = @()
+        for ($index = 0; $index -lt $script:V9xExpectedProbes; ++$index) {
+            $key = 'PX{0:X4}' -f $index
+            $actual = Get-V9x3dHex32 -Values $values -Key $key
+            $expected = [Convert]::ToUInt32(
+                $generated.IntelReferencePixels[$index], 16)
+            # Both halves of the dword, not just the low one. Inside a flat
+            # region they must agree, and checking one half would accept a
+            # capture where they did not.
+            if ((($actual -band 0xffff) -ne $expected) -or
+                ((($actual -shr 16) -band 0xffff) -ne $expected)) {
+                $bad += ($key + ' reads ' + ('{0:X8}' -f $actual) +
+                         ', measured rule says ' + ('{0:X4}' -f $expected))
+            }
+        }
+        if ($bad.Count -ne 0) {
+            throw ("$($bad.Count) probe(s) disagree with the MEASURED Intel " +
+                   'conversion: ' + ($bad -join '; ') + '. This is not the ' +
+                   'known software-rasteriser difference - it is a change in ' +
+                   'what the hardware stores, or in the stream sent to it.')
+        }
+        $notes += ("All $($script:V9xExpectedProbes) pixel probes match the " +
+                   'measured Intel conversion.')
     }
 
     # In-reserve guards must be untouched. These are ours, unlike HeapProbe.
@@ -418,6 +473,18 @@ function Test-V9xIntel3dCapture {
 }
 
 if ($SelfTest) {
+    # Every fixture here now disagrees with the SOFTWARE reference by
+    # construction, because the clean armed fixture carries what the hardware
+    # was measured to store and the software rasteriser truncates. That
+    # warning is correct, expected on every run, and says nothing about the
+    # thing under test, so the self-test would print twenty-eight of them and
+    # teach its reader to scroll past exactly the output the validator exists
+    # to produce.
+    #
+    # Suppressed here and nowhere else: a real capture checked through this
+    # script still shows them. The self-test asserts on accept-or-reject, not
+    # on warning text, so nothing it tests is hidden by this.
+    $WarningPreference = 'SilentlyContinue'
     $generated = Import-PowerShellDataFile -LiteralPath $generatedPath
     $lines = New-Object 'System.Collections.Generic.List[string]'
     $lines.Add('[Intel3D]')
@@ -545,14 +612,24 @@ if ($SelfTest) {
     $armedLines.Add('HashOmitted=bulk-aperture-read-hang')
     $armedLines.Add('RowCrcOmitted=bulk-aperture-read-hang')
     $armedLines.Add('PixelProbes=0000000E')
-    # Built from the software reference rather than a flat value, so the clean
-    # armed fixture exercises the agreement path and the self-test stays quiet.
-    # A self-test that always prints warnings teaches its reader to skip them.
+    # Built from the MEASURED Intel reference rather than a flat value or the
+    # software one, so the clean armed fixture is what the hardware actually
+    # produced on 2026-09-15 and the self-test exercises the agreement path.
+    #
+    # It was the software reference until that measurement. That is now the
+    # wrong fixture: it would fail the measured-conversion check, and a fixture
+    # that has to be excused is not a fixture.
+    #
+    # The capture reads dwords - two 16-bit pixels - so both halves carry the
+    # value, which is also what the validator checks.
     for ($probe = 0; $probe -lt 14; ++$probe) {
-        $expected = if ($generated.ContainsKey('ReferencePixels')) {
+        $expected = if ($generated.ContainsKey('IntelReferencePixels')) {
+            $generated.IntelReferencePixels[$probe]
+        } elseif ($generated.ContainsKey('ReferencePixels')) {
             $generated.ReferencePixels[$probe]
         } else { '00000842' }
-        $armedLines.Add(('PX{0:X4}={1}' -f $probe, $expected))
+        $half = [Convert]::ToUInt32($expected, 16) -band 0xffff
+        $armedLines.Add(('PX{0:X4}={1:X8}' -f $probe, (($half -shl 16) -bor $half)))
     }
     $armedLines.Add('Result=PASS')
 
@@ -586,7 +663,21 @@ R0000=DEADBEEF'
         @{ Old = 'PreErr0000=00000000'; New = 'PreErr0000=00000'
            Why = 'a truncated diagnostic register value' },
         @{ Old = 'PreErrOk=1'; New = 'PreErrNote=1'
-           Why = 'no completeness status on the pre-draw read' }
+           Why = 'no completeness status on the pre-draw read' },
+        # The measured-conversion check, proved able to fail. The substituted
+        # value is not arbitrary: 143F is exactly what the SOFTWARE rasteriser
+        # produces for this triangle, so this is the one wrong value most
+        # likely to be mistaken for correct - and the one a regression to
+        # truncation in the stream would actually produce.
+        @{ Old = 'PX0000=1C3E1C3E'; New = 'PX0000=143F143F'
+           Why = 'an interior probe carrying the truncated colour' },
+        # One half right and one half wrong, which a low-half-only comparison
+        # would have accepted. That is how the original software-reference
+        # comparison was written.
+        @{ Old = 'PX0001=1C3E1C3E'; New = 'PX0001=143F1C3E'
+           Why = 'an interior probe whose two halves disagree' },
+        @{ Old = 'PX0007=08420842'; New = 'PX0007=1C3E1C3E'
+           Why = 'an outside probe carrying the triangle colour' }
     )
     foreach ($mutation in $armedMutations) {
         $broken = @($armedLines | ForEach-Object {
