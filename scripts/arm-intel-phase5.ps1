@@ -59,6 +59,12 @@ function Get-V9xPhase5ArmBlock {
         IntelArmCrc = $generated.Combinedcrc
         IntelArmPhase4Crc = $generated.P4Crc
         IntelArmPhase5Crc = $generated.P5Crc
+        # A chained Phase 5 run goes through Phase 4's preflight, which refuses
+        # with V9X_P4_PRE_ACCEL unless this reads exactly '0'. This armer did
+        # not write it, and a stick reset by V9XCOPY does not carry it, so an
+        # otherwise correct arm refused on the machine - one boot spent on a
+        # key nobody had written.
+        IntelAccelDefault = '0'
     }
 }
 
@@ -104,6 +110,26 @@ if ($SelfTest) {
         throw ('The armed CRC must be the COMBINED one covering both streams ' +
                'in execution order, not either half.')
     }
+    # The chained run is gated by Phase 4's preflight as well as by the chain,
+    # so every key that preflight reads must be written here. Omitting
+    # IntelAccelDefault cost a boot: the arm was correct and the machine
+    # refused it.
+    if ($block['IntelAccelDefault'] -cne '0') {
+        throw ('The Phase 5 arm block must set IntelAccelDefault=0. A chained ' +
+               "run passes through Phase 4's preflight, which refuses with " +
+               'V9X_P4_PRE_ACCEL otherwise, and a stick reset by V9XCOPY does ' +
+               'not carry the key.')
+    }
+    if ($block['IntelArmPhase'] -cne '5') {
+        throw 'The Phase 5 arm block must claim IntelArmPhase=5.'
+    }
+    # It must NOT clear an in-flight token: that record is the only evidence of
+    # where an unresolved run stopped.
+    if ($block.Contains('IntelInFlight')) {
+        throw ('The Phase 5 arm block must not write IntelInFlight. A chained ' +
+               'run leaves the token in flight on every failure path, and ' +
+               'clearing it would erase the record of a run nobody has read.')
+    }
     $gateRefused = $false
     try { $null = Assert-V9xPhase5EratraGate } catch { $gateRefused = $true }
     $decisions = @(Get-ChildItem -Path $decisionGlob -ErrorAction SilentlyContinue)
@@ -130,6 +156,25 @@ if ($Disarm) {
 } else {
     $decision = Assert-V9xPhase5EratraGate
     Write-Output "Phase 5 errata gate: $decision"
+    # An unresolved previous attempt is the only evidence of where it stopped,
+    # and a chained run leaves the token in flight on EVERY failure path by
+    # design. Overwriting it would destroy the record and re-arm over a run
+    # nobody had read. arm-intel-phase4.ps1 has refused this since Phase 4;
+    # this one did not.
+    if (Test-Path -LiteralPath $armPath) {
+        $existing = @(Get-Content -LiteralPath $armPath)
+        foreach ($line in $existing) {
+            if ($line -match '^IntelInFlight=(.+)$' -and
+                $Matches[1].Trim()) {
+                throw ("The stick still carries IntelInFlight=$($Matches[1]). " +
+                       'That previous run did not resolve; collect its ' +
+                       'V9XDIAG before re-arming. A chained run leaves the ' +
+                       'token in flight on every failure path, so this is ' +
+                       'the expected state after a hang and it must not be ' +
+                       'overwritten silently.')
+            }
+        }
+    }
     $block = Get-V9xPhase5ArmBlock
     if (-not $Token) {
         $Token = 'phase5-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
