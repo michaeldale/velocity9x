@@ -797,6 +797,73 @@ static void emit_intel_3d_reference(void)
     }
 }
 
+/*
+ * Every Phase 6 scene, in execution order.
+ *
+ * The scene table is the single source of truth for what a build draws, so
+ * the mini-VDD tables, the arm CRCs and the validator all come from HERE
+ * rather than from four hand-maintained copies - which is what Phase 4 had,
+ * and three of them were stale.
+ *
+ * Probe coordinates and expectations are emitted with the streams because the
+ * capture validator has to know what each scene was asking before it can say
+ * whether the answer is a result or a regression.
+ */
+static int emit_intel_scenes(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 stream[160];
+    v9x_u32 written;
+    v9x_u32 index;
+    v9x_u32 probe;
+    char prefix[16];
+
+    printf("SCENECOUNT=%04X\n", (unsigned int)v9x_i9xx_scene_count());
+    printf("SCENEAUTHORISED=%04X\n",
+           (unsigned int)v9x_i9xx_scene_authorised_draws());
+    printf("SCENECOMBINEDCRC=%08lX\n",
+           (unsigned long)v9x_i9xx_scene_combined_crc());
+    printf("SCENETOTALPROBES=%04X\n",
+           (unsigned int)v9x_i9xx_scene_total_probes());
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        if (v9x_i9xx_scene_at(index, &scene) != V9X_STATUS_OK) {
+            printf("SCENEERROR=%04X\n", (unsigned int)index);
+            return 1;
+        }
+        written = 0ul;
+        if (v9x_i9xx_build_scene_stream(&scene, stream, 160ul, &written) !=
+                V9X_STATUS_OK) {
+            printf("SCENEERROR=%04X\n", (unsigned int)index);
+            return 1;
+        }
+        printf("SC%04XID=%04X\n", (unsigned int)index,
+               (unsigned int)scene.id);
+        printf("SC%04XCOUNT=%04X\n", (unsigned int)index,
+               (unsigned int)written);
+        printf("SC%04XCRC=%08lX\n", (unsigned int)index,
+               (unsigned long)v9x_i9xx_scene_crc(index));
+        printf("SC%04XTRIS=%04X\n", (unsigned int)index,
+               (unsigned int)scene.triangle_count);
+        printf("SC%04XPROBES=%04X\n", (unsigned int)index,
+               (unsigned int)scene.probe_count);
+        for (probe = 0ul; probe < scene.probe_count; ++probe) {
+            printf("SC%04XP%04XNAME=%s\n", (unsigned int)index,
+                   (unsigned int)probe, scene.probes[probe].name);
+            printf("SC%04XP%04XX=%04X\n", (unsigned int)index,
+                   (unsigned int)probe, (unsigned int)scene.probes[probe].x);
+            printf("SC%04XP%04XY=%04X\n", (unsigned int)index,
+                   (unsigned int)probe, (unsigned int)scene.probes[probe].y);
+            printf("SC%04XP%04XEXPECT=%04X\n", (unsigned int)index,
+                   (unsigned int)probe,
+                   (unsigned int)scene.probes[probe].expect);
+        }
+        sprintf(prefix, "SC%04X", (unsigned int)index);
+        emit_dword_table(prefix, 0ul, stream, written);
+    }
+    return 0;
+}
+
 static int emit_intel_3d_stream(void)
 {
     struct v9x_i9xx_sandbox_layout layout;
@@ -878,7 +945,7 @@ static int emit_intel_3d_stream(void)
     printf("COMBINEDCRC=%08lX\n",
            (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
     emit_intel_3d_reference();
-    return 0;
+    return emit_intel_scenes();
 }
 
 int main(int argc, char **argv)

@@ -149,6 +149,54 @@ $incLines.Add(('V9X_I9XX_P4_CRC         EQU 0{0}h' -f $values['P4CRC']))
 $incLines.Add(('V9X_I9XX_P5_DWORDS      EQU {0}' -f $p5Count))
 $incLines.Add(('V9X_I9XX_P5_CRC         EQU 0{0}h' -f $values['P5CRC']))
 $incLines.Add(('V9X_I9XX_COMBINED_CRC   EQU 0{0}h' -f $values['COMBINEDCRC']))
+
+# Phase 6 scenes. Three parallel directories rather than a struct array: MASM
+# indexes a flat dword table with a scaled index in one instruction, and the
+# loader needs each of the three at a different point - the bound before
+# staging, the CRC at the execute gate, the table pointer inside the stage
+# loop.
+$sceneCount = [Convert]::ToInt32($values['SCENECOUNT'], 16)
+$incLines.Add('')
+$incLines.Add(('V9X_I9XX_SCENE_COUNT    EQU {0}' -f $sceneCount))
+$incLines.Add(('V9X_I9XX_SCENE_AUTH     EQU {0}' -f
+               [Convert]::ToInt32($values['SCENEAUTHORISED'], 16)))
+$incLines.Add(('V9X_I9XX_SCENE_CRC      EQU 0{0}h' -f $values['SCENECOMBINEDCRC']))
+$incLines.Add(('V9X_I9XX_SCENE_PROBES   EQU {0}' -f
+               [Convert]::ToInt32($values['SCENETOTALPROBES'], 16)))
+
+$sceneDwords = New-Object 'System.Collections.Generic.List[string]'
+$sceneCrcs = New-Object 'System.Collections.Generic.List[string]'
+$scenePtrs = New-Object 'System.Collections.Generic.List[string]'
+for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
+    $tag = 'SC{0:X4}' -f $scene
+    $count = [Convert]::ToInt32($values[($tag + 'COUNT')], 16)
+    $sceneDwords.Add(('0{0:X8}h' -f $count))
+    $sceneCrcs.Add(('0{0}h' -f $values[($tag + 'CRC')]))
+    $scenePtrs.Add(('OFFSET32 V9xI9xxScene{0}Table' -f $scene))
+
+    $incLines.Add('')
+    $incLines.Add(('V9xI9xxScene{0}Table LABEL DWORD' -f $scene))
+    $row = New-Object 'System.Collections.Generic.List[string]'
+    for ($index = 0; $index -lt $count; ++$index) {
+        $key = '{0}{1:X4}' -f $tag, $index
+        if (-not $values.ContainsKey($key)) {
+            throw "The emitted scene table is missing $key."
+        }
+        $row.Add(('0{0}h' -f $values[$key]))
+        if ($row.Count -eq 4) {
+            $incLines.Add('    dd ' + ($row -join ', '))
+            $row.Clear()
+        }
+    }
+    if ($row.Count -ne 0) { $incLines.Add('    dd ' + ($row -join ', ')) }
+}
+$incLines.Add('')
+$incLines.Add('V9xI9xxSceneDwords LABEL DWORD')
+$incLines.Add('    dd ' + ($sceneDwords -join ', '))
+$incLines.Add('V9xI9xxSceneCrc LABEL DWORD')
+$incLines.Add('    dd ' + ($sceneCrcs -join ', '))
+$incLines.Add('V9xI9xxSceneTables LABEL DWORD')
+$incLines.Add('    dd ' + ($scenePtrs -join ', '))
 $incLines.Add('')
 
 function Add-V9xMasmTable {
@@ -179,7 +227,7 @@ $dataLines.Add('# builders. Consumed by the Intel capture validators so they che
 $dataLines.Add('# the same numbers the mini-VDD was armed with, rather than a')
 $dataLines.Add('# reimplementation of them.')
 $dataLines.Add('@{')
-$dataLines.Add('    SchemaVersion = 2')
+$dataLines.Add('    SchemaVersion = 3')
 foreach ($key in @('RESERVEOFFSET', 'RINGSTART', 'SCRATCHOFFSET',
                    'TARGETOFFSET', 'TARGETPITCH', 'TARGETBYTES',
                    'GUARDUPPER', 'FILLWORD', 'TRICOLOR',
@@ -222,6 +270,42 @@ $dataLines.Add(("    ReferenceColor = '{0}'" -f $values['REFCOLOR']))
 # thing that distinguishes "the known conversion difference" from "the hardware
 # has changed".
 $dataLines.Add(("    IntelReferenceColor = '{0}'" -f $values['REFICOLOR']))
+
+# The scene table, for the capture validator. It needs the probe coordinates
+# and expectations as well as the streams: a probe reading the fill is a
+# result in one scene and a regression in another, and only the expectation
+# published with it says which.
+$dataLines.Add(('    SceneCount = {0}' -f $sceneCount))
+$dataLines.Add(('    SceneAuthorisedDraws = {0}' -f
+                [Convert]::ToInt32($values['SCENEAUTHORISED'], 16)))
+$dataLines.Add(("    SceneCombinedCrc = '{0}'" -f $values['SCENECOMBINEDCRC']))
+$dataLines.Add(('    SceneTotalProbes = {0}' -f
+                [Convert]::ToInt32($values['SCENETOTALPROBES'], 16)))
+$dataLines.Add('    Scenes = @(')
+for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
+    $tag = 'SC{0:X4}' -f $scene
+    $count = [Convert]::ToInt32($values[($tag + 'COUNT')], 16)
+    $probes = [Convert]::ToInt32($values[($tag + 'PROBES')], 16)
+    $dataLines.Add('        @{')
+    $dataLines.Add(('            Id = {0}' -f
+                    [Convert]::ToInt32($values[($tag + 'ID')], 16)))
+    $dataLines.Add(('            Dwords = {0}' -f $count))
+    $dataLines.Add(("            Crc = '{0}'" -f $values[($tag + 'CRC')]))
+    $dataLines.Add(('            Triangles = {0}' -f
+                    [Convert]::ToInt32($values[($tag + 'TRIS')], 16)))
+    $dataLines.Add('            Probes = @(')
+    for ($probe = 0; $probe -lt $probes; ++$probe) {
+        $ptag = '{0}P{1:X4}' -f $tag, $probe
+        $dataLines.Add(("                @{{ Name = '{0}'; X = {1}; Y = {2}; Expect = {3} }}" -f
+                        $values[($ptag + 'NAME')],
+                        [Convert]::ToInt32($values[($ptag + 'X')], 16),
+                        [Convert]::ToInt32($values[($ptag + 'Y')], 16),
+                        [Convert]::ToInt32($values[($ptag + 'EXPECT')], 16)))
+    }
+    $dataLines.Add('            )')
+    $dataLines.Add('        }')
+}
+$dataLines.Add('    )')
 $dataLines.Add('    ReferencePixels = @(')
 for ($index = 0; $index -lt 14; ++$index) {
     $key = 'REFPX{0:X4}' -f $index

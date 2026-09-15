@@ -1131,6 +1131,11 @@ foreach ($line in $intelIncLines) {
             $trimmed = $piece.Trim()
             if ($trimmed -match '^0([0-9A-F]{8})h$') {
                 $intelTables[$currentLabel].Add($Matches[1])
+            } elseif ($trimmed -match '^OFFSET32 (\S+)$') {
+                # The scene pointer directory. Recorded as the symbol rather
+                # than refused: it is a dword table like the others, but its
+                # dwords are link-time addresses and cannot be hex here.
+                $intelTables[$currentLabel].Add($Matches[1])
             } else {
                 throw "i9xx3d.inc has an unparsable dword '$trimmed' in $currentLabel."
             }
@@ -1139,6 +1144,81 @@ foreach ($line in $intelIncLines) {
     }
     if ($line.Trim() -eq '') { $currentLabel = $null }
 }
+# The Phase 6 scene directories, checked against the scene tables themselves.
+#
+# Three parallel arrays are three chances to disagree with the tables they
+# describe, so each is recomputed here rather than trusted: the CRC from the
+# table's own dwords, the length from its own entry count, and the pointer from
+# its own label. A directory that drifted would arm the mini-VDD to execute one
+# scene while gating on another's CRC.
+if ($intelIncText -match '(?m)^V9X_I9XX_SCENE_COUNT\s+EQU\s+(\d+)') {
+    $sceneCount = [int]$Matches[1]
+    if ($intelIncText -notmatch '(?m)^V9X_I9XX_SCENE_AUTH\s+EQU\s+(\d+)') {
+        throw 'i9xx3d.inc declares a scene count but no authorised-draw bound.'
+    }
+    $sceneAuth = [int]$Matches[1]
+    if ($sceneCount -gt $sceneAuth) {
+        throw ("i9xx3d.inc declares $sceneCount scenes but only $sceneAuth " +
+               'draws are authorised. That bound is a recorded risk decision ' +
+               'in docs\decisions\2026-09-15-intel-phase5-errata-gate.md, ' +
+               'not a build parameter.')
+    }
+    if ($sceneCount -lt 1) { throw 'i9xx3d.inc declares no scenes.' }
+
+    foreach ($label in @('V9xI9xxSceneDwords', 'V9xI9xxSceneCrc',
+                         'V9xI9xxSceneTables')) {
+        if (-not $intelTables.ContainsKey($label)) {
+            throw "i9xx3d.inc has no $label directory."
+        }
+        if (@($intelTables[$label]).Count -ne $sceneCount) {
+            throw ("i9xx3d.inc's $label has " +
+                   "$(@($intelTables[$label]).Count) entries for " +
+                   "$sceneCount scenes.")
+        }
+    }
+
+    $sceneStreams = New-Object 'System.Collections.Generic.List[string]'
+    for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
+        $label = "V9xI9xxScene${scene}Table"
+        if (-not $intelTables.ContainsKey($label)) {
+            throw "i9xx3d.inc has no $label."
+        }
+        $hex = @($intelTables[$label])
+        $declared = [Convert]::ToInt32(
+            @($intelTables['V9xI9xxSceneDwords'])[$scene], 16)
+        if ($hex.Count -ne $declared) {
+            throw ("i9xx3d.inc's $label holds $($hex.Count) dwords but its " +
+                   "directory entry says $declared.")
+        }
+        $computed = Get-V9xIncCrc32 -Hex $hex
+        $stated = @($intelTables['V9xI9xxSceneCrc'])[$scene]
+        if ($computed -ne $stated) {
+            throw ("i9xx3d.inc's $label hashes to $computed but its " +
+                   "directory says $stated.")
+        }
+        if (@($intelTables['V9xI9xxSceneTables'])[$scene] -ne $label) {
+            throw ("i9xx3d.inc's scene pointer $scene names " +
+                   "$(@($intelTables['V9xI9xxSceneTables'])[$scene]), " +
+                   "not $label.")
+        }
+        foreach ($dword in $hex) { $sceneStreams.Add($dword) }
+    }
+
+    # The combined CRC covers every scene's dwords in execution order, which is
+    # what the arm token carries. Recomputed from the concatenation rather than
+    # from the per-scene CRCs: a CRC of CRCs would not notice a scene changing
+    # length while hashing the same.
+    if ($intelIncText -notmatch '(?m)^V9X_I9XX_SCENE_CRC\s+EQU\s+0([0-9A-F]{8})h') {
+        throw 'i9xx3d.inc has no V9X_I9XX_SCENE_CRC literal.'
+    }
+    $statedCombined = $Matches[1]
+    $computedCombined = Get-V9xIncCrc32 -Hex @($sceneStreams)
+    if ($computedCombined -ne $statedCombined) {
+        throw ("i9xx3d.inc's scene tables hash to $computedCombined but " +
+               "V9X_I9XX_SCENE_CRC says $statedCombined.")
+    }
+}
+
 foreach ($pair in @(@{ Label = 'V9xI9xxPhase4Table'; Equ = 'V9X_I9XX_P4_PACKET_CRC'; Count = 'V9X_I9XX_P4_DWORDS' },
                     @{ Label = 'V9xI9xxPhase5Table'; Equ = 'V9X_I9XX_P5_CRC'; Count = 'V9X_I9XX_P5_DWORDS' })) {
     if (-not $intelTables.ContainsKey($pair.Label)) {

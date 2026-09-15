@@ -5,7 +5,7 @@
 # the same numbers the mini-VDD was armed with, rather than a
 # reimplementation of them.
 @{
-    SchemaVersion = 2
+    SchemaVersion = 3
     Reserveoffset = '006B0000'
     Ringstart = '006B0000'
     Scratchoffset = '006C1000'
@@ -101,6 +101,104 @@
     ReferenceFill = '00000842'
     ReferenceColor = '0000143F'
     IntelReferenceColor = '00001C3E'
+    SceneCount = 5
+    SceneAuthorisedDraws = 5
+    SceneCombinedCrc = '066502FF'
+    SceneTotalProbes = 52
+    Scenes = @(
+        @{
+            Id = 0
+            Dwords = 63
+            Crc = '6B1C2CEF'
+            Triangles = 1
+            Probes = @(
+                @{ Name = ''; X = 320; Y = 213; Expect = 1 }
+                @{ Name = ''; X = 175; Y = 128; Expect = 1 }
+                @{ Name = ''; X = 465; Y = 128; Expect = 1 }
+                @{ Name = ''; X = 320; Y = 385; Expect = 1 }
+                @{ Name = ''; X = 320; Y = 130; Expect = 1 }
+                @{ Name = ''; X = 250; Y = 250; Expect = 1 }
+                @{ Name = ''; X = 390; Y = 250; Expect = 1 }
+                @{ Name = ''; X = 0; Y = 0; Expect = 0 }
+                @{ Name = ''; X = 639; Y = 0; Expect = 0 }
+                @{ Name = ''; X = 0; Y = 479; Expect = 0 }
+                @{ Name = ''; X = 639; Y = 479; Expect = 0 }
+                @{ Name = ''; X = 320; Y = 40; Expect = 0 }
+                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+                @{ Name = ''; X = 600; Y = 400; Expect = 0 }
+            )
+        }
+        @{
+            Id = 1
+            Dwords = 63
+            Crc = '60367BB4'
+            Triangles = 1
+            Probes = @(
+                @{ Name = ''; X = 320; Y = 213; Expect = 1 }
+                @{ Name = ''; X = 175; Y = 128; Expect = 1 }
+                @{ Name = ''; X = 465; Y = 128; Expect = 1 }
+                @{ Name = ''; X = 320; Y = 385; Expect = 1 }
+                @{ Name = ''; X = 320; Y = 130; Expect = 1 }
+                @{ Name = ''; X = 250; Y = 250; Expect = 1 }
+                @{ Name = ''; X = 390; Y = 250; Expect = 1 }
+                @{ Name = ''; X = 0; Y = 0; Expect = 0 }
+                @{ Name = ''; X = 639; Y = 0; Expect = 0 }
+                @{ Name = ''; X = 0; Y = 479; Expect = 0 }
+                @{ Name = ''; X = 639; Y = 479; Expect = 0 }
+                @{ Name = ''; X = 320; Y = 40; Expect = 0 }
+                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+                @{ Name = ''; X = 600; Y = 400; Expect = 0 }
+            )
+        }
+        @{
+            Id = 2
+            Dwords = 63
+            Crc = '4CD82BC9'
+            Triangles = 1
+            Probes = @(
+                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = ''; X = 322; Y = 270; Expect = 1 }
+                @{ Name = ''; X = 318; Y = 270; Expect = 0 }
+                @{ Name = ''; X = 420; Y = 200; Expect = 1 }
+                @{ Name = ''; X = 210; Y = 380; Expect = 0 }
+                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+            )
+        }
+        @{
+            Id = 3
+            Dwords = 63
+            Crc = '3AE65FF9'
+            Triangles = 1
+            Probes = @(
+                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = ''; X = 322; Y = 270; Expect = 0 }
+                @{ Name = ''; X = 318; Y = 270; Expect = 1 }
+                @{ Name = ''; X = 420; Y = 200; Expect = 0 }
+                @{ Name = ''; X = 210; Y = 380; Expect = 1 }
+                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+            )
+        }
+        @{
+            Id = 4
+            Dwords = 78
+            Crc = '638E7E0C'
+            Triangles = 2
+            Probes = @(
+                @{ Name = ''; X = 250; Y = 200; Expect = 65535 }
+                @{ Name = ''; X = 320; Y = 270; Expect = 65535 }
+                @{ Name = ''; X = 390; Y = 340; Expect = 65535 }
+                @{ Name = ''; X = 322; Y = 270; Expect = 1 }
+                @{ Name = ''; X = 318; Y = 270; Expect = 2 }
+                @{ Name = ''; X = 420; Y = 200; Expect = 1 }
+                @{ Name = ''; X = 210; Y = 380; Expect = 2 }
+                @{ Name = ''; X = 40; Y = 400; Expect = 0 }
+            )
+        }
+    )
     ReferencePixels = @(
         '0000143F'
         '0000143F'

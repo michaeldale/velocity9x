@@ -61,58 +61,28 @@ than left contradicting this plan.
 scene's — still needs its own scene, and that scene's probes must be read
 against the scene that lacks the change.
 
-## Blocked: the recorded execution scope forbids this
+## Execution scope: authorised 2026-09-16, bounded at five draws
 
-**Nothing in this plan may be armed until the Phase 5 errata decision is
-amended, and that amendment is a risk decision, not an engineering one.**
+This plan was blocked when it was written. The Phase 5 errata decision limited
+a boot to one triangle and said in terms that nothing in it "authorises a
+second draw in the same boot", and five draws is what build 1 needs.
 
-`docs/decisions/2026-09-15-intel-phase5-errata-gate.md` limits the scope twice,
-and the second time in terms that cover exactly what this plan proposes:
+**Amended 2026-09-16 by Michael Dale:** up to five independent draws per armed
+boot. Asked first as a second draw and widened to five when the consequence of
+the narrow form was put - the shared-edge experiment needs three scenes and
+would not have fitted beside the regression scene. The weighing, and what
+remains unauthorised, are in
+[the errata gate's amendment](../decisions/2026-09-15-intel-phase5-errata-gate.md).
 
-> It does not authorise anything beyond one triangle. A sustained or repeated
-> 3D workload is a different assessment, and erratum 7's word "extended" is the
-> reason.
+**The authorisation rests on a condition this plan already required:** each
+draw re-emits complete state, fills its own target, and flushes its own probes
+before the next submits. A build in which one draw inherited another's state
+would be outside the amendment even at a count of two. That is why the
+independence rule above is a rule and not a preference.
 
-and, in the 2026-09-15 repeat-mode amendment:
-
-> The scope of the original decision is unchanged: one triangle per boot.
-> Nothing here permits sustained or repeated 3D work within a boot, and nothing
-> here authorises a second draw in the same boot.
-
-Build 1 as described is five draws and six triangles in one boot. The
-host-side scene work does not change that and was never going to: building a
-stream is not authorisation to submit it, and the code says so at the top of
-`src/chipsets/intel/i9xx_scene.c`.
-
-### What an amendment would have to weigh
-
-Written here so the decision has something to work from, **not** as an argument
-that it should be granted:
-
-- **Erratum 7** concerns *extended* 3D operation. Five scenes is more 3D work
-  than one, in the direction the erratum names. Nobody has measured where
-  "extended" begins on this part, and the word is Intel's, not a threshold.
-- **Erratum 12** concerns a CPU/GPU access sequence. This plan multiplies the
-  CPU-side aperture reads, which is the side of that pair the driver controls,
-  and the bulk-read hang already measured is the closest thing to evidence
-  about it. The read budget section below is the response.
-- **What has actually been survived:** two armed boots of one triangle each,
-  both clean, plus the Phase 4 blit. That is the entire body of evidence about
-  sustained work on this part, and it is silent on the question.
-- **The cost of being wrong** is unchanged and is what the original gate was
-  opened against: a hang on a scratch install, on AC power, recoverable from
-  DOS. The hang-interpretation rule from the Phase 4 decision would apply.
-- **A smaller step exists.** Two scenes rather than five - scene 0 and one
-  other - would test the bundling mechanism itself while roughly doubling the
-  3D work rather than quintupling it, and would still close one filed issue.
-  If the amendment is granted narrowly, this is the shape to grant it in.
-
-### Until then
-
-Everything host-side proceeds: the scene table, the sequencer, the capture
-schema, the validator and the arm tables. The build produces a package whose
-Phase 6 arm token **no machine will accept**, because no such phase is
-authorised, and that is the correct state for it to be in.
+Five is a bound, not a target. Raising it needs another decision recorded in
+that file, which is what the authorised-draw constant in the code exists to
+make visible.
 
 ## The read budget, stated because it is the known hazard
 

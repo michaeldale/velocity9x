@@ -449,7 +449,14 @@ struct v9x_i9xx_scene {
     struct v9x_i9xx_probe probes[V9X_I9XX_SCENE_MAX_PROBES];
 };
 
+/*
+ * Scenes this build executes, or ZERO if it defines more than the errata
+ * decision authorises. Zero is a refusal, not an empty set: every caller
+ * treats it as a build fault.
+ */
 v9x_u32 v9x_i9xx_scene_count(void);
+/* The bound the 2026-09-16 amendment set. Five. */
+v9x_u32 v9x_i9xx_scene_authorised_draws(void);
 v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out);
 v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene);
 v9x_status v9x_i9xx_build_scene_stream(

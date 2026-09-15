@@ -8,12 +8,16 @@
  * docs\plans\intel-phase6-bundled-scenes.md: a scene may not depend on state
  * another scene left behind.
  *
- * EXECUTION IS NOT AUTHORISED BY THIS FILE. The Phase 5 errata decision limits
- * a boot to one triangle and says in terms that nothing in it "authorises a
- * second draw in the same boot"
- * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md). Building the scenes
- * host-side changes nothing about that. The scope amendment is a risk decision
- * and is not taken here.
+ * Execution of more than one draw per boot was authorised on 2026-09-16,
+ * bounded at five (docs\decisions\2026-09-15-intel-phase5-errata-gate.md).
+ * V9X_I9XX_SCENE_AUTHORISED_DRAWS carries that bound, and the build refuses to
+ * exceed it - the constant exists so the number is visible in the code that
+ * acts on it, not so it is easy to change. Raising it needs another decision
+ * recorded in that file.
+ *
+ * The authorisation rests on the independence rule above, not merely on the
+ * count: a scene that inherited another scene's state would be outside it even
+ * at two.
  *
  * The scene table is the single source of truth for what a build draws. The
  * generator, the arm tables, the validators and the capture writer all read
@@ -107,6 +111,13 @@
 /* The GPU-side fill: XY_COLOR_BLT plus its MI_FLUSH. */
 #define V9X_I9XX_SCENE_FILL_DWORDS  ((v9x_u32)7ul)
 
+/*
+ * The bound the 2026-09-16 amendment set, and the number of scenes this build
+ * defines. They are separate constants deliberately: the first is a decision
+ * and the second is a build, and a build that quietly grew past its
+ * authorisation should fail here rather than on the machine.
+ */
+#define V9X_I9XX_SCENE_AUTHORISED_DRAWS ((v9x_u32)5ul)
 #define V9X_I9XX_SCENE_COUNT        ((v9x_u32)5ul)
 
 /*
@@ -267,7 +278,21 @@ static void v9x_i9xx_scene_edge_probes(
 
 v9x_u32 v9x_i9xx_scene_count(void)
 {
+    /*
+     * Refuses rather than clamps. A build defining more scenes than the errata
+     * decision authorises is a mistake about what was agreed, and returning a
+     * silently truncated set would execute four fifths of it and look like it
+     * worked.
+     */
+    if (V9X_I9XX_SCENE_COUNT > V9X_I9XX_SCENE_AUTHORISED_DRAWS) {
+        return 0ul;
+    }
     return V9X_I9XX_SCENE_COUNT;
+}
+
+v9x_u32 v9x_i9xx_scene_authorised_draws(void)
+{
+    return V9X_I9XX_SCENE_AUTHORISED_DRAWS;
 }
 
 v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)

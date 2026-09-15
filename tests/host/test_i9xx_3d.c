@@ -1021,7 +1021,16 @@ static void test_scene_table(void)
     v9x_u32 stream[160];
     v9x_u32 written = 0ul;
 
+    /*
+     * Five scenes, and five is also what the 2026-09-16 errata amendment
+     * authorises. Both asserted, and their RELATIONSHIP asserted, because the
+     * failure this guards against is a build quietly defining more draws than
+     * were agreed - which the count alone would not show.
+     */
     CHECK(v9x_i9xx_scene_count() == 5ul);
+    CHECK(v9x_i9xx_scene_authorised_draws() == 5ul);
+    CHECK(v9x_i9xx_scene_count() <= v9x_i9xx_scene_authorised_draws());
+    CHECK(v9x_i9xx_scene_count() != 0ul);
 
     for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
         struct v9x_i9xx_scene other;

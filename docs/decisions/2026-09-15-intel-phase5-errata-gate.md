@@ -200,3 +200,70 @@ the target are the check for that and are published in every capture.
 decision is unchanged: one triangle per boot. Nothing here permits sustained or
 repeated 3D work within a boot, which is what erratum 7's word "extended"
 concerns, and nothing here authorises a second draw in the same boot.
+
+## Amendment, 2026-09-16: multiple draws per boot are authorised, bounded at five
+
+Decided by Michael Dale, asked for explicitly after the Phase 6 plan proposed a
+five-scene boot and was refused by the scope above. Asked first as "allow a
+second draw" and then widened to five when the consequence of the narrow form
+was put - that the shared-edge experiment needs three scenes and would not fit.
+
+**What is authorised:** up to five independent draws in one armed boot. Five is
+a bound, not a target, and it is the number this build was designed around.
+
+**What is unchanged.** Every gate still applies to every boot: the errata gate,
+the build-id match, the combined-CRC match over every stream in execution
+order, the PCI identity and revision check, `IntelEnableThisBoot`, the Phase 4
+replay before the first draw, and the in-flight transfer that turns a hang into
+a refusal on the next boot. The additional draws sit inside those gates, not
+beside them.
+
+**The condition the authorisation rests on.** Each draw re-emits complete
+state, performs its own fill, and flushes its own probes before the next
+submits. A draw may not depend on anything another draw left behind.
+
+That is not housekeeping. It is what keeps a failure attributable to one draw
+rather than to the set, and it is also what makes a hang cheaper than it is
+today: draw *n*'s probes are on disk before draw *n+1* submits, so a boot that
+wedges on the fourth still returns three complete results and names the fourth.
+A build that let one draw inherit another's state would be outside this
+amendment even at a count of two.
+
+### What this is weighed against, stated so a later reader is not guessing
+
+Erratum 7 concerns *extended* 3D operation. Five draws is more 3D work than
+one, in the direction the erratum names, and nobody has measured where
+"extended" begins on this part - the word is Intel's and is not a threshold.
+What is known is that two armed boots of one triangle each completed cleanly,
+plus the Phase 4 blit. That is the entire body of evidence about sustained work
+on this part and it is silent on five.
+
+Erratum 12 concerns a CPU/GPU access sequence, and more draws means more
+aperture reads. The read budget is the response and it is explicit: the capture
+publishes a running cumulative count so a hang names the read it stopped at,
+this build's total is bounded and asserted host-side at 52 probes, and the
+measured hazard is 153,600 reads hanging where 45 did not.
+
+The cost of being wrong is what the original gate was opened against and has
+not changed: a hang on a scratch install, on AC power, recoverable from DOS.
+The Phase 4 hang-interpretation rule applies unchanged - first hang record and
+repeat once; reproducible is ours and kills; not reproducible is ambiguous with
+erratum 12 a named suspect; third hang stops.
+
+### What is NOT authorised
+
+More than five draws. Any draw that inherits state from another. Sustained or
+repeated 3D work in the sense of a workload rather than a bounded set of
+independent diagnostic draws. Raising the bound by editing a constant without a
+further decision recorded here - the constant exists so the count is visible,
+not so it is easy to change.
+
+### Consequence for the Phase 6 plan
+
+The five-scene build 1 is authorised as designed: the regression scene first,
+then the colour scene, then the three shared-edge scenes.
+
+The edge experiment stays three scenes rather than two triangles in one,
+because two opaque triangles in a single scene cannot reveal double coverage -
+the second overwrites the first, and the result is indistinguishable from
+coverage by the second alone.
