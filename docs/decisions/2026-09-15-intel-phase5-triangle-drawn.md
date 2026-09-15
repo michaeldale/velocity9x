@@ -95,11 +95,20 @@ target.
 The software reference in `d3d_raster.c` truncates. On this evidence it is the
 reference that is wrong, not the hardware.
 
-**Still only one discriminating channel.** Green and blue agree with both rules,
-so a single byte value carries the whole inference. Confirming it wants a
-vertex colour whose channels separate the candidates at more than one point -
-a cheap change and one boot. Until then the reference is not altered, the
-comparison stays reported rather than failed, and no golden is promoted.
+**Corrected 2026-09-15:** the two rows above compare truncate against round
+only, and on that pair red is the sole discriminator. Scored against a full
+candidate set - truncate, floor, round, ceil, round-in-8-bit-space and
+`(v*(max+1))>>8` - this colour discriminates on **two independent channels**:
+red eliminates four candidates and green and blue eliminate a fifth, leaving
+`round(v*max/255)` alone. The table is in
+`plans/intel-phase5-colour-conversion-experiment.md`.
+
+That is still six candidate rules at three values. It does not establish the
+hardware's conversion in general, and tie-breaking cannot be probed at all
+because `v*max/255` is never exactly `x.5` when the denominator is odd.
+
+The reference is not altered, the comparison stays reported rather than
+failed, and no golden is promoted.
 
 ## What Phase 5 does not claim
 
