@@ -1,4 +1,4 @@
-# The I9XXCODE far call is not what hangs the netbook
+# 86Box does not reproduce the netbook lock, in any software combination
 
 Decided by: measurement, 2026-09-15. Guest `Win86SE`, 86Box 6.0, Windows 98 SE.
 
@@ -37,6 +37,24 @@ same size as the netbook's, and the same content `arm_prepare` writes as its
 first action. That second boot is what makes this evidence rather than
 inference: the file was demonstrably written by the boot under test.
 
+Two further combinations were then tried, because the first test kept the
+guest's own s3 `V9XMINI.VXD` and the mini-VDD was the largest untested
+difference:
+
+| Guest configuration | Result |
+|---|---|
+| Intel `V9XDISP.DRV`, s3 mini-VDD | `Stage=fail-hardware-present` |
+| s3 driver, Intel `V9XMINI.VXD` | `Stage=enable-ok`, full desktop |
+| Intel driver **and** Intel mini-VDD | `Stage=fail-hardware-present` |
+
+The Intel mini-VDD is the half that now carries the generated Phase 5 table
+inside its data segment, and it loaded and ran to a full desktop. The pair
+together reached hardware validation and refused there, with `INTELARM.TXT`
+recreated at 37 bytes again.
+
+**86Box does not reproduce the netbook lock in any combination available
+here.**
+
 ## What this kills
 
 **The segment split is not inherently broken on Windows 98.** The inbound far
@@ -55,12 +73,21 @@ crossing - is at fault. All of them ran here.
 proves the mechanism is sound and that the fault needs a cause the guest does
 not reproduce. Candidates not excluded:
 
-- The Intel `V9XMINI.VXD` was **not** installed in the guest, which kept the s3
-  one. The netbook loads the Intel mini-VDD before the display driver.
-- Real Intel hardware, and everything `v9x_display_boot_log` does before the
-  `libmain` marker on a machine that has it.
+- Real Intel hardware. This is now the only variable left that the guest cannot
+  supply: every software combination of the two Intel binaries has been tried
+  here and none locked. Note that the guest always stops at
+  `fail-hardware-present`, so nothing downstream of a *successful* hardware
+  validation has been exercised at all - and on the netbook that check passes.
 - Anything else among the twenty-five commits since `1f386d0`, of which the
   split is only one.
+
+A narrowing that does come out of this. `query-start` is written from
+`v9x_fill_gdi_info`, which GDI calls into `Enable`, not from `DriverInit`. The
+netbook's `Stage=libmain` therefore means GDI never called `Enable` at all. And
+`DriverInit` does very little after the `libmain` marker: `arm_prepare`,
+`v9x_get_build_identity`, `v9x_log_init`, and `v9x_display16_start`, the last
+of which sets three struct fields and emits a log record. It touches no
+hardware and no VxD.
 
 The netbook's own `Stage=libmain` reading also still rests on an unverified
 assumption: that Win9x's `WritePrivateProfileString` rewrites a file when the
@@ -71,9 +98,13 @@ next netbook boot.
 
 ## Method note
 
-The guest disk was copied to `Win98HDD.vhd.pre-intel-seg-probe` first, and
-`SYSTEM.INI` to `C:\WINDOWS\SYSTEM.V9B` inside the guest. Both were restored
-afterwards and the guest verified back at its own driver, desktop ready at
-1024x768 on boot 594. The stale `V9XBOOT.INI` was renamed before the first test
-boot, because a stale marker read as a live one is precisely what made the
-netbook capture ambiguous.
+The guest disk was copied to `Win98HDD.vhd.pre-intel-seg-probe` first,
+`SYSTEM.INI` to `C:\WINDOWS\SYSTEM.V9B` and the s3 mini-VDD to
+`V9XMINI.S3B` inside the guest. All were restored afterwards and the guest
+verified back at its own driver and mini-VDD, `Stage=enable-ok` with the
+desktop ready at 1024x768 on boot 597.
+
+`V9XBOOT.INI` was deleted before every test boot. A stale marker read as a live
+one is precisely what made the netbook capture ambiguous, and the same mistake
+was available here: the guest's previous `Stage` was `enable-ok`, which would
+have looked like a clean boot had a test locked before writing anything.
