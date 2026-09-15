@@ -536,6 +536,12 @@ R0000=DEADBEEF'
 }
 
 $result = Test-V9xIntel3dCapture -Lines (Get-Content -LiteralPath $Path)
-foreach ($note in $result.Notes) { Write-Warning $note }
+# Notes are observations, not warnings. Emitting "unarmed: no writes, 8 samples
+# stable" as a WARNING on a capture that passed is the same mistake as a
+# self-test that always prints warnings: it teaches the reader that warnings
+# from this tool can be skipped, and the ones that matter - a probe
+# disagreeing with the software reference - are genuine Write-Warning calls
+# further up.
+foreach ($note in $result.Notes) { Write-Output "  note: $note" }
 Write-Output ("Intel 3D capture accepted: armed=$($result.Armed), " +
               "result=$($result.Result), stream CRC $($result.StreamCrc).")
