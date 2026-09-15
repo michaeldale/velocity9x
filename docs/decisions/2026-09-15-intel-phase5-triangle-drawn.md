@@ -57,23 +57,49 @@ The source colour is `0xFFF86428`: R=248, G=100, B=40.
 Green and blue are identical under both rules. **Red at 248 is the only one of
 the three channels that distinguishes them**, and it favours scaling.
 
-### What that does NOT establish
+### The fragment program is not the cause
 
-One channel at one value is a single data point. Alternatives not excluded:
+Audited against Mesa's `i915_reg.h`, 2026-09-15, no boot. Both instructions
+decode cleanly:
 
-- Arithmetic in the seven-dword fragment program losing a low bit - that program
-  is the piece the audit never verified.
-- Rounding in the colour interpolation, even though all three vertices carry the
-  same colour and flat shading should make it exact.
-- A different conversion rule again that happens to agree with scaling here.
+| Dwords | Decoded |
+|---|---|
+| `190A3C00 00000000 00000000` | `D0_DCL` (`0x19<<24`), type `REG_TYPE_T`, nr 8, channels ALL - `dcl t8.xyzw`, the interpolated diffuse |
+| `02203CA0 01230000 00000000` | `A0_MOV` (`0x2<<24`), dest `REG_TYPE_OC` nr 0 channels ALL, src0 `REG_TYPE_T` nr 8, swizzle `x=X y=Y z=Z w=W`, saturate clear - `mov oC, t8` |
 
-Distinguishing them needs a triangle whose colour channels separate the
-candidate rules at more than one point, which is a cheap change to the vertex
-colour and one boot. Nothing should be written into the reference until that
-has run.
+`_3DSTATE_PIXEL_SHADER_PROGRAM` is `0x7D050000`; ours is `0x7D050005`, a length
+of 5 for six program dwords.
 
-The software reference is therefore still **reported and not failed**, and no
-golden is promoted. The comparison has now run against hardware exactly once.
+This is the canonical minimal pass-through: declare the interpolated diffuse,
+move it to output colour. There is no arithmetic, the swizzle is the identity
+and saturate is clear, so **nothing in the shader can lose a low bit.** That
+alternative is eliminated.
+
+### What the colour difference is, and what still is not proven
+
+With the shader cleared, the difference is in how a normalised byte colour
+becomes a 5- or 6-bit channel:
+
+| Channel | Source byte | Truncate `v>>n` | `round(v/255 * max)` | Hardware | Discriminates? |
+|---|---|---|---|---|---|
+| R | 248 | 31 | 30 | **30** | **yes** |
+| G | 100 | 25 | 25 | 25 | no |
+| B | 40 | 5 | 5 | 5 | no |
+
+The hardware is consistent with `round(v/255 * max)` on **all three** channels.
+Truncation matches two of three and fails on red. That is the rule the hardware
+path implies anyway: the vertex colour is a packed normalised BGRA dword, the
+shader moves it as floats, and the conversion happens on write to an RGB565
+target.
+
+The software reference in `d3d_raster.c` truncates. On this evidence it is the
+reference that is wrong, not the hardware.
+
+**Still only one discriminating channel.** Green and blue agree with both rules,
+so a single byte value carries the whole inference. Confirming it wants a
+vertex colour whose channels separate the candidates at more than one point -
+a cheap change and one boot. Until then the reference is not altered, the
+comparison stays reported rather than failed, and no golden is promoted.
 
 ## What Phase 5 does not claim
 
