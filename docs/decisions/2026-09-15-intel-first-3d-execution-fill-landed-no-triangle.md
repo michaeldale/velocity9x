@@ -109,9 +109,55 @@ submission and `PostErr0..8` after the draw and before any pixel read, nine
 bounded reads through the mini-VDD's existing diagnostic verb. The next armed
 boot answers that question.
 
+## The error registers, measured 2026-09-15, build `9064942`
+
+A second armed boot, same result at every probe, with `PreErr`/`PostErr` added.
+Capture at `probe/intel-phase5/INTEL3D0-armed4-9064942.txt`.
+
+| Index | Offset | Register | Pre | Post |
+|---|---|---|---|---|
+| 0 | `2088` | IPEIR | `00000000` | `00000000` |
+| 1 | `208C` | IPEHR | `00000000` | `7F00000E` |
+| 2 | `2090` | INSTDONE | `7FFFFFC0` | `7FFFFFC0` |
+| 3 | `20C8` | | `00000000` | `00000000` |
+| 4 | `20B0` | EIR | `00000000` | `00000000` |
+| 5 | `20B4` | EMR | `FFFFFFFF` | `FFFFFFFF` |
+| 6 | `20B8` | ESR | `00000000` | `00000000` |
+| 7 | `203C` | RING_CTL | `00000000` | `00000000` |
+| 8 | `2038` | RING_START | `00000000` | `00000000` |
+
+`PreErrOk` and `PostErrOk` are both 1 with a count of nine, so both reads
+completed.
+
+**EIR, ESR and IPEIR are clear before and after.** The GPU latched no error
+across the draw.
+
+`IPEHR` moves from zero to `7F00000E`, which is the `_3DPRIMITIVE` header dword
+at stream index `0x32`. The parser latched that specific instruction.
+
+### What that settles, and what it does not
+
+It settles the question the instrumentation was added for: **the parser did not
+reject the primitive.** The remaining explanations are all downstream of
+acceptance.
+
+It does not settle where the triangle went. Displaced geometry and
+fill-coloured output both survive, exactly as before - no error would be
+raised by either. Nor does this record claim to know what `IPEHR` means when
+`IPEIR` is zero: on this part it may hold the header of an *erroring*
+instruction, or simply the last header parsed. Only the second reading is
+consistent with `IPEIR=0`, and no databook citation has been checked for it,
+so it is treated as corroboration that the primitive was reached and not as
+proof of anything further.
+
+RING_CTL and RING_START reading zero after teardown is expected; teardown
+clears them.
+
 ## Standing
 
-Phase 5's objective - one triangle on screen - is **not met**. What is met is
+Phase 5's objective - one triangle on screen - is **not met**, and the result
+is reproducible: two armed boots on different builds, fourteen probes reading
+fill on both. What is met is
 everything up to and including the GPU executing a reviewed 3D command stream
 and altering the render target, under a one-shot arm that retired correctly, on
 a part whose errata made all of it risky.
