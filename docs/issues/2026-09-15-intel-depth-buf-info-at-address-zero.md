@@ -45,11 +45,19 @@ apart.
 2. Host side: the stream shortens, the Phase 5 CRC changes, the generated
    artefact and both arm tables follow it. The packet decoder must still accept
    the stream and the published offsets must still locate every region.
-3. **A controlled regression boot, on its own diff.** Not bundled with a
-   Phase 6 feature: the expected result is *byte-identical pixel output* — the
-   same seven `1C3E` interior probes and seven `0842` exterior probes — so any
-   difference is attributable to this change alone. Bundling would destroy that
-   property, which is the entire value of the boot.
+3. **A controlled regression scene, on its own diff, running first.** The
+   expected result is *byte-identical pixel output* — the same seven `1C3E`
+   interior probes and seven `0842` exterior probes — so any difference is
+   attributable to this change alone, and that property is the entire value of
+   the measurement.
+
+   This originally said "on its own boot, not bundled". That was protecting
+   attribution, and attribution survives bundling as long as **nothing precedes
+   it**: as scene 0 of a multi-scene boot
+   ([plan](../plans/intel-phase6-bundled-scenes.md)), before anything else
+   touches the GPU, the comparison against `C:	emp\intel42` is still exact.
+   Corrected rather than left contradicting that plan. What would destroy the
+   property is bundling it *into* another scene, or running it after one.
 
 Expected: identical probes, `Result=PASS`, guards intact. Any pixel difference
 means the binding was load-bearing in a way nothing predicted, and that is a
