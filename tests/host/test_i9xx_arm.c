@@ -240,6 +240,52 @@ static void test_chain_token_phases(void)
     CHECK(chain.token_retired == V9X_FALSE);
 }
 
+/*
+ * Which gate a consumed token must pass.
+ *
+ * This covers the decision the driver got wrong: until 2026-09-15 nothing read
+ * IntelArmPhase, so the Phase 4 boot latch was the only thing standing between
+ * a Phase 4 stick and a 3D draw.
+ */
+static void test_arm_gate_for(void)
+{
+    /* No token: nothing to gate, whatever the other inputs say. */
+    CHECK(v9x_i9xx_arm_gate_for(0u, V9X_I9XX_PHASE5, 1u) ==
+          V9X_I9XX_GATE_NONE);
+    CHECK(v9x_i9xx_arm_gate_for(0u, V9X_I9XX_PHASE4, 1u) ==
+          V9X_I9XX_GATE_NONE);
+
+    /*
+     * A Phase 4 token gets Phase 4's own gate and can never get the chain's -
+     * which is the same thing as saying it cannot reach a draw.
+     */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE4, 1u) ==
+          V9X_I9XX_GATE_STANDALONE);
+
+    /*
+     * An absent IntelArmPhase reads as zero and must keep meaning Phase 4:
+     * arm-intel-phase4.ps1 has never written the key, so every stick already
+     * in existence reads this way. It must NOT mean Phase 5.
+     */
+    CHECK(v9x_i9xx_arm_gate_for(1u, 0u, 1u) == V9X_I9XX_GATE_STANDALONE);
+    CHECK(v9x_i9xx_arm_gate_for(1u, 0u, 1u) != V9X_I9XX_GATE_CHAINED);
+
+    /* A Phase 5 token gets the chain, but only in a build that has Phase 5. */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE5, 1u) ==
+          V9X_I9XX_GATE_CHAINED);
+    /*
+     * Without Phase 5 built it refuses rather than arming. Arming would spend
+     * the token on a draw that cannot happen and then leave it in flight
+     * forever, since only the draw result may retire it.
+     */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE5, 0u) ==
+          V9X_I9XX_GATE_REFUSE);
+
+    /* A phase this build has no vocabulary for refuses rather than guessing. */
+    CHECK(v9x_i9xx_arm_gate_for(1u, 6u, 1u) == V9X_I9XX_GATE_REFUSE);
+    CHECK(v9x_i9xx_arm_gate_for(1u, 0xffffu, 1u) == V9X_I9XX_GATE_REFUSE);
+}
+
 static void test_chain_cannot_skip_replay(void)
 {
     struct v9x_i9xx_arm_request request;
@@ -357,6 +403,7 @@ unsigned int v9x_run_i9xx_arm_tests(void)
 {
     test_crc();
     test_arm_contract();
+    test_arm_gate_for();
     test_chain_token_phases();
     test_chain_cannot_skip_replay();
     test_chain_power_cut_leaves_in_flight();

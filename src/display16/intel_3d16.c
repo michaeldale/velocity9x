@@ -42,6 +42,14 @@ extern DWORD v9x_i9xx_ring_exec_head;
 extern DWORD v9x_i9xx_ring_exec_tail;
 extern DWORD v9x_i9xx_ring_exec_polls;
 extern DWORD v9x_i9xx_ring_exec_elapsed;
+/*
+ * The chained arm transaction, begun by intel_exec16.c when the consumed token
+ * claims Phase 5. This unit is the only thing that may complete it: the draw
+ * result is the single point at which the token is retired.
+ */
+extern struct v9x_i9xx_chain v9x_intel_arm_chain;
+extern WORD v9x_intel_boot_arm_phase;
+extern WORD v9x_intel_boot_arm_retire(const char *result);
 
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern DWORD FAR PASCAL V9xGmadrRead(DWORD offset);
@@ -81,6 +89,25 @@ extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
  * Refusing costs nothing and says exactly why.
  */
 #define V9X_P5_PRE_SUBMIT_MISSING 10u
+/*
+ * The consumed token does not claim Phase 5.
+ *
+ * The boot latch records that SOME valid one-shot token was transferred, not
+ * what it authorises, so this is the check that stops a Phase 4 stick reaching
+ * a 3D draw. The errata decision covering a Phase 5 draw is dated 2026-09-15;
+ * the Phase 4 one, deliberately, does not cover it.
+ */
+#define V9X_P5_PRE_PHASE          11u
+/*
+ * The chain is not in the state a draw may be reported from.
+ *
+ * Reaching here means the token claimed Phase 5 but the replay did not
+ * complete - the chained arm refused, or Phase 4 failed, or the chain was
+ * never begun at all. A Phase 5 token cannot skip a failed replay, and this is
+ * where that is enforced on the driver side; v9x_i9xx_chain_draw_done enforces
+ * it again in the pure logic the host tests cover.
+ */
+#define V9X_P5_PRE_CHAIN          12u
 
 /*
  * Steps 20-29, disjoint from Phase 4's 1-12 so a hang is attributable to a
@@ -195,6 +222,19 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     WORD reason;
 
     if (armed == 0u) { return V9X_P5_PRE_NOT_ARMED; }
+
+    /*
+     * Authorise THIS phase rather than inheriting the boot latch. The latch
+     * says a token was transferred; these two say it was transferred for a
+     * draw, and that the replay it depends on actually happened.
+     */
+    if (v9x_intel_boot_arm_phase != V9X_I9XX_PHASE5) {
+        return V9X_P5_PRE_PHASE;
+    }
+    if (v9x_intel_arm_chain.state != V9X_I9XX_CHAIN_STATE_REPLAYED) {
+        return V9X_P5_PRE_CHAIN;
+    }
+
     /* The hard precondition: Phase 4 must have passed in THIS boot. */
     if (phase4_passed == 0u) { return V9X_P5_PRE_PHASE4_MISSING; }
 
@@ -462,6 +502,10 @@ void v9x_intel_phase5_run(
     v9x_p5_text("CaptureBuildId",
                 v9x_intel_bridge_build_identity()->build_id);
     v9x_p5_hex("Phase4Passed", (DWORD)phase4_passed);
+    /* What the token claimed and how far the transaction got, so a refusal
+     * here is readable without cross-referencing INTELRNG.TXT. */
+    v9x_p5_hex("ArmPhase", (DWORD)v9x_intel_boot_arm_phase);
+    v9x_p5_hex("ChainStateOnEntry", (DWORD)v9x_intel_arm_chain.state);
 
     v9x_p5_intent(V9X_P5_STEP_PREFLIGHT);
 #ifdef V9X_I9XX_PHASE5_SUBMIT
@@ -615,5 +659,40 @@ void v9x_intel_phase5_run(
     v9x_p5_publish_pixels(layout);
     v9x_p5_publish_guards(layout, "1");
     v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
+
+#ifdef V9X_I9XX_PHASE5_SUBMIT
+    /*
+     * Close the transaction. Reaching here means every execute step returned
+     * without refusing, which is what "the draw happened" can mean from inside
+     * the driver - the picture itself is judged off the capture, by the row
+     * CRCs and pixel probes above, deliberately not asserted here.
+     *
+     * The CRC pair is a real comparison: the stream actually staged against
+     * the constant generated from the same builders.
+     *
+     * This is the only point in either phase at which a token is retired. If
+     * the chain refuses, or the retire writes fail, the token stays in flight
+     * and the next boot reports INCOMPLETE - which is the correct outcome for
+     * a run whose result nobody can vouch for.
+     */
+    {
+        WORD verdict = v9x_i9xx_chain_draw_done(
+            &v9x_intel_arm_chain, V9X_TRUE,
+            v9x_i9xx_crc32_dwords(v9x_p5_stream, v9x_p5_stream_dwords),
+            v9x_i9xx_phase5_execution_crc());
+
+        v9x_p5_hex("ChainDrawVerdict", (DWORD)verdict);
+        v9x_p5_hex("ChainState", (DWORD)v9x_intel_arm_chain.state);
+        if (verdict != V9X_I9XX_CHAIN_OK) {
+            v9x_p5_text("Result", "CHAIN-DRAW-REFUSED");
+            return;
+        }
+        if (v9x_intel_boot_arm_retire("pass:phase5") == 0u) {
+            v9x_p5_text("Result", "RETIRE-FAILED");
+            return;
+        }
+        v9x_p5_text("TokenRetired", "1");
+    }
+#endif
     v9x_p5_text("Result", "PASS");
 }

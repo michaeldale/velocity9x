@@ -38,6 +38,41 @@ v9x_u32 v9x_i9xx_combined_arm_crc(v9x_u32 phase4_crc, v9x_u32 phase5_crc)
     return v9x_i9xx_crc32_dwords(pair, 2ul);
 }
 
+/*
+ * Which gate a consumed token must pass.
+ *
+ * The absent-key case is the one that needs explaining. arm-intel-phase4.ps1
+ * has never written IntelArmPhase, so every Phase 4 stick reads back as zero,
+ * and zero must therefore keep meaning Phase 4 or those sticks stop working -
+ * including ones already written and sitting on a USB key. That is a
+ * compatibility reading, not a default to be relied on, and it costs nothing
+ * in safety: the property that matters is that zero is not 5, so an absent key
+ * can never authorise a draw. Phase 5's armer writes the key explicitly and
+ * its own self-test refuses to ship a stick without it.
+ *
+ * A Phase 5 token in a build with no Phase 5 refuses rather than arming.
+ * Arming would consume the token for a draw that cannot happen, and since only
+ * the draw result may retire it, the token would then stay in flight forever -
+ * a stick that needs editing by hand to recover.
+ */
+v9x_u16 v9x_i9xx_arm_gate_for(v9x_u16 armed, v9x_u16 arm_phase,
+                               v9x_u16 phase5_built)
+{
+    if (armed == 0u) {
+        return V9X_I9XX_GATE_NONE;
+    }
+    if (arm_phase == 0u || arm_phase == V9X_I9XX_PHASE4) {
+        return V9X_I9XX_GATE_STANDALONE;
+    }
+    if (arm_phase == V9X_I9XX_PHASE5) {
+        return phase5_built != 0u ? V9X_I9XX_GATE_CHAINED
+                                  : V9X_I9XX_GATE_REFUSE;
+    }
+    /* A phase this build has no vocabulary for. Refusing is the only honest
+     * answer: guessing which phase was meant is what costs an armed boot. */
+    return V9X_I9XX_GATE_REFUSE;
+}
+
 static void v9x_i9xx_chain_fail(struct v9x_i9xx_chain *chain)
 {
     chain->state = V9X_I9XX_CHAIN_STATE_FAILED;

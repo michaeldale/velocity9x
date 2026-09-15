@@ -5,6 +5,9 @@
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_gma.h"
+/* For v9x_i9xx_phase5_execution_crc: the chained arm gate needs the Phase 5
+ * half of the combined CRC, even though this unit never submits a 3D packet. */
+#include "velocity9x/intel_gen3_3d.h"
 #include "velocity9x/intel16.h"
 
 #define V9X_P4_SECTION "IntelRing"
@@ -14,8 +17,10 @@
 #define V9X_P4_COLOR   0x55aa33ccul
 
 extern WORD v9x_intel_boot_arm_latch;
+extern WORD v9x_intel_boot_arm_phase;
 extern DWORD v9x_intel_boot_arm_crc;
 extern char v9x_intel_boot_arm_token[64];
+extern WORD v9x_intel_boot_arm_retire(const char *result);
 extern DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
 extern DWORD v9x_i9xx_gtt_backed_prefix;
 extern DWORD v9x_i9xx_gtt_reserve_first;
@@ -174,6 +179,18 @@ static void v9x_p4_clean_refusal(const char *reason)
     v9x_intel_str_append(last, v9x_intel_boot_arm_token);
     if (!v9x_p4_profile("IntelLastResult", last) ||
         !v9x_p4_profile("IntelEnableThisBoot", "0")) { return; }
+    /*
+     * A refusal is clean for a Phase 4 token: nothing was written, so the
+     * token may be retired and the operator can re-arm and try again.
+     *
+     * It is NOT clean for a Phase 5 token. The chain's rule is that only the
+     * draw result may clear in-flight, and clearing it here would retire a
+     * token whose transaction never resolved - making it reusable after what
+     * might have been a hang. Leaving it set costs the operator one deliberate
+     * re-arm; clearing it wrongly costs the one-shot property, which is the
+     * whole safety model.
+     */
+    if (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE5) { return; }
     (void)v9x_p4_profile("IntelInFlight", "");
 }
 
@@ -209,8 +226,35 @@ static void v9x_p4_clean_refusal(const char *reason)
  * inventory still covers it.
  */
 #define V9X_P4_PRE_RESERVE_BACKING 19u
+/*
+ * The token claims Phase 5 and the chained arm refused. Which input refused is
+ * in PreconditionChainReject; the codes are V9X_I9XX_CHAIN_REJECT_*.
+ *
+ * Distinct from V9X_P4_PRE_ARM on purpose. Both mean "the arm gate said no",
+ * but they are different gates over different tokens, and a capture that
+ * cannot tell them apart cannot tell a Phase 4 stick that failed identity from
+ * a Phase 5 stick whose combined CRC did not cover this build's streams.
+ */
+#define V9X_P4_PRE_CHAIN       20u
 
 static WORD v9x_p4_pre_rejection;
+/*
+ * The chained arm transaction, live only when the consumed token claims
+ * Phase 5. It spans both executions, so it outlives this function and is read
+ * by intel_3d16.c, which is the only thing that may complete it.
+ *
+ * Zero-initialised, and V9X_I9XX_CHAIN_STATE_IDLE is zero, so a boot in which
+ * no chain was begun reads as idle rather than as some stale state.
+ */
+struct v9x_i9xx_chain v9x_intel_arm_chain;
+static WORD v9x_p4_chain_rejection;
+/*
+ * The Phase 4 CRC the chain was armed with - that is, the half of the combined
+ * CRC that the replay is expected to satisfy. Kept so the replay result is
+ * checked against what was ARMED rather than against a value recomputed at the
+ * point of checking, which would compare a number with itself.
+ */
+static DWORD v9x_p4_chain_phase4_crc;
 /*
  * Whether Phase 4 completed cleanly in THIS boot. Phase 5 requires it, which
  * makes "revalidate the layout before drawing" a precondition the code
@@ -233,6 +277,7 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     char arm_build[65];
     DWORD crc;
     WORD rejection;
+    WORD gate;
 
     v9x_p4_pre_rejection = 0u;
     if (!v9x_p4_read_profile("IntelInFlight", in_flight,
@@ -260,7 +305,6 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.token = v9x_intel_boot_arm_token;
     request.in_flight = in_flight;
     request.configured_crc = crc;
-    request.packet_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
     request.enable_this_boot = (WORD)(v9x_intel_str_equal(enabled, "1") != 0u);
     /*
      * Not GetSystemMetrics(SM_CLEANBOOT). That lives in USER, and GDI loads a
@@ -276,13 +320,77 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     request.vendor_id = 0x8086u;
     request.device_id = 0x27aeu;
     request.revision = V9xPciReadIntelRevision();
-    request.phase = V9X_I9XX_PHASE4;
-    /* This is the standalone Phase 4 arm path; it arms Phase 4 and
-     * nothing else. The two-phase chain states its own expectation. */
-    request.expected_phase = V9X_I9XX_PHASE4;
-    if (v9x_i9xx_arm_evaluate(&request, &rejection) != V9X_STATUS_OK) {
-        v9x_p4_pre_rejection = rejection;
-        return V9X_P4_PRE_ARM;
+    /*
+     * Which gate applies is policy, and it lives in v9x_i9xx_arm_gate_for so
+     * the host tests can cover it. This function only acts on the answer.
+     *
+     * phase5_built is the compile guard, passed in rather than tested here, so
+     * that "a Phase 5 token in a build without Phase 5" is a case the pure
+     * logic decides and the tests pin down.
+     */
+#ifdef V9X_I9XX_PHASE5_EXECUTOR
+    gate = v9x_i9xx_arm_gate_for(v9x_intel_boot_arm_latch,
+                                 v9x_intel_boot_arm_phase, 1u);
+#else
+    gate = v9x_i9xx_arm_gate_for(v9x_intel_boot_arm_latch,
+                                 v9x_intel_boot_arm_phase, 0u);
+#endif
+    if (gate == V9X_I9XX_GATE_CHAINED) {
+        /*
+         * A Phase 5 token. This run is the REPLAY half of a chained
+         * transaction, not a Phase 4 run, and it cannot use the gate below:
+         * that gate compares the on-disk CRC against Phase 4's execution CRC,
+         * and a Phase 5 stick carries the combined CRC covering both streams.
+         * It would refuse every correctly armed Phase 5 boot.
+         *
+         * So the chain owns the gate. v9x_i9xx_chain_begin still runs
+         * everything the standalone path checks - build id, token transfer,
+         * PCI identity, revision, errata gate, safe mode - and adds the check
+         * that a Phase 4 token cannot pass even with its phase field forged:
+         * the armed CRC must equal the combined CRC over both of THIS build's
+         * streams in execution order.
+         *
+         * packet_crc is computed here and configured_crc comes from disk, so
+         * arm_evaluate compares what this build would run against what was
+         * armed. Passing the on-disk value for both would compare it with
+         * itself and check nothing.
+         */
+        DWORD phase5_crc = v9x_i9xx_phase5_execution_crc();
+
+        v9x_p4_chain_phase4_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
+        request.packet_crc = v9x_i9xx_combined_arm_crc(v9x_p4_chain_phase4_crc,
+                                                       phase5_crc);
+        request.phase = V9X_I9XX_PHASE5;
+        request.expected_phase = V9X_I9XX_PHASE5;
+        v9x_p4_chain_rejection = v9x_i9xx_chain_begin(
+            &v9x_intel_arm_chain, &request, crc,
+            v9x_p4_chain_phase4_crc, phase5_crc);
+        if (v9x_p4_chain_rejection != V9X_I9XX_CHAIN_OK) {
+            return V9X_P4_PRE_CHAIN;
+        }
+    } else if (gate == V9X_I9XX_GATE_STANDALONE) {
+        request.packet_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
+        request.phase = V9X_I9XX_PHASE4;
+        /* This is the standalone Phase 4 arm path; it arms Phase 4 and
+         * nothing else. The two-phase chain states its own expectation. */
+        request.expected_phase = V9X_I9XX_PHASE4;
+        if (v9x_i9xx_arm_evaluate(&request, &rejection) != V9X_STATUS_OK) {
+            v9x_p4_pre_rejection = rejection;
+            return V9X_P4_PRE_ARM;
+        }
+    } else {
+        /*
+         * GATE_REFUSE, or GATE_NONE reached with the latch set - a state this
+         * function should not be in, since it returns early when unarmed.
+         *
+         * The commonest real case is a Phase 5 stick in a build with no Phase
+         * 5. Arming would spend the token on a draw that cannot happen and
+         * then leave it in flight forever, because only the draw result may
+         * retire it. Refusing before chain_begin leaves the chain idle and
+         * gives the operator a refusal instead of a stick to repair by hand.
+         */
+        v9x_p4_chain_rejection = V9X_I9XX_CHAIN_REJECT_PHASE;
+        return V9X_P4_PRE_CHAIN;
     }
     if (crc != v9x_intel_boot_arm_crc) { return V9X_P4_PRE_CRC_MATCH; }
     if (flush_stable == 0u) { return V9X_P4_PRE_FLUSH; }
@@ -534,7 +642,6 @@ void v9x_intel_phase4_maybe_run(
     DWORD pre_errors[7];
     DWORD post_errors[7];
     char crc_text[9];
-    char last[96];
     if (v9x_intel_boot_arm_latch == 0u) { return; }
     v9x_i9xx_phase4_sequence_begin(&sequence);
     precondition = v9x_p4_preflight(layout, probe, blt, flush_stable);
@@ -543,6 +650,10 @@ void v9x_intel_phase4_maybe_run(
          * refusal on a blind machine is a finding rather than another boot. */
         (void)v9x_p4_ring_hex("PreconditionCode", precondition);
         (void)v9x_p4_ring_hex("PreconditionArmReject", v9x_p4_pre_rejection);
+        (void)v9x_p4_ring_hex("PreconditionChainReject",
+                              (DWORD)v9x_p4_chain_rejection);
+        (void)v9x_p4_ring_hex("PreconditionArmPhase",
+                              (DWORD)v9x_intel_boot_arm_phase);
         (void)v9x_p4_capture_errors("RefErr", 0);
         /*
          * What the failing check actually saw. On 2026-09-14 code 8 fired
@@ -715,11 +826,43 @@ void v9x_intel_phase4_maybe_run(
         v9x_intel_boot_arm_latch = 0u;
         return;
     }
-    v9x_intel_str_copy(last, clean_pass != 0u ? "pass:" :
-        (blit_pass == 0u ? "fail:blit-mismatch:" : "fail:post-mismatch:"));
-    v9x_intel_str_append(last, v9x_intel_boot_arm_token);
-    if (!v9x_p4_profile("IntelLastResult", last) ||
-        !v9x_p4_profile("IntelInFlight", "")) {
+    if (v9x_intel_arm_chain.state == V9X_I9XX_CHAIN_STATE_ARMED) {
+        /*
+         * The replay half of a chained run. Report it to the chain and stop:
+         * no IntelLastResult, no IntelInFlight clear, and the latch stays set
+         * so Phase 5 can see that a token is still live.
+         *
+         * That is the whole reason the chain exists. The standalone path below
+         * retires the token here, which for a Phase 5 stick would mean the
+         * authority was spent before the draw it was issued for had happened -
+         * and a power cut between the two halves would leave a token that
+         * looked complete.
+         *
+         * The CRC pair compares what the replay actually executed against the
+         * value the chain was ARMED with. It is a narrow check and worth being
+         * honest about: both derive from this boot's probe and BLT dwords, so
+         * it catches the stream being rebuilt differently between the arm and
+         * the execution, not a bad stream. What proves the replay is
+         * clean_pass - the scratch guard, the error registers and the MMIO
+         * snapshot all agreeing, exactly as for a standalone run.
+         */
+        WORD verdict = v9x_i9xx_chain_replay_done(&v9x_intel_arm_chain,
+                                                  clean_pass, crc,
+                                                  v9x_p4_chain_phase4_crc);
+
+        (void)v9x_p4_ring_hex("ChainReplayVerdict", (DWORD)verdict);
+        (void)v9x_p4_ring_hex("ChainState",
+                              (DWORD)v9x_intel_arm_chain.state);
+        if (verdict != V9X_I9XX_CHAIN_OK) {
+            /* A failed chain never clears in-flight; the token stays
+             * consumed-but-unresolved so the next boot refuses. */
+            (void)v9x_p4_ring("Result", "CHAIN-REPLAY-REFUSED");
+            v9x_intel_boot_arm_latch = 0u;
+        }
+        return;
+    }
+    if (!v9x_intel_boot_arm_retire(clean_pass != 0u ? "pass" :
+            (blit_pass == 0u ? "fail:blit-mismatch" : "fail:post-mismatch"))) {
         v9x_intel_boot_arm_latch = 0u;
         return;
     }

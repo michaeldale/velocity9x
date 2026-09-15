@@ -430,6 +430,24 @@ struct v9x_i9xx_chain {
     v9x_u16 in_flight_cleared;
 };
 
+/*
+ * Which arm gate a consumed token must pass, decided from what the token
+ * claims and what the running build actually contains.
+ *
+ * This is policy, so it lives here in host-testable C rather than inside the
+ * Win16 executor that acts on it. The defect it exists to prevent was real:
+ * the driver never read IntelArmPhase at all, so the Phase 4 boot latch was
+ * the only thing gating Phase 5, and "is this token allowed to draw?" was a
+ * question nothing asked.
+ */
+#define V9X_I9XX_GATE_NONE        ((v9x_u16)0u)
+#define V9X_I9XX_GATE_STANDALONE  ((v9x_u16)1u)
+#define V9X_I9XX_GATE_CHAINED     ((v9x_u16)2u)
+#define V9X_I9XX_GATE_REFUSE      ((v9x_u16)3u)
+
+v9x_u16 v9x_i9xx_arm_gate_for(v9x_u16 armed, v9x_u16 arm_phase,
+                               v9x_u16 phase5_built);
+
 v9x_u16 v9x_i9xx_chain_begin(
     struct v9x_i9xx_chain *chain,
     const struct v9x_i9xx_arm_request *request,

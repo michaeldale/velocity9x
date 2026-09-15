@@ -69,6 +69,40 @@ static WORD v9x_intel_boot_set(const char *key, const char *value)
     return v9x_intel_str_equal(check, value) != 0u;
 }
 
+/*
+ * Retire a consumed token: record its outcome and clear IntelInFlight.
+ *
+ * This is the ONLY place either happens, and it is here rather than in the
+ * phase that calls it because this unit owns the arm INI - the writer and its
+ * read-back verification are already here, and a second copy elsewhere is a
+ * second place for the one-shot property to be got wrong.
+ *
+ * A chained Phase 5 run reaches it exactly once, from the draw result. The
+ * standalone Phase 4 path reaches it from its own. Every failure path in
+ * either phase deliberately does NOT call it: a token that silently became
+ * reusable after a hang would defeat the one-shot arm, so an unresolved run
+ * leaves the token in flight and the next boot refuses with INCOMPLETE.
+ *
+ * Returns zero if either write failed, in which case the caller must assume
+ * the token's state on disk is unknown and say so rather than claim a result.
+ */
+WORD v9x_intel_boot_arm_retire(const char *result)
+{
+    char last[96];
+
+    v9x_intel_str_copy(last, result);
+    v9x_intel_str_append(last, ":");
+    v9x_intel_str_append(last, v9x_intel_boot_arm_token);
+    if (!v9x_intel_boot_set("IntelLastResult", last)) {
+        return 0u;
+    }
+    if (!v9x_intel_boot_set("IntelInFlight", "")) {
+        return 0u;
+    }
+    v9x_intel_boot_arm_latch = 0u;
+    return 1u;
+}
+
 /* Intel build only. Called from DriverInit immediately after
  * v9x_display_boot_log and before any Enable, so the `libmain` trace is
  * already on disk if this function is what stops the load. It transfers
