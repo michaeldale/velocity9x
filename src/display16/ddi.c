@@ -902,6 +902,26 @@ void v9x_display_boot_mark(const char FAR *stage)
 #endif
 }
 
+/*
+ * A boot fact that is not a stage.
+ *
+ * `Stage` is last-writer-wins, which is right for "how far did it get" and
+ * wrong for anything whose earlier value matters. A driver entry point called
+ * twice overwrites its own evidence, and that is precisely the case this was
+ * added to tell apart.
+ */
+void v9x_display_boot_note(const char FAR *key, const char FAR *value)
+{
+#ifdef V9X_BOOT_TRACE
+    V9xEnsureDiagDir();
+    WritePrivateProfileString("Velocity9x", key, value, V9X_DIAG_BOOT_INI);
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
+#else
+    (void)key;
+    (void)value;
+#endif
+}
+
 void v9x_display_boot_log(void)
 {
     WORD index;

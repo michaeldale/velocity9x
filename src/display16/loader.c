@@ -22,6 +22,20 @@ static const struct v9x_build_identity *v9x_display_build_identity;
 
 extern void v9x_display_boot_log(void);
 extern void v9x_display_boot_mark(const char FAR *stage);
+extern void v9x_display_boot_note(const char FAR *key, const char FAR *value);
+
+/*
+ * How many times Windows has entered DriverInit this boot.
+ *
+ * Measured 2026-09-15: the netbook reached `arm-post` and then GDI never
+ * called Enable at all, which means the driver loaded, initialised, and was
+ * rejected. The one way this function reports failure is
+ * v9x_display16_start returning V9X_STATUS_INVALID_STATE, and the only thing
+ * that produces that is a second entry into an already-started component -
+ * so whether this is called once or twice separates "rejected because it said
+ * no" from "rejected for a reason outside this file".
+ */
+static WORD v9x_driverinit_calls;
 
 /* The display-driver loader supplies heap size in CX, module handle in DI,
  * and the command line in ES:SI. This is the entry contract used by the
@@ -34,6 +48,8 @@ UINT FAR DriverInit(UINT heap_size,
                     LPSTR command_line)
 #pragma on (unreferenced)
 {
+    v9x_status started;
+
     /*
      * The boot trace goes first. Measured on the netbook 2026-09-13: running
      * the Intel arm transaction ahead of it left no trace at all when
@@ -42,6 +58,19 @@ UINT FAR DriverInit(UINT heap_size,
      * as the failure, exactly as an absent marker names this function.
      */
     v9x_display_boot_log();
+    /*
+     * After the boot log, so the diagnostic directory and the `libmain` marker
+     * are already on disk, and in its own key so a second entry cannot
+     * overwrite the evidence of the first.
+     */
+    ++v9x_driverinit_calls;
+    {
+        char count[4];
+
+        count[0] = (char)('0' + (char)(v9x_driverinit_calls % 10u));
+        count[1] = '\0';
+        v9x_display_boot_note("DriverInitCall", count);
+    }
 #ifdef V9X_INTEL_GMA_FAMILY
     /*
      * Bracket the one far call this function makes into I9XXCODE.
@@ -65,7 +94,16 @@ UINT FAR DriverInit(UINT heap_size,
 #endif
     v9x_display_build_identity = v9x_get_build_identity();
     v9x_log_init(&v9x_display_logger, 0, 0);
-    return v9x_display16_start(&v9x_display_component,
-                               &v9x_display_logger,
-                               &v9x_display_backend) == V9X_STATUS_OK;
+    started = v9x_display16_start(&v9x_display_component,
+                                  &v9x_display_logger,
+                                  &v9x_display_backend);
+    /*
+     * The return value, recorded rather than inferred. A driver that fails
+     * here is not asked for Enable, so from the outside it looks identical to
+     * one that was never loaded - and the boot trace would stop at the same
+     * place either way.
+     */
+    v9x_display_boot_note("DriverInitResult",
+                          started == V9X_STATUS_OK ? "ok" : "refused");
+    return started == V9X_STATUS_OK;
 }
