@@ -39,6 +39,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_fragprog.c',
         'src\chipsets\intel\i9xx_vertex.c',
         'src\chipsets\intel\i9xx_3d_stream.c',
+        # Phase 6 scene table and per-scene stream assembly.
+        'src\chipsets\intel\i9xx_scene.c',
         'src\chipsets\intel\i9xx_3d_decode.c',
         'src\chipsets\intel\i9xx_chain.c',
         # Pure rasterizer arithmetic: no DDHAL, MMIO or assembly dependencies.

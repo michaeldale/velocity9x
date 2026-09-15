@@ -367,6 +367,94 @@ v9x_status v9x_i9xx_build_vertex_run(
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
+/* ------------------------------------------------------------------ */
+/* Phase 6 scenes. src\chipsets\intel\i9xx_scene.c                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A scene is one complete, independent draw: a fill, a full state block, the
+ * fragment program, an MI probe and a run of triangles. Several scenes run on
+ * one armed boot, one after another, each with its own probes written to disk
+ * before the next submits anything.
+ *
+ * The rule that makes that safe is INDEPENDENCE, not brevity: a scene may not
+ * depend on state another scene left behind. Every scene re-emits complete
+ * state, which is what the Phase 5 constraint "complete state re-emitted every
+ * draw" bought and what makes a failure attributable to one scene.
+ * docs\plans\intel-phase6-bundled-scenes.md has the argument in full.
+ *
+ * Scenes REUSE the single render target rather than each owning one. That is
+ * forced arithmetic, not a preference: the reserve is 0x100000 bytes, the
+ * ring, status page, scratch page, target and upper guard already consume
+ * 0xA9000, and a second 640x480x16 target needs 0x96000 against the 0x57000
+ * that remains. The earlier plan asserted a per-scene allocator without doing
+ * this subtraction.
+ *
+ * Reuse costs nothing that matters. A scene's pixels are destroyed by the next
+ * scene's fill, but the probes are the evidence and they are already on disk -
+ * the same flush-after-every-step property that makes a hang localisable.
+ */
+#define V9X_I9XX_SCENE_MAX_TRIANGLES     ((v9x_u32)2ul)
+
+struct v9x_i9xx_triangle {
+    /* Whole pixels, inclusive of the drawing rectangle's last addressable
+     * pixel. The builder refuses anything outside it rather than letting the
+     * hardware clip, because a clipped vertex is invisible in the capture. */
+    v9x_u32 x[3];
+    v9x_u32 y[3];
+    /* BGRA, one colour for all three vertices - see the vertex builder for
+     * why that keeps provoking-vertex rules off the critical path. */
+    v9x_u32 color;
+};
+
+struct v9x_i9xx_scene {
+    /* Stable across builds and published in the capture. A scene's number is
+     * how a probe set is attributed, so reordering the table must not silently
+     * renumber the evidence: ids are assigned, not derived from the index. */
+    v9x_u32 id;
+    /* The BLT fill pattern: two RGB565 pixels in one dword. */
+    v9x_u32 fill_dword;
+    v9x_u32 triangle_count;
+    struct v9x_i9xx_triangle triangles[V9X_I9XX_SCENE_MAX_TRIANGLES];
+};
+
+v9x_u32 v9x_i9xx_scene_count(void);
+v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out);
+v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene);
+v9x_status v9x_i9xx_build_scene_stream(
+    const struct v9x_i9xx_scene *scene,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* Zero if the scene cannot be built, which no arm path accepts as a CRC. */
+v9x_u32 v9x_i9xx_scene_crc(v9x_u32 index);
+/* Over every scene's dwords in execution order, which is what the arm gate
+ * compares - the same construction as the Phase 4/5 chain. */
+v9x_u32 v9x_i9xx_scene_combined_crc(void);
+
+/* src\chipsets\intel\i9xx_vertex.c */
+/*
+ * Dwords a run of `count` triangles occupies: the primitive command plus
+ * count * 3 vertices of 5 dwords each. Zero if count is out of range.
+ *
+ * A function rather than an expression at each site, and it exists for a
+ * LINK-TIME reason. count is a runtime value, so count * 15 in v9x_u32 is a
+ * 32-bit multiply, which on 16-bit Watcom is a call to __U4M in the default
+ * CODE segment - and this file is compiled into I9XXCODE, from which a near
+ * call cannot reach it:
+ *
+ *     Error! E2052: ... relocation at 0003:21b9 not in the same segment
+ *
+ * which is what the first version produced, three times over. The same class
+ * of fault as the 32-bit divide in the 565 conversion. Here the multiply is
+ * done in 16 bits, where it is a single instruction: count is bounded by
+ * V9X_I9XX_SCENE_MAX_TRIANGLES before it is used, so the product cannot leave
+ * a 16-bit register.
+ */
+v9x_u32 v9x_i9xx_triangle_run_dwords(v9x_u32 count);
+v9x_status v9x_i9xx_build_triangle_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
 /* src\chipsets\intel\i9xx_3d_stream.c */
 struct v9x_i9xx_phase5_parameters {
     v9x_u32 target_offset;

@@ -111,9 +111,19 @@ evidence rather than a fit.
 
 - A scene descriptor and a sequencer loop over it, replacing the single
   hard-coded Phase 5 draw. Pure arithmetic and packet assembly.
-- Per-scene target regions inside the existing reserve, with the same guard
-  dwords either side of each. The allocator is leaf arithmetic with a unit
-  test; overlapping regions must be a build-time refusal, not a runtime one.
+- ~~Per-scene target regions inside the existing reserve, with a per-scene
+  allocator.~~ **Wrong, and corrected by doing the subtraction this plan should
+  have done before asserting it.** The reserve is `0x100000`; the ring, status
+  page, scratch page, target and upper guard already consume `0xA9000`, leaving
+  `0x57000`. A second 640x480x16 target needs `0x96000`. There is no room for
+  one, let alone three, and no allocator changes that.
+
+  Scenes therefore **reuse the single target**, each filling it before drawing.
+  A scene's pixels are destroyed by the next scene's fill, and that costs
+  nothing: the probes are the evidence and they are already on disk, by the
+  same flush-after-every-step property that makes a hang localisable. It also
+  removes the allocator, its overlap checks and its unit tests from the work
+  entirely.
 - Per-scene CRC, and a combined CRC over all scenes in execution order —
   the Phase 4/5 chain already establishes this pattern.
 - Capture schema 3: per-scene sections, per-scene probes, the running read

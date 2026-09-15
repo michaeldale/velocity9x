@@ -35,74 +35,140 @@ v9x_u32 v9x_i9xx_vertex_run_extent(void)
     return V9X_I9XX_VERTEX_RUN_DWORDS;
 }
 
+/*
+ * Phase 5's triangle, which is now scene 0's geometry as well.
+ *
+ * Reimplemented as a call into the general builder rather than kept as a
+ * second emitter. Two places deriving the same packet layout independently is
+ * exactly how the published offsets came to be seven dwords short, and the
+ * host test asserts this produces the same dwords it always did.
+ */
 v9x_status v9x_i9xx_build_vertex_run(
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
-    v9x_u32 at = 0ul;
+    struct v9x_i9xx_triangle triangle;
     v9x_u32 vertex;
+
+    for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
+        triangle.x[vertex] = v9x_i9xx_triangle_x[vertex];
+        triangle.y[vertex] = v9x_i9xx_triangle_y[vertex];
+    }
+    triangle.color = V9X_I9XX_TRI_COLOR_BGRA;
+
+    return v9x_i9xx_build_triangle_run(&triangle, 1ul, width, height,
+                                       stream, capacity, written);
+}
+
+/*
+ * Dwords per triangle: three vertices of five dwords. A compile-time constant,
+ * so this one folds and emits no helper call.
+ */
+#define V9X_I9XX_TRIANGLE_DWORDS \
+    (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS)
+
+v9x_u32 v9x_i9xx_triangle_run_dwords(v9x_u32 count)
+{
+    if (count == 0ul || count > V9X_I9XX_SCENE_MAX_TRIANGLES) {
+        return 0ul;
+    }
+    /*
+     * Multiplied in 16 bits deliberately - see the header for the link-time
+     * reason. count is at most V9X_I9XX_SCENE_MAX_TRIANGLES here, so the
+     * product is at most that times fifteen and cannot overflow.
+     */
+    return 1ul + (v9x_u32)((v9x_u16)count * (v9x_u16)V9X_I9XX_TRIANGLE_DWORDS);
+}
+
+/*
+ * The general form: any number of triangles, each with its own colour.
+ *
+ * Phase 6 needs two triangles sharing an edge in different colours, which the
+ * fixed single-triangle builder above cannot express. That builder is now a
+ * call into this one rather than a second copy of the packet layout - the
+ * packet offsets were wrong once already because two places derived the same
+ * numbers independently, and one primitive emitter is the fix for that class.
+ */
+v9x_status v9x_i9xx_build_triangle_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+    v9x_u32 vertex;
+    v9x_u32 run_dwords;
     v9x_u32 zero_bits = 0ul;
     v9x_u32 one_bits = 0ul;
 
     if (written != 0) { *written = 0ul; }
-    if (stream == 0 || written == 0 ||
-        capacity < V9X_I9XX_VERTEX_RUN_DWORDS ||
+    if (stream == 0 || written == 0 || triangles == 0 ||
+        count == 0ul || count > V9X_I9XX_SCENE_MAX_TRIANGLES ||
         width == 0ul || height == 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    /*
-     * Z and W are the same at every vertex: zero depth, and W = 1.0 so the
-     * perspective divide is the identity and screen coordinates pass through
-     * unchanged. Built through the same converter as the coordinates, so a
-     * fault in it cannot be masked by hand-written constants.
-     */
+    run_dwords = v9x_i9xx_triangle_run_dwords(count);
+    if (run_dwords == 0ul || capacity < run_dwords) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    /* Same converter for Z and W as for the coordinates, so a fault in it
+     * cannot be masked by hand-written constants. */
     if (v9x_i9xx_float_from_int(0ul, &zero_bits) != V9X_I9XX_FLOAT_OK ||
         v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
         return V9X_STATUS_INVALID_STATE;
     }
 
-    /* Length field: (vertex dwords - 1), counting dwords and excluding the
-     * command dword. Two independently derived formulas agree. */
+    /*
+     * ONE primitive command for the whole run, not one per triangle. A
+     * triangle list takes 3n vertices under a single header, and the length
+     * field counts every vertex dword in the run less one.
+     */
+    /*
+     * The length counts every vertex dword in the run less one, and the run
+     * length already includes the command dword - hence the two.
+     */
     stream[at++] = V9X_I9XX_3DPRIMITIVE_INLINE |
                    V9X_I9XX_PRIM3D_TRILIST |
-                   ((V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS) - 1ul);
+                   (run_dwords - 2ul);
 
-    for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
-        v9x_u32 x_bits = 0ul;
-        v9x_u32 y_bits = 0ul;
+    for (index = 0ul; index < count; ++index) {
+        for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
+            v9x_u32 x_bits = 0ul;
+            v9x_u32 y_bits = 0ul;
 
-        /*
-         * Refuse any coordinate outside the drawing rectangle. The rectangle
-         * is inclusive, so the last addressable pixel is width - 1. A vertex
-         * outside it would be clipped by hardware rather than refused, and the
-         * software reference would then disagree for a reason nobody could see
-         * in the capture.
-         */
-        if (v9x_i9xx_triangle_x[vertex] >= width ||
-            v9x_i9xx_triangle_y[vertex] >= height) {
-            return V9X_STATUS_INVALID_ARGUMENT;
+            /*
+             * Refuse anything outside the drawing rectangle rather than let
+             * the hardware clip it. The rectangle is inclusive, so the last
+             * addressable pixel is width - 1; a clipped vertex would make the
+             * software reference disagree for a reason invisible in the
+             * capture.
+             */
+            if (triangles[index].x[vertex] >= width ||
+                triangles[index].y[vertex] >= height) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+            if (v9x_i9xx_float_from_int(triangles[index].x[vertex],
+                                        &x_bits) != V9X_I9XX_FLOAT_OK ||
+                v9x_i9xx_float_from_int(triangles[index].y[vertex],
+                                        &y_bits) != V9X_I9XX_FLOAT_OK) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+
+            stream[at++] = x_bits;
+            stream[at++] = y_bits;
+            stream[at++] = zero_bits;
+            stream[at++] = one_bits;
+            /*
+             * One colour per TRIANGLE, repeated at its three vertices. Flat
+             * versus smooth shading is then moot and the provoking-vertex
+             * rules stay off the critical path - both were single-sourced.
+             * Two triangles may still differ from each other, which is what
+             * makes a shared edge readable.
+             */
+            stream[at++] = triangles[index].color;
         }
-        if (v9x_i9xx_float_from_int(v9x_i9xx_triangle_x[vertex], &x_bits) !=
-                V9X_I9XX_FLOAT_OK ||
-            v9x_i9xx_float_from_int(v9x_i9xx_triangle_y[vertex], &y_bits) !=
-                V9X_I9XX_FLOAT_OK) {
-            return V9X_STATUS_INVALID_ARGUMENT;
-        }
-
-        stream[at++] = x_bits;
-        stream[at++] = y_bits;
-        stream[at++] = zero_bits;
-        stream[at++] = one_bits;
-        /*
-         * All three vertices carry the same colour, which makes flat versus
-         * smooth shading moot and keeps the provoking-vertex rules off the
-         * critical path entirely - both were single-sourced. A flat-shaded
-         * triangle is what the plan asks for; a uniformly coloured one
-         * satisfies that under either shading mode and cannot disagree with
-         * the software reference about which vertex supplied the colour.
-         */
-        stream[at++] = V9X_I9XX_TRI_COLOR_BGRA;
     }
 
     *written = at;

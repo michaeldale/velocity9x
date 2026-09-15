@@ -180,8 +180,19 @@ static void test_vertex_run(void)
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_i9xx_build_vertex_run(0ul, 480ul, stream, 24ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
+    /*
+     * Insufficient capacity is INSUFFICIENT_MEMORY, not INVALID_ARGUMENT.
+     *
+     * It was INVALID_ARGUMENT until this builder became a call into
+     * v9x_i9xx_build_triangle_run, which separates the two the way every
+     * other builder in this tree does. Changed deliberately, and recorded
+     * here rather than in a commit message alone: the only caller maps any
+     * non-OK to INSUFFICIENT_MEMORY, so nothing in the driver distinguishes
+     * them, and the emitted dwords are asserted byte-identical elsewhere.
+     */
     CHECK(v9x_i9xx_build_vertex_run(640ul, 480ul, stream, 15ul, &written) ==
-          V9X_STATUS_INVALID_ARGUMENT);
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+    CHECK(written == 0ul);
 }
 
 /* --------------------------------------------------------------------- */
@@ -632,6 +643,315 @@ static void test_rgb565_round(void)
     CHECK(v9x_i9xx_rgb565_round(0ul, 0ul, 0xfful) == 0x001fu);
 }
 
+/* Scene 0's triangle, as a fixture the refusal tests can mutate freely. */
+static void v9x_test_scene_triangle(struct v9x_i9xx_triangle *out)
+{
+    struct v9x_i9xx_scene scene;
+
+    if (v9x_i9xx_scene_at(0ul, &scene) != V9X_STATUS_OK) {
+        return;
+    }
+    *out = scene.triangles[0];
+}
+
+/*
+ * Scene 0's stream must be byte-identical to the Phase 5 stream.
+ *
+ * This is the whole safety argument for the refactor. The scene machinery
+ * reaches the same builders by a different route, and if it produced even one
+ * different dword the regression comparison against C:\temp\intel42 - which is
+ * the evidence every other scene is read against - would be worthless.
+ *
+ * Compared dword by dword rather than by CRC, so a failure names the offset.
+ */
+static void test_scene_zero_matches_phase5(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 scene_stream[160];
+    v9x_u32 phase5_stream[160];
+    v9x_u32 scene_written = 0ul;
+    v9x_u32 phase5_written = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
+    CHECK(scene.id == 0ul);
+    CHECK(scene.triangle_count == 1ul);
+    CHECK(scene.triangles[0].color == V9X_I9XX_TRI_COLOR_BGRA);
+
+    CHECK(v9x_i9xx_build_scene_stream(
+              &scene, scene_stream, 160ul, &scene_written) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_phase5_stream(
+              phase5_stream, 160ul, &phase5_written) == V9X_STATUS_OK);
+
+    CHECK(scene_written == phase5_written);
+    if (scene_written == phase5_written) {
+        for (index = 0ul; index < scene_written; ++index) {
+            CHECK(scene_stream[index] == phase5_stream[index]);
+        }
+    }
+    CHECK(v9x_i9xx_scene_crc(0ul) == v9x_i9xx_phase5_execution_crc());
+
+    /* The extent must agree with what was produced, or the arm table would
+     * reserve the wrong number of dwords. */
+    CHECK(v9x_i9xx_scene_extent(&scene) == scene_written);
+}
+
+/*
+ * Scene 1 differs from scene 0 in the colour dwords and NOTHING else.
+ *
+ * Identical geometry is the point: it makes the conversion question
+ * answerable without the rasteriser's behaviour entering the comparison. If
+ * any non-colour dword differed, that claim would be false.
+ */
+static void test_scene_one_differs_only_in_colour(void)
+{
+    struct v9x_i9xx_scene zero;
+    struct v9x_i9xx_scene one;
+    v9x_u32 zero_stream[160];
+    v9x_u32 one_stream[160];
+    v9x_u32 zero_written = 0ul;
+    v9x_u32 one_written = 0ul;
+    v9x_u32 index;
+    v9x_u32 differences = 0ul;
+
+    CHECK(v9x_i9xx_scene_at(0ul, &zero) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(1ul, &one) == V9X_STATUS_OK);
+    CHECK(one.id == 1ul);
+    CHECK(one.triangles[0].color != zero.triangles[0].color);
+
+    CHECK(v9x_i9xx_build_scene_stream(
+              &zero, zero_stream, 160ul, &zero_written) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_scene_stream(
+              &one, one_stream, 160ul, &one_written) == V9X_STATUS_OK);
+    CHECK(zero_written == one_written);
+
+    if (zero_written == one_written) {
+        for (index = 0ul; index < zero_written; ++index) {
+            if (zero_stream[index] != one_stream[index]) {
+                ++differences;
+                /* Every difference must BE a colour dword. */
+                CHECK(zero_stream[index] == V9X_I9XX_TRI_COLOR_BGRA);
+                CHECK(one_stream[index] == 0xff2e03c8ul);
+            }
+        }
+    }
+    /*
+     * One per vertex, three vertices. Asserted rather than left implicit:
+     * zero differences would also satisfy a loop that only checks that
+     * differences are colours.
+     */
+    CHECK(differences == 3ul);
+
+    /*
+     * The prediction, recorded here so a colour change cannot quietly leave
+     * it behind. Green 3 is the value that separates rounding from
+     * truncation, which is the open question this scene exists to close.
+     */
+    CHECK(v9x_i9xx_rgb565_round(0x2eul, 0x03ul, 0xc8ul) == 0x3038u);
+}
+
+/*
+ * Scene 2 carries two triangles under ONE primitive command, sharing an edge,
+ * in two different colours.
+ */
+static void test_scene_two_shares_an_edge(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 stream[160];
+    v9x_u32 written = 0ul;
+    v9x_u32 header;
+
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
+    CHECK(scene.id == 2ul);
+    CHECK(scene.triangle_count == 2ul);
+    CHECK(scene.triangles[0].color != scene.triangles[1].color);
+
+    /* Both colours are already measured, which keeps this scene to one
+     * unknown - the edge rule. */
+    CHECK(scene.triangles[0].color == V9X_I9XX_TRI_COLOR_BGRA);
+    CHECK(scene.triangles[1].color == 0xfff86428ul);
+
+    /*
+     * The shared edge: triangle 0's first and third vertices are triangle 1's
+     * first and second. If this stops holding, the scene no longer asks the
+     * question it was built for.
+     */
+    CHECK(scene.triangles[0].x[0] == scene.triangles[1].x[0]);
+    CHECK(scene.triangles[0].y[0] == scene.triangles[1].y[0]);
+    CHECK(scene.triangles[0].x[2] == scene.triangles[1].x[1]);
+    CHECK(scene.triangles[0].y[2] == scene.triangles[1].y[1]);
+
+    CHECK(v9x_i9xx_build_scene_stream(
+              &scene, stream, 160ul, &written) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_extent(&scene) == written);
+
+    /*
+     * Six vertices under a single _3DPRIMITIVE, not two commands of three.
+     * The length field counts every vertex dword less one: 6 * 5 - 1 = 29.
+     */
+    header = stream[written - (6ul * V9X_I9XX_VERTEX_DWORDS) - 1ul];
+    CHECK(header == (V9X_I9XX_3DPRIMITIVE_INLINE |
+                     V9X_I9XX_PRIM3D_TRILIST | 29ul));
+
+    /* Longer than scene 0 by exactly one triangle. */
+    CHECK(written == 66ul + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS));
+}
+
+/* The table itself, and its refusals. */
+static void test_scene_table(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 index;
+    v9x_u32 stream[160];
+    v9x_u32 written = 0ul;
+
+    CHECK(v9x_i9xx_scene_count() == 3ul);
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        struct v9x_i9xx_scene other;
+        v9x_u32 compare;
+
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        CHECK(scene.triangle_count >= 1ul);
+        CHECK(scene.triangle_count <= V9X_I9XX_SCENE_MAX_TRIANGLES);
+        CHECK(scene.fill_dword == V9X_I9XX_FILL_DWORD);
+        /*
+         * Ids must be unique. The capture attributes probe sets by id, so a
+         * duplicate would silently merge two scenes' evidence.
+         */
+        for (compare = 0ul; compare < index; ++compare) {
+            CHECK(v9x_i9xx_scene_at(compare, &other) == V9X_STATUS_OK);
+            CHECK(other.id != scene.id);
+        }
+        /*
+         * Every scene must build. A zero CRC is what no arm path accepts, so
+         * without this the failure would surface on the machine instead of
+         * here.
+         */
+        CHECK(v9x_i9xx_scene_crc(index) != 0ul);
+    }
+
+    /* Out of range refuses AND clears, rather than leaving the caller's stack
+     * contents looking like a scene. */
+    CHECK(v9x_i9xx_scene_at(3ul, &scene) != V9X_STATUS_OK);
+    CHECK(scene.triangle_count == 0ul);
+    CHECK(scene.id == 0ul);
+    CHECK(v9x_i9xx_scene_crc(3ul) == 0ul);
+    CHECK(v9x_i9xx_scene_at(0ul, 0) != V9X_STATUS_OK);
+
+    /* Capacity, at the boundary rather than far from it. */
+    CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 65ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 66ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 66ul);
+
+    /* A scene claiming more triangles than it can hold is refused, not
+     * clamped. */
+    scene.triangle_count = V9X_I9XX_SCENE_MAX_TRIANGLES + 1ul;
+    CHECK(v9x_i9xx_scene_extent(&scene) == 0ul);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 160ul, &written) !=
+          V9X_STATUS_OK);
+    scene.triangle_count = 0ul;
+    CHECK(v9x_i9xx_scene_extent(&scene) == 0ul);
+}
+
+/* The combined CRC, which is what the arm gate compares. */
+static void test_scene_combined_crc(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 combined[512];
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+    v9x_u32 produced = 0ul;
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_build_scene_stream(
+                  &scene, combined + at, 512ul - at, &produced) ==
+              V9X_STATUS_OK);
+        at += produced;
+    }
+
+    /*
+     * Over the concatenated dwords in execution order, not over the per-scene
+     * CRCs - a CRC of CRCs would not notice a length change that hashed the
+     * same.
+     */
+    CHECK(v9x_i9xx_scene_combined_crc() ==
+          v9x_i9xx_crc32_dwords(combined, at));
+
+    /*
+     * And it is not any single scene's CRC. Without this the function could
+     * return scene 0's value and every other assertion here would still hold.
+     */
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_combined_crc() != v9x_i9xx_scene_crc(index));
+    }
+}
+
+/* The general triangle-run builder's own refusals. */
+static void test_triangle_run_refusals(void)
+{
+    struct v9x_i9xx_triangle triangle;
+    v9x_u32 stream[64];
+    v9x_u32 written = 0ul;
+
+    v9x_test_scene_triangle(&triangle);
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 16ul);
+
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 0ul, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_triangle_run(&triangle,
+                                      V9X_I9XX_SCENE_MAX_TRIANGLES + 1ul,
+                                      640ul, 480ul, stream, 64ul,
+                                      &written) != V9X_STATUS_OK);
+
+    /*
+     * A vertex exactly ON the boundary is outside: the rectangle is
+     * inclusive, so 640 is one past the last addressable pixel. Both sides
+     * are asserted, because a builder that refused everything would pass a
+     * one-sided check.
+     */
+    triangle.x[1] = 639ul;
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+    triangle.x[1] = 640ul;
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+
+    v9x_test_scene_triangle(&triangle);
+    triangle.y[2] = 480ul;
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+
+    /* Capacity, at the boundary. */
+    v9x_test_scene_triangle(&triangle);
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 15ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 640ul, 480ul,
+                                      stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+
+    CHECK(v9x_i9xx_build_triangle_run(0, 1ul, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_triangle_run(&triangle, 1ul, 0ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -646,5 +966,11 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_structural_refusals();
     test_published_offsets_locate_the_packets();
     test_rgb565_round();
+    test_scene_table();
+    test_scene_zero_matches_phase5();
+    test_scene_one_differs_only_in_colour();
+    test_scene_two_shares_an_edge();
+    test_scene_combined_crc();
+    test_triangle_run_refusals();
     return failures;
 }
