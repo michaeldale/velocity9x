@@ -32,6 +32,10 @@ IF "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=@@TOKEN@@>>C:\V9XDIAG\INTELARM.TXT
 IF NOT "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=%V9XARMTOKEN%>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelArmCrc=@@ARMCRC@@>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelArmBuildId=@@BUILDID@@>>C:\V9XDIAG\INTELARM.TXT
+REM Phase 4, stated rather than implied. The driver reads an absent
+REM IntelArmPhase as Phase 4 so that sticks written before 2026-09-15 still
+REM boot, but nothing written from here on should depend on that.
+ECHO IntelArmPhase=4>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelInFlight=>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelEnableThisBoot=0>>C:\V9XDIAG\INTELARM.TXT
 ECHO IntelLastResult=>>C:\V9XDIAG\INTELARM.TXT
