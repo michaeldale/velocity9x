@@ -229,6 +229,13 @@ static void test_3d_state(void)
     CHECK(stream[31] == 0x00902480ul);
     CHECK((stream[33] & (V9X_I9XX_S6_DEPTH_TEST_ENABLE |
                          V9X_I9XX_S6_DEPTH_WRITE_ENABLE)) == 0ul);
+    /*
+     * And the enable that was missing. S6 was zero until 2026-09-15 on the
+     * reasoning that every relevant bit in it disables when clear; that holds
+     * for depth, blend and alpha, and not for this one. With it clear the GPU
+     * accepted the primitive, reported no error, and wrote no colour.
+     */
+    CHECK((stream[33] & V9X_I9XX_S6_COLOR_WRITE_ENABLE) != 0ul);
 
     /* A pitch the BUF_INFO encoding would silently truncate is refused. */
     CHECK(v9x_i9xx_build_3d_state(0x006c2000ul, 1281ul, 640ul, 480ul,
@@ -305,7 +312,7 @@ static const v9x_u32 v9x_i9xx_phase5_golden[66] = {
     0x7d8e0001ul, 0x07001000ul, 0x00000000ul, 0x7d850000ul, 0x00880200ul,
     0x7d800003ul, 0x00000000ul, 0x00000000ul, 0x01df027ful, 0x00000000ul,
     0x7d0407c4ul, 0xfffffffful, 0x00000000ul, 0x00902480ul, 0x00000000ul,
-    0x00000000ul, 0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
+    0x00000004ul, 0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
     0x02203ca0ul, 0x01230000ul, 0x00000000ul, 0x00000000ul, 0x02000000ul,
     0x7f00000eul, 0x43200000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
     0xfff86428ul, 0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
@@ -335,7 +342,7 @@ static void test_golden_stream(void)
      */
     CHECK(v9x_i9xx_phase5_execution_crc() ==
           v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 66ul));
-    CHECK(v9x_i9xx_phase5_execution_crc() == 0x0ed8c9a3ul);
+    CHECK(v9x_i9xx_phase5_execution_crc() == 0x3c23ca17ul);
 
     CHECK(v9x_i9xx_build_phase5_stream(stream, 65ul, &written) !=
           V9X_STATUS_OK);

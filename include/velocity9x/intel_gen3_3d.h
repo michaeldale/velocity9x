@@ -120,11 +120,39 @@
 #define V9X_I9XX_S4_LINE_WIDTH_ONE       ((v9x_u32)0x00100000ul)
 #define V9X_I9XX_S4_POINT_WIDTH_ONE      ((v9x_u32)0x00800000ul)
 
-/* S5 and S6: no stencil, no depth test, no depth write, no blend. Every
- * relevant enable is a set bit, so zero is the correct value and these two
- * names exist to say that deliberately. Audit section 8. */
+/*
+ * S5: no stencil, no dither, no logic op, and no write-disable. Every relevant
+ * enable is a set bit and the write-disable bits at 28-31 disable when SET, so
+ * zero is the correct value and this name says so deliberately.
+ */
 #define V9X_I9XX_S5_PHASE5               ((v9x_u32)0x00000000ul)
-#define V9X_I9XX_S6_PHASE5               ((v9x_u32)0x00000000ul)
+
+/*
+ * S6: colour writes ENABLED, and nothing else.
+ *
+ * This was zero until 2026-09-15, on the reasoning that every relevant enable
+ * in S5 and S6 is a set bit so zero disables everything unwanted. That is true
+ * of alpha test, depth test, depth write and blend - and it is also true of
+ * S6_COLOR_WRITE_ENABLE, which is the one enable Phase 5 needs. Zeroing S6
+ * therefore turned off the only thing that makes a rasterised pixel reach the
+ * render target.
+ *
+ * Measured consequence, builds 4628b66 and 9064942: the GPU accepted the
+ * _3DPRIMITIVE, reported no error, and wrote nothing. All fourteen probes read
+ * the fill colour. The fill landed because it is an XY_COLOR_BLT and S6 does
+ * not gate the blitter.
+ *
+ * Mesa is unambiguous. i915_state_immediate.c, upload_S6:
+ *
+ *     unsigned LIS6 = 0;
+ *     if (i915->framebuffer.cbufs[0].texture)
+ *        LIS6 |= S6_COLOR_WRITE_ENABLE;
+ *
+ * It is set whenever a colour buffer exists, before any blend or depth
+ * consideration.
+ */
+#define V9X_I9XX_S6_COLOR_WRITE_ENABLE   ((v9x_u32)0x00000004ul)
+#define V9X_I9XX_S6_PHASE5               V9X_I9XX_S6_COLOR_WRITE_ENABLE
 /* Named so a reader can see what is being left clear. Audit section 8. */
 #define V9X_I9XX_S6_DEPTH_TEST_ENABLE    ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_S6_DEPTH_WRITE_ENABLE   ((v9x_u32)0x00000008ul)

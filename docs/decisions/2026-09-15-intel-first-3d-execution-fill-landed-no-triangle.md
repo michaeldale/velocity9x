@@ -207,11 +207,67 @@ related to the missing triangle.
 Still unverified by this pass: the seven-dword fragment program, and the
 values of `S2`, `S3`, `S5` and `S6`.
 
+## Cause found: S6 had colour writes disabled
+
+Completing the audit found it, in the same source, with no further boot.
+
+```c
+#define S6_COLOR_WRITE_ENABLE (1 << 2)
+```
+
+`S6` was `0x00000000`. The header's reasoning was that every relevant enable in
+S5 and S6 is a set bit, so zero disables everything unwanted. That is true of
+alpha test, depth test, depth write, blend, stencil and dither - and it is
+equally true of `S6_COLOR_WRITE_ENABLE`, which is the one enable Phase 5 needed.
+Zeroing S6 turned off the only thing that lets a rasterised pixel reach the
+render target.
+
+Mesa is unambiguous, `i915_state_immediate.c`, `upload_S6`:
+
+```c
+unsigned LIS6 = 0;
+/* I915_NEW_FRAMEBUFFER */
+if (i915->framebuffer.cbufs[0].texture)
+   LIS6 |= S6_COLOR_WRITE_ENABLE;
+```
+
+Set whenever a colour buffer exists, before any blend or depth consideration.
+
+### It accounts for every observation
+
+- The GPU accepted the `_3DPRIMITIVE` and reported nothing: there was no error
+  to report. The stream was valid; the pipeline was configured not to write.
+- All fourteen probes read the fill: the 3D pipeline wrote no colour anywhere,
+  so displaced geometry and fill-coloured output are both unnecessary as
+  explanations.
+- The fill landed regardless: it is an `XY_COLOR_BLT`, and `S6` does not gate
+  the blitter.
+
+### What it does not explain, and what is still unproven
+
+Nothing in this establishes that the triangle will now appear. It establishes
+that colour writes were disabled and are now enabled. Whether the geometry,
+the fragment program and the remaining state are correct is untested - this
+removes one certain defect, it does not validate the rest.
+
+`S6` is now `V9X_I9XX_S6_COLOR_WRITE_ENABLE`. The stream changed, so the CRCs
+did:
+
+| | Before | After |
+|---|---|---|
+| Phase 5 execution CRC | `0ED8C9A3` | `3C23CA17` |
+| Combined arm CRC | `D0478966` | `7F8E8704` |
+
+The generated `i9xx3d.inc` and `intel-3d-stream.psd1` are regenerated from the
+compiled builders, so the mini-VDD's table and the armer's CRC follow
+automatically. **Any stick armed to `D0478966` is now stale and will be
+refused.**
+
 ## Standing
 
-Phase 5's objective - one triangle on screen - is **not met**, and the result
-is reproducible: two armed boots on different builds, fourteen probes reading
-fill on both. What is met is
+Phase 5's objective - one triangle on screen - is **not met on hardware**. A
+certain cause of the null result has been found and fixed, and nothing has been
+booted with the fix. What is met is
 everything up to and including the GPU executing a reviewed 3D command stream
 and altering the render target, under a one-shot arm that retired correctly, on
 a part whose errata made all of it risky.

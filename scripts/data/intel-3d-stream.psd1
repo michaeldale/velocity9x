@@ -17,8 +17,8 @@
     Tricolor = 'FFF86428'
     P4packetcrc = 'BA0895B6'
     P4crc = 'A0DA64A1'
-    P5crc = '0ED8C9A3'
-    Combinedcrc = 'D0478966'
+    P5crc = '3C23CA17'
+    Combinedcrc = '7F8E8704'
     Phase4Dwords = 10
     Phase5Dwords = 66
     Phase4Stream = @(
@@ -74,7 +74,7 @@
         '00000000'
         '00902480'
         '00000000'
-        '00000000'
+        '00000004'
         '7D050005'
         '190A3C00'
         '00000000'
