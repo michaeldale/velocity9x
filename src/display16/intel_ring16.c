@@ -18,6 +18,13 @@ extern DWORD v9x_i9xx_bsm;
 extern WORD FAR PASCAL V9xPciReadIntelFlushPage(DWORD FAR *value);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern const char *v9x_intel_boot_token_mover_state(void);
+#ifdef V9X_I9XX_PHASE5_EXECUTOR
+extern WORD v9x_intel_phase4_passed_this_boot;
+extern WORD v9x_intel_boot_arm_latch;
+extern void v9x_intel_phase5_run(
+    const struct v9x_i9xx_sandbox_layout *layout,
+    WORD phase4_passed, WORD armed);
+#endif
 extern void v9x_intel_phase4_maybe_run(
     const struct v9x_i9xx_sandbox_layout *layout,
     const DWORD *probe, const DWORD *blt, WORD flush_stable);
@@ -181,4 +188,13 @@ void V9X_I9XX_FAR v9x_intel_publish_ring_plan(void)
                               V9X_DIAG_INTELRNG_TXT);
     WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTELRNG_TXT);
     v9x_intel_phase4_maybe_run(&layout, probe, blt, flush_page_stable);
+#ifdef V9X_I9XX_PHASE5_EXECUTOR
+    /*
+     * Immediately after Phase 4, in the same boot, reading the result it
+     * just recorded. Unarmed this writes nothing and produces the full
+     * no-write INTEL3D0.TXT that B1 exists to check.
+     */
+    v9x_intel_phase5_run(&layout, v9x_intel_phase4_passed_this_boot,
+                         v9x_intel_boot_arm_latch);
+#endif
 }

@@ -49,6 +49,7 @@
  * load for weeks, so the one-shot transaction lives here instead.
  */
 #define V9X_DIAG_INTELARM_TXT V9X_DIAG_PATH("INTELARM.TXT") /* intel_boot16.c, intel_exec16.c */
+#define V9X_DIAG_INTEL3D0_TXT V9X_DIAG_PATH("INTEL3D0.TXT") /* intel_3d16.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

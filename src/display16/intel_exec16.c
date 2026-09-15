@@ -211,6 +211,14 @@ static void v9x_p4_clean_refusal(const char *reason)
 #define V9X_P4_PRE_RESERVE_BACKING 19u
 
 static WORD v9x_p4_pre_rejection;
+/*
+ * Whether Phase 4 completed cleanly in THIS boot. Phase 5 requires it, which
+ * makes "revalidate the layout before drawing" a precondition the code
+ * enforces rather than an instruction an operator remembers. It starts zero on
+ * every driver load and is never read from disk, for the same reason
+ * v9x_intel_boot_arm_latch is not.
+ */
+WORD v9x_intel_phase4_passed_this_boot;
 
 static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
                              const DWORD *probe, const DWORD *blt,
@@ -693,6 +701,7 @@ void v9x_intel_phase4_maybe_run(
         v9x_i9xx_first[3] != 0ul || v9x_i9xx_first[4] != 0ul ||
         v9x_i9xx_gtt_hash_a != 0x4d8707c5ul ||
         v9x_i9xx_gtt_hash_b != 0x4d8707c5ul) { clean_pass = 0u; }
+    v9x_intel_phase4_passed_this_boot = clean_pass;
     if (!v9x_p4_ring("PostSnapshot", clean_pass != 0u ? "PASS" : "FAIL") ||
         !v9x_p4_ring("S12Result", clean_pass != 0u ? "PASS" : "FAIL")) {
         v9x_p4_uncertain("POST-LOG-FAILED"); return;

@@ -70,6 +70,16 @@ Invoke-CheckStep "Intel Phase 4 arm script" {
     & (Join-Path $PSScriptRoot "arm-intel-phase4.ps1") -SelfTest
 }
 
+Invoke-CheckStep "Intel 3D capture validator" {
+    & (Join-Path $PSScriptRoot "check-intel-3d-capture.ps1") -SelfTest
+}
+
+# A separate armer from Phase 4's, and a separate self-test, because one
+# armer that could arm either phase is a flag away from arming the wrong one.
+Invoke-CheckStep "Intel Phase 5 arm script" {
+    & (Join-Path $PSScriptRoot "arm-intel-phase5.ps1") -SelfTest
+}
+
 if (-not $SkipHostTests) {
     Invoke-CheckStep "host tests" {
         & (Join-Path $PSScriptRoot "build-host.ps1")

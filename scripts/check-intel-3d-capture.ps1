@@ -1,0 +1,315 @@
+# Validate an INTEL3D0.TXT capture from the Intel Phase 5 sequencer.
+#
+# The capture is the artefact; this is what makes reading it a check rather
+# than an impression. It asserts the invariants that hold whatever the hardware
+# did, and reports - rather than fails - the things that are observations.
+#
+# Deliberately separate from check-intel-ring-plan.ps1: Phase 4 and Phase 5
+# have disjoint step numbers, disjoint refusal spaces and separate captures,
+# and one validator that accepted either would defeat that.
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true, ParameterSetName = 'File')]
+    [string]$Path,
+    [Parameter(Mandatory = $true, ParameterSetName = 'SelfTest')]
+    [switch]$SelfTest
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$generatedPath = Join-Path $repoRoot 'scripts\data\intel-3d-stream.psd1'
+
+function ConvertFrom-V9x3dIni {
+    param([string[]]$Lines)
+    $values = @{}
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*\[' -or $line -match '^\s*$') { continue }
+        if ($line -notmatch '^([A-Za-z0-9_]+)=(.*)$') {
+            throw "INTEL3D0.TXT has an unparsable line: $line"
+        }
+        $values[$Matches[1]] = $Matches[2]
+    }
+    return $values
+}
+
+function Get-V9x3dHex32 {
+    param([hashtable]$Values, [string]$Key)
+    if (-not $Values.ContainsKey($Key)) {
+        throw "INTEL3D0.TXT is missing $Key."
+    }
+    if ($Values[$Key] -notmatch '^[0-9A-F]{8}$') {
+        throw "INTEL3D0.TXT key $Key is not eight hex digits: $($Values[$Key])."
+    }
+    return [Convert]::ToUInt32($Values[$Key], 16)
+}
+
+function Test-V9xIntel3dCapture {
+    param([string[]]$Lines)
+
+    $values = ConvertFrom-V9x3dIni -Lines $Lines
+    if (-not (Test-Path -LiteralPath $generatedPath)) {
+        throw ('scripts\data\intel-3d-stream.psd1 is missing; it is what the ' +
+               'capture is checked against.')
+    }
+    $generated = Import-PowerShellDataFile -LiteralPath $generatedPath
+
+    foreach ($required in @('SchemaVersion', 'Access', 'CaptureBuildId',
+                            'Result', 'StreamDwords', 'StreamCrc',
+                            'GeneratedCrc', 'Precondition')) {
+        if (-not $values.ContainsKey($required)) {
+            throw "INTEL3D0.TXT is missing $required."
+        }
+    }
+    if ($values['SchemaVersion'] -ne '1') {
+        throw "Unknown INTEL3D0.TXT schema $($values['SchemaVersion'])."
+    }
+
+    # The stream the driver built must be the stream that was generated. If
+    # these differ, what would run is not what was reviewed - which is the
+    # whole reason the driver recomputes and compares them itself.
+    $streamDwords = Get-V9x3dHex32 -Values $values -Key 'StreamDwords'
+    if ($streamDwords -ne $generated.Phase5Dwords) {
+        throw ("INTEL3D0.TXT reports $streamDwords stream dwords but the " +
+               "generated table has $($generated.Phase5Dwords).")
+    }
+    for ($index = 0; $index -lt $streamDwords; ++$index) {
+        $key = 'S{0:X4}' -f $index
+        $actual = Get-V9x3dHex32 -Values $values -Key $key
+        $expected = [Convert]::ToUInt32($generated.Phase5Stream[$index], 16)
+        if ($actual -ne $expected) {
+            throw ("INTEL3D0.TXT stream dword $index is " +
+                   ('{0:X8}' -f $actual) + ' but the generated table says ' +
+                   ('{0:X8}' -f $expected) + '.')
+        }
+    }
+    $streamCrc = Get-V9x3dHex32 -Values $values -Key 'StreamCrc'
+    $generatedCrc = Get-V9x3dHex32 -Values $values -Key 'GeneratedCrc'
+    if ($streamCrc -ne $generatedCrc) {
+        throw ('INTEL3D0.TXT StreamCrc and GeneratedCrc differ, so the driver ' +
+               'built something other than the reviewed stream.')
+    }
+    if (('{0:X8}' -f $streamCrc) -ne $generated.P5Crc) {
+        throw ("INTEL3D0.TXT StreamCrc is " + ('{0:X8}' -f $streamCrc) +
+               " but the generated Phase 5 CRC is $($generated.P5Crc).")
+    }
+
+    # The vertices are reported twice on purpose. If the raw bits and the
+    # decoded integers disagree, the float transport is wrong - and that shows
+    # here rather than as a wrong picture.
+    $expectedX = @(160, 480, 320)
+    $expectedY = @(120, 120, 400)
+    for ($vertex = 0; $vertex -lt 3; ++$vertex) {
+        $xKey = 'VD{0:X4}' -f ($vertex * 8)
+        $yKey = 'VD{0:X4}' -f ($vertex * 8 + 1)
+        $zKey = 'VD{0:X4}' -f ($vertex * 8 + 2)
+        $wKey = 'VD{0:X4}' -f ($vertex * 8 + 3)
+        if ((Get-V9x3dHex32 -Values $values -Key $xKey) -ne $expectedX[$vertex] -or
+            (Get-V9x3dHex32 -Values $values -Key $yKey) -ne $expectedY[$vertex]) {
+            throw ("INTEL3D0.TXT vertex $vertex decodes to the wrong screen " +
+                   'position; the float transport disagrees with the geometry.')
+        }
+        if ((Get-V9x3dHex32 -Values $values -Key $zKey) -ne 0) {
+            throw "INTEL3D0.TXT vertex $vertex has non-zero Z; Phase 5 is un-Z'd."
+        }
+        if ((Get-V9x3dHex32 -Values $values -Key $wKey) -ne 1) {
+            throw ("INTEL3D0.TXT vertex $vertex has W other than one, so the " +
+                   'perspective divide is not the identity.')
+        }
+        $colourKey = 'VC{0:X4}' -f $vertex
+        if ((Get-V9x3dHex32 -Values $values -Key $colourKey) -ne
+                [Convert]::ToUInt32($generated.Tricolor, 16)) {
+            throw ("INTEL3D0.TXT vertex $vertex carries a different colour; " +
+                   'all three must match or the shading mode stops being moot.')
+        }
+    }
+
+    # The layout the capture describes must be the one that was generated.
+    foreach ($pair in @(@{ Key = 'RefTargetOffset'; Gen = 'Targetoffset' },
+                        @{ Key = 'RefTargetPitch';  Gen = 'Targetpitch' },
+                        @{ Key = 'RefTargetBytes';  Gen = 'Targetbytes' },
+                        @{ Key = 'RefGuardUpper';   Gen = 'Guardupper' })) {
+        $actual = '{0:X8}' -f (Get-V9x3dHex32 -Values $values -Key $pair.Key)
+        if ($actual -ne $generated[$pair.Gen]) {
+            throw ("INTEL3D0.TXT $($pair.Key) is $actual but the generated " +
+                   "layout says $($generated[$pair.Gen]).")
+        }
+    }
+
+    # The reserve must lie inside the measured backed prefix, re-derived by the
+    # driver on this boot rather than inherited from the Phase 2 capture.
+    $first = Get-V9x3dHex32 -Values $values -Key 'P5RefReserveFirst'
+    $count = Get-V9x3dHex32 -Values $values -Key 'P5RefReserveCount'
+    $prefix = Get-V9x3dHex32 -Values $values -Key 'P5RefBackedPrefix'
+    if ($count -eq 0 -or ($first + $count) -gt $prefix) {
+        throw ("INTEL3D0.TXT reports the reserve outside the measured backed " +
+               "prefix: first $first, count $count, prefix $prefix.")
+    }
+
+    $armed = $values['Access'] -eq 'armed-one-shot'
+    $result = $values['Result']
+
+    if (-not $armed) {
+        # An unarmed capture must have written nothing and must still prove
+        # the two things B1 needs: a stable read-only hash, and a live
+        # address path.
+        if ($result -ne 'NO-WRITE') {
+            throw ("An unarmed INTEL3D0.TXT must report Result=NO-WRITE, not " +
+                   "$result.")
+        }
+        foreach ($forbidden in @('FillHashA', 'DrawHashA', 'HeapProbeAfter')) {
+            if ($values.ContainsKey($forbidden)) {
+                throw ("An unarmed INTEL3D0.TXT must not contain $forbidden; " +
+                       'its presence means the no-write path wrote.')
+            }
+        }
+        $fail = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashFail'
+        if ($fail -ne 0) {
+            throw ("The unarmed reserve hash refused with reason $fail. See " +
+                   'the RING_HASH refusal table in include\asm\V9XMAPI.INC.')
+        }
+        $a = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashA'
+        $b = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashB'
+        if ($a -ne $b) {
+            throw ('The two read-only hash passes over the untouched target ' +
+                   "disagree ($('{0:X8}' -f $a) vs $('{0:X8}' -f $b)). The " +
+                   'mapping is not stable, which is exactly what returning ' +
+                   'both passes exists to reveal.')
+        }
+        return [pscustomobject]@{
+            Armed = $false; Result = $result; StreamCrc = '{0:X8}' -f $streamCrc
+            Notes = @('unarmed: no writes, hash stable')
+        }
+    }
+
+    # Armed.
+    if ((Get-V9x3dHex32 -Values $values -Key 'Phase4Passed') -eq 0) {
+        throw ('An armed INTEL3D0.TXT reports Phase 4 did not pass this boot. ' +
+               'Phase 5 must not run without it: Phase 4 is the only thing ' +
+               'that separates a broken layout from wrong 3D packets.')
+    }
+    $notes = @()
+    foreach ($pair in @(@{ A = 'FillHashA'; B = 'FillHashB'; What = 'fill' },
+                        @{ A = 'DrawHashA'; B = 'DrawHashB'; What = 'draw' })) {
+        if (-not $values.ContainsKey($pair.A)) { continue }
+        $a = Get-V9x3dHex32 -Values $values -Key $pair.A
+        $b = Get-V9x3dHex32 -Values $values -Key $pair.B
+        if ($a -ne $b) {
+            throw ("The two $($pair.What) hash passes disagree; the mapping is " +
+                   'not stable.')
+        }
+    }
+    if ($values.ContainsKey('FillHashA') -and $values.ContainsKey('DrawHashA')) {
+        if ((Get-V9x3dHex32 -Values $values -Key 'FillHashA') -eq
+            (Get-V9x3dHex32 -Values $values -Key 'DrawHashA')) {
+            throw ('The target hash is unchanged between the fill and the ' +
+                   'draw, so nothing was drawn.')
+        }
+    }
+    # In-reserve guards must be untouched. These are ours, unlike HeapProbe.
+    foreach ($pair in @(@{ Before = 'GLow0'; After = 'GLow1'; What = 'lower' },
+                        @{ Before = 'GUpp0'; After = 'GUpp1'; What = 'upper' })) {
+        if (-not $values.ContainsKey($pair.After)) { continue }
+        if ((Get-V9x3dHex32 -Values $values -Key $pair.Before) -ne
+            (Get-V9x3dHex32 -Values $values -Key $pair.After)) {
+            throw ("The in-reserve $($pair.What) guard changed across the draw. " +
+                   'That is an overrun out of the target and is a kill, not an ' +
+                   'observation.')
+        }
+    }
+    # HeapProbe is an OBSERVATION, not an assertion. The dword below the
+    # reserve is still published heap and nothing here proves it quiescent, so
+    # a change is reported and never failed on.
+    if ($values.ContainsKey('HeapProbeAfter')) {
+        if ((Get-V9x3dHex32 -Values $values -Key 'HeapProbeBefore') -ne
+            (Get-V9x3dHex32 -Values $values -Key 'HeapProbeAfter')) {
+            $notes += ('HeapProbe changed across the draw. This is an ' +
+                       'observation, not corruption: that dword is published ' +
+                       'heap and nothing here proves it was ours for the ' +
+                       'interval.')
+        }
+    }
+    return [pscustomobject]@{
+        Armed = $true; Result = $result; StreamCrc = '{0:X8}' -f $streamCrc
+        Notes = $notes
+    }
+}
+
+if ($SelfTest) {
+    $generated = Import-PowerShellDataFile -LiteralPath $generatedPath
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add('[Intel3D]')
+    $lines.Add('SchemaVersion=1')
+    $lines.Add('Access=no-hardware-writes')
+    $lines.Add('CaptureBuildId=p5-self-test')
+    $lines.Add('Phase4Passed=00000000')
+    $lines.Add(('StreamDwords={0:X8}' -f $generated.Phase5Dwords))
+    for ($index = 0; $index -lt $generated.Phase5Dwords; ++$index) {
+        $lines.Add(('S{0:X4}={1}' -f $index, $generated.Phase5Stream[$index]))
+    }
+    $lines.Add("StreamCrc=$($generated.P5Crc)")
+    $lines.Add("GeneratedCrc=$($generated.P5Crc)")
+    foreach ($row in @(@(0, 160), @(1, 120), @(2, 0), @(3, 1),
+                       @(8, 480), @(9, 120), @(10, 0), @(11, 1),
+                       @(16, 320), @(17, 400), @(18, 0), @(19, 1))) {
+        $lines.Add(('VD{0:X4}={1:X8}' -f $row[0], $row[1]))
+    }
+    for ($vertex = 0; $vertex -lt 3; ++$vertex) {
+        $lines.Add(('VC{0:X4}={1}' -f $vertex, $generated.Tricolor))
+    }
+    $lines.Add("RefTargetOffset=$($generated.Targetoffset)")
+    $lines.Add("RefTargetPitch=$($generated.Targetpitch)")
+    $lines.Add("RefTargetBytes=$($generated.Targetbytes)")
+    $lines.Add("RefGuardUpper=$($generated.Guardupper)")
+    $lines.Add('P5RefBackedPrefix=000007B0')
+    $lines.Add('P5RefReserveFirst=000006B0')
+    $lines.Add('P5RefReserveCount=00000100')
+    $lines.Add('Precondition=00000001')
+    $lines.Add('UnarmedHashA=11223344')
+    $lines.Add('UnarmedHashB=11223344')
+    $lines.Add('UnarmedHashFail=00000000')
+    $lines.Add('Result=NO-WRITE')
+
+    $null = Test-V9xIntel3dCapture -Lines $lines
+
+    $mutations = @(
+        @{ Old = 'UnarmedHashB=11223344'; New = 'UnarmedHashB=11223345'
+           Why = 'unstable hash passes' },
+        @{ Old = "StreamCrc=$($generated.P5Crc)"; New = 'StreamCrc=DEADBEEF'
+           Why = 'stream CRC not the generated one' },
+        @{ Old = 'S0000=' + $generated.Phase5Stream[0]; New = 'S0000=00000000'
+           Why = 'stream dword differs from the generated table' },
+        @{ Old = 'VD0001=00000078'; New = 'VD0001=00000079'
+           Why = 'decoded vertex disagrees with the geometry' },
+        @{ Old = 'VD0003=00000001'; New = 'VD0003=00000002'
+           Why = 'W is not one' },
+        @{ Old = 'Result=NO-WRITE'; New = 'Result=PASS'
+           Why = 'unarmed capture claiming a pass' },
+        @{ Old = 'P5RefReserveFirst=000006B0'; New = 'P5RefReserveFirst=00000750'
+           Why = 'reserve outside the measured backed prefix' },
+        @{ Old = 'UnarmedHashFail=00000000'; New = 'UnarmedHashFail=00000007'
+           Why = 'the hash verb refused' }
+    )
+    foreach ($mutation in $mutations) {
+        $broken = @($lines | ForEach-Object {
+            if ($_ -ceq $mutation.Old) { $mutation.New } else { $_ }
+        })
+        if (($broken -join "`n") -ceq ($lines -join "`n")) {
+            throw ("Self-test mutation '$($mutation.Why)' changed nothing; it " +
+                   'names a line that is not in the fixture.')
+        }
+        $rejected = $false
+        try { $null = Test-V9xIntel3dCapture -Lines $broken } catch { $rejected = $true }
+        if (-not $rejected) {
+            throw ("The Intel 3D capture validator accepted a mutation: " +
+                   $mutation.Why + '.')
+        }
+    }
+    Write-Output ("Intel 3D capture validator self-test passed (clean accepted, " +
+                  "$($mutations.Count) mutations rejected).")
+    return
+}
+
+$result = Test-V9xIntel3dCapture -Lines (Get-Content -LiteralPath $Path)
+foreach ($note in $result.Notes) { Write-Warning $note }
+Write-Output ("Intel 3D capture accepted: armed=$($result.Armed), " +
+              "result=$($result.Result), stream CRC $($result.StreamCrc).")

@@ -562,6 +562,55 @@ V9xGmadrWriteDone:
     pop     bp
     retf    8
 V9XGMADRWRITE ENDP
+
+; WORD FAR PASCAL V9xGmadrFill(DWORD offset, DWORD value, DWORD dwords)
+;
+; A bounded bulk store of one repeated dword through the framebuffer
+; selector. It exists because filling a 640x480x16 target one dword at a
+; time would be 153,600 far calls; this is one.
+;
+; The same policy split as V9xGmadrRead and V9xGmadrWrite: the C caller
+; proves the PTEs, keeps the range inside the reserve and off the published
+; heap, and checks the bounds BEFORE and AFTER this call. This primitive
+; deliberately knows nothing about those bounds, so it stays incapable of
+; searching for a boundary. It does apply one bound of its own - a dword
+; count of zero writes nothing - because a zero-length fill is a caller bug
+; and looping 2^32 times inside a display driver is not a recoverable one.
+;
+; Returns 1 when the selector existed and the count was non-zero.
+PUBLIC V9XGMADRFILL
+V9XGMADRFILL PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    di
+    push    es
+
+    xor     ax, ax
+    mov     ecx, dword ptr [bp+6]
+    test    ecx, ecx
+    jz      short V9xGmadrFillDone
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xGmadrFillDone
+    mov     es, bx
+    mov     edi, dword ptr [bp+14]
+    mov     eax, dword ptr [bp+10]
+V9xGmadrFillNext:
+    mov     es:[edi], eax
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xGmadrFillNext
+    mov     ax, 1
+V9xGmadrFillDone:
+    pop     es
+    pop     di
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    12
+V9XGMADRFILL ENDP
 ENDIF
 
 ; V9xEngineWrite(WORD offset, DWORD value). One 32-bit store, or nothing.

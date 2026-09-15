@@ -188,6 +188,9 @@ $allowedOsBoundaries = @(
     (Join-Path $repoRoot "src\display16\intel_ring16.c"),
     (Join-Path $repoRoot "src\display16\intel_exec16.c"),
     (Join-Path $repoRoot "src\display16\intel_boot16.c"),
+    # Phase 5's sequencer writes INTEL3D0.TXT with the same Win16 profile API.
+    # Every builder it calls stays OS-free in src\chipsets\intel.
+    (Join-Path $repoRoot "src\display16\intel_3d16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
@@ -618,11 +621,26 @@ if ($miniBuildSource -notmatch
 }
 $intelFamilySource = Get-Content -LiteralPath `
     (Join-Path $repoRoot 'packaging\families\intel-gma\family.psd1') -Raw
+# Phase 5 joins the same list and is held to the same rule: compiled only
+# for intel-gma, and never into runtime.asm. Being present in Defines means
+# the sequencer is BUILT - it does not mean it can reach the ring, which is
+# gated separately by V9X_I9XX_PHASE5_SUBMIT and does not exist yet.
 if ($intelFamilySource -notmatch
-    "Defines = @\('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR'\)" -or
+    "Defines = @\('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',(?s).*?'V9X_I9XX_PHASE5_EXECUTOR'\)" -or
     $intelFamilySource -match
-    "RuntimeDefines = @\([^)]*V9X_I9XX_FIRST_WRITE_EXECUTOR") {
-    throw "The Phase 4 Win16 executor must be in the paired Intel build only."
+    "RuntimeDefines = @\([^)]*V9X_I9XX_FIRST_WRITE_EXECUTOR" -or
+    $intelFamilySource -match
+    "RuntimeDefines = @\([^)]*V9X_I9XX_PHASE5_EXECUTOR") {
+    throw ("The Phase 4 and Phase 5 Win16 executors must be in the paired " +
+           "Intel build only.")
+}
+# The submit path must NOT be defined anywhere yet. When it is added it
+# needs its own review; until then this is what stops it appearing by
+# accident alongside the executor guard it looks like.
+if ($intelFamilySource -match "V9X_I9XX_PHASE5_SUBMIT") {
+    throw ("V9X_I9XX_PHASE5_SUBMIT is defined. The mini-VDD has no Phase 5 " +
+           "staging, so defining it would let an armed boot run a sequencer " +
+           "that cannot submit. Add the staging arms first.")
 }
 if ($miniSource -notmatch
     '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture.*?^EndProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n\s*IFDEF\s+V9X_I9XX_FIRST_WRITE_EXECUTOR.*?^EndProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\nENDIF\s*\r?\nENDIF') {
