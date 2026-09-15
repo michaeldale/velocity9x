@@ -37,6 +37,29 @@ const char *v9x_intel_boot_token_mover_state(void)
     return v9x_intel_boot_state;
 }
 
+/*
+ * A boot marker written from inside I9XXCODE.
+ *
+ * Deliberately NOT routed through v9x_display_boot_mark. That would be a far
+ * call back out into _TEXT, and an outbound crossing is one of the things
+ * these markers exist to test - using it here would make the probe depend on
+ * what it is probing. WritePrivateProfileString is a KERNEL import, so this
+ * reaches the disk through an import thunk and no intra-module crossing at
+ * all.
+ */
+static void v9x_intel_boot_mark(const char *stage)
+{
+#ifdef V9X_BOOT_TRACE
+    WritePrivateProfileString("Velocity9x", "Stage", stage,
+                              V9X_DIAG_BOOT_INI);
+    /* Flush, for the same reason v9x_boot_trace does: the marker wanted is
+     * the one written by a boot that did not finish. */
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
+#else
+    (void)stage;
+#endif
+}
+
 static WORD v9x_intel_boot_read(const char *key, char *value, WORD capacity)
 {
     WORD length;
@@ -119,12 +142,22 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     char last_result[96];
     DWORD crc = 0ul;
 
+    /*
+     * First statement, before anything else touches memory or calls out. If
+     * this marker reaches disk, the inbound far call from _TEXT into this
+     * segment worked.
+     */
+    v9x_intel_boot_mark("arm-in");
+
     v9x_intel_boot_arm_latch = 0u;
     v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
     v9x_intel_boot_state = "IO-FAILED";
     V9xEnsureDiagDir();
+    /* And if this one does, the outbound far call to runtime.asm worked too,
+     * which leaves only arm_prepare's own body. */
+    v9x_intel_boot_mark("arm-dir");
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
         !v9x_intel_boot_read("IntelInFlight", in_flight,
                              sizeof(in_flight))) {

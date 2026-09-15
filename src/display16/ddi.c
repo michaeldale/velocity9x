@@ -880,6 +880,28 @@ WORD v9x_dd_active_mode(WORD FAR *width, WORD FAR *height,
     return 1u;
 }
 
+/*
+ * A boot marker any _TEXT caller may write.
+ *
+ * v9x_boot_trace is static and every marker it wrote came from this file, so
+ * the window between `libmain` and `query-start` - which is where DriverInit
+ * makes its one call into the Intel family's second code segment - had no
+ * markers in it at all. A netbook that stopped there left `libmain` on disk
+ * and nothing else, and the failure point had to be inferred from the
+ * timestamp of a different file. Measured 2026-09-15: that inference was the
+ * weakest link in the whole diagnosis.
+ *
+ * Under V9X_BOOT_TRACE only, like every other marker.
+ */
+void v9x_display_boot_mark(const char FAR *stage)
+{
+#ifdef V9X_BOOT_TRACE
+    (void)v9x_boot_trace(stage);
+#else
+    (void)stage;
+#endif
+}
+
 void v9x_display_boot_log(void)
 {
     WORD index;
