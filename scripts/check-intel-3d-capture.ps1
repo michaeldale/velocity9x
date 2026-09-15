@@ -16,6 +16,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# The driver's probe table length. Asserted against, never read from the
+# capture: a count a capture supplies can only prove the capture is consistent
+# with itself. Kept in step with v9x_p5_probes[] in src\display16\intel_3d16.c.
+$script:V9xExpectedProbes = 14
+# Bound on the unarmed sample set BEFORE anything loops over it, so a capture
+# cannot drive the checker with its own number.
+$script:V9xMaxSamples = 128
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $generatedPath = Join-Path $repoRoot 'scripts\data\intel-3d-stream.psd1'
 
@@ -180,6 +188,24 @@ function Test-V9xIntel3dCapture {
                    'the sample set a no-write boot proves nothing at all ' +
                    'about the address path.')
         }
+        # Bounded before the loop, not after it. An unbounded count out of the
+        # capture decides how long this checker runs.
+        if ($sampleCount -gt $script:V9xMaxSamples) {
+            throw ("An unarmed INTEL3D0.TXT claims $sampleCount samples; the " +
+                   "bound is $($script:V9xMaxSamples). The no-write path is " +
+                   'bounded deliberately.')
+        }
+        # Two reads per sample is what makes the pair a stability check at all,
+        # so the reported read count must equal it. Without this, eight pairs
+        # alongside SampleReads=0 passed - the count and the evidence were
+        # never compared.
+        $sampleReads = Get-V9x3dHex32 -Values $values -Key 'SampleReads'
+        if ($sampleReads -ne (2 * $sampleCount)) {
+            throw ("SampleReads is $sampleReads for $sampleCount samples; it " +
+                   "must be $(2 * $sampleCount). Each sample is read twice, " +
+                   'and a read count that does not match the sample set means ' +
+                   'one of the two is not describing what happened.')
+        }
         for ($index = 0; $index -lt $sampleCount; ++$index) {
             $keyA = 'SA{0:X4}' -f $index
             $keyB = 'SB{0:X4}' -f $index
@@ -204,7 +230,6 @@ function Test-V9xIntel3dCapture {
         # this refusing first. The safe bound is NOT known - see
         # plans\intel-phase5-bounded-readback.md - so this is a guard rail, not
         # a measured limit.
-        $sampleReads = Get-V9x3dHex32 -Values $values -Key 'SampleReads'
         if ($sampleReads -gt 256) {
             throw ("The unarmed path reports $sampleReads aperture reads. " +
                    'The no-write path is bounded deliberately; a count at ' +
@@ -251,19 +276,25 @@ function Test-V9xIntel3dCapture {
     # The fourteen probes are now the WHOLE of the draw evidence, so a missing
     # one cannot pass. Previously the reference comparison skipped absent keys,
     # which meant a capture with no probes at all reported no mismatches.
+    # The count is fixed by the driver's probe table, so it is asserted
+    # against that constant and never taken from the capture. Looping to a
+    # count the file supplies lets a capture declare PixelProbes=1, carry one
+    # probe, and satisfy its own claim - which is not evidence of anything.
     $probeCount = Get-V9x3dHex32 -Values $values -Key 'PixelProbes'
-    if ($probeCount -lt 1) {
-        throw ('An armed INTEL3D0.TXT must report PixelProbes. Without the ' +
-               'probe set the boot has no draw evidence whatsoever.')
+    if ($probeCount -ne $script:V9xExpectedProbes) {
+        throw ("An armed INTEL3D0.TXT reports $probeCount pixel probes; the " +
+               "driver publishes $($script:V9xExpectedProbes). The probes are " +
+               'the only draw evidence left, so the set must be complete, not ' +
+               'merely self-consistent.')
     }
-    for ($index = 0; $index -lt $probeCount; ++$index) {
+    for ($index = 0; $index -lt $script:V9xExpectedProbes; ++$index) {
         $key = 'PX{0:X4}' -f $index
         if (-not $values.ContainsKey($key)) {
-            throw ("Probe $key is missing from an armed capture that claims " +
-                   "$probeCount probes. The probes are the only draw evidence " +
-                   'left, so a truncated set fails rather than reporting on ' +
-                   'the ones that happen to be present.')
+            throw ("Probe $key is missing. A truncated probe set fails rather " +
+                   'than reporting on the ones that happen to be present.')
         }
+        # Present but unreadable is the same as absent for this purpose.
+        $null = Get-V9x3dHex32 -Values $values -Key $key
     }
     # The software reference, REPORTED and never failed on until a golden is
     # promoted - the plan is explicit about that. The reference is
@@ -278,9 +309,14 @@ function Test-V9xIntel3dCapture {
     # this comparison has never been run against hardware even once.
     if ($generated.ContainsKey('ReferencePixels')) {
         $mismatches = 0
-        for ($index = 0; $index -lt 14; ++$index) {
+        $compared = 0
+        for ($index = 0; $index -lt $script:V9xExpectedProbes; ++$index) {
             $key = 'PX{0:X4}' -f $index
-            if (-not $values.ContainsKey($key)) { continue }
+            # No `continue` on an absent key: every probe is required above, so
+            # a gap here is a contradiction rather than something to skip. The
+            # old skip is what let a capture with no probes report no
+            # mismatches and be summarised as full agreement.
+            ++$compared
             $actual = Get-V9x3dHex32 -Values $values -Key $key
             $expected = [Convert]::ToUInt32($generated.ReferencePixels[$index], 16)
             # The capture reads a dword - two 16-bit pixels - so compare the
@@ -296,12 +332,13 @@ function Test-V9xIntel3dCapture {
             }
         }
         if ($mismatches -ne 0) {
-            $notes += ("$mismatches of 14 pixel probes disagree with the " +
+            $notes += ("$mismatches of $compared pixel probes disagree with the " +
                        'software reference. REPORTED, not failed: this ' +
                        'comparison has never run against hardware, and no ' +
                        'golden has been promoted.')
         } else {
-            $notes += 'All 14 pixel probes agree with the software reference.'
+            $notes += ("All $compared pixel probes agree with the software " +
+                       'reference.')
         }
     }
 
@@ -400,7 +437,16 @@ if ($SelfTest) {
         @{ Old = 'P5RefReserveFirst=000006B0'; New = 'P5RefReserveFirst=00000750'
            Why = 'reserve outside the measured backed prefix' },
         @{ Old = 'SampleReads=00000010'; New = 'SampleReads=00025800'
-           Why = 'a sample read count back at bulk-hash scale' }
+           Why = 'a sample read count back at bulk-hash scale' },
+        # Both of these passed b46cb1a. The checker bounded SampleReads from
+        # above but never tied it to SampleCount, and it looped to a probe
+        # count the capture supplied rather than to the driver's own.
+        @{ Old = 'SampleReads=00000010'; New = 'SampleReads=00000000'
+           Why = 'eight sample pairs reporting zero reads' },
+        @{ Old = 'SampleReads=00000010'; New = 'SampleReads=00000008'
+           Why = 'read count is not two per sample' },
+        @{ Old = 'SampleCount=00000008'; New = 'SampleCount=00000004'
+           Why = 'sample count disagrees with the pairs present' }
     )
     foreach ($mutation in $mutations) {
         $broken = @($lines | ForEach-Object {
@@ -417,8 +463,75 @@ if ($SelfTest) {
                    $mutation.Why + '.')
         }
     }
-    Write-Output ("Intel 3D capture validator self-test passed (clean accepted, " +
-                  "$($mutations.Count) mutations rejected).")
+    # ---------------------------------------------------------------------
+    # An ARMED fixture, which the self-test did not have at all. Every probe
+    # assertion was therefore uncovered, and P1 - a capture declaring
+    # PixelProbes=1, carrying one probe, and being summarised as "All 14 pixel
+    # probes agree" - passed b46cb1a.
+    # ---------------------------------------------------------------------
+    $armedLines = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($line in $lines) {
+        if ($line -clike 'Access=*') { continue }
+        if ($line -clike 'Phase4Passed=*') { continue }
+        if ($line -clike 'Result=*') { continue }
+        if ($line -clike 'HashOmitted=*') { continue }
+        if ($line -clike 'Sample*') { continue }
+        if ($line -clike 'SA*' -or $line -clike 'SB*') { continue }
+        $armedLines.Add($line)
+    }
+    $armedLines.Add('Access=armed-one-shot')
+    $armedLines.Add('Phase4Passed=00000001')
+    $armedLines.Add('HashOmitted=bulk-aperture-read-hang')
+    $armedLines.Add('RowCrcOmitted=bulk-aperture-read-hang')
+    $armedLines.Add('PixelProbes=0000000E')
+    # Built from the software reference rather than a flat value, so the clean
+    # armed fixture exercises the agreement path and the self-test stays quiet.
+    # A self-test that always prints warnings teaches its reader to skip them.
+    for ($probe = 0; $probe -lt 14; ++$probe) {
+        $expected = if ($generated.ContainsKey('ReferencePixels')) {
+            $generated.ReferencePixels[$probe]
+        } else { '00000842' }
+        $armedLines.Add(('PX{0:X4}={1}' -f $probe, $expected))
+    }
+    $armedLines.Add('Result=PASS')
+
+    $null = Test-V9xIntel3dCapture -Lines $armedLines
+
+    $armedMutations = @(
+        @{ Old = 'PixelProbes=0000000E'; New = 'PixelProbes=00000001'
+           Why = 'a probe count the capture chose for itself (P1)' },
+        @{ Old = $armedLines[$armedLines.Count - 4]
+           New = 'PXzzzz=00000000'
+           Why = 'a probe missing from the middle of the set' },
+        @{ Old = 'HashOmitted=bulk-aperture-read-hang'; New = 'HashNote=x'
+           Why = 'armed capture not declaring the hash omission' },
+        @{ Old = 'RowCrcOmitted=bulk-aperture-read-hang'; New = 'RowNote=x'
+           Why = 'armed capture not declaring the row-CRC omission' },
+        @{ Old = 'Result=PASS'; New = 'Result=PASS
+R0000=DEADBEEF'
+           Why = 'a bulk row-CRC read-back reintroduced' },
+        @{ Old = 'Phase4Passed=00000001'; New = 'Phase4Passed=00000000'
+           Why = 'armed run without Phase 4 passing this boot' }
+    )
+    foreach ($mutation in $armedMutations) {
+        $broken = @($armedLines | ForEach-Object {
+            if ($_ -ceq $mutation.Old) { $mutation.New } else { $_ }
+        })
+        if (($broken -join "`n") -ceq ($armedLines -join "`n")) {
+            throw ("Self-test mutation '$($mutation.Why)' changed nothing; it " +
+                   'names a line that is not in the armed fixture.')
+        }
+        $rejected = $false
+        try { $null = Test-V9xIntel3dCapture -Lines $broken } catch { $rejected = $true }
+        if (-not $rejected) {
+            throw ('The Intel 3D capture validator accepted an armed ' +
+                   "mutation: $($mutation.Why).")
+        }
+    }
+
+    Write-Output ("Intel 3D capture validator self-test passed (clean unarmed " +
+                  "and armed accepted, $($mutations.Count) unarmed and " +
+                  "$($armedMutations.Count) armed mutations rejected).")
     return
 }
 
