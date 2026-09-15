@@ -59,6 +59,8 @@ extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
 extern WORD FAR PASCAL V9xMiniI9xxP5Stage(DWORD physical, WORD index,
                                           DWORD value);
 extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
+extern WORD FAR PASCAL V9xMiniI9xxRingDiag(WORD index);
+extern DWORD v9x_i9xx_ring_diag_value;
 
 #define V9X_P5_SECTION "Intel3D"
 
@@ -267,6 +269,34 @@ static void v9x_p5_indexed_hex(const char *prefix, WORD index, DWORD value)
  * finished - which is the difference between naming the cause and naming its
  * predecessor.
  */
+/*
+ * The read-only error and ring registers, through the mini-VDD's diagnostic
+ * verb. The same nine offsets Phase 4 reads: EIR, EMR, ESR, PGTBL_ER, the
+ * instruction-error trio, then RING_CTL and RING_START.
+ *
+ * Phase 5 did not read these, and on the first successful draw - 2026-09-15,
+ * build 4628b66 - that was the gap that mattered. The GPU consumed all 66
+ * dwords, the fill landed, and no triangle appeared, and the capture could not
+ * say whether the parser had rejected the primitive or accepted it and
+ * rasterised nothing. Those are different faults with different fixes.
+ *
+ * Nine reads. Bounded, and nowhere near the scale that hangs this part.
+ */
+static void v9x_p5_capture_errors(const char *prefix)
+{
+    WORD index;
+
+    for (index = 0u; index < 9u; ++index) {
+        if (V9xMiniI9xxRingDiag(index) == 0u) {
+            v9x_p5_indexed_hex(prefix, index, 0xfffffffful);
+            v9x_p5_flush();
+            return;
+        }
+        v9x_p5_indexed_hex(prefix, index, v9x_i9xx_ring_diag_value);
+    }
+    v9x_p5_flush();
+}
+
 static void v9x_p5_intent(WORD step)
 {
     v9x_p5_hex("IntentStep", (DWORD)step);
@@ -793,6 +823,10 @@ void v9x_intel_phase5_run(
      * spaces; the capture publishes the value so a future mismatch is visible
      * rather than inferred from a refusal code.
      */
+    /* Before any submission, so the after-reading is a difference rather than
+     * an absolute nobody can interpret. */
+    v9x_p5_capture_errors("PreErr");
+
     stage_base = v9x_i9xx_gmadr_bar2 + layout->reserve_offset;
     v9x_p5_hex("StageBase", stage_base);
     v9x_p5_hex("StageBaseExpected", 0xd0000000ul + layout->reserve_offset);
@@ -870,6 +904,13 @@ void v9x_intel_phase5_run(
      * and drained.
      */
     v9x_p5_flush();
+
+    /*
+     * Error state after the draw, before any pixel is read. If the parser
+     * rejected the primitive this is where it says so, and it must reach the
+     * disk even if the probe reads then lock.
+     */
+    v9x_p5_capture_errors("PostErr");
 
     v9x_p5_intent(V9X_P5_STEP_PIXELS);
     v9x_p5_publish_pixels(layout);
