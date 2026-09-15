@@ -102,12 +102,21 @@ static void test_arm_contract(void)
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(rejection == V9X_I9XX_ARM_REJECT_PHASE);
     request.expected_phase = 4u;
-    /* A phase neither side knows is still refused. */
-    request.phase = 6u;
-    request.expected_phase = 6u;
+    /*
+     * A phase neither side knows is still refused. SEVEN, not six: six became
+     * a real phase on 2026-09-16 when the errata amendment authorised five
+     * draws per boot. Moved rather than deleted - the property being asserted
+     * is that an unknown phase refuses, and it needs an actually unknown one.
+     */
+    request.phase = 7u;
+    request.expected_phase = 7u;
     CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(rejection == V9X_I9XX_ARM_REJECT_PHASE);
+    /* And six is now accepted, which is the other half of the same claim. */
+    request.phase = V9X_I9XX_PHASE6;
+    request.expected_phase = V9X_I9XX_PHASE6;
+    CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) == V9X_STATUS_OK);
     request.phase = 4u;
     request.expected_phase = 4u;
     /* Phase 5 arming Phase 5 is accepted by the evaluator; whether the
@@ -281,8 +290,14 @@ static void test_arm_gate_for(void)
     CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE5, 0u) ==
           V9X_I9XX_GATE_REFUSE);
 
+    /*
+     * Phase 6 is a chained draw since 2026-09-16, so it is no longer the
+     * example of an unknown phase. Seven is.
+     */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE6, 1u) ==
+          V9X_I9XX_GATE_CHAINED);
     /* A phase this build has no vocabulary for refuses rather than guessing. */
-    CHECK(v9x_i9xx_arm_gate_for(1u, 6u, 1u) == V9X_I9XX_GATE_REFUSE);
+    CHECK(v9x_i9xx_arm_gate_for(1u, 7u, 1u) == V9X_I9XX_GATE_REFUSE);
     CHECK(v9x_i9xx_arm_gate_for(1u, 0xffffu, 1u) == V9X_I9XX_GATE_REFUSE);
 }
 

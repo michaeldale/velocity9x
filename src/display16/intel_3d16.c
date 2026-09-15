@@ -393,20 +393,75 @@ static void v9x_p5_capture_errors(const char *prefix)
 }
 
 /*
- * Every aperture read goes through here, and the running total reaches disk
- * before the read rather than after.
+ * Every aperture read THE DRIVER MAKES goes through here, and the running
+ * total reaches disk before the read rather than after.
  *
  * That ordering is the whole point. If the read locks the machine, the
  * capture already says which read it was - and the count is what the next
  * boot's budget is set from. A total written afterwards would be missing
  * exactly the entry that mattered.
+ *
+ * SCOPE, because the name was wrong before it was this one. This counts
+ * driver-side reads only: probes, guards, the heap probe, the samples. It
+ * does NOT count the reads the mini-VDD makes on the driver's behalf - the
+ * read-back after every staged dword and the whole-stream comparison in each
+ * scene's verify step - and those are the larger number by an order of
+ * magnitude. v9x_p6_publish_read_budget below accounts for them, because a
+ * budget that counted a tenth of the reads would be worse than no budget:
+ * it would look like headroom.
  */
 static DWORD v9x_p5_read_counted(DWORD offset)
 {
     v9x_p5_reads++;
-    v9x_p5_hex("ApertureReads", v9x_p5_reads);
+    v9x_p5_hex("DriverApertureReads", v9x_p5_reads);
     v9x_p5_flush();
     return V9xGmadrRead(offset);
+}
+
+/*
+ * What the whole boot will read through the aperture, published BEFORE any
+ * of it happens so a hang is measured against a number already on disk.
+ *
+ * The mini-VDD reads each staged dword back as it writes it, and each scene's
+ * verify step then compares the entire staged stream against the generated
+ * table - so every scene costs two aperture reads per dword before a single
+ * pixel is probed. For this build that is 2 * 330 = 660 against 52 probes.
+ *
+ * The Phase 6 plan said "four scenes, ~60 reads total". That was the probe
+ * count mistaken for the read count, and it was wrong by more than ten times.
+ * Recorded here rather than quietly corrected, because the budget rule - no
+ * boot roughly doubles the last one that completed - was being applied to the
+ * wrong quantity.
+ */
+static void v9x_p6_publish_read_budget(void)
+{
+    v9x_u32 scene;
+    DWORD staged = 0ul;
+
+    for (scene = 0ul; scene < v9x_i9xx_scene_count(); ++scene) {
+        struct v9x_i9xx_scene one;
+
+        if (v9x_i9xx_scene_at(scene, &one) != V9X_STATUS_OK) {
+            v9x_p5_text("ReadBudget", "SCENE-REFUSED");
+            return;
+        }
+        staged += v9x_i9xx_scene_extent(&one);
+    }
+    v9x_p5_hex("SceneStagedDwordsTotal", staged);
+    /* Staging reads each dword back once; verify reads the stream once more. */
+    v9x_p5_hex("MiniApertureReads", staged * 2ul);
+    v9x_p5_hex("ProbeApertureReads", v9x_i9xx_scene_total_probes());
+    /*
+     * Guards either side of the target before the run and after every scene,
+     * plus the heap probe before and after. Counted rather than estimated:
+     * the point of this block is that the figure is arithmetic, not a guess.
+     */
+    v9x_p5_hex("GuardApertureReads",
+               2ul + (2ul * v9x_i9xx_scene_count()) + 2ul);
+    v9x_p5_hex("ExpectedApertureReads",
+               (staged * 2ul) + v9x_i9xx_scene_total_probes() +
+               2ul + (2ul * v9x_i9xx_scene_count()) + 2ul);
+    v9x_p5_flush();
 }
 
 /*
@@ -706,8 +761,8 @@ static WORD v9x_p5_sample_target(
         v9x_p5_hex("SampleNext", (DWORD)index);
         v9x_p5_hex("SampleNextOffset", offset);
         v9x_p5_flush();
-        first = V9xGmadrRead(offset);
-        second = V9xGmadrRead(offset);
+        first = v9x_p5_read_counted(offset);
+        second = v9x_p5_read_counted(offset);
         v9x_p5_indexed_hex("SA", index, first);
         v9x_p5_indexed_hex("SB", index, second);
         if (first != second) { stable = 0u; }
@@ -777,7 +832,7 @@ static void v9x_p5_publish_pixels(const struct v9x_i9xx_sandbox_layout *layout)
          */
         v9x_p5_hex("PixelNext", (DWORD)index);
         v9x_p5_flush();
-        v9x_p5_indexed_hex("PX", index, V9xGmadrRead(offset));
+        v9x_p5_indexed_hex("PX", index, v9x_p5_read_counted(offset));
         v9x_p5_flush();
     }
     v9x_p5_hex("PixelProbes", (DWORD)count);
@@ -801,7 +856,44 @@ static void v9x_p5_publish_pixels(const struct v9x_i9xx_sandbox_layout *layout)
 static void v9x_p5_publish_heap_probe(
     const struct v9x_i9xx_sandbox_layout *layout, const char *key)
 {
-    v9x_p5_hex(key, V9xGmadrRead(layout->reserve_offset - 4ul));
+    /* Counted like every other driver-side read. It was not, which made the
+     * published total smaller than the reads actually performed. */
+    v9x_p5_hex(key, v9x_p5_read_counted(layout->reserve_offset - 4ul));
+}
+
+/*
+ * Per-scene guards: "S<n>GLow" and "S<n>GUpp".
+ *
+ * Every scene wrote GLow1 and GUpp1 before this, so the last scene's values
+ * were the only ones that survived and the earlier scenes' guard evidence was
+ * erased by the very act of collecting more of it. Flushing kept them on disk
+ * only until the next scene overwrote the key.
+ *
+ * That mattered more than it looks: guards are how a scene that wrote outside
+ * its target is caught, and attributing the damage to the wrong scene is the
+ * one thing this whole per-scene structure exists to prevent.
+ */
+static void v9x_p6_publish_guards(
+    const struct v9x_i9xx_sandbox_layout *layout, WORD scene)
+{
+    v9x_p6_hex(scene, "GLow", v9x_p5_read_counted(layout->scratch_offset));
+    v9x_p6_hex(scene, "GUpp",
+               v9x_p5_read_counted(layout->guard_upper_offset));
+}
+
+/*
+ * Per-scene error registers: "S<n>PreErr..." and "S<n>PostErr...".
+ *
+ * Same defect and the same fix. The nine registers say which scene's
+ * primitive the parser was looking at when it stopped, and five scenes
+ * sharing one set of keys meant only the last one could ever say so.
+ */
+static void v9x_p6_capture_errors(WORD scene, const char *prefix)
+{
+    char key[32];
+
+    v9x_p6_key(key, scene, prefix);
+    v9x_p5_capture_errors(key);
 }
 
 static void v9x_p5_publish_guards(
@@ -814,11 +906,11 @@ static void v9x_p5_publish_guards(
      * inside the reserve, so both may legitimately carry a canary. */
     key[at++] = 'G'; key[at++] = 'L'; key[at++] = 'o'; key[at++] = 'w';
     key[at++] = suffix[0]; key[at] = '\0';
-    v9x_p5_hex(key, V9xGmadrRead(layout->scratch_offset));
+    v9x_p5_hex(key, v9x_p5_read_counted(layout->scratch_offset));
     at = 0u;
     key[at++] = 'G'; key[at++] = 'U'; key[at++] = 'p'; key[at++] = 'p';
     key[at++] = suffix[0]; key[at] = '\0';
-    v9x_p5_hex(key, V9xGmadrRead(layout->guard_upper_offset));
+    v9x_p5_hex(key, v9x_p5_read_counted(layout->guard_upper_offset));
 }
 
 /*
@@ -908,7 +1000,7 @@ static WORD v9x_p6_run_scene(
                               scene) == 0u) {
             v9x_p6_hex(scene, "StageFailIndex", (DWORD)index);
             v9x_p6_hex(scene, "StageFail", v9x_i9xx_ring_stage_fail);
-            v9x_p5_capture_errors("PostErr");
+            v9x_p6_capture_errors(scene, "PostErr");
             v9x_p6_text(scene, "Scene", "STAGE-REFUSED");
             return V9X_FALSE;
         }
@@ -937,7 +1029,7 @@ static WORD v9x_p6_run_scene(
             v9x_p6_hex(scene, "ExecPolls", v9x_i9xx_ring_exec_polls);
             /* The error registers on the failure path too: a parser fault
              * that hangs the drain is exactly when this is wanted. */
-            v9x_p5_capture_errors("PostErr");
+            v9x_p6_capture_errors(scene, "PostErr");
             v9x_p6_text(scene, "Scene", "EXECUTE-REFUSED");
             return V9X_FALSE;
         }
@@ -949,7 +1041,7 @@ static WORD v9x_p6_run_scene(
      * probes lock the machine, the capture still says this scene was
      * submitted and drained.
      */
-    v9x_p5_capture_errors("PostErr");
+    v9x_p6_capture_errors(scene, "PostErr");
     v9x_p5_flush();
 
     v9x_p5_intent(V9X_P5_STEP_PIXELS);
@@ -1008,10 +1100,25 @@ void v9x_intel_phase5_run(
      *    capture without rejecting the schema-1 and schema-2 captures already
      *    preserved under docs\probe.
      */
-    v9x_p5_text("SchemaVersion", "3");
+    /*
+     * The schema a capture declares is the schema it actually carries, so it
+     * follows the PHASE and is not stamped unconditionally.
+     *
+     * Emitting 3 from every path broke every existing one: the unarmed B1
+     * capture and the Phase 5 capture contain no scene sections at all, and
+     * a validator that had been taught to require them would have rejected
+     * evidence that is perfectly good. A version bump exists so new fields
+     * can be REQUIRED without retroactively rejecting what came before, and
+     * declaring a version whose fields are absent throws that away.
+     */
+    v9x_p5_text("SchemaVersion",
+                v9x_intel_boot_arm_phase == V9X_I9XX_PHASE6 ? "3" : "2");
     v9x_p5_reads = 0ul;
     v9x_p6_all_used = 0ul;
-    v9x_p5_hex("ApertureReads", v9x_p5_reads);
+    /* Published from zero on EVERY path, so a Phase 5 or unarmed capture
+     * carries a true count too - that is the figure the next boot's budget is
+     * compared against, and it is worthless if only one phase records it. */
+    v9x_p5_hex("DriverApertureReads", v9x_p5_reads);
     v9x_p5_text("Access", armed != 0u ? "armed-one-shot" : "no-hardware-writes");
     v9x_p5_text("CaptureBuildId",
                 v9x_intel_bridge_build_identity()->build_id);
@@ -1171,6 +1278,8 @@ void v9x_intel_phase5_run(
                    (DWORD)v9x_i9xx_scene_authorised_draws());
         v9x_p5_hex("SceneCombinedCrc", v9x_i9xx_scene_combined_crc());
         v9x_p5_hex("SceneProbeBudget", v9x_i9xx_scene_total_probes());
+        /* The whole boot's read budget, before any of it is spent. */
+        v9x_p6_publish_read_budget();
         v9x_p5_flush();
         /*
          * Zero means the build defines more scenes than the errata decision
@@ -1192,7 +1301,7 @@ void v9x_intel_phase5_run(
                  * where they matter, and the earlier scenes' results are
                  * already on disk.
                  */
-                v9x_p5_publish_guards(layout, "1");
+                v9x_p6_publish_guards(layout, scene);
                 v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
                 v9x_p5_hex("SceneFailed", (DWORD)scene);
                 v9x_p5_result("SCENE-REFUSED");
@@ -1200,7 +1309,7 @@ void v9x_intel_phase5_run(
             }
             /* Between scenes, not only at the end: a scene that damaged the
              * guards must not have it attributed to a later one. */
-            v9x_p5_publish_guards(layout, "1");
+            v9x_p6_publish_guards(layout, scene);
             v9x_p5_flush();
         }
         v9x_p5_hex("ScenesCompleted", (DWORD)scenes);

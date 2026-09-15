@@ -64,7 +64,18 @@ v9x_u16 v9x_i9xx_arm_gate_for(v9x_u16 armed, v9x_u16 arm_phase,
     if (arm_phase == 0u || arm_phase == V9X_I9XX_PHASE4) {
         return V9X_I9XX_GATE_STANDALONE;
     }
-    if (arm_phase == V9X_I9XX_PHASE5) {
+    /*
+     * Phase 5 and Phase 6 are both chained: each is a draw that depends on
+     * the Phase 4 replay having run first, and each is armed with a CRC
+     * covering both streams in execution order. They differ in WHAT is drawn,
+     * not in the shape of the transaction, which is why one gate serves both
+     * rather than a second copy of it.
+     *
+     * phase5_built gates them together on purpose: it means "this build has a
+     * submit path compiled in at all". A build without one must refuse a
+     * Phase 6 token exactly as it refuses a Phase 5 one.
+     */
+    if (arm_phase == V9X_I9XX_PHASE5 || arm_phase == V9X_I9XX_PHASE6) {
         return phase5_built != 0u ? V9X_I9XX_GATE_CHAINED
                                   : V9X_I9XX_GATE_REFUSE;
     }
@@ -97,9 +108,20 @@ v9x_u16 v9x_i9xx_chain_begin(
     chain->token_retired = V9X_FALSE;
     chain->in_flight_cleared = V9X_FALSE;
 
-    /* The token must claim Phase 5 and the caller must be arming Phase 5. */
-    if (request->phase != V9X_I9XX_PHASE5 ||
-        request->expected_phase != V9X_I9XX_PHASE5) {
+    /*
+     * The token must claim a DRAW phase, and must claim the same one the
+     * caller is arming. Either 5 or 6 - both are chained draws - but never a
+     * mixture: a Phase 5 token presented to a Phase 6 build is refused here,
+     * and so is the reverse, because the streams they authorise are
+     * different and the CRC below would be the only thing standing between
+     * them otherwise.
+     */
+    if (request->phase != request->expected_phase) {
+        v9x_i9xx_chain_fail(chain);
+        return V9X_I9XX_CHAIN_REJECT_PHASE;
+    }
+    if (request->phase != V9X_I9XX_PHASE5 &&
+        request->phase != V9X_I9XX_PHASE6) {
         v9x_i9xx_chain_fail(chain);
         return V9X_I9XX_CHAIN_REJECT_PHASE;
     }
@@ -111,8 +133,15 @@ v9x_u16 v9x_i9xx_chain_begin(
     }
     /*
      * And the armed CRC must be the COMBINED one, covering the Phase 4 replay
-     * and the Phase 5 draw in execution order. This is the check that a Phase
-     * 4 token fails even with its phase field altered.
+     * and the DRAW in execution order. This is the check that a Phase 4 token
+     * fails even with its phase field altered - and the one that keeps a
+     * Phase 5 token from arming a Phase 6 build, because the draw CRC the
+     * caller passes is its own phase's stream and will not combine to the
+     * other's.
+     *
+     * phase5_crc is the draw stream's CRC whichever draw phase this is: the
+     * Phase 5 stream, or the combined CRC over every Phase 6 scene in
+     * execution order. The name predates the second one.
      */
     if (phase4_crc == 0ul || phase5_crc == 0ul || combined_crc == 0ul ||
         combined_crc != v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc) ||

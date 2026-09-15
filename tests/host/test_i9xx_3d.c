@@ -1231,6 +1231,135 @@ static void test_scene_primitive_offset(void)
     CHECK(v9x_i9xx_scene_primitive_offset(0) == 0ul);
 }
 
+/* A request that passes every check except the ones a test is exercising. */
+static void v9x_test_arm_request(struct v9x_i9xx_arm_request *request)
+{
+    request->token = "p6-test-0001";
+    request->in_flight = "p6-test-0001";
+    request->configured_crc = 0ul;
+    request->packet_crc = 0ul;
+    request->enable_this_boot = 1u;
+    request->safe_mode = V9X_FALSE;
+    request->errata_gate = V9X_TRUE;
+    request->vendor_id = 0x8086u;
+    request->device_id = 0x27aeu;
+    request->revision = 3u;
+    request->phase = V9X_I9XX_PHASE6;
+    request->expected_phase = V9X_I9XX_PHASE6;
+}
+
+/*
+ * The Phase 6 arm chain.
+ *
+ * Reported against f3cf86e: the boot latch accepted a phase-6 token, the gate
+ * and chain did not, and the token would have been consumed into flight and
+ * then refused - one armed boot spent to learn nothing. These assert the whole
+ * path rather than the entry it was noticed at.
+ */
+static void test_phase6_chain(void)
+{
+    struct v9x_i9xx_chain chain;
+    struct v9x_i9xx_arm_request request;
+    v9x_u32 phase4 = 0xa0da64a1ul;
+    v9x_u32 scenes = v9x_i9xx_scene_combined_crc();
+    v9x_u16 rejection = V9X_I9XX_ARM_REJECT_NONE;
+
+    CHECK(scenes != 0ul);
+
+    /* The gate. Phase 6 is a CHAINED draw, exactly as Phase 5 is. */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE6, 1u) ==
+          V9X_I9XX_GATE_CHAINED);
+    /* And a build with no submit path refuses it, rather than running a draw
+     * it cannot perform. */
+    CHECK(v9x_i9xx_arm_gate_for(1u, V9X_I9XX_PHASE6, 0u) ==
+          V9X_I9XX_GATE_REFUSE);
+    /* An unarmed boot is still no gate at all, whatever the phase claims. */
+    CHECK(v9x_i9xx_arm_gate_for(0u, V9X_I9XX_PHASE6, 1u) ==
+          V9X_I9XX_GATE_NONE);
+    /* A phase this build has no vocabulary for is still refused. */
+    CHECK(v9x_i9xx_arm_gate_for(1u, 7u, 1u) == V9X_I9XX_GATE_REFUSE);
+
+    v9x_test_arm_request(&request);
+    request.phase = V9X_I9XX_PHASE6;
+    request.expected_phase = V9X_I9XX_PHASE6;
+    request.packet_crc = v9x_i9xx_combined_arm_crc(phase4, scenes);
+    /* The arm file's CRC and the one the driver computed must agree; the
+     * contract checks them against each other, not each against itself. */
+    request.configured_crc = request.packet_crc;
+    CHECK(v9x_i9xx_arm_evaluate(&request, &rejection) == V9X_STATUS_OK);
+
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, scenes) == V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_ARMED);
+
+    /*
+     * A PHASE 5 token must not arm a Phase 6 build, and the reverse must not
+     * happen either. Two separate ways it is caught, and both are asserted:
+     * the phase fields disagreeing, and - with them made to agree - the
+     * combined CRC being over the wrong draw stream.
+     */
+    request.phase = V9X_I9XX_PHASE5;
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, scenes) ==
+          V9X_I9XX_CHAIN_REJECT_PHASE);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_FAILED);
+
+    request.expected_phase = V9X_I9XX_PHASE5;
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, v9x_i9xx_phase5_execution_crc()) ==
+          V9X_I9XX_CHAIN_REJECT_COMBINED);
+
+    /* And a phase neither 5 nor 6 is refused before any CRC is considered. */
+    v9x_test_arm_request(&request);
+    request.phase = V9X_I9XX_PHASE4;
+    request.expected_phase = V9X_I9XX_PHASE4;
+    request.packet_crc = v9x_i9xx_combined_arm_crc(phase4, scenes);
+    request.configured_crc = request.packet_crc;
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, scenes) ==
+          V9X_I9XX_CHAIN_REJECT_PHASE);
+
+    /*
+     * The full transaction: replay, then draw, then the token retires. A
+     * chain that armed but could never retire would leave every Phase 6 boot
+     * reporting INCOMPLETE - which is the failure the reported defect would
+     * have produced one boot later.
+     */
+    v9x_test_arm_request(&request);
+    request.phase = V9X_I9XX_PHASE6;
+    request.expected_phase = V9X_I9XX_PHASE6;
+    request.packet_crc = v9x_i9xx_combined_arm_crc(phase4, scenes);
+    request.configured_crc = request.packet_crc;
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, scenes) == V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, phase4, phase4) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.state == V9X_I9XX_CHAIN_STATE_REPLAYED);
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_TRUE, scenes, scenes) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.token_retired == V9X_TRUE);
+    CHECK(chain.in_flight_cleared == V9X_TRUE);
+
+    /*
+     * A draw whose observed stream is not the armed one does NOT retire. The
+     * token stays in flight and the next boot refuses, which is the correct
+     * outcome for a run nobody can vouch for.
+     */
+    v9x_test_arm_request(&request);
+    request.phase = V9X_I9XX_PHASE6;
+    request.expected_phase = V9X_I9XX_PHASE6;
+    request.packet_crc = v9x_i9xx_combined_arm_crc(phase4, scenes);
+    request.configured_crc = request.packet_crc;
+    CHECK(v9x_i9xx_chain_begin(&chain, &request, request.packet_crc,
+                               phase4, scenes) == V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_replay_done(&chain, V9X_TRUE, phase4, phase4) ==
+          V9X_I9XX_CHAIN_OK);
+    CHECK(v9x_i9xx_chain_draw_done(&chain, V9X_TRUE, scenes ^ 1ul, scenes) !=
+          V9X_I9XX_CHAIN_OK);
+    CHECK(chain.token_retired == V9X_FALSE);
+    CHECK(chain.in_flight_cleared == V9X_FALSE);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -1254,6 +1383,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_scene_probe_budget();
     test_scene_combined_crc();
     test_scene_primitive_offset();
+    test_phase6_chain();
     test_triangle_run_refusals();
     return failures;
 }

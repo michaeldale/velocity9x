@@ -73,8 +73,11 @@ function Test-V9xIntel3dCapture {
     # status. Both are accepted, and the schema-2 requirements below apply only
     # to schema 2 - a version bump exists so new fields can be REQUIRED without
     # retroactively rejecting evidence already collected.
+    # Schema 3 adds the Phase 6 scene sections. The driver stamps it ONLY on a
+    # phase-6 capture: emitting it unconditionally made every existing B1 and
+    # Phase 5 capture fail here, because they declare fields they do not carry.
     $schema = $values['SchemaVersion']
-    if ($schema -ne '1' -and $schema -ne '2') {
+    if ($schema -ne '1' -and $schema -ne '2' -and $schema -ne '3') {
         throw "Unknown INTEL3D0.TXT schema $schema."
     }
 

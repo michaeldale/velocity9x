@@ -190,7 +190,17 @@ static void v9x_p4_clean_refusal(const char *reason)
      * re-arm; clearing it wrongly costs the one-shot property, which is the
      * whole safety model.
      */
-    if (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE5) { return; }
+    /*
+     * Every CHAINED draw phase, not just Phase 5. A Phase 6 token left this
+     * path with in-flight cleared before its scenes had run, which would have
+     * made it reusable after a hang - the one-shot property gone, and the hang
+     * stop with it. Phase 6 was added to the boot latch, the gate and the
+     * chain before this line was looked at.
+     */
+    if (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE5 ||
+        v9x_intel_boot_arm_phase == V9X_I9XX_PHASE6) {
+        return;
+    }
     (void)v9x_p4_profile("IntelInFlight", "");
 }
 
@@ -355,13 +365,25 @@ static WORD v9x_p4_preflight(const struct v9x_i9xx_sandbox_layout *layout,
          * armed. Passing the on-disk value for both would compare it with
          * itself and check nothing.
          */
-        DWORD phase5_crc = v9x_i9xx_phase5_execution_crc();
+        /*
+         * The DRAW stream's CRC, which is whichever draw this token claims:
+         * the single Phase 5 triangle, or every Phase 6 scene combined in
+         * execution order. A Phase 5 token cannot arm a Phase 6 build and the
+         * reverse cannot happen either, because the value that goes into the
+         * combined CRC differs and chain_begin recomputes it.
+         */
+        DWORD phase5_crc =
+            (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE6)
+                ? v9x_i9xx_scene_combined_crc()
+                : v9x_i9xx_phase5_execution_crc();
 
         v9x_p4_chain_phase4_crc = v9x_i9xx_phase4_execution_crc(probe, blt);
         request.packet_crc = v9x_i9xx_combined_arm_crc(v9x_p4_chain_phase4_crc,
                                                        phase5_crc);
-        request.phase = V9X_I9XX_PHASE5;
-        request.expected_phase = V9X_I9XX_PHASE5;
+        /* The phase the TOKEN claims, echoed as what this build expects to
+         * arm. chain_begin refuses any disagreement between them. */
+        request.phase = v9x_intel_boot_arm_phase;
+        request.expected_phase = v9x_intel_boot_arm_phase;
         v9x_p4_chain_rejection = v9x_i9xx_chain_begin(
             &v9x_intel_arm_chain, &request, crc,
             v9x_p4_chain_phase4_crc, phase5_crc);

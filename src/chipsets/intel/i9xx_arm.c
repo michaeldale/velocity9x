@@ -138,7 +138,8 @@ v9x_status v9x_i9xx_arm_evaluate(
      * Phase 4 token being used to arm Phase 5?" an unaskable question.
      */
     if (request->phase != V9X_I9XX_PHASE4 &&
-        request->phase != V9X_I9XX_PHASE5) {
+        request->phase != V9X_I9XX_PHASE5 &&
+        request->phase != V9X_I9XX_PHASE6) {
         *rejection = V9X_I9XX_ARM_REJECT_PHASE;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
