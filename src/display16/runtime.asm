@@ -93,6 +93,9 @@ EXTRN _v9x_i9xx_event_value:DWORD
 EXTRN _v9x_i9xx_event_count:WORD
 EXTRN _v9x_i9xx_event_dropped:WORD
 EXTRN _v9x_i9xx_ring_memory_value:DWORD
+EXTRN _v9x_i9xx_hash_pass_a:DWORD
+EXTRN _v9x_i9xx_hash_pass_b:DWORD
+EXTRN _v9x_i9xx_hash_fail:DWORD
 EXTRN _v9x_i9xx_ring_stage_fail:DWORD
 EXTRN _v9x_i9xx_ring_stage_read:DWORD
 EXTRN _v9x_i9xx_ring_exec_head:DWORD
@@ -1329,6 +1332,60 @@ V9xMiniI9xxRingMemoryDone:
     pop     bp
     retf    4
 V9XMINII9XXRINGMEMORY ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD byte_offset, WORD dword_count_hi,
+;                                    WORD dword_count_lo)
+;
+; Read-only. Returns both hash passes and the refusal reason through
+; globals rather than registers, because a Win16 PASCAL function has one
+; return value and three numbers matter here: pass A, pass B, and - when
+; it refuses - which bound it hit.
+;
+; Both passes are returned separately and deliberately NOT compared here.
+; An unstable read has to be visible in the capture as two different
+; numbers; collapsing it to a boolean would hide exactly the failure this
+; verb exists to detect.
+PUBLIC V9XMINII9XXRINGHASH
+V9XMINII9XXRINGHASH PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    mov     _v9x_i9xx_hash_fail, 0
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingHashFailed
+    movzx   ecx, word ptr [bp+6]
+    movzx   edx, word ptr [bp+8]
+    shl     edx, 16
+    or      ecx, edx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_I9XX_RING_HASH
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxRingHashRefused
+    mov     _v9x_i9xx_hash_pass_a, ebx
+    mov     _v9x_i9xx_hash_pass_b, ecx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingHashDone
+V9xMiniI9xxRingHashRefused:
+    mov     _v9x_i9xx_hash_fail, edx
+V9xMiniI9xxRingHashFailed:
+    xor     ax, ax
+V9xMiniI9xxRingHashDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINII9XXRINGHASH ENDP
 
 ; WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step)
 PUBLIC V9XMINII9XXRINGEXECUTE

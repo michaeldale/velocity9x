@@ -368,7 +368,8 @@ $contractAliases = @{ 'V9X_VBE_API_V1' = 'V9XMINI_API_V1'
                       'V9X_VBE_API_V3' = 'V9XMINI_API_V3'
                       'V9X_VBE_API_V4' = 'V9XMINI_API_V4'
                       'V9X_VBE_API_V5' = 'V9XMINI_API_V5'
-                      'V9X_VBE_API_V6' = 'V9XMINI_API_V6' }
+                      'V9X_VBE_API_V6' = 'V9XMINI_API_V6'
+                      'V9X_VBE_API_V7' = 'V9XMINI_API_V7' }
 $contractChecked = 0
 foreach ($name in $cValues.Keys) {
     $asmName = if ($contractAliases.ContainsKey($name)) { $contractAliases[$name] } else { $name }
@@ -573,11 +574,11 @@ foreach ($asmUser in @("src\minivdd32\loader.asm", "src\display16\runtime.asm"))
     }
 }
 
-# The mini-VDD API is an exact v6 package pair. Reverting only the advertised version
+# The mini-VDD API is an exact v7 package pair. Reverting only the advertised version
 # would make the indexed implementation unreachable while all layouts still
 # agreed numerically, so assert the selected version as well as the constants.
-if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V6']) {
-    throw "V9XMINI_API_VERSION must advertise the implemented v6 contract."
+if ($asmValues['V9XMINI_API_VERSION'] -ne $asmValues['V9XMINI_API_V7']) {
+    throw "V9XMINI_API_VERSION must advertise the implemented v7 contract."
 }
 $miniSource = Get-Content -LiteralPath `
     (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
@@ -654,6 +655,39 @@ if ([regex]::Matches($intelEventCapture,
     throw ("The Intel event journal must have exactly two ownership-MMIO and " +
            "two full-GTT read sites, with no write through either mapping.")
 }
+# The API v7 reserve hash is READ-ONLY, and that is the whole reason it may
+# ship in an unarmed build. Same pattern as the three capture assertions
+# above: a bounded number of read sites and no store through the
+# register-indirect destination it walks.
+#
+# Two passes rather than one is a requirement, not an optimisation: an
+# unstable read has to reach the caller as two different numbers.
+$intelHashRange = [regex]::Match(
+    $miniSource,
+    '(?ms)^BeginProc\s+V9xMini_I9xx_Hash_Range\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Hash_Range').Groups[1].Value
+if ($intelHashRange -eq '') {
+    throw 'The mini-VDD has no V9xMini_I9xx_Hash_Range procedure.'
+}
+if ([regex]::Matches($intelHashRange, '(?im)^\s*mov\s+eax,\s*\[esi\]\s*$').Count -ne 1 -or
+    $intelHashRange -match '(?im)^\s*mov\s+\[esi(?:\+[^\]]+)?\]') {
+    throw ('V9xMini_I9xx_Hash_Range must read through ESI exactly once in its ' +
+           'loop and must never write through it. It is the read-only verb ' +
+           'that ships in the unarmed build.')
+}
+$intelHashCallers = [regex]::Matches(
+    $miniSource, '(?im)^\s*call\s+V9xMini_I9xx_Hash_Range\s*$').Count
+if ($intelHashCallers -ne 2) {
+    throw ("The reserve hash must be invoked exactly twice - two independent " +
+           "passes over the same bytes, both returned - but there are " +
+           "$intelHashCallers call sites. An unstable read has to be visible " +
+           'to the caller as two different numbers.')
+}
+if ($miniSource -notmatch '(?ms)^V9xMini_Api_I9xxRingHash:\s*\r?\n\s*IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT') {
+    throw ('The reserve hash verb must sit behind V9X_INTEL_MMIO_FINGERPRINT, ' +
+           'not the executor guard: it ships in the unarmed build so that the ' +
+           'unarmed boot proves the hash path before an armed boot needs it.')
+}
+
 $intelRingStage = [regex]::Match(
     $miniSource,
     '(?ms)^BeginProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n(.*?)^EndProc\s+V9xMini_I9xx_Ring_Stage').Groups[1].Value

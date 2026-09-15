@@ -164,6 +164,15 @@ V9xI9xxEventContext dd 0
 ; Phase 4 staging has a physical-RAM write path but no register write path.
 ; The single tested machine's reserve is fixed here; a moved BSM refuses.
 V9xI9xxRingLinear   dd 0
+
+; The read-only reserve hash (API v7). It keeps its OWN mapping, separate
+; from the staging one, for two reasons: it must work in a build with no
+; executor compiled in at all, and a mapping that is never used to write
+; cannot be confused with one that is. Mapped once, on first use.
+V9xI9xxHashLinear   dd 0
+V9xI9xxHashFail     dd 0
+V9xI9xxHashPassA    dd 0
+V9xI9xxHashPassB    dd 0
 V9xI9xxRingStaged   dw 0
 V9xI9xxRingResult   dw 0
 ; The Intel Phase 4 and Phase 5 arm tables, their CRCs and the reserve
@@ -173,6 +182,16 @@ V9xI9xxRingResult   dw 0
 ; this segment. Hand-maintained copies of these numbers drifted three ways
 ; at the Phase 5 layout move; this is the fix.
 include i9xx3d.inc
+
+; The reserve's physical address is the GMADR base plus the GENERATED
+; offset. The base is a PCI BAR value measured on the one tested machine
+; and cannot come from the C builders; the offset can and does, so the two
+; halves cannot drift apart. Every path that maps the reserve composes it
+; here rather than spelling a literal.
+V9X_I9XX_GMADR_BASE         EQU 0d0000000h
+V9X_I9XX_RESERVE_PHYS       EQU V9X_I9XX_GMADR_BASE + V9X_I9XX_RESERVE_OFFSET
+V9X_I9XX_RESERVE_BYTES_TOTAL EQU 000100000h
+V9X_I9XX_RESERVE_DWORDS     EQU V9X_I9XX_RESERVE_BYTES_TOTAL / 4
 
 ; Every existing reference keeps working through this alias, and the
 ; table itself has exactly one definition.
@@ -1076,6 +1095,30 @@ V9xMini_I9xx_Hash_Byte:
     ret
 EndProc V9xMini_I9xx_Hash_Dword
 
+; EAX = linear base of the reserve, EBX = byte offset, ECX = dword count.
+; Returns the FNV-1a hash in EDX. READ-ONLY: the only memory access is the
+; load below, and check-tree.ps1 asserts there are exactly two call sites
+; and no store through a register-indirect destination anywhere in it.
+BeginProc V9xMini_I9xx_Hash_Range
+    push    eax
+    push    ebx
+    push    ecx
+    push    esi
+    mov     esi, eax
+    add     esi, ebx
+    mov     edx, 0811c9dc5h
+V9xMini_I9xx_Hash_Range_Next:
+    mov     eax, [esi]
+    call    V9xMini_I9xx_Hash_Dword
+    add     esi, 4
+    loop    V9xMini_I9xx_Hash_Range_Next
+    pop     esi
+    pop     ecx
+    pop     ebx
+    pop     eax
+    ret
+EndProc V9xMini_I9xx_Hash_Range
+
 ; EAX = current BAR3 physical base. Maps exactly 256 KiB, then hashes two
 ; complete read-only passes. A moved BAR is refused rather than mapped again.
 BeginProc V9xMini_I9xx_Gtt_Capture
@@ -1264,7 +1307,7 @@ BeginProc V9xMini_I9xx_Ring_Stage
     pushad
     mov     V9xI9xxRingResult, 0
     mov     V9xI9xxRingStageFail, 1
-    cmp     eax, 0d06b0000h
+    cmp     eax, V9X_I9XX_RESERVE_PHYS
     jne     V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingStageFail, 2
     cmp     V9xI9xxMmioBase, 0fe980000h
@@ -1291,8 +1334,8 @@ BeginProc V9xMini_I9xx_Ring_Stage
     ; access aimed at stolen memory's own physical addresses is not routed,
     ; while the aperture translated by the GTT reaches the same pages. This
     ; window is a device BAR like the two already mapped here.
-    mov     eax, 0d06b0000h
-    VMMcall _MapPhysToLinear,<eax,00100000h,0>
+    mov     eax, V9X_I9XX_RESERVE_PHYS
+    VMMcall _MapPhysToLinear,<eax,V9X_I9XX_RESERVE_BYTES_TOTAL,0>
     cmp     eax, 0ffffffffh
     je      V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingLinear, eax
@@ -1667,6 +1710,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingExecute
     cmp     ax, V9XMINI_FN_I9XX_RING_DIAG
     je      V9xMini_Api_I9xxRingDiag
+    cmp     ax, V9XMINI_FN_I9XX_RING_HASH
+    je      V9xMini_Api_I9xxRingHash
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -1772,6 +1817,93 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     [ebp.Client_AX], 1
     ret
 V9xMini_Api_I9xxRingDiag_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxRingHash:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    ; Guarded by the FINGERPRINT define, not the executor one. This verb
+    ; never writes, so it ships in the unarmed build and the unarmed boot
+    ; proves the hash path before any armed boot depends on it.
+    mov     V9xI9xxHashFail, 1
+    cmp     V9xI9xxValid, 1
+    jne     V9xMini_Api_I9xxRingHash_Refuse
+
+    mov     V9xI9xxHashFail, 2
+    mov     ebx, [ebp.Client_EBX]
+    test    ebx, 3
+    jnz     V9xMini_Api_I9xxRingHash_Refuse
+
+    mov     V9xI9xxHashFail, 3
+    mov     ecx, [ebp.Client_ECX]
+    test    ecx, ecx
+    jz      V9xMini_Api_I9xxRingHash_Refuse
+
+    ; A per-call bound, so one call cannot spin over an arbitrary range.
+    ; The whole reserve is the most anything may ask for.
+    mov     V9xI9xxHashFail, 4
+    cmp     ecx, V9X_I9XX_RESERVE_DWORDS
+    ja      V9xMini_Api_I9xxRingHash_Refuse
+
+    ; Length in bytes, then offset + length, both checked ON CARRY rather
+    ; than by a signed compare: a signed test would accept a count whose
+    ; byte length wrapped past 2 GiB and read wherever that landed.
+    mov     V9xI9xxHashFail, 5
+    mov     edx, ecx
+    shl     edx, 2
+    jc      V9xMini_Api_I9xxRingHash_Refuse
+    add     edx, ebx
+    jc      V9xMini_Api_I9xxRingHash_Refuse
+
+    mov     V9xI9xxHashFail, 6
+    cmp     edx, V9X_I9XX_RESERVE_BYTES_TOTAL
+    ja      V9xMini_Api_I9xxRingHash_Refuse
+
+    ; Map the reserve read-only, once. The address is composed from the
+    ; GENERATED reserve offset, so it cannot drift from what the driver
+    ; and the arm table agree on.
+    mov     V9xI9xxHashFail, 7
+    mov     eax, V9xI9xxHashLinear
+    test    eax, eax
+    jnz     short V9xMini_Api_I9xxRingHash_Mapped
+    mov     eax, V9X_I9XX_RESERVE_PHYS
+    VMMcall _MapPhysToLinear,<eax,V9X_I9XX_RESERVE_BYTES_TOTAL,0>
+    cmp     eax, 0ffffffffh
+    je      V9xMini_Api_I9xxRingHash_Refuse
+    mov     V9xI9xxHashLinear, eax
+V9xMini_Api_I9xxRingHash_Mapped:
+
+    ; Two complete passes over the same bytes, returned separately. An
+    ; unstable read must be visible to the caller as two different numbers,
+    ; not hidden behind one boolean - the same rule the GTT capture follows.
+    push    eax
+    push    ebx
+    push    ecx
+    call    V9xMini_I9xx_Hash_Range
+    mov     V9xI9xxHashPassA, edx
+    pop     ecx
+    pop     ebx
+    pop     eax
+    push    eax
+    push    ebx
+    push    ecx
+    call    V9xMini_I9xx_Hash_Range
+    mov     V9xI9xxHashPassB, edx
+    pop     ecx
+    pop     ebx
+    pop     eax
+
+    mov     edx, V9xI9xxHashPassA
+    mov     [ebp.Client_EBX], edx
+    mov     edx, V9xI9xxHashPassB
+    mov     [ebp.Client_ECX], edx
+    mov     [ebp.Client_EDX], 0
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxRingHash_Refuse:
+    mov     edx, V9xI9xxHashFail
+    mov     [ebp.Client_EDX], edx
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

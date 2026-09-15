@@ -53,13 +53,19 @@ V9XMINI_API_MAGIC   EQU 39583956h
 ; v4 adds the Intel-only read-only Gen3 GTT snapshot hash and four-PTE chunks.
 ; v5 adds the bounded Intel ownership-event journal.
 ; v6 reserves the Intel-only Phase 4 staging, memory and execution calls.
+;
+; v7 adds the Intel-only read-only reserve hash. It is READ-ONLY and ships
+; in the unarmed build behind the fingerprint guard rather than the
+; executor guard, deliberately: the unarmed boot proves the hash path
+; before any armed boot depends on it to report what the GPU wrote.
 V9XMINI_API_V1      EQU 0001h
 V9XMINI_API_V2      EQU 0002h
 V9XMINI_API_V3      EQU 0003h
 V9XMINI_API_V4      EQU 0004h
 V9XMINI_API_V5      EQU 0005h
 V9XMINI_API_V6      EQU 0006h
-V9XMINI_API_VERSION EQU V9XMINI_API_V6
+V9XMINI_API_V7      EQU 0007h
+V9XMINI_API_VERSION EQU V9XMINI_API_V7
 
 ; ---------------------------------------------------------------------------
 ; Functions, in the client's AX
@@ -205,7 +211,7 @@ V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 ; outside the Intel 27AE build. No caller pointer crosses this interface.
 ; RING_STAGE in: EBX=reserve physical, ECX=stream index, EDX=dword;
 ;            out AX=1 only after the bounded word is accepted.
-; RING_MEMORY in: ECX=byte offset in the mapped 128-KiB reserve;
+; RING_MEMORY in: ECX=byte offset in the mapped 1-MiB reserve;
 ;             out AX=1, EBX=dword read from the physical mapping.
 ; RING_EXECUTE in: EBX=full execution CRC, ECX=ordered step selector;
 ;              out AX=1 on a completed step, EBX=head/readback,
@@ -221,6 +227,32 @@ V9XMINI_FN_I9XX_RING_EXECUTE EQU 0013h
 ;               7=RING_CTL, 8=RING_START;
 ;           out AX=1 and EBX=value. It is read-only even in no-write builds.
 V9XMINI_FN_I9XX_RING_DIAG   EQU 0014h
+
+; RING_HASH hashes a bounded dword range of the reserve, READ-ONLY, and
+; returns TWO independent passes over the same bytes. Both are returned
+; rather than compared here, for the same reason the GTT capture returns
+; hash A and hash B: an unstable read must be visible to the caller as two
+; different numbers, not hidden behind one boolean.
+;
+; It maps the reserve itself and never writes it, so it works in a build
+; with no executor at all. That is the point - the unarmed boot proves the
+; hash path before an armed boot relies on it to report the triangle.
+;
+; in:  EBX = byte offset within the reserve, dword aligned
+;      ECX = dword count
+; out: AX  = 1 on success, 0 on refusal
+;      EBX = hash pass A, ECX = hash pass B (valid only when AX=1)
+;      EDX = refusal reason, 0 on success
+;
+; Refusals, each its own number so a capture names the bound it hit:
+;   1 no Phase 1 fingerprint capture, so the device is unidentified
+;   2 offset not dword aligned
+;   3 dword count is zero
+;   4 count above the per-call bound
+;   5 offset + length wrapped (checked on carry, not a signed compare)
+;   6 range extends past the reserve
+;   7 _MapPhysToLinear refused the reserve
+V9XMINI_FN_I9XX_RING_HASH   EQU 0015h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

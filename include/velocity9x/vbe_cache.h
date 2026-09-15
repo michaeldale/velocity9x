@@ -32,6 +32,9 @@
 #define V9X_VBE_API_V4 ((v9x_u16)4u)
 #define V9X_VBE_API_V5 ((v9x_u16)5u)
 #define V9X_VBE_API_V6 ((v9x_u16)6u)
+/* v7 adds the Intel-only read-only reserve hash. Read-only, so it ships in
+ * the unarmed build. See includesm\V9XMAPI.INC. */
+#define V9X_VBE_API_V7 ((v9x_u16)7u)
 
 /*
  * Bounds. Separate limits so one corrupt BIOS field cannot become an

@@ -22,6 +22,15 @@ extern void v9x_intel_phase4_maybe_run(
     const struct v9x_i9xx_sandbox_layout *layout,
     const DWORD *probe, const DWORD *blt, WORD flush_stable);
 DWORD v9x_i9xx_ring_memory_value;
+/*
+ * The read-only reserve hash (mini-VDD API v7). Two passes are returned
+ * separately and deliberately not compared here: an unstable read has to be
+ * visible in the capture as two different numbers, which is the same rule the
+ * GTT capture follows for hash A and hash B.
+ */
+DWORD v9x_i9xx_hash_pass_a;
+DWORD v9x_i9xx_hash_pass_b;
+DWORD v9x_i9xx_hash_fail;
 DWORD v9x_i9xx_ring_stage_fail;
 DWORD v9x_i9xx_ring_stage_read;
 DWORD v9x_i9xx_ring_exec_head;
