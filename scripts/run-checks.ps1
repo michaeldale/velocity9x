@@ -70,6 +70,10 @@ Invoke-CheckStep "Intel Phase 4 arm script" {
     & (Join-Path $PSScriptRoot "arm-intel-phase4.ps1") -SelfTest
 }
 
+Invoke-CheckStep "Intel armer guard" {
+    & (Join-Path $PSScriptRoot "check-intel-armers.ps1")
+}
+
 Invoke-CheckStep "Intel 3D capture validator" {
     & (Join-Path $PSScriptRoot "check-intel-3d-capture.ps1") -SelfTest
 }

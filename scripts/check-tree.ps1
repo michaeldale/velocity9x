@@ -1294,10 +1294,15 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
                '"IntelInFlight=". That never fires: FIND matches substrings, so ' +
                'the second FIND excludes every line the first selected.')
     }
-    if ($armerText -notmatch '(?m)^FIND "IntelIncomplete=" .*\r?\n\s*IF ERRORLEVEL 1 GOTO LEGACY') {
-        throw ("$armer must refuse an arm file with no IntelIncomplete line. " +
-               'Such a file predates the flag and may carry an unresolved ' +
-               'token, which testing only for =1 would read as resolved.')
+    # A POSITIVE resolved value, not the absence of an unresolved one.
+    # Testing only for the absence of =1 let IntelIncomplete= and
+    # IntelIncomplete=garbage through: the key is present, it does not
+    # contain =1, and execution reached the overwrite.
+    if ($armerText -notmatch '(?m)^FIND "IntelIncomplete=0" .*\r?\n\s*IF ERRORLEVEL 1 GOTO UNRESOLVED') {
+        throw ("$armer must require an explicit IntelIncomplete=0 and " +
+               'refuse anything else - absent, empty or malformed. ' +
+               'Inferring a resolved state from the absence of =1 accepts ' +
+               'all three.')
     }
     if ($armerText -notmatch '(?m)^FIND "IntelIncomplete=1" .*\r?\n\s*IF NOT ERRORLEVEL 1 GOTO INFLIGHT') {
         throw "$armer must refuse an arm file whose IntelIncomplete is 1."

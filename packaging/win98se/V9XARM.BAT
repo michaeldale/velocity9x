@@ -18,47 +18,58 @@ IF NOT EXIST C:\V9XDIAG\NUL GOTO NODIAG
 
 REM An unfinished previous attempt leaves IntelInFlight set. Refuse rather
 REM than overwrite it: that record is the only evidence of where it stopped.
-IF NOT EXIST C:\V9XDIAG\INTELARM.TXT GOTO WRITE
+IF NOT EXIST %V9XARMFILE% GOTO WRITE
 REM FIND matches SUBSTRINGS, so "IntelInFlight=" matched the empty form and
 REM every non-empty one alike. The previous test piped FIND into FIND /V on
 REM the same string, which always yields nothing, so this guard never fired
 REM in either phase. The driver now writes IntelIncomplete=1 alongside a
 REM non-empty IntelInFlight and clears it on retirement, which is a value a
 REM batch can actually test.
-REM Two refusals, not one. IntelInFlight is authoritative, but FIND cannot
-REM tell its empty form from a non-empty one, so the driver mirrors it into
-REM IntelIncomplete and re-derives that from the authority on every boot.
+REM The arm file path, overridable ONLY so the host self-test can point the
+REM guard at a fixture and check which branch it takes. Unset in DOS, which
+REM is every real run, it is the path below.
+IF "%V9XARMFILE%"=="" SET V9XARMFILE=C:\V9XDIAG\INTELARM.TXT
+
+REM Refuse unless the file states plainly that the previous run RESOLVED.
 REM
-REM An arm file written before that flag existed carries a token with NO
-REM flag, and testing only for =1 would read it as resolved and overwrite the
-REM record of a hang. So a file with no IntelIncomplete line at all is refused
-REM as ambiguous: boot once to let the driver normalise it, or run V9XCOPY to
-REM reset the arm state deliberately.
-FIND "IntelIncomplete=" C:\V9XDIAG\INTELARM.TXT >NUL
-IF ERRORLEVEL 1 GOTO LEGACY
-FIND "IntelIncomplete=1" C:\V9XDIAG\INTELARM.TXT >NUL
+REM IntelInFlight is authoritative, but FIND matches substrings and cannot
+REM tell its empty form from a non-empty one, so the driver mirrors it into
+REM IntelIncomplete and re-derives that from the authority every boot.
+REM
+REM Testing for the absence of =1 is not enough: IntelIncomplete= and
+REM IntelIncomplete=garbage both have the key, both lack =1, and both would
+REM have reached the overwrite. So =0 must be positively present, which also
+REM covers a file written before the flag existed - it has no such line.
+REM
+REM Residual, stated rather than hidden: FIND still matches substrings, so a
+REM hand-edited IntelIncomplete=0X would be accepted. The driver only ever
+REM writes 0 or 1, so that is a deliberate edit rather than a state the
+REM system produces.
+FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
+FIND "IntelIncomplete=0" %V9XARMFILE% >NUL
+IF ERRORLEVEL 1 GOTO UNRESOLVED
 
 :WRITE
 ECHO Token:  %V9XARMTOKEN%
 IF "%V9XARMTOKEN%"=="" ECHO   (empty: using the packaged default below)
 ECHO.
-ECHO [Velocity9x]>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelAccelDefault=0>>C:\V9XDIAG\INTELARM.TXT
+ECHO [Velocity9x]>%V9XARMFILE%
+ECHO IntelAccelDefault=0>>%V9XARMFILE%
 IF "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=@@TOKEN@@>>C:\V9XDIAG\INTELARM.TXT
 IF NOT "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=%V9XARMTOKEN%>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelArmCrc=@@ARMCRC@@>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelArmBuildId=@@BUILDID@@>>C:\V9XDIAG\INTELARM.TXT
+ECHO IntelArmCrc=@@ARMCRC@@>>%V9XARMFILE%
+ECHO IntelArmBuildId=@@BUILDID@@>>%V9XARMFILE%
 REM Phase 4, stated rather than implied. The driver reads an absent
 REM IntelArmPhase as Phase 4 so that sticks written before 2026-09-15 still
 REM boot, but nothing written from here on should depend on that.
-ECHO IntelArmPhase=4>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelInFlight=>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelIncomplete=0>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelEnableThisBoot=0>>C:\V9XDIAG\INTELARM.TXT
-ECHO IntelLastResult=>>C:\V9XDIAG\INTELARM.TXT
+ECHO IntelArmPhase=4>>%V9XARMFILE%
+ECHO IntelInFlight=>>%V9XARMFILE%
+ECHO IntelIncomplete=0>>%V9XARMFILE%
+ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
+ECHO IntelLastResult=>>%V9XARMFILE%
 
-IF NOT EXIST C:\V9XDIAG\INTELARM.TXT GOTO FAILED
+IF NOT EXIST %V9XARMFILE% GOTO FAILED
 ECHO Armed for build @@BUILDID@@, CRC @@ARMCRC@@.
 ECHO.
 ECHO Shut down and cold boot ONCE, on AC power. Do not change resolution and
@@ -67,7 +78,7 @@ ECHO stick and read INTELRNG.TXT.
 GOTO END
 
 :INFLIGHT
-ECHO REFUSED: C:\V9XDIAG\INTELARM.TXT still has IntelInFlight set, so the
+ECHO REFUSED: %V9XARMFILE% still has IntelInFlight set, so the
 ECHO          previous attempt never completed. Copy C:\V9XDIAG off first;
 ECHO          that file says where it stopped. Running V9XCOPY clears it.
 GOTO END
@@ -85,14 +96,15 @@ ECHO       creates the diagnostic directory.
 GOTO END
 
 :FAILED
-ECHO FAIL: could not write C:\V9XDIAG\INTELARM.TXT.
+ECHO FAIL: could not write %V9XARMFILE%.
 
 
-:LEGACY
-ECHO FAIL: C:\V9XDIAG\INTELARM.TXT has no IntelIncomplete line.
-ECHO It predates the in-flight flag, so whether the previous run resolved
-ECHO cannot be told from here. Boot once to let the driver normalise it, or
-ECHO run V9XCOPY to reset the arm state deliberately.
+:UNRESOLVED
+ECHO FAIL: %V9XARMFILE% does not state IntelIncomplete=0.
+ECHO Either it predates that flag, or its value is empty or malformed.
+ECHO Whether the previous run resolved cannot be told from here, and the
+ECHO record of a hang must not be overwritten. Boot once to let the driver
+ECHO normalise it, or run V9XCOPY to reset the arm state deliberately.
 GOTO END
 :END
 ECHO.
