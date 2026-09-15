@@ -249,12 +249,21 @@ static v9x_u16 v9x_i9xx_round8_to(v9x_u32 value, v9x_u16 multiplier,
 /*
  * The 8-bit-to-RGB565 conversion MEASURED on the 945GSE colour backend.
  *
- * Two triangle colours establish it. 0xfff86428 stored 0xf325 where truncation
- * predicted 0xfb25, separating the rules on red alone; 0xff1587f9 stored
- * 0x1c3e where truncation predicted 0x143f, separating them on red and blue
- * and agreeing on green. Between them every channel is covered, which one
- * colour could not do - a single sample leaves two of the three channels
- * satisfied by either rule.
+ * Two triangle colours establish it as far as it is established. 0xfff86428
+ * stored 0xf325 where truncation predicted 0xfb25; 0xff1587f9 stored 0x1c3e
+ * where truncation predicted 0x143f. Every one of the six tested channel
+ * values agrees with round, and trunc, round8, floor and ceil are each
+ * excluded as UNIFORM rules.
+ *
+ * The limit, because it is easy to miss: green agreed with truncation at both
+ * tested values - 100 gives 25 either way, 135 gives 33 either way. A backend
+ * that rounds red and blue but truncates green fits the data equally well.
+ * That is untested, not excluded. docs\decisions6-09-15-intel-565-
+ * conversion-rounds.md says what one more green value would settle.
+ *
+ * What this function is used for stands either way: it reproduces what the
+ * hardware was observed to store for the colours in use, which is what the
+ * capture validator needs.
  *
  * Intel-only by intent. The shared rasteriser truncates, and that is not a
  * defect there; see the header for why the expectation lives here instead.

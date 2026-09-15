@@ -1,4 +1,7 @@
-# The GMA 950 rounds 8-bit colour to RGB565; it does not truncate
+# The GMA 950 agrees with rounding at every 565 channel value tested
+
+Not "the GMA 950 rounds". Six channel values, and green never separates
+rounding from truncation - see the limits below before quoting this.
 
 **Machine:** MICHAEL-NETBOOK, 945GSE A3, `8086:27AE` rev 03, AC power.
 **Builds:** `6c81c52` (first colour), `83f24ec` (second colour).
@@ -6,36 +9,64 @@
 
 ## Finding
 
-The colour backend converts an 8-bit channel to its RGB565 field by
-**rounding**: `round(v * max / 255)`, with `max` 31 for red and blue and 63 for
-green. Truncation, floor, `round8` and ceil are all excluded.
+Every channel value tested agrees with **rounding**, `round(v * max / 255)`,
+with `max` 31 for red and blue and 63 for green. Six channel values across two
+colours. As *uniform* rules, `trunc`, `round8`, `floor` and `ceil` are each
+excluded.
+
+That is narrower than "the chip rounds", and the gap is stated below rather
+than glossed.
 
 ## Evidence
 
 Two triangle colours, each a flat fill with the same colour at all three
 vertices, sampled at seven interior probes and seven exterior probes.
 
-| Colour (ARGB) | R,G,B | `round` | `trunc` | `floor` | `round8`/`ceil` | Observed |
+Per channel, because the whole-value table hides which channel did the work:
+
+| Colour | ch | byte | `trunc` | `round8` | `floor` | `round` | `ceil` | **observed** |
+|---|---|---|---|---|---|---|---|---|
+| `0xFFF86428` | R | 248 | 31 | 31 | 30 | 30 | 31 | **30** |
+| | G | 100 | 25 | 25 | 24 | 25 | 25 | **25** |
+| | B | 40 | 5 | 5 | 4 | 5 | 5 | **5** |
+| `0xFF1587F9` | R | 21 | 2 | 3 | 2 | 3 | 3 | **3** |
+| | G | 135 | 33 | 34 | 33 | 33 | 34 | **33** |
+| | B | 249 | 31 | 31 | 30 | 30 | 31 | **30** |
+
+As whole RGB565 values:
+
+| Colour | `round` | `trunc` | `round8` | `floor` | `ceil` | **Observed** |
 |---|---|---|---|---|---|---|
-| `0xFFF86428` | 248,100,40 | `F325` | `FB25` | `FB25` | `FB25` | **`F325`** |
-| `0xFF1587F9` | 21,135,249 | `1C3E` | `143F` | `143E` | `1C5F` | **`1C3E`** |
+| `0xFFF86428` | `F325` | `FB25` | `FB25` | `F304` | `FB25` | **`F325`** |
+| `0xFF1587F9` | `1C3E` | `143F` | `1C5F` | `143E` | `1C5F` | **`1C3E`** |
 
 All seven interior probes read the same value in both captures; all seven
 exterior probes read the fill `0842`; guards `A5A5A5A5` and `00000000`
 untouched; `Result=PASS`; token retired.
 
-**Why two colours and not one.** The first colour separates `round` from
-`trunc` in red alone — green and blue agree under both rules, so it licenses a
-claim about one channel and nothing more. The second separates them in red and
-blue, and agrees with the first on green. Only together do they cover all three
-channels. A single colour would have left two channels satisfied by either
-rule, which is the reading error this table exists to prevent.
+The predictions were written down before the boot, so the result could not be
+fitted afterwards: `docs/plans/intel-phase5-colour-conversion-experiment.md`.
 
-The second colour was chosen before the boot, with its predictions written
-down, precisely so the result could not be fitted afterwards:
-`docs/plans/intel-phase5-colour-conversion-experiment.md`.
+## What this does NOT establish, and it is more than it first appears
 
-## What this does not establish
+**Green does not separate `round` from `trunc`.** At both tested green values
+the two rules agree - 100 gives 25 under either, 135 gives 33 under either. So
+a backend that **rounds red and blue but truncates green** fits every
+observation here exactly as well as a uniform rounding backend does. Nothing
+measured distinguishes them.
+
+Green is not useless: it excluded `floor` at colour 1 and `round8`/`ceil` at
+colour 2. It is specifically `trunc` that it cannot separate, and `trunc` is
+the most plausible alternative for a hardware colour path, since it is a shift.
+
+This is testable and was simply not tested. A green byte where the rules part
+company - 3, say, where `round(3*63/255)` is 1 and `3>>2` is 0 - would settle
+it in one more boot. It has not been spent.
+
+**The exclusions above are of uniform rules only.** Each candidate is excluded
+as a rule applied to all three channels. A per-channel mixture is excluded only
+where some channel separates the two members of the mixture, and for
+`round`-versus-`trunc` on green, none does.
 
 **Nothing about dithering.** Seven identical interior reads are consistent with
 no dither, and also consistent with an ordered dither whose period happens to

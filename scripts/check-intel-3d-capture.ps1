@@ -408,9 +408,28 @@ function Test-V9xIntel3dCapture {
     # either signal stays readable. Folding them into one would mean either
     # failing on a known difference or reporting a regression as a warning.
     #
-    # Guarded on presence so a capture checked against a schema-1 generated
-    # file - one produced before the measurement - is not failed for a field
-    # that did not exist when it was written.
+    # Presence is REQUIRED from schema 2 onward, and optional only for schema
+    # 1 - the schema written before the conversion was measured, where the
+    # field genuinely did not exist.
+    #
+    # Testing presence alone was a defect of exactly the kind this file keeps
+    # collecting: a damaged or truncated schema-2 reference would make the
+    # strict check vanish, and colour regressions would quietly fall back to
+    # the software-reference warning. The absent check would look like a
+    # passing one. A missing field in a schema that declares it is a broken
+    # artefact, not an older artefact.
+    $generatedSchema = 1
+    if ($generated.ContainsKey('SchemaVersion')) {
+        $generatedSchema = [int]$generated.SchemaVersion
+    }
+    if ($generatedSchema -ge 2 -and
+        -not $generated.ContainsKey('IntelReferencePixels')) {
+        throw ("The generated reference declares SchemaVersion " +
+               "$generatedSchema but carries no IntelReferencePixels. That " +
+               'field is required from schema 2 onward; without it the ' +
+               'measured-conversion check would silently not run. Regenerate ' +
+               'with gen-intel-3d-stream.ps1.')
+    }
     if ($generated.ContainsKey('IntelReferencePixels')) {
         if ($generated.IntelReferencePixels.Count -ne $script:V9xExpectedProbes) {
             throw ('The generated Intel reference carries ' +
@@ -692,6 +711,64 @@ R0000=DEADBEEF'
         if (-not $rejected) {
             throw ('The Intel 3D capture validator accepted an armed ' +
                    "mutation: $($mutation.Why).")
+        }
+    }
+
+    # The generated reference itself, damaged rather than the capture. Nothing
+    # in the capture can exercise this: a schema-2 reference with the field
+    # removed is what would silently disable the strict colour check, so the
+    # only way to prove the guard fires is to produce one.
+    #
+    # Both directions are tested. Removing the field from a schema-2 reference
+    # must be refused; declaring schema 1 alongside the same removal must be
+    # ACCEPTED, because that is a genuinely older artefact and failing it would
+    # make the compatibility allowance a fiction.
+    $referenceCases = @(
+        @{ Schema = 2; Accept = $false
+           Why = 'a schema-2 reference with no IntelReferencePixels' },
+        @{ Schema = 1; Accept = $true
+           Why = 'a schema-1 reference, which predates the measurement' }
+    )
+    $realGeneratedPath = $generatedPath
+    foreach ($case in $referenceCases) {
+        $damaged = @(Get-Content -LiteralPath $realGeneratedPath)
+        $out = New-Object 'System.Collections.Generic.List[string]'
+        $skipping = $false
+        foreach ($line in $damaged) {
+            if ($line -match '^\s*IntelReferencePixels\s*=\s*@\(') {
+                $skipping = $true
+                continue
+            }
+            if ($skipping) {
+                if ($line -match '^\s*\)\s*$') { $skipping = $false }
+                continue
+            }
+            if ($line -match '^\s*SchemaVersion\s*=') {
+                $out.Add("    SchemaVersion = $($case.Schema)")
+                continue
+            }
+            $out.Add($line)
+        }
+        if (($out -join "`n") -ceq ($damaged -join "`n")) {
+            throw ('Self-test could not remove IntelReferencePixels from the ' +
+                   'generated reference; the guard it proves is untested.')
+        }
+        $temp = Join-Path ([IO.Path]::GetTempPath()) (
+            'v9x-gen-{0}.psd1' -f [Guid]::NewGuid())
+        Set-Content -LiteralPath $temp -Value $out -Encoding Ascii
+        $generatedPath = $temp
+        $rejected = $false
+        try { $null = Test-V9xIntel3dCapture -Lines $armedLines }
+        catch { $rejected = $true }
+        $generatedPath = $realGeneratedPath
+        Remove-Item -LiteralPath $temp -Force
+        if ($case.Accept -and $rejected) {
+            throw ("The Intel 3D capture validator refused $($case.Why).")
+        }
+        if (-not $case.Accept -and -not $rejected) {
+            throw ("The Intel 3D capture validator accepted $($case.Why); a " +
+                   'damaged reference would silently disable the ' +
+                   'measured-conversion check.')
         }
     }
 

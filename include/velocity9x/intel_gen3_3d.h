@@ -251,10 +251,10 @@
  *
  * This colour was chosen to separate the candidates, and it did. trunc would
  * have given 0x143f, floor 0x143e, round8 and ceil 0x1c5f; none was observed.
- * With the previous 0xfff86428 -> 0xf325 - where trunc predicted 0xfb25 and
- * differed in red alone - the two colours between them separate round from
- * trunc on red and blue and agree on green, so the rule is established for
- * every channel rather than inferred from one.
+ *
+ * It does NOT establish the rule for every channel. Green agreed with
+ * truncation at both tested values, so a backend that rounds red and blue and
+ * truncates green fits everything measured. See the decision record.
  *
  * Seven identical reads also make dithering unlikely here, but do not exclude
  * it: an ordered dither has a period and scattered points can share a cell.
