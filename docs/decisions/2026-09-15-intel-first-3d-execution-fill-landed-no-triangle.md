@@ -129,29 +129,83 @@ Capture at `probe/intel-phase5/INTEL3D0-armed4-9064942.txt`.
 `PreErrOk` and `PostErrOk` are both 1 with a count of nine, so both reads
 completed.
 
-**EIR, ESR and IPEIR are clear before and after.** The GPU latched no error
-across the draw.
+**EIR, ESR and IPEIR read clear before and after.** With `EMR=FFFFFFFF` that is
+not evidence of no error - see below.
 
 `IPEHR` moves from zero to `7F00000E`, which is the `_3DPRIMITIVE` header dword
 at stream index `0x32`. The parser latched that specific instruction.
 
-### What that settles, and what it does not
+### This does NOT establish that the primitive was accepted
 
-It settles the question the instrumentation was added for: **the parser did not
-reject the primitive.** The remaining explanations are all downstream of
-acceptance.
+That was claimed here when the measurement landed, and it was wrong.
 
-It does not settle where the triangle went. Displaced geometry and
-fill-coloured output both survive, exactly as before - no error would be
-raised by either. Nor does this record claim to know what `IPEHR` means when
-`IPEIR` is zero: on this part it may hold the header of an *erroring*
-instruction, or simply the last header parsed. Only the second reading is
-consistent with `IPEIR=0`, and no databook citation has been checked for it,
-so it is treated as corroboration that the primitive was reached and not as
-proof of anything further.
+**`EMR=FFFFFFFF` masks every error.** Linux's i915 writes the error mask as the
+complement of what it wants detected -
+`error_mask = ~(I915_ERROR_PAGE_TABLE | I915_ERROR_MEMORY_REFRESH)` in
+`i965_irq_postinstall`, `drivers/gpu/drm/i915/i915_irq.c` - so a **set** bit
+masks that error and i915 must actively clear bits to enable detection. Its
+comment there also records that the instruction-error mask bit is reserved and
+deliberately left masked.
+
+This machine's EMR is all ones, which nothing in this driver wrote. So EIR
+could not latch whatever happened, and **EIR reading clear is uninformative**.
+The same caution applies to ESR and IPEIR until their relationship to the mask
+is established rather than assumed.
+
+What the measurement does establish is narrower: no error was *reported*, which
+is not the same as none occurring, and `IPEHR` moved from zero to the
+`_3DPRIMITIVE` header. `IPEHR` semantics remain unverified - on this part it may
+hold the header of an erroring instruction or simply the last header parsed -
+so it is corroboration that the primitive was reached and nothing more.
+
+Making EIR informative means writing EMR, which is a GPU register write this
+driver has never made and which the 2026-09-15 errata decision does not
+authorise. That is a scope question, not a code change.
 
 RING_CTL and RING_START reading zero after teardown is expected; teardown
 clears them.
+
+## Packets re-audited against Mesa's register header, 2026-09-15
+
+No boot. Source: `src/gallium/drivers/i915/i915_reg.h` and
+`i915_prim_emit.c` from Mesa, fetched from gitlab.freedesktop.org.
+
+This was prompted by a fair objection: the original audit recorded that xf86
+uses `S4_VFMT_XY` and Mesa uses `XYZW` plus colour, and treated that as the
+trees disagreeing. They do not disagree - those are two valid layouts, and the
+only question that matters is whether **our** format bits match **our** emitted
+vertices.
+
+| Packet | Our value | Verified against | Verdict |
+|---|---|---|---|
+| `S4` | `00902480` | `S4_VFMT_XYZW (2<<6)`, `S4_VFMT_COLOR (1<<10)`, `S4_CULLMODE_NONE (1<<13)`, `S4_LINE_WIDTH_ONE (0x2<<19)`, point width `1<<23` | correct |
+| `_3DPRIMITIVE` | `7F00000E` | `(0x3<<29) OR (0x1f<<24)`, `PRIM_INLINE`, `PRIM3D_TRILIST`, count from `(4 + vertex_size*nr)/4 - 2` = `(4+60)/4-2` = 14 | correct |
+| `LOAD_STATE_IMMEDIATE_1` | `7D0407C4` | `(0x3<<29) OR (0x1d<<24) OR (0x04<<16)`, `I1_LOAD_S(n) = 1<<(4+n)` giving S2..S6, length 4 | correct |
+| `DST_BUF_VARS` | `00880200` | `COLOR_BUF_RGB565 (2<<8)`, `DSTORG_HORT_BIAS(8)`, `DSTORG_VERT_BIAS(8)` | correct |
+| colour `BUF_INFO` | `03000500` + `006C2000` | `BUF_3D_ID_COLOR_BACK (0x3<<24)`, `BUF_3D_PITCH(x) = (x/4)<<2` giving 1280 | correct |
+
+**`S4` is cleared.** `V9X_I9XX_S4_VFMT_XYZW` is `0x80`, which is exactly Mesa's
+`(2<<6)`, and `XYZW + COLOR` declares four position floats plus a colour dword -
+the five dwords per vertex `i9xx_vertex.c` emits. The bits and the vertices
+agree. The earlier framing that this field was a fragile judgement call is
+withdrawn.
+
+`_3DSTATE_DFLT_DIFFUSE`, `_3DSTATE_DFLT_SPEC` and `_3DSTATE_DFLT_Z` are all
+present in the stream at the opcodes Mesa defines.
+
+### One thing this audit noticed and did not resolve
+
+The depth `BUF_INFO` is `07001000` with a second dword of `00000000`:
+`BUF_3D_ID_DEPTH` with a pitch of 4096, at **address zero**, while `S6` leaves
+both depth test and depth write disabled.
+
+Whether declaring a depth buffer at address zero is benign when depth is
+disabled on this part is **not established**. It is recorded as the one
+oddity the re-audit surfaced, not as a diagnosis - nothing here says it is
+related to the missing triangle.
+
+Still unverified by this pass: the seven-dword fragment program, and the
+values of `S2`, `S3`, `S5` and `S6`.
 
 ## Standing
 
