@@ -96,6 +96,45 @@ there too and the fault lies later. The `arm-pre` / `arm-in` / `arm-dir` /
 `arm-post` markers added in this same change remove that assumption from the
 next netbook boot.
 
+## The assumption was false, measured 2026-09-15
+
+Netbook capture `intel28`. `V9XBOOT.INI` was written at 17:00 with
+`Stage=arm-post`, so `v9x_intel_boot_arm_prepare` ran to completion on that
+boot. `INTELARM.TXT` in the same directory is still timestamped **16:42** -
+two boots earlier - and `arm_prepare`'s first action is writing
+`IntelEnableThisBoot=0` into it.
+
+So Win9x's `WritePrivateProfileString` does **not** touch the file when the
+value it would write is already there. The value was already `0`, and the
+timestamp did not move.
+
+That retroactively invalidates the original diagnosis in "What was claimed"
+above. `INTELARM.TXT` being unchanged after the first locked boot was read as
+`arm_prepare` never reaching its first write; it proves nothing of the kind,
+and never did. The conclusion drawn from it - that the fault lay at the segment
+crossing - sent three netbook boots after the wrong thing.
+
+The lesson is narrower than "do not infer from timestamps": it is that an
+absent write is not evidence unless the write was known to change something.
+A marker whose value differs each time it is written, which is what the `Stage`
+key is, does not have this failure mode.
+
+## The display fallback latch, same day
+
+`SYSTEM.INI` from capture `intel27` carries `*DisplayFallback=1` under
+`[boot]`. The healthy 86Box guest carries `*DisplayFallback=0`.
+
+With that latched, Windows loads the driver, runs `DriverInit`, and then
+declines to call `Enable` at all - which is precisely the
+`Stage=arm-post` / `DriverInitCall=1` / `DriverInitResult=ok` signature seen in
+`intel27` and `intel28`, and the 640x480 desktop reported for the boot between
+them. Those captures therefore describe a boot in which the driver was never
+used, not a boot in which it failed.
+
+Two consequences. A capture taken after a lock is worthless if Windows has
+booted again in between, because the fallback boot overwrites the trace. And
+while the latch is set, no boot can distinguish anything about `Enable`.
+
 ## Method note
 
 The guest disk was copied to `Win98HDD.vhd.pre-intel-seg-probe` first,
