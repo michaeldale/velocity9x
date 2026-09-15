@@ -20,7 +20,9 @@
  * the code cannot disagree silently.
  */
 #define V9X_I9XX_3D_INVARIANT_DWORDS  15ul
-#define V9X_I9XX_3D_TARGET_DWORDS     13ul
+/* Three fewer since the depth BUF_INFO left: colour BUF_INFO, DST_BUF_VARS
+ * and DRAW_RECT. */
+#define V9X_I9XX_3D_TARGET_DWORDS     10ul
 #define V9X_I9XX_3D_PIPELINE_DWORDS    6ul
 
 /*
@@ -71,8 +73,8 @@ static v9x_u32 v9x_i9xx_emit_invariant(v9x_u32 *stream)
 }
 
 /*
- * The colour target, the never-referenced depth buffer, and the drawing
- * rectangle.
+ * The colour target and the drawing rectangle. No depth buffer is declared;
+ * see below for why one used to be.
  */
 static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
                                      v9x_u32 target_pitch,
@@ -87,15 +89,28 @@ static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
     stream[at++] = target_offset;
 
     /*
-     * Depth is declared and never referenced, which is what Mesa does for a GL
-     * context with no depth attachment. A pitch of zero is documented as
-     * invalid, so a valid dummy is supplied and the address left at zero; the
-     * S6 depth enables are clear, so nothing reads it. Audit section 8.
+     * NO DEPTH BUF_INFO. Removed 2026-09-15.
+     *
+     * This emitted one, declaring a depth buffer at graphics address ZERO with
+     * a dummy pitch, on the reading that Mesa declares depth for a GL context
+     * without a depth attachment. It does not: Mesa emits a depth BUF_INFO
+     * only when a depth buffer exists, and the packet audit already recorded
+     * this binding as "declared, never referenced" - which should have
+     * prompted removing it rather than keeping it (audit section 8).
+     *
+     * Address zero is inside the aperture and is not ours. Nothing read
+     * through it, because the S6 depth enables are clear, and two armed boots
+     * drew correctly with it present. NEITHER OF THOSE IS A JUSTIFICATION: a
+     * draw succeeding with depth testing disabled says only that nothing
+     * followed the pointer.
+     *
+     * Removed before Phase 6 rather than after, because the first step that
+     * enables depth testing either uses this binding or replaces it, and a
+     * wrong replacement would then be measured against a baseline that already
+     * contained a bad one.
+     *
+     * docs\issues\2026-09-15-intel-depth-buf-info-at-address-zero.md
      */
-    stream[at++] = V9X_I9XX_3DSTATE_BUF_INFO;
-    stream[at++] = V9X_I9XX_BUF_3D_ID_DEPTH |
-                   (4096ul & V9X_I9XX_BUF_3D_PITCH_MASK);
-    stream[at++] = 0ul;
 
     stream[at++] = V9X_I9XX_3DSTATE_DST_BUF_VARS;
     stream[at++] = V9X_I9XX_COLR_BUF_RGB565 |

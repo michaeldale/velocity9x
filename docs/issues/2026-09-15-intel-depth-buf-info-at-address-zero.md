@@ -1,6 +1,7 @@
 # Phase 5 emits a depth BUF_INFO for a depth buffer that does not exist
 
-**Status:** open. **Blocks:** any Phase 6 step that touches depth.
+**Status:** removed host-side; **awaiting the regression scene on hardware.**
+**Blocks:** any Phase 6 step that touches depth, until that scene runs.
 **Chip:** 945GSE A3, `8086:27AE` rev 03, MICHAEL-NETBOOK.
 
 ## What the stream does
@@ -68,3 +69,26 @@ finding worth the boot on its own.
 If removing it changes the output, restore it and record what changed — that
 would mean the Gen3 pipeline requires the declaration even unused, which
 contradicts the reference path and belongs in the audit.
+
+## Removed 2026-09-15
+
+The packet is gone from `v9x_i9xx_build_3d_state`, and the **decoder now
+refuses any depth `BUF_INFO`**, address zero included - it previously accepted
+one at zero. An allowlist that permits the thing just removed would let it
+return unnoticed.
+
+The state block is 31 dwords rather than 34, the Phase 5 stream 63 rather than
+66, its CRC `6B1C2CEF` rather than `32597220`, and the combined arm CRC
+`3CE2FB35`. The published vertex offset moves from 51 to 48.
+
+The golden stream was edited by **deleting exactly the three depth dwords**,
+their identity asserted rather than their position, not regenerated from the
+builder's output - a golden refreshed from the code it checks stops being a
+golden. The new CRC was computed by an independent implementation that was
+first validated against the old pinned value `32597220`, which hardware has
+confirmed twice.
+
+**What is still owed:** the hardware boot. The expected result is
+byte-identical pixel output at all fourteen probes, and nothing else in this
+build has established that - the host tests prove the stream changed exactly
+as intended, not that the GPU agrees.

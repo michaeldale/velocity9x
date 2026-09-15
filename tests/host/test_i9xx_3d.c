@@ -203,11 +203,18 @@ static void test_3d_state(void)
 {
     v9x_u32 stream[64];
     v9x_u32 written = 0ul;
+    v9x_u32 index;
+    v9x_u32 buf_infos;
 
-    CHECK(v9x_i9xx_3d_state_extent() == 34ul);
+    /*
+     * Thirty-one, not thirty-four. The depth BUF_INFO and its two dwords left
+     * on 2026-09-15: it declared a buffer at graphics address zero that the S6
+     * depth enables guaranteed nothing would read.
+     */
+    CHECK(v9x_i9xx_3d_state_extent() == 31ul);
     CHECK(v9x_i9xx_build_3d_state(0x006c2000ul, 1280ul, 640ul, 480ul,
                                   stream, 64ul, &written) == V9X_STATUS_OK);
-    CHECK(written == 34ul);
+    CHECK(written == 31ul);
 
     /* The invariant block's first and last packets. */
     CHECK(stream[0] == 0x66014140ul);
@@ -221,24 +228,39 @@ static void test_3d_state(void)
                          V9X_I9XX_BUF_3D_TILED_SURFACE)) == 0ul);
     CHECK(stream[17] == 0x006c2000ul);
 
-    /* Depth: declared, dummy pitch, address zero, never referenced. */
-    CHECK(stream[18] == V9X_I9XX_3DSTATE_BUF_INFO);
-    CHECK(stream[19] == (V9X_I9XX_BUF_3D_ID_DEPTH | 4096ul));
-    CHECK(stream[20] == 0ul);
+    /*
+     * NO second BUF_INFO. Asserted over the WHOLE stream rather than at the
+     * offset the old one occupied: checking stream[18] alone would pass if a
+     * depth binding reappeared anywhere else, and the point is that the stream
+     * contains none.
+     */
+    buf_infos = 0ul;
+    for (index = 0ul; index + 1ul < written; ++index) {
+        if (stream[index] != V9X_I9XX_3DSTATE_BUF_INFO) {
+            continue;
+        }
+        ++buf_infos;
+        /* Its id field must be the colour back buffer, never depth. */
+        CHECK((stream[index + 1ul] & V9X_I9XX_BUF_3D_ID_DEPTH) !=
+              V9X_I9XX_BUF_3D_ID_DEPTH);
+    }
+    /* Exactly one, asserted: zero BUF_INFO packets would satisfy the loop
+     * above and would also mean the colour target was never declared. */
+    CHECK(buf_infos == 1ul);
 
     /* RGB565 with the half-pixel bias in both axes. */
-    CHECK(stream[21] == V9X_I9XX_3DSTATE_DST_BUF_VARS);
-    CHECK(stream[22] == 0x00880200ul);
+    CHECK(stream[18] == V9X_I9XX_3DSTATE_DST_BUF_VARS);
+    CHECK(stream[19] == 0x00880200ul);
 
     /* Draw rect is INCLUSIVE: 639 and 479, not 640 and 480. */
-    CHECK(stream[23] == V9X_I9XX_3DSTATE_DRAW_RECT);
-    CHECK(stream[26] == ((479ul << 16) | 639ul));
+    CHECK(stream[20] == V9X_I9XX_3DSTATE_DRAW_RECT);
+    CHECK(stream[23] == ((479ul << 16) | 639ul));
 
     /* S2..S6 in one load, length 4, and S4 agreeing with the vertex dwords. */
-    CHECK(stream[28] == 0x7d0407c4ul);
-    CHECK(stream[29] == 0xfffffffful);
-    CHECK(stream[31] == 0x00902480ul);
-    CHECK((stream[33] & (V9X_I9XX_S6_DEPTH_TEST_ENABLE |
+    CHECK(stream[25] == 0x7d0407c4ul);
+    CHECK(stream[26] == 0xfffffffful);
+    CHECK(stream[28] == 0x00902480ul);
+    CHECK((stream[30] & (V9X_I9XX_S6_DEPTH_TEST_ENABLE |
                          V9X_I9XX_S6_DEPTH_WRITE_ENABLE)) == 0ul);
     /*
      * And the enable that was missing. S6 was zero until 2026-09-15 on the
@@ -246,7 +268,7 @@ static void test_3d_state(void)
      * for depth, blend and alpha, and not for this one. With it clear the GPU
      * accepted the primitive, reported no error, and wrote no colour.
      */
-    CHECK((stream[33] & V9X_I9XX_S6_COLOR_WRITE_ENABLE) != 0ul);
+    CHECK((stream[30] & V9X_I9XX_S6_COLOR_WRITE_ENABLE) != 0ul);
 
     /* A pitch the BUF_INFO encoding would silently truncate is refused. */
     CHECK(v9x_i9xx_build_3d_state(0x006c2000ul, 1281ul, 640ul, 480ul,
@@ -262,7 +284,7 @@ static void test_3d_state(void)
                                   stream, 64ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_i9xx_build_3d_state(0x006c2000ul, 1280ul, 640ul, 480ul,
-                                  stream, 33ul, &written) ==
+                                  stream, 30ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -283,7 +305,7 @@ static void test_phase5_parameters(void)
     CHECK(parameters.triangle_color == V9X_I9XX_TRI_COLOR_BGRA);
     /* 34 state + 7 shader + 2 probe + 16 vertices. */
     /* 7 fill + 34 state + 7 shader + 2 probe + 16 vertices. */
-    CHECK(parameters.stream_dwords == 66ul);
+    CHECK(parameters.stream_dwords == 63ul);
 
     /* The parameters and the layout must describe the same target. */
     CHECK(v9x_i9xx_sandbox_calculate(
@@ -346,21 +368,20 @@ static void test_phase5_parameters(void)
 }
 
 /* The golden stream, in full. See the file header for why. */
-static const v9x_u32 v9x_i9xx_phase5_golden[66] = {
+static const v9x_u32 v9x_i9xx_phase5_golden[63] = {
     0x54300004ul, 0x03f00500ul, 0x00000000ul, 0x01e00140ul, 0x006c2000ul,
     0x08420842ul, 0x02000000ul, 0x66014140ul, 0x7d990000ul, 0x00000000ul,
     0x7d9a0000ul, 0x00000000ul, 0x7d980000ul, 0x00000000ul, 0x76fac688ul,
     0x7d810001ul, 0x00000000ul, 0x00000000ul, 0x7c800002ul, 0x7c880002ul,
     0x7d070000ul, 0x00000000ul, 0x7d8e0001ul, 0x03000500ul, 0x006c2000ul,
-    0x7d8e0001ul, 0x07001000ul, 0x00000000ul, 0x7d850000ul, 0x00880200ul,
-    0x7d800003ul, 0x00000000ul, 0x00000000ul, 0x01df027ful, 0x00000000ul,
-    0x7d0407c4ul, 0xfffffffful, 0x00000000ul, 0x00902480ul, 0x00000000ul,
-    0x00000004ul, 0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
-    0x02203ca0ul, 0x01230000ul, 0x00000000ul, 0x00000000ul, 0x02000000ul,
-    0x7f00000eul, 0x43200000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
-    0xff1587f9ul, 0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
-    0xff1587f9ul, 0x43a00000ul, 0x43c80000ul, 0x00000000ul, 0x3f800000ul,
-    0xff1587f9ul
+    0x7d850000ul, 0x00880200ul, 0x7d800003ul, 0x00000000ul, 0x00000000ul,
+    0x01df027ful, 0x00000000ul, 0x7d0407c4ul, 0xfffffffful, 0x00000000ul,
+    0x00902480ul, 0x00000000ul, 0x00000004ul, 0x7d050005ul, 0x190a3c00ul,
+    0x00000000ul, 0x00000000ul, 0x02203ca0ul, 0x01230000ul, 0x00000000ul,
+    0x00000000ul, 0x02000000ul, 0x7f00000eul, 0x43200000ul, 0x42f00000ul,
+    0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43f00000ul, 0x42f00000ul,
+    0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43a00000ul, 0x43c80000ul,
+    0x00000000ul, 0x3f800000ul, 0xff1587f9ul
 };
 
 static void test_golden_stream(void)
@@ -371,8 +392,8 @@ static void test_golden_stream(void)
 
     CHECK(v9x_i9xx_build_phase5_stream(stream, 96ul, &written) ==
           V9X_STATUS_OK);
-    CHECK(written == 66ul);
-    for (index = 0ul; index < 66ul; ++index) {
+    CHECK(written == 63ul);
+    for (index = 0ul; index < 63ul; ++index) {
         CHECK(stream[index] == v9x_i9xx_phase5_golden[index]);
     }
 
@@ -384,10 +405,10 @@ static void test_golden_stream(void)
      * drifting together.
      */
     CHECK(v9x_i9xx_phase5_execution_crc() ==
-          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 66ul));
-    CHECK(v9x_i9xx_phase5_execution_crc() == 0x32597220ul);
+          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 63ul));
+    CHECK(v9x_i9xx_phase5_execution_crc() == 0x6b1c2ceful);
 
-    CHECK(v9x_i9xx_build_phase5_stream(stream, 65ul, &written) !=
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 62ul, &written) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_phase5_stream(0, 96ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
@@ -402,12 +423,12 @@ static void test_decoder_accepts_golden(void)
     v9x_u32 index = 0xfffffffful;
 
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 63ul, 0x006c2000ul, 0x00096000ul,
               &index) == V9X_I9XX_P5_OK);
     CHECK(index == 0ul);
     /* The index argument is optional. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 63ul, 0x006c2000ul, 0x00096000ul,
               0) == V9X_I9XX_P5_OK);
 }
 
@@ -429,9 +450,9 @@ static void test_decoder_rejects_mutations(void)
         /* The BLT's bounds are checked as a packet, so a refusal points at
          * the command dword rather than the field that was wrong. That is
          * the right granularity here: the six dwords are one statement. */
-        { 4ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE,       0ul },
-        { 5ul, 0x08420843ul, V9X_I9XX_P5_FORMAT,             5ul },
-        { 3ul, 0x01e00141ul, V9X_I9XX_P5_TARGET_RANGE,       0ul },
+        { 4ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE, 0ul },
+        { 5ul, 0x08420843ul, V9X_I9XX_P5_FORMAT, 5ul },
+        { 3ul, 0x01e00141ul, V9X_I9XX_P5_TARGET_RANGE, 0ul },
         /* Tiled or fenced colour target. */
         { 23ul, 0x03400500ul, V9X_I9XX_P5_TILED_FORBIDDEN, 23ul },
         { 23ul, 0x03800500ul, V9X_I9XX_P5_TILED_FORBIDDEN, 23ul },
@@ -440,44 +461,48 @@ static void test_decoder_rejects_mutations(void)
         /* Colour target pointing somewhere else. */
         { 24ul, 0x00000000ul, V9X_I9XX_P5_TARGET_RANGE, 24ul },
         { 24ul, 0x006c3000ul, V9X_I9XX_P5_TARGET_RANGE, 24ul },
-        /* A depth buffer with real memory behind it. */
-        { 26ul, 0x07400400ul, V9X_I9XX_P5_TILED_FORBIDDEN, 26ul },
-        { 27ul, 0x006c2000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 27ul },
+        /*
+         * A depth BUF_INFO reintroduced. The stream carries none since
+         * 2026-09-15, so this mutation turns the DST_BUF_VARS packet into one
+         * and checks the decoder refuses it - including at address zero,
+         * which it used to accept.
+         */
+        { 23ul, 0x07000500ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 23ul },
         /* Wrong destination format, and the bias silently dropped. */
-        { 29ul, 0x00880300ul, V9X_I9XX_P5_FORMAT, 29ul },
-        { 29ul, 0x00000200ul, V9X_I9XX_P5_FORMAT, 29ul },
+        { 26ul, 0x00880300ul, V9X_I9XX_P5_FORMAT, 26ul },
+        { 26ul, 0x00000200ul, V9X_I9XX_P5_FORMAT, 26ul },
         /* Exclusive rather than inclusive draw rect. */
-        { 33ul, 0x01e00280ul, V9X_I9XX_P5_DRAW_RECT, 33ul },
-        { 31ul, 0x00000001ul, V9X_I9XX_P5_DRAW_RECT, 31ul },
+        { 30ul, 0x01e00280ul, V9X_I9XX_P5_DRAW_RECT, 30ul },
+        { 28ul, 0x00000001ul, V9X_I9XX_P5_DRAW_RECT, 28ul },
         /* Scissor turned on. */
         { 18ul, 0x7c800003ul, V9X_I9XX_P5_SCISSOR_ENABLED, 18ul },
         /* Indirect state enabled rather than disabled. */
         { 21ul, 0x00000001ul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 21ul },
         /* A texture coordinate declared present. */
-        { 36ul, 0xfffffffeul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 36ul },
+        { 33ul, 0xfffffffeul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 33ul },
         /* S4 disagreeing with the vertex dwords - the silent-hang case. */
-        { 38ul, 0x009024c0ul, V9X_I9XX_P5_VERTEX_FORMAT, 38ul },
-        { 38ul, 0x00902400ul, V9X_I9XX_P5_VERTEX_FORMAT, 38ul },
+        { 35ul, 0x009024c0ul, V9X_I9XX_P5_VERTEX_FORMAT, 35ul },
+        { 35ul, 0x00902400ul, V9X_I9XX_P5_VERTEX_FORMAT, 35ul },
         /* Depth test or write enabled in S6. */
-        { 40ul, 0x00080000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 40ul },
-        { 40ul, 0x00000008ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 40ul },
+        { 37ul, 0x00080000ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 37ul },
+        { 37ul, 0x00000008ul, V9X_I9XX_P5_DEPTH_FORBIDDEN, 37ul },
         /* A shader of the wrong length. */
-        { 41ul, 0x7d050007ul, V9X_I9XX_P5_SHADER, 41ul },
+        { 38ul, 0x7d050007ul, V9X_I9XX_P5_SHADER, 38ul },
         /* The indirect primitive form, which would fetch from a buffer. */
-        { 50ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 50ul },
+        { 47ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 47ul },
         /* Wrong vertex count. */
-        { 50ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT, 50ul },
+        { 47ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT, 47ul },
         /* A vertex outside the drawing rectangle. */
-        { 51ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE, 51ul },
+        { 48ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE, 48ul },
         /* A fractional coordinate, which the float decoder refuses. */
-        { 52ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE, 52ul },
+        { 49ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE, 49ul },
         /* Non-zero Z, and W other than one. */
-        { 53ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE, 53ul },
-        { 54ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE, 54ul },
+        { 50ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE, 50ul },
+        { 51ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE, 51ul },
         /* One vertex a different colour from the other two. */
-        { 60ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT, 60ul }
+        { 57ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT, 57ul }
     };
-    v9x_u32 stream[66];
+    v9x_u32 stream[63];
     v9x_u32 index;
     v9x_u32 mutation;
     const v9x_u32 count =
@@ -486,12 +511,12 @@ static void test_decoder_rejects_mutations(void)
     for (mutation = 0ul; mutation < count; ++mutation) {
         v9x_u32 rejected = 0xfffffffful;
         v9x_u16 reason;
-        for (index = 0ul; index < 66ul; ++index) {
+        for (index = 0ul; index < 63ul; ++index) {
             stream[index] = v9x_i9xx_phase5_golden[index];
         }
         stream[mutations[mutation].index] = mutations[mutation].value;
         reason = v9x_i9xx_decode_phase5_stream(
-            stream, 66ul, 0x006c2000ul, 0x00096000ul, &rejected);
+            stream, 63ul, 0x006c2000ul, 0x00096000ul, &rejected);
         CHECK(reason == mutations[mutation].reason);
         CHECK(rejected == mutations[mutation].rejected_at);
     }
@@ -585,9 +610,13 @@ static void test_published_offsets_locate_the_packets(void)
 
     /*
      * And the figure that was actually wrong on hardware. The capture from
-     * 2026-09-15 published vertex bits from dword 44; the geometry is at 51.
+     * 2026-09-15 published vertex bits from dword 44 when the geometry was at
+     * 51; it is at 48 since the depth BUF_INFO and its two dwords left the
+     * state block. Pinned as a literal as well as computed, because the
+     * computation above and the driver's own published offset must not be
+     * able to drift together.
      */
-    CHECK(vertices == 51ul);
+    CHECK(vertices == 48ul);
 }
 
 /*
@@ -953,7 +982,7 @@ static void test_edge_combined_is_one_primitive(void)
                      V9X_I9XX_PRIM3D_TRILIST | 29ul));
 
     /* Longer than a single-triangle scene by exactly one triangle. */
-    CHECK(written == 66ul + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS));
+    CHECK(written == 63ul + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS));
 }
 
 /*
@@ -1028,12 +1057,12 @@ static void test_scene_table(void)
 
     /* Capacity, at the boundary rather than far from it. */
     CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 65ul, &written) !=
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 62ul, &written) !=
           V9X_STATUS_OK);
     CHECK(written == 0ul);
-    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 66ul, &written) ==
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 63ul, &written) ==
           V9X_STATUS_OK);
-    CHECK(written == 66ul);
+    CHECK(written == 63ul);
 
     /* A scene claiming more triangles than it can hold is refused, not
      * clamped. */

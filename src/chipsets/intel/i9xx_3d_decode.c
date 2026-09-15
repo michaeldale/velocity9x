@@ -72,15 +72,23 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if ((identity & V9X_I9XX_BUF_3D_ID_DEPTH) ==
                     V9X_I9XX_BUF_3D_ID_DEPTH) {
                 /*
-                 * The depth buffer is declared and never referenced, so its
-                 * address must be zero. A non-zero one would be a real buffer
-                 * we never validated and never guarded.
+                 * ANY depth BUF_INFO is now a refusal, address zero included.
+                 *
+                 * This used to accept one whose address was zero, on the
+                 * reading that a declared-but-unreferenced depth buffer is
+                 * what the reference path emits. It is not: Mesa emits none
+                 * when there is no depth buffer, and address zero is inside
+                 * the aperture and is not ours.
+                 *
+                 * The stream no longer contains one, so this is the decoder
+                 * enforcing that rather than permitting it - which is the
+                 * whole point of an allowlist. When Phase 6 adds a real depth
+                 * buffer, this becomes a check that its address is inside the
+                 * reserve, not a relaxation back to accepting zero.
+                 *
+                 * docs\issues\2026-09-15-intel-depth-buf-info-at-address-zero.md
                  */
-                if (address != 0ul) {
-                    V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 2ul);
-                }
-                index += 3ul;
-                continue;
+                V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 1ul);
             }
             if ((identity & V9X_I9XX_BUF_3D_ID_COLOR_BACK) !=
                     V9X_I9XX_BUF_3D_ID_COLOR_BACK) {
