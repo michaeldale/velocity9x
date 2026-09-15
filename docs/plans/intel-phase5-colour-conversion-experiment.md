@@ -16,85 +16,106 @@ identity swizzle and saturate clear, decoded field by field against Mesa's
 Interpolation is not excluded by audit, but all three vertices carry the same
 colour, so any correct interpolator returns that colour unchanged.
 
+## Candidate formulas
+
+Five formulas, not six. `(v*(max+1))>>8` is **not** a distinct rule: with
+`max = 2^n - 1` it is `v * 2^n >> 8`, which is `v >> (8-n)` exactly, verified
+over every `v` in 0..255 for n in {5,6}. It is merged into `trunc` below.
+
+All are stated exactly so the table is reproducible. `n` is the channel width,
+`max = 2^n - 1`.
+
+| Name | Formula |
+|---|---|
+| `trunc` | `v >> (8-n)` |
+| `round8` | `min(max, (v + 2^(7-n)) >> (8-n))` - round in 8-bit space, clamped, since the add can carry past `max` |
+| `floor` | `(v * max) / 255`, integer division |
+| `round` | `floor(v * max / 255 + 0.5)` |
+| `ceil` | `ceil(v * max / 255)` |
+
+These are **candidate formulas**, not independent hypotheses. `round8` and
+`ceil` coincide on many inputs, and any two may agree at a given value; a
+channel that separates `round` from one of them has not thereby tested the
+others.
+
 ## What the colour already measured establishes
 
 Source `0xFFF86428`: R=248, G=100, B=40. Hardware: R=30, G=25, B=5.
 
 | Candidate | R | G | B | Verdict |
 |---|---|---|---|---|
-| `truncate v>>(8-n)` | 31 | 25 | 5 | eliminated by R |
-| `floor(v*max/255)` | 30 | 24 | 4 | eliminated by G **and** B |
-| `round(v*max/255)` | 30 | 25 | 5 | **survives** |
-| `ceil(v*max/255)` | 31 | 25 | 5 | eliminated by R |
-| round in 8-bit space | 31 | 25 | 5 | eliminated by R |
-| `(v*(max+1))>>8` | 31 | 25 | 5 | eliminated by R |
+| `trunc` | 31 | 25 | 5 | eliminated by R |
+| `round8` | 31 | 25 | 5 | eliminated by R |
+| `floor` | 30 | 24 | 4 | eliminated by G and B |
+| `round` | 30 | 25 | 5 | **survives** |
+| `ceil` | 31 | 25 | 5 | eliminated by R |
 | hardware | **30** | **25** | **5** | |
 
-This is stronger than first reported. The earlier record said only red
-discriminated; that was true of truncate-versus-round alone. Against the full
-candidate set the existing colour discriminates on **two independent
-channels** - red eliminates four candidates, green and blue eliminate a fifth.
+Four candidate formulas are excluded at these three values and one survives.
+The earlier record said only red discriminated; that was true of `trunc`
+against `round` alone.
 
-**Tie-breaking cannot be tested at all.** `v*max/255` is never exactly `x.5`
-because 255 is odd, so no byte value distinguishes round-half-up from
+**Tie-breaking cannot be tested.** `v*max/255` is never exactly `x.5` when the
+denominator is odd, so no byte value separates round-half-up from
 round-half-even or round-half-to-zero.
 
-## What a second colour can and cannot add
+**No single byte value separates `round` from `trunc`, `round8` and `floor` at
+once** - searched exhaustively over 0..255 for both channel widths. A colour
+can only cover them across different channels.
 
-It cannot eliminate the five already eliminated - that is done. Its value is
-narrower: confirming `round` at three further points, where a rule that
-coincides with `round` at the first colour's values but diverges elsewhere -
-a lookup table, a piecewise approximation, or an ordered dither - would show
-up.
+## Proposed colour
 
-It cannot establish that `round` is the hardware's rule in general. Six values
-across two colours is six values.
+`V9X_I9XX_TRI_COLOR_BGRA = 0xFF1587F9` - R=21, G=135, B=249.
 
-## Proposed colour, chosen so all three channels discriminate
+| ch | byte | `trunc` | `round8` | `floor` | `round` | `ceil` | separates `round` from |
+|---|---|---|---|---|---|---|---|
+| R | 21 | 2 | 3 | 2 | **3** | 3 | `floor`, `trunc` |
+| G | 135 | 33 | 34 | 33 | **33** | 34 | `ceil`, `round8` |
+| B | 249 | 31 | 31 | 30 | **30** | 31 | `ceil`, `round8`, `trunc` |
 
-`V9X_I9XX_TRI_COLOR_BGRA = 0xFF272B5F` - R=39, G=43, B=95.
-
-| Channel | Byte | `truncate` | `floor` | `round` | Discriminates |
-|---|---|---|---|---|---|
-| R | 39 | 4 | 4 | **5** | yes |
-| G | 43 | 10 | 10 | **11** | yes |
-| B | 95 | 11 | 11 | **12** | yes |
-
-Predicted RGB565:
+Across the three channels this separates `round` from all four alternatives -
+but note it does so **per channel**, not three times over. Predicted RGB565:
 
 | Rule | Value |
 |---|---|
-| `round` | `0x296C` |
-| `truncate` | `0x214B` |
-| `floor` | `0x214B` |
+| `round` | `0x1C3E` |
+| `trunc` | `0x143F` |
+| `round8` | `0x1C5F` |
+| `floor` | `0x143E` |
+| `ceil` | `0x1C5F` |
 
-Distinct from the fill `0x0842` and from the current triangle `0xF325`, so a
-capture cannot be misread as either.
-
-Every channel separates `round` from both `truncate` and `floor`, so the boot
-yields three independent confirmations rather than one.
+`round8` and `ceil` predict the same value here, so a `1C5F` reading would not
+separate those two - both are already excluded by the first colour. All five
+differ from the fill `0x0842` and from the current triangle `0xF325`.
 
 ## The conclusion this experiment licenses
 
-If the probes read `296C`:
+If the probes read `1C3E`:
 
-> The hardware's 8-bit to 5/6-bit conversion agrees with
-> `round(v*max/255)` and disagrees with `truncate` and `floor` **at the six
-> channel values tested across two colours.**
+> At the six channel values tested across two colours, the hardware's
+> conversion agrees with `round(v*max/255)` and disagrees with `trunc`,
+> `round8`, `floor` and `ceil`.
 
-Not "the hardware rounds". Six points do not characterise a function over 256
-inputs.
+Not "the hardware rounds". Six values do not characterise a function over 256
+inputs, and the five formulas are not an exhaustive set - a lookup table, a
+piecewise approximation or an ordered dither could agree with `round` at all
+six.
 
-If the probes read `214B`, `round` is eliminated too and the conversion is
-something none of the six candidates describes - which would be a more
-interesting result than confirmation.
+Any other reading excludes `round` as well, which would be the more
+informative outcome.
 
-## Consequence for the software reference
+## Consequence for the expected values
 
-`d3d_raster.c` truncates. If this confirms, the reference is wrong at the
-tested values and should change - but changing it alters every software-path
-expectation in the tree, so it is its own diff with its own gate run, not part
-of this experiment.
+**Not a change to the shared software rasteriser.** A mismatch here establishes
+that the current reference does not predict *this GPU at these values*. It does
+not establish that the conversion in `d3d_raster.c` is wrong for its own
+contract - that code serves the software D3D path across every family, and what
+it owes its callers is a separate question that has not been reviewed.
+
+So if this confirms, the change belongs in an **Intel-specific expectation**:
+the value `check-intel-3d-capture.ps1` compares probes against for this part.
+The shared conversion stays as it is until its contract is examined on its own
+terms, in its own diff.
 
 ## Not in this experiment
 

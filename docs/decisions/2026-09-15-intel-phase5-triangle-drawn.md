@@ -92,15 +92,20 @@ path implies anyway: the vertex colour is a packed normalised BGRA dword, the
 shader moves it as floats, and the conversion happens on write to an RGB565
 target.
 
-The software reference in `d3d_raster.c` truncates. On this evidence it is the
-reference that is wrong, not the hardware.
+The software reference in `d3d_raster.c` truncates, so it does not predict this
+GPU at these values. That is **not** the same as the shared conversion being
+wrong: `d3d_raster.c` serves the software D3D path across every family, and
+what it owes its own callers has not been reviewed. Any change belongs in an
+Intel-specific expectation rather than in the shared rasteriser.
 
 **Corrected 2026-09-15:** the two rows above compare truncate against round
 only, and on that pair red is the sole discriminator. Scored against a full
 candidate set - truncate, floor, round, ceil, round-in-8-bit-space and
 `(v*(max+1))>>8` - this colour discriminates on **two independent channels**:
-red eliminates four candidates and green and blue eliminate a fifth, leaving
-`round(v*max/255)` alone. The table is in
+red excludes `trunc`, `round8` and `ceil`, and green and blue exclude `floor`,
+leaving `round(v*max/255)` alone. Four candidate formulas, not five: with
+`max = 2^n - 1`, `(v*(max+1))>>8` is algebraically `v>>(8-n)` and not a
+separate rule. The table and the exact formulas are in
 `plans/intel-phase5-colour-conversion-experiment.md`.
 
 That is still six candidate rules at three values. It does not establish the
