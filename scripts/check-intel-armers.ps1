@@ -27,7 +27,13 @@ $cases = @(
     @{ Name = 'in flight';           Line = 'IntelIncomplete=1'; Proceed = $false },
     @{ Name = 'empty value';         Line = 'IntelIncomplete=';  Proceed = $false },
     @{ Name = 'malformed value';     Line = 'IntelIncomplete=garbage'; Proceed = $false },
-    @{ Name = 'legacy, key absent';  Line = $null;               Proceed = $false }
+    @{ Name = 'legacy, key absent';  Line = $null;               Proceed = $false },
+    @{ Name = 'resolved, variable unset'; Line = 'IntelIncomplete=0'; Proceed = $true; Unset = $true },
+    # Both conditions together, which is the only combination that exercises
+    # the default assignment's POSITION. With the variable set, the first
+    # IF NOT EXIST expands correctly however late the assignment sits; with a
+    # file present, that branch is never taken. Needs both.
+    @{ Name = 'no arm file, variable unset'; Line = $null; NoFile = $true; Proceed = $true; Unset = $true }
 )
 
 $failures = 0
@@ -47,7 +53,9 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
             $armFile = Join-Path $dir 'INTELARM.TXT'
             $lines = @('[Velocity9x]', 'IntelArmOnce=', 'IntelInFlight=')
             if ($case.Line) { $lines += $case.Line }
-            Set-Content -LiteralPath $armFile -Value $lines -Encoding Ascii
+            if (-not $case.NoFile) {
+                Set-Content -LiteralPath $armFile -Value $lines -Encoding Ascii
+            }
 
             # Placeholders are substituted at package build; fill them here so
             # the batch under test is the shape that ships.
@@ -58,8 +66,29 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
                 Replace('@@P4CRC@@', 'CCCCCCCC').
                 Replace('@@P5CRC@@', 'DDDDDDDD').
                 Replace('@@TOKEN@@', 'selftest-token')
+            if ($case.Unset) {
+                # The replacement is a literal path, not a pattern: escaping it
+                # here put the escaped form INTO the batch.
+                $text = $text -replace '(?m)^(IF "%V9XARMFILE%"=="" SET V9XARMFILE=).*$', ('$1' + $armFile)
+            }
             # The C:\V9XDIAG existence guard is not what this tests.
             $text = $text -replace '(?m)^IF NOT EXIST C:\\V9XDIAG\\NUL GOTO NODIAG', 'REM (self-test)'
+
+            # A test that can reach a real path is a hazard, not a test. Two
+            # IntelArmOnce writes still named the real arm file directly
+            # instead of the selected path, and THIS HOST has C:\V9XDIAG -
+            # the self-test appended twenty-one tokens to the operator arm
+            # file before the defect was reported. Refuse to run a batch that
+            # still names the real path anywhere but its default assignment.
+            $offenders = @($text -split '\r?\n' | Where-Object {
+                $_ -match 'V9XDIAG.INTELARM' -and
+                $_ -notmatch 'SET V9XARMFILE=' -and $_ -notmatch '^REM' })
+            if ($offenders.Count -ne 0) {
+                throw ("$armer reaches the real arm path outside its default " +
+                       'assignment: ' + ($offenders -join ' / ') +
+                       '. Every read and write must go through %V9XARMFILE%, ' +
+                       'or this test writes to the operator arm file.')
+            }
             $runner = Join-Path $dir 'RUN.BAT'
             Set-Content -LiteralPath $runner -Value $text -Encoding Ascii
 
@@ -69,7 +98,20 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
             # armer's relative "IF NOT EXIST V9XDISP.DRV" was resolving against
             # whatever directory PowerShell happened to start in - which made
             # the result depend on where the gate was run from.
-            $env:V9XARMFILE = $armFile
+            # The unset case is how every real DOS run enters: the variable
+            # does not exist and the batch falls back to its own default. It
+            # is exercised by pointing that default at the fixture rather
+            # than by letting it resolve to the operator arm file - which is
+            # what the hazard guard above exists to prevent.
+            #
+            # This is what catches the assignment sitting AFTER its first
+            # use: the first IF NOT EXIST then expands to nothing, and the
+            # run refuses instead of writing.
+            if ($case.Unset) {
+                $env:V9XARMFILE = $null
+            } else {
+                $env:V9XARMFILE = $armFile
+            }
             # Redirect INSIDE cmd, never with PowerShell 2>&1: redirecting a
             # native command's stderr wraps each line in an ErrorRecord, which
             # $ErrorActionPreference=Stop turns into a failure even when the
@@ -84,7 +126,7 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT')) {
             $sys32 = Join-Path $env:SystemRoot 'system32'
             $cmdLine = "cd /d ""$dir"" && set ""PATH=$sys32"" && ""$runner"" < NUL > ""$log"" 2>&1"
             & cmd.exe /c $cmdLine | Out-Null
-            Remove-Item Env:\V9XARMFILE
+            $env:V9XARMFILE = $null
             $out = Get-Content -LiteralPath $log -Raw
 
             # Assert on the BRANCH TAKEN, not on the file contents.

@@ -22,6 +22,14 @@ REM Every machine-side gate is unchanged. The driver rechecks the build id,
 REM requires IntelArmPhase=5, re-derives both phase CRCs and the combined CRC
 REM itself, replays Phase 4 before the draw, and consumes the token once.
 
+REM The arm file path. Assigned BEFORE its first use: it was assigned after
+REM the first IF NOT EXIST, so on a normal DOS run - where the variable is
+REM unset - that check expanded to nothing and was malformed, breaking the
+REM missing-file path it exists to handle.
+REM
+REM Overridable ONLY so the host self-test can point the guard at a fixture.
+IF "%V9XARMFILE%"=="" SET V9XARMFILE=C:\V9XDIAG\INTELARM.TXT
+
 IF NOT EXIST V9XDISP.DRV GOTO NOTHERE
 IF NOT EXIST C:\V9XDIAG\NUL GOTO NODIAG
 
@@ -30,17 +38,6 @@ REM overwrite it: a chained run leaves the token in flight on EVERY failure
 REM path by design, so that record is the expected state after a hang and the
 REM only evidence of where it stopped. Run V9XCOPY to clear it deliberately.
 IF NOT EXIST %V9XARMFILE% GOTO WRITE
-REM FIND matches SUBSTRINGS, so "IntelInFlight=" matched the empty form and
-REM every non-empty one alike. The previous test piped FIND into FIND /V on
-REM the same string, which always yields nothing, so this guard never fired
-REM in either phase. The driver now writes IntelIncomplete=1 alongside a
-REM non-empty IntelInFlight and clears it on retirement, which is a value a
-REM batch can actually test.
-REM The arm file path, overridable ONLY so the host self-test can point the
-REM guard at a fixture and check which branch it takes. Unset in DOS, which
-REM is every real run, it is the path below.
-IF "%V9XARMFILE%"=="" SET V9XARMFILE=C:\V9XDIAG\INTELARM.TXT
-
 REM Refuse unless the file states plainly that the previous run RESOLVED.
 REM
 REM IntelInFlight is authoritative, but FIND matches substrings and cannot
@@ -67,8 +64,8 @@ IF "%V9XARMTOKEN%"=="" ECHO   (empty: using the packaged default below)
 ECHO.
 ECHO [Velocity9x]>%V9XARMFILE%
 ECHO IntelAccelDefault=0>>%V9XARMFILE%
-IF "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=@@TOKEN@@>>C:\V9XDIAG\INTELARM.TXT
-IF NOT "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=%V9XARMTOKEN%>>C:\V9XDIAG\INTELARM.TXT
+IF "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=@@TOKEN@@>>%V9XARMFILE%
+IF NOT "%V9XARMTOKEN%"=="" ECHO IntelArmOnce=%V9XARMTOKEN%>>%V9XARMFILE%
 ECHO IntelArmPhase=5>>%V9XARMFILE%
 ECHO IntelArmCrc=@@COMBINEDCRC@@>>%V9XARMFILE%
 ECHO IntelArmPhase4Crc=@@P4CRC@@>>%V9XARMFILE%
