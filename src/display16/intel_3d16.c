@@ -195,6 +195,26 @@ static void v9x_p5_result(const char *value)
     v9x_p5_flush();
 }
 
+/*
+ * A committed progress marker inside a single IntentStep.
+ *
+ * IntentStep names the step; between step 20 and the next commit the
+ * sequencer builds the stream, publishes several hundred keys, and then makes
+ * four separate hardware touches - the heap probe, the two guard reads, the
+ * 614 KiB reserve hash through the mini-VDD, and two target samples. A hang
+ * anywhere in that run leaves IntentStep=20 and says nothing about which.
+ *
+ * Measured on the netbook 2026-09-15: that is exactly what happened, and the
+ * capture could not distinguish a pure-computation fault from an aperture read.
+ * These markers cost one profile commit each on a path that already writes
+ * hundreds of keys.
+ */
+static void v9x_p5_progress(const char *where)
+{
+    v9x_p5_text("B1Step", where);
+    v9x_p5_flush();
+}
+
 static void v9x_p5_hex_into(char *text, DWORD value)
 {
     static const char digits[] = "0123456789ABCDEF";
@@ -564,6 +584,7 @@ void v9x_intel_phase5_run(
             (DWORD)(sizeof(v9x_p5_stream) / sizeof(v9x_p5_stream[0])),
             &v9x_p5_stream_dwords);
     }
+    v9x_p5_progress("stream-built");
     v9x_p5_publish_stream();
     v9x_p5_publish_vertices();
     v9x_p5_hex("StreamCrc",
@@ -577,8 +598,14 @@ void v9x_intel_phase5_run(
     v9x_p5_hex("P5RefReserveFirst", v9x_i9xx_gtt_reserve_first);
     v9x_p5_hex("P5RefReserveCount", v9x_i9xx_gtt_reserve_count);
 
+    /* First hardware touch of the boot: one aperture read just below the
+     * reserve. If the capture stops here, the aperture read is the fault and
+     * nothing about the stream or the layout arithmetic matters. */
+    v9x_p5_progress("heap-probe");
     v9x_p5_publish_heap_probe(layout, "HeapProbeBefore");
+    v9x_p5_progress("guards");
     v9x_p5_publish_guards(layout, "0");
+    v9x_p5_progress("guards-done");
 
     if (reason != V9X_P5_PRE_OK) {
         v9x_p5_rejection = reason;
@@ -589,8 +616,13 @@ void v9x_intel_phase5_run(
          * untouched target agree, and that the address path works at all.
          */
         if (reason == V9X_P5_PRE_NOT_ARMED) {
+            /* The 614 KiB read-only hash of the reserve, through the
+             * mini-VDD's own physical mapping. The heaviest thing the
+             * no-write path does, and the leading suspect. */
+            v9x_p5_progress("unarmed-hash");
             (void)v9x_p5_hash_target(layout, "UnarmedHashA", "UnarmedHashB",
                                      "UnarmedHashFail");
+            v9x_p5_progress("unarmed-samples");
             v9x_p5_hex("UnarmedSample0", V9xGmadrRead(layout->target_offset));
             v9x_p5_hex("UnarmedSample1",
                        V9xGmadrRead(layout->target_offset +
