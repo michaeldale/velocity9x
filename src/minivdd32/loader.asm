@@ -176,6 +176,12 @@ V9xI9xxHashLinear   dd 0
 ; overlap in the ring even if a counter were wrong.
 V9xI9xxP5Staged     dw 0
 V9xI9xxStagePhase   dd 0
+; Which phase the CURRENT execute call belongs to, derived from its step
+; number. Staging was made phase-aware - two tables, two counters, two ring
+; regions - and execute was not: it checked Phase 4's staged count and Phase
+; 4's CRC whatever step it was given, so a Phase 5 step could only ever refuse
+; with failure 6. Measured on the netbook 2026-09-15.
+V9xI9xxExecPhase    dd 0
 V9xI9xxStageTable   dd 0
 V9xI9xxStageBound   dd 0
 V9xI9xxStageRingOff dd 0
@@ -1492,18 +1498,42 @@ BeginProc V9xMini_I9xx_Ring_Execute
     mov     V9xI9xxRingPolls, 0
     mov     V9xI9xxRingExecCrc, ebx
     mov     V9xI9xxRingExecStep, ecx
+    ; The phase, from the step. 22-26 are Phase 5's selectors and the driver
+    ; already uses the same numbers for IntentStep, so deriving it here keeps
+    ; one source rather than adding a second argument that could disagree.
+    mov     V9xI9xxExecPhase, 4
+    cmp     ecx, 22
+    jb      short V9xMini_I9xx_Ring_Execute_PhaseSet
+    cmp     ecx, 26
+    ja      short V9xMini_I9xx_Ring_Execute_PhaseSet
+    mov     V9xI9xxExecPhase, 5
+V9xMini_I9xx_Ring_Execute_PhaseSet:
     ; One code per refusal. Failure 3 used to cover every condition from here
     ; to the step dispatch, which is how S05Failure=3 said nothing on
     ; 2026-09-14 beyond "not today".
     mov     V9xI9xxRingFailure, 4
     cmp     V9xI9xxRingPoison, 0
     jne     V9xMini_I9xx_Ring_Execute_Done
+    ; Staged count and expected CRC, both per phase. Failure 5 is the count,
+    ; failure 6 the CRC, in either phase - the codes keep their meanings so an
+    ; old capture still reads correctly.
     mov     V9xI9xxRingFailure, 5
+    cmp     V9xI9xxExecPhase, 5
+    je      short V9xMini_I9xx_Ring_Execute_CheckP5
     cmp     V9xI9xxRingStaged, 10
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 6
     cmp     V9xI9xxRingExecCrc, V9X_I9XX_P4_CRC
     jne     V9xMini_I9xx_Ring_Execute_Done
+    jmp     short V9xMini_I9xx_Ring_Execute_Gated
+V9xMini_I9xx_Ring_Execute_CheckP5:
+    movzx   eax, V9xI9xxP5Staged
+    cmp     eax, V9X_I9XX_P5_DWORDS
+    jne     V9xMini_I9xx_Ring_Execute_Done
+    mov     V9xI9xxRingFailure, 6
+    cmp     V9xI9xxRingExecCrc, V9X_I9XX_P5_CRC
+    jne     V9xMini_I9xx_Ring_Execute_Done
+V9xMini_I9xx_Ring_Execute_Gated:
     mov     V9xI9xxRingFailure, 7
     cmp     V9xI9xxMmioBase, 0fe980000h
     jne     V9xMini_I9xx_Ring_Execute_Done
