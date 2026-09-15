@@ -59,6 +59,11 @@ extern WORD FAR PASCAL V9xMiniI9xxRingHash(DWORD offset, WORD count_high,
 extern WORD FAR PASCAL V9xMiniI9xxP5Stage(DWORD physical, WORD index,
                                           DWORD value);
 extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
+/* Phase 6. Same returns, same globals, plus the scene it belongs to. */
+extern WORD FAR PASCAL V9xMiniI9xxSceneExecute(DWORD crc, WORD step,
+                                               WORD scene);
+extern WORD FAR PASCAL V9xMiniI9xxSceneStage(DWORD base, WORD index,
+                                             DWORD value, WORD scene);
 extern WORD FAR PASCAL V9xMiniI9xxRingDiag(WORD index);
 extern DWORD v9x_i9xx_ring_diag_value;
 
@@ -144,6 +149,21 @@ extern DWORD v9x_i9xx_ring_diag_value;
 #define V9X_P5_STEP_PIXELS        29u
 
 /*
+ * Phase 6 steps, one set per scene, matching the mini-VDD's 32-36 exactly
+ * as Phase 5's 22-26 match its own. IntentStep carries the same number the
+ * executor is about to be asked for, so a capture that stops names the step
+ * without a cross-reference.
+ */
+#define V9X_P6_STEP_VERIFY        32u
+#define V9X_P6_STEP_PROGRAM       33u
+#define V9X_P6_STEP_PROBE         34u
+#define V9X_P6_STEP_DRAW          35u
+#define V9X_P6_STEP_TEARDOWN      36u
+/* Staging is its own step, before the five, so a hang inside the staging
+ * loop is not reported as a verify that never ran. */
+#define V9X_P6_STEP_STAGE         31u
+
+/*
  * Shift-add 32-bit multiply. Open Watcom would otherwise call __U4M, which
  * lives in clibc.lib's _TEXT and cannot be reached by a near call from the
  * I9XXCODE segment this unit is compiled into. The linker refuses it (E2052),
@@ -166,6 +186,41 @@ static DWORD v9x_p5_mul32(DWORD left, DWORD right)
 }
 
 static WORD v9x_p5_rejection;
+
+/*
+ * The scene under construction, and the running aperture-read count.
+ *
+ * File-static rather than a local: the struct carries five triangles and
+ * fourteen probes, and this is a Win16 driver whose stack is not somewhere to
+ * put a hundred and fifty bytes casually.
+ *
+ * v9x_p5_reads is CUMULATIVE across every scene, because that is the number
+ * the aperture hazard is about. Three single reads succeeded on this part and
+ * 153,600 hung; a per-scene count would say nothing about where a five-scene
+ * boot actually stopped.
+ */
+static struct v9x_i9xx_scene v9x_p6_scene;
+
+/*
+ * Every scene's dwords, in execution order, as the driver actually built
+ * them.
+ *
+ * This exists so the combined CRC handed to the chain is a REAL comparison.
+ * The obvious version - passing v9x_i9xx_scene_combined_crc() as both the
+ * staged value and the expected one - compares a number with itself and
+ * passes for any stream whatsoever, which is the defect this file keeps
+ * finding in its own checks. Accumulating the bytes is what makes the two
+ * sides independent: one is what was built and staged here, the other is the
+ * constant generated from the builders.
+ *
+ * Sized for five scenes at the longest a scene can be. A scene that would
+ * overflow it stops the run rather than silently CRCing a truncated record
+ * of what was submitted.
+ */
+#define V9X_P6_ALL_DWORDS 512u
+static DWORD v9x_p6_all[V9X_P6_ALL_DWORDS];
+static DWORD v9x_p6_all_used;
+static DWORD v9x_p5_reads;
 static DWORD v9x_p5_stream[160];
 static DWORD v9x_p5_stream_dwords;
 
@@ -337,6 +392,73 @@ static void v9x_p5_capture_errors(const char *prefix)
     v9x_p5_flush();
 }
 
+/*
+ * Every aperture read goes through here, and the running total reaches disk
+ * before the read rather than after.
+ *
+ * That ordering is the whole point. If the read locks the machine, the
+ * capture already says which read it was - and the count is what the next
+ * boot's budget is set from. A total written afterwards would be missing
+ * exactly the entry that mattered.
+ */
+static DWORD v9x_p5_read_counted(DWORD offset)
+{
+    v9x_p5_reads++;
+    v9x_p5_hex("ApertureReads", v9x_p5_reads);
+    v9x_p5_flush();
+    return V9xGmadrRead(offset);
+}
+
+/*
+ * "S<scene><name>" - the capture key for a per-scene value.
+ *
+ * Scenes share probe names by design: the three edge scenes probe the same
+ * pixels so their coverage can be compared, and without a per-scene prefix
+ * the later ones would overwrite the earlier in the profile and the
+ * comparison would silently be a scene against itself.
+ */
+static void v9x_p6_key(char *key, WORD scene, const char *name)
+{
+    WORD at = 0u;
+
+    key[at++] = 'S';
+    key[at++] = (char)('0' + (scene % 10u));
+    key[at] = '\0';
+    v9x_intel_str_append(key, name);
+}
+
+static void v9x_p6_hex(WORD scene, const char *name, DWORD value)
+{
+    char key[32];
+
+    v9x_p6_key(key, scene, name);
+    v9x_p5_hex(key, value);
+}
+
+static void v9x_p6_text(WORD scene, const char *name, const char *value)
+{
+    char key[32];
+
+    v9x_p6_key(key, scene, name);
+    v9x_p5_text(key, value);
+}
+
+/*
+ * What a probe expected, as the word the capture carries.
+ *
+ * MEASURE is published as "measure" rather than left blank: a probe with no
+ * expectation and a probe whose expectation was lost look identical in a
+ * capture, and only one of them is evidence.
+ */
+static const char *v9x_p6_expectation(WORD expect)
+{
+    if (expect == V9X_I9XX_PROBE_MEASURE) { return "measure"; }
+    if (expect == V9X_I9XX_PROBE_FILL) { return "outside"; }
+    if (expect == V9X_I9XX_PROBE_TRIANGLE0) { return "inside"; }
+    if (expect == V9X_I9XX_PROBE_TRIANGLE1) { return "inside1"; }
+    return "unknown";
+}
+
 static void v9x_p5_intent(WORD step)
 {
     v9x_p5_hex("IntentStep", (DWORD)step);
@@ -401,7 +523,8 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
      * says a token was transferred; these two say it was transferred for a
      * draw, and that the replay it depends on actually happened.
      */
-    if (v9x_intel_boot_arm_phase != V9X_I9XX_PHASE5) {
+    if (v9x_intel_boot_arm_phase != V9X_I9XX_PHASE5 &&
+        v9x_intel_boot_arm_phase != V9X_I9XX_PHASE6) {
         return V9X_P5_PRE_PHASE;
     }
     if (v9x_intel_arm_chain.state != V9X_I9XX_CHAIN_STATE_REPLAYED) {
@@ -715,6 +838,151 @@ static void v9x_p5_publish_guards(
  * it: the two declarations are in different translation units, and check-tree
  * polices only the crossings intel16.h names.
  */
+
+/*
+ * One scene: stage it, run its five steps, read its probes.
+ *
+ * Returns V9X_TRUE only when every step completed. The caller stops at the
+ * first scene that does not, and does NOT retire the token - a run whose
+ * result nobody can vouch for leaves the token in flight, and the next boot
+ * reports INCOMPLETE.
+ *
+ * Everything this scene learned is on disk before the next one submits
+ * anything. That is what makes a hang on scene four cost only scene four:
+ * scenes zero to three are complete, and the capture names the fourth.
+ */
+static WORD v9x_p6_run_scene(
+    const struct v9x_i9xx_sandbox_layout *layout, WORD scene, DWORD stage_base)
+{
+    WORD index;
+    DWORD stream[160];
+    DWORD dwords = 0ul;
+    DWORD crc;
+
+    if (v9x_i9xx_scene_at((v9x_u32)scene, &v9x_p6_scene) != V9X_STATUS_OK) {
+        v9x_p6_text(scene, "Scene", "TABLE-REFUSED");
+        return V9X_FALSE;
+    }
+    if (v9x_i9xx_build_scene_stream(
+            &v9x_p6_scene, stream,
+            (v9x_u32)(sizeof(stream) / sizeof(stream[0])),
+            &dwords) != V9X_STATUS_OK) {
+        v9x_p6_text(scene, "Scene", "BUILD-REFUSED");
+        return V9X_FALSE;
+    }
+    crc = v9x_i9xx_crc32_dwords(stream, dwords);
+
+    v9x_p6_hex(scene, "Id", (DWORD)v9x_p6_scene.id);
+    v9x_p6_hex(scene, "Dwords", dwords);
+    v9x_p6_hex(scene, "Crc", crc);
+    v9x_p6_hex(scene, "Tris", (DWORD)v9x_p6_scene.triangle_count);
+    v9x_p6_hex(scene, "Probes", (DWORD)v9x_p6_scene.probe_count);
+    /*
+     * The CRC the driver built against the CRC the generated table carries.
+     * A real comparison, not a restatement: the mini-VDD gates on its own
+     * copy, and if the two ever disagreed the arm would refuse with nothing
+     * in the capture to say why.
+     */
+    v9x_p6_hex(scene, "GenCrc", v9x_i9xx_scene_crc((v9x_u32)scene));
+    if (crc != v9x_i9xx_scene_crc((v9x_u32)scene)) {
+        v9x_p6_text(scene, "Scene", "CRC-MISMATCH");
+        return V9X_FALSE;
+    }
+
+    /* Into the accumulator before staging, so what is CRCed at the end is
+     * exactly what was submitted. */
+    if (v9x_p6_all_used + dwords > (DWORD)V9X_P6_ALL_DWORDS) {
+        v9x_p6_text(scene, "Scene", "ACCUMULATOR-FULL");
+        return V9X_FALSE;
+    }
+    for (index = 0u; index < (WORD)dwords; ++index) {
+        v9x_p6_all[v9x_p6_all_used + (DWORD)index] = stream[index];
+    }
+    v9x_p6_all_used += dwords;
+    v9x_p5_hex("SceneDwordsSoFar", v9x_p6_all_used);
+    v9x_p5_flush();
+
+    v9x_p5_intent(V9X_P6_STEP_STAGE);
+    for (index = 0u; index < (WORD)dwords; ++index) {
+        if (V9xMiniI9xxSceneStage(stage_base, index, stream[index],
+                              scene) == 0u) {
+            v9x_p6_hex(scene, "StageFailIndex", (DWORD)index);
+            v9x_p6_hex(scene, "StageFail", v9x_i9xx_ring_stage_fail);
+            v9x_p5_capture_errors("PostErr");
+            v9x_p6_text(scene, "Scene", "STAGE-REFUSED");
+            return V9X_FALSE;
+        }
+        /* A marker every sixteen dwords, so a hang inside the loop says
+         * roughly where rather than only that it was staging. */
+        if ((index & 0x0fu) == 0u) {
+            v9x_p6_hex(scene, "Marker", (DWORD)index);
+            v9x_p5_flush();
+        }
+    }
+    v9x_p6_hex(scene, "StageFail", 0ul);
+
+    for (index = 0u; index < 5u; ++index) {
+        static const WORD steps[5] = {
+            V9X_P6_STEP_VERIFY, V9X_P6_STEP_PROGRAM, V9X_P6_STEP_PROBE,
+            V9X_P6_STEP_DRAW, V9X_P6_STEP_TEARDOWN
+        };
+        WORD step = steps[index];
+
+        v9x_p5_intent(step);
+        if (V9xMiniI9xxSceneExecute(crc, step, scene) == 0u) {
+            v9x_p6_hex(scene, "ExecFailStep", (DWORD)step);
+            v9x_p6_hex(scene, "ExecFailure", v9x_i9xx_ring_exec_failure);
+            v9x_p6_hex(scene, "ExecHead", v9x_i9xx_ring_exec_head);
+            v9x_p6_hex(scene, "ExecTail", v9x_i9xx_ring_exec_tail);
+            v9x_p6_hex(scene, "ExecPolls", v9x_i9xx_ring_exec_polls);
+            /* The error registers on the failure path too: a parser fault
+             * that hangs the drain is exactly when this is wanted. */
+            v9x_p5_capture_errors("PostErr");
+            v9x_p6_text(scene, "Scene", "EXECUTE-REFUSED");
+            return V9X_FALSE;
+        }
+    }
+    v9x_p6_hex(scene, "ExecFailure", 0ul);
+
+    /*
+     * Execution evidence reaches disk BEFORE the first pixel read. If the
+     * probes lock the machine, the capture still says this scene was
+     * submitted and drained.
+     */
+    v9x_p5_capture_errors("PostErr");
+    v9x_p5_flush();
+
+    v9x_p5_intent(V9X_P5_STEP_PIXELS);
+    for (index = 0u; index < (WORD)v9x_p6_scene.probe_count; ++index) {
+        char key[32];
+        DWORD offset;
+
+        offset = v9x_p5_point_offset(layout,
+                                     v9x_p6_scene.probes[index].x,
+                                     v9x_p6_scene.probes[index].y);
+        /*
+         * The probe's own name, prefixed by its scene. What it EXPECTED is
+         * published beside what it read, because the same value means
+         * different things in different scenes - the fill is a correct
+         * result where a triangle was not drawn, and a regression where one
+         * was.
+         */
+        v9x_p6_key(key, scene, v9x_p6_scene.probes[index].name);
+        v9x_p5_text(key, v9x_p6_expectation(
+                             v9x_p6_scene.probes[index].expect));
+        v9x_p6_hex(scene, "PixelNext", (DWORD)index);
+        v9x_p6_hex(scene, "PixelOffset", offset);
+        v9x_p5_flush();
+
+        v9x_p6_key(key, scene, "PX");
+        v9x_p5_indexed_hex(key, index, v9x_p5_read_counted(offset));
+        v9x_p5_flush();
+    }
+    v9x_p6_hex(scene, "PixelProbes", (DWORD)v9x_p6_scene.probe_count);
+    v9x_p5_flush();
+    return V9X_TRUE;
+}
+
 void v9x_intel_phase5_run(
     const struct v9x_i9xx_sandbox_layout *layout,
     WORD phase4_passed, WORD armed)
@@ -733,11 +1001,17 @@ void v9x_intel_phase5_run(
 
     V9xEnsureDiagDir();
     /*
-     * 2: adds PreErr/PostErr with their completeness status. Bumped so a
-     * checker can REQUIRE those fields of a new capture without rejecting the
-     * schema-1 captures already preserved under docs\probe.
+     * 2: adds PreErr/PostErr with their completeness status.
+     * 3: adds the Phase 6 scene sections - per-scene stream figures, probe
+     *    sets carrying their own expectations, and the cumulative aperture
+     *    read count. Bumped so a checker can REQUIRE those of a Phase 6
+     *    capture without rejecting the schema-1 and schema-2 captures already
+     *    preserved under docs\probe.
      */
-    v9x_p5_text("SchemaVersion", "2");
+    v9x_p5_text("SchemaVersion", "3");
+    v9x_p5_reads = 0ul;
+    v9x_p6_all_used = 0ul;
+    v9x_p5_hex("ApertureReads", v9x_p5_reads);
     v9x_p5_text("Access", armed != 0u ? "armed-one-shot" : "no-hardware-writes");
     v9x_p5_text("CaptureBuildId",
                 v9x_intel_bridge_build_identity()->build_id);
@@ -876,6 +1150,95 @@ void v9x_intel_phase5_run(
     v9x_p5_hex("StageBase", stage_base);
     v9x_p5_hex("StageBaseExpected", 0xd0000000ul + layout->reserve_offset);
     v9x_p5_flush();
+
+    /*
+     * PHASE 6 forks here, after the ring is mapped and before anything is
+     * staged, and it never rejoins: its scenes carry their own streams,
+     * their own CRCs and their own probes.
+     *
+     * The Phase 5 path below is left exactly as it was rather than being
+     * generalised into scene 0. It is the path two armed boots have actually
+     * run, its capture is what C:\temp\intel42 is, and until Phase 6 has
+     * produced a capture of its own that is evidence worth keeping able to
+     * reproduce. Retiring it is a separate change for after that boot.
+     */
+    if (v9x_intel_boot_arm_phase == V9X_I9XX_PHASE6) {
+        WORD scene;
+        WORD scenes = (WORD)v9x_i9xx_scene_count();
+
+        v9x_p5_hex("Scenes", (DWORD)scenes);
+        v9x_p5_hex("ScenesAuthorised",
+                   (DWORD)v9x_i9xx_scene_authorised_draws());
+        v9x_p5_hex("SceneCombinedCrc", v9x_i9xx_scene_combined_crc());
+        v9x_p5_hex("SceneProbeBudget", v9x_i9xx_scene_total_probes());
+        v9x_p5_flush();
+        /*
+         * Zero means the build defines more scenes than the errata decision
+         * authorises. It is a refusal, not an empty set - executing none is
+         * correct, and saying so is what stops it looking like a pass.
+         */
+        if (scenes == 0u) {
+            v9x_p5_result("SCENES-UNAUTHORISED");
+            return;
+        }
+
+        for (scene = 0u; scene < scenes; ++scene) {
+            v9x_p5_hex("SceneNext", (DWORD)scene);
+            v9x_p5_flush();
+            if (v9x_p6_run_scene(layout, scene, stage_base) == 0u) {
+                /*
+                 * Guards and the heap probe even on the failing path. A
+                 * scene that wrote outside its target is exactly the case
+                 * where they matter, and the earlier scenes' results are
+                 * already on disk.
+                 */
+                v9x_p5_publish_guards(layout, "1");
+                v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
+                v9x_p5_hex("SceneFailed", (DWORD)scene);
+                v9x_p5_result("SCENE-REFUSED");
+                return;
+            }
+            /* Between scenes, not only at the end: a scene that damaged the
+             * guards must not have it attributed to a later one. */
+            v9x_p5_publish_guards(layout, "1");
+            v9x_p5_flush();
+        }
+        v9x_p5_hex("ScenesCompleted", (DWORD)scenes);
+        v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
+
+        {
+            /*
+             * What was actually built and staged, against the constant the
+             * generator produced. Two independent quantities: passing the
+             * generated CRC on both sides would compare a number with itself
+             * and accept any stream at all.
+             */
+            DWORD staged = v9x_i9xx_crc32_dwords(v9x_p6_all,
+                                                 v9x_p6_all_used);
+            WORD verdict;
+
+            v9x_p5_hex("SceneStagedCrc", staged);
+            v9x_p5_hex("SceneStagedDwords", v9x_p6_all_used);
+            verdict = v9x_i9xx_chain_draw_done(
+                &v9x_intel_arm_chain, V9X_TRUE,
+                staged,
+                v9x_i9xx_scene_combined_crc());
+
+            v9x_p5_hex("ChainDrawVerdict", (DWORD)verdict);
+            v9x_p5_hex("ChainState", (DWORD)v9x_intel_arm_chain.state);
+            if (verdict != V9X_I9XX_CHAIN_OK) {
+                v9x_p5_result("CHAIN-DRAW-REFUSED");
+                return;
+            }
+            if (v9x_intel_boot_arm_retire("pass:phase6") == 0u) {
+                v9x_p5_result("RETIRE-FAILED");
+                return;
+            }
+            v9x_p5_text("TokenRetired", "1");
+        }
+        v9x_p5_result("PASS");
+        return;
+    }
 
     v9x_p5_intent(V9X_P5_STEP_STAGE);
     for (index = 0u; index < (WORD)v9x_p5_stream_dwords; ++index) {

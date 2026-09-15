@@ -59,6 +59,13 @@
  * interaction that does not transfer to a triangle.
  */
 #define V9X_I9XX_PHASE5                  ((v9x_u16)5u)
+/*
+ * Phase 6 is a separate arm phase again, for the reason Phase 5 was separate
+ * from Phase 4: a token authorising ONE draw cannot authorise five. The
+ * 2026-09-16 errata amendment bounds a boot at five independent draws, and
+ * that bound is a different risk assessment from the one that opened Phase 5.
+ */
+#define V9X_I9XX_PHASE6                  ((v9x_u16)6u)
 #define V9X_I9XX_ARM_TOKEN_MAX           ((v9x_u16)63u)
 
 #define V9X_I9XX_ARM_REJECT_NONE         ((v9x_u16)0u)

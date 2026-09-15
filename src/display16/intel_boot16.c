@@ -249,6 +249,8 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_boot_arm_phase = V9X_I9XX_PHASE4;
     } else if (v9x_intel_str_equal(phase_text, "5") != 0u) {
         v9x_intel_boot_arm_phase = V9X_I9XX_PHASE5;
+    } else if (v9x_intel_str_equal(phase_text, "6") != 0u) {
+        v9x_intel_boot_arm_phase = V9X_I9XX_PHASE6;
     } else if (phase_text[0] != '\0') {
         v9x_intel_boot_state = "BAD-PHASE";
         return;

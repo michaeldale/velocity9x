@@ -293,8 +293,10 @@ V9XMINI_FN_I9XX_RING_HASH   EQU 0015h
 ;      ECX = step, 32-36 (verify, program, probe, draw, tear down)
 ;      EDX = scene index, below V9X_I9XX_SCENE_COUNT
 ; out: AX  = 1 on success, 0 on refusal
-;      EBX = failure code, ECX = head, EDX = tail, ESI = elapsed ms,
-;      EDI = polls - the same shape RING_EXECUTE returns
+;      EBX = head, ECX = tail, EDX = elapsed ms, ESI = polls,
+;      EDI = failure code - the same shape RING_EXECUTE returns, which is
+;      what V9xMini_I9xx_Ring_Execute leaves in them and NOT the order a
+;      reading of the failure-first prose would suggest.
 ;
 ; Refusal codes shared with RING_EXECUTE, plus:
 ;   30 scene index at or above the scene count

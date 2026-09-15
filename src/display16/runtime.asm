@@ -1313,6 +1313,52 @@ V9XMINII9XXRINGSTAGE ENDP
 ; here rather than passed in. A caller cannot select the wrong phase by
 ; getting an argument wrong, because there is no argument: the two thunks
 ; are the two phases. That is the same reasoning as having two arm scripts.
+; WORD FAR PASCAL V9xMiniI9xxSceneStage(DWORD base, WORD index, DWORD value,
+;                                       WORD scene)
+;
+; Phase 6 staging. ESI carries the phase and EDI the scene, so a scene index
+; can never be mistaken for a Phase 5 dword: the mini-VDD refuses any ESI it
+; does not know, and phase 6 is the only one that looks at EDI.
+PUBLIC V9XMINII9XXSCENESTAGE
+V9XMINII9XXSCENESTAGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxSceneStageFailed
+    ; PASCAL: leftmost argument is deepest. base, index, value, scene.
+    mov     ebx, dword ptr [bp+14]
+    movzx   ecx, word ptr [bp+12]
+    mov     edx, dword ptr [bp+8]
+    movzx   edi, word ptr [bp+6]
+    mov     esi, 6
+    mov     eax, V9XMINI_FN_I9XX_RING_STAGE
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_ring_stage_fail, ebx
+    mov     _v9x_i9xx_ring_stage_read, ecx
+    or      ax, ax
+    jz      short V9xMiniI9xxSceneStageFailed
+    mov     ax, 1
+    jmp     short V9xMiniI9xxSceneStageDone
+V9xMiniI9xxSceneStageFailed:
+    xor     ax, ax
+V9xMiniI9xxSceneStageDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    12
+V9XMINII9XXSCENESTAGE ENDP
+
 PUBLIC V9XMINII9XXP5STAGE
 V9XMINII9XXP5STAGE PROC FAR
     push    bp
@@ -1439,6 +1485,51 @@ V9xMiniI9xxRingHashDone:
     pop     bp
     retf    8
 V9XMINII9XXRINGHASH ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxSceneExecute(DWORD crc, WORD step, WORD scene)
+;
+; Phase 6. Same returns as V9xMiniI9xxRingExecute, into the same globals, so
+; the capture reads identically whichever phase produced it.
+PUBLIC V9XMINII9XXSCENEEXECUTE
+V9XMINII9XXSCENEEXECUTE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxSceneExecuteFailed
+    ; PASCAL pushes left to right, so the LAST argument is nearest bp.
+    mov     ebx, dword ptr [bp+10]
+    movzx   ecx, word ptr [bp+8]
+    movzx   edx, word ptr [bp+6]
+    mov     eax, V9XMINI_FN_I9XX_SCENE_EXECUTE
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_ring_exec_head, ebx
+    mov     _v9x_i9xx_ring_exec_tail, ecx
+    mov     _v9x_i9xx_ring_exec_elapsed, edx
+    mov     _v9x_i9xx_ring_exec_polls, esi
+    mov     _v9x_i9xx_ring_exec_failure, edi
+    or      ax, ax
+    jz      short V9xMiniI9xxSceneExecuteFailed
+    mov     ax, 1
+    jmp     short V9xMiniI9xxSceneExecuteDone
+V9xMiniI9xxSceneExecuteFailed:
+    xor     ax, ax
+V9xMiniI9xxSceneExecuteDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINII9XXSCENEEXECUTE ENDP
 
 ; WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step)
 PUBLIC V9XMINII9XXRINGEXECUTE
