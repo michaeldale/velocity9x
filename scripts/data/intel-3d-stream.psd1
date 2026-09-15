@@ -113,6 +113,9 @@
             Crc = '6B1C2CEF'
             PrimitiveOffset = 47
             Triangles = 1
+            Colors = @(
+                '1C3E'
+            )
             Probes = @(
                 @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
                 @{ Name = 'NearV0'; X = 175; Y = 128; Expect = 1 }
@@ -136,6 +139,9 @@
             Crc = '60367BB4'
             PrimitiveOffset = 47
             Triangles = 1
+            Colors = @(
+                '3038'
+            )
             Probes = @(
                 @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
                 @{ Name = 'NearV0'; X = 175; Y = 128; Expect = 1 }
@@ -159,6 +165,9 @@
             Crc = '4CD82BC9'
             PrimitiveOffset = 47
             Triangles = 1
+            Colors = @(
+                '1C3E'
+            )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
                 @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
@@ -176,6 +185,9 @@
             Crc = '3AE65FF9'
             PrimitiveOffset = 47
             Triangles = 1
+            Colors = @(
+                'F325'
+            )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
                 @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
@@ -193,6 +205,10 @@
             Crc = '638E7E0C'
             PrimitiveOffset = 47
             Triangles = 2
+            Colors = @(
+                '1C3E'
+                'F325'
+            )
             Probes = @(
                 @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
                 @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }

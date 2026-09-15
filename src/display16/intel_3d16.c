@@ -419,52 +419,6 @@ static DWORD v9x_p5_read_counted(DWORD offset)
 }
 
 /*
- * What the whole boot will read through the aperture, published BEFORE any
- * of it happens so a hang is measured against a number already on disk.
- *
- * The mini-VDD reads each staged dword back as it writes it, and each scene's
- * verify step then compares the entire staged stream against the generated
- * table - so every scene costs two aperture reads per dword before a single
- * pixel is probed. For this build that is 2 * 330 = 660 against 52 probes.
- *
- * The Phase 6 plan said "four scenes, ~60 reads total". That was the probe
- * count mistaken for the read count, and it was wrong by more than ten times.
- * Recorded here rather than quietly corrected, because the budget rule - no
- * boot roughly doubles the last one that completed - was being applied to the
- * wrong quantity.
- */
-static void v9x_p6_publish_read_budget(void)
-{
-    v9x_u32 scene;
-    DWORD staged = 0ul;
-
-    for (scene = 0ul; scene < v9x_i9xx_scene_count(); ++scene) {
-        struct v9x_i9xx_scene one;
-
-        if (v9x_i9xx_scene_at(scene, &one) != V9X_STATUS_OK) {
-            v9x_p5_text("ReadBudget", "SCENE-REFUSED");
-            return;
-        }
-        staged += v9x_i9xx_scene_extent(&one);
-    }
-    v9x_p5_hex("SceneStagedDwordsTotal", staged);
-    /* Staging reads each dword back once; verify reads the stream once more. */
-    v9x_p5_hex("MiniApertureReads", staged * 2ul);
-    v9x_p5_hex("ProbeApertureReads", v9x_i9xx_scene_total_probes());
-    /*
-     * Guards either side of the target before the run and after every scene,
-     * plus the heap probe before and after. Counted rather than estimated:
-     * the point of this block is that the figure is arithmetic, not a guess.
-     */
-    v9x_p5_hex("GuardApertureReads",
-               2ul + (2ul * v9x_i9xx_scene_count()) + 2ul);
-    v9x_p5_hex("ExpectedApertureReads",
-               (staged * 2ul) + v9x_i9xx_scene_total_probes() +
-               2ul + (2ul * v9x_i9xx_scene_count()) + 2ul);
-    v9x_p5_flush();
-}
-
-/*
  * "S<scene><name>" - the capture key for a per-scene value.
  *
  * Scenes share probe names by design: the three edge scenes probe the same
@@ -512,6 +466,77 @@ static const char *v9x_p6_expectation(WORD expect)
     if (expect == V9X_I9XX_PROBE_TRIANGLE0) { return "inside"; }
     if (expect == V9X_I9XX_PROBE_TRIANGLE1) { return "inside1"; }
     return "unknown";
+}
+/*
+ * What this boot reads through the GMADR aperture, computed and published
+ * before any of it is spent.
+ *
+ * SCOPE, stated because getting it wrong twice is what made the earlier
+ * figures useless. This counts every aperture read of the armed boot, by the
+ * driver AND by the mini-VDD on its behalf, from the Phase 4 replay through
+ * the last scene's probes. It does not count MMIO register reads - the ring
+ * head polls and the error registers - which go to BAR0 and are not the
+ * access this hazard is about.
+ *
+ * The Phase 4 replay is IN scope and dominates everything else: verifying its
+ * blit reads 1024 dwords of the scratch page. Excluding it is what made an
+ * earlier version of this claim say a Phase 6 boot was a sixteenfold step,
+ * when measured against the whole boot it is about half as much again.
+ *
+ * The per-scene guard checks in the mini-VDD's verify step are two more reads
+ * per scene, which an earlier count also missed.
+ *
+ * Every term below is arithmetic over constants the build owns. Nothing here
+ * is a figure anyone typed.
+ */
+
+/* Phase 4 replay, driver side: one reserve guard, one read-back per staged
+ * dword, and 1024 dwords of scratch to verify the blit landed. */
+#define V9X_P4_DRIVER_READS  (1ul + 10ul + 1024ul)
+/* Phase 4 replay, mini-VDD side: a read-back per staged dword, the same
+ * number again comparing the ring, and the two in-reserve guards. */
+#define V9X_P4_MINI_READS    (10ul + 10ul + 2ul)
+
+static void v9x_p6_publish_read_budget(void)
+{
+    v9x_u32 scene;
+    DWORD staged = 0ul;
+    DWORD scenes = (DWORD)v9x_i9xx_scene_count();
+    DWORD mini;
+    DWORD driver;
+
+    for (scene = 0ul; scene < v9x_i9xx_scene_count(); ++scene) {
+        struct v9x_i9xx_scene one;
+
+        if (v9x_i9xx_scene_at(scene, &one) != V9X_STATUS_OK) {
+            v9x_p5_text("ReadBudget", "SCENE-REFUSED");
+            return;
+        }
+        staged += v9x_i9xx_scene_extent(&one);
+    }
+
+    /*
+     * Per scene the mini-VDD reads each staged dword back as it writes it,
+     * compares the whole stream again in the verify step, and checks the two
+     * in-reserve guards.
+     */
+    mini = (staged * 2ul) + (2ul * scenes);
+    /*
+     * Driver side: every probe, the guards before the run and after each
+     * scene, and the heap probe either side.
+     */
+    driver = v9x_i9xx_scene_total_probes() + 2ul + (2ul * scenes) + 2ul;
+
+    v9x_p5_text("ReadBudgetScope", "gmadr-whole-boot-incl-phase4");
+    v9x_p5_hex("SceneStagedDwordsTotal", staged);
+    v9x_p5_hex("Phase4ApertureReads",
+               V9X_P4_DRIVER_READS + V9X_P4_MINI_READS);
+    v9x_p5_hex("MiniApertureReads", mini + V9X_P4_MINI_READS);
+    v9x_p5_hex("ProbeApertureReads", v9x_i9xx_scene_total_probes());
+    v9x_p5_hex("GuardApertureReads", 2ul + (2ul * scenes) + 2ul);
+    v9x_p5_hex("ExpectedApertureReads",
+               V9X_P4_DRIVER_READS + V9X_P4_MINI_READS + mini + driver);
+    v9x_p5_flush();
 }
 
 static void v9x_p5_intent(WORD step)

@@ -84,64 +84,46 @@ Five is a bound, not a target. Raising it needs another decision recorded in
 that file, which is what the authorised-draw constant in the code exists to
 make visible.
 
-## The read budget, and the figure this plan had wrong by ten times
+## The read budget, and the two figures this plan got wrong
 
 Bulk aperture reads hang this part:
 [record](../decisions/2026-09-15-bulk-aperture-reads-hang-the-945gse.md).
-Three single reads succeeded and 153,600 hung. The Phase 5 capture that
-completed performed about 45.
+Three single reads succeeded and 153,600 hung.
 
-**This section previously said "four scenes, ~60 reads total". That was the
-probe count mistaken for the read count.** The probes are the smallest part of
-what a boot reads, and the budget rule below was being applied to the wrong
-quantity — which is worse than having no rule, because a tenth of the real
-figure looks like headroom.
+This section has now been wrong twice, in opposite directions, and both errors
+were about SCOPE rather than arithmetic:
 
-What a Phase 6 boot actually reads through the aperture:
+1. It said "four scenes, ~60 reads total". That was the probe count mistaken
+   for the read count, and it ignored the mini-VDD entirely.
+2. Correcting that, it said a Phase 6 boot was a **sixteenfold** step. That
+   ignored the Phase 4 replay, which every armed boot performs first and which
+   dominates everything — verifying its blit reads 1024 dwords of scratch.
 
-| Source | Reads | Why |
-|---|---|---|
-| Staging read-back | 330 | The mini-VDD reads back every dword it stages, one per dword across all five scenes |
-| Scene verify | 330 | Each scene's verify step compares its whole staged stream against the generated table |
-| Pixel probes | 52 | 14 + 14 + 8 + 8 + 8 |
-| Guards and heap | 14 | Both guards before the run and after each scene, heap probe either side |
-| **Total** | **~726** | |
+**Scope, stated once and used everywhere:** every read through the GMADR
+aperture during an armed boot, by the driver and by the mini-VDD on its behalf,
+from the Phase 4 replay to the last probe. MMIO register reads — ring head
+polls, error registers — are not counted; they go to BAR0 and are not the
+access this hazard concerns.
 
-Against 45 on the last boot that completed. That is a factor of sixteen, not
-the factor of one-and-a-third the old figure implied.
+| | Phase 4 replay | The draw | Boot total |
+|---|---|---|---|
+| Phase 5 boot (`intel42`, completed) | 1057 | 164 | **1221** |
+| Phase 6 boot | 1057 | 736 | **1793** |
 
-**This does not mean the boot is unsafe, and it does not mean it is safe.**
-What it means is that the number nobody had computed is large, and the
-comparison that matters — 726 against a hang measured at 153,600 and a success
-measured at 45 — sits in between with no evidence either side of it. The
-decision to spend the boot is a risk decision like the draw count was, and it
-is recorded as one rather than buried in a table.
+**About one and a half times a boot this machine has already completed
+twice.** Not sixteen. The step is real but modest, and the figure that makes it
+modest — the 1024-read Phase 4 verify — was in every successful boot already.
 
 Every capture publishes the figures rather than assuming them:
+`ExpectedApertureReads` before any read happens, `DriverApertureReads`
+incremented and flushed *before* each driver read so a lock names the read,
+`MiniApertureReads` and `Phase4ApertureReads` computed from constants the build
+owns, and `ReadBudgetScope` naming the scope so the next reader does not have
+to reconstruct it from a table.
 
-- `ExpectedApertureReads` before any read happens, so a hang is measured
-  against a number already on disk.
-- `DriverApertureReads`, incremented and flushed **before** each read the
-  driver makes, so a lock names the read rather than being inferred from the
-  gap where it stopped.
-- `MiniApertureReads`, computed from the scene table, for the reads the
-  mini-VDD makes on the driver's behalf. These are not observable from the
-  driver as they happen, which is exactly why they are computed and published
-  rather than counted.
-
-The rule stands, now applied to the right quantity: no boot raises the total
-aperture reads by more than roughly double the last boot that completed. This
-one raises it by sixteen times, so **the first Phase 6 boot is itself the
-experiment** — if it hangs, the count at the stopping point is the
-measurement, and it goes in a decision record.
-
-### The cheaper shape, if that is judged too large a step
-
-The verify step is 330 of the 726 and is a defence against staged memory
-changing between staging and submission. Running fewer scenes per boot scales
-everything linearly: two scenes is about 290 reads, which is six times the last
-success rather than sixteen. The scene count is one constant and the
-authorised bound is another, so this is a decision to take, not a rewrite.
+The rule — no boot raises the total by more than roughly double the last one
+that completed — is satisfied at 1.47x. That is the first time this plan has
+been able to say so honestly.
 
 ## Build 1: five scenes
 

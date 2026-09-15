@@ -80,6 +80,16 @@ function Test-V9xIntel3dCapture {
     if ($schema -ne '1' -and $schema -ne '2' -and $schema -ne '3') {
         throw "Unknown INTEL3D0.TXT schema $schema."
     }
+    # A phase-6 capture publishes its evidence PER SCENE and emits none of the
+    # phase-5 globals: no single PostErr set, no PX series, no bulk-read
+    # omission notes, because there is no single draw for them to describe.
+    #
+    # Requiring them of it rejected every real phase-6 capture. The self-test
+    # did not catch that because its fixture was a phase-5 one with scene
+    # sections appended - it INHERITED the fields and so never asked whether
+    # they were required. A fixture built by adding to a passing one tests
+    # what was added and nothing about what was already there.
+    $isScene = ($schema -eq '3')
 
     # The stream the driver built must be the stream that was generated. If
     # these differ, what would run is not what was reviewed - which is the
@@ -266,6 +276,7 @@ function Test-V9xIntel3dCapture {
     # simply lacks these keys is a boot whose read-back may have been lost to a
     # lock, and the two must not look alike.
     foreach ($omission in @('HashOmitted', 'RowCrcOmitted')) {
+        if ($isScene) { continue }
         if (-not $values.ContainsKey($omission)) {
             throw ("An armed INTEL3D0.TXT must carry $omission. The " +
                    'full-target hash and the 480 row CRCs were removed on ' +
@@ -291,7 +302,9 @@ function Test-V9xIntel3dCapture {
         $needPost = $result -ceq 'PASS' -or $result -ceq 'EXECUTE-REFUSED' -or
                     $result -ceq 'STAGE-REFUSED'
         $groups = @('PreErr')
-        if ($needPost) { $groups += 'PostErr' }
+        # PreErr is global in both phases - it is read once, before anything is
+        # submitted. PostErr is per scene in phase 6 and checked there.
+        if ($needPost -and -not $isScene) { $groups += 'PostErr' }
         foreach ($group in $groups) {
             if (-not $values.ContainsKey("${group}Ok")) {
                 throw ("An armed schema-2 INTEL3D0.TXT must carry ${group}Ok. " +
@@ -329,6 +342,7 @@ function Test-V9xIntel3dCapture {
     # against that constant and never taken from the capture. Looping to a
     # count the file supplies lets a capture declare PixelProbes=1, carry one
     # probe, and satisfy its own claim - which is not evidence of anything.
+    if (-not $isScene) {
     $probeCount = Get-V9x3dHex32 -Values $values -Key 'PixelProbes'
     if ($probeCount -ne $script:V9xExpectedProbes) {
         throw ("An armed INTEL3D0.TXT reports $probeCount pixel probes; the " +
@@ -464,6 +478,7 @@ function Test-V9xIntel3dCapture {
         $notes += ("All $($script:V9xExpectedProbes) pixel probes match the " +
                    'measured Intel conversion.')
     }
+    } # end of the phase-5 global probe series
 
     # ------------------------------------------------------------------
     # Schema 3: the Phase 6 scene sections.
@@ -505,6 +520,24 @@ function Test-V9xIntel3dCapture {
                    'and a complete one look identical.')
         }
 
+        $sceneBad = @()
+        $sceneMeasured = @()
+        $sceneChecked = 0
+        # The guards as they were BEFORE anything was submitted. Required,
+        # not optional: treating their absence as "nothing to compare against"
+        # made the per-scene guard check silently pass for any capture that
+        # omitted them - a check that cannot fail, which is the defect this
+        # file has now collected five times.
+        foreach ($initial in @('GLow0', 'GUpp0')) {
+            if (-not $values.ContainsKey($initial)) {
+                throw ("A schema-3 INTEL3D0.TXT must carry $initial, the " +
+                       'guard value read before any scene ran. Without it ' +
+                       'every per-scene guard has nothing to be compared ' +
+                       'against and the check passes vacuously.')
+            }
+        }
+        $sceneGuardLow = Get-V9x3dHex32 -Values $values -Key 'GLow0'
+        $sceneGuardUpp = Get-V9x3dHex32 -Values $values -Key 'GUpp0'
         for ($scene = 0; $scene -lt $reached; ++$scene) {
             $entry = @($generated.Scenes)[$scene]
             $prefix = "S$scene"
@@ -539,6 +572,55 @@ function Test-V9xIntel3dCapture {
                 }
             }
 
+            # Per-scene guards, against the values read BEFORE anything was
+            # submitted. Injecting a corrupted S0GLow passed before this,
+            # which made the guards decorative in exactly the phase that
+            # multiplied the number of draws that could damage them.
+            foreach ($guard in @(
+                    @{ Key = 'GLow'; Initial = $sceneGuardLow; What = 'lower' },
+                    @{ Key = 'GUpp'; Initial = $sceneGuardUpp; What = 'upper' })) {
+                $name = $prefix + $guard.Key
+                if (-not $values.ContainsKey($name)) {
+                    throw ("INTEL3D0.TXT scene $scene is missing $name. The " +
+                           'guards are how a scene that wrote outside its ' +
+                           'target is caught, and a scene without them cannot ' +
+                           'be cleared of having done so.')
+                }
+                $seen = Get-V9x3dHex32 -Values $values -Key $name
+                if ($seen -ne $guard.Initial) {
+                    throw ("INTEL3D0.TXT scene $scene changed the " +
+                           "$($guard.What) in-reserve guard from " +
+                           ('{0:X8}' -f $guard.Initial) + ' to ' +
+                           ('{0:X8}' -f $seen) + '. Something wrote outside ' +
+                           'the render target.')
+                }
+            }
+
+            # And this scene's error registers, complete. The global PostErr
+            # check does not apply to a phase-6 capture, so without this the
+            # diagnostic that exists to say whether the parser rejected a
+            # primitive was required of nobody.
+            if ($needPost) {
+                if ($values[($prefix + 'PostErrOk')] -cne '1') {
+                    throw ("INTEL3D0.TXT scene $scene reports " +
+                           "${prefix}PostErrOk=$($values[$prefix + 'PostErrOk']). " +
+                           'An incomplete register read is worse than an ' +
+                           'absent one, because absence is visible.')
+                }
+                if ((Get-V9x3dHex32 -Values $values -Key ($prefix + 'PostErrCount')) -ne 9) {
+                    throw ("INTEL3D0.TXT scene $scene claims a register count " +
+                           'other than nine.')
+                }
+                for ($reg = 0; $reg -lt 9; ++$reg) {
+                    $regKey = '{0}PostErr{1:X4}' -f $prefix, $reg
+                    if (-not $values.ContainsKey($regKey)) {
+                        throw ("INTEL3D0.TXT scene $scene is missing $regKey " +
+                               'from a set claiming nine registers.')
+                    }
+                    $null = Get-V9x3dHex32 -Values $values -Key $regKey
+                }
+            }
+
             $probes = @($entry.Probes)
             if ((Get-V9x3dHex32 -Values $values -Key ($prefix + 'Probes')) -ne
                     $probes.Count) {
@@ -555,7 +637,7 @@ function Test-V9xIntel3dCapture {
                            'the set reports on whichever ones happened to be ' +
                            'written.')
                 }
-                $null = Get-V9x3dHex32 -Values $values -Key $key
+                $actual = Get-V9x3dHex32 -Values $values -Key $key
                 # The name key carries what the probe EXPECTED. Required, for
                 # the same reason the generator requires probe names: a
                 # reading whose expectation is absent cannot be judged.
@@ -565,8 +647,74 @@ function Test-V9xIntel3dCapture {
                            "expectation for probe $probe. The same value is a " +
                            'result in one scene and a regression in another.')
                 }
+
+                # And the reading is COMPARED, not merely parsed.
+                #
+                # Every scene pixel could be DEADBEEF and this passed, which
+                # made the whole per-scene probe structure decorative: it
+                # required the evidence to be present and then never looked at
+                # it.
+                #
+                # Established expectations FAIL. The fill and the triangle
+                # colours are measured values - the 565 conversion is on record
+                # and the fill is a constant the build owns - so a probe that
+                # was supposed to read one of them and did not is a regression,
+                # not a discovery.
+                #
+                # MEASURE probes are REPORTED. Those are the shared-edge
+                # samples, and what they hold is the thing being measured; an
+                # expectation there would be a guess written down as evidence.
+                $low = $actual -band 0xffff
+                $high = ($actual -shr 16) -band 0xffff
+                if ($probes[$probe].Expect -eq 65535) {
+                    $sceneMeasured += ("$key=" + ('{0:X8}' -f $actual))
+                    continue
+                }
+                $want = $null
+                if ($probes[$probe].Expect -eq 0) {
+                    $want = [Convert]::ToUInt32($generated.Referencefill, 16) -band 0xffff
+                } else {
+                    # Triangle 0 or 1 of THIS scene, as this chip is measured
+                    # to store it. Per scene, because the edge scenes draw
+                    # different colours from each other and from scene 0 - a
+                    # single expected colour would be right for one scene and
+                    # silently wrong for the rest.
+                    $tri = $probes[$probe].Expect - 1
+                    $colors = @($entry.Colors)
+                    if ($tri -ge $colors.Count) {
+                        throw ("INTEL3D0.TXT scene $scene probe $probe " +
+                               "expects triangle $tri, which the scene does " +
+                               'not have.')
+                    }
+                    $want = [Convert]::ToUInt32($colors[$tri], 16) -band 0xffff
+                }
+                if ($null -ne $want) {
+                    if ($low -ne $want -or $high -ne $want) {
+                        $sceneBad += ("$key reads " + ('{0:X8}' -f $actual) +
+                                      ' where scene ' + $scene + ' expected ' +
+                                      ('{0:X4}' -f $want) + ' (' +
+                                      $probes[$probe].Name + ')')
+                    } else {
+                        ++$sceneChecked
+                    }
+                }
             }
         }
+        if ($sceneBad.Count -ne 0) {
+            throw ("$($sceneBad.Count) scene probe(s) disagree with an " +
+                   'ESTABLISHED expectation: ' + ($sceneBad -join '; ') +
+                   '. The fill is a constant this build owns and the triangle ' +
+                   'colours are measured, so these are regressions rather ' +
+                   'than results.')
+        }
+        if ($sceneChecked -lt 1) {
+            throw ('No scene probe was compared against an established ' +
+                   'expectation. A capture whose every probe is exploratory ' +
+                   'proves nothing and must not read as a pass.')
+        }
+        $notes += ("$sceneChecked scene probes matched their established " +
+                   "expectation; $($sceneMeasured.Count) are measurements: " +
+                   ($sceneMeasured -join ' '))
 
         # The aperture-read budget. Published before the run, so a capture
         # that reached the end must have spent about what it predicted.
@@ -916,22 +1064,46 @@ R0000=DEADBEEF'
     # ------------------------------------------------------------------
     if ($generated.ContainsKey('Scenes')) {
         $s3 = New-Object 'System.Collections.Generic.List[string]'
+        # DROPS the phase-5 globals rather than inheriting them.
+        #
+        # The previous fixture was the armed phase-5 one with scene sections
+        # appended, so it carried HashOmitted, RowCrcOmitted, the global
+        # PostErr set and the PX series - none of which a phase-6 capture
+        # emits. It therefore tested what had been added and nothing about
+        # whether the inherited fields were still being required, and every
+        # real phase-6 capture would have been rejected.
         foreach ($line in $armedLines) {
-            if ($line -like 'SchemaVersion=*') {
-                $s3.Add('SchemaVersion=3')
-            } else {
-                $s3.Add($line)
-            }
+            if ($line -like 'SchemaVersion=*') { $s3.Add('SchemaVersion=3'); continue }
+            if ($line -like 'HashOmitted=*') { continue }
+            if ($line -like 'RowCrcOmitted=*') { continue }
+            if ($line -like 'RowCrcRowsOmitted=*') { continue }
+            if ($line -like 'PostErr*') { continue }
+            if ($line -like 'PX*') { continue }
+            if ($line -like 'PixelProbes=*') { continue }
+            if ($line -like 'PixelNext=*') { continue }
+            if ($line -like 'ExpectedInside=*') { continue }
+            if ($line -like 'ExpectedOutside=*') { continue }
+            if ($line -like 'Centroid=*' -or $line -like 'NearV*' -or
+                $line -like 'Mid*' -or $line -like 'Corner*' -or
+                $line -like 'Outside*') { continue }
+            $s3.Add($line)
         }
+        $s3.Add('ArmPhase=00000006')
+        # The pre-run guards. The phase-5 fixture never carried them, which is
+        # why the per-scene guard comparison had nothing to compare against.
+        $s3.Add('GLow0=A5A5A5A5')
+        $s3.Add('GUpp0=00000000')
         $s3.Add('Scenes={0:X8}' -f [int]$generated.SceneCount)
         $s3.Add('ScenesAuthorised={0:X8}' -f [int]$generated.SceneAuthorisedDraws)
         $s3.Add('SceneCombinedCrc=' + $generated.SceneCombinedCrc)
         $s3.Add('ScenesCompleted={0:X8}' -f [int]$generated.SceneCount)
+        $s3.Add('ReadBudgetScope=gmadr-whole-boot-incl-phase4')
         $s3.Add('ProbeApertureReads={0:X8}' -f [int]$generated.SceneTotalProbes)
         $s3.Add('DriverApertureReads={0:X8}' -f
                 ([int]$generated.SceneTotalProbes + 14))
-        $s3.Add('MiniApertureReads=00000294')
-        $s3.Add('ExpectedApertureReads=000002D6')
+        $s3.Add('MiniApertureReads=000002A6')
+        $s3.Add('Phase4ApertureReads=00000421')
+        $s3.Add('ExpectedApertureReads=000008E1')
         $sceneIndex = 0
         foreach ($entry in @($generated.Scenes)) {
             $prefix = "S$sceneIndex"
@@ -940,13 +1112,46 @@ R0000=DEADBEEF'
             $s3.Add(('{0}Crc={1}' -f $prefix, $entry.Crc))
             $s3.Add(('{0}GenCrc={1}' -f $prefix, $entry.Crc))
             $s3.Add(('{0}Probes={1:X8}' -f $prefix, @($entry.Probes).Count))
+            # The guards as the pre-run read found them, which is what the
+            # validator compares each scene against.
+            $s3.Add(('{0}GLow=A5A5A5A5' -f $prefix))
+            $s3.Add(('{0}GUpp=00000000' -f $prefix))
+            $s3.Add(('{0}PostErrOk=1' -f $prefix))
+            $s3.Add(('{0}PostErrCount=00000009' -f $prefix))
+            $s3.Add(('{0}PostErrFailIndex=FFFFFFFF' -f $prefix))
+            for ($reg = 0; $reg -lt 9; ++$reg) {
+                $s3.Add(('{0}PostErr{1:X4}=00000000' -f $prefix, $reg))
+            }
             $probeIndex = 0
             foreach ($probe in @($entry.Probes)) {
-                $s3.Add(('{0}{1}=measure' -f $prefix, $probe.Name))
-                $s3.Add(('{0}PX{1:X4}=1C3E1C3E' -f $prefix, $probeIndex))
+                # Each probe reads what its scene expects, so the clean
+                # fixture exercises the comparison rather than skirting it.
+                $value = '00000000'
+                if ($probe.Expect -eq 65535) {
+                    $value = '1C3E1C3E'
+                } elseif ($probe.Expect -eq 0) {
+                    $half = $generated.Referencefill.Substring(4)
+                    $value = $half + $half
+                } else {
+                    $half = @($entry.Colors)[$probe.Expect - 1]
+                    $value = $half + $half
+                }
+                $s3.Add(('{0}{1}=x' -f $prefix, $probe.Name))
+                $s3.Add(('{0}PX{1:X4}={2}' -f $prefix, $probeIndex, $value))
                 ++$probeIndex
             }
             ++$sceneIndex
+        }
+        # The fixture must actually LACK the phase-5 globals, or dropping
+        # them was a filter that matched nothing and this proves nothing.
+        foreach ($forbidden in @('HashOmitted', 'RowCrcOmitted', 'PixelProbes',
+                                 'PostErrOk', 'PX0000')) {
+            if (@($s3 | Where-Object { $_ -like ($forbidden + '=*') }).Count -ne 0) {
+                throw ("The schema-3 fixture still carries $forbidden. It is " +
+                       'meant to be what a phase-6 capture actually looks ' +
+                       'like, and inheriting phase-5 fields is exactly how ' +
+                       'the requirement on them went unnoticed.')
+            }
         }
         $null = Test-V9xIntel3dCapture -Lines $s3
 
@@ -987,7 +1192,21 @@ R0000=DEADBEEF'
                Why = 'a scene count that is not the build''s' },
             @{ From = 'S0Crc=' + @($generated.Scenes)[0].Crc
                To = 'S0Crc=DEADBEEF'
-               Why = 'a scene CRC that is not the generated one' }
+               Why = 'a scene CRC that is not the generated one' },
+            # The three the reviewer found passing: guards, error completeness
+            # and the pixels themselves. Each was present-and-parsed and never
+            # compared, which is the same as not collecting it.
+            @{ From = 'S0GLow=A5A5A5A5'; To = 'S0GLow=DEADBEEF'
+               Why = 'a scene that changed the lower in-reserve guard' }
+            @{ From = 'S0GUpp=00000000'; To = 'S0GUpp=DEADBEEF'
+               Why = 'a scene that changed the upper in-reserve guard' }
+            @{ From = 'S0PostErrOk=1'; To = 'S0PostErrOk=0'
+               Why = 'a scene whose error-register read did not complete' }
+            @{ From = 'S0PostErrCount=00000009'; To = 'S0PostErrCount=00000004'
+               Why = 'a scene claiming fewer than nine registers' }
+            @{ From = 'S0PX0000=' + ($generated.Scenes[0].Colors[0] * 2)
+               To = 'S0PX0000=DEADBEEF'
+               Why = 'a scene pixel that is not what the scene expected' }
         )
         foreach ($mutation in $s3Corruptions) {
             $broken = @($s3 | ForEach-Object {

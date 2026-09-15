@@ -329,6 +329,15 @@ for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
                     [Convert]::ToInt32($values[($tag + 'PRIM')], 16)))
     $dataLines.Add(('            Triangles = {0}' -f
                     [Convert]::ToInt32($values[($tag + 'TRIS')], 16)))
+    $dataLines.Add('            Colors = @(')
+    for ($tri = 0; $tri -lt [Convert]::ToInt32($values[($tag + 'TRIS')], 16); ++$tri) {
+        $ctag = '{0}T{1:X4}COLOR' -f $tag, $tri
+        if (-not $values.ContainsKey($ctag)) {
+            throw "The emitted scene table is missing $ctag."
+        }
+        $dataLines.Add(("                '{0}'" -f $values[$ctag]))
+    }
+    $dataLines.Add('            )')
     $dataLines.Add('            Probes = @(')
     for ($probe = 0; $probe -lt $probes; ++$probe) {
         $ptag = '{0}P{1:X4}' -f $tag, $probe

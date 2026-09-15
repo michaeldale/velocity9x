@@ -845,6 +845,20 @@ static int emit_intel_scenes(void)
                (unsigned long)v9x_i9xx_scene_crc(index));
         printf("SC%04XTRIS=%04X\n", (unsigned int)index,
                (unsigned int)scene.triangle_count);
+        /*
+         * Each triangle's colour as this chip is MEASURED to store it. The
+         * validator needs it to compare a probe that expected a triangle
+         * against what the probe read; without it those probes were parsed
+         * and never checked, which is the same defect as not reading them.
+         */
+        for (probe = 0ul; probe < scene.triangle_count; ++probe) {
+            printf("SC%04XT%04XCOLOR=%04X\n", (unsigned int)index,
+                   (unsigned int)probe,
+                   (unsigned int)v9x_i9xx_rgb565_round(
+                       (scene.triangles[probe].color >> 16) & 0xfful,
+                       (scene.triangles[probe].color >> 8) & 0xfful,
+                       scene.triangles[probe].color & 0xfful));
+        }
         printf("SC%04XPROBES=%04X\n", (unsigned int)index,
                (unsigned int)scene.probe_count);
         printf("SC%04XPRIM=%04X\n", (unsigned int)index,
