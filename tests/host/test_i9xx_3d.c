@@ -163,7 +163,7 @@ static void test_vertex_run(void)
         v9x_u32 base = 1ul + vertex * 5ul;
         CHECK(stream[base + 2ul] == 0x00000000ul);   /* z = 0.0 */
         CHECK(stream[base + 3ul] == 0x3f800000ul);   /* w = 1.0 */
-        CHECK(stream[base + 4ul] == 0xfff86428ul);   /* packed BGRA */
+        CHECK(stream[base + 4ul] == V9X_I9XX_TRI_COLOR_BGRA);   /* packed BGRA */
     }
     /* The asymmetric triangle, so a transposed X/Y is visible. */
     CHECK(stream[1] == 0x43200000ul && stream[2] == 0x42f00000ul);
@@ -269,7 +269,7 @@ static void test_phase5_parameters(void)
     CHECK(parameters.target_bytes == 0x00096000ul);
     CHECK(parameters.width == 640ul);
     CHECK(parameters.height == 480ul);
-    CHECK(parameters.triangle_color == 0xfff86428ul);
+    CHECK(parameters.triangle_color == V9X_I9XX_TRI_COLOR_BGRA);
     /* 34 state + 7 shader + 2 probe + 16 vertices. */
     /* 7 fill + 34 state + 7 shader + 2 probe + 16 vertices. */
     CHECK(parameters.stream_dwords == 66ul);
@@ -283,14 +283,46 @@ static void test_phase5_parameters(void)
           parameters.target_pitch * parameters.height);
 
     /*
-     * The triangle colour must survive RGB565 exactly, because dithering is on
-     * by default on this hardware and cannot be cleanly disabled. A colour the
-     * hardware had to dither would disagree with the software reference across
-     * the interior, not only at the edges the plan licenses.
+     * The colour must DISCRIMINATE the candidate 8-bit to 5/6-bit conversions,
+     * which is what it is now for.
+     *
+     * It used to be asserted 565-exact under truncation, on the audit's note
+     * that dithering is on by default and not cleanly disableable. Two things
+     * sit against that premise: S5 leaves S5_COLOR_DITHER_ENABLE clear, and on
+     * 6c81c52 all seven interior probes read an identical value, which a
+     * spatial dither would not produce. The probes agreeing is now the check
+     * for it - if they ever disagree, dithering is live and any conversion
+     * reading is void.
+     *
+     * Between them the three channels must separate round from every other
+     * candidate, or the experiment cannot conclude anything. See
+     * plans\intel-phase5-colour-conversion-experiment.md.
      */
-    CHECK((parameters.triangle_color & 0x00070000ul) == 0ul);  /* red   */
-    CHECK((parameters.triangle_color & 0x00000300ul) == 0ul);  /* green */
-    CHECK((parameters.triangle_color & 0x00000007ul) == 0ul);  /* blue  */
+    {
+        static const v9x_u32 widths[3] = { 5ul, 6ul, 5ul };
+        v9x_u32 channel;
+        v9x_u32 covered = 0ul;
+
+        for (channel = 0ul; channel < 3ul; ++channel) {
+            v9x_u32 n = widths[channel];
+            v9x_u32 mx = (v9x_u32)((1ul << n) - 1ul);
+            v9x_u32 v = (parameters.triangle_color >> ((2ul - channel) * 8ul)) &
+                        0xfful;
+            v9x_u32 trunc_v = v >> (8ul - n);
+            v9x_u32 round8_v = (v + (1ul << (7ul - n))) >> (8ul - n);
+            v9x_u32 floor_v = (v * mx) / 255ul;
+            v9x_u32 round_v = (v * mx + 127ul) / 255ul;
+            v9x_u32 ceil_v = (v * mx + 254ul) / 255ul;
+
+            if (round8_v > mx) { round8_v = mx; }
+            if (round_v != trunc_v)  { covered |= 1ul; }
+            if (round_v != round8_v) { covered |= 2ul; }
+            if (round_v != floor_v)  { covered |= 4ul; }
+            if (round_v != ceil_v)   { covered |= 8ul; }
+        }
+        /* All four alternatives separated somewhere across the three. */
+        CHECK(covered == 15ul);
+    }
 
     /* No repeated byte, so a channel swap is visible in the artefact. */
     CHECK(((parameters.triangle_color >> 24) & 0xfful) !=
@@ -315,9 +347,9 @@ static const v9x_u32 v9x_i9xx_phase5_golden[66] = {
     0x00000004ul, 0x7d050005ul, 0x190a3c00ul, 0x00000000ul, 0x00000000ul,
     0x02203ca0ul, 0x01230000ul, 0x00000000ul, 0x00000000ul, 0x02000000ul,
     0x7f00000eul, 0x43200000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
-    0xfff86428ul, 0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
-    0xfff86428ul, 0x43a00000ul, 0x43c80000ul, 0x00000000ul, 0x3f800000ul,
-    0xfff86428ul
+    0xff1587f9ul, 0x43f00000ul, 0x42f00000ul, 0x00000000ul, 0x3f800000ul,
+    0xff1587f9ul, 0x43a00000ul, 0x43c80000ul, 0x00000000ul, 0x3f800000ul,
+    0xff1587f9ul
 };
 
 static void test_golden_stream(void)
@@ -342,7 +374,7 @@ static void test_golden_stream(void)
      */
     CHECK(v9x_i9xx_phase5_execution_crc() ==
           v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 66ul));
-    CHECK(v9x_i9xx_phase5_execution_crc() == 0x3c23ca17ul);
+    CHECK(v9x_i9xx_phase5_execution_crc() == 0x32597220ul);
 
     CHECK(v9x_i9xx_build_phase5_stream(stream, 65ul, &written) !=
           V9X_STATUS_OK);

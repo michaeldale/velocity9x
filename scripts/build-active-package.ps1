@@ -248,7 +248,38 @@ if ($familyManifest.Id -eq 'intel-gma') {
         throw "V9XARM.BAT still contains an unsubstituted placeholder."
     }
     Set-Content -LiteralPath (Join-Path $outputDir "V9XARM.BAT") `
-        -Value $armLines -Encoding Ascii
+        -Value $armLines -Encoding Ascii
+
+    # The Phase 5 armer on the same terms, so a colour or geometry experiment
+    # is V9XCOPY then V9XARM5 in DOS rather than a host step with a build id
+    # typed by hand. The CRCs come from the generated table, so they cannot be
+    # stale relative to the binaries beside them - a stale combined CRC is
+    # exactly what the arm gate caught after the S6 fix.
+    #
+    # The errata gate is enforced HERE, at package build, where the decision
+    # record lives. Nothing on the stick can bypass it: without a decision on
+    # record the file is never produced.
+    $phase5Glob = Join-Path $repoRoot 'docs\decisions\*-intel-phase5-errata-gate*.md'
+    if (@(Get-ChildItem -Path $phase5Glob -ErrorAction SilentlyContinue).Count -eq 0) {
+        throw ('No Phase 5 errata-gate decision in docs\decisions, so ' +
+               'V9XARM5.BAT will not be produced. An armed Phase 5 boot ' +
+               'drives the GPU with 3D packets and the Phase 4 decision ' +
+               'explicitly does not cover it.')
+    }
+    $gen5 = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot 'scripts\data\intel-3d-stream.psd1')
+    $arm5Source = Join-Path $repoRoot 'packaging\win98se\V9XARM5.BAT'
+    $arm5Token = 'p5-{0:yyyyMMdd}-{1}' -f (Get-Date), $BuildId
+    $arm5Lines = @(Get-Content -LiteralPath $arm5Source | ForEach-Object {
+        $_.Replace('@@BUILDID@@', $BuildId).
+           Replace('@@COMBINEDCRC@@', $gen5.Combinedcrc).
+           Replace('@@P4CRC@@', $gen5.P4Crc).
+           Replace('@@P5CRC@@', $gen5.P5crc).
+           Replace('@@TOKEN@@', $arm5Token)
+    })
+    if (@($arm5Lines | Where-Object { $_ -match '@@' }).Count -ne 0) {
+        throw 'V9XARM5.BAT still contains an unsubstituted placeholder.'
+    }
+    Set-Content -LiteralPath (Join-Path $outputDir 'V9XARM5.BAT') -Value $arm5Lines -Encoding Ascii
 }
 
 $manifest = @(
@@ -301,7 +332,8 @@ $expectedPackageFiles = @(
     "VELOCITY9X.INF"
 )
 if ($familyManifest.Id -eq 'intel-gma') {
-    $expectedPackageFiles += "V9XARM.BAT"
+    $expectedPackageFiles += "V9XARM.BAT"
+    $expectedPackageFiles += "V9XARM5.BAT"
 }
 $actualPackageFiles = @(Get-ChildItem -LiteralPath $outputDir -File |
     ForEach-Object { $_.Name } | Sort-Object)

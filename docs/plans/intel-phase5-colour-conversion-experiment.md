@@ -65,7 +65,8 @@ can only cover them across different channels.
 
 ## Proposed colour
 
-`V9X_I9XX_TRI_COLOR_BGRA = 0xFF1587F9` - R=21, G=135, B=249.
+`V9X_I9XX_TRI_COLOR_BGRA = 0xFF1587F9` - R=21, G=135, B=249. **Implemented.**
+Phase 5 CRC `32597220`, combined arm CRC `EB5754CF`.
 
 | ch | byte | `trunc` | `round8` | `floor` | `round` | `ceil` | separates `round` from |
 |---|---|---|---|---|---|---|---|
@@ -116,6 +117,28 @@ So if this confirms, the change belongs in an **Intel-specific expectation**:
 the value `check-intel-3d-capture.ps1` compares probes against for this part.
 The shared conversion stays as it is until its contract is examined on its own
 terms, in its own diff.
+
+## The dithering caveat, which the probes now test
+
+The previous colour was chosen 565-exact under truncation, on the audit's note
+that dithering is on by default on this hardware and cannot be cleanly
+disabled. `0xFF1587F9` is not exact under any candidate rule, so that premise
+matters.
+
+Two pieces of evidence sit against it, neither conclusive:
+
+- `S5` is zero, leaving `S5_COLOR_DITHER_ENABLE` (bit 1) **clear**.
+- On `6c81c52` all seven interior probes read an identical `F325`. A spatial
+  dither would not produce one value at seven scattered coordinates.
+
+Against it, `DST_BUF_VARS` bits 26-27 are zero, which Mesa's header names
+`DITHER_FULL_ALWAYS` - a name suggesting dithering is unconditional. The two
+controls imply different things and this is not resolved.
+
+**So the seven probes agreeing is now load-bearing.** If they disagree with
+each other on the next boot, dithering is live, and the conversion reading is
+void regardless of what the values are. The capture publishes all fourteen, so
+this is visible rather than assumed.
 
 ## Not in this experiment
 

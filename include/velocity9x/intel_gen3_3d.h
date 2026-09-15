@@ -226,10 +226,29 @@
  * software reference across the triangle's interior, not merely at the edges
  * the plan licenses.
  */
-#define V9X_I9XX_TRI_COLOR_BGRA          ((v9x_u32)0xfff86428ul)
-/* The same colour as the hardware must store it: RGB565, 0xf8>>3=0x1f,
- * 0x64>>2=0x19, 0x28>>3=0x05. */
-#define V9X_I9XX_TRI_COLOR_RGB565        ((v9x_u32)0x0000fb25ul)
+/*
+ * Changed 2026-09-15, from 0xfff86428, to measure the hardware's 8-bit to
+ * 5/6-bit conversion. R=21, G=135, B=249: no byte repeats, and between them the
+ * three channels separate round(v*max/255) from trunc, round8, floor and ceil.
+ * The prediction table and what the result licenses are in
+ * plans\intel-phase5-colour-conversion-experiment.md.
+ *
+ * It drops the previous colour's 565-exactness, which was chosen because the
+ * audit recorded dithering as on by default and not cleanly disableable. Two
+ * pieces of evidence now sit against that premise: S5 leaves
+ * S5_COLOR_DITHER_ENABLE clear, and on 6c81c52 all seven interior probes read
+ * an identical F325, which a spatial dither would not produce. Neither is
+ * proof, so the seven probes agreeing is now load-bearing: if they disagree
+ * with each other, dithering is active and the conversion reading is void.
+ */
+#define V9X_I9XX_TRI_COLOR_BGRA          ((v9x_u32)0xff1587f9ul)
+/*
+ * The PREDICTED store, under the one conversion still standing:
+ * round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30 -> 0x1c3e.
+ * A prediction, not a measurement. trunc gives 0x143f, floor 0x143e, and
+ * round8 and ceil both 0x1c5f.
+ */
+#define V9X_I9XX_TRI_COLOR_RGB565        ((v9x_u32)0x00001c3eul)
 
 /* The background the target is filled with before the draw. Distinct from the
  * triangle colour in every byte, and likewise 565-exact. */
