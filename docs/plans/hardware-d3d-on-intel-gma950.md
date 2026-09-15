@@ -242,6 +242,43 @@ exists.
 
 ### 5. First triangle
 
+**DONE 2026-09-15, measured on the netbook.** The GMA 950 executed a
+Velocity9x 3D command stream and rasterised a triangle. Two armed boots,
+`C:	emp\intel41` (build `6c81c52`) and `C:	emp\intel42` (build `83f24ec`),
+both `Result=PASS`: seven interior probes reading the triangle colour, seven
+exterior probes reading the fill `0842`, guard dwords `A5A5A5A5` and
+`00000000` intact before and after, `EIR`/`ESR` zero, token retired.
+
+Records:
+[the triangle](../decisions/2026-09-15-intel-phase5-triangle-drawn.md) and
+[the colour conversion](../decisions/2026-09-15-intel-565-conversion-rounds.md).
+The defect that made the GPU accept the primitive and write nothing was
+`S6_COLOR_WRITE_ENABLE` left clear; the earlier no-triangle result is recorded
+in
+[its own decision](../decisions/2026-09-15-intel-first-3d-execution-fill-landed-no-triangle.md)
+rather than deleted.
+
+**Closed as a bounded milestone, with three things deliberately unfinished.**
+None justifies a boot spent only on declaring the phase complete, and each has
+its own condition for when it stops being deferrable:
+
+| Open | Blocks | Issue |
+|---|---|---|
+| Depth `BUF_INFO` at address zero, unused | any Phase 6 depth step; needs its own regression boot first | [issue](../issues/2026-09-15-intel-depth-buf-info-at-address-zero.md) |
+| Edge fill rule unmeasured | shared edges, adjacent triangles, pixel-exact coverage | [issue](../issues/2026-09-15-intel-edge-fill-rule-unmeasured.md) |
+| 565 conversion known at six channel values only | any unqualified claim about colour; full-target hashes | [issue](../issues/2026-09-15-intel-565-conversion-outside-measured-values.md) |
+
+The done-criterion below asked for a capture stable across cold boots. Two
+boots at two builds produced the predicted result at every probe, and the
+second was predicted in writing beforehand. `HashOmitted` and `RowCrcOmitted`
+are declared in every capture: bulk aperture reads hang this part
+([record](../decisions/2026-09-15-bulk-aperture-reads-hang-the-945gse.md)), so
+"capture hash stable" is met by the bounded probe set instead, and the capture
+says so rather than appearing to have hashed anything.
+
+#### Original plan for this phase
+
+
 Linear and synchronous throughout: 640x480x16, offscreen target, no texture, no
 Z, no blend, one triangle list, complete state re-emitted every draw, a tiny
 reviewed pass-through fragment program. Do not set the D3D capability bit.
