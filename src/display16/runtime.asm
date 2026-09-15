@@ -1324,6 +1324,9 @@ V9XMINII9XXRINGSTAGE PROC FAR
     mov     ebx, dword ptr [bp+12]
     movzx   ecx, word ptr [bp+10]
     mov     edx, dword ptr [bp+6]
+    ; The phase is pinned here, not passed in: this thunk IS
+    ; Phase 4. V9xMiniI9xxP5Stage below is Phase 5.
+    mov     esi, 4
     mov     eax, V9XMINI_FN_I9XX_RING_STAGE
     call    dword ptr V9xMiniApiEntry
     ; Why the VxD refused, whether or not it did, and what its own physical
@@ -1346,6 +1349,50 @@ V9xMiniI9xxRingStageDone:
     pop     bp
     retf    10
 V9XMINII9XXRINGSTAGE ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxP5Stage(DWORD physical, WORD index, DWORD word)
+;
+; A SEPARATE entry point from V9xMiniI9xxRingStage, with the phase pinned
+; here rather than passed in. A caller cannot select the wrong phase by
+; getting an argument wrong, because there is no argument: the two thunks
+; are the two phases. That is the same reasoning as having two arm scripts.
+PUBLIC V9XMINII9XXP5STAGE
+V9XMINII9XXP5STAGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxP5StageFailed
+    mov     ebx, dword ptr [bp+12]
+    movzx   ecx, word ptr [bp+10]
+    mov     edx, dword ptr [bp+6]
+    mov     esi, 5
+    mov     eax, V9XMINI_FN_I9XX_RING_STAGE
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_ring_stage_fail, ebx
+    mov     _v9x_i9xx_ring_stage_read, ecx
+    or      ax, ax
+    jz      short V9xMiniI9xxP5StageFailed
+    mov     ax, 1
+    jmp     short V9xMiniI9xxP5StageDone
+V9xMiniI9xxP5StageFailed:
+    xor     ax, ax
+V9xMiniI9xxP5StageDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    10
+V9XMINII9XXP5STAGE ENDP
 
 ; WORD FAR PASCAL V9xMiniI9xxRingMemory(DWORD reserve_byte_offset)
 PUBLIC V9XMINII9XXRINGMEMORY

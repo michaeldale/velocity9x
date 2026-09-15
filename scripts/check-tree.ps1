@@ -637,10 +637,16 @@ if ($intelFamilySource -notmatch
 # The submit path must NOT be defined anywhere yet. When it is added it
 # needs its own review; until then this is what stops it appearing by
 # accident alongside the executor guard it looks like.
-if ($intelFamilySource -match "V9X_I9XX_PHASE5_SUBMIT") {
-    throw ("V9X_I9XX_PHASE5_SUBMIT is defined. The mini-VDD has no Phase 5 " +
-           "staging, so defining it would let an armed boot run a sequencer " +
-           "that cannot submit. Add the staging arms first.")
+# Matched against the Defines LIST, not the whole file: a comment naming
+# the guard is documentation, and a check that cannot tell those apart
+# trains people to work around it.
+if ($intelFamilySource -match "Defines = @\((?s).*?'V9X_I9XX_PHASE5_SUBMIT'.*?\)") {
+    throw ("V9X_I9XX_PHASE5_SUBMIT is defined. The mini-VDD can now STAGE " +
+           "a Phase 5 stream but cannot EXECUTE one - " +
+           "V9xMini_I9xx_Ring_Execute has no arms 20-24 - so an armed " +
+           "boot would stage 59 dwords and then stop, having spent the " +
+           "one-shot token. Add the execute arms, and take the Phase 5 " +
+           "errata-gate decision, first.")
 }
 if ($miniSource -notmatch
     '(?ms)^IFDEF\s+V9X_INTEL_MMIO_FINGERPRINT\s*\r?\n; EAX = current BAR0.*?^EndProc\s+V9xMini_I9xx_Capture.*?^EndProc\s+V9xMini_I9xx_Gtt_Capture.*?^EndProc\s+V9xMini_I9xx_Event_Capture.*?^EndProc\s+V9xMini_I9xx_Ring_Stage\s*\r?\n\s*IFDEF\s+V9X_I9XX_FIRST_WRITE_EXECUTOR.*?^EndProc\s+V9xMini_I9xx_Ring_Execute\s*\r?\nENDIF\s*\r?\nENDIF') {

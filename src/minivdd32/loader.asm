@@ -170,6 +170,15 @@ V9xI9xxRingLinear   dd 0
 ; executor compiled in at all, and a mapping that is never used to write
 ; cannot be confused with one that is. Mapped once, on first use.
 V9xI9xxHashLinear   dd 0
+
+; Phase 5 staging state. TWO counters and two ring regions, so a Phase 4
+; dword can never land in a Phase 5 slot, and the two streams cannot
+; overlap in the ring even if a counter were wrong.
+V9xI9xxP5Staged     dw 0
+V9xI9xxStagePhase   dd 0
+V9xI9xxStageTable   dd 0
+V9xI9xxStageBound   dd 0
+V9xI9xxStageRingOff dd 0
 V9xI9xxHashFail     dd 0
 V9xI9xxHashPassA    dd 0
 V9xI9xxHashPassB    dd 0
@@ -192,6 +201,12 @@ V9X_I9XX_GMADR_BASE         EQU 0d0000000h
 V9X_I9XX_RESERVE_PHYS       EQU V9X_I9XX_GMADR_BASE + V9X_I9XX_RESERVE_OFFSET
 V9X_I9XX_RESERVE_BYTES_TOTAL EQU 000100000h
 V9X_I9XX_RESERVE_DWORDS     EQU V9X_I9XX_RESERVE_BYTES_TOTAL / 4
+; Phase 5 stages its stream 4 KiB into the ring, clear of the ten dwords
+; Phase 4 stages at offset zero. Disjoint regions as well as disjoint
+; tables and counters: three independent reasons the two streams cannot
+; be confused, because one is not enough for something that feeds a GPU
+; command parser.
+V9X_I9XX_P5_RING_OFFSET     EQU 000001000h
 
 ; Every existing reference keeps working through this alias, and the
 ; table itself has exactly one definition.
@@ -1306,6 +1321,35 @@ EndProc V9xMini_I9xx_Event_Capture
 BeginProc V9xMini_I9xx_Ring_Stage
     pushad
     mov     V9xI9xxRingResult, 0
+
+    ; Phase selector in ESI. Two phases, TWO TABLES and TWO COUNTERS, so a
+    ; Phase 4 dword can never be staged into a Phase 5 slot - and the two
+    ; streams occupy disjoint regions of the ring, so they cannot overlap
+    ; even if a counter were wrong.
+    mov     V9xI9xxRingStageFail, 11
+    cmp     esi, 4
+    je      short V9xMini_I9xx_Ring_Stage_Phase4
+    cmp     esi, 5
+    jne     V9xMini_I9xx_Ring_Stage_Done
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+    mov     V9xI9xxStageTable, OFFSET32 V9xI9xxPhase5Table
+    mov     V9xI9xxStageBound, V9X_I9XX_P5_DWORDS
+    mov     V9xI9xxStageRingOff, V9X_I9XX_P5_RING_OFFSET
+    movzx   ebx, V9xI9xxP5Staged
+    jmp     short V9xMini_I9xx_Ring_Stage_Selected
+ELSE
+    ; Phase 5 staging is compiled out. The verb refuses rather than
+    ; silently accepting a dword it would never submit.
+    jmp     V9xMini_I9xx_Ring_Stage_Done
+ENDIF
+V9xMini_I9xx_Ring_Stage_Phase4:
+    mov     V9xI9xxStageTable, OFFSET32 V9xI9xxPhase4Table
+    mov     V9xI9xxStageBound, V9X_I9XX_P4_DWORDS
+    mov     V9xI9xxStageRingOff, 0
+    movzx   ebx, V9xI9xxRingStaged
+V9xMini_I9xx_Ring_Stage_Selected:
+    mov     V9xI9xxStagePhase, esi
+
     mov     V9xI9xxRingStageFail, 1
     cmp     eax, V9X_I9XX_RESERVE_PHYS
     jne     V9xMini_I9xx_Ring_Stage_Done
@@ -1315,16 +1359,20 @@ BeginProc V9xMini_I9xx_Ring_Stage
     mov     V9xI9xxRingStageFail, 3
     cmp     V9xI9xxValid, 1
     jne     V9xMini_I9xx_Ring_Stage_Done
+    ; Strictly in order, against THIS phase's counter.
     mov     V9xI9xxRingStageFail, 4
-    movzx   ebx, V9xI9xxRingStaged
     cmp     ecx, ebx
     jne     V9xMini_I9xx_Ring_Stage_Done
+    ; Within THIS phase's table.
     mov     V9xI9xxRingStageFail, 5
-    cmp     ecx, 10
+    cmp     ecx, V9xI9xxStageBound
     jae     V9xMini_I9xx_Ring_Stage_Done
+    ; And exactly the dword the generated table says belongs there.
     mov     V9xI9xxRingStageFail, 6
-    cmp     edx, V9xI9xxRingExpected[ecx*4]
+    mov     ebx, V9xI9xxStageTable
+    cmp     edx, [ebx+ecx*4]
     jne     V9xMini_I9xx_Ring_Stage_Done
+
     cmp     ecx, 0
     jne     short V9xMini_I9xx_Ring_Stage_Write
     cmp     V9xI9xxRingLinear, 0
@@ -1339,6 +1387,11 @@ BeginProc V9xMini_I9xx_Ring_Stage
     cmp     eax, 0ffffffffh
     je      V9xMini_I9xx_Ring_Stage_Done
     mov     V9xI9xxRingLinear, eax
+    ; The scratch guard belongs to Phase 4 and is written once, on its
+    ; first staged dword. Phase 5 never reaches here, because the chain
+    ; requires Phase 4 to have run first and the mapping already exists.
+    cmp     V9xI9xxStagePhase, 4
+    jne     short V9xMini_I9xx_Ring_Stage_Write
     mov     edi, eax
     add     edi, 00011000h     ; scratch at GTT 6C1000
     mov     eax, 0a5a5a5a5h
@@ -1355,6 +1408,10 @@ V9xMini_I9xx_Ring_Stage_Write:
     mov     edi, V9xI9xxRingLinear
     cmp     edi, 0
     je      V9xMini_I9xx_Ring_Stage_Done
+    ; The single store. Both phases converge here, which is what keeps
+    ; "every store lives in one place" true after adding a second stream.
+    ; The phase-selected ring offset is what keeps them apart.
+    add     edi, V9xI9xxStageRingOff
     mov     [edi+ecx*4], edx
     mov     eax, [edi+ecx*4]
     mov     V9xI9xxRingStageRead, eax
@@ -1369,7 +1426,15 @@ V9xMini_I9xx_Ring_Stage_Write:
     ; was a security property.
     mov     V9xI9xxRingStageFail, 10
 V9xMini_I9xx_Ring_Stage_Ok:
+    cmp     V9xI9xxStagePhase, 4
+    jne     short V9xMini_I9xx_Ring_Stage_OkP5
     inc     V9xI9xxRingStaged
+    jmp     short V9xMini_I9xx_Ring_Stage_OkDone
+V9xMini_I9xx_Ring_Stage_OkP5:
+IFDEF V9X_I9XX_PHASE5_SUBMIT
+    inc     V9xI9xxP5Staged
+ENDIF
+V9xMini_I9xx_Ring_Stage_OkDone:
     mov     V9xI9xxRingResult, 1
 V9xMini_I9xx_Ring_Stage_Done:
     popad
@@ -1755,6 +1820,10 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, [ebp.Client_EBX]
     mov     ecx, [ebp.Client_ECX]
     mov     edx, [ebp.Client_EDX]
+    ; ESI carries the phase. A caller that does not set it gets neither 4 nor
+    ; 5 and is refused, which is the right default for a verb that writes to
+    ; memory a GPU command parser will read.
+    mov     esi, [ebp.Client_ESI]
     call    V9xMini_I9xx_Ring_Stage
     mov     ebx, V9xI9xxRingStageFail
     mov     [ebp.Client_EBX], ebx

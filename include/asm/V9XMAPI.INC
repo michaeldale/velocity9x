@@ -216,10 +216,20 @@ V9X_I9XX_EVENT_KIND_DPMS      EQU 0006h
 ; RING_EXECUTE in: EBX=full execution CRC, ECX=ordered step selector;
 ;              out AX=1 on a completed step, EBX=head/readback,
 ;              ECX=tail/readback, EDX=elapsed ms, ESI=poll count.
+; RING_STAGE in: ESI = the phase being staged, 4 or 5. Pinned by the caller's
+; thunk rather than passed as an argument, so a caller cannot select the wrong
+; phase by getting a parameter wrong. Neither value means refusal.
+;
+; Two phases, TWO TABLES, TWO COUNTERS and two disjoint ring regions, so a
+; Phase 4 dword cannot be staged into a Phase 5 slot and the two streams cannot
+; overlap in the ring even if a counter were wrong.
+;
 ; RING_STAGE out: EBX = refusal reason, 0 on success. 1 physical, 2 MMIO base,
-; 3 no Phase 1 capture, 4 out-of-order index, 5 index bound, 6 value not in the
-; reviewed stream, 7 _MapPhysToLinear refused the reserve, 8 no mapping at
-; write time, 9 the store did not read back.
+; 3 no Phase 1 capture, 4 out-of-order index for THIS phase, 5 index past THIS
+; phase's table, 6 value not in the reviewed stream, 7 _MapPhysToLinear refused
+; the reserve, 8 no mapping at write time, 10 the store did not read back
+; (non-fatal: the bytes the GPU fetches go through GMADR), 11 the phase in ESI
+; was neither 4 nor 5, or Phase 5 staging is compiled out.
 V9XMINI_FN_I9XX_RING_STAGE   EQU 0011h
 V9XMINI_FN_I9XX_RING_MEMORY  EQU 0012h
 V9XMINI_FN_I9XX_RING_EXECUTE EQU 0013h

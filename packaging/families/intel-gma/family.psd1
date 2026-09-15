@@ -66,6 +66,7 @@
             @{ Name = 'intel_ring16'; Path = 'src\display16\intel_ring16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'intel_exec16'; Path = 'src\display16\intel_exec16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'intel_boot16'; Path = 'src\display16\intel_boot16.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'intel_3d16'; Path = 'src\display16\intel_3d16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'intel_str16'; Path = 'src\display16\intel_str16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
@@ -78,7 +79,10 @@
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR')
+        Defines = @('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',
+                    # Phase 5 is COMPILED but cannot reach the ring: the
+                    # submit path is gated separately and is not defined.
+                    'V9X_I9XX_PHASE5_EXECUTOR')
         RuntimeDefines = @('V9X_INTEL_GMA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-intel-gma'
         PackageOutput = 'build\win98se-intel-gma'
