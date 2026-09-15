@@ -55,7 +55,7 @@ apart.
    attribution, and attribution survives bundling as long as **nothing precedes
    it**: as scene 0 of a multi-scene boot
    ([plan](../plans/intel-phase6-bundled-scenes.md)), before anything else
-   touches the GPU, the comparison against `C:	emp\intel42` is still exact.
+   touches the GPU, the comparison against `C:\temp\intel42` is still exact.
    Corrected rather than left contradicting that plan. What would destroy the
    property is bundling it *into* another scene, or running it after one.
 
