@@ -751,36 +751,195 @@ static void test_scene_one_differs_only_in_colour(void)
 }
 
 /*
- * Scene 2 carries two triangles under ONE primitive command, sharing an edge,
- * in two different colours.
+ * Does a probe's SAMPLE CENTRE lie exactly on the given triangle edge?
+ *
+ * HOST-SIDE ONLY, and deliberately so. It is a property check on the scene
+ * table, not behaviour the driver has any use for, and it does not belong in
+ * I9XXCODE: the cross product is two signed 32-bit multiplies, which on
+ * 16-bit Watcom are __I4M calls in the default CODE segment that a near call
+ * cannot reach. It was in the driver module first and produced exactly two
+ * E2052 relocations.
+ *
+ * The centre is (x + 1/2, y + 1/2) - where DSTORG's half-pixel bias puts it -
+ * so every term is doubled once to clear the halves. Integer throughout: this
+ * decides an exactness question, and a float would decide it by rounding.
  */
-static void test_scene_two_shares_an_edge(void)
+static v9x_u16 v9x_test_probe_on_edge(
+    const struct v9x_i9xx_triangle *triangle, v9x_u32 first, v9x_u32 second,
+    v9x_u16 x, v9x_u16 y)
+{
+    long dx;
+    long dy;
+    long cx;
+    long cy;
+
+    if (triangle == 0 || first > 2ul || second > 2ul || first == second) {
+        return V9X_FALSE;
+    }
+    dx = (long)triangle->x[second] - (long)triangle->x[first];
+    dy = (long)triangle->y[second] - (long)triangle->y[first];
+    cx = (2L * (long)x) + 1L - (2L * (long)triangle->x[first]);
+    cy = (2L * (long)y) + 1L - (2L * (long)triangle->y[first]);
+
+    if (cx * dy == cy * dx) {
+        return V9X_TRUE;
+    }
+    return V9X_FALSE;
+}
+
+/*
+ * The shared edge must pass through SAMPLE CENTRES, or the edge scenes cannot
+ * observe an inclusion rule at all.
+ *
+ * This is the test the first version of the scene needed and did not have. Its
+ * diagonal ran (200,150)-(440,330), satisfying 4y = 3x, and substituting a
+ * centre gives 3i - 4j = 0.5 - an integer equal to a non-integer, so no centre
+ * in the square lies on it. The scene would have produced a capture that
+ * looked like evidence and answered nothing.
+ *
+ * Both directions are asserted. A predicate that returned V9X_TRUE for
+ * everything would satisfy the first half alone.
+ */
+static void test_edge_probes_sit_on_sample_centres(void)
+{
+    struct v9x_i9xx_scene scene;
+    struct v9x_i9xx_triangle bad;
+    v9x_u32 index;
+    v9x_u32 on_edge = 0ul;
+    v9x_u32 probe;
+
+    /*
+     * The shared edge runs from vertex 0 to the vertex diagonally opposite,
+     * and WHICH vertex that is depends on the triangle, not on the scene.
+     * The upper triangle is (top-left, top-right, bottom-right), so its
+     * diagonal is 0->2; the lower is (top-left, bottom-right, bottom-left),
+     * so its diagonal is 0->1. Scene 4's triangles[0] is the upper one, so it
+     * takes 2 like scene 2 - getting that wrong is what this test caught on
+     * its first run, against vertex 1, which is the upper triangle's TOP
+     * edge.
+     */
+    for (index = 2ul; index <= 4ul; ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        on_edge = 0ul;
+        for (probe = 0ul; probe < scene.probe_count; ++probe) {
+            v9x_u16 hit = v9x_test_probe_on_edge(
+                &scene.triangles[0],
+                0ul, (index == 3ul) ? 1ul : 2ul,
+                scene.probes[probe].x, scene.probes[probe].y);
+            if (scene.probes[probe].expect == V9X_I9XX_PROBE_MEASURE) {
+                /* Every MEASURE probe is on the edge, or it measures
+                 * nothing. */
+                CHECK(hit == V9X_TRUE);
+                ++on_edge;
+            } else {
+                /* And every other probe is off it, or a flank reading would
+                 * be an edge reading under another name. */
+                CHECK(hit == V9X_FALSE);
+            }
+        }
+        /* Three, asserted: zero MEASURE probes would satisfy the loop. */
+        CHECK(on_edge == 3ul);
+    }
+
+    /*
+     * The predicate, against the geometry that failed. Slope 3/4 from
+     * (200,150): no sample centre anywhere on it.
+     */
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
+    bad = scene.triangles[0];
+    bad.x[2] = 440ul;
+    bad.y[2] = 330ul;
+    for (probe = 200ul; probe < 441ul; ++probe) {
+        CHECK(v9x_test_probe_on_edge(&bad, 0ul, 2ul,
+                                     (v9x_u16)probe,
+                                     (v9x_u16)((probe * 3ul) / 4ul)) ==
+              V9X_FALSE);
+    }
+
+    /* Its own argument refusals. */
+    CHECK(v9x_test_probe_on_edge(0, 0ul, 2ul, 250u, 200u) == V9X_FALSE);
+    CHECK(v9x_test_probe_on_edge(&bad, 1ul, 1ul, 250u, 200u) == V9X_FALSE);
+    CHECK(v9x_test_probe_on_edge(&bad, 0ul, 3ul, 250u, 200u) == V9X_FALSE);
+}
+
+/*
+ * The three edge scenes must share probe COORDINATES exactly, or coverage
+ * cannot be compared pixel by pixel - which is the only way double coverage
+ * is observable.
+ *
+ * Two opaque triangles in one scene cannot reveal it: the second overwrites
+ * the first, and the result is indistinguishable from coverage by the second
+ * alone. So each triangle is drawn on its own and the two are compared, and
+ * that comparison is meaningless unless the probes are at the same pixels.
+ */
+static void test_edge_scenes_share_probe_coordinates(void)
+{
+    struct v9x_i9xx_scene upper;
+    struct v9x_i9xx_scene lower;
+    struct v9x_i9xx_scene both;
+    v9x_u32 probe;
+    v9x_u32 disagreements = 0ul;
+
+    CHECK(v9x_i9xx_scene_at(2ul, &upper) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(3ul, &lower) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(4ul, &both) == V9X_STATUS_OK);
+
+    CHECK(upper.probe_count == lower.probe_count);
+    CHECK(upper.probe_count == both.probe_count);
+    CHECK(upper.probe_count == 8ul);
+
+    for (probe = 0ul; probe < upper.probe_count; ++probe) {
+        CHECK(upper.probes[probe].x == lower.probes[probe].x);
+        CHECK(upper.probes[probe].y == lower.probes[probe].y);
+        CHECK(upper.probes[probe].x == both.probes[probe].x);
+        CHECK(upper.probes[probe].y == both.probes[probe].y);
+        /* The expectations must DIFFER between the two single-triangle
+         * scenes at the flanks, or drawing them separately tells us
+         * nothing new. */
+        if (upper.probes[probe].expect != lower.probes[probe].expect) {
+            ++disagreements;
+        }
+    }
+    /* Two flanks plus the two bodies. Asserted as a number: identical
+     * expectations everywhere would pass a "coordinates match" loop and
+     * make the whole experiment vacuous. */
+    CHECK(disagreements == 4ul);
+
+    /*
+     * Each single-triangle scene draws ONE triangle. If either drew both,
+     * the overwrite problem would be back and the comparison would be
+     * between two identical scenes.
+     */
+    CHECK(upper.triangle_count == 1ul);
+    CHECK(lower.triangle_count == 1ul);
+    CHECK(both.triangle_count == 2ul);
+
+    /* The combined scene's two triangles are exactly the two drawn alone,
+     * or it is not the combination of them. */
+    CHECK(both.triangles[0].color == upper.triangles[0].color);
+    CHECK(both.triangles[1].color == lower.triangles[0].color);
+    for (probe = 0ul; probe < 3ul; ++probe) {
+        CHECK(both.triangles[0].x[probe] == upper.triangles[0].x[probe]);
+        CHECK(both.triangles[0].y[probe] == upper.triangles[0].y[probe]);
+        CHECK(both.triangles[1].x[probe] == lower.triangles[0].x[probe]);
+        CHECK(both.triangles[1].y[probe] == lower.triangles[0].y[probe]);
+    }
+
+    /* Both edge colours are already measured, so the edge rule is the single
+     * unknown in these scenes. */
+    CHECK(upper.triangles[0].color == V9X_I9XX_TRI_COLOR_BGRA);
+    CHECK(lower.triangles[0].color == 0xfff86428ul);
+}
+
+/* The combined edge scene emits both triangles under one primitive command. */
+static void test_edge_combined_is_one_primitive(void)
 {
     struct v9x_i9xx_scene scene;
     v9x_u32 stream[160];
     v9x_u32 written = 0ul;
     v9x_u32 header;
 
-    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
-    CHECK(scene.id == 2ul);
-    CHECK(scene.triangle_count == 2ul);
-    CHECK(scene.triangles[0].color != scene.triangles[1].color);
-
-    /* Both colours are already measured, which keeps this scene to one
-     * unknown - the edge rule. */
-    CHECK(scene.triangles[0].color == V9X_I9XX_TRI_COLOR_BGRA);
-    CHECK(scene.triangles[1].color == 0xfff86428ul);
-
-    /*
-     * The shared edge: triangle 0's first and third vertices are triangle 1's
-     * first and second. If this stops holding, the scene no longer asks the
-     * question it was built for.
-     */
-    CHECK(scene.triangles[0].x[0] == scene.triangles[1].x[0]);
-    CHECK(scene.triangles[0].y[0] == scene.triangles[1].y[0]);
-    CHECK(scene.triangles[0].x[2] == scene.triangles[1].x[1]);
-    CHECK(scene.triangles[0].y[2] == scene.triangles[1].y[1]);
-
+    CHECK(v9x_i9xx_scene_at(4ul, &scene) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_scene_stream(
               &scene, stream, 160ul, &written) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_scene_extent(&scene) == written);
@@ -793,8 +952,36 @@ static void test_scene_two_shares_an_edge(void)
     CHECK(header == (V9X_I9XX_3DPRIMITIVE_INLINE |
                      V9X_I9XX_PRIM3D_TRILIST | 29ul));
 
-    /* Longer than scene 0 by exactly one triangle. */
+    /* Longer than a single-triangle scene by exactly one triangle. */
     CHECK(written == 66ul + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS));
+}
+
+/*
+ * The aperture-read budget. Bulk reads hang this part - three succeeded and
+ * 153,600 hung - so the probe total is a number the build states rather than
+ * a consequence nobody counted.
+ */
+static void test_scene_probe_budget(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 index;
+    v9x_u32 total = 0ul;
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        CHECK(scene.probe_count >= 1ul);
+        CHECK(scene.probe_count <= V9X_I9XX_SCENE_MAX_PROBES);
+        total += scene.probe_count;
+    }
+    CHECK(v9x_i9xx_scene_total_probes() == total);
+
+    /*
+     * 14 + 14 + 8 + 8 + 8. Written out because the budget rule is that no
+     * boot roughly doubles the last one that completed, and the last capture
+     * that completed performed about 45 aperture reads. Changing the scene
+     * table past this without re-reading that rule should fail here.
+     */
+    CHECK(total == 52ul);
 }
 
 /* The table itself, and its refusals. */
@@ -805,7 +992,7 @@ static void test_scene_table(void)
     v9x_u32 stream[160];
     v9x_u32 written = 0ul;
 
-    CHECK(v9x_i9xx_scene_count() == 3ul);
+    CHECK(v9x_i9xx_scene_count() == 5ul);
 
     for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
         struct v9x_i9xx_scene other;
@@ -833,10 +1020,10 @@ static void test_scene_table(void)
 
     /* Out of range refuses AND clears, rather than leaving the caller's stack
      * contents looking like a scene. */
-    CHECK(v9x_i9xx_scene_at(3ul, &scene) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(5ul, &scene) != V9X_STATUS_OK);
     CHECK(scene.triangle_count == 0ul);
     CHECK(scene.id == 0ul);
-    CHECK(v9x_i9xx_scene_crc(3ul) == 0ul);
+    CHECK(v9x_i9xx_scene_crc(5ul) == 0ul);
     CHECK(v9x_i9xx_scene_at(0ul, 0) != V9X_STATUS_OK);
 
     /* Capacity, at the boundary rather than far from it. */
@@ -969,7 +1156,10 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_scene_table();
     test_scene_zero_matches_phase5();
     test_scene_one_differs_only_in_colour();
-    test_scene_two_shares_an_edge();
+    test_edge_probes_sit_on_sample_centres();
+    test_edge_scenes_share_probe_coordinates();
+    test_edge_combined_is_one_primitive();
+    test_scene_probe_budget();
     test_scene_combined_crc();
     test_triangle_run_refusals();
     return failures;

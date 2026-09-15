@@ -395,6 +395,29 @@ v9x_status v9x_i9xx_build_vertex_run(
  * the same flush-after-every-step property that makes a hang localisable.
  */
 #define V9X_I9XX_SCENE_MAX_TRIANGLES     ((v9x_u32)2ul)
+#define V9X_I9XX_SCENE_MAX_PROBES        ((v9x_u32)14ul)
+
+/*
+ * What a probe expects to find, or that it expects nothing.
+ *
+ * MEASURE is not "unknown because nobody worked it out". It marks a pixel
+ * whose value IS the measurement - the shared-edge samples - and writing an
+ * expectation there would be a guess recorded as evidence. The validator
+ * reports those and fails on the others.
+ */
+#define V9X_I9XX_PROBE_FILL              ((v9x_u16)0u)
+#define V9X_I9XX_PROBE_TRIANGLE0         ((v9x_u16)1u)
+#define V9X_I9XX_PROBE_TRIANGLE1         ((v9x_u16)2u)
+#define V9X_I9XX_PROBE_MEASURE           ((v9x_u16)0xffffu)
+
+struct v9x_i9xx_probe {
+    /* Published as the capture key, so it survives into every record that
+     * cites the result. Static storage; never freed. */
+    const char *name;
+    v9x_u16 x;
+    v9x_u16 y;
+    v9x_u16 expect;
+};
 
 struct v9x_i9xx_triangle {
     /* Whole pixels, inclusive of the drawing rectangle's last addressable
@@ -416,6 +439,14 @@ struct v9x_i9xx_scene {
     v9x_u32 fill_dword;
     v9x_u32 triangle_count;
     struct v9x_i9xx_triangle triangles[V9X_I9XX_SCENE_MAX_TRIANGLES];
+    /*
+     * The pixels this scene reads back, carried WITH the scene rather than
+     * held in a parallel table. A probe set that can drift from the geometry
+     * it describes is how a capture comes to report fourteen confident values
+     * about the wrong triangle.
+     */
+    v9x_u32 probe_count;
+    struct v9x_i9xx_probe probes[V9X_I9XX_SCENE_MAX_PROBES];
 };
 
 v9x_u32 v9x_i9xx_scene_count(void);
@@ -429,6 +460,9 @@ v9x_u32 v9x_i9xx_scene_crc(v9x_u32 index);
 /* Over every scene's dwords in execution order, which is what the arm gate
  * compares - the same construction as the Phase 4/5 chain. */
 v9x_u32 v9x_i9xx_scene_combined_crc(void);
+/* Every scene's probes added up: the aperture-read budget for a whole boot. */
+v9x_u32 v9x_i9xx_scene_total_probes(void);
+
 
 /* src\chipsets\intel\i9xx_vertex.c */
 /*

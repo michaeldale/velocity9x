@@ -8,6 +8,13 @@
  * docs\plans\intel-phase6-bundled-scenes.md: a scene may not depend on state
  * another scene left behind.
  *
+ * EXECUTION IS NOT AUTHORISED BY THIS FILE. The Phase 5 errata decision limits
+ * a boot to one triangle and says in terms that nothing in it "authorises a
+ * second draw in the same boot"
+ * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md). Building the scenes
+ * host-side changes nothing about that. The scope amendment is a risk decision
+ * and is not taken here.
+ *
  * The scene table is the single source of truth for what a build draws. The
  * generator, the arm tables, the validators and the capture writer all read
  * it, for the reason v9x_i9xx_phase5_parameters exists: Phase 4's equivalent
@@ -42,20 +49,41 @@
 #define V9X_I9XX_SCENE1_COLOR_BGRA  ((v9x_u32)0xff2e03c8ul)
 
 /*
- * Scene 2's two triangles share the diagonal of a rectangle.
+ * The second measured colour, for the edge scenes. 0xfff86428 stores 0xf325.
  *
- * Both colours are ALREADY MEASURED - 0xff1587f9 stores 0x1c3e and
- * 0xfff86428 stores 0xf325. That is deliberate: this scene asks about the
- * edge rule, and carrying an unmeasured colour into it would put two unknowns
- * in one result. A pixel on the shared edge is then unambiguous - it is one
- * colour, the other, or the fill, and each names a different rule.
- *
- * docs\issues\2026-09-15-intel-edge-fill-rule-unmeasured.md
+ * Both edge colours are ALREADY MEASURED, which keeps the edge rule the single
+ * unknown in those scenes. Carrying an unmeasured colour into them would put
+ * two unknowns in one result.
  */
-#define V9X_I9XX_SCENE2_LEFT        200ul
-#define V9X_I9XX_SCENE2_TOP         150ul
-#define V9X_I9XX_SCENE2_RIGHT       440ul
-#define V9X_I9XX_SCENE2_BOTTOM      330ul
+#define V9X_I9XX_MEASURED_COLOR_B   ((v9x_u32)0xfff86428ul)
+
+/*
+ * The edge square, and why its diagonal has slope EXACTLY ONE.
+ *
+ * The hardware samples at pixel centres - DSTORG's half-pixel bias in both
+ * axes, double-sourced in the packet audit - so a sample point is
+ * (i + 0.5, j + 0.5). An exact-edge inclusion rule can only be observed at a
+ * sample point that lies ON the edge, and whether any does is a property of
+ * the geometry, not of the probes.
+ *
+ * The first version of this scene used (200,150)-(440,330), whose diagonal
+ * satisfies 4y = 3x. Substituting a sample centre gives 4j + 2 = 3i + 1.5, so
+ * 3i - 4j = 0.5: the left side is an integer and the right is not, and NOT ONE
+ * sample centre in the whole square lies on that edge. The scene could not
+ * have distinguished any inclusion rule, and would have produced a
+ * confident-looking capture that answered nothing.
+ *
+ * Slope one fixes it. The edge is y = x - 50, and a centre lies on it whenever
+ * j + 0.5 = i + 0.5 - 50, that is j = i - 50 - which has 241 integer solutions
+ * across this square. Searched exhaustively rather than reasoned about, and
+ * the host test recomputes it in integer arithmetic through its own
+ * v9x_test_probe_on_edge, which is host-side because the cross product is a
+ * 32-bit multiply that does not link from this segment.
+ */
+#define V9X_I9XX_EDGE_LEFT          200ul
+#define V9X_I9XX_EDGE_TOP           150ul
+#define V9X_I9XX_EDGE_RIGHT         440ul
+#define V9X_I9XX_EDGE_BOTTOM        390ul
 
 /*
  * Ids are ASSIGNED, not derived from the table index.
@@ -66,7 +94,9 @@
  */
 #define V9X_I9XX_SCENE_ID_PHASE5    ((v9x_u32)0ul)
 #define V9X_I9XX_SCENE_ID_COLOR     ((v9x_u32)1ul)
-#define V9X_I9XX_SCENE_ID_EDGE      ((v9x_u32)2ul)
+#define V9X_I9XX_SCENE_ID_EDGE_UP   ((v9x_u32)2ul)
+#define V9X_I9XX_SCENE_ID_EDGE_LOW  ((v9x_u32)3ul)
+#define V9X_I9XX_SCENE_ID_EDGE_BOTH ((v9x_u32)4ul)
 
 /*
  * The MI probe, immediately before each scene's 3D work. Worth its two dwords
@@ -77,7 +107,23 @@
 /* The GPU-side fill: XY_COLOR_BLT plus its MI_FLUSH. */
 #define V9X_I9XX_SCENE_FILL_DWORDS  ((v9x_u32)7ul)
 
-#define V9X_I9XX_SCENE_COUNT        ((v9x_u32)3ul)
+#define V9X_I9XX_SCENE_COUNT        ((v9x_u32)5ul)
+
+/*
+ * The three shared-edge probe pixels, and the two flanking columns.
+ *
+ * Each edge pixel (i, i - 50) has its centre exactly on the diagonal. The
+ * flanks are the same row, two columns either side: at a given y the upper
+ * triangle covers x from the diagonal to the right edge, so +2 is inside it
+ * and -2 is inside the lower one. Two columns rather than one, so a
+ * half-open-interval difference at the boundary cannot land on a flank probe
+ * and be confused with the edge measurement.
+ */
+#define V9X_I9XX_EDGE_PROBE_A_X     250u
+#define V9X_I9XX_EDGE_PROBE_B_X     320u
+#define V9X_I9XX_EDGE_PROBE_C_X     390u
+#define V9X_I9XX_EDGE_PROBE_DY      50u
+#define V9X_I9XX_EDGE_FLANK         2u
 
 static void v9x_i9xx_scene_triangle(
     struct v9x_i9xx_triangle *out,
@@ -93,6 +139,23 @@ static void v9x_i9xx_scene_triangle(
     out->color = color;
 }
 
+static void v9x_i9xx_scene_probe(
+    struct v9x_i9xx_scene *scene, const char *name,
+    v9x_u16 x, v9x_u16 y, v9x_u16 expect)
+{
+    struct v9x_i9xx_probe *probe;
+
+    if (scene->probe_count >= V9X_I9XX_SCENE_MAX_PROBES) {
+        return;
+    }
+    probe = &scene->probes[scene->probe_count];
+    probe->name = name;
+    probe->x = x;
+    probe->y = y;
+    probe->expect = expect;
+    ++scene->probe_count;
+}
+
 static void v9x_i9xx_scene_clear(struct v9x_i9xx_scene *out)
 {
     v9x_u32 index;
@@ -100,10 +163,106 @@ static void v9x_i9xx_scene_clear(struct v9x_i9xx_scene *out)
     out->id = 0ul;
     out->fill_dword = 0ul;
     out->triangle_count = 0ul;
+    out->probe_count = 0ul;
     for (index = 0ul; index < V9X_I9XX_SCENE_MAX_TRIANGLES; ++index) {
         v9x_i9xx_scene_triangle(&out->triangles[index],
                                 0ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul);
     }
+    for (index = 0ul; index < V9X_I9XX_SCENE_MAX_PROBES; ++index) {
+        out->probes[index].name = "";
+        out->probes[index].x = 0u;
+        out->probes[index].y = 0u;
+        out->probes[index].expect = V9X_I9XX_PROBE_FILL;
+    }
+}
+
+/*
+ * Phase 5's fourteen probes, unchanged and in their original order.
+ *
+ * Scene 0's comparison against C:\temp\intel42 is pixel for pixel at these
+ * coordinates, so reordering or renaming them breaks the only regression
+ * evidence this build has.
+ */
+static void v9x_i9xx_scene_phase5_probes(struct v9x_i9xx_scene *scene)
+{
+    v9x_i9xx_scene_probe(scene, "Centroid", 320u, 213u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "NearV0", 175u, 128u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "NearV1", 465u, 128u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "NearV2", 320u, 385u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "MidTop", 320u, 130u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "MidLeft", 250u, 250u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "MidRight", 390u, 250u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "Corner00", 0u, 0u, V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "CornerX0", 639u, 0u, V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "Corner0Y", 0u, 479u, V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "CornerXY", 639u, 479u, V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "OutsideTop", 320u, 40u,
+                         V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "OutsideLeft", 40u, 400u,
+                         V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "OutsideRight", 600u, 400u,
+                         V9X_I9XX_PROBE_FILL);
+}
+
+/*
+ * The edge probes, IDENTICAL COORDINATES in all three edge scenes.
+ *
+ * That is what makes coverage comparable pixel by pixel. Two opaque triangles
+ * in one scene cannot reveal double coverage - the second simply overwrites
+ * the first, and the result is indistinguishable from coverage by the second
+ * alone - so the question is answered by drawing each triangle ON ITS OWN and
+ * comparing:
+ *
+ *     upper alone   lower alone   conclusion
+ *     covered       covered       DOUBLE coverage
+ *     covered       fill          cleanly the upper triangle's
+ *     fill          covered       cleanly the lower triangle's
+ *     fill          fill          a GAP - neither claims the pixel
+ *
+ * The combined scene then shows what the hardware produces when both arrive
+ * under one primitive, which is the case a real mesh presents. It is read
+ * against the two single-triangle scenes, never on its own.
+ *
+ * The edge pixels themselves are always MEASURE. What they hold is the thing
+ * being measured, and an expectation there would be a guess written down as
+ * evidence.
+ */
+static void v9x_i9xx_scene_edge_probes(
+    struct v9x_i9xx_scene *scene, v9x_u16 right_of, v9x_u16 left_of)
+{
+    v9x_i9xx_scene_probe(scene, "EdgeA",
+                         V9X_I9XX_EDGE_PROBE_A_X,
+                         V9X_I9XX_EDGE_PROBE_A_X - V9X_I9XX_EDGE_PROBE_DY,
+                         V9X_I9XX_PROBE_MEASURE);
+    v9x_i9xx_scene_probe(scene, "EdgeB",
+                         V9X_I9XX_EDGE_PROBE_B_X,
+                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
+                         V9X_I9XX_PROBE_MEASURE);
+    v9x_i9xx_scene_probe(scene, "EdgeC",
+                         V9X_I9XX_EDGE_PROBE_C_X,
+                         V9X_I9XX_EDGE_PROBE_C_X - V9X_I9XX_EDGE_PROBE_DY,
+                         V9X_I9XX_PROBE_MEASURE);
+    v9x_i9xx_scene_probe(scene, "FlankRight",
+                         V9X_I9XX_EDGE_PROBE_B_X + V9X_I9XX_EDGE_FLANK,
+                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
+                         right_of);
+    v9x_i9xx_scene_probe(scene, "FlankLeft",
+                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_FLANK,
+                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
+                         left_of);
+    /* Well inside each half, where no edge rule can reach. */
+    v9x_i9xx_scene_probe(scene, "UpperBody", 420u, 200u, right_of);
+    v9x_i9xx_scene_probe(scene, "LowerBody", 210u, 380u, left_of);
+    /* Outside the square entirely, in every edge scene. */
+    v9x_i9xx_scene_probe(scene, "OutsideEdge", 40u, 400u,
+                         V9X_I9XX_PROBE_FILL);
 }
 
 v9x_u32 v9x_i9xx_scene_count(void)
@@ -120,6 +279,7 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
     if (index >= V9X_I9XX_SCENE_COUNT) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    out->fill_dword = V9X_I9XX_FILL_DWORD;
 
     /*
      * Scene 0 is the Phase 5 triangle, unchanged in every respect.
@@ -132,7 +292,6 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
      */
     if (index == 0ul) {
         out->id = V9X_I9XX_SCENE_ID_PHASE5;
-        out->fill_dword = V9X_I9XX_FILL_DWORD;
         out->triangle_count = 1ul;
         v9x_i9xx_scene_triangle(&out->triangles[0],
                                 (v9x_u32)V9X_I9XX_TRI_X0,
@@ -142,6 +301,7 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 (v9x_u32)V9X_I9XX_TRI_X2,
                                 (v9x_u32)V9X_I9XX_TRI_Y2,
                                 V9X_I9XX_TRI_COLOR_BGRA);
+        v9x_i9xx_scene_phase5_probes(out);
         return V9X_STATUS_OK;
     }
 
@@ -153,7 +313,6 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
      */
     if (index == 1ul) {
         out->id = V9X_I9XX_SCENE_ID_COLOR;
-        out->fill_dword = V9X_I9XX_FILL_DWORD;
         out->triangle_count = 1ul;
         v9x_i9xx_scene_triangle(&out->triangles[0],
                                 (v9x_u32)V9X_I9XX_TRI_X0,
@@ -163,27 +322,67 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                                 (v9x_u32)V9X_I9XX_TRI_X2,
                                 (v9x_u32)V9X_I9XX_TRI_Y2,
                                 V9X_I9XX_SCENE1_COLOR_BGRA);
+        v9x_i9xx_scene_phase5_probes(out);
         return V9X_STATUS_OK;
     }
 
     /*
-     * Scene 2: two triangles meeting along the rectangle's diagonal, from
-     * top-left to bottom-right. The shared edge is the subject; the two outer
-     * corners are there so each triangle has an unambiguous interior to probe.
+     * Scene 2: the UPPER triangle alone - the half right of the diagonal.
+     * Vertices: top-left, top-right, bottom-right.
      */
-    out->id = V9X_I9XX_SCENE_ID_EDGE;
-    out->fill_dword = V9X_I9XX_FILL_DWORD;
+    if (index == 2ul) {
+        out->id = V9X_I9XX_SCENE_ID_EDGE_UP;
+        out->triangle_count = 1ul;
+        v9x_i9xx_scene_triangle(&out->triangles[0],
+                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
+                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
+                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
+                                V9X_I9XX_TRI_COLOR_BGRA);
+        /* Right of the diagonal is this scene's triangle; left is fill,
+         * because the lower triangle is not drawn here at all. */
+        v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
+                                   V9X_I9XX_PROBE_FILL);
+        return V9X_STATUS_OK;
+    }
+
+    /*
+     * Scene 3: the LOWER triangle alone - the half left of the diagonal.
+     * Vertices: top-left, bottom-right, bottom-left. Same shared edge, same
+     * probe coordinates, opposite expectations.
+     */
+    if (index == 3ul) {
+        out->id = V9X_I9XX_SCENE_ID_EDGE_LOW;
+        out->triangle_count = 1ul;
+        v9x_i9xx_scene_triangle(&out->triangles[0],
+                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
+                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
+                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
+                                V9X_I9XX_MEASURED_COLOR_B);
+        v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_FILL,
+                                   V9X_I9XX_PROBE_TRIANGLE0);
+        return V9X_STATUS_OK;
+    }
+
+    /*
+     * Scene 4: both triangles under one primitive, upper first. This is the
+     * case a real mesh presents, and it is read against scenes 2 and 3 rather
+     * than on its own - by itself it cannot separate double coverage from
+     * exclusive ownership, because the second triangle simply overwrites.
+     */
+    out->id = V9X_I9XX_SCENE_ID_EDGE_BOTH;
     out->triangle_count = 2ul;
     v9x_i9xx_scene_triangle(&out->triangles[0],
-                            V9X_I9XX_SCENE2_LEFT, V9X_I9XX_SCENE2_TOP,
-                            V9X_I9XX_SCENE2_RIGHT, V9X_I9XX_SCENE2_TOP,
-                            V9X_I9XX_SCENE2_RIGHT, V9X_I9XX_SCENE2_BOTTOM,
+                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
+                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
+                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
                             V9X_I9XX_TRI_COLOR_BGRA);
     v9x_i9xx_scene_triangle(&out->triangles[1],
-                            V9X_I9XX_SCENE2_LEFT, V9X_I9XX_SCENE2_TOP,
-                            V9X_I9XX_SCENE2_RIGHT, V9X_I9XX_SCENE2_BOTTOM,
-                            V9X_I9XX_SCENE2_LEFT, V9X_I9XX_SCENE2_BOTTOM,
-                            0xfff86428ul);
+                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
+                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
+                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
+                            V9X_I9XX_MEASURED_COLOR_B);
+    v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
+                               V9X_I9XX_PROBE_TRIANGLE1);
     return V9X_STATUS_OK;
 }
 
@@ -339,4 +538,28 @@ v9x_u32 v9x_i9xx_scene_combined_crc(void)
         at += produced;
     }
     return v9x_i9xx_crc32_dwords(stream, at);
+}
+
+/*
+ * Total probe reads across every scene, which is the number the aperture-read
+ * hazard is actually about.
+ *
+ * Bulk reads hang this part: three succeeded and 153,600 hung
+ * (docs\decisions\2026-09-15-bulk-aperture-reads-hang-the-945gse.md). The
+ * budget is a published number rather than a hope, and the capture carries a
+ * running count so a hang names the read it stopped at.
+ */
+v9x_u32 v9x_i9xx_scene_total_probes(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 total = 0ul;
+    v9x_u32 index;
+
+    for (index = 0ul; index < V9X_I9XX_SCENE_COUNT; ++index) {
+        if (v9x_i9xx_scene_at(index, &scene) != V9X_STATUS_OK) {
+            return 0ul;
+        }
+        total += scene.probe_count;
+    }
+    return total;
 }

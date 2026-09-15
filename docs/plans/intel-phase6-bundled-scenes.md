@@ -61,6 +61,59 @@ than left contradicting this plan.
 scene's — still needs its own scene, and that scene's probes must be read
 against the scene that lacks the change.
 
+## Blocked: the recorded execution scope forbids this
+
+**Nothing in this plan may be armed until the Phase 5 errata decision is
+amended, and that amendment is a risk decision, not an engineering one.**
+
+`docs/decisions/2026-09-15-intel-phase5-errata-gate.md` limits the scope twice,
+and the second time in terms that cover exactly what this plan proposes:
+
+> It does not authorise anything beyond one triangle. A sustained or repeated
+> 3D workload is a different assessment, and erratum 7's word "extended" is the
+> reason.
+
+and, in the 2026-09-15 repeat-mode amendment:
+
+> The scope of the original decision is unchanged: one triangle per boot.
+> Nothing here permits sustained or repeated 3D work within a boot, and nothing
+> here authorises a second draw in the same boot.
+
+Build 1 as described is five draws and six triangles in one boot. The
+host-side scene work does not change that and was never going to: building a
+stream is not authorisation to submit it, and the code says so at the top of
+`src/chipsets/intel/i9xx_scene.c`.
+
+### What an amendment would have to weigh
+
+Written here so the decision has something to work from, **not** as an argument
+that it should be granted:
+
+- **Erratum 7** concerns *extended* 3D operation. Five scenes is more 3D work
+  than one, in the direction the erratum names. Nobody has measured where
+  "extended" begins on this part, and the word is Intel's, not a threshold.
+- **Erratum 12** concerns a CPU/GPU access sequence. This plan multiplies the
+  CPU-side aperture reads, which is the side of that pair the driver controls,
+  and the bulk-read hang already measured is the closest thing to evidence
+  about it. The read budget section below is the response.
+- **What has actually been survived:** two armed boots of one triangle each,
+  both clean, plus the Phase 4 blit. That is the entire body of evidence about
+  sustained work on this part, and it is silent on the question.
+- **The cost of being wrong** is unchanged and is what the original gate was
+  opened against: a hang on a scratch install, on AC power, recoverable from
+  DOS. The hang-interpretation rule from the Phase 4 decision would apply.
+- **A smaller step exists.** Two scenes rather than five - scene 0 and one
+  other - would test the bundling mechanism itself while roughly doubling the
+  3D work rather than quintupling it, and would still close one filed issue.
+  If the amendment is granted narrowly, this is the shape to grant it in.
+
+### Until then
+
+Everything host-side proceeds: the scene table, the sequencer, the capture
+schema, the validator and the arm tables. The build produces a package whose
+Phase 6 arm token **no machine will accept**, because no such phase is
+authorised, and that is the correct state for it to be in.
+
 ## The read budget, stated because it is the known hazard
 
 Bulk aperture reads hang this part:
@@ -84,29 +137,41 @@ it goes in a decision record. That is the `-zc`-style bounded experiment the
 parent plan wanted and never got, obtained for free from work being done
 anyway.
 
-## Build 1: four scenes
+## Build 1: five scenes
 
 | # | Scene | Feature | Expected |
 |---|---|---|---|
-| 0 | Phase 5 triangle, depth `BUF_INFO` removed | none — regression | Byte-identical to `C:\temp\intel42`: seven probes `1C3E`, seven `0842` |
-| 1 | Same triangle, colour with a **separating green byte** | none — colour | Closes the green `round`-vs-`trunc` question ([issue](../issues/2026-09-15-intel-565-conversion-outside-measured-values.md)) |
-| 2 | Two triangles sharing an edge, different colours | none — edge rule | First evidence on the fill rule ([issue](../issues/2026-09-15-intel-edge-fill-rule-unmeasured.md)) |
-| 3 | One opaque RGB565 texture, nearest-clamp | **texture** | The parent plan's first real Phase 6 feature |
+| 0 | Phase 5 triangle, depth `BUF_INFO` removed | none - regression | Byte-identical to `C:\temp\intel42`: seven probes `1C3E`, seven `0842` |
+| 1 | Same triangle, colour `0xFF2E03C8` | none - colour | `3038` if rounding holds; `2819` names truncation on green |
+| 2 | Upper triangle of a square, alone | none - coverage | Which pixels one triangle claims |
+| 3 | Lower triangle, alone, same probe pixels | none - coverage | Which pixels the other claims; the two together give double coverage or gaps |
+| 4 | Both under one primitive | none - edge rule | What the hardware produces for a real shared edge |
 
-**Status:** scenes 0-2 are built and host-tested. Scene 0 is currently the
-Phase 5 triangle **with the depth binding still present** - the scene table
-landed first, and the removal is its own diff so that the one change whose
-expected result is "no change at all" is not mixed into the refactor that
-introduced the table. Scene 3, the texture, is not started.
+**Status:** all five scenes are built and host-tested. Scene 0 currently
+carries the Phase 5 triangle **with the depth binding still present** - the
+scene table landed first, and the removal is its own diff so that the one
+change whose expected result is "no change at all" is not mixed into the
+refactor that introduced the table.
 
-Scenes 0–2 need **no new hardware capability**: they are the same packets with
-different vertices and colours. They close two filed issues and validate one
-removal, and they cost nothing but capture space on a boot that was going to
-happen for scene 3 regardless. That is the whole argument for bundling.
+The texture scene, the parent plan's first real Phase 6 feature, is **not**
+in build 1. It was going to be, and the edge experiment growing from one
+scene to three is why it is not: five scenes already sit well past what the
+recorded execution scope permits, and adding a sixth that needs new hardware
+state would mix an unproven capability into a boot whose other four scenes
+need none.
 
-Scene 3 is the only one that needs new state — texture buffer, map and sampler
-state, a texture-stage program — and if it hangs, scenes 0–2 are already on
-disk.
+**Not one of these five needs a hardware capability the chip has not already
+demonstrated.** They are the same packets with different vertices and
+colours. Between them they validate the depth-binding removal and close two
+filed issues - the green conversion question and the edge rule - for the
+cost of capture space.
+
+That is a weaker argument for bundling than the original one, and worth
+saying: the first version of this plan justified the extra scenes as free
+riders on a boot that had to happen anyway for the texture. With the texture
+deferred, these five scenes are the whole reason for the boot. They are
+still worth it - three open questions closed in one boot instead of three -
+but they are no longer free.
 
 ### Scene 1's colour
 
