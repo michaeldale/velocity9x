@@ -221,6 +221,11 @@ already handles multiple CODE rows, so it is one line plus a re-baseline.
 
 ## The `-zc` measurement
 
+**Moved out of this plan.** The split has landed, so this measurement no longer
+belongs to Phase 5 and is tracked on its own in
+`docs\plans\zc-const-placement-measurement.md`. It is not started, and nothing
+in Phase 5 depends on it. The reasoning below is kept here for the record.
+
 `-zc` places **all** const data in the code segment — which is why `CONST` is
 `00000000` in every family's map — and `intel_exec16.c` alone carries 121 string
 literals. Intel's DGROUP is 11,032 + 1,024 heap of a 32,768 budget, so there is

@@ -276,4 +276,5 @@ boot described in the plan - desktop appears, `Stage=enable-ok`, and
 byte-identically modulo `BuildId`, with the GTT hash equal to the 2026-09-12
 capture - has not been run. Two cold boots, per the Phase 2 done-criterion.
 
-Also untested: the `-zc` measurement the plan defers to its own diff.
+Also untested: the `-zc` measurement the plan defers to its own diff. It now
+has its own file, `docs\plans\zc-const-placement-measurement.md`.
