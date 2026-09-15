@@ -162,22 +162,62 @@ function Test-V9xIntel3dCapture {
                        'its presence means the no-write path wrote.')
             }
         }
-        $fail = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashFail'
-        if ($fail -ne 0) {
-            throw ("The unarmed reserve hash refused with reason $fail. See " +
-                   'the RING_HASH refusal table in include\asm\V9XMAPI.INC.')
+        # The bulk hash is gone and its absence must be DECLARED, not merely
+        # observed: a capture that simply lacks the key is indistinguishable
+        # from one whose hash ran and was lost to a lock.
+        if (-not $values.ContainsKey('HashOmitted')) {
+            throw ('An unarmed INTEL3D0.TXT must carry HashOmitted saying why ' +
+                   'the full-target hash was not taken. See the decision ' +
+                   'record 2026-09-15-bulk-aperture-reads-hang-the-945gse.md.')
         }
-        $a = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashA'
-        $b = Get-V9x3dHex32 -Values $values -Key 'UnarmedHashB'
-        if ($a -ne $b) {
-            throw ('The two read-only hash passes over the untouched target ' +
-                   "disagree ($('{0:X8}' -f $a) vs $('{0:X8}' -f $b)). The " +
-                   'mapping is not stable, which is exactly what returning ' +
-                   'both passes exists to reveal.')
+        # The sample set that replaced it. Note carefully what this does and
+        # does not establish: each point returning the same value twice is
+        # SAMPLE stability. It says nothing about the rest of the target, and
+        # the keys are named so a reader cannot mistake one for the other.
+        $sampleCount = Get-V9x3dHex32 -Values $values -Key 'SampleCount'
+        if ($sampleCount -lt 1) {
+            throw ('An unarmed INTEL3D0.TXT must report SampleCount. Without ' +
+                   'the sample set a no-write boot proves nothing at all ' +
+                   'about the address path.')
+        }
+        for ($index = 0; $index -lt $sampleCount; ++$index) {
+            $keyA = 'SA{0:X4}' -f $index
+            $keyB = 'SB{0:X4}' -f $index
+            if (-not $values.ContainsKey($keyA) -or
+                -not $values.ContainsKey($keyB)) {
+                throw ("Sample $index is missing its $keyA/$keyB pair. A " +
+                       'truncated sample set means the boot stopped part way ' +
+                       'through reading the aperture, which is exactly the ' +
+                       'failure this capture exists to catch.')
+            }
+            if ((Get-V9x3dHex32 -Values $values -Key $keyA) -ne
+                (Get-V9x3dHex32 -Values $values -Key $keyB)) {
+                throw ("Sample $index read two different values. That is a " +
+                       'point-level instability at this address; it does not ' +
+                       'characterise the target.')
+            }
+        }
+        # An explicit ceiling on how much aperture the no-write path may
+        # touch. 16 reads is today's figure and 256 is the ceiling with room to
+        # grow; what matters is that a future change cannot quietly walk the
+        # count back toward the 307,200 that hard locked the machine without
+        # this refusing first. The safe bound is NOT known - see
+        # plans\intel-phase5-bounded-readback.md - so this is a guard rail, not
+        # a measured limit.
+        $sampleReads = Get-V9x3dHex32 -Values $values -Key 'SampleReads'
+        if ($sampleReads -gt 256) {
+            throw ("The unarmed path reports $sampleReads aperture reads. " +
+                   'The no-write path is bounded deliberately; a count at ' +
+                   'bulk scale is the operation that hard locks this part.')
+        }
+        if ($values['SampleStable'] -cne '1') {
+            throw ('SampleStable is not 1: a sampled address returned two ' +
+                   'different values.')
         }
         return [pscustomobject]@{
             Armed = $false; Result = $result; StreamCrc = '{0:X8}' -f $streamCrc
-            Notes = @('unarmed: no writes, hash stable')
+            Notes = @("unarmed: no writes, $sampleCount samples stable " +
+                      '(sample stability only, not target stability)')
         }
     }
 
@@ -188,21 +228,41 @@ function Test-V9xIntel3dCapture {
                'that separates a broken layout from wrong 3D packets.')
     }
     $notes = @()
-    foreach ($pair in @(@{ A = 'FillHashA'; B = 'FillHashB'; What = 'fill' },
-                        @{ A = 'DrawHashA'; B = 'DrawHashB'; What = 'draw' })) {
-        if (-not $values.ContainsKey($pair.A)) { continue }
-        $a = Get-V9x3dHex32 -Values $values -Key $pair.A
-        $b = Get-V9x3dHex32 -Values $values -Key $pair.B
-        if ($a -ne $b) {
-            throw ("The two $($pair.What) hash passes disagree; the mapping is " +
-                   'not stable.')
+    # Both bulk read-backs must DECLARE their absence. An armed boot that
+    # simply lacks these keys is a boot whose read-back may have been lost to a
+    # lock, and the two must not look alike.
+    foreach ($omission in @('HashOmitted', 'RowCrcOmitted')) {
+        if (-not $values.ContainsKey($omission)) {
+            throw ("An armed INTEL3D0.TXT must carry $omission. The " +
+                   'full-target hash and the 480 row CRCs were removed on ' +
+                   '2026-09-15 after the hash hard locked the netbook; a ' +
+                   'capture that is merely silent about them cannot be told ' +
+                   'apart from one that attempted them and died.')
         }
     }
-    if ($values.ContainsKey('FillHashA') -and $values.ContainsKey('DrawHashA')) {
-        if ((Get-V9x3dHex32 -Values $values -Key 'FillHashA') -eq
-            (Get-V9x3dHex32 -Values $values -Key 'DrawHashA')) {
-            throw ('The target hash is unchanged between the fill and the ' +
-                   'draw, so nothing was drawn.')
+    foreach ($forbidden in @('FillHashA', 'DrawHashA', 'R0000')) {
+        if ($values.ContainsKey($forbidden)) {
+            throw ("An armed INTEL3D0.TXT carries $forbidden, so a bulk " +
+                   'read-back has been reintroduced. That is the operation ' +
+                   'that hard locks this part - see the decision record ' +
+                   'before restoring it.')
+        }
+    }
+    # The fourteen probes are now the WHOLE of the draw evidence, so a missing
+    # one cannot pass. Previously the reference comparison skipped absent keys,
+    # which meant a capture with no probes at all reported no mismatches.
+    $probeCount = Get-V9x3dHex32 -Values $values -Key 'PixelProbes'
+    if ($probeCount -lt 1) {
+        throw ('An armed INTEL3D0.TXT must report PixelProbes. Without the ' +
+               'probe set the boot has no draw evidence whatsoever.')
+    }
+    for ($index = 0; $index -lt $probeCount; ++$index) {
+        $key = 'PX{0:X4}' -f $index
+        if (-not $values.ContainsKey($key)) {
+            throw ("Probe $key is missing from an armed capture that claims " +
+                   "$probeCount probes. The probes are the only draw evidence " +
+                   'left, so a truncated set fails rather than reporting on ' +
+                   'the ones that happen to be present.')
         }
     }
     # The software reference, REPORTED and never failed on until a golden is
@@ -304,16 +364,29 @@ if ($SelfTest) {
     $lines.Add('P5RefReserveFirst=000006B0')
     $lines.Add('P5RefReserveCount=00000100')
     $lines.Add('Precondition=00000001')
-    $lines.Add('UnarmedHashA=11223344')
-    $lines.Add('UnarmedHashB=11223344')
-    $lines.Add('UnarmedHashFail=00000000')
+    $lines.Add('HashOmitted=bulk-aperture-read-hang')
+    $lines.Add('SampleCount=00000008')
+    $lines.Add('SampleReads=00000010')
+    for ($sample = 0; $sample -lt 8; ++$sample) {
+        $lines.Add(('SA{0:X4}=08420842' -f $sample))
+        $lines.Add(('SB{0:X4}=08420842' -f $sample))
+    }
+    $lines.Add('SampleStable=1')
     $lines.Add('Result=NO-WRITE')
 
     $null = Test-V9xIntel3dCapture -Lines $lines
 
     $mutations = @(
-        @{ Old = 'UnarmedHashB=11223344'; New = 'UnarmedHashB=11223345'
-           Why = 'unstable hash passes' },
+        @{ Old = 'SB0003=08420842'; New = 'SB0003=08420843'
+           Why = 'a sampled address returned two different values' },
+        @{ Old = 'SampleStable=1'; New = 'SampleStable=0'
+           Why = 'sample set reported unstable' },
+        @{ Old = 'SA0005=08420842'; New = 'SAxxxx=08420842'
+           Why = 'a truncated sample set, one pair missing' },
+        @{ Old = 'HashOmitted=bulk-aperture-read-hang'; New = 'HashNote=x'
+           Why = 'the bulk hash omission is not declared' },
+        @{ Old = 'SampleCount=00000008'; New = 'SampleCount=00000000'
+           Why = 'no samples taken at all' },
         @{ Old = "StreamCrc=$($generated.P5Crc)"; New = 'StreamCrc=DEADBEEF'
            Why = 'stream CRC not the generated one' },
         @{ Old = 'S0000=' + $generated.Phase5Stream[0]; New = 'S0000=00000000'
@@ -326,8 +399,8 @@ if ($SelfTest) {
            Why = 'unarmed capture claiming a pass' },
         @{ Old = 'P5RefReserveFirst=000006B0'; New = 'P5RefReserveFirst=00000750'
            Why = 'reserve outside the measured backed prefix' },
-        @{ Old = 'UnarmedHashFail=00000000'; New = 'UnarmedHashFail=00000007'
-           Why = 'the hash verb refused' }
+        @{ Old = 'SampleReads=00000010'; New = 'SampleReads=00025800'
+           Why = 'a sample read count back at bulk-hash scale' }
     )
     foreach ($mutation in $mutations) {
         $broken = @($lines | ForEach-Object {

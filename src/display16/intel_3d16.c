@@ -129,6 +129,13 @@ extern WORD FAR PASCAL V9xMiniI9xxRingExecute(DWORD crc, WORD step);
 #define V9X_P5_STEP_PROBE         24u
 #define V9X_P5_STEP_DRAW          25u
 #define V9X_P5_STEP_TEARDOWN      26u
+/*
+ * 27 and 28 are RETIRED, not free. They were the full-target hash and the 480
+ * row CRCs, removed on 2026-09-15 after the hash hard locked the netbook. The
+ * numbers are kept reserved because IntentStep values appear in captures that
+ * already exist, and reusing 27 for something else would make an old capture
+ * read as a new step.
+ */
 #define V9X_P5_STEP_HASH          27u
 #define V9X_P5_STEP_ROWS          28u
 #define V9X_P5_STEP_PIXELS        29u
@@ -267,6 +274,48 @@ static void v9x_p5_intent(WORD step)
     v9x_p5_flush();
 }
 
+/*
+ * Mapping, backing and bounds - everything that must hold before ANY aperture
+ * access, armed or not.
+ *
+ * Extracted from the preflight so it can run first on both paths. It used to
+ * live behind the preflight's `armed` test, so an unarmed boot read the
+ * aperture without any of it having been checked: the no-write path was not
+ * the no-validation path, but it was written as though writing were the only
+ * thing worth gating.
+ *
+ * Reads nothing. Every check here is against a value already in memory.
+ */
+static WORD v9x_p5_validate_mapping(
+    const struct v9x_i9xx_sandbox_layout *layout)
+{
+    if (layout->reserve_offset != 0x006b0000ul ||
+        layout->target_offset != 0x006c2000ul ||
+        layout->target_pitch != V9X_I9XX_TARGET_PITCH ||
+        layout->target_bytes != V9X_I9XX_TARGET_BYTES ||
+        layout->guard_upper_offset != 0x00758000ul) {
+        return V9X_P5_PRE_LAYOUT;
+    }
+    if (v9x_i9xx_bsm != 0x7f800000ul) { return V9X_P5_PRE_BSM; }
+
+    /* Re-derived every boot rather than inherited from the Phase 2 capture. */
+    if (v9x_i9xx_gtt_reserve_count == 0ul ||
+        v9x_i9xx_gtt_reserve_first >
+            0xfffffffful - v9x_i9xx_gtt_reserve_count ||
+        v9x_i9xx_gtt_reserve_first + v9x_i9xx_gtt_reserve_count >
+            v9x_i9xx_gtt_backed_prefix) {
+        return V9X_P5_PRE_RESERVE_BACKING;
+    }
+
+    /* The target and its guard must sit inside the reserve. */
+    if (layout->target_offset < layout->reserve_offset ||
+        layout->guard_upper_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
+            layout->reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
+        return V9X_P5_PRE_TARGET_RANGE;
+    }
+    return V9X_P5_PRE_OK;
+}
+
 static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
                              WORD phase4_passed, WORD armed)
 {
@@ -291,29 +340,10 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
     /* The hard precondition: Phase 4 must have passed in THIS boot. */
     if (phase4_passed == 0u) { return V9X_P5_PRE_PHASE4_MISSING; }
 
-    if (layout->reserve_offset != 0x006b0000ul ||
-        layout->target_offset != 0x006c2000ul ||
-        layout->target_pitch != V9X_I9XX_TARGET_PITCH ||
-        layout->target_bytes != V9X_I9XX_TARGET_BYTES ||
-        layout->guard_upper_offset != 0x00758000ul) {
-        return V9X_P5_PRE_LAYOUT;
-    }
-    if (v9x_i9xx_bsm != 0x7f800000ul) { return V9X_P5_PRE_BSM; }
+    {
+        WORD mapping = v9x_p5_validate_mapping(layout);
 
-    /* Re-derived every boot rather than inherited from the Phase 2 capture. */
-    if (v9x_i9xx_gtt_reserve_count == 0ul ||
-        v9x_i9xx_gtt_reserve_first >
-            0xfffffffful - v9x_i9xx_gtt_reserve_count ||
-        v9x_i9xx_gtt_reserve_first + v9x_i9xx_gtt_reserve_count >
-            v9x_i9xx_gtt_backed_prefix) {
-        return V9X_P5_PRE_RESERVE_BACKING;
-    }
-
-    /* The target and its guard must sit inside the reserve. */
-    if (layout->target_offset < layout->reserve_offset ||
-        layout->guard_upper_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
-            layout->reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
-        return V9X_P5_PRE_TARGET_RANGE;
+        if (mapping != V9X_P5_PRE_OK) { return mapping; }
     }
 
     if (v9x_i9xx_build_phase5_stream(
@@ -408,22 +438,78 @@ static void v9x_p5_publish_vertices(void)
 
 /* Two read-only passes, both published. They are not compared here: an
  * unstable read must be visible as two different numbers in the artefact. */
-static WORD v9x_p5_hash_target(const struct v9x_i9xx_sandbox_layout *layout,
-                               const char *key_a, const char *key_b,
-                               const char *key_fail)
-{
-    DWORD dwords = layout->target_bytes / 4ul;
+/*
+ * An explicit, small set of target points.
+ *
+ * This replaces a 153,600-dword two-pass hash that hard locked the netbook on
+ * 2026-09-15. Reading each point twice establishes SAMPLE stability - that
+ * these addresses return the same value twice - and nothing whatever about the
+ * rest of the target. The old capture keys claimed more than that and the
+ * names here are deliberately narrower.
+ *
+ * Eight points: the four corners, the centre, and three interior points. They
+ * cover the extremes of the mapping rather than characterising a picture; the
+ * named pixel probes are what say anything about what was drawn.
+ *
+ * Sixteen reads. That is a conservative starting figure, not a proven-safe
+ * one - see plans\intel-phase5-bounded-readback.md. Nothing has established
+ * where the safe bound actually lies.
+ */
+struct v9x_p5_sample {
+    WORD x;
+    WORD y;
+};
+static const struct v9x_p5_sample v9x_p5_samples[8] = {
+    { 0u,   0u   }, { 638u, 0u   },
+    { 0u,   479u }, { 638u, 479u },
+    { 320u, 240u }, { 160u, 120u },
+    { 480u, 360u }, { 320u, 400u }
+};
 
-    if (V9xMiniI9xxRingHash(layout->target_offset - layout->reserve_offset,
-                            (WORD)(dwords >> 16), (WORD)(dwords & 0xfffful))
-            == 0u) {
-        v9x_p5_hex(key_fail, v9x_i9xx_hash_fail);
-        return 0u;
+static DWORD v9x_p5_point_offset(
+    const struct v9x_i9xx_sandbox_layout *layout, WORD x, WORD y)
+{
+    /* Two pixels per dword at 16 bpp, so the dword address is the row origin
+     * plus the column pair. */
+    return layout->target_offset +
+           v9x_p5_mul32((DWORD)y, layout->target_pitch) +
+           (((DWORD)x & ~1ul) << 1);
+}
+
+/*
+ * Each point read twice, with a committed marker before and after, so a lock
+ * names the exact sample rather than the whole set.
+ */
+static WORD v9x_p5_sample_target(
+    const struct v9x_i9xx_sandbox_layout *layout)
+{
+    WORD index;
+    WORD stable = 1u;
+    const WORD count =
+        (WORD)(sizeof(v9x_p5_samples) / sizeof(v9x_p5_samples[0]));
+
+    for (index = 0u; index < count; ++index) {
+        DWORD offset = v9x_p5_point_offset(layout, v9x_p5_samples[index].x,
+                                           v9x_p5_samples[index].y);
+        DWORD first;
+        DWORD second;
+
+        v9x_p5_hex("SampleNext", (DWORD)index);
+        v9x_p5_hex("SampleNextOffset", offset);
+        v9x_p5_flush();
+        first = V9xGmadrRead(offset);
+        second = V9xGmadrRead(offset);
+        v9x_p5_indexed_hex("SA", index, first);
+        v9x_p5_indexed_hex("SB", index, second);
+        if (first != second) { stable = 0u; }
+        v9x_p5_flush();
     }
-    v9x_p5_hex(key_a, v9x_i9xx_hash_pass_a);
-    v9x_p5_hex(key_b, v9x_i9xx_hash_pass_b);
-    v9x_p5_hex(key_fail, 0ul);
-    return 1u;
+    v9x_p5_hex("SampleCount", (DWORD)count);
+    v9x_p5_hex("SampleReads", (DWORD)(count * 2u));
+    /* Named for what it is. It is not target stability. */
+    v9x_p5_text("SampleStable", stable != 0u ? "1" : "0");
+    v9x_p5_flush();
+    return stable;
 }
 
 /*
@@ -475,7 +561,15 @@ static void v9x_p5_publish_pixels(const struct v9x_i9xx_sandbox_layout *layout)
                        (((DWORD)v9x_p5_probes[index].x & ~1ul) << 1);
         v9x_p5_text(v9x_p5_probes[index].name,
                     v9x_p5_probes[index].inside != 0u ? "inside" : "outside");
+        /*
+         * Committed either side of the read. These fourteen reads are the
+         * whole of the draw evidence now, so losing the set to a lock on the
+         * eleventh would waste an armed boot that had already succeeded.
+         */
+        v9x_p5_hex("PixelNext", (DWORD)index);
+        v9x_p5_flush();
         v9x_p5_indexed_hex("PX", index, V9xGmadrRead(offset));
+        v9x_p5_flush();
     }
     v9x_p5_hex("PixelProbes", (DWORD)count);
     v9x_p5_hex("ExpectedInside", V9X_I9XX_TRI_COLOR_RGB565);
@@ -546,8 +640,7 @@ void v9x_intel_phase5_run(
      * share it, and scoped so a build without submit has no unused local. */
     WORD index;
 #endif
-    WORD row;
-    DWORD row_base;
+    WORD mapping;
 
     V9xEnsureDiagDir();
     v9x_p5_text("SchemaVersion", "1");
@@ -598,6 +691,22 @@ void v9x_intel_phase5_run(
     v9x_p5_hex("P5RefReserveFirst", v9x_i9xx_gtt_reserve_first);
     v9x_p5_hex("P5RefReserveCount", v9x_i9xx_gtt_reserve_count);
 
+    /*
+     * Mapping, backing and bounds BEFORE the first aperture access, on every
+     * path including the unarmed one. These checks used to sit behind the
+     * preflight's `armed` test, so B1 read the aperture with none of them
+     * having run.
+     */
+    mapping = v9x_p5_validate_mapping(layout);
+    v9x_p5_hex("MappingCheck", (DWORD)mapping);
+    v9x_p5_flush();
+    if (mapping != V9X_P5_PRE_OK) {
+        v9x_p5_rejection = mapping;
+        v9x_p5_hex("Precondition", (DWORD)mapping);
+        v9x_p5_result("MAPPING-REFUSED");
+        return;
+    }
+
     /* First hardware touch of the boot: one aperture read just below the
      * reserve. If the capture stops here, the aperture read is the fault and
      * nothing about the stream or the layout arithmetic matters. */
@@ -619,14 +728,16 @@ void v9x_intel_phase5_run(
             /* The 614 KiB read-only hash of the reserve, through the
              * mini-VDD's own physical mapping. The heaviest thing the
              * no-write path does, and the leading suspect. */
-            v9x_p5_progress("unarmed-hash");
-            (void)v9x_p5_hash_target(layout, "UnarmedHashA", "UnarmedHashB",
-                                     "UnarmedHashFail");
+            /*
+             * Eight points, each read twice: sixteen aperture reads in place
+             * of the 307,200 that hard locked this machine. The omission is
+             * recorded rather than left as an absence, so a reader of the
+             * capture is not left wondering whether the hash failed or was
+             * never attempted.
+             */
+            v9x_p5_text("HashOmitted", "bulk-aperture-read-hang");
             v9x_p5_progress("unarmed-samples");
-            v9x_p5_hex("UnarmedSample0", V9xGmadrRead(layout->target_offset));
-            v9x_p5_hex("UnarmedSample1",
-                       V9xGmadrRead(layout->target_offset +
-                                    layout->target_bytes - 4ul));
+            (void)v9x_p5_sample_target(layout);
             v9x_p5_result("NO-WRITE");
         } else {
             v9x_p5_result("REFUSED");
@@ -697,29 +808,32 @@ void v9x_intel_phase5_run(
     v9x_p5_hex("ExecFailure", 0ul);
 #endif
 
-    v9x_p5_intent(V9X_P5_STEP_HASH);
-    (void)v9x_p5_hash_target(layout, "DrawHashA", "DrawHashB",
-                             "DrawHashFail");
-
-    v9x_p5_intent(V9X_P5_STEP_ROWS);
-    row_base = layout->target_offset;
-    for (row = 0u; row < (WORD)V9X_I9XX_TARGET_HEIGHT; ++row) {
-        /*
-         * One CRC per row, so a wrong picture says WHERE it went wrong. A
-         * whole-target hash can only say that something did.
-         *
-         * row_base accumulates rather than being computed as row * pitch: the
-         * multiply would be a call to __U4M, which this segment cannot reach.
-         */
-        DWORD crc = 0xfffffffful;
-        DWORD column;
-
-        for (column = 0ul; column < layout->target_pitch; column += 4ul) {
-            crc ^= V9xGmadrRead(row_base + column);
-        }
-        v9x_p5_indexed_hex("R", row, crc);
-        row_base += layout->target_pitch;
-    }
+    /*
+     * The two bulk read-backs that used to run here are gone, and their
+     * absence is recorded rather than left silent.
+     *
+     * Step 27 hashed the whole target twice (307,200 aperture reads) and step
+     * 28 took 480 row CRCs of 320 reads each (153,600). The first of those
+     * hard locked this machine on an UNARMED boot, 2026-09-15. On an armed
+     * boot they ran after the draw, so the triangle would have been drawn and
+     * the machine would then have hung reading it back - losing the evidence
+     * the boot was spent on.
+     *
+     * What is lost with them: per-scanline localisation of a wrong picture.
+     * The fourteen named probes say whether the draw is right; they cannot say
+     * where it went wrong. That is a deliberate trade recorded in
+     * plans\intel-phase5-bounded-readback.md and not a temporary measure to
+     * be quietly reverted.
+     */
+    v9x_p5_text("HashOmitted", "bulk-aperture-read-hang");
+    v9x_p5_text("RowCrcOmitted", "bulk-aperture-read-hang");
+    v9x_p5_hex("RowCrcRowsOmitted", (DWORD)V9X_I9XX_TARGET_HEIGHT);
+    /*
+     * Execution evidence reaches the disk BEFORE the first pixel read. If the
+     * probes lock the machine, the capture still says the draw was submitted
+     * and drained.
+     */
+    v9x_p5_flush();
 
     v9x_p5_intent(V9X_P5_STEP_PIXELS);
     v9x_p5_publish_pixels(layout);
