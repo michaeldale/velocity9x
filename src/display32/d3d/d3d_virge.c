@@ -41,7 +41,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
     4ul,            /* texture_size_min */
     512ul,          /* texture_size_max */
     2048.0f,        /* coordinate_limit */
-    16ul            /* depth_bits_per_pixel */
+    16ul,           /* depth_bits_per_pixel */
+    /* The ViRGE and the CPU rasterizer both bind a texture at any
+     * eight-byte offset, which is the core default - stated rather than
+     * left zero so the field reads as an answer and not an omission. */
+    8ul                         /* texture_align          */
 };
 
 /*

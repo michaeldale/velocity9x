@@ -93,7 +93,21 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     8ul,                        /* texture_size_min       */
     256ul,                      /* texture_size_max       */
     4096.0f,                    /* coordinate_limit       */
-    16ul                        /* depth_bits_per_pixel   */
+    16ul,                       /* depth_bits_per_pixel   */
+    /*
+     * PAGE aligned, which is what v9x_i9xx_build_map_state requires and what
+     * DirectDraw is now told, so the texture surfaces it allocates are ones
+     * this engine can bind. It is this driver's choice rather than a databook
+     * requirement - neither reference emitter states one - and the choice is
+     * kept rather than relaxed because relaxing it is an unmeasured claim
+     * about where the hardware will fetch texels from, and being wrong about
+     * that is a read outside the allocation.
+     *
+     * The cost is a page per texture surface. On a part with eight megabytes
+     * of stolen memory that is affordable; if it ever stops being, the answer
+     * is to measure the real alignment rather than to guess a smaller one.
+     */
+    V9X_I9XX_SANDBOX_PAGE_BYTES /* texture_align          */
 };
 
 /*

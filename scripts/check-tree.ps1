@@ -1734,6 +1734,40 @@ if ($statusText -match '(?m)^\s*\} else if \(lstrcmpiA\(direct3d, "hardware') {
 }
 
 # ---------------------------------------------------------------------------
+# The texture alignment, in the three places that have to agree.
+#
+# v9x_d3d_i9xx_bind_map refuses a texture whose offset is not page aligned;
+# v9x_d3d_i9xx_limits states that as texture_align; and v9x_d3d_publish hands
+# it to DirectDraw as vmiData.dwTextureAlign so the surfaces it allocates are
+# ones the binder accepts. ddhal_core.c published a flat 8 for every chip,
+# which is the ViRGE's requirement, so every Gen3 texture was refused at bind
+# time and its triangles drew untextured - a wrong picture with no error.
+# ---------------------------------------------------------------------------
+$i9xxEngineText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display32\d3d\d3d_i9xx.c')
+$i9xxTargetText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display32\d3d\d3d_i9xx_target.c')
+$d3dCoreText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display32\d3d\d3d_core.c')
+if ($i9xxTargetText -notmatch
+        'offset & \(V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul\)') {
+    throw ('v9x_d3d_i9xx_bind_map must require a page-aligned texture ' +
+           'offset, which is what v9x_i9xx_build_map_state requires.')
+}
+if ($i9xxEngineText -notmatch
+        'V9X_I9XX_SANDBOX_PAGE_BYTES /\* texture_align') {
+    throw ('The Gen3 engine limits must state texture_align as the same ' +
+           'page constant bind_map enforces. A number in two places is how ' +
+           'DirectDraw came to allocate textures the binder refuses.')
+}
+if ($d3dCoreText -notmatch
+        'vmiData\.dwTextureAlign = ops->limits->texture_align;') {
+    throw ('v9x_d3d_publish must hand the engine texture_align to ' +
+           'DirectDraw. Without it the core default stands and the ' +
+           'surfaces DirectDraw allocates are ones the engine refuses.')
+}
+
+# ---------------------------------------------------------------------------
 # The runtime Direct3D permission.
 #
 # Three separate things have to stay true together, and each was wrong once.

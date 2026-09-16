@@ -195,6 +195,21 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD depth_bits_per_pixel;
     /*
+     * What a texture surface's offset must be a multiple of, which the HAL
+     * publishes to DirectDraw as vmiData.dwTextureAlign so that the surfaces
+     * it hands back are ones this engine can bind.
+     *
+     * It was a flat 8 in ddhal_core.c - the ViRGE's requirement, stated once
+     * for every chip because there was one chip that sampled. Gen3's
+     * MAP_STATE address is page aligned, so an 8-aligned texture was refused
+     * at bind time and its triangles drew untextured: a promise DirectDraw
+     * had been told it could keep, and could not.
+     *
+     * Zero means the engine has no requirement of its own and the core's
+     * default stands, which is what an engine that samples nothing wants.
+     */
+    DWORD texture_align;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

@@ -1635,6 +1635,27 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
 
     ops->describe_caps(shared);
 
+    /*
+     * THE TEXTURE ALIGNMENT DirectDraw will honour, corrected here to the
+     * engine's own.
+     *
+     * ddhal_core.c publishes vmiData.dwTextureAlign as a flat 8 before this
+     * runs - the ViRGE's requirement, written once for every chip because
+     * there was one chip that sampled. Gen3's MAP_STATE address is page
+     * aligned, so every texture DirectDraw handed back at an eight-byte
+     * boundary was refused at bind time and its triangles drew untextured:
+     * a wrong picture, no error, and a promise DirectDraw had been told it
+     * could keep.
+     *
+     * Set from the resolved engine rather than from the chip, because the
+     * engine is what binds the surface - and left alone when the engine
+     * states no requirement, so a chip that samples nothing keeps the
+     * core's answer.
+     */
+    if (ops->limits != 0 && ops->limits->texture_align != 0ul) {
+        shared->info.vmiData.dwTextureAlign = ops->limits->texture_align;
+    }
+
     shared->d3d_callbacks.dwSize = sizeof(V9X_D3DHAL_CALLBACKS);
     shared->d3d_callbacks.ContextCreate =
         (V9X_DD_CODE_PTR)V9xD3dContextCreate;
