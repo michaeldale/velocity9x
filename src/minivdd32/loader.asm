@@ -2183,6 +2183,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingHash
     cmp     ax, V9XMINI_FN_I9XX_SCENE_EXECUTE
     je      V9xMini_Api_I9xxSceneExecute
+    cmp     ax, V9XMINI_FN_I9XX_ENGINE_MAP
+    je      V9xMini_Api_I9xxEngineMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2242,6 +2244,37 @@ ELSE
     mov     [ebp.Client_AX], 0
 ENDIF
     ret
+; Hand the 32-bit HAL the two linear windows it cannot map for itself.
+;
+; Reads two variables and returns them. It maps nothing, writes no card state,
+; and touches no register - which is what makes it safe to call from a path
+; that runs while an application is drawing, and why the mapping stays with
+; the capture and GTT paths that already perform it.
+;
+; Both must be present. A HAL given BAR0 without BAR3 could submit but not
+; inspect the page table, and one given BAR3 without BAR0 could not submit at
+; all; either half alone is a caller that believes it has a working engine.
+V9xMini_Api_I9xxEngineMap:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, V9xI9xxMmioLinear
+    test    eax, eax
+    jz      short V9xMini_Api_I9xxEngineMap_Missing
+    mov     ecx, V9xI9xxGttLinear
+    test    ecx, ecx
+    jz      short V9xMini_Api_I9xxEngineMap_Missing
+    mov     [ebp.Client_EBX], eax
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxEngineMap_Missing:
+    ; Zero BOTH, so a caller that ignores AX maps nothing rather than mapping
+    ; one window and half believing it has an engine.
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
 V9xMini_Api_I9xxRingMemory:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     cmp     V9xI9xxRingStaged, 10

@@ -303,6 +303,29 @@ V9XMINI_FN_I9XX_RING_HASH   EQU 0015h
 ;   31 the scene asked for is not the scene that was staged
 V9XMINI_FN_I9XX_SCENE_EXECUTE EQU 0016h
 
+; Publish the linear addresses of the two Intel BARs the 32-bit HAL needs.
+;
+; Out: AX=1 on success, EBX=BAR0 linear, ECX=BAR3 linear. AX=0 when either
+; mapping is absent, and both outputs are then zero.
+;
+; WHY THIS EXISTS, and why it is not a submission verb. The 32-bit HAL already
+; writes graphics memory directly through fb.linear_base - blt_cpu.c and
+; d3d_soft.c do it for pixels - and the ring lives in the reserve at the top of
+; that same mapping, so the HAL can write the ring itself. A verb that copied
+; dwords into the ring would be a ring transition per submission for something
+; the caller can already do.
+;
+; What the HAL cannot reach is BAR0. The ViRGE's control window is inside the
+; framebuffer BAR at a fixed offset, so its engine derives one base from the
+; other; Gen3's registers are in a separate BAR that nothing has mapped for
+; ring-3 use. This verb hands over what is already mapped here rather than
+; mapping it twice.
+;
+; It maps nothing itself. Both windows are mapped by the capture and GTT paths
+; that already exist, and a verb that mapped on demand would put a
+; _MapPhysToLinear on a path that runs while an application is drawing.
+V9XMINI_FN_I9XX_ENGINE_MAP  EQU 0017h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR
