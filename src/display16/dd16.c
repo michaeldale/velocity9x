@@ -66,9 +66,11 @@ void v9x_dd_d3d_configure(void)
     WORD requested;
 
     if (device != 0 && device->fill_engine_descriptor != 0) {
+        DWORD gtt_base = 0ul;
+
         device->fill_engine_descriptor(V9xLinearBase(), &control_base,
                                        &aperture_bytes, &engine_type,
-                                       &engine_caps);
+                                       &engine_caps, &gtt_base);
     }
 
     /*
@@ -351,7 +353,8 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     if (device != 0 && device->fill_engine_descriptor != 0) {
         device->fill_engine_descriptor(V9xLinearBase(), &control_base,
                                        &aperture_bytes, &engine_type,
-                                       &engine_caps);
+                                       &engine_caps,
+                                       &shared->engine.gtt_linear_base);
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
     if (v9x_d3d_mode_advertises(v9x_dd_d3d_state) == V9X_FALSE) {
@@ -477,7 +480,8 @@ static void v9x_dd_refresh_framebuffer(void)
 
         device->fill_engine_descriptor(shared->fb.linear_base,
                                        &control_base, &aperture_bytes,
-                                       &engine_type, &engine_caps);
+                                       &engine_type, &engine_caps,
+                                       &shared->engine.gtt_linear_base);
         /*
          * The user's Direct3D setting, applied before the stamp rather than
          * after it.
@@ -512,6 +516,7 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.mapped_aperture_bytes = 0ul;
         shared->engine.engine_type = V9X_DD_ENGINE_TYPE_NONE;
         shared->engine.engine_caps = 0ul;
+        shared->engine.gtt_linear_base = 0ul;
         shared->engine.flags = 0ul;
     }
 

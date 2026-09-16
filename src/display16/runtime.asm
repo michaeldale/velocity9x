@@ -1486,6 +1486,46 @@ V9xMiniI9xxRingHashDone:
     retf    8
 V9XMINII9XXRINGHASH ENDP
 
+; WORD FAR PASCAL V9xMiniI9xxEngineMap(DWORD FAR *bar0, DWORD FAR *bar3)
+;
+; The two linear windows the mini-VDD has already mapped. Returns 1 with both
+; written, or 0 with both zeroed - never one of the two, because a caller with
+; BAR0 and no BAR3 believes it has an engine it cannot inspect.
+PUBLIC V9XMINII9XXENGINEMAP
+V9XMINII9XXENGINEMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxEngineMapFailed
+    mov     eax, V9XMINI_FN_I9XX_ENGINE_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxEngineMapFailed
+    ; PASCAL pushes left to right, so bar0 is the FARTHER argument.
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], ecx
+    mov     ax, 1
+    jmp     short V9xMiniI9xxEngineMapDone
+V9xMiniI9xxEngineMapFailed:
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniI9xxEngineMapDone:
+    pop     es
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINII9XXENGINEMAP ENDP
+
 ; WORD FAR PASCAL V9xMiniI9xxSceneExecute(DWORD crc, WORD step, WORD scene)
 ;
 ; Phase 6. Same returns as V9xMiniI9xxRingExecute, into the same globals, so

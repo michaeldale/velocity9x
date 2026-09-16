@@ -22,9 +22,15 @@ static void v9x_trio_fill_engine(unsigned long framebuffer_linear_base,
                                  unsigned long *control_linear_base,
                                  unsigned long *mapped_aperture_bytes,
                                  unsigned long *engine_type,
-                                 unsigned long *engine_caps)
+                                 unsigned long *engine_caps,
+                                 unsigned long *gtt_linear_base)
 {
     (void)framebuffer_linear_base;
+    /* No second aperture, and no first one either: this chip is addressed
+     * through port I/O. Written rather than left alone, because an
+     * out-parameter an implementer skips is whatever the caller's stack
+     * held. */
+    *gtt_linear_base = 0ul;
     *control_linear_base = 0ul;
     *mapped_aperture_bytes = 0ul;
     *engine_type = V9X_DD_ENGINE_TYPE_S3_TRIO64;

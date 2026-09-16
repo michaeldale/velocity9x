@@ -47,8 +47,14 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *control_linear_base,
                                   unsigned long *mapped_aperture_bytes,
                                   unsigned long *engine_type,
-                                  unsigned long *engine_caps)
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base)
 {
+    /* No second aperture. This chip's control window IS the framebuffer BAR
+     * at a fixed offset, which is exactly what Gen3 cannot express and why
+     * the parameter exists. Written rather than left alone: an out-parameter
+     * an implementer skips is whatever the caller's stack held. */
+    *gtt_linear_base = 0ul;
     *control_linear_base = framebuffer_linear_base + 0x01000000ul;
     *mapped_aperture_bytes = 0x00010000ul;
     *engine_type = V9X_DD_ENGINE_TYPE_S3_VIRGE_DX;
@@ -88,10 +94,12 @@ static void v9x_trio3d2x_fill_engine(unsigned long framebuffer_linear_base,
                                      unsigned long *control_linear_base,
                                      unsigned long *mapped_aperture_bytes,
                                      unsigned long *engine_type,
-                                     unsigned long *engine_caps)
+                                     unsigned long *engine_caps,
+                                     unsigned long *gtt_linear_base)
 {
     v9x_virge_fill_engine(framebuffer_linear_base, control_linear_base,
-                          mapped_aperture_bytes, engine_type, engine_caps);
+                          mapped_aperture_bytes, engine_type, engine_caps,
+                          gtt_linear_base);
     *engine_caps &= ~(V9X_DD_ENGINE_CAP_S3D_TWO_PASS |
                       V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA);
 }

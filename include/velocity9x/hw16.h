@@ -106,11 +106,21 @@ typedef struct v9x_hw16_device {
      * is per chip, one member of a family claiming D3D does not give it to the
      * others.
      */
+    /*
+     * gtt_linear_base is APPENDED, and is zero for every chip but Gen3.
+     *
+     * The ViRGE derives its control window from the framebuffer base - one
+     * BAR at a fixed offset - and so needs no second address. Gen3's
+     * registers are in BAR0 and its page table in BAR3, two independent
+     * regions this project has measured to move between DOS and Windows, so
+     * neither derives from the other and both have to be handed over.
+     */
     void (*fill_engine_descriptor)(unsigned long framebuffer_linear_base,
                                    unsigned long *control_linear_base,
                                    unsigned long *mapped_aperture_bytes,
                                    unsigned long *engine_type,
-                                   unsigned long *engine_caps);
+                                   unsigned long *engine_caps,
+                                   unsigned long *gtt_linear_base);
 
     /*
      * Which PCI base address register carries the framebuffer aperture, as a
