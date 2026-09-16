@@ -1129,9 +1129,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * running against the wrong layout. */
 /*
  * 2026091701: V9X_DD_TRACE.counters[] grows by one WORD for
- * V9X_TRACE_D3D_RENDERLOOP. The trace is the last field, so nothing moves,
- * but a 32-bit side counting id 51 into a block a 16-bit side sized for 50
- * writes two bytes past it.
+ * V9X_TRACE_D3D_RENDERLOOP. The marker is pushed, not counted, so the slot
+ * is spare today; it is there so counters[] keeps covering every id, and
+ * because the trace is the last field nothing else moves. A 32-bit side
+ * with the longer array against a 16-bit side sized for the shorter one
+ * would still write two bytes past the block.
  *
  * 2026091605: V9X_D3D_DIAGNOSTICS gains the surface-pointer CALL SITE and the
  * mask of sites that have rejected. Added because the fault address alone

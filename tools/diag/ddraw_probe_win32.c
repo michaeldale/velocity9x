@@ -794,6 +794,21 @@ static void v9x_write_hresult(const char *key, HRESULT value)
 }
 
 /*
+ * The verdict, always in the FIRST file.
+ *
+ * Result is written early as INCOMPLETE and overwritten at the end. Through
+ * v9x_write_text the overwrite lands in whichever file is current, and after
+ * a rollover that is not the one holding INCOMPLETE - intel56's V9XDD.INI
+ * said INCOMPLETE while V9XDD2.INI said COMPLETE. A reader of the first file
+ * alone, which is every reader so far, concluded the probe stopped early.
+ * Written raw so it is never appended to a later file.
+ */
+static void v9x_write_result(const char *text)
+{
+    WritePrivateProfileStringA(V9X_SECTION, "Result", text, V9X_RESULT_PATH);
+}
+
+/*
  * Windows caches .INI writes, and a display mode change immediately before
  * process exit discards the cached tail. Flush explicitly before exiting.
  */
@@ -2301,7 +2316,7 @@ void __stdcall V9xDdrawProbeEntry(void)
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", V9X_BUILD_ID);
-    v9x_write_text("Result", "INCOMPLETE");
+    v9x_write_result("INCOMPLETE");
     v9x_write_uint("TexFormatCount", 0ul);
     v9x_write_uint("TexFormat565", 0ul);
     v9x_write_uint("TexFormat1555", 0ul);
@@ -2380,7 +2395,7 @@ void __stdcall V9xDdrawProbeEntry(void)
         ? (V9X_DDCREATE)GetProcAddress(ddraw_module, "DirectDrawCreate")
         : 0;
     if (v9x_time == 0 || create == 0) {
-        v9x_write_text("Result", "FAIL-LOAD");
+        v9x_write_result("FAIL-LOAD");
         ExitProcess(1u);
     }
 
@@ -2393,7 +2408,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                              "Velocity9x DirectDraw probe", WS_POPUP,
                              0, 0, 64, 64, 0, 0, window_class.hInstance, 0);
     if (window == 0) {
-        v9x_write_text("Result", "FAIL-WINDOW");
+        v9x_write_result("FAIL-WINDOW");
         ExitProcess(1u);
     }
     ShowWindow(window, SW_SHOWNORMAL);
@@ -2402,7 +2417,7 @@ void __stdcall V9xDdrawProbeEntry(void)
     hr = create(0, &ddraw, 0);
     v9x_write_hresult("CreateHr", hr);
     if (hr != 0) {
-        v9x_write_text("Result", "FAIL-CREATE");
+        v9x_write_result("FAIL-CREATE");
         ExitProcess(1u);
     }
 
@@ -2482,7 +2497,7 @@ void __stdcall V9xDdrawProbeEntry(void)
         v9x_pal8_mode_test(ddraw, "Pal8_640_400_", 640ul, 400ul);
         v9x_pal8_mode_test(ddraw, "Pal8_320_240_", 320ul, 240ul);
         v9x_pal8_mode_test(ddraw, "Pal8_320_200_", 320ul, 200ul);
-        v9x_write_text("Result", "PAL8");
+        v9x_write_result("PAL8");
         v9x_flush_results();
         ddraw->vtbl->RestoreDisplayMode(ddraw);
         ddraw->vtbl->SetCooperativeLevel(ddraw, window, V9X_DDSCL_NORMAL);
@@ -8275,7 +8290,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                                               V9X_DDSCL_NORMAL);
             ddraw->vtbl->Release(ddraw);
             DestroyWindow(window);
-            v9x_write_text("Result", "STATUS-ONLY");
+            v9x_write_result("STATUS-ONLY");
             ExitProcess(fill_can == 0 ? 0u : 2u);
         }
         if (fill_can == 0) {
@@ -8484,7 +8499,7 @@ void __stdcall V9xDdrawProbeEntry(void)
     ddraw->vtbl->SetCooperativeLevel(ddraw, window, V9X_DDSCL_NORMAL);
     ddraw->vtbl->Release(ddraw);
     DestroyWindow(window);
-    v9x_write_text("Result", "COMPLETE");
+    v9x_write_result("COMPLETE");
     /* All files, not the first: the Result key may have rolled into a numbered
      * file, and ResultFiles is stale if a rollover happened after the last
      * stage checkpoint. */

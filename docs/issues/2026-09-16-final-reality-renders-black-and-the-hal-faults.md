@@ -4,9 +4,12 @@ Date: 2026-09-16
 Machine: MICHAEL-NETBOOK, Intel 945GSE, `8086:27AE` revision 03
 Build: `f9ec875`
 Capture: `C:\temp\intel53`
-Status: caller MEASURED 2026-09-17 from intel55. The texture table held a
-wrapper it dereferenced after the surface was gone; fixed, not yet re-run.
-The rendering question is still open and now separate.
+Status: RESOLVED 2026-09-17, intel56. Final Reality renders on the 945GSE:
+1,175,294 RenderPrimitive calls returned and 1,947,273 batches were
+submitted with none refused, in the first build with the draw path's
+three-page stack frame moved off the stack. Two follow-ons are open and
+recorded at the end: every texture draws untextured, and the frame
+flickers.
 
 Final Reality detected hardware Direct3D for the first time - the caps
 published in `7bb536f` and `f9ec875` are enough for it to accept the device -
@@ -363,3 +366,74 @@ execute and TL buffers and before they are clipped or drawn.
 
 Shared-block ABI is `2026091701`; a snapshot from an older `V9XTRACE.EXE`
 is refused rather than misread.
+
+## intel56: it draws
+
+Build `1bd1bb7-dirty` (the tree committed as `f2e7655`). Final Reality ran
+its benchmark to completion for the first time on this hardware. From
+`V9XSNAP.INI`:
+
+```
+D3dRenderPrimitiveCalls=1175294     was 0 in intel53, 54 and 55
+I9xxDrawsSubmitted=1947273          was 0
+I9xxDrawsRefused=0
+I9xxDepthDraws=1946897              I9xxDepthSkipped=4
+SurfaceIntRejected=0                the texture-table fix held
+EngineFifoTimeouts=0  EngineIdleTimeouts=0  EngineResets=0
+RingTail=00008190  RingHead=65408190 at disable: head == tail, 0x654 wraps
+```
+
+No fault flush was written. `D3dContextCreates=17`, all destroyed.
+
+### What this says about the frame hypothesis
+
+The build differed from `77c7951` on the RenderPrimitive path in exactly
+one way: `draw_triangles`' four arrays moved from an 11,644-byte stack
+frame to file scope. The trace marker was added to the same path but writes
+only to the ring; the colour-constant and probe changes are not on it.
+Three consecutive boots did not return from the first call; the fourth
+returned from 1.17 million. That is as close to a measurement of the cause
+as this can get without a fault address, and the hypothesis is promoted to
+the working explanation. It is NOT a proof: nothing recorded where the
+earlier boots died.
+
+### Open: every texture draws untextured
+
+```
+D3dTextureCreates=645         D3dTextureRefusedFormat=361
+D3dTextureRefusedLast=0x10000F00      16 bpp, red mask 0x0F00: ARGB 4:4:4:4
+D3dTextureRefusedSysmem=1946869       of 1947273 draws
+D3dTextureRefusedCaps=0x04001800      ALLOCONLOAD | TEXTURE | SYSTEMMEMORY
+I9xxTextureDraws=1
+D3dTextureRefusedVidMem=0x005D0EF0
+```
+
+The Gen3 sampler path accepts one format, RGB 5:6:5
+(`v9x_d3d_i9xx_texture_format`), and that is the one format the caps
+publish (`TexFormatCount=1`, the probe). Final Reality's textures are
+4:4:4:4. The 361 refusals are those textures at creation; DirectDraw then
+allocated them in system memory, which the bind refuses per draw - hence
+1.9 million system-memory refusals against a vidmem heap with 6 MB free.
+The one textured draw was the probe's.
+
+The fix is a second and third map format on the Intel path - MAP_STATE's
+surface-format field, the decoder's allowlist, the published format list,
+and the host tests - licensed by the Gen3 PRM's MAPSURF_16BIT format codes,
+which need citing before the code claims them. Not started.
+
+### Open: the frame flickers
+
+The Intel family declares no `V9X_DD_ENGINE_CAP_FLIP`, so `V9xHalFlip`
+returns NOTHANDLED for every one of its 2,092 calls and DirectDraw presents
+each frame by copying the back buffer to the primary itself. That copy is
+a CPU write through the aperture with no relation to the retrace. The flip
+gate exists because the only display-start code writes S3's CR69; an Intel
+path would write `DSPA_ADDR` and needs its own vblank source. Both are
+hardware claims this record does not make - the register write is
+unmeasured on this part and goes through the probe-and-record loop first.
+
+### Probe
+
+The probe completed (`ResultFiles=2`, `Result=COMPLETE` in the second
+file). The first file still read `INCOMPLETE`: the verdict followed the
+rollover. Fixed the same day; Result is now written to the first file.
