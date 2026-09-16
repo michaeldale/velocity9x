@@ -1,7 +1,7 @@
 # Phase 5 emits a depth BUF_INFO for a depth buffer that does not exist
 
-**Status:** removed host-side; **awaiting the regression scene on hardware.**
-**Blocks:** any Phase 6 step that touches depth, until that scene runs.
+**Status:** CLOSED 2026-09-16.
+**Blocked** any Phase 6 depth step. No longer.
 **Chip:** 945GSE A3, `8086:27AE` rev 03, MICHAEL-NETBOOK.
 
 ## What the stream does
@@ -92,3 +92,14 @@ confirmed twice.
 byte-identical pixel output at all fourteen probes, and nothing else in this
 build has established that - the host tests prove the stream changed exactly
 as intended, not that the GPU agrees.
+
+## Closed 2026-09-16
+
+Scene 0 of `C:	emp\intel44` reproduced `C:	emp\intel42` byte for byte -
+seven interior probes `1C3E`, seven exterior `0842`. The binding is gone and no
+pixel changed, which is the result this issue was owed.
+
+The same scene also validated the qword padding added the same day, because it
+was placed first precisely so one comparison could carry both.
+
+Record: `docs/decisions/2026-09-16-intel-phase6-five-scenes-green-rounds-edges-clean.md`.

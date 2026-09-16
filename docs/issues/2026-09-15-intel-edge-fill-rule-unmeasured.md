@@ -1,6 +1,6 @@
 # The GMA 950's triangle fill rule at edges is unmeasured
 
-**Status:** open, deliberately deferred. **Blocks:** nothing yet — see below.
+**Status:** MEASURED 2026-09-16 for one slope; see the limit below.
 **Chip:** 945GSE A3, `8086:27AE` rev 03, MICHAEL-NETBOOK.
 
 ## What is unknown
@@ -66,3 +66,29 @@ The colour conversion difference
 (`docs/issues/2026-09-15-intel-565-conversion-outside-measured-values.md`).
 That affects every interior pixel by a known amount; this affects only boundary
 pixels by an unknown rule. A capture can show both at once.
+
+## Measured 2026-09-16
+
+Three scenes, `C:	emp\intel44`: the upper triangle alone, the lower alone at
+identical probe pixels, and both under one primitive.
+
+| Probe | Upper alone | Lower alone | Both |
+|---|---|---|---|
+| EdgeA | `1C3E` | `0842` | `1C3E` |
+| EdgeB | `1C3E` | `0842` | `1C3E` |
+| EdgeC | `1C3E` | `0842` | `1C3E` |
+
+**Exactly one triangle claims each shared-edge pixel.** No double coverage, no
+gap. The diagonal is a left edge for the upper triangle and a right edge for
+the lower, and the upper claims it - the top-left fill rule.
+
+The probes sample pixels whose centres lie exactly ON the diagonal, which is
+the property the geometry was rebuilt for after the first version used a slope
+no sample centre touched.
+
+**What remains unmeasured:** one slope, one diagonal, three points. Horizontal
+and vertical shared edges, other slopes, and degenerate triangles are all
+untested. This closes the question for the case a quad presents and nothing
+wider.
+
+Record: `docs/decisions/2026-09-16-intel-phase6-five-scenes-green-rounds-edges-clean.md`.

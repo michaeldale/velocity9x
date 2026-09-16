@@ -231,6 +231,30 @@ static void v9x_p5_text(const char *key, const char *value)
 }
 
 /*
+ * Delete the whole section before writing any of it.
+ *
+ * A profile file SURVIVES a boot, and WritePrivateProfileString updates keys
+ * rather than replacing the file - so every key a run does not write is
+ * inherited from the last one that did. C:	emp\intel44 is a merge of two
+ * boots: it reports Result=PASS with all five scenes completed AND carries
+ * S0Scene=EXECUTE-REFUSED and SceneFailed=0 from the refusal before it. The
+ * validator read the stale SceneFailed, checked one scene of five, and
+ * accepted.
+ *
+ * A capture that is not a record of one boot is not evidence. Passing a null
+ * key deletes the section, which is the documented way to say so.
+ */
+static void v9x_p5_reset_section(void)
+{
+    WritePrivateProfileString(V9X_P5_SECTION, 0, 0,
+                              V9X_DIAG_INTEL3D0_TXT);
+    /* Committed before anything is written into the empty section, so a hang
+     * during the run cannot leave the previous boot's keys looking like this
+     * one's. */
+    WritePrivateProfileString(0, 0, 0, V9X_DIAG_INTEL3D0_TXT);
+}
+
+/*
  * Commit the profile cache to disk.
  *
  * Every write above sits in Windows' cache until this is called, so a boot
@@ -1146,6 +1170,9 @@ void v9x_intel_phase5_run(
 #endif
 
     V9xEnsureDiagDir();
+    /* Before the first key of this boot, so the capture cannot inherit the
+     * last boot's. */
+    v9x_p5_reset_section();
     /*
      * 2: adds PreErr/PostErr with their completeness status.
      * 3: adds the Phase 6 scene sections - per-scene stream figures, probe

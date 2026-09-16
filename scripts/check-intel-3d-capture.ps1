@@ -511,6 +511,26 @@ function Test-V9xIntel3dCapture {
         # How far the run got. A capture that stopped early is valid evidence
         # and must not be failed for the scenes it never reached - but it must
         # SAY where it stopped, and every scene up to there must be complete.
+        # ScenesCompleted and SceneFailed are MUTUALLY EXCLUSIVE, and a
+        # capture carrying both is refused rather than resolved.
+        #
+        # C:	emp\intel44 carried both: a clean five-scene PASS with a stale
+        # SceneFailed=0 inherited from the refusal before it, because a profile
+        # file survives a boot and only the keys a run writes are replaced.
+        # This preferred SceneFailed, checked one scene of five, and accepted -
+        # four scenes of evidence unexamined, reported as a pass.
+        #
+        # Silently picking one of two contradictory claims is how a narrowed
+        # check looks exactly like a passing one. The driver now clears the
+        # section each boot, and this refuses the merged captures that already
+        # exist rather than reading them as though they were whole.
+        if ($values.ContainsKey('SceneFailed') -and
+            $values.ContainsKey('ScenesCompleted')) {
+            throw ('INTEL3D0.TXT carries both ScenesCompleted and ' +
+                   'SceneFailed. A run either finished or stopped; a capture ' +
+                   'claiming both is a merge of two boots, and which keys ' +
+                   'belong to which cannot be told from here.')
+        }
         $reached = $sceneCount
         if ($values.ContainsKey('SceneFailed')) {
             $reached = (Get-V9x3dHex32 -Values $values -Key 'SceneFailed') + 1
