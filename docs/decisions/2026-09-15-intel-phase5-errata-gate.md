@@ -320,8 +320,36 @@ hang-interpretation rule still applies, but its evidence is thinner.
   builder's refusals load-bearing rather than defensive.
 - The **guard pages** around every buffer the GPU may write, checked on the
   same terms as today.
-- **`IntelEnableThisBoot`** stays the master switch, so a machine that wedges
-  is recoverable by editing one line from DOS.
+- **A master switch**, so a machine that wedges is recoverable by editing one
+  line from DOS.
+
+  This bullet originally named `IntelEnableThisBoot`, **and that was wrong.**
+  It is corrected here rather than quietly: the sentence was written while
+  this amendment was being drafted, it was repeated to the operator as the
+  recovery instruction for the first boot, and the code shipped in commit
+  `9655778` with no master switch on the runtime path at all. The claim was
+  not checked against what that key does.
+
+  `IntelEnableThisBoot` is per-arm. `v9x_intel_boot_arm_prepare` writes it to
+  `0` at the top of every boot and to `1` only when a one-shot token is
+  consumed, so a runtime boot has it clear **by definition** - it could not
+  have gated anything, and editing it from DOS would have changed nothing.
+  Nothing else consulted any permission either: the descriptor hook called
+  `RING_OPEN` whenever the BARs mapped, which writes `RING_START` and
+  `RING_CTL` on a boot carrying no token, on every DirectDraw session, with
+  nothing able to stop it afterwards.
+
+  The switch is now **`IntelRuntime3D`** in `C:\V9XDIAG\INTELARM.TXT`, read
+  once at DriverInit. Absent or anything but `1` means no, so a machine that
+  merely receives this package does not start a ring; granting the permission
+  is a deliberate act on the machine. It governs both the ring bring-up and
+  the Direct3D capability, and it is cleared in memory whenever a one-shot
+  token is consumed, because an armed boot owns the ring and two owners of one
+  register file is the failure that would follow from leaving it set.
+
+  From DOS: `V9X3D ON` and `V9X3D OFF`. `V9XCOPY` also disables it, because
+  the arm file it writes carries no such key - so the recovery command this
+  project already documents turns the runtime path off as a side effect.
 
 ### What is still NOT authorised
 

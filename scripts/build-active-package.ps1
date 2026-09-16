@@ -318,6 +318,41 @@ if ($familyManifest.Id -eq 'intel-gma') {
         throw 'V9XARM6.BAT still contains an unsubstituted placeholder.'
     }
     Set-Content -LiteralPath (Join-Path $outputDir 'V9XARM6.BAT') -Value $arm6Lines -Encoding Ascii
+
+    # The runtime Direct3D permission switch, on the same terms as the armers
+    # above and behind its own authorisation.
+    #
+    # Sustained 3D is a third risk assessment, distinct from one draw per boot
+    # and from five: it removes the draw bound, the combined-CRC gate and the
+    # one-shot token altogether, and it is the amendment of 2026-09-16 that
+    # takes it. Produced only when that amendment is on record, and the check
+    # is on the amendment's own heading rather than on the file existing,
+    # because the file predates it.
+    #
+    # No placeholders: this carries no build id, no token and no CRC. It sets
+    # a retained permission rather than arming a run, so there is nothing in
+    # it that could go stale relative to the binaries beside it - which is
+    # also why it is copied verbatim and checked for that.
+    $sustained = $false
+    foreach ($doc in $phase5Doc) {
+        if ((Get-Content -LiteralPath $doc.FullName -Raw) -match
+                '(?m)^## Amendment, 2026-09-16: sustained 3D work is authorised') {
+            $sustained = $true
+        }
+    }
+    if (-not $sustained) {
+        throw ('The Phase 5 errata decision carries no 2026-09-16 ' +
+               'sustained-3D amendment, so V9X3D.BAT will not be produced. ' +
+               'Every armed boot runs a stream this project generated and ' +
+               'checked; the runtime path runs whatever an application ' +
+               'builds, and that is the authorisation that covers it.')
+    }
+    $switchSource = Join-Path $repoRoot 'packaging\win98se\V9X3D.BAT'
+    $switchLines = @(Get-Content -LiteralPath $switchSource)
+    if (@($switchLines | Where-Object { $_ -match '@@' }).Count -ne 0) {
+        throw 'V9X3D.BAT carries a placeholder, which it must not.'
+    }
+    Set-Content -LiteralPath (Join-Path $outputDir 'V9X3D.BAT') -Value $switchLines -Encoding Ascii
 }
 
 $manifest = @(
@@ -373,6 +408,7 @@ if ($familyManifest.Id -eq 'intel-gma') {
     $expectedPackageFiles += "V9XARM.BAT"
     $expectedPackageFiles += "V9XARM5.BAT"
     $expectedPackageFiles += "V9XARM6.BAT"
+    $expectedPackageFiles += "V9X3D.BAT"
 }
 $actualPackageFiles = @(Get-ChildItem -LiteralPath $outputDir -File |
     ForEach-Object { $_.Name } | Sort-Object)

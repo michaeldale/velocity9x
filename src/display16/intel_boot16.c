@@ -13,6 +13,31 @@
 /* Never infer this from an on-disk key: it starts false on every driver load. */
 WORD v9x_intel_boot_arm_latch;
 /*
+ * Whether this boot may bring the ring up and advertise Direct3D to
+ * applications - the RUNTIME path, which is a different question from the
+ * armed diagnostic one and needed its own answer.
+ *
+ * IntelEnableThisBoot cannot serve. It is per-arm, written to 0 at the top of
+ * every boot and to 1 only when a one-shot token is consumed, so a runtime
+ * boot has it clear by definition; gating on it would have meant Direct3D
+ * never worked at all. It also lives in a file this driver rewrites, which is
+ * the opposite of what an operator needs to reach from DOS after a hang.
+ *
+ * So IntelRuntime3D, read once here and never written back. Absent or
+ * anything but "1" means no: the first machine to receive this package has
+ * never executed application geometry, and a package that turned the ring on
+ * by merely being installed would make the decision on the operator's behalf.
+ * Turning it off again is one line in C:\V9XDIAG\INTELARM.TXT from DOS, which
+ * is the recovery path this feature previously did not have.
+ *
+ * Cleared again if this boot is ARMED. A diagnostic boot owns the ring - it
+ * sets START and CTL itself and disables and clears them on teardown - and a
+ * DirectDraw session bringing the ring up underneath that, or submitting into
+ * it, is two owners for one register file. The armed boot wins because it is
+ * the one with a token, a CRC and a recorded expectation.
+ */
+WORD v9x_intel_runtime3d_allowed;
+/*
  * Which phase the consumed token claims, from IntelArmPhase.
  *
  * The latch above is deliberately phase-agnostic: it records that a valid
@@ -147,6 +172,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     char in_flight[65];
     char arm_once[65];
     char crc_text[16];
+    char runtime_text[8];
 #ifdef V9X_I9XX_FIRST_WRITE_EXECUTOR
     char build_text[65];
     char phase_text[8];
@@ -163,6 +189,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_mark("arm-in");
 
     v9x_intel_boot_arm_latch = 0u;
+    v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
@@ -171,6 +198,22 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     /* And if this one does, the outbound far call to runtime.asm worked too,
      * which leaves only arm_prepare's own body. */
     v9x_intel_boot_mark("arm-dir");
+    /*
+     * The runtime permission, read BEFORE any of the arm transaction below.
+     *
+     * Every path out of this function past this point is a return - IO-FAILED,
+     * INCOMPLETE, BAD-TOKEN, BAD-CRC, BAD-BUILD, BAD-PHASE, READY - and all of
+     * them describe the state of the ARM, not of the runtime path. Reading the
+     * key later would have left it unanswered on each one, which reads as "no"
+     * and would have made Direct3D depend on whether some unrelated diagnostic
+     * token happened to parse.
+     */
+    if (v9x_intel_boot_read("IntelRuntime3D", runtime_text,
+                            sizeof(runtime_text)) &&
+        v9x_intel_str_equal(runtime_text, "1") != 0u) {
+        v9x_intel_runtime3d_allowed = 1u;
+    }
+
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
         !v9x_intel_boot_read("IntelInFlight", in_flight,
                              sizeof(in_flight))) {
@@ -289,6 +332,8 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_str_copy(v9x_intel_boot_arm_token, arm_once);
         v9x_intel_boot_arm_crc = crc;
         v9x_intel_boot_arm_latch = 1u;
+        /* The armed boot owns the ring; see the declaration. */
+        v9x_intel_runtime3d_allowed = 0u;
         v9x_intel_boot_state = "ARMED-REPEAT";
         return;
     }
@@ -310,6 +355,8 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     v9x_intel_str_copy(v9x_intel_boot_arm_token, arm_once);
     v9x_intel_boot_arm_crc = crc;
     v9x_intel_boot_arm_latch = 1u;
+    /* The armed boot owns the ring; see the declaration. */
+    v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_boot_state = "ARMED";
 #endif
 }

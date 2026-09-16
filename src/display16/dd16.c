@@ -360,6 +360,22 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
                                        &shared->engine.gtt_linear_base,
                                        &shared->engine.ring_linear_base,
                                        &shared->engine.ring_bytes);
+        /*
+         * The TYPE, stamped here and not only by the later refresh.
+         *
+         * It was passed to the hook and thrown away, so at DriverInit the
+         * field still read zero - and v9x_d3d_publish_engine() selects on it.
+         * Zero is no engine, its fallback is the binary's one hardware engine,
+         * and that is the ViRGE: an Intel part published the ViRGE's device
+         * description, advertising textures, Z and blending that this engine's
+         * runtime path does not build. With the D3D capability now stamped
+         * beside it, nothing downstream would have hidden them.
+         *
+         * Which chip this is does not depend on a mapping, so it is knowable
+         * here. The control window and aperture size still are not, and still
+         * come from the refresh.
+         */
+        shared->engine.engine_type = engine_type;
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
     if (v9x_d3d_mode_advertises(v9x_dd_d3d_state) == V9X_FALSE) {

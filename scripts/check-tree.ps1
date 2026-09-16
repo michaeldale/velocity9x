@@ -1632,6 +1632,99 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT', 'V9XARM6.BAT')) {
         throw "$armer must refuse an arm file whose IntelIncomplete is 1."
     }
 }
+# ---------------------------------------------------------------------------
+# The runtime Direct3D permission.
+#
+# Three separate things have to stay true together, and each was wrong once.
+#
+# IntelEnableThisBoot cannot stand in for any of them. It is per-arm, written
+# to 0 at the top of every boot and to 1 only when a one-shot token is
+# consumed, so a runtime boot has it clear by definition.
+# ---------------------------------------------------------------------------
+$gma950Text = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\chipsets\intel\gma950\gma950_hw16.c')
+# RingOpen is a card-state write - RING_START and RING_CTL on a boot carrying
+# no token. Reaching it because the BARs mapped put the one sequence that can
+# start a GPU fetching behind no permission at all, on every DirectDraw
+# session, with nothing to stop it from DOS afterwards.
+if ($gma950Text -notmatch
+        '(?m)^\s*if \(v9x_intel_runtime3d_allowed != 0u &&\r?\n\s*V9xMiniI9xxRingOpen\(') {
+    throw ('gma950_hw16.c must gate V9xMiniI9xxRingOpen on ' +
+           'v9x_intel_runtime3d_allowed. It writes ring registers on a boot ' +
+           'with no arm token, and an ungated call has no off switch.')
+}
+# Tested again for the capability rather than inferred from the ring address
+# being non-zero. They are the same fact only while the gate above is that
+# address's only writer.
+if ($gma950Text -notmatch
+        '(?m)^\s*if \(v9x_intel_runtime3d_allowed != 0u && \*ring_linear_base != 0ul\) \{') {
+    throw ('gma950_hw16.c must gate V9X_DD_ENGINE_CAP_D3D on ' +
+           'v9x_intel_runtime3d_allowed as well as on the ring address.')
+}
+$boot16Text = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display16\intel_boot16.c')
+# Every path out of arm_prepare past the arm transaction is a return, and each
+# describes the state of the ARM. Reading the key after them would leave the
+# runtime permission unanswered on all of them.
+if ($boot16Text -notmatch
+        '(?s)IntelRuntime3D.*?v9x_intel_runtime3d_allowed = 1u;.*?IntelEnableThisBoot", "0"') {
+    throw ('intel_boot16.c must read IntelRuntime3D before the arm ' +
+           'transaction. Every later exit is a return describing the arm, ' +
+           'not the runtime path.')
+}
+# An armed boot owns the ring: it sets START and CTL itself and clears them on
+# teardown. Both arming paths must drop the runtime permission, or a
+# DirectDraw session brings the ring up underneath a diagnostic.
+if (@([regex]::Matches($boot16Text,
+        '(?m)^\s*v9x_intel_boot_arm_latch = 1u;\r?\n(\s*/\*[^\r\n]*\*/\r?\n)?\s*v9x_intel_runtime3d_allowed = 0u;')).Count -ne 2) {
+    throw ('Both arming paths in intel_boot16.c must clear ' +
+           'v9x_intel_runtime3d_allowed. An armed boot owns the ring.')
+}
+# v9x_d3d_publish_engine() selects on engine_type at DriverInit, and the
+# refresh that used to be its only writer runs strictly later. Unstamped, the
+# field read zero, and zero falls back to the binary's one hardware engine -
+# the ViRGE - so an Intel part published the ViRGE's device description.
+$dd16Text = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display16\dd16.c')
+# The BODY, not the file. A lazy match across the whole file ran past this
+# function into v9x_dd_refresh_framebuffer, which has the same assignment -
+# so the rule passed on the unstamped source it was written to catch. A
+# presence check at the end of a stream is weaker than it looks.
+$stampBody = [regex]::Match($dd16Text,
+    '(?sm)^static void v9x_dd_stamp_engine_caps.*?^\}')
+if (-not $stampBody.Success) {
+    throw 'v9x_dd_stamp_engine_caps could not be located in dd16.c.'
+}
+if ($stampBody.Value -notmatch 'shared->engine\.engine_type = engine_type;') {
+    throw ('v9x_dd_stamp_engine_caps must stamp engine_type. It runs before ' +
+           'DriverInit and v9x_d3d_publish_engine selects on that field; ' +
+           'zero there publishes the ViRGE device description for any chip.')
+}
+# The DOS switch, which is the only thing that can turn the permission on and
+# the only thing besides V9XCOPY that can turn it off.
+$switchPath = Join-Path $repoRoot 'packaging\win98se\V9X3D.BAT'
+if (-not (Test-Path -LiteralPath $switchPath)) {
+    throw ('packaging\win98se\V9X3D.BAT is missing. Without it the runtime ' +
+           'permission can be granted but not revoked from DOS.')
+}
+$switchText = Get-Content -Raw -LiteralPath $switchPath
+foreach ($value in @('IntelRuntime3D=1', 'IntelRuntime3D=0')) {
+    if ($switchText -notmatch ('(?m)^ECHO ' + [regex]::Escape($value) + '>>')) {
+        throw "V9X3D.BAT must write $value."
+    }
+}
+# COMMAND.COM has no IF /I, and a syntax error there does not halt a batch -
+# the next line simply runs, which is how a guard becomes its own opposite.
+if ($switchText -match '(?m)^\s*IF\s+/I\b') {
+    throw 'V9X3D.BAT uses IF /I, which COMMAND.COM does not support.'
+}
+# OFF is the recovery direction. A recovery command that can decline to run is
+# not one, so it must not sit behind the in-flight refusal that ON uses.
+if ($switchText -notmatch '(?s):WANTOFF.*?ECHO IntelRuntime3D=0>>') {
+    throw ('V9X3D.BAT must write the OFF value without an intervening ' +
+           'refusal. Disabling the runtime path is the recovery path.')
+}
+
 # And the reset must write the flag, or a freshly reset file reads as legacy.
 $copyText = Get-Content -LiteralPath (Join-Path $repoRoot 'packaging\win98se\V9XCOPY.BAT') -Raw
 if ($copyText -notmatch '(?m)^ECHO IntelIncomplete=0>>') {

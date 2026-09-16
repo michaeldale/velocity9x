@@ -22,6 +22,18 @@ extern unsigned short __far __pascal V9xMiniI9xxEngineMap(
 extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
     unsigned long __far *base, unsigned long __far *bytes);
 
+/*
+ * Whether this boot may touch the ring at all. Data, not a call, so no
+ * segment crossing: it is set once by v9x_intel_boot_arm_prepare at
+ * DriverInit, which is strictly before DDRAW asks for this descriptor.
+ *
+ * Declared here alongside the two verbs it governs rather than in intel16.h,
+ * which exists for the CALLS that cross into I9XXCODE - the compact model
+ * addresses all data far already. intel_exec16.c and intel_ring16.c extern
+ * v9x_intel_boot_arm_latch the same way.
+ */
+extern unsigned short v9x_intel_runtime3d_allowed;
+
 unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
@@ -100,12 +112,23 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
     }
 
     /*
-     * The ring, brought up once here rather than on a draw. Its absence is
-     * not fatal to the descriptor - the windows are still worth publishing,
-     * and the engine reports itself not ready without a ring rather than
-     * submitting to one that is not there.
+     * The ring, brought up once here rather than on a draw - and ONLY with
+     * this boot's permission.
+     *
+     * RingOpen is a card-state write: it sets RING_START and RING_CTL on a
+     * boot that carries no arm token, which is a thing nothing in this driver
+     * had ever done before 2026-09-16. Reaching it merely because the BARs
+     * mapped would have put the one register sequence that can start a GPU
+     * fetching behind no permission at all, on every DirectDraw session, with
+     * no way to stop it from DOS after a hang. That last part is what makes it
+     * a defect rather than a preference.
+     *
+     * Its absence is not fatal to the descriptor - the windows are still worth
+     * publishing, and the engine reports itself not ready without a ring
+     * rather than submitting to one that is not there.
      */
-    if (V9xMiniI9xxRingOpen(&ring, &ring_size) != 0u &&
+    if (v9x_intel_runtime3d_allowed != 0u &&
+        V9xMiniI9xxRingOpen(&ring, &ring_size) != 0u &&
         ring != 0ul && ring_size != 0ul) {
         *ring_linear_base = ring;
         *ring_bytes = ring_size;
@@ -124,10 +147,17 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * nobody can reconstruct. The decoder's allowlist is what stands in their
      * place, and it runs on every stream this engine builds.
      *
-     * Only claimed when the mapping AND the ring came up. An engine advertised
-     * without a ring would accept every call and draw nothing, which is the
-     * failure the ops table's `ready` member exists to prevent - and a
-     * capability is checked before `ready` is ever consulted.
+     * Only claimed when the mapping AND the ring came up, which in turn needs
+     * this boot's IntelRuntime3D permission. An engine advertised without a
+     * ring would accept every call and draw nothing, which is the failure the
+     * ops table's `ready` member exists to prevent - and a capability is
+     * checked before `ready` is ever consulted.
+     *
+     * The permission is tested again here rather than inferred from the ring
+     * address being non-zero. The two are the same fact today only because the
+     * gate above is the only writer of that address; a capability that says
+     * "an application may drive this engine" should not rest on that staying
+     * true.
      *
      * NOT YET RUN. No guest has executed one of these streams. The first boot
      * with this bit set is the experiment the amendment describes, not a
@@ -137,7 +167,7 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * the display, and nothing here has driven a blit outside the armed
      * diagnostic, so solid fill, screen copy, flip and vblank are unclaimed.
      */
-    if (*ring_linear_base != 0ul) {
+    if (v9x_intel_runtime3d_allowed != 0u && *ring_linear_base != 0ul) {
         *engine_caps = V9X_DD_ENGINE_CAP_D3D;
     }
 }
