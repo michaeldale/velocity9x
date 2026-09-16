@@ -113,6 +113,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_sampler_state = V9X_FALSE;
     v9x_u16 saw_depth_buf_info = V9X_FALSE;
     v9x_u16 saw_texture_paint = V9X_FALSE;
+    v9x_u16 saw_depth_clear = V9X_FALSE;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -625,6 +626,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 if (stream[index + 5ul] != V9X_I9XX_DEPTH_CLEAR_DWORD) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
                 }
+                saw_depth_clear = V9X_TRUE;
             } else {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index);
             }
@@ -655,6 +657,31 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             if (((command >> 18) & 0x1ful) != V9X_I9XX_PRIM3D_TRILIST) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_OPCODE, index);
+            }
+            /*
+             * The buffers this draw reads must already have been PREPARED.
+             *
+             * Checked here rather than at the end of the stream, and the
+             * difference is not pedantic: a depth clear after the draw erases
+             * the result it was meant to make meaningful, and a texture paint
+             * after the draw samples whatever the page held from the last
+             * boot. Both are present, complete, correctly addressed and
+             * useless, and an end-of-stream presence check accepts both.
+             *
+             * The fill is already required this way for the same reason - it
+             * is what makes "the triangle drew" distinguishable from "that
+             * memory already looked like this".
+             */
+            if (saw_fill == V9X_FALSE) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+            }
+            if (textured != V9X_FALSE && saw_texture_paint == V9X_FALSE) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+            }
+            if (depthed != V9X_FALSE &&
+                (saw_depth_clear == V9X_FALSE ||
+                 saw_depth_buf_info == V9X_FALSE)) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
             /*
              * The stride follows the mode, and so does the payload. A textured
@@ -702,9 +729,27 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     decoded >= V9X_I9XX_TARGET_WIDTH) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base);
                 }
+                /*
+                 * Y, against the DEPTH buffer's height in a depth stream and
+                 * the target's otherwise.
+                 *
+                 * The depth buffer is 256 rows where the target is 480,
+                 * because that is what the reserve had left. A vertex at
+                 * y = 400 is inside the drawing rectangle and outside the
+                 * depth allocation, and the hardware would address depth
+                 * memory past the end of it - the first thing past the end
+                 * being the guard page.
+                 *
+                 * The builder already refused this and the decoder did not,
+                 * which is the whole point of the decoder existing: it is
+                 * meant to be the second opinion, and a second opinion that
+                 * only checks what the first one checks is not one.
+                 */
                 if (v9x_i9xx_float_to_int(stream[base + 1ul], &decoded) !=
                         V9X_I9XX_FLOAT_OK ||
-                    decoded >= V9X_I9XX_TARGET_HEIGHT) {
+                    decoded >= ((depthed != V9X_FALSE)
+                                    ? V9X_I9XX_DEPTH_HEIGHT
+                                    : V9X_I9XX_TARGET_HEIGHT)) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 1ul);
                 }
                 /*
@@ -800,7 +845,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * is another client's memory or none - and the draw would test against it
      * without complaint.
      */
-    if (depthed != V9X_FALSE && saw_depth_buf_info == V9X_FALSE) {
+    if (depthed != V9X_FALSE &&
+        (saw_depth_buf_info == V9X_FALSE || saw_depth_clear == V9X_FALSE)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     /*

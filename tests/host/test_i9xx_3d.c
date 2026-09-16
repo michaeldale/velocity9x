@@ -1592,6 +1592,140 @@ static void test_depth_scene_expectations(void)
     CHECK(differing >= 2ul);
 }
 
+/*
+ * What a DEPTH stream may not do, and the decoder must refuse.
+ *
+ * Every mutation here passed the decoder when it was written. Each is the same
+ * defect in a different place: a rule the BUILDER enforces and the decoder,
+ * which is meant to be the independent opinion, did not.
+ */
+static void test_decoder_depth_refusals(void)
+{
+    struct v9x_i9xx_scene scene;
+    struct v9x_i9xx_sandbox_layout layout;
+    struct v9x_i9xx_decode_limits limits;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 primitive;
+    v9x_u32 scan;
+    v9x_u32 saved;
+
+    CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
+          V9X_STATUS_OK);
+    /* Scene 4: depth, with writes. */
+    CHECK(v9x_i9xx_scene_at(4ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_kind_depth(scene.kind) == V9X_TRUE);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+
+    v9x_test_limits(&limits, layout.target_offset, layout.target_bytes,
+                    scene.kind);
+    limits.depth_offset = layout.depth_offset;
+    limits.depth_bytes = layout.depth_bytes;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    primitive = v9x_i9xx_scene_primitive_offset(&scene);
+
+    /*
+     * A vertex BELOW the depth buffer.
+     *
+     * The depth buffer is 256 rows where the render target is 480, so a
+     * vertex at y = 400 is inside the drawing rectangle and outside the depth
+     * allocation - the hardware would address depth memory past the end of
+     * it, and the first thing past the end is the guard page. The builder
+     * refuses this; the decoder checked Y against the TARGET's height and
+     * accepted it.
+     */
+    saved = stream[primitive + 2ul];
+    stream[primitive + 2ul] = 0x43c80000ul;   /* 400.0f */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    CHECK(index == primitive + 2ul);
+    stream[primitive + 2ul] = saved;
+
+    /* And the row immediately below the buffer, which is the boundary the
+     * off-by-one lives at. 256.0f. */
+    stream[primitive + 2ul] = 0x43800000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    stream[primitive + 2ul] = saved;
+
+    /*
+     * A depth scene with no CLEAR.
+     *
+     * The decoder checked the clear's colour where it found one and never
+     * required one, so a stream that simply omitted it passed - and its
+     * result would depend on whatever the depth buffer held from the previous
+     * scene or the previous boot. The clear is the only thing that makes a
+     * depth result mean anything.
+     */
+    CHECK(stream[0] == V9X_I9XX_XY_COLOR_BLT);
+    for (scan = 0ul; scan < 6ul; ++scan) {
+        stream[scan] = V9X_I9XX_MI_NOOP;
+    }
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_MISSING_PACKET);
+
+    /* Rebuilt, because the loop above destroyed it. */
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+
+    /*
+     * And a clear that happens AFTER the draw, which clears the evidence
+     * rather than preparing for it. Present, complete, correctly addressed,
+     * and useless.
+     */
+    {
+        v9x_u32 moved[200];
+        v9x_u32 at = 0ul;
+
+        /* Everything after the clear's six dwords, then the clear. */
+        for (scan = 6ul; scan < written; ++scan) {
+            moved[at++] = stream[scan];
+        }
+        for (scan = 0ul; scan < 6ul; ++scan) {
+            moved[at++] = stream[scan];
+        }
+        CHECK(at == written);
+        CHECK(v9x_i9xx_decode_phase5_stream(moved, written, &limits,
+                                            &index) != V9X_I9XX_P5_OK);
+    }
+
+    /*
+     * The TEXTURE paint has the same ordering hole, and the same argument: a
+     * paint after the draw samples whatever the page held. Checked here
+     * because it is the same defect, found while fixing this one.
+     */
+    {
+        v9x_u32 moved[200];
+        v9x_u32 paint = v9x_i9xx_texture_paint_extent();
+        v9x_u32 at = 0ul;
+        struct v9x_i9xx_decode_limits textured;
+
+        CHECK(v9x_i9xx_scene_at(1ul, &scene) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+              V9X_STATUS_OK);
+        v9x_test_limits(&textured, layout.target_offset, layout.target_bytes,
+                        scene.kind);
+        textured.texture_offset = layout.texture_offset;
+        textured.texture_bytes = layout.texture_bytes;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &textured,
+                                            &index) == V9X_I9XX_P5_OK);
+
+        for (scan = paint; scan < written; ++scan) {
+            moved[at++] = stream[scan];
+        }
+        for (scan = 0ul; scan < paint; ++scan) {
+            moved[at++] = stream[scan];
+        }
+        CHECK(at == written);
+        CHECK(v9x_i9xx_decode_phase5_stream(moved, written, &textured,
+                                            &index) != V9X_I9XX_P5_OK);
+    }
+}
+
 /* The combined CRC, which is what the arm gate compares. */
 static void test_scene_combined_crc(void)
 {
@@ -2514,6 +2648,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_scene_probe_budget();
     test_depth_scene_expectations();
     test_every_scene_decodes();
+    test_decoder_depth_refusals();
     test_scene_combined_crc();
     test_scene_primitive_offset();
     test_submission_boundaries_are_qword_aligned();

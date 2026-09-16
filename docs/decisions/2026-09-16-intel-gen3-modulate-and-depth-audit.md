@@ -254,6 +254,30 @@ already grown one mode. These steps add to it:
   texture paint's blits already are.
 - **The shader length follows the mode** for a third program.
 
+### What the decoder must check that the builder already does
+
+Added after review found three streams the first version of the decoder
+returned `P5_OK` for. All three are the same defect: a rule the builder
+enforces and the independent checker did not, which makes the second opinion
+no opinion at all.
+
+- **Y against the DEPTH buffer's height, not the target's.** The depth buffer
+  is 256 rows where the target is 480, so a vertex at y = 400 is inside the
+  drawing rectangle and outside the depth allocation. The builder refused it;
+  the decoder checked the target's height and accepted it.
+- **The clear must be PRESENT.** The decoder checked the clear value where it
+  found one and never required one, so a stream that omitted it passed and its
+  result would depend on whatever the buffer held from the previous scene.
+- **And it must come BEFORE the draw.** An end-of-stream presence check accepts
+  a clear that runs after the primitive, which erases the result it was meant
+  to make meaningful. The texture paint had the identical hole - a paint after
+  the draw samples whatever the page held - and was fixed with it.
+
+The general form, worth stating because it has now happened three times in this
+file: a presence check at the end of a stream is weaker than it looks. What
+these packets establish is a PRECONDITION, so the place to require them is the
+packet whose correctness depends on them.
+
 ## 8. The scene table this licenses
 
 Five scenes, against the five draws the 2026-09-16 errata amendment
