@@ -368,6 +368,154 @@ v9x_status v9x_i9xx_build_vertex_run(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* ------------------------------------------------------------------ */
+/* Texture state. Every value below is licensed by a section of         */
+/* docs\decisions\2026-09-16-intel-gen3-texture-packet-audit.md.        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Both packets share major opcode 0x1d and differ only in the sub-opcode,
+ * which is the same shape LOAD_STATE_IMMEDIATE_1 (0x04) already uses. Audit
+ * sections 4 and 5; both headers agree and both trees emit them DIRECTLY into
+ * the batch rather than through LOAD_INDIRECT, which is why Phase 6 needs no
+ * indirect state at all.
+ */
+#define V9X_I9XX_3DSTATE_MAP_STATE       ((v9x_u32)0x7d000000ul)
+#define V9X_I9XX_3DSTATE_SAMPLER_STATE   ((v9x_u32)0x7d010000ul)
+
+/*
+ * MS3, the first per-map dword after the address. Both trees compose it as
+ * format | tiling | ((height - 1) << 21) | ((width - 1) << 10). Dimensions are
+ * MINUS ONE, stated by both use sites rather than inferred. Audit section 4.
+ */
+#define V9X_I9XX_MS3_HEIGHT_SHIFT        21
+#define V9X_I9XX_MS3_WIDTH_SHIFT         10
+/* MAPSURF_16BIT (2 << 7) with MT_16BIT_RGB565 (0 << 3). The target's format,
+ * chosen so a wrong pixel is not also a conversion question. */
+#define V9X_I9XX_MAPSURF_16BIT_RGB565    ((v9x_u32)0x00000100ul)
+/* Both must be CLEAR for a linear texture, on the same argument the render
+ * target's BUF_INFO uses. */
+#define V9X_I9XX_MS3_TILED_SURFACE       ((v9x_u32)0x00000002ul)
+#define V9X_I9XX_MS3_TILE_WALK           ((v9x_u32)0x00000001ul)
+
+/*
+ * MS4. Pitch in DWORDS minus one, which both trees state.
+ *
+ * xf86 sets this field and nothing else; Mesa additionally ORs a cube-face
+ * enable mask even for 2D textures. The audit records that divergence and
+ * takes xf86's minimal form as a judgement: enabling six faces on a texture
+ * that has none is a claim with nothing behind it. If the part refuses, Mesa's
+ * form is one constant away.
+ */
+#define V9X_I9XX_MS4_PITCH_SHIFT         21
+
+/*
+ * The field widths, which bound what a texture may be. Height occupies bits
+ * 21-31 and width bits 10-20, eleven bits each; the pitch field is bits 21-31
+ * of MS4 and holds dwords minus one.
+ */
+#define V9X_I9XX_MAP_DIMENSION_MAX       ((v9x_u32)2048ul)
+#define V9X_I9XX_MAP_PITCH_MAX           ((v9x_u32)8192ul)
+
+/*
+ * SS2: three filter fields. FILTER_NEAREST and MIPFILTER_NONE are both zero,
+ * so nearest sampling with no mips leaves every filter field clear - named
+ * rather than written as a bare 0, because "the value is zero" and "the field
+ * was forgotten" must not look alike. Audit section 5.
+ */
+#define V9X_I9XX_SS2_NEAREST_NO_MIP      ((v9x_u32)0x00000000ul)
+
+/*
+ * SS3: addressing. Coordinates are normalized to [0,1], every axis clamps to
+ * the edge, and the MAP INDEX names which map this sampler reads - a sampler
+ * and a map are not implicitly paired, which is why unit 0 is written out.
+ */
+#define V9X_I9XX_SS3_NORMALIZED_COORDS   ((v9x_u32)0x00000020ul)
+#define V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE ((v9x_u32)2ul)
+#define V9X_I9XX_SS3_TCX_SHIFT           12
+#define V9X_I9XX_SS3_TCY_SHIFT           9
+#define V9X_I9XX_SS3_TCZ_SHIFT           6
+#define V9X_I9XX_SS3_MAP_INDEX_SHIFT     1
+
+/* SS4 is the border colour. Nothing samples it under clamp-to-edge, so zero
+ * is both correct and inert. */
+#define V9X_I9XX_SS4_BORDER_COLOR        ((v9x_u32)0x00000000ul)
+
+/*
+ * S2 is eight nibbles, one per coordinate unit. Phase 5 emits all-ones - every
+ * unit absent. The textured form clears unit 0's nibble and leaves
+ * TEXCOORDFMT_2D, which is zero. Audit section 6.
+ */
+#define V9X_I9XX_TEXCOORDFMT_2D          ((v9x_u32)0x0ul)
+#define V9X_I9XX_TEXCOORDFMT_NOT_PRESENT ((v9x_u32)0xful)
+/*
+ * 0xFFFFFFF0: unit 0's nibble is TEXCOORDFMT_2D (zero) and units 1-7 remain
+ * NOT_PRESENT (0xf).
+ *
+ * Not asserted by a host test. A test comparing a constant with the literal it
+ * was defined as cannot fail - the compiler says so, calling the failure
+ * branch unreachable - and it would be the third such tautology in this tree.
+ * The value is established by the audit and will be checked where it is USED,
+ * against the stream a builder produces.
+ */
+#define V9X_I9XX_S2_TEXTURED_UNIT0       ((v9x_u32)0xfffffff0ul)
+
+/*
+ * The fragment program's texture instructions. Three dwords each, the same
+ * width as the arithmetic instructions the untextured program already uses.
+ * Audit section 8.
+ */
+#define V9X_I9XX_T0_TEXLD                ((v9x_u32)0x15000000ul)
+#define V9X_I9XX_T0_DEST_TYPE_SHIFT      19
+#define V9X_I9XX_T0_DEST_NR_SHIFT        14
+#define V9X_I9XX_T0_SAMPLER_NR_SHIFT     0
+#define V9X_I9XX_T1_ADDR_TYPE_SHIFT      24
+#define V9X_I9XX_T1_ADDR_NR_SHIFT        17
+/*
+ * The declaration opcode, its shifts, the channel mask and the T and OC
+ * register types ALREADY EXIST as V9X_I9XX_FS_* - the untextured program
+ * declares and moves with them. Only the sampler type and the coordinate
+ * register are new here.
+ *
+ * A second spelling of a constant is the defect this file has spent two days
+ * removing, so these are not redefined.
+ */
+#define V9X_I9XX_FS_REG_TYPE_S           ((v9x_u32)3ul)
+/* Interpolated texture coordinate set 0. The diffuse colour is T8; the
+ * coordinate sets are the low numbers. */
+#define V9X_I9XX_FS_T_TEX0               ((v9x_u32)0ul)
+
+/*
+ * One linear 2D texture: where it is, how big, and how wide a row is.
+ *
+ * offset is a graphics address in the same space as the render target's
+ * BUF_INFO address - the space Phase 4 measured and Phase 5 uses. The audit
+ * records that neither reference tree states an alignment requirement, so the
+ * page alignment this driver applies is a choice and not a finding.
+ */
+struct v9x_i9xx_texture {
+    v9x_u32 offset;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 pitch;
+};
+
+/* src\chipsets\intel\i9xx_texture.c */
+v9x_u32 v9x_i9xx_map_state_extent(v9x_u32 count);
+v9x_status v9x_i9xx_build_map_state(
+    const struct v9x_i9xx_texture *maps, v9x_u32 count,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+v9x_u32 v9x_i9xx_sampler_state_extent(v9x_u32 count);
+v9x_status v9x_i9xx_build_sampler_state(
+    v9x_u32 count, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/* src\chipsets\intel\i9xx_fragprog.c - the sampling program. texld writes the
+ * output colour directly, which xf86 does in terms ("load directly to output
+ * color"), so this is three instructions and not four. */
+v9x_u32 v9x_i9xx_sampling_program_extent(void);
+v9x_status v9x_i9xx_build_sampling_program(
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/* ------------------------------------------------------------------ */
 /* Phase 6 scenes. src\chipsets\intel\i9xx_scene.c                     */
 /* ------------------------------------------------------------------ */
 

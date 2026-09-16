@@ -58,6 +58,7 @@
             @{ Name = 'i9xx_vertex'; Path = 'src\chipsets\intel\i9xx_vertex.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_3d_stream'; Path = 'src\chipsets\intel\i9xx_3d_stream.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_scene'; Path = 'src\chipsets\intel\i9xx_scene.c'; CodeSegment = 'I9XXCODE' }
+            @{ Name = 'i9xx_texture'; Path = 'src\chipsets\intel\i9xx_texture.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_3d_decode'; Path = 'src\chipsets\intel\i9xx_3d_decode.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_chain'; Path = 'src\chipsets\intel\i9xx_chain.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }

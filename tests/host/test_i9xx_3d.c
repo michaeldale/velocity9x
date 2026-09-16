@@ -478,6 +478,16 @@ static void test_decoder_rejects_mutations(void)
         { 18ul, 0x7c800003ul, V9X_I9XX_P5_SCISSOR_ENABLED, 18ul },
         /* Indirect state enabled rather than disabled. */
         { 21ul, 0x00000001ul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 21ul },
+        /*
+         * A REAL texture packet, which the decoder used to pass.
+         *
+         * Its forbidden-opcode constants were 0x7d1d0000 and 0x7d180000 -
+         * not commands - so the guard against an untextured stream carrying
+         * texture state refused two things that cannot occur and admitted the
+         * one that can. The right values came out of the 2026-09-16 audit.
+         */
+        { 18ul, 0x7d000003ul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 18ul },
+        { 18ul, 0x7d010003ul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 18ul },
         /* A texture coordinate declared present. */
         { 33ul, 0xfffffffeul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 33ul },
         /* S4 disagreeing with the vertex dwords - the silent-hang case. */
@@ -1475,6 +1485,251 @@ static void test_submission_boundaries_are_qword_aligned(void)
     }
 }
 
+/*
+ * MAP_STATE.
+ *
+ * The expected dwords are written out as LITERALS derived from the audit, not
+ * recomputed from the same shifts the builder uses. A test that reassembles
+ * the value from the builder's own constants checks that the compiler works.
+ */
+static void test_map_state(void)
+{
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[16];
+    v9x_u32 written = 0ul;
+
+    map.offset = 0x00700000ul;
+    map.width = 16ul;
+    map.height = 16ul;
+    map.pitch = 32ul;
+
+    CHECK(v9x_i9xx_map_state_extent(1ul) == 5ul);
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 5ul);
+
+    /* Command: 0x7D000000 with the length field 3 per map. */
+    CHECK(stream[0] == 0x7d000003ul);
+    /* One unit enabled. */
+    CHECK(stream[1] == 0x00000001ul);
+    /* The address, unchanged. */
+    CHECK(stream[2] == 0x00700000ul);
+    /*
+     * MS3: (16-1) << 21 | (16-1) << 10 | 0x100.
+     * 15 << 21 = 0x01E00000, 15 << 10 = 0x00003C00, format 0x00000100.
+     */
+    CHECK(stream[3] == 0x01e03d00ul);
+    /* Tiling bits clear - the texture is linear. */
+    CHECK((stream[3] & (V9X_I9XX_MS3_TILED_SURFACE |
+                        V9X_I9XX_MS3_TILE_WALK)) == 0ul);
+    /* MS4: pitch 32 bytes is 8 dwords, minus one is 7, at shift 21. */
+    CHECK(stream[4] == 0x00e00000ul);
+    /* And nothing else. xf86 sets the pitch alone; the cube-face mask Mesa
+     * ORs unconditionally is the recorded divergence and is NOT set. */
+    CHECK((stream[4] & 0x001f8000ul) == 0ul);
+
+    /* Dimensions are minus one, which is the field convention most likely to
+     * be got backwards. A 1x1 map encodes zero in both fields. */
+    map.width = 1ul;
+    map.height = 1ul;
+    map.pitch = 4ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK((stream[3] & 0xffe00000ul) == 0ul);
+    CHECK((stream[3] & 0x001ffc00ul) == 0ul);
+    CHECK(stream[4] == 0ul);
+}
+
+/* Every bound MAP_STATE refuses, and both sides of each. */
+static void test_map_state_refusals(void)
+{
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[32];
+    v9x_u32 written = 0ul;
+
+    map.offset = 0x00700000ul;
+    map.width = 16ul;
+    map.height = 16ul;
+    map.pitch = 32ul;
+
+    CHECK(v9x_i9xx_build_map_state(0, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_map_state(&map, 0ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    /* Eight units exist; nine do not. Both sides. */
+    CHECK(v9x_i9xx_map_state_extent(8ul) == 26ul);
+    CHECK(v9x_i9xx_map_state_extent(9ul) == 0ul);
+    CHECK(v9x_i9xx_build_map_state(&map, 9ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+
+    /* Capacity, at the boundary. */
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 4ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 5ul, &written) ==
+          V9X_STATUS_OK);
+
+    /*
+     * A dimension one past the field refuses. 2048 fits eleven bits as
+     * 2047; 2049 does not, and truncating it would give a texture the
+     * hardware reads at the wrong size from an address that is still valid.
+     */
+    map.width = 2048ul;
+    map.pitch = 4096ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    map.width = 2049ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    map.width = 0ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+
+    map.width = 16ul;
+    map.height = 2049ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    map.height = 0ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+
+    /* A pitch the dword encoding would truncate. */
+    map.height = 16ul;
+    map.pitch = 33ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    map.pitch = 0ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    /* A row too narrow for its own texels, at two bytes each. */
+    map.pitch = 28ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    map.pitch = 32ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+
+    /* An address that is not page aligned. */
+    map.offset = 0x00700004ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+}
+
+/* SAMPLER_STATE. */
+static void test_sampler_state(void)
+{
+    v9x_u32 stream[32];
+    v9x_u32 written = 0ul;
+
+    CHECK(v9x_i9xx_sampler_state_extent(1ul) == 5ul);
+    CHECK(v9x_i9xx_build_sampler_state(1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 5ul);
+
+    /* Command 0x7D010000 - the same major opcode as MAP_STATE with sub 1. */
+    CHECK(stream[0] == 0x7d010003ul);
+    CHECK(stream[1] == 0x00000001ul);
+
+    /* SS2: nearest, no mips. Every filter field clear. */
+    CHECK(stream[2] == 0ul);
+
+    /*
+     * SS3: normalized coordinates (1<<5), clamp-to-edge (2) on x, y and z at
+     * shifts 12, 9 and 6, and map index 0 at shift 1.
+     * 0x20 | (2<<12) | (2<<9) | (2<<6) = 0x20 | 0x2000 | 0x400 | 0x80.
+     */
+    CHECK(stream[3] == 0x000024a0ul);
+    CHECK((stream[3] & V9X_I9XX_SS3_NORMALIZED_COORDS) != 0ul);
+
+    /* SS4: the border colour, inert under clamp-to-edge. */
+    CHECK(stream[4] == 0ul);
+
+    /*
+     * The map index is written, not assumed. A second sampler names map 1,
+     * and if the field were left zero both would read map 0 - which is the
+     * assumption the audit records both trees as refusing to make.
+     */
+    CHECK(v9x_i9xx_build_sampler_state(2ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 8ul);
+    CHECK(stream[1] == 0x00000003ul);
+    CHECK(((stream[3] >> V9X_I9XX_SS3_MAP_INDEX_SHIFT) & 0xful) == 0ul);
+    CHECK(((stream[6] >> V9X_I9XX_SS3_MAP_INDEX_SHIFT) & 0xful) == 1ul);
+
+    /* Refusals, both sides of the unit bound and of the capacity. */
+    CHECK(v9x_i9xx_build_sampler_state(0ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_sampler_state(9ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_sampler_state(1ul, stream, 4ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_sampler_state(1ul, 0, 32ul, &written) !=
+          V9X_STATUS_OK);
+}
+
+/*
+ * The sampling fragment program.
+ *
+ * Three instructions, not four: texld writes the output colour directly,
+ * which xf86 does in terms.
+ */
+static void test_sampling_program(void)
+{
+    v9x_u32 stream[16];
+    v9x_u32 written = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_i9xx_sampling_program_extent() == 10ul);
+    CHECK(v9x_i9xx_build_sampling_program(stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 10ul);
+
+    /* Header, length = payload - 1. */
+    CHECK(stream[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 8ul));
+
+    /* dcl T0, all four channels: 0x19000000 | (1<<19) | (0<<14) | 0x3C00. */
+    CHECK(stream[1] == 0x19083c00ul);
+    CHECK(stream[2] == 0ul);
+    CHECK(stream[3] == 0ul);
+
+    /*
+     * dcl S0 - and NO channel mask. Asserted explicitly, because a sampler
+     * carrying one would be four bits of meaning nobody derived, and it is
+     * the one declaration that differs from every other.
+     */
+    CHECK(stream[4] == 0x19180000ul);
+    CHECK((stream[4] & V9X_I9XX_FS_CHANNEL_ALL) == 0ul);
+    CHECK(stream[5] == 0ul);
+    CHECK(stream[6] == 0ul);
+
+    /* texld oC <- S0 using T0: 0x15000000 | (4<<19). */
+    CHECK(stream[7] == 0x15200000ul);
+    /* T1: coordinate register type 1 at shift 24, number 0 at shift 17. */
+    CHECK(stream[8] == 0x01000000ul);
+    /* T2 must be zero. */
+    CHECK(stream[9] == 0ul);
+
+    /* It is three instructions of three dwords plus a header, and every
+     * instruction is three dwords - asserted so a fourth cannot creep in
+     * without the extent and the body disagreeing. */
+    CHECK((written - 1ul) % 3ul == 0ul);
+    CHECK((written - 1ul) / 3ul == 3ul);
+
+    /* Refusals. */
+    CHECK(v9x_i9xx_build_sampling_program(stream, 9ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_sampling_program(0, 16ul, &written) !=
+          V9X_STATUS_OK);
+
+    /* And it differs from the untextured program, which it replaces rather
+     * than extends. */
+    for (index = 0ul; index < 16ul; ++index) { stream[index] = 0ul; }
+    CHECK(v9x_i9xx_sampling_program_extent() !=
+          v9x_i9xx_fragment_program_extent());
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -1489,6 +1744,10 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_structural_refusals();
     test_published_offsets_locate_the_packets();
     test_rgb565_round();
+    test_map_state();
+    test_map_state_refusals();
+    test_sampler_state();
+    test_sampling_program();
     test_scene_table();
     test_scene_zero_matches_phase5();
     test_scene_one_differs_only_in_colour();

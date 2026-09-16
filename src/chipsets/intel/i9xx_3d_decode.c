@@ -21,12 +21,25 @@
     } while (0)
 
 /*
- * Commands that must never appear. Texture and indirect state are forbidden
- * outright rather than merely unused: an untextured triangle that somehow
+ * Commands that must never appear in an UNTEXTURED stream. Texture state is
+ * forbidden outright rather than merely unused: a triangle that somehow
  * carried a texture packet would be sampling memory we never validated.
+ *
+ * These opcodes were WRONG and the guard was inert. They were defined here as
+ * 0x7d1d0000 and 0x7d180000, which are not commands; the major opcode 0x1d had
+ * been written into the sub-opcode position, apparently by pattern-matching
+ * LOAD_STATE_IMMEDIATE_1's 0x7d04. The real values are 0x7d000000 and
+ * 0x7d010000, established by the 2026-09-16 texture audit from two independent
+ * emitters.
+ *
+ * So this refused two opcodes that do not exist and would have passed a real
+ * MAP_STATE. Nothing caught it because nothing had ever derived the right
+ * value - the first audit was scoped to the untextured case and named the
+ * packet without encoding it.
+ *
+ * They now come from the header, where the texture builders also take them,
+ * so the decoder and the thing it decodes cannot disagree.
  */
-#define V9X_I9XX_3DSTATE_MAP_STATE       ((v9x_u32)0x7d1d0000ul)
-#define V9X_I9XX_3DSTATE_SAMPLER_STATE   ((v9x_u32)0x7d180000ul)
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
@@ -171,8 +184,23 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             saw_indirect_disable = V9X_TRUE;
             index += 2ul;
 
-        } else if (command == V9X_I9XX_3DSTATE_MAP_STATE ||
-                   command == V9X_I9XX_3DSTATE_SAMPLER_STATE) {
+        } else if ((command & 0xffff0000ul) == V9X_I9XX_3DSTATE_MAP_STATE ||
+                   (command & 0xffff0000ul) ==
+                       V9X_I9XX_3DSTATE_SAMPLER_STATE) {
+            /*
+             * MASKED, like every other length-bearing packet in this file.
+             *
+             * This compared the whole dword against the bare opcode, and both
+             * packets carry a length in their low bits - three per unit - so
+             * a real MAP_STATE is 0x7d000003 and never equalled 0x7d000000.
+             * The guard was inert twice over: the opcodes were wrong, and the
+             * comparison could not have matched a real packet even once they
+             * were right.
+             *
+             * The convention it needed is two branches below, where
+             * LOAD_STATE_IMMEDIATE_1 masks with 0xffff0000 for exactly this
+             * reason.
+             */
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
 
         } else if ((command & 0xffff0000ul) ==
