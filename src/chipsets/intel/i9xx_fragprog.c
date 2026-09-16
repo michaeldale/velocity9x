@@ -150,3 +150,108 @@ v9x_status v9x_i9xx_build_sampling_program(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/*
+ * The MODULATE program: texel times the interpolated vertex colour.
+ *
+ * FIVE instructions. The sampling program's texld writes oC directly, which it
+ * may; this one must not, because the result has to be multiplied before it
+ * becomes the output colour. So texld writes R0 - a temporary, which needs no
+ * declaration, Mesa's REG_TYPE_R comment saying "no need to dcl, must be
+ * written before read" - and MUL reads it.
+ *
+ * This is what "one texture-stage operation" means on this driver. It has no
+ * fixed-function texture-blend state by choice: Phase 5 emits a constant
+ * fragment program instead, so a stage operation is a different program and
+ * not a new packet.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md sections
+ * 1 and 2. DERIVED AND UNVALIDATED until a capture says otherwise.
+ */
+#define V9X_I9XX_MODULATE_BODY_DWORDS  15ul
+#define V9X_I9XX_MODULATE_DWORDS       (V9X_I9XX_MODULATE_BODY_DWORDS + 1ul)
+
+v9x_u32 v9x_i9xx_modulate_program_extent(void)
+{
+    return V9X_I9XX_MODULATE_DWORDS;
+}
+
+v9x_status v9x_i9xx_build_modulate_program(
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 ||
+        capacity < V9X_I9XX_MODULATE_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    stream[at++] = V9X_I9XX_3DSTATE_PIXEL_SHADER |
+                   (V9X_I9XX_MODULATE_BODY_DWORDS - 1ul);
+
+    /* dcl T0 - the interpolated coordinate set. */
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_TEX0 << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_ALL;
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+
+    /* dcl S0 - the sampler, with no channel mask. See the sampling program
+     * for why that exception is real and not an omission. */
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_S << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_NR_SHIFT);
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+
+    /* dcl T8 - the interpolated diffuse colour. An interpolated register must
+     * be declared before use, and this program is the first textured one that
+     * reads it. */
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_DIFFUSE << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_ALL;
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+
+    /* texld R0 <- sampler S0, coordinates from T0. R0, not oC: the texel is
+     * an operand here, not the answer. */
+    stream[at++] = V9X_I9XX_T0_TEXLD |
+                   (V9X_I9XX_FS_REG_TYPE_R << V9X_I9XX_T0_DEST_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_T0_DEST_NR_SHIFT) |
+                   (0ul << V9X_I9XX_T0_SAMPLER_NR_SHIFT);
+    stream[at++] = (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_T1_ADDR_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_TEX0 << V9X_I9XX_T1_ADDR_NR_SHIFT);
+    stream[at++] = 0ul;   /* T2 must be zero. */
+
+    /*
+     * mul oC, R0, T8.
+     *
+     * R0's type and nr are both zero, so src0 contributes nothing to A0 -
+     * written out as a shift anyway, because a field that happens to be zero
+     * and a field nobody wrote look identical in the dword and only one of
+     * them is intentional.
+     */
+    stream[at++] = V9X_I9XX_FS_A0_MUL |
+                   (V9X_I9XX_FS_REG_TYPE_OC << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_ALL |
+                   (V9X_I9XX_FS_REG_TYPE_R <<
+                        V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_A0_SRC0_NR_SHIFT);
+    /* src0's whole swizzle, then src1's type, nr and its X and Y only. */
+    stream[at++] = V9X_I9XX_FS_A1_SWIZZLE_XYZW |
+                   (V9X_I9XX_FS_REG_TYPE_T <<
+                        V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_DIFFUSE <<
+                        V9X_I9XX_FS_A1_SRC1_NR_SHIFT) |
+                   V9X_I9XX_FS_A1_SRC1_SWIZZLE_XY;
+    /* src1's Z and W, which live here and not above. No src2: MUL has two
+     * operands. */
+    stream[at++] = V9X_I9XX_FS_A2_SRC1_SWIZZLE_ZW;
+
+    *written = at;
+    return V9X_STATUS_OK;
+}

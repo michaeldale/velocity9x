@@ -155,6 +155,18 @@
 #define V9X_I9XX_S6_PHASE5               V9X_I9XX_S6_COLOR_WRITE_ENABLE
 /* Named so a reader can see what is being left clear. Audit section 8. */
 #define V9X_I9XX_S6_DEPTH_TEST_ENABLE    ((v9x_u32)0x00080000ul)
+/*
+ * The depth-test FUNCTION: a three-bit field at shift 16.
+ *
+ * Double-sourced BY USE, which matters more here than a header would:
+ * xf86's i915_video.c:136 emits `(2 << S6_DEPTH_TEST_FUNC_SHIFT)` - a
+ * literal 2, which is COMPAREFUNC_LESS in Mesa's table, written into the
+ * same shift by an author who never included Mesa's enum.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md section 4.
+ */
+#define V9X_I9XX_S6_DEPTH_FUNC_SHIFT     16u
+#define V9X_I9XX_COMPAREFUNC_LESS        ((v9x_u32)2ul)
 #define V9X_I9XX_S6_DEPTH_WRITE_ENABLE   ((v9x_u32)0x00000008ul)
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +274,35 @@
  */
 #define V9X_I9XX_TEX_VERTEX_COLOR_BGRA   ((v9x_u32)0xfffffffful)
 #define V9X_I9XX_TEX_VERTEX_COLOR_565    ((v9x_u16)0xffffu)
+
+/*
+ * The MODULATED scene's vertex colour: half intensity in every channel.
+ *
+ * Half, so that every product differs visibly from the texel it came from -
+ * the check that the multiply happened at all is that no probe reads its raw
+ * quadrant colour. A colour near white would multiply to something within a
+ * level or two of the texel and that check would be worthless.
+ *
+ * 0x80 rather than 0x7f because it is the value a driver would actually pick
+ * for "half", and the exact product is a PREDICTION either way: it depends on
+ * the shader's arithmetic and then on the 565 conversion at channel values
+ * nobody has measured. The capture reports the products; it fails only on
+ * the two things that are not predictions.
+ */
+#define V9X_I9XX_TEX_MODULATE_COLOR_BGRA ((v9x_u32)0xff808080ul)
+
+/*
+ * The second and third measured colours, for the DEPTH scenes' triangles.
+ *
+ * Three triangles need three distinguishable colours, and all three are
+ * values this part has been seen to store: 0xff1587f9 reads 1C3E, 0xfff86428
+ * reads F325 and 0xff2e03c8 reads 3038, measured 2026-09-15 and 2026-09-16.
+ * Measured rather than predicted on purpose - the depth scenes ask which
+ * triangle won a pixel, and an unmeasured colour would put a second unknown
+ * in that answer.
+ */
+#define V9X_I9XX_TRI_COLOR_B             ((v9x_u32)0xfff86428ul)
+#define V9X_I9XX_TRI_COLOR_C             ((v9x_u32)0xff2e03c8ul)
 /*
  * MEASURED on the 945GSE, 2026-09-15, build 83f24ec: all seven interior probes
  * read 0x1c3e. round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30.
@@ -380,6 +421,27 @@ v9x_u32 v9x_i9xx_3d_state_extent(void);
 /* The same block plus MAP_STATE and SAMPLER_STATE, and S2 declaring one 2D
  * coordinate set. One emission path serves both. */
 v9x_u32 v9x_i9xx_textured_state_extent(void);
+/*
+ * The DEPTH state block: the untextured one plus a depth BUF_INFO, with S6
+ * carrying the test enable, the LESS function, and - only when `writes` is
+ * non-zero - the write enable.
+ */
+v9x_u32 v9x_i9xx_depth_state_extent(void);
+v9x_status v9x_i9xx_build_depth_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 writes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The depth CLEAR: one XY_COLOR_BLT filling the depth buffer with the far
+ * value, then an MI_FLUSH. Mesa clears depth this way too - its blitter path
+ * calls i915_fill_blit - so this needs no packet the driver does not have and
+ * keeps the CPU out of the aperture, which the errata gate requires.
+ */
+v9x_u32 v9x_i9xx_depth_clear_extent(void);
+v9x_status v9x_i9xx_build_depth_clear(
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_bytes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_i9xx_build_textured_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
@@ -520,6 +582,36 @@ v9x_status v9x_i9xx_build_vertex_run(
 #define V9X_I9XX_FS_T_TEX0               ((v9x_u32)0ul)
 
 /*
+ * The MODULATE instruction and the fields it needs.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md section 1.
+ * A0_MUL is stated identically by Mesa and by four xf86 headers, with the
+ * same comment, and an arithmetic instruction is three dwords:
+ *
+ *   A0 = op | dest | channel mask | src0 type and nr
+ *   A1 = src0 swizzle | src1 type, nr, X and Y
+ *   A2 = src1 Z and W | src2
+ *
+ * SRC1'S SWIZZLE IS SPLIT. Its X and Y selectors live in A1 at shifts 4 and
+ * 0; its Z and W live in A2 at shifts 28 and 24. src0's four all live in A1.
+ * Putting all four of src1's in A1 - the obvious reading, and the one the
+ * audit exists to forestall - emits a colour multiplied by (r, g, r, r),
+ * which is a wrong picture with no error anywhere.
+ */
+#define V9X_I9XX_FS_A0_MUL               ((v9x_u32)0x03000000ul)
+/* Temporaries. Mesa: "no need to dcl, must be written before read". */
+#define V9X_I9XX_FS_REG_TYPE_R           ((v9x_u32)0ul)
+#define V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT   13u
+#define V9X_I9XX_FS_A1_SRC1_NR_SHIFT     8u
+/*
+ * The identity swizzle for src1, split over the two dwords it occupies.
+ * X=0 and Y=1 in A1; Z=2 and W=3 in A2. Written as the two halves they are,
+ * rather than as one constant that could only be wrong.
+ */
+#define V9X_I9XX_FS_A1_SRC1_SWIZZLE_XY   ((v9x_u32)0x00000001ul)
+#define V9X_I9XX_FS_A2_SRC1_SWIZZLE_ZW   ((v9x_u32)0x23000000ul)
+
+/*
  * One linear 2D texture: where it is, how big, and how wide a row is.
  *
  * offset is a graphics address in the same space as the render target's
@@ -558,6 +650,11 @@ v9x_status v9x_i9xx_build_sampler_state(
 v9x_u32 v9x_i9xx_sampling_program_extent(void);
 v9x_status v9x_i9xx_build_sampling_program(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* The MODULATE program: sample into a temporary, multiply by the interpolated
+ * diffuse colour, write that. Five instructions where sampling has three. */
+v9x_u32 v9x_i9xx_modulate_program_extent(void);
+v9x_status v9x_i9xx_build_modulate_program(
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* ------------------------------------------------------------------ */
 /* Phase 6 scenes. src\chipsets\intel\i9xx_scene.c                     */
@@ -586,8 +683,39 @@ v9x_status v9x_i9xx_build_sampling_program(
  * scene's fill, but the probes are the evidence and they are already on disk -
  * the same flush-after-every-step property that makes a hang localisable.
  */
-#define V9X_I9XX_SCENE_MAX_TRIANGLES     ((v9x_u32)2ul)
+/*
+ * Three, raised from two on 2026-09-16 for the depth-write scene.
+ *
+ * That scene needs exactly three: two that draw at different depths and a
+ * third BEHIND both, which is the only draw that distinguishes a working depth
+ * test from paint order. Two triangles cannot ask the question - the second
+ * simply overwrites the first, which is what an unconditional draw does.
+ */
+#define V9X_I9XX_SCENE_MAX_TRIANGLES     ((v9x_u32)3ul)
 #define V9X_I9XX_SCENE_MAX_PROBES        ((v9x_u32)14ul)
+
+/*
+ * The five kinds of scene.
+ *
+ * PLAIN is Phase 5: no texture, no depth. TEXTURED samples straight to the
+ * output colour. MODULATED multiplies the texel by the vertex colour.
+ * DEPTH_TEST binds a depth buffer and tests against it without writing;
+ * DEPTH_WRITE also writes.
+ *
+ * Numbered rather than derived, and stable: a kind is published in the capture
+ * and read back by the validator.
+ */
+#define V9X_I9XX_SCENE_PLAIN             ((v9x_u32)0ul)
+#define V9X_I9XX_SCENE_TEXTURED          ((v9x_u32)1ul)
+#define V9X_I9XX_SCENE_MODULATED         ((v9x_u32)2ul)
+#define V9X_I9XX_SCENE_DEPTH_TEST        ((v9x_u32)3ul)
+#define V9X_I9XX_SCENE_DEPTH_WRITE       ((v9x_u32)4ul)
+
+/* Does this kind sample a texture? Does it bind a depth buffer, and does it
+ * write to one? Derived in one place, so no caller re-derives them. */
+v9x_u16 v9x_i9xx_scene_kind_textured(v9x_u32 kind);
+v9x_u16 v9x_i9xx_scene_kind_depth(v9x_u32 kind);
+v9x_u16 v9x_i9xx_scene_kind_depth_writes(v9x_u32 kind);
 
 /*
  * What a probe expects to find, or that it expects nothing.
@@ -600,6 +728,7 @@ v9x_status v9x_i9xx_build_sampling_program(
 #define V9X_I9XX_PROBE_FILL              ((v9x_u16)0u)
 #define V9X_I9XX_PROBE_TRIANGLE0         ((v9x_u16)1u)
 #define V9X_I9XX_PROBE_TRIANGLE1         ((v9x_u16)2u)
+#define V9X_I9XX_PROBE_TRIANGLE2         ((v9x_u16)3u)
 /*
  * The probe expects the colour of texture quadrant n. Four more values, so
  * a probe can name which quadrant it should have read - which is the whole
@@ -610,6 +739,21 @@ v9x_status v9x_i9xx_build_sampling_program(
 #define V9X_I9XX_PROBE_QUADRANT1         ((v9x_u16)17u)
 #define V9X_I9XX_PROBE_QUADRANT2         ((v9x_u16)18u)
 #define V9X_I9XX_PROBE_QUADRANT3         ((v9x_u16)19u)
+/*
+ * The same quadrant, MODULATED by the vertex colour.
+ *
+ * A separate set rather than a flag on the scene, because what the validator
+ * does with them differs in kind: a quadrant expectation is compared against
+ * a known bit pattern, a modulated one is compared against the product - and
+ * that product is a prediction. The validator fails a modulated probe only
+ * for reading the RAW quadrant colour, which means the multiply did not
+ * happen, or the fill, which means nothing drew; the value itself is
+ * reported.
+ */
+#define V9X_I9XX_PROBE_MODQUAD0          ((v9x_u16)20u)
+#define V9X_I9XX_PROBE_MODQUAD1          ((v9x_u16)21u)
+#define V9X_I9XX_PROBE_MODQUAD2          ((v9x_u16)22u)
+#define V9X_I9XX_PROBE_MODQUAD3          ((v9x_u16)23u)
 #define V9X_I9XX_PROBE_MEASURE           ((v9x_u16)0xffffu)
 
 struct v9x_i9xx_probe {
@@ -662,12 +806,20 @@ struct v9x_i9xx_scene {
     v9x_u32 probe_count;
     struct v9x_i9xx_probe probes[V9X_I9XX_SCENE_MAX_PROBES];
     /*
-     * Non-zero when this scene paints and samples a texture. The texture
-     * itself is not here: it is placed by the sandbox layout, which is the
-     * only thing that knows where the reserve ends up, and a copy of its
-     * address in the scene table would be a second place for it to drift.
+     * WHAT this scene is, as one value rather than a set of flags.
+     *
+     * It was a `textured` flag until 2026-09-16, when modulation and depth
+     * arrived and three independent booleans would have admitted combinations
+     * that mean nothing - depth writes without a depth buffer, modulation
+     * without a texture. One field cannot express those at all, which is
+     * better than checking for them.
+     *
+     * Neither the texture nor the depth buffer is named here: both are placed
+     * by the sandbox layout, which is the only thing that knows where the
+     * reserve ends up, and a copy of either address in the scene table would
+     * be a second place for it to drift.
      */
-    v9x_u32 textured;
+    v9x_u32 kind;
 };
 
 /*
@@ -749,6 +901,23 @@ v9x_status v9x_i9xx_build_triangle_run(
     const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The same run, with a per-triangle Z.
+ *
+ * `z_bits[i]` is an IEEE-754 bit pattern applied to all three of triangle
+ * i's vertices - flat depth per triangle, which is all an occlusion test
+ * needs and which keeps interpolation out of the measurement. Bit patterns
+ * because the driver's converter takes integers and the depths this needs
+ * are fractions.
+ *
+ * Vertices are additionally refused at or below y = V9X_I9XX_DEPTH_HEIGHT:
+ * the depth buffer is shorter than the render target, and a pixel below it
+ * would have the hardware address depth memory past the allocation.
+ */
+v9x_status v9x_i9xx_build_depth_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *z_bits, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_3d_stream.c */
 struct v9x_i9xx_phase5_parameters {
@@ -778,18 +947,33 @@ v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 
 /* src\chipsets\intel\i9xx_3d_decode.c */
 /*
- * `texture_bytes` non-zero declares the stream TEXTURED, and the texture is
- * then required to be exactly [texture_offset, texture_offset + texture_bytes)
- * - which is what lets MAP_STATE's address be checked rather than trusted.
+ * What a stream is allowed to touch, and what kind of stream it is.
  *
- * Zero means untextured, and every texture packet is refused. A flag beside
- * the range would have been a second way to say the same thing, and the two
- * could disagree; the range alone cannot.
+ * A struct rather than eight parameters. It was four, then six when the
+ * texture arrived, and depth would have made it eight - at which point a
+ * caller swapping two of them compiles cleanly and validates the wrong
+ * memory.
+ *
+ * Each range is the ONLY memory of its sort the stream may name, and a zero
+ * `*_bytes` means the stream has no buffer of that sort at all - which is what
+ * lets an address be checked rather than trusted. `kind` is one of the
+ * V9X_I9XX_SCENE_* values and selects the program length, S6 and the vertex
+ * stride the decoder requires; a flag beside the ranges would have been a
+ * second way to say the same thing and the two could disagree.
  */
+struct v9x_i9xx_decode_limits {
+    v9x_u32 target_offset;
+    v9x_u32 target_bytes;
+    v9x_u32 texture_offset;
+    v9x_u32 texture_bytes;
+    v9x_u32 depth_offset;
+    v9x_u32 depth_bytes;
+    v9x_u32 kind;
+};
+
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
-    v9x_u32 target_offset, v9x_u32 target_bytes,
-    v9x_u32 texture_offset, v9x_u32 texture_bytes,
+    const struct v9x_i9xx_decode_limits *limits,
     v9x_u32 *rejected_index);
 
 #endif /* VELOCITY9X_INTEL_GEN3_3D_H */

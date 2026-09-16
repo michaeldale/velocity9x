@@ -418,17 +418,45 @@ static void test_golden_stream(void)
 /* 6. The decoder: accept the golden stream, reject targeted mutations    */
 /* --------------------------------------------------------------------- */
 
+/*
+ * The limits a plain Phase 5 stream runs under: its target, no texture and no
+ * depth. File-scope constants because most of the decoder tests want exactly
+ * this and repeating seven fields at each of them would bury what each test is
+ * actually varying.
+ */
+static const struct v9x_i9xx_decode_limits v9x_test_plain = {
+    0x006c2000ul, 0x00096000ul, 0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
+};
+/* The same with a zero target size, for the refusal that checks it. */
+static const struct v9x_i9xx_decode_limits v9x_test_zero_bytes = {
+    0x006c2000ul, 0ul, 0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
+};
+
+/* And a filler for the tests that build their own. */
+static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
+                            v9x_u32 target_offset, v9x_u32 target_bytes,
+                            v9x_u32 kind)
+{
+    limits->target_offset = target_offset;
+    limits->target_bytes = target_bytes;
+    limits->texture_offset = 0ul;
+    limits->texture_bytes = 0ul;
+    limits->depth_offset = 0ul;
+    limits->depth_bytes = 0ul;
+    limits->kind = kind;
+}
+
 static void test_decoder_accepts_golden(void)
 {
     v9x_u32 index = 0xfffffffful;
 
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 64ul, &v9x_test_plain,
               &index) == V9X_I9XX_P5_OK);
     CHECK(index == 0ul);
     /* The index argument is optional. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 64ul, &v9x_test_plain,
               0) == V9X_I9XX_P5_OK);
 }
 
@@ -531,7 +559,7 @@ static void test_decoder_rejects_mutations(void)
         }
         stream[mutations[mutation].index] = mutations[mutation].value;
         reason = v9x_i9xx_decode_phase5_stream(
-            stream, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &rejected);
+            stream, 64ul, &v9x_test_plain, &rejected);
         CHECK(reason == mutations[mutation].reason);
         CHECK(rejected == mutations[mutation].rejected_at);
     }
@@ -551,6 +579,9 @@ static void test_decoder_texture_mode(void)
 {
     struct v9x_i9xx_texture texture;
     struct v9x_i9xx_sandbox_layout layout;
+    struct v9x_i9xx_decode_limits textured;
+    struct v9x_i9xx_decode_limits plain;
+    struct v9x_i9xx_decode_limits golden_textured;
     v9x_u32 stream[256];
     v9x_u32 written = 0ul;
     v9x_u32 produced = 0ul;
@@ -568,9 +599,14 @@ static void test_decoder_texture_mode(void)
 
     /*
      * A complete textured stream, assembled from the same builders the scene
-     * uses, minus the paint - the decoder is an allowlist for 3D packets and
-     * the blits are checked by the blit builder's own bounds.
+     * uses. The PAINT is included: the decoder requires it, because without
+     * the blits the sampler reads a page holding whatever the last boot left,
+     * which under a nearest filter is a picture - just not one of this
+     * build's making.
      */
+    CHECK(v9x_i9xx_build_texture_paint(&texture, stream + at, 256ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
     CHECK(v9x_i9xx_build_color_blt(
               layout.target_offset,
               V9X_I9XX_FILL_BLT_WIDTH, V9X_I9XX_FILL_BLT_HEIGHT,
@@ -605,16 +641,56 @@ static void test_decoder_texture_mode(void)
     }
     written = at;
 
+    v9x_test_limits(&textured, layout.target_offset, layout.target_bytes,
+                    V9X_I9XX_SCENE_TEXTURED);
+    textured.texture_offset = layout.texture_offset;
+    textured.texture_bytes = layout.texture_bytes;
+    v9x_test_limits(&plain, layout.target_offset, layout.target_bytes,
+                    V9X_I9XX_SCENE_PLAIN);
+    /* The golden stream's own target, declared textured - for the refusal at
+     * the end, where S2 says no coordinate set. */
+    v9x_test_limits(&golden_textured, 0x006c2000ul, 0x00096000ul,
+                    V9X_I9XX_SCENE_TEXTURED);
+    golden_textured.texture_offset = layout.texture_offset;
+    golden_textured.texture_bytes = layout.texture_bytes;
+
     /* Textured: accepted. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              stream, written, layout.target_offset, layout.target_bytes,
-              layout.texture_offset, layout.texture_bytes, &index) ==
+              stream, written, &textured, &index) ==
           V9X_I9XX_P5_OK);
 
-    /* The very same dwords, declared untextured: refused, and at the map. */
-    CHECK(v9x_i9xx_decode_phase5_stream(
-              stream, written, layout.target_offset, layout.target_bytes,
-              0ul, 0ul, &index) == V9X_I9XX_P5_TEXTURE_FORBIDDEN);
+    /*
+     * The very same dwords, declared PLAIN: refused at the first packet the
+     * plain kind cannot account for, which is the paint - a blit into memory
+     * a plain stream has no range for.
+     */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &plain, &index) ==
+          V9X_I9XX_P5_TARGET_RANGE);
+    CHECK(index == 0ul);
+
+    /*
+     * And the texture PACKETS themselves, refused under the plain kind. The
+     * state block alone, so the refusal is the MAP_STATE rather than anything
+     * before it - a stream whose first offending dword is the paint would not
+     * prove the packet check is there at all.
+     */
+    {
+        v9x_u32 block[64];
+        v9x_u32 block_dwords = 0ul;
+
+        CHECK(v9x_i9xx_build_textured_state(
+                  layout.target_offset, layout.target_pitch,
+                  V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT, &texture,
+                  block, 64ul, &block_dwords) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_decode_phase5_stream(block, block_dwords, &plain,
+                                            &index) ==
+              V9X_I9XX_P5_TEXTURE_FORBIDDEN);
+        /* And accepted under the textured kind, up to the packets it is
+         * missing - which is a different refusal, not this one. */
+        CHECK(v9x_i9xx_decode_phase5_stream(block, block_dwords, &textured,
+                                            &index) ==
+              V9X_I9XX_P5_MISSING_PACKET);
+    }
 
     /* Locate MAP_STATE's address dword, to mutate it. */
     for (scan = 0ul; scan < written; ++scan) {
@@ -633,8 +709,7 @@ static void test_decoder_texture_mode(void)
      */
     stream[map_address] = layout.target_offset;
     CHECK(v9x_i9xx_decode_phase5_stream(
-              stream, written, layout.target_offset, layout.target_bytes,
-              layout.texture_offset, layout.texture_bytes, &index) ==
+              stream, written, &textured, &index) ==
           V9X_I9XX_P5_TARGET_RANGE);
     CHECK(index == map_address);
     stream[map_address] = layout.texture_offset;
@@ -656,8 +731,7 @@ static void test_decoder_texture_mode(void)
         stream[map_address + 2ul] = ((8192ul >> 2) - 1ul) <<
                                     V9X_I9XX_MS4_PITCH_SHIFT;
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  layout.texture_offset, layout.texture_bytes, &index) ==
+                  stream, written, &textured, &index) ==
               V9X_I9XX_P5_TEXTURE_STATE);
         CHECK(index == map_address + 2ul);
         stream[map_address + 2ul] = ms4;
@@ -675,8 +749,7 @@ static void test_decoder_texture_mode(void)
             ((2048ul - 1ul) << V9X_I9XX_MS3_HEIGHT_SHIFT) |
             ((V9X_I9XX_TEXTURE_WIDTH - 1ul) << V9X_I9XX_MS3_WIDTH_SHIFT);
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  layout.texture_offset, layout.texture_bytes, &index) ==
+                  stream, written, &textured, &index) ==
               V9X_I9XX_P5_TEXTURE_STATE);
         CHECK(index == map_address + 1ul);
         stream[map_address + 1ul] = ms3;
@@ -706,8 +779,7 @@ static void test_decoder_texture_mode(void)
         ss3 = stream[sampler + 3ul];
         stream[sampler + 3ul] = ss3 | (1ul << V9X_I9XX_SS3_MAP_INDEX_SHIFT);
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  layout.texture_offset, layout.texture_bytes, &index) ==
+                  stream, written, &textured, &index) ==
               V9X_I9XX_P5_TEXTURE_STATE);
         CHECK(index == sampler + 3ul);
         stream[sampler + 3ul] = ss3;
@@ -716,8 +788,7 @@ static void test_decoder_texture_mode(void)
          * sampler this build never configured is state from somewhere else. */
         stream[sampler + 2ul] = 0xfffffffful;
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  layout.texture_offset, layout.texture_bytes, &index) ==
+                  stream, written, &textured, &index) ==
               V9X_I9XX_P5_TEXTURE_STATE);
         CHECK(index == sampler + 2ul);
         stream[sampler + 2ul] = V9X_I9XX_SS2_NEAREST_NO_MIP;
@@ -741,9 +812,7 @@ static void test_decoder_texture_mode(void)
             trimmed[scan - packets] = stream[scan];
         }
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  trimmed, written - packets,
-                  layout.target_offset, layout.target_bytes,
-                  layout.texture_offset, layout.texture_bytes, &index) ==
+                  trimmed, written - packets, &textured, &index) ==
               V9X_I9XX_P5_MISSING_PACKET);
     }
 
@@ -754,8 +823,7 @@ static void test_decoder_texture_mode(void)
      * looks like a plausible picture.
      */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
-              layout.texture_offset, layout.texture_bytes, &index) ==
+              v9x_i9xx_phase5_golden, 64ul, &golden_textured, &index) ==
           V9X_I9XX_P5_TEXTURE_FORBIDDEN);
 }
 
@@ -765,21 +833,21 @@ static void test_decoder_structural_refusals(void)
 
     /* Truncation anywhere is refused, never read past. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 23ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 23ul, &v9x_test_plain,
               &index) != V9X_I9XX_P5_OK);
     /* A stream missing its target description decodes clean packet by packet
      * and must still be refused. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 22ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 22ul, &v9x_test_plain,
               &index) == V9X_I9XX_P5_MISSING_PACKET);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              0, 59ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &index) ==
+              0, 59ul, &v9x_test_plain, &index) ==
           V9X_I9XX_P5_TRUNCATED);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 0ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 0ul, &v9x_test_plain,
               &index) == V9X_I9XX_P5_TRUNCATED);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0ul, 0ul, 0ul,
+              v9x_i9xx_phase5_golden, 66ul, &v9x_test_zero_bytes,
               &index) == V9X_I9XX_P5_TRUNCATED);
     /* A Phase 4 stream must not satisfy the Phase 5 decoder. */
     {
@@ -788,7 +856,7 @@ static void test_decoder_structural_refusals(void)
             0x006c1100ul, 0x55aa33ccul, 0x02000000ul, 0x00000000ul
         };
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  phase4, 8ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &index) !=
+                  phase4, 8ul, &v9x_test_plain, &index) !=
               V9X_I9XX_P5_OK);
     }
 }
@@ -1053,8 +1121,8 @@ static void test_scene_one_is_textured(void)
     /* Id 5, not 1: ids 1 through 4 belong to the retired colour and edge
      * scenes, and a capture citing scene 1 is one of those. */
     CHECK(one.id == 5ul);
-    CHECK(one.textured != 0ul);
-    CHECK(zero.textured == 0ul);
+    CHECK(v9x_i9xx_scene_kind_textured(one.kind) == V9X_TRUE);
+    CHECK(v9x_i9xx_scene_kind_textured(zero.kind) == V9X_FALSE);
 
     CHECK(one.triangle_count == zero.triangle_count);
     for (vertex = 0ul; vertex < 3ul; ++vertex) {
@@ -1249,13 +1317,32 @@ static void test_scene_probe_budget(void)
     CHECK(v9x_i9xx_scene_total_probes() == total);
 
     /*
-     * 14 for the Phase 5 regression, 6 for the texture. Written out because
-     * the budget rule is that no boot roughly doubles the last one that
-     * completed; the intel44 capture performed 1806 reads across five scenes,
-     * and this table is smaller than that one in every dimension. Changing the
-     * scene table past this without re-reading that rule should fail here.
+     * 14 for the Phase 5 regression and 6 for each of the other four.
+     * Written out because the budget rule is that no boot roughly doubles the
+     * last one that completed: intel45 performed about 1448 reads and this
+     * table adds three scenes of six probes, which is nowhere near. Changing
+     * the scene table past this without re-reading that rule should fail here.
      */
-    CHECK(total == 20ul);
+    CHECK(total == 38ul);
+
+    /*
+     * And every scene's stream together must fit the driver's accumulator,
+     * which is 512 dwords. The five scenes take 494, so the headroom is 18 -
+     * thin enough that the next scene added without checking would overflow
+     * it. The driver refuses cleanly in that case rather than hanging, but a
+     * boot spent producing ACCUMULATOR-FULL is still a boot; failing here
+     * costs nothing.
+     */
+    {
+        v9x_u32 staged = 0ul;
+
+        for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+            CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+            staged += v9x_i9xx_scene_extent(&scene);
+        }
+        CHECK(staged == 494ul);
+        CHECK(staged <= 512ul);
+    }
 }
 
 /* The table itself, and its refusals. */
@@ -1267,14 +1354,14 @@ static void test_scene_table(void)
     v9x_u32 written = 0ul;
 
     /*
-     * Two scenes, against five authorised by the 2026-09-16 errata amendment.
-     * Both asserted, and their RELATIONSHIP asserted, because the failure this
-     * guards against is a build quietly defining more draws than were agreed -
-     * which the count alone would not show. The margin is deliberate: the
-     * three retired scenes had answered their questions, and a boot carrying
-     * them would spend aperture reads on settled ones.
+     * Five scenes against five authorised. Both asserted, and their
+     * RELATIONSHIP asserted, because the failure this guards against is a
+     * build quietly defining more draws than were agreed - which the count
+     * alone would not show. The bound is now REACHED, so a sixth scene fails
+     * here rather than on the machine, which is what the separate constants
+     * are for.
      */
-    CHECK(v9x_i9xx_scene_count() == 2ul);
+    CHECK(v9x_i9xx_scene_count() == 5ul);
     CHECK(v9x_i9xx_scene_authorised_draws() == 5ul);
     CHECK(v9x_i9xx_scene_count() <= v9x_i9xx_scene_authorised_draws());
     CHECK(v9x_i9xx_scene_count() != 0ul);
@@ -1305,11 +1392,11 @@ static void test_scene_table(void)
 
     /* Out of range refuses AND clears, rather than leaving the caller's stack
      * contents looking like a scene. */
-    CHECK(v9x_i9xx_scene_at(2ul, &scene) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(5ul, &scene) != V9X_STATUS_OK);
     CHECK(scene.triangle_count == 0ul);
     CHECK(scene.id == 0ul);
-    CHECK(scene.textured == 0ul);
-    CHECK(v9x_i9xx_scene_crc(2ul) == 0ul);
+    CHECK(scene.kind == V9X_I9XX_SCENE_PLAIN);
+    CHECK(v9x_i9xx_scene_crc(5ul) == 0ul);
     CHECK(v9x_i9xx_scene_at(0ul, 0) != V9X_STATUS_OK);
 
     /* Capacity, at the boundary rather than far from it. */
@@ -1346,31 +1433,163 @@ static void test_every_scene_decodes(void)
     v9x_u32 written = 0ul;
     v9x_u32 rejected = 0ul;
     v9x_u32 index;
+    v9x_u32 other;
 
     CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
           V9X_STATUS_OK);
 
     for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        struct v9x_i9xx_decode_limits limits;
+
         CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
         CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
               V9X_STATUS_OK);
-        CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  (scene.textured != 0ul) ? layout.texture_offset : 0ul,
-                  (scene.textured != 0ul) ? layout.texture_bytes : 0ul,
-                  &rejected) == V9X_I9XX_P5_OK);
+
+        v9x_test_limits(&limits, layout.target_offset, layout.target_bytes,
+                        scene.kind);
+        if (v9x_i9xx_scene_kind_textured(scene.kind) != V9X_FALSE) {
+            limits.texture_offset = layout.texture_offset;
+            limits.texture_bytes = layout.texture_bytes;
+        }
+        if (v9x_i9xx_scene_kind_depth(scene.kind) != V9X_FALSE) {
+            limits.depth_offset = layout.depth_offset;
+            limits.depth_bytes = layout.depth_bytes;
+        }
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits,
+                                            &rejected) == V9X_I9XX_P5_OK);
 
         /*
-         * And each is refused under the OTHER mode. Without this the decoder
-         * could be ignoring the mode entirely and every assertion above would
-         * still hold.
+         * And refused under EVERY other kind. Without this the decoder could
+         * be ignoring the kind entirely and every assertion above would still
+         * hold - which is exactly what a mode check that is never exercised
+         * negatively looks like.
+         *
+         * The ranges stay as this scene's, so what differs between the
+         * accepted call and each refused one is the kind alone.
          */
-        CHECK(v9x_i9xx_decode_phase5_stream(
-                  stream, written, layout.target_offset, layout.target_bytes,
-                  (scene.textured != 0ul) ? 0ul : layout.texture_offset,
-                  (scene.textured != 0ul) ? 0ul : layout.texture_bytes,
-                  &rejected) != V9X_I9XX_P5_OK);
+        for (other = 0ul; other <= V9X_I9XX_SCENE_DEPTH_WRITE; ++other) {
+            struct v9x_i9xx_decode_limits wrong = limits;
+
+            if (other == scene.kind) {
+                continue;
+            }
+            wrong.kind = other;
+            CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &wrong,
+                                                &rejected) !=
+                  V9X_I9XX_P5_OK);
+        }
     }
+}
+
+/*
+ * The depth scenes' probe expectations, recomputed from the geometry.
+ *
+ * Every expectation in the table is a claim about which of three overlapping
+ * triangles owns a pixel, and those were placed by hand. This derives them
+ * independently: which triangles cover the probe, and which of those wins
+ * under the scene's rule.
+ *
+ * The two rules are the experiment. Without depth writes the buffer stays far
+ * everywhere, so every covering triangle passes and the LAST one drawn wins -
+ * paint order, exactly as an undepthed draw would behave. With writes, A and B
+ * record their depths and the NEAREST covering triangle wins. Two probes
+ * change their answer between the scenes and the rest do not, which is what
+ * makes the pair a measurement rather than two pictures.
+ */
+static void test_depth_scene_expectations(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 index;
+    v9x_u32 differing = 0ul;
+    v9x_u16 first_expect[V9X_I9XX_SCENE_MAX_PROBES];
+    v9x_u32 first_count = 0ul;
+    /* The depths the builder emits, in submission order: 0.75, 0.25, 0.90.
+     * Compared as bit patterns, which for positive floats orders exactly as
+     * the values do - and the scene depends on nothing but that order. */
+    static const v9x_u32 z_bits[3] = {
+        0x3f400000ul, 0x3e800000ul, 0x3f666666ul
+    };
+
+    for (index = 3ul; index <= 4ul; ++index) {
+        v9x_u16 writes;
+        v9x_u32 probe;
+
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_scene_kind_depth(scene.kind) == V9X_TRUE);
+        CHECK(scene.triangle_count == 3ul);
+        writes = v9x_i9xx_scene_kind_depth_writes(scene.kind);
+
+        /* The three colours must differ, or "which triangle won" is not a
+         * question the capture can answer. */
+        CHECK(scene.triangles[0].color != scene.triangles[1].color);
+        CHECK(scene.triangles[0].color != scene.triangles[2].color);
+        CHECK(scene.triangles[1].color != scene.triangles[2].color);
+
+        for (probe = 0ul; probe < scene.probe_count; ++probe) {
+            v9x_u32 triangle;
+            v9x_u32 winner = 3ul;
+            v9x_u32 covering = 0ul;
+            v9x_u16 expect;
+
+            for (triangle = 0ul; triangle < 3ul; ++triangle) {
+                if (v9x_test_probe_inside(&scene.triangles[triangle],
+                                          scene.probes[probe].x,
+                                          scene.probes[probe].y) !=
+                        V9X_TRUE) {
+                    continue;
+                }
+                ++covering;
+                if (winner == 3ul) {
+                    winner = triangle;
+                } else if (writes != V9X_FALSE) {
+                    /* Nearest wins. */
+                    if (z_bits[triangle] < z_bits[winner]) {
+                        winner = triangle;
+                    }
+                } else {
+                    /* Last drawn wins; the loop runs in submission order. */
+                    winner = triangle;
+                }
+            }
+
+            expect = (winner == 3ul)
+                         ? V9X_I9XX_PROBE_FILL
+                         : (v9x_u16)(V9X_I9XX_PROBE_TRIANGLE0 + winner);
+            CHECK(scene.probes[probe].expect == expect);
+
+            /*
+             * And the probe set must actually exercise the overlaps it claims
+             * to: at least one probe covered by all three, one by exactly two
+             * and one by none. A set that only ever sampled single coverage
+             * would agree with both rules and measure nothing.
+             */
+            if (index == 3ul) {
+                first_expect[probe] = scene.probes[probe].expect;
+                if (covering == 3ul) { ++first_count; }
+            } else if (scene.probes[probe].expect != first_expect[probe]) {
+                ++differing;
+            }
+        }
+        /* The two scenes must share probe COORDINATES, or their pictures
+         * cannot be compared pixel by pixel. */
+        if (index == 4ul) {
+            struct v9x_i9xx_scene other;
+            v9x_u32 which;
+
+            CHECK(v9x_i9xx_scene_at(3ul, &other) == V9X_STATUS_OK);
+            CHECK(other.probe_count == scene.probe_count);
+            for (which = 0ul; which < scene.probe_count; ++which) {
+                CHECK(other.probes[which].x == scene.probes[which].x);
+                CHECK(other.probes[which].y == scene.probes[which].y);
+            }
+        }
+    }
+
+    /* At least one probe under all three triangles, and at least two probes
+     * whose answer DEPENDS on the depth test. Asserted as numbers: zero of
+     * either would satisfy every loop above and prove nothing. */
+    CHECK(first_count >= 1ul);
+    CHECK(differing >= 2ul);
 }
 
 /* The combined CRC, which is what the arm gate compares. */
@@ -1502,7 +1721,24 @@ static void test_scene_primitive_offset(void)
          * extent helpers would make it the same opinion twice - which is
          * exactly how loader.asm's boundary drifted.
          */
-        CHECK(offset == ((scene.textured != 0ul) ? 86ul : 48ul));
+        /*
+         * Per kind, as literals:
+         *   plain      fill 7 + state 31 + shader 7 + probe 2 = 47, padded 48
+         *   textured   paint 25 + fill 7 + state 41 + shader 10 + probe 2
+         *              = 85, padded 86
+         *   modulated  the same with the 16-dword program = 91, padded 92
+         *   depth      clear 7 + fill 7 + state 34 + shader 7 + probe 2
+         *              = 57, padded 58
+         */
+        if (scene.kind == V9X_I9XX_SCENE_MODULATED) {
+            CHECK(offset == 92ul);
+        } else if (v9x_i9xx_scene_kind_textured(scene.kind) != V9X_FALSE) {
+            CHECK(offset == 86ul);
+        } else if (v9x_i9xx_scene_kind_depth(scene.kind) != V9X_FALSE) {
+            CHECK(offset == 58ul);
+        } else {
+            CHECK(offset == 48ul);
+        }
 
         written = 0ul;
         CHECK(v9x_i9xx_build_scene_stream(
@@ -1523,11 +1759,10 @@ static void test_scene_primitive_offset(void)
          * that allowed any surplus would not notice a run that had grown.
          */
         {
-            v9x_u32 run = (scene.textured != 0ul)
-                              ? v9x_i9xx_textured_run_dwords(
-                                    scene.triangle_count)
-                              : v9x_i9xx_triangle_run_dwords(
-                                    scene.triangle_count);
+            v9x_u32 run =
+                (v9x_i9xx_scene_kind_textured(scene.kind) != V9X_FALSE)
+                    ? v9x_i9xx_textured_run_dwords(scene.triangle_count)
+                    : v9x_i9xx_triangle_run_dwords(scene.triangle_count);
 
             CHECK(written - offset >= run);
             CHECK(written - offset <= run + 1ul);
@@ -1934,6 +2169,87 @@ static void test_sampler_state(void)
  * Three instructions, not four: texld writes the output colour directly,
  * which xf86 does in terms.
  */
+/*
+ * The MODULATE program, dword by dword against the audit's own arithmetic.
+ *
+ * The audit derived every field from the two trees' macros and wrote the
+ * results down; this asserts the builder produces those numbers. That is the
+ * only check available off the machine, and it is worth having precisely
+ * because the failure mode here is a program the parser accepts and a picture
+ * that is wrong in a plausible way.
+ */
+static void test_modulate_program(void)
+{
+    v9x_u32 stream[24];
+    v9x_u32 written = 0ul;
+
+    CHECK(v9x_i9xx_modulate_program_extent() == 16ul);
+    CHECK(v9x_i9xx_build_modulate_program(stream, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 16ul);
+
+    CHECK(stream[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 14ul));
+
+    /* dcl T0, then dcl S0 with no channel mask, then dcl T8 - the same three
+     * dwords the sampling and untextured programs emit for the same
+     * registers, which is the point: only the arithmetic is new. */
+    CHECK(stream[1] == 0x19083c00ul);
+    CHECK(stream[4] == 0x19180000ul);
+    CHECK((stream[4] & V9X_I9XX_FS_CHANNEL_ALL) == 0ul);
+    CHECK(stream[7] == 0x190a3c00ul);
+
+    /*
+     * texld R0, not oC. The sampling program writes oC directly because it
+     * may; here the texel is an operand, and a texld that wrote oC would
+     * produce the unmodulated picture - which is exactly what the previous
+     * scene already draws, so it would look like a pass.
+     */
+    CHECK(stream[10] == 0x15000000ul);
+    CHECK((stream[10] & (7ul << V9X_I9XX_T0_DEST_TYPE_SHIFT)) == 0ul);
+    CHECK(stream[11] == 0x01000000ul);
+    CHECK(stream[12] == 0ul);
+
+    /*
+     * mul oC, R0, T8 - the three dwords the audit derived:
+     *   A0 = A0_MUL | dest oC | channel all | src0 R0
+     *   A1 = src0 swizzle xyzw | src1 type T, nr 8, X and Y
+     *   A2 = src1 Z and W
+     */
+    CHECK(stream[13] == 0x03203c00ul);
+    CHECK(stream[14] == 0x01232801ul);
+    CHECK(stream[15] == 0x23000000ul);
+
+    /*
+     * And the split stated as a property rather than as three magic numbers.
+     * src1's Z and W selectors are in A2 and NOT in A1: a builder that put
+     * all four in A1 would leave A2 zero, which reads as src1.zw = xx and
+     * multiplies by (r, g, r, r).
+     */
+    CHECK(stream[15] != 0ul);
+    CHECK(((stream[15] >> 28) & 0xful) == 2ul);   /* Z selects channel 2 */
+    CHECK(((stream[15] >> 24) & 0xful) == 3ul);   /* W selects channel 3 */
+    CHECK(((stream[14] >> 4) & 0xful) == 0ul);    /* X selects channel 0 */
+    CHECK((stream[14] & 0xful) == 1ul);           /* Y selects channel 1 */
+
+    /* Five instructions of three dwords plus a header. */
+    CHECK((written - 1ul) % 3ul == 0ul);
+    CHECK((written - 1ul) / 3ul == 5ul);
+
+    /* Distinct from both other programs, in length and therefore in the
+     * decoder's per-mode length check. */
+    CHECK(v9x_i9xx_modulate_program_extent() !=
+          v9x_i9xx_sampling_program_extent());
+    CHECK(v9x_i9xx_modulate_program_extent() !=
+          v9x_i9xx_fragment_program_extent());
+
+    /* Refusals. */
+    CHECK(v9x_i9xx_build_modulate_program(stream, 15ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_modulate_program(0, 24ul, &written) !=
+          V9X_STATUS_OK);
+}
+
 static void test_sampling_program(void)
 {
     v9x_u32 stream[16];
@@ -2188,6 +2504,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_refusals();
     test_sampler_state();
     test_sampling_program();
+    test_modulate_program();
     test_texture_paint();
     test_textured_run();
     test_scene_table();
@@ -2195,6 +2512,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_scene_one_is_textured();
     test_texture_probe_quadrants();
     test_scene_probe_budget();
+    test_depth_scene_expectations();
     test_every_scene_decodes();
     test_scene_combined_crc();
     test_scene_primitive_offset();

@@ -65,19 +65,54 @@ static v9x_u16 v9x_i9xx_normalized_half(v9x_u32 bits)
     return V9X_FALSE;
 }
 
+/*
+ * Is this the vertex colour the kind emits?
+ *
+ * The plain and depth kinds draw flat measured colours - three of them in a
+ * depth scene, one per triangle - and the textured kinds carry a colour the
+ * fragment program either ignores or multiplies by. Each is pinned, because a
+ * vertex colour nobody chose is a picture nobody can read.
+ */
+static v9x_u16 v9x_i9xx_decode_vertex_color(v9x_u32 kind, v9x_u32 color)
+{
+    if (kind == V9X_I9XX_SCENE_TEXTURED) {
+        return (color == V9X_I9XX_TEX_VERTEX_COLOR_BGRA)
+                   ? V9X_TRUE : V9X_FALSE;
+    }
+    if (kind == V9X_I9XX_SCENE_MODULATED) {
+        return (color == V9X_I9XX_TEX_MODULATE_COLOR_BGRA)
+                   ? V9X_TRUE : V9X_FALSE;
+    }
+    if (v9x_i9xx_scene_kind_depth(kind) != V9X_FALSE) {
+        if (color == V9X_I9XX_TRI_COLOR_BGRA ||
+            color == V9X_I9XX_TRI_COLOR_B ||
+            color == V9X_I9XX_TRI_COLOR_C) {
+            return V9X_TRUE;
+        }
+        return V9X_FALSE;
+    }
+    return (color == V9X_I9XX_TRI_COLOR_BGRA) ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
-    v9x_u32 target_offset, v9x_u32 target_bytes,
-    v9x_u32 texture_offset, v9x_u32 texture_bytes,
+    const struct v9x_i9xx_decode_limits *limits,
     v9x_u32 *rejected_index)
 {
     v9x_u32 index = 0ul;
     v9x_u32 target_end;
-    /* A stream is textured when a texture range is given, and not otherwise.
-     * See the header for why there is no separate flag. */
-    v9x_u16 textured = (texture_bytes != 0ul) ? V9X_TRUE : V9X_FALSE;
+    v9x_u32 target_offset;
+    v9x_u32 target_bytes;
+    v9x_u32 texture_offset;
+    v9x_u32 texture_bytes;
+    v9x_u32 depth_offset;
+    v9x_u32 depth_bytes;
+    v9x_u16 textured;
+    v9x_u16 depthed;
     v9x_u16 saw_map_state = V9X_FALSE;
     v9x_u16 saw_sampler_state = V9X_FALSE;
+    v9x_u16 saw_depth_buf_info = V9X_FALSE;
+    v9x_u16 saw_texture_paint = V9X_FALSE;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -91,12 +126,41 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_fill = V9X_FALSE;
 
     if (rejected_index != 0) { *rejected_index = 0ul; }
-    if (stream == 0 || dword_count == 0ul || target_bytes == 0ul ||
+    if (stream == 0 || limits == 0) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    target_offset = limits->target_offset;
+    target_bytes = limits->target_bytes;
+    texture_offset = limits->texture_offset;
+    texture_bytes = limits->texture_bytes;
+    depth_offset = limits->depth_offset;
+    depth_bytes = limits->depth_bytes;
+    /*
+     * What the KIND requires, and what the ranges permit, checked against each
+     * other before anything else. A modulated stream with no texture range, or
+     * a plain stream carrying a depth range, is a caller that has got its own
+     * arguments wrong - and the decoder refusing is cheaper than validating a
+     * stream against limits nobody meant.
+     */
+    textured = v9x_i9xx_scene_kind_textured(limits->kind);
+    depthed = v9x_i9xx_scene_kind_depth(limits->kind);
+    if ((textured != V9X_FALSE) != (texture_bytes != 0ul) ||
+        (depthed != V9X_FALSE) != (depth_bytes != 0ul)) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    if (dword_count == 0ul || target_bytes == 0ul ||
         target_offset > 0xfffffffful - target_bytes) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     if (textured != V9X_FALSE &&
         texture_offset > 0xfffffffful - texture_bytes) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    if (depthed != V9X_FALSE &&
+        (depth_offset == 0ul ||
+         depth_offset > 0xfffffffful - depth_bytes)) {
+        /* Address zero included: it is inside the aperture, it is not ours,
+         * and it is exactly the value the removed Phase 5 binding carried. */
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     target_end = target_offset + target_bytes;
@@ -119,23 +183,44 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if ((identity & V9X_I9XX_BUF_3D_ID_DEPTH) ==
                     V9X_I9XX_BUF_3D_ID_DEPTH) {
                 /*
-                 * ANY depth BUF_INFO is now a refusal, address zero included.
+                 * A REAL depth buffer, from 2026-09-16.
                  *
-                 * This used to accept one whose address was zero, on the
-                 * reading that a declared-but-unreferenced depth buffer is
-                 * what the reference path emits. It is not: Mesa emits none
-                 * when there is no depth buffer, and address zero is inside
-                 * the aperture and is not ours.
+                 * The issue that closed the address-zero binding said in
+                 * advance what this would become: "a check that its address
+                 * is inside the reserve, not a relaxation back to accepting
+                 * zero". Address zero is still refused - the preamble rejects
+                 * a zero depth range outright, and an undepthed stream
+                 * refuses the packet entirely.
                  *
-                 * The stream no longer contains one, so this is the decoder
-                 * enforcing that rather than permitting it - which is the
-                 * whole point of an allowlist. When Phase 6 adds a real depth
-                 * buffer, this becomes a check that its address is inside the
-                 * reserve, not a relaxation back to accepting zero.
-                 *
-                 * docs\issues\2026-09-15-intel-depth-buf-info-at-address-zero.md
+                 * The encoding is MESA-SOURCED ONLY. xf86 has no depth buffer
+                 * anywhere, so no second site can exist, and this check is
+                 * the only thing standing between a mis-derived binding and a
+                 * GPU reading a page that is not ours.
                  */
-                V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 1ul);
+                if (depthed == V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 1ul);
+                }
+                if ((identity & V9X_I9XX_BUF_3D_PITCH_MASK) !=
+                        (V9X_I9XX_DEPTH_PITCH &
+                         V9X_I9XX_BUF_3D_PITCH_MASK)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_PITCH, index + 1ul);
+                }
+                if (address != depth_offset) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
+                }
+                /*
+                 * And the range must hold the buffer the pitch implies. A
+                 * product of two constants, folded at compile time: a runtime
+                 * 32-bit multiply here would be a __U4M call into the default
+                 * CODE segment that a near call cannot reach.
+                 */
+                if (depth_bytes < (v9x_u32)(V9X_I9XX_DEPTH_HEIGHT *
+                                            V9X_I9XX_DEPTH_PITCH)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
+                }
+                saw_depth_buf_info = V9X_TRUE;
+                index += 3ul;
+                continue;
             }
             if ((identity & V9X_I9XX_BUF_3D_ID_COLOR_BACK) !=
                     V9X_I9XX_BUF_3D_ID_COLOR_BACK) {
@@ -398,12 +483,32 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                        V9X_I9XX_S4_VFMT_COLOR)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, index + 3ul);
             }
-            /* S6's depth enables must be clear: Phase 5 is un-Z'd and the
-             * depth buffer it declares has no memory behind it. */
-            if ((stream[index + 5ul] & (V9X_I9XX_S6_DEPTH_TEST_ENABLE |
-                                        V9X_I9XX_S6_DEPTH_WRITE_ENABLE)) !=
-                    0ul) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 5ul);
+            /*
+             * S6, pinned to the kind rather than merely screened for
+             * forbidden bits.
+             *
+             * An undepthed stream must have both enables clear, as before. A
+             * depth stream must have the test enable AND the LESS function,
+             * and the write enable exactly when it is the writing kind -
+             * equality, not a mask, because a stream that enabled writes in
+             * the testing scene would modify the depth buffer unasked and the
+             * next scene's clear would erase the evidence.
+             */
+            {
+                v9x_u32 want_s6 = V9X_I9XX_S6_PHASE5;
+
+                if (depthed != V9X_FALSE) {
+                    want_s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
+                               (V9X_I9XX_COMPAREFUNC_LESS <<
+                                    V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
+                    if (v9x_i9xx_scene_kind_depth_writes(limits->kind) !=
+                            V9X_FALSE) {
+                        want_s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;
+                    }
+                }
+                if (stream[index + 5ul] != want_s6) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 5ul);
+                }
             }
             index += payload + 1ul;
 
@@ -420,10 +525,19 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * the untextured program is caught here, and that program would
              * write the interpolated vertex colour and never sample at all.
              */
-            if (payload != ((textured != V9X_FALSE)
-                                ? v9x_i9xx_sampling_program_extent() - 1ul
-                                : v9x_i9xx_fragment_program_extent() - 1ul)) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+            {
+                v9x_u32 want;
+
+                if (limits->kind == V9X_I9XX_SCENE_MODULATED) {
+                    want = v9x_i9xx_modulate_program_extent() - 1ul;
+                } else if (textured != V9X_FALSE) {
+                    want = v9x_i9xx_sampling_program_extent() - 1ul;
+                } else {
+                    want = v9x_i9xx_fragment_program_extent() - 1ul;
+                }
+                if (payload != want) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+                }
             }
             saw_shader = V9X_TRUE;
             index += payload + 1ul;
@@ -481,28 +595,45 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
                 }
                 saw_fill = V9X_TRUE;
-            } else if (textured == V9X_FALSE ||
+            } else if (textured != V9X_FALSE &&
                        v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
                                                      texture_offset,
-                                                     texture_bytes) !=
+                                                     texture_bytes) ==
                            V9X_STATUS_OK) {
+                /*
+                 * A quadrant paint, bounded by the texture range so a
+                 * quadrant whose address arithmetic went wrong is refused
+                 * here rather than overwriting a page that is not ours.
+                 *
+                 * No colour check: the four quadrant colours are the
+                 * experiment's variable, and a decoder asserting them would
+                 * be asserting the answer.
+                 */
+                saw_texture_paint = V9X_TRUE;
+            } else if (depthed != V9X_FALSE &&
+                       v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
+                                                     depth_offset,
+                                                     depth_bytes) ==
+                           V9X_STATUS_OK) {
+                /*
+                 * The depth CLEAR, bounded by the depth range. It must clear
+                 * to FAR: a nearer value would reject primitives for a reason
+                 * invisible in the capture, and a buffer cleared to whatever
+                 * the page held would make the scene's result depend on the
+                 * previous boot.
+                 */
+                if (stream[index + 5ul] != V9X_I9XX_DEPTH_CLEAR_DWORD) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
+                }
+            } else {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index);
             }
             /*
-             * Otherwise it is a blit into the TEXTURE: one of the four
-             * quadrant paints, bounded by the texture range so a quadrant
-             * whose address arithmetic went wrong is refused here rather than
-             * overwriting a page that is not ours.
-             *
-             * The texture is painted by the GPU for the same reason the target
-             * is - a CPU upload through the aperture is the access the errata
-             * gate was opened on condition of avoiding - so these packets are
-             * part of every textured stream and the allowlist has to name
-             * them.
-             *
-             * No colour check: the four quadrant colours are the experiment's
-             * variable, and a decoder asserting them would be asserting the
-             * answer.
+             * The texture and the depth buffer are both painted by the GPU for
+             * the same reason the target is: a CPU upload through the aperture
+             * is the access the errata gate was opened on condition of
+             * avoiding. So these blits are part of every textured or depth
+             * stream, and the allowlist has to name them.
              */
             index += 6ul;
 
@@ -516,6 +647,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             v9x_u32 vertex;
             v9x_u32 base;
             v9x_u32 stride;
+            v9x_u32 vertices;
             if ((command & 0x00800000ul) != 0ul) {
                 /* Bit 23 set is the indirect form, which would fetch vertices
                  * from a buffer this phase does not allocate. */
@@ -534,8 +666,15 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              */
             stride = (textured != V9X_FALSE) ? V9X_I9XX_TEXTURED_VERTEX_DWORDS
                                              : V9X_I9XX_VERTEX_DWORDS;
-            if (payload != (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
-                                     (v9x_u16)stride)) {
+            /*
+             * Vertices: three per triangle, and a depth scene draws three
+             * triangles where every other kind draws one. Bounded by the
+             * scene table's own maximum rather than fixed at three.
+             */
+            vertices = (depthed != V9X_FALSE)
+                           ? (V9X_I9XX_VERTEX_COUNT * 3ul)
+                           : V9X_I9XX_VERTEX_COUNT;
+            if (payload != (v9x_u32)((v9x_u16)vertices * (v9x_u16)stride)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
             }
             if (dword_count - index < payload + 1ul) {
@@ -550,7 +689,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * which is how this was found.
              */
             base = index + 1ul;
-            for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
+            for (vertex = 0ul; vertex < vertices; ++vertex) {
                 v9x_u32 decoded = 0ul;
                 /*
                  * Decode the coordinates back through the float transport and
@@ -568,9 +707,27 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     decoded >= V9X_I9XX_TARGET_HEIGHT) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 1ul);
                 }
-                /* Z must be zero and W exactly one. */
-                if (v9x_i9xx_float_to_int(stream[base + 2ul], &decoded) !=
-                        V9X_I9XX_FLOAT_OK || decoded != 0ul) {
+                /*
+                 * Z. Zero in an undepthed stream - there is nothing for a
+                 * depth to mean - and a fraction in [0, 1] in a depth one,
+                 * where it is the whole point.
+                 *
+                 * The fraction is checked as a bit pattern, not decoded: the
+                 * driver's float helper takes integers and cannot express a
+                 * depth between the planes. What is required is that the
+                 * pattern is a positive finite float no greater than 1.0f,
+                 * which the ordering of IEEE-754 magnitudes makes a single
+                 * comparison - anything above 0x3f800000 is either greater
+                 * than one, infinite or a NaN, and a negative Z has the sign
+                 * bit set and exceeds it too.
+                 */
+                if (depthed != V9X_FALSE) {
+                    if (stream[base + 2ul] > 0x3f800000ul) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 2ul);
+                    }
+                } else if (v9x_i9xx_float_to_int(stream[base + 2ul],
+                                                 &decoded) !=
+                               V9X_I9XX_FLOAT_OK || decoded != 0ul) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 2ul);
                 }
                 if (v9x_i9xx_float_to_int(stream[base + 3ul], &decoded) !=
@@ -580,10 +737,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 /* Uniform colour, which is what makes shading mode moot.
                  * The textured stream's colour is unread by the sampling
                  * program but must still be the one this build emits. */
-                if (stream[base + 4ul] !=
-                        ((textured != V9X_FALSE)
-                             ? V9X_I9XX_TEX_VERTEX_COLOR_BGRA
-                             : V9X_I9XX_TRI_COLOR_BGRA)) {
+                if (v9x_i9xx_decode_vertex_color(limits->kind,
+                                                 stream[base + 4ul]) ==
+                        V9X_FALSE) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, base + 4ul);
                 }
                 if (textured != V9X_FALSE) {
@@ -636,6 +792,23 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      */
     if (textured != V9X_FALSE &&
         (saw_map_state == V9X_FALSE || saw_sampler_state == V9X_FALSE)) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    /*
+     * And a depth stream must BIND one. Without the BUF_INFO the S6 enables
+     * point the hardware at whatever depth buffer the engine last had, which
+     * is another client's memory or none - and the draw would test against it
+     * without complaint.
+     */
+    if (depthed != V9X_FALSE && saw_depth_buf_info == V9X_FALSE) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    /*
+     * A textured stream must also PAINT its texture. Without the blits the
+     * sampler reads a page holding whatever the last boot left, which under a
+     * nearest filter is a picture - just not one of this build's making.
+     */
+    if (textured != V9X_FALSE && saw_texture_paint == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     return V9X_I9XX_P5_OK;

@@ -83,6 +83,23 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
     layout->texture_guard_physical = bsm + layout->texture_guard_offset;
 
     /*
+     * The depth buffer above the texture's guard, which therefore serves as
+     * its lower guard too, and its own guard page above it.
+     *
+     * 0x50000 bytes, which is what is left of the reserve once everything
+     * above it is placed - see the constants for why it is 256 rows and not
+     * 480. The bound below is what makes that a checked fact rather than an
+     * arithmetic claim in a comment.
+     */
+    layout->depth_offset = layout->texture_guard_offset +
+                           V9X_I9XX_SANDBOX_PAGE_BYTES;
+    layout->depth_physical = bsm + layout->depth_offset;
+    layout->depth_bytes = V9X_I9XX_DEPTH_BYTES;
+    layout->depth_pitch = V9X_I9XX_DEPTH_PITCH;
+    layout->depth_guard_offset = layout->depth_offset + V9X_I9XX_DEPTH_BYTES;
+    layout->depth_guard_physical = bsm + layout->depth_guard_offset;
+
+    /*
      * Everything above must fit inside the reserve. This is arithmetic on
      * compile-time constants today, but it is checked rather than asserted in
      * a comment: the target size and the reserve size are separate constants,
@@ -90,7 +107,7 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
      * otherwise silently place the texture and its guard - or part of the
      * target - in the published DirectDraw heap.
      */
-    if (layout->texture_guard_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
+    if (layout->depth_guard_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
             reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
         v9x_i9xx_zero_layout(layout);
         return V9X_STATUS_INSUFFICIENT_MEMORY;

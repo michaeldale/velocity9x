@@ -856,11 +856,11 @@ static int emit_intel_scenes(void)
                (unsigned long)v9x_i9xx_scene_crc(index));
         printf("SC%04XTRIS=%04X\n", (unsigned int)index,
                (unsigned int)scene.triangle_count);
-        /* Whether the scene paints and samples a texture. The validator needs
-         * it to know which scenes owe a texture-guard reading and which must
-         * not carry one. */
-        printf("SC%04XTEXTURED=%04X\n", (unsigned int)index,
-               (unsigned int)scene.textured);
+        /* WHAT the scene is. The validator derives from it which scenes owe a
+         * texture-guard reading and which must not carry one, and which probe
+         * expectations are open questions rather than regressions. */
+        printf("SC%04XKIND=%04X\n", (unsigned int)index,
+               (unsigned int)scene.kind);
         /*
          * Each triangle's colour as this chip is MEASURED to store it. The
          * validator needs it to compare a probe that expected a triangle

@@ -307,6 +307,24 @@ Translate only a small enumerated subset of fixed-function texture-stage
 operations. Advertise no pixel-shader capability. A general i915 shader
 compiler is out of scope and is a kill criterion if it becomes necessary.
 
+**Step 1 done 2026-09-16, one opaque RGB565 texture nearest-clamp**: `intel45`,
+`Result=PASS`, every quadrant probe reading the quadrant predicted. Record:
+[the texture](../decisions/2026-09-16-intel-gen3-texture-sampled-uv-addressing.md).
+
+**Steps 2 to 4 built 2026-09-16, not yet run.** The scene table is five scenes
+against the five draws authorised - the bound is now reached. Scene 2 modulates
+the texel by the vertex colour; scenes 3 and 4 bind a real depth buffer and
+test against it, without writes then with. The audit that licensed them is
+[here](../decisions/2026-09-16-intel-gen3-modulate-and-depth-audit.md), and it
+records two things it could not establish: the depth `BUF_INFO` encoding has
+one source, because xf86 has no depth buffer anywhere, and the mapping from a
+post-transform Z to the 16-bit depth format is stated by neither tree. The
+depth scenes are built to depend only on the ORDER of their depths.
+
+Alpha test and source-alpha blend remain. They need their own audit and a prior
+decision: an RGB565 texture carries no alpha, so the alpha source is either
+vertex alpha or a `MAPSURF` sub-format this driver has never emitted.
+
 ### 7. Publish
 
 Only now add `V9X_DD_ENGINE_TYPE_INTEL_GEN3` to both selector paths and let the

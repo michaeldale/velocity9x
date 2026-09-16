@@ -332,3 +332,69 @@ v9x_u32 v9x_i9xx_texture_quadrant_color(v9x_u32 quadrant)
     }
     return v9x_i9xx_texture_quadrant[quadrant] & 0xfffful;
 }
+
+/*
+ * The depth CLEAR.
+ *
+ * One XY_COLOR_BLT over the whole depth buffer, then an MI_FLUSH so the values
+ * are out of the render cache before the first primitive tests against them -
+ * the same ordering the texture paint needs and for the same reason.
+ *
+ * A blit rather than _3DSTATE_CLEAR_PARAMETERS with PRIM3D_CLEAR_RECT. Mesa
+ * offers both and its blitter path clears depth with i915_fill_blit; the
+ * render path would add a state packet AND a primitive type, neither of which
+ * can be double-sourced and neither of which this driver needs. The blit is
+ * also the one operation this part is measured to perform correctly.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md section 5.
+ */
+v9x_u32 v9x_i9xx_depth_clear_extent(void)
+{
+    /* One six-dword blit and the flush. */
+    return 6ul + 1ul;
+}
+
+v9x_status v9x_i9xx_build_depth_clear(
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_bytes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 produced = 0ul;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (depth_pitch != V9X_I9XX_DEPTH_PITCH ||
+        depth_bytes != V9X_I9XX_DEPTH_BYTES) {
+        /* The rectangle below is written for this buffer. A different one
+         * would need it re-derived, not re-used. */
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (capacity < v9x_i9xx_depth_clear_extent()) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    /*
+     * The blit counts DWORDS across, and a 16-bit depth buffer puts two values
+     * in each - so the width is the pitch in dwords, not in pixels. Getting
+     * that backwards would clear half the buffer and leave the rest holding
+     * whatever the page held, which under a LESS test is a region where
+     * nothing ever draws.
+     */
+    if (v9x_i9xx_build_color_blt(
+            depth_offset,
+            (v9x_u16)(V9X_I9XX_DEPTH_PITCH / 4ul),
+            (v9x_u16)V9X_I9XX_DEPTH_HEIGHT,
+            (v9x_u16)V9X_I9XX_DEPTH_PITCH,
+            V9X_I9XX_DEPTH_CLEAR_DWORD,
+            depth_offset, depth_bytes,
+            stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    at += produced;
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+
+    *written = at;
+    return V9X_STATUS_OK;
+}

@@ -73,6 +73,40 @@
 #define V9X_I9XX_TEXTURE_HEIGHT          ((v9x_u32)32ul)
 #define V9X_I9XX_TEXTURE_PITCH           ((v9x_u32)64ul)
 #define V9X_I9XX_TEXTURE_BYTES           ((v9x_u32)2048ul)
+
+/*
+ * The DEPTH buffer: 640 wide, 256 tall, at the render target's pitch.
+ *
+ * Not the target's height, and the reason is arithmetic rather than taste.
+ * The reserve is 1 MiB and the ring, HWS, scratch, target, texture and their
+ * guards leave 0x55000 bytes. A full 640x480 16-bit depth buffer is 0x96000.
+ * It does not fit, and growing the reserve would move a boundary that two
+ * cold-boot GTT captures and the loader all agree on.
+ *
+ * The PITCH matches the target's, deliberately. Depth is addressed as
+ * base + y * pitch + x * 2, so at this pitch any x inside the drawing
+ * rectangle is inside a row and only Y needs bounding - one invariant, on
+ * one coordinate, which the builder and the decoder can both state. A
+ * narrower pitch would have made it two.
+ *
+ * Every depth scene's geometry must therefore stay above y = 256. The
+ * builder refuses a vertex below it rather than trusting the scene table.
+ */
+#define V9X_I9XX_DEPTH_WIDTH             ((v9x_u32)640ul)
+#define V9X_I9XX_DEPTH_HEIGHT            ((v9x_u32)256ul)
+#define V9X_I9XX_DEPTH_PITCH             ((v9x_u32)1280ul)
+#define V9X_I9XX_DEPTH_BYTES             ((v9x_u32)0x00050000ul)
+/*
+ * The clear value: FAR, so a first draw at any depth passes a LESS test.
+ *
+ * 0xFFFF doubled into a dword, because the clear is an XY_COLOR_BLT and the
+ * blit fills in dwords - two 16-bit depth values share one. Mesa packs a
+ * 16-bit depth clear exactly this way (i915_clear.c: `(packed & 0xffff) |
+ * (packed << 16)`), which is the same reason the texture quadrants and the
+ * render-target fill are doubled dwords.
+ */
+#define V9X_I9XX_DEPTH_CLEAR_VALUE       ((v9x_u32)0x0000fffful)
+#define V9X_I9XX_DEPTH_CLEAR_DWORD       ((v9x_u32)0xfffffffful)
 /* One quadrant, in texels. The blit takes its width in DWORDS, which is half
  * this at 16 bpp. */
 #define V9X_I9XX_TEXTURE_BLOCK           ((v9x_u32)16ul)
@@ -302,6 +336,16 @@ struct v9x_i9xx_sandbox_layout {
     v9x_u32 texture_pitch;
     v9x_u32 texture_guard_offset;
     v9x_u32 texture_guard_physical;
+    /*
+     * The depth buffer and its upper guard. The texture's guard page serves as
+     * its lower one, on the same pattern the target and texture already use.
+     */
+    v9x_u32 depth_offset;
+    v9x_u32 depth_physical;
+    v9x_u32 depth_bytes;
+    v9x_u32 depth_pitch;
+    v9x_u32 depth_guard_offset;
+    v9x_u32 depth_guard_physical;
 };
 
 /* A command is never split across the physical end of the ring.  pad_dwords

@@ -102,11 +102,11 @@
     ReferenceFill = '00000842'
     ReferenceColor = '0000143F'
     IntelReferenceColor = '00001C3E'
-    SceneCount = 2
+    SceneCount = 5
     SceneAuthorisedDraws = 5
-    SceneCombinedCrc = '0F753C43'
-    SceneArmCrc = 'D9998B57'
-    SceneTotalProbes = 20
+    SceneCombinedCrc = '68BAC311'
+    SceneArmCrc = '99B147E9'
+    SceneTotalProbes = 38
     TextureQuadrants = @(
         '1C3E'
         'F325'
@@ -120,7 +120,9 @@
             Crc = '01A4DE25'
             PrimitiveOffset = 48
             Triangles = 1
+            Kind = 0
             Textured = $false
+            Depth = $false
             Colors = @(
                 @{ Value = '1C3E'; Measured = $true }
             )
@@ -147,7 +149,9 @@
             Crc = '4B534C2E'
             PrimitiveOffset = 86
             Triangles = 1
+            Kind = 1
             Textured = $true
+            Depth = $false
             Colors = @(
                 @{ Value = 'FFFF'; Measured = $false }
             )
@@ -158,6 +162,73 @@
                 @{ Name = 'TexQ3'; X = 350; Y = 330; Expect = 19 }
                 @{ Name = 'TexOutside'; X = 40; Y = 400; Expect = 0 }
                 @{ Name = 'TexCorner'; X = 0; Y = 0; Expect = 0 }
+            )
+        }
+        @{
+            Id = 6
+            Dwords = 114
+            Crc = 'D6E5996B'
+            PrimitiveOffset = 92
+            Triangles = 1
+            Kind = 2
+            Textured = $true
+            Depth = $false
+            Colors = @(
+                @{ Value = '8410'; Measured = $false }
+            )
+            Probes = @(
+                @{ Name = 'ModQ0'; X = 250; Y = 160; Expect = 20 }
+                @{ Name = 'ModQ1'; X = 400; Y = 160; Expect = 21 }
+                @{ Name = 'ModQ2'; X = 290; Y = 330; Expect = 22 }
+                @{ Name = 'ModQ3'; X = 350; Y = 330; Expect = 23 }
+                @{ Name = 'ModOutside'; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'ModCorner'; X = 0; Y = 0; Expect = 0 }
+            )
+        }
+        @{
+            Id = 7
+            Dwords = 104
+            Crc = 'C93F4BB0'
+            PrimitiveOffset = 58
+            Triangles = 3
+            Kind = 3
+            Textured = $false
+            Depth = $true
+            Colors = @(
+                @{ Value = '1C3E'; Measured = $true }
+                @{ Value = 'F325'; Measured = $true }
+                @{ Value = '3038'; Measured = $true }
+            )
+            Probes = @(
+                @{ Name = 'DepA'; X = 100; Y = 60; Expect = 1 }
+                @{ Name = 'DepAB'; X = 200; Y = 60; Expect = 2 }
+                @{ Name = 'DepABC'; X = 233; Y = 60; Expect = 3 }
+                @{ Name = 'DepBC'; X = 260; Y = 60; Expect = 3 }
+                @{ Name = 'DepC'; X = 400; Y = 60; Expect = 3 }
+                @{ Name = 'DepOut'; X = 560; Y = 220; Expect = 0 }
+            )
+        }
+        @{
+            Id = 8
+            Dwords = 104
+            Crc = '6985BB96'
+            PrimitiveOffset = 58
+            Triangles = 3
+            Kind = 4
+            Textured = $false
+            Depth = $true
+            Colors = @(
+                @{ Value = '1C3E'; Measured = $true }
+                @{ Value = 'F325'; Measured = $true }
+                @{ Value = '3038'; Measured = $true }
+            )
+            Probes = @(
+                @{ Name = 'DepA'; X = 100; Y = 60; Expect = 1 }
+                @{ Name = 'DepAB'; X = 200; Y = 60; Expect = 2 }
+                @{ Name = 'DepABC'; X = 233; Y = 60; Expect = 2 }
+                @{ Name = 'DepBC'; X = 260; Y = 60; Expect = 2 }
+                @{ Name = 'DepC'; X = 400; Y = 60; Expect = 3 }
+                @{ Name = 'DepOut'; X = 560; Y = 220; Expect = 0 }
             )
         }
     )

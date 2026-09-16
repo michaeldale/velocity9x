@@ -14,6 +14,9 @@
  * (audit section 8).
  */
 #include "velocity9x/intel_gen3_3d.h"
+/* The depth buffer's geometry lives with the sandbox layout that places it,
+ * not with the packets that describe it. */
+#include "velocity9x/intel_gma.h"
 
 /*
  * Packet counts, kept next to the emitters that produce them so the extent and
@@ -132,7 +135,7 @@ static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
  * S2 through S6 in one load, which is the shape Mesa's steady state uses. The
  * trailing length field is (S dwords - 1); five independent use sites agree.
  */
-static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2)
+static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2, v9x_u32 s6)
 {
     v9x_u32 at = 0ul;
 
@@ -163,7 +166,18 @@ static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2)
                    V9X_I9XX_S4_VFMT_XYZW |
                    V9X_I9XX_S4_VFMT_COLOR;
     stream[at++] = V9X_I9XX_S5_PHASE5;
-    stream[at++] = V9X_I9XX_S6_PHASE5;
+    /*
+     * S6, a PARAMETER for the same reason S2 is. Colour writes alone for an
+     * un-Z'd scene; plus the depth test enable and the LESS function when
+     * there is a depth buffer; plus the write enable only when the scene is
+     * the one that writes depth.
+     *
+     * Three distinct dwords, and the decoder requires the one the scene
+     * claims. A stream that enabled depth writes in a scene which merely
+     * tests would modify the depth buffer unasked, and the next scene's clear
+     * would hide the evidence.
+     */
+    stream[at++] = s6;
 
     return at;
 }
@@ -195,10 +209,20 @@ v9x_u32 v9x_i9xx_textured_state_extent(void)
  * and target emitters is what this avoids, and it is what the packet-offset
  * defect and the primitive-offset defect were both made of.
  */
+struct v9x_i9xx_depth_binding {
+    v9x_u32 offset;
+    v9x_u32 pitch;
+    /* Non-zero adds S6_DEPTH_WRITE_ENABLE. Separate from the binding's
+     * existence because a depth TEST without writes is a distinct scene and
+     * the two must not be reachable by the same argument. */
+    v9x_u32 writes;
+};
+
 static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
+    const struct v9x_i9xx_depth_binding *depth,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
@@ -214,7 +238,53 @@ v9x_status v9x_i9xx_build_textured_state(
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
-                                       width, height, texture,
+                                       width, height, texture, 0,
+                                       stream, capacity, written);
+}
+
+/*
+ * The DEPTH state block: the untextured one plus a real depth BUF_INFO.
+ *
+ * The depth binding Phase 5 used to emit named address zero and was inert
+ * because the S6 enables were clear. It was removed on 2026-09-16 precisely so
+ * this step would start from a stream with no depth binding at all, rather
+ * than replacing a bad one and reading the result against a baseline that
+ * already contained it.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md sections
+ * 3 and 4. The BUF_INFO encoding is MESA-SOURCED ONLY - xf86 has no depth
+ * buffer anywhere and cannot corroborate it - which is why the scene that
+ * exercises this is built to make a wrong binding visible rather than silent.
+ */
+v9x_u32 v9x_i9xx_depth_state_extent(void)
+{
+    /* One more BUF_INFO: the command, the identity dword and the address. */
+    return v9x_i9xx_3d_state_extent() + 3ul;
+}
+
+v9x_status v9x_i9xx_build_depth_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 writes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_i9xx_depth_binding depth;
+
+    if (depth_offset == 0ul || depth_pitch != V9X_I9XX_DEPTH_PITCH) {
+        /*
+         * Address zero is refused here as well as in the decoder. It is inside
+         * the aperture and is not ours, and it is the exact value the removed
+         * binding carried - so a regression that reinstated it would otherwise
+         * build cleanly.
+         */
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    depth.offset = depth_offset;
+    depth.pitch = depth_pitch;
+    depth.writes = writes;
+    return v9x_i9xx_build_state_common(target_offset, target_pitch,
+                                       width, height, 0, &depth,
                                        stream, capacity, written);
 }
 
@@ -224,7 +294,7 @@ v9x_status v9x_i9xx_build_3d_state(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
-                                       width, height, 0,
+                                       width, height, 0, 0,
                                        stream, capacity, written);
 }
 
@@ -232,12 +302,20 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
+    const struct v9x_i9xx_depth_binding *depth,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
     v9x_u32 produced = 0ul;
-    v9x_u32 needed = (texture != 0) ? v9x_i9xx_textured_state_extent()
-                                    : v9x_i9xx_3d_state_extent();
+    v9x_u32 needed;
+
+    if (texture != 0) {
+        needed = v9x_i9xx_textured_state_extent();
+    } else if (depth != 0) {
+        needed = v9x_i9xx_depth_state_extent();
+    } else {
+        needed = v9x_i9xx_3d_state_extent();
+    }
 
     if (written != 0) { *written = 0ul; }
     if (stream == 0 || written == 0 || capacity < needed) {
@@ -261,6 +339,19 @@ static v9x_status v9x_i9xx_build_state_common(
     at += v9x_i9xx_emit_target(stream + at, target_offset, target_pitch,
                                width, height);
     /*
+     * The depth BUF_INFO, beside the colour one and built the same way. Mesa
+     * builds both through a single code path - identity, then pitch, then
+     * tiling bits only if tiled - and I915_TILE_NONE contributes nothing, so
+     * a linear depth buffer is the absence of those bits rather than a
+     * special case.
+     */
+    if (depth != 0) {
+        stream[at++] = V9X_I9XX_3DSTATE_BUF_INFO;
+        stream[at++] = V9X_I9XX_BUF_3D_ID_DEPTH |
+                       (depth->pitch & V9X_I9XX_BUF_3D_PITCH_MASK);
+        stream[at++] = depth->offset;
+    }
+    /*
      * The texture packets sit between the target and the pipeline. Order
      * follows both reference emitters, which write map and sampler state
      * before the state-immediate load that declares the coordinate format.
@@ -280,10 +371,23 @@ static v9x_status v9x_i9xx_build_state_common(
         at += produced;
     }
 
-    at += v9x_i9xx_emit_pipeline(stream + at,
-                                 (texture != 0)
-                                     ? V9X_I9XX_S2_TEXTURED_UNIT0
-                                     : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT);
+    {
+        v9x_u32 s6 = V9X_I9XX_S6_PHASE5;
+
+        if (depth != 0) {
+            s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
+                  (V9X_I9XX_COMPAREFUNC_LESS <<
+                       V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
+            if (depth->writes != 0ul) {
+                s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;
+            }
+        }
+        at += v9x_i9xx_emit_pipeline(stream + at,
+                                     (texture != 0)
+                                         ? V9X_I9XX_S2_TEXTURED_UNIT0
+                                         : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT,
+                                     s6);
+    }
 
     if (at != needed) {
         /* The emitters and the extent disagree, which is a programming error

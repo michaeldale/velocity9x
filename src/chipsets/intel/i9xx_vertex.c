@@ -13,6 +13,9 @@
  * host test.
  */
 #include "velocity9x/intel_gen3_3d.h"
+/* The depth buffer's height bounds a depth run's geometry; it lives with the
+ * sandbox layout that places the buffer. */
+#include "velocity9x/intel_gma.h"
 
 #define V9X_I9XX_VERTEX_RUN_DWORDS \
     (1ul + V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS)
@@ -89,9 +92,46 @@ v9x_u32 v9x_i9xx_triangle_run_dwords(v9x_u32 count)
  * packet offsets were wrong once already because two places derived the same
  * numbers independently, and one primitive emitter is the fix for that class.
  */
+/*
+ * One emission path for both runs.
+ *
+ * `z_bits` null is the flat Z=0 run Phase 5 has always emitted. Non-null
+ * applies z_bits[i] to all three vertices of triangle i and bounds Y by the
+ * depth buffer's height. A second copy of this loop is what the packet-offset
+ * and primitive-offset defects were both made of.
+ */
+static v9x_status v9x_i9xx_build_run_common(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *z_bits, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
 v9x_status v9x_i9xx_build_triangle_run(
     const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
     v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    return v9x_i9xx_build_run_common(triangles, count, 0, width, height,
+                                     stream, capacity, written);
+}
+
+v9x_status v9x_i9xx_build_depth_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *z_bits, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (z_bits == 0) {
+        /* A depth run with no depths is a mistake, not a flat one. The caller
+         * that wanted flat should have asked for a triangle run. */
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_i9xx_build_run_common(triangles, count, z_bits, width, height,
+                                     stream, capacity, written);
+}
+
+static v9x_status v9x_i9xx_build_run_common(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *z_bits, v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
@@ -149,6 +189,20 @@ v9x_status v9x_i9xx_build_triangle_run(
                 triangles[index].y[vertex] >= height) {
                 return V9X_STATUS_INVALID_ARGUMENT;
             }
+            /*
+             * A depth scene is bounded by the DEPTH buffer as well, which is
+             * shorter than the render target - 256 rows against 480, because
+             * that is what the reserve has left. A pixel below it would have
+             * the hardware address depth memory past the allocation, and the
+             * first thing it would reach is the guard page.
+             *
+             * Refused here rather than caught by the guard afterwards: a
+             * guard says something went wrong, this says what.
+             */
+            if (z_bits != 0 &&
+                triangles[index].y[vertex] >= V9X_I9XX_DEPTH_HEIGHT) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
             if (v9x_i9xx_float_from_int(triangles[index].x[vertex],
                                         &x_bits) != V9X_I9XX_FLOAT_OK ||
                 v9x_i9xx_float_from_int(triangles[index].y[vertex],
@@ -158,7 +212,13 @@ v9x_status v9x_i9xx_build_triangle_run(
 
             stream[at++] = x_bits;
             stream[at++] = y_bits;
-            stream[at++] = zero_bits;
+            /*
+             * Z: flat per triangle, which is all an occlusion test needs and
+             * which keeps depth interpolation out of a measurement that is
+             * about the test. The bit pattern is the scene's, because the
+             * converter takes integers and these are fractions.
+             */
+            stream[at++] = (z_bits != 0) ? z_bits[index] : zero_bits;
             stream[at++] = one_bits;
             /*
              * One colour per TRIANGLE, repeated at its three vertices. Flat

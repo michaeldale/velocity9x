@@ -15,18 +15,24 @@ REM check is host-side, where the decisions live; nothing here can bypass
 REM it.
 REM
 REM
-REM TWO DRAWS, against five authorised. The 2026-09-16 amendment permits up
-REM to five independent draws per armed boot; this stick arms two, which is a
-REM bound being respected rather than approached. Scene 0 is the Phase 5
-REM triangle unchanged, scene 1 paints a texture and samples it. Each scene
-REM re-emits complete state, fills its own target and flushes its own probes
-REM before the next submits - a scene inheriting another's state would be
-REM outside the amendment even at two.
+REM FIVE DRAWS, which is exactly what the 2026-09-16 amendment authorises.
+REM The bound is now REACHED. Scene 0 is the Phase 5 triangle unchanged,
+REM scene 1 paints a texture and samples it, scene 2 modulates that texel by
+REM the vertex colour, and scenes 3 and 4 bind a depth buffer - testing
+REM without writes, then with. Each scene re-emits complete state, fills its
+REM own target and flushes its own probes before the next submits; a scene
+REM inheriting another's state would be outside the amendment even at two.
 REM
-REM Aperture reads: about 1448, against 1806 on the last boot that completed.
-REM FEWER, because three answered scenes retired. The capture publishes the
-REM expected total BEFORE spending any of it, so a hang is a measurement
-REM rather than a guess.
+REM Aperture reads: about 2126, against 1448 on the last boot that completed.
+REM MORE, by about half again - within the rule that no boot roughly doubles
+REM the last one, and stated here because it is the number that rule is about.
+REM The capture publishes the expected total BEFORE spending any of it, so a
+REM hang is a measurement rather than a guess.
+REM
+REM Two of these draws exercise a DEPTH binding whose encoding has one source.
+REM xf86 has no depth buffer anywhere, so nothing corroborates Mesa on it; the
+REM scenes are built so a wrong binding shows as a wrong picture rather than
+REM silently. docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md
 REM Run it from real DOS after V9XCOPY, from inside the package folder:
 REM     C:
 REM     CD \INTELGMA

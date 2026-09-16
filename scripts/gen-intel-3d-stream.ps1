@@ -341,16 +341,22 @@ for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
                     [Convert]::ToInt32($values[($tag + 'PRIM')], 16)))
     $dataLines.Add(('            Triangles = {0}' -f
                     [Convert]::ToInt32($values[($tag + 'TRIS')], 16)))
-    if (-not $values.ContainsKey($tag + 'TEXTURED')) {
-        throw "The emitted scene table is missing $($tag)TEXTURED."
+    if (-not $values.ContainsKey($tag + 'KIND')) {
+        throw "The emitted scene table is missing $($tag)KIND."
     }
+    # The kind, and the two properties the validator derives from it. Derived
+    # HERE from the one value rather than emitted as three flags: three could
+    # disagree with each other, and one cannot.
+    $kind = [Convert]::ToInt32($values[($tag + 'KIND')], 16)
+    $dataLines.Add(('            Kind = {0}' -f $kind))
     # '$true'/'$false' as TEXT, for the same reason the measured flag is:
     # Import-PowerShellDataFile evaluates a data file and refuses a bare True.
     $textured = '$false'
-    if ([Convert]::ToInt32($values[($tag + 'TEXTURED')], 16) -ne 0) {
-        $textured = '$true'
-    }
+    if ($kind -eq 1 -or $kind -eq 2) { $textured = '$true' }
     $dataLines.Add(('            Textured = {0}' -f $textured))
+    $depth = '$false'
+    if ($kind -eq 3 -or $kind -eq 4) { $depth = '$true' }
+    $dataLines.Add(('            Depth = {0}' -f $depth))
     $dataLines.Add('            Colors = @(')
     for ($tri = 0; $tri -lt [Convert]::ToInt32($values[($tag + 'TRIS')], 16); ++$tri) {
         $ctag = '{0}T{1:X4}COLOR' -f $tag, $tri

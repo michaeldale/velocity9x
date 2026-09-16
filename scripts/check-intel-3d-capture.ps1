@@ -563,6 +563,7 @@ function Test-V9xIntel3dCapture {
         # unconditionally: the driver reads it before it knows whether any
         # scene is textured, so a capture without it did not run this build.
         $sceneGuardTex = Get-V9x3dHex32 -Values $values -Key 'TexG0'
+        $sceneGuardDepth = Get-V9x3dHex32 -Values $values -Key 'DepG0'
         for ($scene = 0; $scene -lt $reached; ++$scene) {
             $entry = @($generated.Scenes)[$scene]
             $prefix = "S$scene"
@@ -614,6 +615,17 @@ function Test-V9xIntel3dCapture {
                 throw ("INTEL3D0.TXT scene $scene carries ${prefix}TexG for a " +
                        'scene the build declares untextured. That is an ' +
                        'aperture read the published budget did not allow for.')
+            }
+            # The page past the DEPTH buffer, on the same terms: required of a
+            # depth scene, refused of any other. Its own key rather than
+            # sharing the texture's, because one key standing for two
+            # different pages is one key nobody can read.
+            if ($entry.Depth) {
+                $sceneGuards += @{ Key = 'DepG'; Initial = $sceneGuardDepth
+                                   What = 'depth' }
+            } elseif ($values.ContainsKey($prefix + 'DepG')) {
+                throw ("INTEL3D0.TXT scene $scene carries ${prefix}DepG for a " +
+                       'scene the build declares to have no depth buffer.')
             }
             foreach ($guard in $sceneGuards) {
                 $name = $prefix + $guard.Key
@@ -707,6 +719,47 @@ function Test-V9xIntel3dCapture {
                     $sceneMeasured += ("$key=" + ('{0:X8}' -f $actual))
                     continue
                 }
+                # A MODULATED quadrant probe, expectations 20 through 23.
+                #
+                # The product is a PREDICTION twice over: the shader's own
+                # arithmetic, and then the 565 conversion at channel values
+                # nobody has measured. So the value is reported, and only the
+                # two things that are not predictions can fail:
+                #
+                #  - reading the RAW quadrant colour means the multiply did
+                #    not happen, and the modulated scene drew the unmodulated
+                #    picture - which is what the previous scene already draws,
+                #    so it would otherwise read as a pass;
+                #  - reading the FILL means nothing drew here at all.
+                if ($probes[$probe].Expect -ge 20 -and
+                        $probes[$probe].Expect -le 23) {
+                    $quadrants = @($generated.TextureQuadrants)
+                    $raw = [Convert]::ToUInt32(
+                        $quadrants[$probes[$probe].Expect - 20], 16) -band 0xffff
+                    $fill = [Convert]::ToUInt32(
+                        $generated.Referencefill, 16) -band 0xffff
+                    if ($low -eq $raw -and $high -eq $raw) {
+                        $sceneBad += ("$key reads its quadrant's RAW colour " +
+                                      ('{0:X4}' -f $raw) + ' (' +
+                                      $probes[$probe].Name + '). The texel ' +
+                                      'was not multiplied by the vertex ' +
+                                      'colour.')
+                        continue
+                    }
+                    if ($low -eq $fill -and $high -eq $fill) {
+                        $sceneBad += ("$key reads the fill (" +
+                                      $probes[$probe].Name +
+                                      '). Nothing drew here.')
+                        continue
+                    }
+                    ++$sceneChecked
+                    $scenePredicted += ("$key modulated to " +
+                                        ('{0:X8}' -f $actual) + ' from ' +
+                                        ('{0:X4}' -f $raw) + ' (' +
+                                        $probes[$probe].Name + ')')
+                    continue
+                }
+
                 # A TEXTURE QUADRANT probe, expectations 16 through 19.
                 #
                 # Split deliberately into a part that fails and a part that
@@ -1216,6 +1269,7 @@ R0000=DEADBEEF'
         $s3.Add('DriverApertureReads={0:X8}' -f
                 ([int]$generated.SceneTotalProbes + 14))
         $s3.Add('TexG0=5A5A5A5A')
+        $s3.Add('DepG0=6B6B6B6B')
         $s3.Add('MiniApertureReads=000002A6')
         $s3.Add('Phase4ApertureReads=00000421')
         $s3.Add('ExpectedApertureReads=000008E1')
@@ -1235,6 +1289,9 @@ R0000=DEADBEEF'
             # validator refuses the key on a scene that does not.
             if ($entry.Textured) {
                 $s3.Add(('{0}TexG=5A5A5A5A' -f $prefix))
+            }
+            if ($entry.Depth) {
+                $s3.Add(('{0}DepG=6B6B6B6B' -f $prefix))
             }
             $s3.Add(('{0}PostErrOk=1' -f $prefix))
             $s3.Add(('{0}PostErrCount=00000009' -f $prefix))
@@ -1258,6 +1315,12 @@ R0000=DEADBEEF'
                     # the other outcomes.
                     $half = @($generated.TextureQuadrants)[$probe.Expect - 16]
                     $value = $half + $half
+                } elseif ($probe.Expect -ge 20 -and $probe.Expect -le 23) {
+                    # A modulated quadrant. The fixture uses a value that is
+                    # neither the raw quadrant colour nor the fill, which is
+                    # all the validator can require - the product itself is a
+                    # prediction and is reported.
+                    $value = '4A694A69'
                 } else {
                     $half = @($entry.Colors)[$probe.Expect - 1].Value
                     $value = $half + $half
@@ -1292,12 +1355,17 @@ R0000=DEADBEEF'
         $s3Mutations = @(
             @{ Drop = 'S1Crc='; Why = 'a scene missing its CRC' },
             @{ Drop = 'S1Probes='; Why = 'a scene missing its probe count' },
-            @{ Drop = 'S1PX0005='; Why = 'the last probe of the last scene' },
+            @{ Drop = 'S4PX0005='; Why = 'the last probe of the last scene' },
             @{ Drop = 'S1TexQ0='; Why = 'a quadrant probe missing its expectation' },
+            @{ Drop = 'S2ModQ0='; Why = 'a modulated probe missing its expectation' },
             @{ Drop = 'S1TexG='
                Why = 'a textured scene that never read the texture guard' },
+            @{ Drop = 'S4DepG='
+               Why = 'a depth scene that never read the depth guard' },
             @{ Drop = 'TexG0='
                Why = 'a capture with no pre-run texture guard to compare against' },
+            @{ Drop = 'DepG0='
+               Why = 'a capture with no pre-run depth guard to compare against' },
             @{ Drop = 'S0Centroid='; Why = 'a probe missing its expectation' },
             @{ Drop = 'ScenesCompleted='
                Why = 'a capture that says neither how far it got nor that it stopped' },
@@ -1367,6 +1435,25 @@ R0000=DEADBEEF'
             # guard page exists at all.
             @{ From = 'S1TexG=5A5A5A5A'; To = 'S1TexG=1C3E1C3E'
                Why = 'a scene that painted past the end of the texture' }
+            # The same for depth: a clear or a primitive that addressed past
+            # the end of a buffer 256 rows tall in a 480-row target.
+            @{ From = 'S4DepG=6B6B6B6B'; To = 'S4DepG=FFFFFFFF'
+               Why = 'a scene that wrote past the end of the depth buffer' }
+            # A modulated probe reading its RAW quadrant colour: the texel
+            # reached the target unmultiplied, which is the previous scene's
+            # picture and would otherwise read as a pass.
+            @{ From = 'S2PX0000=4A694A69'
+               To = 'S2PX0000=' + (@($generated.TextureQuadrants)[0] * 2)
+               Why = 'a modulated probe that was never multiplied' }
+            # And one reading the fill: nothing drew.
+            @{ From = 'S2PX0001=4A694A69'
+               To = 'S2PX0001=' + ($generated.Referencefill.Substring(4) * 2)
+               Why = 'a modulated probe where nothing drew' }
+            # A depth probe reading the wrong triangle. With writes on, the
+            # furthest triangle must be rejected wherever the others drew.
+            @{ From = 'S4PX0002=' + (@($generated.Scenes)[4].Colors[1].Value * 2)
+               To = 'S4PX0002=' + (@($generated.Scenes)[4].Colors[2].Value * 2)
+               Why = 'a depth-write scene where the furthest triangle won' }
         )
         # Scene 1's colour is a PREDICTION. Its alternative outcomes must be
         # REPORTED, not rejected - 3018 is what a backend truncating green

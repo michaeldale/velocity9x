@@ -595,6 +595,7 @@ void v9x_intel_phase6_publish_budget(void)
     DWORD staged = 0ul;
     DWORD scenes = (DWORD)v9x_i9xx_scene_count();
     DWORD textured = 0ul;
+    DWORD depthed = 0ul;
     DWORD mini;
     DWORD driver;
 
@@ -615,7 +616,12 @@ void v9x_intel_phase6_publish_budget(void)
             return;
         }
         staged += v9x_i9xx_scene_extent(&one);
-        if (one.textured != 0ul) { ++textured; }
+        if (v9x_i9xx_scene_kind_textured(one.kind) != V9X_FALSE) {
+            ++textured;
+        }
+        if (v9x_i9xx_scene_kind_depth(one.kind) != V9X_FALSE) {
+            ++depthed;
+        }
     }
 
     /*
@@ -626,16 +632,18 @@ void v9x_intel_phase6_publish_budget(void)
     mini = (staged * 2ul) + (2ul * scenes);
     /*
      * Driver side: every probe, the guards before the run and after each
-     * scene, the heap probe either side, the texture guard once before the
-     * run, and the texture guard again after each TEXTURED scene - which is
-     * why that last term counts textured scenes and not scenes.
+     * scene, the heap probe either side, the texture and depth guards once
+     * each before the run, and each of those again after every scene that has
+     * a buffer of that sort - which is why the last two terms count textured
+     * and depth scenes rather than scenes.
      *
-     * The pre-run read is unconditional. It is taken before the scene table is
-     * consulted, so a build with no textured scene at all still pays for it,
-     * and a budget that omitted it would be short by one on every boot.
+     * The two pre-run reads are unconditional. They are taken before the scene
+     * table is consulted, so a build with no textured or depth scene at all
+     * still pays for them, and a budget that omitted them would be short by
+     * two on every boot.
      */
     driver = v9x_i9xx_scene_total_probes() + 2ul + (2ul * scenes) + 2ul +
-             1ul + textured;
+             2ul + textured + depthed;
 
     v9x_p5_text("ReadBudgetScope", "gmadr-whole-boot-incl-phase4");
     v9x_p5_hex("SceneStagedDwordsTotal", staged);
@@ -743,12 +751,21 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
      * its CRC must equal the constant generated from the same builders. If
      * either fails, what would run is not what was reviewed.
      */
-    /* Zero texture range: the Phase 5 stream is untextured, and the decoder
-     * refuses every texture packet on that basis. */
-    reason = v9x_i9xx_decode_phase5_stream(
-        v9x_p5_stream, v9x_p5_stream_dwords,
-        layout->target_offset, layout->target_bytes,
-        0ul, 0ul, &rejected_index);
+    {
+        /* A PLAIN stream: no texture range, no depth range, and the decoder
+         * refuses every packet of either sort on that basis. */
+        struct v9x_i9xx_decode_limits limits;
+
+        limits.target_offset = layout->target_offset;
+        limits.target_bytes = layout->target_bytes;
+        limits.texture_offset = 0ul;
+        limits.texture_bytes = 0ul;
+        limits.depth_offset = 0ul;
+        limits.depth_bytes = 0ul;
+        limits.kind = V9X_I9XX_SCENE_PLAIN;
+        reason = v9x_i9xx_decode_phase5_stream(
+            v9x_p5_stream, v9x_p5_stream_dwords, &limits, &rejected_index);
+    }
     if (reason != V9X_I9XX_P5_OK) {
         v9x_p5_hex("PreDecodeReason", (DWORD)reason);
         v9x_p5_hex("PreDecodeIndex", rejected_index);
@@ -1015,7 +1032,7 @@ static void v9x_p5_publish_heap_probe(
  * one thing this whole per-scene structure exists to prevent.
  */
 static void v9x_p6_publish_guards(
-    const struct v9x_i9xx_sandbox_layout *layout, WORD scene, WORD textured)
+    const struct v9x_i9xx_sandbox_layout *layout, WORD scene, v9x_u32 kind)
 {
     v9x_p6_hex(scene, "GLow", v9x_p5_read_counted(layout->scratch_offset));
     v9x_p6_hex(scene, "GUpp",
@@ -1033,9 +1050,15 @@ static void v9x_p6_publish_guards(
      * Only for a textured scene, because a read costs budget and an
      * untextured scene has nothing that could have touched it.
      */
-    if (textured != 0u) {
+    if (v9x_i9xx_scene_kind_textured(kind) != V9X_FALSE) {
         v9x_p6_hex(scene, "TexG",
                    v9x_p5_read_counted(layout->texture_guard_offset));
+    }
+    /* And the page past the DEPTH buffer, under its own key. One key standing
+     * for two different pages is one key nobody can read. */
+    if (v9x_i9xx_scene_kind_depth(kind) != V9X_FALSE) {
+        v9x_p6_hex(scene, "DepG",
+                   v9x_p5_read_counted(layout->depth_guard_offset));
     }
 }
 
@@ -1136,11 +1159,32 @@ static WORD v9x_p6_run_scene(
      */
     {
         DWORD rejected = 0ul;
-        WORD reason = v9x_i9xx_decode_phase5_stream(
-            stream, dwords, layout->target_offset, layout->target_bytes,
-            (v9x_p6_scene.textured != 0ul) ? layout->texture_offset : 0ul,
-            (v9x_p6_scene.textured != 0ul) ? layout->texture_bytes : 0ul,
-            &rejected);
+        WORD reason;
+        struct v9x_i9xx_decode_limits limits;
+
+        limits.target_offset = layout->target_offset;
+        limits.target_bytes = layout->target_bytes;
+        /*
+         * A range is given only for the buffers this KIND uses. The decoder
+         * requires the two to agree, so a scene that claimed to be textured
+         * and was handed no texture range is refused here rather than
+         * validated against limits nobody meant.
+         */
+        limits.texture_offset = 0ul;
+        limits.texture_bytes = 0ul;
+        limits.depth_offset = 0ul;
+        limits.depth_bytes = 0ul;
+        if (v9x_i9xx_scene_kind_textured(v9x_p6_scene.kind) != V9X_FALSE) {
+            limits.texture_offset = layout->texture_offset;
+            limits.texture_bytes = layout->texture_bytes;
+        }
+        if (v9x_i9xx_scene_kind_depth(v9x_p6_scene.kind) != V9X_FALSE) {
+            limits.depth_offset = layout->depth_offset;
+            limits.depth_bytes = layout->depth_bytes;
+        }
+        limits.kind = v9x_p6_scene.kind;
+        reason = v9x_i9xx_decode_phase5_stream(stream, dwords, &limits,
+                                               &rejected);
 
         if (reason != V9X_I9XX_P5_OK) {
             v9x_p6_hex(scene, "DecodeReason", (DWORD)reason);
@@ -1391,6 +1435,7 @@ void v9x_intel_phase5_run(
      * touched it.
      */
     v9x_p5_hex("TexG0", v9x_p5_read_counted(layout->texture_guard_offset));
+    v9x_p5_hex("DepG0", v9x_p5_read_counted(layout->depth_guard_offset));
     v9x_p5_progress("guards-done");
 
     if (reason != V9X_P5_PRE_OK) {
@@ -1503,9 +1548,7 @@ void v9x_intel_phase5_run(
                  * where they matter, and the earlier scenes' results are
                  * already on disk.
                  */
-                v9x_p6_publish_guards(
-                    layout, scene,
-                    (WORD)((v9x_p6_scene.textured != 0ul) ? 1u : 0u));
+                v9x_p6_publish_guards(layout, scene, v9x_p6_scene.kind);
                 v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
                 v9x_p5_hex("SceneFailed", (DWORD)scene);
                 v9x_p5_result("SCENE-REFUSED");
@@ -1513,9 +1556,7 @@ void v9x_intel_phase5_run(
             }
             /* Between scenes, not only at the end: a scene that damaged the
              * guards must not have it attributed to a later one. */
-            v9x_p6_publish_guards(
-                layout, scene,
-                (WORD)((v9x_p6_scene.textured != 0ul) ? 1u : 0u));
+            v9x_p6_publish_guards(layout, scene, v9x_p6_scene.kind);
             v9x_p5_flush();
         }
         v9x_p5_hex("ScenesCompleted", (DWORD)scenes);
