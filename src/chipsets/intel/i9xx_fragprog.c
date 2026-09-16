@@ -83,7 +83,7 @@ v9x_status v9x_i9xx_build_fragment_program(
  * is needed. Audit section 8.
  *
  * Every field placement is corroborated by both trees:
- * docs\decisions6-09-16-intel-gen3-texture-packet-audit.md.
+ * docs\decisions\2026-09-16-intel-gen3-texture-packet-audit.md.
  *
  * DERIVED AND UNVALIDATED, exactly as the untextured program was before
  * Phase 5 ran. The host test is what validation means until a capture says
