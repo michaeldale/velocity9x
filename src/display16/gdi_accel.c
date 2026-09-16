@@ -1144,10 +1144,13 @@ void v9x_gdi_accel_configure(void)
         /* The 2D path has no use for a second aperture; it is discarded
          * here rather than made optional, so every implementer writes it. */
         DWORD gtt_base = 0ul;
+        DWORD ring_base = 0ul;
+        DWORD ring_size = 0ul;
 
         device->fill_engine_descriptor(V9xLinearBase(), &control_base,
                                        &aperture_bytes, &v9x_gdi_engine_type,
-                                       &v9x_gdi_engine_caps, &gtt_base);
+                                       &v9x_gdi_engine_caps, &gtt_base,
+                                       &ring_base, &ring_size);
     }
     v9x_gdi.engine_type = v9x_gdi_engine_type;
 

@@ -23,8 +23,12 @@ static void v9x_trio_fill_engine(unsigned long framebuffer_linear_base,
                                  unsigned long *mapped_aperture_bytes,
                                  unsigned long *engine_type,
                                  unsigned long *engine_caps,
-                                 unsigned long *gtt_linear_base)
+                                 unsigned long *gtt_linear_base,
+                                 unsigned long *ring_linear_base,
+                                 unsigned long *ring_bytes)
 {
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
     (void)framebuffer_linear_base;
     /* No second aperture, and no first one either: this chip is addressed
      * through port I/O. Written rather than left alone, because an

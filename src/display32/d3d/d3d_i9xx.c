@@ -98,38 +98,36 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
 }
 
 /*
- * Where the ring is - and this side CANNOT WORK IT OUT, so it refuses.
+ * Where the ring is: PUBLISHED, never derived.
  *
- * It tried, and the attempt was wrong in the worst available direction. The
- * calculation was
+ * This side derived it once, from fb.vram_bytes, and landed a megabyte low -
+ * vram_bytes has already had the reserve taken off, so running it through the
+ * sandbox calculator subtracted a second one and pointed the ring into the
+ * DirectDraw heap, where command dwords would have overwritten application
+ * surfaces with no guard between them and it.
  *
- *     v9x_i9xx_sandbox_calculate(v9x_hal->fb.vram_bytes, ...)
- *
- * and fb.vram_bytes has ALREADY had the reserve taken off it:
- * v9x_gma950_reserve_video_memory returns layout.heap_bytes, and dd16.c
- * publishes that as the video memory the heap may use. Running it through the
- * calculator a second time subtracts a second reserve, so the ring offset
- * landed a megabyte low - inside the DirectDraw heap, which is application
- * surfaces. Command dwords written there would corrupt whatever a program had
- * allocated, with no guard page between them and it, and the GPU would fetch
- * commands from somewhere else entirely.
- *
- * The fix is not better arithmetic here. The ring's address belongs to
- * whoever knows the true size of video memory and owns the mapping, and that
- * is the 16-bit side and the mini-VDD - which already holds it, computed from
- * the real figure, in V9xI9xxRingLinear. This side recomputing it was the
- * mistake, in the same way that every "one number in two places" defect in
- * this project has been.
- *
- * SO SUBMISSION REFUSES until the address is handed across rather than
- * derived. A refused draw is a black window; a wrong ring base is a corrupted
- * heap and a GPU fetching from application memory.
+ * So the address comes from the 16-bit side, which asked the mini-VDD, which
+ * owns the mapping and knows the true size of video memory. Nothing here
+ * computes it, and the bounds below are checked against what was published
+ * rather than against anything recomputed.
  */
 static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
 {
     *linear_out = 0ul;
     *bytes_out = 0ul;
-    return 0;
+    if (v9x_hal == 0 || v9x_hal->engine.control_linear_base == 0ul) {
+        return 0;
+    }
+    if (v9x_hal->engine.ring_linear_base == 0ul ||
+        v9x_hal->engine.ring_bytes == 0ul) {
+        /* No ring means the mini-VDD could not bring one up. Refusing is the
+         * whole response: submitting to a ring that is not enabled advances a
+         * pointer nobody reads, and the only symptom would be a timeout. */
+        return 0;
+    }
+    *linear_out = v9x_hal->engine.ring_linear_base;
+    *bytes_out = v9x_hal->engine.ring_bytes;
+    return 1;
 }
 
 /*
@@ -377,24 +375,20 @@ static int v9x_d3d_i9xx_ready(void)
         return 0;
     }
     /*
-     * TWO WINDOWS ARE NOT READINESS, which is what this used to assume.
+     * And a RING, which is what mapped windows alone are not. Its presence in
+     * the descriptor means the mini-VDD brought one up and reported where it
+     * is; its absence means it could not, and an engine without one would
+     * advance a TAIL nobody reads.
      *
-     *  - The ring's address is not derivable on this side; see
-     *    v9x_d3d_i9xx_ring_base for what deriving it produced.
-     *  - THE RING IS NOT ENABLED. Every submission this project has performed
-     *    ran under the armed path, where the mini-VDD sets RING_START and
-     *    RING_CTL and then DISABLES and clears them on teardown. A runtime
-     *    boot establishes neither, so moving TAIL would advance a pointer the
-     *    hardware is not reading - and nothing would say so, because the head
-     *    would never reach it and the bounded wait would simply time out.
-     *
-     * Both are the mini-VDD's to answer, and until it does this reports no.
-     * That is the same judgement the `ready` member exists for: an engine that
-     * resolves, accepts calls and draws nothing, with every HRESULT reporting
-     * success, is the failure it was appended to prevent - and "the registers
-     * are mapped" is not the question it asks.
+     * This is still not a claim that the engine draws. No guest has executed
+     * one of these streams. What keeps applications away is the capability
+     * bit, which the 16-bit side does not set.
      */
-    return 0;
+    if (v9x_hal->engine.ring_linear_base == 0ul ||
+        v9x_hal->engine.ring_bytes == 0ul) {
+        return 0;
+    }
+    return 1;
 }
 
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {

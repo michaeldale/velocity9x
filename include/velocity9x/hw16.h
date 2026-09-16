@@ -120,7 +120,9 @@ typedef struct v9x_hw16_device {
                                    unsigned long *mapped_aperture_bytes,
                                    unsigned long *engine_type,
                                    unsigned long *engine_caps,
-                                   unsigned long *gtt_linear_base);
+                                   unsigned long *gtt_linear_base,
+                                   unsigned long *ring_linear_base,
+                                   unsigned long *ring_bytes);
 
     /*
      * Which PCI base address register carries the framebuffer aperture, as a

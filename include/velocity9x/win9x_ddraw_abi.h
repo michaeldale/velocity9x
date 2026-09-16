@@ -1128,6 +1128,14 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091602: V9X_DD_ENGINE gains ring_linear_base and ring_bytes, and the
+ * shared block grows to two DPMI pages to hold them.
+ *
+ * A layout change this time, not just a meaning change, and the block's own
+ * allocated size moves with it - V9X_DD_SHARED_BYTES in runtime.asm. A
+ * 16-bit side allocating one page and a 32-bit side reading two would read
+ * whatever follows the allocation.
+ *
  * 2026091601: V9X_DD_ENGINE's reserved1 becomes gtt_linear_base.
  *
  * No field moved and the struct did not grow, so this is a change of MEANING
@@ -1136,7 +1144,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091601ul
+#define V9X_DD_SHARED_ABI   2026091602ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1253,6 +1261,20 @@ typedef struct v9x_dd_engine {
      * but Gen3.
      */
     DWORD gtt_linear_base;
+    /*
+     * The command ring, for an engine whose HAL submits its own work.
+     *
+     * Published by the 16-bit side, which asks the mini-VDD for it, because
+     * the 32-bit side cannot work it out and must not try. It derived this
+     * address once from fb.vram_bytes - which has already had the reserve
+     * taken off it - and landed a megabyte low, inside the DirectDraw heap,
+     * where command dwords would have overwritten application surfaces.
+     *
+     * Zero means this engine has no ring the HAL may write, which is every
+     * engine but Gen3.
+     */
+    DWORD ring_linear_base;
+    DWORD ring_bytes;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {
@@ -1948,7 +1970,7 @@ typedef char v9x_dd_assert_trace[
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[
-    sizeof(V9X_DD_SHARED) <= 4096 ? 1 : -1];
+    sizeof(V9X_DD_SHARED) <= 8192 ? 1 : -1];
 
 /*
  * How much of Gen3's second aperture the driver maps, in bytes.

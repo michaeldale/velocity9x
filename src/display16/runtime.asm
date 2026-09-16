@@ -150,7 +150,21 @@ EXTRN _v9x_gdi_engine_dirty:WORD
 ; DirectDraw shared-block size: sizeof(V9X_DD_SHARED) rounded up.
 ; Must match the v9x_dd_assert_shared_fits_dpmi_block bound in
 ; include/velocity9x/win9x_ddraw_abi.h.
-V9X_DD_SHARED_BYTES EQU 4096
+;
+; EIGHT KiB from 2026-09-16, up from four.
+;
+; The block had four bytes of slack: appending one DWORD for the Gen3 GTT
+; aperture overflowed the assertion in win9x_ddraw_abi.h, and the size that
+; would have gone beside it had to become a compile-time constant instead.
+; The runtime ring window needs two more, and there is nowhere left to take
+; them from.
+;
+; Two DPMI pages rather than one. The allocation is per display driver
+; instance and happens once at DriverInit, so the cost is 4 KiB of one
+; process's address space; the alternative was continuing to pick which
+; addresses the 32-bit side is allowed to know, which is how the GTT size
+; ended up as a constant rather than a field.
+V9X_DD_SHARED_BYTES EQU 8192
 
 .code
 
@@ -1491,6 +1505,52 @@ V9XMINII9XXRINGHASH ENDP
 ; The two linear windows the mini-VDD has already mapped. Returns 1 with both
 ; written, or 0 with both zeroed - never one of the two, because a caller with
 ; BAR0 and no BAR3 believes it has an engine it cannot inspect.
+; WORD FAR PASCAL V9xMiniI9xxRingOpen(DWORD FAR *base, DWORD FAR *bytes)
+;
+; Enable the ring and report where it is. Both outputs written, or both zeroed.
+PUBLIC V9XMINII9XXRINGOPEN
+V9XMINII9XXRINGOPEN PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    esi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniI9xxRingOpenFailed
+    mov     eax, V9XMINI_FN_I9XX_RING_OPEN
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniI9xxRingOpenFailed
+    ; Saved before any pointer load: `les bx` writes BX, which is the low half
+    ; of EBX, so loading a destination first destroys the address being
+    ; stored. That defect shipped once in the engine-map wrapper.
+    mov     edx, ebx
+    mov     esi, ecx
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], esi
+    mov     ax, 1
+    jmp     short V9xMiniI9xxRingOpenDone
+V9xMiniI9xxRingOpenFailed:
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniI9xxRingOpenDone:
+    pop     es
+    pop     esi
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINII9XXRINGOPEN ENDP
+
 PUBLIC V9XMINII9XXENGINEMAP
 V9XMINII9XXENGINEMAP PROC FAR
     push    bp

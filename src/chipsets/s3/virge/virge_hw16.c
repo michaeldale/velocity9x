@@ -48,8 +48,15 @@ static void v9x_virge_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *mapped_aperture_bytes,
                                   unsigned long *engine_type,
                                   unsigned long *engine_caps,
-                                  unsigned long *gtt_linear_base)
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
 {
+    /* No ring the HAL may write: this engine is addressed by register, not by
+     * a command stream. Written rather than skipped, for the reason the
+     * gtt base is. */
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
     /* No second aperture. This chip's control window IS the framebuffer BAR
      * at a fixed offset, which is exactly what Gen3 cannot express and why
      * the parameter exists. Written rather than left alone: an out-parameter
@@ -95,11 +102,13 @@ static void v9x_trio3d2x_fill_engine(unsigned long framebuffer_linear_base,
                                      unsigned long *mapped_aperture_bytes,
                                      unsigned long *engine_type,
                                      unsigned long *engine_caps,
-                                     unsigned long *gtt_linear_base)
+                                     unsigned long *gtt_linear_base,
+                                     unsigned long *ring_linear_base,
+                                     unsigned long *ring_bytes)
 {
     v9x_virge_fill_engine(framebuffer_linear_base, control_linear_base,
                           mapped_aperture_bytes, engine_type, engine_caps,
-                          gtt_linear_base);
+                          gtt_linear_base, ring_linear_base, ring_bytes);
     *engine_caps &= ~(V9X_DD_ENGINE_CAP_S3D_TWO_PASS |
                       V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA);
 }

@@ -11,6 +11,17 @@
 extern unsigned short __far __pascal V9xMiniI9xxEngineMap(
     unsigned long __far *bar0, unsigned long __far *bar3);
 
+/*
+ * Enable the ring and report where it is.
+ *
+ * Asked for HERE rather than by the 32-bit side, which has no way to reach
+ * the mini-VDD at all: the HAL talks to this driver only through the shared
+ * block. It also must not derive the address - it did once, from the already
+ * reduced fb.vram_bytes, and landed inside the DirectDraw heap.
+ */
+extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
+    unsigned long __far *base, unsigned long __far *bytes);
+
 unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
@@ -60,15 +71,21 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
                                    unsigned long *mapped_aperture_bytes,
                                    unsigned long *engine_type,
                                    unsigned long *engine_caps,
-                                   unsigned long *gtt_linear_base)
+                                   unsigned long *gtt_linear_base,
+                                   unsigned long *ring_linear_base,
+                                   unsigned long *ring_bytes)
 {
     unsigned long bar0 = 0ul;
     unsigned long bar3 = 0ul;
+    unsigned long ring = 0ul;
+    unsigned long ring_size = 0ul;
 
     (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
     *mapped_aperture_bytes = 0ul;
     *gtt_linear_base = 0ul;
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
     *engine_type = V9X_DD_ENGINE_TYPE_NONE;
     *engine_caps = 0ul;
 
@@ -80,6 +97,18 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
          * taking that on trust: a half-mapped engine is the one state where
          * submitting would reach a window nobody mapped. */
         return;
+    }
+
+    /*
+     * The ring, brought up once here rather than on a draw. Its absence is
+     * not fatal to the descriptor - the windows are still worth publishing,
+     * and the engine reports itself not ready without a ring rather than
+     * submitting to one that is not there.
+     */
+    if (V9xMiniI9xxRingOpen(&ring, &ring_size) != 0u &&
+        ring != 0ul && ring_size != 0ul) {
+        *ring_linear_base = ring;
+        *ring_bytes = ring_size;
     }
 
     *control_linear_base = bar0;
