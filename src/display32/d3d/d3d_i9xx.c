@@ -221,16 +221,78 @@ static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
 }
 
 /*
- * Publishes NOTHING.
+ * What this engine will accept, and NOTHING it has not been built to do.
  *
- * Not a stub in the sense of unfinished work: publishing caps is the step the
- * errata gate does not cover, and this function is where that would happen. It
- * stays empty until a risk decision says otherwise, and the emptiness is the
- * decision being respected rather than a gap.
+ * Deliberately far narrower than the ViRGE's, which is a mature engine with
+ * measured behaviour behind every bit. This one has executed no application
+ * geometry at all, so what it claims is exactly what the code path supports:
+ * flat and Gouraud RGB triangles into a 16-bit target, from transformed and
+ * lit vertices, and nothing else.
+ *
+ * WHAT IS DELIBERATELY ABSENT, each because the path does not exist:
+ *
+ *  - No texture caps and no texture formats. texture_format refuses every
+ *    surface, so an application must be told there is nowhere to put one.
+ *    The diagnostic scenes sample a texture; the runtime path does not build
+ *    one, and claiming otherwise would be advertising the scenes.
+ *  - No Z caps and no Z-buffer depth. The runtime state block binds no depth
+ *    buffer. D3DPRASTERCAPS_ZTEST is absent for the same reason.
+ *  - No blend caps. The runtime S6 enables no blending.
+ *  - No fog, no lines, no specular.
+ *
+ * Every one of those is measured to work in a SCENE and unbuilt in the
+ * runtime path, which is the distinction this function has to get right: a
+ * capability is a promise about what an application can do, not a summary of
+ * what the hardware has been seen to do.
  */
 static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
 {
-    (void)shared;
+    if (shared == 0) {
+        return;
+    }
+    shared->d3d_global.dwSize = sizeof(V9X_D3DHAL_GLOBALDRIVERDATA);
+    shared->d3d_global.hwCaps.dwSize = sizeof(V9X_D3DDEVICEDESC_V1);
+    shared->d3d_global.hwCaps.dwFlags =
+        V9X_D3DDD_COLORMODEL | V9X_D3DDD_DEVCAPS |
+        V9X_D3DDD_TRICAPS | V9X_D3DDD_DEVICERENDERBITDEPTH;
+    shared->d3d_global.hwCaps.dcmColorModel = V9X_D3DCOLOR_RGB;
+    /*
+     * EXECUTESYSTEMMEMORY is here for the reason the ViRGE's comment records:
+     * a DirectX 2/3-era title renders only through execute buffers and
+     * discards a HAL that does not claim it. The runtime decomposes them into
+     * the RenderPrimitive calls this engine actually serves.
+     */
+    shared->d3d_global.hwCaps.dwDevCaps =
+        V9X_D3DDEVCAPS_FLOATTLVERTEX |
+        V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;
+    shared->d3d_global.hwCaps.dtcTransformCaps.dwSize =
+        sizeof(V9X_D3DTRANSFORMCAPS);
+    shared->d3d_global.hwCaps.dlcLightingCaps.dwSize =
+        sizeof(V9X_D3DLIGHTINGCAPS);
+    shared->d3d_global.hwCaps.dpcLineCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
+    shared->d3d_global.hwCaps.dpcTriCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
+    /*
+     * CULLNONE, and it is a statement about the stream rather than a
+     * convenience: the runtime state block sets S4_CULLMODE_NONE, so the
+     * hardware culls nothing and an application must not be told it will.
+     */
+    shared->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps =
+        V9X_D3DPMISCCAPS_CULLNONE;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
+        V9X_D3DPRASTERCAPS_SUBPIXEL;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
+        V9X_D3DPSHADECAPS_COLORFLATRGB |
+        V9X_D3DPSHADECAPS_COLORGOURAUDRGB;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    /*
+     * ZERO texture formats. An application reading this list finds nothing it
+     * may allocate, which is the honest answer while texture_format refuses
+     * every surface.
+     */
+    shared->d3d_global.dwNumVertices = 0ul;
+    shared->d3d_global.dwNumClipVertices = 0ul;
 }
 
 /*

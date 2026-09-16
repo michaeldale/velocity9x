@@ -116,11 +116,30 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
     *gtt_linear_base = bar3;
     *engine_type = V9X_DD_ENGINE_TYPE_INTEL_GEN3;
     /*
-     * 2D capabilities are absent too. Engine-only ownership means the VBIOS
-     * keeps the display, and nothing here has ever driven a blit outside the
-     * armed diagnostic - so solid fill, screen copy, flip and vblank are all
-     * unclaimed for the same reason D3D is.
+     * DIRECT3D IS CLAIMED, from 2026-09-16.
+     *
+     * Authorised by the sustained-3D amendment to the errata gate, which was
+     * asked for explicitly and which records what it gives up: no draw bound,
+     * no combined-CRC gate, no one-shot token, and a hang that names a frame
+     * nobody can reconstruct. The decoder's allowlist is what stands in their
+     * place, and it runs on every stream this engine builds.
+     *
+     * Only claimed when the mapping AND the ring came up. An engine advertised
+     * without a ring would accept every call and draw nothing, which is the
+     * failure the ops table's `ready` member exists to prevent - and a
+     * capability is checked before `ready` is ever consulted.
+     *
+     * NOT YET RUN. No guest has executed one of these streams. The first boot
+     * with this bit set is the experiment the amendment describes, not a
+     * driver release.
+     *
+     * 2D capabilities stay absent: engine-only ownership means the VBIOS keeps
+     * the display, and nothing here has driven a blit outside the armed
+     * diagnostic, so solid fill, screen copy, flip and vblank are unclaimed.
      */
+    if (*ring_linear_base != 0ul) {
+        *engine_caps = V9X_DD_ENGINE_CAP_D3D;
+    }
 }
 
 /* Exact physical target. The aperture hook remains absent: this family takes

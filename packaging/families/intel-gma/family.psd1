@@ -16,8 +16,16 @@
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'none'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            # Claimed from 2026-09-16, under the sustained-3D amendment to
+            # the errata gate. The descriptor the driver actually publishes
+            # comes from the chip's fill_engine_descriptor, which claims it
+            # only when both apertures AND the ring came up; this is the
+            # manifest agreeing with that rather than a second authority.
+            EngineType = 'INTEL_GEN3'
+            # D3D alone. Engine-only ownership leaves the display to the
+            # VBIOS, so no 2D capability is claimed - nothing here has
+            # driven a blit outside the armed diagnostic.
+            EngineCaps = @('D3D')
             VideoMemoryBytes = 4194304
             Modes = @(
                 @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }

@@ -193,11 +193,18 @@ static void test_engine_caps_match_engine_type(void)
         } else {
             MCHECK_CHIP(chip, chip->engine_caps != 0ul);
         }
-        /* D3D is the capability with a whole code module behind it, and the
-         * only one this driver serves from a single engine. */
+        /*
+         * D3D is the capability with a whole code module behind it, and it is
+         * now served by TWO engines rather than one - the ViRGE's S3D unit
+         * and Gen3's command ring. The check is still worth having: it names
+         * which engine types may carry the bit, so a family claiming D3D
+         * against a type with no engine module behind it fails here rather
+         * than by publishing tables nothing fills.
+         */
         if ((chip->engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul) {
             MCHECK_CHIP(chip,
-                        chip->engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX);
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX ||
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3);
         }
     }
 }
