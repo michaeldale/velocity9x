@@ -2074,6 +2074,166 @@ static void test_i9xx_bind_target(void)
                         V9X_I9XX_BUF_3D_PITCH_MASK)));
 }
 
+/*
+ * The float range predicate, which every runtime coordinate check rests on.
+ *
+ * IEEE-754 positive magnitudes order as unsigned integers, which is what makes
+ * the check one comparison - but only while the sign bit is clear. A predicate
+ * that forgot the sign would accept every negative coordinate, because a
+ * negative float has bit 31 set and compares as a very large positive one.
+ */
+static void test_float_in_range(void)
+{
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 w640 = 0x44200000ul;   /* 640.0f */
+
+    CHECK(v9x_i9xx_float_in_range(0ul, one) == V9X_TRUE);
+    CHECK(v9x_i9xx_float_in_range(0x3f000000ul, one) == V9X_TRUE);  /* 0.5 */
+    CHECK(v9x_i9xx_float_in_range(one, one) == V9X_TRUE);
+    /* Just above the limit: 1.0f's neighbour. */
+    CHECK(v9x_i9xx_float_in_range(one + 1ul, one) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_range(0x40000000ul, one) == V9X_FALSE); /* 2.0 */
+
+    /*
+     * NEGATIVE. -1.0f is 0xBF800000, which as an unsigned integer is larger
+     * than any positive float - so a comparison that ignored the sign would
+     * reject it for the wrong reason, and one that compared signed would
+     * ACCEPT it. Both are wrong and this is the case that separates them.
+     */
+    CHECK(v9x_i9xx_float_in_range(0xbf800000ul, one) == V9X_FALSE);
+    /* Negative zero, which is a legal float and refused deliberately. */
+    CHECK(v9x_i9xx_float_in_range(0x80000000ul, one) == V9X_FALSE);
+
+    /* Infinity and a NaN, excluded by any limit below infinity. */
+    CHECK(v9x_i9xx_float_in_range(0x7f800000ul, w640) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_range(0x7fc00000ul, w640) == V9X_FALSE);
+
+    /* A plausible coordinate against a plausible bound. */
+    CHECK(v9x_i9xx_float_in_range(0x43200000ul, w640) == V9X_TRUE); /* 160 */
+    CHECK(v9x_i9xx_float_in_range(w640, w640) == V9X_TRUE);         /* 640 */
+    CHECK(v9x_i9xx_float_in_range(0x44210000ul, w640) == V9X_FALSE);/* 644 */
+}
+
+/*
+ * A vertex run built from APPLICATION geometry.
+ *
+ * The scene builders take whole-pixel integers and one colour per triangle.
+ * This takes float bit patterns and a colour per vertex, which is what a
+ * DirectDraw execute buffer actually contains, and the stream it produces has
+ * to be one the decoder accepts.
+ */
+static void test_runtime_run(void)
+{
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 stream[64];
+    v9x_u32 written = 0ul;
+    v9x_u32 index;
+    const v9x_u32 one = 0x3f800000ul;
+
+    /* A triangle with fractional coordinates - which is the whole point: the
+     * scene builders could not express one. */
+    xyzw[0] = 0x43204000ul;  /* 160.25 */
+    xyzw[1] = 0x42f00000ul;  /* 120    */
+    xyzw[2] = 0ul;
+    xyzw[3] = one;
+    xyzw[4] = 0x43f00000ul;  /* 480    */
+    xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0x3f000000ul;  /* z 0.5  */
+    xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul;  /* 320    */
+    xyzw[9] = 0x43c80000ul;  /* 400    */
+    xyzw[10] = one;          /* z 1.0, the far plane */
+    xyzw[11] = one;
+    colors[0] = 0xff112233ul;
+    colors[1] = 0xff445566ul;
+    colors[2] = 0xff778899ul;
+
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == v9x_i9xx_triangle_run_dwords(1ul));
+    CHECK(stream[0] == (V9X_I9XX_3DPRIMITIVE_INLINE |
+                        V9X_I9XX_PRIM3D_TRILIST | 14ul));
+
+    /* The bit patterns pass through UNCHANGED. A converter here would be a
+     * second opinion about numbers the caller already holds. */
+    for (index = 0ul; index < 12ul; ++index) {
+        CHECK(stream[1ul + (index / 4ul) * 5ul + (index % 4ul)] ==
+              xyzw[index]);
+    }
+    /* And a colour PER VERTEX, which the scene builders cannot express. */
+    CHECK(stream[5] == colors[0]);
+    CHECK(stream[10] == colors[1]);
+    CHECK(stream[15] == colors[2]);
+    CHECK(stream[5] != stream[10]);
+
+    /*
+     * A vertex outside the rectangle is REFUSED, not clipped. The core clips
+     * before the engine is called, so one arriving here means the core and
+     * the engine disagree about the target - and the consequence is a write
+     * outside the surface, not a wrong picture.
+     */
+    xyzw[4] = 0x44210000ul;   /* 644, past a 640-wide target */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    xyzw[4] = 0x43f00000ul;
+
+    /* A negative coordinate, which a signed comparison would accept. */
+    xyzw[5] = 0xc2f00000ul;   /* -120 */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[5] = 0x42f00000ul;
+
+    /* A NaN, which is a rasteriser walking an undefined span. */
+    xyzw[0] = 0x7fc00000ul;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[0] = 0x43204000ul;
+
+    /* Z beyond the far plane. */
+    xyzw[2] = 0x40000000ul;   /* 2.0 */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[2] = 0ul;
+
+    /*
+     * W that is not one. These are post-transform vertices, so anything else
+     * means the core handed over geometry it had not divided through - and
+     * the hardware would divide by it again.
+     */
+    xyzw[3] = 0x40000000ul;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[3] = one;
+
+    /* Unmutated, it still builds. */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+
+    /* Refusals of its own arguments. */
+    CHECK(v9x_i9xx_build_runtime_run(0, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, 0, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 0ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 15ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+}
+
 /* The combined CRC, which is what the arm gate compares. */
 static void test_scene_combined_crc(void)
 {
@@ -3035,6 +3195,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_depth_scene_expectations();
     test_alpha_scene_expectations();
     test_blend_scene_expectations();
+    test_float_in_range();
+    test_runtime_run();
     test_i9xx_bind_target();
     test_every_scene_decodes();
     test_decoder_depth_refusals();

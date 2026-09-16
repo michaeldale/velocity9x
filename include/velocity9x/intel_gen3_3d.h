@@ -1016,6 +1016,43 @@ v9x_u32 v9x_i9xx_triangle_run_dwords(v9x_u32 count);
  */
 #define V9X_I9XX_TEXTURED_VERTEX_DWORDS  ((v9x_u32)7ul)
 v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count);
+
+/*
+ * A vertex run built from APPLICATION geometry.
+ *
+ * The scene builders take whole-pixel integers and one colour per triangle,
+ * because that is what a diagnostic scene is. An application supplies floats
+ * and a colour per vertex, so this takes the bit patterns directly and does
+ * not convert: the caller already holds IEEE-754 floats and a converter here
+ * would be a second opinion about numbers nobody needs one on.
+ *
+ * `xyzw` holds four bit patterns per vertex and `colors` one, for
+ * `V9X_I9XX_VERTEX_COUNT * triangles` vertices. The layout it emits is the
+ * untextured five-dword vertex, so the state block must be the untextured one.
+ *
+ * REFUSES rather than clips. The core clips before the engine is called, so a
+ * vertex outside the drawing rectangle here means the core and the engine
+ * disagree about the target - and drawing it anyway would put pixels outside
+ * the surface, which on this part is a write to a page that may not be ours.
+ * Every coordinate is checked against the rectangle it will be rasterised in,
+ * and every one must be a finite float: a NaN or an infinity in a position is
+ * a rasteriser walking an undefined span.
+ */
+v9x_status v9x_i9xx_build_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/*
+ * Is this bit pattern a float the rasteriser can walk to, in [0, limit]?
+ *
+ * Positive, finite, and no greater than the limit. Exposed because the same
+ * question is asked of a Z as of a coordinate, and because a caller that
+ * wrote the comparison itself would be writing it against the wrong thing:
+ * IEEE-754 magnitudes order as integers only while the sign bit is clear, so
+ * a negative float compares as a very large one.
+ */
+v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
 /*
  * u_bits and v_bits are IEEE-754 bit patterns, one pair per vertex in
  * triangle-then-vertex order. Taken as bits because the integer converter

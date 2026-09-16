@@ -345,3 +345,120 @@ v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count)
                            (v9x_u16)(V9X_I9XX_VERTEX_COUNT *
                                      V9X_I9XX_TEXTURED_VERTEX_DWORDS));
 }
+
+/*
+ * Positive, finite, and no greater than the limit.
+ *
+ * IEEE-754 positive magnitudes order exactly as unsigned integers, which is
+ * what makes this one comparison rather than a decode - but ONLY while the
+ * sign bit is clear. A negative float has bit 31 set and compares as a very
+ * large positive one, so the sign is tested first and separately rather than
+ * being folded into the same comparison.
+ *
+ * Infinity is 0x7F800000 and every NaN is above it, so any limit below
+ * infinity excludes both without naming them.
+ */
+v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits)
+{
+    if ((bits & 0x80000000ul) != 0ul) {
+        /* Negative, including negative zero - which is a legal coordinate the
+         * hardware would rasterise identically to positive zero, and is
+         * refused anyway: a caller emitting it is a caller whose arithmetic
+         * produced a sign nobody intended. */
+        return V9X_FALSE;
+    }
+    return (bits <= limit_bits) ? V9X_TRUE : V9X_FALSE;
+}
+
+v9x_status v9x_i9xx_build_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 vertices;
+    v9x_u32 vertex;
+    v9x_u32 run_dwords;
+    v9x_u32 width_bits = 0ul;
+    v9x_u32 height_bits = 0ul;
+    v9x_u32 one_bits = 0ul;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 || xyzw == 0 || colors == 0 ||
+        triangles == 0ul || width == 0ul || height == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    run_dwords = v9x_i9xx_triangle_run_dwords(triangles);
+    if (run_dwords == 0ul || capacity < run_dwords) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    /*
+     * The bounds as FLOATS, converted once through the same helper the scene
+     * builders use. Comparing a coordinate's bit pattern against a bound
+     * derived any other way would be two opinions about the same edge.
+     *
+     * The bound is the extent rather than the last pixel: a vertex exactly at
+     * the right edge is legal geometry - a triangle covering the whole surface
+     * has one - and the rasteriser's own sample rule decides whether the last
+     * column is covered.
+     */
+    if (v9x_i9xx_float_from_int(width, &width_bits) != V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(height, &height_bits) != V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+
+    vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
+                         (v9x_u16)triangles);
+
+    stream[at++] = V9X_I9XX_3DPRIMITIVE_INLINE |
+                   V9X_I9XX_PRIM3D_TRILIST |
+                   (run_dwords - 2ul);
+
+    for (vertex = 0ul; vertex < vertices; ++vertex) {
+        v9x_u32 base = vertex * 4ul;
+
+        /*
+         * Every coordinate inside the rectangle it will be rasterised in.
+         *
+         * The core clips before an engine is called, so a vertex outside it
+         * means the core and this engine disagree about the target - and the
+         * consequence is not a wrong picture, it is a write outside the
+         * surface. On this part that is a write to a page that may not be
+         * ours, which is the failure everything else here is arranged to
+         * prevent.
+         */
+        if (v9x_i9xx_float_in_range(xyzw[base], width_bits) == V9X_FALSE ||
+            v9x_i9xx_float_in_range(xyzw[base + 1ul], height_bits) ==
+                V9X_FALSE) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        /* Z in [0, 1]: the depth range the hardware is given, and the range a
+         * post-transform vertex is defined over. */
+        if (v9x_i9xx_float_in_range(xyzw[base + 2ul], one_bits) ==
+                V9X_FALSE) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        /*
+         * W exactly one. These are post-transform vertices, so anything else
+         * would mean the core handed over geometry it had not divided
+         * through - and the hardware would divide by it again.
+         */
+        if (xyzw[base + 3ul] != one_bits) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+
+        stream[at++] = xyzw[base];
+        stream[at++] = xyzw[base + 1ul];
+        stream[at++] = xyzw[base + 2ul];
+        stream[at++] = xyzw[base + 3ul];
+        /* The colour is NOT checked. Every 32-bit value is a legal colour,
+         * and a decoder or builder asserting one would be asserting what the
+         * application may draw. */
+        stream[at++] = colors[vertex];
+    }
+
+    *written = at;
+    return V9X_STATUS_OK;
+}
