@@ -417,11 +417,22 @@ v9x_status v9x_i9xx_build_runtime_run(
             return V9X_STATUS_INVALID_ARGUMENT;
         }
         /*
-         * W exactly one. These are post-transform vertices, so anything else
-         * would mean the core handed over geometry it had not divided
-         * through - and the hardware would divide by it again.
+         * RHW, and it is NOT required to be one.
+         *
+         * It was, on the reasoning that these are post-transform vertices so
+         * W must already have been divided through. That confuses W with its
+         * reciprocal: the fourth float of a D3DTLVERTEX is rhw, which the
+         * hardware uses to interpolate across the triangle rather than to
+         * divide the coordinates again, and which Direct3D defines as varying
+         * with projection. Requiring 1.0f refused ordinary projected geometry
+         * before it reached the stream, and every scene this project has
+         * measured uses 1.0f, so nothing here disagreed with it.
+         *
+         * X and Y stay bounded and Z stays in [0, 1]. Those say where the
+         * rasteriser may write; this says how it shades between the corners,
+         * and fixing a value for it fixes what may be drawn.
          */
-        if (xyzw[base + 3ul] != one_bits) {
+        if (v9x_i9xx_float_positive_finite(xyzw[base + 3ul]) == V9X_FALSE) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
 

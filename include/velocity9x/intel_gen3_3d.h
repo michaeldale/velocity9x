@@ -1084,6 +1084,11 @@ v9x_status v9x_i9xx_build_runtime_run(
  * IEEE-754 magnitudes order as integers only while the sign bit is clear, so
  * a negative float compares as a very large one.
  */
+/* A legal reciprocal homogeneous W: positive, finite, not zero. One
+ * predicate for the builder and the decoder both, because they are the two
+ * independent judgements of the same value. */
+v9x_u16 v9x_i9xx_float_positive_finite(v9x_u32 bits);
+
 v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
 /*
  * u_bits and v_bits are IEEE-754 bit patterns, one pair per vertex in

@@ -151,6 +151,42 @@ v9x_u16 v9x_i9xx_float_to_int(v9x_u32 bits, v9x_u32 *value)
  * Infinity is 0x7F800000 and every NaN is above it, so any limit below
  * infinity excludes both without naming them.
  */
+/*
+ * A legal reciprocal homogeneous W: positive, finite, not zero.
+ *
+ * ONE predicate, used by the builder and by the decoder, because they are the
+ * two independent judgements of the same value and a second copy is how they
+ * would come to disagree.
+ *
+ * What it admits is anything a projection can produce. rhw is 1/W and Direct3D
+ * defines it as varying - a vertex twice as far away carries half the rhw - so
+ * the builder demanding exactly 1.0f refused ordinary projected geometry. It
+ * went unnoticed because every scene this project has measured uses 1.0f.
+ *
+ * What it refuses has no reading as a reciprocal: zero (W infinite), negative
+ * (a vertex behind the eye, which the core clips before this engine is
+ * called), an infinity, and a NaN. Each hands the interpolator an undefined
+ * span, and a rasteriser walking one is the failure the range checks on X, Y
+ * and Z exist to prevent.
+ *
+ * A single unsigned comparison does it. IEEE-754 orders positive floats by
+ * their bit patterns, so anything at or above 0x7f800000 is an infinity, a NaN
+ * or negative - a negative has the sign bit set and therefore exceeds every
+ * positive pattern when read unsigned. Zero and negative zero are excluded by
+ * the same two tests.
+ *
+ * NOT a claim about what the hardware does with the value. This project has
+ * measured no vertex with an rhw other than 1.0f on this part, and the first
+ * application frame is where that starts being true.
+ */
+v9x_u16 v9x_i9xx_float_positive_finite(v9x_u32 bits)
+{
+    if (bits == 0ul || bits == 0x80000000ul) {
+        return V9X_FALSE;
+    }
+    return bits < 0x7f800000ul ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits)
 {
     if ((bits & 0x80000000ul) != 0ul) {

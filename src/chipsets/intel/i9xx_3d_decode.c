@@ -1064,8 +1064,26 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                V9X_I9XX_FLOAT_OK || decoded != 0ul) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 2ul);
                 }
-                if (v9x_i9xx_float_to_int(stream[base + 3ul], &decoded) !=
-                        V9X_I9XX_FLOAT_OK || decoded != 1ul) {
+                /*
+                 * RHW. Exactly one in a generated scene, because the tables
+                 * this build emits carry one and a stream that does not is
+                 * not the stream that was audited. Any legal reciprocal in a
+                 * runtime stream, because that value is the application's -
+                 * see v9x_i9xx_float_positive_finite for what makes one legal
+                 * and why demanding 1.0f here refused real geometry.
+                 *
+                 * The two kinds are separated deliberately rather than
+                 * relaxed together: widening the scene rule would weaken the
+                 * one check that pins the diagnostic streams to their CRCs.
+                 */
+                if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                    if (v9x_i9xx_float_positive_finite(stream[base + 3ul]) ==
+                            V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 3ul);
+                    }
+                } else if (v9x_i9xx_float_to_int(stream[base + 3ul],
+                                                 &decoded) !=
+                               V9X_I9XX_FLOAT_OK || decoded != 1ul) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 3ul);
                 }
                 /* Uniform colour, which is what makes shading mode moot.

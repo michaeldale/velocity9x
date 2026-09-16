@@ -2210,11 +2210,52 @@ static void test_runtime_run(void)
     xyzw[2] = 0ul;
 
     /*
-     * W that is not one. These are post-transform vertices, so anything else
-     * means the core handed over geometry it had not divided through - and
-     * the hardware would divide by it again.
+     * RHW IS NOT REQUIRED TO BE ONE, and requiring it was a defect.
+     *
+     * The fourth float of a D3DTLVERTEX is rhw - the reciprocal of homogeneous
+     * W - and Direct3D defines it as varying with projection. This builder
+     * demanded exactly 1.0f, which is true only of geometry that happens to
+     * sit on the near plane's scale, so ordinary projected triangles were
+     * refused before they reached the stream. Every scene this project has
+     * measured used 1.0f, which is why nothing caught it: the diagnostic
+     * geometry is the one case the rule was right about.
+     *
+     * X and Y are still bounded and Z is still [0, 1]. Those are about where
+     * the rasteriser may write; rhw is about how it interpolates between the
+     * vertices, and asserting a value for it asserts what may be drawn.
      */
-    xyzw[3] = 0x40000000ul;
+    xyzw[3] = 0x40000000ul;   /* 2.0 */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+    /* Vertex 0's W: one _3DPRIMITIVE header dword, then x, y, z, w. */
+    CHECK(stream[4] == 0x40000000ul);
+    xyzw[3] = 0x3d800000ul;   /* 1/16, a far vertex */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+
+    /*
+     * What is still refused, because none of these is a reciprocal of
+     * anything and all of them hand the interpolator an undefined span.
+     */
+    xyzw[3] = 0ul;                        /* W infinite */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[3] = 0x80000000ul;               /* negative zero */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[3] = 0xbf800000ul;               /* -1.0 */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[3] = 0x7f800000ul;               /* +infinity */
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
+                                     stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    xyzw[3] = 0x7fc00000ul;               /* NaN */
     CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, 640ul, 480ul,
                                      stream, 64ul, &written) !=
           V9X_STATUS_OK);
@@ -2309,6 +2350,46 @@ static void test_decoder_runtime_mode(void)
     /* It decodes. */
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_OK);
+
+    /*
+     * RHW, THE SECOND JUDGEMENT. The builder accepts a projected value and
+     * this must accept the same one, or a draw the builder allowed would be
+     * refused at submission and the engine would look broken from the other
+     * side. The two checks are independent by design; agreeing is not
+     * optional.
+     */
+    saved = stream[primitive + 4ul];
+    stream[primitive + 4ul] = 0x40000000ul;          /* rhw 2.0 */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    stream[primitive + 4ul] = 0x3d800000ul;          /* rhw 1/16 */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    /* And the values that are not reciprocals of anything. */
+    stream[primitive + 4ul] = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[primitive + 4ul] = 0xbf800000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[primitive + 4ul] = 0x7f800000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[primitive + 4ul] = 0x7fc00000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[primitive + 4ul] = saved;
+
+    /*
+     * That the SCENE kinds still pin rhw to one is not asserted here, and the
+     * attempt is worth recording: decoding this stream with SCENE_PLAIN was
+     * tried, and it refuses long before the vertices - a plain scene's limits
+     * describe the diagnostic target, not this surface. The refusal was real
+     * and said nothing about rhw, which is the shape of assertion this project
+     * keeps catching. The scene rule is exercised where it can be: the
+     * generated-table self-test in check-intel-3d-capture.ps1 mutates scene
+     * vertices and requires each rejection.
+     */
 
     /*
      * WHAT IT RELAXES, asserted so the relaxation is real rather than assumed:
