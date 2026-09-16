@@ -1,5 +1,5 @@
 @ECHO OFF
-ECHO Velocity9x Intel Phase 6 one-shot arm (regression + texture, one boot)
+ECHO Velocity9x Intel Phase 6 one-shot arm (five scenes, one boot)
 ECHO.
 REM This arms the NEXT boot to run the Phase 6 scene table once. The build id and the
 REM COMBINED command CRC below are stamped in by the package build, from the
