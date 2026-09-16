@@ -208,10 +208,29 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * arguments wrong - and the decoder refusing is cheaper than validating a
      * stream against limits nobody meant.
      */
-    textured = v9x_i9xx_scene_kind_textured(limits->kind);
-    depthed = v9x_i9xx_scene_kind_depth(limits->kind);
-    if ((textured != V9X_FALSE) != (texture_bytes != 0ul) ||
-        (depthed != V9X_FALSE) != (depth_bytes != 0ul)) {
+    /*
+     * WHICH SURFACES THIS STREAM USES.
+     *
+     * A scene is answered by its kind, and the consistency check below then
+     * pins the caller's declaration to it - a textured scene handed no texture
+     * range is a caller and a stream that disagree.
+     *
+     * A runtime stream has no such kind. The application binds a texture or a
+     * depth buffer per draw, so the declaration IS the answer and there is
+     * nothing to cross-check it against here. The check that matters for those
+     * surfaces is the footprint arithmetic in the HAL, which refuses before
+     * this decoder ever runs.
+     */
+    if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+        textured = (texture_bytes != 0ul) ? V9X_TRUE : V9X_FALSE;
+        depthed = (depth_bytes != 0ul) ? V9X_TRUE : V9X_FALSE;
+    } else {
+        textured = v9x_i9xx_scene_kind_textured(limits->kind);
+        depthed = v9x_i9xx_scene_kind_depth(limits->kind);
+    }
+    if (limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+        ((textured != V9X_FALSE) != (texture_bytes != 0ul) ||
+         (depthed != V9X_FALSE) != (depth_bytes != 0ul))) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     if (dword_count == 0ul || target_bytes == 0ul ||
@@ -288,8 +307,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 if (depthed == V9X_FALSE) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 1ul);
                 }
+                /*
+                 * The pitch: this build's constant for a scene, the
+                 * application's surface for a runtime stream. Equality either
+                 * way - the question is whether the stream binds the buffer
+                 * the engine meant, and BUF_INFO discards the pitch's low two
+                 * bits, so a pitch that did not survive the encoding would
+                 * place every depth row but the first at the wrong address.
+                 */
                 if ((identity & V9X_I9XX_BUF_3D_PITCH_MASK) !=
-                        (V9X_I9XX_DEPTH_PITCH &
+                        ((limits->kind == V9X_I9XX_SCENE_RUNTIME
+                              ? limits->depth_pitch
+                              : V9X_I9XX_DEPTH_PITCH) &
                          V9X_I9XX_BUF_3D_PITCH_MASK)) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_PITCH, index + 1ul);
                 }
@@ -297,12 +326,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
                 }
                 /*
-                 * And the range must hold the buffer the pitch implies. A
-                 * product of two constants, folded at compile time: a runtime
-                 * 32-bit multiply here would be a __U4M call into the default
-                 * CODE segment that a near call cannot reach.
+                 * And the range must hold the buffer the pitch implies.
+                 *
+                 * A SCENE only: both operands are constants and the product is
+                 * folded. A runtime stream's are variables, and a 32-bit
+                 * multiply here calls __U4D's sibling __U4M in the default
+                 * CODE segment, which a near call from I9XXCODE cannot reach.
+                 * The runtime footprint is computed in v9x_d3d_i9xx.c, in
+                 * 32-bit code, and refused there before this runs.
                  */
-                if (depth_bytes < (v9x_u32)(V9X_I9XX_DEPTH_HEIGHT *
+                if (limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+                    depth_bytes < (v9x_u32)(V9X_I9XX_DEPTH_HEIGHT *
                                             V9X_I9XX_DEPTH_PITCH)) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
                 }
@@ -465,29 +499,64 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                      * for the same reason - an allowlist can only refuse what
                      * it was told to expect.
                      */
-                    if (stream[index + 3ul] !=
-                            (V9X_I9XX_MAPSURF_16BIT_RGB565 |
-                             ((V9X_I9XX_TEXTURE_HEIGHT - 1ul) <<
-                              V9X_I9XX_MS3_HEIGHT_SHIFT) |
-                             ((V9X_I9XX_TEXTURE_WIDTH - 1ul) <<
-                              V9X_I9XX_MS3_WIDTH_SHIFT))) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 3ul);
-                    }
-                    if (stream[index + 4ul] !=
-                            (((V9X_I9XX_TEXTURE_PITCH >> 2) - 1ul) <<
-                             V9X_I9XX_MS4_PITCH_SHIFT)) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 4ul);
-                    }
-                    /*
-                     * And the declared range must actually hold that map. The
-                     * product is of two constants and is folded; a runtime
-                     * 32-bit multiply here would be a __U4M call into the
-                     * default CODE segment that a near call cannot reach.
-                     */
-                    if (texture_bytes <
-                            (v9x_u32)(V9X_I9XX_TEXTURE_HEIGHT *
-                                      V9X_I9XX_TEXTURE_PITCH)) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
+                    {
+                        /*
+                         * The shape, from this build's constants for a scene
+                         * and from the application's surface for a runtime
+                         * stream. Equality either way: the question is whether
+                         * the stream describes the map the engine meant, and
+                         * "fits inside the allocation" is a different and
+                         * weaker question that the HAL has already answered.
+                         */
+                        v9x_u32 map_width = V9X_I9XX_TEXTURE_WIDTH;
+                        v9x_u32 map_height = V9X_I9XX_TEXTURE_HEIGHT;
+                        v9x_u32 map_pitch = V9X_I9XX_TEXTURE_PITCH;
+
+                        if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                            map_width = limits->texture_width;
+                            map_height = limits->texture_height;
+                            map_pitch = limits->texture_pitch;
+                            if (map_width == 0ul || map_height == 0ul ||
+                                map_pitch == 0ul) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                                index + 3ul);
+                            }
+                        }
+                        if (stream[index + 3ul] !=
+                                (V9X_I9XX_MAPSURF_16BIT_RGB565 |
+                                 ((map_height - 1ul) <<
+                                  V9X_I9XX_MS3_HEIGHT_SHIFT) |
+                                 ((map_width - 1ul) <<
+                                  V9X_I9XX_MS3_WIDTH_SHIFT))) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                            index + 3ul);
+                        }
+                        if (stream[index + 4ul] !=
+                                (((map_pitch >> 2) - 1ul) <<
+                                 V9X_I9XX_MS4_PITCH_SHIFT)) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                            index + 4ul);
+                        }
+                        /*
+                         * And the declared range must hold that map.
+                         *
+                         * Done only for a SCENE, where both operands are
+                         * constants and the product is folded. A runtime
+                         * stream's operands are variables, and a 32-bit
+                         * multiply here calls __U4M in the default CODE
+                         * segment, which a near call from I9XXCODE cannot
+                         * reach - E2052 at link time. The runtime footprint is
+                         * computed instead in v9x_d3d_i9xx.c, in 32-bit code
+                         * where the multiply is free and overflow-checked, and
+                         * refused there before this decoder runs.
+                         */
+                        if (limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+                            texture_bytes <
+                                (v9x_u32)(V9X_I9XX_TEXTURE_HEIGHT *
+                                          V9X_I9XX_TEXTURE_PITCH)) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE,
+                                            index + 2ul);
+                        }
                     }
                     saw_map_state = V9X_TRUE;
                 } else {
@@ -605,8 +674,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     want_s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
                                (V9X_I9XX_COMPAREFUNC_LESS <<
                                     V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
-                    if (v9x_i9xx_scene_kind_depth_writes(limits->kind) !=
-                            V9X_FALSE) {
+                    /*
+                     * Whether writes are enabled: the scene's kind, or for a
+                     * runtime stream the caller's declaration, because an
+                     * application sets ZWRITEENABLE per draw and there is no
+                     * kind to read it from. Still an equality - a stream that
+                     * enabled writes the engine did not intend would modify
+                     * the application's depth buffer unasked.
+                     */
+                    if (limits->kind == V9X_I9XX_SCENE_RUNTIME
+                            ? (limits->depth_writes != 0ul)
+                            : (v9x_i9xx_scene_kind_depth_writes(limits->kind) !=
+                                   V9X_FALSE)) {
                         want_s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;
                     }
                 }
@@ -632,7 +711,19 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             {
                 v9x_u32 want;
 
-                if (limits->kind == V9X_I9XX_SCENE_MODULATED) {
+                if (limits->kind == V9X_I9XX_SCENE_MODULATED ||
+                    (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                     textured != V9X_FALSE)) {
+                    /*
+                     * A runtime textured draw MODULATES: the texel by the
+                     * interpolated vertex colour, which is what
+                     * D3DTBLEND_MODULATE means and the only texture blend
+                     * this engine publishes. The sampling program below
+                     * writes the texel alone and is scene 1's, which measured
+                     * addressing rather than blending - a runtime draw
+                     * carrying it would ignore the vertex colour and look
+                     * like a lighting bug.
+                     */
                     want = v9x_i9xx_modulate_program_extent() - 1ul;
                 } else if (textured != V9X_FALSE) {
                     want = v9x_i9xx_sampling_program_extent() - 1ul;
@@ -877,13 +968,33 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 saw_fill == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
-            if (textured != V9X_FALSE &&
-                (saw_texture_paint == V9X_FALSE || painted != 0x0ful)) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+            /*
+             * A SCENE must have painted its texture and cleared its depth
+             * buffer before it draws, for the same reason it must have filled
+             * the target: otherwise the result depends on what that memory
+             * already held.
+             *
+             * A RUNTIME stream must not do either. Both surfaces belong to the
+             * application - it uploads its own texels and clears its own depth
+             * buffer when it decides to - and a driver that painted over a
+             * texture or cleared a depth buffer on every draw would destroy
+             * the frame it was asked to render.
+             *
+             * The depth BUF_INFO is still required in both, because that is
+             * not a precondition about memory contents: it is the binding,
+             * and a depth-enabled stream without it tests against whatever
+             * buffer the engine last had.
+             */
+            if (limits->kind != V9X_I9XX_SCENE_RUNTIME) {
+                if (textured != V9X_FALSE &&
+                    (saw_texture_paint == V9X_FALSE || painted != 0x0ful)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+                }
+                if (depthed != V9X_FALSE && saw_depth_clear == V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+                }
             }
-            if (depthed != V9X_FALSE &&
-                (saw_depth_clear == V9X_FALSE ||
-                 saw_depth_buf_info == V9X_FALSE)) {
+            if (depthed != V9X_FALSE && saw_depth_buf_info == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
             /* A blend draw without the IAB disable would blend the alpha
@@ -1110,13 +1221,41 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                      * clamp-to-edge sampler would turn it into a plausible
                      * texel instead of an error.
                      */
-                    if (v9x_i9xx_normalized_half(stream[base + 5ul]) ==
-                            V9X_FALSE) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 5ul);
-                    }
-                    if (v9x_i9xx_normalized_half(stream[base + 6ul]) ==
-                            V9X_FALSE) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 6ul);
+                    if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                        /*
+                         * An application's coordinates, so any finite value.
+                         *
+                         * The scene rule below - exactly 0, 1/2 or 1 - is
+                         * right for a stream this build generated and wrong
+                         * for one it did not: the sampler NORMALIZES, so two
+                         * is the far edge of the second tile and a negative
+                         * one is the tile to the left, and both are ordinary
+                         * things for an application to ask for. What is still
+                         * refused is an infinity or a NaN, which name no place
+                         * on a texture and leave the interpolator walking a
+                         * span nobody can predict.
+                         */
+                        if (v9x_i9xx_float_finite(stream[base + 5ul]) ==
+                                V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base + 5ul);
+                        }
+                        if (v9x_i9xx_float_finite(stream[base + 6ul]) ==
+                                V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base + 6ul);
+                        }
+                    } else {
+                        if (v9x_i9xx_normalized_half(stream[base + 5ul]) ==
+                                V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base + 5ul);
+                        }
+                        if (v9x_i9xx_normalized_half(stream[base + 6ul]) ==
+                                V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base + 6ul);
+                        }
                     }
                 }
                 base += stride;
@@ -1159,8 +1298,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * is another client's memory or none - and the draw would test against it
      * without complaint.
      */
-    if (depthed != V9X_FALSE &&
-        (saw_depth_buf_info == V9X_FALSE || saw_depth_clear == V9X_FALSE)) {
+    if (depthed != V9X_FALSE && saw_depth_buf_info == V9X_FALSE) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    /*
+     * The CLEAR is a scene's obligation and not a runtime stream's, for the
+     * reason given at the draw: the application owns the buffer and clears it
+     * when it decides to, and a driver clearing it every draw would erase the
+     * frame. The BINDING above is required in both, because that is not about
+     * what the memory holds.
+     */
+    if (depthed != V9X_FALSE && limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+        saw_depth_clear == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     /*
@@ -1168,7 +1317,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * sampler reads a page holding whatever the last boot left, which under a
      * nearest filter is a picture - just not one of this build's making.
      */
-    if (textured != V9X_FALSE &&
+    if (textured != V9X_FALSE && limits->kind != V9X_I9XX_SCENE_RUNTIME &&
         (saw_texture_paint == V9X_FALSE || painted != 0x0ful)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }

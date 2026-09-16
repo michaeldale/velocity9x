@@ -2282,6 +2282,192 @@ static void test_runtime_run(void)
     CHECK(written == 0ul);
 }
 
+
+/*
+ * A RUNTIME stream that samples an application texture and tests depth.
+ *
+ * The point of this test is the pairing. The builders and the decoder are two
+ * opinions about one stream, and every earlier kind was pinned to constants
+ * this build owns - a runtime textured draw is the first where both sides are
+ * reading numbers an application chose, so a disagreement between them is a
+ * draw the engine refuses at submission and an application sees as a failure
+ * with nothing to explain it.
+ */
+static void test_runtime_textured_and_depth(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    /* A page-aligned map, which is what bind_map requires, and a size the
+     * limits admit but the scene table does not use. */
+    const v9x_u32 map_offset = 0x00300000ul;
+    const v9x_u32 map_edge = 64ul;
+    const v9x_u32 depth_offset = 0x00400000ul;
+    const v9x_u32 depth_pitch = 1024ul;
+
+    map.offset = map_offset;
+    map.width = map_edge;
+    map.height = map_edge;
+    map.pitch = map_edge * 2ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map_offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.depth_offset = depth_offset;
+    limits.depth_bytes = height * depth_pitch;
+    limits.depth_pitch = depth_pitch;
+    limits.depth_writes = 1ul;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       depth_offset, depth_pitch, 1ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x00c0ffeeul;
+    colors[1] = 0xdeadbeeful;
+    colors[2] = 0x12345678ul;
+    /* Coordinates outside [0, 1] and one negative: ordinary under a
+     * normalizing sampler, and the values a wrapped tile is addressed by. */
+    uv[0] = 0ul;            uv[1] = 0ul;
+    uv[2] = 0x40000000ul;   uv[3] = one;          /* 2.0, 1.0 */
+    uv[4] = 0xbf800000ul;   uv[5] = 0x3f000000ul; /* -1.0, 0.5 */
+
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* The map the stream describes must be the one the limits declare. A
+     * pitch the engine did not intend is the defect that reads 126 KiB past a
+     * 2 KiB allocation, and it is the same defect whoever chose the number. */
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        wrong.texture_pitch = map.pitch * 2ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+        wrong = limits;
+        wrong.texture_height = map.height * 2ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+        wrong = limits;
+        wrong.texture_width = map.width / 2ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+        /*
+         * And the depth WRITE enable, which for a runtime stream comes from
+         * the application rather than from a kind. A stream that wrote depth
+         * the engine did not intend would modify the application's buffer
+         * unasked.
+         */
+        wrong = limits;
+        wrong.depth_writes = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+        /* Declaring no texture at all against a stream that samples one. */
+        wrong = limits;
+        wrong.texture_bytes = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+    }
+}
+
+/*
+ * A batch of more than three triangles, which the runtime path refused until
+ * 2026-09-16 because it shared the scene table's bound.
+ *
+ * Sixty-four is the ceiling and it is exercised rather than assumed: the run
+ * builders multiply the count in sixteen bits, so the largest legal batch is
+ * the one most likely to have been got wrong.
+ */
+static void test_runtime_batch_bound(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    static v9x_u32 stream[2200];
+    static v9x_u32 xyzw[64ul * 3ul * 4ul];
+    static v9x_u32 colors[64ul * 3ul];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 vertex;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    for (vertex = 0ul; vertex < 64ul * 3ul; ++vertex) {
+        xyzw[(vertex * 4ul) + 0ul] = 0x43204000ul;  /* 160.25 */
+        xyzw[(vertex * 4ul) + 1ul] = 0x42f00000ul;  /* 120.0  */
+        xyzw[(vertex * 4ul) + 2ul] = 0ul;
+        xyzw[(vertex * 4ul) + 3ul] = one;
+        colors[vertex] = 0x00ff00fful;
+    }
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul, stream + at,
+                                       2200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 2200ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 64ul, width, height,
+                                     stream + at, 2200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* One past the ceiling is refused by the builder rather than truncated. */
+    CHECK(v9x_i9xx_runtime_run_dwords(V9X_I9XX_RUNTIME_MAX_TRIANGLES + 1ul) ==
+          0ul);
+    CHECK(v9x_i9xx_runtime_textured_run_dwords(
+              V9X_I9XX_RUNTIME_MAX_TRIANGLES + 1ul) == 0ul);
+    /* And the scene bound is untouched: a scene still draws at most three. */
+    CHECK(v9x_i9xx_triangle_run_dwords(V9X_I9XX_SCENE_MAX_TRIANGLES) != 0ul);
+    CHECK(v9x_i9xx_triangle_run_dwords(V9X_I9XX_SCENE_MAX_TRIANGLES + 1ul) ==
+          0ul);
+}
+
 /*
  * The RUNTIME decoder mode, and - the point of this test - everything it does
  * NOT relax.
@@ -3463,6 +3649,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_alpha_scene_expectations();
     test_blend_scene_expectations();
     test_decoder_runtime_mode();
+    test_runtime_textured_and_depth();
+    test_runtime_batch_bound();
     test_float_in_range();
     test_runtime_run();
     test_i9xx_bind_target();

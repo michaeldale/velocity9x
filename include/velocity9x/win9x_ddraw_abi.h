@@ -1128,6 +1128,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091603: V9X_D3D_DIAGNOSTICS gains six Gen3 draw counters. An append
+ * at the end of that struct, but the stamp moves anyway: a 32-bit HAL
+ * writing fields a 16-bit side sized without them writes past the
+ * allocation, and the stamp is what stops the two meeting.
+ *
  * 2026091602: V9X_DD_ENGINE gains ring_linear_base and ring_bytes, and the
  * shared block grows to two DPMI pages to hold them.
  *
@@ -1144,7 +1149,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091602ul
+#define V9X_DD_SHARED_ABI   2026091603ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1474,6 +1479,30 @@ typedef struct v9x_d3d_diagnostics {
      * already carries, so the probe's compact view reads it from there
      * (docs\issues\2026-09-05-setrendertarget-is-accepted-and-ignored.md).
      */
+    /*
+     * Appended 2026-09-16, for the Gen3 engine, because intel52 could not be
+     * read: 404 RenderPrimitive calls produced about eighty submissions and
+     * nothing anywhere said what happened to the rest. A draw that returns
+     * zero is an error the application sees and a frame nobody can explain.
+     *
+     * i9xx_refuse_last carries the reason code of the last refusal - one of
+     * the V9X_I9XX_REFUSE_* values in d3d_i9xx.c - so a capture names the
+     * check rather than leaving the count to be guessed at.
+     */
+    DWORD i9xx_draws_submitted;
+    DWORD i9xx_draws_refused;
+    DWORD i9xx_refuse_last;
+    DWORD i9xx_texture_draws;   /* draws that sampled a map                  */
+    DWORD i9xx_depth_draws;     /* draws that tested depth                   */
+    /*
+     * Depth asked for and not delivered: the application enabled Z with a
+     * comparison this engine's S6 does not carry, or a surface the footprint
+     * check refused. The draw still goes, un-Z'd, which is the ViRGE's
+     * behaviour for a blend it cannot express - and like that one it is a
+     * wrong picture rather than a missing one, so it has to be counted or it
+     * is invisible.
+     */
+    DWORD i9xx_depth_skipped;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

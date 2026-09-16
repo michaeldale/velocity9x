@@ -38,4 +38,19 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
     v9x_u32 aperture_bytes,
     v9x_u32 *identity_out, v9x_u32 *address_out);
 
+/*
+ * The same question for a texture map and for a depth buffer.
+ *
+ * A map's address is PAGE aligned and its dimensions are bounded by
+ * MAP_STATE's fields; a depth buffer's constraints are BUF_INFO's, which are
+ * the target's, and address zero is refused outright. Both share the target's
+ * footprint arithmetic, which is what keeps the aperture bound in one place.
+ */
+v9x_u16 v9x_d3d_i9xx_bind_map(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 aperture_bytes, v9x_u32 *address_out);
+v9x_u16 v9x_d3d_i9xx_bind_depth(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 aperture_bytes, v9x_u32 *address_out);
+
 #endif /* VELOCITY9X_D3D_I9XX_TARGET_H */

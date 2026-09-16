@@ -179,6 +179,26 @@ v9x_u16 v9x_i9xx_float_to_int(v9x_u32 bits, v9x_u32 *value)
  * measured no vertex with an rhw other than 1.0f on this part, and the first
  * application frame is where that starts being true.
  */
+/*
+ * A finite float of either sign, which is what a texture coordinate is.
+ *
+ * Separate from the positive-finite predicate above rather than a relaxation
+ * of it: rhw has no reading below zero and a negative one is a vertex behind
+ * the eye, while a NEGATIVE TEXTURE COORDINATE IS ORDINARY - it is how an
+ * application addresses the tile to the left under a wrapping sampler, and
+ * this driver's sampler normalizes coordinates so the value is a multiple of
+ * the texture rather than a texel index.
+ *
+ * So the sign is dropped before the comparison and only the exponent decides.
+ * Infinities and NaNs stay refused: neither names a place on a texture, and
+ * an interpolator walking between one and a real coordinate produces a span
+ * nobody can predict.
+ */
+v9x_u16 v9x_i9xx_float_finite(v9x_u32 bits)
+{
+    return (bits & 0x7ffffffful) < 0x7f800000ul ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u16 v9x_i9xx_float_positive_finite(v9x_u32 bits)
 {
     if (bits == 0ul || bits == 0x80000000ul) {

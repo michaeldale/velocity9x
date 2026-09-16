@@ -49,7 +49,9 @@
  * rather than a truncated one.
  */
 #define V9X_I9XX_SUBMIT_VERTICES  ((DWORD)192ul)
-#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)1280ul)
+/* Sized for the largest batch: a textured, depth-bound state block, the
+ * modulate program, and 64 triangles of seven-dword vertices. */
+#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)1536ul)
 
 /*
  * What this part is measured to do, and nothing wider.
@@ -69,8 +71,27 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max       */
     4ul,                        /* target_pitch_align     */
     2048ul,                     /* target_dimension_max   */
-    32ul,                       /* texture_size_min       */
-    32ul,                       /* texture_size_max       */
+    /*
+     * 8 to 256, square and a power of two.
+     *
+     * GENERALISED from one measured size, and that is stated rather than
+     * implied: intel45 sampled a 32x32 map and nothing has sampled another.
+     * MAP_STATE's fields hold any dimension to 2048 and the builder is
+     * parameterised, so the packet is not the limit - what is unmeasured is
+     * whether the sampler behaves the same at every size.
+     *
+     * Generalising is defensible here because the memory-safety argument does
+     * not rest on it: v9x_d3d_i9xx_bind_map proves the footprint lies inside
+     * the aperture whatever the size, so a size this part dislikes is a wrong
+     * picture, not a write outside the surface. A claim that cost safety
+     * rather than accuracy would not be worth making.
+     *
+     * The ceiling is 256 rather than 2048 because a 2048-square map is 8 MiB
+     * and this part's stolen memory is 8. The floor is 8 because below it the
+     * pitch of a square map stops being a multiple of four.
+     */
+    8ul,                        /* texture_size_min       */
+    256ul,                      /* texture_size_max       */
     4096.0f,                    /* coordinate_limit       */
     16ul                        /* depth_bits_per_pixel   */
 };
@@ -205,19 +226,226 @@ static int v9x_d3d_i9xx_submit(const DWORD *stream, DWORD dwords)
 }
 
 /*
- * No texture format is accepted.
+ * Why a draw was refused, for the counters. intel52 had 404 calls and about
+ * eighty submissions with nothing to say what became of the rest.
+ */
+#define V9X_I9XX_REFUSE_NONE        0ul
+#define V9X_I9XX_REFUSE_ARGUMENTS   1ul
+#define V9X_I9XX_REFUSE_BATCH       2ul
+#define V9X_I9XX_REFUSE_TARGET      3ul
+#define V9X_I9XX_REFUSE_STATE       4ul
+#define V9X_I9XX_REFUSE_PROGRAM     5ul
+#define V9X_I9XX_REFUSE_VERTICES    6ul
+#define V9X_I9XX_REFUSE_CAPACITY    7ul
+#define V9X_I9XX_REFUSE_DECODER     8ul
+#define V9X_I9XX_REFUSE_SUBMIT      9ul
+
+static int v9x_d3d_i9xx_refuse(DWORD reason)
+{
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.i9xx_draws_refused;
+        v9x_hal->d3d_diagnostics.i9xx_refuse_last = reason;
+    }
+    return 0;
+}
+
+/*
+ * The one texture format this sampler is configured for: RGB565.
  *
- * The engine cannot draw, so accepting a format would tell the core this
- * engine can sample something it has no way to reach.
+ * MAP_STATE's format field is a parameter, but the decoder requires
+ * MAPSURF_16BIT_RGB565 and the fragment program samples one channel layout,
+ * so accepting a second format here would produce a stream the allowlist
+ * refuses - an accepted texture and a failed draw, which is worse than a
+ * refusal that says why.
+ *
+ * It is also the format the desktop is in: this driver selects 5:6:5 for a
+ * Gen3 machine (v9x_dd_engine_wants_555 is false for this engine), so a
+ * surface with no format of its own is already the right one - which is why
+ * the display's format is classified rather than treated as a refusal.
  */
 static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
                                        DWORD *format_out)
 {
-    (void)surface;
+    const V9X_DDPIXELFORMAT *pixel;
+
     if (format_out != 0) {
         *format_out = 0ul;
     }
-    return 0;
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        pixel = &surface->lpGbl->ddpfSurface;
+    } else if (v9x_hal != 0) {
+        /* No format of its own means the display's, and reading ddpfSurface
+         * anyway would read past the allocation - the DDK allocates it only
+         * in the differing case. */
+        pixel = &v9x_hal->info.vmiData.ddpfDisplay;
+    } else {
+        return 0;
+    }
+    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        pixel->dwRGBBitCount != 16ul) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_format;
+            v9x_hal->d3d_diagnostics.texture_refused_last =
+                (pixel->dwRGBBitCount << 24) |
+                (pixel->dwRBitMask & 0x00fffffful);
+        }
+        return 0;
+    }
+    if (pixel->dwRBitMask != 0x0000f800ul ||
+        pixel->dwGBitMask != 0x000007e0ul ||
+        pixel->dwBBitMask != 0x0000001ful) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_format;
+            v9x_hal->d3d_diagnostics.texture_refused_last =
+                (pixel->dwRGBBitCount << 24) |
+                (pixel->dwRBitMask & 0x00fffffful);
+        }
+        return 0;
+    }
+    if (format_out != 0) {
+        *format_out = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    }
+    return 1;
+}
+
+/*
+ * The bound texture as a map, or nothing.
+ *
+ * Returns zero when this draw samples nothing, which is NOT an error: an
+ * application that bound no texture draws untextured, and one whose texture
+ * this engine cannot sample draws untextured too rather than not at all.
+ *
+ * That second case is the ViRGE's behaviour and it is chosen for the same
+ * reason - a refused draw is a hole in the frame, a refused texture is the
+ * vertex colour where a texture should be, and the second is both closer to
+ * what was asked for and easier to recognise. It is only defensible because
+ * every refusal is counted: an uncounted silent fallback is a wrong picture
+ * nobody can explain, which is what texture_refused_* exist to prevent.
+ */
+static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
+                                     struct v9x_i9xx_texture *map)
+{
+    V9X_DD_SURFACE_LCL *surface = v9x_d3d_context_texture_surface(context);
+    DWORD format = 0ul;
+    DWORD offset;
+    DWORD address = 0ul;
+
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        if ((surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+            ++v9x_hal->d3d_diagnostics.texture_refused_sysmem;
+        } else {
+            ++v9x_hal->d3d_diagnostics.texture_refused_nocap;
+        }
+        v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+        v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+            surface->lpGbl->fpVidMem;
+        return 0;
+    }
+    if (!v9x_d3d_i9xx_texture_format(surface, &format)) {
+        return 0;
+    }
+    /*
+     * SQUARE and a power of two, which is the sampler's rule rather than
+     * MAP_STATE's - the packet's fields hold any dimension. The limits say
+     * what has been measured; the engine says what the packet can express;
+     * and the narrower of the two is what an application may have.
+     */
+    if (surface->lpGbl->wWidth != surface->lpGbl->wHeight ||
+        (DWORD)surface->lpGbl->wWidth <
+            v9x_d3d_i9xx_limits.texture_size_min ||
+        (DWORD)surface->lpGbl->wWidth >
+            v9x_d3d_i9xx_limits.texture_size_max ||
+        ((DWORD)surface->lpGbl->wWidth &
+         ((DWORD)surface->lpGbl->wWidth - 1ul)) != 0ul) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_shape;
+        v9x_hal->d3d_diagnostics.texture_refused_last =
+            ((DWORD)surface->lpGbl->wWidth << 16) |
+            ((DWORD)surface->lpGbl->lPitch & 0xfffful);
+        return 0;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
+        v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+        v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+            surface->lpGbl->fpVidMem;
+        return 0;
+    }
+    /*
+     * The footprint, against the aperture. THIS is the memory-safety check
+     * for a sampled surface: the decoder compares the stream against what
+     * this produced, which cannot catch an engine that was wrong about the
+     * surface, and this is what makes sure it was not.
+     */
+    if (v9x_d3d_i9xx_bind_map(offset, (DWORD)surface->lpGbl->lPitch,
+                              (DWORD)surface->lpGbl->wWidth,
+                              (DWORD)surface->lpGbl->wHeight,
+                              v9x_hal->fb.vram_bytes,
+                              &address) == V9X_FALSE) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_other;
+        ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
+        v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
+        v9x_hal->d3d_diagnostics.texture_refused_vidmem =
+            surface->lpGbl->fpVidMem;
+        return 0;
+    }
+    map->offset = address;
+    map->width = (DWORD)surface->lpGbl->wWidth;
+    map->height = (DWORD)surface->lpGbl->wHeight;
+    map->pitch = (DWORD)surface->lpGbl->lPitch;
+    v9x_hal->d3d_diagnostics.texture_last_offset = address;
+    v9x_hal->d3d_diagnostics.texture_last_size = map->width;
+    v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
+    return 1;
+}
+
+/*
+ * The bound depth buffer, or nothing.
+ *
+ * Zero when the application asked for no depth test, and zero WITH A COUNT
+ * when it asked for one this engine cannot express. S6 carries a single
+ * comparison function and this build emits LESS; an application asking for
+ * GREATER would otherwise have its draws silently depth-tested the wrong way,
+ * which is a wrong picture that looks like a plausible one.
+ */
+static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
+                                           DWORD *offset_out,
+                                           DWORD *pitch_out,
+                                           DWORD *writes_out)
+{
+    DWORD address = 0ul;
+
+    *offset_out = 0ul;
+    *pitch_out = 0ul;
+    *writes_out = 0ul;
+
+    if (context->depth_offset == 0ul || context->z_enable == 0ul) {
+        return 0;
+    }
+    if (context->z_func != V9X_D3DCMP_LESS) {
+        ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
+        return 0;
+    }
+    if (v9x_d3d_i9xx_bind_depth(context->depth_offset, context->depth_pitch,
+                                context->width, context->height,
+                                v9x_hal->fb.vram_bytes,
+                                &address) == V9X_FALSE) {
+        ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
+        return 0;
+    }
+    *offset_out = address;
+    *pitch_out = context->depth_pitch;
+    *writes_out = context->z_write != 0ul ? 1ul : 0ul;
+    return 1;
 }
 
 /*
@@ -229,21 +457,32 @@ static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * flat and Gouraud RGB triangles into a 16-bit target, from transformed and
  * lit vertices, and nothing else.
  *
- * WHAT IS DELIBERATELY ABSENT, each because the path does not exist:
+ * WHAT IS CLAIMED AND WHY, as of 2026-09-16:
  *
- *  - No texture caps and no texture formats. texture_format refuses every
- *    surface, so an application must be told there is nowhere to put one.
- *    The diagnostic scenes sample a texture; the runtime path does not build
- *    one, and claiming otherwise would be advertising the scenes.
- *  - No Z caps and no Z-buffer depth. The runtime state block binds no depth
- *    buffer. D3DPRASTERCAPS_ZTEST is absent for the same reason.
- *  - No blend caps. The runtime S6 enables no blending.
- *  - No fog, no lines, no specular.
+ *  - ONE texture format, RGB565, square and a power of two from 8 to 256.
+ *    The runtime path builds MAP_STATE and SAMPLER_STATE from the
+ *    application's surface and the modulate program samples it. Every part of
+ *    that is measured (intel45, intel46); what is generalised is the size
+ *    range, which the limits comment above states plainly.
+ *  - A 16-bit Z BUFFER with the LESS comparison and optional writes. One
+ *    comparison, because S6 carries one and this build emits LESS - an
+ *    application asking for another gets an un-Z'd draw and a count, which is
+ *    why dwZCmpCaps says LESS alone rather than letting the runtime assume.
+ *  - MODULATE texture blending only, which is what the fragment program
+ *    computes. DECAL and the rest are absent because nothing builds them.
  *
- * Every one of those is measured to work in a SCENE and unbuilt in the
- * runtime path, which is the distinction this function has to get right: a
- * capability is a promise about what an application can do, not a summary of
- * what the hardware has been seen to do.
+ * STILL DELIBERATELY ABSENT:
+ *
+ *  - No blend caps. The runtime S6 enables no blending, even though the
+ *    packets are measured (intel47): the state block does not build it.
+ *  - No fog, no lines, no specular, no mipmapping, no colour key.
+ *  - No independent UV addressing, no anisotropy, no bilinear filtering -
+ *    SAMPLER_STATE is emitted as NEAREST and the decoder requires it.
+ *
+ * The distinction this function has to get right is unchanged: a capability
+ * is a promise about what an application can do, not a summary of what the
+ * hardware has been seen to do. What moved is that the runtime path now
+ * builds these, not that more has been measured.
  */
 static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -281,16 +520,54 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps =
         V9X_D3DPMISCCAPS_CULLNONE;
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
-        V9X_D3DPRASTERCAPS_SUBPIXEL;
+        V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST;
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB;
-    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
     /*
-     * ZERO texture formats. An application reading this list finds nothing it
-     * may allocate, which is the honest answer while texture_format refuses
-     * every surface.
+     * LESS alone, and that is the point of publishing it rather than leaving
+     * the field zero: the runtime asks what comparisons exist, and an engine
+     * that claims none while accepting a Z buffer is the shape that let
+     * intel52's depth test silently do nothing.
      */
+    shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps = V9X_D3DPCMPCAPS_LESS;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
+        V9X_D3DPTEXTURECAPS_PERSPECTIVE | V9X_D3DPTEXTURECAPS_POW2 |
+        V9X_D3DPTEXTURECAPS_SQUAREONLY;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
+        V9X_D3DPTFILTERCAPS_NEAREST;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
+        V9X_D3DPTBLENDCAPS_MODULATE;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
+        V9X_D3DPTADDRESSCAPS_CLAMP;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    /*
+     * RGB565 and nothing else, because the sampler is configured for one
+     * format and the decoder requires MAPSURF_16BIT_RGB565 in the stream.
+     * Publishing a second would have applications allocate surfaces the
+     * allowlist then refuses - an accepted texture and a failed draw, which
+     * is worse than a format that was never offered.
+     *
+     * No alpha bit. A 565 texel has none, and claiming ALPHAPIXELS over a
+     * format that carries no alpha is how an application comes to ask for
+     * blending that cannot work.
+     */
+    shared->texture_formats[0].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[0].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[0].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[0].ddpfPixelFormat.dwRGBBitCount = 16ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[0].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
+    shared->d3d_global.dwNumTextureFormats = 1ul;
+    shared->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
@@ -307,8 +584,10 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                        DWORD triangle_count)
 {
     struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
     DWORD stream[V9X_I9XX_SUBMIT_DWORDS];
     DWORD xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
+    DWORD uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
     DWORD colors[V9X_I9XX_SUBMIT_VERTICES];
     DWORD identity = 0ul;
     DWORD address = 0ul;
@@ -317,12 +596,25 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD rejected = 0ul;
     DWORD vertex;
     DWORD count;
+    int textured;
+    int depthed;
+    DWORD depth_offset = 0ul;
+    DWORD depth_pitch = 0ul;
+    DWORD depth_writes = 0ul;
 
     if (context == 0 || vertices == 0 || triangle_count == 0ul) {
-        return 0;
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
     }
-    if (triangle_count > (V9X_I9XX_SUBMIT_VERTICES / 3ul)) {
-        return 0;
+    /*
+     * Both bounds, and they are different numbers for different reasons: the
+     * vertex arrays hold 192, and the run builders multiply the triangle
+     * count in sixteen bits and refuse anything past their own maximum. The
+     * smaller wins and saying so here means a batch that would be refused
+     * deeper is refused with a reason instead.
+     */
+    if (triangle_count > (V9X_I9XX_SUBMIT_VERTICES / 3ul) ||
+        triangle_count > V9X_I9XX_RUNTIME_MAX_TRIANGLES) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_BATCH);
     }
     count = triangle_count * 3ul;
 
@@ -336,8 +628,18 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                  context->width, context->height,
                                  v9x_hal->fb.vram_bytes,
                                  &identity, &address) == V9X_FALSE) {
-        return 0;
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
     }
+
+    /*
+     * The other two surfaces. Neither refuses the draw: a texture this engine
+     * cannot sample draws untextured and a depth test it cannot express draws
+     * un-Z'd, both counted. A hole in the frame is worse than a wrong colour
+     * in it, and the counters are what keep the fallback from being silent.
+     */
+    textured = v9x_d3d_i9xx_bind_texture(context, &map);
+    depthed = v9x_d3d_i9xx_bind_depth_surface(context, &depth_offset,
+                                              &depth_pitch, &depth_writes);
 
     for (vertex = 0ul; vertex < count; ++vertex) {
         /* The DDHAL vertex is floats; the stream is bit patterns. A union is
@@ -350,27 +652,55 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         xyzw[(vertex * 4ul) + 2ul] = bits[2];
         xyzw[(vertex * 4ul) + 3ul] = bits[3];
         colors[vertex] = vertices[vertex].color;
+        /*
+         * tu and tv, which sit past color and specular in the vertex - bits[6]
+         * and bits[7]. Copied only when something will sample them, so an
+         * untextured draw does not depend on fields an application had no
+         * reason to fill.
+         */
+        if (textured != 0) {
+            uv[(vertex * 2ul) + 0ul] = bits[6];
+            uv[(vertex * 2ul) + 1ul] = bits[7];
+        }
     }
 
-    if (v9x_i9xx_build_3d_state(context->target_offset, context->pitch,
-                                context->width, context->height,
-                                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
-                                &produced) != V9X_STATUS_OK) {
-        return 0;
+    if (v9x_i9xx_build_runtime_state(context->target_offset, context->pitch,
+                                     context->width, context->height,
+                                     textured != 0 ? &map : 0,
+                                     depth_offset, depth_pitch, depth_writes,
+                                     stream + at,
+                                     V9X_I9XX_SUBMIT_DWORDS - at,
+                                     &produced) != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
     }
     at += produced;
-    if (v9x_i9xx_build_fragment_program(stream + at,
-                                        V9X_I9XX_SUBMIT_DWORDS - at,
-                                        &produced) != V9X_STATUS_OK) {
-        return 0;
+    /*
+     * The program follows the state block and must agree with it: the
+     * modulate program reads a texel and the plain one does not, and a
+     * textured state block with the plain program samples nothing while
+     * declaring a coordinate set. The decoder checks the pairing too.
+     */
+    if ((textured != 0
+            ? v9x_i9xx_build_modulate_program(stream + at,
+                                              V9X_I9XX_SUBMIT_DWORDS - at,
+                                              &produced)
+            : v9x_i9xx_build_fragment_program(stream + at,
+                                              V9X_I9XX_SUBMIT_DWORDS - at,
+                                              &produced)) != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
     }
     at += produced;
-    if (v9x_i9xx_build_runtime_run(xyzw, colors, triangle_count,
-                                   context->width, context->height,
-                                   stream + at,
-                                   V9X_I9XX_SUBMIT_DWORDS - at,
-                                   &produced) != V9X_STATUS_OK) {
-        return 0;
+    if ((textured != 0
+            ? v9x_i9xx_build_textured_runtime_run(
+                  xyzw, colors, uv, triangle_count,
+                  context->width, context->height, stream + at,
+                  V9X_I9XX_SUBMIT_DWORDS - at, &produced)
+            : v9x_i9xx_build_runtime_run(
+                  xyzw, colors, triangle_count,
+                  context->width, context->height, stream + at,
+                  V9X_I9XX_SUBMIT_DWORDS - at, &produced))
+            != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
     }
     at += produced;
     /* The ring tail must land qword aligned, and the plan refuses an odd
@@ -378,7 +708,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      * still being built and a NOOP is a dword nobody will miss. */
     if ((at & 1ul) != 0ul) {
         if (at >= V9X_I9XX_SUBMIT_DWORDS) {
-            return 0;
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
         }
         stream[at++] = V9X_I9XX_MI_NOOP;
     }
@@ -396,17 +726,38 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.target_pitch = context->pitch;
     limits.target_width = context->width;
     limits.target_height = context->height;
-    limits.texture_offset = 0ul;
-    limits.texture_bytes = 0ul;
-    limits.depth_offset = 0ul;
-    limits.depth_bytes = 0ul;
+    limits.texture_offset = textured != 0 ? map.offset : 0ul;
+    /*
+     * Non-zero is what tells the decoder this stream samples, and the value is
+     * the footprint bind_map already proved fits. The multiply is here rather
+     * than in the decoder because the decoder is 16-bit code where a 32-bit
+     * multiply calls a helper it cannot reach.
+     */
+    limits.texture_bytes = textured != 0 ? map.height * map.pitch : 0ul;
+    limits.texture_width = textured != 0 ? map.width : 0ul;
+    limits.texture_height = textured != 0 ? map.height : 0ul;
+    limits.texture_pitch = textured != 0 ? map.pitch : 0ul;
+    limits.depth_offset = depth_offset;
+    limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
+    limits.depth_pitch = depth_pitch;
+    limits.depth_writes = depth_writes;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=
             V9X_I9XX_P5_OK) {
-        return 0;
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
     }
 
-    return v9x_d3d_i9xx_submit(stream, at);
+    if (!v9x_d3d_i9xx_submit(stream, at)) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
+    }
+    ++v9x_hal->d3d_diagnostics.i9xx_draws_submitted;
+    if (textured != 0) {
+        ++v9x_hal->d3d_diagnostics.i9xx_texture_draws;
+    }
+    if (depthed != 0) {
+        ++v9x_hal->d3d_diagnostics.i9xx_depth_draws;
+    }
+    return 1;
 }
 
 /*

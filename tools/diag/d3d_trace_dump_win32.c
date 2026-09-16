@@ -392,6 +392,18 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("D3dTextureRefusedShape",
                    snapshot.d3d.texture_refused_shape);
     v9x_write_hex("D3dTextureRefusedLast", snapshot.d3d.texture_refused_last);
+    /*
+     * The Gen3 engine's own draw accounting. The first question intel52 could
+     * not answer was what became of the RenderPrimitive calls that submitted
+     * nothing, and I9xxRefuseLast is the answer: the reason code of the last
+     * refusal, beside the counts.
+     */
+    v9x_write_uint("I9xxDrawsSubmitted", snapshot.d3d.i9xx_draws_submitted);
+    v9x_write_uint("I9xxDrawsRefused", snapshot.d3d.i9xx_draws_refused);
+    v9x_write_uint("I9xxRefuseLast", snapshot.d3d.i9xx_refuse_last);
+    v9x_write_uint("I9xxTextureDraws", snapshot.d3d.i9xx_texture_draws);
+    v9x_write_uint("I9xxDepthDraws", snapshot.d3d.i9xx_depth_draws);
+    v9x_write_uint("I9xxDepthSkipped", snapshot.d3d.i9xx_depth_skipped);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

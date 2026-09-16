@@ -346,9 +346,53 @@ v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count)
                                      V9X_I9XX_TEXTURED_VERTEX_DWORDS));
 }
 
-v9x_status v9x_i9xx_build_runtime_run(
-    const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
-    v9x_u32 width, v9x_u32 height,
+/*
+ * Dwords a textured runtime run occupies: the command plus seven per vertex.
+ *
+ * The bound on `triangles` comes first so the multiply stays in sixteen bits.
+ * A 32-bit multiply here calls __U4M in the default code segment, which a
+ * near call from I9XXCODE cannot reach - E2052, and a link error rather than
+ * a run-time one only because the linker checks segments.
+ */
+/*
+ * Dwords an UNTEXTURED application batch occupies.
+ *
+ * Separate from v9x_i9xx_triangle_run_dwords, which a scene uses and which is
+ * bounded at three: a scene and a batch are different things and sharing the
+ * bound silently limited every application draw to three triangles.
+ */
+v9x_u32 v9x_i9xx_runtime_run_dwords(v9x_u32 triangles)
+{
+    if (triangles == 0ul || triangles > V9X_I9XX_RUNTIME_MAX_TRIANGLES) {
+        return 0ul;
+    }
+    return 1ul + (v9x_u32)((v9x_u16)triangles *
+                           (v9x_u16)V9X_I9XX_TRIANGLE_DWORDS);
+}
+
+v9x_u32 v9x_i9xx_runtime_textured_run_dwords(v9x_u32 triangles)
+{
+    if (triangles == 0ul || triangles > V9X_I9XX_RUNTIME_MAX_TRIANGLES) {
+        return 0ul;
+    }
+    return 1ul + (v9x_u32)((v9x_u16)triangles *
+                           (v9x_u16)(V9X_I9XX_VERTEX_COUNT *
+                                     V9X_I9XX_TEXTURED_VERTEX_DWORDS));
+}
+
+/*
+ * One emission path for application geometry, textured or not.
+ *
+ * `uv` null is the five-dword vertex the runtime path has always emitted;
+ * non-null appends the coordinate pair and makes it seven. The alternative
+ * was a second copy of the coordinate, depth and rhw checks, and those checks
+ * are the memory-safety argument for the whole runtime path - two copies is
+ * two places for them to drift, which is the defect class this project keeps
+ * finding.
+ */
+static v9x_status v9x_i9xx_build_runtime_run_common(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *uv,
+    v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
@@ -364,7 +408,9 @@ v9x_status v9x_i9xx_build_runtime_run(
         triangles == 0ul || width == 0ul || height == 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    run_dwords = v9x_i9xx_triangle_run_dwords(triangles);
+    run_dwords = uv != 0
+        ? v9x_i9xx_runtime_textured_run_dwords(triangles)
+        : v9x_i9xx_runtime_run_dwords(triangles);
     if (run_dwords == 0ul || capacity < run_dwords) {
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
@@ -388,6 +434,10 @@ v9x_status v9x_i9xx_build_runtime_run(
     vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
                          (v9x_u16)triangles);
 
+    /* The length counts vertex dwords less one, and run_dwords counts them
+     * plus the command - so this is the same expression for a five-dword
+     * vertex and a seven-dword one, which is why the layout is not named
+     * here. */
     stream[at++] = V9X_I9XX_3DPRIMITIVE_INLINE |
                    V9X_I9XX_PRIM3D_TRILIST |
                    (run_dwords - 2ul);
@@ -444,8 +494,57 @@ v9x_status v9x_i9xx_build_runtime_run(
          * and a decoder or builder asserting one would be asserting what the
          * application may draw. */
         stream[at++] = colors[vertex];
+        /*
+         * The coordinates last, after the colour, which is Mesa's fixed
+         * attribute order and therefore the layout - position, point size,
+         * primary colour, secondary colour, fog, then texture coordinates.
+         *
+         * Refused only for the values that name no place on a texture. A
+         * coordinate outside [0, 1] is ORDINARY: the sampler normalizes, so
+         * two is the far edge of the second tile and a negative one is the
+         * tile to the left, and which of those an application sees is the
+         * wrap mode's business rather than this builder's.
+         */
+        if (uv != 0) {
+            v9x_u32 pair = vertex * 2ul;
+
+            if (v9x_i9xx_float_finite(uv[pair]) == V9X_FALSE ||
+                v9x_i9xx_float_finite(uv[pair + 1ul]) == V9X_FALSE) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+            stream[at++] = uv[pair];
+            stream[at++] = uv[pair + 1ul];
+        }
     }
 
     *written = at;
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_i9xx_build_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    return v9x_i9xx_build_runtime_run_common(xyzw, colors, 0, triangles,
+                                             width, height, stream,
+                                             capacity, written);
+}
+
+v9x_status v9x_i9xx_build_textured_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *uv,
+    v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (uv == 0) {
+        /* A textured run with no coordinates is a mistake, not an untextured
+         * run: the vertex format the state block declares would disagree with
+         * the dwords emitted, which the pipeline emitter calls the single most
+         * likely silent hang in the phase. */
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_i9xx_build_runtime_run_common(xyzw, colors, uv, triangles,
+                                             width, height, stream,
+                                             capacity, written);
 }

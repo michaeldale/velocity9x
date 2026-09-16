@@ -304,6 +304,68 @@ v9x_status v9x_i9xx_build_3d_state(
 }
 
 /*
+ * The RUNTIME block, which is the only one that may carry a texture AND a
+ * depth buffer at once.
+ *
+ * Every scene carries one thing: that is what makes a scene readable, and
+ * scene 1 modulating a texture while scene 2 tests depth is how the two were
+ * measured apart. An application asks for whatever combination it likes, so
+ * this is the one caller that needs the sum - and the emitter already
+ * supported it, because S6 and the two optional packets were written as
+ * independent conditions rather than as a choice between kinds. Only the
+ * extent arithmetic had to learn about it.
+ */
+v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed)
+{
+    v9x_u32 extent = v9x_i9xx_3d_state_extent();
+
+    if (textured != 0ul) {
+        extent += v9x_i9xx_map_state_extent(1ul) +
+                  v9x_i9xx_sampler_state_extent(1ul);
+    }
+    if (depthed != 0ul) {
+        /* One BUF_INFO: the command, the identity dword and the address. */
+        extent += 3ul;
+    }
+    return extent;
+}
+
+v9x_status v9x_i9xx_build_runtime_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_i9xx_depth_binding depth;
+
+    if (written != 0) { *written = 0ul; }
+    if (depth_offset != 0ul) {
+        /*
+         * The application's Z surface, so its pitch is whatever DirectDraw
+         * allocated rather than this driver's own constant. Checked on the
+         * same terms as the render target's - a multiple of four that fits
+         * the field - because BUF_INFO encodes both the same way and discards
+         * the low two bits of either. A depth pitch that does not survive the
+         * encoding puts every row but the first at the wrong address, which
+         * is a depth buffer that appears to work and rejects the wrong
+         * fragments.
+         */
+        if ((depth_pitch & 3ul) != 0ul || depth_pitch == 0ul ||
+            depth_pitch > V9X_I9XX_BUF_3D_PITCH_MASK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        depth.offset = depth_offset;
+        depth.pitch = depth_pitch;
+        depth.writes = depth_writes;
+    }
+    return v9x_i9xx_build_state_common(
+        target_offset, target_pitch, width, height, texture,
+        depth_offset != 0ul ? &depth : 0,
+        V9X_I9XX_SCENE_RUNTIME, stream, capacity, written);
+}
+
+/*
  * The ALPHA state block: the untextured one with a different S6, and for a
  * blend scene one extra dword.
  *
@@ -348,7 +410,13 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 produced = 0ul;
     v9x_u32 needed;
 
-    if (texture != 0) {
+    if (kind == V9X_I9XX_SCENE_RUNTIME) {
+        /* Tested FIRST, because it is the only kind that may carry both and
+         * either branch below would have sized it for one of them. A block
+         * sized for one and emitting two overruns the caller's buffer. */
+        needed = v9x_i9xx_runtime_state_extent(texture != 0 ? 1ul : 0ul,
+                                               depth != 0 ? 1ul : 0ul);
+    } else if (texture != 0) {
         needed = v9x_i9xx_textured_state_extent();
     } else if (depth != 0) {
         needed = v9x_i9xx_depth_state_extent();

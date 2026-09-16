@@ -563,6 +563,20 @@ v9x_status v9x_i9xx_build_3d_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The runtime block: target, and whichever of a texture and a depth buffer
+ * the application bound. The only block that may carry both - every scene
+ * carries one thing, which is what makes a scene readable.
+ *
+ * texture null is untextured; depth_offset zero is un-Z'd.
+ */
+v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed);
+v9x_status v9x_i9xx_build_runtime_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_fragprog.c - no arguments, because the program is a
  * constant, and it is a constant because Phase 6 forbids a shader compiler. */
@@ -804,6 +818,25 @@ v9x_status v9x_i9xx_build_modulate_program(
  * simply overwrites the first, which is what an unconditional draw does.
  */
 #define V9X_I9XX_SCENE_MAX_TRIANGLES     ((v9x_u32)3ul)
+/*
+ * How many triangles ONE APPLICATION BATCH may carry, which is a different
+ * number from a scene's and was the same one by accident until 2026-09-16.
+ *
+ * A scene draws three triangles because three is what its probes read back.
+ * The runtime run builders reused that bound, so every DrawPrimitive call
+ * with more than three triangles was refused before it reached the stream -
+ * and a refused batch is an error return the application sees as a failed
+ * draw. intel52 measured the damage: 404 RenderPrimitive calls produced about
+ * eighty submissions, and the gap was this.
+ *
+ * Sixty-four, which is what the HAL's vertex buffer holds. The bound is not
+ * arbitrary: both run builders multiply it in SIXTEEN BITS, because a 32-bit
+ * multiply in I9XXCODE calls __U4M in the default code segment and a near
+ * call cannot reach it. 64 * 21 dwords is 1344, which fits; raising this
+ * without checking that product is how a link error appears in a file nobody
+ * edited.
+ */
+#define V9X_I9XX_RUNTIME_MAX_TRIANGLES   ((v9x_u32)64ul)
 #define V9X_I9XX_SCENE_MAX_PROBES        ((v9x_u32)14ul)
 
 /*
@@ -1070,6 +1103,22 @@ v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count);
  * and every one must be a finite float: a NaN or an infinity in a position is
  * a rasteriser walking an undefined span.
  */
+/*
+ * The TEXTURED runtime run: the same geometry with a coordinate pair per
+ * vertex, seven dwords each instead of five.
+ *
+ * uv holds two float bit patterns per vertex, u then v, normalized exactly as
+ * Direct3D's tu and tv are - the sampler selects SS3_NORMALIZED_COORDS, so a
+ * coordinate of one is the far edge whatever size the texture turns out to be
+ * and no conversion against the map's dimensions is needed or wanted.
+ */
+v9x_u32 v9x_i9xx_runtime_run_dwords(v9x_u32 triangles);
+v9x_u32 v9x_i9xx_runtime_textured_run_dwords(v9x_u32 triangles);
+v9x_status v9x_i9xx_build_textured_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *uv,
+    v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
 v9x_status v9x_i9xx_build_runtime_run(
     const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
     v9x_u32 width, v9x_u32 height,
@@ -1088,6 +1137,9 @@ v9x_status v9x_i9xx_build_runtime_run(
  * predicate for the builder and the decoder both, because they are the two
  * independent judgements of the same value. */
 v9x_u16 v9x_i9xx_float_positive_finite(v9x_u32 bits);
+/* A finite float of either sign: what a texture coordinate is. A negative one
+ * is ordinary under a normalizing, wrapping sampler. */
+v9x_u16 v9x_i9xx_float_finite(v9x_u32 bits);
 
 v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
 /*
@@ -1194,6 +1246,38 @@ struct v9x_i9xx_decode_limits {
     v9x_u32 depth_offset;
     v9x_u32 depth_bytes;
     v9x_u32 kind;
+    /*
+     * APPEND ONLY past this point, and the reason is the two file-scope
+     * initialisers in the host tests: they are positional, C89 has no
+     * designated form, and a field inserted above silently reassigns every
+     * value after it with no diagnostic. Appended fields simply read zero
+     * there, which is what a scene wants.
+     *
+     * The application's texture and depth shapes, for a runtime stream. A
+     * SCENE leaves these zero and the decoder uses this build's own constants,
+     * which is what pins a generated stream to the one that was audited. A
+     * runtime stream has no constants to be pinned to: the surfaces are the
+     * application's, so the decoder checks the stream against what the engine
+     * believed about them.
+     *
+     * Worth being exact about what that is worth, on the same terms as the
+     * target fields above. This catches a stream that does not describe the
+     * surface the engine intended; it cannot catch an engine that was wrong
+     * about the surface. What bounds THAT is the footprint arithmetic in
+     * v9x_d3d_i9xx.c, which runs in 32-bit code where a multiply is free, and
+     * which refuses before any of this.
+     */
+    v9x_u32 texture_width;
+    v9x_u32 texture_height;
+    v9x_u32 texture_pitch;
+    v9x_u32 depth_pitch;
+    /*
+     * Whether the runtime stream may enable depth WRITES. A scene's answer
+     * comes from its kind, because the testing scene and the writing scene are
+     * deliberately different streams; an application sets ZWRITEENABLE per
+     * draw and the decoder has nothing else to compare against.
+     */
+    v9x_u32 depth_writes;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(
