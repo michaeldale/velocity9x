@@ -640,6 +640,90 @@ static void test_decoder_texture_mode(void)
     stream[map_address] = layout.texture_offset;
 
     /*
+     * The map's FOOTPRINT, not only its base.
+     *
+     * MS4 carries the pitch. A pitch four times the real one leaves the
+     * address untouched and every check above satisfied, while the sampler
+     * reads 32 rows of 8192 bytes from a 2048-byte allocation - 126 KiB past
+     * the end of the texture, into pages that are not ours. On this part
+     * reading a page that is not ours is the access that hangs it.
+     */
+    {
+        v9x_u32 ms4 = stream[map_address + 2ul];
+
+        /* Pitch is encoded as dwords less one, so a pitch of 8192 is
+         * ((8192 >> 2) - 1) in the same field. */
+        stream[map_address + 2ul] = ((8192ul >> 2) - 1ul) <<
+                                    V9X_I9XX_MS4_PITCH_SHIFT;
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  layout.texture_offset, layout.texture_bytes, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        CHECK(index == map_address + 2ul);
+        stream[map_address + 2ul] = ms4;
+    }
+
+    /*
+     * And MS3, which carries the dimensions. A height of 2048 reads past the
+     * end for the same reason and by the same route.
+     */
+    {
+        v9x_u32 ms3 = stream[map_address + 1ul];
+
+        stream[map_address + 1ul] =
+            V9X_I9XX_MAPSURF_16BIT_RGB565 |
+            ((2048ul - 1ul) << V9X_I9XX_MS3_HEIGHT_SHIFT) |
+            ((V9X_I9XX_TEXTURE_WIDTH - 1ul) << V9X_I9XX_MS3_WIDTH_SHIFT);
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  layout.texture_offset, layout.texture_bytes, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        CHECK(index == map_address + 1ul);
+        stream[map_address + 1ul] = ms3;
+    }
+
+    /*
+     * The sampler's MAP INDEX.
+     *
+     * SS3 names which map the sampler reads, and the two are not implicitly
+     * paired - both reference emitters write the index. Pointed at map 1,
+     * which this stream never declares, the sampler reads whatever map 1 held
+     * from an earlier client. Nothing above notices: the packet is
+     * well-formed, one unit is enabled, and MAP_STATE's own address is right.
+     */
+    {
+        v9x_u32 sampler = 0ul;
+        v9x_u32 ss3;
+
+        for (scan = 0ul; scan < written; ++scan) {
+            if ((stream[scan] & 0xffff0000ul) ==
+                    V9X_I9XX_3DSTATE_SAMPLER_STATE) {
+                sampler = scan;
+            }
+        }
+        CHECK(sampler != 0ul);
+        /* SS2, SS3, SS4 follow the command and the enable mask. */
+        ss3 = stream[sampler + 3ul];
+        stream[sampler + 3ul] = ss3 | (1ul << V9X_I9XX_SS3_MAP_INDEX_SHIFT);
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  layout.texture_offset, layout.texture_bytes, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        CHECK(index == sampler + 3ul);
+        stream[sampler + 3ul] = ss3;
+
+        /* And the filter, which the audit fixed at nearest with no mips. A
+         * sampler this build never configured is state from somewhere else. */
+        stream[sampler + 2ul] = 0xfffffffful;
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  layout.texture_offset, layout.texture_bytes, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        CHECK(index == sampler + 2ul);
+        stream[sampler + 2ul] = V9X_I9XX_SS2_NEAREST_NO_MIP;
+    }
+
+    /*
      * And a textured stream with the texture packets REMOVED, which S2 alone
      * would not catch: without MAP_STATE the sampler reads whatever map the
      * engine last had.

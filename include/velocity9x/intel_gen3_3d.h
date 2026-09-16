@@ -325,6 +325,16 @@
 #define V9X_I9XX_P5_VERTEX_RANGE         15u
 #define V9X_I9XX_P5_SHADER               16u
 #define V9X_I9XX_P5_MISSING_PACKET       17u
+/*
+ * A texture packet that is well-formed and says something this build never
+ * said: a map footprint, a sampler filter, a map index.
+ *
+ * Distinct from TEXTURE_FORBIDDEN, which means a texture packet in a stream
+ * that allows none. These two send a reader to different places - one to the
+ * mode, one to the dword - and a capture that conflated them would name the
+ * wrong one.
+ */
+#define V9X_I9XX_P5_TEXTURE_STATE        18u
 
 /* Float transport refusal reasons, from i9xx_float.c. */
 #define V9X_I9XX_FLOAT_OK                 0u

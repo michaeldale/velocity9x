@@ -260,16 +260,99 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         V9X_I9XX_3DSTATE_MAP_STATE) {
                     /*
                      * The map ADDRESS, checked against the reserve rather
-                     * than trusted. This is the one dword in either packet
-                     * that makes the GPU read memory of the driver's
-                     * choosing, and a wrong one reads a page that is not
-                     * ours - which on this part is the access that hangs it.
+                     * than trusted. This is the dword that makes the GPU read
+                     * memory of the driver's choosing, and a wrong one reads a
+                     * page that is not ours - which on this part is the access
+                     * that hangs it.
                      */
                     if (stream[index + 2ul] != texture_offset) {
                         V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
                     }
+                    /*
+                     * And the FOOTPRINT, which the address alone does not
+                     * bound. This was missing until 2026-09-16: MS4 carries
+                     * the pitch, and a pitch four times the real one leaves
+                     * the address correct and every other check satisfied
+                     * while the sampler reads 32 rows of 8192 bytes out of a
+                     * 2048-byte allocation - 126 KiB past the end, into pages
+                     * that are not ours. MS3's height does the same by the
+                     * same route.
+                     *
+                     * Required to be EXACTLY this build's geometry rather
+                     * than merely to fit. The paint builder refuses any other
+                     * shape, so any other shape here is a map describing a
+                     * texture that was never painted, whether or not it
+                     * happens to land inside the allocation.
+                     *
+                     * This restates the encoding the builder produces, and is
+                     * worth being clear about what that does and does not
+                     * catch: a stream that is not the one this build emits,
+                     * yes; a shared misreading of the databook by both, no.
+                     * The same is true of the BUF_INFO pitch check above, and
+                     * for the same reason - an allowlist can only refuse what
+                     * it was told to expect.
+                     */
+                    if (stream[index + 3ul] !=
+                            (V9X_I9XX_MAPSURF_16BIT_RGB565 |
+                             ((V9X_I9XX_TEXTURE_HEIGHT - 1ul) <<
+                              V9X_I9XX_MS3_HEIGHT_SHIFT) |
+                             ((V9X_I9XX_TEXTURE_WIDTH - 1ul) <<
+                              V9X_I9XX_MS3_WIDTH_SHIFT))) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 3ul);
+                    }
+                    if (stream[index + 4ul] !=
+                            (((V9X_I9XX_TEXTURE_PITCH >> 2) - 1ul) <<
+                             V9X_I9XX_MS4_PITCH_SHIFT)) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 4ul);
+                    }
+                    /*
+                     * And the declared range must actually hold that map. The
+                     * product is of two constants and is folded; a runtime
+                     * 32-bit multiply here would be a __U4M call into the
+                     * default CODE segment that a near call cannot reach.
+                     */
+                    if (texture_bytes <
+                            (v9x_u32)(V9X_I9XX_TEXTURE_HEIGHT *
+                                      V9X_I9XX_TEXTURE_PITCH)) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
+                    }
                     saw_map_state = V9X_TRUE;
                 } else {
+                    /*
+                     * SS2, SS3 and SS4, each required to be the value the
+                     * audit licensed.
+                     *
+                     * SS3 carries the MAP INDEX, and sampler n and map n are
+                     * not implicitly paired - both reference emitters write
+                     * the index. A sampler pointed at map 1, which this stream
+                     * never declares, reads whatever map 1 held from an
+                     * earlier client: a well-formed packet, one unit enabled,
+                     * MAP_STATE's own address correct, and a fetch from
+                     * somewhere nobody chose.
+                     *
+                     * SS2 is the filter and SS4 the border colour. Neither can
+                     * read outside the map, but a sampler this build never
+                     * configured is state from somewhere else, and a texel
+                     * fetched under a filter nobody set would answer the
+                     * addressing question wrongly and look like an answer.
+                     */
+                    if (stream[index + 2ul] != V9X_I9XX_SS2_NEAREST_NO_MIP) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
+                    }
+                    if (stream[index + 3ul] !=
+                            (V9X_I9XX_SS3_NORMALIZED_COORDS |
+                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
+                              V9X_I9XX_SS3_TCX_SHIFT) |
+                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
+                              V9X_I9XX_SS3_TCY_SHIFT) |
+                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
+                              V9X_I9XX_SS3_TCZ_SHIFT) |
+                             (0ul << V9X_I9XX_SS3_MAP_INDEX_SHIFT))) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 3ul);
+                    }
+                    if (stream[index + 4ul] != V9X_I9XX_SS4_BORDER_COLOR) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 4ul);
+                    }
                     saw_sampler_state = V9X_TRUE;
                 }
                 index += payload + 1ul;

@@ -147,6 +147,17 @@ plan above, and why:
   nothing about whether it is safe to run. That stopped being academic with
   MAP_STATE, which makes the GPU read an address of the driver's choosing.
 
+- **The map's footprint is checked, not only its base.** Added after review
+  found two streams the decoder passed clean: MS4 carrying an 8192-byte pitch,
+  which leaves the address correct while the sampler reads 126 KiB past a
+  2048-byte allocation, and SS3 pointing sampler 0 at map 1, which this stream
+  never declares and which would read whatever an earlier client left there.
+  The decoder now requires MS3, MS4, SS2, SS3 and SS4 to be exactly the values
+  the audit licensed, under a new reason `P5_TEXTURE_STATE` distinct from
+  `TEXTURE_FORBIDDEN` - one sends a reader to the mode, the other to the dword.
+  The stream CRC was never a substitute for this: it says the bytes are the
+  ones the generator produced, not that they are safe.
+
 ### What the capture will and will not fail on
 
 Split deliberately, because two questions are being asked at one pixel:
