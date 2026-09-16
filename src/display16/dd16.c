@@ -366,6 +366,68 @@ static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
  * allocation, which is before DriverInit. Both callers must agree, so there is
  * one copy of the rule rather than two that can drift.
  */
+/* Append a literal into the EngineStamp line. Declarations at the top of the
+ * block and no library: this module links against no C runtime. */
+static void v9x_dd_stamp_append(char *line, WORD *at, const char *text)
+{
+    WORD index = 0u;
+
+    while (text[index] != ' ') {
+        line[*at] = text[index];
+        ++(*at);
+        ++index;
+    }
+}
+
+/*
+ * What the engine looked like AT THE MOMENT THE SHARED BLOCK WAS STAMPED.
+ *
+ * V9XHW.INI is written once per Enable, and on this family that is too early
+ * to describe the engine: the mini-VDD's windows are not mapped until the
+ * capture paths run, so Direct3DMode= and EngineStatus= record a descriptor
+ * that had to refuse. intel50 is the case in point - both keys said the engine
+ * was absent while the event capture showed RING_START and RING_CTL carrying
+ * the values this driver had just written. A file that disagrees with the
+ * hardware is worse than one that says nothing.
+ *
+ * So this rewrites Direct3DMode= from the re-resolved state, and adds one
+ * EngineStamp= line describing the descriptor this stamp actually used. The
+ * key is rewritten rather than given a second name because the settings page
+ * reads Direct3DMode= and there is only one true answer; the Enable-time value
+ * was not it.
+ *
+ * Written from here rather than from ddi.c because this is the only place that
+ * knows when the block was stamped. ddi.c owns the file and its other keys,
+ * and this is the one it does not have the timing for.
+ */
+static void v9x_dd_publish_engine_stamp(DWORD engine_type, DWORD engine_caps,
+                                        DWORD ring_base)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char line[64];
+    WORD at = 0u;
+    WORD nibble;
+
+    WritePrivateProfileString("Velocity9xHardware", "Direct3DMode",
+                              v9x_dd_d3d_state_text(), V9X_DIAG_HW_INI);
+
+    v9x_dd_stamp_append(line, &at, "type=");
+    for (nibble = 8u; nibble != 0u; --nibble) {
+        line[at++] = digits[(WORD)((engine_type >> ((nibble - 1u) * 4u)) & 0xful)];
+    }
+    v9x_dd_stamp_append(line, &at, " caps=");
+    for (nibble = 8u; nibble != 0u; --nibble) {
+        line[at++] = digits[(WORD)((engine_caps >> ((nibble - 1u) * 4u)) & 0xful)];
+    }
+    v9x_dd_stamp_append(line, &at, " ring=");
+    for (nibble = 8u; nibble != 0u; --nibble) {
+        line[at++] = digits[(WORD)((ring_base >> ((nibble - 1u) * 4u)) & 0xful)];
+    }
+    line[at] = '\0';
+    WritePrivateProfileString("Velocity9xHardware", "EngineStamp", line,
+                              V9X_DIAG_HW_INI);
+}
+
 static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
@@ -436,6 +498,8 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
     shared->engine.engine_caps = engine_caps;
+    v9x_dd_publish_engine_stamp(engine_type, engine_caps,
+                                shared->engine.ring_linear_base);
 }
 
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
