@@ -91,8 +91,17 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
      * And why the engine descriptor answered as it did, which nothing
      * published before: a capture showing Direct3DMode=none could not say
      * whether the mapping, the permission or the ring was what stopped it.
+     *
+     * NAMED FOR ITS MOMENT. This file is written at Enable, and on this family
+     * that is before the mini-VDD's capture paths have mapped BAR0 and BAR3 -
+     * so "map-refused" here is the NORMAL reading on a first enable and says
+     * nothing about whether the engine came up. It was called EngineStatus,
+     * which invited exactly that misreading, and did: intel50 was read as a
+     * failure on the strength of it while the event capture showed the ring
+     * enabled. The answer that matters is EngineStamp=, written by dd16.c when
+     * the shared block is stamped.
      */
-    write("EngineStatus", v9x_gma950_engine_status_text());
+    write("EngineStatusEnable", v9x_gma950_engine_status_text());
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_intel_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);
