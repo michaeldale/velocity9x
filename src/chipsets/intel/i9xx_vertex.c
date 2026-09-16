@@ -53,11 +53,21 @@ v9x_status v9x_i9xx_build_vertex_run(
     struct v9x_i9xx_triangle triangle;
     v9x_u32 vertex;
 
+    /*
+     * EVERY field the emitter reads, including the ones this triangle does
+     * not use. per_vertex selects between two colour sources on one bit, and
+     * a local struct left partly uninitialised would pick between them on
+     * whatever the stack held - which is the Phase 5 triangle, the one stream
+     * whose CRC every armed boot is checked against.
+     */
+    triangle.per_vertex = V9X_FALSE;
     for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
         triangle.x[vertex] = v9x_i9xx_triangle_x[vertex];
         triangle.y[vertex] = v9x_i9xx_triangle_y[vertex];
+        triangle.vertex_color[vertex] = 0ul;
     }
     triangle.color = V9X_I9XX_TRI_COLOR_BGRA;
+    triangle.color_measured = V9X_TRUE;
 
     return v9x_i9xx_build_triangle_run(&triangle, 1ul, width, height,
                                        stream, capacity, written);
@@ -227,7 +237,13 @@ static v9x_status v9x_i9xx_build_run_common(
              * Two triangles may still differ from each other, which is what
              * makes a shared edge readable.
              */
-            stream[at++] = triangles[index].color;
+            /* The vertex's own colour when the scene carries three, and
+             * the triangle's one colour otherwise. A scene that sets
+             * per_vertex without filling the array would emit zeros, which is
+             * black and visible, rather than silently repeating one value. */
+            stream[at++] = triangles[index].per_vertex != V9X_FALSE
+                ? triangles[index].vertex_color[vertex]
+                : triangles[index].color;
         }
     }
 
@@ -312,7 +328,13 @@ v9x_status v9x_i9xx_build_textured_run(
             stream[at++] = y_bits;
             stream[at++] = zero_bits;
             stream[at++] = one_bits;
-            stream[at++] = triangles[index].color;
+            /* The vertex's own colour when the scene carries three, and
+             * the triangle's one colour otherwise. A scene that sets
+             * per_vertex without filling the array would emit zeros, which is
+             * black and visible, rather than silently repeating one value. */
+            stream[at++] = triangles[index].per_vertex != V9X_FALSE
+                ? triangles[index].vertex_color[vertex]
+                : triangles[index].color;
             /*
              * The coordinates last, AFTER the colour. Taken as float bits
              * rather than built here: the only values this scene needs are 0

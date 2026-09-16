@@ -104,8 +104,8 @@
     IntelReferenceColor = '00001C3E'
     SceneCount = 5
     SceneAuthorisedDraws = 5
-    SceneCombinedCrc = '7C7A3337'
-    SceneArmCrc = '780CC7E8'
+    SceneCombinedCrc = 'BE9113DD'
+    SceneArmCrc = '3163A9EF'
     SceneTotalProbes = 37
     TextureQuadrants = @(
         '1C3E'
@@ -188,26 +188,24 @@
             )
         }
         @{
-            Id = 9
-            Dwords = 94
-            Crc = '38141D6F'
+            Id = 11
+            Dwords = 64
+            Crc = '37010448'
             PrimitiveOffset = 48
-            Triangles = 3
-            Kind = 5
+            Triangles = 1
+            Kind = 8
             Textured = $false
             Depth = $false
             Colors = @(
-                @{ Value = '1C3E'; Measured = $true }
-                @{ Value = 'F325'; Measured = $true }
-                @{ Value = '3038'; Measured = $true }
+                @{ Value = '001F'; Measured = $false }
             )
             Probes = @(
-                @{ Name = 'AlpA'; X = 100; Y = 60; Expect = 1 }
-                @{ Name = 'AlpAB0'; X = 150; Y = 30; Expect = 1 }
-                @{ Name = 'AlpAB1'; X = 200; Y = 60; Expect = 1 }
-                @{ Name = 'AlpBC'; X = 260; Y = 60; Expect = 3 }
-                @{ Name = 'AlpC'; X = 400; Y = 60; Expect = 3 }
-                @{ Name = 'AlpOut'; X = 560; Y = 220; Expect = 0 }
+                @{ Name = 'GrdNearA'; X = 80; Y = 80; Expect = 65535 }
+                @{ Name = 'GrdNearB'; X = 560; Y = 80; Expect = 65535 }
+                @{ Name = 'GrdNearC'; X = 320; Y = 430; Expect = 65535 }
+                @{ Name = 'GrdCentre'; X = 320; Y = 192; Expect = 65535 }
+                @{ Name = 'GrdOutL'; X = 16; Y = 440; Expect = 0 }
+                @{ Name = 'GrdOutR'; X = 600; Y = 440; Expect = 0 }
             )
         }
         @{

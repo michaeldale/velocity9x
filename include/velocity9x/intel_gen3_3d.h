@@ -886,6 +886,47 @@ v9x_status v9x_i9xx_build_modulate_program(
 #define V9X_I9XX_SCENE_RUNTIME           ((v9x_u32)7ul)
 
 /*
+ * THREE COLOURS ON ONE TRIANGLE: the Gouraud scene.
+ *
+ * Every triangle this project has drawn carries one colour on all three
+ * vertices, which makes flat shading and Gouraud shading indistinguishable -
+ * and the engine publishes both. Two things are unmeasured behind that:
+ *
+ *  - Whether the hardware interpolates the diffuse colour across a triangle
+ *    at all, which D3DPSHADECAPS_COLORGOURAUDRGB claims.
+ *  - Which vertex a FLAT triangle takes its colour from. Intel's datasheet
+ *    307502-005 says the provoking vertex "is selectable by state variable
+ *    for D3D vs OpenGL"; this driver sets no such bit, so whichever the
+ *    hardware defaults to is what every draw gets
+ *    (docs\issues\2026-09-17-flat-shading-is-claimed-and-the-provoking-
+ *    vertex-is-not-programmed.md).
+ *
+ * This scene answers the first and gives the numbers the second needs. It
+ * cannot answer the second by itself: the flat-shade control is unidentified,
+ * so there is no way to draw the same triangle both ways in one boot.
+ *
+ * Untextured and un-Z'd, so the only thing varying is the vertex colour.
+ */
+#define V9X_I9XX_SCENE_GOURAUD           ((v9x_u32)8ul)
+
+/*
+ * The three vertex colours, BGRA, one primary each.
+ *
+ * Primaries rather than arbitrary values because the question is direction
+ * before it is precision: a probe near the red vertex reading mostly red says
+ * the interpolator runs the way the vertex order implies, and reading mostly
+ * blue says it does not. Arbitrary colours would need the interpolation model
+ * this scene exists to obtain before they could be read at all.
+ *
+ * Alpha is 0xff in all three. This scene enables no alpha test and no blend,
+ * so the top byte is inert here - and holding it constant keeps it that way
+ * rather than making it a second variable.
+ */
+#define V9X_I9XX_GOURAUD_COLOR_A         ((v9x_u32)0xff0000fful)  /* red   */
+#define V9X_I9XX_GOURAUD_COLOR_B         ((v9x_u32)0xff00ff00ul)  /* green */
+#define V9X_I9XX_GOURAUD_COLOR_C         ((v9x_u32)0xffff0000ul)  /* blue  */
+
+/*
  * The most triangles one runtime submission may carry.
  *
  * A bound rather than no bound: the vertex loop below reads three vertices per
@@ -982,6 +1023,22 @@ struct v9x_i9xx_triangle {
      * green truncating - as a fault.
      */
     v9x_u16 color_measured;
+    /*
+     * APPENDED 2026-09-17, and appended rather than inserted because the
+     * scene table initialises this struct positionally: a field in the middle
+     * silently reassigns every value after it and C89 has no designated form
+     * to make that visible.
+     *
+     * Per-vertex colours, used only when per_vertex is set. `color` above
+     * stays the one colour a flat triangle carries, and every scene written
+     * before this one leaves these zero and is unaffected.
+     *
+     * The comment on `color` says one colour keeps provoking-vertex rules off
+     * the critical path. That was right while nothing measured them; this is
+     * the scene that does, so it is the one place the rule is ON the path.
+     */
+    v9x_u16 per_vertex;
+    v9x_u32 vertex_color[3];
 };
 
 struct v9x_i9xx_scene {

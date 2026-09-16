@@ -132,6 +132,20 @@ static v9x_u16 v9x_i9xx_decode_vertex_color(v9x_u32 kind, v9x_u32 color)
         }
         return V9X_FALSE;
     }
+    if (kind == V9X_I9XX_SCENE_GOURAUD) {
+        /*
+         * Three colours on one triangle, so the allowlist is the set rather
+         * than one value. Position is NOT pinned: which vertex carries which
+         * primary is the question the scene asks, and a decoder that required
+         * an order would be asserting the answer.
+         */
+        if (color == V9X_I9XX_GOURAUD_COLOR_A ||
+            color == V9X_I9XX_GOURAUD_COLOR_B ||
+            color == V9X_I9XX_GOURAUD_COLOR_C) {
+            return V9X_TRUE;
+        }
+        return V9X_FALSE;
+    }
     if (kind == V9X_I9XX_SCENE_ALPHA_TEST) {
         /* The same three colours with their top byte varied. Pinned including
          * the alpha, because the alpha IS the experiment: a stream carrying a

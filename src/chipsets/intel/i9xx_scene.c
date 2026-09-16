@@ -126,6 +126,21 @@
 #define V9X_I9XX_SCENE_ID_DEPTHWRIT ((v9x_u32)8ul)
 #define V9X_I9XX_SCENE_ID_ALPHA     ((v9x_u32)9ul)
 #define V9X_I9XX_SCENE_ID_BLEND     ((v9x_u32)10ul)
+/*
+ * 11: the Gouraud triangle. It takes scene 3's slot from the ALPHA TEST,
+ * which retires here.
+ *
+ * The bound is five draws per armed boot and the table was at five, so a
+ * scene had to go rather than the bound move - the same trade the modulate
+ * and depth scenes were made room for by, and for the same reason: a
+ * different draw count is a different risk assessment and this is not one.
+ *
+ * Alpha test is the right one to retire. intel47 answered both its questions
+ * - the test works, and the top byte IS the alpha - and the blend scene it
+ * sits beside still carries an alpha through the same field, so the coverage
+ * does not leave with it. Its id is NOT reused.
+ */
+#define V9X_I9XX_SCENE_ID_GOURAUD   ((v9x_u32)11ul)
 
 /*
  * The MI probe, immediately before each scene's 3D work. Worth its two dwords
@@ -191,6 +206,18 @@ static void v9x_i9xx_scene_triangle(
     out->x[2] = x2;
     out->y[2] = y2;
     out->color = color;
+    /*
+     * The per-vertex colours are CLEARED here, which is what makes the flag
+     * safe to read. Every scene reaches this function through
+     * v9x_i9xx_scene_clear, so a scene that does not set them cannot leave
+     * the emitter reading whichever of the two paths uninitialised memory
+     * happened to select - and that emitter picks between them on a single
+     * bit, which is the worst kind of field to leave undefined.
+     */
+    out->per_vertex = V9X_FALSE;
+    out->vertex_color[0] = 0ul;
+    out->vertex_color[1] = 0ul;
+    out->vertex_color[2] = 0ul;
 }
 
 static void v9x_i9xx_scene_probe(
@@ -384,7 +411,8 @@ static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index,
 static void v9x_i9xx_scene_depth_triangles(struct v9x_i9xx_scene *scene);
 static void v9x_i9xx_scene_depth_probes(struct v9x_i9xx_scene *scene,
                                         v9x_u16 writes);
-static void v9x_i9xx_scene_alpha_probes(struct v9x_i9xx_scene *scene);
+static void v9x_i9xx_scene_gouraud_triangle(struct v9x_i9xx_scene *scene);
+static void v9x_i9xx_scene_gouraud_probes(struct v9x_i9xx_scene *scene);
 static void v9x_i9xx_scene_blend_probes(struct v9x_i9xx_scene *scene);
 
 v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
@@ -491,38 +519,52 @@ static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index,
     }
 
     /*
-     * Scene 3: the ALPHA TEST.
+     * Scene 3: the GOURAUD triangle - three vertices, three colours.
      *
-     * The same three triangles, drawn with no depth buffer at all, carrying
-     * three different alphas in the top byte of their vertex colour. The test
-     * is GREATER against 0x80, so the first and third pass and the second is
-     * rejected everywhere.
+     * One triangle, big, with a pure primary at each corner. Every triangle
+     * this project has drawn carries one colour on all three vertices, which
+     * makes flat and Gouraud shading indistinguishable - and the engine
+     * publishes both. This is the first draw where they differ.
      *
-     * The discriminating pixels are those covered by the first two and not the
-     * third: the second is drawn later, so without a working alpha test it
-     * would win them, and with one the first still holds them.
+     * WHAT IT ANSWERS: whether the hardware interpolates the diffuse colour
+     * at all, and in which direction. A probe beside the red vertex reading
+     * mostly red says the interpolator follows the vertex order; reading
+     * mostly blue says it does not, and a flat result says it does not
+     * interpolate.
      *
-     * The rejected triangle is BRACKETED by two that draw, inside a single
-     * primitive whose vertex count the decoder pins. That is what separates
-     * "it was rejected" from "it never ran" - no probe can, because a rejected
-     * triangle and an absent one leave the same pixels behind.
+     * WHAT IT CANNOT ANSWER: which vertex a FLAT triangle takes its colour
+     * from. Intel's datasheet says that is a state variable and does not say
+     * which one, so there is no way to draw the same triangle both ways in
+     * one boot. What this gives that question is the three colours at known
+     * corners, so the answer is one probe away once the bit is identified
+     * (docs\issues\2026-09-17-flat-shading-is-claimed-and-the-provoking-
+     * vertex-is-not-programmed.md).
      *
-     * This also measures where the alpha byte IS. If the top byte is not the
-     * alpha, all three triangles draw and the discriminating probes read the
-     * second triangle's colour instead of the first's.
+     * The interior probes are MEASURE, not assertions. The interpolator's
+     * precision, its sample point and the 565 store are three unmeasured
+     * things between a vertex colour and a pixel, and a predicted value would
+     * be a guess dressed as a requirement - the modulate scene made the same
+     * choice for the same reason. The two probes OUTSIDE the triangle are
+     * assertions, so the scene still fails if nothing drew.
      */
     if (index == 3ul) {
-        out->id = V9X_I9XX_SCENE_ID_ALPHA;
-        out->kind = V9X_I9XX_SCENE_ALPHA_TEST;
-        v9x_i9xx_scene_depth_triangles(out);
-        /* The geometry is the depth scenes'; only the colours differ, and
-         * only in their top byte. */
-        out->triangles[0].color = V9X_I9XX_ALPHA_COLOR_PASS;
-        out->triangles[1].color = V9X_I9XX_ALPHA_COLOR_FAIL;
-        out->triangles[2].color = V9X_I9XX_ALPHA_COLOR_PASS2;
-        v9x_i9xx_scene_alpha_probes(out);
+        out->id = V9X_I9XX_SCENE_ID_GOURAUD;
+        out->kind = V9X_I9XX_SCENE_GOURAUD;
+        v9x_i9xx_scene_gouraud_triangle(out);
+        v9x_i9xx_scene_gouraud_probes(out);
         return V9X_STATUS_OK;
     }
+
+    /*
+     * Scene 3 was the ALPHA TEST until 2026-09-17, and it is retired rather
+     * than moved: the draw bound is five and the table was full.
+     *
+     * intel47 answered both of its questions - the alpha test works, and the
+     * top byte IS the alpha - and the blend scene below still carries an
+     * alpha through the same field, so the coverage does not leave with it.
+     * The builder and the decoder keep the ALPHA_TEST kind: retiring a scene
+     * is removing a draw from a boot, not removing the ability to build one.
+     */
 
     /*
      * Scene 4: SOURCE-ALPHA BLEND.
@@ -557,34 +599,104 @@ static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index,
  * one of these from the geometry rather than trusting the list, which is how
  * an impossible probe was caught in the depth set.
  */
-static void v9x_i9xx_scene_alpha_probes(struct v9x_i9xx_scene *scene)
+
+/*
+ * The Gouraud triangle: one triangle, a primary at each corner.
+ *
+ * Large and well inside the 640x480 target, so every probe is far from an
+ * edge - the fill rule decides edge pixels and this scene is not about the
+ * fill rule (docs\decisions\2026-09-17-intel-gen3-fill-rule-documented-by-
+ * intel.md). A probe that landed on an edge would answer two questions at
+ * once and neither cleanly.
+ *
+ * The corners are chosen so the three are far apart in both axes: an
+ * interpolator that ran the wrong way, or that used the wrong vertex, moves
+ * the reading to a different primary rather than to a near-identical shade.
+ */
+static void v9x_i9xx_scene_gouraud_triangle(struct v9x_i9xx_scene *scene)
 {
-    /* The first triangle alone: it passes, so it draws. Also the evidence
-     * that the primitive ran at all. */
-    v9x_i9xx_scene_probe(scene, "AlpA", 100u, 60u,
-                         V9X_I9XX_PROBE_TRIANGLE0);
+    scene->fill_dword = V9X_I9XX_FILL_DWORD;
+    scene->triangle_count = 1ul;
+
+    scene->triangles[0].x[0] = 64ul;
+    scene->triangles[0].y[0] = 64ul;
+    scene->triangles[0].x[1] = 576ul;
+    scene->triangles[0].y[1] = 64ul;
+    scene->triangles[0].x[2] = 320ul;
+    scene->triangles[0].y[2] = 448ul;
     /*
-     * Covered by the first two and NOT the third, on two different rows. The
-     * second is drawn later and is the one that fails the test, so these read
-     * the first triangle if the test works and the second if it does not.
-     * Two rows rather than two points on one, so a single wrong edge cannot
-     * account for both.
+     * `color` still holds one of them. The builder uses the array when
+     * per_vertex is set and never reads this, but a zero here would be a
+     * field that looks unset - and the decoder's allowlist accepts all three
+     * whichever way round they arrive.
      */
-    v9x_i9xx_scene_probe(scene, "AlpAB0", 150u, 30u,
-                         V9X_I9XX_PROBE_TRIANGLE0);
-    v9x_i9xx_scene_probe(scene, "AlpAB1", 200u, 60u,
-                         V9X_I9XX_PROBE_TRIANGLE0);
-    /* Covered by the second and third. The third passes and is drawn last, so
-     * it holds these whether or not the test works - a control. */
-    v9x_i9xx_scene_probe(scene, "AlpBC", 260u, 60u,
-                         V9X_I9XX_PROBE_TRIANGLE2);
-    /* The third alone, past the others: the evidence that IT ran. */
-    v9x_i9xx_scene_probe(scene, "AlpC", 400u, 60u,
-                         V9X_I9XX_PROBE_TRIANGLE2);
-    /* And the fill, below every apex. */
-    v9x_i9xx_scene_probe(scene, "AlpOut", 560u, 220u,
-                         V9X_I9XX_PROBE_FILL);
+    scene->triangles[0].color = V9X_I9XX_GOURAUD_COLOR_A;
+    scene->triangles[0].per_vertex = V9X_TRUE;
+    scene->triangles[0].vertex_color[0] = V9X_I9XX_GOURAUD_COLOR_A;
+    scene->triangles[0].vertex_color[1] = V9X_I9XX_GOURAUD_COLOR_B;
+    scene->triangles[0].vertex_color[2] = V9X_I9XX_GOURAUD_COLOR_C;
+    /*
+     * NOT measured. No interpolated value on this part has ever been read
+     * back, so every interior reading this scene takes is a first, and the
+     * flag says so rather than letting a prediction be checked against
+     * itself.
+     */
+    scene->triangles[0].color_measured = V9X_FALSE;
 }
+
+/*
+ * Four readings inside and two outside.
+ *
+ * The interior four are MEASURE: between a vertex colour and a pixel sit the
+ * interpolator's precision, its sample point and the 565 store, none of them
+ * measured on this part, and a predicted value would be a guess dressed as a
+ * requirement.
+ *
+ * The exterior two are assertions, and they are what stops the scene passing
+ * on a boot where nothing drew. A capture of four measured values with no
+ * fill anywhere is four numbers about a surface nobody rendered into.
+ */
+static void v9x_i9xx_scene_gouraud_probes(struct v9x_i9xx_scene *scene)
+{
+    scene->probe_count = 0ul;
+
+    /*
+     * Beside each corner, well inside both edges that meet there. Sixteen
+     * pixels in, which at these slopes is a dozen clear of the nearest edge -
+     * the fill rule decides edge pixels and this scene is not about the fill
+     * rule, so no probe of it may land where that question also applies.
+     */
+    v9x_i9xx_scene_probe(scene, "GrdNearA", 80u, 80u,
+                         V9X_I9XX_PROBE_MEASURE);
+    v9x_i9xx_scene_probe(scene, "GrdNearB", 560u, 80u,
+                         V9X_I9XX_PROBE_MEASURE);
+    v9x_i9xx_scene_probe(scene, "GrdNearC", 320u, 430u,
+                         V9X_I9XX_PROBE_MEASURE);
+    /*
+     * The centroid, where all three weights are a third. The one interior
+     * reading whose value can be predicted from the other three without
+     * knowing the sample point, which is what makes it worth its own probe.
+     */
+    v9x_i9xx_scene_probe(scene, "GrdCentre", 320u, 192u,
+                         V9X_I9XX_PROBE_MEASURE);
+    /*
+     * Outside, in the two bottom corners the triangle cannot reach - at
+     * y=440 its span is about x 315 to 325. These are ASSERTIONS, and they
+     * are what stops the scene passing on a boot where nothing drew: four
+     * measured values with no fill anywhere are four numbers about a surface
+     * nobody rendered into.
+     */
+    v9x_i9xx_scene_probe(scene, "GrdOutL", 16u, 440u, V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "GrdOutR", 600u, 440u, V9X_I9XX_PROBE_FILL);
+}
+
+/*
+ * The alpha scene's probe set retired with its scene on 2026-09-17, and is
+ * deleted rather than left unreferenced: this build treats an unused static
+ * as an error, and a probe set with no scene is one nobody can attribute.
+ * The geometry it used is still here - the depth scenes share it - and the
+ * function is one `git show` away if that scene is ever armed again.
+ */
 
 /*
  * The BLEND probes. Two triangles, so three regions plus the fill.

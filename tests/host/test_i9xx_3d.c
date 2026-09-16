@@ -22,6 +22,18 @@
 
 static unsigned int failures = 0u;
 
+/*
+ * The five scenes' total staged dwords: 64 + 114 + 104 + 64 + 80.
+ *
+ * Scene 3 fell from 94 to 64 on 2026-09-17 when the alpha test retired
+ * and the Gouraud triangle took its slot: one triangle instead of three,
+ * and the plain state block instead of the alpha one. The total is
+ * asserted rather than derived so a change to the table has to be
+ * deliberate - a test that recomputed it from the same builders would
+ * be comparing a number with itself.
+ */
+#define V9X_TEST_STAGED_DWORDS 426ul
+
 #define CHECK(expression) do { \
     if (!(expression)) { \
         printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #expression); \
@@ -1376,8 +1388,12 @@ static void test_scene_probe_budget(void)
             CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
             staged += v9x_i9xx_scene_extent(&scene);
         }
-        /* 64 + 114 + 104 + 94 + 80. */
-        CHECK(staged == 456ul);
+        /*
+         * Printed by the stream generator, not derived here: the sum is what
+         * the five scenes actually stage, and a test that recomputed it from
+         * the same builders would be comparing a number with itself.
+         */
+        CHECK(staged == V9X_TEST_STAGED_DWORDS);
         CHECK(staged <= 512ul);
     }
 }
@@ -1783,76 +1799,89 @@ static void test_depth_scene_expectations(void)
 }
 
 /*
- * The ALPHA TEST scene's expectations, recomputed the same way.
+ * The GOURAUD scene: one triangle, three colours, and what a first
+ * measurement of an interpolator is allowed to assert.
  *
- * The rule is different and the geometry is the same: every covering triangle
- * whose alpha EXCEEDS the reference draws, in submission order, and the last
- * such one holds the pixel. A triangle at or below the reference contributes
- * nothing anywhere.
+ * It replaced the alpha-test scene on 2026-09-17, when the draw bound was
+ * five and the table was full. What is asserted here is everything a build
+ * can know without the hardware - the geometry, the colours, which probes
+ * are measurements and which are requirements - and nothing about the values
+ * the interpolator will produce, because that is the question.
  */
-static void test_alpha_scene_expectations(void)
+static void test_gouraud_scene_expectations(void)
 {
     struct v9x_i9xx_scene scene;
     v9x_u32 probe;
-    v9x_u32 discriminating = 0ul;
+    v9x_u32 measured = 0ul;
+    v9x_u32 asserted = 0ul;
 
     CHECK(v9x_i9xx_scene_at(3ul, &scene) == V9X_STATUS_OK);
-    CHECK(scene.kind == V9X_I9XX_SCENE_ALPHA_TEST);
-    CHECK(scene.triangle_count == 3ul);
+    CHECK(scene.kind == V9X_I9XX_SCENE_GOURAUD);
+    CHECK(scene.triangle_count == 1ul);
+
+    /* Three colours, actually carried per vertex rather than one repeated -
+     * which is the entire difference between this scene and every other one
+     * this driver draws. */
+    CHECK(scene.triangles[0].per_vertex != V9X_FALSE);
+    CHECK(scene.triangles[0].vertex_color[0] != scene.triangles[0].vertex_color[1]);
+    CHECK(scene.triangles[0].vertex_color[0] != scene.triangles[0].vertex_color[2]);
+    CHECK(scene.triangles[0].vertex_color[1] != scene.triangles[0].vertex_color[2]);
 
     /*
-     * Exactly one triangle must FAIL the test, and it must not be the first or
-     * the last. A rejected triangle leaves the same pixels as an absent one,
-     * so what separates them is that the two drawn triangles bracket it inside
-     * one primitive - and that only holds if the failing one is in the middle.
+     * A PRIMARY at each corner, one channel each, and the same alpha on all
+     * three. A shared channel between two corners would make a probe reading
+     * it unable to say which vertex it came from, which is the whole reading.
      */
-    CHECK(((scene.triangles[0].color >> 24) & 0xfful) > V9X_I9XX_ALPHA_REF);
-    CHECK(((scene.triangles[1].color >> 24) & 0xfful) <= V9X_I9XX_ALPHA_REF);
-    CHECK(((scene.triangles[2].color >> 24) & 0xfful) > V9X_I9XX_ALPHA_REF);
+    CHECK(scene.triangles[0].vertex_color[0] == V9X_I9XX_GOURAUD_COLOR_A);
+    CHECK(scene.triangles[0].vertex_color[1] == V9X_I9XX_GOURAUD_COLOR_B);
+    CHECK(scene.triangles[0].vertex_color[2] == V9X_I9XX_GOURAUD_COLOR_C);
+    CHECK((scene.triangles[0].vertex_color[0] >> 24) ==
+          (scene.triangles[0].vertex_color[1] >> 24));
+    CHECK((scene.triangles[0].vertex_color[1] >> 24) ==
+          (scene.triangles[0].vertex_color[2] >> 24));
 
-    /* And the three colours still differ below the alpha byte, or the
-     * capture cannot say which triangle won. */
-    CHECK((scene.triangles[0].color & 0x00fffffful) !=
-          (scene.triangles[1].color & 0x00fffffful));
-    CHECK((scene.triangles[0].color & 0x00fffffful) !=
-          (scene.triangles[2].color & 0x00fffffful));
-    CHECK((scene.triangles[1].color & 0x00fffffful) !=
-          (scene.triangles[2].color & 0x00fffffful));
+    /* Nothing about the interpolated result is claimed as known. */
+    CHECK(scene.triangles[0].color_measured == V9X_FALSE);
 
+    /*
+     * The probe set: measurements inside, requirements outside, and BOTH
+     * kinds present. All-measure would pass on a boot that drew nothing;
+     * all-assert would require values nobody has measured.
+     */
     for (probe = 0ul; probe < scene.probe_count; ++probe) {
-        v9x_u32 triangle;
-        v9x_u32 winner = 3ul;
-        v9x_u32 painter = 3ul;
-        v9x_u16 expect;
+        v9x_u16 expect = scene.probes[probe].expect;
+        v9x_u16 inside = v9x_test_probe_inside(&scene.triangles[0],
+                                               scene.probes[probe].x,
+                                               scene.probes[probe].y);
 
-        for (triangle = 0ul; triangle < 3ul; ++triangle) {
-            if (v9x_test_probe_inside(&scene.triangles[triangle],
-                                      scene.probes[probe].x,
-                                      scene.probes[probe].y) != V9X_TRUE) {
-                continue;
-            }
-            /* Who would hold it with NO alpha test: the last to cover it. */
-            painter = triangle;
-            if (((scene.triangles[triangle].color >> 24) & 0xfful) >
-                    V9X_I9XX_ALPHA_REF) {
-                winner = triangle;
-            }
+        if (expect == V9X_I9XX_PROBE_MEASURE) {
+            ++measured;
+            /* A measurement outside the triangle would measure the fill. */
+            CHECK(inside != V9X_FALSE);
+        } else {
+            ++asserted;
+            /* The only assertion this scene may make is the fill, and it must
+             * be somewhere the triangle cannot reach. */
+            CHECK(expect == V9X_I9XX_PROBE_FILL);
+            CHECK(inside == V9X_FALSE);
         }
-
-        expect = (winner == 3ul)
-                     ? V9X_I9XX_PROBE_FILL
-                     : (v9x_u16)(V9X_I9XX_PROBE_TRIANGLE0 + winner);
-        CHECK(scene.probes[probe].expect == expect);
-
-        /* A probe DISCRIMINATES when the alpha test changes who holds it. */
-        if (winner != painter) { ++discriminating; }
+        /* Every probe names itself, or the capture cannot attribute it. */
+        CHECK(v9x_test_streq(
+                  v9x_i9xx_probe_expectation_name(expect), "unknown") ==
+              V9X_FALSE);
     }
+    CHECK(measured >= 4ul);
+    CHECK(asserted >= 2ul);
 
     /*
-     * At least two, on different rows. One would make the whole scene rest on
-     * a single edge being where the arithmetic says it is.
+     * The three corner probes must be near DIFFERENT corners. Three
+     * measurements clustered at one vertex read the same colour three times
+     * and answer nothing - and that is a mistake a probe table can make
+     * silently, because every one of them would still be inside.
      */
-    CHECK(discriminating >= 2ul);
+    CHECK(scene.probes[0].x != scene.probes[1].x);
+    CHECK(scene.probes[2].y != scene.probes[0].y);
+    CHECK(scene.probes[2].y != scene.probes[1].y);
 }
 
 /*
@@ -3646,7 +3675,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_texture_probe_quadrants();
     test_scene_probe_budget();
     test_depth_scene_expectations();
-    test_alpha_scene_expectations();
+    test_gouraud_scene_expectations();
     test_blend_scene_expectations();
     test_decoder_runtime_mode();
     test_runtime_textured_and_depth();
