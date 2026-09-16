@@ -155,6 +155,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-13 Intel Phase 4: the write gate opens on a risk decision, not on an erratum workaround](2026-09-13-intel-phase4-gate-opened-by-risk-decision.md)
 - [2026-09-14 A CPU write to stolen memory does not stick; the GMADR aperture is the path](2026-09-14-cpu-writes-to-stolen-memory-need-the-aperture.md)
 - [2026-09-14 Intel Phase 4 measured: the ring accepts commands and the GPU executed a blit](2026-09-14-intel-phase4-first-write-the-gpu-executed-a-blit.md)
+- [2026-09-17 Intel documents the 945's fill rule: top-left, for D3D and OpenGL alike](2026-09-17-intel-gen3-fill-rule-documented-by-intel.md)
 
 ## NVIDIA and other surveyed cards
 

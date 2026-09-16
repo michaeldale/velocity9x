@@ -265,7 +265,7 @@ its own condition for when it stops being deferrable:
 | Open | Blocks | Issue |
 |---|---|---|
 | Depth `BUF_INFO` at address zero, unused | any Phase 6 depth step; needs its own regression boot first | [issue](../issues/2026-09-15-intel-depth-buf-info-at-address-zero.md) |
-| Edge fill rule unmeasured | shared edges, adjacent triangles, pixel-exact coverage | [issue](../issues/2026-09-15-intel-edge-fill-rule-unmeasured.md) |
+| Edge fill rule: top-left per Intel datasheets 307502/309219, measured for one slope | horizontal and vertical shared edges, other slopes, degenerate triangles, snapping | [issue](../issues/2026-09-15-intel-edge-fill-rule-unmeasured.md), [record](../decisions/2026-09-17-intel-gen3-fill-rule-documented-by-intel.md) |
 | 565 conversion known at six channel values only | any unqualified claim about colour; full-target hashes | [issue](../issues/2026-09-15-intel-565-conversion-outside-measured-values.md) |
 
 The done-criterion below asked for a capture stable across cold boots. Two

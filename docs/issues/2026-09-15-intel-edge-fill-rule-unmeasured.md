@@ -1,6 +1,6 @@
 # The GMA 950's triangle fill rule at edges is unmeasured
 
-**Status:** MEASURED 2026-09-16 for one slope; see the limit below.
+**Status:** MEASURED 2026-09-16 for one slope; DOCUMENTED by Intel 2026-09-17 (top-left). See the limit below.
 **Chip:** 945GSE A3, `8086:27AE` rev 03, MICHAEL-NETBOOK.
 
 ## What is unknown
@@ -92,3 +92,14 @@ untested. This closes the question for the case a quad presents and nothing
 wider.
 
 Record: `docs/decisions/2026-09-16-intel-phase6-five-scenes-green-rounds-edges-clean.md`.
+
+## Documented 2026-09-17
+
+Intel's 945G family datasheet 307502-005 section 10.5.3.6, and the Mobile 945
+datasheet 309219-006 section 10.4.1.5.1 (the 945GSE's own document), both
+state: "For both D3D and OpenGL modes, a top-left filling convention for
+filling geometry will be used", rectangles included. The one measured slope
+agrees. The unmeasured cases above are now tests of a documented rule, and the
+snapping model is the only thing the datasheet leaves unsaid.
+
+Record: `docs/decisions/2026-09-17-intel-gen3-fill-rule-documented-by-intel.md`.
