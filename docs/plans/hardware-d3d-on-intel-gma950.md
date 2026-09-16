@@ -311,7 +311,7 @@ compiler is out of scope and is a kill criterion if it becomes necessary.
 `Result=PASS`, every quadrant probe reading the quadrant predicted. Record:
 [the texture](../decisions/2026-09-16-intel-gen3-texture-sampled-uv-addressing.md).
 
-**Steps 2 to 4 built 2026-09-16, not yet run.** The scene table is five scenes
+**Steps 2 to 4 built 2026-09-16.** The scene table is five scenes
 against the five draws authorised - the bound is now reached. Scene 2 modulates
 the texel by the vertex colour; scenes 3 and 4 bind a real depth buffer and
 test against it, without writes then with. The audit that licensed them is
@@ -320,6 +320,14 @@ records two things it could not establish: the depth `BUF_INFO` encoding has
 one source, because xf86 has no depth buffer anywhere, and the mapping from a
 post-transform Z to the 16-bit depth format is stated by neither tree. The
 depth scenes are built to depend only on the ORDER of their depths.
+
+**Steps 2 to 4 done 2026-09-16**: `intel46`, `Result=PASS`, all 38 probes as
+predicted. Depth testing works - two scenes drawing the same three triangles at
+the same three depths, differing only in the write-enable bit, and the furthest
+triangle is rejected wherever the nearer ones wrote. Modulation works, and its
+products fit bit-replicated expansion with round-to-nearest at twelve channel
+values while excluding truncation at five. Record:
+[depth and modulate](../decisions/2026-09-16-intel-gen3-depth-test-and-modulate.md).
 
 Alpha test and source-alpha blend remain. They need their own audit and a prior
 decision: an RGB565 texture carries no alpha, so the alpha source is either

@@ -696,6 +696,17 @@ function Test-V9xIntel3dCapture {
                            "expectation for probe $probe. The same value is a " +
                            'result in one scene and a regression in another.')
                 }
+                # And it must be a word the build has a NAME for. "unknown"
+                # means the driver carried an expectation its own mapper did
+                # not recognise - which happened to nine probes in intel46 and
+                # was invisible here, because this file compares the numeric
+                # expectation from the generated table and never read the word.
+                if ($values[$named] -ceq 'unknown') {
+                    throw ("INTEL3D0.TXT $named reads 'unknown'. The build " +
+                           'declares an expectation for that probe, so the ' +
+                           'driver has one the capture could not name - the ' +
+                           'reading is unreadable to anyone but this script.')
+                }
 
                 # And the reading is COMPARED, not merely parsed.
                 #
@@ -1325,7 +1336,15 @@ R0000=DEADBEEF'
                     $half = @($entry.Colors)[$probe.Expect - 1].Value
                     $value = $half + $half
                 }
-                $s3.Add(('{0}{1}=x' -f $prefix, $probe.Name))
+                # A real word, not a placeholder: the validator now refuses
+                # 'unknown' and a fixture that never carried a word could not
+                # exercise that.
+                $expectWord = 'outside'
+                if ($probe.Expect -eq 65535) { $expectWord = 'measure' }
+                elseif ($probe.Expect -ge 20) { $expectWord = 'modquad' }
+                elseif ($probe.Expect -ge 16) { $expectWord = 'quad' }
+                elseif ($probe.Expect -ge 1) { $expectWord = 'inside' }
+                $s3.Add(('{0}{1}={2}' -f $prefix, $probe.Name, $expectWord))
                 $s3.Add(('{0}PX{1:X4}={2}' -f $prefix, $probeIndex, $value))
                 ++$probeIndex
             }
@@ -1439,6 +1458,10 @@ R0000=DEADBEEF'
             # the end of a buffer 256 rows tall in a 480-row target.
             @{ From = 'S4DepG=6B6B6B6B'; To = 'S4DepG=FFFFFFFF'
                Why = 'a scene that wrote past the end of the depth buffer' }
+            # An expectation the driver could not name. Nine probes read this
+            # way in intel46 and nothing here noticed.
+            @{ From = 'S2ModQ0=modquad'; To = 'S2ModQ0=unknown'
+               Why = 'a probe whose expectation the driver could not name' }
             # A modulated probe reading its RAW quadrant colour: the texel
             # reached the target unmultiplied, which is the previous scene's
             # picture and would otherwise read as a pass.

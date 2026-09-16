@@ -713,6 +713,9 @@ v9x_status v9x_i9xx_build_modulate_program(
 
 /* Does this kind sample a texture? Does it bind a depth buffer, and does it
  * write to one? Derived in one place, so no caller re-derives them. */
+/* The word a capture carries for an expectation. Never null, and
+ * "unknown" only for a value no expectation constant names. */
+const char *v9x_i9xx_probe_expectation_name(v9x_u16 expect);
 v9x_u16 v9x_i9xx_scene_kind_textured(v9x_u32 kind);
 v9x_u16 v9x_i9xx_scene_kind_depth(v9x_u32 kind);
 v9x_u16 v9x_i9xx_scene_kind_depth_writes(v9x_u32 kind);

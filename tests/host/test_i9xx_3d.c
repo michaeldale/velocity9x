@@ -433,6 +433,20 @@ static const struct v9x_i9xx_decode_limits v9x_test_zero_bytes = {
 };
 
 /* And a filler for the tests that build their own. */
+/* Equal strings? The host tests avoid <string.h> for the same reason the
+ * driver does: these units are built for two memory models. */
+static v9x_u16 v9x_test_streq(const char *left, const char *right)
+{
+    if (left == 0 || right == 0) {
+        return V9X_FALSE;
+    }
+    while (*left != ' ' && *left == *right) {
+        ++left;
+        ++right;
+    }
+    return (*left == *right) ? V9X_TRUE : V9X_FALSE;
+}
+
 static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
                             v9x_u32 target_offset, v9x_u32 target_bytes,
                             v9x_u32 kind)
@@ -1726,6 +1740,71 @@ static void test_decoder_depth_refusals(void)
     }
 }
 
+/*
+ * Every expectation the build defines must have a NAME, and every scene's
+ * probes must use one.
+ *
+ * The intel46 capture published "unknown" for nine probes - four modulated
+ * quadrants and five triangle-2 probes - because the mapper lived in the
+ * display driver and never learned the constants added beside it. The result
+ * survived, because the validator compares the numeric expectation from the
+ * generated table and not this word. What did not survive is the capture's
+ * readability: the function's own comment says a probe with no expectation
+ * and a probe whose expectation was lost look identical, and nine of them
+ * looked lost.
+ *
+ * So the mapping moved here, where it can be checked exhaustively rather than
+ * discovered on a machine.
+ */
+static void test_probe_expectation_names(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 index;
+    v9x_u32 probe;
+    v9x_u32 which;
+    static const v9x_u16 defined[13] = {
+        V9X_I9XX_PROBE_FILL, V9X_I9XX_PROBE_TRIANGLE0,
+        V9X_I9XX_PROBE_TRIANGLE1, V9X_I9XX_PROBE_TRIANGLE2,
+        V9X_I9XX_PROBE_QUADRANT0, V9X_I9XX_PROBE_QUADRANT1,
+        V9X_I9XX_PROBE_QUADRANT2, V9X_I9XX_PROBE_QUADRANT3,
+        V9X_I9XX_PROBE_MODQUAD0, V9X_I9XX_PROBE_MODQUAD1,
+        V9X_I9XX_PROBE_MODQUAD2, V9X_I9XX_PROBE_MODQUAD3,
+        V9X_I9XX_PROBE_MEASURE
+    };
+
+    for (which = 0ul; which < 13ul; ++which) {
+        const char *name = v9x_i9xx_probe_expectation_name(defined[which]);
+        v9x_u32 other;
+
+        CHECK(name != 0);
+        CHECK(v9x_test_streq(name, "unknown") == V9X_FALSE);
+        /* And DISTINCT from every other, or two expectations read the same in
+         * a capture and the word stops distinguishing them. */
+        for (other = 0ul; other < which; ++other) {
+            CHECK(v9x_test_streq(
+                      name,
+                      v9x_i9xx_probe_expectation_name(defined[other])) ==
+                  V9X_FALSE);
+        }
+    }
+
+    /* A value no constant names still returns a word rather than null. */
+    CHECK(v9x_test_streq(v9x_i9xx_probe_expectation_name((v9x_u16)999u),
+                         "unknown") == V9X_TRUE);
+
+    /* And no scene in the table carries an expectation without a name, which
+     * is the property the capture actually depends on. */
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        for (probe = 0ul; probe < scene.probe_count; ++probe) {
+            CHECK(v9x_test_streq(
+                      v9x_i9xx_probe_expectation_name(
+                          scene.probes[probe].expect),
+                      "unknown") == V9X_FALSE);
+        }
+    }
+}
+
 /* The combined CRC, which is what the arm gate compares. */
 static void test_scene_combined_crc(void)
 {
@@ -2649,6 +2728,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_depth_scene_expectations();
     test_every_scene_decodes();
     test_decoder_depth_refusals();
+    test_probe_expectation_names();
     test_scene_combined_crc();
     test_scene_primitive_offset();
     test_submission_boundaries_are_qword_aligned();

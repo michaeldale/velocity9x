@@ -512,28 +512,6 @@ static void v9x_p6_text(WORD scene, const char *name, const char *value)
 }
 
 /*
- * What a probe expected, as the word the capture carries.
- *
- * MEASURE is published as "measure" rather than left blank: a probe with no
- * expectation and a probe whose expectation was lost look identical in a
- * capture, and only one of them is evidence.
- */
-static const char *v9x_p6_expectation(WORD expect)
-{
-    if (expect == V9X_I9XX_PROBE_MEASURE) { return "measure"; }
-    if (expect == V9X_I9XX_PROBE_FILL) { return "outside"; }
-    if (expect == V9X_I9XX_PROBE_TRIANGLE0) { return "inside"; }
-    if (expect == V9X_I9XX_PROBE_TRIANGLE1) { return "inside1"; }
-    /* The texture quadrants. Named rather than numbered in the capture,
-     * because "quad2" read where "quad1" was expected is the addressing
-     * answer and has to be legible without the header to hand. */
-    if (expect == V9X_I9XX_PROBE_QUADRANT0) { return "quad0"; }
-    if (expect == V9X_I9XX_PROBE_QUADRANT1) { return "quad1"; }
-    if (expect == V9X_I9XX_PROBE_QUADRANT2) { return "quad2"; }
-    if (expect == V9X_I9XX_PROBE_QUADRANT3) { return "quad3"; }
-    return "unknown";
-}
-/*
  * What this boot reads through the GMADR aperture, computed and published
  * before any of it is spent.
  *
@@ -1290,7 +1268,7 @@ static WORD v9x_p6_run_scene(
          * was.
          */
         v9x_p6_key(key, scene, v9x_p6_scene.probes[index].name);
-        v9x_p5_text(key, v9x_p6_expectation(
+        v9x_p5_text(key, v9x_i9xx_probe_expectation_name(
                              v9x_p6_scene.probes[index].expect));
         v9x_p6_hex(scene, "PixelNext", (DWORD)index);
         v9x_p6_hex(scene, "PixelOffset", offset);

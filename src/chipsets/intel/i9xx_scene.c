@@ -330,6 +330,38 @@ v9x_u16 v9x_i9xx_scene_kind_depth_writes(v9x_u32 kind)
     return V9X_FALSE;
 }
 
+/*
+ * What a probe expects, as the word the capture carries.
+ *
+ * HERE rather than in the display driver, which is where it lived until the
+ * intel46 capture published "unknown" for nine probes. It is a pure mapping
+ * over a value this unit owns, so it belongs with the value and can be tested
+ * exhaustively off the machine - which is the only way a new expectation
+ * cannot be added without a name.
+ *
+ * MEASURE is published as "measure" rather than left blank for the same
+ * reason the default is a word rather than an empty string: a probe with no
+ * expectation and a probe whose expectation was LOST look identical in a
+ * capture, and only one of them is evidence.
+ */
+const char *v9x_i9xx_probe_expectation_name(v9x_u16 expect)
+{
+    if (expect == V9X_I9XX_PROBE_MEASURE) { return "measure"; }
+    if (expect == V9X_I9XX_PROBE_FILL) { return "outside"; }
+    if (expect == V9X_I9XX_PROBE_TRIANGLE0) { return "inside"; }
+    if (expect == V9X_I9XX_PROBE_TRIANGLE1) { return "inside1"; }
+    if (expect == V9X_I9XX_PROBE_TRIANGLE2) { return "inside2"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT0) { return "quad0"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT1) { return "quad1"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT2) { return "quad2"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT3) { return "quad3"; }
+    if (expect == V9X_I9XX_PROBE_MODQUAD0) { return "modquad0"; }
+    if (expect == V9X_I9XX_PROBE_MODQUAD1) { return "modquad1"; }
+    if (expect == V9X_I9XX_PROBE_MODQUAD2) { return "modquad2"; }
+    if (expect == V9X_I9XX_PROBE_MODQUAD3) { return "modquad3"; }
+    return "unknown";
+}
+
 v9x_u32 v9x_i9xx_scene_count(void)
 {
     /*
