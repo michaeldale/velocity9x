@@ -154,6 +154,28 @@ typedef struct v9x_d3d_texture {
     DWORD active;
     DWORD context;
     void *surface;
+    /*
+     * The surface's LOCAL half, resolved ONCE when the texture is created.
+     *
+     * `surface` is the interface wrapper the runtime handed over, and until
+     * 2026-09-17 the only way to get from it to the local object was to
+     * dereference it - which every scan over this table did, long after the
+     * surface it names may have been destroyed. intel55 measured that: two
+     * pointer refusals, both from the teardown scan and from nowhere else,
+     * on a machine where the guard had just been added to stop the HAL dying
+     * on them.
+     *
+     * The consequence was worse than the fault. The comparison in
+     * v9x_d3d_textures_forget_surface reads the wrapper to decide whether
+     * this entry names the surface being destroyed; a wrapper that is gone
+     * answers "no", so the entry is NEVER cleared and the stale pointer
+     * stays in the table for the next scan to read again.
+     *
+     * Resolved at creation and compared as a value afterwards, so a scan
+     * dereferences nothing. A stale value compares unequal, which is
+     * harmless; a stale pointer dereferenced is not.
+     */
+    V9X_DD_SURFACE_LCL *lcl;
 } V9X_D3D_TEXTURE;
 
 /*

@@ -272,6 +272,7 @@ static void v9x_d3d_textures_destroy_context(DWORD context)
             v9x_d3d_textures[index].active = 0ul;
             v9x_d3d_textures[index].context = 0ul;
             v9x_d3d_textures[index].surface = 0;
+            v9x_d3d_textures[index].lcl = 0;
         }
     }
 }
@@ -1017,6 +1018,7 @@ DWORD __stdcall V9xD3dTextureDestroy(V9X_D3DHAL_TEXTUREDESTROYDATA *data)
     texture->active = 0ul;
     texture->context = 0ul;
     texture->surface = 0;
+    texture->lcl = 0;
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.texture_destroys;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTUREDESTROY, data->ddrval);
@@ -1045,14 +1047,20 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
     surface = first->surface;
     first->surface = second->surface;
     second->surface = surface;
+    /* The resolved local half moves with its wrapper. Leaving it behind
+     * would pair each slot with the other one's surface, which is a texture
+     * sampled from the wrong memory and no error anywhere. */
+    {
+        V9X_DD_SURFACE_LCL *lcl = first->lcl;
+
+        first->lcl = second->lcl;
+        second->lcl = lcl;
+    }
     /* A swap is how a texture manager gets new texels into an old slot:
-     * whichever keyed surface is involved must be rewritten before use. */
-    v9x_d3d_color_key_touch(
-        v9x_d3d_surface_lcl(first->surface,
-                            V9X_D3D_LCL_SITE_COLORKEY_FIRST));
-    v9x_d3d_color_key_touch(
-        v9x_d3d_surface_lcl(second->surface,
-                            V9X_D3D_LCL_SITE_COLORKEY_SECOND));
+     * whichever keyed surface is involved must be rewritten before use.
+     * Both values were resolved at creation, so neither wrapper is read. */
+    v9x_d3d_color_key_touch(first->lcl);
+    v9x_d3d_color_key_touch(second->lcl);
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.texture_swaps;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, data->ddrval);

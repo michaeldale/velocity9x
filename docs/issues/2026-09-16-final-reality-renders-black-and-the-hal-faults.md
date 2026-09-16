@@ -4,8 +4,9 @@ Date: 2026-09-16
 Machine: MICHAEL-NETBOOK, Intel 945GSE, `8086:27AE` revision 03
 Build: `f9ec875`
 Capture: `C:\temp\intel53`
-Status: open. The faulting INSTRUCTION is identified; the CALLER is not.
-Guarded and instrumented, not yet re-run.
+Status: caller MEASURED 2026-09-17 from intel55. The texture table held a
+wrapper it dereferenced after the surface was gone; fixed, not yet re-run.
+The rendering question is still open and now separate.
 
 Final Reality detected hardware Direct3D for the first time - the caps
 published in `7bb536f` and `f9ec875` are enough for it to accept the device -
@@ -210,3 +211,65 @@ only site, which is the shape of the mistake this record is correcting.
 Sites: 1 texture-teardown scan, 2 bound texture, 3 render target, 4 depth
 surface, 5 and 6 the colour-key pair, 7 DrawOnePrimitive exe,
 8 DrawPrimitives exe, 9 RenderPrimitive exe, 10 RenderPrimitive TL.
+
+
+## intel55: the caller, measured
+
+Build `77c7951`, which added the call-site tag. **No fault this boot** - the
+guard held and `V9XTRACE.INI` was never rewritten. `V9XTRACE.EXE` ran and
+`V9XSNAP.INI` says:
+
+```
+SurfaceIntRejected=2
+SurfaceIntLast=0x833B39F4
+SurfaceIntSite=1
+SurfaceIntSites=0x00000002      bit 1, and only bit 1
+```
+
+Site 1 is `v9x_d3d_textures_forget_surface`, the teardown scan. Sites 9 and 10
+- `RenderPrimitive`'s `lpExeBuf` and `lpTLBuf` - **never rejected once**.
+
+The reading published on 2026-09-16 and withdrawn the same day was wrong, and
+the alternative raised in review was right. The mask is what settles it rather
+than the last-site field alone: one bit set means one site, which is the
+distinction that field was added to make.
+
+### Why it was worse than a fault
+
+`v9x_d3d_textures[].surface` stores the interface WRAPPER the runtime handed
+over, and the scan dereferenced it to reach the local half for comparison. A
+surface destroyed after another has already gone is compared by reading freed
+memory - and the guard's answer, "no surface", compares unequal. **So the
+entry is never cleared**, and the stale pointer stays in the table for the
+next scan to read again. The two refusals in one boot are that, twice.
+
+### The fix
+
+`V9X_D3D_TEXTURE` gains `lcl`, resolved once at `TextureCreate` while the
+wrapper is certainly alive. The teardown scan compares that value and
+dereferences nothing; `v9x_d3d_context_texture_surface` returns it; the swap
+moves it with its wrapper; every clear site clears it. A stale VALUE compares
+unequal, which is harmless. A stale POINTER dereferenced is not.
+
+Sites 1 and 2 are retired and not reused, so a capture from an older build
+still reads correctly.
+
+## The rendering question, still open and now separate
+
+Nothing drew this boot either, and for a reason that has nothing to do with
+the fault:
+
+```
+D3dRenderPrimitiveCalls=0
+D3dContextCreates=5      D3dTextureCreates=1
+D3dDepthOffered=4        D3dDepthAccepted=4
+I9xxDrawsSubmitted=0     I9xxDrawsRefused=0
+RingTail=00000000        at every event
+```
+
+Contexts, a texture and four depth surfaces were created and accepted, and
+then **no primitive was ever issued**. `D3dExecuteCalls` is zero too. So on
+this boot the application set up and stopped before drawing anything, and the
+engine's own counters cannot say more because it was never called.
+
+Whether that is the same cause as the black screen is not established.
