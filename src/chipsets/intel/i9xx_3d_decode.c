@@ -25,20 +25,28 @@
  * forbidden outright rather than merely unused: a triangle that somehow
  * carried a texture packet would be sampling memory we never validated.
  *
- * These opcodes were WRONG and the guard was inert. They were defined here as
- * 0x7d1d0000 and 0x7d180000, which are not commands; the major opcode 0x1d had
- * been written into the sub-opcode position, apparently by pattern-matching
- * LOAD_STATE_IMMEDIATE_1's 0x7d04. The real values are 0x7d000000 and
- * 0x7d010000, established by the 2026-09-16 texture audit from two independent
- * emitters.
+ * These opcodes were WRONG until 2026-09-16 - 0x7d1d0000 and 0x7d180000, which
+ * are not commands. The major opcode 0x1d had been written into the sub-opcode
+ * position, apparently by pattern-matching LOAD_STATE_IMMEDIATE_1's 0x7d04.
+ * The real values are 0x7d000000 and 0x7d010000, established by the texture
+ * audit from two independent emitters.
  *
- * So this refused two opcodes that do not exist and would have passed a real
- * MAP_STATE. Nothing caught it because nothing had ever derived the right
- * value - the first audit was scoped to the untextured case and named the
- * packet without encoding it.
+ * WHAT THAT DID, stated precisely because the first version of this comment
+ * overstated it: a real texture packet was still REJECTED, by the unknown-
+ * opcode fallback at the end of the loop, as BAD_OPCODE. There was no
+ * acceptance hole. What was wrong was the classification - a capture would
+ * have said "unknown opcode at index n" where the truth is "a texture packet
+ * in a stream that forbids them", which are different findings and send a
+ * reader to different places.
  *
- * They now come from the header, where the texture builders also take them,
- * so the decoder and the thing it decodes cannot disagree.
+ * The comparison was also unmasked, and that half could not have matched even
+ * with the right opcode: both packets carry a length in their low bits, three
+ * per unit, so a real MAP_STATE is 0x7d000003. The convention it needed is two
+ * branches below, where LOAD_STATE_IMMEDIATE_1 masks with 0xffff0000 for
+ * exactly this reason.
+ *
+ * They now come from the header, where the texture builders also take them, so
+ * the decoder and the thing it decodes cannot disagree.
  */
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(
@@ -193,9 +201,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * This compared the whole dword against the bare opcode, and both
              * packets carry a length in their low bits - three per unit - so
              * a real MAP_STATE is 0x7d000003 and never equalled 0x7d000000.
-             * The guard was inert twice over: the opcodes were wrong, and the
-             * comparison could not have matched a real packet even once they
-             * were right.
+             * Both halves were wrong - the opcodes and the missing mask -
+             * but a real texture packet still fell through to the
+             * unknown-opcode fallback and was rejected as BAD_OPCODE. This
+             * corrects the REASON, not an acceptance hole.
              *
              * The convention it needed is two branches below, where
              * LOAD_STATE_IMMEDIATE_1 masks with 0xffff0000 for exactly this

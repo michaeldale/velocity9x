@@ -479,12 +479,17 @@ static void test_decoder_rejects_mutations(void)
         /* Indirect state enabled rather than disabled. */
         { 21ul, 0x00000001ul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 21ul },
         /*
-         * A REAL texture packet, which the decoder used to pass.
+         * A REAL texture packet, which the decoder used to MISCLASSIFY.
          *
-         * Its forbidden-opcode constants were 0x7d1d0000 and 0x7d180000 -
-         * not commands - so the guard against an untextured stream carrying
-         * texture state refused two things that cannot occur and admitted the
-         * one that can. The right values came out of the 2026-09-16 audit.
+         * Its forbidden-opcode constants were 0x7d1d0000 and 0x7d180000 - not
+         * commands - and the comparison was unmasked, so the texture branch
+         * never fired. The packet was still rejected, by the unknown-opcode
+         * fallback, as BAD_OPCODE: there was no acceptance hole, and these
+         * cases pin the REASON rather than the refusal.
+         *
+         * Worth pinning anyway. A capture saying "unknown opcode at index n"
+         * sends a reader looking for a corrupt stream; "a texture packet in a
+         * stream that forbids them" names what happened.
          */
         { 18ul, 0x7d000003ul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 18ul },
         { 18ul, 0x7d010003ul, V9X_I9XX_P5_TEXTURE_FORBIDDEN, 18ul },
