@@ -505,6 +505,15 @@ v9x_status v9x_i9xx_build_map_state(
     const struct v9x_i9xx_texture *maps, v9x_u32 count,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_u32 v9x_i9xx_sampler_state_extent(v9x_u32 count);
+/* Four quadrant blits and an MI_FLUSH: the texture is painted by the GPU,
+ * which keeps the CPU out of the aperture as the errata gate requires. */
+v9x_u32 v9x_i9xx_texture_paint_extent(void);
+v9x_status v9x_i9xx_build_texture_paint(
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* What a probe should read in quadrant n. Zero for an index that is not a
+ * quadrant, which no caller may treat as a colour. */
+v9x_u32 v9x_i9xx_texture_quadrant_color(v9x_u32 quadrant);
 v9x_status v9x_i9xx_build_sampler_state(
     v9x_u32 count, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
@@ -660,6 +669,30 @@ v9x_u32 v9x_i9xx_scene_total_probes(void);
  * a 16-bit register.
  */
 v9x_u32 v9x_i9xx_triangle_run_dwords(v9x_u32 count);
+
+/*
+ * A TEXTURED vertex is seven dwords: four of position, one packed colour,
+ * then two coordinates. The order is Mesa's fixed attribute sequence, which
+ * IS the layout - position, point size, colour, secondary colour, fog, then
+ * texture coordinates. Audit section 7.
+ *
+ * S4 is unchanged: it has no texture-coordinate field, and S2 alone declares
+ * that a set exists.
+ */
+#define V9X_I9XX_TEXTURED_VERTEX_DWORDS  ((v9x_u32)7ul)
+v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count);
+/*
+ * u_bits and v_bits are IEEE-754 bit patterns, one pair per vertex in
+ * triangle-then-vertex order. Taken as bits because the integer converter
+ * this driver uses cannot express a coordinate between 0 and 1, and hiding
+ * that behind a converter that rounded would put the limit somewhere nobody
+ * reads.
+ */
+v9x_status v9x_i9xx_build_textured_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *u_bits, const v9x_u32 *v_bits,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_i9xx_build_triangle_run(
     const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
     v9x_u32 width, v9x_u32 height,

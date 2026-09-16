@@ -65,14 +65,32 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
     layout->guard_upper_physical = bsm + layout->guard_upper_offset;
 
     /*
+     * The texture takes the page above the target's upper guard, so that
+     * guard serves as its lower one, and a guard page of its own follows.
+     *
+     * Page aligned because the reserve is allocated in pages and MAP_STATE's
+     * address requirement is not stated by either reference tree - the audit
+     * records that as a choice rather than a finding, and a page cannot be
+     * less safe than a smaller alignment.
+     */
+    layout->texture_offset = layout->guard_upper_offset +
+                             V9X_I9XX_SANDBOX_PAGE_BYTES;
+    layout->texture_physical = bsm + layout->texture_offset;
+    layout->texture_bytes = V9X_I9XX_TEXTURE_BYTES;
+    layout->texture_pitch = V9X_I9XX_TEXTURE_PITCH;
+    layout->texture_guard_offset = layout->texture_offset +
+                                   V9X_I9XX_SANDBOX_PAGE_BYTES;
+    layout->texture_guard_physical = bsm + layout->texture_guard_offset;
+
+    /*
      * Everything above must fit inside the reserve. This is arithmetic on
      * compile-time constants today, but it is checked rather than asserted in
      * a comment: the target size and the reserve size are separate constants,
      * and a future mode change that grows one without the other would
-     * otherwise silently place the upper guard - and part of the target - in
-     * the published DirectDraw heap.
+     * otherwise silently place the texture and its guard - or part of the
+     * target - in the published DirectDraw heap.
      */
-    if (layout->guard_upper_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
+    if (layout->texture_guard_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
             reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
         v9x_i9xx_zero_layout(layout);
         return V9X_STATUS_INSUFFICIENT_MEMORY;

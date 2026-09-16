@@ -203,3 +203,122 @@ v9x_status v9x_i9xx_build_sampler_state(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/*
+ * The four quadrant colours, as DWORD fill patterns.
+ *
+ * Every one is a 565 value this chip is MEASURED to store, doubled into a
+ * dword because XY_COLOR_BLT fills in dwords and two 16-bit texels share one.
+ * Measured rather than predicted on purpose: this scene asks where a
+ * coordinate lands, and an unmeasured colour would put a second unknown in
+ * the answer.
+ *
+ * They must all differ, or a probe could not say which quadrant it read. The
+ * host test asserts that rather than trusting the list.
+ */
+static const v9x_u32 v9x_i9xx_texture_quadrant[4] = {
+    0x1c3e1c3eul,   /* 0xff1587f9, measured 2026-09-15 */
+    0xf325f325ul,   /* 0xfff86428, measured 2026-09-15 */
+    0x30383038ul,   /* 0xff2e03c8, measured 2026-09-16 */
+    0x08420842ul    /* the fill, a constant this build owns */
+};
+
+v9x_u32 v9x_i9xx_texture_paint_extent(void)
+{
+    /* Four blits of six dwords, then one MI_FLUSH so the sampler sees them. */
+    return (4ul * 6ul) + 1ul;
+}
+
+/*
+ * Paint the texture with the GPU.
+ *
+ * XY_COLOR_BLT is the one operation this hardware is measured to perform
+ * correctly, and it keeps the CPU out of the aperture entirely - which is the
+ * condition the errata gate opened on, and why the render-target fill moved to
+ * the GPU in the first place. A CPU-uploaded texture would be exactly the
+ * access that decision avoided.
+ *
+ * Each blit is anchored at (0,0) of its own destination, so the quadrants are
+ * addressed by ADDRESS rather than by coordinate. Quadrant n sits at
+ * (n & 1) half-widths across and (n >> 1) half-heights down.
+ */
+v9x_status v9x_i9xx_build_texture_paint(
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 quadrant;
+    v9x_u32 produced = 0ul;
+    v9x_u32 block_dwords;
+    v9x_u32 block_bytes;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 || texture == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (texture->width != V9X_I9XX_TEXTURE_WIDTH ||
+        texture->height != V9X_I9XX_TEXTURE_HEIGHT ||
+        texture->pitch != V9X_I9XX_TEXTURE_PITCH) {
+        /* The quadrant arithmetic below is written for this texture. A
+         * different one would need it re-derived, not re-used. */
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (capacity < v9x_i9xx_texture_paint_extent()) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    /* A quadrant is 16 texels wide; the blit counts dwords, and two 16-bit
+     * texels share one. */
+    block_dwords = V9X_I9XX_TEXTURE_BLOCK / 2ul;
+    block_bytes = (v9x_u32)((v9x_u16)V9X_I9XX_TEXTURE_BLOCK * (v9x_u16)2u);
+
+    for (quadrant = 0ul; quadrant < 4ul; ++quadrant) {
+        v9x_u32 destination = texture->offset;
+
+        if ((quadrant & 1ul) != 0ul) {
+            destination += block_bytes;
+        }
+        if ((quadrant & 2ul) != 0ul) {
+            destination += (v9x_u32)((v9x_u16)V9X_I9XX_TEXTURE_BLOCK *
+                                     (v9x_u16)V9X_I9XX_TEXTURE_PITCH);
+        }
+        /*
+         * Bounded by the texture itself, so a quadrant that computed its way
+         * outside is refused by the blit builder rather than written. The
+         * fourth quadrant ends on the texture's final byte, which makes that
+         * check tight rather than generous.
+         */
+        if (v9x_i9xx_build_color_blt(
+                destination, (v9x_u16)block_dwords,
+                (v9x_u16)V9X_I9XX_TEXTURE_BLOCK,
+                (v9x_u16)V9X_I9XX_TEXTURE_PITCH,
+                v9x_i9xx_texture_quadrant[quadrant],
+                texture->offset, V9X_I9XX_TEXTURE_BYTES,
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+    }
+
+    /*
+     * One MI_FLUSH after all four, with every bit clear - which FLUSHES the
+     * render cache rather than inhibiting it. Without it the sampler could
+     * read the texture through a cache the blits had not reached.
+     */
+    if (capacity - at < 1ul) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+
+    *written = at;
+    return V9X_STATUS_OK;
+}
+
+/* The colour a probe should read in quadrant n, as a single 565 texel. */
+v9x_u32 v9x_i9xx_texture_quadrant_color(v9x_u32 quadrant)
+{
+    if (quadrant >= 4ul) {
+        return 0ul;
+    }
+    return v9x_i9xx_texture_quadrant[quadrant] & 0xfffful;
+}

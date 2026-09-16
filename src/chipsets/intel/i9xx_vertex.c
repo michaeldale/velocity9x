@@ -174,3 +174,114 @@ v9x_status v9x_i9xx_build_triangle_run(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/*
+ * The TEXTURED vertex run: position, colour, then one 2D coordinate set.
+ *
+ * Seven dwords per vertex rather than five. The order is not a choice - Mesa
+ * emits attributes in a fixed sequence and that sequence IS the layout:
+ * position, point size, primary colour, secondary colour, fog, then texture
+ * coordinates. Audit section 7.
+ *
+ * S4 does not change. It carries no texture-coordinate field at all - its bits
+ * are point width, specular fog, colour, depth offset, position format and a
+ * fog parameter - and S2 alone declares that a coordinate set exists. That was
+ * the single largest risk in the plan and the audit removed it.
+ *
+ * The coordinates are NORMALIZED, which is what SS3_NORMALIZED_COORDS selects,
+ * so they are independent of the texture's size. A vertex at u=1 samples the
+ * right-hand edge whatever the texture turns out to be.
+ */
+v9x_status v9x_i9xx_build_textured_run(
+    const struct v9x_i9xx_triangle *triangles, v9x_u32 count,
+    const v9x_u32 *u_bits, const v9x_u32 *v_bits,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+    v9x_u32 vertex;
+    v9x_u32 vertices;
+    v9x_u32 zero_bits = 0ul;
+    v9x_u32 one_bits = 0ul;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 || triangles == 0 ||
+        u_bits == 0 || v_bits == 0 ||
+        count == 0ul || count > V9X_I9XX_SCENE_MAX_TRIANGLES ||
+        width == 0ul || height == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    vertices = (v9x_u32)((v9x_u16)count * (v9x_u16)V9X_I9XX_VERTEX_COUNT);
+    if (capacity < v9x_i9xx_textured_run_dwords(count)) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    if (v9x_i9xx_float_from_int(0ul, &zero_bits) != V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+
+    /* One primitive command for the whole run; the length counts every vertex
+     * dword less one, and a textured vertex is seven. */
+    stream[at++] = V9X_I9XX_3DPRIMITIVE_INLINE |
+                   V9X_I9XX_PRIM3D_TRILIST |
+                   ((v9x_u32)((v9x_u16)vertices *
+                              (v9x_u16)V9X_I9XX_TEXTURED_VERTEX_DWORDS) - 1ul);
+
+    for (index = 0ul; index < count; ++index) {
+        for (vertex = 0ul; vertex < V9X_I9XX_VERTEX_COUNT; ++vertex) {
+            v9x_u32 x_bits = 0ul;
+            v9x_u32 y_bits = 0ul;
+            v9x_u32 slot = (v9x_u32)((v9x_u16)index *
+                                     (v9x_u16)V9X_I9XX_VERTEX_COUNT) + vertex;
+
+            if (triangles[index].x[vertex] >= width ||
+                triangles[index].y[vertex] >= height) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+            if (v9x_i9xx_float_from_int(triangles[index].x[vertex],
+                                        &x_bits) != V9X_I9XX_FLOAT_OK ||
+                v9x_i9xx_float_from_int(triangles[index].y[vertex],
+                                        &y_bits) != V9X_I9XX_FLOAT_OK) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+
+            stream[at++] = x_bits;
+            stream[at++] = y_bits;
+            stream[at++] = zero_bits;
+            stream[at++] = one_bits;
+            stream[at++] = triangles[index].color;
+            /*
+             * The coordinates last, AFTER the colour. Taken as float bits
+             * rather than built here: the only values this scene needs are 0
+             * and 1, and the converter this file uses takes integers - it
+             * cannot express a coordinate between them. Passing bits keeps
+             * that limit visible at the call site instead of hiding it behind
+             * a converter that silently rounds.
+             */
+            stream[at++] = u_bits[slot];
+            stream[at++] = v_bits[slot];
+        }
+    }
+
+    *written = at;
+    return V9X_STATUS_OK;
+}
+
+/*
+ * Dwords a textured run occupies. Same link-time constraint as the untextured
+ * one: the multiply is done in 16 bits because count is bounded first, and a
+ * 32-bit multiply in I9XXCODE calls __U4M in a segment a near call cannot
+ * reach.
+ */
+v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count)
+{
+    if (count == 0ul || count > V9X_I9XX_SCENE_MAX_TRIANGLES) {
+        return 0ul;
+    }
+    return 1ul + (v9x_u32)((v9x_u16)count *
+                           (v9x_u16)(V9X_I9XX_VERTEX_COUNT *
+                                     V9X_I9XX_TEXTURED_VERTEX_DWORDS));
+}

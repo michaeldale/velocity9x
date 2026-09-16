@@ -54,6 +54,29 @@
 #define V9X_I9XX_TARGET_PITCH            ((v9x_u32)1280ul)
 #define V9X_I9XX_TARGET_BYTES            ((v9x_u32)0x00096000ul)
 
+/*
+ * The Phase 6 texture: 32x32 RGB565, linear, one page.
+ *
+ * Four texels would be the smallest thing that tests addressing in both
+ * axes, but the texture is painted by the GPU and XY_COLOR_BLT works in
+ * dwords - it cannot usefully paint a single texel. So it is a 2x2 grid of
+ * 16x16 BLOCKS, which is the same experiment at a size the blitter can
+ * express: four quadrants, four colours, and a probe in each says whether
+ * (u,v) reached the texel it names.
+ *
+ * 32 rows of 64 bytes is 2048, so it fits one page with room, and the four
+ * quadrant blits between them cover it exactly - the last one ends on the
+ * final byte, which makes the builder's bounds check tight rather than
+ * generous.
+ */
+#define V9X_I9XX_TEXTURE_WIDTH           ((v9x_u32)32ul)
+#define V9X_I9XX_TEXTURE_HEIGHT          ((v9x_u32)32ul)
+#define V9X_I9XX_TEXTURE_PITCH           ((v9x_u32)64ul)
+#define V9X_I9XX_TEXTURE_BYTES           ((v9x_u32)2048ul)
+/* One quadrant, in texels. The blit takes its width in DWORDS, which is half
+ * this at 16 bpp. */
+#define V9X_I9XX_TEXTURE_BLOCK           ((v9x_u32)16ul)
+
 /* Phase 4's complete command allowlist.  These values are intentionally
  * exact: the decoder rejects even a known opcode carrying unreviewed bits. */
 #define V9X_I9XX_MI_NOOP                 ((v9x_u32)0x00000000ul)
@@ -264,6 +287,21 @@ struct v9x_i9xx_sandbox_layout {
     v9x_u32 target_pitch;
     v9x_u32 guard_upper_offset;
     v9x_u32 guard_upper_physical;
+    /*
+     * Appended at Phase 6, on the same append-only terms: every member is a
+     * v9x_u32 because the struct is zeroed by walking it as a v9x_u32 array.
+     *
+     * The texture sits ABOVE the upper guard, so that guard is its lower one,
+     * and it has a guard page of its own above. Same arrangement as the render
+     * target, for the same reason: a write that leaves the texture is caught
+     * on whichever side it leaves from.
+     */
+    v9x_u32 texture_offset;
+    v9x_u32 texture_physical;
+    v9x_u32 texture_bytes;
+    v9x_u32 texture_pitch;
+    v9x_u32 texture_guard_offset;
+    v9x_u32 texture_guard_physical;
 };
 
 /* A command is never split across the physical end of the ring.  pad_dwords

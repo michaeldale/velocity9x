@@ -1735,6 +1735,174 @@ static void test_sampling_program(void)
           v9x_i9xx_fragment_program_extent());
 }
 
+/*
+ * The GPU-painted texture.
+ *
+ * Four quadrant blits and a flush. The CPU never touches the aperture, which
+ * is the condition the errata gate opened on.
+ */
+static void test_texture_paint(void)
+{
+    struct v9x_i9xx_texture texture;
+    v9x_u32 stream[40];
+    v9x_u32 written = 0ul;
+    v9x_u32 quadrant;
+    v9x_u32 seen[4];
+
+    texture.offset = 0x00759000ul;
+    texture.width = V9X_I9XX_TEXTURE_WIDTH;
+    texture.height = V9X_I9XX_TEXTURE_HEIGHT;
+    texture.pitch = V9X_I9XX_TEXTURE_PITCH;
+
+    CHECK(v9x_i9xx_texture_paint_extent() == 25ul);
+    CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 40ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 25ul);
+
+    /* Four blits of six dwords, then the flush. */
+    for (quadrant = 0ul; quadrant < 4ul; ++quadrant) {
+        v9x_u32 base = quadrant * 6ul;
+
+        CHECK(stream[base] == V9X_I9XX_XY_COLOR_BLT);
+        /* 16 texels wide is EIGHT dwords - the blit counts dwords and two
+         * 16-bit texels share one. Getting that backwards would paint half
+         * the texture and leave the rest whatever the page held. */
+        CHECK(stream[base + 3ul] ==
+              ((V9X_I9XX_TEXTURE_BLOCK << 16) | (V9X_I9XX_TEXTURE_BLOCK / 2ul)));
+        seen[quadrant] = stream[base + 5ul];
+    }
+    CHECK(stream[24] == V9X_I9XX_MI_FLUSH);
+
+    /*
+     * The four colours must all DIFFER, or a probe could not say which
+     * quadrant it read and the whole addressing experiment is vacuous.
+     * Asserted rather than trusted to the table.
+     */
+    CHECK(seen[0] != seen[1]);
+    CHECK(seen[0] != seen[2]);
+    CHECK(seen[0] != seen[3]);
+    CHECK(seen[1] != seen[2]);
+    CHECK(seen[1] != seen[3]);
+    CHECK(seen[2] != seen[3]);
+
+    /* Each is a 565 value doubled into a dword: both halves the same, since
+     * two texels share the dword the blit fills. */
+    for (quadrant = 0ul; quadrant < 4ul; ++quadrant) {
+        CHECK((seen[quadrant] & 0xfffful) ==
+              ((seen[quadrant] >> 16) & 0xfffful));
+        CHECK(v9x_i9xx_texture_quadrant_color(quadrant) ==
+              (seen[quadrant] & 0xfffful));
+    }
+    /* And every one is a colour this chip is MEASURED to store, so a probe
+     * reading the wrong quadrant is an addressing fault and not a conversion
+     * question. */
+    CHECK(v9x_i9xx_texture_quadrant_color(0ul) == 0x1c3eul);
+    CHECK(v9x_i9xx_texture_quadrant_color(1ul) == 0xf325ul);
+    CHECK(v9x_i9xx_texture_quadrant_color(2ul) == 0x3038ul);
+    CHECK(v9x_i9xx_texture_quadrant_color(3ul) == 0x0842ul);
+    /* Not a quadrant: zero, which no caller may read as a colour. */
+    CHECK(v9x_i9xx_texture_quadrant_color(4ul) == 0ul);
+
+    /*
+     * The quadrants must tile the texture: destinations 0, 32, 1024, 1056
+     * from the base, which is one half-row across and one half-height down.
+     * The last ends on the texture's final byte.
+     */
+    CHECK(stream[4] == texture.offset);
+    CHECK(stream[10] == texture.offset + 32ul);
+    CHECK(stream[16] == texture.offset + 1024ul);
+    CHECK(stream[22] == texture.offset + 1056ul);
+
+    /* Refusals. */
+    CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 24ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_texture_paint(0, stream, 40ul, &written) !=
+          V9X_STATUS_OK);
+    /* A texture the quadrant arithmetic was not written for is refused rather
+     * than painted with the wrong geometry. */
+    texture.width = 64ul;
+    CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 40ul, &written) !=
+          V9X_STATUS_OK);
+}
+
+/* The textured vertex run: seven dwords per vertex, coordinates last. */
+static void test_textured_run(void)
+{
+    struct v9x_i9xx_triangle triangle;
+    struct v9x_i9xx_scene scene;
+    v9x_u32 u[6];
+    v9x_u32 v[6];
+    v9x_u32 stream[64];
+    v9x_u32 written = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
+    triangle = scene.triangles[0];
+    for (index = 0ul; index < 6ul; ++index) {
+        u[index] = 0x3f800000ul;   /* 1.0f */
+        v[index] = 0x00000000ul;   /* 0.0f */
+    }
+
+    CHECK(v9x_i9xx_textured_run_dwords(1ul) == 22ul);
+    CHECK(v9x_i9xx_build_textured_run(&triangle, 1ul, u, v, 640ul, 480ul,
+                                      stream, 64ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 22ul);
+
+    /* One primitive command, length = every vertex dword less one: 21 - 1. */
+    CHECK(stream[0] == (V9X_I9XX_3DPRIMITIVE_INLINE |
+                        V9X_I9XX_PRIM3D_TRILIST | 20ul));
+
+    /*
+     * Vertex 0: x, y, z, w, colour, u, v. The coordinates come AFTER the
+     * colour, which is the ordering the audit took from Mesa's fixed
+     * attribute sequence - putting them before it would be a plausible
+     * guess that drew a wrong picture with no error.
+     */
+    CHECK(stream[1] == 0x43200000ul);        /* x = 160 */
+    CHECK(stream[2] == 0x42f00000ul);        /* y = 120 */
+    CHECK(stream[3] == 0x00000000ul);        /* z */
+    CHECK(stream[4] == 0x3f800000ul);        /* w = 1 */
+    CHECK(stream[5] == triangle.color);      /* the packed colour */
+    CHECK(stream[6] == 0x3f800000ul);        /* u */
+    CHECK(stream[7] == 0x00000000ul);        /* v */
+
+    /*
+     * Vertex 1 begins seven dwords later, not five - asserted against the
+     * STREAM, which is the only form of this claim that can fail. Comparing
+     * the two constants with each other cannot: the compiler calls the
+     * failure branch unreachable, and that is the fourth such tautology this
+     * file has grown and had removed.
+     */
+    CHECK(stream[1ul + V9X_I9XX_TEXTURED_VERTEX_DWORDS] == 0x43f00000ul);
+
+    /* Two triangles, and the run grows by one triangle's worth. */
+    CHECK(v9x_i9xx_textured_run_dwords(2ul) == 43ul);
+    CHECK(v9x_i9xx_textured_run_dwords(0ul) == 0ul);
+    CHECK(v9x_i9xx_textured_run_dwords(V9X_I9XX_SCENE_MAX_TRIANGLES + 1ul) ==
+          0ul);
+
+    /* Refusals, including the null coordinate arrays - a textured run with no
+     * coordinates is not a shorter run, it is a mistake. */
+    CHECK(v9x_i9xx_build_textured_run(&triangle, 1ul, 0, v, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_textured_run(&triangle, 1ul, u, 0, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_textured_run(&triangle, 1ul, u, v, 640ul, 480ul,
+                                      stream, 21ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    /* A vertex outside the drawing rectangle is still refused rather than
+     * clipped, exactly as in the untextured run. */
+    triangle.x[1] = 640ul;
+    CHECK(v9x_i9xx_build_textured_run(&triangle, 1ul, u, v, 640ul, 480ul,
+                                      stream, 64ul, &written) !=
+          V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -1753,6 +1921,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_refusals();
     test_sampler_state();
     test_sampling_program();
+    test_texture_paint();
+    test_textured_run();
     test_scene_table();
     test_scene_zero_matches_phase5();
     test_scene_one_differs_only_in_colour();
