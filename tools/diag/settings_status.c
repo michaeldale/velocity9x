@@ -58,6 +58,46 @@ static void v9x_append(char *destination, DWORD capacity, const char *text)
     destination[offset + index] = '\0';
 }
 
+/*
+ * Whether a chip's Direct3D= word names an engine this driver implements.
+ *
+ * The convention, not a list: every such word is "hardware-" and the engine's
+ * short name - "hardware-s3d", "hardware-gen3". Testing the convention is
+ * what keeps this tool from needing an edit per engine, which is exactly the
+ * edit that was missed when Gen3 arrived and left the Hardware entry hidden
+ * on the card the engine was written for.
+ *
+ * Case-insensitive, because every other read of these keys is: the INI is
+ * hand-editable and lstrcmpiA is what the callers around this use.
+ */
+static int v9x_is_hardware_engine(const char *word)
+{
+    static const char prefix[] = "hardware-";
+    DWORD index = 0ul;
+
+    if (word == 0) {
+        return 0;
+    }
+    /* sizeof - 1 to drop the terminator: a word equal to the prefix and
+     * nothing else names no engine, and the check below rejects it. */
+    while (index < sizeof(prefix) - 1ul) {
+        char left = word[index];
+        char right = prefix[index];
+
+        if (left >= 'A' && left <= 'Z') {
+            left = (char)(left - 'A' + 'a');
+        }
+        if (left != right) {
+            return 0;
+        }
+        ++index;
+    }
+    /* Something must follow it. "hardware-" alone is a truncated value, and
+     * reading a truncation as a capability is how a half-written INI would
+     * offer an engine nobody named. */
+    return word[index] != '\0' ? 1 : 0;
+}
+
 static void v9x_append_uint(char *destination, DWORD capacity, UINT value)
 {
     char reverse[12];
@@ -311,9 +351,16 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                                  sizeof(direct3d_mode), V9X_DIAG_HW_INI);
         /* What the chip can do, and what the user last asked for. A page that
          * offers to change the setting needs both; the sentence below cannot
-         * be reversed back into either. */
-        status->direct3d_capable =
-            lstrcmpiA(direct3d, "hardware-s3d") == 0 ? 1 : 0;
+         * be reversed back into either.
+         *
+         * A PREFIX, not a literal. This tested lstrcmpiA(direct3d,
+         * "hardware-s3d"), which names S3's engine - so the page's notion of
+         * "this card has a 3D engine" was the name of the only engine that
+         * existed when it was written. A Gen3 part carrying hardware-gen3
+         * read as having none, and the Hardware entry was hidden on the one
+         * card the engine was built for. The next engine would have repeated
+         * it; the convention is what is tested now. */
+        status->direct3d_capable = v9x_is_hardware_engine(direct3d);
         /*
          * The absent-key default is the driver's, not this tool's.
          *
@@ -375,10 +422,37 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
              * carries the request number too. */
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Requested mode is not in this build");
-        } else if (lstrcmpiA(direct3d, "hardware-s3d") == 0) {
+        } else if (lstrcmpiA(direct3d_mode, "software") == 0) {
+            /* The CPU rasterizer, which this chain did not have a branch for
+             * at all: a card running software Direct3D was reported as
+             * advertising none, which is the opposite of what it was doing.
+             * Found while fixing the line below, in the same chain. */
+            v9x_append(status->direct3d, sizeof(status->direct3d),
+                       "Software (CPU rasterizer)");
+        } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
+                   lstrcmpiA(direct3d, "hardware-s3d") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Hardware (S3D triangle engine)");
+        } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
+                   lstrcmpiA(direct3d, "hardware-gen3") == 0) {
+            /* Short, for the reason recorded above: this string is rendered
+             * into a 166-unit selector when it is the entry carrying the
+             * loaded value. */
+            v9x_append(status->direct3d, sizeof(status->direct3d),
+                       "Hardware (Gen3 render engine)");
+        } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
+                   v9x_is_hardware_engine(direct3d)) {
+            v9x_append(status->direct3d, sizeof(status->direct3d),
+                       "Hardware (the chip's own engine)");
         } else {
+            /*
+             * Everything else, and the important member is a chip that HAS an
+             * engine which this boot did not permit: Direct3DMode= is then
+             * "none" and this is the honest sentence for it. Keying the
+             * hardware branches on the resolved mode rather than on the chip
+             * word is what makes that true - the chip word alone would have
+             * reported hardware Direct3D on a boot where the engine refused.
+             */
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Not advertised on this chip");
         }

@@ -1633,6 +1633,89 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT', 'V9XARM6.BAT')) {
     }
 }
 # ---------------------------------------------------------------------------
+# The chip's Direct3D word, against its engine capability and its source.
+#
+# These are three statements of one fact, and they drifted the moment a second
+# engine existed. The intel-gma manifest carried EngineCaps = @('D3D') four
+# lines below Direct3D = 'not-advertised', v9x_gma950_device carried a null
+# where the word goes, and the settings page - which reads the word - offered
+# no Hardware entry on the one card the engine was written for. Nothing
+# compared them, so nothing objected.
+#
+# Direct3D= says what the silicon has. Whether a given boot may RUN it is
+# IntelRuntime3D and the ring, and reaches the page through Direct3DMode=
+# instead; these rules are about the static claim only.
+# ---------------------------------------------------------------------------
+foreach ($familyFile in Get-ChildItem -Path (
+        Join-Path $repoRoot 'packaging\families') -Recurse -Filter 'family.psd1') {
+    $familyData = Import-PowerShellDataFile -LiteralPath $familyFile.FullName
+    $sourceByName = @{}
+    foreach ($entry in @($familyData.Build.Sources)) {
+        $sourceByName[$entry.Name] = $entry.Path
+    }
+    foreach ($chip in @($familyData.Chips)) {
+        $word = [string]$chip.Direct3D
+        $hasEngine = @($chip.EngineCaps) -contains 'D3D'
+        $claimsHardware = $word -like 'hardware-*'
+        if ($claimsHardware -and -not $hasEngine) {
+            throw ("$($familyData.Id)/$($chip.Id): Direct3D = '$word' names an " +
+                   'engine but EngineCaps does not carry D3D. The settings ' +
+                   'page would offer Hardware on a chip the driver publishes ' +
+                   'no Direct3D capability for.')
+        }
+        if ($hasEngine -and -not $claimsHardware) {
+            throw ("$($familyData.Id)/$($chip.Id): EngineCaps carries D3D but " +
+                   "Direct3D = '$word' claims no engine. The settings page " +
+                   'reads that word, so the Hardware entry would be hidden on ' +
+                   'a chip whose engine the driver implements.')
+        }
+        # And the word the driver actually writes to V9XHW.INI, which is a
+        # string in the chip's own object rather than anything generated from
+        # this manifest. The manifest documenting one word while the source
+        # carried another is the same drift one level down.
+        if (-not $claimsHardware) {
+            continue
+        }
+        foreach ($objectName in @($chip.Objects)) {
+            $objectPath = $sourceByName[$objectName]
+            if (-not $objectPath) {
+                continue
+            }
+            $objectText = Get-Content -Raw -LiteralPath (
+                Join-Path $repoRoot $objectPath)
+            if ($objectText -notmatch ('"' + [regex]::Escape($word) + '"')) {
+                throw ("$($familyData.Id)/$($chip.Id): $objectPath does not " +
+                       "carry the string `"$word`". The manifest is " +
+                       'documentation; that string is what the driver writes ' +
+                       'to V9XHW.INI and what the settings page reads.')
+            }
+        }
+    }
+}
+# The page must test the CONVENTION, not one engine's name. It compared
+# against "hardware-s3d" literally, so "this card has a 3D engine" meant
+# "this card is an S3" and every later engine read as having none.
+$statusText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'tools\diag\settings_status.c')
+if ($statusText -notmatch
+        'status->direct3d_capable = v9x_is_hardware_engine\(direct3d\);') {
+    throw ('settings_status.c must derive direct3d_capable from the ' +
+           '"hardware-" convention, not from one engine name.')
+}
+# And the reported sentence must be keyed on the RESOLVED mode, or a chip
+# whose engine this boot did not permit is described as running it.
+# Stated as a prohibition rather than a presence check, because the first
+# draft of this rule was the latter and MISSED its mutation: removing the mode
+# test from one branch left the other branch still matching. A presence check
+# at the end of a stream is weaker than it looks.
+if ($statusText -match '(?m)^\s*\} else if \(lstrcmpiA\(direct3d, "hardware') {
+    throw ('settings_status.c has a hardware Direct3D sentence keyed on the ' +
+           'chip word alone. That word is static - it says what the silicon ' +
+           'has - so such a branch reports hardware Direct3D on a boot where ' +
+           'the engine was never permitted. Key it on Direct3DMode= too.')
+}
+
+# ---------------------------------------------------------------------------
 # The runtime Direct3D permission.
 #
 # Three separate things have to stay true together, and each was wrong once.

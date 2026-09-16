@@ -180,8 +180,25 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     "8086", "27AE",
     "intel-gen3-mmio-fingerprint-v1",
     "vbe-lfb",
+    /* No 2D acceleration: the VBIOS keeps the display. */
     0,
-    0,
+    /*
+     * The chip's word for the engine it carries, and it was null until
+     * 2026-09-16 - one line below a capability claiming Direct3D.
+     *
+     * This string is STATIC and says what the silicon has, not what this boot
+     * permits. The two are separate on purpose: what the settings page offers
+     * is a property of the card, while whether the engine may run is
+     * IntelRuntime3D and the ring, and the resolved answer reaches the page
+     * through Direct3DMode= instead. Conflating them would have made the
+     * Hardware entry appear and disappear between boots.
+     *
+     * Left null, the property page offered Software and Disabled only: the
+     * chip whose engine this driver had just spent three boots measuring was
+     * the one card that could not be asked to use it. Photographed on the
+     * netbook 2026-09-16, build 9655778.
+     */
+    "hardware-gen3",
     0,
     v9x_gma950_fill_engine,
     /* VBE reports the framebuffer in GMADR BAR2. */

@@ -15,7 +15,13 @@
             ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'none'
-            Direct3D = 'not-advertised'
+            # The settings page's notion of "this card has an engine", which
+            # is a different question from whether this boot may run it. It
+            # said 'not-advertised' for the first hours of the capability
+            # existing, four lines above EngineCaps claiming D3D, and the
+            # page believed it: no Hardware entry on the one card the engine
+            # was written for. check-tree now refuses the disagreement.
+            Direct3D = 'hardware-gen3'
             # Claimed from 2026-09-16, under the sustained-3D amendment to
             # the errata gate. The descriptor the driver actually publishes
             # comes from the chip's fill_engine_descriptor, which claims it
