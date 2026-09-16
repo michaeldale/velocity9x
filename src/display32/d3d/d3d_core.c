@@ -432,11 +432,47 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
     return (int)count;
 }
 
+/*
+ * The DirectDraw surface wrapper's local half, or nothing.
+ *
+ * THE POINTER IS NOT OURS. It arrives in a HAL callback's data block, and
+ * this function used to test it for null and then read lpLcl - which is
+ * exactly what it did on 2026-09-16 when Final Reality issued its first
+ * RenderPrimitive with an lpExeBuf or lpTLBuf that was non-null and not a
+ * surface. The HAL took an access violation at the `mov eax,0x4[eax]` that
+ * reads that field and the application died with it, in two consecutive
+ * boots, at the same module offset both times
+ * (docs\issues\2026-09-16-final-reality-renders-black-and-the-hal-faults.md).
+ *
+ * A HAL cannot validate a pointer the runtime hands it. What it can do is
+ * refuse to die on one: IsBadReadPtr asks the kernel whether the two dwords
+ * are readable, and a callback that returns "no surface" produces a refused
+ * draw, which the caller already handles everywhere this is used.
+ *
+ * Why this is worth a kernel call on a path taken twice per primitive: the
+ * alternative measured behaviour is the whole application terminating. It is
+ * also the only instrument that can say WHICH pointer was bad - the counters
+ * carry the value, and a bad pointer that is merely refused leaves a number
+ * behind rather than a machine somebody had to power off.
+ *
+ * IsBadReadPtr is a KERNEL32 import, which is the only DLL this HAL is
+ * permitted to import from and already does.
+ */
 static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
 {
     V9X_DD_SURFACE_INT *wrapper = (V9X_DD_SURFACE_INT *)surface;
 
-    return wrapper != 0 ? wrapper->lpLcl : 0;
+    if (wrapper == 0) {
+        return 0;
+    }
+    if (IsBadReadPtr(wrapper, sizeof(V9X_DD_SURFACE_INT))) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.surface_int_rejected;
+            v9x_hal->d3d_diagnostics.surface_int_last = (DWORD)wrapper;
+        }
+        return 0;
+    }
+    return wrapper->lpLcl;
 }
 
 /*

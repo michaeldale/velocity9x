@@ -4,8 +4,7 @@ Date: 2026-09-16
 Machine: MICHAEL-NETBOOK, Intel 945GSE, `8086:27AE` revision 03
 Build: `f9ec875`
 Capture: `C:\temp\intel53`
-Status: open. Two findings, one of them located exactly and one not yet
-explained.
+Status: cause identified 2026-09-16 from intel54; guarded, not yet re-run.
 
 Final Reality detected hardware Direct3D for the first time - the caps
 published in `7bb536f` and `f9ec875` are enough for it to accept the device -
@@ -127,3 +126,58 @@ produces. Had it done so this time, the refusal reason would be known.
   none of them.
 - **That `v9x_d3d_surface_lcl` is the cause of the black screen.** It is a
   fault during teardown, after rendering had already produced nothing.
+
+## intel54: reproduced, and the counters settle it
+
+Build `1d2ef2a`, which added the Gen3 counters to the fault flush. Same
+sequence, same result, and the trace now answers the question intel53 could
+not:
+
+```
+FaultCode=0xC0000005
+FaultAddress=0xB0403E34      module offset 0x851 - THE SAME INSTRUCTION
+I9xxDrawsSubmitted=0x00000000
+I9xxDrawsRefused=0x00000000
+```
+
+and the ring ends identically:
+
+```
+0x0127 D3dRenderPrimitive enter 0x03080003
+0x0128 DestroySurface enter 0x834498A0
+```
+
+`RingTail` read zero at every event this boot. **Nothing was submitted and
+nothing was refused, so `draw_triangles` was never called at all** - the
+engine is not implicated. `V9xD3dRenderPrimitive` entered, and the only thing
+it does before testing anything is:
+
+```c
+exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
+tl  = data != 0 ? v9x_d3d_surface_lcl(data->lpTLBuf) : 0;
+```
+
+One of those pointers was non-null and not a surface, and `v9x_d3d_surface_lcl`
+read `lpLcl` from it. No `PRIMREJECT` was pushed, which is the corroboration:
+the refusal path is further down the same function and was never reached.
+
+The black screen follows: Final Reality's FIRST primitive killed the HAL, so
+no frame was ever drawn.
+
+### What was changed
+
+`v9x_d3d_surface_lcl` now asks `IsBadReadPtr` before dereferencing, counts the
+refusal in `surface_int_rejected` and records the value in
+`surface_int_last`. A HAL cannot validate a pointer the runtime hands it; it
+can decline to die on one. Returning "no surface" produces a refused draw,
+which every caller already handles.
+
+### What this does NOT explain
+
+**Why the pointer is bad.** The same code serves the ViRGE, where Final
+Reality runs. Candidates not yet separated: a field offset in
+`V9X_D3DHAL_RENDERPRIMITIVEDATA` that happens to be right for one path and
+wrong for another; an execute buffer the runtime never created because
+`lpDDExeBufCallbacks` is zero; or a pointer that is valid in a context this
+HAL is not called in. `surface_int_last` is the next piece of evidence and it
+needs a boot.

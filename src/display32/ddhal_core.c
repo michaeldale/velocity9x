@@ -260,6 +260,13 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
                       v9x_hal->d3d_diagnostics.texture_refused_last);
     V9X_WRITE_HEX_KEY("TextureLastOffset",
                       v9x_hal->d3d_diagnostics.texture_last_offset);
+    /* The surface pointers the guard refused, and the last of them. A fault
+     * that no longer happens is only an improvement if something says what it
+     * would have been. */
+    V9X_WRITE_HEX_KEY("SurfaceIntRejected",
+                      v9x_hal->d3d_diagnostics.surface_int_rejected);
+    V9X_WRITE_HEX_KEY("SurfaceIntLast",
+                      v9x_hal->d3d_diagnostics.surface_int_last);
 
     for (index = 0ul; index < V9X_DD_TRACE_RING_COUNT; ++index) {
         DWORD slot = v9x_hal->trace.head + index;

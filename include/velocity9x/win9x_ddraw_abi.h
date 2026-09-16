@@ -1128,6 +1128,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091604: V9X_D3D_DIAGNOSTICS gains the two surface-pointer counters.
+ *
  * 2026091603: V9X_D3D_DIAGNOSTICS gains six Gen3 draw counters. An append
  * at the end of that struct, but the stamp moves anyway: a 32-bit HAL
  * writing fields a 16-bit side sized without them writes past the
@@ -1149,7 +1151,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091603ul
+#define V9X_DD_SHARED_ABI   2026091604ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1503,6 +1505,22 @@ typedef struct v9x_d3d_diagnostics {
      * is invisible.
      */
     DWORD i9xx_depth_skipped;
+    /*
+     * Appended 2026-09-16, after the same instruction faulted in two boots.
+     *
+     * v9x_d3d_surface_lcl is handed a surface pointer by the runtime and
+     * dereferences it. Final Reality's first RenderPrimitive passed one that
+     * was non-null and not a surface, and the HAL died taking the application
+     * with it - twice, at module offset 0x851 both times, which is the
+     * `mov eax,[eax+4]` that reads lpLcl.
+     *
+     * surface_int_rejected counts the pointers the guard refused and
+     * surface_int_last carries the last such value, because "a pointer was
+     * bad" and "THIS pointer was bad" are different amounts of evidence and
+     * only the second one leads anywhere.
+     */
+    DWORD surface_int_rejected;
+    DWORD surface_int_last;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
