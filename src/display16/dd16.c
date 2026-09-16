@@ -570,7 +570,7 @@ static void v9x_dd_refresh_framebuffer(void)
      * so it starts disarmed; after that the escape is the only writer and
      * the HAL's own consumption is the only decrementer. A forced timeout
      * acts on whichever bounded wait runs next, which is mode-independent. */
-    shared->engine.reserved1 = 0ul;
+    shared->engine.gtt_linear_base = 0ul;
 }
 
 /*

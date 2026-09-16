@@ -1127,7 +1127,16 @@ typedef struct v9x_ddhal_destroydriverdata {
  * A mixed old/new DRV+DLL pair fails safe: DriverInit rejects on the
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
-#define V9X_DD_SHARED_ABI   2026090501ul
+/*
+ * 2026091601: V9X_DD_ENGINE's reserved1 becomes gtt_linear_base.
+ *
+ * No field moved and the struct did not grow, so this is a change of MEANING
+ * rather than of layout - which is exactly why the stamp has to move. A
+ * 16-bit side that still thinks the field is reserved writes zero to it, and a
+ * 32-bit side that reads it as a second aperture would map address zero. An
+ * address nobody set is a mapping to somewhere.
+ */
+#define V9X_DD_SHARED_ABI   2026091601ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1221,7 +1230,29 @@ typedef struct v9x_dd_engine {
      * what was reserved0 through ABI 2026081601, so the layout is unchanged.
      */
     DWORD fault_inject;
-    DWORD reserved1;
+    /*
+     * A SECOND aperture, from ABI 2026091601.
+     *
+     * Every engine before this one derives what it needs from
+     * control_linear_base: the ViRGE's control aperture is
+     * framebuffer_linear_base + 0x01000000, a fixed offset from one base. Gen3
+     * cannot be expressed that way. Its registers are in BAR0 and its page
+     * table is in BAR3, two independent PCI regions whose addresses this
+     * project has measured to differ between DOS and Windows on the same
+     * machine - so neither can be derived from the other or cached across a
+     * boot.
+     *
+     * It occupies what was reserved1, so NO FIELD MOVED and the struct did not
+     * grow. That matters here rather than being a nicety: V9X_DD_SHARED is
+     * DPMI-allocated at 4096 bytes and the assertion at the end of this header
+     * bounds it. Appending a second DWORD for the mapped SIZE overflowed that
+     * bound, which is why the size is not a field - see
+     * V9X_DD_ENGINE_GTT_BYTES below.
+     *
+     * Zero means "this engine has no second aperture", which is every engine
+     * but Gen3.
+     */
+    DWORD gtt_linear_base;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {
@@ -1918,5 +1949,19 @@ typedef char v9x_dd_assert_trace[
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[
     sizeof(V9X_DD_SHARED) <= 4096 ? 1 : -1];
+
+/*
+ * How much of Gen3's second aperture the driver maps, in bytes.
+ *
+ * A constant rather than a field in V9X_DD_ENGINE, and not by preference: the
+ * assertion above is a hard 4096-byte bound on the shared block, and appending
+ * a DWORD for this overflowed it. The number is a property of the hardware
+ * rather than of a boot - the Gen3 GTT is 256 KiB and the Phase 2 inventory
+ * read all 65536 of its PTEs twice to establish that - so carrying it per-boot
+ * would have been a second place for a constant to live.
+ *
+ * docs\decisions\2026-09-12-intel-phase2-gtt-inventory.md
+ */
+#define V9X_DD_ENGINE_GTT_BYTES 0x00040000ul
 
 #endif /* VELOCITY9X_WIN9X_DDRAW_ABI_H */

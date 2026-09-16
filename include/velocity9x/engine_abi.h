@@ -20,6 +20,16 @@
 #define V9X_DD_ENGINE_TYPE_NONE         0ul
 #define V9X_DD_ENGINE_TYPE_S3_VIRGE_DX  1ul
 #define V9X_DD_ENGINE_TYPE_S3_TRIO64    2ul
+/*
+ * Intel Gen3, meaning the GMA 950 on the 945GSE and nothing wider.
+ *
+ * 3 is the next free value. Assigning it does NOT publish anything: the
+ * intel-gma family manifest still declares EngineType NONE, and the engine
+ * behind this value reports itself not ready. What the value buys is that the
+ * selector arms exist and are tested, so what remains is the engine body
+ * rather than the plumbing around it.
+ */
+#define V9X_DD_ENGINE_TYPE_INTEL_GEN3   3ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

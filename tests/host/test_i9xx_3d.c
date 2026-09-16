@@ -15,6 +15,10 @@
 
 #include "velocity9x/intel_gen3_3d.h"
 #include "velocity9x/intel_gma.h"
+/* The Gen3 render-target binding is a leaf unit precisely so this file can
+ * reach it; the engine that calls it needs the DDHAL headers and cannot be
+ * built here. */
+#include "../../src/display32/d3d/d3d_i9xx_target.h"
 
 static unsigned int failures = 0u;
 
@@ -1964,6 +1968,112 @@ static void test_probe_expectation_names(void)
     }
 }
 
+/*
+ * Binding an ARBITRARY surface as a Gen3 render target.
+ *
+ * Every draw this project has performed renders into one page of the sandbox
+ * reserve, at an address and pitch the build chose. A draw that serves an
+ * application renders into a surface the application chose, and this is the
+ * first arithmetic that can be wrong about one.
+ *
+ * The constraints are BUF_INFO's, restated against a surface: the pitch field
+ * discards its low two bits, the address is a dword-aligned graphics offset,
+ * and the whole surface must be inside the aperture. Each is refused rather
+ * than clamped, because a clamped surface draws a wrong picture with no error.
+ */
+static void test_i9xx_bind_target(void)
+{
+    v9x_u32 identity = 0ul;
+    v9x_u32 address = 0ul;
+    const v9x_u32 aperture = 0x00800000ul;
+
+    /* A plain 640x480x16 surface at the start of the aperture. */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_TRUE);
+    CHECK(identity == (V9X_I9XX_BUF_3D_ID_COLOR_BACK | 1280ul));
+    CHECK(address == 0ul);
+
+    /* And one at an offset, which is what a second surface in a heap is. */
+    CHECK(v9x_d3d_i9xx_bind_target(0x00100000ul, 1280ul, 640ul, 480ul,
+                                   aperture, &identity, &address) == V9X_TRUE);
+    CHECK(address == 0x00100000ul);
+
+    /*
+     * A pitch that does not survive the encoding. 1282 is a plausible
+     * application pitch and its low two bits are DISCARDED by the field, so
+     * every row but the first would land two bytes early - a sheared picture,
+     * no error.
+     */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1282ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+    CHECK(identity == 0ul);
+    CHECK(address == 0ul);
+
+    /* A pitch too narrow for its own row: 640 pixels at 16bpp need 1280. */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1024ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+    /* Exactly wide enough is accepted, which is the boundary either side of
+     * that refusal. */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_TRUE);
+
+    /* A misaligned address. */
+    CHECK(v9x_d3d_i9xx_bind_target(2ul, 1280ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+
+    /*
+     * A surface that runs off the end of the aperture, and the one that ends
+     * exactly at it. The second must be ACCEPTED: computing the footprint as
+     * height rows rather than (height - 1) rows plus one would refuse a legal
+     * surface, and refusing a legal surface is how a driver comes to work only
+     * on the modes someone tried.
+     */
+    CHECK(v9x_d3d_i9xx_bind_target(aperture - 1280ul, 1280ul, 640ul, 480ul,
+                                   aperture, &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(aperture - (1280ul * 480ul), 1280ul,
+                                   640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_TRUE);
+
+    /*
+     * Numbers chosen to OVERFLOW the footprint arithmetic. These come from an
+     * application, so a product that wraps would pass a bounds test by being
+     * small - and the surface it described would be written wherever the wrap
+     * landed.
+     */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 0x00fffffcul, 2048ul, 2048ul,
+                                   aperture, &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0xfffffff0ul, 1280ul, 640ul, 480ul,
+                                   aperture, &identity, &address) == V9X_FALSE);
+
+    /* Degenerate arguments. */
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 0ul, 480ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 0ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 0ul, 640ul, 480ul, aperture,
+                                   &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 480ul, 0ul,
+                                   &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 480ul, aperture,
+                                   0, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target(0ul, 1280ul, 640ul, 480ul, aperture,
+                                   &identity, 0) == V9X_FALSE);
+
+    /*
+     * And the identity it produces is the one the DECODER accepts for a
+     * target, which is what ties this to the streams that have run: the
+     * diagnostic scenes' own pitch through this function yields the dword
+     * their BUF_INFO carries.
+     */
+    CHECK(v9x_d3d_i9xx_bind_target(0x00012000ul, V9X_I9XX_TARGET_PITCH,
+                                   V9X_I9XX_TARGET_WIDTH,
+                                   V9X_I9XX_TARGET_HEIGHT, aperture,
+                                   &identity, &address) == V9X_TRUE);
+    CHECK(identity == (V9X_I9XX_BUF_3D_ID_COLOR_BACK |
+                       (V9X_I9XX_TARGET_PITCH &
+                        V9X_I9XX_BUF_3D_PITCH_MASK)));
+}
+
 /* The combined CRC, which is what the arm gate compares. */
 static void test_scene_combined_crc(void)
 {
@@ -2925,6 +3035,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_depth_scene_expectations();
     test_alpha_scene_expectations();
     test_blend_scene_expectations();
+    test_i9xx_bind_target();
     test_every_scene_decodes();
     test_decoder_depth_refusals();
     test_probe_expectation_names();

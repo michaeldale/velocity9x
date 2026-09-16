@@ -140,6 +140,19 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void)
     if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         return &v9x_d3d_engine_virge;
     }
+    /*
+     * Gen3 resolves, and then reports itself NOT READY.
+     *
+     * The arm exists so the selector is exercised rather than added later
+     * beside an engine that also has to be right. Nothing selects it today:
+     * the intel-gma manifest declares EngineType NONE, so the descriptor never
+     * carries this value. When it does, the engine still refuses every draw
+     * until it has a 32-bit submission path and a risk decision covering
+     * sustained 3D work.
+     */
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        return &v9x_d3d_engine_i9xx;
+    }
     return 0;
 }
 
@@ -1588,6 +1601,19 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void)
         (v9x_hal->engine.engine_caps &
          V9X_DD_ENGINE_CAP_D3D_SOFTWARE) != 0ul) {
         return &v9x_d3d_engine_soft;
+    }
+    /*
+     * Gen3, when the 16-bit side has already stamped the type.
+     *
+     * engine_type is normally unreadable here - that is why this function is
+     * separate - but a family that fills it before DriverInit would otherwise
+     * fall through to the ViRGE, and publishing the ViRGE's caps on an Intel
+     * part is the failure this whole function exists to prevent. Tested
+     * rather than assumed absent.
+     */
+    if (v9x_hal != 0 &&
+        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        return &v9x_d3d_engine_i9xx;
     }
     return &v9x_d3d_engine_virge;
 }

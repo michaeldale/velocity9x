@@ -296,6 +296,15 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge;
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_soft;
 
 /*
+ * The Intel Gen3 engine, in d3d_i9xx.c. Wired and NOT READY: it publishes no
+ * caps and refuses every draw, because there is no 32-bit ring submission path
+ * and because sustained 3D work is outside the errata authorisation. See that
+ * file's header.
+ */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx;
+
+
+/*
  * The core services an engine may use.
  *
  * Exactly one, and it exists because the texture handle table is core state

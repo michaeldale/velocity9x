@@ -432,7 +432,8 @@ if (-not (Test-Path -LiteralPath $d3dCorePath)) {
     throw "src\display32\d3d\d3d_core.c is missing; the D3D core/engine split expects it."
 }
 $d3dCore = Get-Content -LiteralPath $d3dCorePath -Raw
-foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_', 'V9X_TRIO_')) {
+foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_',
+                         'V9X_TRIO_', 'V9X_I9XX_')) {
     if ($d3dCore -match [regex]::Escape($forbidden)) {
         throw ("src\display32\d3d\d3d_core.c names $forbidden. The D3D core is " +
                "chip-neutral: register access and per-chip vocabulary belong " +

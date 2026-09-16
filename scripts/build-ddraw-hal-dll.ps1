@@ -68,6 +68,8 @@ $sources = @(
     # above and before the engine that calls it.
     "src\display32\d3d\d3d_raster.c",
     "src\display32\d3d\d3d_soft.c"
+    "src\display32\d3d\d3d_i9xx.c"
+    "src\display32\d3d\d3d_i9xx_target.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"
