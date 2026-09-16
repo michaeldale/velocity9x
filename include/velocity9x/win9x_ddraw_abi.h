@@ -1128,6 +1128,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091605: V9X_D3D_DIAGNOSTICS gains the surface-pointer CALL SITE and the
+ * mask of sites that have rejected. Added because the fault address alone
+ * cannot name the caller and a conclusion was drawn from it that it did not
+ * support.
+ *
  * 2026091604: V9X_D3D_DIAGNOSTICS gains the two surface-pointer counters.
  *
  * 2026091603: V9X_D3D_DIAGNOSTICS gains six Gen3 draw counters. An append
@@ -1151,7 +1156,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091604ul
+#define V9X_DD_SHARED_ABI   2026091605ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1521,6 +1526,26 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD surface_int_rejected;
     DWORD surface_int_last;
+    /*
+     * WHICH CALLER handed over the bad pointer, because the fault address
+     * cannot say and I concluded from it anyway.
+     *
+     * v9x_d3d_surface_lcl has ten call sites. Two are RenderPrimitive's
+     * execute and TL buffers; one is the texture-teardown scan that
+     * DestroySurface runs over every stored texture pointer; the rest are
+     * the render target, the depth surface, the colour-key pair and two more
+     * primitive entry points. A fault inside that helper is consistent with
+     * all of them, and the intel54 capture's last enter was DestroySurface -
+     * which if anything favours the teardown scan over the reading I
+     * published.
+     *
+     * surface_int_site is the last rejecting site and surface_int_sites is a
+     * bitmask of every site that has ever rejected, because "which one this
+     * time" and "which ones at all" are different questions and a capture
+     * that answers only the first can still be read wrongly.
+     */
+    DWORD surface_int_site;
+    DWORD surface_int_sites;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

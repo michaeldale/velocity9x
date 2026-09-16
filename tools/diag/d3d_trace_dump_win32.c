@@ -406,6 +406,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("I9xxDepthSkipped", snapshot.d3d.i9xx_depth_skipped);
     v9x_write_uint("SurfaceIntRejected", snapshot.d3d.surface_int_rejected);
     v9x_write_hex("SurfaceIntLast", snapshot.d3d.surface_int_last);
+    v9x_write_uint("SurfaceIntSite", snapshot.d3d.surface_int_site);
+    v9x_write_hex("SurfaceIntSites", snapshot.d3d.surface_int_sites);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

@@ -267,6 +267,10 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
                       v9x_hal->d3d_diagnostics.surface_int_rejected);
     V9X_WRITE_HEX_KEY("SurfaceIntLast",
                       v9x_hal->d3d_diagnostics.surface_int_last);
+    V9X_WRITE_HEX_KEY("SurfaceIntSite",
+                      v9x_hal->d3d_diagnostics.surface_int_site);
+    V9X_WRITE_HEX_KEY("SurfaceIntSites",
+                      v9x_hal->d3d_diagnostics.surface_int_sites);
 
     for (index = 0ul; index < V9X_DD_TRACE_RING_COUNT; ++index) {
         DWORD slot = v9x_hal->trace.head + index;

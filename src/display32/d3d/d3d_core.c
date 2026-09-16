@@ -241,7 +241,26 @@ static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
     return 0;
 }
 
-static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface);
+/*
+ * Where a surface pointer came from, recorded with it when it is refused.
+ *
+ * The fault address names the helper and not its caller, and the helper has
+ * ten of them. Numbered rather than named because the value crosses into a
+ * capture file; the mask below is one bit per site, so a boot reports every
+ * site that ever handed over a bad pointer and not only the last.
+ */
+#define V9X_D3D_LCL_SITE_TEXTURE_FORGET   1ul
+#define V9X_D3D_LCL_SITE_TEXTURE_BOUND    2ul
+#define V9X_D3D_LCL_SITE_TARGET           3ul
+#define V9X_D3D_LCL_SITE_ZBUFFER          4ul
+#define V9X_D3D_LCL_SITE_COLORKEY_FIRST   5ul
+#define V9X_D3D_LCL_SITE_COLORKEY_SECOND  6ul
+#define V9X_D3D_LCL_SITE_ONEPRIM_EXE      7ul
+#define V9X_D3D_LCL_SITE_PRIMS_EXE        8ul
+#define V9X_D3D_LCL_SITE_RENDERPRIM_EXE   9ul
+#define V9X_D3D_LCL_SITE_RENDERPRIM_TL   10ul
+
+static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site);
 
 static void v9x_d3d_textures_destroy_context(DWORD context)
 {
@@ -277,7 +296,9 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
     }
     for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
         if (v9x_d3d_textures[index].active != 0ul &&
-            v9x_d3d_surface_lcl(v9x_d3d_textures[index].surface) == surface) {
+            v9x_d3d_surface_lcl(v9x_d3d_textures[index].surface,
+                                 V9X_D3D_LCL_SITE_TEXTURE_FORGET) ==
+                surface) {
             v9x_d3d_textures[index].active = 0ul;
             v9x_d3d_textures[index].context = 0ul;
             v9x_d3d_textures[index].surface = 0;
@@ -302,7 +323,10 @@ V9X_DD_SURFACE_LCL *v9x_d3d_context_texture_surface(
     }
     texture = v9x_d3d_texture_from_handle(context->texture_handle,
                                            (DWORD)context);
-    return texture != 0 ? v9x_d3d_surface_lcl(texture->surface) : 0;
+    return texture != 0
+        ? v9x_d3d_surface_lcl(texture->surface,
+                              V9X_D3D_LCL_SITE_TEXTURE_BOUND)
+        : 0;
 }
 
 DWORD __stdcall V9xD3dRenderPrimitive(
@@ -458,7 +482,7 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
  * IsBadReadPtr is a KERNEL32 import, which is the only DLL this HAL is
  * permitted to import from and already does.
  */
-static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
+static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site)
 {
     V9X_DD_SURFACE_INT *wrapper = (V9X_DD_SURFACE_INT *)surface;
 
@@ -469,6 +493,14 @@ static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface)
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.surface_int_rejected;
             v9x_hal->d3d_diagnostics.surface_int_last = (DWORD)wrapper;
+            /* The site, and the set of sites. A capture that named only the
+             * last one could be read as naming the only one, which is the
+             * mistake this whole field exists to stop being repeated. */
+            v9x_hal->d3d_diagnostics.surface_int_site = site;
+            if (site != 0ul && site < 32ul) {
+                v9x_hal->d3d_diagnostics.surface_int_sites |=
+                    (1ul << site);
+            }
         }
         return 0;
     }
@@ -527,9 +559,10 @@ static int v9x_d3d_depth_reject(DWORD reason)
 static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
                               void *zbuffer)
 {
-    V9X_DD_SURFACE_LCL *target = v9x_d3d_surface_lcl(surface);
+    V9X_DD_SURFACE_LCL *target =
+        v9x_d3d_surface_lcl(surface, V9X_D3D_LCL_SITE_TARGET);
     V9X_DD_SURFACE_LCL *depth = zbuffer != 0
-        ? v9x_d3d_surface_lcl(zbuffer) : 0;
+        ? v9x_d3d_surface_lcl(zbuffer, V9X_D3D_LCL_SITE_ZBUFFER) : 0;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
     const V9X_D3D_ENGINE_LIMITS *limits;
     V9X_DD_SURFACE_GBL *global;
@@ -1014,8 +1047,12 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
     second->surface = surface;
     /* A swap is how a texture manager gets new texels into an old slot:
      * whichever keyed surface is involved must be rewritten before use. */
-    v9x_d3d_color_key_touch(v9x_d3d_surface_lcl(first->surface));
-    v9x_d3d_color_key_touch(v9x_d3d_surface_lcl(second->surface));
+    v9x_d3d_color_key_touch(
+        v9x_d3d_surface_lcl(first->surface,
+                            V9X_D3D_LCL_SITE_COLORKEY_FIRST));
+    v9x_d3d_color_key_touch(
+        v9x_d3d_surface_lcl(second->surface,
+                            V9X_D3D_LCL_SITE_COLORKEY_SECOND));
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.texture_swaps;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, data->ddrval);
@@ -1058,7 +1095,9 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     }
     context = data != 0
         ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
+    exe = data != 0
+        ? v9x_d3d_surface_lcl(data->lpExeBuf, V9X_D3D_LCL_SITE_ONEPRIM_EXE)
+        : 0;
     if (context != 0 && exe != 0 && exe->lpGbl != 0 &&
         exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) {
         states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
@@ -1215,7 +1254,9 @@ DWORD __stdcall V9xD3dExecute(V9X_D3DHAL_EXECUTEDATA *data)
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.execute_calls;
     }
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
+    exe = data != 0
+        ? v9x_d3d_surface_lcl(data->lpExeBuf, V9X_D3D_LCL_SITE_PRIMS_EXE)
+        : 0;
     if (data == 0 || v9x_d3d_context_from_handle(data->dwhContext) == 0 ||
         exe == 0 || exe->lpGbl == 0 || exe->lpGbl->fpVidMem == 0ul ||
         data->deExData.dwInstructionLength > 0x00100000ul) {
@@ -1340,8 +1381,13 @@ DWORD __stdcall V9xD3dRenderPrimitive(
                         : 0ul);
     v9x_fpu_save(&fpu);
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
-    exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
-    tl = data != 0 ? v9x_d3d_surface_lcl(data->lpTLBuf) : 0;
+    exe = data != 0
+        ? v9x_d3d_surface_lcl(data->lpExeBuf, V9X_D3D_LCL_SITE_RENDERPRIM_EXE)
+        : 0;
+    tl = data != 0
+        ? v9x_d3d_surface_lcl(data->lpTLBuf,
+                              V9X_D3D_LCL_SITE_RENDERPRIM_TL)
+        : 0;
     if (ops != 0 && context != 0 && exe != 0 && exe->lpGbl != 0 && tl != 0 &&
         tl->lpGbl != 0 && ops->ready() &&
         data->diInstruction.bOpcode == 3u &&

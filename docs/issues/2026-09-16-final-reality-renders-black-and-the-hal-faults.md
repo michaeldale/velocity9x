@@ -4,7 +4,8 @@ Date: 2026-09-16
 Machine: MICHAEL-NETBOOK, Intel 945GSE, `8086:27AE` revision 03
 Build: `f9ec875`
 Capture: `C:\temp\intel53`
-Status: cause identified 2026-09-16 from intel54; guarded, not yet re-run.
+Status: open. The faulting INSTRUCTION is identified; the CALLER is not.
+Guarded and instrumented, not yet re-run.
 
 Final Reality detected hardware Direct3D for the first time - the caps
 published in `7bb536f` and `f9ec875` are enough for it to accept the device -
@@ -148,21 +149,38 @@ and the ring ends identically:
 ```
 
 `RingTail` read zero at every event this boot. **Nothing was submitted and
-nothing was refused, so `draw_triangles` was never called at all** - the
-engine is not implicated. `V9xD3dRenderPrimitive` entered, and the only thing
-it does before testing anything is:
+nothing was refused, so `draw_triangles` was never called at all.** That much
+is solid, and it clears the Gen3 engine: no triangle reached it.
+
+### The caller is NOT established, and this record claimed it was
+
+The paragraph that stood here said the fault was in
+`V9xD3dRenderPrimitive`'s prologue resolving `lpExeBuf` or `lpTLBuf`, and
+called the cause identified. **That does not follow from the evidence and it
+is withdrawn.**
+
+`v9x_d3d_surface_lcl` has TEN call sites. One of them is inside
+`v9x_d3d_textures_forget_surface`:
 
 ```c
-exe = data != 0 ? v9x_d3d_surface_lcl(data->lpExeBuf) : 0;
-tl  = data != 0 ? v9x_d3d_surface_lcl(data->lpTLBuf) : 0;
+v9x_d3d_surface_lcl(v9x_d3d_textures[index].surface) == surface
 ```
 
-One of those pointers was non-null and not a surface, and `v9x_d3d_surface_lcl`
-read `lpLcl` from it. No `PRIMREJECT` was pushed, which is the corroboration:
-the refusal path is further down the same function and was never reached.
+which runs over every stored texture pointer, and which `DestroySurface`
+calls. A fault inside the helper is consistent with that path as much as with
+the primitive one - and the capture's `LastEnterId` is 22, `DestroySurface`,
+which if anything favours the teardown scan. The remaining eight sites are
+the render target, the depth surface, the colour-key pair and two further
+primitive entry points.
 
-The black screen follows: Final Reality's FIRST primitive killed the HAL, so
-no frame was ever drawn.
+The "no PRIMREJECT was pushed" argument does not settle it either. It is
+consistent with a fault before the refusal path, and equally consistent with
+`RenderPrimitive` having passed its checks and the fault arriving later from
+teardown.
+
+What IS established: the faulting instruction, that it read a non-null
+non-surface pointer, that it reproduced at the same module offset in two
+consecutive boots, and that the engine never saw a triangle.
 
 ### What was changed
 
@@ -174,10 +192,21 @@ which every caller already handles.
 
 ### What this does NOT explain
 
-**Why the pointer is bad.** The same code serves the ViRGE, where Final
-Reality runs. Candidates not yet separated: a field offset in
-`V9X_D3DHAL_RENDERPRIMITIVEDATA` that happens to be right for one path and
-wrong for another; an execute buffer the runtime never created because
-`lpDDExeBufCallbacks` is zero; or a pointer that is valid in a context this
-HAL is not called in. `surface_int_last` is the next piece of evidence and it
-needs a boot.
+**Which caller, and why the pointer is bad.** The same code serves the ViRGE,
+where Final Reality runs. Candidates not yet separated: the texture-teardown
+scan holding a released surface; a field offset in
+`V9X_D3DHAL_RENDERPRIMITIVEDATA` right for one path and wrong for another; an
+execute buffer the runtime never created because `lpDDExeBufCallbacks` is
+zero; or a pointer valid only in a context this HAL is not called in.
+
+### The caller is now recorded
+
+`v9x_d3d_surface_lcl` takes a site id, and a refusal records the last site in
+`surface_int_site` and a bitmask of every site that has ever rejected in
+`surface_int_sites`. Both reach the fault flush and the snapshot. The mask is
+there because a capture naming only the last site can be read as naming the
+only site, which is the shape of the mistake this record is correcting.
+
+Sites: 1 texture-teardown scan, 2 bound texture, 3 render target, 4 depth
+surface, 5 and 6 the colour-key pair, 7 DrawOnePrimitive exe,
+8 DrawPrimitives exe, 9 RenderPrimitive exe, 10 RenderPrimitive TL.
