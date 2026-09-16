@@ -132,7 +132,7 @@ static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
  * S2 through S6 in one load, which is the shape Mesa's steady state uses. The
  * trailing length field is (S dwords - 1); five independent use sites agree.
  */
-static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream)
+static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2)
 {
     v9x_u32 at = 0ul;
 
@@ -140,8 +140,16 @@ static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream)
                    V9X_I9XX_I1_LOAD_S2 | V9X_I9XX_I1_LOAD_S3 |
                    V9X_I9XX_I1_LOAD_S4 | V9X_I9XX_I1_LOAD_S5 |
                    V9X_I9XX_I1_LOAD_S6 | 4ul;
-    /* Every texture coordinate unit absent. */
-    stream[at++] = V9X_I9XX_S2_ALL_TEXCOORD_ABSENT;
+    /*
+     * S2, eight nibbles - one per coordinate unit. Untextured is all-ones,
+     * every unit absent; textured clears unit 0's nibble to TEXCOORDFMT_2D.
+     *
+     * It is a PARAMETER rather than two copies of this emitter because S2 is
+     * the only pipeline dword a texture changes. S4 carries no
+     * texture-coordinate field at all, which the 2026-09-16 audit established
+     * and which was the largest risk the plan had named.
+     */
+    stream[at++] = s2;
     /* S3: no texture coordinate wrapping. */
     stream[at++] = 0ul;
     /*
@@ -166,16 +174,73 @@ v9x_u32 v9x_i9xx_3d_state_extent(void)
            V9X_I9XX_3D_PIPELINE_DWORDS;
 }
 
+/*
+ * The textured block is the untextured one plus MAP_STATE and SAMPLER_STATE,
+ * each five dwords for a single unit. Both are emitted DIRECTLY into the
+ * stream; neither goes through LOAD_INDIRECT, which stays disabled exactly as
+ * Phase 5 emits it. Audit section 2.
+ */
+v9x_u32 v9x_i9xx_textured_state_extent(void)
+{
+    return v9x_i9xx_3d_state_extent() +
+           v9x_i9xx_map_state_extent(1ul) +
+           v9x_i9xx_sampler_state_extent(1ul);
+}
+
+/*
+ * One emission path, textured or not.
+ *
+ * `texture` null is the untextured block Phase 5 has always emitted. Non-null
+ * adds the two texture packets and switches S2. A second copy of the invariant
+ * and target emitters is what this avoids, and it is what the packet-offset
+ * defect and the primitive-offset defect were both made of.
+ */
+static v9x_status v9x_i9xx_build_state_common(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+v9x_status v9x_i9xx_build_textured_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (texture == 0) {
+        /* A textured block with no texture is a mistake, not an untextured
+         * block. The caller that wanted one should have said so. */
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_i9xx_build_state_common(target_offset, target_pitch,
+                                       width, height, texture,
+                                       stream, capacity, written);
+}
+
 v9x_status v9x_i9xx_build_3d_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
+    return v9x_i9xx_build_state_common(target_offset, target_pitch,
+                                       width, height, 0,
+                                       stream, capacity, written);
+}
+
+static v9x_status v9x_i9xx_build_state_common(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
     v9x_u32 at = 0ul;
+    v9x_u32 produced = 0ul;
+    v9x_u32 needed = (texture != 0) ? v9x_i9xx_textured_state_extent()
+                                    : v9x_i9xx_3d_state_extent();
 
     if (written != 0) { *written = 0ul; }
-    if (stream == 0 || written == 0 ||
-        capacity < v9x_i9xx_3d_state_extent()) {
+    if (stream == 0 || written == 0 || capacity < needed) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     /*
@@ -195,9 +260,32 @@ v9x_status v9x_i9xx_build_3d_state(
     at += v9x_i9xx_emit_invariant(stream + at);
     at += v9x_i9xx_emit_target(stream + at, target_offset, target_pitch,
                                width, height);
-    at += v9x_i9xx_emit_pipeline(stream + at);
+    /*
+     * The texture packets sit between the target and the pipeline. Order
+     * follows both reference emitters, which write map and sampler state
+     * before the state-immediate load that declares the coordinate format.
+     */
+    if (texture != 0) {
+        if (v9x_i9xx_build_map_state(texture, 1ul, stream + at,
+                                     capacity - at, &produced) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        at += produced;
+        if (v9x_i9xx_build_sampler_state(1ul, stream + at,
+                                         capacity - at, &produced) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        at += produced;
+    }
 
-    if (at != v9x_i9xx_3d_state_extent()) {
+    at += v9x_i9xx_emit_pipeline(stream + at,
+                                 (texture != 0)
+                                     ? V9X_I9XX_S2_TEXTURED_UNIT0
+                                     : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT);
+
+    if (at != needed) {
         /* The emitters and the extent disagree, which is a programming error
          * rather than a bad argument; refuse rather than submit a stream whose
          * length nobody can predict. */

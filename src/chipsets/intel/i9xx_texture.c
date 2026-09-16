@@ -207,20 +207,30 @@ v9x_status v9x_i9xx_build_sampler_state(
 /*
  * The four quadrant colours, as DWORD fill patterns.
  *
- * Every one is a 565 value this chip is MEASURED to store, doubled into a
- * dword because XY_COLOR_BLT fills in dwords and two 16-bit texels share one.
- * Measured rather than predicted on purpose: this scene asks where a
- * coordinate lands, and an unmeasured colour would put a second unknown in
- * the answer.
+ * These are 565 BIT PATTERNS, not colours put through a conversion: the blit
+ * writes the pattern into memory verbatim. The first three are nonetheless the
+ * values the 2026-09-15 and 2026-09-16 captures read back from this part, so a
+ * probe that reads one is reading a bit pattern the part has already been seen
+ * to store and display. Each is doubled into a dword because XY_COLOR_BLT
+ * fills in dwords and two 16-bit texels share one.
  *
- * They must all differ, or a probe could not say which quadrant it read. The
- * host test asserts that rather than trusting the list.
+ * Two distinctness requirements, and the second is why the fourth entry is not
+ * the fill:
+ *
+ *  - They must all differ from EACH OTHER, or a probe could not say which
+ *    quadrant it read.
+ *  - None may equal the FILL. A quadrant painted 0x0842 would be read by a
+ *    probe as 0x0842 whether the sampler worked or nothing drew at all, and
+ *    the scene would report a pass for a draw that never happened. The fourth
+ *    entry was the fill for exactly one commit.
+ *
+ * The host test asserts both rather than trusting the list.
  */
 static const v9x_u32 v9x_i9xx_texture_quadrant[4] = {
-    0x1c3e1c3eul,   /* 0xff1587f9, measured 2026-09-15 */
-    0xf325f325ul,   /* 0xfff86428, measured 2026-09-15 */
-    0x30383038ul,   /* 0xff2e03c8, measured 2026-09-16 */
-    0x08420842ul    /* the fill, a constant this build owns */
+    0x1c3e1c3eul,   /* 0xff1587f9, read back 2026-09-15 */
+    0xf325f325ul,   /* 0xfff86428, read back 2026-09-15 */
+    0x30383038ul,   /* 0xff2e03c8, read back 2026-09-16 */
+    0x07e007e0ul    /* 565 green, distinct from the fill and from the rest */
 };
 
 v9x_u32 v9x_i9xx_texture_paint_extent(void)

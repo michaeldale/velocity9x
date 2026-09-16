@@ -49,13 +49,35 @@
  * the decoder and the thing it decodes cannot disagree.
  */
 
+/*
+ * Is this dword 0.0f, 0.5f or 1.0f?
+ *
+ * The three texture coordinates this build emits, and nothing else. Written as
+ * a predicate over bit patterns because the transport carries bit patterns and
+ * the driver's float helper takes integers - it has no way to say "a half".
+ */
+static v9x_u16 v9x_i9xx_normalized_half(v9x_u32 bits)
+{
+    if (bits == 0x00000000ul || bits == 0x3f000000ul ||
+        bits == 0x3f800000ul) {
+        return V9X_TRUE;
+    }
+    return V9X_FALSE;
+}
+
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     v9x_u32 target_offset, v9x_u32 target_bytes,
+    v9x_u32 texture_offset, v9x_u32 texture_bytes,
     v9x_u32 *rejected_index)
 {
     v9x_u32 index = 0ul;
     v9x_u32 target_end;
+    /* A stream is textured when a texture range is given, and not otherwise.
+     * See the header for why there is no separate flag. */
+    v9x_u16 textured = (texture_bytes != 0ul) ? V9X_TRUE : V9X_FALSE;
+    v9x_u16 saw_map_state = V9X_FALSE;
+    v9x_u16 saw_sampler_state = V9X_FALSE;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -71,6 +93,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     if (rejected_index != 0) { *rejected_index = 0ul; }
     if (stream == 0 || dword_count == 0ul || target_bytes == 0ul ||
         target_offset > 0xfffffffful - target_bytes) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    if (textured != V9X_FALSE &&
+        texture_offset > 0xfffffffful - texture_bytes) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     target_end = target_offset + target_bytes;
@@ -210,7 +236,44 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * LOAD_STATE_IMMEDIATE_1 masks with 0xffff0000 for exactly this
              * reason.
              */
-            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
+            if (textured == V9X_FALSE) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
+            }
+            {
+                /* The length is the payload less one, and the payload is the
+                 * enable mask plus three dwords per unit. One unit. */
+                v9x_u32 payload = (command & 0x0000fffful) + 1ul;
+
+                if (dword_count - index < payload + 1ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+                }
+                if (payload != 4ul) {
+                    /* Exactly one unit. More would describe texture state
+                     * this build never set and cannot account for. */
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index);
+                }
+                if (stream[index + 1ul] != 1ul) {
+                    /* Unit 0 alone enabled. */
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index + 1ul);
+                }
+                if ((command & 0xffff0000ul) ==
+                        V9X_I9XX_3DSTATE_MAP_STATE) {
+                    /*
+                     * The map ADDRESS, checked against the reserve rather
+                     * than trusted. This is the one dword in either packet
+                     * that makes the GPU read memory of the driver's
+                     * choosing, and a wrong one reads a page that is not
+                     * ours - which on this part is the access that hangs it.
+                     */
+                    if (stream[index + 2ul] != texture_offset) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 2ul);
+                    }
+                    saw_map_state = V9X_TRUE;
+                } else {
+                    saw_sampler_state = V9X_TRUE;
+                }
+                index += payload + 1ul;
+            }
 
         } else if ((command & 0xffff0000ul) ==
                        V9X_I9XX_3DSTATE_LOAD_STATE_IMM1) {
@@ -227,8 +290,21 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                             V9X_I9XX_I1_LOAD_S6 | 4ul)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index);
             }
-            /* S2 must declare every texture coordinate absent. */
-            if (stream[index + 1ul] != V9X_I9XX_S2_ALL_TEXCOORD_ABSENT) {
+            /*
+             * S2 says which coordinate sets the vertex carries, and it must
+             * match the mode exactly in BOTH directions.
+             *
+             * An untextured stream declaring a coordinate set would make the
+             * hardware read a seventh and eighth dword from a five-dword
+             * vertex; a textured one declaring none would leave the sampler
+             * reading coordinate zero at every fragment, which draws a single
+             * flat texel over the whole triangle and looks like a plausible
+             * picture.
+             */
+            if (stream[index + 1ul] !=
+                    ((textured != V9X_FALSE)
+                         ? V9X_I9XX_S2_TEXTURED_UNIT0
+                         : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index + 1ul);
             }
             s4 = stream[index + 3ul];
@@ -254,8 +330,16 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if (dword_count - index < payload + 1ul) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
             }
-            /* The program is a constant; only its exact length is accepted. */
-            if (payload != v9x_i9xx_fragment_program_extent() - 1ul) {
+            /*
+             * Each program is a constant, and only the one this mode's
+             * program actually is may appear. Lengths rather than contents,
+             * as before - but the two differ, so a textured stream carrying
+             * the untextured program is caught here, and that program would
+             * write the interpolated vertex colour and never sample at all.
+             */
+            if (payload != ((textured != V9X_FALSE)
+                                ? v9x_i9xx_sampling_program_extent() - 1ul
+                                : v9x_i9xx_fragment_program_extent() - 1ul)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
             }
             saw_shader = V9X_TRUE;
@@ -305,17 +389,38 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             if (v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
                                               target_offset,
-                                              target_bytes) !=
+                                              target_bytes) ==
                     V9X_STATUS_OK) {
+                /* And it must fill with the agreed background, or "the
+                 * triangle drew" stops being distinguishable from "that
+                 * memory already looked like this". */
+                if (stream[index + 5ul] != V9X_I9XX_FILL_DWORD) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
+                }
+                saw_fill = V9X_TRUE;
+            } else if (textured == V9X_FALSE ||
+                       v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
+                                                     texture_offset,
+                                                     texture_bytes) !=
+                           V9X_STATUS_OK) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index);
             }
-            /* And it must fill with the agreed background, or "the
-             * triangle drew" stops being distinguishable from "that
-             * memory already looked like this". */
-            if (stream[index + 5ul] != V9X_I9XX_FILL_DWORD) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
-            }
-            saw_fill = V9X_TRUE;
+            /*
+             * Otherwise it is a blit into the TEXTURE: one of the four
+             * quadrant paints, bounded by the texture range so a quadrant
+             * whose address arithmetic went wrong is refused here rather than
+             * overwriting a page that is not ours.
+             *
+             * The texture is painted by the GPU for the same reason the target
+             * is - a CPU upload through the aperture is the access the errata
+             * gate was opened on condition of avoiding - so these packets are
+             * part of every textured stream and the allowlist has to name
+             * them.
+             *
+             * No colour check: the four quadrant colours are the experiment's
+             * variable, and a decoder asserting them would be asserting the
+             * answer.
+             */
             index += 6ul;
 
         } else if (command == V9X_I9XX_MI_NOOP ||
@@ -327,6 +432,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             v9x_u32 payload = (command & 0x0003fffful) + 1ul;
             v9x_u32 vertex;
             v9x_u32 base;
+            v9x_u32 stride;
             if ((command & 0x00800000ul) != 0ul) {
                 /* Bit 23 set is the indirect form, which would fetch vertices
                  * from a buffer this phase does not allocate. */
@@ -335,7 +441,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if (((command >> 18) & 0x1ful) != V9X_I9XX_PRIM3D_TRILIST) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_OPCODE, index);
             }
-            if (payload != V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS) {
+            /*
+             * The stride follows the mode, and so does the payload. A textured
+             * vertex is seven dwords, not five: the same three vertices make a
+             * 21-dword payload rather than 15, and a stream whose S2 declares
+             * a coordinate set while its vertices are five dwords long would
+             * have the hardware read two dwords of the NEXT vertex as this
+             * one's coordinates.
+             */
+            stride = (textured != V9X_FALSE) ? V9X_I9XX_TEXTURED_VERTEX_DWORDS
+                                             : V9X_I9XX_VERTEX_DWORDS;
+            if (payload != (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
+                                     (v9x_u16)stride)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
             }
             if (dword_count - index < payload + 1ul) {
@@ -377,11 +494,37 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         V9X_I9XX_FLOAT_OK || decoded != 1ul) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 3ul);
                 }
-                /* Uniform colour, which is what makes shading mode moot. */
-                if (stream[base + 4ul] != V9X_I9XX_TRI_COLOR_BGRA) {
+                /* Uniform colour, which is what makes shading mode moot.
+                 * The textured stream's colour is unread by the sampling
+                 * program but must still be the one this build emits. */
+                if (stream[base + 4ul] !=
+                        ((textured != V9X_FALSE)
+                             ? V9X_I9XX_TEX_VERTEX_COLOR_BGRA
+                             : V9X_I9XX_TRI_COLOR_BGRA)) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, base + 4ul);
                 }
-                base += V9X_I9XX_VERTEX_DWORDS;
+                if (textured != V9X_FALSE) {
+                    /*
+                     * The coordinates, checked as bit patterns.
+                     *
+                     * Only 0, 1/2 and 1 are ever emitted - the triangle's
+                     * corners in its own bounding box - and float_to_int
+                     * cannot express a half, so this is the one place where
+                     * an exact pattern is the check rather than a decode.
+                     * Anything else is a coordinate nobody derived, and the
+                     * clamp-to-edge sampler would turn it into a plausible
+                     * texel instead of an error.
+                     */
+                    if (v9x_i9xx_normalized_half(stream[base + 5ul]) ==
+                            V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 5ul);
+                    }
+                    if (v9x_i9xx_normalized_half(stream[base + 6ul]) ==
+                            V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 6ul);
+                    }
+                }
+                base += stride;
             }
             saw_primitive = V9X_TRUE;
             index += payload + 1ul;
@@ -400,6 +543,16 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
         saw_draw_rect == V9X_FALSE || saw_scissor_disable == V9X_FALSE ||
         saw_indirect_disable == V9X_FALSE || saw_shader == V9X_FALSE ||
         saw_primitive == V9X_FALSE || saw_fill == V9X_FALSE) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    /*
+     * A textured stream must carry BOTH texture packets. S2 having declared a
+     * coordinate set is not enough: without MAP_STATE the sampler reads
+     * whatever map the engine last had, which is another client's memory or
+     * none, and the draw would sample it without complaint.
+     */
+    if (textured != V9X_FALSE &&
+        (saw_map_state == V9X_FALSE || saw_sampler_state == V9X_FALSE)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     return V9X_I9XX_P5_OK;

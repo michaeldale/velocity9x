@@ -489,6 +489,13 @@ static const char *v9x_p6_expectation(WORD expect)
     if (expect == V9X_I9XX_PROBE_FILL) { return "outside"; }
     if (expect == V9X_I9XX_PROBE_TRIANGLE0) { return "inside"; }
     if (expect == V9X_I9XX_PROBE_TRIANGLE1) { return "inside1"; }
+    /* The texture quadrants. Named rather than numbered in the capture,
+     * because "quad2" read where "quad1" was expected is the addressing
+     * answer and has to be legible without the header to hand. */
+    if (expect == V9X_I9XX_PROBE_QUADRANT0) { return "quad0"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT1) { return "quad1"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT2) { return "quad2"; }
+    if (expect == V9X_I9XX_PROBE_QUADRANT3) { return "quad3"; }
     return "unknown";
 }
 /*
@@ -552,6 +559,7 @@ void v9x_intel_phase6_publish_budget(void)
     v9x_u32 scene;
     DWORD staged = 0ul;
     DWORD scenes = (DWORD)v9x_i9xx_scene_count();
+    DWORD textured = 0ul;
     DWORD mini;
     DWORD driver;
 
@@ -563,6 +571,7 @@ void v9x_intel_phase6_publish_budget(void)
             return;
         }
         staged += v9x_i9xx_scene_extent(&one);
+        if (one.textured != 0ul) { ++textured; }
     }
 
     /*
@@ -573,9 +582,16 @@ void v9x_intel_phase6_publish_budget(void)
     mini = (staged * 2ul) + (2ul * scenes);
     /*
      * Driver side: every probe, the guards before the run and after each
-     * scene, and the heap probe either side.
+     * scene, the heap probe either side, the texture guard once before the
+     * run, and the texture guard again after each TEXTURED scene - which is
+     * why that last term counts textured scenes and not scenes.
+     *
+     * The pre-run read is unconditional. It is taken before the scene table is
+     * consulted, so a build with no textured scene at all still pays for it,
+     * and a budget that omitted it would be short by one on every boot.
      */
-    driver = v9x_i9xx_scene_total_probes() + 2ul + (2ul * scenes) + 2ul;
+    driver = v9x_i9xx_scene_total_probes() + 2ul + (2ul * scenes) + 2ul +
+             1ul + textured;
 
     v9x_p5_text("ReadBudgetScope", "gmadr-whole-boot-incl-phase4");
     v9x_p5_hex("SceneStagedDwordsTotal", staged);
@@ -683,9 +699,12 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
      * its CRC must equal the constant generated from the same builders. If
      * either fails, what would run is not what was reviewed.
      */
+    /* Zero texture range: the Phase 5 stream is untextured, and the decoder
+     * refuses every texture packet on that basis. */
     reason = v9x_i9xx_decode_phase5_stream(
         v9x_p5_stream, v9x_p5_stream_dwords,
-        layout->target_offset, layout->target_bytes, &rejected_index);
+        layout->target_offset, layout->target_bytes,
+        0ul, 0ul, &rejected_index);
     if (reason != V9X_I9XX_P5_OK) {
         v9x_p5_hex("PreDecodeReason", (DWORD)reason);
         v9x_p5_hex("PreDecodeIndex", rejected_index);
@@ -952,11 +971,28 @@ static void v9x_p5_publish_heap_probe(
  * one thing this whole per-scene structure exists to prevent.
  */
 static void v9x_p6_publish_guards(
-    const struct v9x_i9xx_sandbox_layout *layout, WORD scene)
+    const struct v9x_i9xx_sandbox_layout *layout, WORD scene, WORD textured)
 {
     v9x_p6_hex(scene, "GLow", v9x_p5_read_counted(layout->scratch_offset));
     v9x_p6_hex(scene, "GUpp",
                v9x_p5_read_counted(layout->guard_upper_offset));
+    /*
+     * And the page past the TEXTURE, for a scene that paints one.
+     *
+     * The layout has carried this guard since the texture was placed and
+     * nothing read it, which made it a page reserved to prove something and
+     * never asked. It is what catches a quadrant blit whose address
+     * arithmetic ran long: the decoder bounds each blit by the texture range,
+     * so this is the second, independent answer - one from the stream before
+     * it ran, one from memory afterwards.
+     *
+     * Only for a textured scene, because a read costs budget and an
+     * untextured scene has nothing that could have touched it.
+     */
+    if (textured != 0u) {
+        v9x_p6_hex(scene, "TexG",
+                   v9x_p5_read_counted(layout->texture_guard_offset));
+    }
 }
 
 /*
@@ -1041,6 +1077,34 @@ static WORD v9x_p6_run_scene(
         return V9X_FALSE;
     }
     crc = v9x_i9xx_crc32_dwords(stream, dwords);
+
+    /*
+     * The scene's own stream through the allowlist, before it is staged.
+     *
+     * The CRC below says the stream is the one the generator saw; it says
+     * nothing about whether that stream is safe to run. Only this does - and a
+     * textured scene is where that stops being academic, because MAP_STATE
+     * makes the GPU read an address of the driver's choosing and reading a
+     * page that is not ours is the access that hangs this part.
+     *
+     * The texture range is passed only for a textured scene, so an untextured
+     * one is still decoded under the rules that forbid every texture packet.
+     */
+    {
+        DWORD rejected = 0ul;
+        WORD reason = v9x_i9xx_decode_phase5_stream(
+            stream, dwords, layout->target_offset, layout->target_bytes,
+            (v9x_p6_scene.textured != 0ul) ? layout->texture_offset : 0ul,
+            (v9x_p6_scene.textured != 0ul) ? layout->texture_bytes : 0ul,
+            &rejected);
+
+        if (reason != V9X_I9XX_P5_OK) {
+            v9x_p6_hex(scene, "DecodeReason", (DWORD)reason);
+            v9x_p6_hex(scene, "DecodeIndex", rejected);
+            v9x_p6_text(scene, "Scene", "DECODE-REFUSED");
+            return V9X_FALSE;
+        }
+    }
 
     v9x_p6_hex(scene, "Id", (DWORD)v9x_p6_scene.id);
     v9x_p6_hex(scene, "Dwords", dwords);
@@ -1270,6 +1334,16 @@ void v9x_intel_phase5_run(
     v9x_p5_publish_heap_probe(layout, "HeapProbeBefore");
     v9x_p5_progress("guards");
     v9x_p5_publish_guards(layout, "0");
+    /*
+     * The page past the texture, ONCE, before anything runs.
+     *
+     * Each textured scene reads it again afterwards, and the comparison is
+     * against this. Published here rather than inside the per-suffix publisher
+     * because the post-run global pass would then read it a second time for
+     * nothing: the per-scene reads already cover every scene that could have
+     * touched it.
+     */
+    v9x_p5_hex("TexG0", v9x_p5_read_counted(layout->texture_guard_offset));
     v9x_p5_progress("guards-done");
 
     if (reason != V9X_P5_PRE_OK) {
@@ -1382,7 +1456,9 @@ void v9x_intel_phase5_run(
                  * where they matter, and the earlier scenes' results are
                  * already on disk.
                  */
-                v9x_p6_publish_guards(layout, scene);
+                v9x_p6_publish_guards(
+                    layout, scene,
+                    (WORD)((v9x_p6_scene.textured != 0ul) ? 1u : 0u));
                 v9x_p5_publish_heap_probe(layout, "HeapProbeAfter");
                 v9x_p5_hex("SceneFailed", (DWORD)scene);
                 v9x_p5_result("SCENE-REFUSED");
@@ -1390,7 +1466,9 @@ void v9x_intel_phase5_run(
             }
             /* Between scenes, not only at the end: a scene that damaged the
              * guards must not have it attributed to a later one. */
-            v9x_p6_publish_guards(layout, scene);
+            v9x_p6_publish_guards(
+                layout, scene,
+                (WORD)((v9x_p6_scene.textured != 0ul) ? 1u : 0u));
             v9x_p5_flush();
         }
         v9x_p5_hex("ScenesCompleted", (DWORD)scenes);

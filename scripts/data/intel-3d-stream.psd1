@@ -102,11 +102,17 @@
     ReferenceFill = '00000842'
     ReferenceColor = '0000143F'
     IntelReferenceColor = '00001C3E'
-    SceneCount = 5
+    SceneCount = 2
     SceneAuthorisedDraws = 5
-    SceneCombinedCrc = '539F7313'
-    SceneArmCrc = 'AF1E48B1'
-    SceneTotalProbes = 52
+    SceneCombinedCrc = '0F753C43'
+    SceneArmCrc = 'D9998B57'
+    SceneTotalProbes = 20
+    TextureQuadrants = @(
+        '1C3E'
+        'F325'
+        '3038'
+        '07E0'
+    )
     Scenes = @(
         @{
             Id = 0
@@ -114,6 +120,7 @@
             Crc = '01A4DE25'
             PrimitiveOffset = 48
             Triangles = 1
+            Textured = $false
             Colors = @(
                 @{ Value = '1C3E'; Measured = $true }
             )
@@ -135,90 +142,22 @@
             )
         }
         @{
-            Id = 1
-            Dwords = 64
-            Crc = '0A8E897E'
-            PrimitiveOffset = 48
+            Id = 5
+            Dwords = 108
+            Crc = '4B534C2E'
+            PrimitiveOffset = 86
             Triangles = 1
+            Textured = $true
             Colors = @(
-                @{ Value = '3038'; Measured = $false }
+                @{ Value = 'FFFF'; Measured = $false }
             )
             Probes = @(
-                @{ Name = 'Centroid'; X = 320; Y = 213; Expect = 1 }
-                @{ Name = 'NearV0'; X = 175; Y = 128; Expect = 1 }
-                @{ Name = 'NearV1'; X = 465; Y = 128; Expect = 1 }
-                @{ Name = 'NearV2'; X = 320; Y = 385; Expect = 1 }
-                @{ Name = 'MidTop'; X = 320; Y = 130; Expect = 1 }
-                @{ Name = 'MidLeft'; X = 250; Y = 250; Expect = 1 }
-                @{ Name = 'MidRight'; X = 390; Y = 250; Expect = 1 }
-                @{ Name = 'Corner00'; X = 0; Y = 0; Expect = 0 }
-                @{ Name = 'CornerX0'; X = 639; Y = 0; Expect = 0 }
-                @{ Name = 'Corner0Y'; X = 0; Y = 479; Expect = 0 }
-                @{ Name = 'CornerXY'; X = 639; Y = 479; Expect = 0 }
-                @{ Name = 'OutsideTop'; X = 320; Y = 40; Expect = 0 }
-                @{ Name = 'OutsideLeft'; X = 40; Y = 400; Expect = 0 }
-                @{ Name = 'OutsideRight'; X = 600; Y = 400; Expect = 0 }
-            )
-        }
-        @{
-            Id = 2
-            Dwords = 64
-            Crc = '2660D903'
-            PrimitiveOffset = 48
-            Triangles = 1
-            Colors = @(
-                @{ Value = '1C3E'; Measured = $true }
-            )
-            Probes = @(
-                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 1 }
-                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 0 }
-                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 1 }
-                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 0 }
-                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
-            )
-        }
-        @{
-            Id = 3
-            Dwords = 64
-            Crc = '505EAD33'
-            PrimitiveOffset = 48
-            Triangles = 1
-            Colors = @(
-                @{ Value = 'F325'; Measured = $true }
-            )
-            Probes = @(
-                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 0 }
-                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 1 }
-                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 0 }
-                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 1 }
-                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
-            )
-        }
-        @{
-            Id = 4
-            Dwords = 80
-            Crc = '107EE186'
-            PrimitiveOffset = 48
-            Triangles = 2
-            Colors = @(
-                @{ Value = '1C3E'; Measured = $true }
-                @{ Value = 'F325'; Measured = $true }
-            )
-            Probes = @(
-                @{ Name = 'EdgeA'; X = 250; Y = 200; Expect = 65535 }
-                @{ Name = 'EdgeB'; X = 320; Y = 270; Expect = 65535 }
-                @{ Name = 'EdgeC'; X = 390; Y = 340; Expect = 65535 }
-                @{ Name = 'FlankRight'; X = 322; Y = 270; Expect = 1 }
-                @{ Name = 'FlankLeft'; X = 318; Y = 270; Expect = 2 }
-                @{ Name = 'UpperBody'; X = 420; Y = 200; Expect = 1 }
-                @{ Name = 'LowerBody'; X = 210; Y = 380; Expect = 2 }
-                @{ Name = 'OutsideEdge'; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'TexQ0'; X = 250; Y = 160; Expect = 16 }
+                @{ Name = 'TexQ1'; X = 400; Y = 160; Expect = 17 }
+                @{ Name = 'TexQ2'; X = 290; Y = 330; Expect = 18 }
+                @{ Name = 'TexQ3'; X = 350; Y = 330; Expect = 19 }
+                @{ Name = 'TexOutside'; X = 40; Y = 400; Expect = 0 }
+                @{ Name = 'TexCorner'; X = 0; Y = 0; Expect = 0 }
             )
         }
     )

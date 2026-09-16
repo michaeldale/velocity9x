@@ -825,6 +825,17 @@ static int emit_intel_scenes(void)
            (unsigned long)v9x_i9xx_scene_combined_crc());
     printf("SCENETOTALPROBES=%04X\n",
            (unsigned int)v9x_i9xx_scene_total_probes());
+    /*
+     * The four texture quadrant colours, for the capture validator.
+     *
+     * A probe expecting a quadrant is compared against one of these. Emitted
+     * rather than written into the validator, which would be a second place
+     * for four constants to drift from the blits that paint them.
+     */
+    for (index = 0ul; index < 4ul; ++index) {
+        printf("TEXQ%04X=%04X\n", (unsigned int)index,
+               (unsigned int)v9x_i9xx_texture_quadrant_color(index));
+    }
 
     for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
         if (v9x_i9xx_scene_at(index, &scene) != V9X_STATUS_OK) {
@@ -845,6 +856,11 @@ static int emit_intel_scenes(void)
                (unsigned long)v9x_i9xx_scene_crc(index));
         printf("SC%04XTRIS=%04X\n", (unsigned int)index,
                (unsigned int)scene.triangle_count);
+        /* Whether the scene paints and samples a texture. The validator needs
+         * it to know which scenes owe a texture-guard reading and which must
+         * not carry one. */
+        printf("SC%04XTEXTURED=%04X\n", (unsigned int)index,
+               (unsigned int)scene.textured);
         /*
          * Each triangle's colour as this chip is MEASURED to store it. The
          * validator needs it to compare a probe that expected a triangle

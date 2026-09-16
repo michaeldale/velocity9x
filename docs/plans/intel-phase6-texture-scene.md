@@ -113,6 +113,53 @@ authorisation. That is the shape to prefer: it needs no new risk decision, and
 a boot that carries two answered scenes is spending reads on questions already
 closed.
 
+## What was built, 2026-09-16
+
+Steps 1 through 4 are done and the local gate is green. What differs from the
+plan above, and why:
+
+- **The texture is 32x32, not 2x2.** Four quadrant blits of 16x16, because a
+  blit fills in dwords and two 16-bit texels share one - a 2x2 texture cannot
+  be painted a texel at a time. The grid is still two by two, which is what
+  tests addressing in both axes.
+- **The fourth quadrant colour is `07E0`, not the fill.** It was the fill for
+  one commit, and that made a probe reading `0842` mean either "sampled
+  quadrant 3" or "nothing drew here" - the scene would have reported a pass for
+  a draw that never happened. `07E0` is a bit pattern the blit writes verbatim,
+  so unlike the other three it carries no claim of having been read back from
+  this part; nothing in the scene depends on one.
+- **The scene table is two scenes, not six.** Ids 2, 3 and 4 retired and are
+  not reused; the texture takes id 5. This is the shape the section above
+  preferred, and it needs no further errata amendment: two draws against five
+  authorised.
+- **The decoder takes a texture RANGE rather than a flag.** `texture_bytes`
+  non-zero means textured, which is also what lets MAP_STATE's address be
+  checked against the reserve instead of trusted. A flag beside the range would
+  have been a second way to say the same thing, and the two could disagree.
+- **The texture guard page is now read.** It had been computed by the layout
+  since the texture was placed and read by nobody - a page reserved to prove
+  something and never asked. Each textured scene reads it after running and the
+  capture compares it against a pre-run reading, which is the independent answer
+  to "did a quadrant blit run past the end of the texture" that the decoder's
+  bounds check cannot give.
+- **Every scene now decodes before it is staged.** Phase 6 scenes had only ever
+  been CRC-checked, which says the stream is the one the generator saw and
+  nothing about whether it is safe to run. That stopped being academic with
+  MAP_STATE, which makes the GPU read an address of the driver's choosing.
+
+### What the capture will and will not fail on
+
+Split deliberately, because two questions are being asked at one pixel:
+
+- **Did a texel arrive?** Settled, and a failure. The four quadrant colours are
+  dwords the blits write verbatim and none is the fill, so a quadrant probe
+  reading something else means the texture never reached the target.
+- **Which quadrant did this coordinate land in?** Open, and reported. Reading
+  quadrant 2 where the build predicted 1 is the experiment's result. Failing on
+  it would let the boot confirm and never inform.
+
+Step 5, the boot, has not happened. Nothing here is hardware evidence.
+
 ## Kill criteria
 
 - **The audit cannot double-source the map or sampler encoding** and the

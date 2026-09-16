@@ -559,6 +559,10 @@ function Test-V9xIntel3dCapture {
         }
         $sceneGuardLow = Get-V9x3dHex32 -Values $values -Key 'GLow0'
         $sceneGuardUpp = Get-V9x3dHex32 -Values $values -Key 'GUpp0'
+        # The page past the texture, as the pre-run read found it. Required
+        # unconditionally: the driver reads it before it knows whether any
+        # scene is textured, so a capture without it did not run this build.
+        $sceneGuardTex = Get-V9x3dHex32 -Values $values -Key 'TexG0'
         for ($scene = 0; $scene -lt $reached; ++$scene) {
             $entry = @($generated.Scenes)[$scene]
             $prefix = "S$scene"
@@ -597,9 +601,21 @@ function Test-V9xIntel3dCapture {
             # submitted. Injecting a corrupted S0GLow passed before this,
             # which made the guards decorative in exactly the phase that
             # multiplied the number of draws that could damage them.
-            foreach ($guard in @(
-                    @{ Key = 'GLow'; Initial = $sceneGuardLow; What = 'lower' },
-                    @{ Key = 'GUpp'; Initial = $sceneGuardUpp; What = 'upper' })) {
+            # The texture guard is required only of a TEXTURED scene, and
+            # required to be ABSENT otherwise - a reading from a scene that
+            # painted nothing would be a read the budget did not allow for.
+            $sceneGuards = @(
+                @{ Key = 'GLow'; Initial = $sceneGuardLow; What = 'lower' },
+                @{ Key = 'GUpp'; Initial = $sceneGuardUpp; What = 'upper' })
+            if ($entry.Textured) {
+                $sceneGuards += @{ Key = 'TexG'; Initial = $sceneGuardTex
+                                   What = 'texture' }
+            } elseif ($values.ContainsKey($prefix + 'TexG')) {
+                throw ("INTEL3D0.TXT scene $scene carries ${prefix}TexG for a " +
+                       'scene the build declares untextured. That is an ' +
+                       'aperture read the published budget did not allow for.')
+            }
+            foreach ($guard in $sceneGuards) {
                 $name = $prefix + $guard.Key
                 if (-not $values.ContainsKey($name)) {
                     throw ("INTEL3D0.TXT scene $scene is missing $name. The " +
@@ -691,6 +707,63 @@ function Test-V9xIntel3dCapture {
                     $sceneMeasured += ("$key=" + ('{0:X8}' -f $actual))
                     continue
                 }
+                # A TEXTURE QUADRANT probe, expectations 16 through 19.
+                #
+                # Split deliberately into a part that fails and a part that
+                # reports, because two different questions are being asked at
+                # one pixel:
+                #
+                #  - Did the sampler put a TEXEL here at all? That is settled.
+                #    The four quadrant colours are dwords the blits write
+                #    verbatim and none of them is the fill, so a reading that
+                #    is not one of them means the texture never reached the
+                #    target - the texture path failed, and that is a failure.
+                #
+                #  - WHICH quadrant did this coordinate land in? That is the
+                #    open question and the only reason the boot is worth
+                #    taking. Reading quadrant 2 where the build predicted 1 is
+                #    the experiment's result, not a regression, and failing on
+                #    it would let the boot confirm and never inform.
+                if ($probes[$probe].Expect -ge 16 -and
+                        $probes[$probe].Expect -le 19) {
+                    $quadrants = @($generated.TextureQuadrants)
+                    if ($quadrants.Count -ne 4) {
+                        throw ('The generated table carries ' +
+                               "$($quadrants.Count) texture quadrant colours " +
+                               'where the build paints four. Without them a ' +
+                               'quadrant probe cannot be judged at all.')
+                    }
+                    $wanted = [Convert]::ToUInt32(
+                        $quadrants[$probes[$probe].Expect - 16], 16) -band 0xffff
+                    $landed = -1
+                    for ($q = 0; $q -lt 4; ++$q) {
+                        $colour = [Convert]::ToUInt32($quadrants[$q], 16) -band 0xffff
+                        if ($low -eq $colour -and $high -eq $colour) {
+                            $landed = $q
+                        }
+                    }
+                    if ($landed -lt 0) {
+                        $sceneBad += ("$key reads " + ('{0:X8}' -f $actual) +
+                                      ' which is no texture quadrant (' +
+                                      $probes[$probe].Name + '). The sampler ' +
+                                      'did not put a texel here.')
+                        continue
+                    }
+                    ++$sceneChecked
+                    if ($wanted -ne ($low -band 0xffff) -or
+                            $landed -ne ($probes[$probe].Expect - 16)) {
+                        $scenePredicted += ("$key sampled quadrant $landed " +
+                                            'where the build predicted ' +
+                                            "$($probes[$probe].Expect - 16) (" +
+                                            $probes[$probe].Name + ')')
+                    } else {
+                        $scenePredicted += ("$key sampled quadrant $landed " +
+                                            'as predicted (' +
+                                            $probes[$probe].Name + ')')
+                    }
+                    continue
+                }
+
                 $want = $null
                 if ($probes[$probe].Expect -eq 0) {
                     $want = [Convert]::ToUInt32($generated.Referencefill, 16) -band 0xffff
@@ -1142,6 +1215,7 @@ R0000=DEADBEEF'
         $s3.Add('ProbeApertureReads={0:X8}' -f [int]$generated.SceneTotalProbes)
         $s3.Add('DriverApertureReads={0:X8}' -f
                 ([int]$generated.SceneTotalProbes + 14))
+        $s3.Add('TexG0=5A5A5A5A')
         $s3.Add('MiniApertureReads=000002A6')
         $s3.Add('Phase4ApertureReads=00000421')
         $s3.Add('ExpectedApertureReads=000008E1')
@@ -1157,6 +1231,11 @@ R0000=DEADBEEF'
             # validator compares each scene against.
             $s3.Add(('{0}GLow=A5A5A5A5' -f $prefix))
             $s3.Add(('{0}GUpp=00000000' -f $prefix))
+            # Only a textured scene reads the page past the texture, and the
+            # validator refuses the key on a scene that does not.
+            if ($entry.Textured) {
+                $s3.Add(('{0}TexG=5A5A5A5A' -f $prefix))
+            }
             $s3.Add(('{0}PostErrOk=1' -f $prefix))
             $s3.Add(('{0}PostErrCount=00000009' -f $prefix))
             $s3.Add(('{0}PostErrFailIndex=FFFFFFFF' -f $prefix))
@@ -1172,6 +1251,12 @@ R0000=DEADBEEF'
                     $value = '1C3E1C3E'
                 } elseif ($probe.Expect -eq 0) {
                     $half = $generated.Referencefill.Substring(4)
+                    $value = $half + $half
+                } elseif ($probe.Expect -ge 16 -and $probe.Expect -le 19) {
+                    # The quadrant the build predicts. The clean fixture is
+                    # the prediction coming true; the mutations below cover
+                    # the other outcomes.
+                    $half = @($generated.TextureQuadrants)[$probe.Expect - 16]
                     $value = $half + $half
                 } else {
                     $half = @($entry.Colors)[$probe.Expect - 1].Value
@@ -1199,10 +1284,20 @@ R0000=DEADBEEF'
         # Each of these removes evidence rather than corrupting it, because
         # reporting on what is present instead of failing on what is absent is
         # the defect this file has now had four times.
+        # Scene 1 throughout where the scene does not matter, because it is
+        # the textured one: a removal it survives is a removal the texture path
+        # survives. The keys were S2, S3 and S4 until 2026-09-16, when the
+        # colour and edge scenes retired and this list named three scenes the
+        # build no longer has - removals that removed nothing.
         $s3Mutations = @(
-            @{ Drop = 'S2Crc='; Why = 'a scene missing its CRC' },
-            @{ Drop = 'S3Probes='; Why = 'a scene missing its probe count' },
-            @{ Drop = 'S4PX0007='; Why = 'the last probe of the last scene' },
+            @{ Drop = 'S1Crc='; Why = 'a scene missing its CRC' },
+            @{ Drop = 'S1Probes='; Why = 'a scene missing its probe count' },
+            @{ Drop = 'S1PX0005='; Why = 'the last probe of the last scene' },
+            @{ Drop = 'S1TexQ0='; Why = 'a quadrant probe missing its expectation' },
+            @{ Drop = 'S1TexG='
+               Why = 'a textured scene that never read the texture guard' },
+            @{ Drop = 'TexG0='
+               Why = 'a capture with no pre-run texture guard to compare against' },
             @{ Drop = 'S0Centroid='; Why = 'a probe missing its expectation' },
             @{ Drop = 'ScenesCompleted='
                Why = 'a capture that says neither how far it got nor that it stopped' },
@@ -1229,7 +1324,7 @@ R0000=DEADBEEF'
         # a presence test.
         $s3Corruptions = @(
             @{ From = 'Scenes={0:X8}' -f [int]$generated.SceneCount
-               To = 'Scenes=00000002'
+               To = 'Scenes=00000007'
                Why = 'a scene count that is not the build''s' },
             @{ From = 'S0Crc=' + @($generated.Scenes)[0].Crc
                To = 'S0Crc=DEADBEEF'
@@ -1248,19 +1343,54 @@ R0000=DEADBEEF'
             @{ From = 'S0PX0000=' + ($generated.Scenes[0].Colors[0].Value * 2)
                To = 'S0PX0000=DEADBEEF'
                Why = 'a scene pixel that is not what the scene expected' }
+            # A quadrant probe that read NO quadrant colour.
+            #
+            # This is the half of the texture result that is settled rather
+            # than open: the four colours are dwords the blits write verbatim
+            # and none is the fill, so a reading that is none of them means no
+            # texel arrived. The other half - which quadrant - is reported and
+            # is perturbed below instead.
+            @{ From = 'S1PX0000=' + (@($generated.TextureQuadrants)[0] * 2)
+               To = 'S1PX0000=DEADBEEF'
+               Why = 'a quadrant probe that sampled no texel at all' }
+            # And the FILL at a quadrant probe, which is what "nothing drew"
+            # looks like. Named separately from DEADBEEF because it is the
+            # plausible failure rather than an impossible one, and because
+            # quadrant 3 was the fill colour itself for one commit - which
+            # would have made this outcome pass.
+            @{ From = 'S1PX0003=' + (@($generated.TextureQuadrants)[3] * 2)
+               To = 'S1PX0003=' + ($generated.Referencefill.Substring(4) * 2)
+               Why = 'a quadrant probe that read the fill' }
+            # A quadrant blit whose address arithmetic ran past the texture.
+            # The decoder bounds each blit before the stream runs; this is the
+            # independent answer from memory afterwards, and the reason the
+            # guard page exists at all.
+            @{ From = 'S1TexG=5A5A5A5A'; To = 'S1TexG=1C3E1C3E'
+               Why = 'a scene that painted past the end of the texture' }
         )
         # Scene 1's colour is a PREDICTION. Its alternative outcomes must be
         # REPORTED, not rejected - 3018 is what a backend truncating green
         # would store, and that is the most interesting result the boot could
         # produce. A checker that called it a regression would let the
         # experiment confirm and never inform.
+        # Which quadrant a coordinate lands in is the OPEN question, so a probe
+        # reading a different quadrant from the predicted one must be reported
+        # and not rejected. Quadrant 0's probe is made to read quadrant 3 - the
+        # diagonally opposite corner, which is what a fully inverted addressing
+        # convention would produce and the most interesting outcome the boot
+        # could have.
+        #
+        # This replaces a perturbation of scene 1's predicted COLOUR, which was
+        # the colour experiment; that scene retired on 2026-09-16 and its
+        # report-only path now belongs to the quadrants.
         $predicted = @($s3 | ForEach-Object {
-            if ($_ -clike 'S1PX*=30383038') { ($_ -replace '30383038', '30183018') }
-            else { $_ }
+            if ($_ -ceq ('S1PX0000=' + (@($generated.TextureQuadrants)[0] * 2))) {
+                'S1PX0000=' + (@($generated.TextureQuadrants)[3] * 2)
+            } else { $_ }
         })
         if (($predicted -join "`n") -ceq ($s3 -join "`n")) {
-            throw ('The schema-3 fixture carries no scene-1 predicted colour ' +
-                   'to perturb; the report-only path is untested.')
+            throw ('The schema-3 fixture carries no quadrant probe to ' +
+                   'perturb; the report-only path is untested.')
         }
         $null = Test-V9xIntel3dCapture -Lines $predicted
 

@@ -423,12 +423,12 @@ static void test_decoder_accepts_golden(void)
     v9x_u32 index = 0xfffffffful;
 
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
               &index) == V9X_I9XX_P5_OK);
     CHECK(index == 0ul);
     /* The index argument is optional. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
               0) == V9X_I9XX_P5_OK);
 }
 
@@ -531,10 +531,148 @@ static void test_decoder_rejects_mutations(void)
         }
         stream[mutations[mutation].index] = mutations[mutation].value;
         reason = v9x_i9xx_decode_phase5_stream(
-            stream, 64ul, 0x006c2000ul, 0x00096000ul, &rejected);
+            stream, 64ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &rejected);
         CHECK(reason == mutations[mutation].reason);
         CHECK(rejected == mutations[mutation].rejected_at);
     }
+}
+
+/*
+ * The texture packets are allowed in a textured stream and refused in an
+ * untextured one - and the SAME bytes decide it, so the guard is the mode and
+ * not the packets.
+ *
+ * Built from the textured state block rather than by hand: a hand-written
+ * packet would test the decoder against a second author's idea of the
+ * encoding, and agreement between the two would then mean nothing about what
+ * the driver submits.
+ */
+static void test_decoder_texture_mode(void)
+{
+    struct v9x_i9xx_texture texture;
+    struct v9x_i9xx_sandbox_layout layout;
+    v9x_u32 stream[256];
+    v9x_u32 written = 0ul;
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 map_address = 0ul;
+    v9x_u32 scan;
+
+    CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
+          V9X_STATUS_OK);
+    texture.offset = layout.texture_offset;
+    texture.width = V9X_I9XX_TEXTURE_WIDTH;
+    texture.height = V9X_I9XX_TEXTURE_HEIGHT;
+    texture.pitch = layout.texture_pitch;
+
+    /*
+     * A complete textured stream, assembled from the same builders the scene
+     * uses, minus the paint - the decoder is an allowlist for 3D packets and
+     * the blits are checked by the blit builder's own bounds.
+     */
+    CHECK(v9x_i9xx_build_color_blt(
+              layout.target_offset,
+              V9X_I9XX_FILL_BLT_WIDTH, V9X_I9XX_FILL_BLT_HEIGHT,
+              (v9x_u16)layout.target_pitch, V9X_I9XX_FILL_DWORD,
+              layout.target_offset, layout.target_bytes,
+              stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
+    at += produced;
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+    CHECK(v9x_i9xx_build_textured_state(
+              layout.target_offset, layout.target_pitch,
+              V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT, &texture,
+              stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_sampling_program(
+              stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
+    at += produced;
+    {
+        struct v9x_i9xx_scene scene;
+        static const v9x_u32 u_bits[3] = {
+            0x00000000ul, 0x3f800000ul, 0x3f000000ul
+        };
+        static const v9x_u32 v_bits[3] = {
+            0x00000000ul, 0x00000000ul, 0x3f800000ul
+        };
+
+        CHECK(v9x_i9xx_scene_at(1ul, &scene) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_build_textured_run(
+                  scene.triangles, 1ul, u_bits, v_bits,
+                  V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
+                  stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
+        at += produced;
+    }
+    written = at;
+
+    /* Textured: accepted. */
+    CHECK(v9x_i9xx_decode_phase5_stream(
+              stream, written, layout.target_offset, layout.target_bytes,
+              layout.texture_offset, layout.texture_bytes, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* The very same dwords, declared untextured: refused, and at the map. */
+    CHECK(v9x_i9xx_decode_phase5_stream(
+              stream, written, layout.target_offset, layout.target_bytes,
+              0ul, 0ul, &index) == V9X_I9XX_P5_TEXTURE_FORBIDDEN);
+
+    /* Locate MAP_STATE's address dword, to mutate it. */
+    for (scan = 0ul; scan < written; ++scan) {
+        if ((stream[scan] & 0xffff0000ul) == V9X_I9XX_3DSTATE_MAP_STATE) {
+            map_address = scan + 2ul;
+        }
+    }
+    CHECK(map_address != 0ul);
+    CHECK(stream[map_address] == layout.texture_offset);
+
+    /*
+     * A map pointing somewhere other than the reserve is refused. This is the
+     * one dword in either packet that makes the GPU read memory of the
+     * driver's choosing, and on this part reading a page that is not ours is
+     * the access that hangs it.
+     */
+    stream[map_address] = layout.target_offset;
+    CHECK(v9x_i9xx_decode_phase5_stream(
+              stream, written, layout.target_offset, layout.target_bytes,
+              layout.texture_offset, layout.texture_bytes, &index) ==
+          V9X_I9XX_P5_TARGET_RANGE);
+    CHECK(index == map_address);
+    stream[map_address] = layout.texture_offset;
+
+    /*
+     * And a textured stream with the texture packets REMOVED, which S2 alone
+     * would not catch: without MAP_STATE the sampler reads whatever map the
+     * engine last had.
+     */
+    {
+        v9x_u32 trimmed[256];
+        v9x_u32 map_start = map_address - 2ul;
+        v9x_u32 packets = v9x_i9xx_map_state_extent(1ul) +
+                          v9x_i9xx_sampler_state_extent(1ul);
+
+        for (scan = 0ul; scan < map_start; ++scan) {
+            trimmed[scan] = stream[scan];
+        }
+        for (scan = map_start + packets; scan < written; ++scan) {
+            trimmed[scan - packets] = stream[scan];
+        }
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  trimmed, written - packets,
+                  layout.target_offset, layout.target_bytes,
+                  layout.texture_offset, layout.texture_bytes, &index) ==
+              V9X_I9XX_P5_MISSING_PACKET);
+    }
+
+    /*
+     * The other direction: the untextured Phase 5 stream declared textured is
+     * refused too, because its S2 says no coordinate set. A sampler reading
+     * coordinate zero everywhere draws one flat texel over the triangle, which
+     * looks like a plausible picture.
+     */
+    CHECK(v9x_i9xx_decode_phase5_stream(
+              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
+              layout.texture_offset, layout.texture_bytes, &index) ==
+          V9X_I9XX_P5_TEXTURE_FORBIDDEN);
 }
 
 static void test_decoder_structural_refusals(void)
@@ -543,21 +681,21 @@ static void test_decoder_structural_refusals(void)
 
     /* Truncation anywhere is refused, never read past. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 23ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 23ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
               &index) != V9X_I9XX_P5_OK);
     /* A stream missing its target description decodes clean packet by packet
      * and must still be refused. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 22ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 22ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
               &index) == V9X_I9XX_P5_MISSING_PACKET);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              0, 59ul, 0x006c2000ul, 0x00096000ul, &index) ==
+              0, 59ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &index) ==
           V9X_I9XX_P5_TRUNCATED);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 0ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 0ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul,
               &index) == V9X_I9XX_P5_TRUNCATED);
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0ul,
+              v9x_i9xx_phase5_golden, 66ul, 0x006c2000ul, 0ul, 0ul, 0ul,
               &index) == V9X_I9XX_P5_TRUNCATED);
     /* A Phase 4 stream must not satisfy the Phase 5 decoder. */
     {
@@ -566,7 +704,7 @@ static void test_decoder_structural_refusals(void)
             0x006c1100ul, 0x55aa33ccul, 0x02000000ul, 0x00000000ul
         };
         CHECK(v9x_i9xx_decode_phase5_stream(
-                  phase4, 8ul, 0x006c2000ul, 0x00096000ul, &index) !=
+                  phase4, 8ul, 0x006c2000ul, 0x00096000ul, 0ul, 0ul, &index) !=
               V9X_I9XX_P5_OK);
     }
 }
@@ -765,273 +903,246 @@ static void test_scene_zero_matches_phase5(void)
 }
 
 /*
- * Scene 1 differs from scene 0 in the colour dwords and NOTHING else.
+ * Is a probe's SAMPLE CENTRE strictly inside the triangle?
  *
- * Identical geometry is the point: it makes the conversion question
- * answerable without the rasteriser's behaviour entering the comparison. If
- * any non-colour dword differed, that claim would be false.
+ * HOST-SIDE ONLY. It is a property check on the scene table, not behaviour the
+ * driver has any use for, and the cross products are signed 32-bit multiplies
+ * - on 16-bit Watcom those are __I4M calls in the default CODE segment that a
+ * near call out of I9XXCODE cannot reach. The edge predicate this replaces was
+ * in the driver module first and produced exactly two E2052 relocations.
+ *
+ * The centre is (x + 1/2, y + 1/2), where DSTORG's half-pixel bias puts it, so
+ * the centre terms are doubled to clear the halves. That scales every cross
+ * product by the same factor of two, which changes no sign. Integer
+ * throughout: a float would decide an exactness question by rounding.
  */
-static void test_scene_one_differs_only_in_colour(void)
+static v9x_u16 v9x_test_probe_inside(
+    const struct v9x_i9xx_triangle *triangle, v9x_u16 x, v9x_u16 y)
+{
+    long sign = 0L;
+    v9x_u32 edge;
+
+    if (triangle == 0) {
+        return V9X_FALSE;
+    }
+    for (edge = 0ul; edge < 3ul; ++edge) {
+        v9x_u32 next = (edge + 1ul) % 3ul;
+        long dx = (long)triangle->x[next] - (long)triangle->x[edge];
+        long dy = (long)triangle->y[next] - (long)triangle->y[edge];
+        long cx = (2L * (long)x) + 1L - (2L * (long)triangle->x[edge]);
+        long cy = (2L * (long)y) + 1L - (2L * (long)triangle->y[edge]);
+        long cross = (dx * cy) - (dy * cx);
+
+        /* Exactly ON an edge is not inside. Such a probe's colour would
+         * depend on the fill rule, which is a separate open question and not
+         * one this scene is equipped to answer. */
+        if (cross == 0L) {
+            return V9X_FALSE;
+        }
+        if (sign == 0L) {
+            sign = (cross > 0L) ? 1L : -1L;
+        } else if ((cross > 0L) != (sign > 0L)) {
+            return V9X_FALSE;
+        }
+    }
+    return V9X_TRUE;
+}
+
+/*
+ * Scene 1 is the texture scene, and it is scene 0's triangle.
+ *
+ * Identical geometry is the point: the rasteriser contributes nothing new, so
+ * anything scene 1 shows that scene 0 did not is the texture path.
+ */
+static void test_scene_one_is_textured(void)
 {
     struct v9x_i9xx_scene zero;
     struct v9x_i9xx_scene one;
-    v9x_u32 zero_stream[160];
-    v9x_u32 one_stream[160];
-    v9x_u32 zero_written = 0ul;
-    v9x_u32 one_written = 0ul;
-    v9x_u32 index;
-    v9x_u32 differences = 0ul;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 vertex;
+    v9x_u32 primitive;
 
     CHECK(v9x_i9xx_scene_at(0ul, &zero) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_scene_at(1ul, &one) == V9X_STATUS_OK);
-    CHECK(one.id == 1ul);
+
+    /* Id 5, not 1: ids 1 through 4 belong to the retired colour and edge
+     * scenes, and a capture citing scene 1 is one of those. */
+    CHECK(one.id == 5ul);
+    CHECK(one.textured != 0ul);
+    CHECK(zero.textured == 0ul);
+
+    CHECK(one.triangle_count == zero.triangle_count);
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        CHECK(one.triangles[0].x[vertex] == zero.triangles[0].x[vertex]);
+        CHECK(one.triangles[0].y[vertex] == zero.triangles[0].y[vertex]);
+    }
+
+    /* And the vertex colour is NOT the fill and not scene 0's colour: it is
+     * unread by a textured fragment, so its only job is to be recognisable if
+     * it is somehow read. */
+    CHECK(one.triangles[0].color == V9X_I9XX_TEX_VERTEX_COLOR_BGRA);
     CHECK(one.triangles[0].color != zero.triangles[0].color);
-
-    CHECK(v9x_i9xx_build_scene_stream(
-              &zero, zero_stream, 160ul, &zero_written) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_scene_stream(
-              &one, one_stream, 160ul, &one_written) == V9X_STATUS_OK);
-    CHECK(zero_written == one_written);
-
-    if (zero_written == one_written) {
-        for (index = 0ul; index < zero_written; ++index) {
-            if (zero_stream[index] != one_stream[index]) {
-                ++differences;
-                /* Every difference must BE a colour dword. */
-                CHECK(zero_stream[index] == V9X_I9XX_TRI_COLOR_BGRA);
-                CHECK(one_stream[index] == 0xff2e03c8ul);
-            }
-        }
-    }
-    /*
-     * One per vertex, three vertices. Asserted rather than left implicit:
-     * zero differences would also satisfy a loop that only checks that
-     * differences are colours.
-     */
-    CHECK(differences == 3ul);
-
-    /*
-     * The prediction, recorded here so a colour change cannot quietly leave
-     * it behind. Green 3 is the value that separates rounding from
-     * truncation, which is the open question this scene exists to close.
-     */
-    CHECK(v9x_i9xx_rgb565_round(0x2eul, 0x03ul, 0xc8ul) == 0x3038u);
-}
-
-/*
- * Does a probe's SAMPLE CENTRE lie exactly on the given triangle edge?
- *
- * HOST-SIDE ONLY, and deliberately so. It is a property check on the scene
- * table, not behaviour the driver has any use for, and it does not belong in
- * I9XXCODE: the cross product is two signed 32-bit multiplies, which on
- * 16-bit Watcom are __I4M calls in the default CODE segment that a near call
- * cannot reach. It was in the driver module first and produced exactly two
- * E2052 relocations.
- *
- * The centre is (x + 1/2, y + 1/2) - where DSTORG's half-pixel bias puts it -
- * so every term is doubled once to clear the halves. Integer throughout: this
- * decides an exactness question, and a float would decide it by rounding.
- */
-static v9x_u16 v9x_test_probe_on_edge(
-    const struct v9x_i9xx_triangle *triangle, v9x_u32 first, v9x_u32 second,
-    v9x_u16 x, v9x_u16 y)
-{
-    long dx;
-    long dy;
-    long cx;
-    long cy;
-
-    if (triangle == 0 || first > 2ul || second > 2ul || first == second) {
-        return V9X_FALSE;
-    }
-    dx = (long)triangle->x[second] - (long)triangle->x[first];
-    dy = (long)triangle->y[second] - (long)triangle->y[first];
-    cx = (2L * (long)x) + 1L - (2L * (long)triangle->x[first]);
-    cy = (2L * (long)y) + 1L - (2L * (long)triangle->y[first]);
-
-    if (cx * dy == cy * dx) {
-        return V9X_TRUE;
-    }
-    return V9X_FALSE;
-}
-
-/*
- * The shared edge must pass through SAMPLE CENTRES, or the edge scenes cannot
- * observe an inclusion rule at all.
- *
- * This is the test the first version of the scene needed and did not have. Its
- * diagonal ran (200,150)-(440,330), satisfying 4y = 3x, and substituting a
- * centre gives 3i - 4j = 0.5 - an integer equal to a non-integer, so no centre
- * in the square lies on it. The scene would have produced a capture that
- * looked like evidence and answered nothing.
- *
- * Both directions are asserted. A predicate that returned V9X_TRUE for
- * everything would satisfy the first half alone.
- */
-static void test_edge_probes_sit_on_sample_centres(void)
-{
-    struct v9x_i9xx_scene scene;
-    struct v9x_i9xx_triangle bad;
-    v9x_u32 index;
-    v9x_u32 on_edge = 0ul;
-    v9x_u32 probe;
-
-    /*
-     * The shared edge runs from vertex 0 to the vertex diagonally opposite,
-     * and WHICH vertex that is depends on the triangle, not on the scene.
-     * The upper triangle is (top-left, top-right, bottom-right), so its
-     * diagonal is 0->2; the lower is (top-left, bottom-right, bottom-left),
-     * so its diagonal is 0->1. Scene 4's triangles[0] is the upper one, so it
-     * takes 2 like scene 2 - getting that wrong is what this test caught on
-     * its first run, against vertex 1, which is the upper triangle's TOP
-     * edge.
-     */
-    for (index = 2ul; index <= 4ul; ++index) {
-        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
-        on_edge = 0ul;
-        for (probe = 0ul; probe < scene.probe_count; ++probe) {
-            v9x_u16 hit = v9x_test_probe_on_edge(
-                &scene.triangles[0],
-                0ul, (index == 3ul) ? 1ul : 2ul,
-                scene.probes[probe].x, scene.probes[probe].y);
-            if (scene.probes[probe].expect == V9X_I9XX_PROBE_MEASURE) {
-                /* Every MEASURE probe is on the edge, or it measures
-                 * nothing. */
-                CHECK(hit == V9X_TRUE);
-                ++on_edge;
-            } else {
-                /* And every other probe is off it, or a flank reading would
-                 * be an edge reading under another name. */
-                CHECK(hit == V9X_FALSE);
-            }
-        }
-        /* Three, asserted: zero MEASURE probes would satisfy the loop. */
-        CHECK(on_edge == 3ul);
+    CHECK(v9x_i9xx_rgb565_round(0xfful, 0xfful, 0xfful) ==
+          V9X_I9XX_TEX_VERTEX_COLOR_565);
+    CHECK((v9x_u32)V9X_I9XX_TEX_VERTEX_COLOR_565 !=
+          (one.fill_dword & 0xfffful));
+    for (vertex = 0ul; vertex < 4ul; ++vertex) {
+        CHECK((v9x_u32)V9X_I9XX_TEX_VERTEX_COLOR_565 !=
+              v9x_i9xx_texture_quadrant_color(vertex));
     }
 
-    /*
-     * The predicate, against the geometry that failed. Slope 3/4 from
-     * (200,150): no sample centre anywhere on it.
-     */
-    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
-    bad = scene.triangles[0];
-    bad.x[2] = 440ul;
-    bad.y[2] = 330ul;
-    for (probe = 200ul; probe < 441ul; ++probe) {
-        CHECK(v9x_test_probe_on_edge(&bad, 0ul, 2ul,
-                                     (v9x_u16)probe,
-                                     (v9x_u16)((probe * 3ul) / 4ul)) ==
-              V9X_FALSE);
-    }
-
-    /* Its own argument refusals. */
-    CHECK(v9x_test_probe_on_edge(0, 0ul, 2ul, 250u, 200u) == V9X_FALSE);
-    CHECK(v9x_test_probe_on_edge(&bad, 1ul, 1ul, 250u, 200u) == V9X_FALSE);
-    CHECK(v9x_test_probe_on_edge(&bad, 0ul, 3ul, 250u, 200u) == V9X_FALSE);
-}
-
-/*
- * The three edge scenes must share probe COORDINATES exactly, or coverage
- * cannot be compared pixel by pixel - which is the only way double coverage
- * is observable.
- *
- * Two opaque triangles in one scene cannot reveal it: the second overwrites
- * the first, and the result is indistinguishable from coverage by the second
- * alone. So each triangle is drawn on its own and the two are compared, and
- * that comparison is meaningless unless the probes are at the same pixels.
- */
-static void test_edge_scenes_share_probe_coordinates(void)
-{
-    struct v9x_i9xx_scene upper;
-    struct v9x_i9xx_scene lower;
-    struct v9x_i9xx_scene both;
-    v9x_u32 probe;
-    v9x_u32 disagreements = 0ul;
-
-    CHECK(v9x_i9xx_scene_at(2ul, &upper) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_scene_at(3ul, &lower) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_scene_at(4ul, &both) == V9X_STATUS_OK);
-
-    CHECK(upper.probe_count == lower.probe_count);
-    CHECK(upper.probe_count == both.probe_count);
-    CHECK(upper.probe_count == 8ul);
-
-    for (probe = 0ul; probe < upper.probe_count; ++probe) {
-        CHECK(upper.probes[probe].x == lower.probes[probe].x);
-        CHECK(upper.probes[probe].y == lower.probes[probe].y);
-        CHECK(upper.probes[probe].x == both.probes[probe].x);
-        CHECK(upper.probes[probe].y == both.probes[probe].y);
-        /* The expectations must DIFFER between the two single-triangle
-         * scenes at the flanks, or drawing them separately tells us
-         * nothing new. */
-        if (upper.probes[probe].expect != lower.probes[probe].expect) {
-            ++disagreements;
-        }
-    }
-    /* Two flanks plus the two bodies. Asserted as a number: identical
-     * expectations everywhere would pass a "coordinates match" loop and
-     * make the whole experiment vacuous. */
-    CHECK(disagreements == 4ul);
-
-    /*
-     * Each single-triangle scene draws ONE triangle. If either drew both,
-     * the overwrite problem would be back and the comparison would be
-     * between two identical scenes.
-     */
-    CHECK(upper.triangle_count == 1ul);
-    CHECK(lower.triangle_count == 1ul);
-    CHECK(both.triangle_count == 2ul);
-
-    /* The combined scene's two triangles are exactly the two drawn alone,
-     * or it is not the combination of them. */
-    CHECK(both.triangles[0].color == upper.triangles[0].color);
-    CHECK(both.triangles[1].color == lower.triangles[0].color);
-    for (probe = 0ul; probe < 3ul; ++probe) {
-        CHECK(both.triangles[0].x[probe] == upper.triangles[0].x[probe]);
-        CHECK(both.triangles[0].y[probe] == upper.triangles[0].y[probe]);
-        CHECK(both.triangles[1].x[probe] == lower.triangles[0].x[probe]);
-        CHECK(both.triangles[1].y[probe] == lower.triangles[0].y[probe]);
-    }
-
-    /* Both edge colours are already measured, so the edge rule is the single
-     * unknown in these scenes. */
-    CHECK(upper.triangles[0].color == V9X_I9XX_TRI_COLOR_BGRA);
-    CHECK(lower.triangles[0].color == 0xfff86428ul);
-}
-
-/* The combined edge scene emits both triangles under one primitive command. */
-static void test_edge_combined_is_one_primitive(void)
-{
-    struct v9x_i9xx_scene scene;
-    v9x_u32 stream[160];
-    v9x_u32 written = 0ul;
-    v9x_u32 header;
-
-    CHECK(v9x_i9xx_scene_at(4ul, &scene) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_scene_stream(
-              &scene, stream, 160ul, &written) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_scene_extent(&scene) == written);
-
-    /*
-     * Six vertices under a single _3DPRIMITIVE, not two commands of three.
-     * The length field counts every vertex dword less one: 6 * 5 - 1 = 29.
-     */
-    /*
-     * Located by the published primitive offset rather than counted back from
-     * the end: two triangles make the stream odd, so it carries a TRAILING
-     * qword pad and counting back would land on that instead.
-     */
-    header = stream[v9x_i9xx_scene_primitive_offset(&scene)];
-    CHECK(header == (V9X_I9XX_3DPRIMITIVE_INLINE |
-                     V9X_I9XX_PRIM3D_TRILIST | 29ul));
-
-    /*
-     * Prefix 48, six vertices at five dwords plus the command is 31, and the
-     * 79 that makes is padded to 80. Written out because the pad is the whole
-     * subject of the 2026-09-16 capture.
-     */
-    CHECK(written == 80ul);
+    CHECK(v9x_i9xx_build_scene_stream(&one, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_extent(&one) == written);
     CHECK((written & 1ul) == 0ul);
+
+    /*
+     * The paint comes FIRST, before the fill and before any state. Its last
+     * dword is the MI_FLUSH that gets the texels out of the render cache;
+     * a sampler reading a texture the blits had not reached would return
+     * whatever the page held and look like an addressing fault.
+     */
+    CHECK(stream[0] == V9X_I9XX_XY_COLOR_BLT);
+    CHECK(stream[v9x_i9xx_texture_paint_extent() - 1ul] == V9X_I9XX_MI_FLUSH);
+
+    /* The primitive is where the executor's published boundary says, it is
+     * qword-aligned, and it carries SEVEN dwords per vertex. */
+    primitive = v9x_i9xx_scene_primitive_offset(&one);
+    CHECK((primitive & 1ul) == 0ul);
+    CHECK(stream[primitive] == (V9X_I9XX_3DPRIMITIVE_INLINE |
+                                V9X_I9XX_PRIM3D_TRILIST | 20ul));
+    CHECK(written - primitive == v9x_i9xx_textured_run_dwords(1ul));
+
+    /* Scene 0's stream is still the untextured one, five dwords per vertex.
+     * Asserted because every change here runs through a shared builder. */
+    CHECK(v9x_i9xx_build_scene_stream(&zero, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+    primitive = v9x_i9xx_scene_primitive_offset(&zero);
+    CHECK(stream[primitive] == (V9X_I9XX_3DPRIMITIVE_INLINE |
+                                V9X_I9XX_PRIM3D_TRILIST | 14ul));
+}
+
+/*
+ * The emitted texture coordinates are the affine map of the triangle's own
+ * bounding box onto 0..1, and each quadrant probe sits in the quadrant it
+ * claims.
+ *
+ * Recomputed from the STREAM, not from the table: the coordinates the scene
+ * table never sees are the ones the GPU reads, and a probe list that agreed
+ * with a comment while the emitter disagreed with both is exactly the defect
+ * this project keeps finding.
+ *
+ * Which TEXEL a given (u, v) reads is the open question - that is what the
+ * hardware run answers. What is established here is only that the four probes
+ * fall one per quarter of coordinate space, so that whatever the answer is,
+ * four different quadrant colours can distinguish it.
+ */
+static void test_texture_probe_quadrants(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 primitive;
+    v9x_u32 vertex;
+    v9x_u32 probe;
+    v9x_u32 min_x;
+    v9x_u32 max_x;
+    v9x_u32 min_y;
+    v9x_u32 max_y;
+    v9x_u32 seen = 0ul;
+    /* 0, 0.5 and 1 as IEEE-754 bit patterns, indexed in halves. The emitter
+     * writes bit patterns because the driver's converter takes integers and
+     * cannot express a half. */
+    static const v9x_u32 half_bits[3] = {
+        0x00000000ul, 0x3f000000ul, 0x3f800000ul
+    };
+
+    CHECK(v9x_i9xx_scene_at(1ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+    primitive = v9x_i9xx_scene_primitive_offset(&scene);
+
+    min_x = scene.triangles[0].x[0];
+    max_x = scene.triangles[0].x[0];
+    min_y = scene.triangles[0].y[0];
+    max_y = scene.triangles[0].y[0];
+    for (vertex = 1ul; vertex < 3ul; ++vertex) {
+        if (scene.triangles[0].x[vertex] < min_x) {
+            min_x = scene.triangles[0].x[vertex];
+        }
+        if (scene.triangles[0].x[vertex] > max_x) {
+            max_x = scene.triangles[0].x[vertex];
+        }
+        if (scene.triangles[0].y[vertex] < min_y) {
+            min_y = scene.triangles[0].y[vertex];
+        }
+        if (scene.triangles[0].y[vertex] > max_y) {
+            max_y = scene.triangles[0].y[vertex];
+        }
+    }
+    CHECK(max_x > min_x);
+    CHECK(max_y > min_y);
+
+    /*
+     * Each vertex's u and v are its position in that box. Every vertex of this
+     * triangle lands on 0, a half or 1 in both axes, so the check is exact:
+     * (p - min) * 2 must divide the span, and the quotient indexes half_bits.
+     */
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        v9x_u32 at = primitive + 1ul +
+                     (vertex * V9X_I9XX_TEXTURED_VERTEX_DWORDS);
+        v9x_u32 span_x = max_x - min_x;
+        v9x_u32 span_y = max_y - min_y;
+        v9x_u32 halves_x = (scene.triangles[0].x[vertex] - min_x) * 2ul;
+        v9x_u32 halves_y = (scene.triangles[0].y[vertex] - min_y) * 2ul;
+
+        CHECK((halves_x % span_x) == 0ul);
+        CHECK((halves_y % span_y) == 0ul);
+        /* Coordinates come AFTER the colour: dwords 5 and 6 of the seven. */
+        CHECK(stream[at + 5ul] == half_bits[halves_x / span_x]);
+        CHECK(stream[at + 6ul] == half_bits[halves_y / span_y]);
+    }
+
+    for (probe = 0ul; probe < scene.probe_count; ++probe) {
+        v9x_u32 x = (v9x_u32)scene.probes[probe].x;
+        v9x_u32 y = (v9x_u32)scene.probes[probe].y;
+        v9x_u16 inside = v9x_test_probe_inside(&scene.triangles[0],
+                                               scene.probes[probe].x,
+                                               scene.probes[probe].y);
+
+        if (scene.probes[probe].expect == V9X_I9XX_PROBE_FILL) {
+            /* Outside the triangle, or it is not reading the fill. */
+            CHECK(inside == V9X_FALSE);
+            continue;
+        }
+
+        /*
+         * A quadrant probe must be INSIDE, and its quadrant follows from the
+         * affine map: u >= 1/2 when the doubled centre offset reaches the
+         * span. All integer, all exact.
+         */
+        CHECK(inside == V9X_TRUE);
+        {
+            v9x_u32 right = (((2ul * x) + 1ul - (2ul * min_x)) >=
+                             (max_x - min_x)) ? 1ul : 0ul;
+            v9x_u32 lower = (((2ul * y) + 1ul - (2ul * min_y)) >=
+                             (max_y - min_y)) ? 1ul : 0ul;
+            v9x_u32 quadrant = (lower * 2ul) + right;
+
+            CHECK(scene.probes[probe].expect ==
+                  (v9x_u16)(V9X_I9XX_PROBE_QUADRANT0 + quadrant));
+            /* Each quadrant claimed once, so four probes cannot all be
+             * asserting the same one. */
+            CHECK((seen & (1ul << quadrant)) == 0ul);
+            seen |= (1ul << quadrant);
+        }
+    }
+    CHECK(seen == 0x0ful);
+
+    /* The predicate's own refusals, and a point far outside. */
+    CHECK(v9x_test_probe_inside(0, 250u, 200u) == V9X_FALSE);
+    CHECK(v9x_test_probe_inside(&scene.triangles[0], 0u, 0u) == V9X_FALSE);
 }
 
 /*
@@ -1054,12 +1165,13 @@ static void test_scene_probe_budget(void)
     CHECK(v9x_i9xx_scene_total_probes() == total);
 
     /*
-     * 14 + 14 + 8 + 8 + 8. Written out because the budget rule is that no
-     * boot roughly doubles the last one that completed, and the last capture
-     * that completed performed about 45 aperture reads. Changing the scene
-     * table past this without re-reading that rule should fail here.
+     * 14 for the Phase 5 regression, 6 for the texture. Written out because
+     * the budget rule is that no boot roughly doubles the last one that
+     * completed; the intel44 capture performed 1806 reads across five scenes,
+     * and this table is smaller than that one in every dimension. Changing the
+     * scene table past this without re-reading that rule should fail here.
      */
-    CHECK(total == 52ul);
+    CHECK(total == 20ul);
 }
 
 /* The table itself, and its refusals. */
@@ -1071,12 +1183,14 @@ static void test_scene_table(void)
     v9x_u32 written = 0ul;
 
     /*
-     * Five scenes, and five is also what the 2026-09-16 errata amendment
-     * authorises. Both asserted, and their RELATIONSHIP asserted, because the
-     * failure this guards against is a build quietly defining more draws than
-     * were agreed - which the count alone would not show.
+     * Two scenes, against five authorised by the 2026-09-16 errata amendment.
+     * Both asserted, and their RELATIONSHIP asserted, because the failure this
+     * guards against is a build quietly defining more draws than were agreed -
+     * which the count alone would not show. The margin is deliberate: the
+     * three retired scenes had answered their questions, and a boot carrying
+     * them would spend aperture reads on settled ones.
      */
-    CHECK(v9x_i9xx_scene_count() == 5ul);
+    CHECK(v9x_i9xx_scene_count() == 2ul);
     CHECK(v9x_i9xx_scene_authorised_draws() == 5ul);
     CHECK(v9x_i9xx_scene_count() <= v9x_i9xx_scene_authorised_draws());
     CHECK(v9x_i9xx_scene_count() != 0ul);
@@ -1107,10 +1221,11 @@ static void test_scene_table(void)
 
     /* Out of range refuses AND clears, rather than leaving the caller's stack
      * contents looking like a scene. */
-    CHECK(v9x_i9xx_scene_at(5ul, &scene) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) != V9X_STATUS_OK);
     CHECK(scene.triangle_count == 0ul);
     CHECK(scene.id == 0ul);
-    CHECK(v9x_i9xx_scene_crc(5ul) == 0ul);
+    CHECK(scene.textured == 0ul);
+    CHECK(v9x_i9xx_scene_crc(2ul) == 0ul);
     CHECK(v9x_i9xx_scene_at(0ul, 0) != V9X_STATUS_OK);
 
     /* Capacity, at the boundary rather than far from it. */
@@ -1130,6 +1245,48 @@ static void test_scene_table(void)
           V9X_STATUS_OK);
     scene.triangle_count = 0ul;
     CHECK(v9x_i9xx_scene_extent(&scene) == 0ul);
+}
+
+/*
+ * EVERY scene decodes under the allowlist, textured or not.
+ *
+ * The driver runs this check before staging each scene. Asserted here too
+ * because the driver's copy only fires on the machine, and a scene that the
+ * decoder refuses is a boot spent producing "DECODE-REFUSED" and nothing else.
+ */
+static void test_every_scene_decodes(void)
+{
+    struct v9x_i9xx_scene scene;
+    struct v9x_i9xx_sandbox_layout layout;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 rejected = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
+          V9X_STATUS_OK);
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+              V9X_STATUS_OK);
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  (scene.textured != 0ul) ? layout.texture_offset : 0ul,
+                  (scene.textured != 0ul) ? layout.texture_bytes : 0ul,
+                  &rejected) == V9X_I9XX_P5_OK);
+
+        /*
+         * And each is refused under the OTHER mode. Without this the decoder
+         * could be ignoring the mode entirely and every assertion above would
+         * still hold.
+         */
+        CHECK(v9x_i9xx_decode_phase5_stream(
+                  stream, written, layout.target_offset, layout.target_bytes,
+                  (scene.textured != 0ul) ? 0ul : layout.texture_offset,
+                  (scene.textured != 0ul) ? 0ul : layout.texture_bytes,
+                  &rejected) != V9X_I9XX_P5_OK);
+    }
 }
 
 /* The combined CRC, which is what the arm gate compares. */
@@ -1251,9 +1408,17 @@ static void test_scene_primitive_offset(void)
         CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
         offset = v9x_i9xx_scene_primitive_offset(&scene);
 
-        /* Fill 7 + state 31 + shader 7 + probe 2. The same for every scene:
-         * only the triangle run after it varies. */
-        CHECK(offset == 48ul);
+        /*
+         * Untextured: fill 7 + state 31 + shader 7 + probe 2 = 47, padded to
+         * 48. Textured: paint 25 + fill 7 + state 41 + shader 10 + probe 2 =
+         * 85, padded to 86.
+         *
+         * Literals, deliberately. The point of this test is a SECOND opinion
+         * on a number the builder also computes, and deriving it from the same
+         * extent helpers would make it the same opinion twice - which is
+         * exactly how loader.asm's boundary drifted.
+         */
+        CHECK(offset == ((scene.textured != 0ul) ? 86ul : 48ul));
 
         written = 0ul;
         CHECK(v9x_i9xx_build_scene_stream(
@@ -1273,10 +1438,16 @@ static void test_scene_primitive_offset(void)
          * pad is present for two triangles and absent for one, and a test
          * that allowed any surplus would not notice a run that had grown.
          */
-        CHECK(written - offset >=
-              v9x_i9xx_triangle_run_dwords(scene.triangle_count));
-        CHECK(written - offset <=
-              v9x_i9xx_triangle_run_dwords(scene.triangle_count) + 1ul);
+        {
+            v9x_u32 run = (scene.textured != 0ul)
+                              ? v9x_i9xx_textured_run_dwords(
+                                    scene.triangle_count)
+                              : v9x_i9xx_triangle_run_dwords(
+                                    scene.triangle_count);
+
+            CHECK(written - offset >= run);
+            CHECK(written - offset <= run + 1ul);
+        }
     }
 
     /* A scene that cannot be built has no boundary, rather than a plausible
@@ -1799,7 +1970,18 @@ static void test_texture_paint(void)
     CHECK(v9x_i9xx_texture_quadrant_color(0ul) == 0x1c3eul);
     CHECK(v9x_i9xx_texture_quadrant_color(1ul) == 0xf325ul);
     CHECK(v9x_i9xx_texture_quadrant_color(2ul) == 0x3038ul);
-    CHECK(v9x_i9xx_texture_quadrant_color(3ul) == 0x0842ul);
+    CHECK(v9x_i9xx_texture_quadrant_color(3ul) == 0x07e0ul);
+    /*
+     * And none of them is the FILL. A quadrant painted the fill colour would
+     * read the same whether the sampler worked or nothing drew at all, so the
+     * scene would report a pass for a draw that never happened.
+     */
+    for (quadrant = 0ul; quadrant < 4ul; ++quadrant) {
+        CHECK(v9x_i9xx_texture_quadrant_color(quadrant) !=
+              (V9X_I9XX_FILL_DWORD & 0xfffful));
+        CHECK(seen[quadrant] != V9X_I9XX_FILL_DWORD);
+    }
+
     /* Not a quadrant: zero, which no caller may read as a colour. */
     CHECK(v9x_i9xx_texture_quadrant_color(4ul) == 0ul);
 
@@ -1915,6 +2097,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_accepts_golden();
     test_decoder_rejects_mutations();
     test_decoder_structural_refusals();
+    test_decoder_texture_mode();
     test_published_offsets_locate_the_packets();
     test_rgb565_round();
     test_map_state();
@@ -1925,11 +2108,10 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_textured_run();
     test_scene_table();
     test_scene_zero_matches_phase5();
-    test_scene_one_differs_only_in_colour();
-    test_edge_probes_sit_on_sample_centres();
-    test_edge_scenes_share_probe_coordinates();
-    test_edge_combined_is_one_primitive();
+    test_scene_one_is_textured();
+    test_texture_probe_quadrants();
     test_scene_probe_budget();
+    test_every_scene_decodes();
     test_scene_combined_crc();
     test_scene_primitive_offset();
     test_submission_boundaries_are_qword_aligned();

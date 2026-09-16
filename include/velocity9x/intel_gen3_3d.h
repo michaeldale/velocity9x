@@ -245,6 +245,23 @@
  * would look the same. The probes are worth reading and cannot settle it.
  */
 #define V9X_I9XX_TRI_COLOR_BGRA          ((v9x_u32)0xff1587f9ul)
+
+/*
+ * The per-vertex colour of the TEXTURED triangle: opaque white, which
+ * renders to 0xffff under either rounding rule.
+ *
+ * A textured fragment takes its colour from the sampler, so this is present
+ * because the vertex layout demands a colour and is otherwise unread. Its
+ * value is chosen to be DIAGNOSTIC rather than meaningful: 0xffff is not any
+ * of the four quadrant colours and not the fill, so a fragment that somehow
+ * took the vertex colour instead of the texel reads as white and says so.
+ *
+ * The fill would have been the obvious choice and is wrong: a probe reading
+ * the fill could then mean either "took the vertex colour" or "nothing was
+ * drawn here at all", and those are different faults.
+ */
+#define V9X_I9XX_TEX_VERTEX_COLOR_BGRA   ((v9x_u32)0xfffffffful)
+#define V9X_I9XX_TEX_VERTEX_COLOR_565    ((v9x_u16)0xffffu)
 /*
  * MEASURED on the 945GSE, 2026-09-15, build 83f24ec: all seven interior probes
  * read 0x1c3e. round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30.
@@ -350,6 +367,14 @@ v9x_u16 v9x_i9xx_rgb565_round(v9x_u32 red, v9x_u32 green, v9x_u32 blue);
 /* Dwords before the 3D state block: the GPU fill plus its MI_FLUSH. */
 v9x_u32 v9x_i9xx_phase5_fill_extent(void);
 v9x_u32 v9x_i9xx_3d_state_extent(void);
+/* The same block plus MAP_STATE and SAMPLER_STATE, and S2 declaring one 2D
+ * coordinate set. One emission path serves both. */
+v9x_u32 v9x_i9xx_textured_state_extent(void);
+v9x_status v9x_i9xx_build_textured_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_i9xx_build_3d_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
@@ -565,6 +590,16 @@ v9x_status v9x_i9xx_build_sampling_program(
 #define V9X_I9XX_PROBE_FILL              ((v9x_u16)0u)
 #define V9X_I9XX_PROBE_TRIANGLE0         ((v9x_u16)1u)
 #define V9X_I9XX_PROBE_TRIANGLE1         ((v9x_u16)2u)
+/*
+ * The probe expects the colour of texture quadrant n. Four more values, so
+ * a probe can name which quadrant it should have read - which is the whole
+ * addressing question, and a single TEXTURE expectation could not express
+ * it.
+ */
+#define V9X_I9XX_PROBE_QUADRANT0         ((v9x_u16)16u)
+#define V9X_I9XX_PROBE_QUADRANT1         ((v9x_u16)17u)
+#define V9X_I9XX_PROBE_QUADRANT2         ((v9x_u16)18u)
+#define V9X_I9XX_PROBE_QUADRANT3         ((v9x_u16)19u)
 #define V9X_I9XX_PROBE_MEASURE           ((v9x_u16)0xffffu)
 
 struct v9x_i9xx_probe {
@@ -616,6 +651,13 @@ struct v9x_i9xx_scene {
      */
     v9x_u32 probe_count;
     struct v9x_i9xx_probe probes[V9X_I9XX_SCENE_MAX_PROBES];
+    /*
+     * Non-zero when this scene paints and samples a texture. The texture
+     * itself is not here: it is placed by the sandbox layout, which is the
+     * only thing that knows where the reserve ends up, and a copy of its
+     * address in the scene table would be a second place for it to drift.
+     */
+    v9x_u32 textured;
 };
 
 /*
@@ -725,9 +767,19 @@ v9x_u32 v9x_i9xx_phase5_primitive_offset(void);
 v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 
 /* src\chipsets\intel\i9xx_3d_decode.c */
+/*
+ * `texture_bytes` non-zero declares the stream TEXTURED, and the texture is
+ * then required to be exactly [texture_offset, texture_offset + texture_bytes)
+ * - which is what lets MAP_STATE's address be checked rather than trusted.
+ *
+ * Zero means untextured, and every texture packet is refused. A flag beside
+ * the range would have been a second way to say the same thing, and the two
+ * could disagree; the range alone cannot.
+ */
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     v9x_u32 target_offset, v9x_u32 target_bytes,
+    v9x_u32 texture_offset, v9x_u32 texture_bytes,
     v9x_u32 *rejected_index);
 
 #endif /* VELOCITY9X_INTEL_GEN3_3D_H */

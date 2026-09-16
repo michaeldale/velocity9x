@@ -315,6 +315,18 @@ $dataLines.Add(("    SceneCombinedCrc = '{0}'" -f $values['SCENECOMBINEDCRC']))
 $dataLines.Add(("    SceneArmCrc = '{0}'" -f $values['SCENEARMCRC']))
 $dataLines.Add(('    SceneTotalProbes = {0}' -f
                 [Convert]::ToInt32($values['SCENETOTALPROBES'], 16)))
+# The texture's four quadrant colours, as the blits paint them. A probe that
+# expects a quadrant is compared against one of these, and they come from the
+# builder rather than from the validator so the two cannot drift.
+$dataLines.Add('    TextureQuadrants = @(')
+for ($quadrant = 0; $quadrant -lt 4; ++$quadrant) {
+    $key = 'TEXQ{0:X4}' -f $quadrant
+    if (-not $values.ContainsKey($key)) {
+        throw "The emitted stream is missing $key."
+    }
+    $dataLines.Add(("        '{0}'" -f $values[$key]))
+}
+$dataLines.Add('    )')
 $dataLines.Add('    Scenes = @(')
 for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
     $tag = 'SC{0:X4}' -f $scene
@@ -329,6 +341,16 @@ for ($scene = 0; $scene -lt $sceneCount; ++$scene) {
                     [Convert]::ToInt32($values[($tag + 'PRIM')], 16)))
     $dataLines.Add(('            Triangles = {0}' -f
                     [Convert]::ToInt32($values[($tag + 'TRIS')], 16)))
+    if (-not $values.ContainsKey($tag + 'TEXTURED')) {
+        throw "The emitted scene table is missing $($tag)TEXTURED."
+    }
+    # '$true'/'$false' as TEXT, for the same reason the measured flag is:
+    # Import-PowerShellDataFile evaluates a data file and refuses a bare True.
+    $textured = '$false'
+    if ([Convert]::ToInt32($values[($tag + 'TEXTURED')], 16) -ne 0) {
+        $textured = '$true'
+    }
+    $dataLines.Add(('            Textured = {0}' -f $textured))
     $dataLines.Add('            Colors = @(')
     for ($tri = 0; $tri -lt [Convert]::ToInt32($values[($tag + 'TRIS')], 16); ++$tri) {
         $ctag = '{0}T{1:X4}COLOR' -f $tag, $tri

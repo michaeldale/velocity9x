@@ -53,41 +53,15 @@
 #define V9X_I9XX_SCENE1_COLOR_BGRA  ((v9x_u32)0xff2e03c8ul)
 
 /*
- * The second measured colour, for the edge scenes. 0xfff86428 stores 0xf325.
+ * The shared-edge geometry and its second colour lived here until
+ * 2026-09-16, when three scenes measured the fill rule for a slope-1
+ * diagonal and were retired.
  *
- * Both edge colours are ALREADY MEASURED, which keeps the edge rule the single
- * unknown in those scenes. Carrying an unmeasured colour into them would put
- * two unknowns in one result.
+ * Its hard-won property - that a sample centre must lie exactly ON the
+ * edge, or no inclusion rule can be observed at all - is recorded in
+ * docs\issues\2026-09-15-intel-edge-fill-rule-unmeasured.md,
+ * which is where a scene for another slope should start rather than here.
  */
-#define V9X_I9XX_MEASURED_COLOR_B   ((v9x_u32)0xfff86428ul)
-
-/*
- * The edge square, and why its diagonal has slope EXACTLY ONE.
- *
- * The hardware samples at pixel centres - DSTORG's half-pixel bias in both
- * axes, double-sourced in the packet audit - so a sample point is
- * (i + 0.5, j + 0.5). An exact-edge inclusion rule can only be observed at a
- * sample point that lies ON the edge, and whether any does is a property of
- * the geometry, not of the probes.
- *
- * The first version of this scene used (200,150)-(440,330), whose diagonal
- * satisfies 4y = 3x. Substituting a sample centre gives 4j + 2 = 3i + 1.5, so
- * 3i - 4j = 0.5: the left side is an integer and the right is not, and NOT ONE
- * sample centre in the whole square lies on that edge. The scene could not
- * have distinguished any inclusion rule, and would have produced a
- * confident-looking capture that answered nothing.
- *
- * Slope one fixes it. The edge is y = x - 50, and a centre lies on it whenever
- * j + 0.5 = i + 0.5 - 50, that is j = i - 50 - which has 241 integer solutions
- * across this square. Searched exhaustively rather than reasoned about, and
- * the host test recomputes it in integer arithmetic through its own
- * v9x_test_probe_on_edge, which is host-side because the cross product is a
- * 32-bit multiply that does not link from this segment.
- */
-#define V9X_I9XX_EDGE_LEFT          200ul
-#define V9X_I9XX_EDGE_TOP           150ul
-#define V9X_I9XX_EDGE_RIGHT         440ul
-#define V9X_I9XX_EDGE_BOTTOM        390ul
 
 /*
  * Ids are ASSIGNED, not derived from the table index.
@@ -98,9 +72,13 @@
  */
 #define V9X_I9XX_SCENE_ID_PHASE5    ((v9x_u32)0ul)
 #define V9X_I9XX_SCENE_ID_COLOR     ((v9x_u32)1ul)
-#define V9X_I9XX_SCENE_ID_EDGE_UP   ((v9x_u32)2ul)
-#define V9X_I9XX_SCENE_ID_EDGE_LOW  ((v9x_u32)3ul)
-#define V9X_I9XX_SCENE_ID_EDGE_BOTH ((v9x_u32)4ul)
+/*
+ * 2, 3 and 4 were the shared-edge scenes, answered and retired. Not
+ * reused: a capture citing scene 2 means the edge experiment, and a new
+ * scene wearing that number would make the two indistinguishable in every
+ * record that mentions it.
+ */
+#define V9X_I9XX_SCENE_ID_TEXTURE   ((v9x_u32)5ul)
 
 /*
  * The MI probe, immediately before each scene's 3D work. Worth its two dwords
@@ -118,7 +96,22 @@
  * authorisation should fail here rather than on the machine.
  */
 #define V9X_I9XX_SCENE_AUTHORISED_DRAWS ((v9x_u32)5ul)
-#define V9X_I9XX_SCENE_COUNT        ((v9x_u32)5ul)
+/*
+ * TWO scenes, down from five.
+ *
+ * The colour question was answered on 2026-09-16 and the edge question
+ * for one slope in the same boot, so three of the five had done their
+ * work. A boot carrying answered scenes spends aperture reads on closed
+ * questions, and the read budget is the one number this part is measured
+ * to care about.
+ *
+ * Scene 0 stays because it is the only thing that says a change altered
+ * nothing - it is what validated the depth removal and the qword padding.
+ *
+ * Retiring rather than growing also keeps this well inside the five-draw
+ * authorisation, so no further risk decision is needed.
+ */
+#define V9X_I9XX_SCENE_COUNT        ((v9x_u32)2ul)
 
 /*
  * The three shared-edge probe pixels, and the two flanking columns.
@@ -176,6 +169,7 @@ static void v9x_i9xx_scene_clear(struct v9x_i9xx_scene *out)
     out->fill_dword = 0ul;
     out->triangle_count = 0ul;
     out->probe_count = 0ul;
+    out->textured = 0ul;
     for (index = 0ul; index < V9X_I9XX_SCENE_MAX_TRIANGLES; ++index) {
         v9x_i9xx_scene_triangle(&out->triangles[index],
                                 0ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul, V9X_FALSE);
@@ -224,56 +218,32 @@ static void v9x_i9xx_scene_phase5_probes(struct v9x_i9xx_scene *scene)
 }
 
 /*
- * The edge probes, IDENTICAL COORDINATES in all three edge scenes.
+ * Where the triangle's texture coordinates put each probe.
  *
- * That is what makes coverage comparable pixel by pixel. Two opaque triangles
- * in one scene cannot reveal double coverage - the second simply overwrites
- * the first, and the result is indistinguishable from coverage by the second
- * alone - so the question is answered by drawing each triangle ON ITS OWN and
- * comparing:
- *
- *     upper alone   lower alone   conclusion
- *     covered       covered       DOUBLE coverage
- *     covered       fill          cleanly the upper triangle's
- *     fill          covered       cleanly the lower triangle's
- *     fill          fill          a GAP - neither claims the pixel
- *
- * The combined scene then shows what the hardware produces when both arrive
- * under one primitive, which is the case a real mesh presents. It is read
- * against the two single-triangle scenes, never on its own.
- *
- * The edge pixels themselves are always MEASURE. What they hold is the thing
- * being measured, and an expectation there would be a guess written down as
- * evidence.
+ * The coordinates run 0..1 across the triangle's own bounding box, so a
+ * probe's quadrant follows from where it sits in that box rather than
+ * from where it sits in the triangle. These four land one per quadrant,
+ * and the host test recomputes that from the coordinates rather than
+ * trusting the list.
  */
-static void v9x_i9xx_scene_edge_probes(
-    struct v9x_i9xx_scene *scene, v9x_u16 right_of, v9x_u16 left_of)
+static void v9x_i9xx_scene_texture_probes(struct v9x_i9xx_scene *scene)
 {
-    v9x_i9xx_scene_probe(scene, "EdgeA",
-                         V9X_I9XX_EDGE_PROBE_A_X,
-                         V9X_I9XX_EDGE_PROBE_A_X - V9X_I9XX_EDGE_PROBE_DY,
-                         V9X_I9XX_PROBE_MEASURE);
-    v9x_i9xx_scene_probe(scene, "EdgeB",
-                         V9X_I9XX_EDGE_PROBE_B_X,
-                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
-                         V9X_I9XX_PROBE_MEASURE);
-    v9x_i9xx_scene_probe(scene, "EdgeC",
-                         V9X_I9XX_EDGE_PROBE_C_X,
-                         V9X_I9XX_EDGE_PROBE_C_X - V9X_I9XX_EDGE_PROBE_DY,
-                         V9X_I9XX_PROBE_MEASURE);
-    v9x_i9xx_scene_probe(scene, "FlankRight",
-                         V9X_I9XX_EDGE_PROBE_B_X + V9X_I9XX_EDGE_FLANK,
-                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
-                         right_of);
-    v9x_i9xx_scene_probe(scene, "FlankLeft",
-                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_FLANK,
-                         V9X_I9XX_EDGE_PROBE_B_X - V9X_I9XX_EDGE_PROBE_DY,
-                         left_of);
-    /* Well inside each half, where no edge rule can reach. */
-    v9x_i9xx_scene_probe(scene, "UpperBody", 420u, 200u, right_of);
-    v9x_i9xx_scene_probe(scene, "LowerBody", 210u, 380u, left_of);
-    /* Outside the square entirely, in every edge scene. */
-    v9x_i9xx_scene_probe(scene, "OutsideEdge", 40u, 400u,
+    v9x_i9xx_scene_probe(scene, "TexQ0", 250u, 160u,
+                         V9X_I9XX_PROBE_QUADRANT0);
+    v9x_i9xx_scene_probe(scene, "TexQ1", 400u, 160u,
+                         V9X_I9XX_PROBE_QUADRANT1);
+    v9x_i9xx_scene_probe(scene, "TexQ2", 290u, 330u,
+                         V9X_I9XX_PROBE_QUADRANT2);
+    v9x_i9xx_scene_probe(scene, "TexQ3", 350u, 330u,
+                         V9X_I9XX_PROBE_QUADRANT3);
+    /*
+     * And the fill, outside the triangle entirely. A scene that sampled
+     * everywhere - or that drew nothing at all - would otherwise look the
+     * same at four interior probes as one that worked.
+     */
+    v9x_i9xx_scene_probe(scene, "TexOutside", 40u, 400u,
+                         V9X_I9XX_PROBE_FILL);
+    v9x_i9xx_scene_probe(scene, "TexCorner", 0u, 0u,
                          V9X_I9XX_PROBE_FILL);
 }
 
@@ -333,87 +303,30 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
     }
 
     /*
-     * Scene 1: the same geometry, a different colour. Identical geometry on
-     * purpose - it means any difference between scenes 0 and 1 is the colour
-     * and nothing else, so the conversion question is answered without the
-     * rasteriser's behaviour entering the comparison.
+     * Scene 1: the TEXTURE.
+     *
+     * Same triangle as scene 0, so the geometry contributes nothing new
+     * and anything that differs is the texture path.
+     *
+     * The per-vertex colour is white and unread; see
+     * V9X_I9XX_TEX_VERTEX_COLOR_BGRA for why that particular unread value. It
+     * is marked UNMEASURED because it is: nothing has stored white on this
+     * part. No probe expects it, so the capture never compares against it -
+     * but a record claiming a measurement nobody took is how a prediction
+     * becomes evidence.
      */
-    if (index == 1ul) {
-        out->id = V9X_I9XX_SCENE_ID_COLOR;
-        out->triangle_count = 1ul;
-        v9x_i9xx_scene_triangle(&out->triangles[0],
-                                (v9x_u32)V9X_I9XX_TRI_X0,
-                                (v9x_u32)V9X_I9XX_TRI_Y0,
-                                (v9x_u32)V9X_I9XX_TRI_X1,
-                                (v9x_u32)V9X_I9XX_TRI_Y1,
-                                (v9x_u32)V9X_I9XX_TRI_X2,
-                                (v9x_u32)V9X_I9XX_TRI_Y2,
-                                V9X_I9XX_SCENE1_COLOR_BGRA,
-                                /* A PREDICTION. 0x3038 is what
-                                 * rounding gives; the point of
-                                 * the scene is to find out. */
-                                V9X_FALSE);
-        v9x_i9xx_scene_phase5_probes(out);
-        return V9X_STATUS_OK;
-    }
-
-    /*
-     * Scene 2: the UPPER triangle alone - the half right of the diagonal.
-     * Vertices: top-left, top-right, bottom-right.
-     */
-    if (index == 2ul) {
-        out->id = V9X_I9XX_SCENE_ID_EDGE_UP;
-        out->triangle_count = 1ul;
-        v9x_i9xx_scene_triangle(&out->triangles[0],
-                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
-                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
-                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                                V9X_I9XX_TRI_COLOR_BGRA, V9X_TRUE);
-        /* Right of the diagonal is this scene's triangle; left is fill,
-         * because the lower triangle is not drawn here at all. */
-        v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
-                                   V9X_I9XX_PROBE_FILL);
-        return V9X_STATUS_OK;
-    }
-
-    /*
-     * Scene 3: the LOWER triangle alone - the half left of the diagonal.
-     * Vertices: top-left, bottom-right, bottom-left. Same shared edge, same
-     * probe coordinates, opposite expectations.
-     */
-    if (index == 3ul) {
-        out->id = V9X_I9XX_SCENE_ID_EDGE_LOW;
-        out->triangle_count = 1ul;
-        v9x_i9xx_scene_triangle(&out->triangles[0],
-                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
-                                V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                                V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
-                                V9X_I9XX_MEASURED_COLOR_B, V9X_TRUE);
-        v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_FILL,
-                                   V9X_I9XX_PROBE_TRIANGLE0);
-        return V9X_STATUS_OK;
-    }
-
-    /*
-     * Scene 4: both triangles under one primitive, upper first. This is the
-     * case a real mesh presents, and it is read against scenes 2 and 3 rather
-     * than on its own - by itself it cannot separate double coverage from
-     * exclusive ownership, because the second triangle simply overwrites.
-     */
-    out->id = V9X_I9XX_SCENE_ID_EDGE_BOTH;
-    out->triangle_count = 2ul;
+    out->id = V9X_I9XX_SCENE_ID_TEXTURE;
+    out->textured = 1ul;
+    out->triangle_count = 1ul;
     v9x_i9xx_scene_triangle(&out->triangles[0],
-                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
-                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_TOP,
-                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                            V9X_I9XX_TRI_COLOR_BGRA, V9X_TRUE);
-    v9x_i9xx_scene_triangle(&out->triangles[1],
-                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_TOP,
-                            V9X_I9XX_EDGE_RIGHT, V9X_I9XX_EDGE_BOTTOM,
-                            V9X_I9XX_EDGE_LEFT, V9X_I9XX_EDGE_BOTTOM,
-                            V9X_I9XX_MEASURED_COLOR_B, V9X_TRUE);
-    v9x_i9xx_scene_edge_probes(out, V9X_I9XX_PROBE_TRIANGLE0,
-                               V9X_I9XX_PROBE_TRIANGLE1);
+                            (v9x_u32)V9X_I9XX_TRI_X0,
+                            (v9x_u32)V9X_I9XX_TRI_Y0,
+                            (v9x_u32)V9X_I9XX_TRI_X1,
+                            (v9x_u32)V9X_I9XX_TRI_Y1,
+                            (v9x_u32)V9X_I9XX_TRI_X2,
+                            (v9x_u32)V9X_I9XX_TRI_Y2,
+                            V9X_I9XX_TEX_VERTEX_COLOR_BGRA, V9X_FALSE);
+    v9x_i9xx_scene_texture_probes(out);
     return V9X_STATUS_OK;
 }
 
@@ -430,18 +343,32 @@ v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene)
      * seven dwords short.
      */
     {
-        v9x_u32 prefix = V9X_I9XX_SCENE_FILL_DWORDS +
-                         v9x_i9xx_3d_state_extent() +
-                         v9x_i9xx_fragment_program_extent() +
-                         V9X_I9XX_SCENE_PROBE_DWORDS;
+        v9x_u32 prefix;
         v9x_u32 total;
+
+        if (scene->textured != 0ul) {
+            /* The paint comes first, then the same shape with the textured
+             * state block and the sampling program. */
+            prefix = v9x_i9xx_texture_paint_extent() +
+                     V9X_I9XX_SCENE_FILL_DWORDS +
+                     v9x_i9xx_textured_state_extent() +
+                     v9x_i9xx_sampling_program_extent() +
+                     V9X_I9XX_SCENE_PROBE_DWORDS;
+        } else {
+            prefix = V9X_I9XX_SCENE_FILL_DWORDS +
+                     v9x_i9xx_3d_state_extent() +
+                     v9x_i9xx_fragment_program_extent() +
+                     V9X_I9XX_SCENE_PROBE_DWORDS;
+        }
 
         /* Both pads, computed the same way the builder applies them. The
          * primitive boundary and the draw boundary must each be qword
          * aligned; see the builder for the measurement. */
         prefix += (prefix & 1ul);
         total = prefix +
-                v9x_i9xx_triangle_run_dwords(scene->triangle_count);
+                ((scene->textured != 0ul)
+                     ? v9x_i9xx_textured_run_dwords(scene->triangle_count)
+                     : v9x_i9xx_triangle_run_dwords(scene->triangle_count));
         total += (total & 1ul);
         return total;
     }
@@ -473,7 +400,9 @@ v9x_u32 v9x_i9xx_scene_primitive_offset(const struct v9x_i9xx_scene *scene)
     if (extent == 0ul) {
         return 0ul;
     }
-    run = v9x_i9xx_triangle_run_dwords(scene->triangle_count);
+    run = (scene->textured != 0ul)
+              ? v9x_i9xx_textured_run_dwords(scene->triangle_count)
+              : v9x_i9xx_triangle_run_dwords(scene->triangle_count);
     if (run == 0ul || run >= extent) {
         return 0ul;
     }
@@ -495,6 +424,13 @@ v9x_status v9x_i9xx_build_scene_stream(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_i9xx_sandbox_layout layout;
+    /*
+     * ONE description of the texture, for the paint and the state block both.
+     * Two would be two places for the geometry to drift, and a paint that
+     * disagreed with the sampler would draw a plausible wrong picture instead
+     * of failing.
+     */
+    struct v9x_i9xx_texture texture;
     v9x_u32 at = 0ul;
     v9x_u32 produced = 0ul;
 
@@ -514,7 +450,30 @@ v9x_status v9x_i9xx_build_scene_stream(
     }
 
     /*
-     * The fill, first, and the GPU performs it. The CPU bulk-filling 600 KiB
+     * The TEXTURE first, painted by the GPU, before the target is even
+     * filled.
+     *
+     * Order matters: the paint ends with an MI_FLUSH, so the texels are out of
+     * the render cache before anything samples them. Painting it after the
+     * state block would leave the sampler reading a texture the blits had not
+     * reached.
+     */
+    texture.offset = layout.texture_offset;
+    texture.width = V9X_I9XX_TEXTURE_WIDTH;
+    texture.height = V9X_I9XX_TEXTURE_HEIGHT;
+    texture.pitch = layout.texture_pitch;
+
+    if (scene->textured != 0ul) {
+        if (v9x_i9xx_build_texture_paint(&texture, stream + at,
+                                         capacity - at, &produced) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+    }
+
+    /*
+     * The fill, and the GPU performs it. The CPU bulk-filling 600 KiB
      * through GMADR immediately before the GPU reads adjacent memory is the
      * closest thing in this design to erratum 12's own description of its
      * trigger, and the errata gate opened on condition that it not be done
@@ -540,19 +499,37 @@ v9x_status v9x_i9xx_build_scene_stream(
      * it - bit 2 is an inhibit, the sign-inverted field the audit flagged. */
     stream[at++] = V9X_I9XX_MI_FLUSH;
 
-    if (v9x_i9xx_build_3d_state(
-            layout.target_offset, layout.target_pitch,
-            V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
-            stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
-        return V9X_STATUS_INSUFFICIENT_MEMORY;
-    }
-    at += produced;
+    if (scene->textured != 0ul) {
+        if (v9x_i9xx_build_textured_state(
+                layout.target_offset, layout.target_pitch,
+                V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT, &texture,
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+        /* The SAMPLING program - texld straight to the output colour. The
+         * untextured one moves the interpolated diffuse colour instead, and a
+         * textured scene running it would draw the vertex colour. */
+        if (v9x_i9xx_build_sampling_program(
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+    } else {
+        if (v9x_i9xx_build_3d_state(
+                layout.target_offset, layout.target_pitch,
+                V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
 
-    if (v9x_i9xx_build_fragment_program(
-            stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
-        return V9X_STATUS_INSUFFICIENT_MEMORY;
+        if (v9x_i9xx_build_fragment_program(
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
     }
-    at += produced;
 
     if (capacity - at < V9X_I9XX_SCENE_PROBE_DWORDS) {
         return V9X_STATUS_INSUFFICIENT_MEMORY;
@@ -585,7 +562,32 @@ v9x_status v9x_i9xx_build_scene_stream(
         stream[at++] = V9X_I9XX_MI_NOOP;
     }
 
-    if (v9x_i9xx_build_triangle_run(
+    if (scene->textured != 0ul) {
+        /*
+         * Coordinates spanning the triangle's own bounding box, 0..1 in each
+         * axis, so every quadrant of the texture lands somewhere inside the
+         * triangle. Vertex 0 is the top-left corner of that box, vertex 1 the
+         * top-right, vertex 2 the bottom-middle - which is the triangle this
+         * scene draws, and the coordinates follow it rather than being chosen.
+         *
+         * Bit patterns, because the converter this driver uses takes integers
+         * and cannot express a half. Only 0, 0.5 and 1 are needed and all
+         * three are written out.
+         */
+        static const v9x_u32 u_bits[3] = {
+            0x00000000ul, 0x3f800000ul, 0x3f000000ul
+        };
+        static const v9x_u32 v_bits[3] = {
+            0x00000000ul, 0x00000000ul, 0x3f800000ul
+        };
+
+        if (v9x_i9xx_build_textured_run(
+                scene->triangles, scene->triangle_count, u_bits, v_bits,
+                V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+    } else if (v9x_i9xx_build_triangle_run(
             scene->triangles, scene->triangle_count,
             V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
             stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
