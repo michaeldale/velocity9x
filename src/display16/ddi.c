@@ -120,8 +120,9 @@ extern WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row);
 extern WORD v9x_modes16_highcolor(void);
 extern WORD v9x_modes16_highcolor_setting(void);
 extern const char *v9x_modes16_layout_text(void);
-extern void v9x_modes16_resolve_layout(WORD d3d_state);
+extern void v9x_modes16_resolve_layout(WORD d3d_state, WORD engine_wants_555);
 extern void v9x_dd_d3d_configure(void);
+extern WORD v9x_dd_engine_wants_555(void);
 extern WORD v9x_dd_d3d_state_code(void);
 extern V9X_HW16_MODE v9x_runtime_modes[];
 extern struct v9x_mode_masks v9x_runtime_masks[];
@@ -1161,7 +1162,8 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * refreshes v9x_active_vbe_mode for the row the query stage selected.
      */
     v9x_dd_d3d_configure();
-    v9x_modes16_resolve_layout(v9x_dd_d3d_state_code());
+    v9x_modes16_resolve_layout(v9x_dd_d3d_state_code(),
+                               v9x_dd_engine_wants_555());
     if (v9x_selected_mode != 0) {
         v9x_apply_mode(v9x_selected_mode);
     }

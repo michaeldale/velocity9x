@@ -80,7 +80,8 @@ struct v9x_mode_masks {
  * Trio64 with Direct3D=0 resolves to NONE and lands on 5:6:5 without this
  * file knowing what a Trio64 is.
  */
-v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state);
+v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state,
+                              v9x_u16 engine_wants_555);
 
 /*
  * The 5:5:5 VESA mode number paired with a 5:6:5 one, or zero when there is

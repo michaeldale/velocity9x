@@ -29,6 +29,9 @@ extern void FAR PASCAL V9xDdInvalidate(void);
  * shared block, which is before DDRAW ever reads them.
  */
 void v9x_dd_d3d_configure(void);
+/* Whether this chip's hardware Direct3D wants a 5:5:5 desktop. Only the
+ * ViRGE's S3D unit does; Gen3 wants 5:6:5. */
+WORD v9x_dd_engine_wants_555(void);
 
 /*
  * The resolved state, for the Direct3DMode= diagnostics key. Returns a static

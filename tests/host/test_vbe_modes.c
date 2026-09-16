@@ -1004,31 +1004,55 @@ static void test_555_mode_pairs(void)
 static void test_highcolor_resolve(void)
 {
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
-                                    V9X_D3D_STATE_HARDWARE) ==
+                                    V9X_D3D_STATE_HARDWARE, V9X_TRUE) ==
               V9X_HIGHCOLOR_555);
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
-                                    V9X_D3D_STATE_SOFTWARE) ==
+                                    V9X_D3D_STATE_SOFTWARE, V9X_TRUE) ==
               V9X_HIGHCOLOR_565);
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
-                                    V9X_D3D_STATE_NONE) == V9X_HIGHCOLOR_565);
-    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
-                                    V9X_D3D_STATE_DISABLED) ==
+                                    V9X_D3D_STATE_NONE, V9X_TRUE) ==
               V9X_HIGHCOLOR_565);
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
-                                    V9X_D3D_STATE_UNIMPLEMENTED) ==
+                                    V9X_D3D_STATE_DISABLED, V9X_TRUE) ==
+              V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_UNIMPLEMENTED, V9X_TRUE) ==
               V9X_HIGHCOLOR_565);
 
-    /* Explicit wins in both directions. */
+    /*
+     * AN ENGINE THAT DOES NOT WANT 5:5:5 KEEPS 5:6:5, and this is the case
+     * the third argument was added for.
+     *
+     * 555 was the ViRGE's requirement and this function applied it to the word
+     * HARDWARE, which was every hardware engine there was. Gen3 is the second,
+     * and every surface this project has measured on it is 5:6:5 - the fill
+     * words, the probes and the 565 conversion fitted across 24 channels. A
+     * Gen3 machine resolving 555 would have switched the desktop under streams
+     * built for 565, and it was reachable: on a re-enable the engine's windows
+     * are already mapped, so Direct3D resolves HARDWARE at the point the
+     * layout is decided. Nothing else in the boot would have said so.
+     */
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_AUTO,
+                                    V9X_D3D_STATE_HARDWARE, V9X_FALSE) ==
+              V9X_HIGHCOLOR_565);
+
+    /* Explicit wins in both directions, and over both engines. */
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_565,
-                                    V9X_D3D_STATE_HARDWARE) ==
+                                    V9X_D3D_STATE_HARDWARE, V9X_TRUE) ==
               V9X_HIGHCOLOR_565);
     MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_555,
-                                    V9X_D3D_STATE_NONE) == V9X_HIGHCOLOR_555);
-
-    /* A value nobody defined is automatic. */
-    MODECHECK(v9x_highcolor_resolve(24u, V9X_D3D_STATE_HARDWARE) ==
+                                    V9X_D3D_STATE_NONE, V9X_FALSE) ==
               V9X_HIGHCOLOR_555);
-    MODECHECK(v9x_highcolor_resolve(1u, V9X_D3D_STATE_NONE) ==
+    MODECHECK(v9x_highcolor_resolve(V9X_HIGHCOLOR_555,
+                                    V9X_D3D_STATE_HARDWARE, V9X_FALSE) ==
+              V9X_HIGHCOLOR_555);
+
+    /* A value nobody defined is automatic, and still asks the engine. */
+    MODECHECK(v9x_highcolor_resolve(24u, V9X_D3D_STATE_HARDWARE, V9X_TRUE) ==
+              V9X_HIGHCOLOR_555);
+    MODECHECK(v9x_highcolor_resolve(24u, V9X_D3D_STATE_HARDWARE, V9X_FALSE) ==
+              V9X_HIGHCOLOR_565);
+    MODECHECK(v9x_highcolor_resolve(1u, V9X_D3D_STATE_NONE, V9X_FALSE) ==
               V9X_HIGHCOLOR_565);
 }
 

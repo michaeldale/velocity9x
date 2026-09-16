@@ -180,13 +180,14 @@ WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
  * A 16 bpp row with no sibling keeps whatever the scan or the baseline gave
  * it.
  */
-void v9x_modes16_resolve_layout(WORD d3d_state)
+void v9x_modes16_resolve_layout(WORD d3d_state, WORD engine_wants_555)
 {
     WORD index;
 
     v9x_modes16_read_highcolor();
     v9x_highcolor = (WORD)v9x_highcolor_resolve(v9x_highcolor_setting,
-                                                d3d_state);
+                                                d3d_state,
+                                                engine_wants_555);
     for (index = 0u; index < v9x_runtime_count; ++index) {
         const V9X_HW16_MODE *row = &v9x_runtime_modes[index];
 
@@ -328,8 +329,11 @@ void v9x_modes16_init(void)
      * 5:6:5 here and is decided properly at Enable - see
      * v9x_modes16_resolve_layout. */
     v9x_modes16_read_highcolor();
+    /* NONE here, so the engine's answer cannot matter and V9X_FALSE is not a
+     * claim about any chip - the chip is not known at mode-table init. */
     v9x_highcolor = (WORD)v9x_highcolor_resolve(v9x_highcolor_setting,
-                                                V9X_D3D_STATE_NONE);
+                                                V9X_D3D_STATE_NONE,
+                                                V9X_FALSE);
 
     /* Step 1: the fallback state is committed before anything can fail. */
     v9x_modes16_commit_baseline();

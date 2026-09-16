@@ -56,6 +56,9 @@ static v9x_u16 v9x_dd_d3d_state = V9X_D3D_STATE_NONE;
 #define V9X_D3D_SOFT_SYSMEM_KEY "D3DSoftSysMem"
 static v9x_u16 v9x_dd_d3d_soft_sysmem = V9X_FALSE;
 
+/* The type from the last descriptor call, for v9x_dd_engine_wants_555. */
+static DWORD v9x_dd_engine_type = V9X_DD_ENGINE_TYPE_NONE;
+
 void v9x_dd_d3d_configure(void)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
@@ -74,6 +77,7 @@ void v9x_dd_d3d_configure(void)
                                        &aperture_bytes, &engine_type,
                                        &engine_caps, &gtt_base,
                                        &ring_base, &ring_size);
+        v9x_dd_engine_type = engine_type;
     }
 
     /*
@@ -104,6 +108,23 @@ void v9x_dd_d3d_configure(void)
 const char *v9x_dd_d3d_state_text(void)
 {
     return v9x_d3d_mode_text(v9x_dd_d3d_state);
+}
+
+/*
+ * Whether this chip's hardware Direct3D wants a 5:5:5 desktop.
+ *
+ * A fact about silicon, answered here because this is where the engine
+ * descriptor is read, and consumed by v9x_highcolor_resolve, which is policy
+ * and must not know about chips. Only the ViRGE's S3D unit wants it; Gen3
+ * wants 5:6:5 and every surface measured on it is 565.
+ *
+ * Recorded from the last descriptor call rather than re-derived, because the
+ * descriptor's answer can change during a boot - see v9x_dd_stamp_engine_caps.
+ */
+WORD v9x_dd_engine_wants_555(void)
+{
+    return v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX
+               ? V9X_TRUE : V9X_FALSE;
 }
 
 /* The state code itself, for the layout decision in modes16.c, which wants
@@ -352,6 +373,29 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     DWORD aperture_bytes = 0ul;
     DWORD engine_type = V9X_DD_ENGINE_TYPE_NONE;
     DWORD engine_caps = 0ul;
+
+    /*
+     * RE-RESOLVED HERE, because the descriptor's answer changes during a boot.
+     *
+     * v9x_dd_d3d_state was settled at Enable, and on a Gen3 part that is too
+     * early: the engine's two linear windows are mapped by the mini-VDD's
+     * capture paths, which run from v9x_publish_hardware_diagnostics AFTER
+     * both Enable-time calls to v9x_dd_d3d_configure. So the descriptor
+     * refused - EngineStatus=map-refused, measured on the netbook 2026-09-16
+     * in C:\temp\intel49 - the state froze at NONE, and the mask below then
+     * cleared a capability the engine had by the time anyone asked.
+     *
+     * The comment at the Enable-time call says running it early "costs
+     * nothing and changes nothing". That was true of the one engine that
+     * existed when it was written and is false here, which is why this
+     * re-resolve is not merely defensive.
+     *
+     * The layout is NOT re-resolved with it, deliberately. A desktop that
+     * changed its pixel format when DirectDraw started would be far worse
+     * than one decided early, and the Enable-time answer is the one every
+     * published mask and the DIB engine already agree on.
+     */
+    v9x_dd_d3d_configure();
 
     if (device != 0 && device->fill_engine_descriptor != 0) {
         device->fill_engine_descriptor(V9xLinearBase(), &control_base,

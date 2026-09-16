@@ -58,13 +58,33 @@ v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode)
     return 0u;
 }
 
-v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state)
+v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state,
+                              v9x_u16 engine_wants_555)
 {
     if (setting == V9X_HIGHCOLOR_555 || setting == V9X_HIGHCOLOR_565) {
         return setting;
     }
-    return d3d_state == V9X_D3D_STATE_HARDWARE ? V9X_HIGHCOLOR_555
-                                               : V9X_HIGHCOLOR_565;
+    /*
+     * THE ENGINE IS ASKED, rather than the word HARDWARE being taken to mean
+     * 5:5:5.
+     *
+     * It meant that while there was one hardware engine. The ViRGE's S3D unit
+     * wants 5:5:5 and this returned it for HARDWARE alone, which was correct
+     * and indistinguishable from the general rule. Gen3 is the second engine
+     * and wants 5:6:5 - every surface measured on it is 565, including the
+     * fill words, the probes and the conversion fitted across 24 channels -
+     * so a Gen3 machine would have had its desktop switched to 555 underneath
+     * streams built for 565.
+     *
+     * The caller supplies the answer because it is a fact about silicon, and
+     * this file is policy. An engine nobody has asked about gets 5:6:5, which
+     * is what an unresolved machine had before any of this existed.
+     */
+    if (d3d_state != V9X_D3D_STATE_HARDWARE) {
+        return V9X_HIGHCOLOR_565;
+    }
+    return engine_wants_555 != V9X_FALSE ? V9X_HIGHCOLOR_555
+                                         : V9X_HIGHCOLOR_565;
 }
 
 void v9x_mode_masks_555(struct v9x_mode_masks *out)
