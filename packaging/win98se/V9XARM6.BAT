@@ -1,7 +1,7 @@
 @ECHO OFF
-ECHO Velocity9x Intel Phase 6 one-shot arm (five scenes, one boot)
+ECHO Velocity9x Intel Phase 6 one-shot arm (regression + texture, one boot)
 ECHO.
-REM This arms the NEXT boot to run all five Phase 6 scenes once. The build id and the
+REM This arms the NEXT boot to run the Phase 6 scene table once. The build id and the
 REM COMBINED command CRC below are stamped in by the package build, from the
 REM same generated table the mini-VDD's arm tables come from, so they always
 REM describe the binaries sitting beside this file. A stick armed against an
@@ -15,16 +15,18 @@ REM check is host-side, where the decisions live; nothing here can bypass
 REM it.
 REM
 REM
-REM FIVE DRAWS, not one. The 2026-09-16 amendment authorises up to five
-REM independent draws per armed boot and this stick arms exactly that. Each
-REM scene re-emits complete state, fills its own target and flushes its own
-REM probes before the next submits - a scene inheriting another's state would
-REM be outside the amendment even at two.
+REM TWO DRAWS, against five authorised. The 2026-09-16 amendment permits up
+REM to five independent draws per armed boot; this stick arms two, which is a
+REM bound being respected rather than approached. Scene 0 is the Phase 5
+REM triangle unchanged, scene 1 paints a texture and samples it. Each scene
+REM re-emits complete state, fills its own target and flushes its own probes
+REM before the next submits - a scene inheriting another's state would be
+REM outside the amendment even at two.
 REM
-REM This boot also reads far more through the aperture than any before it:
-REM about 726 reads against 45 on the last boot that completed. The capture
-REM publishes the expected total BEFORE spending any of it, so a hang is a
-REM measurement rather than a guess.
+REM Aperture reads: about 1448, against 1806 on the last boot that completed.
+REM FEWER, because three answered scenes retired. The capture publishes the
+REM expected total BEFORE spending any of it, so a hang is a measurement
+REM rather than a guess.
 REM Run it from real DOS after V9XCOPY, from inside the package folder:
 REM     C:
 REM     CD \INTELGMA
@@ -108,7 +110,7 @@ ECHO Repeat mode: this stick will arm again on every successful boot.
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
 ECHO Armed Phase 6 for build @@BUILDID@@, combined CRC @@SCENEARMCRC@@.
 ECHO   Phase 4 replay CRC @@P4CRC@@
-ECHO   Five scenes CRC    @@SCENECRC@@
+ECHO   Scene table CRC    @@SCENECRC@@
 ECHO.
 ECHO Shut down and cold boot ONCE, on AC power. Do not change resolution and
 ECHO do not open a DOS box on the armed boot.

@@ -299,11 +299,11 @@ if ($familyManifest.Id -eq 'intel-gma') {
     }
     if (-not $amended) {
         throw ('The Phase 5 errata decision carries no 2026-09-16 five-draw ' +
-               'amendment, so V9XARM6.BAT will not be produced. An armed ' +
-               'Phase 6 boot performs five draws and roughly 726 aperture ' +
-               'reads where the last boot that completed did one draw and ' +
-               '45 reads; the Phase 5 decision explicitly does not cover ' +
-               'that.')
+               'amendment, so V9XARM6.BAT will not be produced. The Phase 5 ' +
+               'decision authorises ONE draw per boot and says so explicitly; ' +
+               'a Phase 6 boot performs one per scene. The check is on the ' +
+               'amendment rather than on a scene count because the count ' +
+               'changes with the table and the authorisation does not.')
     }
     $arm6Source = Join-Path $repoRoot 'packaging\win98se\V9XARM6.BAT'
     $arm6Token = 'p6-{0:yyyyMMdd}-{1}' -f (Get-Date), $BuildId
