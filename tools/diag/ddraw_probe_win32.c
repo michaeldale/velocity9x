@@ -708,9 +708,73 @@ static void v9x_hex_text(char *text, DWORD value)
     text[10] = '\0';
 }
 
+/*
+ * THE PROFILE FILE IS SPLIT BEFORE KRNL386 CANNOT COPY IT.
+ *
+ * Measured on the netbook 2026-09-17, photographed: V9XDDP died with a
+ * general protection fault in KRNL386.EXE at 0002:000064AA, whose bytes at
+ * CS:EIP are `f3 a4` - a `rep movsb` - with ECX=0x84E4 and EDI=0xFFFF. 0x84E4
+ * is 34020, which is exactly the size C:\V9XDIAG\V9XDD.INI had reached, and
+ * EDI at 0xFFFF is the top of a 64 KiB segment. Windows 9x's profile writer
+ * copies the WHOLE FILE through one 16-bit segment on every key it writes,
+ * so a file that grows past what that segment holds takes the caller down.
+ *
+ * intel52's file was 29,778 bytes and the probe completed; intel53's was
+ * 34,020 and every run after it crashed. The limit sits between, and the
+ * texture sweep this probe gained is what crossed it - 554 keys and 17 KiB,
+ * half the file.
+ *
+ * So the writer rolls over to V9XDD2.INI, V9XDD3.INI and so on, well below
+ * the boundary rather than at it, because the exact limit is not measured and
+ * the cost of being wrong is the diagnostic that was supposed to explain the
+ * problem. The first file records how many there are, so a reader knows to
+ * look rather than concluding the probe stopped early.
+ */
+#define V9X_RESULT_ROLLOVER  24000ul
+#define V9X_RESULT_MAX_FILES 8u
+
+static char v9x_result_path[] = V9X_DIAG_DIR "\\V9XDD0.INI";
+/* The digit's position in the buffer above, so the name is built by writing
+ * one character rather than by formatting a path a second time. */
+#define V9X_RESULT_DIGIT (sizeof(v9x_result_path) - 6u)
+
+static DWORD v9x_result_bytes;
+static unsigned v9x_result_file;
+
+/* The file currently being written: V9XDD.INI for the first, then numbered. */
+static const char *v9x_result_target(void)
+{
+    if (v9x_result_file == 0u) {
+        return V9X_RESULT_PATH;
+    }
+    v9x_result_path[V9X_RESULT_DIGIT] = (char)('0' + v9x_result_file + 1u);
+    return v9x_result_path;
+}
+
 static void v9x_write_text(const char *key, const char *value)
 {
-    WritePrivateProfileStringA(V9X_SECTION, key, value, V9X_RESULT_PATH);
+    DWORD cost = 0ul;
+    const char *at;
+
+    for (at = key; *at != '\0'; ++at) { ++cost; }
+    for (at = value; *at != '\0'; ++at) { ++cost; }
+    cost += 3ul;   /* the equals sign and the line ending */
+
+    if (v9x_result_bytes + cost > V9X_RESULT_ROLLOVER &&
+        v9x_result_file + 1u < V9X_RESULT_MAX_FILES) {
+        /* Flush the file being left: an unflushed tail is lost, and the tail
+         * is where the rollover happens. */
+        WritePrivateProfileStringA(0, 0, 0, v9x_result_target());
+        ++v9x_result_file;
+        v9x_result_bytes = 0ul;
+        /* A fresh section in the new file, on the same terms as the first. */
+        WritePrivateProfileStringA(V9X_SECTION, 0, 0, v9x_result_target());
+        WritePrivateProfileStringA(V9X_SECTION, "Continues", "1",
+                                   v9x_result_target());
+        v9x_result_bytes += 16ul;
+    }
+    WritePrivateProfileStringA(V9X_SECTION, key, value, v9x_result_target());
+    v9x_result_bytes += cost;
 }
 
 static void v9x_write_uint(const char *key, DWORD value)
@@ -735,7 +799,25 @@ static void v9x_write_hresult(const char *key, HRESULT value)
  */
 static void v9x_flush_results(void)
 {
+    unsigned index;
+
+    /* The count first, into the FIRST file, so a reader of V9XDD.INI knows
+     * how many there are. Written through the raw call rather than
+     * v9x_write_text, which would append it to whichever file is current. */
+    {
+        char text[12];
+
+        v9x_uint_text(text, (DWORD)(v9x_result_file + 1u));
+        WritePrivateProfileStringA(V9X_SECTION, "ResultFiles", text,
+                                   V9X_RESULT_PATH);
+    }
+    /* Every file, not only the current one: Windows caches profile writes and
+     * a mode change at exit discards the cached tail of any of them. */
     WritePrivateProfileStringA(0, 0, 0, V9X_RESULT_PATH);
+    for (index = 1u; index <= v9x_result_file; ++index) {
+        v9x_result_path[V9X_RESULT_DIGIT] = (char)('0' + index + 1u);
+        WritePrivateProfileStringA(0, 0, 0, v9x_result_path);
+    }
 }
 
 /*
