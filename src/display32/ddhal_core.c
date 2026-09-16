@@ -224,6 +224,42 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
     V9X_WRITE_HEX_KEY("EngineIdleTimeouts",
                       v9x_hal->engine.idle_timeouts);
     V9X_WRITE_HEX_KEY("EngineResets", v9x_hal->engine.reset_count);
+    /*
+     * The Gen3 draw accounting, in the file a FAULT produces.
+     *
+     * These counters already reach V9XSNAP.INI, but that file is written by
+     * V9XTRACE.EXE and needs a machine the operator can still drive. intel53
+     * is the case: Final Reality rendered black, the machine was powered off,
+     * and the only artefact was this one - which carried the fault address
+     * and nothing about why the engine had stopped submitting. The ring's
+     * tail had not moved across five mode-switch events, so draws were being
+     * refused, and I9xxRefuseLast is the field that would have named which
+     * check. It is here now for the same reason the fault address is.
+     */
+    V9X_WRITE_HEX_KEY("I9xxDrawsSubmitted",
+                      v9x_hal->d3d_diagnostics.i9xx_draws_submitted);
+    V9X_WRITE_HEX_KEY("I9xxDrawsRefused",
+                      v9x_hal->d3d_diagnostics.i9xx_draws_refused);
+    V9X_WRITE_HEX_KEY("I9xxRefuseLast",
+                      v9x_hal->d3d_diagnostics.i9xx_refuse_last);
+    V9X_WRITE_HEX_KEY("I9xxTextureDraws",
+                      v9x_hal->d3d_diagnostics.i9xx_texture_draws);
+    V9X_WRITE_HEX_KEY("I9xxDepthDraws",
+                      v9x_hal->d3d_diagnostics.i9xx_depth_draws);
+    V9X_WRITE_HEX_KEY("I9xxDepthSkipped",
+                      v9x_hal->d3d_diagnostics.i9xx_depth_skipped);
+    V9X_WRITE_HEX_KEY("TextureRefusedFormat",
+                      v9x_hal->d3d_diagnostics.texture_refused_format);
+    V9X_WRITE_HEX_KEY("TextureRefusedShape",
+                      v9x_hal->d3d_diagnostics.texture_refused_shape);
+    V9X_WRITE_HEX_KEY("TextureRefusedBounds",
+                      v9x_hal->d3d_diagnostics.texture_refused_bounds);
+    V9X_WRITE_HEX_KEY("TextureRefusedSysmem",
+                      v9x_hal->d3d_diagnostics.texture_refused_sysmem);
+    V9X_WRITE_HEX_KEY("TextureRefusedLast",
+                      v9x_hal->d3d_diagnostics.texture_refused_last);
+    V9X_WRITE_HEX_KEY("TextureLastOffset",
+                      v9x_hal->d3d_diagnostics.texture_last_offset);
 
     for (index = 0ul; index < V9X_DD_TRACE_RING_COUNT; ++index) {
         DWORD slot = v9x_hal->trace.head + index;
