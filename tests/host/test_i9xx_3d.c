@@ -593,14 +593,19 @@ static void test_published_offsets_locate_the_packets(void)
     /* The vertex run: the prefix, the state, the shader, two probe dwords and
      * the _3DPRIMITIVE header, after which the first vertex begins. */
     /*
-     * Prefix, the qword PAD, then the two probe dwords and the primitive
-     * header, after which the first vertex begins. The pad is what the
-     * 2026-09-16 capture was spent finding; leaving it out of this sum would
-     * put the expected vertex bits one dword early.
+     * The offset THE DRIVER PUBLISHES, not one recomputed here.
+     *
+     * This test summed the prefix itself and so kept passing while the
+     * driver's own vertex reader published the _3DPRIMITIVE header as a
+     * coordinate: two independent computations, one of them tested and the
+     * other shipped. A test that derives the answer it is checking is testing
+     * its own arithmetic.
+     *
+     * The first vertex dword is one past the primitive header.
      */
-    vertices = fill + state + shader + 2ul;
-    vertices += (vertices & 1ul);
-    vertices += 1ul;
+    CHECK(v9x_i9xx_phase5_primitive_offset() == fill + state + shader + 2ul +
+          ((fill + state + shader + 2ul) & 1ul));
+    vertices = v9x_i9xx_phase5_primitive_offset() + 1ul;
     CHECK(vertices + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS) - 1ul <
           written);
 
@@ -625,6 +630,17 @@ static void test_published_offsets_locate_the_packets(void)
      * able to drift together.
      */
     CHECK(vertices == 49ul);
+    /*
+     * And the boundary itself, which is what OffsetVertices publishes and what
+     * the executor submits to. Pinned as a literal beside the computed value:
+     * the two must not be able to drift together.
+     */
+    CHECK(v9x_i9xx_phase5_primitive_offset() == 48ul);
+    CHECK(stream[v9x_i9xx_phase5_primitive_offset()] ==
+          (V9X_I9XX_3DPRIMITIVE_INLINE | V9X_I9XX_PRIM3D_TRILIST | 14ul));
+    /* The pad before it is an MI_NOOP, not stale buffer content. */
+    CHECK(stream[v9x_i9xx_phase5_primitive_offset() - 1ul] ==
+          V9X_I9XX_MI_NOOP);
 }
 
 /*

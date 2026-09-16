@@ -1278,6 +1278,33 @@ if (($loaderRingOffset -band 7) -ne 0) {
            'stream is padded.')
 }
 
+# Nobody may recompute the Phase 5 primitive offset.
+#
+# It was summed independently in four places - the builder, OffsetVertices, the
+# vertex-bit reader and the emitter - and when the qword pad appeared they
+# disagreed: the arm table said 48, the capture said 47, and the vertex reader
+# published the _3DPRIMITIVE header as a coordinate.
+#
+# The driver is 16-bit code writing to a profile and cannot be exercised by a
+# host test, so what is enforced instead is that it ASKS. A file that sums the
+# prefix itself has reintroduced the defect whatever the number happens to be
+# today.
+foreach ($file in @('src\display16\intel_3d16.c',
+                    'src\chipsets\intel\i9xx_scene.c',
+                    'tests\host\test_main.c')) {
+    $full = Join-Path $repoRoot $file
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    $text = Get-Content -LiteralPath $full -Raw
+    # The prefix sum is fill + state + fragment program. Any file adding those
+    # three together is deriving the boundary rather than asking for it.
+    if ($text -match 'v9x_i9xx_phase5_fill_extent\(\)\s*\+\s*(?:\r?\n\s*)?v9x_i9xx_3d_state_extent\(\)\s*\+\s*(?:\r?\n\s*)?v9x_i9xx_fragment_program_extent\(\)\s*\+\s*\d') {
+        throw ("$file recomputes the Phase 5 primitive offset by summing the " +
+               'prefix. Call v9x_i9xx_phase5_primitive_offset instead: four ' +
+               'copies of that sum is what published a primitive header as a ' +
+               'vertex coordinate on 2026-09-16.')
+    }
+}
+
 # EVERY generated submission boundary must be qword aligned.
 #
 # RING_TAIL holds a qword-aligned offset and drops bit 2. Measured on the part

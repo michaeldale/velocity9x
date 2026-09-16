@@ -59,12 +59,8 @@ void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out)
          * describe a shorter stream than the one staged, and the arm gate
          * compares lengths.
          */
-        v9x_u32 prefix = V9X_I9XX_P5_FILL_DWORDS +
-                         v9x_i9xx_3d_state_extent() +
-                         v9x_i9xx_fragment_program_extent() +
-                         V9X_I9XX_P5_PROBE_DWORDS;
+        v9x_u32 prefix = v9x_i9xx_phase5_primitive_offset();
 
-        prefix += (prefix & 1ul);
         out->stream_dwords = prefix + v9x_i9xx_vertex_run_extent();
         out->stream_dwords += (out->stream_dwords & 1ul);
     }
@@ -111,6 +107,33 @@ v9x_u32 v9x_i9xx_phase5_fill_extent(void)
     }
     /* Plus the MI_FLUSH the builder writes immediately after it. */
     return produced + 1ul;
+}
+
+/*
+ * The dword the Phase 5 _3DPRIMITIVE starts at, pads included.
+ *
+ * The ONE place this is computed. It was four: the builder, the capture's
+ * OffsetVertices, the capture's vertex-bit reader, and the emitter that feeds
+ * the mini-VDD's arm table. Every one of them summed the same prefix
+ * independently, and when the qword pad appeared they disagreed - the arm
+ * table said 48, the capture said 47, and the vertex reader published the
+ * primitive header as a coordinate.
+ *
+ * That is the same defect three times over in this file's history: the
+ * published packet offsets were seven dwords short, the executor's submission
+ * boundary survived a stream shrinking under it, and now this. The answer each
+ * time was one function.
+ */
+v9x_u32 v9x_i9xx_phase5_primitive_offset(void)
+{
+    v9x_u32 prefix = V9X_I9XX_P5_FILL_DWORDS +
+                     v9x_i9xx_3d_state_extent() +
+                     v9x_i9xx_fragment_program_extent() +
+                     V9X_I9XX_P5_PROBE_DWORDS;
+
+    /* Padded so the executor's submission lands on a qword boundary; see the
+     * builder for the measurement that made that necessary. */
+    return prefix + (prefix & 1ul);
 }
 
 v9x_status v9x_i9xx_build_phase5_stream(
@@ -189,7 +212,7 @@ v9x_status v9x_i9xx_build_phase5_stream(
      *
      * docs\decisions6-09-16-intel-ring-tail-requires-qword-alignment.md
      */
-    if ((at & 1ul) != 0ul) {
+    while (at < v9x_i9xx_phase5_primitive_offset()) {
         if (capacity - at < 1ul) {
             return V9X_STATUS_INSUFFICIENT_MEMORY;
         }

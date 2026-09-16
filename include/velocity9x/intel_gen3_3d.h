@@ -531,6 +531,16 @@ struct v9x_i9xx_phase5_parameters {
 void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out);
 v9x_status v9x_i9xx_build_phase5_stream(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The dword the Phase 5 _3DPRIMITIVE starts at, qword pad included. The
+ * first VERTEX dword is one past it.
+ *
+ * Everything that needs this number calls this: the builder, the capture's
+ * OffsetVertices, the capture's vertex-bit reader, and the generator that
+ * stamps the mini-VDD's arm table. Four independent sums is what published a
+ * primitive header as a vertex coordinate.
+ */
+v9x_u32 v9x_i9xx_phase5_primitive_offset(void);
 v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 
 /* src\chipsets\intel\i9xx_3d_decode.c */

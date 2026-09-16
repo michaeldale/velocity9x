@@ -702,10 +702,9 @@ static void v9x_p5_publish_stream(void)
                v9x_i9xx_3d_state_extent() +
                v9x_i9xx_fragment_program_extent());
     v9x_p5_hex("LengthProbe", 2ul);
-    v9x_p5_hex("OffsetVertices",
-               v9x_i9xx_phase5_fill_extent() +
-               v9x_i9xx_3d_state_extent() +
-               v9x_i9xx_fragment_program_extent() + 2ul);
+    /* The primitive header, pad included. It summed the prefix itself and so
+     * published 47 once the pad made it 48. */
+    v9x_p5_hex("OffsetVertices", v9x_i9xx_phase5_primitive_offset());
     v9x_p5_hex("LengthVertices", v9x_i9xx_vertex_run_extent());
 }
 
@@ -727,10 +726,14 @@ static void v9x_p5_publish_vertices(void)
      * 44-47 of the stream - fragment-program and probe words - and published
      * them as vertex bits. The capture said the geometry was wrong when the
      * stream was correct.
+     *
+     * It happened AGAIN on 2026-09-16 for the same reason: this recomputed
+     * the prefix, the qword pad moved the primitive to 48, and this went on
+     * reading from 48 - publishing the _3DPRIMITIVE header as a coordinate.
+     * Two occurrences of one defect in two days, both because a number was
+     * derived here instead of asked for.
      */
-    DWORD base = v9x_i9xx_phase5_fill_extent() +
-                 v9x_i9xx_3d_state_extent() +
-                 v9x_i9xx_fragment_program_extent() + 3ul;
+    DWORD base = v9x_i9xx_phase5_primitive_offset() + 1ul;
 
     for (vertex = 0u; vertex < (WORD)V9X_I9XX_VERTEX_COUNT; ++vertex) {
         DWORD decoded = 0ul;
