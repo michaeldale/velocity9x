@@ -69,7 +69,7 @@ pixels by an unknown rule. A capture can show both at once.
 
 ## Measured 2026-09-16
 
-Three scenes, `C:	emp\intel44`: the upper triangle alone, the lower alone at
+Three scenes, `C:\temp\intel44`: the upper triangle alone, the lower alone at
 identical probe pixels, and both under one primitive.
 
 | Probe | Upper alone | Lower alone | Both |

@@ -95,7 +95,7 @@ as intended, not that the GPU agrees.
 
 ## Closed 2026-09-16
 
-Scene 0 of `C:	emp\intel44` reproduced `C:	emp\intel42` byte for byte -
+Scene 0 of `C:\temp\intel44` reproduced `C:\temp\intel42` byte for byte -
 seven interior probes `1C3E`, seven exterior `0842`. The binding is gone and no
 pixel changed, which is the result this issue was owed.
 

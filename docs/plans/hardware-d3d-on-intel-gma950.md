@@ -244,7 +244,7 @@ exists.
 
 **DONE 2026-09-15, measured on the netbook.** The GMA 950 executed a
 Velocity9x 3D command stream and rasterised a triangle. Two armed boots,
-`C:	emp\intel41` (build `6c81c52`) and `C:	emp\intel42` (build `83f24ec`),
+`C:\temp\intel41` (build `6c81c52`) and `C:\temp\intel42` (build `83f24ec`),
 both `Result=PASS`: seven interior probes reading the triangle colour, seven
 exterior probes reading the fill `0842`, guard dwords `A5A5A5A5` and
 `00000000` intact before and after, `EIR`/`ESR` zero, token retired.
