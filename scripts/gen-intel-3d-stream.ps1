@@ -161,6 +161,10 @@ $incLines.Add(('V9X_I9XX_TARGET_BYTES   EQU 0{0}h' -f $values['TARGETBYTES']))
 $incLines.Add(('V9X_I9XX_GUARD_UPPER    EQU 0{0}h' -f $values['GUARDUPPER']))
 $incLines.Add(('V9X_I9XX_FILL_WORD      EQU 0{0}h' -f $values['FILLWORD']))
 $incLines.Add(('V9X_I9XX_TRI_COLOR      EQU 0{0}h' -f $values['TRICOLOR']))
+# The RING_HEAD address mask. It was a bare literal in loader.asm and nowhere
+# else; a second submission path needs the same number, and a second copy is
+# how this project's recurring defect starts.
+$incLines.Add('V9X_I9XX_RING_HEAD_MASK EQU 0001ffffch')
 $incLines.Add('')
 $incLines.Add(('V9X_I9XX_P4_DWORDS      EQU {0}' -f $p4Count))
 $incLines.Add(('V9X_I9XX_P4_PACKET_CRC  EQU 0{0}h' -f $values['P4PACKETCRC']))

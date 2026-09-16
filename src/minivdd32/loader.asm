@@ -1520,7 +1520,7 @@ V9xMini_I9xx_Ring_Wait_Next:
     mov     V9xI9xxRingHead, eax
     mov     ecx, [esi+02030h]
     mov     V9xI9xxRingTail, ecx
-    and     eax, 001ffffch       ; HEAD_ADDR, not HEAD_WRAP_COUNT
+    and     eax, V9X_I9XX_RING_HEAD_MASK  ; HEAD_ADDR, not HEAD_WRAP_COUNT
     cmp     eax, V9xI9xxRingWant
     je      short V9xMini_I9xx_Ring_Wait_Success
     inc     V9xI9xxRingPolls
@@ -1766,7 +1766,7 @@ V9xMini_I9xx_Ring_Execute_Reprobe:
     cmp     V9xI9xxRingStep, 7
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     eax, [esi+02034h]
-    and     eax, 001ffffch
+    and     eax, V9X_I9XX_RING_HEAD_MASK
     cmp     eax, 0
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [edi], 0
@@ -1781,7 +1781,7 @@ V9xMini_I9xx_Ring_Execute_Blt:
     cmp     V9xI9xxRingStep, 8
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     eax, [esi+02034h]
-    and     eax, 001ffffch
+    and     eax, V9X_I9XX_RING_HEAD_MASK
     cmp     eax, 8
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     ecx, 8
@@ -1814,7 +1814,7 @@ V9xMini_I9xx_Ring_Execute_Teardown:
     cmp     V9xI9xxRingStep, 9
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     eax, [esi+02034h]
-    and     eax, 001ffffch
+    and     eax, V9X_I9XX_RING_HEAD_MASK
     cmp     eax, 40
     jne     V9xMini_I9xx_Ring_Execute_Poison
     cmp     dword ptr [esi+02030h], 40
@@ -2005,7 +2005,7 @@ V9xMini_I9xx_Ring_Execute_P6Teardown:
     shl     ebx, 2
     add     ebx, V9X_I9XX_P5_RING_OFFSET
     mov     eax, [esi+02034h]
-    and     eax, 001ffffch
+    and     eax, V9X_I9XX_RING_HEAD_MASK
     cmp     eax, ebx
     jne     V9xMini_I9xx_Ring_Execute_Poison
     ; The ring goes back to zero after EVERY scene. That is what lets the
@@ -2070,7 +2070,7 @@ V9xMini_I9xx_Ring_Execute_P5Teardown:
     jne     V9xMini_I9xx_Ring_Execute_Done
     mov     V9xI9xxRingFailure, 29
     mov     eax, [esi+02034h]
-    and     eax, 001ffffch
+    and     eax, V9X_I9XX_RING_HEAD_MASK
     cmp     eax, V9X_I9XX_P5_RING_OFFSET + V9X_I9XX_P5_DWORDS * 4
     jne     V9xMini_I9xx_Ring_Execute_Poison
     mov     dword ptr [esi+0203ch], 0

@@ -267,3 +267,81 @@ The edge experiment stays three scenes rather than two triangles in one,
 because two opaque triangles in a single scene cannot reveal double coverage -
 the second overwrites the first, and the result is indistinguishable from
 coverage by the second alone.
+
+## Amendment, 2026-09-16: sustained 3D work is authorised
+
+Decided by Michael Dale, asked for explicitly after Phase 7's plumbing was
+built and stopped short of publishing caps on the grounds that the scope above
+forbids it. The refused sentence was the previous amendment's: *"sustained or
+repeated 3D work in the sense of a workload rather than a bounded set of
+independent diagnostic draws"*.
+
+**What is authorised:** 3D work driven by an application through the Direct3D
+HAL, without a per-boot draw bound. This is what makes the driver a driver
+rather than an instrument.
+
+### What this costs, stated before what it buys
+
+The five-draw amendment could point at two clean boots of one triangle and a
+bounded read budget. **This one cannot.** Every guarantee the previous
+amendments rested on is either weakened or gone:
+
+- **The draw bound is gone.** A frame is hundreds of draws and a second is
+  tens of frames. Erratum 7 concerns *extended* 3D operation, nobody has
+  measured where "extended" begins on this part, and this authorisation is a
+  deliberate step into the region the word names.
+- **The combined-CRC gate cannot apply.** It compares the whole submission
+  against a constant generated at build time. Application geometry is not
+  known at build time, so what a draw submits can no longer be pinned. The
+  decoder's allowlist survives and is now the only thing standing between a
+  malformed stream and the ring.
+- **The one-shot arm token cannot apply.** A token consumed once per boot is
+  the wrong shape for a path that runs whenever an application asks.
+- **Per-draw probes cannot apply.** Reading back pixels after every draw is
+  the read budget's own hazard at a rate nothing has measured, so the
+  cumulative-read accounting that made the last three boots interpretable
+  stops being available in the same form.
+
+**A hang stops being a measurement.** Every hang so far named the read or the
+scene it stopped at, because the boot was a bounded script. A hang inside an
+application names a frame nobody can reconstruct. The Phase 4
+hang-interpretation rule still applies, but its evidence is thinner.
+
+### What is unchanged, and what replaces what is lost
+
+- The **PCI identity and revision check**: `8086:27AE` rev 03 exactly. A
+  Pineview sibling has already behaved oppositely on this project; nothing
+  about this amendment widens the part it applies to.
+- The **errata gate's own preconditions**: scratch install, AC power,
+  recoverable from DOS.
+- The **decoder's allowlist**, which becomes the primary guard rather than a
+  secondary one. Every stream submitted through the HAL passes it, including
+  the ones built from application geometry - that is what makes the runtime
+  builder's refusals load-bearing rather than defensive.
+- The **guard pages** around every buffer the GPU may write, checked on the
+  same terms as today.
+- **`IntelEnableThisBoot`** stays the master switch, so a machine that wedges
+  is recoverable by editing one line from DOS.
+
+### What is still NOT authorised
+
+- **Any part other than `8086:27AE` rev 03.**
+- **Publishing caps this driver has not measured.** The engine's limits table
+  is deliberately narrower than the hardware, and widening it is a separate
+  decision each time: a limit that claims more than has been measured is a
+  promise the first application collects on.
+- **Bulk CPU reads of the aperture.** The measured hazard is unchanged -
+  153,600 reads hung where 45 did not - and nothing here relaxes it. A
+  readback path that walked a surface would be outside this amendment.
+- **A submission path without bounded waits and recovery.** An unbounded spin
+  on a ring head is a hung machine with no diagnosis, which is the one failure
+  mode this project has consistently refused to build.
+
+### The condition this authorisation rests on
+
+The first application-driven boot is treated as an experiment, not as a
+product: it runs on the scratch install, with the capture enabled, and the
+first hang is recorded and repeated once before anything else is built on top
+of it. The difference between this and the previous amendments is that the
+experiment can no longer be described in advance - so what is promised is the
+discipline, not the script.

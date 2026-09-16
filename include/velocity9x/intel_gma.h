@@ -460,6 +460,27 @@ v9x_status v9x_i9xx_gtt_inventory_finish(
 v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
     v9x_u32 vbe_bytes, v9x_u32 bsm,
     struct v9x_i9xx_sandbox_layout *layout);
+/*
+ * The address field of RING_HEAD. The upper bits are a WRAP COUNT.
+ *
+ * This lived as a bare `and eax, 001ffffch` in loader.asm and nowhere else -
+ * one number, in assembly, with nothing to compare it against. A second
+ * submission path needs the same mask, and a second copy of a constant is how
+ * this project's recurring defect starts. check-tree ties the two together.
+ */
+#define V9X_I9XX_RING_HEAD_MASK          ((v9x_u32)0x001ffffcul)
+
+/*
+ * Has the submission that ended at `tail_after` completed?
+ *
+ * The wrap count must be masked off before the comparison; comparing the raw
+ * register would never match. Host-testable, and the predicate rather than the
+ * mask is what a caller should use - a caller holding the mask is a caller
+ * that can forget to apply it.
+ */
+v9x_u16 v9x_i9xx_ring_submission_complete(
+    v9x_u32 head_register, v9x_u32 tail_after);
+
 v9x_status v9x_i9xx_ring_free_space(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 *free_bytes);

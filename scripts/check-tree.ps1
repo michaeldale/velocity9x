@@ -1106,6 +1106,41 @@ if ($loaderText -notmatch '(?m)^include i9xx3d\.inc') {
     throw 'src\minivdd32\loader.asm does not include the generated i9xx3d.inc.'
 }
 
+# The RING_HEAD address mask, in the generated include and in the C header.
+#
+# It was a bare literal in loader.asm and nowhere else. A second submission
+# path needs the same number, and a second copy of a constant with nothing
+# comparing them is this project's most repeated defect - the executor's
+# primitive boundary, the aperture read counts, and the packet offsets were all
+# one number in two places. Tied here so it cannot become one again.
+$intelHeadMaskInc = $null
+if ($intelIncText -match '(?m)^V9X_I9XX_RING_HEAD_MASK\s+EQU\s+0([0-9a-fA-F]+)h\s*$') {
+    $intelHeadMaskInc = [Convert]::ToUInt32($Matches[1], 16)
+} else {
+    throw ('src\minivdd32\i9xx3d.inc carries no V9X_I9XX_RING_HEAD_MASK. ' +
+           'The mini-VDD masks RING_HEAD with it and the C side compares ' +
+           'against the same value; a literal in one of them is how the two ' +
+           'come to disagree.')
+}
+$intelGmaHeader = Get-Content -LiteralPath (Join-Path $repoRoot 'include\velocity9x\intel_gma.h') -Raw
+if ($intelGmaHeader -match 'V9X_I9XX_RING_HEAD_MASK\s+\(\(v9x_u32\)0x([0-9a-fA-F]+)ul\)') {
+    $intelHeadMaskC = [Convert]::ToUInt32($Matches[1], 16)
+} else {
+    throw 'includeelocity9x\intel_gma.h defines no V9X_I9XX_RING_HEAD_MASK.'
+}
+if ($intelHeadMaskInc -ne $intelHeadMaskC) {
+    throw ('V9X_I9XX_RING_HEAD_MASK is ' + ('0x{0:X}' -f $intelHeadMaskInc) +
+           ' in i9xx3d.inc and ' + ('0x{0:X}' -f $intelHeadMaskC) +
+           ' in intel_gma.h. The mini-VDD and the HAL would disagree about ' +
+           'which bits of RING_HEAD are an address.')
+}
+# And loader.asm must use the NAME rather than a literal, or the tie above
+# checks a constant nothing reads.
+if ($loaderText -match '(?m)and\s+eax,\s*0[0-9a-fA-F]*ffffch') {
+    throw ('src\minivdd32\loader.asm masks RING_HEAD with a literal. Use ' +
+           'V9X_I9XX_RING_HEAD_MASK from the generated include.')
+}
+
 function Get-V9xIncCrc32 {
     param([string[]]$Hex)
     [uint64]$crc = 0xffffffffL

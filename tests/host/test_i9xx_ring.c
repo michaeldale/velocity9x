@@ -246,8 +246,49 @@ static void test_heap_after_reserve_growth(void)
     CHECK(layout.heap_bytes == layout.reserve_offset);
 }
 
+/*
+ * Has a submission completed?
+ *
+ * RING_HEAD carries a WRAP COUNT in its upper bits, and comparing the raw
+ * register against a tail would never match. That mask lived as a literal in
+ * five places in loader.asm and nowhere a test could see it; this is the
+ * predicate both sides now use.
+ */
+static void test_ring_submission_complete(void)
+{
+    /* The plain case: head has reached the tail the submission set. */
+    CHECK(v9x_i9xx_ring_submission_complete(0x00001000ul, 0x00001000ul) ==
+          V9X_TRUE);
+    CHECK(v9x_i9xx_ring_submission_complete(0x00000ff8ul, 0x00001000ul) ==
+          V9X_FALSE);
+
+    /*
+     * The same head with a wrap count in the upper bits. This is the case the
+     * mask exists for, and a predicate that compared the raw register would
+     * report every completed submission as still running.
+     */
+    CHECK(v9x_i9xx_ring_submission_complete(0x00201000ul, 0x00001000ul) ==
+          V9X_TRUE);
+    CHECK(v9x_i9xx_ring_submission_complete(0xffe01000ul, 0x00001000ul) ==
+          V9X_TRUE);
+
+    /* And the low two bits, which are not part of the address either. */
+    CHECK(v9x_i9xx_ring_submission_complete(0x00001003ul, 0x00001000ul) ==
+          V9X_TRUE);
+
+    /* A tail carrying bits the register cannot hold never matches, which is
+     * the caller's mistake showing up as "not complete" rather than as a
+     * false completion. */
+    CHECK(v9x_i9xx_ring_submission_complete(0x00001000ul, 0x00201000ul) ==
+          V9X_FALSE);
+
+    /* Zero is a legal tail - a submission that wrapped exactly to the start. */
+    CHECK(v9x_i9xx_ring_submission_complete(0x00400000ul, 0ul) == V9X_TRUE);
+}
+
 unsigned int v9x_run_i9xx_ring_tests(void)
 {
+    test_ring_submission_complete();
     test_sandbox_layout();
     test_ring_space_and_wrap();
     test_packet_builders_and_decoder();

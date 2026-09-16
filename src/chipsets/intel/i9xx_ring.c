@@ -313,3 +313,10 @@ v9x_status v9x_i9xx_decode_phase4_stream(
     }
     return V9X_STATUS_OK;
 }
+
+v9x_u16 v9x_i9xx_ring_submission_complete(
+    v9x_u32 head_register, v9x_u32 tail_after)
+{
+    return ((head_register & V9X_I9XX_RING_HEAD_MASK) == tail_after)
+               ? V9X_TRUE : V9X_FALSE;
+}
