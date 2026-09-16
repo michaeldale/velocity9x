@@ -40,6 +40,18 @@
 #include "d3d_i9xx_target.h"
 
 /*
+ * The largest batch this engine accepts, and the buffer it builds into.
+ *
+ * Bounded so the stream buffer is a fixed size the HAL can hold on its stack
+ * rather than an allocation on a draw path. 64 triangles is well under the
+ * core's own RenderPrimitive ceiling and well under the decoder's runtime
+ * bound; a batch larger than this is refused and the core sees a failed draw
+ * rather than a truncated one.
+ */
+#define V9X_I9XX_SUBMIT_VERTICES  ((DWORD)192ul)
+#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)1280ul)
+
+/*
  * What this part is measured to do, and nothing wider.
  *
  * Every number here has a capture behind it. The target depth is RGB565
@@ -62,6 +74,128 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     4096.0f,                    /* coordinate_limit       */
     16ul                        /* depth_bits_per_pixel   */
 };
+
+/*
+ * The ring's MMIO registers come from intel_gma.h, which the mini-VDD's
+ * generated include also carries. They are addressed through the control
+ * window the descriptor holds - BAR0, not the framebuffer, which on this part
+ * are different PCI regions and is why gtt_linear_base exists at all.
+ */
+
+/*
+ * How long to wait for a submission, and how hard.
+ *
+ * Both bounds are mandatory and neither is a guess about speed: an unbounded
+ * spin on a ring head is a hung machine with no diagnosis, which the
+ * sustained-3D amendment names among the things it does not authorise. The
+ * mini-VDD's own executor waits on the same two bounds.
+ */
+#define V9X_I9XX_SUBMIT_POLLS   1000000ul
+
+static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
+{
+    return (volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
+}
+
+/*
+ * Where the ring is, in the window the HAL already holds.
+ *
+ * The reserve is carved from the top of video memory and the framebuffer
+ * mapping covers vram_bytes, so the ring is inside a window this side already
+ * has - which is why submission needs no verb to move data. Recomputed from
+ * the same calculator the 16-bit side and the mini-VDD use rather than being
+ * passed across, so the three cannot disagree about where the ring is.
+ */
+static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
+{
+    struct v9x_i9xx_sandbox_layout layout;
+
+    if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul ||
+        v9x_hal->engine.control_linear_base == 0ul) {
+        return 0;
+    }
+    if (v9x_i9xx_sandbox_calculate(v9x_hal->fb.vram_bytes, 0ul, &layout) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    *linear_out = v9x_hal->fb.linear_base + layout.ring_offset;
+    *bytes_out = layout.ring_bytes;
+    return 1;
+}
+
+/*
+ * Submit one built stream and wait for it.
+ *
+ * The data goes through the framebuffer mapping; only TAIL is a register
+ * write. That write is the single most consequential store in this driver -
+ * a tail the hardware cannot express poisoned a whole run on 2026-09-16, when
+ * the mini-VDD wrote 0x10BC and read back 0x10B8 - so the plan that produces
+ * it is the tested one rather than arithmetic written here.
+ */
+static int v9x_d3d_i9xx_submit(const DWORD *stream, DWORD dwords)
+{
+    struct v9x_i9xx_ring_plan plan;
+    DWORD ring_linear = 0ul;
+    DWORD ring_bytes = 0ul;
+    DWORD head;
+    DWORD tail;
+    DWORD polls;
+    DWORD index;
+    volatile DWORD *ring;
+
+    if (v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0) {
+        return 0;
+    }
+    head = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD) &
+           V9X_I9XX_RING_HEAD_MASK;
+    tail = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) &
+           V9X_I9XX_RING_HEAD_MASK;
+
+    /*
+     * The plan, from the unit the diagnostic path already uses. It pads to the
+     * ring end with NOOPs rather than splitting a command across the wrap,
+     * refuses an odd dword count so the tail stays qword aligned, and counts
+     * the pad against the free space. None of that is restated here.
+     */
+    if (v9x_i9xx_ring_plan(head, tail, ring_bytes, dwords, &plan) !=
+            V9X_STATUS_OK) {
+        /* A full ring is not an error the caller can fix by retrying inside
+         * this call - that would be an unbounded wait wearing a different
+         * name - so the batch is refused and the core sees a failed draw. */
+        return 0;
+    }
+
+    ring = (volatile DWORD *)ring_linear;
+    /* The pad first, where one is needed: MI_NOOPs to the ring's end. */
+    for (index = 0ul; index < plan.pad_dwords; ++index) {
+        ring[(tail / 4ul) + index] = V9X_I9XX_MI_NOOP;
+    }
+    for (index = 0ul; index < dwords; ++index) {
+        ring[(plan.command_tail / 4ul) + index] = stream[index];
+    }
+
+    /*
+     * The tail, last and once. Everything the GPU will fetch is in memory
+     * before the register that tells it to fetch moves - the same ordering
+     * the texture paint and the depth clear needed for the same reason.
+     */
+    *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) = plan.next_tail;
+
+    for (polls = 0ul; polls < V9X_I9XX_SUBMIT_POLLS; ++polls) {
+        if (v9x_i9xx_ring_submission_complete(
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD),
+                plan.next_tail) != V9X_FALSE) {
+            return 1;
+        }
+    }
+    /*
+     * Timed out. Reported rather than retried and rather than reset: this
+     * driver has never reset this engine, has no measurement of what a reset
+     * does to it, and a recovery path nobody has run is a worse thing to
+     * enter than a failed draw.
+     */
+    return 0;
+}
 
 /*
  * No texture format is accepted.
@@ -92,28 +226,148 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     (void)shared;
 }
 
-/* Refuses every batch. There is no 32-bit submission path to hand it to. */
+/*
+ * One batch: build the stream, check it, submit it, wait for it.
+ *
+ * UNRUN. Every piece below is host-tested and no guest has executed one of
+ * these streams; what the tests establish is that the bytes are the ones the
+ * decoder accepts, not that the part draws them.
+ */
 static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                        const V9X_D3DTLVERTEX *vertices,
                                        DWORD triangle_count)
 {
-    (void)context;
-    (void)vertices;
-    (void)triangle_count;
-    return 0;
+    struct v9x_i9xx_decode_limits limits;
+    DWORD stream[V9X_I9XX_SUBMIT_DWORDS];
+    DWORD xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
+    DWORD colors[V9X_I9XX_SUBMIT_VERTICES];
+    DWORD identity = 0ul;
+    DWORD address = 0ul;
+    DWORD at = 0ul;
+    DWORD produced = 0ul;
+    DWORD rejected = 0ul;
+    DWORD vertex;
+    DWORD count;
+
+    if (context == 0 || vertices == 0 || triangle_count == 0ul) {
+        return 0;
+    }
+    if (triangle_count > (V9X_I9XX_SUBMIT_VERTICES / 3ul)) {
+        return 0;
+    }
+    count = triangle_count * 3ul;
+
+    /*
+     * The surface, validated against the aperture BEFORE anything is built.
+     * This is the memory-safety check - the decoder below compares the stream
+     * against what this produced, which cannot catch an engine that was wrong
+     * about the surface, and this is what makes sure it was not.
+     */
+    if (v9x_d3d_i9xx_bind_target(context->target_offset, context->pitch,
+                                 context->width, context->height,
+                                 v9x_hal->fb.vram_bytes,
+                                 &identity, &address) == V9X_FALSE) {
+        return 0;
+    }
+
+    for (vertex = 0ul; vertex < count; ++vertex) {
+        /* The DDHAL vertex is floats; the stream is bit patterns. A union is
+         * the only portable way across, and the HAL links without a runtime
+         * so a cast through a pointer is what there is. */
+        const DWORD *bits = (const DWORD *)&vertices[vertex].sx;
+
+        xyzw[(vertex * 4ul) + 0ul] = bits[0];
+        xyzw[(vertex * 4ul) + 1ul] = bits[1];
+        xyzw[(vertex * 4ul) + 2ul] = bits[2];
+        xyzw[(vertex * 4ul) + 3ul] = bits[3];
+        colors[vertex] = vertices[vertex].color;
+    }
+
+    if (v9x_i9xx_build_3d_state(context->target_offset, context->pitch,
+                                context->width, context->height,
+                                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                                &produced) != V9X_STATUS_OK) {
+        return 0;
+    }
+    at += produced;
+    if (v9x_i9xx_build_fragment_program(stream + at,
+                                        V9X_I9XX_SUBMIT_DWORDS - at,
+                                        &produced) != V9X_STATUS_OK) {
+        return 0;
+    }
+    at += produced;
+    if (v9x_i9xx_build_runtime_run(xyzw, colors, triangle_count,
+                                   context->width, context->height,
+                                   stream + at,
+                                   V9X_I9XX_SUBMIT_DWORDS - at,
+                                   &produced) != V9X_STATUS_OK) {
+        return 0;
+    }
+    at += produced;
+    /* The ring tail must land qword aligned, and the plan refuses an odd
+     * count rather than padding one - so the pad is here, where the stream is
+     * still being built and a NOOP is a dword nobody will miss. */
+    if ((at & 1ul) != 0ul) {
+        if (at >= V9X_I9XX_SUBMIT_DWORDS) {
+            return 0;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+
+    /*
+     * THE ALLOWLIST, applied by the engine to its own stream.
+     *
+     * The sustained-3D amendment gave up the combined-CRC gate and named this
+     * as what replaces it. Running it here rather than trusting the builders
+     * is the whole point: the builders and the decoder are two opinions, and
+     * a stream that reaches the ring has passed both.
+     */
+    limits.target_offset = context->target_offset;
+    limits.target_bytes = context->pitch * context->height;
+    limits.target_pitch = context->pitch;
+    limits.target_width = context->width;
+    limits.target_height = context->height;
+    limits.texture_offset = 0ul;
+    limits.texture_bytes = 0ul;
+    limits.depth_offset = 0ul;
+    limits.depth_bytes = 0ul;
+    limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=
+            V9X_I9XX_P5_OK) {
+        return 0;
+    }
+
+    return v9x_d3d_i9xx_submit(stream, at);
 }
 
 /*
- * NOT READY, and this is the load-bearing one.
+ * Ready when the two windows are mapped, and not otherwise.
  *
  * The header records why this entry point exists: without it an engine can
  * resolve, publish caps, accept every call and draw nothing, with every
- * HRESULT reporting success. That is precisely the state this engine would be
- * in if it answered yes, so it answers no.
+ * HRESULT reporting success. It answered a flat no while there was no
+ * submission path; there is one now, so it answers the real question -
+ * whether the windows a submission needs are there.
+ *
+ * WHAT THIS IS NOT is a claim that the engine draws. No guest has executed
+ * one of these streams. What keeps applications away from it is the
+ * capability bit, which the 16-bit side still does not set; this answering
+ * yes only means the core would route a draw here if one arrived.
  */
 static int v9x_d3d_i9xx_ready(void)
 {
-    return 0;
+    if (v9x_hal == 0) {
+        return 0;
+    }
+    if (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        return 0;
+    }
+    if (v9x_hal->engine.control_linear_base == 0ul ||
+        v9x_hal->engine.gtt_linear_base == 0ul ||
+        v9x_hal->fb.linear_base == 0ul) {
+        return 0;
+    }
+    return 1;
 }
 
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {

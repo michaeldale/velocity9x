@@ -70,6 +70,21 @@ $sources = @(
     "src\display32\d3d\d3d_soft.c"
     "src\display32\d3d\d3d_i9xx.c"
     "src\display32\d3d\d3d_i9xx_target.c"
+    # The Gen3 stream builders and the allowlist, shared verbatim with
+    # the 16-bit driver and the host suite. One HAL binary carries every
+    # engine, so these link here for the same reason the ViRGE's do -
+    # and sharing the sources is what keeps the stream the HAL submits
+    # and the stream the diagnostics submit the same code.
+    "src\chipsets\intel\i9xx_ring.c"
+    "src\chipsets\intel\i9xx_float.c"
+    "src\chipsets\intel\i9xx_3d.c"
+    "src\chipsets\intel\i9xx_fragprog.c"
+    "src\chipsets\intel\i9xx_vertex.c"
+    "src\chipsets\intel\i9xx_texture.c"
+    "src\chipsets\intel\i9xx_scene.c"
+    "src\chipsets\intel\i9xx_3d_decode.c"
+    "src\chipsets\intel\i9xx_3d_stream.c"
+    "src\chipsets\intel\i9xx_arm.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"
