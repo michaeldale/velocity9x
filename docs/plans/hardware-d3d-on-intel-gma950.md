@@ -340,7 +340,16 @@ driver had never emitted -
 Room was made by retiring the texture and depth-test scenes rather than by
 amending the five-draw authorisation.
 
-That completes Phase 6's feature list.
+**Steps 5 and 6 done 2026-09-16**: `intel47`, `Result=PASS`, all 37 probes as
+predicted. The alpha test rejects fragments AND the alpha is the top byte of the
+vertex diffuse dword - two results in one picture, since a wrong byte would have
+drawn all three triangles. Source-alpha blending matches the obvious arithmetic
+on six channels across two backgrounds. Record:
+[alpha test and blend](../decisions/2026-09-16-intel-gen3-alpha-test-and-blend-measured.md).
+
+**That completes Phase 6's feature list.** What it did not answer is listed at
+the end of that record: the depth scale, destination alpha on a 565 target, and
+whether the shader-output colour path shares the vertex-colour backend.
 
 ### 7. Publish
 
