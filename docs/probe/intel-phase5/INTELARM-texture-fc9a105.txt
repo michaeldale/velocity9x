@@ -1,0 +1,12 @@
+[Velocity9x]
+IntelAccelDefault=0
+IntelArmOnce=
+IntelArmPhase=6
+IntelArmCrc=D9998B57
+IntelArmPhase4Crc=A0DA64A1
+IntelArmSceneCrc=0F753C43
+IntelArmBuildId=fc9a105
+IntelInFlight=
+IntelIncomplete=0
+IntelEnableThisBoot=0
+IntelLastResult=pass:phase6:p6-20260916-fc9a105

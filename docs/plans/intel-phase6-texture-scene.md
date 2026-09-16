@@ -169,7 +169,20 @@ Split deliberately, because two questions are being asked at one pixel:
   quadrant 2 where the build predicted 1 is the experiment's result. Failing on
   it would let the boot confirm and never inform.
 
-Step 5, the boot, has not happened. Nothing here is hardware evidence.
+### Step 5, the boot: done, 2026-09-16
+
+`intel45` on MICHAEL-NETBOOK, build `fc9a105`, `Result=PASS`. All four quadrant
+probes read the quadrant the build predicted, both fill probes read the fill,
+and scene 0 matched `intel42` byte for byte. Texture sampling works on this
+part, and UV addressing is top-left origin with V increasing downward -
+recorded in
+`docs/decisions/2026-09-16-intel-gen3-texture-sampled-uv-addressing.md`.
+
+The capture carries no read budget: the section reset erased it. A driver
+defect, fixed; the boot's aperture-read total is unmeasured and the next Phase 6
+boot is what tests it.
+
+This plan is closed.
 
 ## Kill criteria
 

@@ -244,8 +244,43 @@ static void v9x_p5_text(const char *key, const char *value)
  * A capture that is not a record of one boot is not evidence. Passing a null
  * key deletes the section, which is the documented way to say so.
  */
+/*
+ * ONCE per boot, and the guard is the point.
+ *
+ * This wipes the whole section, so it must happen before the first key of the
+ * boot and never again. Two callers need it - the Phase 4 replay path
+ * publishes the read budget before it reads anything, and the Phase 5/6
+ * sequencer is the entry point on a boot that takes no replay - and whichever
+ * runs first is the one that must do it.
+ *
+ * Without the guard the second call erases the first caller's work. That is
+ * not hypothetical: it is what the intel45 capture shows. The budget moved to
+ * the top of the replay path on 2026-09-16, correctly, because a budget
+ * written after the thousand reads it bounds is a record rather than a budget
+ * - and the sequencer then reset the section on top of it. The boot passed and
+ * drew everything it was meant to, and the one number it existed to publish
+ * early was gone. The validator refused the capture, which is the only reason
+ * this was found rather than assumed.
+ */
+static WORD v9x_p5_section_reset = 0u;
+
 static void v9x_p5_reset_section(void)
 {
+    if (v9x_p5_section_reset != 0u) {
+        return;
+    }
+    v9x_p5_section_reset = 1u;
+    /*
+     * The directory, here rather than only at the sequencer.
+     *
+     * The budget publisher now resets the section, and it runs before the
+     * sequencer that used to do this - so without it the first boot after a
+     * V9XDIAG wipe would write its budget into a directory that does not
+     * exist and lose it silently. That is the SAME absence in the capture as
+     * the erase this guard fixes, which is exactly why both are closed
+     * together: one unexplained missing budget is enough.
+     */
+    V9xEnsureDiagDir();
     WritePrivateProfileString(V9X_P5_SECTION, 0, 0,
                               V9X_DIAG_INTEL3D0_TXT);
     /* Committed before anything is written into the empty section, so a hang
@@ -562,6 +597,15 @@ void v9x_intel_phase6_publish_budget(void)
     DWORD textured = 0ul;
     DWORD mini;
     DWORD driver;
+
+    /*
+     * The reset belongs to whoever writes first, and on an armed boot that is
+     * this function - it runs at the top of the replay path, ahead of the
+     * sequencer. Calling it here rather than relying on the sequencer having
+     * done it is what stops the budget being written into a section that is
+     * about to be emptied.
+     */
+    v9x_p5_reset_section();
 
     for (scene = 0ul; scene < v9x_i9xx_scene_count(); ++scene) {
         struct v9x_i9xx_scene one;
@@ -1234,8 +1278,11 @@ void v9x_intel_phase5_run(
 #endif
 
     V9xEnsureDiagDir();
-    /* Before the first key of this boot, so the capture cannot inherit the
-     * last boot's. */
+    /*
+     * Before the first key of this boot, so the capture cannot inherit the
+     * last boot's. A no-op on an armed boot, where the budget publisher has
+     * already done it; the only caller on an unarmed one.
+     */
     v9x_p5_reset_section();
     /*
      * 2: adds PreErr/PostErr with their completeness status.
