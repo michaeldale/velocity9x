@@ -16,23 +16,22 @@ REM it.
 REM
 REM
 REM FIVE DRAWS, which is exactly what the 2026-09-16 amendment authorises.
-REM The bound is now REACHED. Scene 0 is the Phase 5 triangle unchanged,
-REM scene 1 paints a texture and samples it, scene 2 modulates that texel by
-REM the vertex colour, and scenes 3 and 4 bind a depth buffer - testing
-REM without writes, then with. Each scene re-emits complete state, fills its
-REM own target and flushes its own probes before the next submits; a scene
-REM inheriting another's state would be outside the amendment even at two.
+REM The bound is REACHED, and room for these was made by RETIRING two scenes
+REM whose questions intel45 and intel46 answered rather than by raising it.
+REM Scene 0 is the Phase 5 triangle unchanged, scene 1 modulates a texture by
+REM the vertex colour, scene 2 tests and writes depth, scene 3 is the alpha
+REM test and scene 4 the source-alpha blend. Each re-emits complete state,
+REM fills its own target and flushes its own probes before the next submits.
 REM
-REM Aperture reads: about 2126, against 1448 on the last boot that completed.
-REM MORE, by about half again - within the rule that no boot roughly doubles
-REM the last one, and stated here because it is the number that rule is about.
-REM The capture publishes the expected total BEFORE spending any of it, so a
-REM hang is a measurement rather than a guess.
+REM Aperture reads: about 2050, against 2126 on the last boot that completed.
+REM Slightly FEWER. The capture publishes the expected total BEFORE spending
+REM any of it, so a hang is a measurement rather than a guess.
 REM
-REM Two of these draws exercise a DEPTH binding whose encoding has one source.
-REM xf86 has no depth buffer anywhere, so nothing corroborates Mesa on it; the
-REM scenes are built so a wrong binding shows as a wrong picture rather than
-REM silently. docs\decisions\2026-09-16-intel-gen3-modulate-and-depth-audit.md
+REM The blend scene emits a packet this driver has never emitted before:
+REM _3DSTATE_INDEPENDENT_ALPHA_BLEND, to DISABLE it. Without it the alpha
+REM channel would blend with whatever factors the engine last had, and this
+REM driver has never seen a freshly reset engine.
+REM docs\decisions\2026-09-16-intel-gen3-alpha-test-and-blend-audit.md
 REM Run it from real DOS after V9XCOPY, from inside the package folder:
 REM     C:
 REM     CD \INTELGMA

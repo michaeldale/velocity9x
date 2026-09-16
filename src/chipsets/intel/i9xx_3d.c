@@ -222,7 +222,7 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
-    const struct v9x_i9xx_depth_binding *depth,
+    const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
@@ -239,6 +239,7 @@ v9x_status v9x_i9xx_build_textured_state(
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, texture, 0,
+                                       V9X_I9XX_SCENE_TEXTURED,
                                        stream, capacity, written);
 }
 
@@ -285,6 +286,9 @@ v9x_status v9x_i9xx_build_depth_state(
     depth.writes = writes;
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, &depth,
+                                       (writes != 0ul)
+                                           ? V9X_I9XX_SCENE_DEPTH_WRITE
+                                           : V9X_I9XX_SCENE_DEPTH_TEST,
                                        stream, capacity, written);
 }
 
@@ -295,6 +299,41 @@ v9x_status v9x_i9xx_build_3d_state(
 {
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0,
+                                       V9X_I9XX_SCENE_PLAIN,
+                                       stream, capacity, written);
+}
+
+/*
+ * The ALPHA state block: the untextured one with a different S6, and for a
+ * blend scene one extra dword.
+ *
+ * Both kinds are untextured and un-Z'd on purpose. The alpha comes from the
+ * vertex colour, which the untextured program already moves to the output, so
+ * neither needs a texture format this driver has never emitted, and neither
+ * puts the texture path inside a measurement that is about alpha.
+ *
+ * docs\decisions\2026-09-16-intel-gen3-alpha-test-and-blend-audit.md.
+ */
+v9x_u32 v9x_i9xx_alpha_state_extent(v9x_u32 kind)
+{
+    if (kind == V9X_I9XX_SCENE_BLEND) {
+        /* One more: the IAB disable, which is a single dword. */
+        return v9x_i9xx_3d_state_extent() + 1ul;
+    }
+    return v9x_i9xx_3d_state_extent();
+}
+
+v9x_status v9x_i9xx_build_alpha_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height, v9x_u32 kind,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (kind != V9X_I9XX_SCENE_ALPHA_TEST && kind != V9X_I9XX_SCENE_BLEND) {
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_i9xx_build_state_common(target_offset, target_pitch,
+                                       width, height, 0, 0, kind,
                                        stream, capacity, written);
 }
 
@@ -302,7 +341,7 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
-    const struct v9x_i9xx_depth_binding *depth,
+    const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
@@ -313,6 +352,9 @@ static v9x_status v9x_i9xx_build_state_common(
         needed = v9x_i9xx_textured_state_extent();
     } else if (depth != 0) {
         needed = v9x_i9xx_depth_state_extent();
+    } else if (kind == V9X_I9XX_SCENE_ALPHA_TEST ||
+               kind == V9X_I9XX_SCENE_BLEND) {
+        needed = v9x_i9xx_alpha_state_extent(kind);
     } else {
         needed = v9x_i9xx_3d_state_extent();
     }
@@ -371,9 +413,44 @@ static v9x_status v9x_i9xx_build_state_common(
         at += produced;
     }
 
+    /*
+     * The IAB disable, before the state-immediate that enables blending.
+     *
+     * Emitted for the BLEND kind alone rather than added to the invariant
+     * block: that block is shared by every scene, and putting it there would
+     * change scene 0's stream and with it the regression that says nothing
+     * changed. IAB matters only when the colour blend enable is set, so
+     * confining it to the scene that sets that bit costs nothing.
+     */
+    if (kind == V9X_I9XX_SCENE_BLEND) {
+        stream[at++] = V9X_I9XX_IAB_DISABLE_DWORD;
+    }
+
     {
         v9x_u32 s6 = V9X_I9XX_S6_PHASE5;
 
+        if (kind == V9X_I9XX_SCENE_ALPHA_TEST) {
+            /* GREATER, so a fragment at or below the reference is rejected.
+             * The reference is a whole byte, which is the precision the
+             * comparison happens at whatever the target's format is. */
+            s6 |= V9X_I9XX_S6_ALPHA_TEST_ENABLE |
+                  (V9X_I9XX_COMPAREFUNC_GREATER <<
+                       V9X_I9XX_S6_ALPHA_FUNC_SHIFT) |
+                  (V9X_I9XX_ALPHA_REF << V9X_I9XX_S6_ALPHA_REF_SHIFT);
+        }
+        if (kind == V9X_I9XX_SCENE_BLEND) {
+            /* Source alpha over one minus source alpha, added. Both factors
+             * are functions of the FRAGMENT, so neither depends on a
+             * destination alpha that a 565 target does not have and that
+             * neither reference tree accounts for. */
+            s6 |= V9X_I9XX_S6_BLEND_ENABLE |
+                  (V9X_I9XX_BLENDFUNC_ADD <<
+                       V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
+                  (V9X_I9XX_BLENDFACT_SRC_ALPHA <<
+                       V9X_I9XX_S6_SRC_FACTOR_SHIFT) |
+                  (V9X_I9XX_BLENDFACT_INV_SRC_ALPHA <<
+                       V9X_I9XX_S6_DST_FACTOR_SHIFT);
+        }
         if (depth != 0) {
             s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
                   (V9X_I9XX_COMPAREFUNC_LESS <<

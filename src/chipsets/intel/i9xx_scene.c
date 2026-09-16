@@ -92,6 +92,16 @@
 #define V9X_I9XX_DEPTH_Z_FAR        ((v9x_u32)0x3f666666ul)
 
 /*
+ * The ALPHA scenes reuse the depth geometry: three triangles of one shape at
+ * three horizontal offsets, and for the blend scene the first two of them.
+ *
+ * Reused deliberately. The coverage regions are already computed, already
+ * probed, and already checked by a host test that recomputes them from the
+ * geometry - so what differs between an alpha scene and a depth scene is the
+ * state, which is what is being measured.
+ */
+
+/*
  * Ids are ASSIGNED, not derived from the table index.
  *
  * A scene's id is how its probe set is attributed in the capture and in every
@@ -106,10 +116,16 @@
  * scene wearing that number would make the two indistinguishable in every
  * record that mentions it.
  */
-#define V9X_I9XX_SCENE_ID_TEXTURE   ((v9x_u32)5ul)
+/*
+ * 5 was the texture scene and 7 the depth test without writes. Both answered
+ * their questions in intel45 and intel46 and retired on 2026-09-16; scene 2
+ * covers the texture path and scene 4 the depth binding. Not reused, for the
+ * same reason 1 through 4 are not.
+ */
 #define V9X_I9XX_SCENE_ID_MODULATE  ((v9x_u32)6ul)
-#define V9X_I9XX_SCENE_ID_DEPTHTEST ((v9x_u32)7ul)
 #define V9X_I9XX_SCENE_ID_DEPTHWRIT ((v9x_u32)8ul)
+#define V9X_I9XX_SCENE_ID_ALPHA     ((v9x_u32)9ul)
+#define V9X_I9XX_SCENE_ID_BLEND     ((v9x_u32)10ul)
 
 /*
  * The MI probe, immediately before each scene's 3D work. Worth its two dwords
@@ -130,12 +146,17 @@
 /*
  * FIVE scenes, which is also what the 2026-09-16 amendment authorises.
  *
- * The bound is reached rather than exceeded, and nothing was dropped to get
- * there: the colour and edge scenes retired when their questions were
- * answered, which is what made room. Scene 0 stays because it is the only
- * thing that says a change altered nothing, and scene 1 stays because it is
- * the only thing that says the TEXTURE path still works - it is byte for byte
- * what intel45 measured.
+ * The bound is reached rather than exceeded, and the way room was made for
+ * alpha test and blending was to RETIRE two scenes whose questions intel46
+ * answered - the texture scene and the depth test without writes - rather than
+ * amend the authorisation to seven draws. That is the same trade the colour
+ * and edge scenes took.
+ *
+ * The cost, stated rather than buried: scene 1 now covers the texture path as
+ * well as the multiply, so a future failure there will not separate "the
+ * texture broke" from "the multiply broke". intel45 and intel46 measured both,
+ * so the evidence exists; what is gone is the ability to re-separate them
+ * without spending a scene.
  *
  * A sixth would need a further risk decision. There is no sixth.
  */
@@ -246,15 +267,6 @@ static void v9x_i9xx_scene_phase5_probes(struct v9x_i9xx_scene *scene)
 }
 
 /*
- * Where the triangle's texture coordinates put each probe.
- *
- * The coordinates run 0..1 across the triangle's own bounding box, so a
- * probe's quadrant follows from where it sits in that box rather than
- * from where it sits in the triangle. These four land one per quadrant,
- * and the host test recomputes that from the coordinates rather than
- * trusting the list.
- */
-/*
  * The MODULATED probes: the same six pixels as the texture scene, so the two
  * scenes are comparable pixel by pixel and the multiply is the only
  * difference between them.
@@ -273,27 +285,6 @@ static void v9x_i9xx_scene_modulate_probes(struct v9x_i9xx_scene *scene)
     v9x_i9xx_scene_probe(scene, "ModOutside", 40u, 400u,
                          V9X_I9XX_PROBE_FILL);
     v9x_i9xx_scene_probe(scene, "ModCorner", 0u, 0u,
-                         V9X_I9XX_PROBE_FILL);
-}
-
-static void v9x_i9xx_scene_texture_probes(struct v9x_i9xx_scene *scene)
-{
-    v9x_i9xx_scene_probe(scene, "TexQ0", 250u, 160u,
-                         V9X_I9XX_PROBE_QUADRANT0);
-    v9x_i9xx_scene_probe(scene, "TexQ1", 400u, 160u,
-                         V9X_I9XX_PROBE_QUADRANT1);
-    v9x_i9xx_scene_probe(scene, "TexQ2", 290u, 330u,
-                         V9X_I9XX_PROBE_QUADRANT2);
-    v9x_i9xx_scene_probe(scene, "TexQ3", 350u, 330u,
-                         V9X_I9XX_PROBE_QUADRANT3);
-    /*
-     * And the fill, outside the triangle entirely. A scene that sampled
-     * everywhere - or that drew nothing at all - would otherwise look the
-     * same at four interior probes as one that worked.
-     */
-    v9x_i9xx_scene_probe(scene, "TexOutside", 40u, 400u,
-                         V9X_I9XX_PROBE_FILL);
-    v9x_i9xx_scene_probe(scene, "TexCorner", 0u, 0u,
                          V9X_I9XX_PROBE_FILL);
 }
 
@@ -359,6 +350,7 @@ const char *v9x_i9xx_probe_expectation_name(v9x_u16 expect)
     if (expect == V9X_I9XX_PROBE_MODQUAD1) { return "modquad1"; }
     if (expect == V9X_I9XX_PROBE_MODQUAD2) { return "modquad2"; }
     if (expect == V9X_I9XX_PROBE_MODQUAD3) { return "modquad3"; }
+    if (expect == V9X_I9XX_PROBE_BLENDED) { return "blended"; }
     return "unknown";
 }
 
@@ -392,6 +384,8 @@ static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index,
 static void v9x_i9xx_scene_depth_triangles(struct v9x_i9xx_scene *scene);
 static void v9x_i9xx_scene_depth_probes(struct v9x_i9xx_scene *scene,
                                         v9x_u16 writes);
+static void v9x_i9xx_scene_alpha_probes(struct v9x_i9xx_scene *scene);
+static void v9x_i9xx_scene_blend_probes(struct v9x_i9xx_scene *scene);
 
 v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
 {
@@ -445,12 +439,25 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
     if (index != 1ul) {
         /* Split because five scenes in one function ran past what Watcom will
          * generate for a 16-bit near call frame, and because the texture and
-         * depth halves have nothing to say to each other. */
+         * alpha halves have nothing to say to each other. */
         return v9x_i9xx_scene_at_rest(index, out);
     }
 
-    out->id = V9X_I9XX_SCENE_ID_TEXTURE;
-    out->kind = V9X_I9XX_SCENE_TEXTURED;
+    /*
+     * Scene 1: the texture, MODULATED by the vertex colour.
+     *
+     * This was two scenes until 2026-09-16 - one sampling the texture straight
+     * to the output colour, one modulating it - and the first retired once
+     * intel45 and intel46 had both measured the addressing. It now carries the
+     * texture path as well as the multiply, which is the cost recorded at the
+     * scene count above.
+     *
+     * The colour is unmeasured and marked so: the product depends on the
+     * shader arithmetic and then on the 565 conversion, and the capture
+     * reports it rather than requiring it.
+     */
+    out->id = V9X_I9XX_SCENE_ID_MODULATE;
+    out->kind = V9X_I9XX_SCENE_MODULATED;
     out->triangle_count = 1ul;
     v9x_i9xx_scene_triangle(&out->triangles[0],
                             (v9x_u32)V9X_I9XX_TRI_X0,
@@ -459,78 +466,157 @@ v9x_status v9x_i9xx_scene_at(v9x_u32 index, struct v9x_i9xx_scene *out)
                             (v9x_u32)V9X_I9XX_TRI_Y1,
                             (v9x_u32)V9X_I9XX_TRI_X2,
                             (v9x_u32)V9X_I9XX_TRI_Y2,
-                            V9X_I9XX_TEX_VERTEX_COLOR_BGRA, V9X_FALSE);
-    v9x_i9xx_scene_texture_probes(out);
+                            V9X_I9XX_TEX_MODULATE_COLOR_BGRA, V9X_FALSE);
+    v9x_i9xx_scene_modulate_probes(out);
     return V9X_STATUS_OK;
 }
 
-static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index, struct v9x_i9xx_scene *out)
+static v9x_status v9x_i9xx_scene_at_rest(v9x_u32 index,
+                                         struct v9x_i9xx_scene *out)
 {
     /*
-     * Scene 2: the same texture, MODULATED by the vertex colour.
+     * Scene 2: three triangles at three depths, with depth WRITES on.
      *
-     * Same triangle and same probes as scene 1, so the only difference between
-     * the two streams is the fragment program and the vertex colour - and the
-     * only difference between their pictures is the multiply. Scene 1 having
-     * already reproduced intel45 byte for byte is what makes that isolation
-     * real rather than asserted.
+     * The companion scene that bound a depth buffer and tested without writing
+     * retired on 2026-09-16: intel46 showed the binding works, which was its
+     * whole question. This one carries the depth result - the furthest
+     * triangle rejected wherever the nearer two wrote, and present past them.
      */
     if (index == 2ul) {
-        out->id = V9X_I9XX_SCENE_ID_MODULATE;
-        out->kind = V9X_I9XX_SCENE_MODULATED;
-        out->triangle_count = 1ul;
-        v9x_i9xx_scene_triangle(&out->triangles[0],
-                                (v9x_u32)V9X_I9XX_TRI_X0,
-                                (v9x_u32)V9X_I9XX_TRI_Y0,
-                                (v9x_u32)V9X_I9XX_TRI_X1,
-                                (v9x_u32)V9X_I9XX_TRI_Y1,
-                                (v9x_u32)V9X_I9XX_TRI_X2,
-                                (v9x_u32)V9X_I9XX_TRI_Y2,
-                                V9X_I9XX_TEX_MODULATE_COLOR_BGRA, V9X_FALSE);
-        v9x_i9xx_scene_modulate_probes(out);
+        out->id = V9X_I9XX_SCENE_ID_DEPTHWRIT;
+        out->kind = V9X_I9XX_SCENE_DEPTH_WRITE;
+        v9x_i9xx_scene_depth_triangles(out);
+        v9x_i9xx_scene_depth_probes(out, V9X_TRUE);
         return V9X_STATUS_OK;
     }
 
     /*
-     * Scene 3: a depth buffer bound and TESTED, with writes off.
+     * Scene 3: the ALPHA TEST.
      *
-     * The buffer is cleared far, and nothing writes it, so every triangle
-     * passes and paint order decides - the picture is what the same three
-     * triangles would draw with no depth at all. That is the point: it says a
-     * real depth binding is in the stream and the hardware read through it
-     * without incident, without yet depending on the test discriminating.
+     * The same three triangles, drawn with no depth buffer at all, carrying
+     * three different alphas in the top byte of their vertex colour. The test
+     * is GREATER against 0x80, so the first and third pass and the second is
+     * rejected everywhere.
      *
-     * The binding's encoding is Mesa-sourced only, so this is the scene where
-     * a wrong one shows up cheaply.
+     * The discriminating pixels are those covered by the first two and not the
+     * third: the second is drawn later, so without a working alpha test it
+     * would win them, and with one the first still holds them.
+     *
+     * The rejected triangle is BRACKETED by two that draw, inside a single
+     * primitive whose vertex count the decoder pins. That is what separates
+     * "it was rejected" from "it never ran" - no probe can, because a rejected
+     * triangle and an absent one leave the same pixels behind.
+     *
+     * This also measures where the alpha byte IS. If the top byte is not the
+     * alpha, all three triangles draw and the discriminating probes read the
+     * second triangle's colour instead of the first's.
      */
     if (index == 3ul) {
-        out->id = V9X_I9XX_SCENE_ID_DEPTHTEST;
-        out->kind = V9X_I9XX_SCENE_DEPTH_TEST;
+        out->id = V9X_I9XX_SCENE_ID_ALPHA;
+        out->kind = V9X_I9XX_SCENE_ALPHA_TEST;
         v9x_i9xx_scene_depth_triangles(out);
-        v9x_i9xx_scene_depth_probes(out, V9X_FALSE);
+        /* The geometry is the depth scenes'; only the colours differ, and
+         * only in their top byte. */
+        out->triangles[0].color = V9X_I9XX_ALPHA_COLOR_PASS;
+        out->triangles[1].color = V9X_I9XX_ALPHA_COLOR_FAIL;
+        out->triangles[2].color = V9X_I9XX_ALPHA_COLOR_PASS2;
+        v9x_i9xx_scene_alpha_probes(out);
         return V9X_STATUS_OK;
     }
 
     /*
-     * Scene 4: the same three triangles, with depth WRITES on.
+     * Scene 4: SOURCE-ALPHA BLEND.
      *
-     * A and B record their depths, so C - furthest, drawn last - is rejected
-     * everywhere they drew and appears only past them. Two probes change their
-     * answer between this scene and the last, and nothing else about the two
-     * streams differs except S6's write-enable bit.
+     * Two triangles: an opaque one first, then a half-alpha one over it. The
+     * overlap must read neither source colour - that is the blend - and the
+     * second triangle's own region blends against the fill instead, which is
+     * a second product on a different background.
+     *
+     * Only the first two triangles of the shared geometry, because a third
+     * would blend over a blend and the result would depend on two rounding
+     * steps rather than one.
      */
-    out->id = V9X_I9XX_SCENE_ID_DEPTHWRIT;
-    out->kind = V9X_I9XX_SCENE_DEPTH_WRITE;
+    out->id = V9X_I9XX_SCENE_ID_BLEND;
+    out->kind = V9X_I9XX_SCENE_BLEND;
     v9x_i9xx_scene_depth_triangles(out);
-    v9x_i9xx_scene_depth_probes(out, V9X_TRUE);
+    out->triangle_count = 2ul;
+    out->triangles[0].color = V9X_I9XX_BLEND_COLOR_UNDER;
+    out->triangles[1].color = V9X_I9XX_BLEND_COLOR_OVER;
+    /* The over triangle's colour is a bit pattern, not a stored colour: what
+     * lands is a product. Marked unmeasured so the capture reports it. */
+    out->triangles[1].color_measured = V9X_FALSE;
+    v9x_i9xx_scene_blend_probes(out);
     return V9X_STATUS_OK;
 }
 
 /*
- * The three triangles the depth scenes draw, in submission order.
+ * The ALPHA TEST probes.
  *
- * One shape at three horizontal offsets. A and B overlap; C sits behind both
- * and extends past them to the right.
+ * At y = 60 the three triangles span 82..237, 142..297 and 229..430; at y = 30
+ * they span 66..254, 126..314 and 208..452. The host test recomputes every
+ * one of these from the geometry rather than trusting the list, which is how
+ * an impossible probe was caught in the depth set.
+ */
+static void v9x_i9xx_scene_alpha_probes(struct v9x_i9xx_scene *scene)
+{
+    /* The first triangle alone: it passes, so it draws. Also the evidence
+     * that the primitive ran at all. */
+    v9x_i9xx_scene_probe(scene, "AlpA", 100u, 60u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    /*
+     * Covered by the first two and NOT the third, on two different rows. The
+     * second is drawn later and is the one that fails the test, so these read
+     * the first triangle if the test works and the second if it does not.
+     * Two rows rather than two points on one, so a single wrong edge cannot
+     * account for both.
+     */
+    v9x_i9xx_scene_probe(scene, "AlpAB0", 150u, 30u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    v9x_i9xx_scene_probe(scene, "AlpAB1", 200u, 60u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    /* Covered by the second and third. The third passes and is drawn last, so
+     * it holds these whether or not the test works - a control. */
+    v9x_i9xx_scene_probe(scene, "AlpBC", 260u, 60u,
+                         V9X_I9XX_PROBE_TRIANGLE2);
+    /* The third alone, past the others: the evidence that IT ran. */
+    v9x_i9xx_scene_probe(scene, "AlpC", 400u, 60u,
+                         V9X_I9XX_PROBE_TRIANGLE2);
+    /* And the fill, below every apex. */
+    v9x_i9xx_scene_probe(scene, "AlpOut", 560u, 220u,
+                         V9X_I9XX_PROBE_FILL);
+}
+
+/*
+ * The BLEND probes. Two triangles, so three regions plus the fill.
+ */
+static void v9x_i9xx_scene_blend_probes(struct v9x_i9xx_scene *scene)
+{
+    /* The opaque triangle alone: its measured colour, unblended, because
+     * nothing is drawn over it. Failable, and the evidence that it ran. */
+    v9x_i9xx_scene_probe(scene, "BlnUnder", 100u, 60u,
+                         V9X_I9XX_PROBE_TRIANGLE0);
+    /* The overlap: the half-alpha triangle over the opaque one. */
+    v9x_i9xx_scene_probe(scene, "BlnOver0", 200u, 60u,
+                         V9X_I9XX_PROBE_BLENDED);
+    v9x_i9xx_scene_probe(scene, "BlnOver1", 150u, 30u,
+                         V9X_I9XX_PROBE_BLENDED);
+    /* The half-alpha triangle past the opaque one, blending against the FILL
+     * instead - a second product on a different background, so a single
+     * coincidence cannot produce both. */
+    v9x_i9xx_scene_probe(scene, "BlnFill", 280u, 60u,
+                         V9X_I9XX_PROBE_BLENDED);
+    /* And the fill itself. */
+    v9x_i9xx_scene_probe(scene, "BlnOut", 560u, 220u,
+                         V9X_I9XX_PROBE_FILL);
+}
+
+/*
+ * The three triangles the depth and alpha scenes draw, in submission order.
+ *
+ * One shape at three horizontal offsets: the first two overlap, and the third
+ * sits across both and extends past them to the right. Shared by three scenes
+ * because the coverage regions are the same question in each - which triangle
+ * owns a pixel - and only the state that decides it differs.
  */
 static void v9x_i9xx_scene_depth_triangles(struct v9x_i9xx_scene *scene)
 {
@@ -556,33 +642,27 @@ static void v9x_i9xx_scene_depth_triangles(struct v9x_i9xx_scene *scene)
 }
 
 /*
- * The depth probes. Coordinates are shared by both depth scenes so the two
- * can be compared pixel by pixel; only the expectations differ, and that
- * difference is the measurement.
+ * The depth probes.
  *
- * `writes` selects which: with depth writes off, nothing the triangles draw
- * changes the buffer, so all three pass the test against a far-cleared buffer
- * and paint order decides - C last, C wins everywhere it covers. With writes
- * on, A and B record their depths and C is rejected wherever they drew.
+ * `writes` selects the expectations. With depth writes off nothing the
+ * triangles draw changes the buffer, so all three pass against a far-cleared
+ * buffer and paint order decides. With writes on, the first two record their
+ * depths and the third is rejected wherever they drew. That contrast was the
+ * experiment, and intel46 produced it; the writes-off scene has since retired
+ * and this keeps its parameter because the expectations are still derived from
+ * the rule rather than written out twice.
  *
- * That contrast IS the experiment. The same three triangles at the same three
- * depths produce two different pictures, and only a working depth test
- * produces the second.
+ * Every coordinate is a claim about which triangles cover a pixel, and the
+ * host test recomputes all of them from the geometry. It has already caught
+ * one: an "A and C but not B" probe was specified here and cannot exist. B is
+ * A shifted right by 60 and C starts further right again, so wherever A and C
+ * overlap, B covers it too.
+ *
+ * At y = 60 the spans are A 82..237, B 142..297, C 229..430.
  */
 static void v9x_i9xx_scene_depth_probes(struct v9x_i9xx_scene *scene,
                                         v9x_u16 writes)
 {
-    /*
-     * Every coordinate below is a claim about which triangles cover a pixel,
-     * and the host test recomputes all of them from the geometry rather than
-     * trusting this list. It has already caught one: an "A and C but not B"
-     * probe was specified here and cannot exist. B is A shifted right by 60
-     * and C starts further right again, so wherever A and C overlap, B covers
-     * it too - the pair is never alone. Three triangles in a row admit fewer
-     * distinct regions than they appear to.
-     *
-     * At y = 60 the spans are A 82..237, B 142..297, C 229..430.
-     */
     /* A alone. */
     v9x_i9xx_scene_probe(scene, "DepA", 100u, 60u,
                          V9X_I9XX_PROBE_TRIANGLE0);
@@ -608,8 +688,8 @@ static void v9x_i9xx_scene_depth_probes(struct v9x_i9xx_scene *scene,
                          (v9x_u16)(writes != V9X_FALSE
                                        ? V9X_I9XX_PROBE_TRIANGLE1
                                        : V9X_I9XX_PROBE_TRIANGLE2));
-    /* C alone, past A and B entirely. C must appear here in BOTH scenes: it
-     * is what distinguishes "C was rejected" from "C never ran". */
+    /* C alone, past A and B entirely. C must appear here: it is what
+     * distinguishes "C was rejected" from "C never ran". */
     v9x_i9xx_scene_probe(scene, "DepC", 400u, 60u,
                          V9X_I9XX_PROBE_TRIANGLE2);
     /* And the fill, below every apex. */
@@ -642,6 +722,14 @@ v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene)
                      ((scene->kind == V9X_I9XX_SCENE_MODULATED)
                           ? v9x_i9xx_modulate_program_extent()
                           : v9x_i9xx_sampling_program_extent()) +
+                     V9X_I9XX_SCENE_PROBE_DWORDS;
+        } else if (scene->kind == V9X_I9XX_SCENE_ALPHA_TEST ||
+                   scene->kind == V9X_I9XX_SCENE_BLEND) {
+            /* No texture, no depth buffer, no clear: the alpha comes from the
+             * vertex colour and the untextured program already carries it. */
+            prefix = V9X_I9XX_SCENE_FILL_DWORDS +
+                     v9x_i9xx_alpha_state_extent(scene->kind) +
+                     v9x_i9xx_fragment_program_extent() +
                      V9X_I9XX_SCENE_PROBE_DWORDS;
         } else if (v9x_i9xx_scene_kind_depth(scene->kind) != V9X_FALSE) {
             /* The depth clear before the fill, for the same reason the texture
@@ -812,7 +900,24 @@ v9x_status v9x_i9xx_build_scene_stream(
      * it - bit 2 is an inhibit, the sign-inverted field the audit flagged. */
     stream[at++] = V9X_I9XX_MI_FLUSH;
 
-    if (v9x_i9xx_scene_kind_depth(scene->kind) != V9X_FALSE) {
+    if (scene->kind == V9X_I9XX_SCENE_ALPHA_TEST ||
+        scene->kind == V9X_I9XX_SCENE_BLEND) {
+        if (v9x_i9xx_build_alpha_state(
+                layout.target_offset, layout.target_pitch,
+                V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT, scene->kind,
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+        /* The untextured program, which moves all four channels of the
+         * interpolated vertex colour - alpha included - to the output. That
+         * is the whole reason these scenes need no texture format. */
+        if (v9x_i9xx_build_fragment_program(
+                stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        at += produced;
+    } else if (v9x_i9xx_scene_kind_depth(scene->kind) != V9X_FALSE) {
         if (v9x_i9xx_build_depth_state(
                 layout.target_offset, layout.target_pitch,
                 V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,

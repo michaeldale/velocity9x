@@ -206,6 +206,16 @@ function Test-V9xFamilyManifest {
         }
         Assert-V9xFamilyKeys -Table $chip.Audit -Required @('Required', 'Forbidden') `
             -Context "Family $Id chip $($chip.Id) Audit"
+        foreach ($pattern in @($chip.Audit.NotDistinctive |
+                               Where-Object { $_ })) {
+            if ($pattern -notin @($chip.Audit.Required)) {
+                throw ("Family $Id chip $($chip.Id) marks '$pattern' as not " +
+                       'distinctive, but does not require it. The list names ' +
+                       'which REQUIRED patterns are too generic to convict ' +
+                       'another family; a pattern that is not required is not ' +
+                       'one of them.')
+            }
+        }
         foreach ($pattern in (@($chip.Audit.Required) + @($chip.Audit.Forbidden))) {
             try {
                 $null = [regex]::new($pattern)
@@ -693,9 +703,35 @@ function Get-V9xFamilyRequiredPatterns {
       @($Family.Audit.RequiredInstructions)) | Sort-Object -Unique
 }
 
-# Every other family's required signatures become this family's forbidden set,
-# minus anything this family legitimately produces. Adding a family therefore
-# strengthens every existing family's audit with no script edit.
+# Which of a family's required patterns are specific enough to convict another
+# family of running its code.
+#
+# Not all of them are. A chip's signature is a SEQUENCE - select a register,
+# then set a bit in it - and only the part that names the register identifies
+# anything. `or al,8` is a byte OR that any code can contain, and on
+# 2026-09-16 the Intel image contained one: `s6 |= S6_DEPTH_WRITE_ENABLE`
+# compiles to exactly that dword and exactly that instruction, and the gate
+# convicted the Intel driver of executing the ViRGE's CR53 MMIO unlock.
+#
+# The manifest already anticipated half of this - its comment explains why the
+# patterns carry \b anchors - but anchoring narrows the false-positive surface
+# rather than removing it. A generic instruction stays generic when anchored.
+#
+# So a chip may mark required patterns as NotDistinctive: still required in its
+# own object, where the sequence as a whole is what is being asserted, and not
+# propagated as a conviction of anyone else.
+function Get-V9xFamilyDistinctivePatterns {
+    param([Parameter(Mandatory = $true)]$Family)
+    $generic = @(@($Family.Chips) |
+        ForEach-Object { @($_.Audit.NotDistinctive) } |
+        Where-Object { $_ })
+    @(Get-V9xFamilyRequiredPatterns -Family $Family |
+        Where-Object { $_ -notin $generic })
+}
+
+# Every other family's DISTINCTIVE signatures become this family's forbidden
+# set, minus anything this family legitimately produces. Adding a family
+# therefore strengthens every existing family's audit with no script edit.
 function Get-V9xFamilyForbiddenPatterns {
     param(
         [Parameter(Mandatory = $true)]$Family,
@@ -705,7 +741,7 @@ function Get-V9xFamilyForbiddenPatterns {
     $own = @(Get-V9xFamilyRequiredPatterns -Family $Family)
     $foreign = @(@($AllFamilies) |
         Where-Object { $_.Id -ne $Family.Id } |
-        ForEach-Object { Get-V9xFamilyRequiredPatterns -Family $_ })
+        ForEach-Object { Get-V9xFamilyDistinctivePatterns -Family $_ })
     @(@($foreign + @($Family.Audit.ForbiddenInstructions) +
         @(@($Family.Chips) | ForEach-Object { @($_.Audit.Forbidden) })) |
         Where-Object { $_ -notin $own } | Sort-Object -Unique)

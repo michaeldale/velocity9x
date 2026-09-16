@@ -73,6 +73,25 @@ static v9x_u16 v9x_i9xx_normalized_half(v9x_u32 bits)
  * fragment program either ignores or multiplies by. Each is pinned, because a
  * vertex colour nobody chose is a picture nobody can read.
  */
+/*
+ * How many triangles a kind draws.
+ *
+ * The decoder cannot ask the scene table - it validates a stream, not a scene -
+ * so the count is per kind and stated here. A stream whose vertex count does
+ * not match is refused rather than read as far as it goes.
+ */
+static v9x_u32 v9x_i9xx_decode_triangles(v9x_u32 kind)
+{
+    if (v9x_i9xx_scene_kind_depth(kind) != V9X_FALSE ||
+        kind == V9X_I9XX_SCENE_ALPHA_TEST) {
+        return 3ul;
+    }
+    if (kind == V9X_I9XX_SCENE_BLEND) {
+        return 2ul;
+    }
+    return 1ul;
+}
+
 static v9x_u16 v9x_i9xx_decode_vertex_color(v9x_u32 kind, v9x_u32 color)
 {
     if (kind == V9X_I9XX_SCENE_TEXTURED) {
@@ -87,6 +106,24 @@ static v9x_u16 v9x_i9xx_decode_vertex_color(v9x_u32 kind, v9x_u32 color)
         if (color == V9X_I9XX_TRI_COLOR_BGRA ||
             color == V9X_I9XX_TRI_COLOR_B ||
             color == V9X_I9XX_TRI_COLOR_C) {
+            return V9X_TRUE;
+        }
+        return V9X_FALSE;
+    }
+    if (kind == V9X_I9XX_SCENE_ALPHA_TEST) {
+        /* The same three colours with their top byte varied. Pinned including
+         * the alpha, because the alpha IS the experiment: a stream carrying a
+         * different one would test a reference nobody chose. */
+        if (color == V9X_I9XX_ALPHA_COLOR_PASS ||
+            color == V9X_I9XX_ALPHA_COLOR_FAIL ||
+            color == V9X_I9XX_ALPHA_COLOR_PASS2) {
+            return V9X_TRUE;
+        }
+        return V9X_FALSE;
+    }
+    if (kind == V9X_I9XX_SCENE_BLEND) {
+        if (color == V9X_I9XX_BLEND_COLOR_UNDER ||
+            color == V9X_I9XX_BLEND_COLOR_OVER) {
             return V9X_TRUE;
         }
         return V9X_FALSE;
@@ -114,6 +151,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_depth_buf_info = V9X_FALSE;
     v9x_u16 saw_texture_paint = V9X_FALSE;
     v9x_u16 saw_depth_clear = V9X_FALSE;
+    v9x_u16 saw_iab_disable = V9X_FALSE;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -498,6 +536,22 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             {
                 v9x_u32 want_s6 = V9X_I9XX_S6_PHASE5;
 
+                if (limits->kind == V9X_I9XX_SCENE_ALPHA_TEST) {
+                    want_s6 |= V9X_I9XX_S6_ALPHA_TEST_ENABLE |
+                               (V9X_I9XX_COMPAREFUNC_GREATER <<
+                                    V9X_I9XX_S6_ALPHA_FUNC_SHIFT) |
+                               (V9X_I9XX_ALPHA_REF <<
+                                    V9X_I9XX_S6_ALPHA_REF_SHIFT);
+                }
+                if (limits->kind == V9X_I9XX_SCENE_BLEND) {
+                    want_s6 |= V9X_I9XX_S6_BLEND_ENABLE |
+                               (V9X_I9XX_BLENDFUNC_ADD <<
+                                    V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
+                               (V9X_I9XX_BLENDFACT_SRC_ALPHA <<
+                                    V9X_I9XX_S6_SRC_FACTOR_SHIFT) |
+                               (V9X_I9XX_BLENDFACT_INV_SRC_ALPHA <<
+                                    V9X_I9XX_S6_DST_FACTOR_SHIFT);
+                }
                 if (depthed != V9X_FALSE) {
                     want_s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
                                (V9X_I9XX_COMPAREFUNC_LESS <<
@@ -639,6 +693,31 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              */
             index += 6ul;
 
+        } else if (command == V9X_I9XX_IAB_DISABLE_DWORD) {
+            /*
+             * The independent-alpha-blend DISABLE, and only that exact dword.
+             *
+             * Accepted in a blend stream and refused in every other, on the
+             * same terms as the texture packets: a stream that carries it
+             * without enabling blending is a stream doing something nobody
+             * asked for, and one that enables blending without it leaves the
+             * alpha channel blended by whatever the engine last had.
+             *
+             * The whole dword is compared rather than the opcode, because the
+             * MODIFY bits are what make it a disable. A packet with only
+             * IAB_MODIFY_ENABLE set would leave the factors untouched and
+             * would pass an opcode check.
+             */
+            if (limits->kind != V9X_I9XX_SCENE_BLEND) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
+            }
+            saw_iab_disable = V9X_TRUE;
+            index += 1ul;
+
+        } else if ((command & 0xff000000ul) == V9X_I9XX_3DSTATE_IAB) {
+            /* Any OTHER form of the packet, including one that enables it. */
+            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
+
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH) {
             index += 1ul;
@@ -683,6 +762,12 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  saw_depth_buf_info == V9X_FALSE)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
+            /* A blend draw without the IAB disable would blend the alpha
+             * channel with factors nobody set. */
+            if (limits->kind == V9X_I9XX_SCENE_BLEND &&
+                saw_iab_disable == V9X_FALSE) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+            }
             /*
              * The stride follows the mode, and so does the payload. A textured
              * vertex is seven dwords, not five: the same three vertices make a
@@ -698,9 +783,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * triangles where every other kind draws one. Bounded by the
              * scene table's own maximum rather than fixed at three.
              */
-            vertices = (depthed != V9X_FALSE)
-                           ? (V9X_I9XX_VERTEX_COUNT * 3ul)
-                           : V9X_I9XX_VERTEX_COUNT;
+            vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
+                                 (v9x_u16)v9x_i9xx_decode_triangles(
+                                     limits->kind));
             if (payload != (v9x_u32)((v9x_u16)vertices * (v9x_u16)stride)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
             }
@@ -855,6 +940,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * nearest filter is a picture - just not one of this build's making.
      */
     if (textured != V9X_FALSE && saw_texture_paint == V9X_FALSE) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    if (limits->kind == V9X_I9XX_SCENE_BLEND &&
+        saw_iab_disable == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     return V9X_I9XX_P5_OK;

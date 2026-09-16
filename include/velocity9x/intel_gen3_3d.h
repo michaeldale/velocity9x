@@ -167,6 +167,78 @@
  */
 #define V9X_I9XX_S6_DEPTH_FUNC_SHIFT     16u
 #define V9X_I9XX_COMPAREFUNC_LESS        ((v9x_u32)2ul)
+#define V9X_I9XX_COMPAREFUNC_GREATER     ((v9x_u32)5ul)
+
+/*
+ * S6's ALPHA TEST: enable, a three-bit function at 28 and an EIGHT-BIT
+ * reference at 20.
+ *
+ * Eight bits, not five or six: Mesa converts the reference with
+ * float_to_ubyte and shifts it in whole, so the comparison happens at byte
+ * precision whatever the render target's format is.
+ *
+ * The fields are double-sourced. The USE is not - only Mesa ever enables
+ * alpha test, in any tree - which is weaker than the depth function, where
+ * xf86 independently wrote a literal into the same shift. Recorded in
+ * docs\decisions\2026-09-16-intel-gen3-alpha-test-and-blend-audit.md.
+ */
+#define V9X_I9XX_S6_ALPHA_TEST_ENABLE    ((v9x_u32)0x80000000ul)
+#define V9X_I9XX_S6_ALPHA_FUNC_SHIFT     28u
+#define V9X_I9XX_S6_ALPHA_REF_SHIFT      20u
+
+/*
+ * S6's COLOUR BLEND. Double-sourced by use: Mesa and xf86 assemble the same
+ * four terms - enable, function, source factor, destination factor.
+ *
+ * Only SOURCE-side factors are licensed. Mesa carries a remap that rewrites
+ * DST_ALPHA factors for targets whose alpha does not exist and does NOT apply
+ * it to 565, so whether a 565 destination reads alpha as one is stated by
+ * neither tree. SRC_ALPHA and INV_SRC_ALPHA are functions of the fragment and
+ * are unaffected - and they are what "source-alpha blend" means.
+ */
+#define V9X_I9XX_S6_BLEND_ENABLE         ((v9x_u32)0x00008000ul)
+#define V9X_I9XX_S6_BLEND_FUNC_SHIFT     12u
+#define V9X_I9XX_S6_SRC_FACTOR_SHIFT     8u
+#define V9X_I9XX_S6_DST_FACTOR_SHIFT     4u
+#define V9X_I9XX_BLENDFUNC_ADD           ((v9x_u32)0ul)
+#define V9X_I9XX_BLENDFACT_SRC_ALPHA     ((v9x_u32)5ul)
+#define V9X_I9XX_BLENDFACT_INV_SRC_ALPHA ((v9x_u32)6ul)
+
+/*
+ * _3DSTATE_INDEPENDENT_ALPHA_BLEND, emitted ONLY to disable it.
+ *
+ * This driver has never emitted this packet. xf86 puts it in its INVARIANT
+ * block, twice and independently, each time commented "Disable independent
+ * alpha blend"; Mesa emits it from blend state. So it appears in neither
+ * tree's half of the intersection the 2026-09-14 packet audit took as this
+ * driver's floor - the intersection rule is sound and this is where it
+ * under-emits.
+ *
+ * It has been harmless because IAB blends the alpha channel independently and
+ * nothing consults it while the colour blend enable is clear, which is every
+ * stream run so far. The moment a blend scene sets that bit, whatever IAB
+ * state the engine last had applies, and this driver has never seen a freshly
+ * reset engine.
+ *
+ * The MODIFY bits are the trap: the packet changes only the fields whose
+ * modify bit is set, so a disable that set IAB_MODIFY_ENABLE alone would
+ * leave the factors as they were. All three field-modify bits are set here,
+ * and IAB_ENABLE is left clear. Both xf86 sites emit this dword bit for bit.
+ */
+#define V9X_I9XX_3DSTATE_IAB             ((v9x_u32)0x6b000000ul)
+#define V9X_I9XX_IAB_MODIFY_ENABLE       ((v9x_u32)0x00800000ul)
+#define V9X_I9XX_IAB_ENABLE              ((v9x_u32)0x00400000ul)
+#define V9X_I9XX_IAB_MODIFY_FUNC         ((v9x_u32)0x00200000ul)
+#define V9X_I9XX_IAB_FUNC_SHIFT          16u
+#define V9X_I9XX_IAB_MODIFY_SRC_FACTOR   ((v9x_u32)0x00000800ul)
+#define V9X_I9XX_IAB_SRC_FACTOR_SHIFT    6u
+#define V9X_I9XX_IAB_MODIFY_DST_FACTOR   ((v9x_u32)0x00000020ul)
+#define V9X_I9XX_IAB_DST_FACTOR_SHIFT    0u
+#define V9X_I9XX_BLENDFACT_ONE           ((v9x_u32)2ul)
+#define V9X_I9XX_BLENDFACT_ZERO          ((v9x_u32)1ul)
+/* The whole disable, as one value, because it is emitted in one place and
+ * checked in another and the two must not assemble it differently. */
+#define V9X_I9XX_IAB_DISABLE_DWORD       ((v9x_u32)0x6ba008a1ul)
 #define V9X_I9XX_S6_DEPTH_WRITE_ENABLE   ((v9x_u32)0x00000008ul)
 
 /* ------------------------------------------------------------------ */
@@ -303,6 +375,37 @@
  */
 #define V9X_I9XX_TRI_COLOR_B             ((v9x_u32)0xfff86428ul)
 #define V9X_I9XX_TRI_COLOR_C             ((v9x_u32)0xff2e03c8ul)
+
+/*
+ * The ALPHA TEST triangles: the same three measured colours, with their top
+ * byte - the alpha - varied.
+ *
+ * The reference is 0x80 and the function is GREATER, so A at 0xFF and C at
+ * 0xC0 pass and B at 0x40 is rejected. B is BRACKETED by the two that draw,
+ * in one primitive whose vertex count the decoder pins, which is what makes
+ * "B was rejected" distinguishable from "B never ran": a probe cannot say so
+ * on its own, because a rejected triangle and an absent one leave the same
+ * pixels.
+ *
+ * This scene measures the alpha test and, in the same picture, that the top
+ * byte IS the alpha. If it is not, all three triangles draw and the probes in
+ * A-and-B read B instead of A.
+ */
+#define V9X_I9XX_ALPHA_REF               ((v9x_u32)0x80ul)
+#define V9X_I9XX_ALPHA_COLOR_PASS        ((v9x_u32)0xff1587f9ul)
+#define V9X_I9XX_ALPHA_COLOR_FAIL        ((v9x_u32)0x40f86428ul)
+#define V9X_I9XX_ALPHA_COLOR_PASS2       ((v9x_u32)0xc02e03c8ul)
+
+/*
+ * The BLEND triangles: one opaque, one half.
+ *
+ * The opaque one is drawn first so that the half one blends against a colour
+ * this part is MEASURED to store rather than against whatever the fill leaves.
+ * Its own non-overlapping region blends against the fill instead, which is a
+ * second product on a different background.
+ */
+#define V9X_I9XX_BLEND_COLOR_UNDER       ((v9x_u32)0xff1587f9ul)
+#define V9X_I9XX_BLEND_COLOR_OVER        ((v9x_u32)0x80f86428ul)
 /*
  * MEASURED on the 945GSE, 2026-09-15, build 83f24ec: all seven interior probes
  * read 0x1c3e. round(21*31/255)=3, round(135*63/255)=33, round(249*31/255)=30.
@@ -426,6 +529,15 @@ v9x_u32 v9x_i9xx_textured_state_extent(void);
  * carrying the test enable, the LESS function, and - only when `writes` is
  * non-zero - the write enable.
  */
+/*
+ * The ALPHA state block: the untextured one with S6 carrying the alpha test,
+ * and for a blend scene the IAB disable as well - one dword more.
+ */
+v9x_u32 v9x_i9xx_alpha_state_extent(v9x_u32 kind);
+v9x_status v9x_i9xx_build_alpha_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height, v9x_u32 kind,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_u32 v9x_i9xx_depth_state_extent(void);
 v9x_status v9x_i9xx_build_depth_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
@@ -710,6 +822,13 @@ v9x_status v9x_i9xx_build_modulate_program(
 #define V9X_I9XX_SCENE_MODULATED         ((v9x_u32)2ul)
 #define V9X_I9XX_SCENE_DEPTH_TEST        ((v9x_u32)3ul)
 #define V9X_I9XX_SCENE_DEPTH_WRITE       ((v9x_u32)4ul)
+/* ALPHA_TEST rejects fragments below a reference; BLEND mixes the fragment
+ * with what is already there, by its own alpha. Both are untextured and
+ * un-Z'd: the alpha comes from the vertex colour, which the untextured
+ * program already moves to the output, so neither needs a texture format
+ * this driver has never emitted. Audit section 4. */
+#define V9X_I9XX_SCENE_ALPHA_TEST        ((v9x_u32)5ul)
+#define V9X_I9XX_SCENE_BLEND             ((v9x_u32)6ul)
 
 /* Does this kind sample a texture? Does it bind a depth buffer, and does it
  * write to one? Derived in one place, so no caller re-derives them. */
@@ -757,6 +876,15 @@ v9x_u16 v9x_i9xx_scene_kind_depth_writes(v9x_u32 kind);
 #define V9X_I9XX_PROBE_MODQUAD1          ((v9x_u16)21u)
 #define V9X_I9XX_PROBE_MODQUAD2          ((v9x_u16)22u)
 #define V9X_I9XX_PROBE_MODQUAD3          ((v9x_u16)23u)
+/*
+ * The probe expects a BLENDED pixel: neither source colour and not the fill.
+ *
+ * The exact value is a prediction - it depends on the blend arithmetic and
+ * then on the 565 conversion - so the validator reports it. What it fails on
+ * is the two things that are not predictions: reading either source colour
+ * means no blend happened, and reading the fill means nothing drew.
+ */
+#define V9X_I9XX_PROBE_BLENDED           ((v9x_u16)24u)
 #define V9X_I9XX_PROBE_MEASURE           ((v9x_u16)0xffffu)
 
 struct v9x_i9xx_probe {

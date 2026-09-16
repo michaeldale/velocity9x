@@ -329,9 +329,18 @@ products fit bit-replicated expansion with round-to-nearest at twelve channel
 values while excluding truncation at five. Record:
 [depth and modulate](../decisions/2026-09-16-intel-gen3-depth-test-and-modulate.md).
 
-Alpha test and source-alpha blend remain. They need their own audit and a prior
-decision: an RGB565 texture carries no alpha, so the alpha source is either
-vertex alpha or a `MAPSURF` sub-format this driver has never emitted.
+**Steps 5 and 6 built 2026-09-16, not yet run.** Alpha test and source-alpha
+blend, both UNTEXTURED: the audit found the alpha source is the top byte of the
+vertex diffuse colour, which the untextured program already moves to the output,
+so no texture format was needed after all. The audit also found a packet this
+driver had never emitted -
+[`_3DSTATE_INDEPENDENT_ALPHA_BLEND`](../decisions/2026-09-16-intel-gen3-alpha-test-and-blend-audit.md)
+- which must be emitted to DISABLE it before any blend enable is set.
+
+Room was made by retiring the texture and depth-test scenes rather than by
+amending the five-draw authorisation.
+
+That completes Phase 6's feature list.
 
 ### 7. Publish
 

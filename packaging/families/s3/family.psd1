@@ -82,6 +82,24 @@
                     'test\s+al,8\b'
                 )
                 Forbidden = @()
+                # The two bit operations are required HERE - the sequence as a
+                # whole is what this object must contain - but they do not
+                # identify this chip and must not convict another family.
+                #
+                # `or al,8` is a byte OR that any code can contain, and on
+                # 2026-09-16 the Intel image contained one: S6's
+                # depth-write-enable bit is 0x08, so `s6 |= ...` compiles to
+                # exactly this instruction. The gate then accused the Intel
+                # driver of running the ViRGE's CR53 unlock.
+                #
+                # `mov ax,53H` is what names the register, and stays
+                # distinctive. The comment above about \b anchors is the same
+                # lesson one step earlier: anchoring narrowed the false
+                # positives, it did not remove them.
+                NotDistinctive = @(
+                    'or\s+al,8\b'
+                    'test\s+al,8\b'
+                )
             }
             MapSymbols = @('v9x_virge_device')
 

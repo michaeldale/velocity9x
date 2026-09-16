@@ -440,7 +440,7 @@ static v9x_u16 v9x_test_streq(const char *left, const char *right)
     if (left == 0 || right == 0) {
         return V9X_FALSE;
     }
-    while (*left != ' ' && *left == *right) {
+    while (*left != '\0' && *left == *right) {
         ++left;
         ++right;
     }
@@ -634,7 +634,13 @@ static void test_decoder_texture_mode(void)
               V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT, &texture,
               stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
     at += produced;
-    CHECK(v9x_i9xx_build_sampling_program(
+    /*
+     * The MODULATE program, because that is what the surviving textured scene
+     * runs. The sampling program and the TEXTURED kind remain supported by the
+     * builders and the decoder - the kind is part of the decoder's contract -
+     * but no scene emits them since the texture scene retired.
+     */
+    CHECK(v9x_i9xx_build_modulate_program(
               stream + at, 256ul - at, &produced) == V9X_STATUS_OK);
     at += produced;
     {
@@ -656,7 +662,7 @@ static void test_decoder_texture_mode(void)
     written = at;
 
     v9x_test_limits(&textured, layout.target_offset, layout.target_bytes,
-                    V9X_I9XX_SCENE_TEXTURED);
+                    V9X_I9XX_SCENE_MODULATED);
     textured.texture_offset = layout.texture_offset;
     textured.texture_bytes = layout.texture_bytes;
     v9x_test_limits(&plain, layout.target_offset, layout.target_bytes,
@@ -664,7 +670,7 @@ static void test_decoder_texture_mode(void)
     /* The golden stream's own target, declared textured - for the refusal at
      * the end, where S2 says no coordinate set. */
     v9x_test_limits(&golden_textured, 0x006c2000ul, 0x00096000ul,
-                    V9X_I9XX_SCENE_TEXTURED);
+                    V9X_I9XX_SCENE_MODULATED);
     golden_textured.texture_offset = layout.texture_offset;
     golden_textured.texture_bytes = layout.texture_bytes;
 
@@ -1115,12 +1121,13 @@ static v9x_u16 v9x_test_probe_inside(
 }
 
 /*
- * Scene 1 is the texture scene, and it is scene 0's triangle.
+ * Scene 1 is the modulated texture, and it is scene 0's triangle.
  *
  * Identical geometry is the point: the rasteriser contributes nothing new, so
- * anything scene 1 shows that scene 0 did not is the texture path.
+ * anything scene 1 shows that scene 0 does not is the texture path and the
+ * multiply. It carries both since the sampling-only scene retired.
  */
-static void test_scene_one_is_textured(void)
+static void test_scene_one_is_modulated(void)
 {
     struct v9x_i9xx_scene zero;
     struct v9x_i9xx_scene one;
@@ -1132,9 +1139,10 @@ static void test_scene_one_is_textured(void)
     CHECK(v9x_i9xx_scene_at(0ul, &zero) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_scene_at(1ul, &one) == V9X_STATUS_OK);
 
-    /* Id 5, not 1: ids 1 through 4 belong to the retired colour and edge
-     * scenes, and a capture citing scene 1 is one of those. */
-    CHECK(one.id == 5ul);
+    /* Id 6, not 1 or 5: 1 through 4 were the colour and edge scenes and 5 the
+     * sampling-only texture scene, all retired and none reused. */
+    CHECK(one.id == 6ul);
+    CHECK(one.kind == V9X_I9XX_SCENE_MODULATED);
     CHECK(v9x_i9xx_scene_kind_textured(one.kind) == V9X_TRUE);
     CHECK(v9x_i9xx_scene_kind_textured(zero.kind) == V9X_FALSE);
 
@@ -1144,19 +1152,16 @@ static void test_scene_one_is_textured(void)
         CHECK(one.triangles[0].y[vertex] == zero.triangles[0].y[vertex]);
     }
 
-    /* And the vertex colour is NOT the fill and not scene 0's colour: it is
-     * unread by a textured fragment, so its only job is to be recognisable if
-     * it is somehow read. */
-    CHECK(one.triangles[0].color == V9X_I9XX_TEX_VERTEX_COLOR_BGRA);
+    /*
+     * The vertex colour is HALF intensity, and is neither scene 0's colour nor
+     * the fill. Half so that every product differs visibly from the texel it
+     * came from - the check that the multiply happened is that no probe reads
+     * its raw quadrant colour, and a colour near white would multiply to
+     * within a level or two of the texel and make that check worthless.
+     */
+    CHECK(one.triangles[0].color == V9X_I9XX_TEX_MODULATE_COLOR_BGRA);
     CHECK(one.triangles[0].color != zero.triangles[0].color);
-    CHECK(v9x_i9xx_rgb565_round(0xfful, 0xfful, 0xfful) ==
-          V9X_I9XX_TEX_VERTEX_COLOR_565);
-    CHECK((v9x_u32)V9X_I9XX_TEX_VERTEX_COLOR_565 !=
-          (one.fill_dword & 0xfffful));
-    for (vertex = 0ul; vertex < 4ul; ++vertex) {
-        CHECK((v9x_u32)V9X_I9XX_TEX_VERTEX_COLOR_565 !=
-              v9x_i9xx_texture_quadrant_color(vertex));
-    }
+    CHECK(one.triangles[0].color_measured == V9X_FALSE);
 
     CHECK(v9x_i9xx_build_scene_stream(&one, stream, 200ul, &written) ==
           V9X_STATUS_OK);
@@ -1165,8 +1170,8 @@ static void test_scene_one_is_textured(void)
 
     /*
      * The paint comes FIRST, before the fill and before any state. Its last
-     * dword is the MI_FLUSH that gets the texels out of the render cache;
-     * a sampler reading a texture the blits had not reached would return
+     * dword is the MI_FLUSH that gets the texels out of the render cache; a
+     * sampler reading a texture the blits had not reached would return
      * whatever the page held and look like an addressing fault.
      */
     CHECK(stream[0] == V9X_I9XX_XY_COLOR_BLT);
@@ -1296,8 +1301,12 @@ static void test_texture_probe_quadrants(void)
                              (max_y - min_y)) ? 1ul : 0ul;
             v9x_u32 quadrant = (lower * 2ul) + right;
 
+            /* MODQUAD, not QUADRANT: the surviving textured scene modulates,
+             * and its expectations say so - the validator treats the two
+             * differently and a probe carrying the wrong one would be judged
+             * against a raw texel. */
             CHECK(scene.probes[probe].expect ==
-                  (v9x_u16)(V9X_I9XX_PROBE_QUADRANT0 + quadrant));
+                  (v9x_u16)(V9X_I9XX_PROBE_MODQUAD0 + quadrant));
             /* Each quadrant claimed once, so four probes cannot all be
              * asserting the same one. */
             CHECK((seen & (1ul << quadrant)) == 0ul);
@@ -1331,13 +1340,15 @@ static void test_scene_probe_budget(void)
     CHECK(v9x_i9xx_scene_total_probes() == total);
 
     /*
-     * 14 for the Phase 5 regression and 6 for each of the other four.
+     * 14 for the Phase 5 regression, 6 each for modulate, depth and alpha,
+     * and 5 for the blend scene - which has two triangles rather than three
+     * and so one region fewer to sample.
+     *
      * Written out because the budget rule is that no boot roughly doubles the
-     * last one that completed: intel45 performed about 1448 reads and this
-     * table adds three scenes of six probes, which is nowhere near. Changing
-     * the scene table past this without re-reading that rule should fail here.
+     * last one that completed. Changing the scene table past this without
+     * re-reading that rule should fail here.
      */
-    CHECK(total == 38ul);
+    CHECK(total == 37ul);
 
     /*
      * And every scene's stream together must fit the driver's accumulator,
@@ -1354,7 +1365,8 @@ static void test_scene_probe_budget(void)
             CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
             staged += v9x_i9xx_scene_extent(&scene);
         }
-        CHECK(staged == 494ul);
+        /* 64 + 114 + 104 + 94 + 80. */
+        CHECK(staged == 456ul);
         CHECK(staged <= 512ul);
     }
 }
@@ -1496,117 +1508,6 @@ static void test_every_scene_decodes(void)
 }
 
 /*
- * The depth scenes' probe expectations, recomputed from the geometry.
- *
- * Every expectation in the table is a claim about which of three overlapping
- * triangles owns a pixel, and those were placed by hand. This derives them
- * independently: which triangles cover the probe, and which of those wins
- * under the scene's rule.
- *
- * The two rules are the experiment. Without depth writes the buffer stays far
- * everywhere, so every covering triangle passes and the LAST one drawn wins -
- * paint order, exactly as an undepthed draw would behave. With writes, A and B
- * record their depths and the NEAREST covering triangle wins. Two probes
- * change their answer between the scenes and the rest do not, which is what
- * makes the pair a measurement rather than two pictures.
- */
-static void test_depth_scene_expectations(void)
-{
-    struct v9x_i9xx_scene scene;
-    v9x_u32 index;
-    v9x_u32 differing = 0ul;
-    v9x_u16 first_expect[V9X_I9XX_SCENE_MAX_PROBES];
-    v9x_u32 first_count = 0ul;
-    /* The depths the builder emits, in submission order: 0.75, 0.25, 0.90.
-     * Compared as bit patterns, which for positive floats orders exactly as
-     * the values do - and the scene depends on nothing but that order. */
-    static const v9x_u32 z_bits[3] = {
-        0x3f400000ul, 0x3e800000ul, 0x3f666666ul
-    };
-
-    for (index = 3ul; index <= 4ul; ++index) {
-        v9x_u16 writes;
-        v9x_u32 probe;
-
-        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
-        CHECK(v9x_i9xx_scene_kind_depth(scene.kind) == V9X_TRUE);
-        CHECK(scene.triangle_count == 3ul);
-        writes = v9x_i9xx_scene_kind_depth_writes(scene.kind);
-
-        /* The three colours must differ, or "which triangle won" is not a
-         * question the capture can answer. */
-        CHECK(scene.triangles[0].color != scene.triangles[1].color);
-        CHECK(scene.triangles[0].color != scene.triangles[2].color);
-        CHECK(scene.triangles[1].color != scene.triangles[2].color);
-
-        for (probe = 0ul; probe < scene.probe_count; ++probe) {
-            v9x_u32 triangle;
-            v9x_u32 winner = 3ul;
-            v9x_u32 covering = 0ul;
-            v9x_u16 expect;
-
-            for (triangle = 0ul; triangle < 3ul; ++triangle) {
-                if (v9x_test_probe_inside(&scene.triangles[triangle],
-                                          scene.probes[probe].x,
-                                          scene.probes[probe].y) !=
-                        V9X_TRUE) {
-                    continue;
-                }
-                ++covering;
-                if (winner == 3ul) {
-                    winner = triangle;
-                } else if (writes != V9X_FALSE) {
-                    /* Nearest wins. */
-                    if (z_bits[triangle] < z_bits[winner]) {
-                        winner = triangle;
-                    }
-                } else {
-                    /* Last drawn wins; the loop runs in submission order. */
-                    winner = triangle;
-                }
-            }
-
-            expect = (winner == 3ul)
-                         ? V9X_I9XX_PROBE_FILL
-                         : (v9x_u16)(V9X_I9XX_PROBE_TRIANGLE0 + winner);
-            CHECK(scene.probes[probe].expect == expect);
-
-            /*
-             * And the probe set must actually exercise the overlaps it claims
-             * to: at least one probe covered by all three, one by exactly two
-             * and one by none. A set that only ever sampled single coverage
-             * would agree with both rules and measure nothing.
-             */
-            if (index == 3ul) {
-                first_expect[probe] = scene.probes[probe].expect;
-                if (covering == 3ul) { ++first_count; }
-            } else if (scene.probes[probe].expect != first_expect[probe]) {
-                ++differing;
-            }
-        }
-        /* The two scenes must share probe COORDINATES, or their pictures
-         * cannot be compared pixel by pixel. */
-        if (index == 4ul) {
-            struct v9x_i9xx_scene other;
-            v9x_u32 which;
-
-            CHECK(v9x_i9xx_scene_at(3ul, &other) == V9X_STATUS_OK);
-            CHECK(other.probe_count == scene.probe_count);
-            for (which = 0ul; which < scene.probe_count; ++which) {
-                CHECK(other.probes[which].x == scene.probes[which].x);
-                CHECK(other.probes[which].y == scene.probes[which].y);
-            }
-        }
-    }
-
-    /* At least one probe under all three triangles, and at least two probes
-     * whose answer DEPENDS on the depth test. Asserted as numbers: zero of
-     * either would satisfy every loop above and prove nothing. */
-    CHECK(first_count >= 1ul);
-    CHECK(differing >= 2ul);
-}
-
-/*
  * What a DEPTH stream may not do, and the decoder must refuse.
  *
  * Every mutation here passed the decoder when it was written. Each is the same
@@ -1627,8 +1528,7 @@ static void test_decoder_depth_refusals(void)
 
     CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
           V9X_STATUS_OK);
-    /* Scene 4: depth, with writes. */
-    CHECK(v9x_i9xx_scene_at(4ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_scene_kind_depth(scene.kind) == V9X_TRUE);
     CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
           V9X_STATUS_OK);
@@ -1645,12 +1545,11 @@ static void test_decoder_depth_refusals(void)
     /*
      * A vertex BELOW the depth buffer.
      *
-     * The depth buffer is 256 rows where the render target is 480, so a
-     * vertex at y = 400 is inside the drawing rectangle and outside the depth
-     * allocation - the hardware would address depth memory past the end of
-     * it, and the first thing past the end is the guard page. The builder
-     * refuses this; the decoder checked Y against the TARGET's height and
-     * accepted it.
+     * The depth buffer is 256 rows where the render target is 480, so a vertex
+     * at y = 400 is inside the drawing rectangle and outside the depth
+     * allocation - the hardware would address depth memory past the end of it,
+     * and the first thing past the end is the guard page. The builder refused
+     * this; the decoder checked Y against the TARGET's height and accepted it.
      */
     saved = stream[primitive + 2ul];
     stream[primitive + 2ul] = 0x43c80000ul;   /* 400.0f */
@@ -1667,13 +1566,10 @@ static void test_decoder_depth_refusals(void)
     stream[primitive + 2ul] = saved;
 
     /*
-     * A depth scene with no CLEAR.
-     *
-     * The decoder checked the clear's colour where it found one and never
-     * required one, so a stream that simply omitted it passed - and its
-     * result would depend on whatever the depth buffer held from the previous
-     * scene or the previous boot. The clear is the only thing that makes a
-     * depth result mean anything.
+     * A depth scene with no CLEAR. The decoder checked the clear's colour
+     * where it found one and never required one, so a stream that simply
+     * omitted it passed - and its result would depend on whatever the depth
+     * buffer held from the previous scene or the previous boot.
      */
     CHECK(stream[0] == V9X_I9XX_XY_COLOR_BLT);
     for (scan = 0ul; scan < 6ul; ++scan) {
@@ -1682,7 +1578,6 @@ static void test_decoder_depth_refusals(void)
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_MISSING_PACKET);
 
-    /* Rebuilt, because the loop above destroyed it. */
     CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
           V9X_STATUS_OK);
 
@@ -1695,7 +1590,6 @@ static void test_decoder_depth_refusals(void)
         v9x_u32 moved[200];
         v9x_u32 at = 0ul;
 
-        /* Everything after the clear's six dwords, then the clear. */
         for (scan = 6ul; scan < written; ++scan) {
             moved[at++] = stream[scan];
         }
@@ -1709,8 +1603,7 @@ static void test_decoder_depth_refusals(void)
 
     /*
      * The TEXTURE paint has the same ordering hole, and the same argument: a
-     * paint after the draw samples whatever the page held. Checked here
-     * because it is the same defect, found while fixing this one.
+     * paint after the draw samples whatever the page held.
      */
     {
         v9x_u32 moved[200];
@@ -1741,6 +1634,200 @@ static void test_decoder_depth_refusals(void)
 }
 
 /*
+ * The depth scene's probe expectations, recomputed from the geometry.
+ *
+ * Every expectation in the table is a claim about which of three overlapping
+ * triangles owns a pixel, and those were placed by hand. This derives them
+ * independently: which triangles cover the probe, and which of those wins
+ * under the scene's rule - the nearest, because the scene writes depth.
+ *
+ * The companion scene that tested without writing retired after intel46
+ * measured the contrast between them. What survives here is the rule, which
+ * is still derived rather than written out twice.
+ */
+static void test_depth_scene_expectations(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 probe;
+    v9x_u32 triple = 0ul;
+    /* The depths the builder emits, in submission order: 0.75, 0.25, 0.90.
+     * Compared as bit patterns, which for positive floats orders exactly as
+     * the values do - and the scene depends on nothing but that order. */
+    static const v9x_u32 z_bits[3] = {
+        0x3f400000ul, 0x3e800000ul, 0x3f666666ul
+    };
+
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_kind_depth(scene.kind) == V9X_TRUE);
+    CHECK(v9x_i9xx_scene_kind_depth_writes(scene.kind) == V9X_TRUE);
+    CHECK(scene.triangle_count == 3ul);
+
+    /* The three colours must differ, or "which triangle won" is not a
+     * question the capture can answer. */
+    CHECK(scene.triangles[0].color != scene.triangles[1].color);
+    CHECK(scene.triangles[0].color != scene.triangles[2].color);
+    CHECK(scene.triangles[1].color != scene.triangles[2].color);
+
+    for (probe = 0ul; probe < scene.probe_count; ++probe) {
+        v9x_u32 triangle;
+        v9x_u32 winner = 3ul;
+        v9x_u32 covering = 0ul;
+        v9x_u16 expect;
+
+        for (triangle = 0ul; triangle < 3ul; ++triangle) {
+            if (v9x_test_probe_inside(&scene.triangles[triangle],
+                                      scene.probes[probe].x,
+                                      scene.probes[probe].y) != V9X_TRUE) {
+                continue;
+            }
+            ++covering;
+            /* Nearest wins: the first two record their depths and the third
+             * is tested against what they wrote. */
+            if (winner == 3ul || z_bits[triangle] < z_bits[winner]) {
+                winner = triangle;
+            }
+        }
+        if (covering == 3ul) { ++triple; }
+
+        expect = (winner == 3ul)
+                     ? V9X_I9XX_PROBE_FILL
+                     : (v9x_u16)(V9X_I9XX_PROBE_TRIANGLE0 + winner);
+        CHECK(scene.probes[probe].expect == expect);
+    }
+    /* At least one probe under all three, or the rejection this scene exists
+     * to show is never asked for. */
+    CHECK(triple >= 1ul);
+}
+
+/*
+ * The ALPHA TEST scene's expectations, recomputed the same way.
+ *
+ * The rule is different and the geometry is the same: every covering triangle
+ * whose alpha EXCEEDS the reference draws, in submission order, and the last
+ * such one holds the pixel. A triangle at or below the reference contributes
+ * nothing anywhere.
+ */
+static void test_alpha_scene_expectations(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 probe;
+    v9x_u32 discriminating = 0ul;
+
+    CHECK(v9x_i9xx_scene_at(3ul, &scene) == V9X_STATUS_OK);
+    CHECK(scene.kind == V9X_I9XX_SCENE_ALPHA_TEST);
+    CHECK(scene.triangle_count == 3ul);
+
+    /*
+     * Exactly one triangle must FAIL the test, and it must not be the first or
+     * the last. A rejected triangle leaves the same pixels as an absent one,
+     * so what separates them is that the two drawn triangles bracket it inside
+     * one primitive - and that only holds if the failing one is in the middle.
+     */
+    CHECK(((scene.triangles[0].color >> 24) & 0xfful) > V9X_I9XX_ALPHA_REF);
+    CHECK(((scene.triangles[1].color >> 24) & 0xfful) <= V9X_I9XX_ALPHA_REF);
+    CHECK(((scene.triangles[2].color >> 24) & 0xfful) > V9X_I9XX_ALPHA_REF);
+
+    /* And the three colours still differ below the alpha byte, or the
+     * capture cannot say which triangle won. */
+    CHECK((scene.triangles[0].color & 0x00fffffful) !=
+          (scene.triangles[1].color & 0x00fffffful));
+    CHECK((scene.triangles[0].color & 0x00fffffful) !=
+          (scene.triangles[2].color & 0x00fffffful));
+    CHECK((scene.triangles[1].color & 0x00fffffful) !=
+          (scene.triangles[2].color & 0x00fffffful));
+
+    for (probe = 0ul; probe < scene.probe_count; ++probe) {
+        v9x_u32 triangle;
+        v9x_u32 winner = 3ul;
+        v9x_u32 painter = 3ul;
+        v9x_u16 expect;
+
+        for (triangle = 0ul; triangle < 3ul; ++triangle) {
+            if (v9x_test_probe_inside(&scene.triangles[triangle],
+                                      scene.probes[probe].x,
+                                      scene.probes[probe].y) != V9X_TRUE) {
+                continue;
+            }
+            /* Who would hold it with NO alpha test: the last to cover it. */
+            painter = triangle;
+            if (((scene.triangles[triangle].color >> 24) & 0xfful) >
+                    V9X_I9XX_ALPHA_REF) {
+                winner = triangle;
+            }
+        }
+
+        expect = (winner == 3ul)
+                     ? V9X_I9XX_PROBE_FILL
+                     : (v9x_u16)(V9X_I9XX_PROBE_TRIANGLE0 + winner);
+        CHECK(scene.probes[probe].expect == expect);
+
+        /* A probe DISCRIMINATES when the alpha test changes who holds it. */
+        if (winner != painter) { ++discriminating; }
+    }
+
+    /*
+     * At least two, on different rows. One would make the whole scene rest on
+     * a single edge being where the arithmetic says it is.
+     */
+    CHECK(discriminating >= 2ul);
+}
+
+/*
+ * The BLEND scene's expectations.
+ *
+ * Two triangles, so the rule is simpler and the checks are about what the
+ * probes must be able to distinguish rather than about coverage arithmetic.
+ */
+static void test_blend_scene_expectations(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 probe;
+    v9x_u32 blended = 0ul;
+    v9x_u32 over_fill = 0ul;
+
+    CHECK(v9x_i9xx_scene_at(4ul, &scene) == V9X_STATUS_OK);
+    CHECK(scene.kind == V9X_I9XX_SCENE_BLEND);
+    CHECK(scene.triangle_count == 2ul);
+
+    /* The first is OPAQUE and the second is not, or there is no blend to
+     * observe - and the opaque one is drawn first so the second blends over a
+     * colour this part is measured to store. */
+    CHECK(((scene.triangles[0].color >> 24) & 0xfful) == 0xfful);
+    CHECK(((scene.triangles[1].color >> 24) & 0xfful) != 0xfful);
+    CHECK(((scene.triangles[1].color >> 24) & 0xfful) != 0x00ul);
+    CHECK(scene.triangles[0].color_measured == V9X_TRUE);
+    CHECK(scene.triangles[1].color_measured == V9X_FALSE);
+
+    for (probe = 0ul; probe < scene.probe_count; ++probe) {
+        v9x_u16 in0 = v9x_test_probe_inside(&scene.triangles[0],
+                                            scene.probes[probe].x,
+                                            scene.probes[probe].y);
+        v9x_u16 in1 = v9x_test_probe_inside(&scene.triangles[1],
+                                            scene.probes[probe].x,
+                                            scene.probes[probe].y);
+
+        if (in0 == V9X_TRUE && in1 == V9X_TRUE) {
+            CHECK(scene.probes[probe].expect == V9X_I9XX_PROBE_BLENDED);
+            ++blended;
+        } else if (in1 == V9X_TRUE) {
+            /* Over the fill: still a blend, on a different background. */
+            CHECK(scene.probes[probe].expect == V9X_I9XX_PROBE_BLENDED);
+            ++over_fill;
+        } else if (in0 == V9X_TRUE) {
+            /* Nothing drawn over it, so its own measured colour - the one
+             * failable interior probe, and the evidence that it ran. */
+            CHECK(scene.probes[probe].expect == V9X_I9XX_PROBE_TRIANGLE0);
+        } else {
+            CHECK(scene.probes[probe].expect == V9X_I9XX_PROBE_FILL);
+        }
+    }
+    /* Both backgrounds must be sampled: a blend over a triangle and a blend
+     * over the fill. One coincidence cannot produce both. */
+    CHECK(blended >= 2ul);
+    CHECK(over_fill >= 1ul);
+}
+
+/*
  * Every expectation the build defines must have a NAME, and every scene's
  * probes must use one.
  *
@@ -1762,17 +1849,17 @@ static void test_probe_expectation_names(void)
     v9x_u32 index;
     v9x_u32 probe;
     v9x_u32 which;
-    static const v9x_u16 defined[13] = {
+    static const v9x_u16 defined[14] = {
         V9X_I9XX_PROBE_FILL, V9X_I9XX_PROBE_TRIANGLE0,
         V9X_I9XX_PROBE_TRIANGLE1, V9X_I9XX_PROBE_TRIANGLE2,
         V9X_I9XX_PROBE_QUADRANT0, V9X_I9XX_PROBE_QUADRANT1,
         V9X_I9XX_PROBE_QUADRANT2, V9X_I9XX_PROBE_QUADRANT3,
         V9X_I9XX_PROBE_MODQUAD0, V9X_I9XX_PROBE_MODQUAD1,
         V9X_I9XX_PROBE_MODQUAD2, V9X_I9XX_PROBE_MODQUAD3,
-        V9X_I9XX_PROBE_MEASURE
+        V9X_I9XX_PROBE_BLENDED, V9X_I9XX_PROBE_MEASURE
     };
 
-    for (which = 0ul; which < 13ul; ++which) {
+    for (which = 0ul; which < 14ul; ++which) {
         const char *name = v9x_i9xx_probe_expectation_name(defined[which]);
         v9x_u32 other;
 
@@ -2141,6 +2228,9 @@ static void test_submission_boundaries_are_qword_aligned(void)
     v9x_u32 stream[160];
     v9x_u32 written;
     v9x_u32 index;
+    v9x_u32 padded;
+    v9x_u32 unpadded;
+    v9x_u32 poison;
     v9x_u32 offset;
 
     /*
@@ -2156,11 +2246,16 @@ static void test_submission_boundaries_are_qword_aligned(void)
     offset = V9X_I9XX_P5_RING_OFFSET + (written * 4ul);
     CHECK((offset & 7ul) == 0ul);
 
+    padded = 0ul;
+    unpadded = 0ul;
     for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
         v9x_u32 primitive;
 
         CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
         written = 0ul;
+        for (poison = 0ul; poison < 160ul; ++poison) {
+            stream[poison] = 0xdeadbeeful;
+        }
         CHECK(v9x_i9xx_build_scene_stream(
                   &scene, stream, 160ul, &written) == V9X_STATUS_OK);
 
@@ -2180,17 +2275,47 @@ static void test_submission_boundaries_are_qword_aligned(void)
         CHECK((stream[primitive] & 0xff000000ul) ==
               V9X_I9XX_3DPRIMITIVE_INLINE);
         /*
-         * The pad is an MI_NOOP, not whatever the buffer held.
+         * Where a pad IS inserted it must be an MI_NOOP, not whatever the
+         * buffer held.
          *
-         * This build's prefix is 47 dwords before padding, so a pad IS
-         * inserted and the dword before the primitive must be one. Tied to
-         * the current figure deliberately: if the prefix becomes even the
-         * assertion should fail and be re-examined rather than quietly
-         * passing on a branch that stopped being taken.
+         * Not every scene needs one: the blend scene's prefix is even, because
+         * its state block carries one extra dword for the IAB disable. So the
+         * pad is asserted where the arithmetic says there is one and its
+         * ABSENCE is asserted where it says there is not - a test that only
+         * looked for a NOOP would pass on a scene that never padded, and one
+         * that never looked would pass on a scene that padded with rubbish.
          */
         CHECK(primitive >= 1ul);
-        CHECK(stream[primitive - 1ul] == V9X_I9XX_MI_NOOP);
+        /*
+         * NO DWORD WAS LEFT UNWRITTEN.
+         *
+         * This asserted that the dword before the primitive is an MI_NOOP,
+         * which was true only while every scene's prefix happened to be odd.
+         * The blend scene's is even - its state block carries the IAB disable
+         * - so that assertion started failing on a scene that pads nothing,
+         * and predicting which scenes pad meant deriving the prefix a second
+         * way.
+         *
+         * Poisoning the buffer first is stronger and predicts nothing: a pad
+         * written as MI_NOOP passes, a pad the builder forgot to write shows
+         * up as the poison, and so does any other gap anywhere in the stream.
+         */
+        for (poison = 0ul; poison < written; ++poison) {
+            CHECK(stream[poison] != 0xdeadbeeful);
+        }
+        if (stream[primitive - 1ul] == V9X_I9XX_MI_NOOP) {
+            ++padded;
+        } else {
+            ++unpadded;
+        }
     }
+    /*
+     * And this table exercises BOTH: at least one scene pads its prefix and at
+     * least one does not, so neither branch of the builder's alignment step is
+     * a path nothing runs.
+     */
+    CHECK(padded >= 1ul);
+    CHECK(unpadded >= 1ul);
 }
 
 /*
@@ -2722,10 +2847,12 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_textured_run();
     test_scene_table();
     test_scene_zero_matches_phase5();
-    test_scene_one_is_textured();
+    test_scene_one_is_modulated();
     test_texture_probe_quadrants();
     test_scene_probe_budget();
     test_depth_scene_expectations();
+    test_alpha_scene_expectations();
+    test_blend_scene_expectations();
     test_every_scene_decodes();
     test_decoder_depth_refusals();
     test_probe_expectation_names();

@@ -742,6 +742,39 @@ function Test-V9xIntel3dCapture {
                 #    picture - which is what the previous scene already draws,
                 #    so it would otherwise read as a pass;
                 #  - reading the FILL means nothing drew here at all.
+                # A BLENDED probe.
+                #
+                # Reported, not required: the product depends on the blend
+                # arithmetic and then on the 565 conversion. What fails is the
+                # two things that are not predictions - reading either source
+                # colour means no blend happened, and reading the fill means
+                # nothing drew.
+                if ($probes[$probe].Expect -eq 24) {
+                    $fill = [Convert]::ToUInt32(
+                        $generated.Referencefill, 16) -band 0xffff
+                    $colors = @($entry.Colors)
+                    foreach ($colour in $colors) {
+                        $plain = [Convert]::ToUInt32($colour.Value, 16) -band 0xffff
+                        if ($low -eq $plain -and $high -eq $plain) {
+                            $sceneBad += ("$key reads " +
+                                          ('{0:X4}' -f $plain) +
+                                          ', a source colour unblended (' +
+                                          $probes[$probe].Name + ').')
+                        }
+                    }
+                    if ($low -eq $fill -and $high -eq $fill) {
+                        $sceneBad += ("$key reads the fill (" +
+                                      $probes[$probe].Name +
+                                      '). Nothing drew here.')
+                        continue
+                    }
+                    ++$sceneChecked
+                    $scenePredicted += ("$key blended to " +
+                                        ('{0:X8}' -f $actual) + ' (' +
+                                        $probes[$probe].Name + ')')
+                    continue
+                }
+
                 if ($probes[$probe].Expect -ge 20 -and
                         $probes[$probe].Expect -le 23) {
                     $quadrants = @($generated.TextureQuadrants)
@@ -1326,6 +1359,12 @@ R0000=DEADBEEF'
                     # the other outcomes.
                     $half = @($generated.TextureQuadrants)[$probe.Expect - 16]
                     $value = $half + $half
+                } elseif ($probe.Expect -eq 24) {
+                    # A BLENDED pixel. The fixture uses a value that is
+                    # neither source colour and not the fill, which is all the
+                    # validator can require - the product itself is a
+                    # prediction and is reported.
+                    $value = '5B2D5B2D'
                 } elseif ($probe.Expect -ge 20 -and $probe.Expect -le 23) {
                     # A modulated quadrant. The fixture uses a value that is
                     # neither the raw quadrant colour nor the fill, which is
@@ -1374,12 +1413,13 @@ R0000=DEADBEEF'
         $s3Mutations = @(
             @{ Drop = 'S1Crc='; Why = 'a scene missing its CRC' },
             @{ Drop = 'S1Probes='; Why = 'a scene missing its probe count' },
-            @{ Drop = 'S4PX0005='; Why = 'the last probe of the last scene' },
-            @{ Drop = 'S1TexQ0='; Why = 'a quadrant probe missing its expectation' },
-            @{ Drop = 'S2ModQ0='; Why = 'a modulated probe missing its expectation' },
+            @{ Drop = 'S4PX0004='; Why = 'the last probe of the last scene' },
+
+            @{ Drop = 'S1ModQ0='; Why = 'a modulated probe missing its expectation' },
+            @{ Drop = 'S4BlnOver0='; Why = 'a blended probe missing its expectation' },
             @{ Drop = 'S1TexG='
                Why = 'a textured scene that never read the texture guard' },
-            @{ Drop = 'S4DepG='
+            @{ Drop = 'S2DepG='
                Why = 'a depth scene that never read the depth guard' },
             @{ Drop = 'TexG0='
                Why = 'a capture with no pre-run texture guard to compare against' },
@@ -1437,17 +1477,11 @@ R0000=DEADBEEF'
             # and none is the fill, so a reading that is none of them means no
             # texel arrived. The other half - which quadrant - is reported and
             # is perturbed below instead.
-            @{ From = 'S1PX0000=' + (@($generated.TextureQuadrants)[0] * 2)
-               To = 'S1PX0000=DEADBEEF'
-               Why = 'a quadrant probe that sampled no texel at all' }
             # And the FILL at a quadrant probe, which is what "nothing drew"
             # looks like. Named separately from DEADBEEF because it is the
             # plausible failure rather than an impossible one, and because
             # quadrant 3 was the fill colour itself for one commit - which
             # would have made this outcome pass.
-            @{ From = 'S1PX0003=' + (@($generated.TextureQuadrants)[3] * 2)
-               To = 'S1PX0003=' + ($generated.Referencefill.Substring(4) * 2)
-               Why = 'a quadrant probe that read the fill' }
             # A quadrant blit whose address arithmetic ran past the texture.
             # The decoder bounds each blit before the stream runs; this is the
             # independent answer from memory afterwards, and the reason the
@@ -1456,26 +1490,30 @@ R0000=DEADBEEF'
                Why = 'a scene that painted past the end of the texture' }
             # The same for depth: a clear or a primitive that addressed past
             # the end of a buffer 256 rows tall in a 480-row target.
-            @{ From = 'S4DepG=6B6B6B6B'; To = 'S4DepG=FFFFFFFF'
+            @{ From = 'S2DepG=6B6B6B6B'; To = 'S2DepG=FFFFFFFF'
                Why = 'a scene that wrote past the end of the depth buffer' }
             # An expectation the driver could not name. Nine probes read this
             # way in intel46 and nothing here noticed.
-            @{ From = 'S2ModQ0=modquad'; To = 'S2ModQ0=unknown'
+            @{ From = 'S1ModQ0=modquad'; To = 'S1ModQ0=unknown'
                Why = 'a probe whose expectation the driver could not name' }
             # A modulated probe reading its RAW quadrant colour: the texel
             # reached the target unmultiplied, which is the previous scene's
             # picture and would otherwise read as a pass.
-            @{ From = 'S2PX0000=4A694A69'
-               To = 'S2PX0000=' + (@($generated.TextureQuadrants)[0] * 2)
+            @{ From = 'S1PX0000=4A694A69'
+               To = 'S1PX0000=' + (@($generated.TextureQuadrants)[0] * 2)
                Why = 'a modulated probe that was never multiplied' }
             # And one reading the fill: nothing drew.
-            @{ From = 'S2PX0001=4A694A69'
-               To = 'S2PX0001=' + ($generated.Referencefill.Substring(4) * 2)
+            @{ From = 'S1PX0001=4A694A69'
+               To = 'S1PX0001=' + ($generated.Referencefill.Substring(4) * 2)
                Why = 'a modulated probe where nothing drew' }
+            # A blended probe reading one of its source colours unblended.
+            @{ From = 'S4PX0001=5B2D5B2D'
+               To = 'S4PX0001=' + (@($generated.Scenes)[4].Colors[0].Value * 2)
+               Why = 'a blended probe that was never blended' }
             # A depth probe reading the wrong triangle. With writes on, the
             # furthest triangle must be rejected wherever the others drew.
-            @{ From = 'S4PX0002=' + (@($generated.Scenes)[4].Colors[1].Value * 2)
-               To = 'S4PX0002=' + (@($generated.Scenes)[4].Colors[2].Value * 2)
+            @{ From = 'S2PX0002=' + (@($generated.Scenes)[2].Colors[1].Value * 2)
+               To = 'S2PX0002=' + (@($generated.Scenes)[2].Colors[2].Value * 2)
                Why = 'a depth-write scene where the furthest triangle won' }
         )
         # Scene 1's colour is a PREDICTION. Its alternative outcomes must be
@@ -1494,8 +1532,8 @@ R0000=DEADBEEF'
         # the colour experiment; that scene retired on 2026-09-16 and its
         # report-only path now belongs to the quadrants.
         $predicted = @($s3 | ForEach-Object {
-            if ($_ -ceq ('S1PX0000=' + (@($generated.TextureQuadrants)[0] * 2))) {
-                'S1PX0000=' + (@($generated.TextureQuadrants)[3] * 2)
+            if ($_ -ceq 'S1PX0000=4A694A69') {
+                'S1PX0000=7F117F11'
             } else { $_ }
         })
         if (($predicted -join "`n") -ceq ($s3 -join "`n")) {
