@@ -273,10 +273,26 @@ no opinion at all.
   to make meaningful. The texture paint had the identical hole - a paint after
   the draw samples whatever the page held - and was fixed with it.
 
-The general form, worth stating because it has now happened three times in this
-file: a presence check at the end of a stream is weaker than it looks. What
-these packets establish is a PRECONDITION, so the place to require them is the
-packet whose correctness depends on them.
+- **And the clear must COVER.** Being inside the depth range is not enough: a
+  one-row blit is inside it, carries the far value and sits before the draw,
+  and leaves 255 of 256 rows holding whatever the previous scene left. The
+  rectangle, the pitch and the destination are now each required to be the
+  whole buffer. The TEXTURE PAINT had the identical gap - four blits inside the
+  texture range could cover one quadrant between them - and is fixed with it:
+  each blit must be one of the four expected rectangles and all four must
+  appear.
+
+Two general forms, both worth stating because this file has now had each more
+than once:
+
+- **A presence check at the end of a stream is weaker than it looks.** What
+  these packets establish is a PRECONDITION, so the place to require them is
+  the packet whose correctness depends on them.
+- **A bounds check is not a coverage check.** "Inside the buffer" and "the
+  whole buffer" are different claims, and for anything that PREPARES memory -
+  a clear, a paint, a fill - the second is the one that matters. The first
+  stops a write going somewhere it should not; only the second stops a read
+  finding what was there before.
 
 ## 8. The scene table this licenses
 

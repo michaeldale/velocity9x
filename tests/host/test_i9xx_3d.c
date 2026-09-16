@@ -1566,6 +1566,52 @@ static void test_decoder_depth_refusals(void)
     stream[primitive + 2ul] = saved;
 
     /*
+     * A PARTIAL clear.
+     *
+     * The blit still lands inside the depth range, still carries the far
+     * value, and still sits before the draw - so every check the decoder had
+     * was satisfied while 255 of the buffer's 256 rows kept whatever the
+     * previous scene left in them. The triangles would then test against
+     * memory nobody cleared, which is the exact condition the clear exists to
+     * remove.
+     *
+     * Three ways to shrink it, because the rectangle has three fields and any
+     * one of them can do it.
+     */
+    saved = stream[3];
+    /* One row instead of 256. */
+    stream[3] = (1ul << 16) | (V9X_I9XX_DEPTH_PITCH / 4ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_TARGET_RANGE);
+    CHECK(index == 3ul);
+    /* Full height, half the width. */
+    stream[3] = (V9X_I9XX_DEPTH_HEIGHT << 16) | (V9X_I9XX_DEPTH_PITCH / 8ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_TARGET_RANGE);
+    stream[3] = saved;
+
+    /* And started one row down, which covers the right AREA and the wrong
+     * rows - the last row of the buffer stays as it was. */
+    saved = stream[4];
+    stream[4] = layout.depth_offset + V9X_I9XX_DEPTH_PITCH;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[4] = saved;
+
+    /* And at a pitch that is not the buffer's, which walks a different grid
+     * over the same bytes. */
+    saved = stream[1];
+    stream[1] = V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
+                (V9X_I9XX_DEPTH_PITCH / 2ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    stream[1] = saved;
+
+    /* Unmutated, it still decodes. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /*
      * A depth scene with no CLEAR. The decoder checked the clear's colour
      * where it found one and never required one, so a stream that simply
      * omitted it passed - and its result would depend on whatever the depth
@@ -1630,6 +1676,32 @@ static void test_decoder_depth_refusals(void)
         CHECK(at == written);
         CHECK(v9x_i9xx_decode_phase5_stream(moved, written, &textured,
                                             &index) != V9X_I9XX_P5_OK);
+
+        /*
+         * And a PARTIAL paint, which is the depth clear's defect in the other
+         * buffer: four blits inside the texture range satisfied every check
+         * while covering one quadrant between them, leaving three holding
+         * whatever the page held. Under a nearest filter that is a picture,
+         * just not one this build made.
+         */
+        saved = stream[4ul];
+        stream[4ul] = stream[10ul];   /* two blits at quadrant 1 */
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &textured,
+                                            &index) != V9X_I9XX_P5_OK);
+        stream[4ul] = saved;
+
+        /* A quadrant blit shrunk to a single row. */
+        saved = stream[3ul];
+        stream[3ul] = (1ul << 16) | (V9X_I9XX_TEXTURE_BLOCK / 2ul);
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &textured,
+                                            &index) ==
+              V9X_I9XX_P5_TARGET_RANGE);
+        CHECK(index == 3ul);
+        stream[3ul] = saved;
+
+        /* Unmutated, it still decodes. */
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &textured,
+                                            &index) == V9X_I9XX_P5_OK);
     }
 }
 

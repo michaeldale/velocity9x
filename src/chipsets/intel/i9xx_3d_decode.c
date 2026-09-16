@@ -80,6 +80,28 @@ static v9x_u16 v9x_i9xx_normalized_half(v9x_u32 bits)
  * so the count is per kind and stated here. A stream whose vertex count does
  * not match is refused rather than read as far as it goes.
  */
+/*
+ * Where quadrant n starts, relative to the texture's base.
+ *
+ * The same arithmetic the paint builder uses: (n & 1) half-widths across and
+ * (n >> 1) half-heights down. Restated here rather than shared, because the
+ * builder's copy lives in I9XXCODE and this is the independent opinion on it -
+ * sharing one function would make the check agree with itself.
+ */
+static v9x_u32 v9x_i9xx_decode_quadrant_offset(v9x_u32 quadrant)
+{
+    v9x_u32 offset = 0ul;
+
+    if ((quadrant & 1ul) != 0ul) {
+        offset += (v9x_u32)((v9x_u16)V9X_I9XX_TEXTURE_BLOCK * (v9x_u16)2u);
+    }
+    if ((quadrant & 2ul) != 0ul) {
+        offset += (v9x_u32)((v9x_u16)V9X_I9XX_TEXTURE_BLOCK *
+                            (v9x_u16)V9X_I9XX_TEXTURE_PITCH);
+    }
+    return offset;
+}
+
 static v9x_u32 v9x_i9xx_decode_triangles(v9x_u32 kind)
 {
     if (v9x_i9xx_scene_kind_depth(kind) != V9X_FALSE ||
@@ -152,6 +174,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_texture_paint = V9X_FALSE;
     v9x_u16 saw_depth_clear = V9X_FALSE;
     v9x_u16 saw_iab_disable = V9X_FALSE;
+    /* One bit per texture quadrant painted, so the four can be required to be
+     * four DIFFERENT ones rather than four of anything. */
+    v9x_u32 painted = 0ul;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -656,14 +681,54 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                                      texture_bytes) ==
                            V9X_STATUS_OK) {
                 /*
-                 * A quadrant paint, bounded by the texture range so a
-                 * quadrant whose address arithmetic went wrong is refused
-                 * here rather than overwriting a page that is not ours.
+                 * A quadrant paint, bounded by the texture range so a quadrant
+                 * whose address arithmetic went wrong is refused here rather
+                 * than overwriting a page that is not ours.
+                 *
+                 * And the four of them must TILE the texture, for the same
+                 * reason the depth clear must cover its buffer: a paint that
+                 * covered one quadrant would leave three holding whatever the
+                 * page held, and under a nearest filter that is a picture -
+                 * just not one of this build's making. Each is required to be
+                 * one of the four expected rectangles, and the completeness
+                 * check below requires all four.
                  *
                  * No colour check: the four quadrant colours are the
-                 * experiment's variable, and a decoder asserting them would
-                 * be asserting the answer.
+                 * experiment's variable, and a decoder asserting them would be
+                 * asserting the answer.
                  */
+                if (stream[index + 1ul] !=
+                        (V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
+                         V9X_I9XX_TEXTURE_PITCH)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_PITCH, index + 1ul);
+                }
+                if (stream[index + 3ul] !=
+                        ((V9X_I9XX_TEXTURE_BLOCK << 16) |
+                         (V9X_I9XX_TEXTURE_BLOCK / 2ul))) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 3ul);
+                }
+                {
+                    v9x_u32 quadrant;
+                    v9x_u16 known = V9X_FALSE;
+
+                    for (quadrant = 0ul; quadrant < 4ul; ++quadrant) {
+                        if (stream[index + 4ul] ==
+                                texture_offset +
+                                v9x_i9xx_decode_quadrant_offset(quadrant)) {
+                            /* Each exactly once: two paints of one quadrant
+                             * satisfy a count and leave another unpainted. */
+                            if ((painted & (1ul << quadrant)) != 0ul) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE,
+                                                index + 4ul);
+                            }
+                            painted |= (1ul << quadrant);
+                            known = V9X_TRUE;
+                        }
+                    }
+                    if (known == V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 4ul);
+                    }
+                }
                 saw_texture_paint = V9X_TRUE;
             } else if (depthed != V9X_FALSE &&
                        v9x_i9xx_decode_phase4_stream(stream + index, 6ul,
@@ -671,14 +736,40 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                                      depth_bytes) ==
                            V9X_STATUS_OK) {
                 /*
-                 * The depth CLEAR, bounded by the depth range. It must clear
-                 * to FAR: a nearer value would reject primitives for a reason
-                 * invisible in the capture, and a buffer cleared to whatever
-                 * the page held would make the scene's result depend on the
-                 * previous boot.
+                 * The depth CLEAR. It must clear to FAR, and it must clear the
+                 * WHOLE buffer.
+                 *
+                 * Being inside the depth range is not enough, which is what
+                 * this checked until 2026-09-16: a one-row blit is inside the
+                 * range, carries the right value and sits before the draw, and
+                 * leaves 255 of the 256 rows holding whatever the previous
+                 * scene left. The triangles then test against memory nobody
+                 * cleared - the exact condition the clear exists to remove,
+                 * reached through a clear that is present and correct.
+                 *
+                 * So the rectangle, the pitch and the destination are each
+                 * required to be the whole buffer rather than merely to fit
+                 * in it. Exact rather than "at least", because a blit larger
+                 * than the buffer would not fit and one at a different pitch
+                 * walks a different grid over the same bytes.
                  */
                 if (stream[index + 5ul] != V9X_I9XX_DEPTH_CLEAR_DWORD) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 5ul);
+                }
+                if (stream[index + 1ul] !=
+                        (V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
+                         V9X_I9XX_DEPTH_PITCH)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_PITCH, index + 1ul);
+                }
+                /* The width counts DWORDS and the buffer is 16-bit, so a full
+                 * row is the pitch over four. */
+                if (stream[index + 3ul] !=
+                        ((V9X_I9XX_DEPTH_HEIGHT << 16) |
+                         (V9X_I9XX_DEPTH_PITCH / 4ul))) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 3ul);
+                }
+                if (stream[index + 4ul] != depth_offset) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TARGET_RANGE, index + 4ul);
                 }
                 saw_depth_clear = V9X_TRUE;
             } else {
@@ -754,7 +845,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if (saw_fill == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
-            if (textured != V9X_FALSE && saw_texture_paint == V9X_FALSE) {
+            if (textured != V9X_FALSE &&
+                (saw_texture_paint == V9X_FALSE || painted != 0x0ful)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
             if (depthed != V9X_FALSE &&
@@ -939,7 +1031,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * sampler reads a page holding whatever the last boot left, which under a
      * nearest filter is a picture - just not one of this build's making.
      */
-    if (textured != V9X_FALSE && saw_texture_paint == V9X_FALSE) {
+    if (textured != V9X_FALSE &&
+        (saw_texture_paint == V9X_FALSE || painted != 0x0ful)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     if (limits->kind == V9X_I9XX_SCENE_BLEND &&
