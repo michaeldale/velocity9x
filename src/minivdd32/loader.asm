@@ -2185,6 +2185,10 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxSceneExecute
     cmp     ax, V9XMINI_FN_I9XX_ENGINE_MAP
     je      V9xMini_Api_I9xxEngineMap
+    cmp     ax, V9XMINI_FN_I9XX_RING_OPEN
+    je      V9xMini_Api_I9xxRingOpen
+    cmp     ax, V9XMINI_FN_I9XX_RING_SUBMIT
+    je      V9xMini_Api_I9xxRingSubmit
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2244,6 +2248,144 @@ ELSE
     mov     [ebp.Client_AX], 0
 ENDIF
     ret
+; Bring the ring up for runtime submission and report where it is.
+;
+; Two things the caller cannot do. The ADDRESS is here because only this side
+; knows the true size of video memory - the HAL derived it from the already
+; reduced fb.vram_bytes and landed a megabyte low, inside the DirectDraw heap.
+; The ENABLE is here because every Intel card-state store is here.
+;
+; THE ENABLE SEQUENCE IS DUPLICATED from V9xMini_I9xx_Ring_Execute's first
+; step, and that is a deliberate, recorded choice rather than an oversight.
+; The armed version is bound to a step machine and a poison model that a
+; runtime path must not share - a runtime timeout must not permanently poison
+; a session the user is working in. Extracting one procedure for both would be
+; the right shape and would edit the only Intel 3D path that has ever produced
+; a measured result, with no hardware here to show it still works. So it is
+; written twice, once, and the extraction waits until a runtime boot has shown
+; this copy is right.
+;
+; Idempotent: a ring already enabled with the expected START and CTL is
+; reported as success without being touched, because re-running the sequence
+; would reset HEAD and TAIL underneath work in flight.
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+BeginProc V9xMini_I9xx_Ring_Open
+    push    esi
+    push    edi
+    mov     esi, V9xI9xxMmioLinear
+    test    esi, esi
+    jz      V9xMini_I9xx_Ring_Open_Fail
+
+    ; Already up? START matching and CTL enabled is the whole test; HEAD and
+    ; TAIL are wherever previous work left them and are not ours to judge.
+    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    jne     short V9xMini_I9xx_Ring_Open_Bring
+    mov     eax, [esi+0203ch]
+    and     eax, 0fffff7ffh     ; ignore dynamic RING_WAIT status bit 11
+    cmp     eax, 0000f001h
+    je      V9xMini_I9xx_Ring_Open_Ready
+
+V9xMini_I9xx_Ring_Open_Bring:
+    ; Quiescent or nothing. Bringing up a ring that is mid-flight would reset
+    ; HEAD under a GPU still fetching.
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    ; Every store read back, exactly as the armed path does: a register that
+    ; does not take the value written is a ring nobody should submit to.
+    mov     dword ptr [esi+0203ch], 0
+    cmp     dword ptr [esi+0203ch], 0
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    mov     dword ptr [esi+02034h], 0
+    cmp     dword ptr [esi+02034h], 0
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    mov     dword ptr [esi+02030h], 0
+    cmp     dword ptr [esi+02030h], 0
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    mov     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    jne     V9xMini_I9xx_Ring_Open_Fail
+    mov     dword ptr [esi+0203ch], 0000f001h
+    mov     eax, [esi+0203ch]
+    and     eax, 0fffff7ffh
+    cmp     eax, 0000f001h
+    jne     V9xMini_I9xx_Ring_Open_Fail
+
+V9xMini_I9xx_Ring_Open_Ready:
+    ; The window. Mapped here on first use rather than per draw; the aperture
+    ; is the CPU's only route into this memory, measured 2026-09-14.
+    mov     eax, V9xI9xxRingLinear
+    test    eax, eax
+    jnz     short V9xMini_I9xx_Ring_Open_Have
+    mov     eax, V9X_I9XX_RESERVE_PHYS
+    VMMcall _MapPhysToLinear,<eax,V9X_I9XX_RESERVE_BYTES_TOTAL,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_I9xx_Ring_Open_Fail
+    mov     V9xI9xxRingLinear, eax
+V9xMini_I9xx_Ring_Open_Have:
+    mov     ebx, eax
+    mov     ecx, 000010000h
+    mov     eax, 1
+    pop     edi
+    pop     esi
+    ret
+V9xMini_I9xx_Ring_Open_Fail:
+    xor     ebx, ebx
+    xor     ecx, ecx
+    xor     eax, eax
+    pop     edi
+    pop     esi
+    ret
+EndProc V9xMini_I9xx_Ring_Open
+ENDIF
+
+V9xMini_Api_I9xxRingOpen:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    call    V9xMini_I9xx_Ring_Open
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_AX], ax
+    ret
+ENDIF
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_AX], 0
+    ret
+
+; Move TAIL and wait. ECX = the new tail, which the caller planned.
+;
+; The tail is validated here as well as planned there, and the two checks are
+; not the same check: the planner says where a submission ends, this says the
+; register can express it. RING_TAIL drops bit 2 - measured 2026-09-16, 0x10BC
+; written and 0x10B8 read back - so a tail that is not qword aligned is a
+; submission the hardware would execute short of.
+V9xMini_Api_I9xxRingSubmit:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+IFDEF V9X_I9XX_FIRST_WRITE_EXECUTOR
+    mov     esi, V9xI9xxMmioLinear
+    test    esi, esi
+    jz      V9xMini_Api_I9xxRingSubmit_Fail
+    mov     ecx, [ebp.Client_ECX]
+    test    ecx, 7
+    jnz     V9xMini_Api_I9xxRingSubmit_Fail
+    cmp     ecx, 000010000h
+    jae     V9xMini_Api_I9xxRingSubmit_Fail
+    ; The ring must be up. Submitting to a disabled ring advances a pointer
+    ; nobody reads and shows up only as a timeout.
+    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    jne     V9xMini_Api_I9xxRingSubmit_Fail
+    mov     V9xI9xxRingWant, ecx
+    mov     dword ptr [esi+02030h], ecx
+    call    V9xMini_I9xx_Ring_Wait
+    mov     [ebp.Client_AX], ax
+    ret
+V9xMini_Api_I9xxRingSubmit_Fail:
+ENDIF
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
 ; Hand the 32-bit HAL the two linear windows it cannot map for itself.
 ;
 ; Reads two variables and returns them. It maps nothing, writes no card state,

@@ -326,6 +326,30 @@ V9XMINI_FN_I9XX_SCENE_EXECUTE EQU 0016h
 ; _MapPhysToLinear on a path that runs while an application is drawing.
 V9XMINI_FN_I9XX_ENGINE_MAP  EQU 0017h
 
+; Bring the ring up for runtime submission, and say where it is.
+;
+; Out: AX=1, EBX=ring linear, ECX=ring bytes. AX=0 leaves both zero.
+;
+; The ring's ADDRESS lives here and is not derivable by the caller. The 32-bit
+; HAL tried to compute it from fb.vram_bytes and got it a megabyte low -
+; vram_bytes has already had the reserve taken off, so running it through the
+; sandbox calculator subtracted a second one and pointed the ring into the
+; DirectDraw heap. Only this side knows the true size of video memory and owns
+; the mapping, so only this side may answer.
+;
+; It also ENABLES the ring, which the armed path does and a runtime boot
+; otherwise never would: TAIL would advance a pointer the hardware is not
+; reading, the head would never follow, and the only symptom would be every
+; draw timing out.
+V9XMINI_FN_I9XX_RING_OPEN   EQU 0018h
+
+; Move TAIL to ECX and wait for HEAD to reach it. Out: AX=1 on completion.
+;
+; The one card-state store on the runtime path, kept here with every other
+; Intel register write rather than in the HAL, so the set of things that can
+; move this engine stays enumerable in one file.
+V9XMINI_FN_I9XX_RING_SUBMIT EQU 0019h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR
