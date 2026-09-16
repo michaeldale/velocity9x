@@ -1497,6 +1497,8 @@ V9XMINII9XXENGINEMAP PROC FAR
     mov     bp, sp
     push    bx
     push    cx
+    push    edx
+    push    esi
     push    es
     call    V9xMiniApiInitialize
     or      ax, ax
@@ -1505,11 +1507,19 @@ V9XMINII9XXENGINEMAP PROC FAR
     call    dword ptr V9xMiniApiEntry
     or      ax, ax
     jz      short V9xMiniI9xxEngineMapFailed
+    ; SAVE BOTH BEFORE LOADING A POINTER.
+    ;
+    ; `les bx, ...` writes BX, which IS the low half of EBX - so loading the
+    ; destination pointer destroys half the address being stored, and BAR0
+    ; would arrive with its low word replaced by an offset. EDX and ESI are
+    ; already preserved by this procedure's prologue.
+    mov     edx, ebx
+    mov     esi, ecx
     ; PASCAL pushes left to right, so bar0 is the FARTHER argument.
     les     bx, dword ptr [bp+10]
-    mov     es:[bx], ebx
+    mov     es:[bx], edx
     les     bx, dword ptr [bp+6]
-    mov     es:[bx], ecx
+    mov     es:[bx], esi
     mov     ax, 1
     jmp     short V9xMiniI9xxEngineMapDone
 V9xMiniI9xxEngineMapFailed:
@@ -1520,6 +1530,8 @@ V9xMiniI9xxEngineMapFailed:
     xor     ax, ax
 V9xMiniI9xxEngineMapDone:
     pop     es
+    pop     esi
+    pop     edx
     pop     cx
     pop     bx
     pop     bp

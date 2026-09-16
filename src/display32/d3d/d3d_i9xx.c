@@ -98,29 +98,38 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
 }
 
 /*
- * Where the ring is, in the window the HAL already holds.
+ * Where the ring is - and this side CANNOT WORK IT OUT, so it refuses.
  *
- * The reserve is carved from the top of video memory and the framebuffer
- * mapping covers vram_bytes, so the ring is inside a window this side already
- * has - which is why submission needs no verb to move data. Recomputed from
- * the same calculator the 16-bit side and the mini-VDD use rather than being
- * passed across, so the three cannot disagree about where the ring is.
+ * It tried, and the attempt was wrong in the worst available direction. The
+ * calculation was
+ *
+ *     v9x_i9xx_sandbox_calculate(v9x_hal->fb.vram_bytes, ...)
+ *
+ * and fb.vram_bytes has ALREADY had the reserve taken off it:
+ * v9x_gma950_reserve_video_memory returns layout.heap_bytes, and dd16.c
+ * publishes that as the video memory the heap may use. Running it through the
+ * calculator a second time subtracts a second reserve, so the ring offset
+ * landed a megabyte low - inside the DirectDraw heap, which is application
+ * surfaces. Command dwords written there would corrupt whatever a program had
+ * allocated, with no guard page between them and it, and the GPU would fetch
+ * commands from somewhere else entirely.
+ *
+ * The fix is not better arithmetic here. The ring's address belongs to
+ * whoever knows the true size of video memory and owns the mapping, and that
+ * is the 16-bit side and the mini-VDD - which already holds it, computed from
+ * the real figure, in V9xI9xxRingLinear. This side recomputing it was the
+ * mistake, in the same way that every "one number in two places" defect in
+ * this project has been.
+ *
+ * SO SUBMISSION REFUSES until the address is handed across rather than
+ * derived. A refused draw is a black window; a wrong ring base is a corrupted
+ * heap and a GPU fetching from application memory.
  */
 static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
 {
-    struct v9x_i9xx_sandbox_layout layout;
-
-    if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul ||
-        v9x_hal->engine.control_linear_base == 0ul) {
-        return 0;
-    }
-    if (v9x_i9xx_sandbox_calculate(v9x_hal->fb.vram_bytes, 0ul, &layout) !=
-            V9X_STATUS_OK) {
-        return 0;
-    }
-    *linear_out = v9x_hal->fb.linear_base + layout.ring_offset;
-    *bytes_out = layout.ring_bytes;
-    return 1;
+    *linear_out = 0ul;
+    *bytes_out = 0ul;
+    return 0;
 }
 
 /*
@@ -367,7 +376,25 @@ static int v9x_d3d_i9xx_ready(void)
         v9x_hal->fb.linear_base == 0ul) {
         return 0;
     }
-    return 1;
+    /*
+     * TWO WINDOWS ARE NOT READINESS, which is what this used to assume.
+     *
+     *  - The ring's address is not derivable on this side; see
+     *    v9x_d3d_i9xx_ring_base for what deriving it produced.
+     *  - THE RING IS NOT ENABLED. Every submission this project has performed
+     *    ran under the armed path, where the mini-VDD sets RING_START and
+     *    RING_CTL and then DISABLES and clears them on teardown. A runtime
+     *    boot establishes neither, so moving TAIL would advance a pointer the
+     *    hardware is not reading - and nothing would say so, because the head
+     *    would never reach it and the bounded wait would simply time out.
+     *
+     * Both are the mini-VDD's to answer, and until it does this reports no.
+     * That is the same judgement the `ready` member exists for: an engine that
+     * resolves, accepts calls and draws nothing, with every HRESULT reporting
+     * success, is the failure it was appended to prevent - and "the registers
+     * are mapped" is not the question it asks.
+     */
+    return 0;
 }
 
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {

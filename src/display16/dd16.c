@@ -575,8 +575,20 @@ static void v9x_dd_refresh_framebuffer(void)
      * so it starts disarmed; after that the escape is the only writer and
      * the HAL's own consumption is the only decrementer. A forced timeout
      * acts on whichever bounded wait runs next, which is mode-independent. */
-    shared->engine.gtt_linear_base = 0ul;
 }
+
+/*
+ * NOTHING IS CLEARED HERE ANY MORE, and the line that was is worth recording.
+ *
+ * This function used to end by zeroing engine.reserved1 - a spare, cleared
+ * because a spare should be. On 2026-09-16 reserved1 became gtt_linear_base
+ * and a mechanical rename turned that line into one that erased a live
+ * address on every framebuffer refresh, so the engine reported itself not
+ * ready from the first mode change onward.
+ *
+ * The rename was mine and the line read correctly after it; what made it wrong
+ * was the field's meaning, which no compiler checks.
+ */
 
 /*
  * Copy the mode-dependent DDHALINFO fields from the DLL-built mode table
