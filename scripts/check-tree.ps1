@@ -1246,6 +1246,85 @@ if (Test-Path -LiteralPath $intelDataPath) {
     }
 }
 
+# The staging ring offset exists on both sides and they must agree.
+#
+# The submission boundaries are computed in C and written to a register by the
+# assembler, and whether a boundary is qword aligned depends on this base as
+# much as on the dword count. Two copies of it that could drift is how the
+# alignment would come back.
+$loaderRingOffset = $null
+if ($loaderText -match '(?m)^V9X_I9XX_P5_RING_OFFSET\s+EQU\s+0([0-9A-Fa-f]+)h') {
+    $loaderRingOffset = [Convert]::ToUInt32($Matches[1], 16)
+}
+$headerRingOffset = $null
+$intelGmaText = Get-Content -LiteralPath (
+    Join-Path $repoRoot 'include\velocity9x\intel_gma.h') -Raw
+if ($intelGmaText -match '(?m)^#define\s+V9X_I9XX_P5_RING_OFFSET\s+\(\(v9x_u32\)0x([0-9A-Fa-f]+)ul\)') {
+    $headerRingOffset = [Convert]::ToUInt32($Matches[1], 16)
+}
+if ($null -eq $loaderRingOffset -or $null -eq $headerRingOffset) {
+    throw ('V9X_I9XX_P5_RING_OFFSET must be defined in both ' +
+           'src\minivdd32\loader.asm and include\velocity9x\intel_gma.h.')
+}
+if ($loaderRingOffset -ne $headerRingOffset) {
+    throw ("V9X_I9XX_P5_RING_OFFSET is 0x{0:X} in loader.asm and 0x{1:X} in " +
+           'intel_gma.h. The submission boundaries are computed against one ' +
+           'and written against the other.') -f $loaderRingOffset, $headerRingOffset
+}
+if (($loaderRingOffset -band 7) -ne 0) {
+    throw ('V9X_I9XX_P5_RING_OFFSET is not qword aligned. RING_TAIL holds a ' +
+           'qword-aligned offset and drops bit 2 - measured 2026-09-16 - so ' +
+           'every submission from this base would be misaligned however the ' +
+           'stream is padded.')
+}
+
+# EVERY generated submission boundary must be qword aligned.
+#
+# RING_TAIL holds a qword-aligned offset and drops bit 2. Measured on the part
+# 2026-09-16: the mini-VDD wrote 0x10BC, read back 0x10B8, and the run was
+# poisoned at scene 0. The old boundaries were aligned by ACCIDENT - 50 and 66
+# dwords - and removing the depth BUF_INFO made them 47 and 63, breaking the
+# Phase 5 path that had drawn correctly twice.
+#
+# Checked here rather than only in a host test because the value the executor
+# uses is the generated one, and the arithmetic that has to hold is about the
+# byte offset, not the dword count.
+#
+# Runs AFTER the ring-offset cross-check above, which is what establishes
+# $headerRingOffset. Placed before it first, where the base read as zero and
+# the alignment answer was right only because 0x1000 happens to be aligned -
+# the reported address was 0xBC rather than 0x10BC, which is how it showed.
+$boundaryChecks = New-Object 'System.Collections.Generic.List[object]'
+if ($intelIncText -match '(?m)^V9X_I9XX_P5_DWORDS\s+EQU\s+(\d+)') {
+    $boundaryChecks.Add(@{ What = 'V9X_I9XX_P5_DWORDS'; Dwords = [int]$Matches[1] })
+}
+if ($intelIncText -match '(?m)^V9X_I9XX_P5_PRIMITIVE\s+EQU\s+(\d+)') {
+    $boundaryChecks.Add(@{ What = 'V9X_I9XX_P5_PRIMITIVE'; Dwords = [int]$Matches[1] })
+}
+foreach ($label in @('V9xI9xxSceneDwords', 'V9xI9xxScenePrim')) {
+    if (-not $intelTables.ContainsKey($label)) { continue }
+    $slot = 0
+    foreach ($entry in @($intelTables[$label])) {
+        $boundaryChecks.Add(@{ What = "$label[$slot]"
+                               Dwords = [Convert]::ToInt32($entry, 16) })
+        ++$slot
+    }
+}
+if ($boundaryChecks.Count -lt 1) {
+    throw 'i9xx3d.inc declares no submission boundaries to check.'
+}
+foreach ($check in $boundaryChecks) {
+    $byteOffset = $headerRingOffset + ($check.Dwords * 4)
+    if (($byteOffset -band 7) -ne 0) {
+        throw ("i9xx3d.inc's $($check.What) is $($check.Dwords) dwords, which " +
+               "puts RING_TAIL at 0x{0:X}. " -f $byteOffset) +
+              ('That is not qword aligned: the register drops bit 2 and the ' +
+               'tail read-back will not match what was written. Pad the ' +
+               'stream - see ' +
+               'docs\decisions\2026-09-16-intel-ring-tail-requires-qword-alignment.md.')
+    }
+}
+
 # The Phase 6 scene directories, checked against the scene tables themselves.
 #
 # Three parallel arrays are three chances to disagree with the tables they

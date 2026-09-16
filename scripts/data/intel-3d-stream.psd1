@@ -17,10 +17,10 @@
     Tricolor = 'FF1587F9'
     P4packetcrc = 'BA0895B6'
     P4crc = 'A0DA64A1'
-    P5crc = '6B1C2CEF'
-    Combinedcrc = '3CE2FB35'
+    P5crc = '01A4DE25'
+    Combinedcrc = '1229FE1F'
     Phase4Dwords = 10
-    Phase5Dwords = 63
+    Phase5Dwords = 64
     Phase4Stream = @(
         '00000000'
         '02000000'
@@ -81,6 +81,7 @@
         '00000000'
         '00000000'
         '02000000'
+        '00000000'
         '7F00000E'
         '43200000'
         '42F00000'
@@ -103,15 +104,15 @@
     IntelReferenceColor = '00001C3E'
     SceneCount = 5
     SceneAuthorisedDraws = 5
-    SceneCombinedCrc = '066502FF'
-    SceneArmCrc = '93D6181A'
+    SceneCombinedCrc = '539F7313'
+    SceneArmCrc = 'AF1E48B1'
     SceneTotalProbes = 52
     Scenes = @(
         @{
             Id = 0
-            Dwords = 63
-            Crc = '6B1C2CEF'
-            PrimitiveOffset = 47
+            Dwords = 64
+            Crc = '01A4DE25'
+            PrimitiveOffset = 48
             Triangles = 1
             Colors = @(
                 @{ Value = '1C3E'; Measured = $true }
@@ -135,9 +136,9 @@
         }
         @{
             Id = 1
-            Dwords = 63
-            Crc = '60367BB4'
-            PrimitiveOffset = 47
+            Dwords = 64
+            Crc = '0A8E897E'
+            PrimitiveOffset = 48
             Triangles = 1
             Colors = @(
                 @{ Value = '3038'; Measured = $false }
@@ -161,9 +162,9 @@
         }
         @{
             Id = 2
-            Dwords = 63
-            Crc = '4CD82BC9'
-            PrimitiveOffset = 47
+            Dwords = 64
+            Crc = '2660D903'
+            PrimitiveOffset = 48
             Triangles = 1
             Colors = @(
                 @{ Value = '1C3E'; Measured = $true }
@@ -181,9 +182,9 @@
         }
         @{
             Id = 3
-            Dwords = 63
-            Crc = '3AE65FF9'
-            PrimitiveOffset = 47
+            Dwords = 64
+            Crc = '505EAD33'
+            PrimitiveOffset = 48
             Triangles = 1
             Colors = @(
                 @{ Value = 'F325'; Measured = $true }
@@ -201,9 +202,9 @@
         }
         @{
             Id = 4
-            Dwords = 78
-            Crc = '638E7E0C'
-            PrimitiveOffset = 47
+            Dwords = 80
+            Crc = '107EE186'
+            PrimitiveOffset = 48
             Triangles = 2
             Colors = @(
                 @{ Value = '1C3E'; Measured = $true }

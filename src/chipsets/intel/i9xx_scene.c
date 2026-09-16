@@ -429,11 +429,22 @@ v9x_u32 v9x_i9xx_scene_extent(const struct v9x_i9xx_scene *scene)
      * deriving the same length is how the published packet offsets came to be
      * seven dwords short.
      */
-    return V9X_I9XX_SCENE_FILL_DWORDS +
-           v9x_i9xx_3d_state_extent() +
-           v9x_i9xx_fragment_program_extent() +
-           V9X_I9XX_SCENE_PROBE_DWORDS +
-           v9x_i9xx_triangle_run_dwords(scene->triangle_count);
+    {
+        v9x_u32 prefix = V9X_I9XX_SCENE_FILL_DWORDS +
+                         v9x_i9xx_3d_state_extent() +
+                         v9x_i9xx_fragment_program_extent() +
+                         V9X_I9XX_SCENE_PROBE_DWORDS;
+        v9x_u32 total;
+
+        /* Both pads, computed the same way the builder applies them. The
+         * primitive boundary and the draw boundary must each be qword
+         * aligned; see the builder for the measurement. */
+        prefix += (prefix & 1ul);
+        total = prefix +
+                v9x_i9xx_triangle_run_dwords(scene->triangle_count);
+        total += (total & 1ul);
+        return total;
+    }
 }
 
 /*
@@ -466,7 +477,17 @@ v9x_u32 v9x_i9xx_scene_primitive_offset(const struct v9x_i9xx_scene *scene)
     if (run == 0ul || run >= extent) {
         return 0ul;
     }
-    return extent - run;
+    /*
+     * Subtracting the run from the extent no longer gives the boundary: the
+     * extent may carry a TRAILING pad after the run. Take the run and any
+     * trailing pad off together.
+     */
+    {
+        v9x_u32 boundary = extent - run;
+
+        boundary -= (boundary & 1ul);
+        return boundary;
+    }
 }
 
 v9x_status v9x_i9xx_build_scene_stream(
@@ -542,6 +563,28 @@ v9x_status v9x_i9xx_build_scene_stream(
     }
     at += produced;
 
+    /*
+     * Pad so the PRIMITIVE begins on a qword boundary.
+     *
+     * The executor stops between the prefix and the primitive, and RING_TAIL
+     * holds a qword-aligned offset: bit 2 is not writable. Measured on the
+     * part 2026-09-16 - the mini-VDD wrote 0x10BC and read back 0x10B8, the
+     * tail compare failed and the run was poisoned.
+     *
+     * An odd dword count is never a qword-aligned byte offset. The old
+     * boundaries were even and therefore aligned BY ACCIDENT; removing the
+     * depth BUF_INFO made them odd and broke the Phase 5 path as well as
+     * this one.
+     *
+     * docs\decisions\2026-09-16-intel-ring-tail-requires-qword-alignment.md
+     */
+    if ((at & 1ul) != 0ul) {
+        if (capacity - at < 1ul) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+
     if (v9x_i9xx_build_triangle_run(
             scene->triangles, scene->triangle_count,
             V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
@@ -549,6 +592,15 @@ v9x_status v9x_i9xx_build_scene_stream(
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
     at += produced;
+
+    /* And the draw boundary, for the same reason. A triangle run is
+     * 1 + 15n dwords, so an even prefix plus two triangles lands odd. */
+    if ((at & 1ul) != 0ul) {
+        if (capacity - at < 1ul) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
 
     *written = at;
     return V9X_STATUS_OK;

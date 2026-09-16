@@ -52,11 +52,22 @@ void v9x_i9xx_phase5_parameters(struct v9x_i9xx_phase5_parameters *out)
     out->height = V9X_I9XX_TARGET_HEIGHT;
     out->fill_word = V9X_I9XX_FILL_RGB565;
     out->triangle_color = V9X_I9XX_TRI_COLOR_BGRA;
-    out->stream_dwords = V9X_I9XX_P5_FILL_DWORDS +
+    {
+        /*
+         * The two qword pads the builder inserts, counted the same way it
+         * applies them. A published length that did not include them would
+         * describe a shorter stream than the one staged, and the arm gate
+         * compares lengths.
+         */
+        v9x_u32 prefix = V9X_I9XX_P5_FILL_DWORDS +
                          v9x_i9xx_3d_state_extent() +
                          v9x_i9xx_fragment_program_extent() +
-                         V9X_I9XX_P5_PROBE_DWORDS +
-                         v9x_i9xx_vertex_run_extent();
+                         V9X_I9XX_P5_PROBE_DWORDS;
+
+        prefix += (prefix & 1ul);
+        out->stream_dwords = prefix + v9x_i9xx_vertex_run_extent();
+        out->stream_dwords += (out->stream_dwords & 1ul);
+    }
     /*
      * The target offset is not a compile-time constant: it comes from
      * v9x_i9xx_sandbox_calculate, which derives it from the VBE-reported size.
@@ -167,12 +178,38 @@ v9x_status v9x_i9xx_build_phase5_stream(
     }
     at += produced;
 
+    /*
+     * Pad so the PRIMITIVE begins on a qword boundary. RING_TAIL holds a
+     * qword-aligned offset and bit 2 is not writable - measured 2026-09-16,
+     * 0x10BC written and 0x10B8 read back.
+     *
+     * This path was aligned by accident at 50 and 66 dwords and broke when the
+     * depth BUF_INFO removal made them 47 and 63. It had drawn correctly twice
+     * and would not have again.
+     *
+     * docs\decisions6-09-16-intel-ring-tail-requires-qword-alignment.md
+     */
+    if ((at & 1ul) != 0ul) {
+        if (capacity - at < 1ul) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+
     if (v9x_i9xx_build_vertex_run(
             V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
             stream + at, capacity - at, &produced) != V9X_STATUS_OK) {
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
     at += produced;
+
+    /* And the draw boundary. */
+    if ((at & 1ul) != 0ul) {
+        if (capacity - at < 1ul) {
+            return V9X_STATUS_INSUFFICIENT_MEMORY;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
 
     *written = at;
     return V9X_STATUS_OK;

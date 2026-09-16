@@ -29,6 +29,17 @@
 #define V9X_I9XX_RING_BYTES              ((v9x_u32)0x00010000ul)
 #define V9X_I9XX_SANDBOX_PAGE_BYTES      ((v9x_u32)0x00001000ul)
 #define V9X_I9XX_RING_GUARD_BYTES        ((v9x_u32)8ul)
+/*
+ * Where Phase 5 and Phase 6 stage their streams, 4 KiB into the ring and
+ * clear of the ten dwords Phase 4 stages at zero.
+ *
+ * loader.asm carries the same value as V9X_I9XX_P5_RING_OFFSET and
+ * check-tree asserts the two agree. It is needed on this side because the
+ * submission BOUNDARIES are computed here, and whether one is qword aligned
+ * depends on this base as much as on the dword count - a test that checked
+ * only the count would keep passing if this moved to an odd multiple of four.
+ */
+#define V9X_I9XX_P5_RING_OFFSET          ((v9x_u32)0x00001000ul)
 
 /*
  * Phase 5's render target: 640x480 at 16 bpp, RGB565, linear.

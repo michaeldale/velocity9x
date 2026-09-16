@@ -305,7 +305,7 @@ static void test_phase5_parameters(void)
     CHECK(parameters.triangle_color == V9X_I9XX_TRI_COLOR_BGRA);
     /* 34 state + 7 shader + 2 probe + 16 vertices. */
     /* 7 fill + 34 state + 7 shader + 2 probe + 16 vertices. */
-    CHECK(parameters.stream_dwords == 63ul);
+    CHECK(parameters.stream_dwords == 64ul);
 
     /* The parameters and the layout must describe the same target. */
     CHECK(v9x_i9xx_sandbox_calculate(
@@ -368,7 +368,7 @@ static void test_phase5_parameters(void)
 }
 
 /* The golden stream, in full. See the file header for why. */
-static const v9x_u32 v9x_i9xx_phase5_golden[63] = {
+static const v9x_u32 v9x_i9xx_phase5_golden[64] = {
     0x54300004ul, 0x03f00500ul, 0x00000000ul, 0x01e00140ul, 0x006c2000ul,
     0x08420842ul, 0x02000000ul, 0x66014140ul, 0x7d990000ul, 0x00000000ul,
     0x7d9a0000ul, 0x00000000ul, 0x7d980000ul, 0x00000000ul, 0x76fac688ul,
@@ -378,10 +378,10 @@ static const v9x_u32 v9x_i9xx_phase5_golden[63] = {
     0x01df027ful, 0x00000000ul, 0x7d0407c4ul, 0xfffffffful, 0x00000000ul,
     0x00902480ul, 0x00000000ul, 0x00000004ul, 0x7d050005ul, 0x190a3c00ul,
     0x00000000ul, 0x00000000ul, 0x02203ca0ul, 0x01230000ul, 0x00000000ul,
-    0x00000000ul, 0x02000000ul, 0x7f00000eul, 0x43200000ul, 0x42f00000ul,
-    0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43f00000ul, 0x42f00000ul,
-    0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43a00000ul, 0x43c80000ul,
-    0x00000000ul, 0x3f800000ul, 0xff1587f9ul
+    0x00000000ul, 0x02000000ul, 0x00000000ul, 0x7f00000eul, 0x43200000ul,
+    0x42f00000ul, 0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43f00000ul,
+    0x42f00000ul, 0x00000000ul, 0x3f800000ul, 0xff1587f9ul, 0x43a00000ul,
+    0x43c80000ul, 0x00000000ul, 0x3f800000ul, 0xff1587f9ul
 };
 
 static void test_golden_stream(void)
@@ -392,8 +392,8 @@ static void test_golden_stream(void)
 
     CHECK(v9x_i9xx_build_phase5_stream(stream, 96ul, &written) ==
           V9X_STATUS_OK);
-    CHECK(written == 63ul);
-    for (index = 0ul; index < 63ul; ++index) {
+    CHECK(written == 64ul);
+    for (index = 0ul; index < 64ul; ++index) {
         CHECK(stream[index] == v9x_i9xx_phase5_golden[index]);
     }
 
@@ -405,10 +405,10 @@ static void test_golden_stream(void)
      * drifting together.
      */
     CHECK(v9x_i9xx_phase5_execution_crc() ==
-          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 63ul));
-    CHECK(v9x_i9xx_phase5_execution_crc() == 0x6b1c2ceful);
+          v9x_i9xx_crc32_dwords(v9x_i9xx_phase5_golden, 64ul));
+    CHECK(v9x_i9xx_phase5_execution_crc() == 0x01a4de25ul);
 
-    CHECK(v9x_i9xx_build_phase5_stream(stream, 62ul, &written) !=
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 63ul, &written) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_phase5_stream(0, 96ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
@@ -423,12 +423,12 @@ static void test_decoder_accepts_golden(void)
     v9x_u32 index = 0xfffffffful;
 
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 63ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
               &index) == V9X_I9XX_P5_OK);
     CHECK(index == 0ul);
     /* The index argument is optional. */
     CHECK(v9x_i9xx_decode_phase5_stream(
-              v9x_i9xx_phase5_golden, 63ul, 0x006c2000ul, 0x00096000ul,
+              v9x_i9xx_phase5_golden, 64ul, 0x006c2000ul, 0x00096000ul,
               0) == V9X_I9XX_P5_OK);
 }
 
@@ -489,20 +489,20 @@ static void test_decoder_rejects_mutations(void)
         /* A shader of the wrong length. */
         { 38ul, 0x7d050007ul, V9X_I9XX_P5_SHADER, 38ul },
         /* The indirect primitive form, which would fetch from a buffer. */
-        { 47ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 47ul },
+        { 48ul, 0x7f80000eul, V9X_I9XX_P5_INDIRECT_FORBIDDEN, 48ul },
         /* Wrong vertex count. */
-        { 47ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT, 47ul },
+        { 48ul, 0x7f000009ul, V9X_I9XX_P5_VERTEX_COUNT, 48ul },
         /* A vertex outside the drawing rectangle. */
-        { 48ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE, 48ul },
+        { 49ul, 0x44800000ul, V9X_I9XX_P5_VERTEX_RANGE, 49ul },
         /* A fractional coordinate, which the float decoder refuses. */
-        { 49ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE, 49ul },
+        { 50ul, 0x42f10000ul, V9X_I9XX_P5_VERTEX_RANGE, 50ul },
         /* Non-zero Z, and W other than one. */
-        { 50ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE, 50ul },
-        { 51ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE, 51ul },
+        { 51ul, 0x3f800000ul, V9X_I9XX_P5_VERTEX_RANGE, 51ul },
+        { 52ul, 0x40000000ul, V9X_I9XX_P5_VERTEX_RANGE, 52ul },
         /* One vertex a different colour from the other two. */
-        { 57ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT, 57ul }
+        { 58ul, 0xff286428ul, V9X_I9XX_P5_VERTEX_FORMAT, 58ul }
     };
-    v9x_u32 stream[63];
+    v9x_u32 stream[64];
     v9x_u32 index;
     v9x_u32 mutation;
     const v9x_u32 count =
@@ -511,12 +511,12 @@ static void test_decoder_rejects_mutations(void)
     for (mutation = 0ul; mutation < count; ++mutation) {
         v9x_u32 rejected = 0xfffffffful;
         v9x_u16 reason;
-        for (index = 0ul; index < 63ul; ++index) {
+        for (index = 0ul; index < 64ul; ++index) {
             stream[index] = v9x_i9xx_phase5_golden[index];
         }
         stream[mutations[mutation].index] = mutations[mutation].value;
         reason = v9x_i9xx_decode_phase5_stream(
-            stream, 63ul, 0x006c2000ul, 0x00096000ul, &rejected);
+            stream, 64ul, 0x006c2000ul, 0x00096000ul, &rejected);
         CHECK(reason == mutations[mutation].reason);
         CHECK(rejected == mutations[mutation].rejected_at);
     }
@@ -592,7 +592,15 @@ static void test_published_offsets_locate_the_packets(void)
 
     /* The vertex run: the prefix, the state, the shader, two probe dwords and
      * the _3DPRIMITIVE header, after which the first vertex begins. */
-    vertices = fill + state + shader + 3ul;
+    /*
+     * Prefix, the qword PAD, then the two probe dwords and the primitive
+     * header, after which the first vertex begins. The pad is what the
+     * 2026-09-16 capture was spent finding; leaving it out of this sum would
+     * put the expected vertex bits one dword early.
+     */
+    vertices = fill + state + shader + 2ul;
+    vertices += (vertices & 1ul);
+    vertices += 1ul;
     CHECK(vertices + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS) - 1ul <
           written);
 
@@ -616,7 +624,7 @@ static void test_published_offsets_locate_the_packets(void)
      * computation above and the driver's own published offset must not be
      * able to drift together.
      */
-    CHECK(vertices == 48ul);
+    CHECK(vertices == 49ul);
 }
 
 /*
@@ -977,12 +985,22 @@ static void test_edge_combined_is_one_primitive(void)
      * Six vertices under a single _3DPRIMITIVE, not two commands of three.
      * The length field counts every vertex dword less one: 6 * 5 - 1 = 29.
      */
-    header = stream[written - (6ul * V9X_I9XX_VERTEX_DWORDS) - 1ul];
+    /*
+     * Located by the published primitive offset rather than counted back from
+     * the end: two triangles make the stream odd, so it carries a TRAILING
+     * qword pad and counting back would land on that instead.
+     */
+    header = stream[v9x_i9xx_scene_primitive_offset(&scene)];
     CHECK(header == (V9X_I9XX_3DPRIMITIVE_INLINE |
                      V9X_I9XX_PRIM3D_TRILIST | 29ul));
 
-    /* Longer than a single-triangle scene by exactly one triangle. */
-    CHECK(written == 63ul + (V9X_I9XX_VERTEX_COUNT * V9X_I9XX_VERTEX_DWORDS));
+    /*
+     * Prefix 48, six vertices at five dwords plus the command is 31, and the
+     * 79 that makes is padded to 80. Written out because the pad is the whole
+     * subject of the 2026-09-16 capture.
+     */
+    CHECK(written == 80ul);
+    CHECK((written & 1ul) == 0ul);
 }
 
 /*
@@ -1066,12 +1084,12 @@ static void test_scene_table(void)
 
     /* Capacity, at the boundary rather than far from it. */
     CHECK(v9x_i9xx_scene_at(0ul, &scene) == V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 62ul, &written) !=
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 63ul, &written) !=
           V9X_STATUS_OK);
     CHECK(written == 0ul);
-    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 63ul, &written) ==
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 64ul, &written) ==
           V9X_STATUS_OK);
-    CHECK(written == 63ul);
+    CHECK(written == 64ul);
 
     /* A scene claiming more triangles than it can hold is refused, not
      * clamped. */
@@ -1204,7 +1222,7 @@ static void test_scene_primitive_offset(void)
 
         /* Fill 7 + state 31 + shader 7 + probe 2. The same for every scene:
          * only the triangle run after it varies. */
-        CHECK(offset == 47ul);
+        CHECK(offset == 48ul);
 
         written = 0ul;
         CHECK(v9x_i9xx_build_scene_stream(
@@ -1218,9 +1236,16 @@ static void test_scene_primitive_offset(void)
          */
         CHECK((stream[offset] & 0xff000000ul) == V9X_I9XX_3DPRIMITIVE_INLINE);
 
-        /* Everything after it is the triangle run, exactly. */
-        CHECK(written - offset ==
+        /*
+         * Everything after it is the triangle run plus at most one trailing
+         * qword pad. Bounded on both sides rather than asserted exactly: the
+         * pad is present for two triangles and absent for one, and a test
+         * that allowed any surplus would not notice a run that had grown.
+         */
+        CHECK(written - offset >=
               v9x_i9xx_triangle_run_dwords(scene.triangle_count));
+        CHECK(written - offset <=
+              v9x_i9xx_triangle_run_dwords(scene.triangle_count) + 1ul);
     }
 
     /* A scene that cannot be built has no boundary, rather than a plausible
@@ -1360,6 +1385,80 @@ static void test_phase6_chain(void)
     CHECK(chain.in_flight_cleared == V9X_FALSE);
 }
 
+/*
+ * EVERY submission boundary must be qword aligned.
+ *
+ * RING_TAIL holds a qword-aligned offset and bit 2 is not writable. Measured
+ * on the part 2026-09-16: the mini-VDD wrote 0x10BC, read back 0x10B8, the
+ * compare failed and the run was poisoned at scene 0.
+ *
+ * Nothing host-side knew the rule, so removing the depth BUF_INFO took the
+ * Phase 5 stream from 66 dwords to 63 and its primitive from 50 to 47 - both
+ * even to odd - and broke a path that had drawn correctly twice. The old
+ * values were aligned by accident.
+ *
+ * Asserted in BYTES at the ring offset the executor actually submits, not as
+ * "the dword count is even". The executor adds V9X_I9XX_P5_RING_OFFSET, and a
+ * test that checked the count alone would still pass if that base moved.
+ */
+static void test_submission_boundaries_are_qword_aligned(void)
+{
+    struct v9x_i9xx_scene scene;
+    v9x_u32 stream[160];
+    v9x_u32 written;
+    v9x_u32 index;
+    v9x_u32 offset;
+
+    /*
+     * The ring base itself is checked by check-tree, not here. Asserting a
+     * compile-time constant against itself is a check that cannot fail - the
+     * compiler says so, calling the failure branch unreachable - and the
+     * cross-check that matters is that loader.asm and the header agree, which
+     * no C test can see.
+     */
+    written = 0ul;
+    CHECK(v9x_i9xx_build_phase5_stream(stream, 160ul, &written) ==
+          V9X_STATUS_OK);
+    offset = V9X_I9XX_P5_RING_OFFSET + (written * 4ul);
+    CHECK((offset & 7ul) == 0ul);
+
+    for (index = 0ul; index < v9x_i9xx_scene_count(); ++index) {
+        v9x_u32 primitive;
+
+        CHECK(v9x_i9xx_scene_at(index, &scene) == V9X_STATUS_OK);
+        written = 0ul;
+        CHECK(v9x_i9xx_build_scene_stream(
+                  &scene, stream, 160ul, &written) == V9X_STATUS_OK);
+
+        /* The draw boundary. */
+        offset = V9X_I9XX_P5_RING_OFFSET + (written * 4ul);
+        CHECK((offset & 7ul) == 0ul);
+
+        /* And the probe boundary, which is where this one actually failed. */
+        primitive = v9x_i9xx_scene_primitive_offset(&scene);
+        offset = V9X_I9XX_P5_RING_OFFSET + (primitive * 4ul);
+        CHECK((offset & 7ul) == 0ul);
+
+        /* The extent must still describe what was built, pads included. */
+        CHECK(v9x_i9xx_scene_extent(&scene) == written);
+        /* And the boundary must still land ON the primitive header, or the
+         * padding has been inserted in the wrong place. */
+        CHECK((stream[primitive] & 0xff000000ul) ==
+              V9X_I9XX_3DPRIMITIVE_INLINE);
+        /*
+         * The pad is an MI_NOOP, not whatever the buffer held.
+         *
+         * This build's prefix is 47 dwords before padding, so a pad IS
+         * inserted and the dword before the primitive must be one. Tied to
+         * the current figure deliberately: if the prefix becomes even the
+         * assertion should fail and be re-examined rather than quietly
+         * passing on a branch that stopped being taken.
+         */
+        CHECK(primitive >= 1ul);
+        CHECK(stream[primitive - 1ul] == V9X_I9XX_MI_NOOP);
+    }
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -1383,6 +1482,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_scene_probe_budget();
     test_scene_combined_crc();
     test_scene_primitive_offset();
+    test_submission_boundaries_are_qword_aligned();
     test_phase6_chain();
     test_triangle_run_refusals();
     return failures;

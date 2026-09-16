@@ -966,10 +966,23 @@ static int emit_intel_3d_stream(void)
     printf("P5CRC=%08lX\n", (unsigned long)phase5_crc);
     /* The dword the _3DPRIMITIVE starts at. The executor stops between its
      * two submissions exactly here. */
-    printf("P5PRIM=%04X\n",
-           (unsigned int)(v9x_i9xx_phase5_fill_extent() +
-                          v9x_i9xx_3d_state_extent() +
-                          v9x_i9xx_fragment_program_extent() + 2ul));
+    {
+        /*
+         * Padded to a qword boundary, exactly as the builder pads it.
+         *
+         * This was the unpadded sum and so published 47 while the builder
+         * emitted 48 - a number computed in two places, which is the defect
+         * this file has now produced three times. The executor took its
+         * boundary from here, wrote 0x10BC to RING_TAIL, and the register
+         * read back 0x10B8.
+         */
+        v9x_u32 prefix = v9x_i9xx_phase5_fill_extent() +
+                         v9x_i9xx_3d_state_extent() +
+                         v9x_i9xx_fragment_program_extent() + 2ul;
+
+        prefix += (prefix & 1ul);
+        printf("P5PRIM=%04X\n", (unsigned int)prefix);
+    }
     printf("COMBINEDCRC=%08lX\n",
            (unsigned long)v9x_i9xx_combined_arm_crc(phase4_crc, phase5_crc));
     /*
