@@ -89,6 +89,20 @@ static void v9x_ati_format_u32(char *text, unsigned long value)
  * DOS box under Windows, where the stock driver owns the card. Reporting the
  * raw number is what makes that distinction visible in a bug report.
  */
+/*
+ * The chip's own word, or the family default when it carries none.
+ *
+ * Both keys were literals here. That is how the intel-gma publisher went on
+ * writing "not-advertised" after its chip had gained an engine and a word for
+ * it: the value reaching V9XHW.INI came from a second copy nobody updated.
+ * These devices all carry null today, so this changes no output - it removes
+ * the place the next one would be got wrong.
+ */
+static const char *v9x_ati_word(const char *value, const char *fallback)
+{
+    return value != 0 ? value : fallback;
+}
+
 static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                         v9x_hw16_write_fn write)
 {
@@ -101,8 +115,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("ClockDetector", device->clock_detector);
     write("ClockStatus", "unavailable");
     write("ModeSwitching", device->mode_switching);
-    write("Acceleration", "none");
-    write("Direct3D", "not-advertised");
+    write("Acceleration", v9x_ati_word(device->acceleration, "none"));
+    write("Direct3D", v9x_ati_word(device->direct3d, "not-advertised"));
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_ati_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);

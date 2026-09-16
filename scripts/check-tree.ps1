@@ -1692,6 +1692,24 @@ foreach ($familyFile in Get-ChildItem -Path (
         }
     }
 }
+# USED, not merely present. The rule above asks whether the chip's word
+# appears in the chip's own object, and it did - while the family publisher
+# wrote a string literal to V9XHW.INI instead, so the word never reached the
+# file the settings page reads. A presence check is not a use check, and this
+# is the second time that distinction has cost a boot on this feature.
+foreach ($publisher in Get-ChildItem -Path (
+        Join-Path $repoRoot 'src\chipsets') -Recurse -Filter '*.c') {
+    $publisherText = Get-Content -Raw -LiteralPath $publisher.FullName
+    foreach ($key in @('Direct3D', 'Acceleration')) {
+        if ($publisherText -match ('write\("' + $key + '",\s*"')) {
+            throw ("$($publisher.Name) writes the $key key as a string " +
+                   'literal. It must publish the field the chip device carries, ' +
+                   'or a chip that gains an engine keeps publishing the ' +
+                   'word its publisher was written with.')
+        }
+    }
+}
+
 # The page must test the CONVENTION, not one engine's name. It compared
 # against "hardware-s3d" literally, so "this card has a 3D engine" meant
 # "this card is an S3" and every later engine read as having none.
@@ -1731,7 +1749,7 @@ $gma950Text = Get-Content -Raw -LiteralPath (
 # start a GPU fetching behind no permission at all, on every DirectDraw
 # session, with nothing to stop it from DOS afterwards.
 if ($gma950Text -notmatch
-        '(?m)^\s*if \(v9x_intel_runtime3d_allowed != 0u &&\r?\n\s*V9xMiniI9xxRingOpen\(') {
+        '(?m)^\s*if \(v9x_intel_runtime3d_allowed == 0u\) \{\r?\n(?:[^\r\n]*\r?\n)?\s*\} else if \(V9xMiniI9xxRingOpen\(') {
     throw ('gma950_hw16.c must gate V9xMiniI9xxRingOpen on ' +
            'v9x_intel_runtime3d_allowed. It writes ring registers on a boot ' +
            'with no arm token, and an ungated call has no off switch.')

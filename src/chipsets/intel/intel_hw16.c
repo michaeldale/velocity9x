@@ -48,6 +48,16 @@ static void v9x_intel_format_u32(char *text, unsigned long value)
     text[at] = '\0';
 }
 
+/* The chip's own word, or the family default when it carries none. Both keys
+ * were literals here, which is how a chip that had gained an engine went on
+ * publishing "not-advertised" from a second copy nobody updated. */
+static const char *v9x_intel_word(const char *value, const char *fallback)
+{
+    return value != 0 ? value : fallback;
+}
+
+extern const char *v9x_gma950_engine_status_text(void);
+
 static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                           v9x_hw16_write_fn write)
 {
@@ -60,8 +70,29 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("ClockDetector", device->clock_detector);
     write("ClockStatus", "unavailable");
     write("ModeSwitching", device->mode_switching);
-    write("Acceleration", "none");
-    write("Direct3D", "not-advertised");
+    write("Acceleration", v9x_intel_word(device->acceleration, "none"));
+    /*
+     * THE CHIP'S WORD, not a literal.
+     *
+     * This wrote "not-advertised" unconditionally while v9x_gma950_device
+     * carried "hardware-gen3" one file away, so the settings page - which
+     * reads this key - offered no Hardware entry on the card the Gen3 engine
+     * was written for. Photographed on the netbook 2026-09-16, build a2b9c27,
+     * after the chip word had already been fixed and check-tree had already
+     * been taught to compare the manifest against it: the rule asked whether
+     * the string was PRESENT in the chip's source, and it was. It was simply
+     * not the string that reached the file.
+     *
+     * The s3 publisher has written device->direct3d since it was written.
+     * Three of the five families duplicated the literal instead.
+     */
+    write("Direct3D", v9x_intel_word(device->direct3d, "not-advertised"));
+    /*
+     * And why the engine descriptor answered as it did, which nothing
+     * published before: a capture showing Direct3DMode=none could not say
+     * whether the mapping, the permission or the ring was what stopped it.
+     */
+    write("EngineStatus", v9x_gma950_engine_status_text());
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_intel_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);

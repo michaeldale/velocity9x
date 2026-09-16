@@ -34,6 +34,27 @@ extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
  */
 extern unsigned short v9x_intel_runtime3d_allowed;
 
+/*
+ * Why the last descriptor call did or did not claim Direct3D.
+ *
+ * Added because a boot could not be read. On 2026-09-16 the netbook came up
+ * with IntelRuntime3D=1 and Direct3DMode=none, and nothing on disk said which
+ * of four things had happened: the mapping verb refused, it returned a half
+ * mapping, the permission was clear, or the ring refused. Every one of those
+ * produces the same absent capability and the same silent page.
+ *
+ * The strings are the chip module's, published by intel_hw16.c as
+ * EngineStatus= beside the other per-chip words. They are deliberately
+ * mechanical rather than descriptive: each names the step that stopped, so a
+ * capture answers "which" without anyone having to infer it.
+ */
+static const char *v9x_gma950_engine_status = "not-called";
+
+const char *v9x_gma950_engine_status_text(void)
+{
+    return v9x_gma950_engine_status;
+}
+
 unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
@@ -101,9 +122,11 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
     *engine_type = V9X_DD_ENGINE_TYPE_NONE;
     *engine_caps = 0ul;
 
+    v9x_gma950_engine_status = "map-refused";
     if (V9xMiniI9xxEngineMap(&bar0, &bar3) == 0u) {
         return;
     }
+    v9x_gma950_engine_status = "map-incomplete";
     if (bar0 == 0ul || bar3 == 0ul) {
         /* The verb promises both or neither, and this is the caller not
          * taking that on trust: a half-mapped engine is the one state where
@@ -127,9 +150,14 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * publishing, and the engine reports itself not ready without a ring
      * rather than submitting to one that is not there.
      */
-    if (v9x_intel_runtime3d_allowed != 0u &&
-        V9xMiniI9xxRingOpen(&ring, &ring_size) != 0u &&
-        ring != 0ul && ring_size != 0ul) {
+    if (v9x_intel_runtime3d_allowed == 0u) {
+        v9x_gma950_engine_status = "runtime3d-not-permitted";
+    } else if (V9xMiniI9xxRingOpen(&ring, &ring_size) == 0u) {
+        v9x_gma950_engine_status = "ring-refused";
+    } else if (ring == 0ul || ring_size == 0ul) {
+        v9x_gma950_engine_status = "ring-incomplete";
+    } else {
+        v9x_gma950_engine_status = "d3d-claimed";
         *ring_linear_base = ring;
         *ring_bytes = ring_size;
     }

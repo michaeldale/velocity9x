@@ -144,6 +144,20 @@ static void v9x_vbe_format_hex16(char *text, unsigned short value)
  * VbeVramBytes is the one fact tier-0 learns at run time, and the one worth
  * having in a bug report from a card nobody has tested.
  */
+/*
+ * The chip's own word, or the family default when it carries none.
+ *
+ * Both keys were literals here. That is how the intel-gma publisher went on
+ * writing "not-advertised" after its chip had gained an engine and a word for
+ * it: the value reaching V9XHW.INI came from a second copy nobody updated.
+ * These devices all carry null today, so this changes no output - it removes
+ * the place the next one would be got wrong.
+ */
+static const char *v9x_vbe_word(const char *value, const char *fallback)
+{
+    return value != 0 ? value : fallback;
+}
+
 static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                         v9x_hw16_write_fn write)
 {
@@ -181,8 +195,8 @@ static void v9x_vbe_publish_diagnostics(const V9X_HW16_DEVICE *device,
     write("ClockDetector", device->clock_detector);
     write("ClockStatus", "unavailable");
     write("ModeSwitching", device->mode_switching);
-    write("Acceleration", "none");
-    write("Direct3D", "not-advertised");
+    write("Acceleration", v9x_vbe_word(device->acceleration, "none"));
+    write("Direct3D", v9x_vbe_word(device->direct3d, "not-advertised"));
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_vbe_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);
