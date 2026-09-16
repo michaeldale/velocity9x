@@ -8485,6 +8485,9 @@ void __stdcall V9xDdrawProbeEntry(void)
     ddraw->vtbl->Release(ddraw);
     DestroyWindow(window);
     v9x_write_text("Result", "COMPLETE");
-    WritePrivateProfileStringA(0, 0, 0, V9X_RESULT_PATH);
+    /* All files, not the first: the Result key may have rolled into a numbered
+     * file, and ResultFiles is stale if a rollover happened after the last
+     * stage checkpoint. */
+    v9x_flush_results();
     ExitProcess(0u);
 }

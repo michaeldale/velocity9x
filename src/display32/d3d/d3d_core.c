@@ -249,16 +249,18 @@ static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
  * capture file; the mask below is one bit per site, so a boot reports every
  * site that ever handed over a bad pointer and not only the last.
  */
-#define V9X_D3D_LCL_SITE_TEXTURE_FORGET   1ul
-#define V9X_D3D_LCL_SITE_TEXTURE_BOUND    2ul
+/* Sites 1 and 2 (the teardown scan and the bound-texture lookup) are retired:
+ * both now read the value resolved at creation and dereference nothing. The
+ * numbers are not reused so an older capture still reads. */
 #define V9X_D3D_LCL_SITE_TARGET           3ul
 #define V9X_D3D_LCL_SITE_ZBUFFER          4ul
-#define V9X_D3D_LCL_SITE_COLORKEY_FIRST   5ul
-#define V9X_D3D_LCL_SITE_COLORKEY_SECOND  6ul
+/* Sites 5 and 6 (the colour-key touches in TextureSwap) are retired for the
+ * same reason; the swap moves the resolved value with its wrapper. */
 #define V9X_D3D_LCL_SITE_ONEPRIM_EXE      7ul
 #define V9X_D3D_LCL_SITE_PRIMS_EXE        8ul
 #define V9X_D3D_LCL_SITE_RENDERPRIM_EXE   9ul
 #define V9X_D3D_LCL_SITE_RENDERPRIM_TL   10ul
+#define V9X_D3D_LCL_SITE_TEXTURE_CREATE  11ul
 
 static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site);
 
@@ -295,14 +297,17 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
     if (surface == 0) {
         return;
     }
+    /* Compared as the value resolved at creation. Reading the wrapper here
+     * is what intel55 measured (site 1, twice in one boot): a wrapper freed
+     * earlier answers "no surface", compares unequal, and the entry is never
+     * cleared. */
     for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
         if (v9x_d3d_textures[index].active != 0ul &&
-            v9x_d3d_surface_lcl(v9x_d3d_textures[index].surface,
-                                 V9X_D3D_LCL_SITE_TEXTURE_FORGET) ==
-                surface) {
+            v9x_d3d_textures[index].lcl == surface) {
             v9x_d3d_textures[index].active = 0ul;
             v9x_d3d_textures[index].context = 0ul;
             v9x_d3d_textures[index].surface = 0;
+            v9x_d3d_textures[index].lcl = 0;
         }
     }
 }
@@ -324,10 +329,7 @@ V9X_DD_SURFACE_LCL *v9x_d3d_context_texture_surface(
     }
     texture = v9x_d3d_texture_from_handle(context->texture_handle,
                                            (DWORD)context);
-    return texture != 0
-        ? v9x_d3d_surface_lcl(texture->surface,
-                              V9X_D3D_LCL_SITE_TEXTURE_BOUND)
-        : 0;
+    return texture != 0 ? texture->lcl : 0;
 }
 
 DWORD __stdcall V9xD3dRenderPrimitive(
@@ -972,6 +974,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
 DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
 {
     DWORD index;
+    V9X_DD_SURFACE_LCL *lcl;
 
     v9x_trace_enter(V9X_TRACE_D3D_TEXTURECREATE,
                     data != 0 ? data->dwhContext : 0ul);
@@ -983,11 +986,19 @@ DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
         v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, 0x80070057ul);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /* The only read of the wrapper in the texture's lifetime: the runtime is
+     * handing it over, so it is certainly alive now. Every later consumer -
+     * the sampler lookup, the teardown scan, the swap's colour-key touch -
+     * uses this value. A wrapper that resolves to nothing still gets a
+     * handle, as it did before: the engine treats a null surface as not
+     * sampleable, and the refusal is counted at the site either way. */
+    lcl = v9x_d3d_surface_lcl(data->lpDDS, V9X_D3D_LCL_SITE_TEXTURE_CREATE);
     for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
         if (v9x_d3d_textures[index].active == 0ul) {
             v9x_d3d_textures[index].active = 1ul;
             v9x_d3d_textures[index].context = data->dwhContext;
             v9x_d3d_textures[index].surface = data->lpDDS;
+            v9x_d3d_textures[index].lcl = lcl;
             data->dwHandle = (DWORD)&v9x_d3d_textures[index];
             data->ddrval = V9X_DD_OK;
             ++v9x_hal->d3d_diagnostics.texture_creates;
@@ -1431,6 +1442,15 @@ DWORD __stdcall V9xD3dRenderPrimitive(
             source[0] = vertices[triangle->v1];
             source[1] = vertices[triangle->v2];
             source[2] = vertices[triangle->v3];
+            /* Once per call, after the buffers have been read and before
+             * anything is clipped or drawn. intel53-55 show this entry point
+             * entered and never left; with this in the ring the next capture
+             * says which side of the vertex read it died on. */
+            if (index == 0ul) {
+                v9x_trace_push(V9X_TRACE_D3D_RENDERLOOP,
+                               ((DWORD)triangle->v1 << 16) |
+                               (DWORD)data->diInstruction.wCount);
+            }
             v9x_d3d_apply_vertex_color(context, &source[0]);
             v9x_d3d_apply_vertex_color(context, &source[1]);
             v9x_d3d_apply_vertex_color(context, &source[2]);

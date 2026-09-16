@@ -42,7 +42,7 @@
 /*
  * The largest batch this engine accepts, and the buffer it builds into.
  *
- * Bounded so the stream buffer is a fixed size the HAL can hold on its stack
+ * Bounded so the stream buffer is a fixed size the HAL can hold statically
  * rather than an allocation on a draw path. 64 triangles is well under the
  * core's own RenderPrimitive ceiling and well under the decoder's runtime
  * bound; a batch larger than this is refused and the core sees a failed draw
@@ -593,16 +593,43 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
  * these streams; what the tests establish is that the bytes are the ones the
  * decoder accepts, not that the part draws them.
  */
+/*
+ * The batch's scratch, at file scope and NOT on the stack.
+ *
+ * As locals these four were 11,520 bytes, and wdis on d3d_i9xx.obj showed
+ * the prologue as `sub esp,0x2d7c` with the first writes just under ebp and
+ * the first push at the bottom of the frame. The HAL is compiled -s, so
+ * there is no stack probe between the two: a frame that spans three pages
+ * skips the thread's guard page whenever fewer than three pages below the
+ * caller's esp are committed, and the push then lands on reserved memory.
+ * That is an access violation before the first line of C - before any
+ * counter here could say the function was entered.
+ *
+ * It is a HYPOTHESIS for intel53-55, where RenderPrimitive entered once
+ * per boot, never exited, never incremented its unconditional counter and
+ * left every engine counter at zero (docs\issues\2026-09-16-final-reality-
+ * renders-black-and-the-hal-faults.md). The frame is a defect regardless of
+ * whether it is that fault, which is why it moves without waiting.
+ *
+ * Statics are safe here for the reason the context and texture tables are:
+ * DirectDraw serialises HAL calls under the Win16 lock, so one draw is
+ * building a stream at a time.
+ */
+static DWORD v9x_d3d_i9xx_stream[V9X_I9XX_SUBMIT_DWORDS];
+static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
+static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
+static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
+
 static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                        const V9X_D3DTLVERTEX *vertices,
                                        DWORD triangle_count)
 {
     struct v9x_i9xx_decode_limits limits;
     struct v9x_i9xx_texture map;
-    DWORD stream[V9X_I9XX_SUBMIT_DWORDS];
-    DWORD xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
-    DWORD uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
-    DWORD colors[V9X_I9XX_SUBMIT_VERTICES];
+    DWORD *stream = v9x_d3d_i9xx_stream;
+    DWORD *xyzw = v9x_d3d_i9xx_xyzw;
+    DWORD *uv = v9x_d3d_i9xx_uv;
+    DWORD *colors = v9x_d3d_i9xx_colors;
     DWORD identity = 0ul;
     DWORD address = 0ul;
     DWORD at = 0ul;

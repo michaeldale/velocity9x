@@ -378,6 +378,7 @@ const char *v9x_i9xx_probe_expectation_name(v9x_u16 expect)
     if (expect == V9X_I9XX_PROBE_MODQUAD2) { return "modquad2"; }
     if (expect == V9X_I9XX_PROBE_MODQUAD3) { return "modquad3"; }
     if (expect == V9X_I9XX_PROBE_BLENDED) { return "blended"; }
+    if (expect == V9X_I9XX_PROBE_DRAWN) { return "drawn"; }
     return "unknown";
 }
 
@@ -647,14 +648,16 @@ static void v9x_i9xx_scene_gouraud_triangle(struct v9x_i9xx_scene *scene)
 /*
  * Four readings inside and two outside.
  *
- * The interior four are MEASURE: between a vertex colour and a pixel sit the
+ * The interior four are DRAWN: between a vertex colour and a pixel sit the
  * interpolator's precision, its sample point and the 565 store, none of them
  * measured on this part, and a predicted value would be a guess dressed as a
- * requirement.
+ * requirement. So the value is reported - but the pixel is a dozen clear of
+ * every edge of a triangle this scene submitted, and reading the FILL there
+ * is not a measurement, it is a triangle that was never drawn. MEASURE would
+ * have let that pass: the exterior probes read the fill on an undrawn boot
+ * exactly as they do on a drawn one.
  *
- * The exterior two are assertions, and they are what stops the scene passing
- * on a boot where nothing drew. A capture of four measured values with no
- * fill anywhere is four numbers about a surface nobody rendered into.
+ * The exterior two are assertions about where the triangle is not.
  */
 static void v9x_i9xx_scene_gouraud_probes(struct v9x_i9xx_scene *scene)
 {
@@ -667,24 +670,24 @@ static void v9x_i9xx_scene_gouraud_probes(struct v9x_i9xx_scene *scene)
      * rule, so no probe of it may land where that question also applies.
      */
     v9x_i9xx_scene_probe(scene, "GrdNearA", 80u, 80u,
-                         V9X_I9XX_PROBE_MEASURE);
+                         V9X_I9XX_PROBE_DRAWN);
     v9x_i9xx_scene_probe(scene, "GrdNearB", 560u, 80u,
-                         V9X_I9XX_PROBE_MEASURE);
+                         V9X_I9XX_PROBE_DRAWN);
     v9x_i9xx_scene_probe(scene, "GrdNearC", 320u, 430u,
-                         V9X_I9XX_PROBE_MEASURE);
+                         V9X_I9XX_PROBE_DRAWN);
     /*
      * The centroid, where all three weights are a third. The one interior
      * reading whose value can be predicted from the other three without
      * knowing the sample point, which is what makes it worth its own probe.
      */
     v9x_i9xx_scene_probe(scene, "GrdCentre", 320u, 192u,
-                         V9X_I9XX_PROBE_MEASURE);
+                         V9X_I9XX_PROBE_DRAWN);
     /*
      * Outside, in the two bottom corners the triangle cannot reach - at
-     * y=440 its span is about x 315 to 325. These are ASSERTIONS, and they
-     * are what stops the scene passing on a boot where nothing drew: four
-     * measured values with no fill anywhere are four numbers about a surface
-     * nobody rendered into.
+     * y=440 its span is about x 315 to 325. These assert the fill: a
+     * triangle that reached here is the wrong triangle. They cannot say
+     * whether anything drew - the fill is what an undrawn boot reads too -
+     * which is why the interior four are DRAWN and not MEASURE.
      */
     v9x_i9xx_scene_probe(scene, "GrdOutL", 16u, 440u, V9X_I9XX_PROBE_FILL);
     v9x_i9xx_scene_probe(scene, "GrdOutR", 600u, 440u, V9X_I9XX_PROBE_FILL);

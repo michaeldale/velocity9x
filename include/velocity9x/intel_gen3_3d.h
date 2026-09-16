@@ -922,9 +922,15 @@ v9x_status v9x_i9xx_build_modulate_program(
  * so the top byte is inert here - and holding it constant keeps it that way
  * rather than making it a second variable.
  */
-#define V9X_I9XX_GOURAUD_COLOR_A         ((v9x_u32)0xff0000fful)  /* red   */
+/*
+ * Same dword layout as V9X_I9XX_TRI_COLOR_BGRA: alpha in bits 31..24, red in
+ * 23..16, green in 15..8, blue in 7..0 - "BGRA" names the byte order in
+ * memory. The first cut had A and C the other way round, which would have
+ * made a correct interpolator read as a reversed one.
+ */
+#define V9X_I9XX_GOURAUD_COLOR_A         ((v9x_u32)0xffff0000ul)  /* red   */
 #define V9X_I9XX_GOURAUD_COLOR_B         ((v9x_u32)0xff00ff00ul)  /* green */
-#define V9X_I9XX_GOURAUD_COLOR_C         ((v9x_u32)0xffff0000ul)  /* blue  */
+#define V9X_I9XX_GOURAUD_COLOR_C         ((v9x_u32)0xff0000fful)  /* blue  */
 
 /*
  * The most triangles one runtime submission may carry.
@@ -991,6 +997,18 @@ v9x_u16 v9x_i9xx_scene_kind_depth_writes(v9x_u32 kind);
  * means no blend happened, and reading the fill means nothing drew.
  */
 #define V9X_I9XX_PROBE_BLENDED           ((v9x_u16)24u)
+/*
+ * The probe expects a DRAWN pixel: anything but the fill.
+ *
+ * For an interior reading whose value is the measurement - the Gouraud
+ * interpolator, never read back on this part - but whose presence is not
+ * open: the pixel is well inside a triangle the scene submitted, so the one
+ * thing it may not read is the fill. MEASURE cannot say that; a scene whose
+ * interior probes were all MEASURE passed on a boot where nothing drew, as
+ * long as the exterior probes read the fill they would have read anyway.
+ * The value is reported, and only the fill fails.
+ */
+#define V9X_I9XX_PROBE_DRAWN             ((v9x_u16)25u)
 #define V9X_I9XX_PROBE_MEASURE           ((v9x_u16)0xffffu)
 
 struct v9x_i9xx_probe {

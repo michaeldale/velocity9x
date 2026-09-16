@@ -1128,6 +1128,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091701: V9X_DD_TRACE.counters[] grows by one WORD for
+ * V9X_TRACE_D3D_RENDERLOOP. The trace is the last field, so nothing moves,
+ * but a 32-bit side counting id 51 into a block a 16-bit side sized for 50
+ * writes two bytes past it.
+ *
  * 2026091605: V9X_D3D_DIAGNOSTICS gains the surface-pointer CALL SITE and the
  * mask of sites that have rejected. Added because the fault address alone
  * cannot name the caller and a conclusion was drawn from it that it did not
@@ -1156,7 +1161,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091605ul
+#define V9X_DD_SHARED_ABI   2026091701ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1557,12 +1562,12 @@ typedef struct v9x_d3d_diagnostics {
 #define V9X_DD_TRACE_RING_COUNT     56u
 /*
  * One past the highest trace id, because v9x_trace_count indexes counters[]
- * with the id itself. At 50 the highest id, V9X_TRACE_D3D_PRIMREJECT = 50,
+ * with the id itself. At 50 the highest id of the day, V9X_TRACE_D3D_PRIMREJECT,
  * fell outside the array and was silently never counted - the ring still
  * showed it, but the ring is 56 deep and any real workload overwrites it.
  * A primitive rejected during a depth run would have read as zero rejects.
  */
-#define V9X_DD_TRACE_ID_COUNT       51u
+#define V9X_DD_TRACE_ID_COUNT       52u
 #define V9X_DD_TRACE_EXIT_FLAG   0x8000u
 
 /* Trace event ids. Gaps group the sources: 16-bit escapes, DirectDraw
@@ -1612,6 +1617,14 @@ typedef struct v9x_d3d_diagnostics {
 #define V9X_TRACE_D3D_TEXTURESWAP     48u
 #define V9X_TRACE_D3D_TEXTUREGETSURF  49u
 #define V9X_TRACE_D3D_PRIMREJECT      50u
+/*
+ * Pushed once per RenderPrimitive, after the first triangle's vertices have
+ * been read out of the execute and TL buffers and before they are clipped
+ * and drawn. intel53-55 each show one RenderPrimitive enter with no exit
+ * and no reject; this marker splits "died reading the buffers" from "died
+ * in the clipper or the engine", which the enter event alone cannot.
+ */
+#define V9X_TRACE_D3D_RENDERLOOP      51u
 
 typedef struct v9x_dd_trace_entry {
     WORD id;            /* trace id, V9X_DD_TRACE_EXIT_FLAG on exit    */
@@ -2034,11 +2047,13 @@ typedef char v9x_dd_assert_gdi_stats[
     sizeof(V9X_GDI_STATS) == 228 ? 1 : -1];
 typedef char v9x_dd_assert_gdi_text_dump[
     sizeof(V9X_GDI_TEXT_DUMP) == 76 + 256 ? 1 : -1];
-/* 574, not 572: counters[] grew by one WORD so that the highest trace id
- * lands inside the array. The whole header is pack(1), so that is the entire
- * difference - there is no padding to absorb it. */
+/* 576: counters[] is one WORD per trace id, and grows by two bytes with each
+ * id added (574 when PRIMREJECT landed inside it, 576 for RENDERLOOP). The
+ * whole header is pack(1), so that is the entire difference - there is no
+ * padding to absorb it. The trace is the last field of the shared block, so
+ * nothing after it moves; the snapshot's dwSize rejects a stale reader. */
 typedef char v9x_dd_assert_trace[
-    sizeof(V9X_DD_TRACE) == 574 ? 1 : -1];
+    sizeof(V9X_DD_TRACE) == 576 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[

@@ -273,3 +273,93 @@ this boot the application set up and stopped before drawing anything, and the
 engine's own counters cannot say more because it was never called.
 
 Whether that is the same cause as the black screen is not established.
+
+## intel55 re-read: RenderPrimitive was entered, and never returned
+
+The paragraph above says no primitive was issued. The snapshot says
+otherwise, and the two are reconciled by where the counter sits:
+
+```
+CountD3dRenderPrimitive=1                    the trace's per-id enter count
+D3dRenderPrimitiveCalls=0                    the diagnostics counter
+Ring38=295 D3dRenderPrimitive enter 0x03080003
+Ring39=296 DestroySurface enter 0x833B28A0   the next event; no exit, no reject
+```
+
+`render_primitive_calls` is incremented unconditionally at the END of
+`V9xD3dRenderPrimitive`, after the draw loop and before the exit event. One
+enter, no exit, no `D3dPrimitiveReject`, counter zero: **the HAL was entered
+once and did not come back.** intel53 (`0x1A50`) and intel54 (`0x0127`) end
+the same way. Three boots, one entry each, none returned.
+
+The refusal path was not taken. Every check before the loop pushes a reject
+event on failure, and none is in the ring; so the pointers resolved, the
+opcode was TRIANGLE (3), size 8, count 3, and the code reached the loop.
+Whatever stopped it is in the vertex read, the clipper or the engine, and it
+left no counter because none of those has one before the fact.
+
+### Whose call it was
+
+The probe's `V9XDD.INI` in intel55 is dated 2026-09-16 20:58 - the intel53
+run. `V9XDDP` was dying on its first profile write (the file was already at
+the KRNL386 boundary; see the probe issue of 2026-09-17), so it took no
+measurement in intel54 or intel55, and its `D3DTrianglePixelOk=1` in this
+directory is stale. The D3D sequence at the end of the ring - five contexts,
+four render states, one texture, one primitive of three triangles - is Final
+Reality's, and the teardown that follows it (`DestroySurface`,
+`FlipToGDISurface`, `D3dContextDestroyAll`) is the process going away.
+
+### Why "no fault this boot" is consistent with a fault
+
+`V9XTRACE.INI` is written by an UNHANDLED-exception filter. Win9x DDRAW is
+understood to wrap its HAL calls in a `try/except` of its own (the DDK
+sample era `DOHALCALL`); this is from memory of that source and is NOT
+verified against the DLL on the netbook. If it holds, a fault inside
+`RenderPrimitive` is caught there, the call fails, and the filter never
+runs - which is what an application exiting after one failed draw looks
+like. intel53 and intel54 wrote the file because the teardown scan faulted
+from a different frame. So the absence of a fault flush in intel55 says the
+fault, if there was one, was handled - not that there was none.
+
+### A defect found on the way, and a hypothesis
+
+`wdis` on `d3d_i9xx.obj` at this tree:
+
+```
+v9x_d3d_i9xx_draw_triangles_:
+  push ecx / esi / edi / ebp
+  mov  ebp,esp
+  sub  esp,0x00002d7c        11,644 bytes: stream[1536], xyzw[768], uv[384], colors[192]
+  mov  -0x8[ebp],edx         first writes, just under ebp
+  ...
+  push eax                   first write at the BOTTOM of the frame
+```
+
+The HAL is built `-s`: no stack probes. A frame spanning three pages whose
+first low write is a `push` skips the thread's guard page whenever fewer
+than three pages below the caller's `esp` are committed, and the push lands
+on reserved stack. That is an access violation with no C executed - which is
+exactly the shape of the evidence: entered, no counter, no reject, no exit,
+and every engine counter at zero because `draw_triangles` never began.
+
+**Hypothesis, not a measurement.** Nothing here shows the faulting address.
+Against it: the probe reached the same function 404 times in intel52 and
+returned, on a stack whose commit depth is unknown. The arrays are moved to
+file scope regardless (build `d3d_i9xx.c`, `sub esp,0x8c` after), because a
+three-page frame with no probe is wrong whether or not it is this fault.
+
+### What the next capture can say
+
+`V9X_TRACE_D3D_RENDERLOOP` (id 51, "D3dRenderLoop") is pushed once per
+`RenderPrimitive`, after the first triangle's vertices are read from the
+execute and TL buffers and before they are clipped or drawn.
+
+- Enter, RenderLoop, exit with `D3dRenderPrimitiveCalls` advancing: the
+  frame was the fault. Read `I9xxDrawsSubmitted` / `I9xxDrawsRefused` next.
+- Enter, RenderLoop, nothing: the clipper or the engine. `I9xxRefuseLast`
+  and the engine counters place it further.
+- Enter, nothing: the vertex read itself - `lpExeBuf`/`lpTLBuf` resolved
+  but their `fpVidMem` is not readable in this process.
+
+Shared-block ABI is `2026091701`; a snapshot from an older `V9XTRACE.EXE`
+is refused rather than misread.

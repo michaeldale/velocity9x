@@ -1839,14 +1839,27 @@ static void test_gouraud_scene_expectations(void)
           (scene.triangles[0].vertex_color[1] >> 24));
     CHECK((scene.triangles[0].vertex_color[1] >> 24) ==
           (scene.triangles[0].vertex_color[2] >> 24));
+    /*
+     * And WHICH primary, in the layout the 565 test above pins for the
+     * measured colour: red in bits 23..16, blue in 7..0. The first cut had
+     * these two swapped, which would have read a correct interpolator as a
+     * reversed one - and no host test noticed, because none named the
+     * channel.
+     */
+    CHECK((scene.triangles[0].vertex_color[0] & 0x00fffffful) == 0x00ff0000ul);
+    CHECK((scene.triangles[0].vertex_color[1] & 0x00fffffful) == 0x0000ff00ul);
+    CHECK((scene.triangles[0].vertex_color[2] & 0x00fffffful) == 0x000000fful);
 
     /* Nothing about the interpolated result is claimed as known. */
     CHECK(scene.triangles[0].color_measured == V9X_FALSE);
 
     /*
-     * The probe set: measurements inside, requirements outside, and BOTH
-     * kinds present. All-measure would pass on a boot that drew nothing;
-     * all-assert would require values nobody has measured.
+     * The probe set: DRAWN inside, fill outside, and BOTH kinds present.
+     * All-measure would pass on a boot that drew nothing - the exterior
+     * probes read the fill either way - and all-assert would require
+     * values nobody has measured. DRAWN is the middle: the value is
+     * reported and only the fill fails. No probe of this scene is a bare
+     * MEASURE, because every interior pixel has that one thing to say.
      */
     for (probe = 0ul; probe < scene.probe_count; ++probe) {
         v9x_u16 expect = scene.probes[probe].expect;
@@ -1854,9 +1867,10 @@ static void test_gouraud_scene_expectations(void)
                                                scene.probes[probe].x,
                                                scene.probes[probe].y);
 
-        if (expect == V9X_I9XX_PROBE_MEASURE) {
+        CHECK(expect != V9X_I9XX_PROBE_MEASURE);
+        if (expect == V9X_I9XX_PROBE_DRAWN) {
             ++measured;
-            /* A measurement outside the triangle would measure the fill. */
+            /* A DRAWN probe outside the triangle would fail every boot. */
             CHECK(inside != V9X_FALSE);
         } else {
             ++asserted;

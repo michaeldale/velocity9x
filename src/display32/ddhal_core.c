@@ -124,6 +124,7 @@ static const char *v9x_trace_name(WORD id)
     case V9X_TRACE_D3D_TEXTURESWAP:      return "D3dTextureSwap";
     case V9X_TRACE_D3D_TEXTUREGETSURF:   return "D3dTextureGetSurf";
     case V9X_TRACE_D3D_PRIMREJECT:       return "D3dPrimitiveReject";
+    case V9X_TRACE_D3D_RENDERLOOP:       return "D3dRenderLoop";
     default:                             return "Unknown";
     }
 }

@@ -730,6 +730,30 @@ function Test-V9xIntel3dCapture {
                     $sceneMeasured += ("$key=" + ('{0:X8}' -f $actual))
                     continue
                 }
+                # A DRAWN probe, expectation 25.
+                #
+                # An interior reading whose value is the measurement but
+                # whose presence is not: the pixel is a dozen clear of every
+                # edge of a triangle the scene submitted. Reported like a
+                # MEASURE, with the one difference that reading the fill
+                # FAILS - a MEASURE there let the Gouraud scene pass on a
+                # boot where nothing drew, because its exterior probes read
+                # the fill on an undrawn boot exactly as they do on a drawn
+                # one.
+                if ($probes[$probe].Expect -eq 25) {
+                    $fill = [Convert]::ToUInt32(
+                        $generated.Referencefill, 16) -band 0xffff
+                    if ($low -eq $fill -and $high -eq $fill) {
+                        $sceneBad += ("$key reads the fill (" +
+                                      $probes[$probe].Name +
+                                      '). Nothing drew here.')
+                        continue
+                    }
+                    ++$sceneChecked
+                    $sceneMeasured += ("$key=" + ('{0:X8}' -f $actual) +
+                                       ' (' + $probes[$probe].Name + ')')
+                    continue
+                }
                 # A MODULATED quadrant probe, expectations 20 through 23.
                 #
                 # The product is a PREDICTION twice over: the shader's own
@@ -1365,6 +1389,11 @@ R0000=DEADBEEF'
                     # validator can require - the product itself is a
                     # prediction and is reported.
                     $value = '5B2D5B2D'
+                } elseif ($probe.Expect -eq 25) {
+                    # A DRAWN pixel: anything but the fill. An interpolated
+                    # value nobody has measured, so any non-fill value is the
+                    # prediction coming true; the mutation below is the fill.
+                    $value = '7C3A7C3A'
                 } elseif ($probe.Expect -ge 20 -and $probe.Expect -le 23) {
                     # A modulated quadrant. The fixture uses a value that is
                     # neither the raw quadrant colour nor the fill, which is
@@ -1380,6 +1409,8 @@ R0000=DEADBEEF'
                 # exercise that.
                 $expectWord = 'outside'
                 if ($probe.Expect -eq 65535) { $expectWord = 'measure' }
+                elseif ($probe.Expect -eq 25) { $expectWord = 'drawn' }
+                elseif ($probe.Expect -eq 24) { $expectWord = 'blended' }
                 elseif ($probe.Expect -ge 20) { $expectWord = 'modquad' }
                 elseif ($probe.Expect -ge 16) { $expectWord = 'quad' }
                 elseif ($probe.Expect -ge 1) { $expectWord = 'inside' }
@@ -1506,6 +1537,12 @@ R0000=DEADBEEF'
             @{ From = 'S1PX0001=4A694A69'
                To = 'S1PX0001=' + ($generated.Referencefill.Substring(4) * 2)
                Why = 'a modulated probe where nothing drew' }
+            # A DRAWN probe reading the fill: the Gouraud triangle was never
+            # drawn. Before expectation 25 existed this scene passed on such
+            # a boot, because its interior probes were all MEASURE.
+            @{ From = 'S3PX0000=7C3A7C3A'
+               To = 'S3PX0000=' + ($generated.Referencefill.Substring(4) * 2)
+               Why = 'a Gouraud probe where nothing drew' }
             # A blended probe reading one of its source colours unblended.
             @{ From = 'S4PX0001=5B2D5B2D'
                To = 'S4PX0001=' + (@($generated.Scenes)[4].Colors[0].Value * 2)
