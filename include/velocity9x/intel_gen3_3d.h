@@ -829,6 +829,38 @@ v9x_status v9x_i9xx_build_modulate_program(
  * this driver has never emitted. Audit section 4. */
 #define V9X_I9XX_SCENE_ALPHA_TEST        ((v9x_u32)5ul)
 #define V9X_I9XX_SCENE_BLEND             ((v9x_u32)6ul)
+/*
+ * A RUNTIME stream: geometry an application supplied, into a surface it owns.
+ *
+ * Every other kind describes a stream this build wrote in full, and the
+ * generated CRC pins it byte for byte. A runtime stream cannot be pinned -
+ * nobody knows the geometry until the application sends it - and the
+ * 2026-09-16 amendment that authorised sustained 3D says so explicitly: the
+ * decoder's allowlist stops being a second opinion and becomes the primary
+ * guard.
+ *
+ * So what it relaxes is EXACTLY two things: the geometry and the colours. The
+ * triangle count is whatever the primitive declares, within the bound below;
+ * the coordinates are any float inside the declared rectangle; the colours are
+ * unchecked, because every 32-bit value is a legal colour and a decoder
+ * asserting one would be asserting what the application may draw.
+ *
+ * Everything else stays pinned, and that is the point: the target address, the
+ * pitch, the drawing rectangle, the state block's shape, S4, S6, the program
+ * length, and the refusal of every texture and depth packet a plain stream may
+ * not carry.
+ */
+#define V9X_I9XX_SCENE_RUNTIME           ((v9x_u32)7ul)
+
+/*
+ * The most triangles one runtime submission may carry.
+ *
+ * A bound rather than no bound: the vertex loop below reads three vertices per
+ * triangle out of the stream, so a primitive declaring a count nobody checked
+ * would have the decoder walk past the dwords it was given. The core's own
+ * batch is smaller than this, so a stream reaching it is already wrong.
+ */
+#define V9X_I9XX_RUNTIME_TRIANGLES_MAX   ((v9x_u32)1024ul)
 
 /* Does this kind sample a texture? Does it bind a depth buffer, and does it
  * write to one? Derived in one place, so no caller re-derives them. */
@@ -1132,6 +1164,26 @@ v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 struct v9x_i9xx_decode_limits {
     v9x_u32 target_offset;
     v9x_u32 target_bytes;
+    /*
+     * The target's shape, which the decoder checks the stream against.
+     *
+     * These were the build's own constants until 2026-09-16, when a runtime
+     * stream started rendering into a surface the application chose. For every
+     * scene the caller still passes those constants, so nothing about a scene
+     * changed; for a runtime stream the caller passes what the surface said.
+     *
+     * Worth being precise about what that is worth. For a scene this is a
+     * second opinion; for a runtime stream the decoder is checking the stream
+     * against the ENGINE'S OWN BELIEF about the surface, which catches a
+     * stream that does not match what the engine intended but cannot catch an
+     * engine that was wrong about the surface. What bounds that is
+     * v9x_d3d_i9xx_bind_target, which validates the surface against the
+     * aperture before any of this - and that is the memory-safety check, not
+     * this one.
+     */
+    v9x_u32 target_pitch;
+    v9x_u32 target_width;
+    v9x_u32 target_height;
     v9x_u32 texture_offset;
     v9x_u32 texture_bytes;
     v9x_u32 depth_offset;

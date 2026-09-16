@@ -177,6 +177,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     /* One bit per texture quadrant painted, so the four can be required to be
      * four DIFFERENT ones rather than four of anything. */
     v9x_u32 painted = 0ul;
+    v9x_u32 width_bits = 0ul;
+    v9x_u32 height_bits = 0ul;
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -216,6 +218,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
         target_offset > 0xfffffffful - target_bytes) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
+    /*
+     * The target's shape has to be describable before anything is checked
+     * against it. A zero width or height would make the DRAW_RECT comparison
+     * underflow to 0xffff and accept a rectangle nobody asked for.
+     */
+    if (limits->target_width == 0ul || limits->target_height == 0ul ||
+        limits->target_pitch == 0ul ||
+        (limits->target_pitch & 3ul) != 0ul ||
+        limits->target_pitch > V9X_I9XX_BUF_3D_PITCH_MASK) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
     if (textured != V9X_FALSE &&
         texture_offset > 0xfffffffful - texture_bytes) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
@@ -225,6 +238,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
          depth_offset > 0xfffffffful - depth_bytes)) {
         /* Address zero included: it is inside the aperture, it is not ours,
          * and it is exactly the value the removed Phase 5 binding carried. */
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    /*
+     * The rectangle as FLOATS, for the runtime coordinate checks. Converted
+     * through the same helper the builder uses, so the decoder's edge and the
+     * builder's edge are the same number rather than two derivations of it.
+     */
+    if (v9x_i9xx_float_from_int(limits->target_width, &width_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(limits->target_height, &height_bits) !=
+            V9X_I9XX_FLOAT_OK) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     target_end = target_offset + target_bytes;
@@ -291,7 +315,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_OPCODE, index + 1ul);
             }
             if ((identity & V9X_I9XX_BUF_3D_PITCH_MASK) !=
-                    (V9X_I9XX_TARGET_PITCH & V9X_I9XX_BUF_3D_PITCH_MASK)) {
+                    (limits->target_pitch & V9X_I9XX_BUF_3D_PITCH_MASK)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_PITCH, index + 1ul);
             }
             /* The colour target must be exactly the reserve's target page, and
@@ -328,8 +352,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             /* Inclusive bounds: exactly one less than the extent. */
             if (stream[index + 3ul] !=
-                    (((V9X_I9XX_TARGET_HEIGHT - 1ul) << 16) |
-                     (V9X_I9XX_TARGET_WIDTH - 1ul))) {
+                    (((limits->target_height - 1ul) << 16) |
+                     (limits->target_width - 1ul))) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_DRAW_RECT, index + 3ul);
             }
             saw_draw_rect = V9X_TRUE;
@@ -842,7 +866,15 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * is what makes "the triangle drew" distinguishable from "that
              * memory already looked like this".
              */
-            if (saw_fill == V9X_FALSE) {
+            /*
+             * A scene must have FILLED before it draws, or "the triangle
+             * drew" is indistinguishable from "that memory already looked
+             * like this". A runtime stream must not: the surface belongs to
+             * the application, which decides when it is cleared, and a driver
+             * that filled it every draw would erase the frame it is drawing.
+             */
+            if (limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+                saw_fill == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }
             if (textured != V9X_FALSE &&
@@ -875,11 +907,62 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * triangles where every other kind draws one. Bounded by the
              * scene table's own maximum rather than fixed at three.
              */
-            vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
-                                 (v9x_u16)v9x_i9xx_decode_triangles(
-                                     limits->kind));
-            if (payload != (v9x_u32)((v9x_u16)vertices * (v9x_u16)stride)) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+            if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                /*
+                 * The count comes from the PAYLOAD, because nobody knows it in
+                 * advance. Derived by division rather than trusted: a payload
+                 * that is not a whole number of vertices is a stream whose
+                 * last vertex is short, and the loop below would read past
+                 * what was submitted.
+                 */
+                /*
+                 * SIXTEEN-BIT arithmetic, and not as an optimisation.
+                 *
+                 * A 32-bit divide here is a __U4D call into the default CODE
+                 * segment, which a near call out of I9XXCODE cannot reach -
+                 * the linker refuses it with E2052, which is how this was
+                 * found. The same constraint the triangle run and the texture
+                 * quadrants already work under.
+                 *
+                 * The bound is what makes the narrowing safe rather than a
+                 * hope: a payload that does not fit sixteen bits is refused
+                 * before anything is divided, and the largest legal runtime
+                 * payload is 1024 triangles of three seven-dword vertices,
+                 * which is 21504.
+                 */
+                if (stride == 0ul || payload > 0xfffful) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+                }
+                {
+                    v9x_u16 payload16 = (v9x_u16)payload;
+                    v9x_u16 stride16 = (v9x_u16)stride;
+                    v9x_u16 count16;
+
+                    if ((v9x_u16)(payload16 % stride16) != 0u) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+                    }
+                    count16 = (v9x_u16)(payload16 / stride16);
+                    if (count16 == 0u ||
+                        (v9x_u16)(count16 %
+                                  (v9x_u16)V9X_I9XX_VERTEX_COUNT) != 0u) {
+                        /* A triangle list is three vertices at a time. */
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+                    }
+                    if ((v9x_u32)(count16 /
+                                  (v9x_u16)V9X_I9XX_VERTEX_COUNT) >
+                            V9X_I9XX_RUNTIME_TRIANGLES_MAX) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+                    }
+                    vertices = (v9x_u32)count16;
+                }
+            } else {
+                vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
+                                     (v9x_u16)v9x_i9xx_decode_triangles(
+                                         limits->kind));
+                if (payload !=
+                        (v9x_u32)((v9x_u16)vertices * (v9x_u16)stride)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_COUNT, index);
+                }
             }
             if (dword_count - index < payload + 1ul) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
@@ -901,9 +984,30 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  * capture's redundant "raw bits and decoded integers" pairing
                  * meaningful: if the two disagree, this refuses.
                  */
-                if (v9x_i9xx_float_to_int(stream[base], &decoded) !=
-                        V9X_I9XX_FLOAT_OK ||
-                    decoded >= V9X_I9XX_TARGET_WIDTH) {
+                /*
+                 * A RUNTIME coordinate is a float and need not be a whole
+                 * pixel - a triangle at x = 160.25 is ordinary geometry and
+                 * the integer decode below refuses it outright. So the two
+                 * kinds are checked differently, and neither check is the
+                 * other's approximation:
+                 *
+                 *  - a scene's coordinates are whole pixels, and decoding
+                 *    them back through the float transport is what makes the
+                 *    capture's "raw bits and decoded integers" pairing mean
+                 *    something. If the two disagree the transport is wrong.
+                 *  - a runtime coordinate is checked as a MAGNITUDE against
+                 *    the rectangle, by the same predicate the builder uses.
+                 *    There is nothing to cross-check it against, because
+                 *    nobody wrote it down in two forms.
+                 */
+                if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                    if (v9x_i9xx_float_in_range(stream[base],
+                                                width_bits) == V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base);
+                    }
+                } else if (v9x_i9xx_float_to_int(stream[base], &decoded) !=
+                               V9X_I9XX_FLOAT_OK ||
+                           decoded >= limits->target_width) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base);
                 }
                 /*
@@ -922,11 +1026,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  * meant to be the second opinion, and a second opinion that
                  * only checks what the first one checks is not one.
                  */
-                if (v9x_i9xx_float_to_int(stream[base + 1ul], &decoded) !=
-                        V9X_I9XX_FLOAT_OK ||
-                    decoded >= ((depthed != V9X_FALSE)
-                                    ? V9X_I9XX_DEPTH_HEIGHT
-                                    : V9X_I9XX_TARGET_HEIGHT)) {
+                if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                    if (v9x_i9xx_float_in_range(stream[base + 1ul],
+                                                height_bits) == V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 1ul);
+                    }
+                } else if (v9x_i9xx_float_to_int(stream[base + 1ul],
+                                                 &decoded) !=
+                               V9X_I9XX_FLOAT_OK ||
+                           decoded >= ((depthed != V9X_FALSE)
+                                           ? V9X_I9XX_DEPTH_HEIGHT
+                                           : limits->target_height)) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 1ul);
                 }
                 /*
@@ -943,8 +1053,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  * than one, infinite or a NaN, and a negative Z has the sign
                  * bit set and exceeds it too.
                  */
-                if (depthed != V9X_FALSE) {
-                    if (stream[base + 2ul] > 0x3f800000ul) {
+                if (depthed != V9X_FALSE ||
+                    limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                    if (v9x_i9xx_float_in_range(stream[base + 2ul],
+                                                0x3f800000ul) == V9X_FALSE) {
                         V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 2ul);
                     }
                 } else if (v9x_i9xx_float_to_int(stream[base + 2ul],
@@ -959,7 +1071,11 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 /* Uniform colour, which is what makes shading mode moot.
                  * The textured stream's colour is unread by the sampling
                  * program but must still be the one this build emits. */
-                if (v9x_i9xx_decode_vertex_color(limits->kind,
+                /* A runtime vertex's colour is the application's. Every
+                 * 32-bit value is a legal colour, and asserting one would be
+                 * asserting what may be drawn. */
+                if (limits->kind != V9X_I9XX_SCENE_RUNTIME &&
+                    v9x_i9xx_decode_vertex_color(limits->kind,
                                                  stream[base + 4ul]) ==
                         V9X_FALSE) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, base + 4ul);
@@ -1003,7 +1119,10 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     if (saw_buf_info_color == V9X_FALSE || saw_dst_buf_vars == V9X_FALSE ||
         saw_draw_rect == V9X_FALSE || saw_scissor_disable == V9X_FALSE ||
         saw_indirect_disable == V9X_FALSE || saw_shader == V9X_FALSE ||
-        saw_primitive == V9X_FALSE || saw_fill == V9X_FALSE) {
+        saw_primitive == V9X_FALSE) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    if (limits->kind != V9X_I9XX_SCENE_RUNTIME && saw_fill == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
     /*

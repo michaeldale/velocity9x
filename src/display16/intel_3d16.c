@@ -736,6 +736,9 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
 
         limits.target_offset = layout->target_offset;
         limits.target_bytes = layout->target_bytes;
+        limits.target_pitch = layout->target_pitch;
+        limits.target_width = V9X_I9XX_TARGET_WIDTH;
+        limits.target_height = V9X_I9XX_TARGET_HEIGHT;
         limits.texture_offset = 0ul;
         limits.texture_bytes = 0ul;
         limits.depth_offset = 0ul;
@@ -1142,6 +1145,9 @@ static WORD v9x_p6_run_scene(
 
         limits.target_offset = layout->target_offset;
         limits.target_bytes = layout->target_bytes;
+        limits.target_pitch = layout->target_pitch;
+        limits.target_width = V9X_I9XX_TARGET_WIDTH;
+        limits.target_height = V9X_I9XX_TARGET_HEIGHT;
         /*
          * A range is given only for the buffers this KIND uses. The decoder
          * requires the two to agree, so a scene that claimed to be textured

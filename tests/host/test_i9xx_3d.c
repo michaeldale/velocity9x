@@ -429,11 +429,15 @@ static void test_golden_stream(void)
  * actually varying.
  */
 static const struct v9x_i9xx_decode_limits v9x_test_plain = {
-    0x006c2000ul, 0x00096000ul, 0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
+    0x006c2000ul, 0x00096000ul,
+    V9X_I9XX_TARGET_PITCH, V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
+    0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
 };
 /* The same with a zero target size, for the refusal that checks it. */
 static const struct v9x_i9xx_decode_limits v9x_test_zero_bytes = {
-    0x006c2000ul, 0ul, 0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
+    0x006c2000ul, 0ul,
+    V9X_I9XX_TARGET_PITCH, V9X_I9XX_TARGET_WIDTH, V9X_I9XX_TARGET_HEIGHT,
+    0ul, 0ul, 0ul, 0ul, V9X_I9XX_SCENE_PLAIN
 };
 
 /* And a filler for the tests that build their own. */
@@ -457,6 +461,9 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
 {
     limits->target_offset = target_offset;
     limits->target_bytes = target_bytes;
+    limits->target_pitch = V9X_I9XX_TARGET_PITCH;
+    limits->target_width = V9X_I9XX_TARGET_WIDTH;
+    limits->target_height = V9X_I9XX_TARGET_HEIGHT;
     limits->texture_offset = 0ul;
     limits->texture_bytes = 0ul;
     limits->depth_offset = 0ul;
@@ -2234,6 +2241,185 @@ static void test_runtime_run(void)
     CHECK(written == 0ul);
 }
 
+/*
+ * The RUNTIME decoder mode, and - the point of this test - everything it does
+ * NOT relax.
+ *
+ * The 2026-09-16 amendment authorised sustained 3D and, in doing so, gave up
+ * the combined-CRC gate: application geometry cannot be pinned to a constant
+ * generated at build time. What it put in that gate's place is this decoder.
+ * So the useful assertions here are the negative ones: a mode that quietly
+ * relaxed one thing too many would pass every positive check and leave the
+ * amendment resting on nothing.
+ */
+static void test_decoder_runtime_mode(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_limits plain;
+    v9x_u32 stream[200];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 written = 0ul;
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 primitive;
+    v9x_u32 saved;
+    const v9x_u32 one = 0x3f800000ul;
+    /* A surface that is NOT the diagnostic target: a different address, a
+     * different pitch and a different size, which is the whole point. */
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+
+    /* The state block for that surface, then the program, then the geometry.
+     * No fill and no probe: the surface is the application's. */
+    CHECK(v9x_i9xx_build_3d_state(surface, pitch, width, height,
+                                  stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 200ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    primitive = at;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x00c0ffeeul;
+    colors[1] = 0xdeadbeeful;
+    colors[2] = 0x12345678ul;
+
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    written = at;
+
+    /* It decodes. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /*
+     * WHAT IT RELAXES, asserted so the relaxation is real rather than assumed:
+     * arbitrary colours, which no other kind accepts.
+     */
+    CHECK(colors[0] != V9X_I9XX_TRI_COLOR_BGRA);
+    CHECK(colors[1] != V9X_I9XX_TRI_COLOR_BGRA);
+
+    /* And fractional coordinates, which no scene can express. */
+    saved = stream[primitive + 1ul];
+    stream[primitive + 1ul] = 0x43204ccdul;   /* 160.3 */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    stream[primitive + 1ul] = saved;
+
+    /* ------------------------------------------------------------------ */
+    /* WHAT IT DOES NOT RELAX. Each of these must still be refused.        */
+    /* ------------------------------------------------------------------ */
+
+    /* The target ADDRESS. This is the dword that decides where the GPU
+     * writes, and a runtime stream gets no more latitude with it than a
+     * scene does. */
+    {
+        /* The BUF_INFO is not the first dword: the invariant block comes
+         * first. Located by scanning rather than by a counted offset, which
+         * is what this project keeps learning about published offsets. */
+        v9x_u32 buf = 0ul;
+
+        for (index = 0ul; index < primitive; ++index) {
+            if (stream[index] == V9X_I9XX_3DSTATE_BUF_INFO) {
+                buf = index;
+            }
+        }
+        CHECK(buf != 0ul);
+
+        saved = stream[buf + 2ul];
+        stream[buf + 2ul] = surface + 0x1000ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits,
+                                            &index) ==
+              V9X_I9XX_P5_TARGET_RANGE);
+        stream[buf + 2ul] = saved;
+
+        /* The PITCH. A stream whose pitch disagrees with the surface shears
+         * every row but the first. */
+        saved = stream[buf + 1ul];
+        stream[buf + 1ul] = V9X_I9XX_BUF_3D_ID_COLOR_BACK | (pitch * 2ul);
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits,
+                                            &index) == V9X_I9XX_P5_PITCH);
+        stream[buf + 1ul] = saved;
+    }
+
+    /* A vertex OUTSIDE the declared rectangle. The builder refuses these, and
+     * so must the decoder - the two are independent opinions and this is the
+     * one that runs against a stream nobody built. */
+    saved = stream[primitive + 1ul];
+    stream[primitive + 1ul] = 0x44100000ul;   /* 576, past a 512-wide target */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    stream[primitive + 1ul] = saved;
+
+    /* A payload that is not a whole number of vertices: the last one would be
+     * short and the loop would read past what was submitted. */
+    saved = stream[primitive];
+    stream[primitive] = V9X_I9XX_3DPRIMITIVE_INLINE |
+                        V9X_I9XX_PRIM3D_TRILIST | 13ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    /* And one that is whole vertices but not whole TRIANGLES. */
+    stream[primitive] = V9X_I9XX_3DPRIMITIVE_INLINE |
+                        V9X_I9XX_PRIM3D_TRILIST | 9ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_COUNT);
+    stream[primitive] = saved;
+
+    /* Depth is still forbidden without a depth range, and texture packets
+     * without a texture range - a runtime stream is a PLAIN stream whose
+     * geometry is free, not a stream that may do anything. */
+    CHECK(limits.depth_bytes == 0ul);
+    CHECK(limits.texture_bytes == 0ul);
+
+    /*
+     * And the same stream under the PLAIN kind is refused, because a plain
+     * stream must have filled before it draws. That is the one precondition
+     * the runtime kind drops, and dropping it is deliberate: the surface
+     * belongs to the application, which decides when it is cleared, and a
+     * driver that filled it every draw would erase the frame it is drawing.
+     */
+    v9x_test_limits(&plain, surface, pitch * height, V9X_I9XX_SCENE_PLAIN);
+    plain.target_pitch = pitch;
+    plain.target_width = width;
+    plain.target_height = height;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &plain, &index) ==
+          V9X_I9XX_P5_MISSING_PACKET);
+
+    /* Limits that cannot describe a target at all. A zero width would make
+     * the DRAW_RECT comparison underflow to 0xffff and accept a rectangle
+     * nobody asked for. */
+    limits.target_width = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    limits.target_width = width;
+    limits.target_pitch = pitch + 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    limits.target_pitch = pitch;
+
+    /* Unmutated, it still decodes. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+}
+
 /* The combined CRC, which is what the arm gate compares. */
 static void test_scene_combined_crc(void)
 {
@@ -3195,6 +3381,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_depth_scene_expectations();
     test_alpha_scene_expectations();
     test_blend_scene_expectations();
+    test_decoder_runtime_mode();
     test_float_in_range();
     test_runtime_run();
     test_i9xx_bind_target();

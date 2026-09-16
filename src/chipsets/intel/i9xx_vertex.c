@@ -346,30 +346,6 @@ v9x_u32 v9x_i9xx_textured_run_dwords(v9x_u32 count)
                                      V9X_I9XX_TEXTURED_VERTEX_DWORDS));
 }
 
-/*
- * Positive, finite, and no greater than the limit.
- *
- * IEEE-754 positive magnitudes order exactly as unsigned integers, which is
- * what makes this one comparison rather than a decode - but ONLY while the
- * sign bit is clear. A negative float has bit 31 set and compares as a very
- * large positive one, so the sign is tested first and separately rather than
- * being folded into the same comparison.
- *
- * Infinity is 0x7F800000 and every NaN is above it, so any limit below
- * infinity excludes both without naming them.
- */
-v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits)
-{
-    if ((bits & 0x80000000ul) != 0ul) {
-        /* Negative, including negative zero - which is a legal coordinate the
-         * hardware would rasterise identically to positive zero, and is
-         * refused anyway: a caller emitting it is a caller whose arithmetic
-         * produced a sign nobody intended. */
-        return V9X_FALSE;
-    }
-    return (bits <= limit_bits) ? V9X_TRUE : V9X_FALSE;
-}
-
 v9x_status v9x_i9xx_build_runtime_run(
     const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
     v9x_u32 width, v9x_u32 height,
