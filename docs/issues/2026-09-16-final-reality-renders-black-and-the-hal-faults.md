@@ -458,6 +458,42 @@ the registers are not what the header says on this part, and the flip work
 stops until that is understood. Reads only; nothing is written to the
 display until that answer is in a capture.
 
+## intel57 and intel58: the machine hangs, and two changes share the boot
+
+Build `bb2cff9-dirty`, the package built 18:23 on 2026-09-17: the first
+to carry BOTH the ARGB1555/4444 texture formats (`6d60788`) and the
+scanout watch (`4c32510`). Both boots hung to a blank screen and nothing
+could be run afterwards; the machine was powered off.
+
+- **intel57**: `V9XDDP` hung. Its result file ends at `ExclusiveVBlankHr`,
+  the key before `SetDisplayMode`. Profile writes are cached, so the keys
+  after it may have been written and lost; the file does not place the
+  hang more precisely than "after entering exclusive mode".
+- **intel58**: Final Reality hung. The event capture holds boot-enable and
+  five mode switches, all completed, `RingTail=0` at every one.
+
+So the mode switch is not it: five completed. The hang is at or after the
+first Direct3D work of the boot. `V9XSNAP.INI` in both directories is the
+09:45 file from intel56 and carries nothing from these boots. No fault
+flush was written - a hang, not a fault.
+
+**Which change is not established.** The two were first executed in the
+same boot, which is the one-experiment-per-boot rule this record exists
+to enforce, broken here by me. Of the two, the watch is the more
+suspicious: 24,576 reads of display-line and frame-counter registers that
+had never been read on this part, half of them on pipe A, which intel56's
+MMIO capture shows powered down (`PIPEA_CONF=0`). A read into a
+powered-down block hanging the bus is a known shape on Intel parts; it is
+not measured here. The formats are one MAP_STATE word in a stream the
+decoder accepted and the texture-packet audit describes.
+
+**What changes.** The watch is compiled out (`V9X_I9XX_SCAN_WATCH 0` in
+`d3d_i9xx.c`), and when it returns it reads only a pipe whose PIPECONF
+enable bit is set. The next boot runs the texture formats alone. If it
+survives, the watch was the hang and comes back on pipe B only; if it
+hangs, the formats are, and the 4444 MAP_STATE word is the next thing to
+question.
+
 ### Probe
 
 The probe completed (`ResultFiles=2`, `Result=COMPLETE` in the second

@@ -139,10 +139,31 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
  * part is on the order of a microsecond, so 4096 readings of six registers
  * should span at least one frame: enough for the frame counter to advance
  * once and for the line counter to sweep. It is a bounded loop with no
- * condition on the hardware, so a pipe that is off costs the same few
- * milliseconds as one that is on and cannot hang the draw.
+ * condition on the hardware. That bounds the LOOP; it says nothing about a
+ * single read into a powered-down block, which is what the note below
+ * suspects hung intel57 and intel58.
  */
 #define V9X_I9XX_SCAN_SAMPLES   4096ul
+
+/*
+ * OFF. Two boots hung with it on, and it is one of two suspects.
+ *
+ * intel57 and intel58 ran the first build carrying both this watch and the
+ * ARGB1555/4444 texture formats. Both boots hung the machine to a blank
+ * screen at the first Direct3D work of the boot - the probe's triangle in
+ * 57, Final Reality in 58 - after mode switches that completed normally.
+ * The two changes were first executed in the same boot, which is exactly
+ * the one-experiment-per-boot rule this project has and I broke, so the
+ * capture cannot say which. This watch is the more suspicious: 24,576 reads
+ * of display registers that had never been read on this part, half of them
+ * on pipe A, which intel56 showed powered down (PIPEA_CONF 0). The formats
+ * are one MAP_STATE word in a stream the decoder accepted.
+ *
+ * So the next boot runs the formats alone. If it survives, this comes back
+ * one pipe at a time and only on a pipe whose PIPECONF enable bit is set.
+ * docs\issues\2026-09-16-final-reality-renders-black-and-the-hal-faults.md.
+ */
+#define V9X_I9XX_SCAN_WATCH     0
 
 /*
  * Watch both pipes' display line and frame counter, and record what moved.
@@ -154,25 +175,39 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
  * of the numbers - whether this driver has a vblank source on this part -
  * belongs in a capture and a record, not here.
  */
+#if V9X_I9XX_SCAN_WATCH
 static void v9x_d3d_i9xx_watch_scanout(void)
 {
     struct v9x_i9xx_scan_summary a;
     struct v9x_i9xx_scan_summary b;
     DWORD sample;
+    /* Only a pipe that is ON is read. Registers in a powered-down pipe are
+     * the untested read this watch is suspected of hanging on. */
+    int read_a = (*v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_CONF) &
+                  V9X_I9XX_PIPECONF_ENABLE) != 0ul;
+    int read_b = (*v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_CONF) &
+                  V9X_I9XX_PIPECONF_ENABLE) != 0ul;
 
     v9x_i9xx_scan_begin(&a);
     v9x_i9xx_scan_begin(&b);
     for (sample = 0ul; sample < V9X_I9XX_SCAN_SAMPLES; ++sample) {
-        v9x_i9xx_scan_feed(&a,
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_DSL),
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEHIGH),
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEPIXEL));
-        v9x_i9xx_scan_feed(&b,
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_DSL),
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEHIGH),
-                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEPIXEL));
+        if (read_a) {
+            v9x_i9xx_scan_feed(&a,
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_DSL),
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEHIGH),
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEPIXEL));
+        }
+        if (read_b) {
+            v9x_i9xx_scan_feed(&b,
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_DSL),
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEHIGH),
+                *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEPIXEL));
+        }
     }
-    v9x_hal->d3d_diagnostics.scan_samples = a.samples;
+    /* The sample count is the loop's, so a capture can tell "pipe not
+     * read" (samples set, that pipe's fields zero) from "watch never ran"
+     * (samples zero). */
+    v9x_hal->d3d_diagnostics.scan_samples = V9X_I9XX_SCAN_SAMPLES;
     v9x_hal->d3d_diagnostics.scan_a_line_min = a.line_min;
     v9x_hal->d3d_diagnostics.scan_a_line_max = a.line_max;
     v9x_hal->d3d_diagnostics.scan_a_line_changes = a.line_changes;
@@ -182,6 +217,7 @@ static void v9x_d3d_i9xx_watch_scanout(void)
     v9x_hal->d3d_diagnostics.scan_b_line_changes = b.line_changes;
     v9x_hal->d3d_diagnostics.scan_b_frames = v9x_i9xx_scan_frames(&b);
 }
+#endif
 
 /*
  * Where the ring is: PUBLISHED, never derived.
@@ -913,9 +949,11 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     if (!v9x_d3d_i9xx_submit(stream, at)) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
     }
+#if V9X_I9XX_SCAN_WATCH
     if (v9x_hal->d3d_diagnostics.i9xx_draws_submitted == 0ul) {
         v9x_d3d_i9xx_watch_scanout();
     }
+#endif
     ++v9x_hal->d3d_diagnostics.i9xx_draws_submitted;
     if (textured != 0) {
         ++v9x_hal->d3d_diagnostics.i9xx_texture_draws;
