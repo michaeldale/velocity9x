@@ -4,6 +4,51 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.8.0 - 2026-09-17
+
+Hardware Direct3D on the Intel GMA 950 (945GSE), the first engine outside
+S3. Version bumped at the point where Final Reality runs textured on the
+netbook; the flip and the depth comparison are still open below, and
+nothing in this release has been packaged or run anywhere but that one
+machine (`MICHAEL-NETBOOK`, captures `C:\temp\intel52` through `intel60`).
+
+- **A 32-bit ring submission path for the Gen3.** The HAL builds each
+  batch from the application's geometry, runs it through the same decoder
+  allowlist the armed diagnostics use, writes the ring and waits for the
+  head. Runtime 3D is permitted per machine by `V9X3D ON` writing
+  `IntelRuntime3D=1`, and refused by default
+  ([amendment](docs/decisions/2026-09-15-intel-phase5-errata-gate.md),
+  [first application draw](docs/decisions/2026-09-16-intel-gen3-first-application-draw.md)).
+- **Textures, depth and modulate on the runtime path**, each measured on
+  the armed scenes first: RGB565 sampling, a 16-bit Z buffer with LESS and
+  optional writes, and texel-times-vertex-colour through a constant
+  fragment program
+  ([audit](docs/decisions/2026-09-16-intel-gen3-modulate-and-depth-audit.md),
+  [measured](docs/decisions/2026-09-16-intel-gen3-depth-test-and-modulate.md)).
+- **Final Reality black screen: three faults, one record.** The texture
+  table dereferenced a released surface wrapper on teardown (resolved once
+  at creation now); an 11,644-byte stack frame in the draw path, in a DLL
+  built without stack probes, stopped the first RenderPrimitive of every
+  boot from returning (arrays moved to file scope); and the game's
+  textures were ARGB4444 against a driver offering RGB565 alone, then
+  placed in system memory because the device caps never said the engine
+  textures from video memory. ARGB1555 and ARGB4444 are built, decoded
+  and published; `TEXTUREVIDEOMEMORY` is claimed. The game runs textured
+  ([record](docs/issues/2026-09-16-final-reality-renders-black-and-the-hal-faults.md)).
+- **The Gouraud scene** replaces the alpha-test scene in the armed table:
+  one triangle, a primary at each corner, interior probes that must not
+  read the fill
+  ([flat shading issue](docs/issues/2026-09-17-flat-shading-is-claimed-and-the-provoking-vertex-is-not-programmed.md),
+  [fill rule](docs/decisions/2026-09-17-intel-gen3-fill-rule-documented-by-intel.md)).
+- **The probe rolls its results over** at 24,000 bytes; KRNL386 copies the
+  whole file through one segment on every write and faulted at 34,020
+  ([issue](docs/issues/2026-09-17-the-probe-kills-itself-writing-its-own-results.md)).
+- **Open, and gated off.** The Intel flip path is in the binary behind
+  `IntelFlip=1` (`V9X3D FLIP`) and has never written the plane base on
+  silicon; a read-only scanline watch runs first. The depth test is skipped
+  on draws asking for a comparison other than LESS. Both are in the record
+  above.
+
 ## 0.7.1 - 2026-09-11
 
 Bug fixes for the software Direct3D engine. The main one was found by running
