@@ -257,6 +257,12 @@
 #define V9X_I9XX_FS_TYPE_SHIFT           19u
 #define V9X_I9XX_FS_NR_SHIFT             14u
 #define V9X_I9XX_FS_CHANNEL_ALL          ((v9x_u32)0x00003c00ul)
+/* The same field, partial: X, Y, Z are bits 10, 11, 12 and W is bit 13
+ * (Mesa A0_DEST_CHANNEL_X..W, 1/2/4/8 << 10; the audit's 0xf << 10 is the
+ * four together). Used to write a colour and an alpha from different
+ * sources in one program, which legacy MODULATE requires. */
+#define V9X_I9XX_FS_CHANNEL_XYZ          ((v9x_u32)0x00001c00ul)
+#define V9X_I9XX_FS_CHANNEL_W            ((v9x_u32)0x00002000ul)
 #define V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT   7u
 #define V9X_I9XX_FS_A0_SRC0_NR_SHIFT     2u
 /*
@@ -568,11 +574,14 @@ v9x_status v9x_i9xx_build_3d_state(
  * the application bound. The only block that may carry both - every scene
  * carries one thing, which is what makes a scene readable.
  *
- * texture null is untextured; depth_offset zero is un-Z'd; blend non-zero
- * enables the ONE measured colour blend - SRC_ALPHA over INV_SRC_ALPHA, added
- * (intel47) - with the IAB disable in front of it exactly as the blend scene
- * carries them. Any other factor pair is the caller's to refuse or draw
- * opaque; this builder knows one.
+ * texture null is untextured; depth_offset zero is un-Z'd. blend_src and
+ * blend_dst are S6 factor codes from the four the audit sources - ZERO 1,
+ * ONE 2, SRC_ALPHA 5, INV_SRC_ALPHA 6 - and both zero is an opaque draw.
+ * Non-zero enables the colour blend, ADD, with those factors and the IAB
+ * disable in front, exactly as the blend scene carries them; the scene
+ * measured SRC_ALPHA over INV_SRC_ALPHA (intel47), and the other pairings of
+ * the same four codes are the same two fields with other values, UNMEASURED.
+ * Destination-alpha factors are not codes this builder accepts.
  */
 v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
                                       v9x_u32 blend);
@@ -581,7 +590,10 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
-    v9x_u32 blend, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+    v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* Is this one of the four S6 factor codes this driver emits? */
+v9x_u16 v9x_i9xx_blend_factor_known(v9x_u32 factor);
 
 /* src\chipsets\intel\i9xx_fragprog.c - no arguments, because the program is a
  * constant, and it is a constant because Phase 6 forbids a shader compiler. */
@@ -848,6 +860,32 @@ v9x_status v9x_i9xx_build_sampling_program(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 /* The MODULATE program: sample into a temporary, multiply by the interpolated
  * diffuse colour, write that. Five instructions where sampling has three. */
+/*
+ * The textured programs, by what they do with ALPHA.
+ *
+ * Direct3D's legacy MODULATE multiplies the colour channels and takes the
+ * alpha from the TEXTURE when the texture has one, from the vertex when it
+ * does not; MODULATEALPHA multiplies alpha too. The first program this
+ * driver wrote multiplied all four channels, which is MODULATEALPHA: with a
+ * half-alpha texel over a half-alpha vertex it blends at a quarter where
+ * MODULATE blends at a half, visible the moment blending is on. So there are
+ * three, and the HAL picks by the blend state and the map format:
+ *
+ *   MODULATE_ALPHA    mul oC, R0, T8                 (the original; 16 dwords)
+ *   MODULATE_TEXALPHA mul oC.xyz, R0, T8; mov oC.w, R0   (alpha formats)
+ *   MODULATE_DIFFALPHA mul oC.xyz, R0, T8; mov oC.w, T8  (565, no alpha)
+ *
+ * The partial destination masks are the same field as CHANNEL_ALL with fewer
+ * bits; MOV is the untextured program's opcode with a register source. The
+ * decoder pins a runtime stream to the declared program's length. All three
+ * are DERIVED from the same audit and only the first has been sampled.
+ */
+#define V9X_I9XX_TEXPROG_MODULATE_ALPHA     ((v9x_u32)0ul)
+#define V9X_I9XX_TEXPROG_MODULATE_TEXALPHA  ((v9x_u32)1ul)
+#define V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA ((v9x_u32)2ul)
+v9x_u32 v9x_i9xx_texture_program_extent(v9x_u32 program);
+v9x_status v9x_i9xx_build_texture_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 v9x_u32 v9x_i9xx_modulate_program_extent(void);
 v9x_status v9x_i9xx_build_modulate_program(
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
@@ -1440,12 +1478,19 @@ struct v9x_i9xx_decode_limits {
     v9x_u32 texture_mag_linear;
     v9x_u32 texture_min_linear;
     /*
-     * Whether a runtime stream blends: the IAB disable present and S6
-     * carrying BLEND_ENABLE with ADD, SRC_ALPHA, INV_SRC_ALPHA - the one pair
-     * intel47 measured. Zero, the positional default, is an opaque draw, and
-     * a scene's blending is still decided by its kind.
+     * The runtime stream's blend factors as S6 codes, both zero for an opaque
+     * draw (the positional default). Non-zero means the IAB disable is present
+     * and S6 carries BLEND_ENABLE, ADD and these two codes. A scene's blending
+     * is still decided by its kind.
      */
-    v9x_u32 blend;
+    v9x_u32 blend_src;
+    v9x_u32 blend_dst;
+    /*
+     * Which textured program a runtime stream carries, a V9X_I9XX_TEXPROG_*
+     * value; zero is the original modulate program, so every scene and every
+     * positional initialiser keeps its meaning.
+     */
+    v9x_u32 texture_program;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

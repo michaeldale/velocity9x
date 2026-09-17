@@ -712,11 +712,26 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                (V9X_I9XX_ALPHA_REF <<
                                     V9X_I9XX_S6_ALPHA_REF_SHIFT);
                 }
-                /* The blend scene, or a runtime stream whose engine declared
-                 * the one measured pair. Same bits, same equality. */
-                if (limits->kind == V9X_I9XX_SCENE_BLEND ||
-                    (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
-                     limits->blend != 0ul)) {
+                /* A runtime stream whose engine declared a factor pair:
+                 * the declared codes, each one of the four, same equality. */
+                if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                    limits->blend_src != 0ul) {
+                    if (v9x_i9xx_blend_factor_known(limits->blend_src) ==
+                            V9X_FALSE ||
+                        v9x_i9xx_blend_factor_known(limits->blend_dst) ==
+                            V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN,
+                                        index + 5ul);
+                    }
+                    want_s6 |= V9X_I9XX_S6_BLEND_ENABLE |
+                               (V9X_I9XX_BLENDFUNC_ADD <<
+                                    V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
+                               (limits->blend_src <<
+                                    V9X_I9XX_S6_SRC_FACTOR_SHIFT) |
+                               (limits->blend_dst <<
+                                    V9X_I9XX_S6_DST_FACTOR_SHIFT);
+                }
+                if (limits->kind == V9X_I9XX_SCENE_BLEND) {
                     want_s6 |= V9X_I9XX_S6_BLEND_ENABLE |
                                (V9X_I9XX_BLENDFUNC_ADD <<
                                     V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
@@ -766,9 +781,15 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             {
                 v9x_u32 want;
 
-                if (limits->kind == V9X_I9XX_SCENE_MODULATED ||
-                    (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
-                     textured != V9X_FALSE)) {
+                if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                    textured != V9X_FALSE) {
+                    /* The program the engine declared, by length: zero is
+                     * the original modulate, the two alpha-keeping forms are
+                     * three dwords longer; an unknown declaration has extent
+                     * zero and matches nothing. */
+                    want = v9x_i9xx_texture_program_extent(
+                               limits->texture_program) - 1ul;
+                } else if (limits->kind == V9X_I9XX_SCENE_MODULATED) {
                     /*
                      * A runtime textured draw MODULATES: the texel by the
                      * interpolated vertex colour, which is what
@@ -971,7 +992,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              */
             if (limits->kind != V9X_I9XX_SCENE_BLEND &&
                 !(limits->kind == V9X_I9XX_SCENE_RUNTIME &&
-                  limits->blend != 0ul)) {
+                  limits->blend_src != 0ul)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
             }
             saw_iab_disable = V9X_TRUE;
@@ -1058,7 +1079,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * channel with factors nobody set. */
             if ((limits->kind == V9X_I9XX_SCENE_BLEND ||
                  (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
-                  limits->blend != 0ul)) &&
+                  limits->blend_src != 0ul)) &&
                 saw_iab_disable == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }

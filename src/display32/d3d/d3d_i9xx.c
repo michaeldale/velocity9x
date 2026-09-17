@@ -575,23 +575,70 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
  * Direct3D's default with ALPHABLENDENABLE set is ONE/ZERO, which is why that
  * pair has to mean "off" rather than "unsupported".
  */
-static DWORD v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context)
+static DWORD v9x_d3d_i9xx_blend_factor(DWORD d3d)
 {
-    if (context->alpha_blend_enable == 0ul) {
-        return 0ul;
+    if (d3d == V9X_D3DBLEND_ZERO) { return V9X_I9XX_BLENDFACT_ZERO; }
+    if (d3d == V9X_D3DBLEND_ONE) { return V9X_I9XX_BLENDFACT_ONE; }
+    if (d3d == V9X_D3DBLEND_SRCALPHA) { return V9X_I9XX_BLENDFACT_SRC_ALPHA; }
+    if (d3d == V9X_D3DBLEND_INVSRCALPHA) {
+        return V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
     }
-    if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&
-        context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
-        return 1ul;
+    return 0ul;
+}
+
+/*
+ * The factor pair as S6 codes, or both zero for an opaque draw. The source
+ * and destination caps are published as independently selectable, which is
+ * what the capability definitions mean, so every pairing of the four
+ * published factors is honoured - SRCALPHA/ZERO and ONE/INVSRCALPHA are
+ * legal requests and get their fields. ONE/ZERO is opaque by arithmetic and
+ * is passed as off, because it is Direct3D's default with the enable set.
+ * A factor outside the four draws opaque and is counted with the pair.
+ */
+static void v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context,
+                                    DWORD *src_out, DWORD *dst_out)
+{
+    DWORD src;
+    DWORD dst;
+
+    *src_out = 0ul;
+    *dst_out = 0ul;
+    if (context->alpha_blend_enable == 0ul) {
+        return;
     }
     if (context->src_blend == V9X_D3DBLEND_ONE &&
         context->dest_blend == V9X_D3DBLEND_ZERO) {
-        return 0ul;
+        return;
     }
-    ++v9x_hal->d3d_diagnostics.blend_skipped;
-    v9x_hal->d3d_diagnostics.blend_last_pair =
-        (context->src_blend << 16) | (context->dest_blend & 0xfffful);
-    return 0ul;
+    src = v9x_d3d_i9xx_blend_factor(context->src_blend);
+    dst = v9x_d3d_i9xx_blend_factor(context->dest_blend);
+    if (src == 0ul || dst == 0ul) {
+        ++v9x_hal->d3d_diagnostics.blend_skipped;
+        v9x_hal->d3d_diagnostics.blend_last_pair =
+            (context->src_blend << 16) | (context->dest_blend & 0xfffful);
+        return;
+    }
+    *src_out = src;
+    *dst_out = dst;
+}
+
+/*
+ * Which textured program: MODULATEALPHA multiplies alpha; legacy MODULATE
+ * takes the texture's alpha when the format has one and the vertex's when
+ * it does not. Anything else the application sets is drawn as MODULATE,
+ * the one operation published besides MODULATEALPHA.
+ */
+static DWORD v9x_d3d_i9xx_texture_program(const V9X_D3D_CONTEXT *context,
+                                          DWORD format)
+{
+    if (context->texture_blend == V9X_D3DTBLEND_MODULATEALPHA) {
+        return V9X_I9XX_TEXPROG_MODULATE_ALPHA;
+    }
+    if (format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 ||
+        format == V9X_I9XX_MAPSURF_16BIT_ARGB4444) {
+        return V9X_I9XX_TEXPROG_MODULATE_TEXALPHA;
+    }
+    return V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA;
 }
 
 static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
@@ -760,8 +807,10 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
         V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR;
+    /* MODULATE with Direct3D's alpha rule, and MODULATEALPHA, which is
+     * the original program: two of the three textured programs. */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
-        V9X_D3DPTBLENDCAPS_MODULATE;
+        V9X_D3DPTBLENDCAPS_MODULATE | V9X_D3DPTBLENDCAPS_MODULATEALPHA;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
         V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_CLAMP;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
@@ -886,7 +935,9 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD count;
     int textured;
     int depthed;
-    DWORD blend;
+    DWORD blend_src;
+    DWORD blend_dst;
+    DWORD program = V9X_I9XX_TEXPROG_MODULATE_ALPHA;
     DWORD depth_offset = 0ul;
     DWORD depth_pitch = 0ul;
     DWORD depth_writes = 0ul;
@@ -929,7 +980,10 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     textured = v9x_d3d_i9xx_bind_texture(context, &map);
     depthed = v9x_d3d_i9xx_bind_depth_surface(context, &depth_offset,
                                               &depth_pitch, &depth_writes);
-    blend = v9x_d3d_i9xx_bind_blend(context);
+    v9x_d3d_i9xx_bind_blend(context, &blend_src, &blend_dst);
+    if (textured != 0) {
+        program = v9x_d3d_i9xx_texture_program(context, map.format);
+    }
 
     for (vertex = 0ul; vertex < count; ++vertex) {
         /* The DDHAL vertex is floats; the stream is bit patterns. A union is
@@ -958,7 +1012,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                      context->width, context->height,
                                      textured != 0 ? &map : 0,
                                      depth_offset, depth_pitch, depth_writes,
-                                     blend, stream + at,
+                                     blend_src, blend_dst, stream + at,
                                      V9X_I9XX_SUBMIT_DWORDS - at,
                                      &produced) != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
@@ -971,9 +1025,9 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      * declaring a coordinate set. The decoder checks the pairing too.
      */
     if ((textured != 0
-            ? v9x_i9xx_build_modulate_program(stream + at,
-                                              V9X_I9XX_SUBMIT_DWORDS - at,
-                                              &produced)
+            ? v9x_i9xx_build_texture_program(program, stream + at,
+                                             V9X_I9XX_SUBMIT_DWORDS - at,
+                                             &produced)
             : v9x_i9xx_build_fragment_program(stream + at,
                                               V9X_I9XX_SUBMIT_DWORDS - at,
                                               &produced)) != V9X_STATUS_OK) {
@@ -1031,7 +1085,9 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_wrap = textured != 0 ? map.wrap : 0ul;
     limits.texture_mag_linear = textured != 0 ? map.mag_linear : 0ul;
     limits.texture_min_linear = textured != 0 ? map.min_linear : 0ul;
-    limits.blend = blend;
+    limits.blend_src = blend_src;
+    limits.blend_dst = blend_dst;
+    limits.texture_program = program;
     limits.depth_offset = depth_offset;
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;

@@ -681,16 +681,30 @@ runtime-state change with an audit behind it rather than a guess.
 The blend scene measured the packet in intel47 to the exact product:
 `BLENDFUNC_ADD`, `SRC_ALPHA`, `INV_SRC_ALPHA`, with the IAB disable ahead
 of the state load. The runtime builder now carries the same two dwords
-when the application enables blending with that pair. The rule is the
-ViRGE's: SRC_ALPHA/INV_SRC_ALPHA blends; ONE/ZERO is opaque, which matters
-because it is Direct3D's default with the enable set; any other pair draws
-opaque and is counted in `D3dBlendSkipped` with the pair in
-`D3dBlendLastPair`. The decoder accepts the IAB dword and the S6 blend bits
-for a runtime stream only when the engine declared them, and requires both
-when it did. Caps publish SRCALPHA and ONE as source factors, INVSRCALPHA
-and ZERO as destination, and `D3DPTEXTURECAPS_ALPHA`, because the modulate
-program multiplies all four channels and a 1555 or 4444 texel's alpha
-reaches the blend.
+when the application enables blending. The source and destination factors
+are two S6 fields and are carried as two codes from the four the audit
+sources - ZERO, ONE, SRC_ALPHA, INV_SRC_ALPHA - so every pairing the caps
+promise is built as itself: the capability definitions make the two sides
+independently selectable, and a first cut that honoured only
+SRC_ALPHA/INV_SRC_ALPHA drew SRCALPHA/ZERO and ONE/INVSRCALPHA opaque
+while advertising them. Only SRC_ALPHA/INV_SRC_ALPHA is measured (intel47);
+the other pairings are the same fields with other codes. ONE/ZERO is opaque
+by arithmetic and is passed as off, because it is Direct3D's default with
+the enable set. A factor outside the four (the destination-alpha codes the
+audit excludes) draws opaque and is counted in `D3dBlendSkipped` with the
+pair in `D3dBlendLastPair`. The decoder requires the declared codes and
+the IAB dword, and refuses either without the other.
+
+**MODULATE's alpha.** The one textured program multiplied all four
+channels, which is `D3DTBLEND_MODULATEALPHA`; legacy `MODULATE` takes the
+alpha from the texture when the format has one and from the vertex when it
+does not, so a half-alpha texel over a half-alpha vertex blended at a
+quarter where it should blend at a half - invisible until blending was on.
+Two more programs: the modulate program's four instructions, a MUL masked
+to xyz, and a W-only MOV from the texel (1555, 4444) or from the vertex
+colour (565). The HAL picks by `TEXTUREMAPBLEND` and the map format; the
+decoder pins a runtime stream to the declared program's length. Caps
+publish MODULATE and MODULATEALPHA, and `D3DPTEXTURECAPS_ALPHA`.
 
 What the next boot should show: 3DMark99 creating textures
 (`D3dTextureCreate` above zero) if the blend caps were what it wanted, and

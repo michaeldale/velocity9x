@@ -492,7 +492,9 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_wrap = 0ul;
     limits->texture_mag_linear = 0ul;
     limits->texture_min_linear = 0ul;
-    limits->blend = 0ul;
+    limits->blend_src = 0ul;
+    limits->blend_dst = 0ul;
+    limits->texture_program = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -2400,7 +2402,8 @@ static void test_runtime_textured_and_depth(void)
     limits.depth_writes = 1ul;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       depth_offset, depth_pitch, 1ul, 0ul,
+                                       depth_offset, depth_pitch, 1ul,
+                                       0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -2506,7 +2509,7 @@ static void test_runtime_batch_bound(void)
     limits.target_height = height;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, 0ul, stream + at,
+                                       0ul, 0ul, 0ul, 0ul, 0ul, stream + at,
                                        2200ul - at, &produced) ==
           V9X_STATUS_OK);
     at += produced;
@@ -3423,7 +3426,7 @@ static void test_runtime_texture_formats(void)
     limits.texture_format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3496,7 +3499,7 @@ static void test_runtime_texture_formats(void)
     map.min_linear = 1ul;
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3520,6 +3523,40 @@ static void test_runtime_texture_formats(void)
     limits.texture_min_linear = 1ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
           V9X_I9XX_P5_OK);
+
+    /*
+     * The declared PROGRAM. The same stream with the alpha-keeping program
+     * in place of the original is three dwords longer, and the decoder
+     * accepts it only when the engine said which program it built. A 4444
+     * map is the case where legacy MODULATE takes the texel's alpha.
+     */
+    at = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul, 0ul, 0ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
+                                         stream + at, 400ul - at,
+                                         &produced) == V9X_STATUS_OK);
+    CHECK(produced == 19ul);
+    at += produced;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    /* Declared the original program: the length is wrong. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_SHADER);
+    limits.texture_program = V9X_I9XX_TEXPROG_MODULATE_TEXALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    /* A declaration the builder has no program for matches nothing. */
+    limits.texture_program = 3ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_SHADER);
+    limits.texture_program = 0ul;
 }
 
 /*
@@ -3560,10 +3597,13 @@ static void test_runtime_blend(void)
     limits.target_pitch = pitch;
     limits.target_width = width;
     limits.target_height = height;
-    limits.blend = 1ul;
+    limits.blend_src = V9X_I9XX_BLENDFACT_SRC_ALPHA;
+    limits.blend_dst = V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, 1ul,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_BLENDFACT_SRC_ALPHA,
+                                       V9X_I9XX_BLENDFACT_INV_SRC_ALPHA,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     CHECK(produced == v9x_i9xx_runtime_state_extent(0ul, 0ul, 1ul));
@@ -3603,16 +3643,24 @@ static void test_runtime_blend(void)
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
           V9X_I9XX_P5_OK);
     /* Declared opaque: the IAB dword is the first thing refused. */
-    limits.blend = 0ul;
+    limits.blend_src = 0ul;
+    limits.blend_dst = 0ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
           V9X_I9XX_P5_TEXTURE_STATE);
+    /* Declared a DIFFERENT pair: the factors are two fields, not a flag. */
+    limits.blend_src = V9X_I9XX_BLENDFACT_ONE;
+    limits.blend_dst = V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+    limits.blend_src = 0ul;
+    limits.blend_dst = 0ul;
 
     /* Built opaque, declared blending: no IAB disable, refused at the
      * primitive for the missing packet - or earlier at S6, which lacks the
      * enable; either way not OK. */
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3625,9 +3673,168 @@ static void test_runtime_blend(void)
     at += produced;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
           V9X_I9XX_P5_OK);
-    limits.blend = 1ul;
+    limits.blend_src = V9X_I9XX_BLENDFACT_SRC_ALPHA;
+    limits.blend_dst = V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
           V9X_I9XX_P5_OK);
+}
+
+/*
+ * The blend factors are two fields, and every pairing of the four published
+ * codes is built and decoded as itself.
+ *
+ * Review of the first blend commit: source and destination caps describe
+ * independently selectable factors, so publishing SRCALPHA|ONE against
+ * INVSRCALPHA|ZERO promised SRCALPHA/ZERO and ONE/INVSRCALPHA too, and both
+ * drew opaque. Each pair now lands in S6's two 4-bit fields as declared. A
+ * code outside the four is refused by the builder, and half a pair is
+ * refused as well.
+ */
+static void test_runtime_blend_pairs(void)
+{
+    static const v9x_u32 codes[4] = {
+        V9X_I9XX_BLENDFACT_ZERO, V9X_I9XX_BLENDFACT_ONE,
+        V9X_I9XX_BLENDFACT_SRC_ALPHA, V9X_I9XX_BLENDFACT_INV_SRC_ALPHA
+    };
+    v9x_u32 stream[64];
+    v9x_u32 produced = 0ul;
+    v9x_u32 scan;
+    v9x_u32 s;
+    v9x_u32 d;
+
+    CHECK(v9x_i9xx_blend_factor_known(V9X_I9XX_BLENDFACT_ZERO) != V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(V9X_I9XX_BLENDFACT_ONE) != V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(V9X_I9XX_BLENDFACT_SRC_ALPHA) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(V9X_I9XX_BLENDFACT_INV_SRC_ALPHA) !=
+          V9X_FALSE);
+    /* DST_ALPHA (3) and INV_DST_ALPHA (4) exist on the part and are what
+     * the audit excludes; 0 is "off" and never a factor. */
+    CHECK(v9x_i9xx_blend_factor_known(0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(3ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(4ul) == V9X_FALSE);
+
+    for (s = 0ul; s < 4ul; ++s) {
+        for (d = 0ul; d < 4ul; ++d) {
+            v9x_u32 seen = 0ul;
+
+            CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul,
+                                               384ul, 0, 0ul, 0ul, 0ul,
+                                               codes[s], codes[d],
+                                               stream, 64ul, &produced) ==
+                  V9X_STATUS_OK);
+            for (scan = 0ul; scan < produced; ++scan) {
+                if (stream[scan] == V9X_I9XX_IAB_DISABLE_DWORD) {
+                    v9x_u32 s6 = stream[scan + 6ul];
+
+                    ++seen;
+                    CHECK((s6 & V9X_I9XX_S6_BLEND_ENABLE) != 0ul);
+                    CHECK(((s6 >> V9X_I9XX_S6_SRC_FACTOR_SHIFT) & 0xful) ==
+                          codes[s]);
+                    CHECK(((s6 >> V9X_I9XX_S6_DST_FACTOR_SHIFT) & 0xful) ==
+                          codes[d]);
+                }
+            }
+            CHECK(seen == 1ul);
+        }
+    }
+
+    /* Half a pair, and a code the audit excludes. */
+    CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
+                                       0, 0ul, 0ul, 0ul,
+                                       V9X_I9XX_BLENDFACT_SRC_ALPHA, 0ul,
+                                       stream, 64ul, &produced) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
+                                       0, 0ul, 0ul, 0ul,
+                                       V9X_I9XX_BLENDFACT_SRC_ALPHA, 3ul,
+                                       stream, 64ul, &produced) !=
+          V9X_STATUS_OK);
+}
+
+/*
+ * The three textured programs, told apart by what they do with alpha.
+ *
+ * Review of the first blend commit: the one program multiplied all four
+ * channels, which is MODULATEALPHA; legacy MODULATE takes the texture's
+ * alpha (or the vertex's, for a format without one). The two new programs
+ * share the modulate program's first four instructions dword for dword,
+ * mask the MUL to xyz, and add a W-only MOV whose source is the difference
+ * between them. The decoder pins a runtime stream to the declared program's
+ * length, so the two new ones - equal in length - are declared by kind and
+ * the original by default.
+ */
+static void test_texture_programs(void)
+{
+    v9x_u32 base[24];
+    v9x_u32 tex[24];
+    v9x_u32 dif[24];
+    v9x_u32 written = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_i9xx_texture_program_extent(V9X_I9XX_TEXPROG_MODULATE_ALPHA) ==
+          v9x_i9xx_modulate_program_extent());
+    CHECK(v9x_i9xx_texture_program_extent(
+              V9X_I9XX_TEXPROG_MODULATE_TEXALPHA) == 19ul);
+    CHECK(v9x_i9xx_texture_program_extent(
+              V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) == 19ul);
+    CHECK(v9x_i9xx_texture_program_extent(3ul) == 0ul);
+
+    /* Kind 0 is the original, dword for dword. */
+    CHECK(v9x_i9xx_build_modulate_program(base, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_ALPHA,
+                                         tex, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 16ul);
+    for (index = 0ul; index < 16ul; ++index) {
+        CHECK(tex[index] == base[index]);
+    }
+
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
+                                         tex, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 19ul);
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA,
+                                         dif, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 19ul);
+
+    /* Header: six instructions, 18 payload dwords, length 17. */
+    CHECK(tex[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 17ul));
+    /* The first four instructions are the modulate program's. */
+    for (index = 1ul; index < 13ul; ++index) {
+        CHECK(tex[index] == base[index]);
+        CHECK(dif[index] == base[index]);
+    }
+    /* The MUL: the modulate MUL with the destination mask xyz (0x1c00) in
+     * place of xyzw (0x3c00); A1 and A2 unchanged. */
+    CHECK(tex[13] == 0x03201c00ul);
+    CHECK(tex[14] == base[14]);
+    CHECK(tex[15] == base[15]);
+    /* The MOV: dest oC, mask W only (0x2000), identity swizzle, no src1.
+     * TEXALPHA reads R0 (type 0, nr 0: nothing added); DIFFALPHA reads T8
+     * (type 1 at shift 7, nr 8 at shift 2). */
+    CHECK(tex[16] == 0x02202000ul);
+    CHECK(tex[17] == V9X_I9XX_FS_A1_SWIZZLE_XYZW);
+    CHECK(tex[18] == 0ul);
+    CHECK(dif[16] == 0x022020a0ul);
+    CHECK(dif[17] == V9X_I9XX_FS_A1_SWIZZLE_XYZW);
+    CHECK(dif[18] == 0ul);
+    /* And the two differ in exactly that one dword. */
+    for (index = 0ul; index < 19ul; ++index) {
+        if (index != 16ul) {
+            CHECK(tex[index] == dif[index]);
+        }
+    }
+
+    /* Refusals. */
+    CHECK(v9x_i9xx_build_texture_program(3ul, tex, 24ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
+                                         tex, 18ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(written == 0ul);
 }
 
 /* SAMPLER_STATE. */
@@ -4076,6 +4283,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_formats();
     test_runtime_texture_formats();
     test_runtime_blend();
+    test_runtime_blend_pairs();
+    test_texture_programs();
     test_sampler_state();
     test_sampling_program();
     test_modulate_program();

@@ -255,3 +255,122 @@ v9x_status v9x_i9xx_build_modulate_program(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/*
+ * The two MODULATE programs that keep the alpha they are told to.
+ *
+ * SIX instructions: the modulate program's four (dcl T0, dcl S0, dcl T8,
+ * texld R0) followed by a MUL that writes oC.xyz only, and a MOV that writes
+ * oC.w from the texel (TEXALPHA) or the vertex colour (DIFFALPHA). Same
+ * opcodes, same register encodings, same swizzles as the two programs above;
+ * what is new is the partial destination mask, which is CHANNEL_ALL with
+ * fewer bits set, and a MOV whose source is a temporary.
+ *
+ * Why two: Direct3D's legacy MODULATE takes its alpha from the texture only
+ * when the texture has one. A 565 texel reads alpha as 1.0, and a program
+ * that took it would make every 565-textured vertex opaque whatever alpha the
+ * application lit it with. The HAL picks by the map format.
+ *
+ * DERIVED, from the modulate audit's field placements, and UNVALIDATED until
+ * a capture blends through one of them.
+ */
+#define V9X_I9XX_MODULATE2_BODY_DWORDS  18ul
+#define V9X_I9XX_MODULATE2_DWORDS       (V9X_I9XX_MODULATE2_BODY_DWORDS + 1ul)
+
+v9x_u32 v9x_i9xx_texture_program_extent(v9x_u32 program)
+{
+    if (program == V9X_I9XX_TEXPROG_MODULATE_ALPHA) {
+        return V9X_I9XX_MODULATE_DWORDS;
+    }
+    if (program == V9X_I9XX_TEXPROG_MODULATE_TEXALPHA ||
+        program == V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) {
+        return V9X_I9XX_MODULATE2_DWORDS;
+    }
+    return 0ul;
+}
+
+v9x_status v9x_i9xx_build_texture_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 alpha_type;
+    v9x_u32 alpha_nr;
+
+    if (program == V9X_I9XX_TEXPROG_MODULATE_ALPHA) {
+        return v9x_i9xx_build_modulate_program(stream, capacity, written);
+    }
+    if (written != 0) { *written = 0ul; }
+    if (program == V9X_I9XX_TEXPROG_MODULATE_TEXALPHA) {
+        alpha_type = V9X_I9XX_FS_REG_TYPE_R;
+        alpha_nr = 0ul;
+    } else if (program == V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) {
+        alpha_type = V9X_I9XX_FS_REG_TYPE_T;
+        alpha_nr = V9X_I9XX_FS_T_DIFFUSE;
+    } else {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (stream == 0 || written == 0 ||
+        capacity < V9X_I9XX_MODULATE2_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    stream[at++] = V9X_I9XX_3DSTATE_PIXEL_SHADER |
+                   (V9X_I9XX_MODULATE2_BODY_DWORDS - 1ul);
+
+    /* dcl T0, dcl S0, dcl T8, texld R0: the modulate program's first four
+     * instructions, dword for dword. */
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_TEX0 << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_ALL;
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_S << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_NR_SHIFT);
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+    stream[at++] = V9X_I9XX_FS_D0_DCL |
+                   (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_DIFFUSE << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_ALL;
+    stream[at++] = 0ul;
+    stream[at++] = 0ul;
+    stream[at++] = V9X_I9XX_T0_TEXLD |
+                   (V9X_I9XX_FS_REG_TYPE_R << V9X_I9XX_T0_DEST_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_T0_DEST_NR_SHIFT) |
+                   (0ul << V9X_I9XX_T0_SAMPLER_NR_SHIFT);
+    stream[at++] = (V9X_I9XX_FS_REG_TYPE_T << V9X_I9XX_T1_ADDR_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_TEX0 << V9X_I9XX_T1_ADDR_NR_SHIFT);
+    stream[at++] = 0ul;
+
+    /* mul oC.xyz, R0, T8 - the modulate MUL with W left alone. */
+    stream[at++] = V9X_I9XX_FS_A0_MUL |
+                   (V9X_I9XX_FS_REG_TYPE_OC << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_XYZ |
+                   (V9X_I9XX_FS_REG_TYPE_R <<
+                        V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_A0_SRC0_NR_SHIFT);
+    stream[at++] = V9X_I9XX_FS_A1_SWIZZLE_XYZW |
+                   (V9X_I9XX_FS_REG_TYPE_T <<
+                        V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT) |
+                   (V9X_I9XX_FS_T_DIFFUSE <<
+                        V9X_I9XX_FS_A1_SRC1_NR_SHIFT) |
+                   V9X_I9XX_FS_A1_SRC1_SWIZZLE_XY;
+    stream[at++] = V9X_I9XX_FS_A2_SRC1_SWIZZLE_ZW;
+
+    /* mov oC.w, <alpha source>.xyzw - the untextured program's MOV with a
+     * W-only destination; the identity swizzle puts the source's W in W. */
+    stream[at++] = V9X_I9XX_FS_A0_MOV |
+                   (V9X_I9XX_FS_REG_TYPE_OC << V9X_I9XX_FS_TYPE_SHIFT) |
+                   (0ul << V9X_I9XX_FS_NR_SHIFT) |
+                   V9X_I9XX_FS_CHANNEL_W |
+                   (alpha_type << V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) |
+                   (alpha_nr << V9X_I9XX_FS_A0_SRC0_NR_SHIFT);
+    stream[at++] = V9X_I9XX_FS_A1_SWIZZLE_XYZW;
+    stream[at++] = 0ul;
+
+    *written = at;
+    return V9X_STATUS_OK;
+}
