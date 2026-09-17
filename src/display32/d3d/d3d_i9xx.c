@@ -146,24 +146,19 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
 #define V9X_I9XX_SCAN_SAMPLES   4096ul
 
 /*
- * OFF. Two boots hung with it on, and it is one of two suspects.
+ * ON again, reading only a pipe that is enabled.
  *
- * intel57 and intel58 ran the first build carrying both this watch and the
- * ARGB1555/4444 texture formats. Both boots hung the machine to a blank
- * screen at the first Direct3D work of the boot - the probe's triangle in
- * 57, Final Reality in 58 - after mode switches that completed normally.
- * The two changes were first executed in the same boot, which is exactly
- * the one-experiment-per-boot rule this project has and I broke, so the
- * capture cannot say which. This watch is the more suspicious: 24,576 reads
- * of display registers that had never been read on this part, half of them
- * on pipe A, which intel56 showed powered down (PIPEA_CONF 0). The formats
- * are one MAP_STATE word in a stream the decoder accepted.
- *
- * So the next boot runs the formats alone. If it survives, this comes back
- * one pipe at a time and only on a pipe whose PIPECONF enable bit is set.
+ * intel57 and intel58 hung to a blank screen with the first version of this
+ * watch, which read both pipes' registers with pipe A powered down
+ * (PIPEA_CONF 0 in every capture). intel59 ran the same build with the
+ * watch compiled out and survived, so the watch was the hang; the formats
+ * it shared the boot with were not. What is untested is whether the
+ * powered-down pipe was the whole cause. This version never touches a pipe
+ * whose PIPECONF enable bit is clear, and its next boot is the experiment
+ * that says so - the read-only step before any flip is written.
  * docs\issues\2026-09-16-final-reality-renders-black-and-the-hal-faults.md.
  */
-#define V9X_I9XX_SCAN_WATCH     0
+#define V9X_I9XX_SCAN_WATCH     1
 
 /*
  * Watch both pipes' display line and frame counter, and record what moved.

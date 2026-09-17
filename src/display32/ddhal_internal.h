@@ -289,9 +289,13 @@ int v9x_fault_injected(void);
 /* Shared S3 scanout controls, in engines/vga_scanout.c. */
 unsigned char v9x_read_crtc(unsigned char index);
 void v9x_write_crtc(unsigned char index, unsigned char value);
-int v9x_in_vblank(void);
+int v9x_vga_in_vblank(void);
 /* Non-zero when the scanout was programmed; 0 when the offset is not a whole
  * number of doublewords and the registers cannot express it. */
+int v9x_vga_set_display_start(DWORD byte_offset);
+/* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
+ * controls on a boot that armed the Intel flip, the VGA ones otherwise. */
+int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
 
 /* CPU blit fallbacks, in blt_cpu.c. */

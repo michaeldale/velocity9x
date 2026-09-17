@@ -52,7 +52,37 @@ IF "%1"=="ON" GOTO WANTON
 IF "%1"=="on" GOTO WANTON
 IF "%1"=="OFF" GOTO WANTOFF
 IF "%1"=="off" GOTO WANTOFF
+IF "%1"=="FLIP" GOTO WANTFLIP
+IF "%1"=="flip" GOTO WANTFLIP
 GOTO USAGE
+
+:WANTFLIP
+REM ON, plus permission for the HAL to move the scanout itself: write the
+REM live pipe's plane base register on Flip and read the pipe's display line
+REM for the retrace, instead of declining every Flip and letting DirectDraw
+REM copy each frame with the CPU. Neither register has been written or read
+REM on purpose on this machine; the boot after this command is the
+REM experiment. Run it only after an ON boot has completed and its snapshot
+REM shows the pipe's line counter sweeping (ScanBLineChanges in the
+REM thousands). Same refusal as ON for an unresolved armed record.
+IF NOT EXIST %V9XARMFILE% GOTO WRITEFLIP
+FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
+IF NOT ERRORLEVEL 1 GOTO INFLIGHT
+FIND "IntelIncomplete=0" %V9XARMFILE% >NUL
+IF ERRORLEVEL 1 GOTO UNRESOLVED
+:WRITEFLIP
+ECHO [Velocity9x]>%V9XARMFILE%
+ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
+ECHO IntelIncomplete=0>>%V9XARMFILE%
+ECHO IntelRuntime3D=1>>%V9XARMFILE%
+ECHO IntelFlip=1>>%V9XARMFILE%
+IF NOT EXIST %V9XARMFILE% GOTO FAILED
+ECHO Runtime Direct3D AND the Intel flip are PERMITTED from the next boot.
+ECHO.
+ECHO If the machine hangs or the display is lost: power off, boot to real
+ECHO DOS, run V9X3D ON (keeps Direct3D, drops the flip) or V9X3D OFF, and
+ECHO collect C:\V9XDIAG before booting Windows again.
+GOTO DONE
 
 :WANTON
 REM Refuse to overwrite the record of an unresolved armed run. It is the only
@@ -104,6 +134,7 @@ GOTO DONE
 
 :USAGE
 ECHO Usage:  V9X3D ON     permit runtime Direct3D from the next boot
+ECHO         V9X3D FLIP   ON, plus the Intel flip experiment (read the notes)
 ECHO         V9X3D OFF    refuse it, and recover a machine that hung
 ECHO.
 ECHO Nothing was written.

@@ -38,6 +38,17 @@ WORD v9x_intel_boot_arm_latch;
  */
 WORD v9x_intel_runtime3d_allowed;
 /*
+ * IntelFlip, on the same terms as IntelRuntime3D: a retained permission,
+ * read once, never written back, absent means no. It lets the HAL move the
+ * scanout through the pipe's plane base register and read the pipe's
+ * display line for the retrace, in place of CR69 and the VGA status port.
+ * Both are writes and reads this driver has never made on the 945GSE, so
+ * they wait for a boot that asks for them - and the unarmed boot before it
+ * is what reads the same registers passively and says whether they move.
+ * Cleared on an armed boot with the runtime permission, for the same reason.
+ */
+WORD v9x_intel_flip_allowed;
+/*
  * Which phase the consumed token claims, from IntelArmPhase.
  *
  * The latch above is deliberately phase-agnostic: it records that a valid
@@ -190,6 +201,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
 
     v9x_intel_boot_arm_latch = 0u;
     v9x_intel_runtime3d_allowed = 0u;
+    v9x_intel_flip_allowed = 0u;
     v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
@@ -212,6 +224,13 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
                             sizeof(runtime_text)) &&
         v9x_intel_str_equal(runtime_text, "1") != 0u) {
         v9x_intel_runtime3d_allowed = 1u;
+    }
+    /* The flip permission, read on the same terms and at the same point.
+     * runtime_text is reused: its value has been consumed. */
+    if (v9x_intel_boot_read("IntelFlip", runtime_text,
+                            sizeof(runtime_text)) &&
+        v9x_intel_str_equal(runtime_text, "1") != 0u) {
+        v9x_intel_flip_allowed = 1u;
     }
 
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
@@ -334,6 +353,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_boot_arm_latch = 1u;
         /* The armed boot owns the ring; see the declaration. */
         v9x_intel_runtime3d_allowed = 0u;
+        v9x_intel_flip_allowed = 0u;
         v9x_intel_boot_state = "ARMED-REPEAT";
         return;
     }
@@ -357,6 +377,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_arm_latch = 1u;
     /* The armed boot owns the ring; see the declaration. */
     v9x_intel_runtime3d_allowed = 0u;
+    v9x_intel_flip_allowed = 0u;
     v9x_intel_boot_state = "ARMED";
 #endif
 }

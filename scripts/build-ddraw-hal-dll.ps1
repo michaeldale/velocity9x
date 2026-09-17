@@ -55,6 +55,8 @@ $sources = @(
     "src\display32\ddhal_core.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",
+    # The Intel pipe controls and the dispatch between them and the VGA ones.
+    "src\display32\engines\i9xx_scanout.c",
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
     # The D3D core before its engines, matching the 2D order above: the core

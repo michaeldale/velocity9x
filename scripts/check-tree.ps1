@@ -103,6 +103,7 @@ $required = @(
     "src\display32\ddhal_core.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",
+    "src\display32\engines\i9xx_scanout.c",
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
     "src\display32\d3d\d3d_internal.h",

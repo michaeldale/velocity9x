@@ -21,7 +21,7 @@ void v9x_write_crtc(unsigned char index, unsigned char value)
     v9x_outp(V9X_CRTC_DATA, value);
 }
 
-int v9x_in_vblank(void)
+int v9x_vga_in_vblank(void)
 {
     return (v9x_inp(V9X_INPUT_STATUS_1) & V9X_STATUS_VBLANK) != 0u;
 }
@@ -39,7 +39,7 @@ int v9x_in_vblank(void)
  * byte. Refusing lets the caller decline the flip instead of presenting a
  * corrupt frame and reporting success.
  */
-int v9x_set_display_start(DWORD byte_offset)
+int v9x_vga_set_display_start(DWORD byte_offset)
 {
     DWORD start = byte_offset >> 2;
     unsigned char extension;

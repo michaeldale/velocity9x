@@ -533,6 +533,54 @@ last create's caps. Expected next boot: `D3dTextureRefusedSysmem` near
 zero, `I9xxTextureDraws` most of the draws, and `D3dTextureCreateSysmem`
 small - the game's own source copies, if it keeps any.
 
+### intel60: textured
+
+Build `aca5d25-dirty`, TEXTUREVIDEOMEMORY claimed. The operator reports
+Final Reality textured correctly. The event capture shows the ring
+advancing (`RingTail=00005E50`) across two mode switches and a clean
+disable. **The counters were not collected**: `V9XSNAP.INI` and `V9XDD.INI`
+in `intel60` are the intel59 files (19:42 and 19:44), so
+`D3dTextureCreateSysmem` and `I9xxTextureDraws` for this boot are not on
+record. The visual is the evidence; the mechanism reading stands
+unconfirmed by counter until a snapshot is taken on a textured boot.
+
+## The flip: two boots, one package
+
+The Intel flip path exists from 2026-09-17 and runs only on a boot that
+carries `IntelFlip=1` in `C:\V9XDIAG\INTELARM.TXT`, written by `V9X3D
+FLIP`. `V9X3D ON` and `OFF` leave it clear. It has NOT been run.
+
+**Boot 1, `V9X3D ON` (read-only).** The scanout watch is compiled back in,
+reading only a pipe whose PIPECONF enable bit is set (`4f80185` records
+why). After the first draw it samples the live pipe's display line and
+frame counter 4096 times. Take a snapshot. Expected: `ScanBLineChanges` in
+the thousands, `ScanBLineMax` near 623, `ScanBFrames` at least 1,
+`ScanA*` zero with `ScanSamples=4096`. A hang here says reading pipe B's
+line register is itself the problem and the flip work stops. A flat pipe B
+says the registers are not what `intel_gma.h` claims on this part; stop.
+
+**Boot 2, `V9X3D FLIP` (the write).** With the bit stamped, the 16-bit side
+claims `V9X_DD_ENGINE_CAP_FLIP`, and the HAL's `v9x_set_display_start` and
+`v9x_in_vblank` dispatch to `engines\i9xx_scanout.c`:
+
+- The live pipe is the one with PIPECONF bit 31 set, B before A. Flip
+  writes that pipe's plane base (`DSPBADDR 0x71184` here) with the
+  framebuffer byte offset and reads it back to post, as i915's gen3 path
+  does. Intel60's capture read the plane base as 0 with the desktop at
+  offset 0, which is why a framebuffer offset is taken as the graphics
+  address without translation. If that is wrong the picture moves to the
+  wrong place, not to nowhere: the aperture is 256 MB and every offset a
+  surface can have is inside it.
+- Vertical blank is `DSL >= vactive`, with vactive from VTOTAL bits 11:0
+  plus one (intel56: 576 on pipe B). The existing flip state machine is
+  unchanged; only its two primitives moved.
+- `FlipToGDISurface` writes offset 0 through the same path.
+
+Expected: the flicker gone, `CountFlip` still in the thousands but the
+`Flip` events in the ring returning `HANDLED`. If the display goes dark or
+shifts: power off, DOS, `V9X3D ON`, collect. The register write is the
+unmeasured claim; everything else in the path ran on the ViRGE.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;

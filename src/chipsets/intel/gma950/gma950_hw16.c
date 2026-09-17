@@ -33,6 +33,7 @@ extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
  * v9x_intel_boot_arm_latch the same way.
  */
 extern unsigned short v9x_intel_runtime3d_allowed;
+extern unsigned short v9x_intel_flip_allowed;
 
 /*
  * Why the last descriptor call did or did not claim Direct3D.
@@ -197,6 +198,22 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      */
     if (v9x_intel_runtime3d_allowed != 0u && *ring_linear_base != 0ul) {
         *engine_caps = V9X_DD_ENGINE_CAP_D3D;
+    }
+    /*
+     * FLIP, from 2026-09-17, only with this boot's IntelFlip=1.
+     *
+     * The HAL moves the scanout through the live pipe's plane base register
+     * and reads the pipe's display line for the retrace (engines\
+     * i9xx_scanout.c); both need only the control window, which is mapped
+     * by this point. Without the bit the HAL declines every Flip and
+     * DirectDraw copies each frame with the CPU, which is intel56's flicker.
+     * Independent of the ring: a flip is a display write, not an engine one.
+     *
+     * UNMEASURED. No boot has written the plane base or read the line
+     * counter on purpose; the first boot with this key is the experiment.
+     */
+    if (v9x_intel_flip_allowed != 0u) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP;
     }
 }
 
