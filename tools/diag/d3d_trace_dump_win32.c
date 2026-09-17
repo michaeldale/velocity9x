@@ -409,6 +409,17 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("SurfaceIntLast", snapshot.d3d.surface_int_last);
     v9x_write_uint("SurfaceIntSite", snapshot.d3d.surface_int_site);
     v9x_write_hex("SurfaceIntSites", snapshot.d3d.surface_int_sites);
+    /* The scanout watch: per pipe, the display line's range and how often it
+     * changed across the samples, and frames elapsed. See the ABI header. */
+    v9x_write_uint("ScanSamples", snapshot.d3d.scan_samples);
+    v9x_write_uint("ScanALineMin", snapshot.d3d.scan_a_line_min);
+    v9x_write_uint("ScanALineMax", snapshot.d3d.scan_a_line_max);
+    v9x_write_uint("ScanALineChanges", snapshot.d3d.scan_a_line_changes);
+    v9x_write_uint("ScanAFrames", snapshot.d3d.scan_a_frames);
+    v9x_write_uint("ScanBLineMin", snapshot.d3d.scan_b_line_min);
+    v9x_write_uint("ScanBLineMax", snapshot.d3d.scan_b_line_max);
+    v9x_write_uint("ScanBLineChanges", snapshot.d3d.scan_b_line_changes);
+    v9x_write_uint("ScanBFrames", snapshot.d3d.scan_b_frames);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

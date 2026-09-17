@@ -435,9 +435,28 @@ returns NOTHANDLED for every one of its 2,092 calls and DirectDraw presents
 each frame by copying the back buffer to the primary itself. That copy is
 a CPU write through the aperture with no relation to the retrace. The flip
 gate exists because the only display-start code writes S3's CR69; an Intel
-path would write `DSPA_ADDR` and needs its own vblank source. Both are
+path would write the plane base and needs its own vblank source. Both are
 hardware claims this record does not make - the register write is
 unmeasured on this part and goes through the probe-and-record loop first.
+
+Two things intel56's read-only MMIO capture already settles. The panel is
+on **pipe B**: pipe A's config, plane control and plane address all read
+zero, pipe B's config has bit 31 set, plane B's control reads
+`0x95000000` and its stride `0x800`. So the flip register on this machine
+is plane B's base, not plane A's. And plane B's base reads zero with the
+desktop at offset zero, which is what a scanout pointer looks like.
+
+What it does not settle is the vblank source. From 2026-09-17 the HAL
+reads both pipes' display-line register and frame counter 4096 times after
+the first submitted draw of the boot and records, per pipe, the line range,
+how many readings changed and the frames elapsed (`ScanA*`, `ScanB*` in
+the snapshot; registers and masks cited in `intel_gma.h` from Linux
+`i915_reg.h`; summary in `i9xx_scanline.c` with a host test). Expected on
+this machine: pipe B's line sweeping 0 to about 623 with thousands of
+changes and at least one frame elapsed, pipe A flat. A flat pipe B means
+the registers are not what the header says on this part, and the flip work
+stops until that is understood. Reads only; nothing is written to the
+display until that answer is in a capture.
 
 ### Probe
 

@@ -133,6 +133,57 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
 }
 
 /*
+ * How many times the scanout registers are read, once per boot.
+ *
+ * A 60 Hz frame is about 16.7 ms and a mapped MMIO read on this class of
+ * part is on the order of a microsecond, so 4096 readings of six registers
+ * should span at least one frame: enough for the frame counter to advance
+ * once and for the line counter to sweep. It is a bounded loop with no
+ * condition on the hardware, so a pipe that is off costs the same few
+ * milliseconds as one that is on and cannot hang the draw.
+ */
+#define V9X_I9XX_SCAN_SAMPLES   4096ul
+
+/*
+ * Watch both pipes' display line and frame counter, and record what moved.
+ *
+ * Runs after the first submitted draw of the boot, from the draw path,
+ * because that is the one moment when the display is in the application's
+ * mode, the window is mapped and the engine has just been proven to accept
+ * commands. Reads only. The summary is pure C with a host test; the reading
+ * of the numbers - whether this driver has a vblank source on this part -
+ * belongs in a capture and a record, not here.
+ */
+static void v9x_d3d_i9xx_watch_scanout(void)
+{
+    struct v9x_i9xx_scan_summary a;
+    struct v9x_i9xx_scan_summary b;
+    DWORD sample;
+
+    v9x_i9xx_scan_begin(&a);
+    v9x_i9xx_scan_begin(&b);
+    for (sample = 0ul; sample < V9X_I9XX_SCAN_SAMPLES; ++sample) {
+        v9x_i9xx_scan_feed(&a,
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_DSL),
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEHIGH),
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_FRAMEPIXEL));
+        v9x_i9xx_scan_feed(&b,
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_DSL),
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEHIGH),
+                           *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEB_FRAMEPIXEL));
+    }
+    v9x_hal->d3d_diagnostics.scan_samples = a.samples;
+    v9x_hal->d3d_diagnostics.scan_a_line_min = a.line_min;
+    v9x_hal->d3d_diagnostics.scan_a_line_max = a.line_max;
+    v9x_hal->d3d_diagnostics.scan_a_line_changes = a.line_changes;
+    v9x_hal->d3d_diagnostics.scan_a_frames = v9x_i9xx_scan_frames(&a);
+    v9x_hal->d3d_diagnostics.scan_b_line_min = b.line_min;
+    v9x_hal->d3d_diagnostics.scan_b_line_max = b.line_max;
+    v9x_hal->d3d_diagnostics.scan_b_line_changes = b.line_changes;
+    v9x_hal->d3d_diagnostics.scan_b_frames = v9x_i9xx_scan_frames(&b);
+}
+
+/*
  * Where the ring is: PUBLISHED, never derived.
  *
  * This side derived it once, from fb.vram_bytes, and landed a megabyte low -
@@ -861,6 +912,9 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
 
     if (!v9x_d3d_i9xx_submit(stream, at)) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
+    }
+    if (v9x_hal->d3d_diagnostics.i9xx_draws_submitted == 0ul) {
+        v9x_d3d_i9xx_watch_scanout();
     }
     ++v9x_hal->d3d_diagnostics.i9xx_draws_submitted;
     if (textured != 0) {

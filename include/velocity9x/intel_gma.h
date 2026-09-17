@@ -240,6 +240,63 @@
 #define V9X_I9XX_REG_DSPB_CNTR           ((v9x_u32)0x00071180ul)
 #define V9X_I9XX_REG_DSPB_ADDR           ((v9x_u32)0x00071184ul)
 #define V9X_I9XX_REG_DSPB_STRIDE         ((v9x_u32)0x00071188ul)
+/*
+ * The scanout's position, read-only, per pipe.
+ *
+ * DSL is the current display line in bits 11:0 (Linux i915_reg.h: _PIPEADSL
+ * 0x70000, DSL_LINEMASK_GEN3 0x00000fff). The frame counter on Gen3 is split
+ * across two registers: the high 16 bits in FRAMEHIGH (_PIPEAFRAMEHIGH
+ * 0x70040, PIPE_FRAME_HIGH_MASK 0x0000ffff) and the low 8 bits in the top
+ * byte of FRAMEPIXEL (_PIPEAFRAMEPIXEL 0x70044, PIPE_FRAME_LOW_MASK
+ * 0xff000000), whose low 24 bits are the pixel count within the frame.
+ * Pipe B is the same layout at +0x1000.
+ *
+ * Read so that a flip path has a vblank source it has SEEN move rather than
+ * one assumed from the VGA status port. Added 2026-09-17; UNMEASURED on the
+ * 945GSE until a capture shows the line counter sweep and the frame counter
+ * advance.
+ */
+#define V9X_I9XX_REG_PIPEA_DSL           ((v9x_u32)0x00070000ul)
+#define V9X_I9XX_REG_PIPEA_FRAMEHIGH     ((v9x_u32)0x00070040ul)
+#define V9X_I9XX_REG_PIPEA_FRAMEPIXEL    ((v9x_u32)0x00070044ul)
+#define V9X_I9XX_REG_PIPEB_DSL           ((v9x_u32)0x00071000ul)
+#define V9X_I9XX_REG_PIPEB_FRAMEHIGH     ((v9x_u32)0x00071040ul)
+#define V9X_I9XX_REG_PIPEB_FRAMEPIXEL    ((v9x_u32)0x00071044ul)
+#define V9X_I9XX_DSL_LINE_MASK           ((v9x_u32)0x00000ffful)
+#define V9X_I9XX_FRAME_HIGH_MASK         ((v9x_u32)0x0000fffful)
+#define V9X_I9XX_FRAME_LOW_SHIFT         24
+/* The composed counter is 24 bits: high 16 above low 8. */
+#define V9X_I9XX_FRAME_COUNT_MASK        ((v9x_u32)0x00fffffful)
+
+/*
+ * A run of scanline readings, summarised as it is fed.
+ *
+ * The HAL reads the registers - it is the only side with the window mapped
+ * at draw time - and this is what it does with the values, kept in pure C so
+ * a host test can say what a sweeping counter and a stuck one each look
+ * like. `changes` counts readings that differed from the previous one; a
+ * live pipe gives many, a dead register gives none, and a register that
+ * reads back a constant other than zero gives none either - which is why the
+ * count and not the value is the evidence.
+ */
+struct v9x_i9xx_scan_summary {
+    v9x_u32 samples;
+    v9x_u32 line_min;
+    v9x_u32 line_max;
+    v9x_u32 line_changes;
+    v9x_u32 line_last;
+    v9x_u32 frame_first;
+    v9x_u32 frame_last;
+};
+
+/* src\chipsets\intel\i9xx_scanline.c */
+void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary);
+void v9x_i9xx_scan_feed(struct v9x_i9xx_scan_summary *summary,
+                        v9x_u32 dsl_raw, v9x_u32 frame_high_raw,
+                        v9x_u32 frame_pixel_raw);
+/* Frames elapsed between the first and last feed, modulo the 24-bit
+ * counter. Zero with no samples. */
+v9x_u32 v9x_i9xx_scan_frames(const struct v9x_i9xx_scan_summary *summary);
 
 struct v9x_i9xx_pipe_snapshot {
     v9x_u32 pipe_conf;

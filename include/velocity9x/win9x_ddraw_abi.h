@@ -1128,6 +1128,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091702: V9X_D3D_DIAGNOSTICS gains nine scanout-watch counters (line
+ * range, changes and frames elapsed per pipe, and the sample count). An
+ * append at the end of that struct; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091701: V9X_DD_TRACE.counters[] grows by one WORD for
  * V9X_TRACE_D3D_RENDERLOOP. The marker is pushed, not counted, so the slot
  * is spare today; it is there so counters[] keeps covering every id, and
@@ -1163,7 +1168,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091701ul
+#define V9X_DD_SHARED_ABI   2026091702ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1553,6 +1558,31 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD surface_int_site;
     DWORD surface_int_sites;
+    /*
+     * The scanout, watched once per boot from the draw path, per pipe.
+     *
+     * A Gen3 flip needs a vblank source, and the only one this driver has
+     * is the VGA status port the ViRGE path reads - unmeasured on a 945GSE
+     * driving an LVDS panel through pipe B. The pipe's display-line register
+     * and frame counter are the native source. After the first submitted
+     * draw the HAL reads both pipes' registers a few thousand times and
+     * keeps the line range, the number of readings that changed, and the
+     * frames elapsed. Many changes on the live pipe and none on the dead one
+     * is the answer; a constant on both means the registers are not what
+     * intel_gma.h says they are on this part.
+     *
+     * Raw counts, not a verdict: the summary is pure C in i9xx_scanline.c
+     * with a host test, and the reading of it belongs in the record.
+     */
+    DWORD scan_samples;
+    DWORD scan_a_line_min;
+    DWORD scan_a_line_max;
+    DWORD scan_a_line_changes;
+    DWORD scan_a_frames;
+    DWORD scan_b_line_min;
+    DWORD scan_b_line_max;
+    DWORD scan_b_line_changes;
+    DWORD scan_b_frames;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

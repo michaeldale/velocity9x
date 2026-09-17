@@ -164,6 +164,83 @@ static void test_refusals_and_ambiguity(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * The scanline summary: what a sweeping counter and a stuck one look like,
+ * and the split frame counter composed and wrapped.
+ *
+ * Added with the flip work of 2026-09-17. The HAL feeds raw register values
+ * once per boot; a capture then says whether the pipe's line counter moved.
+ * The masks matter because the DSL register's upper bits and FRAMEPIXEL's
+ * low 24 bits carry other things, and a summary that counted them would
+ * report a sweep on a pipe that was off.
+ */
+static void test_scanline_summary(void)
+{
+    struct v9x_i9xx_scan_summary summary;
+    v9x_u32 line;
+
+    /* Empty. */
+    v9x_i9xx_scan_begin(&summary);
+    CHECK(summary.samples == 0ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 0ul);
+    v9x_i9xx_scan_begin(0);
+    v9x_i9xx_scan_feed(0, 1ul, 2ul, 3ul);
+    CHECK(v9x_i9xx_scan_frames(0) == 0ul);
+
+    /* A stuck register: one sample's worth of range, no changes, whatever
+     * constant it reads. Zero is the dead-window case; 0x1a5 is a register
+     * that reads back something and never moves. */
+    v9x_i9xx_scan_begin(&summary);
+    for (line = 0ul; line < 100ul; ++line) {
+        v9x_i9xx_scan_feed(&summary, 0x000001a5ul, 0ul, 0ul);
+    }
+    CHECK(summary.samples == 100ul);
+    CHECK(summary.line_min == 0x1a5ul);
+    CHECK(summary.line_max == 0x1a5ul);
+    CHECK(summary.line_changes == 0ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 0ul);
+
+    /* A sweep: 0..623 twice (a 576-line panel with blanking), every reading
+     * different from the last, range the whole sweep. Upper DSL bits set to
+     * garbage that the mask must drop. */
+    v9x_i9xx_scan_begin(&summary);
+    for (line = 0ul; line < 1248ul; ++line) {
+        v9x_i9xx_scan_feed(&summary, 0xdead0000ul | (line % 624ul),
+                           0ul, 0ul);
+    }
+    CHECK(summary.samples == 1248ul);
+    CHECK(summary.line_min == 0ul);
+    CHECK(summary.line_max == 623ul);
+    CHECK(summary.line_changes == 1247ul);
+
+    /* Repeated readings within a sweep count once per change, not per
+     * sample: 0,0,0,1,1,2 is two changes. */
+    v9x_i9xx_scan_begin(&summary);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0ul, 0ul);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0ul, 0ul);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0ul, 0ul);
+    v9x_i9xx_scan_feed(&summary, 1ul, 0ul, 0ul);
+    v9x_i9xx_scan_feed(&summary, 1ul, 0ul, 0ul);
+    v9x_i9xx_scan_feed(&summary, 2ul, 0ul, 0ul);
+    CHECK(summary.line_changes == 2ul);
+
+    /* The frame counter: high 16 in FRAMEHIGH, low 8 in FRAMEPIXEL's top
+     * byte, pixel bits ignored. 0x1234 : 0x56 is frame 0x123456. */
+    v9x_i9xx_scan_begin(&summary);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0xffff1234ul, 0x56abcdeful);
+    CHECK(summary.frame_first == 0x123456ul);
+    CHECK(summary.frame_last == 0x123456ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 0ul);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0x00001234ul, 0x59000000ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 3ul);
+
+    /* And its 24-bit wrap: from 0xfffffe to 0x000001 is three frames. */
+    v9x_i9xx_scan_begin(&summary);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0x0000fffful, 0xfe000000ul);
+    v9x_i9xx_scan_feed(&summary, 0ul, 0x00000000ul, 0x01000000ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 3ul);
+}
+
 unsigned int v9x_run_i9xx_mmio_tests(void)
 {
     failures = 0u;
@@ -171,5 +248,6 @@ unsigned int v9x_run_i9xx_mmio_tests(void)
     test_plane_a_on_pipe_b();
     test_deltas_and_contradictions();
     test_refusals_and_ambiguity();
+    test_scanline_summary();
     return failures;
 }
