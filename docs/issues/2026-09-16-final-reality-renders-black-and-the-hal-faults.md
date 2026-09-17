@@ -584,6 +584,38 @@ Expected: the flicker gone, `CountFlip` still in the thousands but the
 shifts: power off, DOS, `V9X3D ON`, collect. The register write is the
 unmeasured claim; everything else in the path ran on the ViRGE.
 
+### intel61: boot 1 done - textures confirmed by counter, pipe B's line register moves
+
+Build `9d2b6d9-dirty`, `V9X3D ON` (IntelFlip absent, `EngineCaps=0x10`, so
+the flicker this boot is the CPU copy and expected). Snapshot taken.
+
+```
+I9xxDrawsSubmitted=239970    I9xxTextureDraws=239970   every draw textured
+D3dTextureRefusedSysmem=0    D3dTextureCreateSysmem=0  no texture in system memory
+I9xxDepthDraws=239970        I9xxDepthSkipped=0        every draw depth-tested, LESS
+ScanSamples=4096
+ScanBLineMin=293  ScanBLineMax=429  ScanBLineChanges=136  ScanBFrames=0
+ScanALineMin=0    ScanALineMax=0    ScanALineChanges=0    (pipe A not read: off)
+```
+
+**Textures.** The TEXTUREVIDEOMEMORY reading is confirmed by the counters
+it was added for: no TextureCreate arrived in system memory and no draw
+was refused for one. intel59's 1,118,317 refusals are gone.
+
+**Depth.** Nothing skipped this boot. intel59's 663,556 skips are not
+explained by this capture and the open item below stays open with less
+weight; `I9xxDepthLastFunc` read 0 because nothing was recorded.
+
+**The vblank source.** Pipe B's display line went from 293 to 429 across
+4096 samples with 136 changes: one change per line, a monotonic sweep of
+136 lines in the few milliseconds the watch ran. The frame counter did not
+tick because the window never reached the blank (576 and above); the flip
+path tests `DSL >= vactive`, which is the register that moved. Reading
+these registers on the live pipe did not hang, so intel57/58's hang was
+the powered-down pipe A, as suspected.
+
+Boot 2 is now licensed: `V9X3D FLIP`.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;
