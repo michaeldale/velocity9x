@@ -10,9 +10,11 @@
  * Every number here is from Linux i915_reg.h and the read-only captures, and
  * is UNMEASURED as a write until a boot with IntelFlip=1 says otherwise:
  *
- *  - The panel is on pipe B (intel56, intel60: PIPEB_CONF bit 31 set, PIPEA
- *    zero). The live pipe is chosen by that bit rather than assumed, so a
- *    machine with the panel on A gets A.
+ *  - The panel is on pipe B, fed by plane B (intel56, intel60: PIPEB_CONF
+ *    bit 31 set, DSPBCNTR enabled with pipe select 1, pipe A and plane A
+ *    zero). Both are read rather than assumed: the live pipe by its enable
+ *    bit, the plane by its own enable and pipe-select bits, because a
+ *    plane can drive the other pipe on this generation.
  *  - The plane base (DSPBADDR 0x71184) reads 0 with the desktop at
  *    framebuffer offset 0, so a framebuffer byte offset IS the graphics
  *    address the plane wants; i915's gen3 path writes DSPADDR with the
@@ -47,28 +49,69 @@ static int v9x_i9xx_scanout_active(void)
 }
 
 /*
- * The pipe with its enable bit set: B first, because that is where this
- * machine's panel is, then A. Returns the register offsets for that pipe
- * through the pointers; zero when neither pipe is on, in which case there is
- * no scanout to move and the caller declines.
+ * The one pipe that is on, and the one plane feeding it.
+ *
+ * A plane is not tied to its namesake pipe on Gen3: DSPCNTR bits 25:24
+ * select the pipe a plane drives, so plane A can feed pipe B. Choosing the
+ * plane by the pipe's letter would write an inactive plane's base and
+ * report a flip that moved nothing. So the plane is chosen the way the
+ * fingerprint decoder (i9xx_mmio.c) chooses it: enabled, and routed to the
+ * live pipe by its own select bits. Exactly one pipe on and exactly one such
+ * plane, or the configuration is declined - two of either is not a state
+ * this driver has seen and not one it should guess at. intel56: PIPEB_CONF
+ * 0x80000000, DSPBCNTR 0x95000000 (enabled, pipe select 1), DSPACNTR 0.
+ *
+ * Returns the register offsets through the pointers; zero declines.
  */
 static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
 {
-    if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_CONF) &
-         V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
-        *dsl = V9X_I9XX_REG_PIPEB_DSL;
-        *vtotal = V9X_I9XX_REG_PIPEB_VTOTAL;
-        *base = V9X_I9XX_REG_DSPB_ADDR;
-        return 1;
+    static const DWORD conf_reg[2] = {
+        V9X_I9XX_REG_PIPEA_CONF, V9X_I9XX_REG_PIPEB_CONF
+    };
+    static const DWORD dsl_reg[2] = {
+        V9X_I9XX_REG_PIPEA_DSL, V9X_I9XX_REG_PIPEB_DSL
+    };
+    static const DWORD vtotal_reg[2] = {
+        V9X_I9XX_REG_PIPEA_VTOTAL, V9X_I9XX_REG_PIPEB_VTOTAL
+    };
+    static const DWORD cntr_reg[2] = {
+        V9X_I9XX_REG_DSPA_CNTR, V9X_I9XX_REG_DSPB_CNTR
+    };
+    static const DWORD addr_reg[2] = {
+        V9X_I9XX_REG_DSPA_ADDR, V9X_I9XX_REG_DSPB_ADDR
+    };
+    DWORD index;
+    DWORD pipes = 0ul;
+    DWORD planes = 0ul;
+    DWORD pipe = 0ul;
+    DWORD plane = 0ul;
+
+    for (index = 0ul; index < 2ul; ++index) {
+        if ((*v9x_i9xx_scanout_reg(conf_reg[index]) &
+             V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
+            pipe = index;
+            ++pipes;
+        }
     }
-    if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_CONF) &
-         V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
-        *dsl = V9X_I9XX_REG_PIPEA_DSL;
-        *vtotal = V9X_I9XX_REG_PIPEA_VTOTAL;
-        *base = V9X_I9XX_REG_DSPA_ADDR;
-        return 1;
+    if (pipes != 1ul) {
+        return 0;
     }
-    return 0;
+    for (index = 0ul; index < 2ul; ++index) {
+        DWORD control = *v9x_i9xx_scanout_reg(cntr_reg[index]);
+
+        if ((control & V9X_I9XX_DSPCNTR_ENABLE) != 0ul &&
+            ((control & V9X_I9XX_DSPCNTR_PIPE_MASK) >> 24) == pipe) {
+            plane = index;
+            ++planes;
+        }
+    }
+    if (planes != 1ul) {
+        return 0;
+    }
+    *dsl = dsl_reg[pipe];
+    *vtotal = vtotal_reg[pipe];
+    *base = addr_reg[plane];
+    return 1;
 }
 
 static int v9x_i9xx_in_vblank(void)

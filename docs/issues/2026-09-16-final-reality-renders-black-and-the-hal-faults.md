@@ -563,8 +563,11 @@ says the registers are not what `intel_gma.h` claims on this part; stop.
 claims `V9X_DD_ENGINE_CAP_FLIP`, and the HAL's `v9x_set_display_start` and
 `v9x_in_vblank` dispatch to `engines\i9xx_scanout.c`:
 
-- The live pipe is the one with PIPECONF bit 31 set, B before A. Flip
-  writes that pipe's plane base (`DSPBADDR 0x71184` here) with the
+- The live pipe is the one pipe with PIPECONF bit 31 set, and the plane
+  is the one plane whose DSPCNTR is enabled and whose pipe-select bits
+  (25:24) name that pipe - a plane can drive either pipe on Gen3, so the
+  letter is not the routing. Anything but exactly one of each declines the
+  flip. Flip writes that plane's base (`DSPBADDR 0x71184` here) with the
   framebuffer byte offset and reads it back to post, as i915's gen3 path
   does. Intel60's capture read the plane base as 0 with the desktop at
   offset 0, which is why a framebuffer offset is taken as the graphics
