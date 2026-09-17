@@ -622,9 +622,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         v9x_u32 mode = V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
 
                         if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
-                            if (limits->texture_linear != 0ul) {
-                                ss2 = V9X_I9XX_SS2_LINEAR_NO_MIP;
-                            }
+                            ss2 = v9x_i9xx_sampler_filter_word(
+                                limits->texture_min_linear,
+                                limits->texture_mag_linear);
                             if (limits->texture_wrap != 0ul) {
                                 mode = V9X_I9XX_TEXCOORDMODE_WRAP;
                             }

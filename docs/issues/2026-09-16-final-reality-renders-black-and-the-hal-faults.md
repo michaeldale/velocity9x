@@ -635,8 +635,14 @@ counters are added for the next boot: `FlipHandled`, `FlipStillDrawing`,
 a row returning WASSTILLDRAWING and `CountFlip` rose from 591 to 54,688
 across 3DMark's run: the flip state machine was waiting on a retrace that
 never came, most likely armed under one mode and polled under another
-after 3DMark's mode switch. Two changes: DriverInit resets the flip state,
-and a pending flip is declared done after 10,000 polls, counted.
+after 3DMark's mode switch. Handled by name: DriverInit resets the flip
+state on every mode change, and a flip is armed and kept pending only
+while the vblank source can see a scanout (one live pipe and plane on the
+Intel path; always on the VGA port). What remains is a source that answers
+wrongly, and for that a last-resort bound of a million polls forces the
+state idle and counts it as `FlipForcedIdle` - recovery, not presentation,
+and large because a poll count is no promise of elapsed time and a small
+one would release the visible buffer early and put the flicker back.
 
 **The textures, from the photograph.** Sky and terrain smeared into
 horizontal bands; the floor aliased toward the horizon; the robots right.

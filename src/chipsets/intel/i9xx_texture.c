@@ -168,6 +168,25 @@ v9x_status v9x_i9xx_build_map_state(
     return V9X_STATUS_OK;
 }
 
+/*
+ * SS2 from the two filter requests. Nearest is FILTER_NEAREST (0) in both
+ * fields, so the nearest/no-mip word is V9X_I9XX_SS2_NEAREST_NO_MIP by
+ * construction; the mip field is never set because no map has levels. One
+ * function so the builder and the decoder cannot compose it differently.
+ */
+v9x_u32 v9x_i9xx_sampler_filter_word(v9x_u32 min_linear, v9x_u32 mag_linear)
+{
+    v9x_u32 word = V9X_I9XX_SS2_NEAREST_NO_MIP;
+
+    if (min_linear != 0ul) {
+        word |= V9X_I9XX_SS2_MIN_LINEAR;
+    }
+    if (mag_linear != 0ul) {
+        word |= V9X_I9XX_SS2_MAG_LINEAR;
+    }
+    return word;
+}
+
 v9x_status v9x_i9xx_build_sampler_state(
     const struct v9x_i9xx_texture *maps, v9x_u32 count,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
@@ -199,11 +218,9 @@ v9x_status v9x_i9xx_build_sampler_state(
         v9x_u32 mode = maps[index].wrap != 0ul
             ? V9X_I9XX_TEXCOORDMODE_WRAP : V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
 
-        /* Nearest or bilinear, no mips either way. The constants are named
-         * because a forgotten field and a zero one are otherwise the same
-         * dword. */
-        stream[at++] = maps[index].linear != 0ul
-            ? V9X_I9XX_SS2_LINEAR_NO_MIP : V9X_I9XX_SS2_NEAREST_NO_MIP;
+        /* MIN and MAG each nearest or bilinear, no mips either way. */
+        stream[at++] = v9x_i9xx_sampler_filter_word(maps[index].min_linear,
+                                                    maps[index].mag_linear);
         /*
          * Normalized coordinates, the address mode on every axis, and the
          * MAP INDEX written explicitly.

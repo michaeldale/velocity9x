@@ -449,6 +449,15 @@ static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * every refusal is counted: an uncounted silent fallback is a wrong picture
  * nobody can explain, which is what texture_refused_* exist to prevent.
  */
+/* Bilinear within a level: LINEAR and both LINEARMIP* values. The MIP*
+ * values are nearest within a level; the level part means nothing here. */
+static DWORD v9x_d3d_i9xx_filter_is_linear(DWORD filter)
+{
+    return (filter == V9X_D3DFILTER_LINEAR ||
+            filter == V9X_D3DFILTER_LINEARMIPNEAREST ||
+            filter == V9X_D3DFILTER_LINEARMIPLINEAR) ? 1ul : 0ul;
+}
+
 static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
                                      struct v9x_i9xx_texture *map)
 {
@@ -530,18 +539,16 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
     /*
      * The sampler, from the render states the core kept. WRAP tiles; CLAMP
      * and anything else (MIRROR, which this driver does not publish) clamp
-     * to the edge. The filter follows the MAGNIFICATION state alone, the
-     * software engine's rule and for its reason: the MIN states applications
-     * set are mostly the MIP forms, which mean nothing without levels, and
-     * mapping them to nearest would make LINEARMIPLINEAR sharper than
-     * LINEAR. LINEAR and the two LINEARMIP* forms are bilinear; the rest are
-     * nearest. Both are UNMEASURED on this part until intel62's successor.
+     * to the edge. MIN and MAG are read separately, because Direct3D sets
+     * them separately and the SS2 word has a field for each: LINEAR and the
+     * two LINEARMIP* forms are bilinear within a level, and the rest -
+     * NEAREST, MIPNEAREST, MIPLINEAR - are nearest within a level. The mip
+     * part of every MIP* value is dropped, because no map has levels. All
+     * of it UNMEASURED on this part until intel62's successor.
      */
     map->wrap = context->texture_address == V9X_D3DTADDRESS_WRAP ? 1ul : 0ul;
-    map->linear = (context->texture_mag == V9X_D3DFILTER_LINEAR ||
-                   context->texture_mag == V9X_D3DFILTER_LINEARMIPNEAREST ||
-                   context->texture_mag == V9X_D3DFILTER_LINEARMIPLINEAR)
-        ? 1ul : 0ul;
+    map->mag_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_mag);
+    map->min_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_min);
     v9x_hal->d3d_diagnostics.texture_last_offset = address;
     v9x_hal->d3d_diagnostics.texture_last_size = map->width;
     v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
@@ -973,7 +980,8 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_pitch = textured != 0 ? map.pitch : 0ul;
     limits.texture_format = textured != 0 ? map.format : 0ul;
     limits.texture_wrap = textured != 0 ? map.wrap : 0ul;
-    limits.texture_linear = textured != 0 ? map.linear : 0ul;
+    limits.texture_mag_linear = textured != 0 ? map.mag_linear : 0ul;
+    limits.texture_min_linear = textured != 0 ? map.min_linear : 0ul;
     limits.depth_offset = depth_offset;
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;

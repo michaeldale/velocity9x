@@ -412,19 +412,25 @@ static int v9x_can_set_display_start(void)
 static DWORD v9x_flip_state = V9X_FLIP_IDLE;
 
 /*
- * How many "done yet?" answers a pending flip may give before it is declared
- * done regardless.
+ * A pending flip that cannot complete is a hung application: DirectDraw
+ * retries Flip and GetFlipStatus until the answer changes, and intel63 shows
+ * 54,688 Flips returning WASSTILLDRAWING after a mode change left the state
+ * machine waiting on a scanout that no longer existed.
  *
- * A retrace that never comes is a flip that never completes, and DirectDraw
- * retries Flip and GetFlipStatus until it does: intel63 shows 54,688 Flips
- * returning WASSTILLDRAWING after a mode change left the state machine
- * waiting on a scanout that no longer existed. The bound is not a timing -
- * a poll is however fast the caller loops - it is the promise that the
- * answer changes. Ten thousand polls is hundreds of frames at any rate an
- * application polls at; forcing IDLE there is counted, so a capture shows
- * how often the retrace was not seen rather than hiding it.
+ * The two ways that happens are handled by name. A mode change resets the
+ * state in DriverInit. A scanout the vblank source cannot see is asked
+ * about before a flip is armed and while it is pending, through
+ * v9x_scanout_vblank_available, and a flip is not tracked rather than never
+ * finished. What remains is a retrace source that answers but is wrong, and
+ * for that there is a last-resort bound. It is LARGE on purpose: a poll is
+ * however fast the caller loops, so a count is no promise of elapsed time,
+ * and a small bound would release the visible buffer before the retrace and
+ * put the flicker back. A million polls is seconds at any rate an
+ * application loops at. Reaching it is recovery from a broken vblank
+ * source, counted as flip_forced_idle so the capture says so, and not a
+ * presentation.
  */
-#define V9X_FLIP_PENDING_POLLS_MAX  10000ul
+#define V9X_FLIP_PENDING_POLLS_MAX  1000000ul
 static DWORD v9x_flip_pending_polls = 0ul;
 
 static void v9x_flip_arm(int novsync)
@@ -432,6 +438,15 @@ static void v9x_flip_arm(int novsync)
     v9x_flip_pending_polls = 0ul;
     if (novsync) {
         v9x_flip_state = V9X_FLIP_IDLE;
+        return;
+    }
+    /* No retrace to wait for: the flip is issued and not tracked, and the
+     * count says how often. Waiting would never end. */
+    if (!v9x_scanout_vblank_available()) {
+        v9x_flip_state = V9X_FLIP_IDLE;
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.flip_forced_idle;
+        }
         return;
     }
     v9x_flip_state = v9x_in_vblank() ? V9X_FLIP_WAIT_UNBLANK
@@ -447,7 +462,10 @@ static int v9x_flip_done(void)
     if (v9x_flip_state == V9X_FLIP_IDLE) {
         return 1;
     }
-    if (++v9x_flip_pending_polls > V9X_FLIP_PENDING_POLLS_MAX) {
+    /* The scanout went away under a pending flip, or the retrace source is
+     * not answering. Either way the wait cannot end; recover and count. */
+    if (!v9x_scanout_vblank_available() ||
+        ++v9x_flip_pending_polls > V9X_FLIP_PENDING_POLLS_MAX) {
         v9x_flip_state = V9X_FLIP_IDLE;
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.flip_forced_idle;

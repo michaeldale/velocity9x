@@ -297,6 +297,11 @@ int v9x_vga_set_display_start(DWORD byte_offset);
  * controls on a boot that armed the Intel flip, the VGA ones otherwise. */
 int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
+/* Non-zero when v9x_in_vblank has a retrace to report: always for the VGA
+ * status port, and for the Intel controls only while exactly one pipe and
+ * plane are live. A flip armed without one cannot complete and is not
+ * armed. */
+int v9x_scanout_vblank_available(void);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

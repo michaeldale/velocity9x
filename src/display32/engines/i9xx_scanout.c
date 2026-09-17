@@ -179,3 +179,24 @@ int v9x_set_display_start(DWORD byte_offset)
     }
     return v9x_vga_set_display_start(byte_offset);
 }
+
+/*
+ * Whether v9x_in_vblank can ever say yes. The VGA status port always
+ * answers; the Intel line register answers only for a resolved pipe, and a
+ * flip that waited on an unresolved one would wait forever - intel63's
+ * 54,688 WASSTILLDRAWING answers were a flip armed under one mode and polled
+ * under another. The flip state machine asks this before arming and while
+ * pending, so an unresolvable scanout is a flip not tracked rather than a
+ * flip never finished.
+ */
+int v9x_scanout_vblank_available(void)
+{
+    DWORD dsl;
+    DWORD vtotal;
+    DWORD base;
+
+    if (!v9x_i9xx_scanout_active()) {
+        return 1;
+    }
+    return v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base);
+}

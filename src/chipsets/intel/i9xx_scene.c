@@ -967,7 +967,8 @@ v9x_status v9x_i9xx_build_scene_stream(
      * quadrant colours are 565 words, so this is not a choice here. */
     texture.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
     texture.wrap = 0ul;
-    texture.linear = 0ul;
+    texture.mag_linear = 0ul;
+    texture.min_linear = 0ul;
 
     if (v9x_i9xx_scene_kind_textured(scene->kind) != V9X_FALSE) {
         if (v9x_i9xx_build_texture_paint(&texture, stream + at,

@@ -667,7 +667,9 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
 /*
  * The filter fields by name, for the one other filter this driver emits.
  * Shifts from the audit's SS2 table (both trees); FILTER_LINEAR is 1 in
- * i915_reg.h beside FILTER_NEAREST 0. Bilinear on MIN and MAG together, no
+ * i915_reg.h beside FILTER_NEAREST 0. MIN and MAG are separate fields and
+ * are set separately, because Direct3D's TEXTUREMIN and TEXTUREMAG are two
+ * render states and an application may ask for one without the other. No
  * mip filter: the mip field stays MIPFILTER_NONE because no map has levels.
  * Added 2026-09-17 for Final Reality's linear filter; UNMEASURED until the
  * boot that carries it.
@@ -677,9 +679,12 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
 #define V9X_I9XX_SS2_MIP_FILTER_SHIFT    20
 #define V9X_I9XX_FILTER_NEAREST          ((v9x_u32)0ul)
 #define V9X_I9XX_FILTER_LINEAR           ((v9x_u32)1ul)
-#define V9X_I9XX_SS2_LINEAR_NO_MIP \
-    ((V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MIN_FILTER_SHIFT) | \
-     (V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MAG_FILTER_SHIFT))
+#define V9X_I9XX_SS2_MIN_LINEAR \
+    (V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MIN_FILTER_SHIFT)
+#define V9X_I9XX_SS2_MAG_LINEAR \
+    (V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MAG_FILTER_SHIFT)
+/* The SS2 word for a map: nearest is the absence of both bits. */
+v9x_u32 v9x_i9xx_sampler_filter_word(v9x_u32 min_linear, v9x_u32 mag_linear);
 
 /*
  * SS3: addressing. Coordinates are normalized to [0,1], every axis clamps to
@@ -795,14 +800,18 @@ struct v9x_i9xx_texture {
     v9x_u32 format;
     /*
      * How the sampler reads this map. Non-zero `wrap` tiles outside [0,1]
-     * (TEXCOORDMODE_WRAP) instead of clamping to the edge; non-zero `linear`
-     * filters bilinearly instead of nearest. Zero for both IS the default
-     * here, deliberately unlike `format`: it is the audited state every
-     * scene and every earlier initialiser meant, and a wrong guess draws a
-     * blurred or stretched texture rather than reading the wrong memory.
+     * (TEXCOORDMODE_WRAP) instead of clamping to the edge; non-zero
+     * `mag_linear` and `min_linear` filter bilinearly instead of nearest
+     * when the texture is enlarged and when it is shrunk, each its own SS2
+     * field because Direct3D sets them as two render states. Zero for all
+     * three IS the default here, deliberately unlike `format`: it is the
+     * audited state every scene and every earlier initialiser meant, and a
+     * wrong guess draws a blurred or stretched texture rather than reading
+     * the wrong memory.
      */
     v9x_u32 wrap;
-    v9x_u32 linear;
+    v9x_u32 mag_linear;
+    v9x_u32 min_linear;
 };
 
 /* src\chipsets\intel\i9xx_texture.c */
@@ -1423,7 +1432,8 @@ struct v9x_i9xx_decode_limits {
      * and every positional initialiser gets and what the audit licensed.
      */
     v9x_u32 texture_wrap;
-    v9x_u32 texture_linear;
+    v9x_u32 texture_mag_linear;
+    v9x_u32 texture_min_linear;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(
