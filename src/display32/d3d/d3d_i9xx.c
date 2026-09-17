@@ -777,9 +777,21 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPMISCCAPS_CULLNONE;
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST;
+    /*
+     * The two ALPHA shade caps say the device can blend with an alpha that
+     * comes from flat or Gouraud shading - the vertex alpha the blend path
+     * now reads through the fragment program. They are the bits DirectX 5
+     * and 6 titles test before enabling blending at all, and their absence
+     * is a candidate for why 3DMark99 set six render states and asked for
+     * no texture in intel63 and intel64. Claimed now because the blend they
+     * describe is built and, for the measured pair, drawn (intel64: 739,862
+     * textured draws with blending on and none skipped).
+     */
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
-        V9X_D3DPSHADECAPS_COLORGOURAUDRGB;
+        V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
     /*
      * LESS alone, and that is the point of publishing it rather than leaving
      * the field zero: the runtime asks what comparisons exist, and an engine
@@ -1047,6 +1059,23 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
     }
     at += produced;
+    /*
+     * An MI_FLUSH after the draw, so the wait below means "drawn" and not
+     * only "parsed".
+     *
+     * The submit waits for RING_HEAD to reach the tail, which is the parser
+     * having consumed the commands; the pixels of the last primitive can
+     * still be in the render cache when a Flip then moves the scanout to
+     * them. intel64 measured the flip itself clean - 738 Flips handled, none
+     * declined or abandoned - and the operator still saw a little flicker,
+     * which is the shape of frames presented a few pixels short. The scene
+     * streams put an MI_FLUSH after every blit for the same reason; the
+     * decoder already accepts the dword anywhere. UNMEASURED as a fix.
+     */
+    if (at >= V9X_I9XX_SUBMIT_DWORDS) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+    stream[at++] = V9X_I9XX_MI_FLUSH;
     /* The ring tail must land qword aligned, and the plan refuses an odd
      * count rather than padding one - so the pad is here, where the stream is
      * still being built and a NOOP is a dword nobody will miss. */

@@ -713,6 +713,48 @@ pair this engine does not have. Destination-alpha factors stay excluded:
 the audit records that neither reference tree says what a 565 target's
 alpha reads as.
 
+### intel64: the flip is clean by counter, blending drew, 3DMark99 asked for nothing
+
+Build `6e8ef96-dirty`, `V9X3D FLIP`, two snapshots: before and after
+3DMark99, Final Reality first.
+
+```
+Final Reality                       3DMark99 (delta)
+FlipHandled=738                     +1331
+FlipStillDrawing=0                  +5900168   (Flip called in a loop until done)
+FlipDeclined=0  FlipForcedIdle=0    +0  +0
+ScanoutUnresolved=0                 +0
+I9xxDrawsSubmitted=739862           +610
+I9xxTextureDraws=739862             +0
+D3dBlendSkipped=0                   +0
+D3dTextureCreates=80731             +0        CountCreateSurface +7
+D3dRenderStateCalls=501856          +6        CountD3dContextCreate +2
+```
+
+**Final Reality.** Every flip handled, none declined, no pending flip
+abandoned, the scanout resolved every time; the operator reports the
+textures right and the flicker reduced but present. Every one of 739,862
+draws textured and depth-tested, blending on, no factor pair refused. The
+sampler, format, blend and MODULATE changes since intel62 are measured
+good by picture; the remaining flicker is not the flip declining. The
+next candidate is the frame being presented before its last pixels land:
+the submit waits for the parser, not the render cache. An MI_FLUSH now
+ends every runtime batch. Unmeasured as a fix.
+
+**3DMark99.** Six render states, two contexts, seven surfaces, 610
+untextured draws, and no `TextureCreate` at all - the same as intel63.
+The five million WASSTILLDRAWING answers are DirectDraw retrying Flip
+until the retrace, 1,331 of which completed; that is normal and not the
+intel63 hang, which did not recur. So 3DMark still decides, from the caps,
+not to texture. Against the ViRGE, where it does, the Intel description
+now lacks: the seven other Z comparisons, `TRANSPARENCY`, the mip filter
+caps, `DECAL`/`COPY`, `MIRROR` addressing, fog, specular, and the two
+alpha SHADE caps. The last are claimed from here: they describe blending
+with a shaded alpha, which is what the blend path now does. If 3DMark
+still creates no texture with them, the next step is the probe dumping
+what `GetCaps` returns on both machines and a diff - not another cap
+guessed at.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;
