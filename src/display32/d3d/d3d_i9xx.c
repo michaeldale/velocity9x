@@ -264,13 +264,15 @@ static int v9x_d3d_i9xx_refuse(DWORD reason)
 }
 
 /*
- * The one texture format this sampler is configured for: RGB565.
+ * Which of the three MAP_STATE formats a texture surface is, or none.
  *
- * MAP_STATE's format field is a parameter, but the decoder requires
- * MAPSURF_16BIT_RGB565 and the fragment program samples one channel layout,
- * so accepting a second format here would produce a stream the allowlist
- * refuses - an accepted texture and a failed draw, which is worse than a
- * refusal that says why.
+ * RGB565, ARGB1555 and ARGB4444: the 16-bit types MS3 can name, and the
+ * three the builder, the decoder and the published list agree on. The
+ * fragment program reads the sampler's RGBA whatever the type, so the format
+ * is one MAP_STATE word and nothing else in the stream changes. Anything
+ * outside the three is refused here, counted, with its layout recorded -
+ * which is how intel56 named Final Reality's 4:4:4:4 when only 565 was
+ * accepted.
  *
  * It is also the format the desktop is in: this driver selects 5:6:5 for a
  * Gen3 machine (v9x_dd_engine_wants_555 is false for this engine), so a
@@ -308,21 +310,47 @@ static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
         }
         return 0;
     }
-    if (pixel->dwRBitMask != 0x0000f800ul ||
-        pixel->dwGBitMask != 0x000007e0ul ||
-        pixel->dwBBitMask != 0x0000001ful) {
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.texture_refused_format;
-            v9x_hal->d3d_diagnostics.texture_refused_last =
-                (pixel->dwRGBBitCount << 24) |
-                (pixel->dwRBitMask & 0x00fffffful);
+    /*
+     * The three 16-bit layouts MAP_STATE can name, told apart by their masks.
+     * The alpha mask is checked too for the two that carry one: a surface
+     * described as 1:5:5:5 with no alpha bit is 555, which the sampler has
+     * no type for, and reading it as 1555 would take its top bit as alpha.
+     */
+    if (pixel->dwRBitMask == 0x0000f800ul &&
+        pixel->dwGBitMask == 0x000007e0ul &&
+        pixel->dwBBitMask == 0x0000001ful) {
+        if (format_out != 0) {
+            *format_out = V9X_I9XX_MAPSURF_16BIT_RGB565;
         }
-        return 0;
+        return 1;
     }
-    if (format_out != 0) {
-        *format_out = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    if (pixel->dwRBitMask == 0x00007c00ul &&
+        pixel->dwGBitMask == 0x000003e0ul &&
+        pixel->dwBBitMask == 0x0000001ful &&
+        (pixel->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        pixel->dwRGBAlphaBitMask == 0x00008000ul) {
+        if (format_out != 0) {
+            *format_out = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
+        }
+        return 1;
     }
-    return 1;
+    if (pixel->dwRBitMask == 0x00000f00ul &&
+        pixel->dwGBitMask == 0x000000f0ul &&
+        pixel->dwBBitMask == 0x0000000ful &&
+        (pixel->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        pixel->dwRGBAlphaBitMask == 0x0000f000ul) {
+        if (format_out != 0) {
+            *format_out = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+        }
+        return 1;
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.texture_refused_format;
+        v9x_hal->d3d_diagnostics.texture_refused_last =
+            (pixel->dwRGBBitCount << 24) |
+            (pixel->dwRBitMask & 0x00fffffful);
+    }
+    return 0;
 }
 
 /*
@@ -416,6 +444,7 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
     map->width = (DWORD)surface->lpGbl->wWidth;
     map->height = (DWORD)surface->lpGbl->wHeight;
     map->pitch = (DWORD)surface->lpGbl->lPitch;
+    map->format = format;
     v9x_hal->d3d_diagnostics.texture_last_offset = address;
     v9x_hal->d3d_diagnostics.texture_last_size = map->width;
     v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
@@ -473,11 +502,14 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
  *
  * WHAT IS CLAIMED AND WHY, as of 2026-09-16:
  *
- *  - ONE texture format, RGB565, square and a power of two from 8 to 256.
- *    The runtime path builds MAP_STATE and SAMPLER_STATE from the
- *    application's surface and the modulate program samples it. Every part of
- *    that is measured (intel45, intel46); what is generalised is the size
- *    range, which the limits comment above states plainly.
+ *  - THREE texture formats, RGB565, ARGB1555 and ARGB4444, square and a
+ *    power of two from 8 to 256. The runtime path builds MAP_STATE and
+ *    SAMPLER_STATE from the application's surface and the modulate program
+ *    samples it. The 565 path is measured (intel45, intel46); the two alpha
+ *    types are the same packet with a different type code, from the
+ *    reference trees, and are UNMEASURED until a capture samples one. What is
+ *    generalised is the size range, which the limits comment above states
+ *    plainly.
  *  - A 16-bit Z BUFFER with the LESS comparison and optional writes. One
  *    comparison, because S6 carries one and this build emits LESS - an
  *    application asking for another gets an un-Z'd draw and a count, which is
@@ -557,15 +589,22 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     /*
-     * RGB565 and nothing else, because the sampler is configured for one
-     * format and the decoder requires MAPSURF_16BIT_RGB565 in the stream.
-     * Publishing a second would have applications allocate surfaces the
-     * allowlist then refuses - an accepted texture and a failed draw, which
-     * is worse than a format that was never offered.
+     * The three formats MAP_STATE can name at 16 bits: RGB565, the measured
+     * one, and ARGB1555 and ARGB4444, which the same field selects and the
+     * same program samples. Published exactly as v9x_d3d_i9xx_texture_format
+     * classifies them, so nothing an application allocates from this list is
+     * refused at bind - an accepted texture and an untextured draw was what
+     * intel56 measured with 565 alone: Final Reality's 4:4:4:4 textures were
+     * refused at creation, fell back to system memory, and 1.9 million draws
+     * went untextured.
      *
-     * No alpha bit. A 565 texel has none, and claiming ALPHAPIXELS over a
-     * format that carries no alpha is how an application comes to ask for
-     * blending that cannot work.
+     * ALPHAPIXELS only on the two that carry one. A 565 texel has none, and
+     * claiming alpha over it is how an application comes to ask for blending
+     * that cannot work. The alpha the two formats carry reaches the program
+     * as the texel's A; this build enables no blend or alpha test, so it is
+     * inert on the target until one does.
+     *
+     * The two alpha formats are UNMEASURED on this part.
      */
     shared->texture_formats[0].dwSize = sizeof(V9X_DDSURFACEDESC);
     shared->texture_formats[0].dwFlags =
@@ -579,8 +618,39 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
     shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->texture_formats[0].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->texture_formats[1].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[1].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[1].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[1].ddpfPixelFormat.dwRGBBitCount = 16ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[1].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->texture_formats[2].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[2].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[2].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[2].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBBitCount = 16ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->texture_formats[2].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 1ul;
+    shared->d3d_global.dwNumTextureFormats = 3ul;
     shared->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
@@ -778,6 +848,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_width = textured != 0 ? map.width : 0ul;
     limits.texture_height = textured != 0 ? map.height : 0ul;
     limits.texture_pitch = textured != 0 ? map.pitch : 0ul;
+    limits.texture_format = textured != 0 ? map.format : 0ul;
     limits.depth_offset = depth_offset;
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;

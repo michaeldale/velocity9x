@@ -612,9 +612,27 @@ v9x_status v9x_i9xx_build_vertex_run(
  */
 #define V9X_I9XX_MS3_HEIGHT_SHIFT        21
 #define V9X_I9XX_MS3_WIDTH_SHIFT         10
-/* MAPSURF_16BIT (2 << 7) with MT_16BIT_RGB565 (0 << 3). The target's format,
- * chosen so a wrong pixel is not also a conversion question. */
+/*
+ * MS3 format field: MAPSURF_16BIT (2 << 7) with one of the MT_16BIT_* types
+ * in bits 5:3. RGB565 is 0, ARGB1555 is 1, ARGB4444 is 2 - the values Mesa's
+ * i915_reg.h names MT_16BIT_RGB565 / _ARGB1555 / _ARGB4444 and that its
+ * translate_texture_format selects for MESA_FORMAT_RGB565, ARGB1555 and
+ * ARGB4444; xf86-video-intel's i915 format table reaches the same three
+ * encodings. Texture-packet audit (2026-09-16) section 4 for the field; the
+ * alpha/blend audit section 8 recorded the two alpha types as present and
+ * not needed - intel56 measured Final Reality's textures as 4:4:4:4, and
+ * they are needed now.
+ *
+ * RGB565 remains the scene format, chosen so a wrong pixel is not also a
+ * conversion question. The two alpha formats are UNMEASURED on this part
+ * until a capture samples one.
+ */
 #define V9X_I9XX_MAPSURF_16BIT_RGB565    ((v9x_u32)0x00000100ul)
+#define V9X_I9XX_MAPSURF_16BIT_ARGB1555  ((v9x_u32)0x00000108ul)
+#define V9X_I9XX_MAPSURF_16BIT_ARGB4444  ((v9x_u32)0x00000110ul)
+/* Is this one of the three MS3 formats this driver emits? Also in
+ * i9xx_texture.c, where the builder refuses anything else. */
+v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
 /* Both must be CLEAR for a linear texture, on the same argument the render
  * target's BUF_INFO uses. */
 #define V9X_I9XX_MS3_TILED_SURFACE       ((v9x_u32)0x00000002ul)
@@ -750,6 +768,10 @@ struct v9x_i9xx_texture {
     v9x_u32 width;
     v9x_u32 height;
     v9x_u32 pitch;
+    /* One of the V9X_I9XX_MAPSURF_16BIT_* values. Zero is NOT a default:
+     * the builder refuses it, so a caller that forgot to say gets an error
+     * rather than a 565 sampler over a 4444 surface. */
+    v9x_u32 format;
 };
 
 /* src\chipsets\intel\i9xx_texture.c */
@@ -1353,6 +1375,13 @@ struct v9x_i9xx_decode_limits {
      * draw and the decoder has nothing else to compare against.
      */
     v9x_u32 depth_writes;
+    /*
+     * The MS3 format a runtime stream's MAP_STATE must carry. Zero means
+     * RGB565, which is what every positional initialiser and every scene
+     * gets for free and what the audited streams contain; a runtime stream
+     * carries what the engine read off the application's surface.
+     */
+    v9x_u32 texture_format;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

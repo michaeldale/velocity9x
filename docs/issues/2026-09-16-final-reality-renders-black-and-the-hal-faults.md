@@ -416,10 +416,17 @@ allocated them in system memory, which the bind refuses per draw - hence
 1.9 million system-memory refusals against a vidmem heap with 6 MB free.
 The one textured draw was the probe's.
 
-The fix is a second and third map format on the Intel path - MAP_STATE's
-surface-format field, the decoder's allowlist, the published format list,
-and the host tests - licensed by the Gen3 PRM's MAPSURF_16BIT format codes,
-which need citing before the code claims them. Not started.
+ARGB1555 and ARGB4444 are now built, decoded and published beside RGB565:
+the MS3 type codes 1 and 2 in bits 5:3, from Mesa's `i915_reg.h`
+(`MT_16BIT_ARGB1555`, `MT_16BIT_ARGB4444`) and xf86-video-intel's format
+table, recorded in `intel_gen3_3d.h`. The fragment program samples RGBA
+whatever the type, so nothing else in the stream changes. The builder
+refuses a format nobody stated, the decoder checks the declared type in
+the same MS3 equality that checks the pitch, and the scene streams are
+unchanged (the generator verified byte for byte). **Unmeasured**: no
+capture has yet sampled either alpha format on this part. The next Final
+Reality boot answers it - `D3dTextureRefusedFormat` should read 0 and
+`I9xxTextureDraws` should be most of the draws.
 
 ### Open: the frame flickers
 

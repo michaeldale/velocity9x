@@ -70,6 +70,16 @@ static v9x_u32 v9x_i9xx_unit_enable_mask(v9x_u32 count)
     return (v9x_u32)((1ul << count) - 1ul);
 }
 
+v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format)
+{
+    if (format == V9X_I9XX_MAPSURF_16BIT_RGB565 ||
+        format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 ||
+        format == V9X_I9XX_MAPSURF_16BIT_ARGB4444) {
+        return V9X_TRUE;
+    }
+    return V9X_FALSE;
+}
+
 v9x_status v9x_i9xx_build_map_state(
     const struct v9x_i9xx_texture *maps, v9x_u32 count,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
@@ -125,8 +135,15 @@ v9x_status v9x_i9xx_build_map_state(
             pitch > V9X_I9XX_MAP_PITCH_MAX) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
-        /* A row must hold its own texels. RGB565 is two bytes each. */
+        /* A row must hold its own texels. All three formats this builder
+         * emits are MAPSURF_16BIT: two bytes each. */
         if (pitch < (v9x_u32)((v9x_u16)width * (v9x_u16)2u)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        /* The format is stated, never defaulted. A zero here is a caller
+         * that did not read the surface, and a 565 sampler over a 4444
+         * surface is a plausible-looking wrong picture. */
+        if (v9x_i9xx_map_format_known(maps[index].format) == V9X_FALSE) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
         /* The address is a graphics offset and is page aligned - a choice the
@@ -139,7 +156,7 @@ v9x_status v9x_i9xx_build_map_state(
 
         stream[at++] = maps[index].offset;
         /* Tiling bits deliberately absent: the texture is linear. */
-        stream[at++] = V9X_I9XX_MAPSURF_16BIT_RGB565 |
+        stream[at++] = maps[index].format |
                        ((height - 1ul) << V9X_I9XX_MS3_HEIGHT_SHIFT) |
                        ((width - 1ul) << V9X_I9XX_MS3_WIDTH_SHIFT);
         /* Pitch alone. See the header for the divergence between the two

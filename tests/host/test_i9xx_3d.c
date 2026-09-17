@@ -481,6 +481,14 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->depth_offset = 0ul;
     limits->depth_bytes = 0ul;
     limits->kind = kind;
+    /* The appended fields, zeroed so a test that does not set one gets the
+     * scene answer rather than whatever was on the stack. */
+    limits->texture_width = 0ul;
+    limits->texture_height = 0ul;
+    limits->texture_pitch = 0ul;
+    limits->depth_pitch = 0ul;
+    limits->depth_writes = 0ul;
+    limits->texture_format = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -633,6 +641,7 @@ static void test_decoder_texture_mode(void)
     texture.width = V9X_I9XX_TEXTURE_WIDTH;
     texture.height = V9X_I9XX_TEXTURE_HEIGHT;
     texture.pitch = layout.texture_pitch;
+    texture.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
     /*
      * A complete textured stream, assembled from the same builders the scene
@@ -2363,6 +2372,7 @@ static void test_runtime_textured_and_depth(void)
     map.width = map_edge;
     map.height = map_edge;
     map.pitch = map_edge * 2ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -3173,6 +3183,7 @@ static void test_map_state(void)
     map.width = 16ul;
     map.height = 16ul;
     map.pitch = 32ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
     CHECK(v9x_i9xx_map_state_extent(1ul) == 5ul);
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
@@ -3222,6 +3233,7 @@ static void test_map_state_refusals(void)
     map.width = 16ul;
     map.height = 16ul;
     map.pitch = 32ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
     CHECK(v9x_i9xx_build_map_state(0, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
@@ -3284,6 +3296,163 @@ static void test_map_state_refusals(void)
     map.offset = 0x00700004ul;
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
+}
+
+/*
+ * The three MS3 formats, and only those three.
+ *
+ * Added with intel56, where every Final Reality texture was 4:4:4:4 and the
+ * one-format builder refused them all. The type code is bits 5:3 of MS3 and
+ * the rest of the dword is unchanged, which is what the first two checks pin;
+ * the last two are that a format nobody stated, or one this driver has no
+ * audit for, is refused rather than emitted as 565.
+ */
+static void test_map_state_formats(void)
+{
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[16];
+    v9x_u32 written = 0ul;
+
+    map.offset = 0x00700000ul;
+    map.width = 16ul;
+    map.height = 16ul;
+    map.pitch = 32ul;
+
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_RGB565) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_ARGB1555) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_ARGB4444) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(0ul) == V9X_FALSE);
+    /* MAPSURF_16BIT with type 3 (AY88) and MAPSURF_32BIT ARGB8888: real
+     * codes, not audited, not emitted. */
+    CHECK(v9x_i9xx_map_format_known(0x00000118ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(0x00000180ul) == V9X_FALSE);
+
+    /* ARGB1555: type 1, so 0x108 where 565 has 0x100. */
+    map.format = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x01e03d08ul);
+    CHECK(stream[4] == 0x00e00000ul);
+
+    /* ARGB4444: type 2, so 0x110. */
+    map.format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x01e03d10ul);
+    CHECK(stream[4] == 0x00e00000ul);
+
+    /* Unstated, and unknown. */
+    map.format = 0ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+    map.format = 0x00000118ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+}
+
+/*
+ * The decoder follows the format the engine declared, and a scene does not
+ * get to declare one.
+ *
+ * A runtime stream built over a 4444 map passes when the limits say 4444 and
+ * fails when they say 565 (or say nothing, which is 565): the same MS3
+ * equality that catches a wrong pitch catches a wrong type. A scene never
+ * reaches the declared-format path at all - the decoder pins it to the
+ * constant - so the generated streams stay the audited 565 ones.
+ */
+static void test_runtime_texture_formats(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    const v9x_u32 map_offset = 0x00300000ul;
+    const v9x_u32 map_edge = 64ul;
+
+    map.offset = map_offset;
+    map.width = map_edge;
+    map.height = map_edge;
+    map.pitch = map_edge * 2ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map_offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0xffffffful;
+    colors[1] = 0xffffffful;
+    colors[2] = 0xffffffful;
+    uv[0] = 0ul;  uv[1] = 0ul;
+    uv[2] = one;  uv[3] = 0ul;
+    uv[4] = 0ul;  uv[5] = one;
+
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    /* Declared 4444, built 4444. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* Declared 565 - explicitly, and by saying nothing. */
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        wrong.texture_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong.texture_format = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        /* Declared 1555 over a 4444 stream: two alpha types are still two
+         * types. */
+        wrong.texture_format = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        /* A declared format outside the three is refused before the compare,
+         * whatever the stream carries. */
+        wrong.texture_format = 0x00000118ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
 }
 
 /* SAMPLER_STATE. */
@@ -3500,6 +3669,7 @@ static void test_texture_paint(void)
     texture.width = V9X_I9XX_TEXTURE_WIDTH;
     texture.height = V9X_I9XX_TEXTURE_HEIGHT;
     texture.pitch = V9X_I9XX_TEXTURE_PITCH;
+    texture.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
     CHECK(v9x_i9xx_texture_paint_extent() == 25ul);
     CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 40ul, &written) ==
@@ -3678,6 +3848,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_rgb565_round();
     test_map_state();
     test_map_state_refusals();
+    test_map_state_formats();
+    test_runtime_texture_formats();
     test_sampler_state();
     test_sampling_program();
     test_modulate_program();

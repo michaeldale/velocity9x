@@ -525,6 +525,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         v9x_u32 map_width = V9X_I9XX_TEXTURE_WIDTH;
                         v9x_u32 map_height = V9X_I9XX_TEXTURE_HEIGHT;
                         v9x_u32 map_pitch = V9X_I9XX_TEXTURE_PITCH;
+                        v9x_u32 map_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
 
                         if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
                             map_width = limits->texture_width;
@@ -535,9 +536,24 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
                                                 index + 3ul);
                             }
+                            /*
+                             * The format the engine read off the surface,
+                             * one of the three the builder emits. A scene
+                             * never gets here: its format is the constant
+                             * above, so a scene stream carrying an alpha
+                             * format is rejected as not the audited one.
+                             */
+                            if (limits->texture_format != 0ul) {
+                                map_format = limits->texture_format;
+                            }
+                            if (v9x_i9xx_map_format_known(map_format) ==
+                                    V9X_FALSE) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                                index + 3ul);
+                            }
                         }
                         if (stream[index + 3ul] !=
-                                (V9X_I9XX_MAPSURF_16BIT_RGB565 |
+                                (map_format |
                                  ((map_height - 1ul) <<
                                   V9X_I9XX_MS3_HEIGHT_SHIFT) |
                                  ((map_width - 1ul) <<
