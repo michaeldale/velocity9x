@@ -639,10 +639,17 @@ after 3DMark's mode switch. Handled by name: DriverInit resets the flip
 state on every mode change, and a flip is armed and kept pending only
 while the vblank source can see a scanout (one live pipe and plane on the
 Intel path; always on the VGA port). What remains is a source that answers
-wrongly, and for that a last-resort bound of a million polls forces the
-state idle and counts it as `FlipForcedIdle` - recovery, not presentation,
-and large because a poll count is no promise of elapsed time and a small
-one would release the visible buffer early and put the flicker back.
+wrongly, and for that a last-resort bound of a million polls, large
+because a poll count is no promise of elapsed time and a small one would
+release the visible buffer early and put the flicker back.
+
+Either way a pending flip is ABANDONED, not completed: the state goes
+idle, `FlipForcedIdle` counts it, and from then until the next mode change
+every Flip is DECLINED (`NOTHANDLED`, counted in `FlipDeclined`), so
+DirectDraw presents by its own copy and no application is told a flip
+completed against a retrace nobody saw. GetFlipStatus answers "nothing
+pending", which is then true. Recovery is not presentation at the
+interface, not only in a counter.
 
 **The textures, from the photograph.** Sky and terrain smeared into
 horizontal bands; the floor aliased toward the horizon; the robots right.

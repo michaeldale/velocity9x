@@ -432,6 +432,24 @@ static DWORD v9x_flip_state = V9X_FLIP_IDLE;
  */
 #define V9X_FLIP_PENDING_POLLS_MAX  1000000ul
 static DWORD v9x_flip_pending_polls = 0ul;
+/*
+ * Set when a pending flip had to be abandoned: the retrace source went away
+ * or stopped answering. From then until the next mode change the driver
+ * DECLINES every Flip, so DirectDraw presents by its own copy and nothing
+ * tells the application a flip completed against a retrace nobody saw.
+ * Recovery is not presentation, and this is what makes that true at the
+ * interface rather than only in a counter.
+ */
+static DWORD v9x_flip_untracked = 0ul;
+
+static void v9x_flip_abandon(void)
+{
+    v9x_flip_state = V9X_FLIP_IDLE;
+    v9x_flip_untracked = 1ul;
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.flip_forced_idle;
+    }
+}
 
 static void v9x_flip_arm(int novsync)
 {
@@ -440,13 +458,11 @@ static void v9x_flip_arm(int novsync)
         v9x_flip_state = V9X_FLIP_IDLE;
         return;
     }
-    /* No retrace to wait for: the flip is issued and not tracked, and the
-     * count says how often. Waiting would never end. */
+    /* No retrace to wait for. The base was written, so this frame is
+     * presented as far as the hardware is concerned, but nothing can say
+     * when; from here on flips are declined rather than claimed. */
     if (!v9x_scanout_vblank_available()) {
-        v9x_flip_state = V9X_FLIP_IDLE;
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.flip_forced_idle;
-        }
+        v9x_flip_abandon();
         return;
     }
     v9x_flip_state = v9x_in_vblank() ? V9X_FLIP_WAIT_UNBLANK
@@ -463,13 +479,12 @@ static int v9x_flip_done(void)
         return 1;
     }
     /* The scanout went away under a pending flip, or the retrace source is
-     * not answering. Either way the wait cannot end; recover and count. */
+     * not answering. The wait cannot end, so the flip is abandoned: this
+     * answer is "nothing pending", which is now true, and every later Flip
+     * is declined so no completion is ever claimed on this source again. */
     if (!v9x_scanout_vblank_available() ||
         ++v9x_flip_pending_polls > V9X_FLIP_PENDING_POLLS_MAX) {
-        v9x_flip_state = V9X_FLIP_IDLE;
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.flip_forced_idle;
-        }
+        v9x_flip_abandon();
         return 1;
     }
     blank = v9x_in_vblank();
@@ -492,6 +507,15 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 
     if (offset == 0xfffffffful) {
         data->ddRVal = V9X_DD_OK;
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    /* The retrace source failed under an earlier flip. Decline, so
+     * DirectDraw presents by its own copy: slower and untimed, but not a
+     * claim of a completed flip nobody can verify. Cleared by a mode
+     * change, which brings a new scanout to resolve. */
+    if (v9x_flip_untracked != 0ul) {
+        data->ddRVal = V9X_DD_OK;
+        ++v9x_hal->d3d_diagnostics.flip_declined;
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     if (v9x_engine_status_validated() &&
@@ -1280,6 +1304,7 @@ DWORD __stdcall DriverInit(DWORD context)
      * answered 54,688 Flips with WASSTILLDRAWING after a mode change. */
     v9x_flip_state = V9X_FLIP_IDLE;
     v9x_flip_pending_polls = 0ul;
+    v9x_flip_untracked = 0ul;
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);
