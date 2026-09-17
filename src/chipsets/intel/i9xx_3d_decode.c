@@ -608,19 +608,40 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                      * fetched under a filter nobody set would answer the
                      * addressing question wrongly and look like an answer.
                      */
-                    if (stream[index + 2ul] != V9X_I9XX_SS2_NEAREST_NO_MIP) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
-                    }
-                    if (stream[index + 3ul] !=
-                            (V9X_I9XX_SS3_NORMALIZED_COORDS |
-                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                              V9X_I9XX_SS3_TCX_SHIFT) |
-                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                              V9X_I9XX_SS3_TCY_SHIFT) |
-                             (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                              V9X_I9XX_SS3_TCZ_SHIFT) |
-                             (0ul << V9X_I9XX_SS3_MAP_INDEX_SHIFT))) {
-                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 3ul);
+                    {
+                        /*
+                         * The audited words for a scene; for a runtime
+                         * stream, the words the engine declared - wrap
+                         * and bilinear are each one field, and the decoder
+                         * checks the engine emitted what it said rather
+                         * than a third thing. A scene's limits leave both
+                         * zero, so a generated stream is pinned to clamp
+                         * and nearest as before.
+                         */
+                        v9x_u32 ss2 = V9X_I9XX_SS2_NEAREST_NO_MIP;
+                        v9x_u32 mode = V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
+
+                        if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                            if (limits->texture_linear != 0ul) {
+                                ss2 = V9X_I9XX_SS2_LINEAR_NO_MIP;
+                            }
+                            if (limits->texture_wrap != 0ul) {
+                                mode = V9X_I9XX_TEXCOORDMODE_WRAP;
+                            }
+                        }
+                        if (stream[index + 2ul] != ss2) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                            index + 2ul);
+                        }
+                        if (stream[index + 3ul] !=
+                                (V9X_I9XX_SS3_NORMALIZED_COORDS |
+                                 (mode << V9X_I9XX_SS3_TCX_SHIFT) |
+                                 (mode << V9X_I9XX_SS3_TCY_SHIFT) |
+                                 (mode << V9X_I9XX_SS3_TCZ_SHIFT) |
+                                 (0ul << V9X_I9XX_SS3_MAP_INDEX_SHIFT))) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                            index + 3ul);
+                        }
                     }
                     if (stream[index + 4ul] != V9X_I9XX_SS4_BORDER_COLOR) {
                         V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 4ul);

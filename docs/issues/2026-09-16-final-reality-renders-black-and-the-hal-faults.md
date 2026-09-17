@@ -616,6 +616,53 @@ the powered-down pipe A, as suspected.
 
 Boot 2 is now licensed: `V9X3D FLIP`.
 
+### intel62 and intel63: the flip runs; the sampler is the wrong shape; 3DMark99 draws bare
+
+Build `9d2b6d9-dirty`, `V9X3D FLIP` (`IntelFlip=1`, `EngineCaps=0x14`).
+intel62 is Final Reality; intel63 is 3DMark99 run afterwards in the same
+boot, so its counters include intel62's.
+
+**The flip.** The operator reports the flicker "greatly improved but not
+perfect". The plane-base write and the line-register vblank test ran for
+the first time on this part and the display stayed up; `ScanBLineMin=0`,
+`ScanBLineMax=671`, a full sweep. Final Reality made 591 Flips against
+51,865 GetFlipStatus polls. What was not captured is how many Flips were
+HANDLED against declined, and the residual tearing is not placed. Five
+counters are added for the next boot: `FlipHandled`, `FlipStillDrawing`,
+`FlipDeclined`, `FlipForcedIdle`, `ScanoutUnresolved`.
+
+**A pending flip that never completed.** intel63's ring holds 18 Flips in
+a row returning WASSTILLDRAWING and `CountFlip` rose from 591 to 54,688
+across 3DMark's run: the flip state machine was waiting on a retrace that
+never came, most likely armed under one mode and polled under another
+after 3DMark's mode switch. Two changes: DriverInit resets the flip state,
+and a pending flip is declared done after 10,000 polls, counted.
+
+**The textures, from the photograph.** Sky and terrain smeared into
+horizontal bands; the floor aliased toward the horizon; the robots right.
+That is a tiled texture under clamp-to-edge and a nearest filter at high
+minification - the two sampler states the Intel path published and
+emitted, while the game asked for WRAP and LINEAR through render states
+the core already recorded and the Intel bind ignored. SAMPLER_STATE now
+carries `TEXCOORDMODE_WRAP` and bilinear MIN/MAG from the bound map, the
+decoder checks the declared words, and the caps publish WRAP and LINEAR
+beside CLAMP and NEAREST. Constants from the texture-packet audit's SS2/SS3
+tables and i915_reg.h. **Unmeasured** until the next boot; the photograph
+is the prediction's test.
+
+**3DMark99 drew no textures, and asked for none.** Across its run:
+`CreateSurface` +7, `D3dTextureCreate` +0, `D3dContextCreate` +2, draws
++627, every one untextured, nothing refused. The driver saw no texture
+request to refuse. 3DMark decided from the caps not to use them, or ran a
+test that needs none; which, this capture cannot say. What the Intel caps
+lack against the ViRGE, where 3DMark textures: every blend cap
+(`dwSrcBlendCaps`, `dwDestBlendCaps`, `dwAlphaCmpCaps`),
+`D3DPTEXTURECAPS_ALPHA` and `TRANSPARENCY`, `DECAL`, and the mip filters.
+Blending is measured on the armed scenes
+(`2026-09-16-intel-gen3-alpha-test-and-blend-measured.md`) and not built
+into the runtime state block; that is the next candidate, and it is a
+runtime-state change with an audit behind it rather than a guess.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;

@@ -411,8 +411,25 @@ static int v9x_can_set_display_start(void)
 
 static DWORD v9x_flip_state = V9X_FLIP_IDLE;
 
+/*
+ * How many "done yet?" answers a pending flip may give before it is declared
+ * done regardless.
+ *
+ * A retrace that never comes is a flip that never completes, and DirectDraw
+ * retries Flip and GetFlipStatus until it does: intel63 shows 54,688 Flips
+ * returning WASSTILLDRAWING after a mode change left the state machine
+ * waiting on a scanout that no longer existed. The bound is not a timing -
+ * a poll is however fast the caller loops - it is the promise that the
+ * answer changes. Ten thousand polls is hundreds of frames at any rate an
+ * application polls at; forcing IDLE there is counted, so a capture shows
+ * how often the retrace was not seen rather than hiding it.
+ */
+#define V9X_FLIP_PENDING_POLLS_MAX  10000ul
+static DWORD v9x_flip_pending_polls = 0ul;
+
 static void v9x_flip_arm(int novsync)
 {
+    v9x_flip_pending_polls = 0ul;
     if (novsync) {
         v9x_flip_state = V9X_FLIP_IDLE;
         return;
@@ -428,6 +445,13 @@ static int v9x_flip_done(void)
     int blank;
 
     if (v9x_flip_state == V9X_FLIP_IDLE) {
+        return 1;
+    }
+    if (++v9x_flip_pending_polls > V9X_FLIP_PENDING_POLLS_MAX) {
+        v9x_flip_state = V9X_FLIP_IDLE;
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.flip_forced_idle;
+        }
         return 1;
     }
     blank = v9x_in_vblank();
@@ -464,6 +488,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
      * application's answer too. */
     if (!v9x_flip_done()) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        ++v9x_hal->d3d_diagnostics.flip_still_drawing;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     if (data->lpSurfCurr != 0 &&
@@ -473,6 +498,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * success would leave the caller believing a frame was presented. */
         if (!v9x_can_set_display_start()) {
             data->ddRVal = V9X_DD_OK;
+            ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         /* Same reasoning one step further in: an offset the display-start
@@ -480,11 +506,13 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * 24 bpp would shift every pixel of the frame. */
         if (!v9x_set_display_start(offset)) {
             data->ddRVal = V9X_DD_OK;
+            ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);
     }
     data->ddRVal = V9X_DD_OK;
+    ++v9x_hal->d3d_diagnostics.flip_handled;
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -1229,6 +1257,11 @@ DWORD __stdcall DriverInit(DWORD context)
     }
     v9x_hal = shared;
     SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);
+    /* A new mode is a new scanout: a flip left pending across the switch
+     * would wait for a retrace of a timing that no longer exists. intel63
+     * answered 54,688 Flips with WASSTILLDRAWING after a mode change. */
+    v9x_flip_state = V9X_FLIP_IDLE;
+    v9x_flip_pending_polls = 0ul;
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);

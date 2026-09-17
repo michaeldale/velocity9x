@@ -527,6 +527,21 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
     map->height = (DWORD)surface->lpGbl->wHeight;
     map->pitch = (DWORD)surface->lpGbl->lPitch;
     map->format = format;
+    /*
+     * The sampler, from the render states the core kept. WRAP tiles; CLAMP
+     * and anything else (MIRROR, which this driver does not publish) clamp
+     * to the edge. The filter follows the MAGNIFICATION state alone, the
+     * software engine's rule and for its reason: the MIN states applications
+     * set are mostly the MIP forms, which mean nothing without levels, and
+     * mapping them to nearest would make LINEARMIPLINEAR sharper than
+     * LINEAR. LINEAR and the two LINEARMIP* forms are bilinear; the rest are
+     * nearest. Both are UNMEASURED on this part until intel62's successor.
+     */
+    map->wrap = context->texture_address == V9X_D3DTADDRESS_WRAP ? 1ul : 0ul;
+    map->linear = (context->texture_mag == V9X_D3DFILTER_LINEAR ||
+                   context->texture_mag == V9X_D3DFILTER_LINEARMIPNEAREST ||
+                   context->texture_mag == V9X_D3DFILTER_LINEARMIPLINEAR)
+        ? 1ul : 0ul;
     v9x_hal->d3d_diagnostics.texture_last_offset = address;
     v9x_hal->d3d_diagnostics.texture_last_size = map->width;
     v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
@@ -679,12 +694,21 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
         V9X_D3DPTEXTURECAPS_PERSPECTIVE | V9X_D3DPTEXTURECAPS_POW2 |
         V9X_D3DPTEXTURECAPS_SQUAREONLY;
+    /*
+     * NEAREST and LINEAR, WRAP and CLAMP: the two filter values and the two
+     * address modes the sampler state now carries from the render states.
+     * intel62's photograph of Final Reality showed the cost of publishing
+     * clamp and nearest alone - tiled sky and terrain smeared into edge
+     * texels, and an aliased floor - while the application had asked for
+     * wrap and a linear filter and was given neither. No mip filters: no
+     * map has levels. UNMEASURED until the next boot.
+     */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
-        V9X_D3DPTFILTERCAPS_NEAREST;
+        V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
         V9X_D3DPTBLENDCAPS_MODULATE;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
-        V9X_D3DPTADDRESSCAPS_CLAMP;
+        V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_CLAMP;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     /*
@@ -948,6 +972,8 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_height = textured != 0 ? map.height : 0ul;
     limits.texture_pitch = textured != 0 ? map.pitch : 0ul;
     limits.texture_format = textured != 0 ? map.format : 0ul;
+    limits.texture_wrap = textured != 0 ? map.wrap : 0ul;
+    limits.texture_linear = textured != 0 ? map.linear : 0ul;
     limits.depth_offset = depth_offset;
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;

@@ -664,6 +664,22 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
  * was forgotten" must not look alike. Audit section 5.
  */
 #define V9X_I9XX_SS2_NEAREST_NO_MIP      ((v9x_u32)0x00000000ul)
+/*
+ * The filter fields by name, for the one other filter this driver emits.
+ * Shifts from the audit's SS2 table (both trees); FILTER_LINEAR is 1 in
+ * i915_reg.h beside FILTER_NEAREST 0. Bilinear on MIN and MAG together, no
+ * mip filter: the mip field stays MIPFILTER_NONE because no map has levels.
+ * Added 2026-09-17 for Final Reality's linear filter; UNMEASURED until the
+ * boot that carries it.
+ */
+#define V9X_I9XX_SS2_MIN_FILTER_SHIFT    14
+#define V9X_I9XX_SS2_MAG_FILTER_SHIFT    17
+#define V9X_I9XX_SS2_MIP_FILTER_SHIFT    20
+#define V9X_I9XX_FILTER_NEAREST          ((v9x_u32)0ul)
+#define V9X_I9XX_FILTER_LINEAR           ((v9x_u32)1ul)
+#define V9X_I9XX_SS2_LINEAR_NO_MIP \
+    ((V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MIN_FILTER_SHIFT) | \
+     (V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MAG_FILTER_SHIFT))
 
 /*
  * SS3: addressing. Coordinates are normalized to [0,1], every axis clamps to
@@ -672,6 +688,11 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
  */
 #define V9X_I9XX_SS3_NORMALIZED_COORDS   ((v9x_u32)0x00000020ul)
 #define V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE ((v9x_u32)2ul)
+/* TEXCOORDMODE_WRAP is 0 in i915_reg.h (WRAP 0, MIRROR 1, CLAMP_EDGE 2). A
+ * tiled texture under CLAMP_EDGE repeats its edge texel outside [0,1], which
+ * is the horizontal streaking intel62's photograph shows on Final Reality's
+ * sky and terrain. Added 2026-09-17; UNMEASURED until that boot. */
+#define V9X_I9XX_TEXCOORDMODE_WRAP       ((v9x_u32)0ul)
 #define V9X_I9XX_SS3_TCX_SHIFT           12
 #define V9X_I9XX_SS3_TCY_SHIFT           9
 #define V9X_I9XX_SS3_TCZ_SHIFT           6
@@ -772,6 +793,16 @@ struct v9x_i9xx_texture {
      * the builder refuses it, so a caller that forgot to say gets an error
      * rather than a 565 sampler over a 4444 surface. */
     v9x_u32 format;
+    /*
+     * How the sampler reads this map. Non-zero `wrap` tiles outside [0,1]
+     * (TEXCOORDMODE_WRAP) instead of clamping to the edge; non-zero `linear`
+     * filters bilinearly instead of nearest. Zero for both IS the default
+     * here, deliberately unlike `format`: it is the audited state every
+     * scene and every earlier initialiser meant, and a wrong guess draws a
+     * blurred or stretched texture rather than reading the wrong memory.
+     */
+    v9x_u32 wrap;
+    v9x_u32 linear;
 };
 
 /* src\chipsets\intel\i9xx_texture.c */
@@ -789,8 +820,11 @@ v9x_status v9x_i9xx_build_texture_paint(
 /* What a probe should read in quadrant n. Zero for an index that is not a
  * quadrant, which no caller may treat as a colour. */
 v9x_u32 v9x_i9xx_texture_quadrant_color(v9x_u32 quadrant);
+/* One sampler per map, reading each map's wrap and linear fields; the map
+ * index is the array index. */
 v9x_status v9x_i9xx_build_sampler_state(
-    v9x_u32 count, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+    const struct v9x_i9xx_texture *maps, v9x_u32 count,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_fragprog.c - the sampling program. texld writes the
  * output colour directly, which xf86 does in terms ("load directly to output
@@ -1382,6 +1416,14 @@ struct v9x_i9xx_decode_limits {
      * carries what the engine read off the application's surface.
      */
     v9x_u32 texture_format;
+    /*
+     * The sampler words a runtime stream must carry: non-zero wrap means
+     * TEXCOORDMODE_WRAP on every axis, non-zero linear means bilinear MIN
+     * and MAG. Zero is clamp-to-edge and nearest, which is what every scene
+     * and every positional initialiser gets and what the audit licensed.
+     */
+    v9x_u32 texture_wrap;
+    v9x_u32 texture_linear;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

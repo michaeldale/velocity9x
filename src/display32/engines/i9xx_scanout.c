@@ -94,6 +94,7 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
         }
     }
     if (pipes != 1ul) {
+        ++v9x_hal->d3d_diagnostics.scanout_unresolved;
         return 0;
     }
     for (index = 0ul; index < 2ul; ++index) {
@@ -106,6 +107,7 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
         }
     }
     if (planes != 1ul) {
+        ++v9x_hal->d3d_diagnostics.scanout_unresolved;
         return 0;
     }
     *dsl = dsl_reg[pipe];

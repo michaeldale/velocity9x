@@ -473,7 +473,7 @@ static v9x_status v9x_i9xx_build_state_common(
             return V9X_STATUS_INVALID_ARGUMENT;
         }
         at += produced;
-        if (v9x_i9xx_build_sampler_state(1ul, stream + at,
+        if (v9x_i9xx_build_sampler_state(texture, 1ul, stream + at,
                                          capacity - at, &produced) !=
                 V9X_STATUS_OK) {
             return V9X_STATUS_INVALID_ARGUMENT;

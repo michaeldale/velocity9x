@@ -169,14 +169,15 @@ v9x_status v9x_i9xx_build_map_state(
 }
 
 v9x_status v9x_i9xx_build_sampler_state(
-    v9x_u32 count, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+    const struct v9x_i9xx_texture *maps, v9x_u32 count,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
     v9x_u32 index;
     v9x_u32 extent;
 
     if (written != 0) { *written = 0ul; }
-    if (stream == 0 || written == 0) {
+    if (stream == 0 || written == 0 || maps == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     extent = v9x_i9xx_sampler_state_extent(count);
@@ -193,27 +194,30 @@ v9x_status v9x_i9xx_build_sampler_state(
     stream[at++] = v9x_i9xx_unit_enable_mask(count);
 
     for (index = 0ul; index < count; ++index) {
-        /* Nearest, no mips. Every filter field is zero and the constant says
-         * so by name, because a forgotten field and a zero one are otherwise
-         * the same dword. */
-        stream[at++] = V9X_I9XX_SS2_NEAREST_NO_MIP;
+        /* The address mode for every axis, from the map. Z has no coordinate
+         * in a 2D fetch and takes the same mode so the dword has one shape. */
+        v9x_u32 mode = maps[index].wrap != 0ul
+            ? V9X_I9XX_TEXCOORDMODE_WRAP : V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
+
+        /* Nearest or bilinear, no mips either way. The constants are named
+         * because a forgotten field and a zero one are otherwise the same
+         * dword. */
+        stream[at++] = maps[index].linear != 0ul
+            ? V9X_I9XX_SS2_LINEAR_NO_MIP : V9X_I9XX_SS2_NEAREST_NO_MIP;
         /*
-         * Normalized coordinates, clamp to edge on every axis, and the MAP
-         * INDEX written explicitly.
+         * Normalized coordinates, the address mode on every axis, and the
+         * MAP INDEX written explicitly.
          *
          * Sampler n and map n are not implicitly paired - both trees write
          * the index - so relying on the pairing would be an assumption about
          * silicon nobody has stated.
          */
         stream[at++] = V9X_I9XX_SS3_NORMALIZED_COORDS |
-                       (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                        V9X_I9XX_SS3_TCX_SHIFT) |
-                       (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                        V9X_I9XX_SS3_TCY_SHIFT) |
-                       (V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE <<
-                        V9X_I9XX_SS3_TCZ_SHIFT) |
+                       (mode << V9X_I9XX_SS3_TCX_SHIFT) |
+                       (mode << V9X_I9XX_SS3_TCY_SHIFT) |
+                       (mode << V9X_I9XX_SS3_TCZ_SHIFT) |
                        (index << V9X_I9XX_SS3_MAP_INDEX_SHIFT);
-        /* Border colour. Nothing samples it under clamp-to-edge. */
+        /* Border colour. Nothing samples it under clamp-to-edge or wrap. */
         stream[at++] = V9X_I9XX_SS4_BORDER_COLOR;
     }
 

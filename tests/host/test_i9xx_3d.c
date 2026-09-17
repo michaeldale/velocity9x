@@ -489,6 +489,8 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->depth_pitch = 0ul;
     limits->depth_writes = 0ul;
     limits->texture_format = 0ul;
+    limits->texture_wrap = 0ul;
+    limits->texture_linear = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -642,6 +644,8 @@ static void test_decoder_texture_mode(void)
     texture.height = V9X_I9XX_TEXTURE_HEIGHT;
     texture.pitch = layout.texture_pitch;
     texture.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    texture.wrap = 0ul;
+    texture.linear = 0ul;
 
     /*
      * A complete textured stream, assembled from the same builders the scene
@@ -2373,6 +2377,8 @@ static void test_runtime_textured_and_depth(void)
     map.height = map_edge;
     map.pitch = map_edge * 2ul;
     map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.linear = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -3184,6 +3190,8 @@ static void test_map_state(void)
     map.height = 16ul;
     map.pitch = 32ul;
     map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.linear = 0ul;
 
     CHECK(v9x_i9xx_map_state_extent(1ul) == 5ul);
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
@@ -3234,6 +3242,8 @@ static void test_map_state_refusals(void)
     map.height = 16ul;
     map.pitch = 32ul;
     map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.linear = 0ul;
 
     CHECK(v9x_i9xx_build_map_state(0, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
@@ -3339,6 +3349,8 @@ static void test_map_state_formats(void)
 
     /* ARGB4444: type 2, so 0x110. */
     map.format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+    map.wrap = 0ul;
+    map.linear = 0ul;
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
           V9X_STATUS_OK);
     CHECK(stream[3] == 0x01e03d10ul);
@@ -3387,6 +3399,8 @@ static void test_runtime_texture_formats(void)
     map.height = map_edge;
     map.pitch = map_edge * 2ul;
     map.format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+    map.wrap = 0ul;
+    map.linear = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -3452,17 +3466,64 @@ static void test_runtime_texture_formats(void)
         wrong.texture_format = 0x00000118ul;
         CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
               V9X_I9XX_P5_TEXTURE_STATE);
+        /* The sampler words: a stream built clamp/nearest fails when the
+         * limits declare wrap or linear, one field at a time. */
+        wrong = limits;
+        wrong.texture_wrap = 1ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong = limits;
+        wrong.texture_linear = 1ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
     }
+
+    /*
+     * And the other way: built wrap and linear, accepted only when declared
+     * so. The same stream shape, so the map and vertex checks are unchanged
+     * and only SS2/SS3 differ.
+     */
+    map.wrap = 1ul;
+    map.linear = 1ul;
+    at = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    limits.texture_wrap = 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    limits.texture_linear = 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
 }
 
 /* SAMPLER_STATE. */
 static void test_sampler_state(void)
 {
+    struct v9x_i9xx_texture maps[2];
     v9x_u32 stream[32];
     v9x_u32 written = 0ul;
 
+    maps[0].offset = 0x00700000ul; maps[0].width = 16ul;
+    maps[0].height = 16ul;         maps[0].pitch = 32ul;
+    maps[0].format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    maps[0].wrap = 0ul;            maps[0].linear = 0ul;
+    maps[1] = maps[0];
+
     CHECK(v9x_i9xx_sampler_state_extent(1ul) == 5ul);
-    CHECK(v9x_i9xx_build_sampler_state(1ul, stream, 32ul, &written) ==
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
           V9X_STATUS_OK);
     CHECK(written == 5ul);
 
@@ -3489,22 +3550,48 @@ static void test_sampler_state(void)
      * and if the field were left zero both would read map 0 - which is the
      * assumption the audit records both trees as refusing to make.
      */
-    CHECK(v9x_i9xx_build_sampler_state(2ul, stream, 32ul, &written) ==
+    CHECK(v9x_i9xx_build_sampler_state(maps, 2ul, stream, 32ul, &written) ==
           V9X_STATUS_OK);
     CHECK(written == 8ul);
     CHECK(stream[1] == 0x00000003ul);
     CHECK(((stream[3] >> V9X_I9XX_SS3_MAP_INDEX_SHIFT) & 0xful) == 0ul);
     CHECK(((stream[6] >> V9X_I9XX_SS3_MAP_INDEX_SHIFT) & 0xful) == 1ul);
 
+    /*
+     * WRAP and LINEAR, each one field, each from the map. Added with
+     * intel62: Final Reality asked for both and the sampler gave it clamp
+     * and nearest. WRAP is mode 0 on all three axes, so SS3 keeps only the
+     * normalized bit and the index; LINEAR is 1 at the MIN (14) and MAG (17)
+     * shifts with the mip field still zero.
+     */
+    maps[0].wrap = 1ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[2] == 0ul);
+    CHECK(stream[3] == 0x00000020ul);
+    maps[0].linear = 1ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[2] == 0x00024000ul);
+    CHECK(stream[3] == 0x00000020ul);
+    maps[0].wrap = 0ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[2] == 0x00024000ul);
+    CHECK(stream[3] == 0x000024a0ul);
+    maps[0].linear = 0ul;
+
     /* Refusals, both sides of the unit bound and of the capacity. */
-    CHECK(v9x_i9xx_build_sampler_state(0ul, stream, 32ul, &written) !=
+    CHECK(v9x_i9xx_build_sampler_state(maps, 0ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_sampler_state(9ul, stream, 32ul, &written) !=
+    CHECK(v9x_i9xx_build_sampler_state(maps, 9ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
-    CHECK(v9x_i9xx_build_sampler_state(1ul, stream, 4ul, &written) !=
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 4ul, &written) !=
           V9X_STATUS_OK);
     CHECK(written == 0ul);
-    CHECK(v9x_i9xx_build_sampler_state(1ul, 0, 32ul, &written) !=
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, 0, 32ul, &written) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_sampler_state(0, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
 }
 
@@ -3670,6 +3757,8 @@ static void test_texture_paint(void)
     texture.height = V9X_I9XX_TEXTURE_HEIGHT;
     texture.pitch = V9X_I9XX_TEXTURE_PITCH;
     texture.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    texture.wrap = 0ul;
+    texture.linear = 0ul;
 
     CHECK(v9x_i9xx_texture_paint_extent() == 25ul);
     CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 40ul, &written) ==

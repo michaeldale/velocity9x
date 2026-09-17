@@ -1128,6 +1128,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091704: V9X_D3D_DIAGNOSTICS gains five flip counters (handled, still
+ * drawing, declined, forced idle, scanout unresolved). An append; the stamp
+ * moves for the reason 2026091603 gives.
+ *
  * 2026091703: V9X_D3D_DIAGNOSTICS gains the texture placement seen at
  * TextureCreate (two DWORDs) and the last unexpressible Z comparison. An
  * append; the stamp moves for the reason 2026091603 gives.
@@ -1172,7 +1176,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091703ul
+#define V9X_DD_SHARED_ABI   2026091704ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1604,6 +1608,20 @@ typedef struct v9x_d3d_diagnostics {
      * carries LESS alone, and this says what was wanted instead.
      */
     DWORD i9xx_depth_last_func;
+    /*
+     * What Flip answered, and why. intel63 had 54,688 Flips and the ring
+     * showed only WASSTILLDRAWING; the per-callback count could not say how
+     * many were HANDLED, declined to DirectDraw's copy, or refused because
+     * a pending flip's retrace never came. flip_forced_idle counts the
+     * pending flips the bound in v9x_flip_done gave up on, and
+     * scanout_unresolved the Intel vblank/base reads that found no single
+     * live pipe and plane to act on.
+     */
+    DWORD flip_handled;
+    DWORD flip_still_drawing;
+    DWORD flip_declined;
+    DWORD flip_forced_idle;
+    DWORD scanout_unresolved;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
