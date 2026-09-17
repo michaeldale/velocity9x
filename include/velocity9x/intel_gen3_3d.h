@@ -568,15 +568,20 @@ v9x_status v9x_i9xx_build_3d_state(
  * the application bound. The only block that may carry both - every scene
  * carries one thing, which is what makes a scene readable.
  *
- * texture null is untextured; depth_offset zero is un-Z'd.
+ * texture null is untextured; depth_offset zero is un-Z'd; blend non-zero
+ * enables the ONE measured colour blend - SRC_ALPHA over INV_SRC_ALPHA, added
+ * (intel47) - with the IAB disable in front of it exactly as the blend scene
+ * carries them. Any other factor pair is the caller's to refuse or draw
+ * opaque; this builder knows one.
  */
-v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed);
+v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
+                                      v9x_u32 blend);
 v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
-    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+    v9x_u32 blend, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_fragprog.c - no arguments, because the program is a
  * constant, and it is a constant because Phase 6 forbids a shader compiler. */
@@ -1434,6 +1439,13 @@ struct v9x_i9xx_decode_limits {
     v9x_u32 texture_wrap;
     v9x_u32 texture_mag_linear;
     v9x_u32 texture_min_linear;
+    /*
+     * Whether a runtime stream blends: the IAB disable present and S6
+     * carrying BLEND_ENABLE with ADD, SRC_ALPHA, INV_SRC_ALPHA - the one pair
+     * intel47 measured. Zero, the positional default, is an opaque draw, and
+     * a scene's blending is still decided by its kind.
+     */
+    v9x_u32 blend;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

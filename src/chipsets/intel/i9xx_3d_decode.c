@@ -712,7 +712,11 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                (V9X_I9XX_ALPHA_REF <<
                                     V9X_I9XX_S6_ALPHA_REF_SHIFT);
                 }
-                if (limits->kind == V9X_I9XX_SCENE_BLEND) {
+                /* The blend scene, or a runtime stream whose engine declared
+                 * the one measured pair. Same bits, same equality. */
+                if (limits->kind == V9X_I9XX_SCENE_BLEND ||
+                    (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                     limits->blend != 0ul)) {
                     want_s6 |= V9X_I9XX_S6_BLEND_ENABLE |
                                (V9X_I9XX_BLENDFUNC_ADD <<
                                     V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
@@ -965,7 +969,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * IAB_MODIFY_ENABLE set would leave the factors untouched and
              * would pass an opcode check.
              */
-            if (limits->kind != V9X_I9XX_SCENE_BLEND) {
+            if (limits->kind != V9X_I9XX_SCENE_BLEND &&
+                !(limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                  limits->blend != 0ul)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
             }
             saw_iab_disable = V9X_TRUE;
@@ -1050,7 +1056,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             /* A blend draw without the IAB disable would blend the alpha
              * channel with factors nobody set. */
-            if (limits->kind == V9X_I9XX_SCENE_BLEND &&
+            if ((limits->kind == V9X_I9XX_SCENE_BLEND ||
+                 (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                  limits->blend != 0ul)) &&
                 saw_iab_disable == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
             }

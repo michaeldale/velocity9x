@@ -676,6 +676,29 @@ Blending is measured on the armed scenes
 into the runtime state block; that is the next candidate, and it is a
 runtime-state change with an audit behind it rather than a guess.
 
+### Blending on the runtime path (2026-09-18, unmeasured)
+
+The blend scene measured the packet in intel47 to the exact product:
+`BLENDFUNC_ADD`, `SRC_ALPHA`, `INV_SRC_ALPHA`, with the IAB disable ahead
+of the state load. The runtime builder now carries the same two dwords
+when the application enables blending with that pair. The rule is the
+ViRGE's: SRC_ALPHA/INV_SRC_ALPHA blends; ONE/ZERO is opaque, which matters
+because it is Direct3D's default with the enable set; any other pair draws
+opaque and is counted in `D3dBlendSkipped` with the pair in
+`D3dBlendLastPair`. The decoder accepts the IAB dword and the S6 blend bits
+for a runtime stream only when the engine declared them, and requires both
+when it did. Caps publish SRCALPHA and ONE as source factors, INVSRCALPHA
+and ZERO as destination, and `D3DPTEXTURECAPS_ALPHA`, because the modulate
+program multiplies all four channels and a 1555 or 4444 texel's alpha
+reaches the blend.
+
+What the next boot should show: 3DMark99 creating textures
+(`D3dTextureCreate` above zero) if the blend caps were what it wanted, and
+Final Reality's transparent surfaces blended. `D3dBlendSkipped` names any
+pair this engine does not have. Destination-alpha factors stay excluded:
+the audit records that neither reference tree says what a 565 target's
+alpha reads as.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;

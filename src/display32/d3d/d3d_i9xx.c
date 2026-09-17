@@ -564,6 +564,36 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
  * GREATER would otherwise have its draws silently depth-tested the wrong way,
  * which is a wrong picture that looks like a plausible one.
  */
+/*
+ * Whether this draw blends, and with which of the ONE pair this engine has.
+ *
+ * The ViRGE's rule, reused because it is the right one: SRC_ALPHA over
+ * INV_SRC_ALPHA is the measured pair and blends; ONE over ZERO is an opaque
+ * draw whether or not the enable is set; anything else is drawn opaque and
+ * COUNTED with the pair, so a capture says what the application wanted
+ * rather than showing a wrong picture with every HRESULT reporting success.
+ * Direct3D's default with ALPHABLENDENABLE set is ONE/ZERO, which is why that
+ * pair has to mean "off" rather than "unsupported".
+ */
+static DWORD v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context)
+{
+    if (context->alpha_blend_enable == 0ul) {
+        return 0ul;
+    }
+    if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&
+        context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
+        return 1ul;
+    }
+    if (context->src_blend == V9X_D3DBLEND_ONE &&
+        context->dest_blend == V9X_D3DBLEND_ZERO) {
+        return 0ul;
+    }
+    ++v9x_hal->d3d_diagnostics.blend_skipped;
+    v9x_hal->d3d_diagnostics.blend_last_pair =
+        (context->src_blend << 16) | (context->dest_blend & 0xfffful);
+    return 0ul;
+}
+
 static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
                                            DWORD *offset_out,
                                            DWORD *pitch_out,
@@ -622,13 +652,25 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
  *  - MODULATE texture blending only, which is what the fragment program
  *    computes. DECAL and the rest are absent because nothing builds them.
  *
+ *  - ONE colour blend, SRC_ALPHA over INV_SRC_ALPHA added, which is the pair
+ *    intel47 measured to the exact product, plus ONE/ZERO which is no blend
+ *    at all. The runtime S6 carries it, with the IAB disable in front, when
+ *    the application enables blending with those factors; any other pair
+ *    draws opaque and is counted in blend_skipped with the pair recorded.
+ *    Publishing the two factors each side is what tells an application which
+ *    pair to ask for. From 2026-09-18, and UNMEASURED on the runtime path -
+ *    the scene measured the packet, not this builder's use of it.
+ *  - Texture ALPHA: the modulate program multiplies all four channels, so
+ *    a 1555 or 4444 texel's alpha times the vertex alpha is what the blend
+ *    sees. That matches MODULATE's alpha for an opaque vertex, which is the
+ *    common case; the general case is a prediction of the program, not a
+ *    measurement.
+ *
  * STILL DELIBERATELY ABSENT:
  *
- *  - No blend caps. The runtime S6 enables no blending, even though the
- *    packets are measured (intel47): the state block does not build it.
- *  - No fog, no lines, no specular, no mipmapping, no colour key.
- *  - No independent UV addressing, no anisotropy, no bilinear filtering -
- *    SAMPLER_STATE is emitted as NEAREST and the decoder requires it.
+ *  - No fog, no lines, no specular, no mipmapping, no colour key, no alpha
+ *    test on the runtime path.
+ *  - No mirror addressing, no anisotropy, no mip filters.
  *
  * The distinction this function has to get right is unchanged: a capability
  * is a promise about what an application can do, not a summary of what the
@@ -698,9 +740,15 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * intel52's depth test silently do nothing.
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps = V9X_D3DPCMPCAPS_LESS;
+    /* The one measured pair and the one that means "off". Same shape as
+     * the ViRGE's, which is where Final Reality and 3DMark99 already run. */
+    shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_ONE;
+    shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps =
+        V9X_D3DPBLENDCAPS_INVSRCALPHA | V9X_D3DPBLENDCAPS_ZERO;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
         V9X_D3DPTEXTURECAPS_PERSPECTIVE | V9X_D3DPTEXTURECAPS_POW2 |
-        V9X_D3DPTEXTURECAPS_SQUAREONLY;
+        V9X_D3DPTEXTURECAPS_SQUAREONLY | V9X_D3DPTEXTURECAPS_ALPHA;
     /*
      * NEAREST and LINEAR, WRAP and CLAMP: the two filter values and the two
      * address modes the sampler state now carries from the render states.
@@ -731,8 +779,7 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * ALPHAPIXELS only on the two that carry one. A 565 texel has none, and
      * claiming alpha over it is how an application comes to ask for blending
      * that cannot work. The alpha the two formats carry reaches the program
-     * as the texel's A; this build enables no blend or alpha test, so it is
-     * inert on the target until one does.
+     * as the texel's A, and from 2026-09-18 the runtime S6 can blend on it.
      *
      * The two alpha formats are UNMEASURED on this part.
      */
@@ -839,6 +886,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD count;
     int textured;
     int depthed;
+    DWORD blend;
     DWORD depth_offset = 0ul;
     DWORD depth_pitch = 0ul;
     DWORD depth_writes = 0ul;
@@ -881,6 +929,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     textured = v9x_d3d_i9xx_bind_texture(context, &map);
     depthed = v9x_d3d_i9xx_bind_depth_surface(context, &depth_offset,
                                               &depth_pitch, &depth_writes);
+    blend = v9x_d3d_i9xx_bind_blend(context);
 
     for (vertex = 0ul; vertex < count; ++vertex) {
         /* The DDHAL vertex is floats; the stream is bit patterns. A union is
@@ -909,7 +958,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                      context->width, context->height,
                                      textured != 0 ? &map : 0,
                                      depth_offset, depth_pitch, depth_writes,
-                                     stream + at,
+                                     blend, stream + at,
                                      V9X_I9XX_SUBMIT_DWORDS - at,
                                      &produced) != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
@@ -982,6 +1031,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_wrap = textured != 0 ? map.wrap : 0ul;
     limits.texture_mag_linear = textured != 0 ? map.mag_linear : 0ul;
     limits.texture_min_linear = textured != 0 ? map.min_linear : 0ul;
+    limits.blend = blend;
     limits.depth_offset = depth_offset;
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;

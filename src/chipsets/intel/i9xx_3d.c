@@ -223,7 +223,7 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
-    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+    v9x_u32 blend, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
     v9x_u32 target_offset, v9x_u32 target_pitch,
@@ -239,7 +239,7 @@ v9x_status v9x_i9xx_build_textured_state(
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, texture, 0,
-                                       V9X_I9XX_SCENE_TEXTURED,
+                                       V9X_I9XX_SCENE_TEXTURED, 0ul,
                                        stream, capacity, written);
 }
 
@@ -289,7 +289,7 @@ v9x_status v9x_i9xx_build_depth_state(
                                        (writes != 0ul)
                                            ? V9X_I9XX_SCENE_DEPTH_WRITE
                                            : V9X_I9XX_SCENE_DEPTH_TEST,
-                                       stream, capacity, written);
+                                       0ul, stream, capacity, written);
 }
 
 v9x_status v9x_i9xx_build_3d_state(
@@ -299,7 +299,7 @@ v9x_status v9x_i9xx_build_3d_state(
 {
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0,
-                                       V9X_I9XX_SCENE_PLAIN,
+                                       V9X_I9XX_SCENE_PLAIN, 0ul,
                                        stream, capacity, written);
 }
 
@@ -315,9 +315,15 @@ v9x_status v9x_i9xx_build_3d_state(
  * independent conditions rather than as a choice between kinds. Only the
  * extent arithmetic had to learn about it.
  */
-v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed)
+v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
+                                      v9x_u32 blend)
 {
     v9x_u32 extent = v9x_i9xx_3d_state_extent();
+
+    if (blend != 0ul) {
+        /* The IAB disable, one dword, as the blend scene carries it. */
+        extent += 1ul;
+    }
 
     if (textured != 0ul) {
         extent += v9x_i9xx_map_state_extent(1ul) +
@@ -335,7 +341,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
-    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+    v9x_u32 blend, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_i9xx_depth_binding depth;
 
@@ -362,7 +368,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     return v9x_i9xx_build_state_common(
         target_offset, target_pitch, width, height, texture,
         depth_offset != 0ul ? &depth : 0,
-        V9X_I9XX_SCENE_RUNTIME, stream, capacity, written);
+        V9X_I9XX_SCENE_RUNTIME, blend, stream, capacity, written);
 }
 
 /*
@@ -395,7 +401,7 @@ v9x_status v9x_i9xx_build_alpha_state(
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
-                                       width, height, 0, 0, kind,
+                                       width, height, 0, 0, kind, 0ul,
                                        stream, capacity, written);
 }
 
@@ -404,7 +410,7 @@ static v9x_status v9x_i9xx_build_state_common(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
-    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+    v9x_u32 blend, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     v9x_u32 at = 0ul;
     v9x_u32 produced = 0ul;
@@ -415,7 +421,8 @@ static v9x_status v9x_i9xx_build_state_common(
          * either branch below would have sized it for one of them. A block
          * sized for one and emitting two overruns the caller's buffer. */
         needed = v9x_i9xx_runtime_state_extent(texture != 0 ? 1ul : 0ul,
-                                               depth != 0 ? 1ul : 0ul);
+                                               depth != 0 ? 1ul : 0ul,
+                                               blend);
     } else if (texture != 0) {
         needed = v9x_i9xx_textured_state_extent();
     } else if (depth != 0) {
@@ -490,7 +497,7 @@ static v9x_status v9x_i9xx_build_state_common(
      * changed. IAB matters only when the colour blend enable is set, so
      * confining it to the scene that sets that bit costs nothing.
      */
-    if (kind == V9X_I9XX_SCENE_BLEND) {
+    if (kind == V9X_I9XX_SCENE_BLEND || blend != 0ul) {
         stream[at++] = V9X_I9XX_IAB_DISABLE_DWORD;
     }
 
@@ -506,7 +513,7 @@ static v9x_status v9x_i9xx_build_state_common(
                        V9X_I9XX_S6_ALPHA_FUNC_SHIFT) |
                   (V9X_I9XX_ALPHA_REF << V9X_I9XX_S6_ALPHA_REF_SHIFT);
         }
-        if (kind == V9X_I9XX_SCENE_BLEND) {
+        if (kind == V9X_I9XX_SCENE_BLEND || blend != 0ul) {
             /* Source alpha over one minus source alpha, added. Both factors
              * are functions of the FRAGMENT, so neither depends on a
              * destination alpha that a 565 target does not have and that

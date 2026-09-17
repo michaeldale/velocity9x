@@ -492,6 +492,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_wrap = 0ul;
     limits->texture_mag_linear = 0ul;
     limits->texture_min_linear = 0ul;
+    limits->blend = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -2399,7 +2400,7 @@ static void test_runtime_textured_and_depth(void)
     limits.depth_writes = 1ul;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       depth_offset, depth_pitch, 1ul,
+                                       depth_offset, depth_pitch, 1ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -2505,7 +2506,7 @@ static void test_runtime_batch_bound(void)
     limits.target_height = height;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, stream + at,
+                                       0ul, 0ul, 0ul, 0ul, stream + at,
                                        2200ul - at, &produced) ==
           V9X_STATUS_OK);
     at += produced;
@@ -3422,7 +3423,7 @@ static void test_runtime_texture_formats(void)
     limits.texture_format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3495,7 +3496,7 @@ static void test_runtime_texture_formats(void)
     map.min_linear = 1ul;
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3518,6 +3519,114 @@ static void test_runtime_texture_formats(void)
           V9X_I9XX_P5_TEXTURE_STATE);
     limits.texture_min_linear = 1ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+}
+
+/*
+ * The runtime stream blends the one measured way, and only when declared.
+ *
+ * Added 2026-09-18 for 3DMark99 and the alpha textures. The blend scene
+ * measured the packet (intel47); this pins the runtime builder to the same
+ * two dwords - the IAB disable ahead of the load, and S6 with BLEND_ENABLE,
+ * ADD, SRC_ALPHA, INV_SRC_ALPHA - and the decoder to the engine's word:
+ * a blending stream declared opaque is refused at the IAB dword, and an
+ * opaque stream declared blending is refused for the missing packet.
+ */
+static void test_runtime_blend(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 scan;
+    v9x_u32 iab_seen = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    /* One dword more than the opaque block, and only that. */
+    CHECK(v9x_i9xx_runtime_state_extent(0ul, 0ul, 1ul) ==
+          v9x_i9xx_runtime_state_extent(0ul, 0ul, 0ul) + 1ul);
+    CHECK(v9x_i9xx_runtime_state_extent(1ul, 1ul, 1ul) ==
+          v9x_i9xx_runtime_state_extent(1ul, 1ul, 0ul) + 1ul);
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.blend = 1ul;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul, 1ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    CHECK(produced == v9x_i9xx_runtime_state_extent(0ul, 0ul, 1ul));
+    /* The IAB disable is in the block, once, as the exact dword, and the
+     * S6 word that follows the load carries the measured blend bits. */
+    for (scan = 0ul; scan < produced; ++scan) {
+        if (stream[scan] == V9X_I9XX_IAB_DISABLE_DWORD) {
+            ++iab_seen;
+            CHECK((stream[scan + 6ul] & V9X_I9XX_S6_BLEND_ENABLE) != 0ul);
+            CHECK(((stream[scan + 6ul] >> V9X_I9XX_S6_SRC_FACTOR_SHIFT) &
+                   0xful) == V9X_I9XX_BLENDFACT_SRC_ALPHA);
+            CHECK(((stream[scan + 6ul] >> V9X_I9XX_S6_DST_FACTOR_SHIFT) &
+                   0xful) == V9X_I9XX_BLENDFACT_INV_SRC_ALPHA);
+        }
+    }
+    CHECK(iab_seen == 1ul);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x80ffffful;
+    colors[1] = 0x80ffffful;
+    colors[2] = 0x80ffffful;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    /* Declared blending, built blending. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    /* Declared opaque: the IAB dword is the first thing refused. */
+    limits.blend = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+
+    /* Built opaque, declared blending: no IAB disable, refused at the
+     * primitive for the missing packet - or earlier at S6, which lacks the
+     * enable; either way not OK. */
+    at = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul, 0ul,
+                                       stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    limits.blend = 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
           V9X_I9XX_P5_OK);
 }
 
@@ -3966,6 +4075,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_refusals();
     test_map_state_formats();
     test_runtime_texture_formats();
+    test_runtime_blend();
     test_sampler_state();
     test_sampling_program();
     test_modulate_program();
