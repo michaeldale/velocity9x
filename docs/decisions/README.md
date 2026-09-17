@@ -155,6 +155,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-13 Intel Phase 4: the write gate opens on a risk decision, not on an erratum workaround](2026-09-13-intel-phase4-gate-opened-by-risk-decision.md)
 - [2026-09-14 A CPU write to stolen memory does not stick; the GMADR aperture is the path](2026-09-14-cpu-writes-to-stolen-memory-need-the-aperture.md)
 - [2026-09-14 Intel Phase 4 measured: the ring accepts commands and the GPU executed a blit](2026-09-14-intel-phase4-first-write-the-gpu-executed-a-blit.md)
+- [2026-09-17 The 945GSE graphics device has exactly one PCI ID; the wider Gen3 IDs are a different decision](2026-09-17-intel-945gse-pci-id-survey.md)
+- [2026-09-17 27A6 and 2776 are claimed as part of the 945GME/GSE family, by decision](2026-09-17-intel-945-function1-ids-claimed-by-decision.md)
 
 ## NVIDIA and other surveyed cards
 
