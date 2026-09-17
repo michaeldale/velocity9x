@@ -993,6 +993,14 @@ DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
      * handle, as it did before: the engine treats a null surface as not
      * sampleable, and the refusal is counted at the site either way. */
     lcl = v9x_d3d_surface_lcl(data->lpDDS, V9X_D3D_LCL_SITE_TEXTURE_CREATE);
+    /* Where the runtime put this texture, recorded at the one moment the
+     * question has a clean answer. See the diagnostics comment. */
+    if (lcl != 0 && v9x_hal != 0) {
+        v9x_hal->d3d_diagnostics.texture_create_last_caps = lcl->ddsCaps;
+        if ((lcl->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+            ++v9x_hal->d3d_diagnostics.texture_create_sysmem;
+        }
+    }
     for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
         if (v9x_d3d_textures[index].active == 0ul) {
             v9x_d3d_textures[index].active = 1ul;

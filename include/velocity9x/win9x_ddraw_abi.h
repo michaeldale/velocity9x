@@ -1128,6 +1128,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091703: V9X_D3D_DIAGNOSTICS gains the texture placement seen at
+ * TextureCreate (two DWORDs) and the last unexpressible Z comparison. An
+ * append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091702: V9X_D3D_DIAGNOSTICS gains nine scanout-watch counters (line
  * range, changes and frames elapsed per pipe, and the sample count). An
  * append at the end of that struct; the stamp moves for the reason
@@ -1168,7 +1172,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091702ul
+#define V9X_DD_SHARED_ABI   2026091703ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1583,6 +1587,23 @@ typedef struct v9x_d3d_diagnostics {
     DWORD scan_b_line_max;
     DWORD scan_b_line_changes;
     DWORD scan_b_frames;
+    /*
+     * Where the runtime PUT each texture, seen at TextureCreate.
+     *
+     * intel59 refused 1,118,317 draws for a system-memory texture while
+     * every format was accepted, and the bind-time counters could not say
+     * whether the surface was created there or moved there by Load. These
+     * two can: a create whose surface already carries DDSCAPS_SYSTEMMEMORY
+     * is counted, and the last create's caps are kept.
+     */
+    DWORD texture_create_sysmem;
+    DWORD texture_create_last_caps;
+    /*
+     * The last Z comparison an application asked for that this engine could
+     * not express. intel59 skipped the depth test on 663,556 draws; S6
+     * carries LESS alone, and this says what was wanted instead.
+     */
+    DWORD i9xx_depth_last_func;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -420,6 +420,11 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("ScanBLineMax", snapshot.d3d.scan_b_line_max);
     v9x_write_uint("ScanBLineChanges", snapshot.d3d.scan_b_line_changes);
     v9x_write_uint("ScanBFrames", snapshot.d3d.scan_b_frames);
+    v9x_write_uint("D3dTextureCreateSysmem",
+                   snapshot.d3d.texture_create_sysmem);
+    v9x_write_hex("D3dTextureCreateLastCaps",
+                  snapshot.d3d.texture_create_last_caps);
+    v9x_write_uint("I9xxDepthLastFunc", snapshot.d3d.i9xx_depth_last_func);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

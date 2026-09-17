@@ -563,6 +563,7 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
     }
     if (context->z_func != V9X_D3DCMP_LESS) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
+        v9x_hal->d3d_diagnostics.i9xx_depth_last_func = context->z_func;
         return 0;
     }
     if (v9x_d3d_i9xx_bind_depth(context->depth_offset, context->depth_pitch,
@@ -634,10 +635,26 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * discards a HAL that does not claim it. The runtime decomposes them into
      * the RenderPrimitive calls this engine actually serves.
      */
+    /*
+     * TEXTUREVIDEOMEMORY: "the device can texture from device memory". This
+     * engine always could, and not saying so is why Final Reality drew
+     * untextured in intel56 and intel59 with every format accepted. An
+     * application's ALLOCONLOAD texture is given its memory by the runtime
+     * at Load, and the runtime places it where the device says it can
+     * texture from: with neither TEXTURE*MEMORY bit claimed it chose system
+     * memory, and the bind then refused every one of them - 1,118,317 draws
+     * in intel59 refused for DDSCAPS_SYSTEMMEMORY against a heap with 5.8 MB
+     * free, while the probe's explicitly video-memory texture drew. The
+     * ViRGE claims this bit and the same game textures there.
+     *
+     * TEXTURESYSTEMMEMORY stays absent: the bind refuses system memory and a
+     * claim it could sample it would be the advertise-then-ignore pattern.
+     */
     shared->d3d_global.hwCaps.dwDevCaps =
         V9X_D3DDEVCAPS_FLOATTLVERTEX |
         V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
         V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY |
         V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;
     shared->d3d_global.hwCaps.dtcTransformCaps.dwSize =
         sizeof(V9X_D3DTRANSFORMCAPS);

@@ -494,6 +494,53 @@ survives, the watch was the hang and comes back on pipe B only; if it
 hangs, the formats are, and the 4444 MAP_STATE word is the next thing to
 question.
 
+## intel59: the watch was the hang; the formats are accepted; still untextured
+
+Build `4f80185-dirty`, formats in and watch out. The machine ran Final
+Reality and the probe to completion and took a snapshot. **The scanout
+watch hung intel57 and intel58**: it was the only thing removed, and the
+boot survived. It comes back reading pipe B alone, in its own boot.
+
+```
+D3dTextureRefusedFormat=0        was 361: every 4:4:4:4 texture accepted
+TexFormatCount=3                 565, 1555 and 4444 enumerated (probe)
+D3dTextureCreates=344
+I9xxDrawsSubmitted=1118721       I9xxDrawsRefused=0
+D3dTextureRefusedSysmem=1118317  still: of 1118721 draws
+D3dTextureRefusedCaps=0x04001800 ALLOCONLOAD | TEXTURE | SYSTEMMEMORY
+D3dTextureRefusedVidMem=0x005B0DE8   a user-space address, so truly system memory
+I9xxTextureDraws=362             the probe's
+I9xxDepthSkipped=663556          of 1118721: a Z comparison other than LESS
+```
+
+### Why the textures are in system memory
+
+Final Reality's device textures are `DDSCAPS_ALLOCONLOAD`: the runtime
+gives them memory at `Load`, and places them where the device caps say it
+can texture from. The Intel `dwDevCaps` word claimed neither
+`TEXTUREVIDEOMEMORY` nor `TEXTURESYSTEMMEMORY` - the probe read it as
+`0x2451` in intel52, 56 and 59 - so the runtime had no permission to use
+video memory and chose system memory, which the bind refuses. The probe's
+own texture asked for `DDSCAPS_VIDEOMEMORY` explicitly and drew. The ViRGE
+claims `TEXTUREVIDEOMEMORY` and the same game textures there.
+
+This is a reading of the runtime's behaviour from three consistent
+captures and the ViRGE control, not a trace of its code. The bit is added.
+Two counters are added with it so the next capture can confirm the
+mechanism rather than the outcome: `D3dTextureCreateSysmem`, the number of
+TextureCreate calls whose surface already carried `SYSTEMMEMORY`, and the
+last create's caps. Expected next boot: `D3dTextureRefusedSysmem` near
+zero, `I9xxTextureDraws` most of the draws, and `D3dTextureCreateSysmem`
+small - the game's own source copies, if it keeps any.
+
+### Open: the depth test is skipped on most draws
+
+The Intel S6 state carries one comparison and this build emits `LESS`;
+the game asks for another on 663,556 of 1,118,721 draws and gets an
+un-Z'd draw. `I9xxDepthLastFunc` now records which. `LESSEQUAL` is the
+usual suspect for a DirectX 5 title, and it is a one-field change in the
+state block once the value is in a capture.
+
 ### Probe
 
 The probe completed (`ResultFiles=2`, `Result=COMPLETE` in the second
