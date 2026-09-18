@@ -309,6 +309,10 @@ int v9x_scanout_writes_in_blank(void);
 /* Non-zero while an immediately applied base may be written: the first
  * lines of the vertical blank on the Intel path, the VGA blank elsewhere. */
 int v9x_scanout_flip_window_open(void);
+/* The offset the display is scanning from right now, read from the live
+ * plane base register; 0xffffffff when the Intel controls are not active
+ * or no plane resolves. */
+DWORD v9x_scanout_displayed_offset(void);
 /* Non-zero when this boot's Intel flip goes through the ring: the display
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);

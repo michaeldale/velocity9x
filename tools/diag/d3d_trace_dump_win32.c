@@ -446,6 +446,10 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("IsrAfterFlipOr", snapshot.d3d.isr_after_flip_or);
     v9x_write_hex("IsrBeforeFlipOr", snapshot.d3d.isr_before_flip_or);
     v9x_write_uint("FlipFramesInSubmit", snapshot.d3d.flip_frames_in_submit);
+    v9x_write_uint("DrawsToFront", snapshot.d3d.draws_to_front);
+    v9x_write_uint("DrawsToBack", snapshot.d3d.draws_to_back);
+    v9x_write_hex("DrawsTargetLast", snapshot.d3d.draws_target_last);
+    v9x_write_hex("DrawsDisplayedLast", snapshot.d3d.draws_displayed_last);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

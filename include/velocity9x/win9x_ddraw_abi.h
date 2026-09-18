@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091709: V9X_D3D_DIAGNOSTICS gains the draws-to-front/back counters and
+ * the last target and displayed offsets. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091708: V9X_D3D_DIAGNOSTICS gains two ISR accumulators and the
  * frames-in-submit count. An append; the stamp moves for the reason
  * 2026091603 gives.
@@ -1197,7 +1201,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091708ul
+#define V9X_DD_SHARED_ABI   2026091709ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1693,6 +1697,23 @@ typedef struct v9x_d3d_diagnostics {
     DWORD isr_after_flip_or;
     DWORD isr_before_flip_or;
     DWORD flip_frames_in_submit;
+    /*
+     * Where each draw landed relative to what the display was showing.
+     *
+     * intel74: with the flip issued in the blank and released at the tick,
+     * the flicker got FASTER, not smaller. A flicker that speeds up as
+     * flips become regular is the shape of frames being drawn into the
+     * buffer on screen - every flip then shows a half-drawn frame. So each
+     * batch compares its render-target offset with the plane base register
+     * as it reads at that moment: draws_to_front is the batch landing in
+     * the displayed buffer, draws_to_back the hidden one. Near-zero front
+     * says the buffers are right and the cause is elsewhere; a large front
+     * count is the fault, wherever it comes from.
+     */
+    DWORD draws_to_front;
+    DWORD draws_to_back;
+    DWORD draws_target_last;
+    DWORD draws_displayed_last;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

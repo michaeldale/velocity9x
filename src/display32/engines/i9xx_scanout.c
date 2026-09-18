@@ -375,6 +375,19 @@ int v9x_scanout_flip_window_open(void)
  * the VGA path's alone. docs\decisions\2026-09-18-intel-gen3-page-flip-
  * audit.md.
  */
+DWORD v9x_scanout_displayed_offset(void)
+{
+    DWORD dsl;
+    DWORD vtotal;
+    DWORD base;
+
+    if (!v9x_i9xx_scanout_active() ||
+        !v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
+        return 0xfffffffful;
+    }
+    return *v9x_i9xx_scanout_reg(base);
+}
+
 int v9x_scanout_hw_flip(void)
 {
     return v9x_i9xx_scanout_active();

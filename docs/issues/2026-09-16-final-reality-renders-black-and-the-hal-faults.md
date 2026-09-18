@@ -1047,6 +1047,26 @@ at the frame tick. The ring packet stays as the write, since it is the
 register write by another route; if this tears too, the issue point is
 not the cause either and the render path is next.
 
+### intel74: written in the first lines of the blank - the flicker got faster
+
+Build `57f6ccc`. The operator: "flickering is a lot faster and so seems
+worse". intel66 was worse the same way when the write moved into the
+blank. Both times the change made flips more regular, and both times the
+flicker sped up rather than shrinking.
+
+That is not what a mistimed base switch does; it is what drawing into the
+buffer on screen does. Every flip then presents a frame that was still
+being drawn, and the more regular the flips, the faster the alternation.
+Whether that is happening has never been read: the D3D core follows the
+back-buffer surface's memory pointer per draw, DirectDraw swaps those
+pointers at Flip, and the two have been assumed to agree. From the next
+build each batch compares its render-target offset with the plane base
+register at that moment (`DrawsToFront` / `DrawsToBack`, with the last
+pair of offsets). A large `DrawsToFront` is the fault and names where the
+assumption breaks; near zero exonerates the buffers and sends the search
+elsewhere. The blank-window write stays, because the base still applies at
+once and nothing about this reading argues against it.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

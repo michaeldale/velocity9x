@@ -1012,6 +1012,22 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                  &identity, &address) == V9X_FALSE) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
     }
+    /* Front or back: is this batch about to land in the buffer the display
+     * is scanning right now? See the diagnostics comment (intel74). */
+    {
+        DWORD displayed = v9x_scanout_displayed_offset();
+
+        if (displayed != 0xfffffffful) {
+            v9x_hal->d3d_diagnostics.draws_target_last =
+                context->target_offset;
+            v9x_hal->d3d_diagnostics.draws_displayed_last = displayed;
+            if (displayed == context->target_offset) {
+                ++v9x_hal->d3d_diagnostics.draws_to_front;
+            } else {
+                ++v9x_hal->d3d_diagnostics.draws_to_back;
+            }
+        }
+    }
 
     /*
      * The other two surfaces. Neither refuses the draw: a texture this engine
