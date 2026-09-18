@@ -3836,9 +3836,11 @@ static void test_flip_stream(void)
     CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 2048ul, 0x00096000ul,
                                       0x00090000ul, &index) == V9X_FALSE);
 
-    /* The pending bit follows the plane. */
-    CHECK(v9x_i9xx_flip_pending_bit(0ul) == 0x00000004ul);
-    CHECK(v9x_i9xx_flip_pending_bit(1ul) == 0x00000040ul);
+    /* The pending bit follows the plane: ISR bits 11 and 10, the audited
+     * values, and NOT the MI_WAIT_FOR_EVENT operand bits 2 and 6 that the
+     * first cut used and intel71 measured as never set. */
+    CHECK(v9x_i9xx_flip_pending_bit(0ul) == 0x00000800ul);
+    CHECK(v9x_i9xx_flip_pending_bit(1ul) == 0x00000400ul);
     CHECK(v9x_i9xx_flip_pending_bit(2ul) == 0ul);
 }
 

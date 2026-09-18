@@ -79,6 +79,15 @@ Final Reality on a fresh install, then a snapshot:
   `V9X3D ON` from DOS, which turns the Intel flip off altogether (DirectDraw
   then copies), or `V9X3D OFF`.
 
+## Amended 2026-09-18, after the audit
+
+`docs\decisions\2026-09-18-intel-gen3-page-flip-audit.md` found the ISR
+bits above wrong: the flip-pending bits are 11 (plane A) and 10 (plane B);
+2 and 6 are `MI_WAIT_FOR_EVENT` operand bits. intel71 completed every flip
+at once for that reason. Corrected, and the pending-bit completion now
+applies to the register write as well, which i915 says is a pending flip
+too.
+
 ## What this does not claim
 
 That the plane prefetches, that MI_DISPLAY_FLIP behaves on the 945GSE as it

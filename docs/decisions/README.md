@@ -159,6 +159,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-17 The 945GSE graphics device has exactly one PCI ID; the wider Gen3 IDs are a different decision](2026-09-17-intel-945gse-pci-id-survey.md)
 - [2026-09-17 27A6 and 2776 are claimed as part of the 945GME/GSE family, by decision](2026-09-17-intel-945-function1-ids-claimed-by-decision.md)
 - [2026-09-18 Intel runtime Direct3D and the Intel flip are on by default; the arm-file keys become off switches](2026-09-18-intel-runtime-3d-and-flip-on-by-default.md)
+- [2026-09-18 Gen3 page flip audit against i915 v4.4: the flip-pending bits are 11 and 10, not 2 and 6, and a plane-base write is a pending flip too](2026-09-18-intel-gen3-page-flip-audit.md)
 
 ## NVIDIA and other surveyed cards
 

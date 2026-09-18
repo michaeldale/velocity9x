@@ -15,8 +15,10 @@
  *   MI_INSTR(op, flags) = (op << 23) | flags
  *   MI_DISPLAY_FLIP_I915 = MI_INSTR(0x14, 1)      three dwords: cmd, pitch, base
  *   MI_DISPLAY_FLIP_PLANE(n) = (n) << 20          plane A 0, plane B 1
- *   ISR 0x020ac; I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT (1 << 2),
- *                I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT (1 << 6)
+ *   ISR 0x020ac; I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT (1 << 11),
+ *                I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT (1 << 10)
+ *   (the audit of 2026-09-18 corrected these from 1 << 2 and 1 << 6, which
+ *   are MI_WAIT_FOR_EVENT's plane-flip operand bits)
  *
  * intel_gen3_queue_flip emits MI_WAIT_FOR_EVENT on the plane's flip-pending
  * bit ahead of the flip so a second flip cannot overtake the first. This

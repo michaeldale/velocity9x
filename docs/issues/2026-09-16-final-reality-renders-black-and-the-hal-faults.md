@@ -946,6 +946,15 @@ says the done test is early, which is a flip that lets the application
 draw into the buffer still on screen - and that is a tear that looks like
 every one described so far.
 
+**The audit found it before the boot did**
+(`docs\decisions\2026-09-18-intel-gen3-page-flip-audit.md`). The ISR bits
+this driver polled were `MI_WAIT_FOR_EVENT` operand bits, not the flip-
+pending status; the real bits are 11 and 10. Every ring flip was therefore
+declared done at once, and every register flip was declared done on the
+line test rather than on the hardware's own pending bit, which a plane-base
+write also sets. Both paths now wait on the correct bit. The "plane
+prefetch" model above is withdrawn as unnecessary.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

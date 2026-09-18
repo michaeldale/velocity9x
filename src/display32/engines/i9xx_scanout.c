@@ -167,8 +167,8 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
     }
     ++v9x_hal->d3d_diagnostics.flip_ring_issued;
     /* The pending bit, read once directly after the submit and before any
-     * poll. intel71 never saw it set from the poll loop; this says whether
-     * it is ever set at all. */
+     * poll. intel71 never saw it set because it read the wrong bits; this
+     * says whether the audited ones are set on this part. */
     if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) &
          v9x_i9xx_flip_pending_bit(plane)) != 0ul) {
         ++v9x_hal->d3d_diagnostics.flip_ring_pending_seen;
@@ -295,9 +295,17 @@ int v9x_set_display_start(DWORD byte_offset)
  */
 #define V9X_I9XX_FLIP_WRITE_IN_BLANK 0
 
+/*
+ * Every Intel flip is a hardware flip. i915 says a plain plane-base write
+ * "will also generate a page-flip completion irq": it pends until the
+ * retrace and sets the same ISR bit as MI_DISPLAY_FLIP. So both paths are
+ * completed the same way, from that bit, and the line-register states are
+ * the VGA path's alone. docs\decisions\2026-09-18-intel-gen3-page-flip-
+ * audit.md.
+ */
 int v9x_scanout_hw_flip(void)
 {
-    return v9x_i9xx_ring_flip_active();
+    return v9x_i9xx_scanout_active();
 }
 
 /*
@@ -309,7 +317,7 @@ int v9x_scanout_hw_flip_pending(void)
 {
     DWORD bit;
 
-    if (!v9x_i9xx_ring_flip_active()) {
+    if (!v9x_i9xx_scanout_active()) {
         return 0;
     }
     bit = v9x_i9xx_flip_pending_bit(v9x_i9xx_scanout_plane);

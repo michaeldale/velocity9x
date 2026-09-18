@@ -120,14 +120,20 @@
  * MI_INSTR(0x14, 1) = (0x14 << 23) | 1, three dwords - command, pitch,
  * base; the plane in bits 21:20. The flip pends until the display takes
  * it at the retrace, and ISR (0x020ac) holds a per-plane flip-pending bit
- * meanwhile (I915_DISPLAY_PLANE_A/B_FLIP_PENDING_INTERRUPT, bits 2 and 6).
- * docs\plans\intel-gen3-ring-flip.md. UNMEASURED on this part.
+ * meanwhile: I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT is bit 11 and
+ * PLANE_B is bit 10 (i915_reg.h v4.4 lines 1979 and 1981). The first cut
+ * of this driver used bits 2 and 6, which are MI_WAIT_FOR_EVENT's operand
+ * bits for the same planes and not status at all; intel71 declared every
+ * flip done at once because of it. A plain DSPADDR write sets the same
+ * pending bit (i915: "an MMIO update of the plane base pointer will also
+ * generate a page-flip completion irq"), so both flip paths wait on it.
+ * docs\decisions\2026-09-18-intel-gen3-page-flip-audit.md.
  */
 #define V9X_I9XX_MI_DISPLAY_FLIP_I915    ((v9x_u32)0x0a000001ul)
 #define V9X_I9XX_MI_DISPLAY_FLIP_PLANE_SHIFT 20
 #define V9X_I9XX_REG_ISR                 ((v9x_u32)0x000020acul)
-#define V9X_I9XX_ISR_PLANE_A_FLIP_PENDING ((v9x_u32)0x00000004ul)
-#define V9X_I9XX_ISR_PLANE_B_FLIP_PENDING ((v9x_u32)0x00000040ul)
+#define V9X_I9XX_ISR_PLANE_A_FLIP_PENDING ((v9x_u32)0x00000800ul)
+#define V9X_I9XX_ISR_PLANE_B_FLIP_PENDING ((v9x_u32)0x00000400ul)
 /* Command, pitch, base, and a NOOP so the tail stays qword aligned. */
 #define V9X_I9XX_FLIP_STREAM_DWORDS      ((v9x_u32)4ul)
 #define V9X_I9XX_XY_COLOR_BLT            ((v9x_u32)0x54300004ul)
