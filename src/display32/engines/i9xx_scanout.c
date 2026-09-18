@@ -436,9 +436,27 @@ int v9x_scanout_hw_flip(void)
  * flip has already moved the counter by the time this is asked, so it
  * costs nothing there.
  */
+/*
+ * How many frame ticks after the write a flip is called complete.
+ *
+ * intel79: the write in active video, the runtime holding every Lock and
+ * Blt on GetFlipStatus (43 asks a frame), and NOT ONE batch arriving with
+ * a flip pending (DrawsFlipWaited=0) - so the clear and every draw came
+ * after the first tick said "done" - and the panel still showed the
+ * cleared buffer with the sky on it once a frame. Whatever the latch is,
+ * the panel switches AFTER the tick that follows the write, not before
+ * it. Two ticks is one more frame than the panel could need under any
+ * latch that is at most a frame late; it costs one frame of latency and
+ * cannot be early. If the picture still shows construction at two, the
+ * latch is not what the frame counter is counting, and the readback
+ * probe is the only instrument left. Measured on intel80.
+ */
+#define V9X_I9XX_FLIP_TICKS_TO_COMPLETE 2ul
+
 int v9x_scanout_hw_flip_pending(void)
 {
     DWORD bit;
+    DWORD ticks;
 
     if (!v9x_i9xx_scanout_active()) {
         return 0;
@@ -447,7 +465,9 @@ int v9x_scanout_hw_flip_pending(void)
     if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul) {
         return 1;
     }
-    return v9x_i9xx_scanout_frame_now() == v9x_i9xx_scanout_flip_frame;
+    ticks = (v9x_i9xx_scanout_frame_now() - v9x_i9xx_scanout_flip_frame) &
+            V9X_I9XX_FRAME_COUNT_MASK;
+    return ticks < V9X_I9XX_FLIP_TICKS_TO_COMPLETE;
 }
 
 int v9x_scanout_writes_in_blank(void)

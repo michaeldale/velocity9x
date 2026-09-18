@@ -1286,6 +1286,14 @@ the three-way reading of the intel79 result, and the instrument that
 replaces further guessing are in
 `2026-09-18-final-reality-flicker-is-the-buffer-under-construction.md`.
 
+The intel79 snapshot arrived afterwards: `DrawsFlipWaited=0` with
+`CountGetFlipStatus=32299`, picture unchanged. The runtime's own
+GetFlipStatus polling holds the clear until the state machine says done,
+so no draw ever meets a pending flip - and the panel still shows the
+cleared buffer. Done is early. The next build completes at the second
+frame tick after the write; the reasoning and the intel80 readings are in
+the summary file.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

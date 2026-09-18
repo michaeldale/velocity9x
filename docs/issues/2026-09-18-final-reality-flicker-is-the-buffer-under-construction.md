@@ -72,7 +72,8 @@ problem in one sentence.
 | intel76 | `07ffc98` | MI_FLUSH before each batch (stale render cache) | unchanged |
 | intel77 | `00faf7d` | MI_READ_FLUSH before each batch (stale texture cache) | unchanged |
 | intel78 | `3d9a103` | base written in ACTIVE video, before the blank-start latch | "a little better" |
-| intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | package copied 16:27, NOT YET BOOTED |
+| intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
+| intel80 | next | a flip completes at the SECOND frame tick after the write | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -104,19 +105,31 @@ the blank the base was written. `e83a65e` makes the engine wait for the
 pending flip before a batch and counts the batches that waited
 (`DrawsFlipWaited`, shared ABI 2026091710).
 
-What the intel79 boot will say:
+What the intel79 boot said:
 
-- Construction gone, `DrawsFlipWaited` about one per frame: the model is
-  right and the gap was the Direct3D path. Close this issue.
-- Construction still there, `DrawsFlipWaited` about one per frame: the
-  draws did wait for what the state machine calls done, and done is still
-  before the panel switches. The completion rule is wrong, not the gate.
-  Next: complete a flip only at the SECOND frame tick after the write,
-  which costs one frame of latency and cannot be early under any latch
-  model.
-- Construction still there, `DrawsFlipWaited` near zero: the draws are not
-  racing the pending flip at all, and the model is wrong. Next: the
-  readback instrument below, before any further code change.
+```
+FlipHandled=756  FlipStillDrawing=75104  FlipTakenAtDone=756  FlipNotTakenAtDone=0
+DrawsFlipWaited=0  DrawsFlipWaitTimeouts=0  DrawsToFront=0  DrawsToBack=748226
+CountGetFlipStatus=32299 (43 a frame)  CountFlip=10324 (14 a frame)  CountBlt=1528
+```
+
+Not one batch arrived with a flip pending. The zero is not the third
+reading above as written: the runtime asks GetFlipStatus 43 times a frame
+and holds the game's colour clear (a Blt) on it, so by the time the first
+batch comes the state machine has long said "done". The draws never race
+the pending state because the CLEAR already waited for it - and the
+cleared buffer is what the panel shows. So everything the game does in a
+frame comes after the first frame tick following the write, and the panel
+switches after that. The completion rule is early, not the gate: the
+second reading, reached by a different route. The Direct3D gate stays; it
+is correct and free.
+
+The next build calls a flip complete at the SECOND frame tick after the
+write (`V9X_I9XX_FLIP_TICKS_TO_COMPLETE`). One frame of latency, and it
+cannot be early under any latch that is at most a frame late. If intel80
+still shows construction, the frame counter is not counting the event
+the panel switches on, and the readback instrument below comes before any
+further code change.
 
 ## The instrument that ends the guessing
 
