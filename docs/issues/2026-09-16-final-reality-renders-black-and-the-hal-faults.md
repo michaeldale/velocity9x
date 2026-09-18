@@ -896,6 +896,11 @@ mid-frame splits it where the beam is. Whether that is the mechanism is
 not established; what is established is that a bare register write does
 not give this driver a clean flip at any time it can choose.
 
+intel70 (`da6b213-dirty`, the build carrying the ring flip behind a key)
+booted with `IntelFlip=1` and no `IntelFlipRing`, so it ran the register
+flip again - 710 handled, same picture - and measured nothing new. The
+ring flip is the default from the next build.
+
 **Next: the hardware's own flip.** i915's Gen3 page flip does not write
 the plane base at all. It puts `MI_DISPLAY_FLIP` in the ring - the display
 engine applies the new base at the retrace itself, preceded by

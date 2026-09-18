@@ -52,36 +52,7 @@ IF "%1"=="OFF" GOTO WANTOFF
 IF "%1"=="off" GOTO WANTOFF
 IF "%1"=="FLIP" GOTO WANTFLIP
 IF "%1"=="flip" GOTO WANTFLIP
-IF "%1"=="RING" GOTO WANTRING
-IF "%1"=="ring" GOTO WANTRING
 GOTO USAGE
-
-:WANTRING
-REM FLIP, plus the flip THROUGH THE RING: MI_DISPLAY_FLIP, which the display
-REM applies at the retrace itself, instead of the plane-base register write
-REM that tears (intel65, 66, 69). An unmeasured ring packet, so opt-in: the
-REM boot after this command is the experiment. Recovery is V9X3D FLIP, which
-REM drops this key and keeps the register path.
-IF NOT EXIST %V9XARMFILE% GOTO WRITERING
-FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
-IF NOT ERRORLEVEL 1 GOTO INFLIGHT
-FIND "IntelIncomplete=0" %V9XARMFILE% >NUL
-IF ERRORLEVEL 1 GOTO UNRESOLVED
-:WRITERING
-ECHO [Velocity9x]>%V9XARMFILE%
-ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
-ECHO IntelIncomplete=0>>%V9XARMFILE%
-ECHO IntelRuntime3D=1>>%V9XARMFILE%
-ECHO IntelFlip=1>>%V9XARMFILE%
-ECHO IntelFlipRing=1>>%V9XARMFILE%
-IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO Runtime Direct3D, the Intel flip AND the flip through the ring are
-ECHO PERMITTED from the next boot. This is the experiment.
-ECHO.
-ECHO If the machine hangs or the display is lost: power off, boot to real
-ECHO DOS, run V9X3D FLIP (keeps the register flip, drops the ring flip) and
-ECHO collect C:\V9XDIAG before booting Windows again.
-GOTO DONE
 
 :WANTFLIP
 REM ON, plus permission for the HAL to move the scanout itself: write the
@@ -161,7 +132,6 @@ GOTO DONE
 :USAGE
 ECHO Usage:  V9X3D ON     runtime Direct3D on, the Intel flip off
 ECHO         V9X3D FLIP   both on (the default for a fresh install)
-ECHO         V9X3D RING   FLIP, plus the flip through the ring (experiment)
 ECHO         V9X3D OFF    both off, and recover a machine that hung
 ECHO.
 ECHO Nothing was written.

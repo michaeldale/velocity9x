@@ -1,7 +1,12 @@
 # Intel Gen3: flip through the ring, not the register
 
 Date: 2026-09-18
-Status: built, gated behind `IntelFlipRing=1`, UNMEASURED.
+Status: built, the DEFAULT whenever the ring is up, UNMEASURED. It was
+gated behind `IntelFlipRing=1` for one build; intel70 booted that build
+without the key and so measured nothing, and the operator's standing
+instruction from the same day is that a dev driver does not gate new
+mechanisms behind commands. The register write remains only as the
+fallback for a boot with no ring.
 Record it amends: `docs\issues\2026-09-16-final-reality-renders-black-and-the-hal-faults.md`.
 
 ## Why
@@ -55,15 +60,13 @@ register.
 - `src\display32\ddhal_core.c`: a fourth flip state, `WAIT_HW`, done when the
   pending bit clears. The pending-poll bound and the untracked latch apply to
   it as to the others.
-- `IntelFlipRing=1` in `INTELARM.TXT` (`V9X3D RING` writes it) stamps
-  `V9X_DD_ENGINE_CAP_FLIP_RING`; absent means the register path, which stays
-  the default until this is measured. The ring flip also needs the ring, so
-  a boot with runtime 3D off falls back to the register write.
+- `V9X_DD_ENGINE_CAP_FLIP_RING` is stamped whenever the ring is up. A boot
+  with runtime 3D off has no ring and falls back to the register write.
 - Counters: `FlipRingIssued`, `FlipRingRefused`.
 
 ## What the boot measures
 
-Final Reality with `V9X3D RING`, then a snapshot:
+Final Reality on a fresh install, then a snapshot:
 
 - `FlipRingIssued` near `FlipHandled` and `FlipRingRefused` at zero says the
   stream was accepted by the parser every time.
@@ -73,7 +76,8 @@ Final Reality with `V9X3D RING`, then a snapshot:
   Tearing still present with the bit behaving means the model above is wrong
   in a way this mechanism does not fix, and the record says so.
 - A hang is the parser refusing MI_DISPLAY_FLIP on this part. The recovery is
-  `V9X3D FLIP` from DOS, which drops the ring key and keeps the register path.
+  `V9X3D ON` from DOS, which turns the Intel flip off altogether (DirectDraw
+  then copies), or `V9X3D OFF`.
 
 ## What this does not claim
 

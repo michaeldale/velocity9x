@@ -34,7 +34,6 @@ extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
  */
 extern unsigned short v9x_intel_runtime3d_allowed;
 extern unsigned short v9x_intel_flip_allowed;
-extern unsigned short v9x_intel_flip_ring_allowed;
 
 /*
  * Why the last descriptor call did or did not claim Direct3D.
@@ -217,9 +216,10 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      */
     if (v9x_intel_flip_allowed != 0u) {
         *engine_caps |= V9X_DD_ENGINE_CAP_FLIP;
-        /* Through the ring, only when asked for and only with a ring to
-         * put it in; the HAL checks the ring again at the flip. */
-        if (v9x_intel_flip_ring_allowed != 0u && *ring_linear_base != 0ul) {
+        /* Through the ring whenever there is a ring to put it in - the
+         * default from 2026-09-18, no key; the HAL checks the ring again
+         * at the flip and falls back to the register write without one. */
+        if (*ring_linear_base != 0ul) {
             *engine_caps |= V9X_DD_ENGINE_CAP_FLIP_RING;
         }
     }

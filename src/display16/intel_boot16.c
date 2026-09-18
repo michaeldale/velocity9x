@@ -50,13 +50,6 @@ WORD v9x_intel_runtime3d_allowed;
  */
 WORD v9x_intel_flip_allowed;
 /*
- * IntelFlipRing: the flip through MI_DISPLAY_FLIP instead of the plane base
- * register. A PERMISSION in the old sense - "1" turns it on, absent is off -
- * because it is an unmeasured ring packet and the register path is the
- * measured, if tearing, default. docs\plans\intel-gen3-ring-flip.md.
- */
-WORD v9x_intel_flip_ring_allowed;
-/*
  * Which phase the consumed token claims, from IntelArmPhase.
  *
  * The latch above is deliberately phase-agnostic: it records that a valid
@@ -210,7 +203,6 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_arm_latch = 0u;
     v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_flip_allowed = 0u;
-    v9x_intel_flip_ring_allowed = 0u;
     v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
@@ -252,12 +244,6 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
                             sizeof(runtime_text)) &&
         v9x_intel_str_equal(runtime_text, "0") != 0u) {
         v9x_intel_flip_allowed = 0u;
-    }
-    /* The ring flip is opt-in until measured. */
-    if (v9x_intel_boot_read("IntelFlipRing", runtime_text,
-                            sizeof(runtime_text)) &&
-        v9x_intel_str_equal(runtime_text, "1") != 0u) {
-        v9x_intel_flip_ring_allowed = 1u;
     }
 
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
@@ -381,7 +367,6 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         /* The armed boot owns the ring; see the declaration. */
         v9x_intel_runtime3d_allowed = 0u;
         v9x_intel_flip_allowed = 0u;
-        v9x_intel_flip_ring_allowed = 0u;
         v9x_intel_boot_state = "ARMED-REPEAT";
         return;
     }
@@ -406,7 +391,6 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     /* The armed boot owns the ring; see the declaration. */
     v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_flip_allowed = 0u;
-    v9x_intel_flip_ring_allowed = 0u;
     v9x_intel_boot_state = "ARMED";
 #endif
 }
