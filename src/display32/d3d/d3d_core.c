@@ -842,6 +842,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
              * application that never sets it tiles rather than stretching. */
             context->texture_address = V9X_D3DTADDRESS_WRAP;
             context->texture_border = 0ul;
+            context->shade_mode = V9X_D3DSHADE_GOURAUD;
             /*
              * Only z_func. depth_offset, depth_pitch, z_enable and z_write are
              * owned by v9x_d3d_set_target, which ran above - resetting them
@@ -1130,6 +1131,9 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
         states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
         for (index = 0ul; index < data->dwCount; ++index) {
             switch (states[index].type) {
+            case V9X_D3DRENDERSTATE_SHADEMODE:
+                context->shade_mode = states[index].argument;
+                break;
             case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
                 context->texture_handle = states[index].argument;
                 break;
@@ -1231,6 +1235,32 @@ static BYTE v9x_d3d_fog_byte(BYTE color, BYTE fog, BYTE factor)
 {
     return (BYTE)(((DWORD)color * factor +
                    (DWORD)fog * (255u - factor) + 127ul) / 255ul);
+}
+
+/*
+ * Flat shading, done here for every engine.
+ *
+ * Direct3D defines D3DSHADE_FLAT as the FIRST vertex's colour across the
+ * triangle. Neither engine's flat-shade control is programmed - the Intel
+ * provoking-vertex state is unset and unmeasured (docs\issues\2026-09-17-
+ * flat-shading-is-claimed-and-the-provoking-vertex-is-not-programmed.md) -
+ * and none needs to be: with the colour, alpha and specular copied to all
+ * three vertices, a Gouraud interpolator produces the flat result exactly.
+ * After apply_vertex_color, so specular and fog are folded into the copied
+ * value once rather than three times. Fans and strips reach here as lists
+ * one triangle at a time, so "first" is the first of each triangle as the
+ * runtime handed it over.
+ */
+static void v9x_d3d_apply_flat_shading(const V9X_D3D_CONTEXT *context,
+                                       V9X_D3DTLVERTEX *source)
+{
+    if (context->shade_mode != V9X_D3DSHADE_FLAT) {
+        return;
+    }
+    source[1].color = source[0].color;
+    source[2].color = source[0].color;
+    source[1].specular = source[0].specular;
+    source[2].specular = source[0].specular;
 }
 
 static void v9x_d3d_apply_vertex_color(const V9X_D3D_CONTEXT *context,
@@ -1462,6 +1492,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
             v9x_d3d_apply_vertex_color(context, &source[0]);
             v9x_d3d_apply_vertex_color(context, &source[1]);
             v9x_d3d_apply_vertex_color(context, &source[2]);
+            v9x_d3d_apply_flat_shading(context, source);
             clipped_count = v9x_d3d_clip_triangle(context, source, clipped);
             if (clipped_count < 0) {
                 v9x_trace_push(V9X_TRACE_D3D_PRIMREJECT,

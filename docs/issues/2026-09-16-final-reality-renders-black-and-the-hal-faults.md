@@ -757,6 +757,56 @@ records - nothing here makes a flat triangle take one vertex's alpha. If
 what `GetCaps` returns on both machines and a diff - not another cap
 guessed at.
 
+### intel65: the batch flush did not remove the flicker; it lives in the lower half
+
+Build `d292d61-dirty`, `V9X3D FLIP`, one snapshot after Final Reality and
+3DMark99:
+
+```
+FlipHandled=2890  FlipStillDrawing=66493  FlipDeclined=0  FlipForcedIdle=0
+I9xxDrawsSubmitted=2763846  I9xxTextureDraws=2763846  D3dBlendSkipped=0
+D3dTextureCreates=209384   every refusal counter 0
+```
+
+The MI_FLUSH at the end of each batch changed nothing the operator could
+see: flicker remains, and it is now described as mostly in the lower half
+of the screen. Every flip was handled and none abandoned, so the tearing is
+not a declined or timed-out flip.
+
+**Reading.** Tearing confined to the lower part of the frame is what a
+plane base applied IMMEDIATELY looks like: the base is written wherever
+the beam happens to be, and the beam finishes the current frame from the
+new buffer. The flip state machine assumed the S3 behaviour - the CRTC
+latches the new start at the next retrace - and only waited AFTER the
+write. i915's gen3 page flip goes through `MI_DISPLAY_FLIP` in the ring,
+which the display applies at the retrace, consistent with a bare register
+write not being latched. This is a hypothesis from a picture.
+
+**Change.** On the Intel path the write is made inside the vertical blank:
+Flip answers WASSTILLDRAWING until the line register is past vactive, and
+DirectDraw retries; the write is then made in the blank and the flip is
+complete when that blank ends (a new state, `WAIT_UNBLANK_DONE`, with no
+second retrace to wait for). `FlipStillDrawing` will rise by roughly one
+frame's worth of polls per flip; `FlipHandled` should stay at one per
+presented frame. If the lower-half tearing goes, the base is immediate; if
+it stays, the beam is not where `DSL >= vactive` says, and the vblank test
+is next.
+
+**3DMark99** rendered one or two textures this time, the operator reports,
+after `ALPHAGOURAUDBLEND` was claimed. Something it wanted is now there and
+something else is not; the counters in this single snapshot cannot
+separate its draws from Final Reality's. Next 3DMark run needs its own
+before/after pair as intel64 had.
+
+### Flat shading, in the core (2026-09-18)
+
+`D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
+copies the first vertex's colour and specular to the other two after
+specular and fog are folded in, before any engine sees the triangle - so a
+Gouraud interpolator produces the flat result and no engine needs its
+provoking-vertex control programmed. `COLORFLATRGB` and `ALPHAFLATBLEND`
+are true from this build. Applies to every engine, the ViRGE included.
+
 ### Open: the depth test is skipped on most draws
 
 The Intel S6 state carries one comparison and this build emits `LESS`;

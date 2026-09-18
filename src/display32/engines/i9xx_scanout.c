@@ -181,6 +181,23 @@ int v9x_set_display_start(DWORD byte_offset)
 }
 
 /*
+ * The plane base is not latched at the retrace on this part - or not by
+ * this write sequence. intel65: every Flip handled, none declined, the
+ * batch flushed, and the operator sees tearing confined to the lower half
+ * of the frame. That is the shape of a base written mid-scan and applied
+ * at once: the beam finishes the old frame from the new buffer. i915's
+ * own gen3 page flip goes through MI_DISPLAY_FLIP in the ring, which the
+ * display side applies at the retrace, for what looks like this reason.
+ * So on this path the write waits for the blank, and the flip completes
+ * when that blank ends. A hypothesis from a picture, with the counters
+ * to say whether the wait happened (FlipStillDrawing rises per flip).
+ */
+int v9x_scanout_writes_in_blank(void)
+{
+    return v9x_i9xx_scanout_active();
+}
+
+/*
  * Whether v9x_in_vblank can ever say yes. The VGA status port always
  * answers; the Intel line register answers only for a resolved pipe, and a
  * flip that waited on an unresolved one would wait forever - intel63's

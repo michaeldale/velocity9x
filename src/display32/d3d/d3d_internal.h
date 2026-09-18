@@ -111,6 +111,15 @@ typedef struct v9x_d3d_context {
     DWORD texture_address;
     DWORD texture_border;
     /*
+     * D3DRENDERSTATE_SHADEMODE. FLAT is honoured in the core, before any
+     * engine sees the triangle, by copying the first vertex's colour and
+     * specular to the other two - which is Direct3D's definition (the first
+     * vertex provokes) and needs no engine to know a provoking-vertex
+     * register. PHONG is drawn as GOURAUD, which is what every Direct3D
+     * runtime did too.
+     */
+    DWORD shade_mode;
+    /*
      * D3DRENDERSTATE_COLORKEYENABLE. The key itself lives in the HAL's
      * per-surface table (v9x_d3d_color_key_find); this only says whether the
      * application wants it applied.

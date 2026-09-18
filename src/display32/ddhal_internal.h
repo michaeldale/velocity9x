@@ -302,6 +302,10 @@ int v9x_set_display_start(DWORD byte_offset);
  * plane are live. A flip armed without one cannot complete and is not
  * armed. */
 int v9x_scanout_vblank_available(void);
+/* Non-zero when the display-start write must be made INSIDE the vertical
+ * blank because the hardware applies it at once rather than latching it at
+ * the next retrace: the Intel controls, on intel65's evidence. */
+int v9x_scanout_writes_in_blank(void);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

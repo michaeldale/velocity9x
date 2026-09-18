@@ -1,7 +1,12 @@
 # Flat shading is claimed, and the provoking vertex is not programmed
 
 Date: 2026-09-17
-Status: open. Found by desk reading, not by measurement.
+Status: RESOLVED in the core, 2026-09-18. `SHADEMODE` is retained and under
+`D3DSHADE_FLAT` the core copies the first vertex's colour and specular to
+the other two before any engine draws, so the Gouraud interpolator produces
+Direct3D's flat result and the provoking-vertex control below stays
+unprogrammed and irrelevant. Both flat caps are true from that build. The
+record below stands as written; it is why the fix is in the core.
 
 `v9x_d3d_i9xx_describe_caps` publishes `D3DPSHADECAPS_COLORFLATRGB`, so an
 application may set `D3DSHADEMODE_FLAT` and expect a triangle to take one

@@ -517,6 +517,11 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_WRAPU                     5ul
 #define V9X_D3DRENDERSTATE_WRAPV                     6ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAG               17ul
+/* D3DRENDERSTATE_SHADEMODE (9) and its D3DSHADEMODE values, d3dtypes.h. */
+#define V9X_D3DRENDERSTATE_SHADEMODE                9ul
+#define V9X_D3DSHADE_FLAT                           1ul
+#define V9X_D3DSHADE_GOURAUD                        2ul
+#define V9X_D3DSHADE_PHONG                          3ul
 #define V9X_D3DRENDERSTATE_TEXTUREMIN               18ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAPBLEND          21ul
 #define V9X_D3DRENDERSTATE_TEXTUREADDRESS            3ul

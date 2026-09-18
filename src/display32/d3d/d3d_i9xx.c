@@ -787,18 +787,18 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * is built and, for the measured pair, drawn (intel64: 739,862 textured
      * draws with blending on, none skipped).
      *
-     * ALPHAFLATBLEND is NOT claimed. It promises the first vertex's alpha
-     * across a flat-shaded triangle, and nothing here does that: the core
-     * does not retain SHADEMODE and this path passes each vertex's alpha
-     * through unchanged, so a flat triangle with differing vertex alphas
-     * would vary in transparency. COLORFLATRGB above has the same defect
-     * for colour and is already an open issue (docs\issues\2026-09-17-flat-
-     * shading-is-claimed-and-the-provoking-vertex-is-not-programmed.md); the
-     * alpha cap joins it there rather than adding a second false promise.
+     * ALPHAFLATBLEND and COLORFLATRGB are true from 2026-09-18 because the
+     * CORE does flat shading: under D3DSHADE_FLAT it copies the first
+     * vertex's colour, alpha and specular to the other two before any
+     * engine sees the triangle, so the Gouraud interpolator produces the
+     * flat result and no provoking-vertex register has to be programmed or
+     * measured. Both were claimed before that without being true; the
+     * flat-shading issue records the interval.
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
     /*
      * LESS alone, and that is the point of publishing it rather than leaving

@@ -408,6 +408,10 @@ static int v9x_can_set_display_start(void)
 #define V9X_FLIP_IDLE          0ul
 #define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
 #define V9X_FLIP_WAIT_UNBLANK  2ul   /* issued in a blank: see it end first  */
+/* Written INSIDE the blank on hardware that applies the base at once: the
+ * new buffer scans from this frame, and the old one is free the moment the
+ * blank ends. Done at unblank, with no second blank to wait for. */
+#define V9X_FLIP_WAIT_UNBLANK_DONE 3ul
 
 static DWORD v9x_flip_state = V9X_FLIP_IDLE;
 
@@ -465,6 +469,12 @@ static void v9x_flip_arm(int novsync)
         v9x_flip_abandon();
         return;
     }
+    if (v9x_scanout_writes_in_blank()) {
+        /* The write was made in the blank (v9x_flip_body waited for it),
+         * so the flip is taken when this blank ends. */
+        v9x_flip_state = V9X_FLIP_WAIT_UNBLANK_DONE;
+        return;
+    }
     v9x_flip_state = v9x_in_vblank() ? V9X_FLIP_WAIT_UNBLANK
                                      : V9X_FLIP_WAIT_BLANK;
 }
@@ -488,6 +498,13 @@ static int v9x_flip_done(void)
         return 1;
     }
     blank = v9x_in_vblank();
+    if (v9x_flip_state == V9X_FLIP_WAIT_UNBLANK_DONE) {
+        if (blank) {
+            return 0;
+        }
+        v9x_flip_state = V9X_FLIP_IDLE;
+        return 1;
+    }
     if (v9x_flip_state == V9X_FLIP_WAIT_UNBLANK) {
         if (!blank) {
             v9x_flip_state = V9X_FLIP_WAIT_BLANK;
@@ -542,6 +559,15 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             data->ddRVal = V9X_DD_OK;
             ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        /* Hardware that applies the base at once must be written in the
+         * blank, or the beam finishes this frame from the new buffer - the
+         * lower-half tearing intel65 shows. Not in the blank yet: still
+         * drawing, and DirectDraw asks again. */
+        if (v9x_scanout_writes_in_blank() && !v9x_in_vblank()) {
+            data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+            ++v9x_hal->d3d_diagnostics.flip_still_drawing;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
         /* Same reasoning one step further in: an offset the display-start
          * registers cannot express is declined rather than rounded, which at
