@@ -81,6 +81,27 @@ v9x_status v9x_i9xx_build_flip_stream(
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_i9xx_build_breadcrumb_stream(
+    v9x_u32 byte_offset, v9x_u32 value,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 ||
+        capacity < V9X_I9XX_BREADCRUMB_STREAM_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* A dword of the page: dword aligned and inside the 4 KiB. */
+    if ((byte_offset & 3ul) != 0ul || byte_offset >= 0x1000ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    stream[0] = V9X_I9XX_MI_STORE_DWORD_INDEX;
+    stream[1] = byte_offset;
+    stream[2] = value;
+    stream[3] = V9X_I9XX_MI_NOOP;
+    *written = V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
+    return V9X_STATUS_OK;
+}
+
 v9x_u16 v9x_i9xx_decode_flip_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     v9x_u32 plane, v9x_u32 pitch, v9x_u32 base, v9x_u32 vram_bytes,

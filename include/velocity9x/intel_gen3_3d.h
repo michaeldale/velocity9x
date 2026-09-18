@@ -485,8 +485,21 @@
  * wrong one.
  */
 #define V9X_I9XX_P5_TEXTURE_STATE        18u
-/* An MI_STORE_DWORD_IMM the limits did not license, or to another address. */
+/*
+ * The breadcrumb contract broken (review R4): a store with no licence or to
+ * another offset; a licensed stream with no store, or more than one; a store
+ * not directly behind an MI_FLUSH; anything but MI_NOOP after it. Licence is
+ * requirement: a stream whose limits name an offset is one a submit will
+ * WAIT for, so the store has to be there, once, last.
+ */
 #define V9X_I9XX_P5_BREADCRUMB           19u
+
+/* Every field of the limits to zero, appended ones included, so a caller
+ * that sets what it means gets the scene default for the rest. The 16-bit
+ * scene callers left the appended fields unset before this existed. */
+struct v9x_i9xx_decode_limits;
+void v9x_i9xx_decode_limits_clear(
+    struct v9x_i9xx_decode_limits *limits);
 
 /* Float transport refusal reasons, from i9xx_float.c. */
 #define V9X_I9XX_FLOAT_OK                 0u

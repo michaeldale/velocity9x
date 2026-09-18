@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091715: V9X_D3D_DIAGNOSTICS gains the completion-channel state (self
+ * test, outstanding, abandoned, drain waits and stalls). An append; the
+ * stamp moves for the reason 2026091603 gives.
+ *
  * 2026091714: V9X_D3D_DIAGNOSTICS gains the CPU probe, the last breadcrumb
  * value and the late-arrival count. An append; the stamp moves for the
  * reason 2026091603 gives.
@@ -1218,7 +1222,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091714ul
+#define V9X_DD_SHARED_ABI   2026091715ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1806,7 +1810,31 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD hws_cpu_probe;
     DWORD hws_value_last;
+    /* From 2026091715 this counts a TIMED-OUT sequence later observed, once
+     * per sequence (review R2); before, it counted any batch whose
+     * predecessor's value was still in memory, which is every batch. */
     DWORD breadcrumb_late;
+    /*
+     * The completion channel as a state machine (review R1-R3).
+     *   hws_selftest        0 not run; 1 the store-only round trip landed;
+     *                       2 setup or the round trip failed - no batch
+     *                       carries a breadcrumb after a 2.
+     *   hws_selftest_polls  polls the round trip took to land.
+     *   breadcrumb_outstanding  the sequence issued and not yet observed,
+     *                       0 when none: a completion the driver still owes.
+     *   breadcrumb_abandoned  channels given up: an outstanding sequence
+     *                       unseen for the abandon bound, after which
+     *                       breadcrumbs stop and the fact is recorded.
+     *   render_drain_waits  Flip, Lock or Blt found rendering outstanding
+     *                       and waited; render_drain_stalls the times that
+     *                       wait ran out and WASSTILLDRAWING went back.
+     */
+    DWORD hws_selftest;
+    DWORD hws_selftest_polls;
+    DWORD breadcrumb_outstanding;
+    DWORD breadcrumb_abandoned;
+    DWORD render_drain_waits;
+    DWORD render_drain_stalls;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

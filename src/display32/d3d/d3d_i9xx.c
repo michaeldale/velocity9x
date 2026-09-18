@@ -289,9 +289,35 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * of drawing is milliseconds; this is a few hundred, so a store that never
  * lands costs a slow frame and a counter, not a machine that looks hung. */
 #define V9X_I9XX_BREADCRUMB_POLLS 20000ul
+/* The store-only self-test's wait: once, at first use, with nothing else
+ * in flight, so a generous bound costs nothing when the store works and
+ * saves thousands of per-batch waits when it does not. */
+#define V9X_I9XX_SELFTEST_POLLS 2000000ul
+/* Polls a drain may spend, summed across calls, on one outstanding
+ * sequence before the channel is declared dead (review R1): seconds, not
+ * forever, and never inside one call. */
+#define V9X_I9XX_DRAIN_ABANDON_POLLS 4000000ul
+
+#define V9X_I9XX_HWS_UNTRIED 0ul
+#define V9X_I9XX_HWS_READY   1ul
+#define V9X_I9XX_HWS_FAILED  2ul
 
 static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
+/* The latest sequence issued and not yet seen in the page; 0 when none.
+ * A completion the driver still owes to Flip, Lock and Blt (review R1). */
+static DWORD v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
+static DWORD v9x_d3d_i9xx_drain_polls_spent = 0ul;
+static DWORD v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
+
+static void v9x_d3d_i9xx_note_outstanding(DWORD sequence)
+{
+    v9x_d3d_i9xx_breadcrumb_outstanding = sequence;
+    v9x_hal->d3d_diagnostics.breadcrumb_outstanding = sequence;
+    if (sequence == 0ul) {
+        v9x_d3d_i9xx_drain_polls_spent = 0ul;
+    }
+}
 
 /* The breadcrumb dword as the CPU reads it: the status page is the page
  * after the ring in the reserve, which the mini-VDD's ring mapping covers
@@ -325,47 +351,171 @@ static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
  * BIOS value it replaces (0x1FFFF000) is a page this driver never used and
  * nothing under Windows reads.
  */
-static int v9x_d3d_i9xx_hws_ready = 0;
+static int v9x_d3d_i9xx_hws_failed(void)
+{
+    v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_FAILED;
+    v9x_hal->d3d_diagnostics.hws_selftest = 2ul;
+    return 0;
+}
 
+/*
+ * Bring the status page up, once per session, and prove it before any batch
+ * depends on it (review R3, H1). Every step that can fail fails the whole
+ * channel: a FAILED page means no batch carries a breadcrumb and every
+ * submit waits on the head alone, as before intel81 - not thousands of
+ * identical waits. Reset by DriverInit (a new session or mode).
+ *
+ *  1. The page's physical address, from the GTT's own entry.
+ *  2. The CPU's view is real: a write to the page's second dword reads back.
+ *  3. Baseline: the breadcrumb dword written to zero while nothing is in
+ *     flight, so a stale value cannot match a fresh sequence.
+ *  4. HWS_PGA written and read back equal.
+ *  5. The round trip: a store-only stream with a sentinel, submitted and
+ *     waited for with the self-test bound. The sentinel arriving is the one
+ *     fact every later wait rests on; its polls are recorded.
+ */
 static int v9x_d3d_i9xx_hws_open(void)
 {
     DWORD page;
     DWORD entry;
     DWORD physical;
+    DWORD stream[V9X_I9XX_BREADCRUMB_STREAM_DWORDS];
+    DWORD written = 0ul;
+    volatile DWORD *crumb;
+    volatile DWORD *probe;
 
-    if (v9x_d3d_i9xx_hws_ready) {
+    if (v9x_d3d_i9xx_hws_state == V9X_I9XX_HWS_READY) {
         return 1;
     }
-    if (v9x_hal->engine.gtt_linear_base == 0ul) {
+    if (v9x_d3d_i9xx_hws_state == V9X_I9XX_HWS_FAILED) {
         return 0;
+    }
+    if (v9x_hal->engine.gtt_linear_base == 0ul ||
+        v9x_hal->engine.ring_linear_base == 0ul) {
+        return v9x_d3d_i9xx_hws_failed();
     }
     page = (v9x_hal->fb.vram_bytes + V9X_I9XX_RING_BYTES) >> 12;
     if (page >= V9X_I9XX_GTT_ENTRY_COUNT) {
-        return 0;
+        return v9x_d3d_i9xx_hws_failed();
     }
     entry = *(volatile DWORD *)(v9x_hal->engine.gtt_linear_base + page * 4ul);
     if ((entry & 1ul) == 0ul) {
-        return 0;
+        return v9x_d3d_i9xx_hws_failed();
     }
     physical = entry & 0xfffff000ul;
-    /* Is the CPU's view of the page real? A write to its second dword,
-     * read back through the same mapping. Nothing of the GPU's in this. */
-    {
-        volatile DWORD *probe = v9x_d3d_i9xx_breadcrumb_linear() + 1;
 
-        *probe = 0x5a5aa5a5ul;
-        v9x_hal->d3d_diagnostics.hws_cpu_probe =
-            *probe == 0x5a5aa5a5ul ? 1ul : 2ul;
-        *probe = 0ul;
+    crumb = v9x_d3d_i9xx_breadcrumb_linear();
+    probe = crumb + 1;
+    *probe = 0x5a5aa5a5ul;
+    v9x_hal->d3d_diagnostics.hws_cpu_probe =
+        *probe == 0x5a5aa5a5ul ? 1ul : 2ul;
+    *probe = 0ul;
+    if (v9x_hal->d3d_diagnostics.hws_cpu_probe != 1ul) {
+        return v9x_d3d_i9xx_hws_failed();
     }
+    *crumb = 0ul;
+    if (*crumb != 0ul) {
+        return v9x_d3d_i9xx_hws_failed();
+    }
+
     v9x_hal->d3d_diagnostics.hws_pga_before =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA) = physical;
     v9x_hal->d3d_diagnostics.hws_pga_written = physical;
     v9x_hal->d3d_diagnostics.hws_pga_after =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
-    v9x_d3d_i9xx_hws_ready = 1;
-    return 1;
+    if (v9x_hal->d3d_diagnostics.hws_pga_after != physical) {
+        return v9x_d3d_i9xx_hws_failed();
+    }
+
+    /* The round trip. The sequence counter is not used for it: the sentinel
+     * is a value no batch will ever store. */
+    if (v9x_i9xx_build_breadcrumb_stream(V9X_I9XX_HWS_BREADCRUMB_BYTE,
+                                         0x600d0001ul, stream,
+                                         V9X_I9XX_BREADCRUMB_STREAM_DWORDS,
+                                         &written) != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_hws_failed();
+    }
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    if (!v9x_d3d_i9xx_ring_submit(stream, written)) {
+        return v9x_d3d_i9xx_hws_failed();
+    }
+    {
+        DWORD polls;
+
+        for (polls = 0ul; polls < V9X_I9XX_SELFTEST_POLLS; ++polls) {
+            if (*crumb == 0x600d0001ul) {
+                v9x_hal->d3d_diagnostics.hws_selftest_polls = polls;
+                v9x_hal->d3d_diagnostics.hws_selftest = 1ul;
+                v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_READY;
+                return 1;
+            }
+        }
+        v9x_hal->d3d_diagnostics.hws_selftest_polls = polls;
+        v9x_hal->d3d_diagnostics.hws_value_last = *crumb;
+    }
+    return v9x_d3d_i9xx_hws_failed();
+}
+
+/*
+ * Has everything the GPU was given finished? Called before a Flip, a Lock or
+ * a CPU fill touches memory the GPU may still be writing (review R1).
+ *
+ * Nothing outstanding: yes. The outstanding sequence in the page: yes, and
+ * a timed-out sequence seen now is counted once as a late arrival (R2).
+ * Otherwise, with wait, one bounded poll; the polls spent on this sequence
+ * accumulate across calls and past the abandon bound the channel is declared
+ * dead: recorded, breadcrumbs stop, and the answer is yes because there is
+ * no longer anything this side can wait for. Without wait, or before the
+ * bound: no, and the caller answers WASSTILLDRAWING so DirectDraw retries -
+ * the wait is DirectDraw's loop, never an unbounded one here.
+ */
+int v9x_d3d_i9xx_render_drain(int wait)
+{
+    volatile DWORD *crumb;
+    DWORD polls;
+
+    if (v9x_d3d_i9xx_breadcrumb_outstanding == 0ul) {
+        return 1;
+    }
+    crumb = v9x_d3d_i9xx_breadcrumb_linear();
+    if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
+        ++v9x_hal->d3d_diagnostics.breadcrumb_late;
+        v9x_d3d_i9xx_note_outstanding(0ul);
+        return 1;
+    }
+    ++v9x_hal->d3d_diagnostics.render_drain_waits;
+    if (!wait) {
+        ++v9x_hal->d3d_diagnostics.render_drain_stalls;
+        return 0;
+    }
+    for (polls = 0ul; polls < V9X_I9XX_BREADCRUMB_POLLS; ++polls) {
+        if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
+            ++v9x_hal->d3d_diagnostics.breadcrumb_late;
+            v9x_d3d_i9xx_note_outstanding(0ul);
+            return 1;
+        }
+    }
+    v9x_d3d_i9xx_drain_polls_spent += polls;
+    if (v9x_d3d_i9xx_drain_polls_spent >= V9X_I9XX_DRAIN_ABANDON_POLLS) {
+        ++v9x_hal->d3d_diagnostics.breadcrumb_abandoned;
+        v9x_hal->d3d_diagnostics.hws_value_last = *crumb;
+        v9x_d3d_i9xx_note_outstanding(0ul);
+        v9x_d3d_i9xx_hws_failed();
+        return 1;
+    }
+    ++v9x_hal->d3d_diagnostics.render_drain_stalls;
+    return 0;
+}
+
+/* A new session: the page is untried again and nothing is owed. The
+ * sequence counter runs on so a stale value cannot match a fresh one. */
+void v9x_d3d_i9xx_reset(void)
+{
+    v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
+    v9x_d3d_i9xx_drain_polls_spent = 0ul;
 }
 
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
@@ -436,16 +586,21 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
                     if (lag > v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max) {
                         v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max = lag;
                     }
+                    v9x_d3d_i9xx_note_outstanding(0ul);
                     return 1;
                 }
             }
-            /* Reported and drawn anyway: the frame is what it is, and a
-             * store that never lands is a fact for the record, not a
-             * reason to fail every draw after it. The value read at the
-             * timeout says whether an OLDER store has landed since. */
+            /*
+             * Timed out. The draw is not failed - the commands are in the
+             * ring and will run - but the completion is still OWED: the
+             * sequence stays outstanding and Flip, Lock and Blt wait for it
+             * (v9x_d3d_i9xx_render_drain) before touching what it covers.
+             * The value read now says whether an older store has landed.
+             */
             ++v9x_hal->d3d_diagnostics.breadcrumb_timeouts;
             v9x_hal->d3d_diagnostics.hws_value_last =
                 *v9x_d3d_i9xx_breadcrumb_linear();
+            v9x_d3d_i9xx_note_outstanding(v9x_d3d_i9xx_breadcrumb_expected);
             return 1;
         }
     }
@@ -1292,13 +1447,10 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     if (v9x_d3d_i9xx_hws_open()) {
-        /* Did the LAST batch's breadcrumb arrive after its wait gave up?
-         * Read before the sequence moves on. */
-        if (v9x_d3d_i9xx_breadcrumb_sequence != 0ul &&
-            *v9x_d3d_i9xx_breadcrumb_linear() ==
-                v9x_d3d_i9xx_breadcrumb_sequence) {
-            ++v9x_hal->d3d_diagnostics.breadcrumb_late;
-        }
+        /* A timed-out predecessor that has landed since is resolved here,
+         * without waiting: drawing behind unfinished drawing is in order on
+         * one engine. Only the CPU and the flip have to wait. */
+        (void)v9x_d3d_i9xx_render_drain(0);
         v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
         if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
             v9x_d3d_i9xx_breadcrumb_expected =

@@ -167,6 +167,21 @@ static v9x_u16 v9x_i9xx_decode_vertex_color(v9x_u32 kind, v9x_u32 color)
     return (color == V9X_I9XX_TRI_COLOR_BGRA) ? V9X_TRUE : V9X_FALSE;
 }
 
+void v9x_i9xx_decode_limits_clear(
+    struct v9x_i9xx_decode_limits *limits)
+{
+    unsigned char *bytes =
+        (unsigned char *)limits;
+    v9x_u32 count = (v9x_u32)sizeof(struct v9x_i9xx_decode_limits);
+
+    if (limits == 0) {
+        return;
+    }
+    while (count-- != 0ul) {
+        *bytes++ = 0u;
+    }
+}
+
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     const struct v9x_i9xx_decode_limits *limits,
@@ -204,6 +219,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
      * drew" becomes indistinguishable from "that memory already looked like
      * this". Its absence is a refusal, not a warning. */
     v9x_u16 saw_fill = V9X_FALSE;
+    /* Breadcrumb stores seen; a licensed stream must end with exactly one. */
+    v9x_u32 saw_breadcrumb = 0ul;
 
     if (rejected_index != 0) { *rejected_index = 0ul; }
     if (stream == 0 || limits == 0) {
@@ -1003,15 +1020,32 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
 
         } else if (command == V9X_I9XX_MI_STORE_DWORD_INDEX) {
-            /* One store into the status page, at the one offset the limits
-             * name, with any data. Any other offset is a write the GPU must
-             * not make, and a stream with no licence gets none. The
-             * MI_STORE_DWORD_IMM form is not accepted at all any more. */
+            /*
+             * The one store into the status page, at the one offset the
+             * limits name, with any data; directly behind an MI_FLUSH, so
+             * that what it marks complete is everything drawn; the only
+             * thing after it MI_NOOP padding, so that nothing is drawn
+             * after the mark. A second store, a store with no licence, or a
+             * store anywhere else in memory is refused. (Review R4.)
+             */
+            v9x_u32 tail;
+
             if (limits->breadcrumb_offset == 0ul ||
                 index + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS > dword_count ||
-                stream[index + 1ul] != limits->breadcrumb_offset) {
+                stream[index + 1ul] != limits->breadcrumb_offset ||
+                saw_breadcrumb != 0ul ||
+                index == 0ul ||
+                (stream[index - 1ul] != V9X_I9XX_MI_FLUSH &&
+                 stream[index - 1ul] != V9X_I9XX_MI_FLUSH_READ)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
             }
+            for (tail = index + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS;
+                 tail < dword_count; ++tail) {
+                if (stream[tail] != V9X_I9XX_MI_NOOP) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, tail);
+                }
+            }
+            saw_breadcrumb = 1ul;
             index += V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS;
 
         } else if (command == V9X_I9XX_MI_NOOP ||
@@ -1420,6 +1454,11 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     if (limits->kind == V9X_I9XX_SCENE_BLEND &&
         saw_iab_disable == V9X_FALSE) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+    /* Licence is requirement: a submit that will wait for the store has to
+     * have one to wait for. */
+    if (limits->breadcrumb_offset != 0ul && saw_breadcrumb != 1ul) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, dword_count);
     }
     return V9X_I9XX_P5_OK;
 }

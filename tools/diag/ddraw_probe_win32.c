@@ -1383,7 +1383,7 @@ static void v9x_pal8_mode_test(struct v9x_dd *ddraw, const char *prefix,
  * plane stride that differs from the surface pitch turns those rows into
  * a slant or changes their spacing, which a solid colour cannot show.
  */
-static void v9x_fill_surface_marked(struct v9x_dds *surface, DWORD pattern)
+static HRESULT v9x_fill_surface_marked(struct v9x_dds *surface, DWORD pattern)
 {
     V9X_DDSURFACEDESC desc;
     HRESULT hr;
@@ -1395,7 +1395,7 @@ static void v9x_fill_surface_marked(struct v9x_dds *surface, DWORD pattern)
     desc.dwSize = sizeof(desc);
     hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
     if (hr != 0) {
-        return;
+        return hr;
     }
     row = (BYTE FAR *)desc.lpSurface;
     for (y = 0ul; y < desc.dwHeight; ++y) {
@@ -1407,7 +1407,33 @@ static void v9x_fill_surface_marked(struct v9x_dds *surface, DWORD pattern)
         }
         row += desc.lPitch;
     }
-    surface->vtbl->Unlock(surface, 0);
+    return surface->vtbl->Unlock(surface, 0);
+}
+
+/* A solid fill that reports its Lock result and, through first_write_ms,
+ * the time at which the first pixel was written - the moment the /reuse
+ * probe actually touches the retired buffer, Lock latency included. */
+static HRESULT v9x_fill_surface_timed(struct v9x_dds *surface, DWORD pattern,
+                                      DWORD *first_write_ms)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    DWORD FAR *pixels;
+    DWORD count;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return hr;
+    }
+    *first_write_ms = v9x_time();
+    pixels = (DWORD FAR *)desc.lpSurface;
+    count = ((DWORD)desc.lPitch * desc.dwHeight) / 4ul;
+    while (count-- != 0ul) {
+        *pixels++ = pattern;
+    }
+    return surface->vtbl->Unlock(surface, 0);
 }
 
 /* The surface's linear address, pitch and height, so the reuse probe's
@@ -8472,39 +8498,115 @@ void __stdcall V9xDdrawProbeEntry(void)
                 v9x_fill_surface_marked(backbuffer, blue);
                 Sleep(2000);
 
+                /*
+                 * Every stage records what actually happened (review R5): a
+                 * Flip that returned an error, a completion that timed out
+                 * or errored, a green fill that failed, and the measured
+                 * time from reported completion to the first green pixel -
+                 * a requested delay of zero is not a write at zero. A stage
+                 * with any failure is marked inconclusive; a clean-looking
+                 * panel then proves nothing.
+                 */
                 for (stage = 0ul; stage < 4ul; ++stage) {
                     DWORD retired_colour = red;
+                    DWORD flips_ok = 0ul;
+                    DWORD flip_errors = 0ul;
+                    DWORD done_ok = 0ul;
+                    DWORD done_timeouts = 0ul;
+                    DWORD done_errors = 0ul;
+                    DWORD green_ok = 0ul;
+                    DWORD green_errors = 0ul;
+                    DWORD write_ms_min = 0xfffffffful;
+                    DWORD write_ms_max = 0ul;
+                    char prefix[12];
+
+                    prefix[0] = 'R'; prefix[1] = 'e'; prefix[2] = 'u';
+                    prefix[3] = 's'; prefix[4] = 'e'; prefix[5] = 'S';
+                    prefix[6] = (char)('0' + stage); prefix[7] = '\0';
 
                     for (cycle = 0ul; cycle < 30ul; ++cycle) {
                         DWORD flipped_at;
+                        DWORD called_at = v9x_time();
+                        DWORD done_at;
+                        DWORD first_write = 0ul;
                         HRESULT status;
 
                         do {
                             hr = primary->vtbl->Flip(primary, 0,
                                                      V9X_DDFLIP_WAIT);
-                        } while (hr == (HRESULT)V9X_DDERR_WASSTILLDRAWING);
+                        } while (hr == (HRESULT)V9X_DDERR_WASSTILLDRAWING &&
+                                 v9x_time() - called_at < 2000ul);
+                        if (hr != 0) {
+                            ++flip_errors;
+                            continue;
+                        }
+                        ++flips_ok;
                         flipped_at = v9x_time();
                         do {
                             status = primary->vtbl->GetFlipStatus(
                                 primary, V9X_DDGFS_ISFLIPDONE);
                         } while (status == (HRESULT)V9X_DDERR_WASSTILLDRAWING &&
                                  v9x_time() - flipped_at < 500ul);
-                        if (v9x_time() - flipped_at > done_ms_max) {
-                            done_ms_max = v9x_time() - flipped_at;
+                        done_at = v9x_time();
+                        if (status == (HRESULT)V9X_DDERR_WASSTILLDRAWING) {
+                            ++done_timeouts;
+                            continue;
+                        }
+                        if (status != 0) {
+                            ++done_errors;
+                            continue;
+                        }
+                        ++done_ok;
+                        if (done_at - flipped_at > done_ms_max) {
+                            done_ms_max = done_at - flipped_at;
                         }
                         if (delays_ms[stage] != 0ul) {
                             Sleep(delays_ms[stage]);
                         }
                         /* The retired buffer is now the back buffer. */
-                        v9x_fill_surface(backbuffer, green);
+                        if (v9x_fill_surface_timed(backbuffer, green,
+                                                   &first_write) == 0) {
+                            DWORD lag = first_write - done_at;
+
+                            ++green_ok;
+                            if (lag < write_ms_min) { write_ms_min = lag; }
+                            if (lag > write_ms_max) { write_ms_max = lag; }
+                        } else {
+                            ++green_errors;
+                        }
                         Sleep(50);
-                        v9x_fill_surface_marked(backbuffer, retired_colour);
+                        if (v9x_fill_surface_marked(backbuffer,
+                                                    retired_colour) != 0) {
+                            ++green_errors;
+                        }
                         retired_colour = retired_colour == red ? blue : red;
                     }
-                    v9x_compose_key(key, "ReuseStage", "");
-                    key[10] = (char)('0' + stage);
-                    key[11] = '\0';
+                    v9x_compose_key(key, prefix, "DelayMs");
                     v9x_write_uint(key, delays_ms[stage]);
+                    v9x_compose_key(key, prefix, "FlipsOk");
+                    v9x_write_uint(key, flips_ok);
+                    v9x_compose_key(key, prefix, "FlipErrors");
+                    v9x_write_uint(key, flip_errors);
+                    v9x_compose_key(key, prefix, "DoneOk");
+                    v9x_write_uint(key, done_ok);
+                    v9x_compose_key(key, prefix, "DoneTimeouts");
+                    v9x_write_uint(key, done_timeouts);
+                    v9x_compose_key(key, prefix, "DoneErrors");
+                    v9x_write_uint(key, done_errors);
+                    v9x_compose_key(key, prefix, "GreenOk");
+                    v9x_write_uint(key, green_ok);
+                    v9x_compose_key(key, prefix, "GreenErrors");
+                    v9x_write_uint(key, green_errors);
+                    v9x_compose_key(key, prefix, "WriteMsMin");
+                    v9x_write_uint(key, green_ok != 0ul ? write_ms_min : 0ul);
+                    v9x_compose_key(key, prefix, "WriteMsMax");
+                    v9x_write_uint(key, write_ms_max);
+                    v9x_compose_key(key, prefix, "Conclusive");
+                    v9x_write_uint(key, (flip_errors == 0ul &&
+                                         done_timeouts == 0ul &&
+                                         done_errors == 0ul &&
+                                         green_errors == 0ul &&
+                                         green_ok == 30ul) ? 1ul : 0ul);
                     Sleep(1500);
                 }
                 v9x_write_uint("ReuseDoneMsMax", done_ms_max);

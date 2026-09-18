@@ -405,6 +405,9 @@ static int v9x_can_set_display_start(void)
  * frame with the Win16 lock held, and an application that asked for
  * DDFLIP_NOVSYNC gets the old behaviour on request.
  */
+/* Defined with the Blt drain below; used by Flip and Lock above it. */
+static int v9x_render_drain(int wait);
+
 #define V9X_FLIP_IDLE          0ul
 #define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
 #define V9X_FLIP_WAIT_UNBLANK  2ul   /* issued in a blank: see it end first  */
@@ -579,6 +582,12 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     }
     if (v9x_engine_status_validated() &&
         !v9x_wait_idle((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {
+        data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    /* And the frame about to be shown has to be DRAWN: rendering the GPU
+     * has not finished is the one thing the flip must not present. */
+    if (!v9x_render_drain((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
@@ -817,8 +826,9 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
     v9x_trace_enter(V9X_TRACE_LOCK, data->dwFlags);
     /* Serialize CPU access after asynchronous engine work. DDRAW still
      * computes and returns the actual surface pointer. */
-    if (v9x_engine_status_validated() &&
-        !v9x_wait_idle((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) {
+    if ((v9x_engine_status_validated() &&
+         !v9x_wait_idle((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) ||
+        !v9x_render_drain((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
@@ -1008,10 +1018,28 @@ static int v9x_copy_rect_valid(const V9X_DD_SURFACE_LCL *surface,
 
 /* Drain whichever engine owns this chipset before touching the same memory
  * from the CPU. With no engine enabled there is nothing in flight. */
+/*
+ * Intel has no V9X_ENGINE32_OPS - v9x_engine32 selects the S3 engines and
+ * v9x_engine_status_validated is the ViRGE's - so until this existed no
+ * Flip, Lock or CPU fill on Intel waited for GPU rendering at all (review
+ * R1). This is that wait, on the breadcrumb the batches leave.
+ */
+static int v9x_render_drain(int wait)
+{
+    if (v9x_hal != 0 &&
+        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        return v9x_d3d_i9xx_render_drain(wait);
+    }
+    return 1;
+}
+
 static int v9x_blt_drain(int wait)
 {
     const V9X_ENGINE32_OPS *ops = v9x_engine32();
 
+    if (!v9x_render_drain(wait)) {
+        return 0;
+    }
     if (ops != 0 && ops->status_validated()) {
         return ops->wait_idle(wait);
     }
@@ -1391,6 +1419,9 @@ DWORD __stdcall DriverInit(DWORD context)
     v9x_flip_state = V9X_FLIP_IDLE;
     v9x_flip_pending_polls = 0ul;
     v9x_flip_untracked = 0ul;
+    /* And the completion channel: a new session brings the status page up
+     * again and proves it again (review R3). */
+    v9x_d3d_i9xx_reset();
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);

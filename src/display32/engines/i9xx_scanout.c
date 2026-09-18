@@ -89,6 +89,11 @@ static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
  */
 #define V9X_I9XX_FRAME_READ_TRIES 4ul
 
+/* Whether the last frame_now composed a consistent pair. A read that ran
+ * out of tries is not a frame count, and a flip is kept pending on it
+ * rather than completed against a number that may be off by 256. */
+static int v9x_i9xx_scanout_frame_valid = 0;
+
 static DWORD v9x_i9xx_scanout_frame_now(void)
 {
     DWORD high_first;
@@ -96,6 +101,7 @@ static DWORD v9x_i9xx_scanout_frame_now(void)
     DWORD low;
     DWORD tries;
 
+    v9x_i9xx_scanout_frame_valid = 0;
     if (v9x_i9xx_scanout_framehigh_reg == 0ul) {
         return 0ul;
     }
@@ -111,6 +117,9 @@ static DWORD v9x_i9xx_scanout_frame_now(void)
         low = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg);
         high_second = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg);
     }
+    v9x_i9xx_scanout_frame_valid =
+        (high_first & V9X_I9XX_FRAME_HIGH_MASK) ==
+        (high_second & V9X_I9XX_FRAME_HIGH_MASK);
     return v9x_i9xx_frame_count(high_first, low);
 }
 
@@ -385,7 +394,10 @@ int v9x_set_display_start(DWORD byte_offset)
 /*
  * The plane base is double-buffered and latched at the START of the
  * vertical blank - the first blank line, 576 here - not applied as it is
- * written and not latched at the frame tick (671).
+ * written and not latched at the frame tick (671). (A model from the
+ * video record; the reviews of 2026-09-18 note it is not established by
+ * a register, and the i915 citation below supports a guard around the
+ * vblank start, not a specific write window.)
  *
  * The evidence is the operator's video of intel7x (docs\decisions\
  * 2026-09-18-intel-plane-base-latches-at-vblank-start.md): once per game
@@ -402,11 +414,12 @@ int v9x_set_display_start(DWORD byte_offset)
  * returns the pending value, which is what a double-buffered register
  * reads back.
  *
- * i915 v4.4 does exactly this: intel_pipe_update_start evades the blank,
- * writing plane registers in the last 100 us BEFORE crtc_vblank_start so
- * they latch at that vblank (intel_sprite.c, VBLANK_EVASION_TIME_US), and
- * gen2/3 page flips go through MI_DISPLAY_FLIP, which the display side
- * applies at the same point.
+ * i915's intel_pipe_update_start (intel_sprite.c) keeps its plane register
+ * writes OUT of the interval just before vblank start
+ * (VBLANK_EVASION_TIME_US, 100 us), so a write is never racing the latch;
+ * that supports a guard before the blank, which is what this window is,
+ * not a preferred moment inside those 100 us. Gen2/3 page flips go through
+ * MI_DISPLAY_FLIP, applied by the display side at the vblank.
  *
  * So the write is issued while the beam is in ACTIVE video, with a guard
  * of lines before the latch so a write racing the latch point cannot land
@@ -518,6 +531,9 @@ int v9x_scanout_hw_flip_pending(void)
     }
     ticks = (v9x_i9xx_scanout_frame_now() - v9x_i9xx_scanout_flip_frame) &
             V9X_I9XX_FRAME_COUNT_MASK;
+    if (!v9x_i9xx_scanout_frame_valid) {
+        return 1;
+    }
     return ticks < V9X_I9XX_FLIP_TICKS_TO_COMPLETE;
 }
 

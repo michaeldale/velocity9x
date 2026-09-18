@@ -42,12 +42,16 @@ active video. A write at 576 to 600 then waits for the NEXT frame's line
 576, and the buffer released at 671 is on screen for the whole frame in
 between - which is what the video shows.
 
-This is also how i915 v4.4 treats the plane registers on this generation:
-`intel_pipe_update_start` (drivers/gpu/drm/i915/intel_sprite.c) waits for
-the scanline to be within `VBLANK_EVASION_TIME_US` (100 us) BEFORE
-`crtc_vblank_start` and writes the plane registers there, so they latch at
-that vblank rather than the one after. Gen2/3 page flips use
-MI_DISPLAY_FLIP in the ring, applied by the display at the same point.
+i915's `intel_pipe_update_start` (drivers/gpu/drm/i915/intel_sprite.c)
+keeps plane register writes OUT of the `VBLANK_EVASION_TIME_US` (100 us)
+before `crtc_vblank_start`, so that a write never races the latch. That
+supports a guard ahead of the blank, which is what this driver's window
+is; it does not, as an earlier version of this record said, choose those
+100 us as the moment to write (correction after the independent review of
+2026-09-18). Gen2/3 page flips use MI_DISPLAY_FLIP in the ring, applied
+by the display at the vblank. The latch-at-blank-start model itself rests
+on the video and the counters, not on a register, and the review notes it
+is not established by them alone.
 
 ## Hypotheses this evidence kills
 

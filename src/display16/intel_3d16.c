@@ -734,6 +734,8 @@ static WORD v9x_p5_preflight(const struct v9x_i9xx_sandbox_layout *layout,
          * refuses every packet of either sort on that basis. */
         struct v9x_i9xx_decode_limits limits;
 
+        v9x_i9xx_decode_limits_clear(&limits);
+        v9x_i9xx_decode_limits_clear(&limits);
         limits.target_offset = layout->target_offset;
         limits.target_bytes = layout->target_bytes;
         limits.target_pitch = layout->target_pitch;

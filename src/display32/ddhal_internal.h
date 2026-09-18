@@ -322,6 +322,13 @@ DWORD v9x_scanout_displayed_offset(void);
 #define V9X_FLIP_WAIT_DONE     1
 #define V9X_FLIP_WAIT_TIMEOUT  0
 int v9x_flip_wait_done(void);
+/* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
+ * GPU was given is still unfinished, 0 when something is and the caller
+ * should answer WASSTILLDRAWING; one bounded poll with wait, none without.
+ * reset: a new session. Exported for ddhal_core's Flip, Lock and Blt; the
+ * S3 engines have their own idle through V9X_ENGINE32_OPS. */
+int v9x_d3d_i9xx_render_drain(int wait);
+void v9x_d3d_i9xx_reset(void);
 /* Non-zero when this boot's Intel flip goes through the ring: the display
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);

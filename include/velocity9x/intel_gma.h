@@ -140,6 +140,16 @@
 #define V9X_I9XX_MI_STORE_DWORD_IMM      ((v9x_u32)0x10400002ul)
 #define V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS 4ul
 /*
+ * Which length this part wants for MI_STORE_DWORD_IMM is NOT established
+ * (review H3): i915 v4.4's i915_reg.h has MI_STORE_DWORD_IMM at length 1 and
+ * a separate _GEN4 form at length 2, while igt emits length 2 with the
+ * virtual bit for everything before gen8. intel81 (length 1, wrong address)
+ * locked; intel82 (length 2, right address) never landed. Neither run
+ * separates the command's length from its other faults. The constants stay
+ * for the record; the decoder accepts neither form and the runtime emits
+ * neither.
+ */
+/*
  * MI_STORE_DWORD_INDEX, length 1: three dwords - header, byte offset into
  * the hardware status page (a dword index shifted left 2), data. This is
  * how i915 v4.4 marks a request complete on gen2 to gen5
@@ -373,6 +383,16 @@ v9x_u16 v9x_i9xx_decode_flip_stream(
     v9x_u32 plane, v9x_u32 pitch, v9x_u32 base, v9x_u32 vram_bytes,
     v9x_u32 *rejected_index);
 v9x_u32 v9x_i9xx_flip_pending_bit(v9x_u32 plane);
+/*
+ * A store-only stream for the status-page self-test: MI_STORE_DWORD_INDEX of
+ * `value` to `byte_offset` of the page, padded to a qword. No rendering, no
+ * flip: the one GPU-to-CPU round trip, proved before any batch depends on it
+ * (review R3/H1). Four dwords.
+ */
+#define V9X_I9XX_BREADCRUMB_STREAM_DWORDS 4ul
+v9x_status v9x_i9xx_build_breadcrumb_stream(
+    v9x_u32 byte_offset, v9x_u32 value,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_scanline.c */
 void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary);
