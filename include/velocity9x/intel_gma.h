@@ -163,8 +163,9 @@
  */
 #define V9X_I9XX_MI_STORE_DWORD_INDEX    ((v9x_u32)0x10800001ul)
 #define V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS 3ul
-/* i915's I915_GEM_HWS_INDEX is 0x20; the same dword of the page, byte 0x80.
- * The page is the reserve's status page, RING_BYTES past the ring. */
+/* The breadcrumb dword: byte 0x80 of the reserve's status page, which is
+ * RING_BYTES past the ring (i915's HWS index 0x20, kept for the record; the
+ * page is no longer given to HWS_PGA). */
 #define V9X_I9XX_HWS_BREADCRUMB_BYTE     ((v9x_u32)0x00000080ul)
 #define V9X_I9XX_BREADCRUMB_FROM_RING    (V9X_I9XX_RING_BYTES + 0x800ul)
 /*
@@ -410,14 +411,22 @@ v9x_u16 v9x_i9xx_decode_flip_stream(
     v9x_u32 *rejected_index);
 v9x_u32 v9x_i9xx_flip_pending_bit(v9x_u32 plane);
 /*
- * A store-only stream for the status-page self-test: MI_STORE_DWORD_INDEX of
- * `value` to `byte_offset` of the page, padded to a qword. No rendering, no
- * flip: the one GPU-to-CPU round trip, proved before any batch depends on it
- * (review R3/H1). Four dwords.
+ * The breadcrumb as a FILL: one XY_COLOR_BLT of a single 32-bit pixel, the
+ * pixel's colour being the sequence number, into a dword of the status page
+ * at graphics address `destination`. Six dwords, the Phase 4 packet exactly.
+ *
+ * Why a fill and not a store: three MI stores by two mechanisms (IMM to a
+ * GTT address, INDEX into an HWS_PGA page) were consumed by the parser and
+ * never seen by the CPU (intel82, 83, 84). The XY_COLOR_BLT is the one GPU
+ * write this machine has MEASURED reaching memory the CPU reads back through
+ * the aperture: Phase 4 S09/S10, 2026-09-14, ScratchGuard=PASS. It is
+ * pipelined behind the MI_FLUSH ahead of it like any other command, so the
+ * colour arriving says the drawing before the flush is finished.
  */
-#define V9X_I9XX_BREADCRUMB_STREAM_DWORDS 4ul
+#define V9X_I9XX_BREADCRUMB_STREAM_DWORDS 6ul
+#define V9X_I9XX_BREADCRUMB_PITCH         64u
 v9x_status v9x_i9xx_build_breadcrumb_stream(
-    v9x_u32 byte_offset, v9x_u32 value,
+    v9x_u32 destination, v9x_u32 value,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 /* src\chipsets\intel\i9xx_scanline.c */

@@ -856,6 +856,41 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             index += 2ul;
 
+        } else if (command == V9X_I9XX_XY_COLOR_BLT &&
+                   limits->breadcrumb_offset != 0ul &&
+                   dword_count - index >= V9X_I9XX_BREADCRUMB_STREAM_DWORDS &&
+                   stream[index + 4ul] == limits->breadcrumb_offset) {
+            /*
+             * The breadcrumb: the one fill of one 32-bit pixel at the one
+             * destination the limits name, any colour; directly behind an
+             * MI_FLUSH, so that what it marks complete is everything drawn;
+             * the only thing after it MI_NOOP padding, so nothing is drawn
+             * after the mark. A second one, or one not of this exact shape,
+             * is refused. Licence is requirement: see the end. (Review R4;
+             * the fill form after intel84.)
+             */
+            v9x_u32 tail;
+
+            if (saw_breadcrumb != 0ul ||
+                index == 0ul ||
+                (stream[index - 1ul] != V9X_I9XX_MI_FLUSH &&
+                 stream[index - 1ul] != V9X_I9XX_MI_FLUSH_READ) ||
+                stream[index + 1ul] !=
+                    (V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
+                     (v9x_u32)V9X_I9XX_BREADCRUMB_PITCH) ||
+                stream[index + 2ul] != 0ul ||
+                stream[index + 3ul] != ((1ul << 16) | 1ul)) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
+            }
+            for (tail = index + V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
+                 tail < dword_count; ++tail) {
+                if (stream[tail] != V9X_I9XX_MI_NOOP) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, tail);
+                }
+            }
+            saw_breadcrumb = 1ul;
+            index += V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
+
         } else if (command == V9X_I9XX_XY_COLOR_BLT) {
             /*
              * The GPU filling its own render target. The CPU does not
@@ -1018,35 +1053,6 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
         } else if ((command & 0xff000000ul) == V9X_I9XX_3DSTATE_IAB) {
             /* Any OTHER form of the packet, including one that enables it. */
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
-
-        } else if (command == V9X_I9XX_MI_STORE_DWORD_INDEX) {
-            /*
-             * The one store into the status page, at the one offset the
-             * limits name, with any data; directly behind an MI_FLUSH, so
-             * that what it marks complete is everything drawn; the only
-             * thing after it MI_NOOP padding, so that nothing is drawn
-             * after the mark. A second store, a store with no licence, or a
-             * store anywhere else in memory is refused. (Review R4.)
-             */
-            v9x_u32 tail;
-
-            if (limits->breadcrumb_offset == 0ul ||
-                index + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS > dword_count ||
-                stream[index + 1ul] != limits->breadcrumb_offset ||
-                saw_breadcrumb != 0ul ||
-                index == 0ul ||
-                (stream[index - 1ul] != V9X_I9XX_MI_FLUSH &&
-                 stream[index - 1ul] != V9X_I9XX_MI_FLUSH_READ)) {
-                V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
-            }
-            for (tail = index + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS;
-                 tail < dword_count; ++tail) {
-                if (stream[tail] != V9X_I9XX_MI_NOOP) {
-                    V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, tail);
-                }
-            }
-            saw_breadcrumb = 1ul;
-            index += V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS;
 
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH ||

@@ -78,7 +78,8 @@ problem in one sentence.
 | intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
 | intel83 | `fbc2f29-dirty` (`8e4be09`) | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it | HWS_PGA took the page; 1,460 of 1,460 stores never landed in the wait |
 | intel84 | `273bfa4-dirty` (`89bf4bd`) | completion channel as a state machine; store-only round trip before use | round trip FAILED (2,000,000 polls); no breadcrumbs after; flicker intermittent, "an improvement but far from fixed" |
-| intel85 | next | ACTHD and INSTDONE raw at head == tail and after 2,000 polls, with whether ACTHD moved; 24-register display layout at a game flip, kept through the desktop restore; self-test bound cut to 200,000 | to boot |
+| intel85 | `2347f59-dirty` (`e29dddf`) | ACTHD/INSTDONE raw window; in-game layout kept through the restore | layout RIGHT in the game (H4 closed); ACTHD never moved, INSTDONE constant; the 2,000-poll window cut the run to 89 flips |
+| intel86 | next | breadcrumb as a one-pixel XY_COLOR_BLT, the GPU write Phase 4 measured reaching the CPU; ACTHD window removed | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -462,6 +463,63 @@ way out of the game (the second finding of that review) - with the
 sample's target offset, frame counter and count kept beside it. The
 self-test bound drops to 200,000 polls so a failing channel costs a
 moment, not the start of the run.
+
+## intel85: the layout is right in the game, and the engine registers do not move
+
+```
+ScanLayoutSamples=45  ScanSampleOffset=0x00096000  ScanSampleFrame=12979
+PIPEB_CONF=0x80000000  PIPEB_SRC=0x027F01DF (640x480)  PIPEB_HTOTAL=0x053F03FF  PIPEB_VTOTAL=0x029F023F
+DSPB_CNTR=0x95000000  DSPB_ADDR=0x00096000  DSPB_STRIDE=0x00000500 (1280)  DSPB_SIZE=0x01DF027F (480x640)
+PFIT_CONTROL=0x80002668 (enabled)  LVDS=0xC0300300  VGACNTRL=0xA2C4008E  pipe A off, plane A off
+```
+
+**H4 is closed.** Read at a game flip to 0x96000, protected from the
+desktop restore: the pipe source is 640 x 480, the plane stride 1280, the
+plane size 640 x 480 and the panel fitter on, scaling to the 1024 x 576
+timings. The intel80 readings of stride 2048 and source 1024 x 576 were
+the desktop's, written over the in-game sample by the flip to offset zero
+on the way out, exactly as the review of 2347f59 said they could be. The
+registers agree with the buffers and the picture; there is no fetch
+discrepancy.
+
+```
+ActhdStill=82249  ActhdMoved=0  ActhdChangesMax=0
+ActhdAtHeadLast=0x37A04A10  ActhdAfterLast=0x37A04A10  TailLast=0x00004A10
+ActhdRawMin=0x00000010  ActhdRawMax=0x37A04A10
+InstdoneAtHeadLast=0x7FFFFFC0  InstdoneAfterLast=0x7FFFFFC0
+FlipHandled=89  I9xxDrawsSubmitted=82139
+```
+
+In 82,249 submits ACTHD never changed in the 2,000 polls after the head
+reached the tail, and INSTDONE read 0x7FFFFFC0 at both moments every
+time. The low sixteen bits of ACTHD equal the tail (0x4A10) and the high
+bits are not the ring's graphics address, so the register's form is
+still not understood; but a register that never moves after the parser
+is done gives no sign of an engine still working. That is not proof of
+completion (review of 2347f59), and it is the second reading that fails
+to find the asynchrony the unfinished-frame model needs. The 2,000-poll
+window cost the run: 89 flips, and the operator saw "frame swapping"
+rather than an overlay, which at that rate is what any flicker looks like.
+
+**HwsSelfTest=2 again** (200,000 polls). Three MI stores by two
+mechanisms, consumed by the parser and never seen. The next build stops
+using MI stores. The breadcrumb becomes a one-pixel XY_COLOR_BLT whose
+colour is the sequence number, into the status page's dword - the one GPU
+write this machine has MEASURED reaching memory the CPU reads back
+through the aperture (Phase 4 S09/S10, 2026-09-14, ScratchGuard=PASS).
+The self-test uses the same packet. HWS_PGA is no longer written. The
+decoder licenses exactly one such fill, of exactly that shape, at that
+address, behind a flush and followed only by padding, and refuses both MI
+store forms. The ACTHD window is removed; a single raw read of the last
+submit remains.
+
+If `HwsSelfTest` reads 1 on intel86 the completion channel exists for the
+first time, and `BreadcrumbTimeouts`, `BreadcrumbLate` and the drain
+counters finally measure the drawing against the presentation. If it
+reads 2, the GPU's writes through the GTT are not reaching what the CPU
+reads at that page, which the 2026-09-14 measurement says they should,
+and the difference between that scratch page and this one is the next
+question.
 
 ## How to run the next boot
 

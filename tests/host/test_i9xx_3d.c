@@ -1631,36 +1631,41 @@ static void test_decoder_breadcrumb(void)
     CHECK(index == written);
     limits.breadcrumb_offset = 0ul;
 
-    /* The store goes after the drawing, where the runtime puts it: an
-     * MI_FLUSH, the store, a NOOP to keep the count even. */
+    /* The fill goes after the drawing, where the runtime puts it: an
+     * MI_FLUSH, then the six-dword one-pixel XY_COLOR_BLT the builder
+     * makes, then a NOOP pad. Destination: the status page's dword. */
     flush = written;
     stream[flush] = V9X_I9XX_MI_FLUSH;
-    stream[flush + 1ul] = V9X_I9XX_MI_STORE_DWORD_INDEX;
-    stream[flush + 2ul] = V9X_I9XX_HWS_BREADCRUMB_BYTE;
-    stream[flush + 3ul] = 0x00000042ul;
-    stream[flush + 4ul] = V9X_I9XX_MI_NOOP;
-    written = flush + 5ul;
+    {
+        v9x_u32 count = 0ul;
 
-    /* No licence: refused at the store. */
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
-          V9X_I9XX_P5_BREADCRUMB);
-    CHECK(index == flush + 1ul);
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x42ul,
+                                               stream + flush + 1ul, 6ul,
+                                               &count) == V9X_STATUS_OK);
+        CHECK(count == 6ul);
+    }
+    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
+    written = flush + 8ul;
 
-    /* Licensed to that offset: accepted. */
-    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    /* No licence: the fill is then an ordinary one, bounded by the
+     * target, and the status page is not in the target. Refused. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+
+    /* Licensed to that destination: accepted. */
+    limits.breadcrumb_offset = 0x006c0080ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_OK);
 
-    /* Licensed to another offset: refused. */
-    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE + 4ul;
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
-          V9X_I9XX_P5_BREADCRUMB);
-    CHECK(index == flush + 1ul);
-    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    /* Licensed to another destination: the fill is unlicensed again. */
+    limits.breadcrumb_offset = 0x006c0084ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    limits.breadcrumb_offset = 0x006c0080ul;
 
-    /* Truncated after the header: refused, not read past the end. */
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 3ul, &limits,
-                                        &index) == V9X_I9XX_P5_BREADCRUMB);
+    /* Truncated inside the packet: refused, not read past the end. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 4ul, &limits,
+                                        &index) != V9X_I9XX_P5_OK);
 
     /* Not behind a flush: the mark would not cover the drawing. */
     stream[flush] = V9X_I9XX_MI_NOOP;
@@ -1669,50 +1674,63 @@ static void test_decoder_breadcrumb(void)
     CHECK(index == flush + 1ul);
     stream[flush] = V9X_I9XX_MI_FLUSH;
 
-    /* Rendering after the store: anything but a NOOP behind it. */
-    stream[flush + 4ul] = V9X_I9XX_MI_FLUSH;
+    /* Not one pixel: a two-pixel fill at that address is refused. */
+    stream[flush + 4ul] = (1ul << 16) | 2ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_BREADCRUMB);
-    CHECK(index == flush + 4ul);
-    stream[flush + 4ul] = V9X_I9XX_MI_NOOP;
+    CHECK(index == flush + 1ul);
+    stream[flush + 4ul] = (1ul << 16) | 1ul;
 
-    /* Two stores: refused at the second. */
-    stream[flush + 4ul] = V9X_I9XX_MI_FLUSH;
-    stream[flush + 5ul] = V9X_I9XX_MI_STORE_DWORD_INDEX;
-    stream[flush + 6ul] = V9X_I9XX_HWS_BREADCRUMB_BYTE;
-    stream[flush + 7ul] = 0x00000043ul;
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 8ul, &limits,
+    /* Rendering after the fill: anything but a NOOP behind it. */
+    stream[flush + 7ul] = V9X_I9XX_MI_FLUSH;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush + 7ul);
+    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
+
+    /* Two breadcrumbs: refused at the second. */
+    stream[flush + 7ul] = V9X_I9XX_MI_FLUSH;
+    {
+        v9x_u32 count = 0ul;
+
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x43ul,
+                                               stream + flush + 8ul, 6ul,
+                                               &count) == V9X_STATUS_OK);
+    }
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 14ul, &limits,
                                         &index) == V9X_I9XX_P5_BREADCRUMB);
-    stream[flush + 4ul] = V9X_I9XX_MI_NOOP;
+    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
 
-    /* The MI_STORE_DWORD_IMM form of intel81/82 is no longer a command
-     * this decoder knows, licence or not. */
+    /* Neither MI store form is a command this decoder knows any more. */
+    stream[flush + 1ul] = V9X_I9XX_MI_STORE_DWORD_INDEX;
+    stream[flush + 2ul] = V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    stream[flush + 3ul] = 0x42ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
     stream[flush + 1ul] = V9X_I9XX_MI_STORE_DWORD_IMM;
     stream[flush + 2ul] = 0ul;
     stream[flush + 3ul] = 0x006c0800ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
           V9X_I9XX_P5_OK);
-    CHECK(index == flush + 1ul);
 
-    /* The store-only self-test stream: four dwords, the offset checked. */
+    /* The builder's own refusals: unaligned, first page, no room. */
     {
-        v9x_u32 only[4];
+        v9x_u32 only[6];
         v9x_u32 count = 0ul;
 
-        CHECK(v9x_i9xx_build_breadcrumb_stream(
-                  V9X_I9XX_HWS_BREADCRUMB_BYTE, 0x600d0001ul, only, 4ul,
-                  &count) == V9X_STATUS_OK);
-        CHECK(count == 4ul);
-        CHECK(only[0] == V9X_I9XX_MI_STORE_DWORD_INDEX);
-        CHECK(only[1] == V9X_I9XX_HWS_BREADCRUMB_BYTE);
-        CHECK(only[2] == 0x600d0001ul);
-        CHECK(only[3] == V9X_I9XX_MI_NOOP);
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x82ul, 1ul, only, 4ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0082ul, 1ul, only, 6ul,
                                                &count) != V9X_STATUS_OK);
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x1000ul, 1ul, only, 4ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x80ul, 1ul, only, 6ul,
                                                &count) != V9X_STATUS_OK);
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x80ul, 1ul, only, 3ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 1ul, only, 5ul,
                                                &count) != V9X_STATUS_OK);
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x600d0001ul,
+                                               only, 6ul, &count) ==
+              V9X_STATUS_OK);
+        CHECK(only[0] == V9X_I9XX_XY_COLOR_BLT);
+        CHECK(only[3] == ((1ul << 16) | 1ul));
+        CHECK(only[4] == 0x006c0080ul);
+        CHECK(only[5] == 0x600d0001ul);
     }
 
     /* And the clear helper zeroes the appended fields too. */

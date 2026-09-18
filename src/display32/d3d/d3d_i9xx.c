@@ -293,10 +293,7 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * in flight, so a generous bound costs nothing when the store works and
  * saves thousands of per-batch waits when it does not. */
 #define V9X_I9XX_SELFTEST_POLLS 200000ul
-/* Polls over which ACTHD is watched after RING_HEAD reaches the tail. A
- * measurement window, not a wait for anything; the drain still rests on
- * the breadcrumb. About a few milliseconds of MMIO reads. */
-#define V9X_I9XX_ACTHD_POLLS 2000ul
+
 /* Polls a drain may spend, summed across calls, on one outstanding
  * sequence before the channel is declared dead (review R1): seconds, not
  * forever, and never inside one call. */
@@ -334,10 +331,13 @@ static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
                               V9X_I9XX_HWS_BREADCRUMB_BYTE);
 }
 
-/* The store's operand: the byte offset into the status page. */
+/* The fill's destination: the graphics address of the status page's
+ * breadcrumb dword. The status page is RING_BYTES past the ring, and the
+ * ring's offset is fb.vram_bytes (the reserve boundary the family sets). */
 static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
 {
-    return V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    return v9x_hal->fb.vram_bytes + V9X_I9XX_RING_BYTES +
+           V9X_I9XX_HWS_BREADCRUMB_BYTE;
 }
 
 /*
@@ -422,19 +422,18 @@ static int v9x_d3d_i9xx_hws_open(void)
         return v9x_d3d_i9xx_hws_failed();
     }
 
+    /* HWS_PGA is read for the record and no longer written: the fill form
+     * of the breadcrumb goes through the GTT like every other GPU write,
+     * and the page's physical address is only recorded. */
     v9x_hal->d3d_diagnostics.hws_pga_before =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
-    *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA) = physical;
     v9x_hal->d3d_diagnostics.hws_pga_written = physical;
     v9x_hal->d3d_diagnostics.hws_pga_after =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
-    if (v9x_hal->d3d_diagnostics.hws_pga_after != physical) {
-        return v9x_d3d_i9xx_hws_failed();
-    }
 
     /* The round trip. The sequence counter is not used for it: the sentinel
      * is a value no batch will ever store. */
-    if (v9x_i9xx_build_breadcrumb_stream(V9X_I9XX_HWS_BREADCRUMB_BYTE,
+    if (v9x_i9xx_build_breadcrumb_stream(v9x_d3d_i9xx_breadcrumb_offset(),
                                          0x600d0001ul, stream,
                                          V9X_I9XX_BREADCRUMB_STREAM_DWORDS,
                                          &written) != V9X_STATUS_OK) {
@@ -586,40 +585,17 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
              * after the parser is done is the one fact that needs none.
              */
             {
+                /* Two raw reads and nothing more: intel85 watched these for
+                 * 2,000 polls a batch, saw ACTHD never move and INSTDONE
+                 * never change in 82,249 submits, and paid for it with the
+                 * frame rate (89 flips). Kept as a sample of the last
+                 * submit only. */
                 V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
-                DWORD acthd = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
-                DWORD previous = acthd;
-                DWORD changes = 0ul;
-                DWORD follow;
 
+                d->acthd_at_head_last = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
                 d->instdone_at_head_last =
                     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_INSTDONE);
-                d->acthd_at_head_last = acthd;
                 d->tail_last = plan.next_tail;
-                if (d->acthd_raw_min == 0ul && d->acthd_raw_max == 0ul) {
-                    d->acthd_raw_min = acthd;
-                    d->acthd_raw_max = acthd;
-                }
-                for (follow = 0ul; follow < V9X_I9XX_ACTHD_POLLS; ++follow) {
-                    acthd = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
-                    if (acthd != previous) {
-                        ++changes;
-                        previous = acthd;
-                    }
-                    if (acthd < d->acthd_raw_min) { d->acthd_raw_min = acthd; }
-                    if (acthd > d->acthd_raw_max) { d->acthd_raw_max = acthd; }
-                }
-                d->acthd_after_last = acthd;
-                d->instdone_after_last =
-                    *v9x_d3d_i9xx_reg(V9X_I9XX_REG_INSTDONE);
-                if (changes != 0ul) {
-                    ++d->acthd_moved;
-                    if (changes > d->acthd_changes_max) {
-                        d->acthd_changes_max = changes;
-                    }
-                } else {
-                    ++d->acthd_still;
-                }
             }
 
             if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
@@ -1492,7 +1468,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      * status page when everything ahead of it has drawn. The submit waits
      * for it after the head; see the diagnostics comment (intel80).
      */
-    if (at + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS > V9X_I9XX_SUBMIT_DWORDS) {
+    if (at + V9X_I9XX_BREADCRUMB_STREAM_DWORDS > V9X_I9XX_SUBMIT_DWORDS) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     if (v9x_d3d_i9xx_hws_open()) {
@@ -1505,9 +1481,19 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
             v9x_d3d_i9xx_breadcrumb_expected =
                 ++v9x_d3d_i9xx_breadcrumb_sequence;
         }
-        stream[at++] = V9X_I9XX_MI_STORE_DWORD_INDEX;
-        stream[at++] = v9x_d3d_i9xx_breadcrumb_offset();
-        stream[at++] = v9x_d3d_i9xx_breadcrumb_expected;
+        {
+            DWORD produced_crumb = 0ul;
+
+            if (v9x_i9xx_build_breadcrumb_stream(
+                    v9x_d3d_i9xx_breadcrumb_offset(),
+                    v9x_d3d_i9xx_breadcrumb_expected, stream + at,
+                    V9X_I9XX_SUBMIT_DWORDS - at,
+                    &produced_crumb) != V9X_STATUS_OK) {
+                v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+                return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+            }
+            at += produced_crumb;
+        }
     } else {
         /* No status page: the batch goes without a breadcrumb and the
          * submit waits on the head alone, as every build before intel81. */

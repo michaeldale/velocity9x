@@ -82,7 +82,7 @@ v9x_status v9x_i9xx_build_flip_stream(
 }
 
 v9x_status v9x_i9xx_build_breadcrumb_stream(
-    v9x_u32 byte_offset, v9x_u32 value,
+    v9x_u32 destination, v9x_u32 value,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     if (written != 0) { *written = 0ul; }
@@ -90,14 +90,17 @@ v9x_status v9x_i9xx_build_breadcrumb_stream(
         capacity < V9X_I9XX_BREADCRUMB_STREAM_DWORDS) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    /* A dword of the page: dword aligned and inside the 4 KiB. */
-    if ((byte_offset & 3ul) != 0ul || byte_offset >= 0x1000ul) {
+    /* A dword: aligned, and not the first page of memory. */
+    if ((destination & 3ul) != 0ul || destination < 0x1000ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    stream[0] = V9X_I9XX_MI_STORE_DWORD_INDEX;
-    stream[1] = byte_offset;
-    stream[2] = value;
-    stream[3] = V9X_I9XX_MI_NOOP;
+    stream[0] = V9X_I9XX_XY_COLOR_BLT;
+    stream[1] = V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
+                (v9x_u32)V9X_I9XX_BREADCRUMB_PITCH;
+    stream[2] = 0ul;
+    stream[3] = (1ul << 16) | 1ul;
+    stream[4] = destination;
+    stream[5] = value;
     *written = V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
     return V9X_STATUS_OK;
 }
