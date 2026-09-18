@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091714: V9X_D3D_DIAGNOSTICS gains the CPU probe, the last breadcrumb
+ * value and the late-arrival count. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091713: V9X_D3D_DIAGNOSTICS gains the three HWS_PGA readings. An
  * append; the stamp moves for the reason 2026091603 gives.
  *
@@ -1214,7 +1218,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091713ul
+#define V9X_DD_SHARED_ABI   2026091714ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1785,6 +1789,24 @@ typedef struct v9x_d3d_diagnostics {
     DWORD hws_pga_before;
     DWORD hws_pga_written;
     DWORD hws_pga_after;
+    /*
+     * intel83: HWS_PGA took the page and MI_STORE_DWORD_INDEX into it still
+     * never landed inside the wait - the same result as the IMM form. Two
+     * stores by two mechanisms that both "never land" points at the wait or
+     * the read, not the store. Three readings to separate them:
+     *   hws_cpu_probe    1 if a CPU write to the page's second dword reads
+     *                    back through the same mapping (the mapping is real
+     *                    and writable), 2 if it did not read back.
+     *   hws_value_last   the breadcrumb dword as read at the last timeout:
+     *                    zero says nothing was ever stored, an older sequence
+     *                    says the store works and lands LATE.
+     *   breadcrumb_late  batches whose predecessor's breadcrumb had arrived
+     *                    by the time the next batch was built: the store
+     *                    works, and the drawing takes longer than the wait.
+     */
+    DWORD hws_cpu_probe;
+    DWORD hws_value_last;
+    DWORD breadcrumb_late;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

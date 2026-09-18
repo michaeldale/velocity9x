@@ -76,7 +76,8 @@ problem in one sentence.
 | intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker unchanged; probe CLEAN at every delay; fetch stride is 1280 |
 | intel81 | `ca107e2-dirty` (`a1bf160`) | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it | HARD LOCK at the first 3D frame; two defects found on the desk, below |
 | intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
-| intel83 | next | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it (i915's gen3 mechanism) | to boot |
+| intel83 | `fbc2f29-dirty` (`8e4be09`) | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it | HWS_PGA took the page; 1,460 of 1,460 stores never landed in the wait |
+| intel84 | next | CPU probe of the page, last value read, late arrivals counted; wait cut to 20,000 polls | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -367,6 +368,30 @@ and `HWS_PGA` is written once before the first batch and read back
 If the page cannot be resolved the batch goes without a breadcrumb and
 the submit waits on the head alone, as before intel81. The decoder now
 knows only the INDEX form.
+
+### intel83: the status page took, and the INDEX store did not land either
+
+```
+HwsPgaBefore=0x1FFFF000  HwsPgaWritten=0x7FEC0000  HwsPgaAfter=0x7FEC0000
+I9xxDrawsSubmitted=1460  BreadcrumbSubmits=0  BreadcrumbTimeouts=1460
+```
+
+The register took the page. The store into it, by the mechanism i915
+uses on this generation, was not seen by the CPU inside the wait on any
+of 1,460 batches - the same result as the IMM form to a GTT address. Two
+different store commands both "never landing" is no longer evidence
+about the store. It is evidence about the wait or the read: either the
+CPU is not looking at the memory the GPU writes (a mapping that is not
+what it appears), or the store is real and lands later than 200,000
+polls, which would mean the drawing behind the flush is still running
+that long after the head passed it - which is the flicker hypothesis
+itself, measured. The next build separates those: a CPU write to the
+page read back through the same mapping (`HwsCpuProbe`), the breadcrumb
+dword as read at each timeout (`HwsValueLast`: zero means nothing was
+ever stored; an older sequence means the store works and lands late),
+and a count of batches whose predecessor's breadcrumb had arrived by the
+time the next one was built (`BreadcrumbLate`). The wait drops to 20,000
+polls so the game is slow rather than stopped while it measures.
 
 ## How to run the next boot
 

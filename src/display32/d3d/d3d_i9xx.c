@@ -288,7 +288,7 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
 /* Polls a submit spends on the breadcrumb after the head. A frame's worth
  * of drawing is milliseconds; this is a few hundred, so a store that never
  * lands costs a slow frame and a counter, not a machine that looks hung. */
-#define V9X_I9XX_BREADCRUMB_POLLS 200000ul
+#define V9X_I9XX_BREADCRUMB_POLLS 20000ul
 
 static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
@@ -348,6 +348,16 @@ static int v9x_d3d_i9xx_hws_open(void)
         return 0;
     }
     physical = entry & 0xfffff000ul;
+    /* Is the CPU's view of the page real? A write to its second dword,
+     * read back through the same mapping. Nothing of the GPU's in this. */
+    {
+        volatile DWORD *probe = v9x_d3d_i9xx_breadcrumb_linear() + 1;
+
+        *probe = 0x5a5aa5a5ul;
+        v9x_hal->d3d_diagnostics.hws_cpu_probe =
+            *probe == 0x5a5aa5a5ul ? 1ul : 2ul;
+        *probe = 0ul;
+    }
     v9x_hal->d3d_diagnostics.hws_pga_before =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA) = physical;
@@ -431,8 +441,11 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
             }
             /* Reported and drawn anyway: the frame is what it is, and a
              * store that never lands is a fact for the record, not a
-             * reason to fail every draw after it. */
+             * reason to fail every draw after it. The value read at the
+             * timeout says whether an OLDER store has landed since. */
             ++v9x_hal->d3d_diagnostics.breadcrumb_timeouts;
+            v9x_hal->d3d_diagnostics.hws_value_last =
+                *v9x_d3d_i9xx_breadcrumb_linear();
             return 1;
         }
     }
@@ -1279,6 +1292,13 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     if (v9x_d3d_i9xx_hws_open()) {
+        /* Did the LAST batch's breadcrumb arrive after its wait gave up?
+         * Read before the sequence moves on. */
+        if (v9x_d3d_i9xx_breadcrumb_sequence != 0ul &&
+            *v9x_d3d_i9xx_breadcrumb_linear() ==
+                v9x_d3d_i9xx_breadcrumb_sequence) {
+            ++v9x_hal->d3d_diagnostics.breadcrumb_late;
+        }
         v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
         if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
             v9x_d3d_i9xx_breadcrumb_expected =

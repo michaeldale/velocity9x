@@ -467,6 +467,9 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("HwsPgaBefore", snapshot.d3d.hws_pga_before);
     v9x_write_hex("HwsPgaWritten", snapshot.d3d.hws_pga_written);
     v9x_write_hex("HwsPgaAfter", snapshot.d3d.hws_pga_after);
+    v9x_write_uint("HwsCpuProbe", snapshot.d3d.hws_cpu_probe);
+    v9x_write_hex("HwsValueLast", snapshot.d3d.hws_value_last);
+    v9x_write_uint("BreadcrumbLate", snapshot.d3d.breadcrumb_late);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);
