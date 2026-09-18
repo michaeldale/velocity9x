@@ -77,7 +77,7 @@ problem in one sentence.
 | intel81 | `ca107e2-dirty` (`a1bf160`) | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it | HARD LOCK at the first 3D frame; two defects found on the desk, below |
 | intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
 | intel83 | `fbc2f29-dirty` (`8e4be09`) | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it | HWS_PGA took the page; 1,460 of 1,460 stores never landed in the wait |
-| intel84 | next | CPU probe of the page, last value read, late arrivals counted; wait cut to 20,000 polls | to boot |
+| intel84 | next (`fe571f4`) | completion channel as a state machine: page proven by a store-only round trip before use; timed-out completions owed to Flip, Lock and Blt; probe records failures and write timing | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -392,6 +392,21 @@ ever stored; an older sequence means the store works and lands late),
 and a count of batches whose predecessor's breadcrumb had arrived by the
 time the next one was built (`BreadcrumbLate`). The wait drops to 20,000
 polls so the game is slow rather than stopped while it measures.
+
+## After the independent review (2026-09-18)
+
+`2026-09-18-final-reality-flicker-independent-review.md` found the
+breadcrumb build's counters, setup, validation and failure handling
+unfit to measure with, and said so plainly: a breadcrumb never observed
+is a failed measurement, not evidence about rendering. Its R1 to R5 are
+done on the host (`fe571f4`) and listed there. The consequence for the
+next boot: `HwsSelfTest` is the first thing to read. A 2 means the
+store-only round trip failed and every later count is about a channel
+that does not work; a 1 with `HwsSelfTestPolls` says the round trip works
+and how long it took, and only then do `BreadcrumbTimeouts`,
+`BreadcrumbLate`, `BreadcrumbOutstanding` and the drain counters mean
+what they say. The review's H3 stands: the IMM history is unresolved and
+stays out of the runtime. H4 and H5 are open.
 
 ## How to run the next boot
 
