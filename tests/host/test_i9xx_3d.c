@@ -1553,6 +1553,52 @@ static void test_every_scene_decodes(void)
 }
 
 /*
+ * The two flush forms the decoder accepts, and one it must not.
+ *
+ * intel76: the runtime batch now leads with MI_FLUSH bit 0 (MI_READ_FLUSH),
+ * which invalidates the map cache. The decoder accepts exactly that form and
+ * the bare flush; a flush that inhibits the render-cache write (bit 2) is
+ * refused, because a batch ending in one would flip unfinished pixels.
+ */
+static void test_decoder_flush_forms(void)
+{
+    struct v9x_i9xx_scene scene;
+    struct v9x_i9xx_sandbox_layout layout;
+    struct v9x_i9xx_decode_limits limits;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 flush = 0ul;
+
+    CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+    v9x_test_limits(&limits, layout.target_offset, layout.target_bytes,
+                    scene.kind);
+    limits.depth_offset = layout.depth_offset;
+    limits.depth_bytes = layout.depth_bytes;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    while (flush < written && stream[flush] != V9X_I9XX_MI_FLUSH) {
+        ++flush;
+    }
+    CHECK(flush < written);
+
+    stream[flush] = V9X_I9XX_MI_FLUSH_READ;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    stream[flush] = V9X_I9XX_MI_FLUSH | 0x4ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    CHECK(index == flush);
+    stream[flush] = V9X_I9XX_MI_FLUSH;
+}
+
+/*
  * What a DEPTH stream may not do, and the decoder must refuse.
  *
  * Every mutation here passed the decoder when it was written. Each is the same
@@ -4387,6 +4433,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_i9xx_bind_target();
     test_every_scene_decodes();
     test_decoder_depth_refusals();
+    test_decoder_flush_forms();
     test_probe_expectation_names();
     test_scene_combined_crc();
     test_scene_primitive_offset();

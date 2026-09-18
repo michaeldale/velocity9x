@@ -1132,6 +1132,39 @@ goes, the render cache was stale across the CPU clear; if not, the
 destination read is right and the ghost has another source, with the
 depth path and the fifteen Locks a frame still on the list.
 
+### intel76: the leading render-cache flush changed nothing; the texture churn did show
+
+Build `9efb554-dirty` (the leading `MI_FLUSH`, committed as `07ffc98`).
+The operator: "flickering seems the same". So the render cache was not
+holding a stale destination, or a bare flush does not clear what it held.
+
+```
+D3dTextureCreates=76006  D3dTextureDestroys=76006  FlipHandled=650
+CountLock=10470 = CountD3dTextureCreate=10470 (in the ring's window)
+I9xxDrawsSubmitted=642574  DrawsToFront=0  DrawsToBack=642574
+D3dTextureLastOffset=0x00202000
+```
+
+What the snapshot says that intel75's did not: the fifteen Locks a frame
+ARE the textures. Every texture create is followed by one Lock, and the
+game creates and destroys about a hundred and seventeen textures a frame -
+it rebuilds its texture set every frame into the same video memory, and
+the CPU refills that memory through the aperture with different texels
+each time. The GPU reads texels through its map cache. The bare `MI_FLUSH`
+this driver emits (0x02000000) writes the render cache back and leaves
+the map cache alone; nothing this driver has ever submitted invalidated
+it. A draw can then sample the texels that occupied the address a frame
+earlier. Blended textures - and the scenes fill with them as they play -
+sampled from a previous frame's texture set are a translucent picture of
+an older frame laid over a correct one, which is the description.
+
+The next build begins each batch with `MI_FLUSH` bit 0 set
+(0x02000001; `MI_READ_FLUSH` in i915_reg.h, `FLUSH_MAP_CACHE` in Mesa's
+i915 driver), the form i915 v4.4 emits when the sampler domain is
+invalidated. The decoder accepts that one extra form and no other. If the
+ghost goes, the texture cache was it; if not, the texture churn is still a
+cost worth knowing about and the probe rung is next.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

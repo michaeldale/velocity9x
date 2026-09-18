@@ -1003,7 +1003,11 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
 
         } else if (command == V9X_I9XX_MI_NOOP ||
-                   command == V9X_I9XX_MI_FLUSH) {
+                   command == V9X_I9XX_MI_FLUSH ||
+                   command == V9X_I9XX_MI_FLUSH_READ) {
+            /* Only these two forms of the flush; every other option bit
+             * (inhibit render-cache write, scene count, end scene) is
+             * refused as before. */
             index += 1ul;
 
         } else if ((command & 0xff000000ul) ==

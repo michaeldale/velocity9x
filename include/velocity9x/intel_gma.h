@@ -116,6 +116,13 @@
 #define V9X_I9XX_MI_NOOP                 ((v9x_u32)0x00000000ul)
 #define V9X_I9XX_MI_FLUSH                ((v9x_u32)0x02000000ul)
 /*
+ * MI_FLUSH with bit 0, MI_READ_FLUSH in i915_reg.h (FLUSH_MAP_CACHE in
+ * Mesa's i915): the render cache is written back AND the map (texture)
+ * cache is invalidated. The bare flush leaves the texture cache alone, so
+ * texels the CPU rewrote through the aperture can be sampled stale.
+ */
+#define V9X_I9XX_MI_FLUSH_READ           ((v9x_u32)0x02000001ul)
+/*
  * The Gen3 page flip through the ring, i915_reg.h: MI_DISPLAY_FLIP_I915 =
  * MI_INSTR(0x14, 1) = (0x14 << 23) | 1, three dwords - command, pitch,
  * base; the plane in bits 21:20. The flip pends until the display takes
