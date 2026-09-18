@@ -955,37 +955,40 @@ line test rather than on the hardware's own pending bit, which a plane-base
 write also sets. Both paths now wait on the correct bit. The "plane
 prefetch" model above is withdrawn as unnecessary.
 
-### intel72: the base register reads the new offset the moment the flip is parsed
+### intel72: the audit build - the base reads new at once, and the pending bit is never set
 
-Build `695cd4b-dirty` - the readback counters, but BEFORE the audit's bit
-correction, so the pending bit polled was still the wrong one.
+Build stamp `695cd4b-dirty`. That stamp is the AUDIT build: the package was
+written at 14:13:31 by the gate that preceded commit `88cd119` (14:13:33),
+from a tree that already carried the corrected bits, and `wdis` of the
+shipped `i9xx_flip.obj` shows `0x800` and `0x400` as the pending masks.
+(A first reading of this capture took the stamp for the pre-audit build;
+withdrawn.)
 
 ```
 FlipRingIssued=842   FlipRingRefused=0   FlipHandled=822
 FlipBaseImmediate=842  FlipBaseDeferred=0
 FlipTakenAtDone=822    FlipNotTakenAtDone=0
-FlipRingPendingSeen=0  (bits 2/6: says nothing)   FlipStillDrawing=0
+FlipRingPendingSeen=0  with bits 11/10     FlipStillDrawing=0
 ```
 
-All 842 times, `DSPBADDR` read back the new offset directly after the ring
-submit returned - that is, after the command streamer had consumed
-`MI_DISPLAY_FLIP`. Two readings remain, and this boot cannot pick:
+So, with the audited bits: directly after the command streamer consumed
+`MI_DISPLAY_FLIP`, the plane base register already read the new offset
+every time, and the flip-pending bit in ISR was never set - not once in
+842 flips, on the read made before any poll.
 
-- The streamer stalls on `MI_DISPLAY_FLIP` until the retrace and writes the
-  base itself; the submit's head-equals-tail wait therefore already spans
-  the flip, and the register reads new because the flip has happened. Then
-  the tearing is not a flip-timing fault at all.
-- The register reads the programmed value at once while the display keeps
-  scanning the old base until the retrace; the flip is pending, and the
-  driver declared it done early because it polled the wrong bit.
+**Reading.** Of the two left open by intel71, the second is gone: a flip
+that was still pending would show the bit set on that read. What remains
+is the first - the command streamer executes `MI_DISPLAY_FLIP` by waiting
+for the retrace and writing the base itself, so the submit's head-equals-
+tail wait already spans the flip, `FlipStillDrawing` is rightly zero, and
+"done immediately after submit" is correct - or a third: the pending bit
+is not at bit 10 on this part. Those two are told apart by the picture.
+Under the first, the flip is synchronised and any tearing that remains has
+a cause outside the flip path (a candidate: the CPU blocked inside Flip
+for up to a frame while the application's next render is already due).
+Under the third, nothing about flip timing has been measured yet.
 
-i915's stall check reads `DSPADDR` as evidence that the flip "has happened",
-which favours the first reading; its IIR/ISR comment describes a pending
-period after the parse, which favours the second. The corrected bits
-decide: on the audit build, `FlipRingPendingSeen` near one per flip is the
-second reading and the fix is already in; zero with a clean picture is the
-first; zero with the same picture means the bit is not where v4.4 puts it
-on this part and the tear has a cause not yet named.
+The picture for this boot has not been reported at the time of writing.
 
 ### Flat shading, in the core (2026-09-18)
 
