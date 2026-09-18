@@ -1074,6 +1074,45 @@ every write landed in the first 24 lines of the blank; `FlipBaseImmediate`
 did exactly what it was built to do and the picture got faster. That is
 the strongest statement yet that the flip path is not where the fault is.
 
+### intel75: every draw landed in the hidden buffer
+
+Build `57f6ccc-dirty` (the front/back counters), picture "the same".
+
+```
+DrawsToFront=0   DrawsToBack=688384
+DrawsTargetLast=0x00000000   DrawsDisplayedLast=0x00096000
+FlipHandled=690  FlipStillDrawing=2266758  FlipBaseImmediate=710  FlipFramesInSubmit=1
+CountBlt=1396 (two a frame: the colour clear and the depth clear, both CPU fills)
+CountLock=10180 (about 15 a frame; intel62 had 445 in a comparable run)
+```
+
+Not one of 688,384 batches was aimed at the buffer the display was
+scanning. The two buffers are offsets 0 and 0x96000 and the game
+alternates them exactly as DirectDraw's pointer swap says it should. So
+the flip path is exonerated end to end: the write lands between frames,
+the buffer is released a frame later, and nothing is drawn where the eye
+is looking. The flicker is in the CONTENT of completed frames.
+
+What can make alternate completed frames differ in a lower region, with
+the buffers right, is what the next instrument has to separate:
+
+- The depth buffer. It is cleared once a frame by a CPU fill through the
+  aperture and read by the GPU; an ordering or coherency gap between the
+  two would fail the depth test over a region that varies frame to frame,
+  and missing geometry that comes and goes reads as flicker.
+- The render cache. `MI_FLUSH` ends every batch; whether the depth cache
+  is written back with it on this part is not measured.
+- The fifteen Locks a frame, which intel62 did not have and which are CPU
+  access to video memory between draws.
+
+None of these is established. The instrument that separates them is a
+probe rung rather than another driver change: render two known frames
+alternately into a flipping chain, and after each flip read the FRONT
+buffer back at a point in the lower half, several hundred times, counting
+frames whose content is not the one just presented and which half was
+wrong. That reproduces the picture as a number, without eyes, and with the
+depth test on and off.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
