@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091711: V9X_D3D_DIAGNOSTICS gains the in-game layout fields (plane
+ * stride, plane control, pipe source, target pitch and extent). An append;
+ * the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091710: V9X_D3D_DIAGNOSTICS gains the draws-waited-for-flip counters.
  * An append; the stamp moves for the reason 2026091603 gives.
  *
@@ -1204,7 +1208,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091710ul
+#define V9X_DD_SHARED_ABI   2026091711ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1732,6 +1736,19 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD draws_flip_waited;
     DWORD draws_flip_wait_timeouts;
+    /*
+     * The scanout layout during the game, not the desktop: the plane stride
+     * register, plane control and pipe source size as read when a flip is
+     * issued, and the render target's pitch and width<<16|height as the
+     * draws see them. Equal base addresses are not the only way a batch
+     * lands on screen - a plane stride wider than the target's pitch fetches
+     * 480 rows into the next buffer - and DrawsToFront cannot see that.
+     */
+    DWORD flip_stride_last;
+    DWORD flip_dspcntr_last;
+    DWORD flip_pipesrc_last;
+    DWORD draws_pitch_last;
+    DWORD draws_extent_last;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

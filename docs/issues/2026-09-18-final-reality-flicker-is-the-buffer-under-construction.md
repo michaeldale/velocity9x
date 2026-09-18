@@ -73,7 +73,7 @@ problem in one sentence.
 | intel77 | `00faf7d` | MI_READ_FLUSH before each batch (stale texture cache) | unchanged |
 | intel78 | `3d9a103` | base written in ACTIVE video, before the blank-start latch | "a little better" |
 | intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
-| intel80 | next | a flip completes at the SECOND frame tick after the write | to boot |
+| intel80 | `73709d2`+ | a flip completes at the SECOND frame tick after the write; counter read made consistent; in-game layout captured | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -131,16 +131,58 @@ still shows construction, the frame counter is not counting the event
 the panel switches on, and the readback instrument below comes before any
 further code change.
 
-## The instrument that ends the guessing
+## Review of 2026-09-18, and what it changed
 
-A probe rung, not a driver change: render two known solid frames
-alternately into a flipping chain, and after each Flip read the FRONT
-buffer's memory back at a point in the lower half several hundred times
-per frame, recording the first moment its content matches the frame just
-presented, in scanlines from the flip write. That gives the latch delay
-as a number, from the hardware, without a camera. Everything above is
-reasoned from counters and a video; this measures the one thing they
-cannot: when the panel's buffer actually changes.
+A review of this record and the code made five points. Taken in order:
+
+1. **The frame counter was read inconsistently.** High and low registers
+   read once each; a carry between the reads composes a count off by 256,
+   which the masked subtraction reads as hundreds of frames elapsed and
+   completes a flip at once. Fixed: high, low, high, retried while the
+   highs differ, as i915's `i915_get_vblank_counter` does. Rare, so not
+   the once-a-frame flicker, but the two-tick experiment was not
+   trustworthy without it.
+2. **`DrawsToFront=0` proves two base addresses differ, not that the
+   buffers are disjoint.** The buffers are 0x96000 apart, exactly
+   1280 x 480. A plane stride left at the desktop's 2048 would fetch 480
+   rows across 0xF0000 bytes and run 0x5A000 into the next buffer,
+   showing its construction at the bottom of the frame with both bases
+   different. The desktop capture cannot rule that out. From this build
+   the snapshot records, as read during the game, the plane stride,
+   plane control and pipe source registers at flip issue
+   (`FlipStrideLast`, `FlipDspCntrLast`, `FlipPipeSrcLast`) and the render
+   target's pitch and width<<16|height (`DrawsPitchLast`,
+   `DrawsExtentLast`). Shared ABI 2026091711. If stride and pitch
+   disagree, that is the fault and no timing change will touch it.
+3. **Memory readback cannot measure the latch.** Reading the front
+   surface says what that allocation holds, not which allocation the
+   panel is fetching. Replaced by a controlled visual probe,
+   `V9XDDP.EXE /reuse`: front red and back blue with a white marker every
+   32nd row (a wrong stride slants or respaces them), both surfaces'
+   addresses and pitches written to the result, then for delays of 0, 17,
+   34 and 100 ms after GetFlipStatus says done, the RETIRED buffer is
+   painted solid green for 50 ms, thirty times per delay. Green on the
+   panel is the display fetching a buffer the driver has released; the
+   smallest delay at which it stops is the latch delay. A camera or the
+   eye is the instrument. `ReuseDoneMsMax` records the longest wait for
+   "done".
+4. **Two ticks is a workaround, not proof.** Agreed and recorded so. If
+   it removes the flicker it says timing, not where the latch is; if it
+   does not, the next look is layout and presentation order, not more
+   delay.
+5. **Aggregate counts cannot establish that every clear waited.** Not
+   done in this build: a small event trace of flip issue and completion,
+   clear destination and extent, and the first draw after, with frame
+   count and scanline. Noted as the next instrument if the probe and the
+   layout capture do not settle it.
+
+## How to run the next boot
+
+1. Deploy the package as usual and run Final Reality; capture as usual.
+   Read `FlipStrideLast` against `DrawsPitchLast` first.
+2. Run `V9XDDP.EXE /reuse` from the package directory with the camera on
+   the panel. Note at which delays green appears. The run takes about
+   two minutes and ends with the normal probe result files.
 
 ## Not in scope here
 

@@ -50,6 +50,7 @@
  * 640x400 - from EnumDisplayModes and rejects SetDisplayMode for them. */
 #define V9X_DDSCL_ALLOWMODEX        0x00000040ul
 #define V9X_DDFLIP_WAIT             0x00000001ul
+#define V9X_DDGFS_ISFLIPDONE        0x00000002ul
 #define V9X_DDBLT_COLORFILL          0x00000400ul
 #define V9X_DDBLT_KEYSRC             0x00008000ul
 /* DDRAW.H:2799, and not where its neighbours suggest. */
@@ -1375,6 +1376,64 @@ static void v9x_pal8_mode_test(struct v9x_dd *ddraw, const char *prefix,
         palette->vtbl->Release(palette);
     }
     primary->vtbl->Release(primary);
+}
+
+/*
+ * A solid fill with a white row every 32nd row, for the /reuse probe: a
+ * plane stride that differs from the surface pitch turns those rows into
+ * a slant or changes their spacing, which a solid colour cannot show.
+ */
+static void v9x_fill_surface_marked(struct v9x_dds *surface, DWORD pattern)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+    DWORD y;
+    DWORD x;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return;
+    }
+    row = (BYTE FAR *)desc.lpSurface;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        DWORD FAR *pixels = (DWORD FAR *)row;
+        DWORD value = (y % 32ul) == 0ul ? 0xfffffffful : pattern;
+
+        for (x = 0ul; x < (DWORD)desc.lPitch / 4ul; ++x) {
+            pixels[x] = value;
+        }
+        row += desc.lPitch;
+    }
+    surface->vtbl->Unlock(surface, 0);
+}
+
+/* The surface's linear address, pitch and height, so the reuse probe's
+ * result says how far apart the two buffers are and whether pitch x height
+ * reaches the other one. */
+static void v9x_write_reuse_surface(const char *prefix, struct v9x_dds *surface)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    char key[40];
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        v9x_compose_key(key, prefix, "LockHr");
+        v9x_write_hresult(key, hr);
+        return;
+    }
+    v9x_compose_key(key, prefix, "Address");
+    v9x_write_uint(key, (DWORD)desc.lpSurface);
+    v9x_compose_key(key, prefix, "Pitch");
+    v9x_write_uint(key, (DWORD)desc.lPitch);
+    v9x_compose_key(key, prefix, "Height");
+    v9x_write_uint(key, desc.dwHeight);
+    surface->vtbl->Unlock(surface, 0);
 }
 
 static void v9x_fill_surface(struct v9x_dds *surface, DWORD pattern)
@@ -8378,6 +8437,77 @@ void __stdcall V9xDdrawProbeEntry(void)
                            GetRValue(seen_blue) < 0x40u &&
                            GetGValue(seen_blue) < 0x40u;
                 v9x_write_uint("FlipPixelOk", pixel_ok ? 1u : 0u);
+            }
+
+            /*
+             * /reuse: does the panel still show a buffer after the driver
+             * says its flip is done?
+             *
+             * The front is painted red and the back blue, each with a white
+             * row marker every 32nd row so a wrong stride shows as a slant
+             * or a stretch, and the two surfaces' addresses and pitches are
+             * reported first. Then, for each delay in turn: flip, wait until
+             * GetFlipStatus says the flip is done, wait the delay, and paint
+             * the RETIRED buffer - the one just flipped away from, which the
+             * driver says is off screen - solid green; hold, repaint its
+             * colour, flip back. Green on the panel, seen by eye or camera,
+             * is the display fetching a buffer the driver has released:
+             * premature reuse or an overlapping scanout, and the smallest
+             * delay at which it stops is the latch delay in frames. Memory
+             * readback cannot answer this; only the panel can.
+             */
+            if (v9x_has_switch("/reuse")) {
+                static const DWORD delays_ms[4] = { 0ul, 17ul, 34ul, 100ul };
+                static const DWORD red = 0xf800f800ul;
+                static const DWORD blue = 0x001f001ful;
+                static const DWORD green = 0x07e007e0ul;
+                DWORD stage;
+                DWORD cycle;
+                DWORD done_ms_max = 0ul;
+                char key[32];
+
+                v9x_write_reuse_surface("ReuseFront", primary);
+                v9x_write_reuse_surface("ReuseBack", backbuffer);
+                v9x_fill_surface_marked(primary, red);
+                v9x_fill_surface_marked(backbuffer, blue);
+                Sleep(2000);
+
+                for (stage = 0ul; stage < 4ul; ++stage) {
+                    DWORD retired_colour = red;
+
+                    for (cycle = 0ul; cycle < 30ul; ++cycle) {
+                        DWORD flipped_at;
+                        HRESULT status;
+
+                        do {
+                            hr = primary->vtbl->Flip(primary, 0,
+                                                     V9X_DDFLIP_WAIT);
+                        } while (hr == (HRESULT)V9X_DDERR_WASSTILLDRAWING);
+                        flipped_at = v9x_time();
+                        do {
+                            status = primary->vtbl->GetFlipStatus(
+                                primary, V9X_DDGFS_ISFLIPDONE);
+                        } while (status == (HRESULT)V9X_DDERR_WASSTILLDRAWING &&
+                                 v9x_time() - flipped_at < 500ul);
+                        if (v9x_time() - flipped_at > done_ms_max) {
+                            done_ms_max = v9x_time() - flipped_at;
+                        }
+                        if (delays_ms[stage] != 0ul) {
+                            Sleep(delays_ms[stage]);
+                        }
+                        /* The retired buffer is now the back buffer. */
+                        v9x_fill_surface(backbuffer, green);
+                        Sleep(50);
+                        v9x_fill_surface_marked(backbuffer, retired_colour);
+                        retired_colour = retired_colour == red ? blue : red;
+                    }
+                    v9x_compose_key(key, "ReuseStage", "");
+                    key[10] = (char)('0' + stage);
+                    key[11] = '\0';
+                    v9x_write_uint(key, delays_ms[stage]);
+                    Sleep(1500);
+                }
+                v9x_write_uint("ReuseDoneMsMax", done_ms_max);
             }
         }
     }

@@ -78,14 +78,40 @@ static DWORD v9x_i9xx_scanout_framehigh_reg = 0ul;
 static DWORD v9x_i9xx_scanout_framepixel_reg = 0ul;
 static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
 
+/*
+ * Tries at a consistent pair of counter reads. The high word and the low
+ * byte live in two registers; a carry between the two reads composes a
+ * count off by 256, which the masked subtraction in hw_flip_pending reads
+ * as hundreds of frames elapsed and completes a flip at once. i915 v4.4
+ * reads high, low, high and retries while the highs differ
+ * (i915_get_vblank_counter). Once a frame at most, so two tries settle it;
+ * four is the bound so a register that never agrees cannot spin.
+ */
+#define V9X_I9XX_FRAME_READ_TRIES 4ul
+
 static DWORD v9x_i9xx_scanout_frame_now(void)
 {
+    DWORD high_first;
+    DWORD high_second;
+    DWORD low;
+    DWORD tries;
+
     if (v9x_i9xx_scanout_framehigh_reg == 0ul) {
         return 0ul;
     }
-    return v9x_i9xx_frame_count(
-        *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg),
-        *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg));
+    high_first = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg);
+    low = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg);
+    high_second = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg);
+    for (tries = 1ul;
+         tries < V9X_I9XX_FRAME_READ_TRIES &&
+         (high_first & V9X_I9XX_FRAME_HIGH_MASK) !=
+         (high_second & V9X_I9XX_FRAME_HIGH_MASK);
+         ++tries) {
+        high_first = high_second;
+        low = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg);
+        high_second = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg);
+    }
+    return v9x_i9xx_frame_count(high_first, low);
 }
 
 static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
@@ -211,11 +237,36 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
  * the register is not double-buffered on read); deferred says the old base
  * is still what the register shows. Remembered for the read at done.
  */
+/*
+ * The scanout layout as it stands when a flip is issued, for the snapshot:
+ * the plane's stride register, its control register (format, pipe select)
+ * and the pipe's source size. The buffers are 0x96000 apart, 1280 x 480
+ * exactly; a stride the mode set left at the desktop's 2048 would fetch 480
+ * rows across 0xF0000 bytes and run 0x5A000 into the next buffer, showing
+ * that buffer's construction at the bottom of the frame with both base
+ * addresses different - which DrawsToFront=0 cannot see. The desktop
+ * capture cannot answer this; only the value during the game can.
+ */
+static void v9x_i9xx_note_layout(void)
+{
+    DWORD cntr_reg = v9x_i9xx_scanout_plane == 0ul ? V9X_I9XX_REG_DSPA_CNTR
+                                                   : V9X_I9XX_REG_DSPB_CNTR;
+    DWORD cntr = *v9x_i9xx_scanout_reg(cntr_reg);
+    DWORD src_reg = (cntr & V9X_I9XX_DSPCNTR_PIPE_MASK) == 0ul
+                        ? V9X_I9XX_REG_PIPEA_SRC : V9X_I9XX_REG_PIPEB_SRC;
+
+    v9x_hal->d3d_diagnostics.flip_stride_last =
+        *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg);
+    v9x_hal->d3d_diagnostics.flip_dspcntr_last = cntr;
+    v9x_hal->d3d_diagnostics.flip_pipesrc_last = *v9x_i9xx_scanout_reg(src_reg);
+}
+
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 {
     v9x_i9xx_scanout_last_base_reg = base_reg;
     v9x_i9xx_scanout_last_offset = byte_offset;
     v9x_i9xx_scanout_flip_outstanding = 1;
+    v9x_i9xx_note_layout();
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);

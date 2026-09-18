@@ -1041,6 +1041,9 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
             v9x_hal->d3d_diagnostics.draws_target_last =
                 context->target_offset;
             v9x_hal->d3d_diagnostics.draws_displayed_last = displayed;
+            v9x_hal->d3d_diagnostics.draws_pitch_last = context->pitch;
+            v9x_hal->d3d_diagnostics.draws_extent_last =
+                (context->width << 16) | (context->height & 0xfffful);
             if (displayed == context->target_offset) {
                 ++v9x_hal->d3d_diagnostics.draws_to_front;
             } else {
