@@ -278,7 +278,7 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * the mini-VDD wrote 0x10BC and read back 0x10B8 - so the plan that produces
  * it is the tested one rather than arithmetic written here.
  */
-static int v9x_d3d_i9xx_submit(const DWORD *stream, DWORD dwords)
+int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
 {
     struct v9x_i9xx_ring_plan plan;
     DWORD ring_linear = 0ul;
@@ -1157,7 +1157,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
     }
 
-    if (!v9x_d3d_i9xx_submit(stream, at)) {
+    if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
     }
 #if V9X_I9XX_SCAN_WATCH

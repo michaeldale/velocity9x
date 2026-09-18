@@ -306,6 +306,14 @@ int v9x_scanout_vblank_available(void);
  * blank because the hardware applies it at once rather than latching it at
  * the next retrace: the Intel controls, on intel65's evidence. */
 int v9x_scanout_writes_in_blank(void);
+/* Non-zero when this boot's Intel flip goes through the ring: the display
+ * takes it at the retrace and reports it pending meanwhile. */
+int v9x_scanout_hw_flip(void);
+int v9x_scanout_hw_flip_pending(void);
+/* The Gen3 ring submission the draws use, in d3d\d3d_i9xx.c. EXTERNAL from
+ * 2026-09-18 so the scanout module can put a flip in the same ring; every
+ * stream through it has passed an allowlist first. */
+int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

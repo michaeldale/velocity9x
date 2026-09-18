@@ -412,6 +412,9 @@ static int v9x_can_set_display_start(void)
  * new buffer scans from this frame, and the old one is free the moment the
  * blank ends. Done at unblank, with no second blank to wait for. */
 #define V9X_FLIP_WAIT_UNBLANK_DONE 3ul
+/* Queued in the hardware (MI_DISPLAY_FLIP): done when the plane's
+ * flip-pending bit clears. No line register is consulted at all. */
+#define V9X_FLIP_WAIT_HW       4ul
 
 static DWORD v9x_flip_state = V9X_FLIP_IDLE;
 
@@ -469,6 +472,10 @@ static void v9x_flip_arm(int novsync)
         v9x_flip_abandon();
         return;
     }
+    if (v9x_scanout_hw_flip()) {
+        v9x_flip_state = V9X_FLIP_WAIT_HW;
+        return;
+    }
     if (v9x_scanout_writes_in_blank()) {
         /* The write was made in the blank (v9x_flip_body waited for it),
          * so the flip is taken when this blank ends. */
@@ -495,6 +502,13 @@ static int v9x_flip_done(void)
     if (!v9x_scanout_vblank_available() ||
         ++v9x_flip_pending_polls > V9X_FLIP_PENDING_POLLS_MAX) {
         v9x_flip_abandon();
+        return 1;
+    }
+    if (v9x_flip_state == V9X_FLIP_WAIT_HW) {
+        if (v9x_scanout_hw_flip_pending()) {
+            return 0;
+        }
+        v9x_flip_state = V9X_FLIP_IDLE;
         return 1;
     }
     blank = v9x_in_vblank();

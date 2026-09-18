@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091706: V9X_D3D_DIAGNOSTICS gains the two ring-flip counters. An
+ * append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091705: V9X_D3D_DIAGNOSTICS gains the frame-tick line per pipe (four
  * DWORDs). An append; the stamp moves for the reason 2026091603 gives.
  *
@@ -1187,7 +1190,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091705ul
+#define V9X_DD_SHARED_ABI   2026091706ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1645,6 +1648,11 @@ typedef struct v9x_d3d_diagnostics {
     DWORD scan_a_tick_seen;
     DWORD scan_b_tick_line;
     DWORD scan_b_tick_seen;
+    /* The ring flip: streams the parser was given, and flips refused before
+     * one was - a stream the builder or decoder would not pass, or a ring
+     * that would not take it. */
+    DWORD flip_ring_issued;
+    DWORD flip_ring_refused;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

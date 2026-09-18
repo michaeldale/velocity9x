@@ -865,6 +865,46 @@ until it sees a tick on a pipe it is reading, bounded at 131,072 samples
 (about six frames), and records how many it took. Read-only, once per
 boot, as before.
 
+### intel69: the frame counter ticks at line 671
+
+Build `82042ad-dirty`, default-on, Final Reality then a snapshot (intel68
+was the same boot type with the snapshot step skipped).
+
+```
+ScanSamples=18068   ScanBLineMin=68  ScanBLineMax=671  ScanBLineChanges=603
+ScanBFrames=1       ScanBTickLine=671  ScanBTickSeen=1
+FlipHandled=711     FlipStillDrawing=0  FlipDeclined=0  FlipForcedIdle=0
+```
+
+The watch started at line 68, swept monotonically to 671 - 603 changes for
+603 lines - and the frame counter ticked with the line register reading
+671, the last line of a 672-line frame (VTOTAL `0x029F023F`: vactive 576,
+vtotal 672). So the register counts the frame from its first active line
+as 0 to its last blank line as 671 and wraps there; the vertical blank is
+576 to 671 and **`DSL >= vactive` IS the blank**. The line test the flip
+path uses is right.
+
+That leaves the write. Written anywhere and waited on afterwards
+(intel65), the base tears in the lower half; written inside the blank
+(intel66), it tears worse. Neither is what a register latched at the
+retrace does, and neither is what one applied immediately does either -
+an immediate base written in the blank would not tear. The one model
+that fits both is a plane that FETCHES AHEAD of the beam: during the blank
+it is already reading the top of the next frame from the old base, and a
+write there splits the frame at the prefetch boundary, while a write
+mid-frame splits it where the beam is. Whether that is the mechanism is
+not established; what is established is that a bare register write does
+not give this driver a clean flip at any time it can choose.
+
+**Next: the hardware's own flip.** i915's Gen3 page flip does not write
+the plane base at all. It puts `MI_DISPLAY_FLIP` in the ring - the display
+engine applies the new base at the retrace itself, preceded by
+`MI_WAIT_FOR_EVENT` on the plane's flip-pending bit so a second flip never
+overtakes the first - and completion is the flip-pending bit in the
+interrupt status register clearing. That mechanism is built next, behind
+its own key so intel65's behaviour stays the default until a boot measures
+it: `docs\plans\intel-gen3-ring-flip.md`.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

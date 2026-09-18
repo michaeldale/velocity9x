@@ -30,6 +30,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_mmio.c',
         # Scanline/frame-counter summary; the HAL reads, this counts.
         'src\chipsets\intel\i9xx_scanline.c',
+        # The ring flip stream, built and decoded; the HAL submits it.
+        'src\chipsets\intel\i9xx_flip.c',
         # Streaming GTT/PTE inventory; pure arithmetic, no MMIO access here.
         'src\chipsets\intel\i9xx_gtt.c',
         # Phase 4 sandbox/ring arithmetic and exact command allowlist.

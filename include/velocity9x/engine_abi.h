@@ -113,5 +113,12 @@
  * is (docs\plans\software-rasterizer-scalar-fixes.md, the non-scalar finding).
  */
 #define V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM 0x00000100ul
+/*
+ * The Intel flip goes through the ring (MI_DISPLAY_FLIP) rather than a
+ * plane-base register write. Stamped only with IntelFlipRing=1 beside
+ * CAP_FLIP; the HAL falls back to the register write without the ring.
+ * docs\plans\intel-gen3-ring-flip.md.
+ */
+#define V9X_DD_ENGINE_CAP_FLIP_RING     0x00000200ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

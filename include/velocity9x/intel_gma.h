@@ -115,6 +115,21 @@
  * exact: the decoder rejects even a known opcode carrying unreviewed bits. */
 #define V9X_I9XX_MI_NOOP                 ((v9x_u32)0x00000000ul)
 #define V9X_I9XX_MI_FLUSH                ((v9x_u32)0x02000000ul)
+/*
+ * The Gen3 page flip through the ring, i915_reg.h: MI_DISPLAY_FLIP_I915 =
+ * MI_INSTR(0x14, 1) = (0x14 << 23) | 1, three dwords - command, pitch,
+ * base; the plane in bits 21:20. The flip pends until the display takes
+ * it at the retrace, and ISR (0x020ac) holds a per-plane flip-pending bit
+ * meanwhile (I915_DISPLAY_PLANE_A/B_FLIP_PENDING_INTERRUPT, bits 2 and 6).
+ * docs\plans\intel-gen3-ring-flip.md. UNMEASURED on this part.
+ */
+#define V9X_I9XX_MI_DISPLAY_FLIP_I915    ((v9x_u32)0x0a000001ul)
+#define V9X_I9XX_MI_DISPLAY_FLIP_PLANE_SHIFT 20
+#define V9X_I9XX_REG_ISR                 ((v9x_u32)0x000020acul)
+#define V9X_I9XX_ISR_PLANE_A_FLIP_PENDING ((v9x_u32)0x00000004ul)
+#define V9X_I9XX_ISR_PLANE_B_FLIP_PENDING ((v9x_u32)0x00000040ul)
+/* Command, pitch, base, and a NOOP so the tail stays qword aligned. */
+#define V9X_I9XX_FLIP_STREAM_DWORDS      ((v9x_u32)4ul)
 #define V9X_I9XX_XY_COLOR_BLT            ((v9x_u32)0x54300004ul)
 #define V9X_I9XX_BLT_ROP_PATCOPY         ((v9x_u32)0x00f00000ul)
 #define V9X_I9XX_BLT_DEPTH_32            ((v9x_u32)0x03000000ul)
@@ -297,6 +312,19 @@ struct v9x_i9xx_scan_summary {
     v9x_u32 tick_line;
     v9x_u32 tick_seen;
 };
+
+/* src\chipsets\intel\i9xx_flip.c */
+v9x_u32 v9x_i9xx_flip_stream_extent(void);
+v9x_status v9x_i9xx_build_flip_stream(
+    v9x_u32 plane, v9x_u32 pitch, v9x_u32 base, v9x_u32 vram_bytes,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* V9X_TRUE when the stream is exactly the flip for these arguments;
+ * otherwise V9X_FALSE with the first offending dword's index. */
+v9x_u16 v9x_i9xx_decode_flip_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    v9x_u32 plane, v9x_u32 pitch, v9x_u32 base, v9x_u32 vram_bytes,
+    v9x_u32 *rejected_index);
+v9x_u32 v9x_i9xx_flip_pending_bit(v9x_u32 plane);
 
 /* src\chipsets\intel\i9xx_scanline.c */
 void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary);

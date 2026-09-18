@@ -64,6 +64,9 @@ static int v9x_i9xx_scanout_active(void)
  *
  * Returns the register offsets through the pointers; zero declines.
  */
+static DWORD v9x_i9xx_scanout_plane = 0ul;   /* the last resolved plane */
+static DWORD v9x_i9xx_scanout_stride_reg = 0ul;
+
 static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
 {
     static const DWORD conf_reg[2] = {
@@ -80,6 +83,9 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
     };
     static const DWORD addr_reg[2] = {
         V9X_I9XX_REG_DSPA_ADDR, V9X_I9XX_REG_DSPB_ADDR
+    };
+    static const DWORD stride_reg[2] = {
+        V9X_I9XX_REG_DSPA_STRIDE, V9X_I9XX_REG_DSPB_STRIDE
     };
     DWORD index;
     DWORD pipes = 0ul;
@@ -114,6 +120,47 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
     *dsl = dsl_reg[pipe];
     *vtotal = vtotal_reg[pipe];
     *base = addr_reg[plane];
+    v9x_i9xx_scanout_plane = plane;
+    v9x_i9xx_scanout_stride_reg = stride_reg[plane];
+    return 1;
+}
+
+/*
+ * The ring flip is on when the 16-bit side stamped it AND there is a ring
+ * to put it in. The second is checked here rather than trusted: the ring
+ * belongs to runtime 3D, and a boot with that off has none.
+ */
+static int v9x_i9xx_ring_flip_active(void)
+{
+    return v9x_i9xx_scanout_active() &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP_RING) != 0ul &&
+           v9x_hal->engine.ring_linear_base != 0ul;
+}
+
+/*
+ * The flip as the hardware does it: MI_DISPLAY_FLIP in the ring, the pitch
+ * read from the plane's own stride register, decoded before it is submitted
+ * as every stream this engine sends is. docs\plans\intel-gen3-ring-flip.md.
+ */
+static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
+{
+    DWORD stream[V9X_I9XX_FLIP_STREAM_DWORDS];
+    DWORD written = 0ul;
+    DWORD rejected = 0ul;
+    DWORD pitch = *v9x_i9xx_scanout_reg(stride_reg);
+
+    if (v9x_i9xx_build_flip_stream(plane, pitch, byte_offset,
+                                   v9x_hal->fb.vram_bytes, stream,
+                                   V9X_I9XX_FLIP_STREAM_DWORDS,
+                                   &written) != V9X_STATUS_OK ||
+        v9x_i9xx_decode_flip_stream(stream, written, plane, pitch,
+                                    byte_offset, v9x_hal->fb.vram_bytes,
+                                    &rejected) == V9X_FALSE ||
+        !v9x_d3d_i9xx_ring_submit(stream, written)) {
+        ++v9x_hal->d3d_diagnostics.flip_ring_refused;
+        return 0;
+    }
+    ++v9x_hal->d3d_diagnostics.flip_ring_issued;
     return 1;
 }
 
@@ -151,6 +198,10 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
     }
     if (!v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
         return 0;
+    }
+    if (v9x_i9xx_ring_flip_active()) {
+        return v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
+                                  v9x_i9xx_scanout_stride_reg, byte_offset);
     }
     *v9x_i9xx_scanout_reg(base) = byte_offset;
     /* Read back to post the write, as i915 does after every plane-base
@@ -194,6 +245,27 @@ int v9x_set_display_start(DWORD byte_offset)
  * to say whether the wait happened (FlipStillDrawing rises per flip).
  */
 #define V9X_I9XX_FLIP_WRITE_IN_BLANK 0
+
+int v9x_scanout_hw_flip(void)
+{
+    return v9x_i9xx_ring_flip_active();
+}
+
+/*
+ * Pending while the ISR flip-pending bit for the resolved plane is set.
+ * The plane is the one the last set_display_start resolved; a flip is
+ * issued and completed against one plane.
+ */
+int v9x_scanout_hw_flip_pending(void)
+{
+    DWORD bit;
+
+    if (!v9x_i9xx_ring_flip_active()) {
+        return 0;
+    }
+    bit = v9x_i9xx_flip_pending_bit(v9x_i9xx_scanout_plane);
+    return (*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul;
+}
 
 int v9x_scanout_writes_in_blank(void)
 {

@@ -89,6 +89,7 @@ $sources = @(
     "src\chipsets\intel\i9xx_arm.c"
     # The scanline summary the draw path feeds once per boot.
     "src\chipsets\intel\i9xx_scanline.c"
+    "src\chipsets\intel\i9xx_flip.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"

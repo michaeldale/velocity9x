@@ -3764,6 +3764,84 @@ static void test_runtime_blend_pairs(void)
  * length, so the two new ones - equal in length - are declared by kind and
  * the original by default.
  */
+/*
+ * The ring flip stream: four dwords, exactly, for the declared plane, pitch
+ * and base, and refused for anything the plane register itself would not
+ * hold. docs\plans\intel-gen3-ring-flip.md; the constants are i915_reg.h's
+ * and unmeasured on the part.
+ */
+static void test_flip_stream(void)
+{
+    v9x_u32 stream[8];
+    v9x_u32 written = 0ul;
+    v9x_u32 index = 99ul;
+
+    CHECK(v9x_i9xx_flip_stream_extent() == 4ul);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 0x00096000ul, 0x00800000ul,
+                                     stream, 8ul, &written) == V9X_STATUS_OK);
+    CHECK(written == 4ul);
+    /* MI_INSTR(0x14, 1) with plane B in bits 21:20: 0x0a000001 | 1 << 20. */
+    CHECK(stream[0] == 0x0a100001ul);
+    CHECK(stream[1] == 2048ul);
+    CHECK(stream[2] == 0x00096000ul);
+    CHECK(stream[3] == V9X_I9XX_MI_NOOP);
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 2048ul, 0x00096000ul,
+                                      0x00800000ul, &index) != V9X_FALSE);
+    CHECK(index == 0ul);
+    /* Plane A: no plane bits. */
+    CHECK(v9x_i9xx_build_flip_stream(0ul, 1280ul, 0ul, 0x00800000ul,
+                                     stream, 8ul, &written) == V9X_STATUS_OK);
+    CHECK(stream[0] == 0x0a000001ul);
+    CHECK(stream[2] == 0ul);
+
+    /* Every argument the plane could not hold is refused, not rounded:
+     * plane 2, a pitch that is not a multiple of 64, a base that is not a
+     * dword, a base outside the framebuffer. */
+    CHECK(v9x_i9xx_build_flip_stream(2ul, 2048ul, 0ul, 0x00800000ul,
+                                     stream, 8ul, &written) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2040ul, 0ul, 0x00800000ul,
+                                     stream, 8ul, &written) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 0ul, 0ul, 0x00800000ul,
+                                     stream, 8ul, &written) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 2ul, 0x00800000ul,
+                                     stream, 8ul, &written) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 0x00800000ul, 0x00800000ul,
+                                     stream, 8ul, &written) != V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 0ul, 0x00800000ul,
+                                     stream, 3ul, &written) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 0ul, 0x00800000ul,
+                                     0, 8ul, &written) != V9X_STATUS_OK);
+
+    /* The decoder names the dword that differs, and refuses a stream of the
+     * wrong length or arguments the builder would refuse. */
+    CHECK(v9x_i9xx_build_flip_stream(1ul, 2048ul, 0x00096000ul, 0x00800000ul,
+                                     stream, 8ul, &written) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 0ul, 2048ul, 0x00096000ul,
+                                      0x00800000ul, &index) == V9X_FALSE);
+    CHECK(index == 0ul);
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 1024ul, 0x00096000ul,
+                                      0x00800000ul, &index) == V9X_FALSE);
+    CHECK(index == 1ul);
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 2048ul, 0x00097000ul,
+                                      0x00800000ul, &index) == V9X_FALSE);
+    CHECK(index == 2ul);
+    stream[3] = V9X_I9XX_MI_FLUSH;
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 2048ul, 0x00096000ul,
+                                      0x00800000ul, &index) == V9X_FALSE);
+    CHECK(index == 3ul);
+    stream[3] = V9X_I9XX_MI_NOOP;
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 3ul, 1ul, 2048ul, 0x00096000ul,
+                                      0x00800000ul, &index) == V9X_FALSE);
+    CHECK(v9x_i9xx_decode_flip_stream(stream, 4ul, 1ul, 2048ul, 0x00096000ul,
+                                      0x00090000ul, &index) == V9X_FALSE);
+
+    /* The pending bit follows the plane. */
+    CHECK(v9x_i9xx_flip_pending_bit(0ul) == 0x00000004ul);
+    CHECK(v9x_i9xx_flip_pending_bit(1ul) == 0x00000040ul);
+    CHECK(v9x_i9xx_flip_pending_bit(2ul) == 0ul);
+}
+
 static void test_texture_programs(void)
 {
     v9x_u32 base[24];
@@ -4285,6 +4363,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_runtime_blend();
     test_runtime_blend_pairs();
     test_texture_programs();
+    test_flip_stream();
     test_sampler_state();
     test_sampling_program();
     test_modulate_program();
