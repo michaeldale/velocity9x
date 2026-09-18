@@ -560,14 +560,32 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        /* Hardware that applies the base at once must be written in the
+        /*
+         * Hardware that applies the base at once must be written in the
          * blank, or the beam finishes this frame from the new buffer - the
          * lower-half tearing intel65 shows. Not in the blank yet: still
-         * drawing, and DirectDraw asks again. */
-        if (v9x_scanout_writes_in_blank() && !v9x_in_vblank()) {
-            data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
-            ++v9x_hal->d3d_diagnostics.flip_still_drawing;
-            return V9X_DDHAL_DRIVER_HANDLED;
+         * drawing, and DirectDraw asks again.
+         *
+         * Two exits before the wait. NOVSYNC is the application declining
+         * synchronisation, and honouring it means writing now and tearing,
+         * not waiting on its behalf. And a scanout the vblank source cannot
+         * see would make this wait the intel63 hang in a new place - no flip
+         * is armed here, so the pending path's recovery never runs - so it is
+         * asked first, and an unresolvable scanout declines to DirectDraw's
+         * copy exactly as set_display_start would have.
+         */
+        if (v9x_scanout_writes_in_blank() &&
+            (data->dwFlags & V9X_DDFLIP_NOVSYNC) == 0ul) {
+            if (!v9x_scanout_vblank_available()) {
+                data->ddRVal = V9X_DD_OK;
+                ++v9x_hal->d3d_diagnostics.flip_declined;
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            if (!v9x_in_vblank()) {
+                data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+                ++v9x_hal->d3d_diagnostics.flip_still_drawing;
+                return V9X_DDHAL_DRIVER_HANDLED;
+            }
         }
         /* Same reasoning one step further in: an offset the display-start
          * registers cannot express is declined rather than rounded, which at
