@@ -268,6 +268,33 @@ static void v9x_i9xx_note_layout(void)
         *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg);
     v9x_hal->d3d_diagnostics.flip_dspcntr_last = cntr;
     v9x_hal->d3d_diagnostics.flip_pipesrc_last = *v9x_i9xx_scanout_reg(src_reg);
+
+    /* The whole layout, both planes and both pipes, the fitter and the
+     * VGA and LVDS controls, at this same instant (review H4). */
+    {
+        static const DWORD regs[V9X_I9XX_SCAN_REG_COUNT] = {
+            V9X_I9XX_REG_PIPEA_CONF, V9X_I9XX_REG_PIPEA_HTOTAL,
+            V9X_I9XX_REG_PIPEA_VTOTAL, V9X_I9XX_REG_PIPEA_SRC,
+            V9X_I9XX_REG_DSPA_CNTR, V9X_I9XX_REG_DSPA_ADDR,
+            V9X_I9XX_REG_DSPA_STRIDE, V9X_I9XX_REG_DSPA_POS,
+            V9X_I9XX_REG_DSPA_SIZE,
+            V9X_I9XX_REG_PIPEB_CONF, V9X_I9XX_REG_PIPEB_HTOTAL,
+            V9X_I9XX_REG_PIPEB_VTOTAL, V9X_I9XX_REG_PIPEB_SRC,
+            V9X_I9XX_REG_DSPB_CNTR, V9X_I9XX_REG_DSPB_ADDR,
+            V9X_I9XX_REG_DSPB_STRIDE, V9X_I9XX_REG_DSPB_POS,
+            V9X_I9XX_REG_DSPB_SIZE,
+            V9X_I9XX_REG_PFIT_CONTROL, V9X_I9XX_REG_PFIT_PGM_RATIOS,
+            V9X_I9XX_REG_LVDS, V9X_I9XX_REG_VGACNTRL,
+            V9X_I9XX_REG_PIPEB_DSL, V9X_I9XX_REG_PIPEB_FRAMEHIGH
+        };
+        DWORD index;
+
+        for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT; ++index) {
+            v9x_hal->d3d_diagnostics.scan_reg_offset[index] = regs[index];
+            v9x_hal->d3d_diagnostics.scan_reg_value[index] =
+                *v9x_i9xx_scanout_reg(regs[index]);
+        }
+    }
 }
 
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)

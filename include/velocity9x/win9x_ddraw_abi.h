@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091716: V9X_D3D_DIAGNOSTICS gains the ACTHD/INSTDONE readings and the
+ * 24-register display layout capture. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091715: V9X_D3D_DIAGNOSTICS gains the completion-channel state (self
  * test, outstanding, abandoned, drain waits and stalls). An append; the
  * stamp moves for the reason 2026091603 gives.
@@ -1222,7 +1226,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091715ul
+#define V9X_DD_SHARED_ABI   2026091716ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1835,6 +1839,37 @@ typedef struct v9x_d3d_diagnostics {
     DWORD breadcrumb_abandoned;
     DWORD render_drain_waits;
     DWORD render_drain_stalls;
+    /*
+     * The engine against the parser, read without a store (intel84: the
+     * status-page round trip failed too, so no GPU write reaches this
+     * side and the question has to be answered from registers).
+     *   acthd_behind      submits where, at the moment RING_HEAD reached
+     *                     the tail, ACTHD had not: the engine was still
+     *                     executing what the parser had finished fetching.
+     *   acthd_lag_*       polls from that moment until ACTHD reached the
+     *                     tail (max, total), and the times it did not
+     *                     within the bound.
+     *   acthd_outside     ACTHD read outside the ring's address range.
+     *   acthd_last, tail_last, instdone_at_head_last, instdone_settled_last
+     *                     the raw values of the last submit, for the record.
+     */
+    DWORD acthd_behind;
+    DWORD acthd_lag_polls_max;
+    DWORD acthd_lag_polls_total;
+    DWORD acthd_lag_timeouts;
+    DWORD acthd_outside;
+    DWORD acthd_last;
+    DWORD tail_last;
+    DWORD instdone_at_head_last;
+    DWORD instdone_settled_last;
+    /*
+     * The display layout as read at flip issue during the game (review
+     * H4): register offsets and their values, in pairs, so the panel's
+     * actual fetch can be reconciled with the buffers. Which registers is
+     * the scanout module's business; the dump prints both.
+     */
+    DWORD scan_reg_offset[24];
+    DWORD scan_reg_value[24];
 } V9X_D3D_DIAGNOSTICS;
 
 /*

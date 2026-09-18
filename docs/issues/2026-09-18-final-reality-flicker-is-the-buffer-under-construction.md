@@ -77,7 +77,8 @@ problem in one sentence.
 | intel81 | `ca107e2-dirty` (`a1bf160`) | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it | HARD LOCK at the first 3D frame; two defects found on the desk, below |
 | intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
 | intel83 | `fbc2f29-dirty` (`8e4be09`) | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it | HWS_PGA took the page; 1,460 of 1,460 stores never landed in the wait |
-| intel84 | next (`fe571f4`) | completion channel as a state machine: page proven by a store-only round trip before use; timed-out completions owed to Flip, Lock and Blt; probe records failures and write timing | to boot |
+| intel84 | `273bfa4-dirty` (`89bf4bd`) | completion channel as a state machine; store-only round trip before use | round trip FAILED (2,000,000 polls); no breadcrumbs after; flicker intermittent, "an improvement but far from fixed" |
+| intel85 | next | ACTHD against the tail at head == tail, INSTDONE raw; 24-register display layout at flip issue; self-test bound cut to 200,000 | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -407,6 +408,49 @@ and how long it took, and only then do `BreadcrumbTimeouts`,
 `BreadcrumbLate`, `BreadcrumbOutstanding` and the drain counters mean
 what they say. The review's H3 stands: the IMM history is unresolved and
 stays out of the runtime. H4 and H5 are open.
+
+## intel84: the round trip fails; the picture varies within a run
+
+```
+HwsSelfTest=2  HwsSelfTestPolls=2000000  HwsCpuProbe=1
+HwsPgaBefore=0x1FFFF000  HwsPgaWritten=0x7FEC0000  HwsPgaAfter=0x7FEC0000
+BreadcrumbSubmits=0  BreadcrumbTimeouts=0  BreadcrumbOutstanding=0
+RenderDrainWaits=0  I9xxDrawsSubmitted=600978  FlipHandled=592
+```
+
+The store-only round trip did not land in two million polls. The CPU's
+mapping of the page is real (a CPU write reads back), the register took
+the page, and the one MI_STORE_DWORD_INDEX the self-test submitted was
+consumed by the parser (the submit returned) and never appeared. So the
+channel failed once, as designed, and every batch after went without a
+breadcrumb: the run the operator saw was the pre-intel81 runtime with a
+two-million-poll stall at the first frame ("it started slow").
+
+The operator's account of the rest: "worked for a bit, some flicker,
+then the flicker went completely away, then it came back ... overall an
+improvement but far from fixed." The runtime after the self-test was the
+two-tick, active-video-write build of intel80, which was "no better"
+then. What is new in the account is the VARIATION: whole stretches
+without flicker, then its return. A defect that comes and goes with the
+scene is a timing defect under a varying load, which is what an
+unfinished frame at presentation would do - light scenes finish, heavy
+ones do not - and is not what a fixed wrong register would do. It is an
+account, not a measurement; the event trace (review H5) is what would
+turn it into one.
+
+Three GPU-to-CPU stores by two mechanisms have now failed to be
+observed. The next build stops asking the GPU to write and reads the
+engine instead: at the moment RING_HEAD reaches the tail, ACTHD - the
+address the engine is executing, which i915's hang check uses for
+progress on this generation - is compared with the tail and followed to
+it with the polls counted (`ActhdBehind`, `ActhdLagPollsMax`,
+`ActhdLagTimeouts`; INSTDONE raw at both moments). No command, no
+memory, no address to get wrong. `ActhdBehind` near the submit count
+with a real lag is the asynchrony measured; zero says the engine is done
+when the parser is, and the unfinished-frame model dies with it. The
+same build captures the 24 display registers of review H4 at flip issue,
+and cuts the self-test bound to 200,000 polls so a failing channel costs
+a moment, not the start of the run.
 
 ## How to run the next boot
 

@@ -314,6 +314,32 @@
 #define V9X_I9XX_REG_DSPB_ADDR           ((v9x_u32)0x00071184ul)
 #define V9X_I9XX_REG_DSPB_STRIDE         ((v9x_u32)0x00071188ul)
 /*
+ * Read-only instruments, i915 v4.4 i915_reg.h names and offsets.
+ *
+ * ACTHD (gen2/3 at 0x20c8; gen4+ moved it to 0x2074) is the graphics
+ * address of the command the engine is EXECUTING, as against RING_HEAD,
+ * which is where the parser is FETCHING. i915's hang check reads it for
+ * progress. The two apart at the moment the head reaches the tail is the
+ * direct reading of "the parser is done and the engine is not", which two
+ * store commands failed to give (intel82, intel83, intel84).
+ * INSTDONE (0x2090) is the per-unit done mask; IPEIR/IPEHR hold the
+ * instruction that faulted, if one did.
+ */
+#define V9X_I9XX_REG_ACTHD               ((v9x_u32)0x000020c8ul)
+#define V9X_I9XX_REG_INSTDONE            ((v9x_u32)0x00002090ul)
+#define V9X_I9XX_REG_IPEIR               ((v9x_u32)0x00002088ul)
+#define V9X_I9XX_REG_IPEHR               ((v9x_u32)0x0000208cul)
+/* Display layout registers for the in-game capture (review H4). */
+#define V9X_I9XX_REG_DSPA_POS            ((v9x_u32)0x0007018cul)
+#define V9X_I9XX_REG_DSPA_SIZE           ((v9x_u32)0x00070190ul)
+#define V9X_I9XX_REG_DSPB_POS            ((v9x_u32)0x0007118cul)
+#define V9X_I9XX_REG_DSPB_SIZE           ((v9x_u32)0x00071190ul)
+#define V9X_I9XX_REG_PFIT_CONTROL        ((v9x_u32)0x00061230ul)
+#define V9X_I9XX_REG_PFIT_PGM_RATIOS     ((v9x_u32)0x00061234ul)
+#define V9X_I9XX_REG_LVDS                ((v9x_u32)0x00061180ul)
+#define V9X_I9XX_REG_VGACNTRL            ((v9x_u32)0x00071400ul)
+#define V9X_I9XX_SCAN_REG_COUNT          24ul
+/*
  * The scanout's position, read-only, per pipe.
  *
  * DSL is the current display line in bits 11:0 (Linux i915_reg.h: _PIPEADSL

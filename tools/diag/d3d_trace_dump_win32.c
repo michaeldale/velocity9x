@@ -477,6 +477,33 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("BreadcrumbAbandoned", snapshot.d3d.breadcrumb_abandoned);
     v9x_write_uint("RenderDrainWaits", snapshot.d3d.render_drain_waits);
     v9x_write_uint("RenderDrainStalls", snapshot.d3d.render_drain_stalls);
+    v9x_write_uint("ActhdBehind", snapshot.d3d.acthd_behind);
+    v9x_write_uint("ActhdLagPollsMax", snapshot.d3d.acthd_lag_polls_max);
+    v9x_write_uint("ActhdLagPollsTotal", snapshot.d3d.acthd_lag_polls_total);
+    v9x_write_uint("ActhdLagTimeouts", snapshot.d3d.acthd_lag_timeouts);
+    v9x_write_uint("ActhdOutside", snapshot.d3d.acthd_outside);
+    v9x_write_hex("ActhdLast", snapshot.d3d.acthd_last);
+    v9x_write_hex("TailLast", snapshot.d3d.tail_last);
+    v9x_write_hex("InstdoneAtHeadLast", snapshot.d3d.instdone_at_head_last);
+    v9x_write_hex("InstdoneSettledLast", snapshot.d3d.instdone_settled_last);
+    {
+        DWORD index;
+        char key[16];
+
+        for (index = 0ul; index < 24ul; ++index) {
+            if (snapshot.d3d.scan_reg_offset[index] == 0ul) {
+                continue;
+            }
+            key[0] = 'S'; key[1] = 'c'; key[2] = 'a'; key[3] = 'n';
+            key[4] = 'R'; key[5] = 'e'; key[6] = 'g';
+            key[7] = (char)('0' + index / 10ul);
+            key[8] = (char)('0' + index % 10ul);
+            key[9] = 'O'; key[10] = 'f'; key[11] = 'f'; key[12] = '\0';
+            v9x_write_hex(key, snapshot.d3d.scan_reg_offset[index]);
+            key[9] = 'V'; key[10] = 'a'; key[11] = 'l'; key[12] = '\0';
+            v9x_write_hex(key, snapshot.d3d.scan_reg_value[index]);
+        }
+    }
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);
