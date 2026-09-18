@@ -1066,6 +1066,28 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         }
     }
 
+    /*
+     * An MI_FLUSH BEFORE the batch as well as after it.
+     *
+     * The trailing flush (intel64) writes the render cache back so the flip
+     * shows finished pixels. It does not settle what the cache holds when
+     * the NEXT batch reads the destination: between frames the CPU clears
+     * the back buffer through the aperture, and a blended draw then reads
+     * the destination pixel through the render cache. If that cache still
+     * holds the buffer's contents from two frames earlier, the blend mixes
+     * the new frame with a stale one - a faint ghost of an older picture,
+     * alternating with the buffers, that does not hide the image beneath
+     * and spreads as the scene fills with blended surfaces. That is the
+     * operator's description of intel75 in every particular. A flush with
+     * every inhibit bit clear, ahead of the first read, is the cheapest
+     * test of it; the decoder already accepts the dword anywhere.
+     * UNMEASURED as a fix.
+     */
+    if (at >= V9X_I9XX_SUBMIT_DWORDS) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+
     if (v9x_i9xx_build_runtime_state(context->target_offset, context->pitch,
                                      context->width, context->height,
                                      textured != 0 ? &map : 0,

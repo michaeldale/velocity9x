@@ -1113,6 +1113,25 @@ frames whose content is not the one just presented and which half was
 wrong. That reproduces the picture as a number, without eyes, and with the
 depth test on and off.
 
+**The operator's description, asked for after intel75:** "an overlay over
+the top of the image, transparent, doesn't block the image behind (which
+seems to render okay). It doesn't always cover the entire screen but seems
+to get worse as the scene plays through; it starts down the bottom and is
+mostly covering the full screen by the end."
+
+That is not a torn frame and not a missing one. A translucent ghost that
+alternates with the buffers, leaves the geometry beneath intact, and
+spreads with the scene's blended surfaces is what alpha blending gives
+when the DESTINATION pixel it reads is stale: the blend mixes the new
+frame with what the same buffer held two frames earlier. The CPU clears
+each back buffer between frames through the aperture; the GPU reads the
+destination for a blend through its render cache; if that cache still
+holds the older contents, the ghost follows. The next build puts an
+`MI_FLUSH` at the START of every batch as well as the end. If the ghost
+goes, the render cache was stale across the CPU clear; if not, the
+destination read is right and the ghost has another source, with the
+depth path and the fifteen Locks a frame still on the list.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
