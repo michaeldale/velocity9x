@@ -910,6 +910,42 @@ interrupt status register clearing. That mechanism is built next, behind
 its own key so intel65's behaviour stays the default until a boot measures
 it: `docs\plans\intel-gen3-ring-flip.md`.
 
+### intel71: the ring flip runs, and tears the same
+
+Build `3de8c26-dirty` with the ring flip as the default, fresh arm file.
+
+```
+EngineCaps=0x214          D3D | FLIP | FLIP_RING
+FlipRingIssued=815  FlipRingRefused=0   795 Flips + 20 returns to GDI
+FlipHandled=795     FlipStillDrawing=0  FlipDeclined=0  FlipForcedIdle=0
+I9xxDrawsSubmitted=778787  I9xxDrawsRefused=0  clean teardown, no hang
+```
+
+The parser took every `MI_DISPLAY_FLIP`, the display stayed up, and the
+operator reports the flicker unchanged. The ISR flip-pending bit was never
+seen set across 795 flips and 47,825 status polls.
+
+**What this kills.** The tearing is not the register write's timing:
+i915's own mechanism for this generation, applied by the display at the
+retrace by that tree's account, tears identically. And the pending bit
+either never sets on this part or clears before the first poll after the
+submit, which means the flip state machine has been declaring the flip
+done at once on this path.
+
+**What has never been read.** Three boots of pictures have been used to
+infer whether the base applies at once or at the retrace, and the base
+register has never been read back to say. From the next boot, both flip
+paths read the plane base register directly after issuing
+(`FlipBaseImmediate` if it already holds the new offset, `FlipBaseDeferred`
+if not) and again when the state machine declares the flip done
+(`FlipTakenAtDone` / `FlipNotTakenAtDone`), and the ring path reads the ISR
+bit once directly after the submit (`FlipRingPendingSeen`). Deferred-then-
+taken says a latch exists and the done test lands after it; immediate says
+the base is not double-buffered by either path; deferred-and-not-taken
+says the done test is early, which is a flip that lets the application
+draw into the buffer still on screen - and that is a tear that looks like
+every one described so far.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

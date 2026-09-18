@@ -66,6 +66,11 @@ static int v9x_i9xx_scanout_active(void)
  */
 static DWORD v9x_i9xx_scanout_plane = 0ul;   /* the last resolved plane */
 static DWORD v9x_i9xx_scanout_stride_reg = 0ul;
+/* The last flip: which base register, and the offset it was asked for, so
+ * a later read can say whether the hardware has taken it. */
+static DWORD v9x_i9xx_scanout_last_base_reg = 0ul;
+static DWORD v9x_i9xx_scanout_last_offset = 0ul;
+static int v9x_i9xx_scanout_flip_outstanding = 0;
 
 static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
 {
@@ -161,7 +166,47 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
         return 0;
     }
     ++v9x_hal->d3d_diagnostics.flip_ring_issued;
+    /* The pending bit, read once directly after the submit and before any
+     * poll. intel71 never saw it set from the poll loop; this says whether
+     * it is ever set at all. */
+    if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) &
+         v9x_i9xx_flip_pending_bit(plane)) != 0ul) {
+        ++v9x_hal->d3d_diagnostics.flip_ring_pending_seen;
+    }
     return 1;
+}
+
+/*
+ * Right after a flip was issued by either path: does the base register
+ * already read the new offset? Immediate says the hardware applied it (or
+ * the register is not double-buffered on read); deferred says the old base
+ * is still what the register shows. Remembered for the read at done.
+ */
+static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
+{
+    v9x_i9xx_scanout_last_base_reg = base_reg;
+    v9x_i9xx_scanout_last_offset = byte_offset;
+    v9x_i9xx_scanout_flip_outstanding = 1;
+    if (*v9x_i9xx_scanout_reg(base_reg) == byte_offset) {
+        ++v9x_hal->d3d_diagnostics.flip_base_immediate;
+    } else {
+        ++v9x_hal->d3d_diagnostics.flip_base_deferred;
+    }
+}
+
+void v9x_scanout_note_flip_done(void)
+{
+    if (!v9x_i9xx_scanout_active() || !v9x_i9xx_scanout_flip_outstanding ||
+        v9x_i9xx_scanout_last_base_reg == 0ul) {
+        return;
+    }
+    v9x_i9xx_scanout_flip_outstanding = 0;
+    if (*v9x_i9xx_scanout_reg(v9x_i9xx_scanout_last_base_reg) ==
+            v9x_i9xx_scanout_last_offset) {
+        ++v9x_hal->d3d_diagnostics.flip_taken_at_done;
+    } else {
+        ++v9x_hal->d3d_diagnostics.flip_not_taken_at_done;
+    }
 }
 
 static int v9x_i9xx_in_vblank(void)
@@ -200,14 +245,18 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
         return 0;
     }
     if (v9x_i9xx_ring_flip_active()) {
-        return v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
-                                  v9x_i9xx_scanout_stride_reg, byte_offset);
+        if (!v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
+                                v9x_i9xx_scanout_stride_reg, byte_offset)) {
+            return 0;
+        }
+        v9x_i9xx_note_flip_issued(base, byte_offset);
+        return 1;
     }
     *v9x_i9xx_scanout_reg(base) = byte_offset;
-    /* Read back to post the write, as i915 does after every plane-base
-     * write on this generation. The value is not checked: the register may
-     * latch at the next frame and read the old base until then. */
-    (void)*v9x_i9xx_scanout_reg(base);
+    /* The read back posts the write, as i915 does after every plane-base
+     * write on this generation, and now also says what the register holds:
+     * the new base at once, or the old one until some later moment. */
+    v9x_i9xx_note_flip_issued(base, byte_offset);
     return 1;
 }
 

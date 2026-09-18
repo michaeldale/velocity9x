@@ -509,6 +509,7 @@ static int v9x_flip_done(void)
             return 0;
         }
         v9x_flip_state = V9X_FLIP_IDLE;
+        v9x_scanout_note_flip_done();
         return 1;
     }
     blank = v9x_in_vblank();
@@ -517,6 +518,7 @@ static int v9x_flip_done(void)
             return 0;
         }
         v9x_flip_state = V9X_FLIP_IDLE;
+        v9x_scanout_note_flip_done();
         return 1;
     }
     if (v9x_flip_state == V9X_FLIP_WAIT_UNBLANK) {
@@ -527,6 +529,7 @@ static int v9x_flip_done(void)
     }
     if (blank) {
         v9x_flip_state = V9X_FLIP_IDLE;
+        v9x_scanout_note_flip_done();
         return 1;
     }
     return 0;

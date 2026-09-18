@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091707: V9X_D3D_DIAGNOSTICS gains five plane-base readback counters.
+ * An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091706: V9X_D3D_DIAGNOSTICS gains the two ring-flip counters. An
  * append; the stamp moves for the reason 2026091603 gives.
  *
@@ -1190,7 +1193,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091706ul
+#define V9X_DD_SHARED_ABI   2026091707ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1653,6 +1656,24 @@ typedef struct v9x_d3d_diagnostics {
      * that would not take it. */
     DWORD flip_ring_issued;
     DWORD flip_ring_refused;
+    /*
+     * What the plane base register READ BACK, at two moments, per flip.
+     *
+     * intel71: the flip through MI_DISPLAY_FLIP tore like the register
+     * write did, and the ISR pending bit was never seen set across 795
+     * flips. Whether either mechanism applies the base at once or at the
+     * retrace has been inferred from pictures three times and never read.
+     * So: right after the flip is issued, does the base register already
+     * hold the new offset (immediate) or the old one (deferred)? When the
+     * state machine declares the flip done, does it hold the new offset
+     * (taken) or not? And was the ISR pending bit set on the read made
+     * directly after the ring submit, before any poll?
+     */
+    DWORD flip_base_immediate;
+    DWORD flip_base_deferred;
+    DWORD flip_taken_at_done;
+    DWORD flip_not_taken_at_done;
+    DWORD flip_ring_pending_seen;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

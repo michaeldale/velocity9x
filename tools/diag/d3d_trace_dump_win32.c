@@ -436,6 +436,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("ScanBTickSeen", snapshot.d3d.scan_b_tick_seen);
     v9x_write_uint("FlipRingIssued", snapshot.d3d.flip_ring_issued);
     v9x_write_uint("FlipRingRefused", snapshot.d3d.flip_ring_refused);
+    v9x_write_uint("FlipBaseImmediate", snapshot.d3d.flip_base_immediate);
+    v9x_write_uint("FlipBaseDeferred", snapshot.d3d.flip_base_deferred);
+    v9x_write_uint("FlipTakenAtDone", snapshot.d3d.flip_taken_at_done);
+    v9x_write_uint("FlipNotTakenAtDone",
+                   snapshot.d3d.flip_not_taken_at_done);
+    v9x_write_uint("FlipRingPendingSeen",
+                   snapshot.d3d.flip_ring_pending_seen);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

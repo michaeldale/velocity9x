@@ -310,6 +310,10 @@ int v9x_scanout_writes_in_blank(void);
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);
 int v9x_scanout_hw_flip_pending(void);
+/* The flip state machine has just declared a flip done: read the plane base
+ * back and count whether it holds the offset that was flipped to. A no-op
+ * on the VGA path. */
+void v9x_scanout_note_flip_done(void);
 /* The Gen3 ring submission the draws use, in d3d\d3d_i9xx.c. EXTERNAL from
  * 2026-09-18 so the scanout module can put a flip in the same ring; every
  * stream through it has passed an allowlist first. */
