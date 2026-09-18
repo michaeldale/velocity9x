@@ -1067,6 +1067,13 @@ assumption breaks; near zero exonerates the buffers and sends the search
 elsewhere. The blank-window write stays, because the base still applies at
 once and nothing about this reading argues against it.
 
+The intel74 snapshot itself (`86da02c-dirty`): `FlipStillDrawing=2323988`
+over 692 flips, about 3,360 refusals per flip, so the window wait ran and
+every write landed in the first 24 lines of the blank; `FlipBaseImmediate`
+712 of 712; ISR zero throughout; `FlipFramesInSubmit=1`. The flip path
+did exactly what it was built to do and the picture got faster. That is
+the strongest statement yet that the flip path is not where the fault is.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
