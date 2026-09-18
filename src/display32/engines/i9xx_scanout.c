@@ -24,9 +24,10 @@
  *    vertical blank; i915's scanline-based vblank test is this comparison.
  *
  * Nothing here runs unless the 16-bit side stamped V9X_DD_ENGINE_CAP_FLIP,
- * which it does only for a boot that carries IntelFlip=1 in INTELARM.TXT. An
- * unarmed boot dispatches to the VGA controls exactly as before, so one
- * package serves the read-only boot and the write boot in turn.
+ * which it does unless INTELARM.TXT carries IntelFlip=0 (on by default from
+ * 2026-09-18; before that it needed IntelFlip=1, and the boots that earned
+ * the default are intel61 through intel66). A boot with it off dispatches to
+ * the VGA controls exactly as before.
  */
 #include "ddhal_internal.h"
 #include "velocity9x/intel_gma.h"

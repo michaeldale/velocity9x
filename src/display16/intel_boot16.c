@@ -23,12 +23,13 @@ WORD v9x_intel_boot_arm_latch;
  * never worked at all. It also lives in a file this driver rewrites, which is
  * the opposite of what an operator needs to reach from DOS after a hang.
  *
- * So IntelRuntime3D, read once here and never written back. Absent or
- * anything but "1" means no: the first machine to receive this package has
- * never executed application geometry, and a package that turned the ring on
- * by merely being installed would make the decision on the operator's behalf.
- * Turning it off again is one line in C:\V9XDIAG\INTELARM.TXT from DOS, which
- * is the recovery path this feature previously did not have.
+ * So IntelRuntime3D, read once here and never written back. Until
+ * 2026-09-18 absent or anything but "1" meant no, because the first machine
+ * to receive the package had never executed application geometry on this
+ * engine. Eight boots later the operator decided otherwise: the key now
+ * means no only when it reads "0", and absent is yes. Turning it off is
+ * still one line in C:\V9XDIAG\INTELARM.TXT from DOS - V9X3D OFF writes it -
+ * which is the recovery path that made the default defensible.
  *
  * Cleared again if this boot is ARMED. A diagnostic boot owns the ring - it
  * sets START and CTL itself and disables and clears them on teardown - and a
@@ -38,14 +39,14 @@ WORD v9x_intel_boot_arm_latch;
  */
 WORD v9x_intel_runtime3d_allowed;
 /*
- * IntelFlip, on the same terms as IntelRuntime3D: a retained permission,
- * read once, never written back, absent means no. It lets the HAL move the
- * scanout through the pipe's plane base register and read the pipe's
- * display line for the retrace, in place of CR69 and the VGA status port.
- * Both are writes and reads this driver has never made on the 945GSE, so
- * they wait for a boot that asks for them - and the unarmed boot before it
- * is what reads the same registers passively and says whether they move.
- * Cleared on an armed boot with the runtime permission, for the same reason.
+ * IntelFlip, on the same terms as IntelRuntime3D: a retained switch, read
+ * once, never written back, "0" means off and absent means on (from
+ * 2026-09-18; it was absent-means-off while the plane-base write and the
+ * line-register read were unmeasured, and intel61 through intel66 measured
+ * them). It lets the HAL move the scanout through the pipe's plane base
+ * register and read the pipe's display line for the retrace, in place of
+ * CR69 and the VGA status port. Cleared on an armed boot with the runtime
+ * permission, for the same reason.
  */
 WORD v9x_intel_flip_allowed;
 /*
@@ -220,17 +221,29 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
      * and would have made Direct3D depend on whether some unrelated diagnostic
      * token happened to parse.
      */
+    /*
+     * ON BY DEFAULT from 2026-09-18, by the operator's decision after
+     * intel59 through intel66 ran application Direct3D and the Intel flip
+     * on every boot without a hang attributable to either. The key is now
+     * a way to turn each OFF: "0" refuses, anything else - including the
+     * key's absence, which is how V9XCOPY leaves the file - permits. The
+     * recovery command is unchanged in shape: V9X3D OFF writes both keys
+     * as 0 from DOS. docs\decisions6-09-18-intel-runtime-3d-and-flip-
+     * on-by-default.md.
+     */
+    v9x_intel_runtime3d_allowed = 1u;
     if (v9x_intel_boot_read("IntelRuntime3D", runtime_text,
                             sizeof(runtime_text)) &&
-        v9x_intel_str_equal(runtime_text, "1") != 0u) {
-        v9x_intel_runtime3d_allowed = 1u;
+        v9x_intel_str_equal(runtime_text, "0") != 0u) {
+        v9x_intel_runtime3d_allowed = 0u;
     }
-    /* The flip permission, read on the same terms and at the same point.
+    /* The flip permission, on the same terms and at the same point.
      * runtime_text is reused: its value has been consumed. */
+    v9x_intel_flip_allowed = 1u;
     if (v9x_intel_boot_read("IntelFlip", runtime_text,
                             sizeof(runtime_text)) &&
-        v9x_intel_str_equal(runtime_text, "1") != 0u) {
-        v9x_intel_flip_allowed = 1u;
+        v9x_intel_str_equal(runtime_text, "0") != 0u) {
+        v9x_intel_flip_allowed = 0u;
     }
 
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||

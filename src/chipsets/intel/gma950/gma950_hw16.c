@@ -200,7 +200,8 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
         *engine_caps = V9X_DD_ENGINE_CAP_D3D;
     }
     /*
-     * FLIP, from 2026-09-17, only with this boot's IntelFlip=1.
+     * FLIP, from 2026-09-17, unless this boot's IntelFlip reads 0 (on by
+     * default from 2026-09-18).
      *
      * The HAL moves the scanout through the live pipe's plane base register
      * and reads the pipe's display line for the retrace (engines\
@@ -209,8 +210,9 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * DirectDraw copies each frame with the CPU, which is intel56's flicker.
      * Independent of the ring: a flip is a display write, not an engine one.
      *
-     * UNMEASURED. No boot has written the plane base or read the line
-     * counter on purpose; the first boot with this key is the experiment.
+     * Measured intel62 through intel66: the write moves the scanout and the
+     * line register sweeps; what remains open is where the base takes
+     * effect relative to the retrace (the issue record).
      */
     if (v9x_intel_flip_allowed != 0u) {
         *engine_caps |= V9X_DD_ENGINE_CAP_FLIP;

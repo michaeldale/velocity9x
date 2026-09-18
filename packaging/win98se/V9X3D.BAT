@@ -5,16 +5,14 @@ REM This is NOT an armer. It sets a RETAINED permission that every subsequent
 REM boot reads, rather than a one-shot token that the next boot consumes.
 REM
 REM What it governs: whether the display driver may bring the command ring up
-REM and advertise Direct3D to applications. With it clear - which is how a
-REM freshly deployed machine reads, because V9XCOPY does not write the key -
-REM the driver maps the engine's windows and stops there. It writes no ring
-REM register, claims no Direct3D capability, and DirectDraw runs exactly as it
-REM did before any of this existed.
-REM
-REM It is deliberately absent by default. The machine this package installs on
-REM has never executed application geometry on this engine; a package that
-REM turned the ring on by being installed would take that decision on the
-REM operator's behalf, and there would be nothing to reverse it with.
+REM and advertise Direct3D to applications, and (IntelFlip) whether it moves
+REM the scanout itself on Flip. BOTH ARE ON BY DEFAULT from 2026-09-18: a key
+REM that is absent - which is how V9XCOPY leaves the file - permits, and only
+REM a key reading 0 refuses. Until then absent meant off, because no machine
+REM had executed application geometry on this engine; intel59 through
+REM intel66 did, on every boot, and the operator took the decision to make it
+REM the default. So ON and FLIP now change nothing on a fresh install; they
+REM exist to turn the path back on after an OFF.
 REM
 REM TO RECOVER after a hang, from real DOS, either:
 REM     V9X3D OFF
@@ -22,9 +20,9 @@ REM or, equivalently and with everything else reset too:
 REM     C:
 REM     CD \INTELGMA
 REM     V9XCOPY
-REM V9XCOPY rewrites the arm file without this key, so it disables the runtime
-REM path as a side effect of resetting the arm state. That is intended: the
-REM documented recovery command already turns this off.
+REM V9XCOPY rewrites the arm file without either key, which since 2026-09-18
+REM means both are ON again after it. To leave the machine with the runtime
+REM path OFF, run V9X3D OFF after V9XCOPY, not before.
 REM
 REM An ARMED boot ignores this key entirely. The driver clears the permission
 REM in memory whenever a one-shot token is consumed, because a diagnostic boot
@@ -60,11 +58,9 @@ GOTO USAGE
 REM ON, plus permission for the HAL to move the scanout itself: write the
 REM live pipe's plane base register on Flip and read the pipe's display line
 REM for the retrace, instead of declining every Flip and letting DirectDraw
-REM copy each frame with the CPU. Neither register has been written or read
-REM on purpose on this machine; the boot after this command is the
-REM experiment. Run it only after an ON boot has completed and its snapshot
-REM shows the pipe's line counter sweeping (ScanBLineChanges in the
-REM thousands). Same refusal as ON for an unresolved armed record.
+REM copy each frame with the CPU. Both were measured on this machine in
+REM intel61 through intel66 and are the default; this verb restores them
+REM after an ON or OFF. Same refusal as ON for an unresolved armed record.
 IF NOT EXIST %V9XARMFILE% GOTO WRITEFLIP
 FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
@@ -77,7 +73,8 @@ ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
 ECHO IntelFlip=1>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO Runtime Direct3D AND the Intel flip are PERMITTED from the next boot.
+ECHO Runtime Direct3D AND the Intel flip are PERMITTED from the next boot,
+ECHO which is also what a fresh install does.
 ECHO.
 ECHO If the machine hangs or the display is lost: power off, boot to real
 ECHO DOS, run V9X3D ON (keeps Direct3D, drops the flip) or V9X3D OFF, and
@@ -103,12 +100,10 @@ ECHO [Velocity9x]>%V9XARMFILE%
 ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
+ECHO IntelFlip=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO Runtime Direct3D is now PERMITTED on the next and every later boot.
-ECHO.
-ECHO This is the experiment, not a release. No guest has ever executed a
-ECHO stream built from application geometry on this engine. Shut down, cold
-ECHO boot on AC power, and run one Direct3D program.
+ECHO Runtime Direct3D is PERMITTED (the default) and the Intel flip is
+ECHO REFUSED on the next and every later boot.
 ECHO.
 ECHO If the machine hangs: power off, boot to real DOS, run V9X3D OFF, and
 ECHO collect C:\V9XDIAG on the development host before booting Windows again.
@@ -124,18 +119,20 @@ ECHO [Velocity9x]>%V9XARMFILE%
 ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=0>>%V9XARMFILE%
+ECHO IntelFlip=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO Runtime Direct3D is now REFUSED. The driver will map the engine's
-ECHO windows, write no ring register and claim no Direct3D capability.
+ECHO Runtime Direct3D and the Intel flip are now REFUSED. The driver will
+ECHO map the engine's windows, write no ring register, claim no Direct3D
+ECHO capability and decline every Flip.
 ECHO.
 ECHO Cold boot on AC power. If the machine still hangs, the cause is not the
 ECHO runtime 3D path and RECOVER.TXT describes how to remove the driver.
 GOTO DONE
 
 :USAGE
-ECHO Usage:  V9X3D ON     permit runtime Direct3D from the next boot
-ECHO         V9X3D FLIP   ON, plus the Intel flip experiment (read the notes)
-ECHO         V9X3D OFF    refuse it, and recover a machine that hung
+ECHO Usage:  V9X3D ON     runtime Direct3D on, the Intel flip off
+ECHO         V9X3D FLIP   both on (the default for a fresh install)
+ECHO         V9X3D OFF    both off, and recover a machine that hung
 ECHO.
 ECHO Nothing was written.
 GOTO DONE
