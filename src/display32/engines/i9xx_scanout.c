@@ -256,7 +256,7 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
  * addresses different - which DrawsToFront=0 cannot see. The desktop
  * capture cannot answer this; only the value during the game can.
  */
-static void v9x_i9xx_note_layout(void)
+static void v9x_i9xx_note_layout(DWORD byte_offset)
 {
     DWORD cntr_reg = v9x_i9xx_scanout_plane == 0ul ? V9X_I9XX_REG_DSPA_CNTR
                                                    : V9X_I9XX_REG_DSPB_CNTR;
@@ -294,6 +294,10 @@ static void v9x_i9xx_note_layout(void)
             v9x_hal->d3d_diagnostics.scan_reg_value[index] =
                 *v9x_i9xx_scanout_reg(regs[index]);
         }
+        v9x_hal->d3d_diagnostics.scan_sample_offset = byte_offset;
+        v9x_hal->d3d_diagnostics.scan_sample_frame =
+            v9x_i9xx_scanout_frame_now();
+        ++v9x_hal->d3d_diagnostics.scan_layout_samples;
     }
 }
 
@@ -302,7 +306,12 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
     v9x_i9xx_scanout_last_base_reg = base_reg;
     v9x_i9xx_scanout_last_offset = byte_offset;
     v9x_i9xx_scanout_flip_outstanding = 1;
-    v9x_i9xx_note_layout();
+    /* Only a flip to a buffer other than offset zero is the game's: the
+     * desktop restoration flips to zero, and would otherwise overwrite the
+     * in-game sample on the way out (review of 2347f59). */
+    if (byte_offset != 0ul) {
+        v9x_i9xx_note_layout(byte_offset);
+    }
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);

@@ -78,7 +78,7 @@ problem in one sentence.
 | intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
 | intel83 | `fbc2f29-dirty` (`8e4be09`) | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it | HWS_PGA took the page; 1,460 of 1,460 stores never landed in the wait |
 | intel84 | `273bfa4-dirty` (`89bf4bd`) | completion channel as a state machine; store-only round trip before use | round trip FAILED (2,000,000 polls); no breadcrumbs after; flicker intermittent, "an improvement but far from fixed" |
-| intel85 | next | ACTHD against the tail at head == tail, INSTDONE raw; 24-register display layout at flip issue; self-test bound cut to 200,000 | to boot |
+| intel85 | next | ACTHD and INSTDONE raw at head == tail and after 2,000 polls, with whether ACTHD moved; 24-register display layout at a game flip, kept through the desktop restore; self-test bound cut to 200,000 | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -440,17 +440,28 @@ turn it into one.
 
 Three GPU-to-CPU stores by two mechanisms have now failed to be
 observed. The next build stops asking the GPU to write and reads the
-engine instead: at the moment RING_HEAD reaches the tail, ACTHD - the
-address the engine is executing, which i915's hang check uses for
-progress on this generation - is compared with the tail and followed to
-it with the polls counted (`ActhdBehind`, `ActhdLagPollsMax`,
-`ActhdLagTimeouts`; INSTDONE raw at both moments). No command, no
-memory, no address to get wrong. `ActhdBehind` near the submit count
-with a real lag is the asynchrony measured; zero says the engine is done
-when the parser is, and the unfinished-frame model dies with it. The
-same build captures the 24 display registers of review H4 at flip issue,
-and cuts the self-test bound to 200,000 polls so a failing channel costs
-a moment, not the start of the run.
+engine instead. A first cut compared ACTHD with the tail as an address
+and would have called the result completion evidence; the review of that
+commit pointed out that ACTHD's Gen3 address form and idle meaning are
+not validated on this part, that i915 uses it for progress and not for
+completion, and that a wrong interpretation would have produced exactly
+the zero the record was about to read as disproof. So the build records
+the register RAW: its value when RING_HEAD reaches the tail and after
+2,000 polls, whether it changed in between (`ActhdMoved`, `ActhdStill`,
+`ActhdChangesMax`), the range of every value seen, and INSTDONE at both
+moments. A register that keeps changing after the parser is done is an
+engine still working, and that needs no interpretation; what it is
+working on, and when it stops, is for an instrument that has validated
+the register first. `ActhdStill` equal to the submit count says nothing
+either way until the register is understood.
+
+The same build captures the 24 display registers of review H4, taken
+only at a flip to a buffer other than offset zero - the desktop
+restoration flips to zero and would otherwise overwrite the sample on the
+way out of the game (the second finding of that review) - with the
+sample's target offset, frame counter and count kept beside it. The
+self-test bound drops to 200,000 polls so a failing channel costs a
+moment, not the start of the run.
 
 ## How to run the next boot
 

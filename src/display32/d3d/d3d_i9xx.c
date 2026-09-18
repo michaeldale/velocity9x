@@ -293,10 +293,10 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * in flight, so a generous bound costs nothing when the store works and
  * saves thousands of per-batch waits when it does not. */
 #define V9X_I9XX_SELFTEST_POLLS 200000ul
-/* Polls to wait for ACTHD to reach the tail after RING_HEAD has: the
- * engine finishing what the parser fetched. A measurement bound, not a
- * correctness wait; the drain still rests on the breadcrumb. */
-#define V9X_I9XX_ACTHD_POLLS 20000ul
+/* Polls over which ACTHD is watched after RING_HEAD reaches the tail. A
+ * measurement window, not a wait for anything; the drain still rests on
+ * the breadcrumb. About a few milliseconds of MMIO reads. */
+#define V9X_I9XX_ACTHD_POLLS 2000ul
 /* Polls a drain may spend, summed across calls, on one outstanding
  * sequence before the channel is declared dead (review R1): seconds, not
  * forever, and never inside one call. */
@@ -578,45 +578,48 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
             DWORD lag;
 
             /*
-             * The parser is at the tail. Is the ENGINE? ACTHD is the
-             * graphics address being executed; the tail is an offset in
-             * the ring, whose graphics address is fb.vram_bytes. Read
-             * at this instant and then followed to the tail, bounded,
-             * with the polls counted: the reading two store commands
-             * could not give. INSTDONE alongside, raw, for the record.
+             * The parser is at the tail. Is the ENGINE? ACTHD and
+             * INSTDONE, raw, now and after a fixed number of polls, and
+             * whether ACTHD kept changing in between. No address
+             * arithmetic and no claim of completion: the register's Gen3
+             * form is not validated on this part, and a value that moves
+             * after the parser is done is the one fact that needs none.
              */
             {
-                DWORD ring_start = v9x_hal->fb.vram_bytes;
+                V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
                 DWORD acthd = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
-                DWORD offset = (acthd & ~7ul) - ring_start;
+                DWORD previous = acthd;
+                DWORD changes = 0ul;
+                DWORD follow;
 
-                v9x_hal->d3d_diagnostics.instdone_at_head_last =
+                d->instdone_at_head_last =
                     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_INSTDONE);
-                v9x_hal->d3d_diagnostics.acthd_last = acthd;
-                v9x_hal->d3d_diagnostics.tail_last = plan.next_tail;
-                if (offset >= ring_bytes) {
-                    ++v9x_hal->d3d_diagnostics.acthd_outside;
-                } else if (offset != plan.next_tail) {
-                    DWORD follow;
-
-                    ++v9x_hal->d3d_diagnostics.acthd_behind;
-                    for (follow = 0ul; follow < V9X_I9XX_ACTHD_POLLS;
-                         ++follow) {
-                        acthd = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
-                        if (((acthd & ~7ul) - ring_start) == plan.next_tail) {
-                            break;
-                        }
-                    }
-                    v9x_hal->d3d_diagnostics.acthd_lag_polls_total += follow;
-                    if (follow > v9x_hal->d3d_diagnostics.acthd_lag_polls_max) {
-                        v9x_hal->d3d_diagnostics.acthd_lag_polls_max = follow;
-                    }
-                    if (follow == V9X_I9XX_ACTHD_POLLS) {
-                        ++v9x_hal->d3d_diagnostics.acthd_lag_timeouts;
-                    }
+                d->acthd_at_head_last = acthd;
+                d->tail_last = plan.next_tail;
+                if (d->acthd_raw_min == 0ul && d->acthd_raw_max == 0ul) {
+                    d->acthd_raw_min = acthd;
+                    d->acthd_raw_max = acthd;
                 }
-                v9x_hal->d3d_diagnostics.instdone_settled_last =
+                for (follow = 0ul; follow < V9X_I9XX_ACTHD_POLLS; ++follow) {
+                    acthd = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
+                    if (acthd != previous) {
+                        ++changes;
+                        previous = acthd;
+                    }
+                    if (acthd < d->acthd_raw_min) { d->acthd_raw_min = acthd; }
+                    if (acthd > d->acthd_raw_max) { d->acthd_raw_max = acthd; }
+                }
+                d->acthd_after_last = acthd;
+                d->instdone_after_last =
                     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_INSTDONE);
+                if (changes != 0ul) {
+                    ++d->acthd_moved;
+                    if (changes > d->acthd_changes_max) {
+                        d->acthd_changes_max = changes;
+                    }
+                } else {
+                    ++d->acthd_still;
+                }
             }
 
             if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {

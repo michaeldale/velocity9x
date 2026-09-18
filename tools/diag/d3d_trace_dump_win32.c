@@ -477,15 +477,19 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("BreadcrumbAbandoned", snapshot.d3d.breadcrumb_abandoned);
     v9x_write_uint("RenderDrainWaits", snapshot.d3d.render_drain_waits);
     v9x_write_uint("RenderDrainStalls", snapshot.d3d.render_drain_stalls);
-    v9x_write_uint("ActhdBehind", snapshot.d3d.acthd_behind);
-    v9x_write_uint("ActhdLagPollsMax", snapshot.d3d.acthd_lag_polls_max);
-    v9x_write_uint("ActhdLagPollsTotal", snapshot.d3d.acthd_lag_polls_total);
-    v9x_write_uint("ActhdLagTimeouts", snapshot.d3d.acthd_lag_timeouts);
-    v9x_write_uint("ActhdOutside", snapshot.d3d.acthd_outside);
-    v9x_write_hex("ActhdLast", snapshot.d3d.acthd_last);
-    v9x_write_hex("TailLast", snapshot.d3d.tail_last);
+    v9x_write_hex("ActhdAtHeadLast", snapshot.d3d.acthd_at_head_last);
+    v9x_write_hex("ActhdAfterLast", snapshot.d3d.acthd_after_last);
+    v9x_write_uint("ActhdMoved", snapshot.d3d.acthd_moved);
+    v9x_write_uint("ActhdStill", snapshot.d3d.acthd_still);
+    v9x_write_uint("ActhdChangesMax", snapshot.d3d.acthd_changes_max);
+    v9x_write_hex("ActhdRawMin", snapshot.d3d.acthd_raw_min);
+    v9x_write_hex("ActhdRawMax", snapshot.d3d.acthd_raw_max);
     v9x_write_hex("InstdoneAtHeadLast", snapshot.d3d.instdone_at_head_last);
-    v9x_write_hex("InstdoneSettledLast", snapshot.d3d.instdone_settled_last);
+    v9x_write_hex("InstdoneAfterLast", snapshot.d3d.instdone_after_last);
+    v9x_write_hex("TailLast", snapshot.d3d.tail_last);
+    v9x_write_hex("ScanSampleOffset", snapshot.d3d.scan_sample_offset);
+    v9x_write_uint("ScanSampleFrame", snapshot.d3d.scan_sample_frame);
+    v9x_write_uint("ScanLayoutSamples", snapshot.d3d.scan_layout_samples);
     {
         DWORD index;
         char key[16];
