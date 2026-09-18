@@ -1012,6 +1012,26 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                  &identity, &address) == V9X_FALSE) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
     }
+    /*
+     * A flip still pending means the panel is still fetching the buffer
+     * this batch is aimed at: Flip returned when the base was written, the
+     * latch is at the next blank start, and Direct3D does not ask
+     * GetFlipStatus before drawing. intel78 saw the construction on screen
+     * with the write timed right, which is this gap. Wait for the flip to
+     * be taken; the count says how often the wait was needed, and a wait
+     * that runs out is a dead scanout, drawn anyway rather than refused
+     * (the frame is lost either way; the game keeps running).
+     */
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
+    }
     /* Front or back: is this batch about to land in the buffer the display
      * is scanning right now? See the diagnostics comment (intel74). */
     {

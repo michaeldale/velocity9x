@@ -64,6 +64,20 @@ MI_DISPLAY_FLIP in the ring, applied by the display at the same point.
 - Tearing in intel65 and intel66. What the operator saw and called tearing
   was the same construction, with the release earlier still.
 
+## intel78: the model held; the gate was in the wrong place
+
+With the write in active video the still-drawing polls fell from
+1,871,046 to 79,873 and every flip was taken at its completion, and the
+operator saw the picture "a little better" - but the construction still
+shows. The latch point was not the only gap: Flip returns when the base is
+written, and only Lock and Blt are held on GetFlipStatus by the runtime.
+Direct3D draws are not, so the first batches of every frame land in the
+buffer the panel is still fetching until the latch, one display frame at
+most, in every build regardless of where the write fell. The engine now
+waits for a pending flip before drawing (`v9x_flip_wait_done`), and counts
+how often it had to (`DrawsFlipWaited`). That count is the measurement of
+this claim; it is unmeasured until the next boot.
+
 ## What the driver does from this record
 
 The Intel flip write is issued while DSL is in active video and at least

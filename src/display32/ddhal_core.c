@@ -535,6 +535,31 @@ static int v9x_flip_done(void)
     return 0;
 }
 
+/*
+ * Polls of v9x_flip_done a draw will spend on a pending flip. A flip
+ * completes at the frame tick after its latch, at most one frame (16.7 ms
+ * at this timing) after the write; each poll is a few MMIO reads, around
+ * a microsecond. 200,000 is over ten frames: enough that a live scanout
+ * always answers inside it, small enough that a dead one fails a draw
+ * rather than hanging the machine (the intel57 lesson).
+ */
+#define V9X_FLIP_DRAW_WAIT_POLLS 200000ul
+
+int v9x_flip_wait_done(void)
+{
+    DWORD polls;
+
+    if (v9x_flip_state == V9X_FLIP_IDLE) {
+        return V9X_FLIP_WAIT_NONE;
+    }
+    for (polls = 0ul; polls < V9X_FLIP_DRAW_WAIT_POLLS; ++polls) {
+        if (v9x_flip_done()) {
+            return V9X_FLIP_WAIT_DONE;
+        }
+    }
+    return V9X_FLIP_WAIT_TIMEOUT;
+}
+
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 {
     DWORD offset = v9x_surface_offset(data->lpSurfTarg);

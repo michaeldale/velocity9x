@@ -1242,6 +1242,39 @@ should then switch at the blank the write precedes, and the buffer the
 game receives is off screen. If the construction is still visible the
 latch model is wrong too, and the readback instrument follows.
 
+### intel78: written in active video - "a little better", the construction still shows
+
+Build `1096a04-dirty` (the active-video write, committed as `3d9a103`).
+The operator: "seems a little better but no better than when I first
+reported it".
+
+```
+FlipHandled=754  FlipStillDrawing=79873 (1,871,046 in intel76)
+FlipRingIssued=774  FlipTakenAtDone=754  FlipNotTakenAtDone=0
+DrawsToFront=0  DrawsToBack=746008  CountGetFlipStatus=41286  CountFlip=15091
+```
+
+The write now lands almost at once (the still-drawing polls fell by a
+factor of twenty, the window being most of the frame) and every flip is
+taken by its completion. What the latch model did not account for is WHO
+waits for that completion. Flip returns as soon as the base is written.
+DirectDraw asks GetFlipStatus before a Lock or a Blt (55 asks a frame
+here) and retries on WASSTILLDRAWING, so the CPU clears wait. Direct3D
+does not ask: RenderPrimitive goes straight to the engine. So the frame's
+first batches - the sky - land in the buffer the panel is still fetching,
+until the latch at the next blank start; that is the sky-on-cleared-buffer
+frame the video shows, and it is one display frame long whether the base
+is written in the blank or in active video, which is why the timing
+change moved the picture so little.
+
+The next build waits, in the engine, for a pending flip before the first
+batch of a frame (`v9x_flip_wait_done`, bounded at 200,000 polls so a dead
+scanout fails a draw instead of hanging), and counts the batches that had
+to wait (`DrawsFlipWaited`) and the waits that ran out. Shared ABI
+2026091710. The count is the measurement: near one per frame says the gap
+was real and is now closed; zero says the pending state is not what the
+draws are racing.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

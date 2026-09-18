@@ -313,6 +313,15 @@ int v9x_scanout_flip_window_open(void);
  * plane base register; 0xffffffff when the Intel controls are not active
  * or no plane resolves. */
 DWORD v9x_scanout_displayed_offset(void);
+/* Wait for the flip in progress, if any, to be taken by the scanout, so a
+ * draw that follows lands off screen. NONE when nothing was pending, DONE
+ * when the flip completed inside the bound, TIMEOUT when the bound ran out
+ * (the flip state machine has then abandoned it). Direct3D draws are not
+ * gated on GetFlipStatus by the runtime; this is that gate (intel78). */
+#define V9X_FLIP_WAIT_NONE     2
+#define V9X_FLIP_WAIT_DONE     1
+#define V9X_FLIP_WAIT_TIMEOUT  0
+int v9x_flip_wait_done(void);
 /* Non-zero when this boot's Intel flip goes through the ring: the display
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);

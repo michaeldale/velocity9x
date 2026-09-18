@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091710: V9X_D3D_DIAGNOSTICS gains the draws-waited-for-flip counters.
+ * An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091709: V9X_D3D_DIAGNOSTICS gains the draws-to-front/back counters and
  * the last target and displayed offsets. An append; the stamp moves for the
  * reason 2026091603 gives.
@@ -1201,7 +1204,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091709ul
+#define V9X_DD_SHARED_ABI   2026091710ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1714,6 +1717,21 @@ typedef struct v9x_d3d_diagnostics {
     DWORD draws_to_back;
     DWORD draws_target_last;
     DWORD draws_displayed_last;
+    /*
+     * Batches that arrived while a flip was still pending, and how many of
+     * those waits ran out.
+     *
+     * intel78: with the base written in active video the flip completes at
+     * the tick that follows the latch, and the panel still shows the buffer
+     * under construction. Flip returns as soon as the base is written;
+     * DirectDraw gates Lock and Blt on GetFlipStatus but Direct3D draws go
+     * straight to RenderPrimitive, so the game's first batches of a frame
+     * land in the buffer the panel is still fetching. The engine now waits
+     * for the pending flip before the first batch; this counts how often
+     * that wait was needed, which is the measurement of the exposure.
+     */
+    DWORD draws_flip_waited;
+    DWORD draws_flip_wait_timeouts;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
