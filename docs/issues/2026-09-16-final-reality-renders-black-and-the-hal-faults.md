@@ -1000,6 +1000,46 @@ after every flip against the OR read directly before, plus a count of
 flips across whose ring submit the frame counter advanced (near all: the
 streamer stalls; near none: it does not).
 
+### intel73: ISR reads zero, the streamer does not stall, the base applies at once
+
+Build `14d691f-dirty` (the frame-counter completion rule and the ISR
+accumulators).
+
+```
+FlipRingIssued=839  FlipHandled=819   FlipBaseImmediate=839  FlipBaseDeferred=0
+IsrAfterFlipOr=0x00000000   IsrBeforeFlipOr=0x00000000
+FlipFramesInSubmit=0        FlipRingPendingSeen=0
+FlipTakenAtDone=819         CountGetFlipStatus=51802
+```
+
+Three facts, each from a register rather than a picture:
+
+- **ISR read zero on every read**, before and after 839 flips. No bit at
+  all changed with a flip, so there is no flip-pending status in ISR on
+  this part as driven here - not at bit 10, not anywhere.
+- **The frame counter never advanced inside a ring submit.** The command
+  streamer does not stall on `MI_DISPLAY_FLIP` until the retrace; it
+  consumes the packet and moves on.
+- **The plane base reads the new offset the moment the packet is
+  consumed**, every time.
+
+Taken together: on this 945GSE, `MI_DISPLAY_FLIP` as this driver issues it
+applies the plane base IMMEDIATELY, exactly as the register write does, and
+nothing signals a retrace-synchronised flip. Whether that is the part, the
+mode (an LVDS panel on pipe B through the VBIOS's programming), or a
+precondition i915 sets up that this driver does not - display interrupts
+enabled, or a plane-control bit - is not established. What is established
+is that neither mechanism gives a latched flip here.
+
+The frame-counter completion rule therefore held every flip for a full
+tick, so the application never drew into a buffer that the display was
+still showing from a pending flip. If the picture still tears under this
+rule, the tear is the base switching mid-scan at the moment of issue -
+which an immediately applied base does at wherever the beam is - and the
+remedy for an immediate base is to issue it inside the blank and complete
+at the tick. intel66 issued inside the blank and completed at the END of
+the blank; that is not the same experiment.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
