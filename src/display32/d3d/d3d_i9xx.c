@@ -778,19 +778,27 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST;
     /*
-     * The two ALPHA shade caps say the device can blend with an alpha that
-     * comes from flat or Gouraud shading - the vertex alpha the blend path
-     * now reads through the fragment program. They are the bits DirectX 5
-     * and 6 titles test before enabling blending at all, and their absence
-     * is a candidate for why 3DMark99 set six render states and asked for
-     * no texture in intel63 and intel64. Claimed now because the blend they
-     * describe is built and, for the measured pair, drawn (intel64: 739,862
-     * textured draws with blending on and none skipped).
+     * ALPHAGOURAUDBLEND says the device can blend with an alpha interpolated
+     * from the vertices, which is what the blend path does: the fragment
+     * program reads the interpolated diffuse and the blend takes its alpha.
+     * It is one of the bits DirectX 5 and 6 titles test before enabling
+     * blending, and its absence is a candidate for why 3DMark99 asked for no
+     * texture in intel63 and intel64. Claimed because the blend it describes
+     * is built and, for the measured pair, drawn (intel64: 739,862 textured
+     * draws with blending on, none skipped).
+     *
+     * ALPHAFLATBLEND is NOT claimed. It promises the first vertex's alpha
+     * across a flat-shaded triangle, and nothing here does that: the core
+     * does not retain SHADEMODE and this path passes each vertex's alpha
+     * through unchanged, so a flat triangle with differing vertex alphas
+     * would vary in transparency. COLORFLATRGB above has the same defect
+     * for colour and is already an open issue (docs\issues\2026-09-17-flat-
+     * shading-is-claimed-and-the-provoking-vertex-is-not-programmed.md); the
+     * alpha cap joins it there rather than adding a second false promise.
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
-        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
     /*
      * LESS alone, and that is the point of publishing it rather than leaving

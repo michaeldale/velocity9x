@@ -22,6 +22,19 @@ for a flat-shade or provoking-vertex control exists anywhere in
 gets, and nothing here has established which that is - D3D's first vertex or
 OpenGL's last.
 
+## The alpha cap, declined for the same reason (2026-09-18)
+
+When blending reached the runtime path, `D3DPSHADECAPS_ALPHAFLATBLEND` was
+briefly claimed beside `ALPHAGOURAUDBLEND`. Review caught it: the cap
+promises the first vertex's alpha across a flat-shaded triangle, and this
+path passes each vertex's alpha through unchanged - the same defect as the
+colour cap above, now with a visible consequence, since a flat triangle
+with differing vertex alphas would vary in transparency. It is withdrawn.
+The core does not retain `D3DRENDERSTATE_SHADEMODE` at all; when flat
+shading is built - the state retained, the provoking vertex programmed or
+the first vertex's colour and alpha copied to the other two in the core -
+both caps become true together.
+
 ## Why it has not been seen
 
 Every triangle this project has drawn through the runtime path has had one

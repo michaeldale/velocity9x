@@ -749,9 +749,11 @@ intel63 hang, which did not recur. So 3DMark still decides, from the caps,
 not to texture. Against the ViRGE, where it does, the Intel description
 now lacks: the seven other Z comparisons, `TRANSPARENCY`, the mip filter
 caps, `DECAL`/`COPY`, `MIRROR` addressing, fog, specular, and the two
-alpha SHADE caps. The last are claimed from here: they describe blending
-with a shaded alpha, which is what the blend path now does. If 3DMark
-still creates no texture with them, the next step is the probe dumping
+alpha SHADE caps. `ALPHAGOURAUDBLEND` is claimed from here: it describes
+blending with an interpolated alpha, which is what the blend path now
+does. `ALPHAFLATBLEND` is not, for the reason the flat-shading issue
+records - nothing here makes a flat triangle take one vertex's alpha. If
+3DMark still creates no texture, the next step is the probe dumping
 what `GetCaps` returns on both machines and a diff - not another cap
 guessed at.
 
