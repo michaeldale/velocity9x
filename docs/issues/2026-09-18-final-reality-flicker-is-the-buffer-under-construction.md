@@ -73,7 +73,7 @@ problem in one sentence.
 | intel77 | `00faf7d` | MI_READ_FLUSH before each batch (stale texture cache) | unchanged |
 | intel78 | `3d9a103` | base written in ACTIVE video, before the blank-start latch | "a little better" |
 | intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
-| intel80 | `73709d2`+ | a flip completes at the SECOND frame tick after the write; counter read made consistent; in-game layout captured | to boot |
+| intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker still present (video to come); layout registers below |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -175,6 +175,62 @@ A review of this record and the code made five points. Taken in order:
    clear destination and extent, and the first draw after, with frame
    count and scanline. Noted as the next instrument if the probe and the
    layout capture do not settle it.
+
+## intel80: the layout registers during the game
+
+`C:\temp\intel80\beforeProbe` (Final Reality, then V9XTRACE) and
+`afterprobe` / `afterprobetrace` (V9XDDP `/reuse`, then V9XTRACE). Build
+`73709d2-dirty`, which has the two-tick completion. The operator: still
+flickering; a video is coming.
+
+```
+FlipHandled=634  FlipRingIssued=654  FlipTakenAtDone=634  DrawsFlipWaited=0
+DrawsToFront=0  DrawsToBack=632195  DrawsTargetLast=0  DrawsDisplayedLast=0x96000
+FlipStrideLast=0x00000800     plane stride register: 2048 bytes
+FlipDspCntrLast=0x95000000    plane enabled, 16 bpp 565, pipe select B
+FlipPipeSrcLast=0x03FF023F    pipe source 1024 x 576
+DrawsPitchLast=0x00000500     render target pitch 1280
+DrawsExtentLast=0x028001E0    render target 640 x 480
+```
+
+Read at flip issue, so during the game: the one enabled plane on the one
+enabled pipe has stride 2048 and the pipe's source size is 1024 x 576 -
+the desktop's values, unchanged by the 640 x 480 mode set - while the
+render target and the flipping buffers are 640 x 480 at pitch 1280. The
+MMIO capture taken back at the desktop shows the same pipe B values, and
+pipe A holding 640 x 480 timings (HTOTAL 800/640, VTOTAL 525/480, SRC
+640 x 480) with pipe A DISABLED and plane A off: the VBIOS programmed a
+640 x 480 pipe somewhere and it is not the one the panel is on.
+
+This is the review's second point, and worse than it feared: not a
+stride a little wide, but a display that by its registers is fetching
+1024 x 576 rows of 2048 bytes from buffers holding 640 x 480 rows of
+1280. Fetched that way the picture would be sheared beyond recognition,
+and the video shows a coherent, panel-filling, 16:9-stretched scene. So
+either these registers are not what the panel is fetching by - the
+VBIOS presents 640 x 480 through some path these six registers do not
+describe (the gen3 panel fitter and the plane size and position
+registers are not captured) - or the coherent picture is not coming
+from where the driver's model says. Either way the flip path has been
+programming a plane whose stride register says 2048 and sending that
+2048 as the pitch of every MI_DISPLAY_FLIP, and the picture did not
+break, which means the pitch in that command is not what the panel
+uses either.
+
+Unresolved, and it now comes before the latch question: until the
+registers that actually describe the panel's fetch in this mode are
+known, no reasoning about what the panel shows when is grounded. The
+`/reuse` probe's white row every 32nd row is the direct test: at stride
+1280 they are level and 32 rows apart on the panel; at 2048 they break
+into slanted segments. The video will say which.
+
+```
+Probe: ReuseFrontAddress=4237930496 ReuseBackAddress=4237316096 (0x96000 apart)
+       ReuseFrontPitch=1280 ReuseBackPitch=1280 ReuseDoneMsMax=34 FlipPixelOk=0
+```
+
+`FlipPixelOk=0` is the GDI readback and has been 0 on every Intel flip
+run; the camera is the instrument for this probe.
 
 ## How to run the next boot
 
