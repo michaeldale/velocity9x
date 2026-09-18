@@ -340,6 +340,9 @@ void v9x_i9xx_scan_feed(struct v9x_i9xx_scan_summary *summary,
 /* Frames elapsed between the first and last feed, modulo the 24-bit
  * counter. Zero with no samples. */
 v9x_u32 v9x_i9xx_scan_frames(const struct v9x_i9xx_scan_summary *summary);
+/* The 24-bit frame counter composed from its two registers; the flip path
+ * reads it at issue and again to know a retrace has passed. */
+v9x_u32 v9x_i9xx_frame_count(v9x_u32 frame_high_raw, v9x_u32 frame_pixel_raw);
 
 struct v9x_i9xx_pipe_snapshot {
     v9x_u32 pipe_conf;

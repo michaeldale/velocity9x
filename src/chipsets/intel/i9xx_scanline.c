@@ -38,8 +38,7 @@ void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary)
  * the first and last, and a run long enough to matter is long enough that
  * one reading is not the evidence.
  */
-static v9x_u32 v9x_i9xx_scan_frame(v9x_u32 frame_high_raw,
-                                   v9x_u32 frame_pixel_raw)
+v9x_u32 v9x_i9xx_frame_count(v9x_u32 frame_high_raw, v9x_u32 frame_pixel_raw)
 {
     return (((frame_high_raw & V9X_I9XX_FRAME_HIGH_MASK) << 8) |
             (frame_pixel_raw >> V9X_I9XX_FRAME_LOW_SHIFT)) &
@@ -57,7 +56,7 @@ void v9x_i9xx_scan_feed(struct v9x_i9xx_scan_summary *summary,
         return;
     }
     line = dsl_raw & V9X_I9XX_DSL_LINE_MASK;
-    frame = v9x_i9xx_scan_frame(frame_high_raw, frame_pixel_raw);
+    frame = v9x_i9xx_frame_count(frame_high_raw, frame_pixel_raw);
 
     if (summary->samples == 0ul) {
         summary->line_min = line;

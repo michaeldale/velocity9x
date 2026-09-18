@@ -443,6 +443,9 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.flip_not_taken_at_done);
     v9x_write_uint("FlipRingPendingSeen",
                    snapshot.d3d.flip_ring_pending_seen);
+    v9x_write_hex("IsrAfterFlipOr", snapshot.d3d.isr_after_flip_or);
+    v9x_write_hex("IsrBeforeFlipOr", snapshot.d3d.isr_before_flip_or);
+    v9x_write_uint("FlipFramesInSubmit", snapshot.d3d.flip_frames_in_submit);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

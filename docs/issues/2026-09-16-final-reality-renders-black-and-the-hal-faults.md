@@ -988,7 +988,17 @@ a cause outside the flip path (a candidate: the CPU blocked inside Flip
 for up to a frame while the application's next render is already due).
 Under the third, nothing about flip timing has been measured yet.
 
-The picture for this boot has not been reported at the time of writing.
+**The picture: still tearing.** Reported after the record above was
+written. So either the streamer does not stall and the pending bit is not
+at bit 10 on this part, or it does and the tear has another cause. The
+next build does two things about it. The flip is declared done only when
+the ISR bit is clear AND the frame counter has moved since the flip was
+issued - i915's vblank fallback made primary, on the counter intel69
+measured, so no flip can complete before a retrace whatever any status bit
+says. And two accumulators find the real bit: the OR of ISR read directly
+after every flip against the OR read directly before, plus a count of
+flips across whose ring submit the frame counter advanced (near all: the
+streamer stalls; near none: it does not).
 
 ### Flat shading, in the core (2026-09-18)
 

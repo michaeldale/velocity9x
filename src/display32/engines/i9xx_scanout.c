@@ -71,6 +71,22 @@ static DWORD v9x_i9xx_scanout_stride_reg = 0ul;
 static DWORD v9x_i9xx_scanout_last_base_reg = 0ul;
 static DWORD v9x_i9xx_scanout_last_offset = 0ul;
 static int v9x_i9xx_scanout_flip_outstanding = 0;
+/* The live pipe's frame-counter registers, and the count when the flip was
+ * issued: a flip is taken once a retrace has passed, which the counter
+ * measured in intel69 says by advancing. */
+static DWORD v9x_i9xx_scanout_framehigh_reg = 0ul;
+static DWORD v9x_i9xx_scanout_framepixel_reg = 0ul;
+static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
+
+static DWORD v9x_i9xx_scanout_frame_now(void)
+{
+    if (v9x_i9xx_scanout_framehigh_reg == 0ul) {
+        return 0ul;
+    }
+    return v9x_i9xx_frame_count(
+        *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg),
+        *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg));
+}
 
 static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
 {
@@ -91,6 +107,12 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
     };
     static const DWORD stride_reg[2] = {
         V9X_I9XX_REG_DSPA_STRIDE, V9X_I9XX_REG_DSPB_STRIDE
+    };
+    static const DWORD framehigh_reg[2] = {
+        V9X_I9XX_REG_PIPEA_FRAMEHIGH, V9X_I9XX_REG_PIPEB_FRAMEHIGH
+    };
+    static const DWORD framepixel_reg[2] = {
+        V9X_I9XX_REG_PIPEA_FRAMEPIXEL, V9X_I9XX_REG_PIPEB_FRAMEPIXEL
     };
     DWORD index;
     DWORD pipes = 0ul;
@@ -127,6 +149,8 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
     *base = addr_reg[plane];
     v9x_i9xx_scanout_plane = plane;
     v9x_i9xx_scanout_stride_reg = stride_reg[plane];
+    v9x_i9xx_scanout_framehigh_reg = framehigh_reg[pipe];
+    v9x_i9xx_scanout_framepixel_reg = framepixel_reg[pipe];
     return 1;
 }
 
@@ -153,6 +177,7 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
     DWORD written = 0ul;
     DWORD rejected = 0ul;
     DWORD pitch = *v9x_i9xx_scanout_reg(stride_reg);
+    DWORD frame_before = v9x_i9xx_scanout_frame_now();
 
     if (v9x_i9xx_build_flip_stream(plane, pitch, byte_offset,
                                    v9x_hal->fb.vram_bytes, stream,
@@ -167,11 +192,15 @@ static int v9x_i9xx_ring_flip(DWORD plane, DWORD stride_reg, DWORD byte_offset)
     }
     ++v9x_hal->d3d_diagnostics.flip_ring_issued;
     /* The pending bit, read once directly after the submit and before any
-     * poll. intel71 never saw it set because it read the wrong bits; this
-     * says whether the audited ones are set on this part. */
+     * poll; intel72 never saw i915's bits set on this part. */
     if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) &
          v9x_i9xx_flip_pending_bit(plane)) != 0ul) {
         ++v9x_hal->d3d_diagnostics.flip_ring_pending_seen;
+    }
+    /* Did the retrace pass inside the submit's wait? If the streamer
+     * stalls on MI_DISPLAY_FLIP until the flip is taken, it did. */
+    if (v9x_i9xx_scanout_frame_now() != frame_before) {
+        ++v9x_hal->d3d_diagnostics.flip_frames_in_submit;
     }
     return 1;
 }
@@ -187,6 +216,9 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
     v9x_i9xx_scanout_last_base_reg = base_reg;
     v9x_i9xx_scanout_last_offset = byte_offset;
     v9x_i9xx_scanout_flip_outstanding = 1;
+    /* Every ISR bit seen right after a flip, for the empirical search. */
+    v9x_hal->d3d_diagnostics.isr_after_flip_or |=
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
     if (*v9x_i9xx_scanout_reg(base_reg) == byte_offset) {
         ++v9x_hal->d3d_diagnostics.flip_base_immediate;
     } else {
@@ -244,6 +276,11 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
     if (!v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
         return 0;
     }
+    /* ISR with no flip of ours outstanding, and the frame the flip is
+     * issued in: the completion rule below waits for the counter to move. */
+    v9x_hal->d3d_diagnostics.isr_before_flip_or |=
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
+    v9x_i9xx_scanout_flip_frame = v9x_i9xx_scanout_frame_now();
     if (v9x_i9xx_ring_flip_active()) {
         if (!v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
                                 v9x_i9xx_scanout_stride_reg, byte_offset)) {
@@ -313,6 +350,19 @@ int v9x_scanout_hw_flip(void)
  * The plane is the one the last set_display_start resolved; a flip is
  * issued and completed against one plane.
  */
+/*
+ * Pending until BOTH say taken: the ISR bit is clear AND the frame counter
+ * has moved since the flip was issued.
+ *
+ * The second is i915's fallback made primary: a flip queued in frame N is
+ * on screen from frame N+1, and the counter measured in intel69 ticks once
+ * per frame at line 671. intel72 tore with the first condition alone,
+ * because that bit read clear at once on this part - whatever the reason.
+ * Waiting for the tick costs at most one frame of latency and cannot
+ * declare done before a retrace has passed. A streamer that stalled on the
+ * flip has already moved the counter by the time this is asked, so it
+ * costs nothing there.
+ */
 int v9x_scanout_hw_flip_pending(void)
 {
     DWORD bit;
@@ -321,7 +371,10 @@ int v9x_scanout_hw_flip_pending(void)
         return 0;
     }
     bit = v9x_i9xx_flip_pending_bit(v9x_i9xx_scanout_plane);
-    return (*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul;
+    if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul) {
+        return 1;
+    }
+    return v9x_i9xx_scanout_frame_now() == v9x_i9xx_scanout_flip_frame;
 }
 
 int v9x_scanout_writes_in_blank(void)
