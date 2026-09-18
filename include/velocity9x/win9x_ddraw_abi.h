@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091705: V9X_D3D_DIAGNOSTICS gains the frame-tick line per pipe (four
+ * DWORDs). An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091704: V9X_D3D_DIAGNOSTICS gains five flip counters (handled, still
  * drawing, declined, forced idle, scanout unresolved). An append; the stamp
  * moves for the reason 2026091603 gives.
@@ -1184,7 +1187,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091704ul
+#define V9X_DD_SHARED_ABI   2026091705ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1630,6 +1633,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD flip_declined;
     DWORD flip_forced_idle;
     DWORD scanout_unresolved;
+    /*
+     * From the scanout watch: the display line at which the frame counter
+     * was first seen to tick, per pipe, and whether a tick was seen. The
+     * flip path treats DSL >= vactive as the blank; intel65 tore in the
+     * lower half with the base written after that test, and intel66 tore
+     * worse with it written inside it. Where the counter ticks says what
+     * DSL's numbers mean on this part, which nothing has measured.
+     */
+    DWORD scan_a_tick_line;
+    DWORD scan_a_tick_seen;
+    DWORD scan_b_tick_line;
+    DWORD scan_b_tick_seen;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

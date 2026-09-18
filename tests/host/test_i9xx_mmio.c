@@ -234,6 +234,29 @@ static void test_scanline_summary(void)
     v9x_i9xx_scan_feed(&summary, 0ul, 0x00001234ul, 0x59000000ul);
     CHECK(v9x_i9xx_scan_frames(&summary) == 3ul);
 
+    /*
+     * Where the frame counter ticks, in line units. A sweep 0..671 with the
+     * counter stepping as the line passes 576 records 576, once, from the
+     * first tick; a run with no tick records nothing.
+     */
+    v9x_i9xx_scan_begin(&summary);
+    for (line = 0ul; line < 1344ul; ++line) {
+        v9x_u32 l = line % 672ul;
+        v9x_u32 frames = (line >= 576ul ? 1ul : 0ul) +
+                         (line >= 1248ul ? 1ul : 0ul);
+
+        v9x_i9xx_scan_feed(&summary, l, 0ul, frames << 24);
+    }
+    CHECK(summary.tick_seen == 1ul);
+    CHECK(summary.tick_line == 576ul);
+    CHECK(v9x_i9xx_scan_frames(&summary) == 2ul);
+    v9x_i9xx_scan_begin(&summary);
+    for (line = 0ul; line < 100ul; ++line) {
+        v9x_i9xx_scan_feed(&summary, line, 0ul, 0ul);
+    }
+    CHECK(summary.tick_seen == 0ul);
+    CHECK(summary.tick_line == 0ul);
+
     /* And its 24-bit wrap: from 0xfffffe to 0x000001 is three frames. */
     v9x_i9xx_scan_begin(&summary);
     v9x_i9xx_scan_feed(&summary, 0ul, 0x0000fffful, 0xfe000000ul);

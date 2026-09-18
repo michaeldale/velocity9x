@@ -27,6 +27,8 @@ void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary)
     summary->line_last = 0ul;
     summary->frame_first = 0ul;
     summary->frame_last = 0ul;
+    summary->tick_line = 0ul;
+    summary->tick_seen = 0ul;
 }
 
 /*
@@ -70,6 +72,12 @@ void v9x_i9xx_scan_feed(struct v9x_i9xx_scan_summary *summary,
         }
         if (line != summary->line_last) {
             ++summary->line_changes;
+        }
+        /* The first frame tick, and the line it was seen at. Only the
+         * first: the reading is where the tick is, not how many. */
+        if (summary->tick_seen == 0ul && frame != summary->frame_last) {
+            summary->tick_line = line;
+            summary->tick_seen = 1ul;
         }
     }
     summary->line_last = line;

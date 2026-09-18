@@ -192,8 +192,25 @@ int v9x_set_display_start(DWORD byte_offset)
  * when that blank ends. A hypothesis from a picture, with the counters
  * to say whether the wait happened (FlipStillDrawing rises per flip).
  */
+#define V9X_I9XX_FLIP_WRITE_IN_BLANK 0
+
 int v9x_scanout_writes_in_blank(void)
 {
+    /*
+     * OFF. intel66 ran with the write inside the blank and the operator
+     * reports the flicker WORSE than intel65's write-anywhere: 710 flips,
+     * each preceded by about 2,950 WASSTILLDRAWING answers, so the wait
+     * happened and the write landed where DSL >= vactive. If that region
+     * were the blank of an immediately-applied base, the tearing would have
+     * gone. It did not, so at least one of "the base applies at once" and
+     * "DSL >= vactive is the blank" is wrong, and this driver cannot say
+     * which. The scanout watch now records the line at which the frame
+     * counter ticks; that measurement decides, and until it is in a
+     * capture the flip goes back to the less-bad behaviour.
+     */
+    if (V9X_I9XX_FLIP_WRITE_IN_BLANK == 0) {
+        return 0;
+    }
     return v9x_i9xx_scanout_active();
 }
 

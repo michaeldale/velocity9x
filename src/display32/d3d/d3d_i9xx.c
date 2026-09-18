@@ -211,6 +211,10 @@ static void v9x_d3d_i9xx_watch_scanout(void)
     v9x_hal->d3d_diagnostics.scan_b_line_max = b.line_max;
     v9x_hal->d3d_diagnostics.scan_b_line_changes = b.line_changes;
     v9x_hal->d3d_diagnostics.scan_b_frames = v9x_i9xx_scan_frames(&b);
+    v9x_hal->d3d_diagnostics.scan_a_tick_line = a.tick_line;
+    v9x_hal->d3d_diagnostics.scan_a_tick_seen = a.tick_seen;
+    v9x_hal->d3d_diagnostics.scan_b_tick_line = b.tick_line;
+    v9x_hal->d3d_diagnostics.scan_b_tick_seen = b.tick_seen;
 }
 #endif
 

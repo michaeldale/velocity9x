@@ -287,6 +287,15 @@ struct v9x_i9xx_scan_summary {
     v9x_u32 line_last;
     v9x_u32 frame_first;
     v9x_u32 frame_last;
+    /*
+     * The line the counter read on the FIRST sample whose frame count had
+     * changed from the previous sample, and whether one was seen. This is
+     * where the frame counter ticks, in the display-line register's own
+     * units - which is the one number that says whether DSL >= vactive is
+     * the blank, and intel65/66 say the flip path does not know.
+     */
+    v9x_u32 tick_line;
+    v9x_u32 tick_seen;
 };
 
 /* src\chipsets\intel\i9xx_scanline.c */

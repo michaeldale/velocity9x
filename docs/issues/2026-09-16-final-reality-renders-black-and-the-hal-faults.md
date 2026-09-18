@@ -798,6 +798,52 @@ something else is not; the counters in this single snapshot cannot
 separate its draws from Final Reality's. Next 3DMark run needs its own
 before/after pair as intel64 had.
 
+### intel66: writing in the blank made it worse
+
+Build `c9afb9f-dirty`, `V9X3D FLIP`, before/after pair around 3DMark99.
+
+```
+Final Reality                    3DMark99 (delta)
+FlipHandled=710                  +317
+FlipStillDrawing=2097923         +981003     (about 2,950 per flip: the pre-write wait)
+FlipDeclined=0  ForcedIdle=0     +0 +0       ScanoutUnresolved=0
+I9xxDrawsSubmitted=706346        +760488
+I9xxTextureDraws=706346          +27852      6 textures created
+```
+
+The wait happened - every flip was preceded by a few thousand
+WASSTILLDRAWING answers - and the write therefore landed where
+`DSL >= vactive`. The operator reports the flicker WORSE than intel65's
+write-anywhere. Had that region been the blank of an immediately applied
+base, the tearing would have gone; it got worse, so at least one of "the
+base applies at once" and "`DSL >= vactive` is the blank" is wrong, and
+nothing measured so far says which. The in-blank write is compiled out
+(`V9X_I9XX_FLIP_WRITE_IN_BLANK 0`) and the flip returns to intel65's
+behaviour.
+
+**The measurement that decides.** The scanout watch now records the line
+the display-line register read on the first sample where the frame counter
+had ticked (`ScanBTickLine`, `ScanBTickSeen`). The frame counter advances
+once per frame at a fixed point in the raster; the line it is seen at is
+the register's own word for where that point is. If it reads near 576 the
+line test is right and the base is not applied where this driver thinks;
+if it reads near 0 or near 671 the register's origin is not vactive-based
+and the blank test is off by a known amount. Either result is a next step
+with a number behind it. The watch's window must span a tick; intel62's
+did (0 to 671), intel61's did not (293 to 429).
+
+**3DMark99** drew 760,488 triangles this time, 27,852 of them textured,
+from six textures - so it now uses textures, and uses few. Its startup
+complaint - too little frame-buffer memory, or no 3D acceleration at
+800x600, or the monitor not supporting it - is the mode list: this driver
+publishes the panel's 1024x576 and 640x480 (and the 320-wide modes) and
+no 800x600, because the VBIOS offers no such mode and the panel is 576
+lines tall. 3DMark's default tests want 800x600x16; whether the reduced
+texturing is a consequence of the fallback resolution or of a cap it
+still misses is not separated by this capture. An 800x600 mode on this
+panel is a panel-fitter mode set, which is display-side work this driver
+has not begun.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
