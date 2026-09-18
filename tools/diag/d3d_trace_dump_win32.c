@@ -458,6 +458,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);
     v9x_write_hex("DrawsPitchLast", snapshot.d3d.draws_pitch_last);
     v9x_write_hex("DrawsExtentLast", snapshot.d3d.draws_extent_last);
+    v9x_write_uint("BreadcrumbSubmits", snapshot.d3d.breadcrumb_submits);
+    v9x_write_uint("BreadcrumbLagPollsMax",
+                   snapshot.d3d.breadcrumb_lag_polls_max);
+    v9x_write_uint("BreadcrumbLagPollsTotal",
+                   snapshot.d3d.breadcrumb_lag_polls_total);
+    v9x_write_uint("BreadcrumbTimeouts", snapshot.d3d.breadcrumb_timeouts);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);

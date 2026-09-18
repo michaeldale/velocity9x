@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091712: V9X_D3D_DIAGNOSTICS gains the breadcrumb counters. An append;
+ * the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091711: V9X_D3D_DIAGNOSTICS gains the in-game layout fields (plane
  * stride, plane control, pipe source, target pitch and extent). An append;
  * the stamp moves for the reason 2026091603 gives.
@@ -1208,7 +1211,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091711ul
+#define V9X_DD_SHARED_ABI   2026091712ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1749,6 +1752,25 @@ typedef struct v9x_d3d_diagnostics {
     DWORD flip_pipesrc_last;
     DWORD draws_pitch_last;
     DWORD draws_extent_last;
+    /*
+     * The breadcrumb: how far behind the ring head the drawing actually is.
+     *
+     * intel80's /reuse probe presented the right buffer at every delay and
+     * the fetch stride was right, while the game still shows a frame filling
+     * in AFTER its flip. The one model left is that the flip presents a
+     * frame the GPU has not finished: head == tail says the parser consumed
+     * the batch, not that the pixels landed. Every batch now ends with an
+     * MI_STORE_DWORD_IMM of a sequence number behind the MI_FLUSH, and the
+     * submit waits for it after the head. lag_polls_max / lag_polls_total
+     * are the polls spent between head == tail and the value arriving:
+     * zero means the head was already the truth and this model is dead
+     * too; large means the rendering was still running when every
+     * previous build called the batch done.
+     */
+    DWORD breadcrumb_submits;
+    DWORD breadcrumb_lag_polls_max;
+    DWORD breadcrumb_lag_polls_total;
+    DWORD breadcrumb_timeouts;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

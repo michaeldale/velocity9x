@@ -123,6 +123,19 @@
  */
 #define V9X_I9XX_MI_FLUSH_READ           ((v9x_u32)0x02000001ul)
 /*
+ * MI_STORE_DWORD_IMM with MI_MEM_VIRTUAL (bit 22: the address is a graphics
+ * address through the GTT, the 945 form), length 1: three dwords - header,
+ * graphics address, data. The form igt's gem_storedw_loop emits for gen < 4.
+ * The store is pipelined behind the rendering ahead of it, so a value that
+ * has arrived in memory says the drawing before it is finished; the ring
+ * head reaching the tail says only that the parser has consumed the
+ * commands. The breadcrumb lives in the reserve's status page, which
+ * nothing else uses (HWS_PGA was never programmed; intel80 reads the BIOS
+ * value), at this offset from the ring start.
+ */
+#define V9X_I9XX_MI_STORE_DWORD_IMM      ((v9x_u32)0x10400001ul)
+#define V9X_I9XX_BREADCRUMB_FROM_RING    (V9X_I9XX_RING_BYTES + 0x800ul)
+/*
  * The Gen3 page flip through the ring, i915_reg.h: MI_DISPLAY_FLIP_I915 =
  * MI_INSTR(0x14, 1) = (0x14 << 23) | 1, three dwords - command, pitch,
  * base; the plane in bits 21:20. The flip pends until the display takes

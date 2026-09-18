@@ -485,6 +485,8 @@
  * wrong one.
  */
 #define V9X_I9XX_P5_TEXTURE_STATE        18u
+/* An MI_STORE_DWORD_IMM the limits did not license, or to another address. */
+#define V9X_I9XX_P5_BREADCRUMB           19u
 
 /* Float transport refusal reasons, from i9xx_float.c. */
 #define V9X_I9XX_FLOAT_OK                 0u
@@ -1491,6 +1493,12 @@ struct v9x_i9xx_decode_limits {
      * positional initialiser keeps its meaning.
      */
     v9x_u32 texture_program;
+    /*
+     * Non-zero: the stream may end its drawing with one MI_STORE_DWORD_IMM
+     * to exactly this graphics address, any data. Zero (the scene default):
+     * no store of any kind is accepted. Append-only, as above.
+     */
+    v9x_u32 breadcrumb_offset;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

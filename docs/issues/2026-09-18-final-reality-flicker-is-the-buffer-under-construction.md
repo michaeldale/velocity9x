@@ -73,7 +73,8 @@ problem in one sentence.
 | intel77 | `00faf7d` | MI_READ_FLUSH before each batch (stale texture cache) | unchanged |
 | intel78 | `3d9a103` | base written in ACTIVE video, before the blank-start latch | "a little better" |
 | intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
-| intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker still present (video to come); layout registers below |
+| intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker unchanged; probe CLEAN at every delay; fetch stride is 1280 |
+| intel81 | next | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it; lag counted | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -231,6 +232,71 @@ Probe: ReuseFrontAddress=4237930496 ReuseBackAddress=4237316096 (0x96000 apart)
 
 `FlipPixelOk=0` is the GDI readback and has been 0 on every Intel flip
 run; the camera is the instrument for this probe.
+
+### The /reuse video: the flips are right and the stride is right
+
+The operator's video of the probe (60 fps, 2,774 frames), each frame
+classified by its dominant colour:
+
+```
+stage 0 (0 ms):   red 5 frames / blue 5 frames, alternating, 30 cycles
+stage 1 (17 ms):  red 5-6 / blue 6-7
+stage 2 (34 ms):  red 6-7 / blue 8-9
+stage 3 (100 ms): red 11-12 / blue 11
+GREEN: never during any stage (the one green run, frames 857-897, is the
+       earlier hardware-fill rung's colour before the probe began)
+```
+
+Red and blue alternate cleanly at every delay, including zero: after
+GetFlipStatus says done the retired buffer was painted green thirty times
+per stage and the panel never showed it. The flip presents the buffer the
+driver says it does, and the driver's "done" is not early - not by a
+frame, not by a millisecond that a 60 fps camera can see. The fifteen
+white marker rows are level, full width and evenly spaced: the panel is
+fetching 640 x 480 rows at pitch 1280, whatever the stride register
+reads, and the registers of intel80 describe something other than the
+panel's fetch. So the review's second point is answered in the negative
+by the picture, and its stride registers stay an open oddity rather than
+the cause.
+
+What the probe does that the game does not: it fills with the CPU. Every
+one of its writes is complete before Flip is called. The game's frame is
+drawn by the GPU, and the driver's notion of "this batch is drawn" is
+that the ring head has reached the tail. That says the command parser
+has CONSUMED the batch; it does not say the pixels have landed. If the
+3D pipeline is still working when Flip presents the buffer, the panel
+shows the frame finishing on screen: the clear (a CPU fill, complete),
+then the sky, then the ground filling in - which is the video of the
+game, exactly, and is consistent with every counter: DrawsToFront=0
+(the target was not the displayed buffer when the batch was ISSUED),
+DrawsFlipWaited=0 (nothing raced the flip), a clean probe (no GPU
+involved), and eight timing changes that moved nothing (the flip was
+never the problem). It also explains why more regular flips made the
+flicker faster in intel74.
+
+## The breadcrumb build (intel81)
+
+Every runtime batch now ends: MI_FLUSH, then MI_STORE_DWORD_IMM of a
+sequence number to a dword in the reserve's status page (the page
+HWS_PGA was meant for and never pointed at; intel80 reads the BIOS
+value there). The store is pipelined behind the rendering ahead of it -
+i915's gen3 request emission is flush then store for this reason - so
+the value arriving in memory means the drawing is finished. The submit
+waits for the head as before and THEN for the breadcrumb, and counts the
+polls between the two (`BreadcrumbLagPollsMax`, `BreadcrumbLagPollsTotal`
+over `BreadcrumbSubmits`; `BreadcrumbTimeouts` for a store that never
+lands, drawn anyway). The decoder licenses exactly one store to exactly
+that address and no other, with a host test. Shared ABI 2026091712.
+
+The count is the measurement:
+
+- Lag near zero everywhere and the flicker unchanged: the head was
+  already the truth, this model is dead, and what remains is the event
+  trace the review's fifth point asked for.
+- Lag large and the flicker gone: the frames were being presented
+  unfinished, and the record closes on that.
+- Lag large and the flicker still there: the drawing was late AND
+  something else is wrong; the trace follows with this fixed.
 
 ## How to run the next boot
 

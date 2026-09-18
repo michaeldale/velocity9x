@@ -1002,6 +1002,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             /* Any OTHER form of the packet, including one that enables it. */
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
 
+        } else if (command == V9X_I9XX_MI_STORE_DWORD_IMM) {
+            /* One store, to the one address the limits name, with any
+             * data. Anywhere else in memory is a write the GPU must not
+             * make, and a stream with no licence gets none. */
+            if (limits->breadcrumb_offset == 0ul ||
+                index + 3ul > dword_count ||
+                stream[index + 1ul] != limits->breadcrumb_offset) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
+            }
+            index += 3ul;
+
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH ||
                    command == V9X_I9XX_MI_FLUSH_READ) {

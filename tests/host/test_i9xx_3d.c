@@ -495,6 +495,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->blend_src = 0ul;
     limits->blend_dst = 0ul;
     limits->texture_program = 0ul;
+    limits->breadcrumb_offset = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -1596,6 +1597,61 @@ static void test_decoder_flush_forms(void)
           V9X_I9XX_P5_OK);
     CHECK(index == flush);
     stream[flush] = V9X_I9XX_MI_FLUSH;
+}
+
+/*
+ * The breadcrumb store: accepted only where the limits license it, only to
+ * that address, and never in a stream with no licence.
+ */
+static void test_decoder_breadcrumb(void)
+{
+    struct v9x_i9xx_scene scene;
+    struct v9x_i9xx_sandbox_layout layout;
+    struct v9x_i9xx_decode_limits limits;
+    v9x_u32 stream[200];
+    v9x_u32 written = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 flush = 0ul;
+
+    CHECK(v9x_i9xx_sandbox_calculate(0x007b0000ul, 0x7f800000ul, &layout) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
+          V9X_STATUS_OK);
+    v9x_test_limits(&limits, layout.target_offset, layout.target_bytes,
+                    scene.kind);
+    limits.depth_offset = layout.depth_offset;
+    limits.depth_bytes = layout.depth_bytes;
+
+    /* The store goes after the drawing, where the runtime puts it (behind
+     * the trailing flush), followed by a NOOP to keep the count even. */
+    flush = written;
+    stream[flush] = V9X_I9XX_MI_STORE_DWORD_IMM;
+    stream[flush + 1ul] = 0x006c0800ul;
+    stream[flush + 2ul] = 0x00000042ul;
+    stream[flush + 3ul] = V9X_I9XX_MI_NOOP;
+    written = flush + 4ul;
+
+    /* No licence: refused at the store. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush);
+
+    /* Licensed to that address: accepted. */
+    limits.breadcrumb_offset = 0x006c0800ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* Licensed to another address: refused. */
+    limits.breadcrumb_offset = 0x006c0804ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush);
+
+    /* Truncated after the header: refused, not read past the end. */
+    limits.breadcrumb_offset = 0x006c0800ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 2ul, &limits,
+                                        &index) == V9X_I9XX_P5_BREADCRUMB);
 }
 
 /*
@@ -4434,6 +4490,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_every_scene_decodes();
     test_decoder_depth_refusals();
     test_decoder_flush_forms();
+    test_decoder_breadcrumb();
     test_probe_expectation_names();
     test_scene_combined_crc();
     test_scene_primitive_offset();

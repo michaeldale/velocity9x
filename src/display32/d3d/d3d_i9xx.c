@@ -278,6 +278,30 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * the mini-VDD wrote 0x10BC and read back 0x10B8 - so the plan that produces
  * it is the tested one rather than arithmetic written here.
  */
+/*
+ * The breadcrumb a submit waits for after the head reaches the tail. The
+ * draw path sets the expected value before submitting; a submit with none
+ * expected (the ring flip) waits on the head alone as before. The linear
+ * address is the reserve's status page through the framebuffer mapping,
+ * which is how the CPU reaches stolen memory on this part.
+ */
+static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
+
+static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
+{
+    return (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
+                              V9X_I9XX_BREADCRUMB_FROM_RING);
+}
+
+/* The breadcrumb's graphics address: the ring's offset in video memory plus
+ * the fixed distance, which the GTT maps one to one inside the reserve. */
+static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
+{
+    return (v9x_hal->engine.ring_linear_base - v9x_hal->fb.linear_base) +
+           V9X_I9XX_BREADCRUMB_FROM_RING;
+}
+
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
 {
     struct v9x_i9xx_ring_plan plan;
@@ -331,6 +355,28 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
         if (v9x_i9xx_ring_submission_complete(
                 *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD),
                 plan.next_tail) != V9X_FALSE) {
+            DWORD lag;
+
+            if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
+                return 1;
+            }
+            /* The head is at the tail. Now the pixels: the store behind
+             * the flush arrives when the drawing ahead of it is done. */
+            for (lag = 0ul; lag < V9X_I9XX_SUBMIT_POLLS; ++lag) {
+                if (*v9x_d3d_i9xx_breadcrumb_linear() ==
+                    v9x_d3d_i9xx_breadcrumb_expected) {
+                    ++v9x_hal->d3d_diagnostics.breadcrumb_submits;
+                    v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_total += lag;
+                    if (lag > v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max) {
+                        v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max = lag;
+                    }
+                    return 1;
+                }
+            }
+            /* Reported and drawn anyway: the frame is what it is, and a
+             * store that never lands is a fact for the record, not a
+             * reason to fail every draw after it. */
+            ++v9x_hal->d3d_diagnostics.breadcrumb_timeouts;
             return 1;
         }
     }
@@ -1168,6 +1214,21 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     stream[at++] = V9X_I9XX_MI_FLUSH;
+    /*
+     * The breadcrumb, behind the flush: a sequence number stored to the
+     * status page when everything ahead of it has drawn. The submit waits
+     * for it after the head; see the diagnostics comment (intel80).
+     */
+    if (at + 3ul > V9X_I9XX_SUBMIT_DWORDS) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+    v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+    if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
+        v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+    }
+    stream[at++] = V9X_I9XX_MI_STORE_DWORD_IMM;
+    stream[at++] = v9x_d3d_i9xx_breadcrumb_offset();
+    stream[at++] = v9x_d3d_i9xx_breadcrumb_expected;
     /* The ring tail must land qword aligned, and the plan refuses an odd
      * count rather than padding one - so the pad is here, where the stream is
      * still being built and a NOOP is a dword nobody will miss. */
@@ -1214,14 +1275,18 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = depth_writes;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_offset();
     if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=
             V9X_I9XX_P5_OK) {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
     }
 
     if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
     }
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 #if V9X_I9XX_SCAN_WATCH
     if (v9x_hal->d3d_diagnostics.i9xx_draws_submitted == 0ul) {
         v9x_d3d_i9xx_watch_scanout();
