@@ -1197,6 +1197,51 @@ after every batch (head reaches tail before the submit returns) rule out
 the CPU racing the GPU inside a frame, which narrows the readback to what
 the completed buffer holds when the flip presents it.
 
+### The video: the panel shows the buffer being drawn
+
+The operator's phone video (an earlier flip build, "the newest is similar
+just a bit faster"; 60 fps, 663 frames) measured frame by frame, mean grey
+of the middle and lower thirds of the panel:
+
+```
+f408 mid 116.8 bot 175.5   <- dark: the clear, sky drawn, ground not
+f409 mid 179.0 bot 188.7   <- filling in
+f410 mid 191.8 bot 219.4
+f411 mid 194.0 bot 224.5   <- finished picture
+f412 mid 194.2 bot 224.7
+f413 mid 194.3 bot 224.5
+f414 mid 193.9 bot 223.7
+f415 mid 119.7 bot 176.8   <- dark again: period 7 video frames, 8.6 Hz
+```
+
+The dark frame is not a torn frame or an older one: it is the cleared
+buffer with the sky already drawn and faint blocks where the walls are
+about to be - the frame under construction. Another frame in the same
+run shows the finished upper half above a flat grey lower half with a
+hard horizontal edge: the ground pass caught part-way. So once per game
+frame the panel shows the buffer the game is drawing into, for about one
+display frame, before the finished picture.
+
+That is exactly what `DrawsToFront=0` said could not be happening - every
+batch went to the buffer the base register did not name - unless the
+register does not say what the panel shows. A base register that reads
+back the new value at once, while the panel keeps the old buffer for a
+frame, is a double-buffered register latched at the vertical blank
+START. Every build from intel66 wrote it inside the blank, after that
+latch point, and released the buffer at the frame tick of the same blank:
+one frame before the panel switched. The game then cleared and drew into
+a buffer still on screen. intel74's "faster" was the write landing there
+more regularly; intel65 released before the latch for a different reason.
+The three cache and depth hypotheses (intel76, intel77) could never have
+moved it. Decision record with the i915 citation:
+`docs\decisions\2026-09-18-intel-plane-base-latches-at-vblank-start.md`.
+
+The next build writes the base in ACTIVE video, eight lines or more before
+the first blank line, and releases at the frame tick as before. The panel
+should then switch at the blank the write precedes, and the buffer the
+game receives is off screen. If the construction is still visible the
+latch model is wrong too, and the readback instrument follows.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

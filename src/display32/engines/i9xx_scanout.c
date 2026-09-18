@@ -332,21 +332,43 @@ int v9x_set_display_start(DWORD byte_offset)
  */
 #define V9X_I9XX_FLIP_WRITE_IN_BLANK 1
 /*
- * How far into the blank a flip may still be issued, in lines. intel73
- * showed the base applies the moment it is written, by either path, and
- * intel66 showed that writing anywhere in the blank and releasing the
- * buffer at the blank's end was worse than writing anywhere at all. So
- * the write is confined to the FIRST lines of the blank - the beam has
- * finished the old frame and nothing has begun fetching the new one - and
- * the buffer is released only at the frame tick. 24 lines is about 0.6 ms
- * at this timing; DirectDraw polls Flip roughly every 0.3 ms, so the
- * window is caught within a frame.
+ * The plane base is double-buffered and latched at the START of the
+ * vertical blank - the first blank line, 576 here - not applied as it is
+ * written and not latched at the frame tick (671).
+ *
+ * The evidence is the operator's video of intel7x (docs\decisions\
+ * 2026-09-18-intel-plane-base-latches-at-vblank-start.md): once per game
+ * frame the panel shows the buffer the game is DRAWING - the clear, then
+ * the sky, then the ground filling in - for about one display frame,
+ * and then the finished picture. DrawsToFront=0 in the same runs says
+ * every batch went to the buffer the base REGISTER did not name; so the
+ * register does not say what the panel shows for one frame after it is
+ * written. That is a latch, and the writes of intel66/74/75/76/77 all
+ * landed in the blank, AFTER the latch point, and were released at the
+ * tick of the same blank - one frame before the panel switched. intel65,
+ * written anywhere and released at a bit that reads zero, released before
+ * the latch too. The readback that made intel73 say "applies at once"
+ * returns the pending value, which is what a double-buffered register
+ * reads back.
+ *
+ * i915 v4.4 does exactly this: intel_pipe_update_start evades the blank,
+ * writing plane registers in the last 100 us BEFORE crtc_vblank_start so
+ * they latch at that vblank (intel_sprite.c, VBLANK_EVASION_TIME_US), and
+ * gen2/3 page flips go through MI_DISPLAY_FLIP, which the display side
+ * applies at the same point.
+ *
+ * So the write is issued while the beam is in ACTIVE video, with a guard
+ * of lines before the latch so a write racing the latch point cannot land
+ * on the wrong side of it, and the buffer is released at the frame tick,
+ * which follows the latch in the same blank. Any active line serves; the
+ * window is the whole active frame less the guard, so a Flip retried every
+ * 0.3 ms finds it at once. UNMEASURED as a fix until the next boot.
  */
-#define V9X_I9XX_FLIP_WINDOW_LINES 24ul
+#define V9X_I9XX_FLIP_LATCH_GUARD_LINES 8ul
 
 /*
- * The issue window: the first lines of the vertical blank, and nothing
- * else. Not "in the blank" - intel66 was that.
+ * The issue window: active video, short of the latch at the first blank
+ * line. Not the blank - intel66 and intel74 to intel77 were that.
  */
 int v9x_scanout_flip_window_open(void)
 {
@@ -364,7 +386,10 @@ int v9x_scanout_flip_window_open(void)
     }
     line = *v9x_i9xx_scanout_reg(dsl) & V9X_I9XX_DSL_LINE_MASK;
     active = (*v9x_i9xx_scanout_reg(vtotal) & 0x00000ffful) + 1ul;
-    return line >= active && line < active + V9X_I9XX_FLIP_WINDOW_LINES;
+    if (active <= V9X_I9XX_FLIP_LATCH_GUARD_LINES) {
+        return 0;
+    }
+    return line < active - V9X_I9XX_FLIP_LATCH_GUARD_LINES;
 }
 
 /*
@@ -428,14 +453,12 @@ int v9x_scanout_hw_flip_pending(void)
 int v9x_scanout_writes_in_blank(void)
 {
     /*
-     * ON again from intel73, with two differences from intel66. intel69
-     * measured that DSL >= vactive IS the blank and intel73 measured that
-     * the base applies at once and nothing pends, so an immediate base has
-     * to be written when the beam is between frames - and intel66's
-     * "worse" is explained by its completing at the blank's END, when the
-     * plane may already be fetching the next frame's first lines from the
-     * buffer just released. Now: written in the first lines of the blank
-     * (v9x_scanout_flip_window_open), released at the frame tick (WAIT_HW).
+     * The name is historical: the write is timed against the beam, and
+     * from the video record it is timed to land in ACTIVE video, before
+     * the latch at the first blank line (v9x_scanout_flip_window_open),
+     * with the buffer released at the frame tick (WAIT_HW) that follows
+     * the latch. intel66 and intel74 to intel77 wrote inside the blank,
+     * after the latch, and released a frame early.
      */
     if (V9X_I9XX_FLIP_WRITE_IN_BLANK == 0) {
         return 0;

@@ -27,6 +27,16 @@ model is not established, and the plan does not depend on it: it uses the
 mechanism the hardware provides for exactly this, which does not require the
 driver to know when the plane fetches.
 
+**Superseded 2026-09-18.** The operator's video shows the panel presenting the
+buffer under construction for about one frame per game frame; with every
+batch aimed at the buffer the register did not name, the register was not
+what the panel showed for that frame. The model that fits every boot from
+intel65 on is a base latched at the START of the blank, written after that
+point in every build from intel66, and released a frame early:
+`docs\decisions\2026-09-18-intel-plane-base-latches-at-vblank-start.md`.
+The "tearing" of intel65 was the same construction, seen with the release
+even earlier.
+
 ## What i915 does on this generation
 
 `intel_gen3_queue_flip` puts the flip in the command ring. The display engine
