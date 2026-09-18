@@ -1275,6 +1275,17 @@ to wait (`DrawsFlipWaited`) and the waits that ran out. Shared ABI
 was real and is now closed; zero says the pending state is not what the
 draws are racing.
 
+### intel79: the flip-wait package, copied and not yet booted
+
+`C:\temp\intel79` is the package (`MANIFEST.TXT` build `3d9a103-dirty`,
+16:27; its `V9XHAL.DLL` is byte-identical to the tree's build of `e83a65e`),
+not a capture: no `V9XSNAP.INI`. The flicker has now outlived nine boots
+of flip work today, and this record is too long to read for the state of
+it. The summary, the table of every boot and what killed each hypothesis,
+the three-way reading of the intel79 result, and the instrument that
+replaces further guessing are in
+`2026-09-18-final-reality-flicker-is-the-buffer-under-construction.md`.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
