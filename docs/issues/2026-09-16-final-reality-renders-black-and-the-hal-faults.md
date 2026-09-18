@@ -955,6 +955,38 @@ line test rather than on the hardware's own pending bit, which a plane-base
 write also sets. Both paths now wait on the correct bit. The "plane
 prefetch" model above is withdrawn as unnecessary.
 
+### intel72: the base register reads the new offset the moment the flip is parsed
+
+Build `695cd4b-dirty` - the readback counters, but BEFORE the audit's bit
+correction, so the pending bit polled was still the wrong one.
+
+```
+FlipRingIssued=842   FlipRingRefused=0   FlipHandled=822
+FlipBaseImmediate=842  FlipBaseDeferred=0
+FlipTakenAtDone=822    FlipNotTakenAtDone=0
+FlipRingPendingSeen=0  (bits 2/6: says nothing)   FlipStillDrawing=0
+```
+
+All 842 times, `DSPBADDR` read back the new offset directly after the ring
+submit returned - that is, after the command streamer had consumed
+`MI_DISPLAY_FLIP`. Two readings remain, and this boot cannot pick:
+
+- The streamer stalls on `MI_DISPLAY_FLIP` until the retrace and writes the
+  base itself; the submit's head-equals-tail wait therefore already spans
+  the flip, and the register reads new because the flip has happened. Then
+  the tearing is not a flip-timing fault at all.
+- The register reads the programmed value at once while the display keeps
+  scanning the old base until the retrace; the flip is pending, and the
+  driver declared it done early because it polled the wrong bit.
+
+i915's stall check reads `DSPADDR` as evidence that the flip "has happened",
+which favours the first reading; its IIR/ISR comment describes a pending
+period after the parse, which favours the second. The corrected bits
+decide: on the audit build, `FlipRingPendingSeen` near one per flip is the
+second reading and the fix is already in; zero with a clean picture is the
+first; zero with the same picture means the bit is not where v4.4 puts it
+on this part and the tear has a cause not yet named.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
