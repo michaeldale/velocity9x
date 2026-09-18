@@ -1165,6 +1165,38 @@ invalidated. The decoder accepts that one extra form and no other. If the
 ghost goes, the texture cache was it; if not, the texture churn is still a
 cost worth knowing about and the probe rung is next.
 
+### intel77: the texture-cache invalidate changed nothing either
+
+Build `07ffc98-dirty` (the `MI_READ_FLUSH` lead, committed as `00faf7d`).
+The operator: "did not notice any improvements".
+
+```
+I9xxDrawsSubmitted=657784  I9xxDrawsRefused=0  (the decoder took the new dword)
+I9xxDepthDraws=657784  I9xxDepthSkipped=0  I9xxDepthLastFunc=0
+FlipHandled=661  DrawsToFront=0  CountBlt=1338  CountLock=11946
+D3dTextureLastOffset=0x002E2000 (0x00202000 in intel76)
+```
+
+Three hypotheses reasoned from the description are now dead in three
+boots: a stale render cache at the destination (intel76), a stale map
+cache at the texels (intel77), and a skipped depth test (this snapshot:
+every draw carried `LESS` and none was skipped). The two flushes stay,
+because the texture churn makes the map-cache invalidate a correctness
+requirement whatever the flicker turns out to be, but the flicker was
+not waiting on either.
+
+The lesson is the one this file keeps teaching: the description is a
+verbal account of a moving picture and each guess from it costs a boot.
+What is needed before the next code change is the picture itself - a
+photograph or short video of the overlay against the scene, which will
+say whether the ghost is an older frame, geometry drawn without depth,
+or garbage texels - and then the readback instrument if the picture does
+not name it. The CPU fills for both clears (`Blt 0x01000400` throughout
+the trace ring; the Intel family has no engine fill) and the ring wait
+after every batch (head reaches tail before the submit returns) rule out
+the CPU racing the GPU inside a frame, which narrows the readback to what
+the completed buffer holds when the flip presents it.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
