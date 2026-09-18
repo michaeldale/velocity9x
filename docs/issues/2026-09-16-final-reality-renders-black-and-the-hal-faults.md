@@ -844,6 +844,27 @@ still misses is not separated by this capture. An 800x600 mode on this
 panel is a panel-fitter mode set, which is display-side work this driver
 has not begun.
 
+### intel67: the default-on build; the watch missed the tick again
+
+Build `5d97944-dirty`, arm file with no permission keys - the first boot
+where both paths were on by default. `EngineCaps=0x14`: Direct3D and the
+flip claimed with nothing written to the file.
+
+```
+FlipHandled=702  FlipStillDrawing=0  FlipDeclined=0  FlipForcedIdle=0
+I9xxDrawsSubmitted=700770  I9xxTextureDraws=700770  D3dBlendSkipped=0
+ScanBLineMin=218  ScanBLineMax=355  ScanBLineChanges=137
+ScanBTickSeen=0
+```
+
+Every flip handled at intel65's behaviour (no pre-write wait). The
+frame-tick measurement did not land: 4096 samples covered 137 lines, from
+218 to 355, and the counter ticks once per 672. intel61's window was
+293-429, intel62's happened to span a whole frame. The watch now runs
+until it sees a tick on a pipe it is reading, bounded at 131,072 samples
+(about six frames), and records how many it took. Read-only, once per
+boot, as before.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core

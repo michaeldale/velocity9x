@@ -144,6 +144,15 @@ static volatile DWORD *v9x_d3d_i9xx_reg(DWORD offset)
  * suspects hung intel57 and intel58.
  */
 #define V9X_I9XX_SCAN_SAMPLES   4096ul
+/*
+ * The most samples the watch takes when it is waiting for the frame counter
+ * to tick. 4096 spanned 136 lines in intel61 and 137 in intel67 - a fifth
+ * of a 672-line frame - and missed the tick both times, which is the one
+ * reading the flip work is waiting on. 131,072 is thirty-two times that,
+ * about six frames, and the loop stops at the first tick, so the usual cost
+ * is under one frame; the bound is for a counter that never moves.
+ */
+#define V9X_I9XX_SCAN_SAMPLES_MAX 131072ul
 
 /*
  * ON again, reading only a pipe that is enabled.
@@ -185,7 +194,15 @@ static void v9x_d3d_i9xx_watch_scanout(void)
 
     v9x_i9xx_scan_begin(&a);
     v9x_i9xx_scan_begin(&b);
-    for (sample = 0ul; sample < V9X_I9XX_SCAN_SAMPLES; ++sample) {
+    for (sample = 0ul; sample < V9X_I9XX_SCAN_SAMPLES_MAX; ++sample) {
+        /* At least the original window, then stop at the first tick on any
+         * pipe that is being read; a pipe that is off cannot supply one. */
+        if (sample >= V9X_I9XX_SCAN_SAMPLES &&
+            ((read_b && b.tick_seen != 0ul) ||
+             (read_a && a.tick_seen != 0ul) ||
+             (!read_a && !read_b))) {
+            break;
+        }
         if (read_a) {
             v9x_i9xx_scan_feed(&a,
                 *v9x_d3d_i9xx_reg(V9X_I9XX_REG_PIPEA_DSL),
@@ -201,8 +218,9 @@ static void v9x_d3d_i9xx_watch_scanout(void)
     }
     /* The sample count is the loop's, so a capture can tell "pipe not
      * read" (samples set, that pipe's fields zero) from "watch never ran"
-     * (samples zero). */
-    v9x_hal->d3d_diagnostics.scan_samples = V9X_I9XX_SCAN_SAMPLES;
+     * (samples zero) - and, now that the loop stops at a tick, how far it
+     * had to go to see one. */
+    v9x_hal->d3d_diagnostics.scan_samples = sample;
     v9x_hal->d3d_diagnostics.scan_a_line_min = a.line_min;
     v9x_hal->d3d_diagnostics.scan_a_line_max = a.line_max;
     v9x_hal->d3d_diagnostics.scan_a_line_changes = a.line_changes;
