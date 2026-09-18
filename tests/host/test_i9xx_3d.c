@@ -1626,10 +1626,10 @@ static void test_decoder_breadcrumb(void)
     /* The store goes after the drawing, where the runtime puts it (behind
      * the trailing flush), followed by a NOOP to keep the count even. */
     flush = written;
-    stream[flush] = V9X_I9XX_MI_STORE_DWORD_IMM;
-    stream[flush + 1ul] = 0ul;
-    stream[flush + 2ul] = 0x006c0800ul;
-    stream[flush + 3ul] = 0x00000042ul;
+    stream[flush] = V9X_I9XX_MI_STORE_DWORD_INDEX;
+    stream[flush + 1ul] = V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    stream[flush + 2ul] = 0x00000042ul;
+    stream[flush + 3ul] = V9X_I9XX_MI_NOOP;
     written = flush + 4ul;
 
     /* No licence: refused at the store. */
@@ -1637,29 +1637,30 @@ static void test_decoder_breadcrumb(void)
           V9X_I9XX_P5_BREADCRUMB);
     CHECK(index == flush);
 
-    /* Licensed to that address: accepted. */
-    limits.breadcrumb_offset = 0x006c0800ul;
+    /* Licensed to that offset: accepted. */
+    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_OK);
 
-    /* Licensed to another address: refused. */
-    limits.breadcrumb_offset = 0x006c0804ul;
+    /* Licensed to another offset: refused. */
+    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE + 4ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_BREADCRUMB);
     CHECK(index == flush);
 
     /* Truncated after the header: refused, not read past the end. */
-    limits.breadcrumb_offset = 0x006c0800ul;
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 3ul, &limits,
+    limits.breadcrumb_offset = V9X_I9XX_HWS_BREADCRUMB_BYTE;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 2ul, &limits,
                                         &index) == V9X_I9XX_P5_BREADCRUMB);
 
-    /* The reserved dword must be zero: the three-dword form intel81 hung
-     * on puts the address there, and this is where it is caught. */
-    stream[flush + 1ul] = 0x006c0800ul;
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
-          V9X_I9XX_P5_BREADCRUMB);
-    CHECK(index == flush);
+    /* The MI_STORE_DWORD_IMM form of intel81/82 is no longer a command
+     * this decoder knows, licence or not. */
+    stream[flush] = V9X_I9XX_MI_STORE_DWORD_IMM;
     stream[flush + 1ul] = 0ul;
+    stream[flush + 2ul] = 0x006c0800ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    CHECK(index == flush);
 }
 
 /*

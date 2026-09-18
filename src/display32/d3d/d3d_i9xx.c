@@ -293,27 +293,69 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
 static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
 
+/* The breadcrumb dword as the CPU reads it: the status page is the page
+ * after the ring in the reserve, which the mini-VDD's ring mapping covers
+ * whole, and the MTRRs hold stolen memory uncached (intel82 V9XBOOT.INI:
+ * 7F800000 type 0), so a poll here sees the GPU's write when it lands. */
 static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
 {
     return (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
-                              V9X_I9XX_BREADCRUMB_FROM_RING);
+                              V9X_I9XX_RING_BYTES +
+                              V9X_I9XX_HWS_BREADCRUMB_BYTE);
+}
+
+/* The store's operand: the byte offset into the status page. */
+static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
+{
+    return V9X_I9XX_HWS_BREADCRUMB_BYTE;
 }
 
 /*
- * The breadcrumb's graphics address: the ring's offset in video memory plus
- * the fixed distance, which the GTT maps one to one inside the reserve.
+ * Point HWS_PGA at the reserve's status page, once, before the first batch.
  *
- * The ring's offset is fb.vram_bytes: the family's reserve_video_memory
- * hands DirectDraw a heap that ends where the reserve begins, and the ring
- * is the first thing in the reserve (i9xx_ring.c). intel81 computed this
- * from ring_linear_base minus the framebuffer's linear base, which are two
- * unrelated mappings (the mini-VDD maps the reserve on its own), and sent
- * the GPU a store to wherever that difference pointed. The CPU-side read
- * was and is safe: the mini-VDD's ring mapping covers the whole reserve.
+ * The status page is fb.vram_bytes + RING_BYTES into video memory: the
+ * family's reserve_video_memory ends DirectDraw's heap where the reserve
+ * begins and the ring is the first thing in it (i9xx_ring.c). HWS_PGA
+ * takes a PHYSICAL address (i915 v4.4 init_phys_status_page on gen3 gives
+ * it a physical page and writes HWS_PGA with its bus address), and this
+ * side has no BSM - so the physical address is read from the GTT's own
+ * entry for that page through BAR3, which is the hardware's statement of
+ * where the page is (intel80 INTELGTT: entry i maps 7F800000 + i * 0x1000).
+ * Written once and read back; the three readings go to the snapshot. The
+ * BIOS value it replaces (0x1FFFF000) is a page this driver never used and
+ * nothing under Windows reads.
  */
-static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
+static int v9x_d3d_i9xx_hws_ready = 0;
+
+static int v9x_d3d_i9xx_hws_open(void)
 {
-    return v9x_hal->fb.vram_bytes + V9X_I9XX_BREADCRUMB_FROM_RING;
+    DWORD page;
+    DWORD entry;
+    DWORD physical;
+
+    if (v9x_d3d_i9xx_hws_ready) {
+        return 1;
+    }
+    if (v9x_hal->engine.gtt_linear_base == 0ul) {
+        return 0;
+    }
+    page = (v9x_hal->fb.vram_bytes + V9X_I9XX_RING_BYTES) >> 12;
+    if (page >= V9X_I9XX_GTT_ENTRY_COUNT) {
+        return 0;
+    }
+    entry = *(volatile DWORD *)(v9x_hal->engine.gtt_linear_base + page * 4ul);
+    if ((entry & 1ul) == 0ul) {
+        return 0;
+    }
+    physical = entry & 0xfffff000ul;
+    v9x_hal->d3d_diagnostics.hws_pga_before =
+        *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
+    *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA) = physical;
+    v9x_hal->d3d_diagnostics.hws_pga_written = physical;
+    v9x_hal->d3d_diagnostics.hws_pga_after =
+        *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
+    v9x_d3d_i9xx_hws_ready = 1;
+    return 1;
 }
 
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
@@ -1233,17 +1275,23 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      * status page when everything ahead of it has drawn. The submit waits
      * for it after the head; see the diagnostics comment (intel80).
      */
-    if (at + V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS > V9X_I9XX_SUBMIT_DWORDS) {
+    if (at + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS > V9X_I9XX_SUBMIT_DWORDS) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
-    v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
-    if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
+    if (v9x_d3d_i9xx_hws_open()) {
         v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+        if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
+            v9x_d3d_i9xx_breadcrumb_expected =
+                ++v9x_d3d_i9xx_breadcrumb_sequence;
+        }
+        stream[at++] = V9X_I9XX_MI_STORE_DWORD_INDEX;
+        stream[at++] = v9x_d3d_i9xx_breadcrumb_offset();
+        stream[at++] = v9x_d3d_i9xx_breadcrumb_expected;
+    } else {
+        /* No status page: the batch goes without a breadcrumb and the
+         * submit waits on the head alone, as every build before intel81. */
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
     }
-    stream[at++] = V9X_I9XX_MI_STORE_DWORD_IMM;
-    stream[at++] = 0ul;
-    stream[at++] = v9x_d3d_i9xx_breadcrumb_offset();
-    stream[at++] = v9x_d3d_i9xx_breadcrumb_expected;
     /* The ring tail must land qword aligned, and the plan refuses an odd
      * count rather than padding one - so the pad is here, where the stream is
      * still being built and a NOOP is a dword nobody will miss. */
@@ -1290,7 +1338,8 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = depth_writes;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
-    limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_offset();
+    limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_expected != 0ul
+                                   ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul;
     if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=
             V9X_I9XX_P5_OK) {
         v9x_d3d_i9xx_breadcrumb_expected = 0ul;

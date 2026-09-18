@@ -1002,17 +1002,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             /* Any OTHER form of the packet, including one that enables it. */
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
 
-        } else if (command == V9X_I9XX_MI_STORE_DWORD_IMM) {
-            /* One store, to the one address the limits name, with any
-             * data. Anywhere else in memory is a write the GPU must not
-             * make, and a stream with no licence gets none. */
+        } else if (command == V9X_I9XX_MI_STORE_DWORD_INDEX) {
+            /* One store into the status page, at the one offset the limits
+             * name, with any data. Any other offset is a write the GPU must
+             * not make, and a stream with no licence gets none. The
+             * MI_STORE_DWORD_IMM form is not accepted at all any more. */
             if (limits->breadcrumb_offset == 0ul ||
-                index + V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS > dword_count ||
-                stream[index + 1ul] != 0ul ||
-                stream[index + 2ul] != limits->breadcrumb_offset) {
+                index + V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS > dword_count ||
+                stream[index + 1ul] != limits->breadcrumb_offset) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
             }
-            index += V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS;
+            index += V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS;
 
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH ||

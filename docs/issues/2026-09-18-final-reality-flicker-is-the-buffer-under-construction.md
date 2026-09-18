@@ -75,7 +75,8 @@ problem in one sentence.
 | intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
 | intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker unchanged; probe CLEAN at every delay; fetch stride is 1280 |
 | intel81 | `ca107e2-dirty` (`a1bf160`) | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it | HARD LOCK at the first 3D frame; two defects found on the desk, below |
-| intel82 | next | the same breadcrumb with the four-dword form and the right graphics address | to boot |
+| intel82 | `a1bf160-dirty` (`fbc2f29`) | four-dword MI_STORE_DWORD_IMM to the right graphics address | no lock; 2,458 of 2,458 stores never landed; a frame took a minute |
+| intel83 | next | HWS_PGA pointed at the reserve's status page; MI_STORE_DWORD_INDEX into it (i915's gen3 mechanism) | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -333,6 +334,39 @@ caught, with a host test), and a breadcrumb wait of 200,000 polls so a
 store that never lands costs a slow frame rather than a machine that
 looks hung. It is still an unmeasured command on this part, and the
 lock is a possibility the operator should weigh before booting it.
+
+### intel82: the corrected store never lands
+
+Build `a1bf160-dirty` (`fbc2f29`). No lock. One 3D frame appeared and the
+game then crawled; the operator quit and ran V9XTRACE:
+
+```
+I9xxDrawsSubmitted=2458  I9xxDrawsRefused=0  FlipHandled=4
+BreadcrumbSubmits=0  BreadcrumbTimeouts=2458  BreadcrumbLagPollsMax=0
+CountLock=502  CountBlt=24
+```
+
+Every batch reached head == tail (the timeout counter is only reached
+from there) and not one breadcrumb arrived in 200,000 polls. The
+slowness is that wait: 2,458 batches at a fifth of a second each. The
+memory is not a stale cache line - `V9XBOOT.INI` shows MTRR 1 covering
+7F800000 for 8 MiB as type 0, uncached, and the read goes through the
+reserve mapping the ring writes go through. So MI_STORE_DWORD_IMM with
+the virtual-address bit, four dwords, to a GTT address the display and
+the ring both resolve, does not write there on this part by this path.
+Whether it wrote somewhere else is not known.
+
+Rather than a third guess at that command's semantics, the next build
+uses what i915 v4.4 actually does on gen3 to mark a request complete:
+`HWS_PGA` pointed at a physical status page and `MI_STORE_DWORD_INDEX`
+into it (`i9xx_add_request`). The page is the reserve's status page, the
+one the layout always set aside; its physical address is taken from the
+GTT's own entry for it through BAR3 rather than from arithmetic on BSM,
+and `HWS_PGA` is written once before the first batch and read back
+(`HwsPgaBefore`, `HwsPgaWritten`, `HwsPgaAfter`; shared ABI 2026091713).
+If the page cannot be resolved the batch goes without a breadcrumb and
+the submit waits on the head alone, as before intel81. The decoder now
+knows only the INDEX form.
 
 ## How to run the next boot
 

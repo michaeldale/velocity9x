@@ -139,6 +139,23 @@
  */
 #define V9X_I9XX_MI_STORE_DWORD_IMM      ((v9x_u32)0x10400002ul)
 #define V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS 4ul
+/*
+ * MI_STORE_DWORD_INDEX, length 1: three dwords - header, byte offset into
+ * the hardware status page (a dword index shifted left 2), data. This is
+ * how i915 v4.4 marks a request complete on gen2 to gen5
+ * (i9xx_add_request: MI_STORE_DWORD_INDEX, I915_GEM_HWS_INDEX << 2, seqno).
+ * The status page is the physical page HWS_PGA names; on gen3 i915 gives it
+ * a physical (not GTT) page. intel82: 2,458 MI_STORE_DWORD_IMM stores with
+ * the virtual bit to a GTT address, none of which arrived, with the ring
+ * head at the tail every time and the memory uncached by MTRR - so on this
+ * part, by this path, that form does not write where it is told, and the
+ * status page mechanism replaces it.
+ */
+#define V9X_I9XX_MI_STORE_DWORD_INDEX    ((v9x_u32)0x10800001ul)
+#define V9X_I9XX_MI_STORE_DWORD_INDEX_DWORDS 3ul
+/* i915's I915_GEM_HWS_INDEX is 0x20; the same dword of the page, byte 0x80.
+ * The page is the reserve's status page, RING_BYTES past the ring. */
+#define V9X_I9XX_HWS_BREADCRUMB_BYTE     ((v9x_u32)0x00000080ul)
 #define V9X_I9XX_BREADCRUMB_FROM_RING    (V9X_I9XX_RING_BYTES + 0x800ul)
 /*
  * The Gen3 page flip through the ring, i915_reg.h: MI_DISPLAY_FLIP_I915 =

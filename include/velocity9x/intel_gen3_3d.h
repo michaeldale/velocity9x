@@ -1494,9 +1494,11 @@ struct v9x_i9xx_decode_limits {
      */
     v9x_u32 texture_program;
     /*
-     * Non-zero: the stream may end its drawing with one MI_STORE_DWORD_IMM
-     * to exactly this graphics address, any data. Zero (the scene default):
-     * no store of any kind is accepted. Append-only, as above.
+     * Non-zero: the stream may end its drawing with one MI_STORE_DWORD_INDEX
+     * to exactly this byte offset of the hardware status page, any data.
+     * Zero (the scene default): no store of any kind is accepted.
+     * Append-only, as above. (Held an MI_STORE_DWORD_IMM graphics address
+     * for one build, intel81/82; that form never landed on this part.)
      */
     v9x_u32 breadcrumb_offset;
 };

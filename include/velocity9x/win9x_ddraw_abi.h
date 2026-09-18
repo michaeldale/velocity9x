@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091713: V9X_D3D_DIAGNOSTICS gains the three HWS_PGA readings. An
+ * append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091712: V9X_D3D_DIAGNOSTICS gains the breadcrumb counters. An append;
  * the stamp moves for the reason 2026091603 gives.
  *
@@ -1211,7 +1214,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091712ul
+#define V9X_DD_SHARED_ABI   2026091713ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1771,6 +1774,17 @@ typedef struct v9x_d3d_diagnostics {
     DWORD breadcrumb_lag_polls_max;
     DWORD breadcrumb_lag_polls_total;
     DWORD breadcrumb_timeouts;
+    /*
+     * The status page, from intel82 on: HWS_PGA as read before this driver
+     * wrote it (the BIOS value, 0x1FFFF000 on the netbook), the physical
+     * page address written - the GTT's own entry for the reserve's status
+     * page, read through BAR3, so the physical address is the hardware's
+     * word and not arithmetic on BSM - and HWS_PGA read back afterwards.
+     * A readback that differs from the write is the register refusing it.
+     */
+    DWORD hws_pga_before;
+    DWORD hws_pga_written;
+    DWORD hws_pga_after;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
