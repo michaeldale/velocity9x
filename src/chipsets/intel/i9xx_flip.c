@@ -101,6 +101,10 @@ v9x_status v9x_i9xx_build_breadcrumb_stream(
     stream[3] = (1ul << 16) | 1ul;
     stream[4] = destination;
     stream[5] = value;
+    /* The measured suffix: the flush that lands the fill in memory the CPU
+     * reads, and the pad that keeps the packet an even number of dwords. */
+    stream[6] = V9X_I9XX_MI_FLUSH;
+    stream[7] = V9X_I9XX_MI_NOOP;
     *written = V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
     return V9X_STATUS_OK;
 }

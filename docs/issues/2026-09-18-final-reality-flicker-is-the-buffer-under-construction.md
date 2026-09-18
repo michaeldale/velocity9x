@@ -510,7 +510,13 @@ through the aperture (Phase 4 S09/S10, 2026-09-14, ScratchGuard=PASS).
 The self-test uses the same packet. HWS_PGA is no longer written. The
 decoder licenses exactly one such fill, of exactly that shape, at that
 address, behind a flush and followed only by padding, and refuses both MI
-store forms. The ACTHD window is removed; a single raw read of the last
+store forms. The packet is the measured one in full - blit, MI_FLUSH,
+MI_NOOP, eight dwords - because the flush after the blit is what writes it
+out of the render cache to where the CPU reads. A first cut left the
+suffix off: the runtime's preceding flush cannot flush a write that
+follows it, and the self-test submits the packet alone, so a buffered
+breadcrumb could have failed the self-test and disabled the channel for a
+reason that was not the mapping's (review of 43c00be). The ACTHD window is removed; a single raw read of the last
 submit remains.
 
 If `HwsSelfTest` reads 1 on intel86 the completion channel exists for the

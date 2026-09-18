@@ -413,7 +413,8 @@ v9x_u32 v9x_i9xx_flip_pending_bit(v9x_u32 plane);
 /*
  * The breadcrumb as a FILL: one XY_COLOR_BLT of a single 32-bit pixel, the
  * pixel's colour being the sequence number, into a dword of the status page
- * at graphics address `destination`. Six dwords, the Phase 4 packet exactly.
+ * at graphics address `destination`. Eight dwords, the Phase 4 packet
+ * exactly: the blit, the MI_FLUSH behind it, and the MI_NOOP pad.
  *
  * Why a fill and not a store: three MI stores by two mechanisms (IMM to a
  * GTT address, INDEX into an HWS_PGA page) were consumed by the parser and
@@ -422,8 +423,18 @@ v9x_u32 v9x_i9xx_flip_pending_bit(v9x_u32 plane);
  * the aperture: Phase 4 S09/S10, 2026-09-14, ScratchGuard=PASS. It is
  * pipelined behind the MI_FLUSH ahead of it like any other command, so the
  * colour arriving says the drawing before the flush is finished.
+ *
+ * Why the trailing MI_FLUSH is part of the packet and not the caller's
+ * business: what Phase 4 measured reaching the CPU was blit-flush-pad
+ * (intel_ring16.c, S09, eight dwords), and the flush is what writes the
+ * blit out of the render cache to the memory the CPU reads back. The
+ * flush the runtime puts AHEAD of the breadcrumb cannot flush a write
+ * that follows it, and the self-test submits the packet with nothing
+ * ahead of it at all. Without the suffix a buffered breadcrumb can fail
+ * the self-test and disable the channel for a reason that is not the
+ * mapping's (review of 43c00be).
  */
-#define V9X_I9XX_BREADCRUMB_STREAM_DWORDS 6ul
+#define V9X_I9XX_BREADCRUMB_STREAM_DWORDS 8ul
 #define V9X_I9XX_BREADCRUMB_PITCH         64u
 v9x_status v9x_i9xx_build_breadcrumb_stream(
     v9x_u32 destination, v9x_u32 value,

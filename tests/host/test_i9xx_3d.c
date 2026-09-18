@@ -1608,7 +1608,7 @@ static void test_decoder_breadcrumb(void)
     struct v9x_i9xx_scene scene;
     struct v9x_i9xx_sandbox_layout layout;
     struct v9x_i9xx_decode_limits limits;
-    v9x_u32 stream[200];
+    v9x_u32 stream[224];
     v9x_u32 written = 0ul;
     v9x_u32 index = 0ul;
     v9x_u32 flush = 0ul;
@@ -1618,6 +1618,8 @@ static void test_decoder_breadcrumb(void)
     CHECK(v9x_i9xx_scene_at(2ul, &scene) == V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_scene_stream(&scene, stream, 200ul, &written) ==
           V9X_STATUS_OK);
+    /* Two eight-dword packets and their padding go in behind the scene. */
+    CHECK(written + 17ul <= 224ul);
     v9x_test_limits(&limits, layout.target_offset, layout.target_bytes,
                     scene.kind);
     limits.depth_offset = layout.depth_offset;
@@ -1632,20 +1634,23 @@ static void test_decoder_breadcrumb(void)
     limits.breadcrumb_offset = 0ul;
 
     /* The fill goes after the drawing, where the runtime puts it: an
-     * MI_FLUSH, then the six-dword one-pixel XY_COLOR_BLT the builder
-     * makes, then a NOOP pad. Destination: the status page's dword. */
+     * MI_FLUSH, then the eight-dword packet the builder makes - the
+     * one-pixel XY_COLOR_BLT, its own flush and its pad - then a NOOP.
+     * Destination: the status page's dword. */
     flush = written;
     stream[flush] = V9X_I9XX_MI_FLUSH;
     {
         v9x_u32 count = 0ul;
 
         CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x42ul,
-                                               stream + flush + 1ul, 6ul,
+                                               stream + flush + 1ul, 8ul,
                                                &count) == V9X_STATUS_OK);
-        CHECK(count == 6ul);
+        CHECK(count == 8ul);
+        CHECK(stream[flush + 7ul] == V9X_I9XX_MI_FLUSH);
+        CHECK(stream[flush + 8ul] == V9X_I9XX_MI_NOOP);
     }
-    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
-    written = flush + 8ul;
+    stream[flush + 9ul] = V9X_I9XX_MI_NOOP;
+    written = flush + 10ul;
 
     /* No licence: the fill is then an ordinary one, bounded by the
      * target, and the status page is not in the target. Refused. */
@@ -1681,25 +1686,39 @@ static void test_decoder_breadcrumb(void)
     CHECK(index == flush + 1ul);
     stream[flush + 4ul] = (1ul << 16) | 1ul;
 
-    /* Rendering after the fill: anything but a NOOP behind it. */
-    stream[flush + 7ul] = V9X_I9XX_MI_FLUSH;
+    /* The measured suffix is required, both dwords of it: a fill whose
+     * flush is missing may never reach the CPU at all. */
+    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
           V9X_I9XX_P5_BREADCRUMB);
-    CHECK(index == flush + 7ul);
-    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
-
-    /* Two breadcrumbs: refused at the second. */
+    CHECK(index == flush + 1ul);
     stream[flush + 7ul] = V9X_I9XX_MI_FLUSH;
+    stream[flush + 8ul] = V9X_I9XX_MI_FLUSH;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush + 1ul);
+    stream[flush + 8ul] = V9X_I9XX_MI_NOOP;
+
+    /* Rendering after the packet: anything but a NOOP behind it. */
+    stream[flush + 9ul] = V9X_I9XX_MI_FLUSH;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush + 9ul);
+    stream[flush + 9ul] = V9X_I9XX_MI_NOOP;
+
+    /* Two breadcrumbs: the second is refused where it stands, by the rule
+     * that nothing but padding follows the first. */
     {
         v9x_u32 count = 0ul;
 
         CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x43ul,
-                                               stream + flush + 8ul, 6ul,
+                                               stream + flush + 9ul, 8ul,
                                                &count) == V9X_STATUS_OK);
     }
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 14ul, &limits,
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 17ul, &limits,
                                         &index) == V9X_I9XX_P5_BREADCRUMB);
-    stream[flush + 7ul] = V9X_I9XX_MI_NOOP;
+    CHECK(index == flush + 9ul);
+    stream[flush + 9ul] = V9X_I9XX_MI_NOOP;
 
     /* Neither MI store form is a command this decoder knows any more. */
     stream[flush + 1ul] = V9X_I9XX_MI_STORE_DWORD_INDEX;
@@ -1715,22 +1734,25 @@ static void test_decoder_breadcrumb(void)
 
     /* The builder's own refusals: unaligned, first page, no room. */
     {
-        v9x_u32 only[6];
+        v9x_u32 only[8];
         v9x_u32 count = 0ul;
 
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0082ul, 1ul, only, 6ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0082ul, 1ul, only, 8ul,
                                                &count) != V9X_STATUS_OK);
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x80ul, 1ul, only, 6ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x80ul, 1ul, only, 8ul,
                                                &count) != V9X_STATUS_OK);
-        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 1ul, only, 5ul,
+        CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 1ul, only, 7ul,
                                                &count) != V9X_STATUS_OK);
         CHECK(v9x_i9xx_build_breadcrumb_stream(0x006c0080ul, 0x600d0001ul,
-                                               only, 6ul, &count) ==
+                                               only, 8ul, &count) ==
               V9X_STATUS_OK);
+        CHECK(count == 8ul);
         CHECK(only[0] == V9X_I9XX_XY_COLOR_BLT);
         CHECK(only[3] == ((1ul << 16) | 1ul));
         CHECK(only[4] == 0x006c0080ul);
         CHECK(only[5] == 0x600d0001ul);
+        CHECK(only[6] == V9X_I9XX_MI_FLUSH);
+        CHECK(only[7] == V9X_I9XX_MI_NOOP);
     }
 
     /* And the clear helper zeroes the appended fields too. */

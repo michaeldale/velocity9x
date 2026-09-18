@@ -864,6 +864,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * The breadcrumb: the one fill of one 32-bit pixel at the one
              * destination the limits name, any colour; directly behind an
              * MI_FLUSH, so that what it marks complete is everything drawn;
+             * carrying its own MI_FLUSH and MI_NOOP, which is the suffix
+             * Phase 4 measured and what lands the fill where the CPU reads;
              * the only thing after it MI_NOOP padding, so nothing is drawn
              * after the mark. A second one, or one not of this exact shape,
              * is refused. Licence is requirement: see the end. (Review R4;
@@ -879,7 +881,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                     (V9X_I9XX_BLT_DEPTH_32 | V9X_I9XX_BLT_ROP_PATCOPY |
                      (v9x_u32)V9X_I9XX_BREADCRUMB_PITCH) ||
                 stream[index + 2ul] != 0ul ||
-                stream[index + 3ul] != ((1ul << 16) | 1ul)) {
+                stream[index + 3ul] != ((1ul << 16) | 1ul) ||
+                stream[index + 6ul] != V9X_I9XX_MI_FLUSH ||
+                stream[index + 7ul] != V9X_I9XX_MI_NOOP) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
             }
             for (tail = index + V9X_I9XX_BREADCRUMB_STREAM_DWORDS;
