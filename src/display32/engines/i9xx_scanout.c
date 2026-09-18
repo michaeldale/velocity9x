@@ -330,7 +330,42 @@ int v9x_set_display_start(DWORD byte_offset)
  * when that blank ends. A hypothesis from a picture, with the counters
  * to say whether the wait happened (FlipStillDrawing rises per flip).
  */
-#define V9X_I9XX_FLIP_WRITE_IN_BLANK 0
+#define V9X_I9XX_FLIP_WRITE_IN_BLANK 1
+/*
+ * How far into the blank a flip may still be issued, in lines. intel73
+ * showed the base applies the moment it is written, by either path, and
+ * intel66 showed that writing anywhere in the blank and releasing the
+ * buffer at the blank's end was worse than writing anywhere at all. So
+ * the write is confined to the FIRST lines of the blank - the beam has
+ * finished the old frame and nothing has begun fetching the new one - and
+ * the buffer is released only at the frame tick. 24 lines is about 0.6 ms
+ * at this timing; DirectDraw polls Flip roughly every 0.3 ms, so the
+ * window is caught within a frame.
+ */
+#define V9X_I9XX_FLIP_WINDOW_LINES 24ul
+
+/*
+ * The issue window: the first lines of the vertical blank, and nothing
+ * else. Not "in the blank" - intel66 was that.
+ */
+int v9x_scanout_flip_window_open(void)
+{
+    DWORD dsl;
+    DWORD vtotal;
+    DWORD base;
+    DWORD line;
+    DWORD active;
+
+    if (!v9x_i9xx_scanout_active()) {
+        return v9x_vga_in_vblank();
+    }
+    if (!v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
+        return 0;
+    }
+    line = *v9x_i9xx_scanout_reg(dsl) & V9X_I9XX_DSL_LINE_MASK;
+    active = (*v9x_i9xx_scanout_reg(vtotal) & 0x00000ffful) + 1ul;
+    return line >= active && line < active + V9X_I9XX_FLIP_WINDOW_LINES;
+}
 
 /*
  * Every Intel flip is a hardware flip. i915 says a plain plane-base write
@@ -380,16 +415,14 @@ int v9x_scanout_hw_flip_pending(void)
 int v9x_scanout_writes_in_blank(void)
 {
     /*
-     * OFF. intel66 ran with the write inside the blank and the operator
-     * reports the flicker WORSE than intel65's write-anywhere: 710 flips,
-     * each preceded by about 2,950 WASSTILLDRAWING answers, so the wait
-     * happened and the write landed where DSL >= vactive. If that region
-     * were the blank of an immediately-applied base, the tearing would have
-     * gone. It did not, so at least one of "the base applies at once" and
-     * "DSL >= vactive is the blank" is wrong, and this driver cannot say
-     * which. The scanout watch now records the line at which the frame
-     * counter ticks; that measurement decides, and until it is in a
-     * capture the flip goes back to the less-bad behaviour.
+     * ON again from intel73, with two differences from intel66. intel69
+     * measured that DSL >= vactive IS the blank and intel73 measured that
+     * the base applies at once and nothing pends, so an immediate base has
+     * to be written when the beam is between frames - and intel66's
+     * "worse" is explained by its completing at the blank's END, when the
+     * plane may already be fetching the next frame's first lines from the
+     * buffer just released. Now: written in the first lines of the blank
+     * (v9x_scanout_flip_window_open), released at the frame tick (WAIT_HW).
      */
     if (V9X_I9XX_FLIP_WRITE_IN_BLANK == 0) {
         return 0;

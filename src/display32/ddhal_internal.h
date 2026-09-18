@@ -306,6 +306,9 @@ int v9x_scanout_vblank_available(void);
  * blank because the hardware applies it at once rather than latching it at
  * the next retrace: the Intel controls, on intel65's evidence. */
 int v9x_scanout_writes_in_blank(void);
+/* Non-zero while an immediately applied base may be written: the first
+ * lines of the vertical blank on the Intel path, the VGA blank elsewhere. */
+int v9x_scanout_flip_window_open(void);
 /* Non-zero when this boot's Intel flip goes through the ring: the display
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);

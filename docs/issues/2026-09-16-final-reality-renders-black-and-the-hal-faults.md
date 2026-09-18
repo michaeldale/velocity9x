@@ -1040,6 +1040,13 @@ remedy for an immediate base is to issue it inside the blank and complete
 at the tick. intel66 issued inside the blank and completed at the END of
 the blank; that is not the same experiment.
 
+**The picture: unchanged.** So the next build is that experiment: the base
+is written only in the first 24 lines of the blank (Flip answers
+WASSTILLDRAWING until the line register is there), and the flip completes
+at the frame tick. The ring packet stays as the write, since it is the
+register write by another route; if this tears too, the issue point is
+not the cause either and the render path is next.
+
 ### Flat shading, in the core (2026-09-18)
 
 `D3DRENDERSTATE_SHADEMODE` is retained, and under `D3DSHADE_FLAT` the core
