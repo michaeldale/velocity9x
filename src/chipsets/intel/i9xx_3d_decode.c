@@ -1007,11 +1007,12 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * data. Anywhere else in memory is a write the GPU must not
              * make, and a stream with no licence gets none. */
             if (limits->breadcrumb_offset == 0ul ||
-                index + 3ul > dword_count ||
-                stream[index + 1ul] != limits->breadcrumb_offset) {
+                index + V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS > dword_count ||
+                stream[index + 1ul] != 0ul ||
+                stream[index + 2ul] != limits->breadcrumb_offset) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_BREADCRUMB, index);
             }
-            index += 3ul;
+            index += V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS;
 
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH ||

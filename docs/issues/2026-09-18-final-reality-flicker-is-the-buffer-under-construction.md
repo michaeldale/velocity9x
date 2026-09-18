@@ -74,7 +74,8 @@ problem in one sentence.
 | intel78 | `3d9a103` | base written in ACTIVE video, before the blank-start latch | "a little better" |
 | intel79 | `e83a65e` (built as `3d9a103-dirty`) | engine waits for the pending flip before each batch | DrawsFlipWaited=0; picture unchanged |
 | intel80 | `73709d2-dirty` | two-tick completion, consistent counter read, in-game layout capture, `/reuse` probe | flicker unchanged; probe CLEAN at every delay; fetch stride is 1280 |
-| intel81 | next | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it; lag counted | to boot |
+| intel81 | `ca107e2-dirty` (`a1bf160`) | breadcrumb: MI_STORE_DWORD_IMM behind the flush, submit waits for it | HARD LOCK at the first 3D frame; two defects found on the desk, below |
+| intel82 | next | the same breadcrumb with the four-dword form and the right graphics address | to boot |
 
 Three of those (intel76, intel77, and the skipped-depth reading that
 intel77's counters refuted) were guesses from a verbal description and
@@ -297,6 +298,41 @@ The count is the measurement:
   unfinished, and the record closes on that.
 - Lag large and the flicker still there: the drawing was late AND
   something else is wrong; the trace follows with this fixed.
+
+### intel81: hard lock at the first 3D frame
+
+The machine locked as Final Reality's first 3D scene was about to
+appear - the first runtime batch, the first breadcrumb. `C:\temp\intel81`
+is the capture from the reboot (ring head and tail both 0x110, nothing
+of the run). Two defects in the build, both found by reading it back
+against the sources afterwards, and either sufficient:
+
+1. **The command was the wrong length.** The build emitted three dwords
+   (header with length 1, address, data). MI_STORE_DWORD_IMM on this part
+   is four: header with length 2, a reserved zero, the graphics address,
+   the data - igt's `intel_reg.h` defines it as `(0x20 << 23) | 2` and
+   `gem_storedw_loop` emits `header | 1 << 22, 0, address, data` for every
+   part before gen8. The parser read the address as the reserved dword
+   and the data (sequence 1) as the address, and stored the next dword to
+   graphics address 1.
+2. **The graphics address was garbage.** It was computed as the ring's
+   linear address minus the framebuffer's linear address, on the belief
+   that both came from one mapping of the aperture. They do not: the
+   mini-VDD maps the reserve on its own (`V9xMini_I9xx_Ring_Open`, the
+   whole megabyte), so the difference was two unrelated kernel linear
+   addresses and the store was aimed at whatever that came to. The ring
+   offset the HAL should have used is `fb.vram_bytes`, which the family's
+   `reserve_video_memory` already sets to the reserve boundary; the code
+   two functions above it in the same file says so.
+
+The CPU side was not the fault: the reserve mapping covers the status
+page, and the read was in bounds. The next build has the four-dword form,
+the address from `fb.vram_bytes`, a decoder that refuses a non-zero
+reserved dword (which is exactly where the three-dword form would be
+caught, with a host test), and a breadcrumb wait of 200,000 polls so a
+store that never lands costs a slow frame rather than a machine that
+looks hung. It is still an unmeasured command on this part, and the
+lock is a possibility the operator should weigh before booting it.
 
 ## How to run the next boot
 

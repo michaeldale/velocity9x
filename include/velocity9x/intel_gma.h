@@ -124,8 +124,12 @@
 #define V9X_I9XX_MI_FLUSH_READ           ((v9x_u32)0x02000001ul)
 /*
  * MI_STORE_DWORD_IMM with MI_MEM_VIRTUAL (bit 22: the address is a graphics
- * address through the GTT, the 945 form), length 1: three dwords - header,
- * graphics address, data. The form igt's gem_storedw_loop emits for gen < 4.
+ * address through the GTT, the 945 form), length 2: FOUR dwords - header,
+ * a reserved dword of zero, graphics address, data. igt's intel_reg.h
+ * defines MI_STORE_DWORD_IMM as (0x20 << 23) | 2 and gem_storedw_loop emits
+ * header | 1 << 22, 0, address, data for every part before gen8. intel81
+ * hard-locked on the three-dword form (header, address, data): the parser
+ * took the address as the reserved dword and the data as the address.
  * The store is pipelined behind the rendering ahead of it, so a value that
  * has arrived in memory says the drawing before it is finished; the ring
  * head reaching the tail says only that the parser has consumed the
@@ -133,7 +137,8 @@
  * nothing else uses (HWS_PGA was never programmed; intel80 reads the BIOS
  * value), at this offset from the ring start.
  */
-#define V9X_I9XX_MI_STORE_DWORD_IMM      ((v9x_u32)0x10400001ul)
+#define V9X_I9XX_MI_STORE_DWORD_IMM      ((v9x_u32)0x10400002ul)
+#define V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS 4ul
 #define V9X_I9XX_BREADCRUMB_FROM_RING    (V9X_I9XX_RING_BYTES + 0x800ul)
 /*
  * The Gen3 page flip through the ring, i915_reg.h: MI_DISPLAY_FLIP_I915 =

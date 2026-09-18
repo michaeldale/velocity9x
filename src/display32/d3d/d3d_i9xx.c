@@ -285,6 +285,11 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
  * address is the reserve's status page through the framebuffer mapping,
  * which is how the CPU reaches stolen memory on this part.
  */
+/* Polls a submit spends on the breadcrumb after the head. A frame's worth
+ * of drawing is milliseconds; this is a few hundred, so a store that never
+ * lands costs a slow frame and a counter, not a machine that looks hung. */
+#define V9X_I9XX_BREADCRUMB_POLLS 200000ul
+
 static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
 
@@ -294,12 +299,21 @@ static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
                               V9X_I9XX_BREADCRUMB_FROM_RING);
 }
 
-/* The breadcrumb's graphics address: the ring's offset in video memory plus
- * the fixed distance, which the GTT maps one to one inside the reserve. */
+/*
+ * The breadcrumb's graphics address: the ring's offset in video memory plus
+ * the fixed distance, which the GTT maps one to one inside the reserve.
+ *
+ * The ring's offset is fb.vram_bytes: the family's reserve_video_memory
+ * hands DirectDraw a heap that ends where the reserve begins, and the ring
+ * is the first thing in the reserve (i9xx_ring.c). intel81 computed this
+ * from ring_linear_base minus the framebuffer's linear base, which are two
+ * unrelated mappings (the mini-VDD maps the reserve on its own), and sent
+ * the GPU a store to wherever that difference pointed. The CPU-side read
+ * was and is safe: the mini-VDD's ring mapping covers the whole reserve.
+ */
 static DWORD v9x_d3d_i9xx_breadcrumb_offset(void)
 {
-    return (v9x_hal->engine.ring_linear_base - v9x_hal->fb.linear_base) +
-           V9X_I9XX_BREADCRUMB_FROM_RING;
+    return v9x_hal->fb.vram_bytes + V9X_I9XX_BREADCRUMB_FROM_RING;
 }
 
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
@@ -362,7 +376,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
             }
             /* The head is at the tail. Now the pixels: the store behind
              * the flush arrives when the drawing ahead of it is done. */
-            for (lag = 0ul; lag < V9X_I9XX_SUBMIT_POLLS; ++lag) {
+            for (lag = 0ul; lag < V9X_I9XX_BREADCRUMB_POLLS; ++lag) {
                 if (*v9x_d3d_i9xx_breadcrumb_linear() ==
                     v9x_d3d_i9xx_breadcrumb_expected) {
                     ++v9x_hal->d3d_diagnostics.breadcrumb_submits;
@@ -1219,7 +1233,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      * status page when everything ahead of it has drawn. The submit waits
      * for it after the head; see the diagnostics comment (intel80).
      */
-    if (at + 3ul > V9X_I9XX_SUBMIT_DWORDS) {
+    if (at + V9X_I9XX_MI_STORE_DWORD_IMM_DWORDS > V9X_I9XX_SUBMIT_DWORDS) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
@@ -1227,6 +1241,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
     }
     stream[at++] = V9X_I9XX_MI_STORE_DWORD_IMM;
+    stream[at++] = 0ul;
     stream[at++] = v9x_d3d_i9xx_breadcrumb_offset();
     stream[at++] = v9x_d3d_i9xx_breadcrumb_expected;
     /* The ring tail must land qword aligned, and the plan refuses an odd

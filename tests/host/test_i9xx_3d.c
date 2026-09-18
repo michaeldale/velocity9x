@@ -1627,9 +1627,9 @@ static void test_decoder_breadcrumb(void)
      * the trailing flush), followed by a NOOP to keep the count even. */
     flush = written;
     stream[flush] = V9X_I9XX_MI_STORE_DWORD_IMM;
-    stream[flush + 1ul] = 0x006c0800ul;
-    stream[flush + 2ul] = 0x00000042ul;
-    stream[flush + 3ul] = V9X_I9XX_MI_NOOP;
+    stream[flush + 1ul] = 0ul;
+    stream[flush + 2ul] = 0x006c0800ul;
+    stream[flush + 3ul] = 0x00000042ul;
     written = flush + 4ul;
 
     /* No licence: refused at the store. */
@@ -1650,8 +1650,16 @@ static void test_decoder_breadcrumb(void)
 
     /* Truncated after the header: refused, not read past the end. */
     limits.breadcrumb_offset = 0x006c0800ul;
-    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 2ul, &limits,
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, flush + 3ul, &limits,
                                         &index) == V9X_I9XX_P5_BREADCRUMB);
+
+    /* The reserved dword must be zero: the three-dword form intel81 hung
+     * on puts the address there, and this is where it is caught. */
+    stream[flush + 1ul] = 0x006c0800ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, written, &limits, &index) ==
+          V9X_I9XX_P5_BREADCRUMB);
+    CHECK(index == flush);
+    stream[flush + 1ul] = 0ul;
 }
 
 /*
