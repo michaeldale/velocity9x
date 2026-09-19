@@ -117,8 +117,21 @@ two has to move.
 
 ## The S3 path flickers the same way
 
-Reported the same day from testing on the Trio3D with hardware Direct3D:
-Final Reality flickers there too, and it looks the same.
+Reported the same day from A8U4I5 (`10.0.1.172`, physical Windows 98 SE)
+with the S3 Trio3D/2X `5333:8A13` fitted, running the `s3` family with
+`Direct3DMode=hardware`: Final Reality flickers there too, and it looks the
+same. `8A13` binds through the ViRGE backend
+(`src/common/backend_registry_table.inc`, "virge-dx alias"), so this is the
+ViRGE code path on Trio3D silicon.
+
+"Looks the same" is an eye against an eye, on two panels, weeks apart. It
+is a lead, not a measurement, and two causes can share an appearance.
+
+It is also the first time anyone has WATCHED Final Reality on this card.
+`docs\decisions\2026-09-02-final-reality-on-a-real-trio3d.md` scored the
+same benchmark on the same machine and is titled "rendered blind" - nobody
+saw the image. So the symptom cannot be dated on the S3 path, and nothing
+says it is new there.
 
 The two present paths are not the same code. `v9x_scanout_hw_flip` and
 `v9x_scanout_writes_in_blank` both answer from `v9x_i9xx_scanout_active`,
