@@ -57,6 +57,10 @@ $sources = @(
     # having happened and not on a return value. Pure, and host-tested in
     # tests\host\test_drawnote.c.
     "src\common\drawnote.c",
+    # The Gen3 display FIFO watermark, as arithmetic: pure, and
+    # host-tested in tests\host\test_i9xx_wm.c because the
+    # machine it describes has no network.
+    "src\common\i9xx_wm.c",
     "src\display32\ddhal_core.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",

@@ -261,6 +261,11 @@
  * another way to starve. Read only, and interpreted in the report rather
  * than here.
  */
+/* The FIFO partition between the planes: plane B starts at bits 15:9
+ * and plane C at 22:16, so plane A's size is B's start and plane B's
+ * is the difference. It is the size the watermark arithmetic needs
+ * and the one input intel92 was missing. */
+#define V9X_I9XX_REG_DSPARB              ((v9x_u32)0x00070030ul)
 #define V9X_I9XX_REG_FW_BLC              ((v9x_u32)0x000020d8ul)
 #define V9X_I9XX_REG_FW_BLC2             ((v9x_u32)0x000020dcul)
 #define V9X_I9XX_REG_FW_BLC_SELF         ((v9x_u32)0x000020e0ul)

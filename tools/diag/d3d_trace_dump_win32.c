@@ -676,6 +676,12 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_hex(key, snapshot.d3d.wm_log_fw_blc2[index]);
             v9x_wm_name(key, index, "Self");
             v9x_write_hex(key, snapshot.d3d.wm_log_fw_blc_self[index]);
+            v9x_wm_name(key, index, "Dsparb");
+            v9x_write_hex(key, snapshot.d3d.wm_log_dsparb[index]);
+            v9x_wm_name(key, index, "Want");
+            v9x_write_hex(key, snapshot.d3d.wm_log_computed[index]);
+            v9x_wm_name(key, index, "RateKhz");
+            v9x_write_uint(key, snapshot.d3d.wm_log_rate_khz[index]);
         }
     }
     v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);

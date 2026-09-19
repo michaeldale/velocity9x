@@ -31,6 +31,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/i9xx_wm.h"
 
 static volatile DWORD *v9x_i9xx_scanout_reg(DWORD offset)
 {
@@ -307,6 +308,88 @@ static void v9x_i9xx_note_layout(DWORD byte_offset)
     }
 }
 
+/*
+ * One watermark log entry per MODE, triggered by the pipe source changing
+ * rather than by a session boundary.
+ *
+ * intel92 logged at the session boundary and came back with two entries
+ * both at 1024x576, the panel's own mode, and none at the game's 640x480 -
+ * so a mode change does not reliably produce a DriverInit and the boundary
+ * is the wrong trigger. The pipe source IS the mode, read from the
+ * hardware, so a change in it is the event worth an entry.
+ *
+ * DSPARB goes in beside it: it partitions the FIFO between the planes and
+ * is the one input the watermark arithmetic needs that intel92 did not
+ * capture. And the computed watermark goes in beside what is actually
+ * programmed, so the comparison needs no arithmetic done by hand off a
+ * capture - the formula is v9x_i9xx_wm_plane, host-tested against this
+ * machine's timing in tests\host\test_i9xx_wm.c.
+ *
+ * Nothing here writes a watermark. This says what the difference is; what
+ * to do about it is a later change, made once the computation has been
+ * seen to agree with the hardware on a real mode.
+ */
+static void v9x_i9xx_note_watermarks(void)
+{
+    DWORD src_reg = v9x_i9xx_scanout_plane == 0ul
+                    ? V9X_I9XX_REG_PIPEA_SRC : V9X_I9XX_REG_PIPEB_SRC;
+    DWORD htotal_reg = v9x_i9xx_scanout_plane == 0ul
+                       ? V9X_I9XX_REG_PIPEA_HTOTAL
+                       : V9X_I9XX_REG_PIPEB_HTOTAL;
+    DWORD vtotal_reg = v9x_i9xx_scanout_plane == 0ul
+                       ? V9X_I9XX_REG_PIPEA_VTOTAL
+                       : V9X_I9XX_REG_PIPEB_VTOTAL;
+    DWORD pipesrc = *v9x_i9xx_scanout_reg(src_reg);
+    DWORD count = v9x_hal->d3d_diagnostics.wm_log_count;
+    DWORD slot;
+    DWORD dsparb;
+    DWORD fifo_a = 0ul;
+    DWORD fifo_b = 0ul;
+    DWORD rate_khz;
+    DWORD cpp;
+
+    /* Only when the mode changes, and only while there is room. */
+    if (count != 0ul &&
+        v9x_hal->d3d_diagnostics.wm_log_pipesrc[count - 1ul] == pipesrc) {
+        return;
+    }
+    if (count >= (DWORD)V9X_D3D_WM_LOG) {
+        return;
+    }
+    slot = count;
+    dsparb = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_DSPARB);
+
+    v9x_hal->d3d_diagnostics.wm_log_pipesrc[slot] = pipesrc;
+    v9x_hal->d3d_diagnostics.wm_log_dsparb[slot] = dsparb;
+    v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot] =
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
+    v9x_hal->d3d_diagnostics.wm_log_fw_blc2[slot] =
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
+    v9x_hal->d3d_diagnostics.wm_log_fw_blc_self[slot] =
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
+
+    /*
+     * The pixel rate from the pipe's own totals at the 60 Hz this driver
+     * reports, and the bytes per pixel from the mode. Both totals are
+     * stored less one, as vactive is elsewhere in this file.
+     */
+    rate_khz = (((*v9x_i9xx_scanout_reg(htotal_reg) >> 16) & 0x0ffful) + 1ul) *
+               (((*v9x_i9xx_scanout_reg(vtotal_reg) >> 16) & 0x0ffful) + 1ul);
+    rate_khz = rate_khz / 1000ul * 60ul;
+    cpp = (v9x_hal->fb.bits_per_pixel + 7ul) / 8ul;
+
+    if (v9x_i9xx_wm_fifo_split(dsparb, &fifo_a, &fifo_b) != V9X_FALSE) {
+        v9x_hal->d3d_diagnostics.wm_log_computed[slot] =
+            v9x_i9xx_wm_fw_blc(
+                v9x_i9xx_wm_plane(rate_khz, cpp, fifo_a,
+                                  V9X_I9XX_WM_LATENCY_NS),
+                v9x_i9xx_wm_plane(rate_khz, cpp, fifo_b,
+                                  V9X_I9XX_WM_LATENCY_NS));
+    }
+    v9x_hal->d3d_diagnostics.wm_log_rate_khz[slot] = rate_khz;
+    ++v9x_hal->d3d_diagnostics.wm_log_count;
+}
+
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 {
     v9x_i9xx_scanout_last_base_reg = base_reg;
@@ -353,27 +436,6 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
         v9x_hal->d3d_diagnostics.fw_blc_self =
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
-        /*
-         * And the same into the per-mode log, with the pipe source size so
-         * the entry says which mode it is. A session boundary is a mode
-         * change, so an ordinary run fills several entries and the
-         * comparison across modes needs no second run and no procedure.
-         */
-        if (v9x_hal->d3d_diagnostics.wm_log_count < (DWORD)V9X_D3D_WM_LOG) {
-            DWORD slot = v9x_hal->d3d_diagnostics.wm_log_count;
-
-            v9x_hal->d3d_diagnostics.wm_log_pipesrc[slot] =
-                *v9x_i9xx_scanout_reg(
-                    v9x_i9xx_scanout_plane == 0ul
-                        ? V9X_I9XX_REG_PIPEA_SRC : V9X_I9XX_REG_PIPEB_SRC);
-            v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot] =
-                v9x_hal->d3d_diagnostics.fw_blc;
-            v9x_hal->d3d_diagnostics.wm_log_fw_blc2[slot] =
-                v9x_hal->d3d_diagnostics.fw_blc2;
-            v9x_hal->d3d_diagnostics.wm_log_fw_blc_self[slot] =
-                v9x_hal->d3d_diagnostics.fw_blc_self;
-            ++v9x_hal->d3d_diagnostics.wm_log_count;
-        }
         v9x_hal->d3d_diagnostics.pipestat_cleared = 1ul;
         v9x_i9xx_pipestat_baselined = 1;
     } else {
@@ -382,6 +444,7 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
         v9x_hal->d3d_diagnostics.pipestat_b_or |=
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
     }
+    v9x_i9xx_note_watermarks();
     /*
      * The scanline at the moment the base is read back, which settles what
      * that readback IS.

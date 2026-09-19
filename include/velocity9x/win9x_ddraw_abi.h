@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091917: the watermark log gains DSPARB, the pixel rate and the
+ * COMPUTED watermark, and is triggered by the pipe source changing rather
+ * than by a session boundary. An append; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091916: the watermark reading becomes a log, one entry per mode, so
  * one ordinary run answers whether the BIOS programs them per mode. An
  * append; the stamp moves for the reason 2026091603 gives.
@@ -1301,7 +1306,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091916ul
+#define V9X_DD_SHARED_ABI   2026091917ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2200,6 +2205,24 @@ typedef struct v9x_d3d_diagnostics {
     DWORD wm_log_fw_blc2[V9X_D3D_WM_LOG];
     DWORD wm_log_fw_blc_self[V9X_D3D_WM_LOG];
     DWORD wm_log_count;
+    /*
+     * DSPARB, the pixel rate, and what the watermark SHOULD be, beside
+     * what it is.
+     *
+     * DSPARB partitions the FIFO between the planes and is the one input
+     * the arithmetic needs that intel92 did not capture. wm_log_computed
+     * is v9x_i9xx_wm_fw_blc over v9x_i9xx_wm_plane for both planes, so a
+     * capture can be read straight across - programmed against computed -
+     * rather than worked out by hand afterwards. Zero there means the
+     * DSPARB partition was not one to compute against.
+     *
+     * The formula is host-tested in tests\host\test_i9xx_wm.c against
+     * this machine's own timing, because the machine has no network and
+     * every trial on it costs a walk.
+     */
+    DWORD wm_log_dsparb[V9X_D3D_WM_LOG];
+    DWORD wm_log_computed[V9X_D3D_WM_LOG];
+    DWORD wm_log_rate_khz[V9X_D3D_WM_LOG];
 } V9X_D3D_DIAGNOSTICS;
 
 /*
