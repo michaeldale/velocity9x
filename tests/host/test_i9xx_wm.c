@@ -83,27 +83,53 @@ static void test_fw_blc_composition(void)
     WMCHECK((v9x_i9xx_wm_fw_blc(1ul, 1ul) & ((v9x_u32)1ul << 24)) != 0ul);
 }
 
-/* The DSPARB partition, and the shapes that are not one. */
+/*
+ * The DSPARB partition, anchored on the netbook's own register.
+ *
+ * intel93 read 0x00001D9C. Against the shifts this file first used - 9 and
+ * 16 - that decodes to a CSTART of nothing and the split refuses, which is
+ * how the wrong layout was caught rather than believed. Against i915's, it
+ * is plane A 28 and plane B 31.
+ */
 static void test_fifo_split(void)
 {
     v9x_u32 a = 0ul;
     v9x_u32 b = 0ul;
 
-    /* Plane B starts at 48, plane C at 96: 48 entries each. */
-    WMCHECK(v9x_i9xx_wm_fifo_split((96ul << 16) | (48ul << 9), &a, &b) ==
-            V9X_TRUE);
+    WMCHECK(v9x_i9xx_wm_fifo_split(0x00001D9Cul, &a, &b) == V9X_TRUE);
+    WMCHECK(a == 28ul);
+    WMCHECK(b == 31ul);
+
+    /* Plane A 48, plane C starting at 96: 48 entries each. */
+    WMCHECK(v9x_i9xx_wm_fifo_split((96ul << 7) | 48ul, &a, &b) == V9X_TRUE);
     WMCHECK(a == 48ul);
     WMCHECK(b == 48ul);
 
     /* C at or below B leaves plane B nothing. */
-    WMCHECK(v9x_i9xx_wm_fifo_split((48ul << 16) | (48ul << 9), &a, &b) ==
-            V9X_FALSE);
+    WMCHECK(v9x_i9xx_wm_fifo_split((48ul << 7) | 48ul, &a, &b) == V9X_FALSE);
     /* B at zero leaves plane A nothing. */
-    WMCHECK(v9x_i9xx_wm_fifo_split((96ul << 16), &a, &b) == V9X_FALSE);
+    WMCHECK(v9x_i9xx_wm_fifo_split((96ul << 7), &a, &b) == V9X_FALSE);
     /* And a refusal leaves the caller's values alone. */
     WMCHECK(a == 48ul);
     WMCHECK(b == 48ul);
     WMCHECK(v9x_i9xx_wm_fifo_split(0ul, 0, &b) == V9X_FALSE);
+}
+
+/*
+ * The netbook's actual configuration, end to end: its DSPARB, its timing,
+ * against what its BIOS programs. This is the comparison intel93 was taken
+ * for, pinned here so it cannot drift.
+ */
+static void test_the_netbook_as_captured(void)
+{
+    v9x_u32 a = 0ul;
+    v9x_u32 b = 0ul;
+
+    WMCHECK(v9x_i9xx_wm_fifo_split(0x00001D9Cul, &a, &b) == V9X_TRUE);
+    WMCHECK(v9x_i9xx_wm_plane(54180ul, 2ul, a, 5000ul) == 17ul);
+    WMCHECK(v9x_i9xx_wm_plane(54180ul, 2ul, b, 5000ul) == 20ul);
+    /* What the BIOS leaves there instead, from intel91 through intel93. */
+    WMCHECK(v9x_i9xx_wm_fw_blc(17ul, 20ul) != 0x03060106ul);
 }
 
 unsigned int v9x_run_i9xx_wm_tests(void)
@@ -114,5 +140,6 @@ unsigned int v9x_run_i9xx_wm_tests(void)
     test_the_arithmetic_runs_one_way();
     test_fw_blc_composition();
     test_fifo_split();
+    test_the_netbook_as_captured();
     return wm_failures;
 }

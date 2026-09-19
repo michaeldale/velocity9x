@@ -5,13 +5,20 @@
 #include "velocity9x/i9xx_wm.h"
 
 /*
- * DSPARB's plane-start fields. Plane B starts at bits 15:9 and plane C at
- * 22:16, each a count of FIFO entries, so plane A's size is B's start and
- * plane B's is the difference. i915 reads the same two fields in
- * i9xx_get_fifo_size.
+ * DSPARB's plane-start fields, as i915 reads them in i9xx_get_fifo_size:
+ * BSTART in bits 6:0 and CSTART in 13:7, each a count of FIFO entries. So
+ * plane A's size is BSTART and plane B's is CSTART less BSTART.
+ *
+ * The first cut of this file had them at 9 and 16, which intel93 refused
+ * rather than believed: the netbook's DSPARB reads 0x00001D9C, whose bits
+ * above 13 are zero, so the wrong shifts gave a CSTART of nothing and the
+ * split declined. With the right ones it is plane A 28, plane B 31 - a
+ * plausible partition of a FIFO this size, and the arithmetic then has an
+ * answer. The refusal is why a wrong number was never reported as a right
+ * one.
  */
-#define V9X_I9XX_DSPARB_BSTART_SHIFT 9u
-#define V9X_I9XX_DSPARB_CSTART_SHIFT 16u
+#define V9X_I9XX_DSPARB_BSTART_SHIFT 0u
+#define V9X_I9XX_DSPARB_CSTART_SHIFT 7u
 #define V9X_I9XX_DSPARB_START_MASK   ((v9x_u32)0x7ful)
 
 /*
