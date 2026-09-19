@@ -1682,7 +1682,16 @@ DWORD __stdcall DriverInit(DWORD context)
      * without timing anything directly - driver ready, first Direct3D
      * context, first flip.
      */
-    shared->d3d_diagnostics.uptime_driver_init = GetTickCount();
+    /*
+     * The FIRST init, not the last. This wrote unconditionally until
+     * intel96's successor read 415,339 here against 39,723 for the first
+     * Direct3D context - later than the event it is meant to precede,
+     * because a mode change runs DriverInit again and overwrote it. A
+     * bracket whose left edge moves is not a bracket.
+     */
+    if (shared->d3d_diagnostics.uptime_driver_init == 0ul) {
+        shared->d3d_diagnostics.uptime_driver_init = GetTickCount();
+    }
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);
     shared->info.dwNumModes = mode_count;

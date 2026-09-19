@@ -1887,7 +1887,31 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
              *
              * The pairs are (state, value), the same shape V9X_D3DSTATE has,
              * so one switch serves this and the RenderState callback.
+             *
+             * THE COUNT IS BOUNDED, and it has to be here: the DDK's data
+             * block carries no length, only the wNumVertices == 0 terminator,
+             * so wNumStateChanges is the sole thing saying how far to read.
+             * It is a WORD, so an unchecked one walks up to half a megabyte
+             * of whatever follows the buffer.
+             *
+             * The old bound was 64 and rejected the record. That was too
+             * small - 3DMark99 sends 101 - so it would have thrown the record
+             * away even if the pairs had been read, which is a second defect
+             * in the same three lines. V9X_D3D_STATE_MAX is the same backstop
+             * the RenderState path uses and is ten times the measured
+             * maximum; past it the stream cannot be trusted to be a stream,
+             * so parsing stops rather than advancing over a length it does
+             * not believe.
              */
+            if ((DWORD)counts->wNumStateChanges > (DWORD)V9X_D3D_STATE_MAX) {
+                if (v9x_hal != 0) {
+                    ++v9x_hal->d3d_diagnostics.state_clamped;
+                    v9x_hal->d3d_diagnostics.state_clamped_count =
+                        (DWORD)counts->wNumStateChanges;
+                }
+                ok = 0;
+                break;
+            }
             {
                 DWORD change;
                 DWORD *pairs = (DWORD *)cursor;
