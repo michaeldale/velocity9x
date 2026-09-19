@@ -62,7 +62,17 @@ with the CRTC actually latching the new start address. That is the same
 unmeasured latch the Intel side has been stuck on since intel73, in a
 different register file.
 
-## One thing did change
+## WITHDRAWN the same night: the engine resets were variance
+
+The section below reported that completing at the end of the retrace
+removed the engine resets. A recorded pass on the same build later that
+night read `EngineIdleTimeouts=1` and `EngineResets=1` again, so the two
+zeros were run-to-run variance across two passes and not an effect of the
+change. See
+`2026-09-19-the-unblank-fix-does-not-fix-the-flicker.md`, which also
+measures the flicker itself as unchanged.
+
+## One thing did change (WITHDRAWN - see above)
 
 ```
 EngineIdleTimeouts=0    EngineResets=0
