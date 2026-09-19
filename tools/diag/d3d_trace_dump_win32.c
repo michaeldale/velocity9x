@@ -713,6 +713,8 @@ void __stdcall V9xTraceDumpEntry(void)
      * and each line reads as one mode's answer.
      */
     v9x_write_uint("WmLogCount", snapshot.d3d.wm_log_count);
+    v9x_write_uint("WmWrites", snapshot.d3d.wm_writes);
+    v9x_write_hex("WmWritten", snapshot.d3d.wm_written);
     {
         DWORD index;
 

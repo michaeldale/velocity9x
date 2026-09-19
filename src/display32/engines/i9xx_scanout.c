@@ -347,6 +347,7 @@ static void v9x_i9xx_note_watermarks(void)
     DWORD fifo_b = 0ul;
     DWORD rate_khz;
     DWORD cpp;
+    DWORD want = 0ul;
 
     /* Only when the mode changes, and only while there is room. */
     if (count != 0ul &&
@@ -379,15 +380,69 @@ static void v9x_i9xx_note_watermarks(void)
     cpp = (v9x_hal->fb.bits_per_pixel + 7ul) / 8ul;
 
     if (v9x_i9xx_wm_fifo_split(dsparb, &fifo_a, &fifo_b) != V9X_FALSE) {
-        v9x_hal->d3d_diagnostics.wm_log_computed[slot] =
-            v9x_i9xx_wm_fw_blc(
-                v9x_i9xx_wm_plane(rate_khz, cpp, fifo_a,
-                                  V9X_I9XX_WM_LATENCY_NS),
-                v9x_i9xx_wm_plane(rate_khz, cpp, fifo_b,
-                                  V9X_I9XX_WM_LATENCY_NS));
+        /*
+         * Only the plane that is actually driving gets the active
+         * arithmetic. v9x_i9xx_scanout_pipe resolves exactly one live plane
+         * and declines anything else, so the other is idle by construction,
+         * and i915 gives an idle plane its whole FIFO less the guard rather
+         * than a watermark computed from a pixel rate it is not consuming.
+         *
+         * The netbook runs plane B. Computing plane A as though it were
+         * live gave 17 where the idle answer is 26, and programming that
+         * would have starved a plane for a fetch it never makes (review of
+         * ed3217a).
+         */
+        DWORD rate_a = v9x_i9xx_scanout_plane == 0ul ? rate_khz : 0ul;
+        DWORD rate_b = v9x_i9xx_scanout_plane == 0ul ? 0ul : rate_khz;
+
+        want = v9x_i9xx_wm_fw_blc_merge(
+                   v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot],
+                   v9x_i9xx_wm_plane(rate_a, cpp, fifo_a,
+                                     V9X_I9XX_WM_LATENCY_NS),
+                   v9x_i9xx_wm_plane(rate_b, cpp, fifo_b,
+                                     V9X_I9XX_WM_LATENCY_NS));
+        v9x_hal->d3d_diagnostics.wm_log_computed[slot] = want;
     }
     v9x_hal->d3d_diagnostics.wm_log_rate_khz[slot] = rate_khz;
     ++v9x_hal->d3d_diagnostics.wm_log_count;
+
+    /*
+     * And program it.
+     *
+     * intel93 read FW_BLC as 6 and 6 at both the panel's mode and the
+     * game's. That is NOT proof the BIOS never reprograms them: both modes
+     * share a pixel rate, a pixel format and a FIFO partition, so a correct
+     * per-mode calculation would land on the same number twice. What the
+     * captures establish is the VALUE, not its provenance.
+     *
+     * The value is the point. Plane B is the one driving the panel, and for
+     * it the arithmetic i915 uses gives 20 against the 6 programmed - a
+     * third of the margin, on a pipe intel90 and intel91 both measured
+     * underrunning. Plane A is idle here and gets its FIFO less the guard,
+     * 26, which is what i915 gives a plane that is not fetching.
+     *
+     * Only the managed fields are replaced; bit 25 and anything else the
+     * BIOS left is kept, because overwriting a bit whose meaning is not
+     * established is not a thing to do to a machine reached by carrying a
+     * USB stick to it.
+     *
+     * Self-refresh stays as found. i915 disables CxSR around a watermark
+     * change and re-enables it after; here FW_BLC_SELF's enable is already
+     * clear (intel91), so there is nothing to disable and enabling it would
+     * be a second change rolled into this one.
+     *
+     * UNCONFIRMED as a fix for the flicker. What is measured is the
+     * underrun and the shortfall; that the underrun is what the camera
+     * caught is inference from the symptom's shape and its concentration in
+     * heavy scenes.
+     */
+    if (want != 0ul && want != v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot]) {
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC) = want;
+        /* Posting read, and the record of what the register now holds. */
+        v9x_hal->d3d_diagnostics.wm_written =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
+        ++v9x_hal->d3d_diagnostics.wm_writes;
+    }
 }
 
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)

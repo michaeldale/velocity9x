@@ -90,6 +90,14 @@ v9x_u32 v9x_i9xx_wm_fw_blc(v9x_u32 plane_a_wm, v9x_u32 plane_b_wm)
            ((v9x_u32)1ul << 24) | ((v9x_u32)1ul << 8);
 }
 
+v9x_u32 v9x_i9xx_wm_fw_blc_merge(v9x_u32 existing, v9x_u32 plane_a_wm,
+                                 v9x_u32 plane_b_wm)
+{
+    return (existing & ~V9X_I9XX_WM_FW_BLC_MANAGED) |
+           (v9x_i9xx_wm_fw_blc(plane_a_wm, plane_b_wm) &
+            V9X_I9XX_WM_FW_BLC_MANAGED);
+}
+
 v9x_u16 v9x_i9xx_wm_fifo_split(v9x_u32 dsparb, v9x_u32 *plane_a,
                                v9x_u32 *plane_b)
 {

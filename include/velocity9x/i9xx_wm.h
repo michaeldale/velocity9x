@@ -8,12 +8,14 @@
  * recordings show frames whose top band is right and whose remainder is
  * black.
  *
- * This driver sets modes through the VBE BIOS and has never programmed a
- * watermark. What the BIOS leaves, intel91 read as plane A 6, plane B 6,
- * overlay 6, self-refresh 127 - the same numbers whatever the mode, which
- * is the shape of a fixed default rather than a computed one. i915
- * computes them per mode in i9xx_update_wm, and for the netbook's timing
- * the same formula gives tens rather than six.
+ * This driver sets modes through the VBE BIOS and, until 2026-09-20, never
+ * programmed a watermark. What it found there, intel91 and intel93 read as
+ * plane A 6, plane B 6, overlay 6, self-refresh 127, unchanged across the
+ * transitions captured - though both those modes share a pixel rate, a
+ * pixel format and a FIFO partition, so that is a reading of the value and
+ * not of its provenance. i915 computes them per mode in i9xx_update_wm,
+ * and for the netbook's live plane the same formula gives 20 against the
+ * 6 found there.
  *
  * The formula lives here, away from the registers, because it is pure
  * arithmetic over a handful of numbers and the project's rule is that such
@@ -75,5 +77,26 @@ v9x_u32 v9x_i9xx_wm_fw_blc(v9x_u32 plane_a_wm, v9x_u32 plane_b_wm);
  */
 v9x_u16 v9x_i9xx_wm_fifo_split(v9x_u32 dsparb, v9x_u32 *plane_a,
                                v9x_u32 *plane_b);
+
+/*
+ * The bits of FW_BLC this driver claims: the two watermarks and the two
+ * burst lengths. Everything else in the register is left as found.
+ *
+ * i915 writes the whole register, treating the rest as zero. This part's
+ * BIOS leaves bit 25 set, which i915 never writes and nothing here
+ * explains, and overwriting a bit whose meaning is unknown is not a thing
+ * to do on a machine that has to be walked to. So the value programmed is
+ * the existing one with these fields replaced.
+ */
+#define V9X_I9XX_WM_FW_BLC_MANAGED \
+    ((v9x_u32)0x3ful | ((v9x_u32)1ul << 8) | \
+     ((v9x_u32)0x3ful << 16) | ((v9x_u32)1ul << 24))
+
+/*
+ * FW_BLC as it should be written: `existing` with the managed fields
+ * replaced by these watermarks. Returns the value to write.
+ */
+v9x_u32 v9x_i9xx_wm_fw_blc_merge(v9x_u32 existing, v9x_u32 plane_a_wm,
+                                 v9x_u32 plane_b_wm);
 
 #endif /* VELOCITY9X_I9XX_WM_H */
