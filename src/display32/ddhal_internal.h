@@ -341,13 +341,19 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
  * last told to show. A draw aimed at it is a draw into the presented
  * buffer. */
 DWORD v9x_present_flip_offset(void);
-/* Non-zero while the first draw after an accepted flip has not yet been
- * recorded. Peeking does not clear it: the arming is consumed by
- * v9x_present_draw_noted, which the caller runs only once a batch has
- * actually been submitted, so a refused batch leaves the marker for the
- * submission that follows it. */
-int v9x_present_draw_pending(void);
-void v9x_present_draw_noted(void);
+/*
+ * Whether this batch is the frame's first draw to record, and consume the
+ * marker if so. `submitted` says whether the backend actually launched a
+ * command, which the caller establishes with v9x_present_submissions
+ * across the call: the rule is in src\common\drawnote.c and is tested
+ * there, because neither a return value nor call ordering is evidence of a
+ * submission.
+ */
+int v9x_present_draw_record(int submitted);
+/* Counted where commands launch, so a caller can tell whether a backend
+ * call put anything on the hardware. */
+void v9x_present_note_submission(void);
+DWORD v9x_present_submissions(void);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

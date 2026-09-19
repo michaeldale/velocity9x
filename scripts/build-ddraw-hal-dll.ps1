@@ -52,6 +52,11 @@ $sources = @(
     # keep spinning for a 3D-done bit the part may not have. Pure, and
     # host-tested in tests\host\test_donewait.c.
     "src\common\donewait.c",
+    # Policy the present trace asks rather than decides: whether a batch
+    # is the frame's first draw to record, which turns on a submission
+    # having happened and not on a return value. Pure, and host-tested in
+    # tests\host\test_drawnote.c.
+    "src\common\drawnote.c",
     "src\display32\ddhal_core.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",

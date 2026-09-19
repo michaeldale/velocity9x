@@ -13,6 +13,7 @@
  * shared block are valid in every process.
  */
 #include "ddhal_internal.h"
+#include "velocity9x/drawnote.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -470,21 +471,34 @@ static DWORD v9x_present_offset = 0ul;
  * 355,422 records. The first draw after a flip is the one the question is
  * about; the rest of the frame is counted, not traced.
  */
-static DWORD v9x_present_draw_armed = 0ul;
+static struct v9x_draw_note v9x_present_draw_note;
+/*
+ * Commands actually launched at the hardware, counted where they launch.
+ * The wrapper reads it either side of a backend call: a change means the
+ * batch submitted, which is the only thing that makes a DRAW record true.
+ * Neither the backend's return value nor its ordering can say this - see
+ * includeelocity9x\drawnote.h for the three readings that proved it.
+ */
+static DWORD v9x_present_submit_count = 0ul;
+
+void v9x_present_note_submission(void)
+{
+    ++v9x_present_submit_count;
+}
+
+DWORD v9x_present_submissions(void)
+{
+    return v9x_present_submit_count;
+}
 
 DWORD v9x_present_flip_offset(void)
 {
     return v9x_present_offset;
 }
 
-int v9x_present_draw_pending(void)
+int v9x_present_draw_record(int submitted)
 {
-    return v9x_present_draw_armed != 0ul ? 1 : 0;
-}
-
-void v9x_present_draw_noted(void)
-{
-    v9x_present_draw_armed = 0ul;
+    return v9x_draw_note_should_record(&v9x_present_draw_note, submitted);
 }
 
 void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)
@@ -738,7 +752,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * after this carries the number of the flip it follows. */
         ++v9x_present_seq;
         v9x_present_offset = offset;
-        v9x_present_draw_armed = 1ul;
+        v9x_draw_note_flip(&v9x_present_draw_note);
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
                           offset);
         v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);

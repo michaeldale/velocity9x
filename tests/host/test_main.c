@@ -60,6 +60,10 @@ unsigned int v9x_run_d3d_raster_tests(void);
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
 unsigned int v9x_run_donewait_tests(void);
+/* tests\host\test_drawnote.c: whether the present trace records a draw,
+ * which turns on a submission having happened rather than on the backend's
+ * return value. */
+unsigned int v9x_run_drawnote_tests(void);
 
 /* tests\host\test_i9xx_mmio.c: read-only Gen3 fingerprint decoding. */
 unsigned int v9x_run_i9xx_mmio_tests(void);
@@ -1037,6 +1041,7 @@ int main(int argc, char **argv)
 #endif
     failures += v9x_run_d3d_raster_tests();
     failures += v9x_run_donewait_tests();
+    failures += v9x_run_drawnote_tests();
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();
     failures += v9x_run_i9xx_ring_tests();

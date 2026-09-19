@@ -1558,6 +1558,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
     }
 
+    v9x_present_note_submission();
     if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
         v9x_d3d_i9xx_breadcrumb_expected = 0ul;
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);

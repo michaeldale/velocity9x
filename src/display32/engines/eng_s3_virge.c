@@ -156,6 +156,9 @@ static int v9x_virge_3d_pending = 0;
 void v9x_engine_3d_launched(void)
 {
     v9x_virge_3d_pending = 1;
+    /* The one place a ViRGE triangle reaches the hardware, so it is also
+     * where a submission becomes true for the present trace. */
+    v9x_present_note_submission();
 }
 
 /*

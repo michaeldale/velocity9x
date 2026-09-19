@@ -262,36 +262,38 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
      * submission that never happened, and would consume the first-draw
      * marker so the real submission went untraced.
      *
-     * So the marker is peeked, not consumed, and is only spent once a
-     * batch has actually been submitted. A refused batch leaves it for the
-     * next one. Refusals are not traced at all - they are not submissions,
-     * and draws_flip_wait_timeouts is what counts them.
+     * And a backend's SUCCESS is not a submission either: the ViRGE path
+     * returns success without launching a command for a degenerate
+     * triangle, a thin one, and a blend its unit cannot express, and
+     * returns failure from the middle of a batch whose earlier triangles
+     * DID launch. So neither the return value nor the ordering decides
+     * this. The submission count, incremented where commands actually
+     * reach the hardware, does; the rule that consumes the marker is in
+     * src\common\drawnote.c and is tested there.
      */
     {
-        int first = v9x_present_draw_pending();
+        DWORD before = v9x_present_submissions();
         int ok = ops->draw_triangles(context, vertices, triangle_count);
+        int submitted = v9x_present_submissions() != before ? 1 : 0;
 
-        if (!ok) {
-            return 0;
-        }
         /*
-         * Into the buffer the panel was last told to show? Counted for
-         * every submitted batch, so it does not depend on the ring's
-         * length. Zero across a run says the engine was never aimed at the
+         * Into the buffer the panel was last told to show? Counted per
+         * SUBMITTED batch, so it does not depend on the ring's length.
+         * Zero across a run says the engine was never aimed at the
          * presented buffer; a large count is premature reuse or a stale
          * binding, and the trace says which by where it sits relative to
          * the flip.
          */
-        if (context->target_offset == v9x_present_flip_offset()) {
+        if (submitted &&
+            context->target_offset == v9x_present_flip_offset()) {
             ++v9x_hal->d3d_diagnostics.draws_into_presented;
         }
-        if (first) {
-            v9x_present_draw_noted();
+        if (v9x_present_draw_record(submitted)) {
             v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
                               (DWORD)(context - v9x_d3d_contexts),
                               context->target_offset);
         }
-        return 1;
+        return ok;
     }
 }
 

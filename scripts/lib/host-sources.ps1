@@ -26,6 +26,7 @@ function Get-V9xHostSourceNames {
         'src\common\d3dmode.c',
         'src\common\vbe_crtc.c',
         'src\common\donewait.c',
+        'src\common\drawnote.c',
         # Intel Gen3 read-only fingerprint decoding; no MMIO access here.
         'src\chipsets\intel\i9xx_mmio.c',
         # Scanline/frame-counter summary; the HAL reads, this counts.
@@ -65,6 +66,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_crtc.c',
         'tests\host\test_d3d_raster.c',
         'tests\host\test_donewait.c',
+        'tests\host\test_drawnote.c',
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',
         'tests\host\test_i9xx_ring.c',
