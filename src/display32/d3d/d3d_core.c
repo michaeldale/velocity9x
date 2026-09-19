@@ -1823,6 +1823,25 @@ DWORD __stdcall V9xD3dSetRenderTarget(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * One bit per type value, so a capture names what an application asked for
+ * rather than how often. D3DPRIMITIVETYPE runs 1..6 and D3DVERTEXTYPE 1..3;
+ * anything outside a mask's width lands in bit 0 rather than shifting off
+ * the end, which is undefined and would report nothing at all.
+ */
+/*
+ * The most triangles handed to an engine in one call. Both single-primitive
+ * paths chunk at it: the indexed one because its gather scratch is this
+ * size, and the list one for the same reason a long state block is flushed
+ * in pieces rather than refused.
+ */
+#define V9X_D3D_INDEXED_BATCH 64u
+
+static DWORD v9x_d3d_type_bit(DWORD value)
+{
+    return value < 32ul ? (1ul << value) : 1ul;
+}
+
 DWORD __stdcall V9xD3dDrawOnePrimitive(
     V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data)
 {
@@ -1838,13 +1857,72 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
                         : 0ul);
     v9x_fpu_save(&fpu);
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
+    /*
+     * Counted, which it was not until 2026-09-20. This entry point is
+     * advertised in the callbacks table and serves exactly one shape - a
+     * three-vertex TRIANGLELIST - so everything else set an error and drew
+     * nothing with no record that it had happened.
+     */
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.oneprim_calls;
+        if (data != 0) {
+            v9x_hal->d3d_diagnostics.oneprim_primtype_seen |=
+                v9x_d3d_type_bit(data->PrimitiveType);
+            v9x_hal->d3d_diagnostics.oneprim_vertextype_seen |=
+                v9x_d3d_type_bit(data->VertexType);
+        }
+    }
     if (ops != 0 && context != 0 && ops->ready() &&
         data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
         data->VertexType == V9X_D3DVT_TLVERTEX &&
-        data->lpvVertices != 0 && data->dwNumVertices == 3ul) {
-        ok = v9x_d3d_draw_batch(ops, context,
-                                 (const V9X_D3DTLVERTEX *)data->lpvVertices,
-                                 1ul);
+        data->lpvVertices != 0 && data->dwNumVertices >= 3ul &&
+        (data->dwNumVertices % 3ul) == 0ul) {
+        /*
+         * Any length, not exactly three.
+         *
+         * This accepted dwNumVertices == 3 and nothing else, and the ViRGE
+         * guest measured what that cost: 852 calls, 852 refusals, ZERO
+         * served, every one a TRIANGLELIST and the last of them 1,260
+         * vertices - 420 triangles thrown away in a single call. A list is a
+         * list; the count was never a property of the shape.
+         *
+         * The vertices are already contiguous, so unlike the indexed path
+         * there is nothing to gather - the batches are windows on the
+         * caller's array. Chunked at the same bound for the same reason.
+         */
+        const V9X_D3DTLVERTEX *vertices =
+            (const V9X_D3DTLVERTEX *)data->lpvVertices;
+        DWORD remaining = data->dwNumVertices / 3ul;
+
+        ok = 1;
+        while (remaining != 0ul) {
+            DWORD batch = remaining > (DWORD)V9X_D3D_INDEXED_BATCH
+                              ? (DWORD)V9X_D3D_INDEXED_BATCH : remaining;
+
+            if (!v9x_d3d_draw_batch(ops, context, vertices, batch)) {
+                ok = 0;
+                break;
+            }
+            vertices += batch * 3ul;
+            remaining -= batch;
+        }
+        if (ok && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.oneprim_drawn;
+            v9x_hal->d3d_diagnostics.oneprim_triangles +=
+                data->dwNumVertices / 3ul;
+        }
+    } else if (v9x_hal != 0 && data != 0) {
+        if (data->PrimitiveType != V9X_D3DPT_TRIANGLELIST) {
+            ++v9x_hal->d3d_diagnostics.oneprim_refused_primtype;
+        } else if (data->VertexType != V9X_D3DVT_TLVERTEX) {
+            ++v9x_hal->d3d_diagnostics.oneprim_refused_vertextype;
+        } else if (data->dwNumVertices != 3ul) {
+            /* A TRIANGLELIST of more than one triangle, which this path
+             * could serve and does not. The last count says how many. */
+            ++v9x_hal->d3d_diagnostics.oneprim_refused_count;
+            v9x_hal->d3d_diagnostics.oneprim_count_last =
+                data->dwNumVertices;
+        }
     }
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_primitive_calls;
@@ -1989,8 +2067,6 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
  * driver trusts is an arbitrary read at four-byte granularity out of a
  * pointer the runtime supplied.
  */
-#define V9X_D3D_INDEXED_BATCH 64u
-
 DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
 {
@@ -2012,19 +2088,47 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.indexed_calls;
+        if (data != 0) {
+            v9x_hal->d3d_diagnostics.indexed_primtype_seen |=
+                v9x_d3d_type_bit(data->PrimitiveType);
+            v9x_hal->d3d_diagnostics.indexed_vertextype_seen |=
+                v9x_d3d_type_bit(data->VertexType);
+        }
     }
 
     if (ops != 0 && context != 0 && ops->ready() && data != 0 &&
-        data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
+        (data->PrimitiveType == V9X_D3DPT_TRIANGLELIST ||
+         data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP) &&
         data->VertexType == V9X_D3DVT_TLVERTEX &&
         data->lpvVertices != 0 && data->lpwIndices != 0 &&
         data->dwNumVertices != 0ul && data->dwNumIndices >= 3ul &&
-        (data->dwNumIndices % 3ul) == 0ul) {
+        (data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ||
+         (data->dwNumIndices % 3ul) == 0ul)) {
+        /*
+         * A strip, as well as a list.
+         *
+         * The ViRGE guest measured every one of 44,952 refusals as the
+         * primitive type, with IndexedPrimTypeSeen 0x30 - lists and strips
+         * and nothing else. So this one type is the whole of what was being
+         * turned away, and the vertex type, the pointers and the index count
+         * never refused a single call.
+         *
+         * A strip of N indices is N-2 triangles sharing edges, and its
+         * winding alternates: the odd triangle takes its first two vertices
+         * swapped. This driver sets CULLMODE_NONE so nothing is culled by
+         * it, but the order still decides which vertex is the provoking one
+         * for flat shading, so the alternation is kept rather than dropped
+         * as unobservable.
+         */
+        DWORD step = data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP
+                         ? 1ul : 3ul;
+
         pool = (const V9X_D3DTLVERTEX *)data->lpvVertices;
         ok = 1;
-        for (index = 0ul; index + 2ul < data->dwNumIndices; index += 3ul) {
-            DWORD first = (DWORD)data->lpwIndices[index];
-            DWORD second = (DWORD)data->lpwIndices[index + 1ul];
+        for (index = 0ul; index + 2ul < data->dwNumIndices; index += step) {
+            DWORD swap = step == 1ul && (index & 1ul) != 0ul;
+            DWORD first = (DWORD)data->lpwIndices[index + (swap ? 1ul : 0ul)];
+            DWORD second = (DWORD)data->lpwIndices[index + (swap ? 0ul : 1ul)];
             DWORD third = (DWORD)data->lpwIndices[index + 2ul];
 
             if (first >= data->dwNumVertices ||
@@ -2060,10 +2164,27 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
             }
         }
     } else if (v9x_hal != 0) {
-        /* A shape this build does not serve - a strip, a fan, an untransformed
-         * vertex - counted apart from a malformed batch, because the two ask
-         * for different work. */
+        /*
+         * A shape this build does not serve, split by WHICH condition failed.
+         * The aggregate stays for continuity with the captures that have only
+         * it; the four below say what to implement next, which the aggregate
+         * could not.
+         */
         ++v9x_hal->d3d_diagnostics.indexed_refused_shape;
+        if (data != 0) {
+            if (data->PrimitiveType != V9X_D3DPT_TRIANGLELIST &&
+                data->PrimitiveType != V9X_D3DPT_TRIANGLESTRIP) {
+                ++v9x_hal->d3d_diagnostics.indexed_refused_primtype;
+            } else if (data->VertexType != V9X_D3DVT_TLVERTEX) {
+                ++v9x_hal->d3d_diagnostics.indexed_refused_vertextype;
+            } else if (data->lpvVertices == 0 || data->lpwIndices == 0 ||
+                       data->dwNumVertices == 0ul) {
+                ++v9x_hal->d3d_diagnostics.indexed_refused_null;
+            } else if (data->dwNumIndices < 3ul ||
+                       (data->dwNumIndices % 3ul) != 0ul) {
+                ++v9x_hal->d3d_diagnostics.indexed_refused_count;
+            }
+        }
     }
 
     if (ok && v9x_hal != 0) {

@@ -823,6 +823,29 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("IndexedRefusedIndex",
                    snapshot.d3d.indexed_refused_index);
     v9x_write_uint("IndexedTriangles", snapshot.d3d.indexed_triangles);
+    v9x_write_hex("IndexedPrimTypeSeen", snapshot.d3d.indexed_primtype_seen);
+    v9x_write_hex("IndexedVertTypeSeen",
+                  snapshot.d3d.indexed_vertextype_seen);
+    v9x_write_uint("IndexedRefusedPrimType",
+                   snapshot.d3d.indexed_refused_primtype);
+    v9x_write_uint("IndexedRefusedVertType",
+                   snapshot.d3d.indexed_refused_vertextype);
+    v9x_write_uint("IndexedRefusedCount",
+                   snapshot.d3d.indexed_refused_count);
+    v9x_write_uint("IndexedRefusedNull", snapshot.d3d.indexed_refused_null);
+    v9x_write_uint("OnePrimCalls", snapshot.d3d.oneprim_calls);
+    v9x_write_uint("OnePrimDrawn", snapshot.d3d.oneprim_drawn);
+    v9x_write_hex("OnePrimPrimTypeSeen", snapshot.d3d.oneprim_primtype_seen);
+    v9x_write_hex("OnePrimVertTypeSeen",
+                  snapshot.d3d.oneprim_vertextype_seen);
+    v9x_write_uint("OnePrimRefusedPrimType",
+                   snapshot.d3d.oneprim_refused_primtype);
+    v9x_write_uint("OnePrimRefusedVertType",
+                   snapshot.d3d.oneprim_refused_vertextype);
+    v9x_write_uint("OnePrimRefusedCount",
+                   snapshot.d3d.oneprim_refused_count);
+    v9x_write_uint("OnePrimCountLast", snapshot.d3d.oneprim_count_last);
+    v9x_write_uint("OnePrimTriangles", snapshot.d3d.oneprim_triangles);
     {
         DWORD index;
 

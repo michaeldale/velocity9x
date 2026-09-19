@@ -618,6 +618,9 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DPTADDRESSCAPS_WRAP         0x00000001ul
 #define V9X_D3DPTADDRESSCAPS_CLAMP        0x00000004ul
 #define V9X_D3DPT_TRIANGLELIST                     4ul
+/* D3DPT_TRIANGLESTRIP, from the DDK's D3DTYPES.H. Added 2026-09-20 when the
+ * ViRGE guest measured every indexed refusal as this one type. */
+#define V9X_D3DPT_TRIANGLESTRIP                    5ul
 #define V9X_D3DVT_TLVERTEX                         3ul
 
 #define V9X_D3DHAL2_CB32_SETRENDERTARGET   0x00000001ul
@@ -1368,6 +1371,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092011: V9X_D3D_DIAGNOSTICS gains oneprim_triangles. An append.
+ */
+/* 2026092010: V9X_D3D_DIAGNOSTICS gains the per-reason refusal split and the
+ * primitive-type masks for both single-primitive paths. An append.
+ */
 /* 2026092009: V9X_D3D_DIAGNOSTICS gains the indexed-primitive counters, and
  * the header the DDK's DRAWONEINDEXEDPRIMITIVEDATA. An append.
  */
@@ -1386,7 +1394,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092009ul
+#define V9X_DD_SHARED_ABI   2026092011ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2510,6 +2518,39 @@ typedef struct v9x_d3d_diagnostics {
     DWORD indexed_refused_shape;
     DWORD indexed_refused_index;
     DWORD indexed_triangles;
+    /*
+     * WHICH shape, on both single-primitive paths.
+     *
+     * indexed_refused_shape counted 44,952 of 49,316 calls on the ViRGE and
+     * could not say why: the test behind it checks the primitive type, the
+     * vertex type, the pointers and the index count all at once. These split
+     * it, and the two _seen masks name what was actually asked for - one bit
+     * per D3DPRIMITIVETYPE and per D3DVERTEXTYPE, so a capture says whether
+     * an application wants strips, fans, lines or something else, which is
+     * the datum that decides what is worth implementing.
+     *
+     * DrawOnePrimitive is counted the same way. It is advertised in the
+     * callbacks table and serves only a TRIANGLELIST of exactly three
+     * vertices; everything else sets an error and draws nothing, and until
+     * now that happened uncounted.
+     */
+    DWORD indexed_primtype_seen;
+    DWORD indexed_vertextype_seen;
+    DWORD indexed_refused_primtype;
+    DWORD indexed_refused_vertextype;
+    DWORD indexed_refused_count;
+    DWORD indexed_refused_null;
+    DWORD oneprim_calls;
+    DWORD oneprim_drawn;
+    DWORD oneprim_primtype_seen;
+    DWORD oneprim_vertextype_seen;
+    DWORD oneprim_refused_primtype;
+    DWORD oneprim_refused_vertextype;
+    DWORD oneprim_refused_count;
+    DWORD oneprim_count_last;
+    /* Triangles drawn through DrawOnePrimitive, which served none at all
+     * until it stopped requiring a list to be exactly one triangle. */
+    DWORD oneprim_triangles;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart
