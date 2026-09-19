@@ -557,6 +557,41 @@ where it is written or at the blank. No register on this part has been
 found that reports it, and the flip-completion bit is not one - ISR read
 before and after all 605 flips ORs to zero, as in intel71 and intel72.
 
+## 2026-09-19 evening: the flicker is photographed, and the S3 half has a fix
+
+`docs\decisions6-09-19-the-trio3d-flicker-is-a-completion-signal-that-
+does-not-exist.md` (its headline explanation withdrawn in place),
+`...-the-edge-write-made-it-worse-and-what-the-upstream-record-says.md`.
+
+The panel was recorded on the Trio3D and the flicker is a single display
+frame, recurring every eight or nine frames, in which only the cleared
+buffer and the sky band are on screen. So the symptom is the buffer under
+construction, confirmed rather than inferred.
+
+Two explanations were tried and are dead. The missing 3D completion signal
+is real - `D3dDoneSeen=0`, `D3dDoneSkipped=273597` on this part - but
+`v9x_virge_settled` already waits on the IDLE bit, and the gap the done bit
+exists to close was measured on 86Box, so it is not established as this
+flicker. Moving the start-address write to the blank-to-active edge made
+the flicker measurably WORSE - 23 dips per twelve seconds became 70, deeper
+- and is reverted.
+
+What is in now, unverified on silicon: the S3 flip completes when the
+retrace ENDS rather than when it starts, and the ViRGE draw path takes the
+intel78 wait before its first batch. Between them those are the standard
+VGA page-flip discipline, which this path followed neither half of. The old
+`VirgeDrawsFlipPending=0` was an artefact of completion at blank onset and
+should not be read as evidence the guard is unneeded.
+
+On the Intel side nothing is fixed. Three things were added to be read on
+the next netbook boot: `Ecoskpd` (0x021D0 bit 0 declares, on Gen3 only,
+whether the flip-pending bit means done or queued - never read here across
+three investigations into that bit never setting), and
+`FlipIssueLine{Last,Min,Max}` against `FlipIssueVactive`, which settle
+whether the plane base readback is the active or the pending value. i915
+relies on it being the active value; this project's latch model says the
+opposite and was inferred from a video.
+
 ## How to run the next boot
 
 1. Deploy the package as usual and run Final Reality; capture as usual.
@@ -570,6 +605,27 @@ before and after all 605 flips ORs to zero, as in intel71 and intel72.
 3. The latch is the open question and no register reports it, so the
    camera is the instrument: record the panel through several flips and
    read where in the frame the buffer changes.
+
+### Trio3D, to judge the S3 fix
+
+Record the panel through one Robots pass and count single-frame luminance
+dips over a twelve-second window, the way the two 2026-09-19 recordings
+were counted: frames below three quarters of the local median, in the
+capture area only. 23 dips is the unfixed baseline and 70 is the edge-write
+regression. Well below 23 means the fix holds; 23 means it does not, and
+the next suspect is the latch itself.
+
+Read `DrawsFlipWaited` beside it. Zero again would mean the wait still
+never fires and the completion definition is still wrong, not that the
+hazard is absent - that is the mistake the first reading of
+`VirgeDrawsFlipPending` made.
+
+### Netbook, to settle the readback
+
+`Ecoskpd`, and `FlipIssueLineMin`/`Max` against `FlipIssueVactive`. Lines
+scattered through active video, with `FlipBaseImmediate` still at 100%, say
+the plane base readback is the pending value and that every conclusion
+drawn from it needs revisiting.
 
 ## Not in scope here
 
