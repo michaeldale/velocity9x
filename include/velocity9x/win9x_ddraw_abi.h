@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091902: V9X_D3D_DIAGNOSTICS gains target_offset_changes and
+ * target_offset_prev, which say whether the flip chain ever rebinds the
+ * engine to a different buffer. An append; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091901: V9X_D3D_DIAGNOSTICS gains flip_window_closed, which splits the
  * two conditions flip_still_drawing counted together. An append; the stamp
  * moves for the reason 2026091603 gives.
@@ -1233,7 +1238,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091901ul
+#define V9X_DD_SHARED_ABI   2026091902ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1904,6 +1909,22 @@ typedef struct v9x_d3d_diagnostics {
      * the beam being outside v9x_scanout_flip_window_open.
      */
     DWORD flip_window_closed;
+    /*
+     * Does the flip chain ever rebind the engine to a different buffer?
+     * target_offset_changes counts the times the render target's video
+     * memory offset differed from the one before it, and
+     * target_offset_prev keeps the offset it changed away from, so the two
+     * buffers can be named. Read with target_offset, which is the current
+     * one.
+     *
+     * A double-buffered title should change once a frame. Near zero over a
+     * run means every frame was drawn into one buffer, and a flip timed
+     * perfectly would still show the drawing. Recorded in the shared D3D
+     * path rather than a backend because the same flicker appears on the
+     * Intel and S3 present paths, which differ (2026-09-19).
+     */
+    DWORD target_offset_changes;
+    DWORD target_offset_prev;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

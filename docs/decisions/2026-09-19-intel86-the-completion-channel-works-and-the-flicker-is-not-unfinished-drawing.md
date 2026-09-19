@@ -57,9 +57,19 @@ rendering outstanding. The model that the breadcrumb existed to test -
 "head == tail says the parser consumed the batch, not that the pixels
 landed" - is answered: by the time a flip is taken, the pixels have landed.
 
-**And the buffers remain right.** `DrawsToFront=0`, `DrawsToBack=575868`,
-against the plane base register read at each batch, not a cached value.
-`FlipDeclined=0`, `FlipForcedIdle=0`, `ScanoutUnresolved=0`.
+**`DrawsToFront=0` again**, `DrawsToBack=575868`, with `FlipDeclined=0`,
+`FlipForcedIdle=0`, `ScanoutUnresolved=0`.
+
+This does NOT say the buffers are right, and an earlier revision of this
+document claimed it did. The comparison reads the plane base register, and
+the latch model in `i9xx_scanout.c` says that register's readback returns
+the PENDING value on a double-buffered register - which is how intel73 came
+to say "applies at once". So for the frame between the write and the latch,
+`draws_displayed_last` names the buffer about to be shown, not the one on
+screen, and a batch landing in the buffer the panel is still fetching is
+counted as a batch to the back. `DrawsToFront` is blind in exactly the
+window the flicker occupies. What it rules out is a target that disagrees
+with the pending base for a whole frame, which is not the same thing.
 
 ## Confirmed, not new
 
@@ -105,6 +115,33 @@ still matches it exactly (flags `3F`, four ring fields zero, PGTBL
 here; the validator is stricter than the driver's own rule and one of the
 two has to move.
 
+## The S3 path flickers the same way
+
+Reported the same day from testing on the Trio3D with hardware Direct3D:
+Final Reality flickers there too, and it looks the same.
+
+The two present paths are not the same code. `v9x_scanout_hw_flip` and
+`v9x_scanout_writes_in_blank` both answer from `v9x_i9xx_scanout_active`,
+so on S3 they are false: the base is written whenever Flip is called, with
+no beam timing at all and no window test, and `v9x_flip_arm` waits for the
+next blank edge. Intel takes the hardware-flip branch with the active-video
+window. One symptom across two different present timings is evidence that
+the present timing is not what produces it.
+
+What the two paths DO share is everything above the scanout: the Flip
+sequence in `ddhal_core.c`, the flip state machine, `v9x_render_drain`, and
+the whole D3D core including which buffer the engine is bound to. That is
+where to look, and the first question there is whether the flip chain
+rebinds the engine at all. `target_offset_changes` and
+`target_offset_prev` (ABI 2026091902) answer it in the shared path, so the
+next capture from either family reports it.
+
+Worth noting against the shared-code reading: `D3dTargetOffset` reads
+`0x00000000` in this capture while `DrawsTargetLast` reads `0x00096000`,
+so the target has held both values at some point in the run. That is not
+evidence it alternated per frame - the zero may be the desktop restore -
+which is why the counter exists.
+
 ## What this leaves
 
 Every mechanism the issue doc lists is now measured out, and the flicker is
@@ -113,3 +150,9 @@ base takes effect where it is written or at the blank - and no register on
 this part has been found that reports it. The next measurement has to be one
 that can see what the panel shows rather than what the driver believes; the
 video record has been that instrument twice and is still the only one.
+
+The S3 result puts a cheaper discriminator ahead of it, though: if the
+flicker is shared code or the game, it should appear on a present path with
+no Direct3D in it at all. `V9XDDP.EXE /reuse` is that test, and a second
+Direct3D title on the same card separates "our shared path" from "Final
+Reality".

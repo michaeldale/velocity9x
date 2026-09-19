@@ -205,6 +205,27 @@ static void v9x_d3d_refresh_target(V9X_D3D_CONTEXT *context)
     }
     context->target_offset = offset;
     if (v9x_hal != 0) {
+        /*
+         * Whether the flip chain ever hands the engine a different buffer.
+         * A double-buffered title alternates here once a frame; an offset
+         * that never changes means every frame is drawn into the same
+         * memory, which is the one way a correctly timed flip still shows
+         * the buffer under construction. DrawsToFront cannot answer this -
+         * it compares against a plane base register whose readback returns
+         * the PENDING value on a double-buffered register, so it is blind
+         * for the frame between the write and the latch.
+         *
+         * Counted in the shared path deliberately: the S3 and Intel
+         * present paths differ - S3 writes the base with no beam timing at
+         * all and waits for the next blank edge, Intel uses the hardware
+         * flip and an active-video window - and the same flicker appears
+         * on both, which points above the scanout rather than inside it.
+         */
+        if (offset != v9x_hal->d3d_diagnostics.target_offset) {
+            v9x_hal->d3d_diagnostics.target_offset_prev =
+                v9x_hal->d3d_diagnostics.target_offset;
+            ++v9x_hal->d3d_diagnostics.target_offset_changes;
+        }
         v9x_hal->d3d_diagnostics.target_offset = offset;
         v9x_hal->d3d_diagnostics.target_pitch = context->pitch;
         v9x_hal->d3d_diagnostics.target_width = context->width;
