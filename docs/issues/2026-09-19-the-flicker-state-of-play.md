@@ -15,6 +15,14 @@ narrative is
 
 ## The symptom, photographed
 
+**Operator clarification, 2026-09-20:** rendering looks correct; the problem
+is intermittent flicker, not persistent missing geometry or textures. It
+has not been seen on some other GPUs. That observation does not establish
+a Final Reality defect: the benchmark could expose a timing or bandwidth
+problem in this driver. Intel and S3 share the DirectDraw/D3D core despite
+their different presentation backends. A matched run with the stock driver
+on the same physical GPU would be a stronger comparison.
+
 One display frame in eight or nine shows only the cleared buffer and the
 sky band at the top of the picture, with everything below it black.
 Complete frames either side. Mean luminance drops to roughly 40-60% of its
@@ -49,9 +57,10 @@ these workloads", not proofs of absence. The `/reuse` result speaks for its
 own flipping pattern, not the game's. The idle-bit confirmation uses the
 signal whose reliability is in question. And correct destinations plus
 completed commands do not establish that the submitted commands produced a
-complete frame - rejected geometry, wrong depth or blend state, and a
-mis-ordered clear remain open and are made likelier, not less, by the
-concentration in particular scene sections.
+complete frame. A mis-ordered clear or a transient rendering-state problem
+remains possible, but neither has been demonstrated. Scene dependence
+alone does not distinguish those from timing or bandwidth pressure; the
+operator reports otherwise correct rendering.
 
 ## Changes tried and measured as not helping
 
@@ -121,6 +130,9 @@ establish is the value, not where it came from.
 
 ## What would settle it
 
+Run the changes separately against matched scenes, with repeated runs where
+possible: the burstiness makes a single improved run weak evidence.
+
 1. Program the watermark and re-count the dips against the 23-per-12 s and
    1.09-per-second baselines, on the netbook, with the panel recorded.
    `WmWrites` and `WmWritten` say whether the write happened and took.
@@ -133,6 +145,55 @@ establish is the value, not where it came from.
    the robot points at rendering, state, clears or rejected submissions; a
    complete one against an incomplete displayed frame points at
    presentation.
+4. Test a build that waits for flip completion before a clear can touch a
+   flip-chain buffer (or returns busy for a non-waiting request). Cover
+   accelerated fills as well as CPU fills. Record the clear destination,
+   operation and flip sequence so a pending flip is not mistaken for proof
+   that the clear touched the displayed buffer. Keep the watermark setting
+   identical between this build and its control. This is a proposed
+   experiment, not an implemented or measured fix.
+5. Compare Final Reality on the same physical GPU with its stock driver,
+   matching mode, settings and scene. A clean stock-driver run would point
+   toward this driver's behavior; observations on different GPUs cannot
+   isolate the driver from the hardware.
+
+## Code review follow-up, 2026-09-20
+
+Reviewed at `dfd9548`. These are code findings, not new hardware evidence;
+none establishes the cause of the recorded flicker. Tree checks and host
+tests passed. No driver changes or hardware trials were made in this review.
+
+- **Watermark writes depend on diagnostic capacity.** In
+  `src/display32/engines/i9xx_scanout.c`, `v9x_i9xx_note_watermarks` returns
+  when the four-entry log fills, before programming the watermark. Later
+  mode changes receive no update until the log resets. Its source-size-only
+  comparison also misses pixel-depth or timing changes at unchanged source
+  dimensions. Separate programming from logging and track the calculation's
+  inputs, not just the source size.
+- **Plane identity is used to choose pipe timing.** The same function
+  selects PIPEA/PIPEB source and totals using `v9x_i9xx_scanout_plane`, even
+  though `v9x_i9xx_scanout_pipe` supports a plane routed to the other pipe.
+  Preserve the resolved pipe separately for timing reads. The documented
+  plane-B/pipe-B netbook configuration is unaffected by this mismatch.
+- **Accelerated S3 blits bypass the pending-flip counter.** In
+  `src/display32/ddhal_core.c`, successful engine fills, depth fills and
+  copies return before `v9x_blt_drain`, which samples `blt_flip_pending`.
+  A zero therefore does not exclude accelerated clears during a pending
+  flip. Sampling belongs before engine dispatch, with the destination and
+  operation recorded. The Intel CPU-blit measurements remain relevant.
+- **The watermark fallback differs from the cited implementation.**
+  `src/common/i9xx_wm.c` permits active-plane watermarks down to 1, and the
+  host tests expect that fallback. Linux v4.4's `intel_calculate_wm` applies
+  a final minimum of 8, citing burst-size constraints. Reconcile this before
+  treating the helper as equivalent across modes. It does not change the
+  netbook's computed value of 20. Reference:
+  [Linux v4.4 intel_pm.c](https://github.com/torvalds/linux/blob/v4.4/drivers/gpu/drm/i915/intel_pm.c).
+
+The known clear/flip exposure remains in place: `v9x_blt_drain` counts a
+pending flip but waits only for rendering/engine work, and Lock likewise
+has no flip wait. Exposure is not proof of visible corruption, especially
+with the conservative two-tick Intel completion rule; destination tracing
+and the isolated clear-wait experiment above would test the consequence.
 
 ## A note on the instruments
 
