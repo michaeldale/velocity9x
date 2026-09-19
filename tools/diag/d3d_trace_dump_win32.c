@@ -749,6 +749,37 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("FilterMagSeen", snapshot.d3d.filter_mag_seen);
     v9x_write_hex("FilterMinSeen", snapshot.d3d.filter_min_seen);
     v9x_write_uint("DrawsMagLinear", snapshot.d3d.draws_mag_linear);
+    v9x_write_uint("DrawsMinLinear", snapshot.d3d.draws_min_linear);
+    v9x_write_uint("StateDropReason", snapshot.d3d.state_drop_reason);
+    v9x_write_hex("StateDropContext", snapshot.d3d.state_drop_context);
+    v9x_write_uint("StateDropCount", snapshot.d3d.state_drop_count);
+    v9x_write_hex("StateDropOffset", snapshot.d3d.state_drop_offset);
+    v9x_write_hex("StateDropHandle", snapshot.d3d.state_drop_handle);
+    v9x_write_uint("BltFlipLogCount", snapshot.d3d.blt_flip_log_count);
+    {
+        DWORD index;
+
+        for (index = 0ul; index < (DWORD)V9X_D3D_BLT_FLIP_LOG; ++index) {
+            char key[32];
+            const V9X_D3D_BLT_FLIP_RECORD *record =
+                &snapshot.d3d.blt_flip_log[index];
+
+            wsprintf(key, "BltFlip%02luSeq", index);
+            v9x_write_uint(key, record->sequence);
+            wsprintf(key, "BltFlip%02luOp", index);
+            v9x_write_uint(key, record->operation);
+            wsprintf(key, "BltFlip%02luOutcome", index);
+            v9x_write_uint(key, record->outcome);
+            wsprintf(key, "BltFlip%02luDest", index);
+            v9x_write_hex(key, record->destination);
+            wsprintf(key, "BltFlip%02luSource", index);
+            v9x_write_hex(key, record->source);
+            wsprintf(key, "BltFlip%02luRetiring", index);
+            v9x_write_hex(key, record->retiring);
+            wsprintf(key, "BltFlip%02luPending", index);
+            v9x_write_hex(key, record->pending);
+        }
+    }
     v9x_write_uint("DriverInfoCalls", snapshot.d3d.driver_info_calls);
     v9x_write_uint("DriverInfoDeclined", snapshot.d3d.driver_info_declined);
     v9x_write_hex("DriverInfoLast", snapshot.d3d.driver_info_last);

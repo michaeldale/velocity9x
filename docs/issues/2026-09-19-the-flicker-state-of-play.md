@@ -159,6 +159,14 @@ possible: the burstiness makes a single improved run weak evidence.
 
 ## Code review follow-up, 2026-09-20
 
+**Subsequent implementation:** `7a678b0` addressed the findings below.
+The follow-up for ABI 2026092005 adds the live plane to the watermark cache
+and records pending-flip engine attempts with their operation, outcome,
+sequence and outgoing/incoming buffer offsets. See
+[the follow-up record](../decisions/2026-09-20-review-filter-submissions-and-clear-flip-records.md)
+for capture-field meanings and limits. The clear path still has no flip
+wait, and hardware validation remains open.
+
 Reviewed at `dfd9548`. These are code findings, not new hardware evidence;
 none establishes the cause of the recorded flicker. Tree checks and host
 tests passed. No driver changes or hardware trials were made in this review.

@@ -1326,7 +1326,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026092004ul
+/* 2026092005: append correlated blit/state rejection records and MIN
+ * submission count; MAG now counts successful submissions. */
+#define V9X_DD_SHARED_ABI   2026092005ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1510,6 +1512,26 @@ typedef struct v9x_dd_cb32 {
 /* Watermark log entries: one per mode within a boot. A run passes through
  * the desktop mode, the game's, and back, so four is room to spare. */
 #define V9X_D3D_WM_LOG 4u
+#define V9X_D3D_BLT_FLIP_LOG 16u
+/* RenderState rejection reasons (first failed precondition). */
+#define V9X_D3D_STATE_DROP_CONTEXT 1ul
+#define V9X_D3D_STATE_DROP_SURFACE 2ul
+#define V9X_D3D_STATE_DROP_GLOBAL  3ul
+#define V9X_D3D_STATE_DROP_MEMORY  4ul
+#define V9X_D3D_STATE_DROP_COUNT   5ul
+/* Engine-blit operation; outcome uses V9X_BLT_DONE/BUSY/DECLINED (0/1/2). */
+#define V9X_D3D_BLT_COPY  1ul
+#define V9X_D3D_BLT_COLOR 2ul
+#define V9X_D3D_BLT_DEPTH 3ul
+typedef struct v9x_d3d_blt_flip_record {
+    DWORD sequence;
+    DWORD operation;
+    DWORD outcome;
+    DWORD destination;
+    DWORD source;
+    DWORD retiring;
+    DWORD pending;
+} V9X_D3D_BLT_FLIP_RECORD;
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -2307,7 +2329,7 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD filter_mag_seen;      /* bit per D3DFILTER value set for MAG     */
     DWORD filter_min_seen;      /* bit per D3DFILTER value set for MIN     */
-    DWORD draws_mag_linear;     /* draws that sampled bilinear             */
+    DWORD draws_mag_linear;     /* successful submissions with MAG linear  */
     DWORD driver_info_calls;
     DWORD driver_info_declined;
     DWORD driver_info_last;     /* first four bytes of the last GUID asked */
@@ -2350,6 +2372,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD d3d_pid_first;
     DWORD d3d_pid_last;
     DWORD d3d_pid_distinct;
+    DWORD draws_min_linear;     /* successful submissions with MIN linear  */
+    DWORD state_drop_reason;
+    DWORD state_drop_context;   /* raw handle, including invalid handles   */
+    DWORD state_drop_count;
+    DWORD state_drop_offset;
+    DWORD state_drop_handle;    /* driver's retained texture handle        */
+    /* Ring of engine attempts made while a flip was pending. Written after
+     * dispatch with its result, using the identity captured before dispatch.
+     * Retiring/pending are requested flip-chain offsets, NOT a scanout read.
+     * BUSY/DECLINED records must not be read as executed clears. */
+    DWORD blt_flip_log_count;
+    V9X_D3D_BLT_FLIP_RECORD blt_flip_log[V9X_D3D_BLT_FLIP_LOG];
 } V9X_D3D_DIAGNOSTICS;
 
 /*

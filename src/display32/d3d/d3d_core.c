@@ -1267,6 +1267,22 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
           exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) &&
         v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_state_dropped;
+        /* Preserve the failed precondition and the affected context without
+         * dereferencing a rejected state block. The retained handle is not
+         * evidence of what the application attempted to bind. */
+        v9x_hal->d3d_diagnostics.state_drop_reason = context == 0
+            ? V9X_D3D_STATE_DROP_CONTEXT : exe == 0
+            ? V9X_D3D_STATE_DROP_SURFACE : exe->lpGbl == 0
+            ? V9X_D3D_STATE_DROP_GLOBAL : exe->lpGbl->fpVidMem == 0ul
+            ? V9X_D3D_STATE_DROP_MEMORY : V9X_D3D_STATE_DROP_COUNT;
+        v9x_hal->d3d_diagnostics.state_drop_context =
+            data != 0 ? data->dwhContext : 0ul;
+        v9x_hal->d3d_diagnostics.state_drop_count =
+            data != 0 ? data->dwCount : 0ul;
+        v9x_hal->d3d_diagnostics.state_drop_offset =
+            data != 0 ? data->dwOffset : 0ul;
+        v9x_hal->d3d_diagnostics.state_drop_handle =
+            context != 0 ? context->texture_handle : 0ul;
     }
 
     if (context != 0 && exe != 0 && exe->lpGbl != 0 &&

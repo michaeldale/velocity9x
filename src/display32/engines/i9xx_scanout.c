@@ -80,6 +80,7 @@ static DWORD v9x_i9xx_scanout_pipe_index = 0ul;
  * v9x_i9xx_note_watermarks.
  */
 static int v9x_i9xx_wm_last_valid = 0;
+static DWORD v9x_i9xx_wm_last_plane = 0ul;
 static DWORD v9x_i9xx_wm_last_pipesrc = 0ul;
 static DWORD v9x_i9xx_wm_last_rate_khz = 0ul;
 static DWORD v9x_i9xx_wm_last_cpp = 0ul;
@@ -411,6 +412,7 @@ static void v9x_i9xx_note_watermarks(void)
      * put back rather than left.
      */
     if (v9x_i9xx_wm_last_valid != 0 &&
+        v9x_i9xx_wm_last_plane == v9x_i9xx_scanout_plane &&
         v9x_i9xx_wm_last_pipesrc == pipesrc &&
         v9x_i9xx_wm_last_rate_khz == rate_khz &&
         v9x_i9xx_wm_last_cpp == cpp &&
@@ -419,6 +421,7 @@ static void v9x_i9xx_note_watermarks(void)
         return;
     }
     v9x_i9xx_wm_last_valid = 1;
+    v9x_i9xx_wm_last_plane = v9x_i9xx_scanout_plane;
     v9x_i9xx_wm_last_pipesrc = pipesrc;
     v9x_i9xx_wm_last_rate_khz = rate_khz;
     v9x_i9xx_wm_last_cpp = cpp;
@@ -764,6 +767,7 @@ void v9x_scanout_reset(void)
      * pipestat baseline is: carrying them across a DriverInit would skip the
      * first calculation of the new session against the old one's mode. */
     v9x_i9xx_wm_last_valid = 0;
+    v9x_i9xx_wm_last_plane = 0ul;
     v9x_i9xx_wm_last_pipesrc = 0ul;
     v9x_i9xx_wm_last_rate_khz = 0ul;
     v9x_i9xx_wm_last_cpp = 0ul;

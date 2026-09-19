@@ -466,6 +466,9 @@ static DWORD v9x_present_seq = 0ul;
 /* The offset of the flip currently pending, so its completion record names
  * the buffer it presented. */
 static DWORD v9x_present_offset = 0ul;
+/* The outgoing surface named by the last accepted flip, not a register
+ * read that might already report the pending address. */
+static DWORD v9x_present_retiring = 0xfffffffful;
 
 /*
  * Set when a flip is accepted, cleared by the first draw recorded after it.
@@ -766,6 +769,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         /* Accepted: the sequence advances here, so every draw recorded
          * after this carries the number of the flip it follows. */
         ++v9x_present_seq;
+        v9x_present_retiring = v9x_surface_offset(data->lpSurfCurr);
         v9x_present_offset = offset;
         v9x_draw_note_flip(&v9x_present_draw_note);
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
@@ -1213,13 +1217,39 @@ static void v9x_note_lock_flip_pending(void)
  * matters if the clear lands where the scanout is reading, and the count
  * alone cannot say. Nothing here waits.
  */
-static void v9x_note_engine_blt_flip_pending(DWORD destination_offset)
+static int v9x_note_engine_blt_flip_pending(V9X_D3D_BLT_FLIP_RECORD *record,
+                                            DWORD operation,
+                                            DWORD destination_offset,
+                                            DWORD source_offset)
 {
     if (v9x_hal != 0 && v9x_flip_pending()) {
         ++v9x_hal->d3d_diagnostics.blt_engine_flip_pending;
         v9x_hal->d3d_diagnostics.blt_engine_flip_last_dest =
             destination_offset;
+        record->sequence = v9x_present_seq;
+        record->operation = operation;
+        record->destination = destination_offset;
+        record->source = source_offset;
+        record->retiring = v9x_present_retiring;
+        record->pending = v9x_present_offset;
+        return 1;
     }
+    return 0;
+}
+
+static void v9x_note_engine_blt_result(V9X_D3D_BLT_FLIP_RECORD *record,
+                                       int sampled, int outcome)
+{
+    DWORD slot;
+
+    if (!sampled || v9x_hal == 0) {
+        return;
+    }
+    record->outcome = (DWORD)outcome;
+    slot = v9x_hal->d3d_diagnostics.blt_flip_log_count %
+           (DWORD)V9X_D3D_BLT_FLIP_LOG;
+    v9x_hal->d3d_diagnostics.blt_flip_log[slot] = *record;
+    ++v9x_hal->d3d_diagnostics.blt_flip_log_count;
 }
 
 static int v9x_blt_drain(int wait)
@@ -1304,10 +1334,15 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
         int outcome;
+        int sampled;
+        V9X_D3D_BLT_FLIP_RECORD record;
 
-        v9x_note_engine_blt_flip_pending(destination_offset);
+        sampled = v9x_note_engine_blt_flip_pending(&record, V9X_D3D_BLT_COPY,
+                                                   destination_offset,
+                                                   source_offset);
         outcome = ops->copy(data, source_offset, destination_offset,
                             bytes_per_pixel, wait);
+        v9x_note_engine_blt_result(&record, sampled, outcome);
 
         if (outcome == V9X_BLT_BUSY) {
             data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1365,8 +1400,12 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
-        v9x_note_engine_blt_flip_pending(offset);
+        V9X_D3D_BLT_FLIP_RECORD record;
+        int sampled = v9x_note_engine_blt_flip_pending(
+            &record, V9X_D3D_BLT_COLOR, offset, 0xfffffffful);
+
         outcome = ops->fill(data, offset, bytes_per_pixel, wait);
+        v9x_note_engine_blt_result(&record, sampled, outcome);
     }
     if (outcome == V9X_BLT_BUSY) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1442,8 +1481,12 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
-        v9x_note_engine_blt_flip_pending(offset);
+        V9X_D3D_BLT_FLIP_RECORD record;
+        int sampled = v9x_note_engine_blt_flip_pending(
+            &record, V9X_D3D_BLT_DEPTH, offset, 0xfffffffful);
+
         outcome = ops->fill(data, offset, bytes_per_pixel, wait);
+        v9x_note_engine_blt_result(&record, sampled, outcome);
     }
     if (outcome == V9X_BLT_BUSY) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1787,4 +1830,3 @@ BOOL __stdcall V9xHalEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
     /* Keep the linker-visible reference to the build marker. */
     return v9x_hal_build_id[0] != '\0';
 }
-

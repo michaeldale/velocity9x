@@ -871,13 +871,6 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
     map->wrap = context->texture_address == V9X_D3DTADDRESS_WRAP ? 1ul : 0ul;
     map->mag_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_mag);
     map->min_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_min);
-    /* Counted at the bind rather than at the render state, so it reports
-     * what was sampled with and not what was requested - the two differ
-     * whenever a state block is dropped or a value is one this engine
-     * folds away. */
-    if (map->mag_linear != 0ul) {
-        ++v9x_hal->d3d_diagnostics.draws_mag_linear;
-    }
     v9x_hal->d3d_diagnostics.texture_last_offset = address;
     v9x_hal->d3d_diagnostics.texture_last_size = map->width;
     v9x_hal->d3d_diagnostics.texture_last_caps = surface->ddsCaps;
@@ -1579,6 +1572,15 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     ++v9x_hal->d3d_diagnostics.i9xx_draws_submitted;
     if (textured != 0) {
         ++v9x_hal->d3d_diagnostics.i9xx_texture_draws;
+        /* Successful textured submissions with these sampler states.
+         * Binding alone can be followed by a refusal; neither counter
+         * proves which filter the hardware used for any particular pixel. */
+        if (map.mag_linear != 0ul) {
+            ++v9x_hal->d3d_diagnostics.draws_mag_linear;
+        }
+        if (map.min_linear != 0ul) {
+            ++v9x_hal->d3d_diagnostics.draws_min_linear;
+        }
     }
     if (depthed != 0) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_draws;

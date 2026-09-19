@@ -4,7 +4,7 @@
 `3dmark99\` and `FinalReality\`. Reported: 3DMark99 says bilinear filtering
 is not supported.
 
-## The intel94 question is answered, and the answer is a clean partition
+## The stored handles give a clean partition, not an explanation
 
 ```
 I9xxDrawsSubmitted=8458692   I9xxTextureDraws=8209582   I9xxDrawsRefused=70
@@ -19,14 +19,16 @@ The counters close exactly:
 249110 + 70 refused = 249180 = DrawsNoHandle
 ```
 
-Every draw that sampled nothing is a draw where the application had bound
-nothing, to the last one. `DrawsHandleUnresolved=0`: not a single binding
-was lost. **97.1 per cent of draws sampled a texture.**
+**97.1 per cent of successful submissions were textured.** The remaining
+counts match the draws for which the driver's stored texture handle was
+zero. `DrawsHandleUnresolved=0` says no nonzero handle lookup failed; it
+does not say every binding the application requested was applied.
 
-So the intel94 hypothesis list is settled without a fix being needed: it was
-neither a lost handle nor a dropped state block. Six state blocks were
-dropped across the whole run, against 391,028 texture-handle sets - real,
-and far too few to matter to the picture.
+A dropped TEXTUREHANDLE block can leave that stored handle at zero and
+produce this same partition. Six dropped blocks can affect many later
+draws because state persists until changed. Their effect is unmeasured.
+The intel94 hypotheses remain open: this is a different workload whose
+application attribution is also uncertain (see the before-and-after record).
 
 ## Which leaves intel94 itself unexplained
 
@@ -78,18 +80,29 @@ Six counters, ABI stamp 2026092002, appended:
 |---|---|
 | `FilterMagSeen` | one bit per D3DFILTER value set for magnification |
 | `FilterMinSeen` | the same for minification |
-| `DrawsMagLinear` | draws that actually sampled bilinear |
+| `DrawsMagLinear` | successful textured submissions with magnification set to linear |
+| `DrawsMinLinear` | successful textured submissions with minification set to linear (2026092005) |
 | `DriverInfoCalls` | how often GetDriverInfo was called |
 | `DriverInfoDeclined` | how many of those were turned away |
 | `DriverInfoLast` | the first four bytes of the last GUID asked for |
 
-`FilterMagSeen` carrying no LINEAR bit means the application never asked,
-which points at the capability path. Carrying one while `DrawsMagLinear` is
-zero means it asked and the driver dropped it, which points at the sampler.
-The two cannot both be true, so one run separates them.
+`FilterMagSeen` and `FilterMinSeen` record states the driver applied, not
+requests hidden inside rejected blocks. A LINEAR bit with no corresponding
+submission can also mean no textured draw followed that state, or that the
+draw was refused. These counters alone cannot isolate a capability or
+sampler defect.
 
-`DrawsMagLinear` is counted at the bind and not at the render state, so it
-reports what was sampled with rather than what was requested.
+From ABI 2026092005, both linear counters increment alongside successful
+textured submissions, after validation and submission. The earlier MAG
+counter incremented at bind time and included later-refused draws. Neither
+counter proves which filter the GPU used for any particular pixel.
+
+The latest rejected state block now records `StateDropReason`,
+`StateDropContext`, `StateDropCount`, `StateDropOffset` and the retained
+`StateDropHandle`. Reasons are 1=context, 2=surface, 3=global surface,
+4=memory pointer and 5=count over 64. The retained handle is the driver's
+state, not the rejected request. No rejected block is dereferenced to
+collect this diagnostic, and earlier rejections can be overwritten.
 
 **Nothing is fixed.** The `dpcLineCaps` and `GUID_D3DExtendedCaps` gaps are
 real and are candidates, and filling either before knowing which one the
