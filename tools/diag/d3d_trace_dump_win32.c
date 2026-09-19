@@ -715,6 +715,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("WmLogCount", snapshot.d3d.wm_log_count);
     v9x_write_uint("WmWrites", snapshot.d3d.wm_writes);
     v9x_write_hex("WmWritten", snapshot.d3d.wm_written);
+    v9x_write_uint("DrawsNoHandle", snapshot.d3d.draws_no_handle);
+    v9x_write_uint("DrawsHandleUnresolved",
+                   snapshot.d3d.draws_handle_unresolved);
+    v9x_write_uint("RenderStateDropped", snapshot.d3d.render_state_dropped);
+    v9x_write_uint("TextureHandleSets", snapshot.d3d.texture_handle_sets);
+    v9x_write_hex("TextureHandleLast", snapshot.d3d.texture_handle_last);
     {
         DWORD index;
 

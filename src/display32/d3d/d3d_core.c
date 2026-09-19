@@ -396,11 +396,30 @@ V9X_DD_SURFACE_LCL *v9x_d3d_context_texture_surface(
     V9X_D3D_TEXTURE *texture;
 
     if (context == 0 || context->texture_handle == 0ul) {
+        /*
+         * No handle is not an error - untextured geometry is ordinary. It is
+         * counted because intel94 measured 3DMark99 drawing 96.5 per cent of
+         * its primitives untextured with every refusal counter at zero, and
+         * a zero here was the only way that could happen. Which zero it is
+         * decides the fix, so the two are separated.
+         */
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.draws_no_handle;
+        }
         return 0;
     }
     texture = v9x_d3d_texture_from_handle(context->texture_handle,
                                            (DWORD)context);
-    return texture != 0 ? texture->lcl : 0;
+    if (texture == 0 || texture->lcl == 0) {
+        /* A handle that names no live texture of this context. Unlike the
+         * case above this is a defect wherever it comes from: the
+         * application bound something, and the binding was lost. */
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.draws_handle_unresolved;
+        }
+        return 0;
+    }
+    return texture->lcl;
 }
 
 DWORD __stdcall V9xD3dRenderPrimitive(
@@ -1197,6 +1216,19 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     exe = data != 0
         ? v9x_d3d_surface_lcl(data->lpExeBuf, V9X_D3D_LCL_SITE_ONEPRIM_EXE)
         : 0;
+    /*
+     * Everything below applies or nothing does, and until intel94 nothing
+     * counted the nothing. A call whose context or execute buffer does not
+     * resolve - or whose block is longer than the loop will walk - returns
+     * handled and applies no state at all, so a texture handle in it is a
+     * binding the application believes it made and the driver never saw.
+     */
+    if (!(context != 0 && exe != 0 && exe->lpGbl != 0 &&
+          exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) &&
+        v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.render_state_dropped;
+    }
+
     if (context != 0 && exe != 0 && exe->lpGbl != 0 &&
         exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) {
         states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
@@ -1207,6 +1239,11 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
                 context->texture_handle = states[index].argument;
+                if (v9x_hal != 0) {
+                    ++v9x_hal->d3d_diagnostics.texture_handle_sets;
+                    v9x_hal->d3d_diagnostics.texture_handle_last =
+                        states[index].argument;
+                }
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE:
                 /* Perspective setup is added after the affine texture gate. */

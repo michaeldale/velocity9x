@@ -1136,6 +1136,13 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026092001: V9X_D3D_DIAGNOSTICS gains the five counters that say why a
+ * draw sampled nothing. intel94 measured 3DMark99 drawing 96.5 per cent of
+ * its primitives untextured with every refusal counter at zero, which means
+ * the engine was never offered a texture - and nothing said whether the
+ * handle was absent, unresolvable, or lost with a dropped state block. An
+ * append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091918: V9X_D3D_DIAGNOSTICS gains the watermark write counters. The
  * driver now programs FW_BLC. An append; the stamp moves for the reason
  * 2026091603 gives.
@@ -1310,7 +1317,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091918ul
+#define V9X_DD_SHARED_ABI   2026092001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2242,6 +2249,31 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD wm_writes;
     DWORD wm_written;
+    /*
+     * Why a draw sampled nothing.
+     *
+     * intel94 ran 3DMark99 with textures missing from the picture and
+     * reported 8,868 textured draws out of 252,084, with every
+     * texture_refused_* counter at zero. A refusal counter at zero and a
+     * draw that samples nothing means the engine was never offered a
+     * surface to refuse: v9x_d3d_context_texture_surface returned nothing,
+     * and it has two ways to do that which no counter told apart.
+     *
+     * So they are told apart here. draws_no_handle is the context carrying
+     * no texture handle at the draw; draws_handle_unresolved is a handle
+     * that did not name a live texture of this context, which is a
+     * different defect with a different fix.
+     *
+     * render_state_dropped is the third candidate and sits upstream of
+     * both: V9xD3dRenderState applies nothing at all unless the context and
+     * the execute buffer both resolve, and it had no counter for the times
+     * they did not. A block dropped whole is a texture handle never seen.
+     */
+    DWORD draws_no_handle;
+    DWORD draws_handle_unresolved;
+    DWORD render_state_dropped;
+    DWORD texture_handle_sets;  /* TEXTUREHANDLE seen in a state block     */
+    DWORD texture_handle_last;  /* the value it was last set to            */
 } V9X_D3D_DIAGNOSTICS;
 
 /*
