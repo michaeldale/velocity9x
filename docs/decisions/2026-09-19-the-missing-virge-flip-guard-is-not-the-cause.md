@@ -65,12 +65,62 @@ exist at all. But it is conditional on the frame rate: a faster scene, or a
 card that presents at 60, could put batches inside the window. Robots on a
 Trio3D does not.
 
-## Not reproduced here
+## Repeated with the panel recorded
 
-This run was driven headless and nobody watched the panel; OBS was not
-connected. Nothing in it confirms or denies that this particular pass
-flickered. The operator's report of flicker on this machine stands as the
-reason for the investigation and is not re-established by this capture.
+A second pass was run with OBS capturing the card's output through a
+capture device at 1920x1080/60. Recording
+`C:/Users/mdale/Videos/2026-09-19 15-48-23.mkv` on the OBS host (a
+different machine from the development host, so the file is not readable
+from this repository); the benchmark itself runs from about t+65 s to
+t+128 s, wall clock 15:49:28 to 15:50:31.
+
+Attached: `2026-09-19-trio3d-robots-recorded-V9XSNAP.txt`.
+
+The two passes agree to within the noise of a benchmark:
+
+| | first | recorded |
+|---|---|---|
+| `D3dRenderPrimitiveCalls` | 133771 | 133670 |
+| `FlipHandled` / `CountFlip` | 268 | 268 |
+| `FlipStillDrawing` / `WindowClosed` / `Declined` | 0 | 0 |
+| `VirgeDrawsFlipPending` | 0 | 0 |
+| `DrawsIntoPresented` | 0 | 0 |
+| `PresentTraceCount` | 803 | 803 |
+
+The present trace is the same shape in both, the same ten frames of clean
+alternation. The result is reproducible, not a single sample.
+
+Whether the recording shows flicker has not been read here: the video lives
+on the OBS host and nobody has watched it yet. The operator's report stands
+as the reason for the investigation and this capture does not re-establish
+it.
+
+## One engine reset per run, reproducibly
+
+```
+EngineFifoTimeouts=0   EngineIdleTimeouts=1   EngineResets=1
+```
+
+Identical in both passes. The runbook
+(`docs\specifications\final-reality-101-runbook.md`) says to expect zero in
+all three. So a Robots pass on this card takes one idle timeout and one
+engine reset, every time, and has done so unnoticed.
+
+This is not obviously the flicker - one reset across 268 presents is not the
+shape of something seen every frame - and it may be the teardown rather than
+the run, which nothing here distinguishes. But it is a reproducible
+deviation from what the runbook expects, it was not being looked at, and it
+is the only non-zero anomaly the ViRGE path has produced all day.
+
+## The machine reset itself between the two passes
+
+`BootCounter` went 91 to 92 with nothing executing: ICMP stopped answering
+at 15:39, stayed down about eight minutes, and the agent came back with an
+uptime of 20 seconds. That matches the behaviour already recorded for this
+machine on 2026-09-05 (b38 -> b39, back in about two minutes, nothing
+running). It is listed here because it happened while this build was
+installed and the two cannot be separated from one sample; the build is not
+accused, and the machine has done it before with other builds.
 
 ## Also measured, and it corrects a guest result
 
