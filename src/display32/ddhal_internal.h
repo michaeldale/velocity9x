@@ -341,9 +341,13 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
  * last told to show. A draw aimed at it is a draw into the presented
  * buffer. */
 DWORD v9x_present_flip_offset(void);
-/* Non-zero once per accepted flip, for the first draw that follows it, and
- * it clears the arming. */
-int v9x_present_draw_is_first(void);
+/* Non-zero while the first draw after an accepted flip has not yet been
+ * recorded. Peeking does not clear it: the arming is consumed by
+ * v9x_present_draw_noted, which the caller runs only once a batch has
+ * actually been submitted, so a refused batch leaves the marker for the
+ * submission that follows it. */
+int v9x_present_draw_pending(void);
+void v9x_present_draw_noted(void);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

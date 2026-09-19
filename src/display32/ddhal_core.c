@@ -477,13 +477,14 @@ DWORD v9x_present_flip_offset(void)
     return v9x_present_offset;
 }
 
-int v9x_present_draw_is_first(void)
+int v9x_present_draw_pending(void)
 {
-    if (v9x_present_draw_armed == 0ul) {
-        return 0;
-    }
+    return v9x_present_draw_armed != 0ul ? 1 : 0;
+}
+
+void v9x_present_draw_noted(void)
+{
     v9x_present_draw_armed = 0ul;
-    return 1;
 }
 
 void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)

@@ -238,48 +238,60 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
                               const V9X_D3DTLVERTEX *vertices,
                               DWORD triangle_count)
 {
-    /*
-     * Into the buffer the panel was last told to show? Counted for every
-     * batch, so it does not depend on the ring's length. Zero across a run
-     * says the engine was never aimed at the presented buffer; a large
-     * count is premature reuse or a stale binding, and the trace below
-     * says which by where it sits relative to the flip.
-     */
-    if (context->target_offset == v9x_present_flip_offset()) {
-        ++v9x_hal->d3d_diagnostics.draws_into_presented;
-    }
     /* The retrace source's duty cycle, sampled where the batches are. A
      * real vertical blank is a few per cent of a frame; a ratio near 1 is
      * a source that always says yes, which would release every buffer
-     * before its latch. */
+     * before its latch. Sampling is about when this code ran, so it is
+     * taken whether or not the batch goes on to be submitted. */
     ++v9x_hal->d3d_diagnostics.vblank_samples;
     if (v9x_in_vblank()) {
         ++v9x_hal->d3d_diagnostics.vblank_in_blank;
     }
     /*
-     * The DRAW record is taken AFTER the backend returns, not before it.
+     * Everything that claims a draw HAPPENED is recorded after the backend
+     * returns, and only if it returned success.
      *
-     * The backends wait here: d3d_i9xx.c for a pending flip since intel78,
-     * d3d_virge.c since 2026-09-19. That wait calls v9x_flip_done, which
-     * emits the FLIP_DONE record. Tracing the draw first therefore wrote
-     * ACCEPTED, DRAW, DONE for a batch that had correctly waited - the
-     * exact pattern this ring exists to call premature reuse. The ordering
-     * is the whole instrument, so the record has to mark SUBMISSION, which
-     * is after any synchronisation the backend performs.
+     * Two reasons, both of which produced a wrong reading first. The
+     * backends wait here - d3d_i9xx.c for a pending flip since intel78,
+     * d3d_virge.c since 2026-09-19 - and that wait calls v9x_flip_done,
+     * which emits the FLIP_DONE record; tracing the draw first wrote
+     * ACCEPTED, DRAW, DONE for a batch that had correctly waited, the
+     * exact pattern this ring exists to call premature reuse. And a
+     * backend can REFUSE: the ViRGE path returns without submitting when
+     * its flip wait runs out, so a record taken regardless would claim a
+     * submission that never happened, and would consume the first-draw
+     * marker so the real submission went untraced.
      *
-     * The arming is consumed before the call so that the batch which took
-     * the wait is the one reported, whatever the backend returns.
+     * So the marker is peeked, not consumed, and is only spent once a
+     * batch has actually been submitted. A refused batch leaves it for the
+     * next one. Refusals are not traced at all - they are not submissions,
+     * and draws_flip_wait_timeouts is what counts them.
      */
     {
-        int first = v9x_present_draw_is_first();
+        int first = v9x_present_draw_pending();
         int ok = ops->draw_triangles(context, vertices, triangle_count);
 
+        if (!ok) {
+            return 0;
+        }
+        /*
+         * Into the buffer the panel was last told to show? Counted for
+         * every submitted batch, so it does not depend on the ring's
+         * length. Zero across a run says the engine was never aimed at the
+         * presented buffer; a large count is premature reuse or a stale
+         * binding, and the trace says which by where it sits relative to
+         * the flip.
+         */
+        if (context->target_offset == v9x_present_flip_offset()) {
+            ++v9x_hal->d3d_diagnostics.draws_into_presented;
+        }
         if (first) {
+            v9x_present_draw_noted();
             v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
                               (DWORD)(context - v9x_d3d_contexts),
                               context->target_offset);
         }
-        return ok;
+        return 1;
     }
 }
 
