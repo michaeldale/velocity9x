@@ -620,6 +620,16 @@ never fires and the completion definition is still wrong, not that the
 hazard is absent - that is the mistake the first reading of
 `VirgeDrawsFlipPending` made.
 
+### Not the agent's screenshot
+
+Tried on 2026-09-19 and it cannot work. A burst of 13 captures during a
+Robots pass on the Trio3D returned 13 complete frames, means spread 23 to
+116 purely by where the camera was in the scene. The screenshot reaches the
+primary through GDI, which takes the driver's Lock path, which waits for
+the engine to go idle - so it can never return a buffer caught mid-draw.
+The wait that makes the capture clean is the thing the flicker is about.
+Only a recording of the panel answers this.
+
 ### Netbook, to settle the readback
 
 `Ecoskpd`, and `FlipIssueLineMin`/`Max` against `FlipIssueVactive`. Lines
