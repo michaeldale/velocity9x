@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091911: V9X_D3D_DIAGNOSTICS gains the flip-issue delta, the
+ * scanlines the write path costs between the window test and the flip
+ * actually being issued. An append; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091910: V9X_D3D_DIAGNOSTICS gains virge_flip_idle_false, the strict
  * settle's count at the flip. An append; the stamp moves for the reason
  * 2026091603 gives.
@@ -1275,7 +1280,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091910ul
+#define V9X_DD_SHARED_ABI   2026091911ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2084,6 +2089,14 @@ typedef struct v9x_d3d_diagnostics {
      * not proceed until the engine settles or the bound runs out.
      */
     DWORD virge_flip_idle_false;
+    /*
+     * Scanlines between entering the display-start write path and the flip
+     * being issued - the cost the latch guard has to cover and did not.
+     * intel89 inferred up to ninety-odd from the two ends; this measures
+     * it, and the guard should be sized from its distribution.
+     */
+    DWORD flip_issue_delta_last;
+    DWORD flip_issue_delta_max;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

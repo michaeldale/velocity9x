@@ -77,6 +77,9 @@ static int v9x_i9xx_scanout_flip_outstanding = 0;
 static DWORD v9x_i9xx_scanout_framehigh_reg = 0ul;
 static DWORD v9x_i9xx_scanout_framepixel_reg = 0ul;
 static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
+/* The display line when set_display_start was entered, against which the
+ * line at issue gives the cost of the write path in scanlines. */
+static DWORD v9x_i9xx_scanout_entry_line = 0ul;
 
 /*
  * Tries at a consistent pair of counter reads. The high word and the low
@@ -354,6 +357,18 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             }
             v9x_hal->d3d_diagnostics.flip_issue_vactive =
                 (*v9x_i9xx_scanout_reg(vtotal) & 0x00000ffful) + 1ul;
+            /* Lines consumed between entering the write path and the flip
+             * being issued. Wraps are discarded rather than guessed at:
+             * a flip that spans a frame boundary is not what the guard is
+             * being sized against. */
+            if (line >= v9x_i9xx_scanout_entry_line) {
+                DWORD delta = line - v9x_i9xx_scanout_entry_line;
+
+                v9x_hal->d3d_diagnostics.flip_issue_delta_last = delta;
+                if (v9x_hal->d3d_diagnostics.flip_issue_delta_max < delta) {
+                    v9x_hal->d3d_diagnostics.flip_issue_delta_max = delta;
+                }
+            }
         }
     }
     if (*v9x_i9xx_scanout_reg(base_reg) == byte_offset) {
@@ -413,6 +428,16 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
     if (!v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
         return 0;
     }
+    /*
+     * The line on the way IN, so the distance to the line at issue is the
+     * cost of everything between - which intel89 measured indirectly and
+     * badly: the window test requires line < 568 and the issue line
+     * reached 660, so something between them was eating up to ninety-odd
+     * lines. This measures it directly instead of inferring it from the
+     * two ends.
+     */
+    v9x_i9xx_scanout_entry_line =
+        *v9x_i9xx_scanout_reg(dsl) & V9X_I9XX_DSL_LINE_MASK;
     /* ISR with no flip of ours outstanding, and the frame the flip is
      * issued in: the completion rule below waits for the counter to move. */
     v9x_hal->d3d_diagnostics.isr_before_flip_or |=
@@ -520,7 +545,22 @@ int v9x_set_display_start(DWORD byte_offset)
  * docs\decisions\2026-09-19-intel86-the-completion-channel-works-and-the-
  * flicker-is-not-unfinished-drawing.md
  */
-#define V9X_I9XX_FLIP_LATCH_GUARD_LINES 8ul
+/*
+ * Eight lines was a guard against a write RACING the latch. intel89 shows
+ * the write does not arrive when the test passes: the test requires line <
+ * 568 and the line at issue reached 660, eighty-four lines INTO the blank
+ * and past the latch the guard exists to stay clear of. Everything between
+ * the test and the write - resolving the pipe, reading the frame counter,
+ * building and submitting the ring flip - costs scanlines, and the guard
+ * accounted for none of them.
+ *
+ * Ninety-six covers intel89's worst overshoot with a little room, and
+ * leaves 480 of 576 active lines usable, which at 46,183 Flip attempts a
+ * pass is not a scarce window. PROVISIONAL: flip_issue_delta_max now
+ * measures the cost directly, and this should be re-sized from that
+ * distribution rather than from one run's maximum.
+ */
+#define V9X_I9XX_FLIP_LATCH_GUARD_LINES 96ul
 
 /*
  * The issue window: active video, short of the latch at the first blank

@@ -629,6 +629,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("FlipIssueLineMin", snapshot.d3d.flip_issue_line_min);
     v9x_write_uint("FlipIssueLineMax", snapshot.d3d.flip_issue_line_max);
     v9x_write_uint("FlipIssueVactive", snapshot.d3d.flip_issue_vactive);
+    v9x_write_uint("FlipIssueDeltaLast", snapshot.d3d.flip_issue_delta_last);
+    v9x_write_uint("FlipIssueDeltaMax", snapshot.d3d.flip_issue_delta_max);
     v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);
     v9x_write_uint("VirgeIdleFalseSettle",
                    snapshot.d3d.virge_idle_false_settle);
