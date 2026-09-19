@@ -1968,12 +1968,114 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(void *data)
+/*
+ * One indexed primitive, drawn.
+ *
+ * This was a stub that returned NOTHANDLED, and the callbacks2 table
+ * advertised it anyway. intel97 measured the cost: 64,251 calls on the
+ * netbook, more than DrawPrimitives and DrawOnePrimitive together, every one
+ * declined by a driver that had told the runtime it served them. That is the
+ * advertise-then-ignore pattern the TEXTURESYSTEMMEMORY comment in
+ * d3d_i9xx.c exists to warn against, in the path an application uses most.
+ *
+ * The indices are a WORD array choosing from a vertex pool, so the batch is
+ * gathered rather than pointed at: the engines take a contiguous triangle
+ * list and nothing here may hand them one the application did not build.
+ * V9X_D3D_INDEXED_BATCH bounds the scratch, and a long list is flushed in
+ * pieces rather than refused - the same reasoning as the state-block clamp.
+ *
+ * EVERY index is range-checked against dwNumVertices before it is used. That
+ * is not defensive style, it is the memory-safety boundary: an index the
+ * driver trusts is an arbitrary read at four-byte granularity out of a
+ * pointer the runtime supplied.
+ */
+#define V9X_D3D_INDEXED_BATCH 64u
+
+DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
+    V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
 {
-    (void)data;
-    v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
-    return V9X_DDHAL_DRIVER_NOTHANDLED;
+    V9X_FPU_AREA fpu;
+    V9X_D3D_CONTEXT *context;
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+    V9X_D3DTLVERTEX batch[V9X_D3D_INDEXED_BATCH * 3u];
+    const V9X_D3DTLVERTEX *pool;
+    DWORD triangles = 0ul;
+    DWORD index;
+    int ok = 0;
+
+    v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED,
+                    data != 0
+                        ? ((data->PrimitiveType << 16) |
+                           (data->dwNumIndices & 0xfffful))
+                        : 0ul);
+    v9x_fpu_save(&fpu);
+    context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.indexed_calls;
+    }
+
+    if (ops != 0 && context != 0 && ops->ready() && data != 0 &&
+        data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
+        data->VertexType == V9X_D3DVT_TLVERTEX &&
+        data->lpvVertices != 0 && data->lpwIndices != 0 &&
+        data->dwNumVertices != 0ul && data->dwNumIndices >= 3ul &&
+        (data->dwNumIndices % 3ul) == 0ul) {
+        pool = (const V9X_D3DTLVERTEX *)data->lpvVertices;
+        ok = 1;
+        for (index = 0ul; index + 2ul < data->dwNumIndices; index += 3ul) {
+            DWORD first = (DWORD)data->lpwIndices[index];
+            DWORD second = (DWORD)data->lpwIndices[index + 1ul];
+            DWORD third = (DWORD)data->lpwIndices[index + 2ul];
+
+            if (first >= data->dwNumVertices ||
+                second >= data->dwNumVertices ||
+                third >= data->dwNumVertices) {
+                if (v9x_hal != 0) {
+                    ++v9x_hal->d3d_diagnostics.indexed_refused_index;
+                }
+                ok = 0;
+                break;
+            }
+            batch[triangles * 3ul] = pool[first];
+            batch[triangles * 3ul + 1ul] = pool[second];
+            batch[triangles * 3ul + 2ul] = pool[third];
+            ++triangles;
+
+            if (triangles == (DWORD)V9X_D3D_INDEXED_BATCH) {
+                if (!v9x_d3d_draw_batch(ops, context, batch, triangles)) {
+                    ok = 0;
+                    break;
+                }
+                if (v9x_hal != 0) {
+                    v9x_hal->d3d_diagnostics.indexed_triangles += triangles;
+                }
+                triangles = 0ul;
+            }
+        }
+        if (ok && triangles != 0ul) {
+            if (!v9x_d3d_draw_batch(ops, context, batch, triangles)) {
+                ok = 0;
+            } else if (v9x_hal != 0) {
+                v9x_hal->d3d_diagnostics.indexed_triangles += triangles;
+            }
+        }
+    } else if (v9x_hal != 0) {
+        /* A shape this build does not serve - a strip, a fan, an untransformed
+         * vertex - counted apart from a malformed batch, because the two ask
+         * for different work. */
+        ++v9x_hal->d3d_diagnostics.indexed_refused_shape;
+    }
+
+    if (ok && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.indexed_drawn;
+    }
+    if (data != 0) {
+        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+    }
+    v9x_fpu_restore(&fpu);
+    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED,
+                   ok ? V9X_DD_OK : 0x80070057ul);
+    return V9X_DDHAL_DRIVER_HANDLED;
 }
 
 

@@ -816,6 +816,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("MipGapExpected", snapshot.d3d.mip_gap_expected);
     v9x_write_hex("MipGapActual", snapshot.d3d.mip_gap_actual);
     v9x_write_uint("MipLevelsMax", snapshot.d3d.mip_levels_max);
+    v9x_write_uint("IndexedCalls", snapshot.d3d.indexed_calls);
+    v9x_write_uint("IndexedDrawn", snapshot.d3d.indexed_drawn);
+    v9x_write_uint("IndexedRefusedShape",
+                   snapshot.d3d.indexed_refused_shape);
+    v9x_write_uint("IndexedRefusedIndex",
+                   snapshot.d3d.indexed_refused_index);
+    v9x_write_uint("IndexedTriangles", snapshot.d3d.indexed_triangles);
     {
         DWORD index;
 

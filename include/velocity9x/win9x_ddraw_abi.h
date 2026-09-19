@@ -1109,6 +1109,25 @@ typedef struct v9x_d3dhal_drawoneprimitivedata {
     DWORD ddrval;
 } V9X_D3DHAL_DRAWONEPRIMITIVEDATA;
 
+/*
+ * D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA, as inc\win98\D3DHAL.H declares it.
+ *
+ * Transcribed from the DDK. The index array is WORDs and its count is
+ * separate from the vertex count, which is the whole point: the vertices are
+ * a pool and the indices choose from it.
+ */
+typedef struct v9x_d3dhal_drawoneindexedprimitivedata {
+    DWORD dwhContext;
+    DWORD dwFlags;
+    DWORD PrimitiveType;
+    DWORD VertexType;
+    void *lpvVertices;
+    DWORD dwNumVertices;
+    WORD *lpwIndices;
+    DWORD dwNumIndices;
+    DWORD ddrval;
+} V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA;
+
 typedef struct v9x_d3dhal_drawprimitivesdata {
     DWORD dwhContext;
     DWORD dwFlags;
@@ -1349,6 +1368,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092009: V9X_D3D_DIAGNOSTICS gains the indexed-primitive counters, and
+ * the header the DDK's DRAWONEINDEXEDPRIMITIVEDATA. An append.
+ */
 /* 2026092008: V9X_D3D_DIAGNOSTICS gains the mip-chain refusal breakdown. An
  * append.
  */
@@ -1364,7 +1386,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092008ul
+#define V9X_DD_SHARED_ABI   2026092009ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2472,6 +2494,22 @@ typedef struct v9x_d3d_diagnostics {
     DWORD mip_gap_expected;
     DWORD mip_gap_actual;
     DWORD mip_levels_max;
+    /*
+     * Indexed primitives, which this driver advertised and declined.
+     *
+     * intel97 measured 64,251 DrawOneIndexedPrimitive calls on the netbook -
+     * more than DrawPrimitives and DrawOnePrimitive together - against a stub
+     * that returned NOTHANDLED to every one while
+     * D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE was published. indexed_calls is
+     * every call, indexed_drawn the ones served, and indexed_refused_index
+     * counts an index pointing outside the vertex pool, which is a malformed
+     * batch and not a shape this driver declines to draw.
+     */
+    DWORD indexed_calls;
+    DWORD indexed_drawn;
+    DWORD indexed_refused_shape;
+    DWORD indexed_refused_index;
+    DWORD indexed_triangles;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart
