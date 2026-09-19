@@ -846,6 +846,16 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.oneprim_refused_count);
     v9x_write_uint("OnePrimCountLast", snapshot.d3d.oneprim_count_last);
     v9x_write_uint("OnePrimTriangles", snapshot.d3d.oneprim_triangles);
+    v9x_write_hex("DpPrimTypeSeen", snapshot.d3d.dp_primtype_seen);
+    v9x_write_hex("DpVertTypeSeen", snapshot.d3d.dp_verttype_seen);
+    v9x_write_uint("DpRefusedPrimType", snapshot.d3d.dp_refused_primtype);
+    v9x_write_uint("DpRefusedVertType", snapshot.d3d.dp_refused_verttype);
+    v9x_write_uint("DpRefusedCount", snapshot.d3d.dp_refused_count);
+    v9x_write_uint("DpRefusedVerticesLast",
+                   snapshot.d3d.dp_refused_vertices_last);
+    v9x_write_uint("DpDrawnBeforeRefusal",
+                   snapshot.d3d.dp_drawn_before_refusal);
+    v9x_write_uint("TrianglesDeclined", snapshot.d3d.triangles_declined);
     {
         DWORD index;
 

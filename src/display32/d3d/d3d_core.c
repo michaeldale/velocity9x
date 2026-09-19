@@ -1849,6 +1849,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     V9X_D3D_CONTEXT *context;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
     int ok = 0;
+    int served = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWONEPRIM,
                     data != 0
@@ -1906,6 +1907,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
             vertices += batch * 3ul;
             remaining -= batch;
         }
+        served = 1;
         if (ok && v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.oneprim_drawn;
             v9x_hal->d3d_diagnostics.oneprim_triangles +=
@@ -1926,6 +1928,15 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     }
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_primitive_calls;
+    }
+
+    /* Declined, not failed - see the note in
+     * V9xD3dDrawOneIndexedPrimitive. This path served exactly one shape for
+     * most of its life and answered every other with an error. */
+    if (!served) {
+        v9x_fpu_restore(&fpu);
+        v9x_trace_exit(V9X_TRACE_D3D_DRAWONEPRIM, 0ul);
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     if (data != 0) {
         data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
@@ -2011,10 +2022,32 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                 break;
             }
             cursor = (BYTE *)(((DWORD)cursor + 31ul) & ~31ul);
+            if (v9x_hal != 0) {
+                v9x_hal->d3d_diagnostics.dp_primtype_seen |=
+                    v9x_d3d_type_bit((DWORD)counts->wPrimitiveType);
+                v9x_hal->d3d_diagnostics.dp_verttype_seen |=
+                    v9x_d3d_type_bit((DWORD)counts->wVertexType);
+            }
             if (counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST ||
                 counts->wVertexType != V9X_D3DVT_TLVERTEX ||
                 counts->wNumVertices > 192u ||
                 (counts->wNumVertices % 3u) != 0u) {
+                /* Which of the four, and whether this buffer had already
+                 * drawn - see the note beside dp_primtype_seen. */
+                if (v9x_hal != 0) {
+                    if (counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST) {
+                        ++v9x_hal->d3d_diagnostics.dp_refused_primtype;
+                    } else if (counts->wVertexType != V9X_D3DVT_TLVERTEX) {
+                        ++v9x_hal->d3d_diagnostics.dp_refused_verttype;
+                    } else {
+                        ++v9x_hal->d3d_diagnostics.dp_refused_count;
+                    }
+                    v9x_hal->d3d_diagnostics.dp_refused_vertices_last =
+                        (DWORD)counts->wNumVertices;
+                    if (record != 0ul) {
+                        ++v9x_hal->d3d_diagnostics.dp_drawn_before_refusal;
+                    }
+                }
                 ok = 0;
                 break;
             }
@@ -2078,6 +2111,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     DWORD triangles = 0ul;
     DWORD index;
     int ok = 0;
+    int served = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED,
                     data != 0
@@ -2125,6 +2159,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
 
         pool = (const V9X_D3DTLVERTEX *)data->lpvVertices;
         ok = 1;
+        served = 1;
         for (index = 0ul; index + 2ul < data->dwNumIndices; index += step) {
             DWORD swap = step == 1ul && (index & 1ul) != 0ul;
             DWORD first = (DWORD)data->lpwIndices[index + (swap ? 1ul : 0ul)];
@@ -2189,6 +2224,28 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
 
     if (ok && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.indexed_drawn;
+    }
+
+    /*
+     * A SHAPE THIS BUILD DOES NOT SERVE IS DECLINED, NOT FAILED.
+     *
+     * The stub this replaced returned DRIVER_NOTHANDLED, which tells the
+     * runtime to do the work itself. Answering HANDLED with an error instead
+     * says the call was mine and it went wrong, and an application that
+     * believes that stops: Final Reality put up "DrawPrimitive
+     * DDERR_INVALIDPARAMS" and quit on the first fan it sent, against a
+     * native S3 driver rendering the same scene beside it.
+     *
+     * So the distinction is between cannot and failed. A shape outside this
+     * path's repertoire is handed back untouched. A supported shape whose
+     * draw genuinely failed keeps the error, because that IS this driver's
+     * fault and hiding it would make a dropped frame look like a declined
+     * one.
+     */
+    if (!served) {
+        v9x_fpu_restore(&fpu);
+        v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     if (data != 0) {
         data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;

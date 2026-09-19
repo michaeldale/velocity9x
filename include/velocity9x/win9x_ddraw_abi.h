@@ -1371,6 +1371,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092013: V9X_D3D_DIAGNOSTICS gains triangles_declined. An append.
+ */
+/* 2026092012: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives record refusal
+ * breakdown. An append.
+ */
 /* 2026092011: V9X_D3D_DIAGNOSTICS gains oneprim_triangles. An append.
  */
 /* 2026092010: V9X_D3D_DIAGNOSTICS gains the per-reason refusal split and the
@@ -1394,7 +1399,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092011ul
+#define V9X_DD_SHARED_ABI   2026092013ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2551,6 +2556,34 @@ typedef struct v9x_d3d_diagnostics {
     /* Triangles drawn through DrawOnePrimitive, which served none at all
      * until it stopped requiring a list to be exactly one triangle. */
     DWORD oneprim_triangles;
+    /*
+     * Why a DrawPrimitives RECORD was refused, and what it asked for.
+     *
+     * Final Reality quits with "DrawPrimitive DDERR_INVALIDPARAMS" on this
+     * driver while a native S3 driver renders the same scene beside it, and
+     * 0x80070057 is set in three places. The two single-primitive paths were
+     * corrected to decline rather than fail and the error persisted, so it
+     * comes from here - which predates that work and is not a regression
+     * from it.
+     *
+     * dp_primtype_seen names the record types the application sends, the
+     * three counters say which test rejected one, and dp_drawn_before_refusal
+     * says whether anything had already been drawn out of the same buffer
+     * when it happened. That last one decides the fix: a buffer that has
+     * drawn nothing can be handed back for the runtime to do, and one that
+     * has drawn something cannot, because the runtime would draw it twice.
+     */
+    DWORD dp_primtype_seen;
+    DWORD dp_verttype_seen;
+    DWORD dp_refused_primtype;
+    DWORD dp_refused_verttype;
+    DWORD dp_refused_count;
+    DWORD dp_refused_vertices_last;
+    DWORD dp_drawn_before_refusal;
+    /* Triangles the engine declined and the batch skipped rather than
+     * failing over. A degenerate triangle in a stitched strip is the
+     * ordinary case; a large count against a small drawn count is not. */
+    DWORD triangles_declined;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

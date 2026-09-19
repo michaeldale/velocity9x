@@ -1338,6 +1338,7 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
                                         DWORD triangle_count)
 {
     DWORD index;
+    DWORD drawn = 0ul;
 
     /*
      * Wait for a pending flip before drawing, which this path never did.
@@ -1384,12 +1385,35 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
         }
     }
 
+    /*
+     * One triangle this engine cannot express does not fail the batch.
+     *
+     * v9x_d3d_triangle declines for a dozen reasons, several of them
+     * ordinary - a degenerate triangle, which a stitched triangle strip is
+     * full of, is one. Failing the whole call on the first of them turned
+     * into DDERR_INVALIDPARAMS at the application, and Final Reality quits
+     * on that: it drew 64 triangles through the indexed path, met a
+     * refusal in the next batch, and put up an error box while a native S3
+     * driver rendered the same scene on the guest beside it.
+     *
+     * The rest of this file already settled the principle - a texture it
+     * cannot sample draws untextured rather than not at all, because a
+     * refused draw is a hole in the frame. A refused TRIANGLE is a smaller
+     * hole, and an aborted batch is a much larger one.
+     *
+     * So the declines are counted and skipped, and the call fails only if
+     * nothing at all could be drawn, which is the case that really is worth
+     * telling the application about.
+     */
     for (index = 0ul; index < triangle_count; ++index) {
-        if (!v9x_d3d_triangle(context, &vertices[index * 3ul])) {
-            return 0;
+        if (v9x_d3d_triangle(context, &vertices[index * 3ul])) {
+            ++drawn;
+        } else if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.triangles_declined;
         }
     }
-    return 1;
+
+    return drawn != 0ul || triangle_count == 0ul;
 }
 
 static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
