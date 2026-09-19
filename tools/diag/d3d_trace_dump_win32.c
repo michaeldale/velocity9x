@@ -629,6 +629,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("FlipIssueLineMin", snapshot.d3d.flip_issue_line_min);
     v9x_write_uint("FlipIssueLineMax", snapshot.d3d.flip_issue_line_max);
     v9x_write_uint("FlipIssueVactive", snapshot.d3d.flip_issue_vactive);
+    v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);
     /*
      * The present trace, oldest of the kept records first. The ring holds
      * the last V9X_D3D_PRESENT_TRACE; PresentTraceCount is every record

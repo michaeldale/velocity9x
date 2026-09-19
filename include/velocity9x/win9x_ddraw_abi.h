@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091908: V9X_D3D_DIAGNOSTICS gains blt_flip_pending, the Blt and Lock
+ * exposure the D3D guard cannot see. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091907: V9X_D3D_DIAGNOSTICS gains the flip-issue scanline, which
  * settles whether the plane base readback is the active or the pending
  * value. An append; the stamp moves for the reason 2026091603 gives.
@@ -1263,7 +1267,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091907ul
+#define V9X_DD_SHARED_ABI   2026091908ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2040,6 +2044,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD flip_issue_line_min;
     DWORD flip_issue_line_max;
     DWORD flip_issue_vactive;
+    /*
+     * Blt and Lock calls that arrived with a flip still pending.
+     *
+     * The D3D draw guard measures zero on both backends because the
+     * runtime holds the application behind GetFlipStatus, so a batch never
+     * races a pending flip. The clear does not go that way: it is a Blt,
+     * and the Blt and Lock paths wait on the ENGINE and never ask about
+     * the flip. The panel shows a cleared buffer, so this is where to
+     * look. Counted, not guarded - the guard comes after the count says
+     * there is something to guard.
+     */
+    DWORD blt_flip_pending;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

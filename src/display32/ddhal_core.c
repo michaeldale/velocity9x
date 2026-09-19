@@ -1142,9 +1142,32 @@ static int v9x_render_drain(int wait)
     return 1;
 }
 
+/*
+ * Blt and Lock while a flip is still pending.
+ *
+ * The D3D draw guard never fires on either backend: the runtime asks
+ * GetFlipStatus around 150 times per flip and holds the application behind
+ * it, so by the time a batch arrives the flip has long completed
+ * (measured on the Trio3D, 2026-09-19, DrawsFlipWaited=0 with completion
+ * corrected to the end of the retrace). But the application also issues
+ * about two Blts and one Lock per frame - its clear among them - and those
+ * paths test the ENGINE for idleness and never ask about a pending flip at
+ * all. A cleared buffer on the panel is what the recording shows, and a
+ * clear is a Blt. This counts the exposure on that path without changing
+ * it; nothing here waits.
+ */
+static void v9x_note_blt_flip_pending(void)
+{
+    if (v9x_hal != 0 && v9x_flip_pending()) {
+        ++v9x_hal->d3d_diagnostics.blt_flip_pending;
+    }
+}
+
 static int v9x_blt_drain(int wait)
 {
     const V9X_ENGINE32_OPS *ops = v9x_engine32();
+
+    v9x_note_blt_flip_pending();
 
     if (!v9x_render_drain(wait)) {
         return 0;
