@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091914: V9X_D3D_DIAGNOSTICS gains lock_flip_pending, so Lock and Blt
+ * are counted apart. An append; the stamp moves for the reason 2026091603
+ * gives.
+ *
  * 2026091913: the PIPESTAT reading gains a baseline and a clearing
  * boundary, without which a sticky bit set at boot or by a mode change
  * would be reported in every capture. An append; the stamp moves for the
@@ -1289,7 +1293,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091913ul
+#define V9X_DD_SHARED_ABI   2026091914ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2137,6 +2141,13 @@ typedef struct v9x_d3d_diagnostics {
     DWORD pipestat_a_first;
     DWORD pipestat_b_first;
     DWORD pipestat_cleared;
+    /*
+     * Lock calls that arrived with a flip pending, apart from the Blts.
+     * blt_flip_pending covered only Blt until 2026-09-19 because Lock does
+     * not go through v9x_blt_drain; with Lock sampled it read 1,104 against
+     * 1,124 Blts and 62,138 Locks, which one counter cannot attribute.
+     */
+    DWORD lock_flip_pending;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

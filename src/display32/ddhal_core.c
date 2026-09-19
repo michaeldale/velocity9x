@@ -411,6 +411,7 @@ static int v9x_render_drain(int wait);
 /* Defined beside v9x_blt_drain; Lock samples it too, and Lock comes
  * first in this file. */
 static void v9x_note_blt_flip_pending(void);
+static void v9x_note_lock_flip_pending(void);
 
 #define V9X_FLIP_IDLE          0ul
 #define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
@@ -954,7 +955,7 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
      * Blts and not one of the 308 Locks, and was reported as though it
      * covered both (review of 3340476).
      */
-    v9x_note_blt_flip_pending();
+    v9x_note_lock_flip_pending();
     /* Serialize CPU access after asynchronous engine work. DDRAW still
      * computes and returns the actual surface pointer. */
     if ((v9x_engine_status_validated() &&
@@ -1182,6 +1183,18 @@ static void v9x_note_blt_flip_pending(void)
 {
     if (v9x_hal != 0 && v9x_flip_pending()) {
         ++v9x_hal->d3d_diagnostics.blt_flip_pending;
+    }
+}
+
+/*
+ * The same, counted apart. intel90 read blt_flip_pending as 1,104 once Lock
+ * was sampled - against 1,124 Blts and 62,138 Locks - and one counter
+ * cannot say which of the two it was, which is the whole question.
+ */
+static void v9x_note_lock_flip_pending(void)
+{
+    if (v9x_hal != 0 && v9x_flip_pending()) {
+        ++v9x_hal->d3d_diagnostics.lock_flip_pending;
     }
 }
 

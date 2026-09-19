@@ -374,7 +374,15 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
      * intel73's "applies at once" among them - is about a register that
      * was never reporting the scanout.
      */
-    {
+    /*
+     * Only a flip that went through the window test, which is the game's -
+     * FlipToGDISurface writes the display start directly on the way back to
+     * the desktop and takes no test, so its issue line says nothing about
+     * the guard and mixing the two put line 610 in a statistic the guard was
+     * then sized from (intel90). Offset zero is the desktop restore, the
+     * same test the layout sample above uses.
+     */
+    if (byte_offset != 0ul) {
         DWORD dsl;
         DWORD vtotal;
         DWORD base;
@@ -619,21 +627,27 @@ int v9x_set_display_start(DWORD byte_offset)
  * flicker-is-not-unfinished-drawing.md
  */
 /*
- * Eight lines was a guard against a write RACING the latch. intel89 shows
- * the write does not arrive when the test passes: the test requires line <
- * 568 and the line at issue reached 660, eighty-four lines INTO the blank
- * and past the latch the guard exists to stay clear of. Everything between
- * the test and the write - resolving the pipe, reading the frame counter,
- * building and submitting the ring flip - costs scanlines, and the guard
- * accounted for none of them.
+ * Eight lines, and eight is right.
  *
- * Ninety-six covers intel89's worst overshoot with a little room, and
- * leaves 480 of 576 active lines usable, which at 46,183 Flip attempts a
- * pass is not a scarce window. PROVISIONAL: flip_issue_delta_max now
- * measures the cost directly, and this should be re-sized from that
- * distribution rather than from one run's maximum.
+ * intel89 appeared to show the guard leaking - the window requires the beam
+ * below line 568 and the line at issue reached 660 - and this was widened to
+ * ninety-six to cover the difference. That inference was wrong. intel90
+ * measured the write path directly: flip_issue_delta_max is ONE scanline,
+ * so a window-tested flip cannot be issued more than a line past where it
+ * was tested, and there is no gap to guard against.
+ *
+ * The high issue lines came from flips that never took the test.
+ * FlipToGDISurface calls set_display_start directly on the way back to the
+ * desktop, twenty-two times in that run, and those land wherever the beam
+ * happens to be. FlipRingIssued 578 against FlipHandled 554 is the same
+ * twenty-odd. The line statistics now exclude them, so the number the
+ * guard is sized from describes only the flips the guard governs.
+ *
+ * The widening cost what widening costs: FlipWindowClosed went from 45,625
+ * to 169,972 with presents unchanged at 554 against 558. Pure refusal
+ * churn for a gap that was not there.
  */
-#define V9X_I9XX_FLIP_LATCH_GUARD_LINES 96ul
+#define V9X_I9XX_FLIP_LATCH_GUARD_LINES 8ul
 
 /*
  * The issue window: active video, short of the latch at the first blank
