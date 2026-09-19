@@ -94,6 +94,27 @@ static void v9x_census_name(char *out, DWORD index, const char *field)
     out[at] = 0;
 }
 
+/*
+ * "Present<nn><field>" for the present trace, assembled for the same reason
+ * the census names are: four fields times thirty-two rows is too many names
+ * to spell out in a tool that links no runtime string routines.
+ */
+static void v9x_present_name(char *out, DWORD index, const char *field)
+{
+    DWORD at = 0ul;
+    const char *prefix = "Present";
+
+    while (*prefix != 0) {
+        out[at++] = *prefix++;
+    }
+    out[at++] = (char)('0' + (index / 10ul));
+    out[at++] = (char)('0' + (index % 10ul));
+    while (*field != 0) {
+        out[at++] = *field++;
+    }
+    out[at] = 0;
+}
+
 static const char *v9x_trace_name(WORD id)
 {
     switch (id & (WORD)~V9X_DD_TRACE_EXIT_FLAG) {
@@ -596,9 +617,35 @@ void __stdcall V9xTraceDumpEntry(void)
      * high half of DEST_SRC_STRIDE - so it can be held against the surface's
      * own address and pitch. */
     v9x_write_hex("D3dTargetOffset", snapshot.d3d.target_offset);
-    v9x_write_hex("D3dTargetOffsetPrev", snapshot.d3d.target_offset_prev);
-    v9x_write_uint("D3dTargetOffsetChanges",
-                   snapshot.d3d.target_offset_changes);
+    v9x_write_uint("VirgeDrawsFlipPending",
+                   snapshot.d3d.virge_draws_flip_pending);
+    /*
+     * The present trace, oldest of the kept records first. The ring holds
+     * the last V9X_D3D_PRESENT_TRACE; PresentTraceCount is every record
+     * written, so a count above that says older ones were dropped.
+     */
+    {
+        DWORD total = snapshot.d3d.present_trace_count;
+        DWORD kept = (DWORD)V9X_D3D_PRESENT_TRACE;
+        DWORD shown = total < kept ? total : kept;
+        DWORD first = total - shown;
+        DWORD index;
+        char key[24];
+
+        v9x_write_uint("PresentTraceCount", total);
+        for (index = 0ul; index < shown; ++index) {
+            DWORD slot = (first + index) % kept;
+
+            v9x_present_name(key, index, "Kind");
+            v9x_write_uint(key, snapshot.d3d.present_trace_kind[slot]);
+            v9x_present_name(key, index, "Context");
+            v9x_write_hex(key, snapshot.d3d.present_trace_context[slot]);
+            v9x_present_name(key, index, "Offset");
+            v9x_write_hex(key, snapshot.d3d.present_trace_offset[slot]);
+            v9x_present_name(key, index, "Seq");
+            v9x_write_uint(key, snapshot.d3d.present_trace_seq[slot]);
+        }
+    }
     v9x_write_uint("D3dTargetPitch", snapshot.d3d.target_pitch);
     v9x_write_uint("D3dTargetWidth", snapshot.d3d.target_width);
     v9x_write_uint("D3dTargetHeight", snapshot.d3d.target_height);

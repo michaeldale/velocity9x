@@ -322,6 +322,21 @@ DWORD v9x_scanout_displayed_offset(void);
 #define V9X_FLIP_WAIT_DONE     1
 #define V9X_FLIP_WAIT_TIMEOUT  0
 int v9x_flip_wait_done(void);
+/* Non-zero when a flip is still pending, with ONE advance of the flip state
+ * machine and no wait. The instrument for a backend that does not gate its
+ * draws on the flip; d3d_virge.c uses it to count the exposure. */
+int v9x_flip_pending(void);
+/*
+ * The present trace (V9X_D3D_PRESENT_TRACE records). Order is the point:
+ * a draw between an accepted flip and its completion, aimed at the buffer
+ * the flip released, is premature reuse; the same draw aimed at the buffer
+ * the flip presented is a stale binding. Aggregate counters cannot tell
+ * those apart, so the three record kinds go into one ring.
+ */
+#define V9X_PRESENT_TRACE_FLIP_ACCEPTED 1ul
+#define V9X_PRESENT_TRACE_FLIP_DONE     2ul
+#define V9X_PRESENT_TRACE_DRAW          3ul
+void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

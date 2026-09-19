@@ -1136,10 +1136,17 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091903: the 2026091902 target-offset counters are replaced (never
+ * deployed) by the present trace and the ViRGE pending-draw counter. The
+ * counters compared against one global value on every context lookup, so a
+ * context switch or a lookup that never drew moved them; they could not say
+ * which buffer a frame used. The stamp moves for the reason 2026091603
+ * gives.
+ *
  * 2026091902: V9X_D3D_DIAGNOSTICS gains target_offset_changes and
  * target_offset_prev, which say whether the flip chain ever rebinds the
  * engine to a different buffer. An append; the stamp moves for the reason
- * 2026091603 gives.
+ * 2026091603 gives. Never deployed.
  *
  * 2026091901: V9X_D3D_DIAGNOSTICS gains flip_window_closed, which splits the
  * two conditions flip_still_drawing counted together. An append; the stamp
@@ -1238,7 +1245,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091902ul
+#define V9X_DD_SHARED_ABI   2026091903ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1413,6 +1420,11 @@ typedef struct v9x_dd_cb32 {
 #define V9X_D3D_ZREJECT_OVERLAPS_FB   8ul  /* would write the visible page */
 #define V9X_D3D_ZREJECT_PITCH         9ul  /* disagrees with DDK stride    */
 #define V9X_D3D_ZREJECT_BOUNDS       10ul  /* falls outside VRAM           */
+
+/* Records in the present trace at the end of V9X_D3D_DIAGNOSTICS. Short
+ * because the pattern repeats every frame: the last few frames answer the
+ * question, and a longer ring costs shared-block bytes for nothing. */
+#define V9X_D3D_PRESENT_TRACE 32u
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -1910,21 +1922,47 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD flip_window_closed;
     /*
-     * Does the flip chain ever rebind the engine to a different buffer?
-     * target_offset_changes counts the times the render target's video
-     * memory offset differed from the one before it, and
-     * target_offset_prev keeps the offset it changed away from, so the two
-     * buffers can be named. Read with target_offset, which is the current
-     * one.
+     * The present trace: which buffer each frame actually used, in order.
      *
-     * A double-buffered title should change once a frame. Near zero over a
-     * run means every frame was drawn into one buffer, and a flip timed
-     * perfectly would still show the drawing. Recorded in the shared D3D
-     * path rather than a backend because the same flicker appears on the
-     * Intel and S3 present paths, which differ (2026-09-19).
+     * An aggregate counter cannot answer this. The 2026091902 attempt
+     * compared each render target against one global value on every
+     * context lookup, so switching contexts or looking one up without
+     * drawing moved it, and it could not say whether a given frame drew
+     * into the buffer that had just been presented. What distinguishes a
+     * stale binding from premature reuse is the ORDER of three things, so
+     * the three are recorded together:
+     *
+     *   kind  1 flip accepted - offset is what was handed to
+     *           set_display_start, seq the accepted-flip number.
+     *         2 flip observed taken by the scanout, same seq.
+     *         3 draw batch submitted - offset is the destination the
+     *           engine was actually given, context the context index.
+     *   context  the context index for a draw, 0xFFFFFFFF otherwise.
+     *   offset   the buffer offset that record is about.
+     *   seq      accepted flips so far, so a draw can be placed between
+     *            the flip it follows and the completion it precedes.
+     *
+     * The ring is short on purpose: the pattern repeats every frame, and
+     * the last few frames answer the question. present_trace_count is
+     * records written in total, so wrap and loss are visible.
      */
-    DWORD target_offset_changes;
-    DWORD target_offset_prev;
+    DWORD present_trace_kind[V9X_D3D_PRESENT_TRACE];
+    DWORD present_trace_context[V9X_D3D_PRESENT_TRACE];
+    DWORD present_trace_offset[V9X_D3D_PRESENT_TRACE];
+    DWORD present_trace_seq[V9X_D3D_PRESENT_TRACE];
+    DWORD present_trace_count;
+    /*
+     * Draw batches the ViRGE path began while a flip was still pending.
+     *
+     * The Intel path waits for the flip before its first batch (intel78,
+     * draws_flip_waited); d3d_virge.c has no such guard - v9x_flip_wait_done
+     * is called from d3d_i9xx.c alone. So the two backends are not in the
+     * same state with respect to this hazard, and a flicker that looks the
+     * same on both may reach the panel by two different routes. This
+     * counts the exposure without changing it; the build that waits comes
+     * after, so the two can be compared.
+     */
+    DWORD virge_draws_flip_pending;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -138,22 +138,46 @@ The two present paths are not the same code. `v9x_scanout_hw_flip` and
 so on S3 they are false: the base is written whenever Flip is called, with
 no beam timing at all and no window test, and `v9x_flip_arm` waits for the
 next blank edge. Intel takes the hardware-flip branch with the active-video
-window. One symptom across two different present timings is evidence that
-the present timing is not what produces it.
+window.
+
+**Presentation timing is NOT cleared by that.** An earlier revision argued
+that one symptom across two present timings meant the timing was innocent.
+It does not follow, because the two backends are not in the same state with
+respect to a second hazard: `v9x_flip_wait_done` - the intel78 guard that
+holds a batch until a pending flip is taken - is called from `d3d_i9xx.c`
+and nowhere else. The ViRGE path has no such guard. So Intel ran with the
+guard in place and measured the exposure at zero, while S3 ran with the
+hazard open and unmeasured. Two backends can reach the same look by two
+routes, and until the ViRGE exposure is counted, they might have.
 
 What the two paths DO share is everything above the scanout: the Flip
 sequence in `ddhal_core.c`, the flip state machine, `v9x_render_drain`, and
-the whole D3D core including which buffer the engine is bound to. That is
-where to look, and the first question there is whether the flip chain
-rebinds the engine at all. `target_offset_changes` and
-`target_offset_prev` (ABI 2026091902) answer it in the shared path, so the
-next capture from either family reports it.
+the whole D3D core including which buffer the engine is bound to.
 
-Worth noting against the shared-code reading: `D3dTargetOffset` reads
-`0x00000000` in this capture while `DrawsTargetLast` reads `0x00096000`,
-so the target has held both values at some point in the run. That is not
-evidence it alternated per frame - the zero may be the desktop restore -
-which is why the counter exists.
+## What the next build measures, and why the counters were wrong
+
+A first cut counted changes in the render target's offset
+(`target_offset_changes`, ABI 2026091902, never deployed). It could not
+work: the comparison was against one global diagnostic value, taken on
+every context lookup, so switching between contexts or looking one up
+without drawing moved it, and nothing in it said which buffer a given
+frame used. Withdrawn.
+
+What distinguishes a stale binding from premature reuse is the ORDER of
+three events, so ABI 2026091903 records them in one ring
+(`V9X_D3D_PRESENT_TRACE`, 32 records): the accepted flip with the offset
+handed to `set_display_start`, the completion of that flip, and every draw
+batch with the destination the engine was ACTUALLY given plus its context
+index - taken at the shared dispatch, not inferred from a later lookup.
+Each record carries the accepted-flip sequence, so a draw sits between the
+flip it follows and the completion it precedes. A draw aimed at the buffer
+the flip released is premature reuse; the same draw aimed at the buffer the
+flip presented is a stale binding.
+
+Alongside it, `virge_draws_flip_pending` counts batches the ViRGE path
+began while a flip was still pending - the exposure Intel closed in intel78
+and S3 never had. This build counts it and does not change it, so the build
+that waits can be compared against it.
 
 ## What this leaves
 
@@ -164,8 +188,20 @@ this part has been found that reports it. The next measurement has to be one
 that can see what the panel shows rather than what the driver believes; the
 video record has been that instrument twice and is still the only one.
 
-The S3 result puts a cheaper discriminator ahead of it, though: if the
-flicker is shared code or the game, it should appear on a present path with
-no Direct3D in it at all. `V9XDDP.EXE /reuse` is that test, and a second
-Direct3D title on the same card separates "our shared path" from "Final
-Reality".
+The order to take it in:
+
+1. **Count the ViRGE exposure**, then build one that waits and compare. If
+   the count is large and the waiting build is clean, the S3 flicker is the
+   missing guard and was never the same fault as the Intel one.
+2. **Read the present trace** from either family. It answers stale binding
+   against premature reuse directly, which no aggregate counter can.
+3. **`/reuse` on both machines, with the screen recorded.** Green after
+   reported completion implicates scanout ownership.
+
+A caution on the third, because an earlier revision of this document had it
+wrong: `/reuse` does NOT take Direct3D out of the picture. The probe waits
+until `GetFlipStatus` says the flip is done, waits the delay, and only then
+paints the retired buffer - so it tests whether REPORTED COMPLETION is
+premature. It does not reproduce a path that draws without waiting, which
+is exactly what the ViRGE path does. A clean `/reuse` narrows the
+investigation; it does not clear D3D synchronisation.

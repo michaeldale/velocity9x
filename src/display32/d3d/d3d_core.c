@@ -205,27 +205,6 @@ static void v9x_d3d_refresh_target(V9X_D3D_CONTEXT *context)
     }
     context->target_offset = offset;
     if (v9x_hal != 0) {
-        /*
-         * Whether the flip chain ever hands the engine a different buffer.
-         * A double-buffered title alternates here once a frame; an offset
-         * that never changes means every frame is drawn into the same
-         * memory, which is the one way a correctly timed flip still shows
-         * the buffer under construction. DrawsToFront cannot answer this -
-         * it compares against a plane base register whose readback returns
-         * the PENDING value on a double-buffered register, so it is blind
-         * for the frame between the write and the latch.
-         *
-         * Counted in the shared path deliberately: the S3 and Intel
-         * present paths differ - S3 writes the base with no beam timing at
-         * all and waits for the next blank edge, Intel uses the hardware
-         * flip and an active-video window - and the same flicker appears
-         * on both, which points above the scanout rather than inside it.
-         */
-        if (offset != v9x_hal->d3d_diagnostics.target_offset) {
-            v9x_hal->d3d_diagnostics.target_offset_prev =
-                v9x_hal->d3d_diagnostics.target_offset;
-            ++v9x_hal->d3d_diagnostics.target_offset_changes;
-        }
         v9x_hal->d3d_diagnostics.target_offset = offset;
         v9x_hal->d3d_diagnostics.target_pitch = context->pitch;
         v9x_hal->d3d_diagnostics.target_width = context->width;
@@ -245,6 +224,24 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
         }
     }
     return 0;
+}
+
+/*
+ * Every draw batch, through one place, so the present trace records the
+ * destination the engine was ACTUALLY given rather than whatever a later
+ * context lookup happened to leave in the diagnostics. The context index
+ * goes with it: a trace that cannot name the context cannot tell a second
+ * context's target from the same context rebound.
+ */
+static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
+                              V9X_D3D_CONTEXT *context,
+                              const V9X_D3DTLVERTEX *vertices,
+                              DWORD triangle_count)
+{
+    v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
+                      (DWORD)(context - v9x_d3d_contexts),
+                      context->target_offset);
+    return ops->draw_triangles(context, vertices, triangle_count);
 }
 
 static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
@@ -1533,7 +1530,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
                 ++fan_triangles;
             }
             if (fan_triangles != 0ul &&
-                !ops->draw_triangles(context, fan_list, fan_triangles)) {
+                !v9x_d3d_draw_batch(ops, context, fan_list, fan_triangles)) {
                 v9x_trace_push(V9X_TRACE_D3D_PRIMREJECT,
                                0x30000000ul | index);
                 ok = 0;
@@ -1595,7 +1592,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
         data->PrimitiveType == V9X_D3DPT_TRIANGLELIST &&
         data->VertexType == V9X_D3DVT_TLVERTEX &&
         data->lpvVertices != 0 && data->dwNumVertices == 3ul) {
-        ok = ops->draw_triangles(context,
+        ok = v9x_d3d_draw_batch(ops, context,
                                  (const V9X_D3DTLVERTEX *)data->lpvVertices,
                                  1ul);
     }
@@ -1649,7 +1646,7 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                 break;
             }
             /* Already a triangle list, so the whole record is one batch. */
-            if (!ops->draw_triangles(context,
+            if (!v9x_d3d_draw_batch(ops, context,
                                      (const V9X_D3DTLVERTEX *)cursor,
                                      (DWORD)counts->wNumVertices / 3ul)) {
                 ok = 0;

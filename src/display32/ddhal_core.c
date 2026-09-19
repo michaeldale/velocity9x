@@ -452,6 +452,40 @@ static DWORD v9x_flip_pending_polls = 0ul;
  */
 static DWORD v9x_flip_untracked = 0ul;
 
+/*
+ * Accepted flips so far. The sequence number every present-trace record
+ * carries, so a draw can be placed between the flip it follows and the
+ * completion it precedes.
+ */
+static DWORD v9x_present_seq = 0ul;
+/* The offset of the flip currently pending, so its completion record names
+ * the buffer it presented. */
+static DWORD v9x_present_offset = 0ul;
+
+void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)
+{
+    DWORD slot;
+
+    if (v9x_hal == 0) {
+        return;
+    }
+    slot = v9x_hal->d3d_diagnostics.present_trace_count %
+           (DWORD)V9X_D3D_PRESENT_TRACE;
+    v9x_hal->d3d_diagnostics.present_trace_kind[slot] = kind;
+    v9x_hal->d3d_diagnostics.present_trace_context[slot] = context;
+    v9x_hal->d3d_diagnostics.present_trace_offset[slot] = offset;
+    v9x_hal->d3d_diagnostics.present_trace_seq[slot] = v9x_present_seq;
+    ++v9x_hal->d3d_diagnostics.present_trace_count;
+}
+
+static void v9x_flip_note_done(void)
+{
+    v9x_flip_state = V9X_FLIP_IDLE;
+    v9x_scanout_note_flip_done();
+    v9x_present_trace(V9X_PRESENT_TRACE_FLIP_DONE, 0xfffffffful,
+                      v9x_present_offset);
+}
+
 static void v9x_flip_abandon(void)
 {
     v9x_flip_state = V9X_FLIP_IDLE;
@@ -511,8 +545,7 @@ static int v9x_flip_done(void)
         if (v9x_scanout_hw_flip_pending()) {
             return 0;
         }
-        v9x_flip_state = V9X_FLIP_IDLE;
-        v9x_scanout_note_flip_done();
+        v9x_flip_note_done();
         return 1;
     }
     blank = v9x_in_vblank();
@@ -520,8 +553,7 @@ static int v9x_flip_done(void)
         if (blank) {
             return 0;
         }
-        v9x_flip_state = V9X_FLIP_IDLE;
-        v9x_scanout_note_flip_done();
+        v9x_flip_note_done();
         return 1;
     }
     if (v9x_flip_state == V9X_FLIP_WAIT_UNBLANK) {
@@ -531,8 +563,7 @@ static int v9x_flip_done(void)
         return 0;
     }
     if (blank) {
-        v9x_flip_state = V9X_FLIP_IDLE;
-        v9x_scanout_note_flip_done();
+        v9x_flip_note_done();
         return 1;
     }
     return 0;
@@ -547,6 +578,11 @@ static int v9x_flip_done(void)
  * rather than hanging the machine (the intel57 lesson).
  */
 #define V9X_FLIP_DRAW_WAIT_POLLS 200000ul
+
+int v9x_flip_pending(void)
+{
+    return v9x_flip_done() ? 0 : 1;
+}
 
 int v9x_flip_wait_done(void)
 {
@@ -646,6 +682,12 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
+        /* Accepted: the sequence advances here, so every draw recorded
+         * after this carries the number of the flip it follows. */
+        ++v9x_present_seq;
+        v9x_present_offset = offset;
+        v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
+                          offset);
         v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);
     }
     data->ddRVal = V9X_DD_OK;

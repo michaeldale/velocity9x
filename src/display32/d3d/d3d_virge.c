@@ -1322,6 +1322,19 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
 {
     DWORD index;
 
+    /*
+     * Batches that begin while a flip is still pending. The Intel path
+     * waits here (intel78, v9x_flip_wait_done); this one never has, so the
+     * two backends are not in the same state with respect to the hazard
+     * and a flicker that looks the same on both may reach the panel by two
+     * routes. Counted and not changed: the build that waits comes after,
+     * so the exposure can be compared against it. One advance of the flip
+     * state machine per batch, no wait.
+     */
+    if (v9x_flip_pending() && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.virge_draws_flip_pending;
+    }
+
     for (index = 0ul; index < triangle_count; ++index) {
         if (!v9x_d3d_triangle(context, &vertices[index * 3ul])) {
             return 0;
