@@ -138,9 +138,17 @@ scanout starving part way down a frame produces exactly the observed shape
 on presentation, and would concentrate in heavy parts of a scene, which is
 the burstiness nothing else here explains. GMCH parts have no underrun
 interrupt at all, only a sticky status bit in PIPESTAT bit 31, which is why
-two days in the flip path could not have found it. That bit is now read and
-accumulated on the Intel side (`PipestatAOr`, `PipestatBOr`); it has never
-been looked at.
+two days in the flip path could not have found it. That bit is now read on the Intel
+side, and read correctly: sticky means accumulating it alone would report
+"an underrun happened at some point since power-on", which a mode change
+satisfies on its own and which this driver performs before the game starts
+- so every capture would have shown it and answered nothing. The first flip
+of a session keeps the value as `PipestatAFirst`/`PipestatBFirst` and then
+clears the status to open a boundary, by i915's idiom, which preserves the
+interrupt enables. After that, bit 31 in `PipestatAOr`/`PipestatBOr` is a
+FRESH underrun; `PipestatCleared` says whether the boundary was
+established, and a zero there means the accumulators are inconclusive for
+new events. None of it has been looked at yet.
 
 The experiment that separates the two families cleanly is to keep the
 rendered target itself: save the back buffer immediately before Flip, tagged

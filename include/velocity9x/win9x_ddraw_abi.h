@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091913: the PIPESTAT reading gains a baseline and a clearing
+ * boundary, without which a sticky bit set at boot or by a mode change
+ * would be reported in every capture. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091912: V9X_D3D_DIAGNOSTICS gains the PIPESTAT accumulators, whose
  * bit 31 is the display FIFO underrun. An append; the stamp moves for the
  * reason 2026091603 gives.
@@ -1284,7 +1289,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091912ul
+#define V9X_DD_SHARED_ABI   2026091913ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2114,6 +2119,24 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD pipestat_a_or;
     DWORD pipestat_b_or;
+    /*
+     * PIPESTAT as it read on the first flip of the session, BEFORE the
+     * underrun status was cleared, and whether that clear happened.
+     *
+     * The accumulators above are sticky, so without a boundary they report
+     * "an underrun happened at some point since power-on" - which a mode
+     * change alone would satisfy, and this driver changes mode before the
+     * game. With the baseline kept and the status cleared once, bit 31 in
+     * pipestat_*_or is a FRESH underrun and bit 31 in pipestat_*_first is
+     * the pre-existing one, which is reported separately rather than
+     * conflated with it.
+     *
+     * pipestat_cleared 0 means no boundary was established and the
+     * accumulators are inconclusive for new events.
+     */
+    DWORD pipestat_a_first;
+    DWORD pipestat_b_first;
+    DWORD pipestat_cleared;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

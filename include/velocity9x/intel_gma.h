@@ -218,11 +218,28 @@
  * which would explain a fault that concentrates in heavy parts of a scene
  * and that no flip instrument can see.
  *
- * Read and never written. Writing PIPESTAT would clear the status, but its
- * upper half also carries interrupt ENABLES and a careless write would
- * disturb them; a sticky bit read once already answers "has this ever
- * happened", which is the question.
+ * Sticky is the problem, not the feature. A bit set by the boot or by a
+ * mode change stays set, so accumulating it across a run says only "at
+ * some point since power-on", which every capture would report and which
+ * answers nothing about gameplay - and this driver changes mode before the
+ * game starts, so it would almost always be set already (review of
+ * 3f23cfa).
+ *
+ * So the status is read ONCE before anything else, kept as the baseline,
+ * and then cleared to open a measurement boundary. The clear is i915's
+ * idiom (i9xx_check_fifo_underruns): keep the upper half, which carries
+ * the interrupt ENABLES, write a one to the underrun status to clear it,
+ * and write zeros to the lower half, where a zero leaves a
+ * write-one-to-clear status bit alone.
+ *
+ *     write((read() & 0xffff0000) | PIPESTAT_FIFO_UNDERRUN)
+ *
+ * This is the one write this driver makes to PIPESTAT, it happens once per
+ * session at the first flip - which is after the game's own mode set, so
+ * the boundary excludes boot and mode-change underruns - and everything
+ * after it is a fresh underrun.
  */
+#define V9X_I9XX_PIPESTAT_ENABLE_MASK    ((v9x_u32)0xffff0000ul)
 #define V9X_I9XX_REG_PIPEA_STAT          ((v9x_u32)0x00070024ul)
 #define V9X_I9XX_REG_PIPEB_STAT          ((v9x_u32)0x00071024ul)
 #define V9X_I9XX_PIPESTAT_FIFO_UNDERRUN  ((v9x_u32)0x80000000ul)

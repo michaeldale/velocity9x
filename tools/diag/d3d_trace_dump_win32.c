@@ -633,6 +633,9 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("FlipIssueDeltaMax", snapshot.d3d.flip_issue_delta_max);
     v9x_write_hex("PipestatAOr", snapshot.d3d.pipestat_a_or);
     v9x_write_hex("PipestatBOr", snapshot.d3d.pipestat_b_or);
+    v9x_write_hex("PipestatAFirst", snapshot.d3d.pipestat_a_first);
+    v9x_write_hex("PipestatBFirst", snapshot.d3d.pipestat_b_first);
+    v9x_write_uint("PipestatCleared", snapshot.d3d.pipestat_cleared);
     v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);
     v9x_write_uint("VirgeIdleFalseSettle",
                    snapshot.d3d.virge_idle_false_settle);

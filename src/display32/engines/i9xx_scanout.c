@@ -80,6 +80,9 @@ static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
 /* The display line when set_display_start was entered, against which the
  * line at issue gives the cost of the write path in scanlines. */
 static DWORD v9x_i9xx_scanout_entry_line = 0ul;
+/* Whether the PIPESTAT baseline has been taken and the underrun status
+ * cleared to open the measurement boundary. Once per session. */
+static int v9x_i9xx_pipestat_baselined = 0;
 
 /*
  * Tries at a consistent pair of counter reads. The high word and the low
@@ -318,14 +321,38 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
-    /* And PIPESTAT, whose bit 31 is the display FIFO underrun - sticky, so
-     * the OR across a run says whether the scanout ever starved. Read
-     * only; see the register's note in intel_gma.h for why it is never
-     * written back. */
-    v9x_hal->d3d_diagnostics.pipestat_a_or |=
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
-    v9x_hal->d3d_diagnostics.pipestat_b_or |=
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
+    /*
+     * PIPESTAT, whose bit 31 is the display FIFO underrun. Sticky, so the
+     * first flip of a session takes the baseline and then opens a
+     * measurement boundary by clearing it; everything ORed after that is a
+     * FRESH underrun. See the register's note in intel_gma.h for the clear,
+     * which is i915's and preserves the interrupt enables.
+     */
+    if (!v9x_i9xx_pipestat_baselined) {
+        DWORD first_a = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
+        DWORD first_b = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
+
+        v9x_hal->d3d_diagnostics.pipestat_a_first = first_a;
+        v9x_hal->d3d_diagnostics.pipestat_b_first = first_b;
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT) =
+            (first_a & V9X_I9XX_PIPESTAT_ENABLE_MASK) |
+            V9X_I9XX_PIPESTAT_FIFO_UNDERRUN;
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT) =
+            (first_b & V9X_I9XX_PIPESTAT_ENABLE_MASK) |
+            V9X_I9XX_PIPESTAT_FIFO_UNDERRUN;
+        /* Posting reads, and they are the first post-boundary samples. */
+        v9x_hal->d3d_diagnostics.pipestat_a_or |=
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
+        v9x_hal->d3d_diagnostics.pipestat_b_or |=
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
+        v9x_hal->d3d_diagnostics.pipestat_cleared = 1ul;
+        v9x_i9xx_pipestat_baselined = 1;
+    } else {
+        v9x_hal->d3d_diagnostics.pipestat_a_or |=
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
+        v9x_hal->d3d_diagnostics.pipestat_b_or |=
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
+    }
     /*
      * The scanline at the moment the base is read back, which settles what
      * that readback IS.
