@@ -21,7 +21,58 @@
 #endif
 
 #define V9X_SECTION      "Velocity9xTrace"
-#define V9X_RESULT_PATH  V9X_DIAG_SNAP_INI
+
+/*
+ * Where this snapshot goes, which is NOT always the same file.
+ *
+ * The counters in the shared block are cumulative from the boot: nothing
+ * resets them per application, and DriverInit resets only the flip and
+ * completion state. So a trace taken after one game and then another after
+ * a second game describe the two games ADDED TOGETHER, and the second used
+ * to overwrite the first - the section is cleared before writing - which
+ * left no way to attribute anything to either.
+ *
+ * Rolling over fixes both at once. Each run takes the first free name, so
+ * the traces survive side by side and the second game's own numbers are
+ * the difference between them. Monotonic counters subtract; the "last",
+ * "min" and "max" fields do not, and describe whichever run wrote them.
+ *
+ * Eight is the limit and the last one is reused after that, because a
+ * machine reached by carrying a USB stick should not silently stop
+ * recording, and because eight runs is more than one sitting.
+ */
+#define V9X_RESULT_MAX_FILES 8u
+static char v9x_result_path[] = V9X_DIAG_SNAP_INI;
+/* The digit sits where the final P of V9XSNAP does: V9XSNAP.INI becomes
+ * V9XSNA1.INI and so on, which stays inside 8.3. */
+#define V9X_RESULT_DIGIT (sizeof(v9x_result_path) - 6u)
+
+static const char *v9x_result_file(void)
+{
+    static int chosen = 0;
+    unsigned int index;
+
+    if (chosen) {
+        return v9x_result_path;
+    }
+    chosen = 1;
+    for (index = 0u; index < V9X_RESULT_MAX_FILES; ++index) {
+        if (index == 0u) {
+            v9x_result_path[V9X_RESULT_DIGIT] = 'P';
+        } else {
+            v9x_result_path[V9X_RESULT_DIGIT] = (char)('0' + index);
+        }
+        if (GetFileAttributesA(v9x_result_path) == 0xFFFFFFFFul) {
+            return v9x_result_path;
+        }
+    }
+    /* All taken: reuse the last rather than stop recording. */
+    v9x_result_path[V9X_RESULT_DIGIT] =
+        (char)('0' + (V9X_RESULT_MAX_FILES - 1u));
+    return v9x_result_path;
+}
+
+#define V9X_RESULT_PATH  v9x_result_file()
 
 static void v9x_uint_text(char *text, DWORD value)
 {
