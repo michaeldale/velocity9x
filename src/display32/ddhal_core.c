@@ -687,6 +687,17 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /*
+     * A strict settle used to run here - 8,192 confirmation reads at every
+     * flip, against the ordinary settle's 32 - to find out whether the
+     * ViRGE's idle bit lies at the moment that decides what the panel is
+     * shown. It does not: VirgeFlipIdleFalse read 0 across 256 flips while
+     * VirgeIdleFalseSettle read 45 in the same pass, so the lies are real
+     * and all of them happen at mid-frame settles. The check answered its
+     * question and is gone; two million register reads a pass for something
+     * that never fires is not a default worth carrying.
+     * docs\decisions6-09-19-five-mechanisms-measured-out.md
+     */
     /* And the frame about to be shown has to be DRAWN: rendering the GPU
      * has not finished is the one thing the flip must not present. */
     if (!v9x_render_drain((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {

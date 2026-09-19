@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091910: V9X_D3D_DIAGNOSTICS gains virge_flip_idle_false, the strict
+ * settle's count at the flip. An append; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091909: V9X_D3D_DIAGNOSTICS gains virge_idle_false_settle, the times
  * the ViRGE idle bit read set and then went clear inside a confirmation
  * window. An append; the stamp moves for the reason 2026091603 gives.
@@ -1271,7 +1275,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091909ul
+#define V9X_DD_SHARED_ABI   2026091910ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2072,6 +2076,14 @@ typedef struct v9x_d3d_diagnostics {
      * unmeasured.
      */
     DWORD virge_idle_false_settle;
+    /*
+     * The same lie, caught at the flip with a window long enough to
+     * matter: 8,192 reads against the ordinary settle's 32, affordable
+     * because there are a few hundred flips rather than a quarter of a
+     * million settles. Counted per broken confirmation, and the flip does
+     * not proceed until the engine settles or the bound runs out.
+     */
+    DWORD virge_flip_idle_false;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
