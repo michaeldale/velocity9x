@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091907: V9X_D3D_DIAGNOSTICS gains the flip-issue scanline, which
+ * settles whether the plane base readback is the active or the pending
+ * value. An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091906: V9X_D3D_DIAGNOSTICS gains ecoskpd, the Gen3 register that
  * declares what the flip-pending bit means. An append; the stamp moves for
  * the reason 2026091603 gives.
@@ -1259,7 +1263,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091906ul
+#define V9X_DD_SHARED_ABI   2026091907ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2021,6 +2025,21 @@ typedef struct v9x_d3d_diagnostics {
      * without ever asking. Raw, and interpreted nowhere but in the report.
      */
     DWORD ecoskpd;
+    /*
+     * The DSL line at which the plane base was read back after a flip was
+     * issued, last, min and max, with the pipe's active height beside them.
+     *
+     * A base register holding the ACTIVE value cannot report a new offset
+     * mid-frame, because the latch has not happened. Lines scattered
+     * through active video with flip_base_immediate at 100% therefore say
+     * the readback is the PENDING value, and i915's stall check - which
+     * treats that readback as proof of completion - does not transfer to
+     * this part. Lines clustered at or past vactive say the opposite.
+     */
+    DWORD flip_issue_line_last;
+    DWORD flip_issue_line_min;
+    DWORD flip_issue_line_max;
+    DWORD flip_issue_vactive;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

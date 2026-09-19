@@ -315,6 +315,47 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
+    /*
+     * The scanline at the moment the base is read back, which settles what
+     * that readback IS.
+     *
+     * i915's page-flip stall check asks whether the plane address register
+     * has reached the expected offset and warns if it has not, which only
+     * works if the register reads the ACTIVE value once latched. The model
+     * in this file says the opposite - that it returns the PENDING value -
+     * and that was inferred from a video, never measured. The two cannot
+     * both hold, and flip_base_immediate reading 605 of 605 means opposite
+     * things under them.
+     *
+     * One reading decides it. A register holding the ACTIVE value cannot
+     * report a new offset while the beam is in the middle of the frame,
+     * because the latch has not happened yet. So: the DSL line at which
+     * the readback was taken, kept as last, min and max across the run. If
+     * the base reads new at lines scattered through active video, the
+     * readback is the pending value and every conclusion drawn from it -
+     * intel73's "applies at once" among them - is about a register that
+     * was never reporting the scanout.
+     */
+    {
+        DWORD dsl;
+        DWORD vtotal;
+        DWORD base;
+
+        if (v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
+            DWORD line = *v9x_i9xx_scanout_reg(dsl) & V9X_I9XX_DSL_LINE_MASK;
+
+            v9x_hal->d3d_diagnostics.flip_issue_line_last = line;
+            if (v9x_hal->d3d_diagnostics.flip_issue_line_max < line) {
+                v9x_hal->d3d_diagnostics.flip_issue_line_max = line;
+            }
+            if (v9x_hal->d3d_diagnostics.flip_issue_line_min == 0ul ||
+                v9x_hal->d3d_diagnostics.flip_issue_line_min > line) {
+                v9x_hal->d3d_diagnostics.flip_issue_line_min = line;
+            }
+            v9x_hal->d3d_diagnostics.flip_issue_vactive =
+                (*v9x_i9xx_scanout_reg(vtotal) & 0x00000ffful) + 1ul;
+        }
+    }
     if (*v9x_i9xx_scanout_reg(base_reg) == byte_offset) {
         ++v9x_hal->d3d_diagnostics.flip_base_immediate;
     } else {
