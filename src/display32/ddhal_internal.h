@@ -297,6 +297,10 @@ int v9x_vga_set_display_start(DWORD byte_offset);
  * controls on a boot that armed the Intel flip, the VGA ones otherwise. */
 int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
+/* A new session or mode, from DriverInit: drops the PIPESTAT baseline so
+ * the next flip opens a fresh measurement boundary, and the scanline
+ * readings that describe the old timing. */
+void v9x_scanout_reset(void);
 /* Non-zero when v9x_in_vblank has a retrace to report: always for the VGA
  * status port, and for the Intel controls only while exactly one pipe and
  * plane are live. A flip armed without one cannot complete and is not

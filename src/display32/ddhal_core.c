@@ -1576,6 +1576,10 @@ DWORD __stdcall DriverInit(DWORD context)
     /* And the completion channel: a new session brings the status page up
      * again and proves it again (review R3). */
     v9x_d3d_i9xx_reset();
+    /* And the scanout readings, whose PIPESTAT boundary is per session: a
+     * baseline taken once per DLL lifetime would let the next run's mode
+     * change contaminate the underrun measurement. */
+    v9x_scanout_reset();
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);

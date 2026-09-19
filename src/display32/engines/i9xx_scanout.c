@@ -499,6 +499,44 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
  * flip; the VGA controls otherwise, which is every S3 part and every Intel
  * boot without IntelFlip=1.
  */
+/*
+ * A new session, from DriverInit.
+ *
+ * The PIPESTAT baseline is per SESSION, not per DLL lifetime. Taking it
+ * once and never again would mean the second benchmark run on one boot -
+ * or any run after a mode change - skips the clearing boundary entirely,
+ * and the mode change's own underrun lands in the accumulator as though it
+ * were gameplay. That is precisely the contamination the boundary exists
+ * to remove, so the flag and everything derived from it are cleared here
+ * (review of 7d11b59).
+ *
+ * DriverInit runs on a new session AND on a mode change, and the game's
+ * mode set precedes its first flip, so the boundary still lands after the
+ * event it is meant to exclude.
+ */
+void v9x_scanout_reset(void)
+{
+    v9x_i9xx_pipestat_baselined = 0;
+    v9x_i9xx_scanout_entry_line = 0ul;
+    v9x_i9xx_scanout_flip_outstanding = 0;
+    if (v9x_hal == 0) {
+        return;
+    }
+    v9x_hal->d3d_diagnostics.pipestat_a_first = 0ul;
+    v9x_hal->d3d_diagnostics.pipestat_b_first = 0ul;
+    v9x_hal->d3d_diagnostics.pipestat_a_or = 0ul;
+    v9x_hal->d3d_diagnostics.pipestat_b_or = 0ul;
+    v9x_hal->d3d_diagnostics.pipestat_cleared = 0ul;
+    /* The issue-line readings are session-scoped too: a min and max
+     * carried across a mode change describe two different timings. */
+    v9x_hal->d3d_diagnostics.flip_issue_line_last = 0ul;
+    v9x_hal->d3d_diagnostics.flip_issue_line_min = 0ul;
+    v9x_hal->d3d_diagnostics.flip_issue_line_max = 0ul;
+    v9x_hal->d3d_diagnostics.flip_issue_vactive = 0ul;
+    v9x_hal->d3d_diagnostics.flip_issue_delta_last = 0ul;
+    v9x_hal->d3d_diagnostics.flip_issue_delta_max = 0ul;
+}
+
 int v9x_in_vblank(void)
 {
     if (v9x_i9xx_scanout_active()) {
