@@ -345,6 +345,14 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
         v9x_hal->d3d_diagnostics.pipestat_b_or |=
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
+        /* And the watermarks, once, at the same boundary: this is what the
+         * BIOS left for the mode the game is actually in. Never written. */
+        v9x_hal->d3d_diagnostics.fw_blc =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
+        v9x_hal->d3d_diagnostics.fw_blc2 =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
+        v9x_hal->d3d_diagnostics.fw_blc_self =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
         v9x_hal->d3d_diagnostics.pipestat_cleared = 1ul;
         v9x_i9xx_pipestat_baselined = 1;
     } else {
@@ -535,6 +543,9 @@ void v9x_scanout_reset(void)
     v9x_hal->d3d_diagnostics.pipestat_a_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_b_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_cleared = 0ul;
+    v9x_hal->d3d_diagnostics.fw_blc = 0ul;
+    v9x_hal->d3d_diagnostics.fw_blc2 = 0ul;
+    v9x_hal->d3d_diagnostics.fw_blc_self = 0ul;
     /* The issue-line readings are session-scoped too: a min and max
      * carried across a mode change describe two different timings. */
     v9x_hal->d3d_diagnostics.flip_issue_line_last = 0ul;

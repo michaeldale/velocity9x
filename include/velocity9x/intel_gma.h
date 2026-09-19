@@ -240,6 +240,31 @@
  * after it is a fresh underrun.
  */
 #define V9X_I9XX_PIPESTAT_ENABLE_MASK    ((v9x_u32)0xffff0000ul)
+/*
+ * The display watermarks, which are what an underrun is usually about.
+ *
+ * The scanout fetches into a FIFO ahead of the beam, and these set how full
+ * it must be kept and how much memory latency the arbiter should assume. Set
+ * for too little margin, the FIFO empties part way down a frame and the
+ * remainder of the picture is lost - which is the shape of the flicker, and
+ * intel90 measured PIPESTAT bit 31 setting on the live pipe.
+ *
+ * This driver has never programmed them. It sets modes through the VBE BIOS,
+ * so whatever is here is what the BIOS left, and the question is whether
+ * that is right for the mode the game ends up in. i915 computes them from
+ * the mode instead (i9xx_update_wm), which is the comparison to make.
+ *
+ * FW_BLC and FW_BLC2 carry the per-plane watermark and burst values on
+ * i915/i945. FW_BLC_SELF exists from 915 and carries a 945-only
+ * self-refresh enable at bit 15: self-refresh lets the display stop
+ * fetching entirely, and enabled under a load it was not sized for is
+ * another way to starve. Read only, and interpreted in the report rather
+ * than here.
+ */
+#define V9X_I9XX_REG_FW_BLC              ((v9x_u32)0x000020d8ul)
+#define V9X_I9XX_REG_FW_BLC2             ((v9x_u32)0x000020dcul)
+#define V9X_I9XX_REG_FW_BLC_SELF         ((v9x_u32)0x000020e0ul)
+#define V9X_I9XX_FW_BLC_SELF_EN          ((v9x_u32)0x00008000ul)
 #define V9X_I9XX_REG_PIPEA_STAT          ((v9x_u32)0x00070024ul)
 #define V9X_I9XX_REG_PIPEB_STAT          ((v9x_u32)0x00071024ul)
 #define V9X_I9XX_PIPESTAT_FIFO_UNDERRUN  ((v9x_u32)0x80000000ul)

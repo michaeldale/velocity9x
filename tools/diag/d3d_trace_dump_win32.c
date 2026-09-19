@@ -636,6 +636,9 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("PipestatAFirst", snapshot.d3d.pipestat_a_first);
     v9x_write_hex("PipestatBFirst", snapshot.d3d.pipestat_b_first);
     v9x_write_uint("PipestatCleared", snapshot.d3d.pipestat_cleared);
+    v9x_write_hex("FwBlc", snapshot.d3d.fw_blc);
+    v9x_write_hex("FwBlc2", snapshot.d3d.fw_blc2);
+    v9x_write_hex("FwBlcSelf", snapshot.d3d.fw_blc_self);
     v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);
     v9x_write_uint("LockFlipPending", snapshot.d3d.lock_flip_pending);
     v9x_write_uint("VirgeIdleFalseSettle",

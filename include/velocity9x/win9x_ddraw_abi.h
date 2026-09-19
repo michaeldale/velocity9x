@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091915: V9X_D3D_DIAGNOSTICS gains the display watermark registers,
+ * which is what an underrun is usually about. An append; the stamp moves
+ * for the reason 2026091603 gives.
+ *
  * 2026091914: V9X_D3D_DIAGNOSTICS gains lock_flip_pending, so Lock and Blt
  * are counted apart. An append; the stamp moves for the reason 2026091603
  * gives.
@@ -1293,7 +1297,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091914ul
+#define V9X_DD_SHARED_ABI   2026091915ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2148,6 +2152,21 @@ typedef struct v9x_d3d_diagnostics {
      * 1,124 Blts and 62,138 Locks, which one counter cannot attribute.
      */
     DWORD lock_flip_pending;
+    /*
+     * FW_BLC, FW_BLC2 and FW_BLC_SELF as they read at the session boundary
+     * - the display watermarks, raw.
+     *
+     * intel90 measured the scanout underrunning on the live pipe, and an
+     * underrun is usually a FIFO given too little margin rather than a
+     * fault in the flip path. This driver has never programmed these: it
+     * sets modes through the VBE BIOS, so they are whatever the BIOS left
+     * for the mode the game ended up in. i915 computes them from the mode,
+     * which is what to compare against. Bit 15 of FW_BLC_SELF is the
+     * 945-only self-refresh enable.
+     */
+    DWORD fw_blc;
+    DWORD fw_blc2;
+    DWORD fw_blc_self;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
