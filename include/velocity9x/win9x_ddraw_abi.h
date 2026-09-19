@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091916: the watermark reading becomes a log, one entry per mode, so
+ * one ordinary run answers whether the BIOS programs them per mode. An
+ * append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091915: V9X_D3D_DIAGNOSTICS gains the display watermark registers,
  * which is what an underrun is usually about. An append; the stamp moves
  * for the reason 2026091603 gives.
@@ -1297,7 +1301,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091915ul
+#define V9X_DD_SHARED_ABI   2026091916ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1477,6 +1481,10 @@ typedef struct v9x_dd_cb32 {
  * because the pattern repeats every frame: the last few frames answer the
  * question, and a longer ring costs shared-block bytes for nothing. */
 #define V9X_D3D_PRESENT_TRACE 32u
+
+/* Watermark log entries: one per mode within a boot. A run passes through
+ * the desktop mode, the game's, and back, so four is room to spare. */
+#define V9X_D3D_WM_LOG 4u
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -2167,6 +2175,31 @@ typedef struct v9x_d3d_diagnostics {
     DWORD fw_blc;
     DWORD fw_blc2;
     DWORD fw_blc_self;
+    /*
+     * The same three, once per MODE rather than once per session, with the
+     * pipe source size beside them so each entry says which mode it
+     * describes.
+     *
+     * The question intel91 left open is whether the VBE BIOS programs the
+     * watermarks for the mode at all. If it does not, the game's 640x480
+     * runs on whatever the previous mode left, which is a defect whatever
+     * the fields mean and needs no register spec to see - the chipset
+     * datasheets do not document this space, only the BAR that contains it.
+     *
+     * A session boundary IS a mode change, so an ordinary run - desktop,
+     * into the game, back out - fills several entries by itself and the
+     * comparison needs no procedure from the operator, who has to carry
+     * this machine's results on a USB stick as it has no network.
+     *
+     * Appended, never reset within a boot: the point is to see the modes
+     * side by side. wm_log_count is entries written and saturates at the
+     * array size.
+     */
+    DWORD wm_log_pipesrc[V9X_D3D_WM_LOG];
+    DWORD wm_log_fw_blc[V9X_D3D_WM_LOG];
+    DWORD wm_log_fw_blc2[V9X_D3D_WM_LOG];
+    DWORD wm_log_fw_blc_self[V9X_D3D_WM_LOG];
+    DWORD wm_log_count;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

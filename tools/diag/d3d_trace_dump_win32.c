@@ -115,6 +115,23 @@ static void v9x_present_name(char *out, DWORD index, const char *field)
     out[at] = 0;
 }
 
+/* "Wm<n><field>" for the per-mode watermark log, assembled like the census
+ * and present names because this tool links no runtime string routines. */
+static void v9x_wm_name(char *out, DWORD index, const char *field)
+{
+    DWORD at = 0ul;
+    const char *prefix = "Wm";
+
+    while (*prefix != 0) {
+        out[at++] = *prefix++;
+    }
+    out[at++] = (char)('0' + (index % 10ul));
+    while (*field != 0) {
+        out[at++] = *field++;
+    }
+    out[at] = 0;
+}
+
 static const char *v9x_trace_name(WORD id)
 {
     switch (id & (WORD)~V9X_DD_TRACE_EXIT_FLAG) {
@@ -639,6 +656,28 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("FwBlc", snapshot.d3d.fw_blc);
     v9x_write_hex("FwBlc2", snapshot.d3d.fw_blc2);
     v9x_write_hex("FwBlcSelf", snapshot.d3d.fw_blc_self);
+    /*
+     * The per-mode watermark log. Written flat rather than through a name
+     * assembler: four entries of four fields is few enough to spell out,
+     * and each line reads as one mode's answer.
+     */
+    v9x_write_uint("WmLogCount", snapshot.d3d.wm_log_count);
+    {
+        DWORD index;
+
+        for (index = 0ul; index < (DWORD)V9X_D3D_WM_LOG; ++index) {
+            char key[24];
+
+            v9x_wm_name(key, index, "Src");
+            v9x_write_hex(key, snapshot.d3d.wm_log_pipesrc[index]);
+            v9x_wm_name(key, index, "Blc");
+            v9x_write_hex(key, snapshot.d3d.wm_log_fw_blc[index]);
+            v9x_wm_name(key, index, "Blc2");
+            v9x_write_hex(key, snapshot.d3d.wm_log_fw_blc2[index]);
+            v9x_wm_name(key, index, "Self");
+            v9x_write_hex(key, snapshot.d3d.wm_log_fw_blc_self[index]);
+        }
+    }
     v9x_write_uint("BltFlipPending", snapshot.d3d.blt_flip_pending);
     v9x_write_uint("LockFlipPending", snapshot.d3d.lock_flip_pending);
     v9x_write_uint("VirgeIdleFalseSettle",

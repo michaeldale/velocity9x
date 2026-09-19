@@ -353,6 +353,27 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
         v9x_hal->d3d_diagnostics.fw_blc_self =
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
+        /*
+         * And the same into the per-mode log, with the pipe source size so
+         * the entry says which mode it is. A session boundary is a mode
+         * change, so an ordinary run fills several entries and the
+         * comparison across modes needs no second run and no procedure.
+         */
+        if (v9x_hal->d3d_diagnostics.wm_log_count < (DWORD)V9X_D3D_WM_LOG) {
+            DWORD slot = v9x_hal->d3d_diagnostics.wm_log_count;
+
+            v9x_hal->d3d_diagnostics.wm_log_pipesrc[slot] =
+                *v9x_i9xx_scanout_reg(
+                    v9x_i9xx_scanout_plane == 0ul
+                        ? V9X_I9XX_REG_PIPEA_SRC : V9X_I9XX_REG_PIPEB_SRC);
+            v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot] =
+                v9x_hal->d3d_diagnostics.fw_blc;
+            v9x_hal->d3d_diagnostics.wm_log_fw_blc2[slot] =
+                v9x_hal->d3d_diagnostics.fw_blc2;
+            v9x_hal->d3d_diagnostics.wm_log_fw_blc_self[slot] =
+                v9x_hal->d3d_diagnostics.fw_blc_self;
+            ++v9x_hal->d3d_diagnostics.wm_log_count;
+        }
         v9x_hal->d3d_diagnostics.pipestat_cleared = 1ul;
         v9x_i9xx_pipestat_baselined = 1;
     } else {
