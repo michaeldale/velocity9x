@@ -1136,6 +1136,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026092003: V9X_D3D_DIAGNOSTICS gains wm_declined and the accelerated
+ * blit's own pending-flip sample. An append.
+ *
  * 2026092002: V9X_D3D_DIAGNOSTICS gains the sampler-filter and
  * GetDriverInfo counters. intel95 had 3DMark99 report bilinear filtering
  * unsupported against a driver that publishes it. An append.
@@ -1321,7 +1324,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026092002ul
+#define V9X_DD_SHARED_ABI   2026092003ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2306,6 +2309,27 @@ typedef struct v9x_d3d_diagnostics {
     DWORD driver_info_calls;
     DWORD driver_info_declined;
     DWORD driver_info_last;     /* first four bytes of the last GUID asked */
+    /*
+     * Watermark calculations abandoned because DSPCNTR named a pixel format
+     * this driver cannot turn into bytes per pixel. A refusal rather than a
+     * guess: intel95 programmed the live plane down to 12 from a depth the
+     * hardware was not in, and a number that cannot be derived is worse
+     * than none.
+     */
+    DWORD wm_declined;
+    /*
+     * The clear that races a pending flip, sampled where the accelerated
+     * paths can see it.
+     *
+     * blt_flip_pending is sampled in v9x_blt_drain, which a successful
+     * engine fill, depth fill or copy returns before reaching (review of
+     * 05d47b5) - so its zero on the ViRGE covered CPU blits alone. These
+     * are sampled before the engine is dispatched and record what the
+     * operation was aimed at, because a pending flip during a clear only
+     * matters if the clear lands on the buffer being scanned out.
+     */
+    DWORD blt_engine_flip_pending;
+    DWORD blt_engine_flip_last_dest;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -46,18 +46,31 @@
 #define V9X_I9XX_WM_LATENCY_NS    ((v9x_u32)5000ul)
 
 /*
+ * The floor intel_calculate_wm applies last, after the maximum and after
+ * the default: a burst is eight cachelines, so a watermark below eight is
+ * one the fetch cannot honour whatever the arithmetic says.
+ *
+ * This file's first cut let an active plane fall to V9X_I9XX_WM_DEFAULT and
+ * the host tests expected it, which is not what the implementation it cites
+ * does (review of 05d47b5). It changes nothing at the netbook's 20; it
+ * changes what this helper would hand a mode with less room.
+ */
+#define V9X_I9XX_WM_MIN_BURST     ((v9x_u32)8ul)
+
+/*
  * The watermark for one plane.
  *
  * pixel_rate_khz is htotal * vtotal * refresh / 1000, cpp the bytes per
  * pixel, fifo_size the plane's share of the FIFO from DSPARB, latency_ns
  * the memory latency to assume. Returns the value to program, clamped to
- * V9X_I9XX_WM_MAX, and never below V9X_I9XX_WM_DEFAULT - i915 falls back
- * to the default rather than to zero when the arithmetic leaves no room,
- * because zero would be a watermark no fetch ever satisfies.
+ * V9X_I9XX_WM_MAX above and to V9X_I9XX_WM_MIN_BURST below - a watermark of
+ * zero is one no fetch ever satisfies, and one below a burst is one the
+ * fetch cannot honour.
  *
  * Zero pixel_rate_khz or cpp means the plane is not driving anything, and
  * the answer is the whole FIFO less the guard, which is what i915 gives an
- * inactive plane.
+ * inactive plane. The burst floor does NOT apply there: an idle plane does
+ * not go through intel_calculate_wm at all.
  */
 v9x_u32 v9x_i9xx_wm_plane(v9x_u32 pixel_rate_khz, v9x_u32 cpp,
                           v9x_u32 fifo_size, v9x_u32 latency_ns);
@@ -98,5 +111,21 @@ v9x_u16 v9x_i9xx_wm_fifo_split(v9x_u32 dsparb, v9x_u32 *plane_a,
  */
 v9x_u32 v9x_i9xx_wm_fw_blc_merge(v9x_u32 existing, v9x_u32 plane_a_wm,
                                  v9x_u32 plane_b_wm);
+
+/*
+ * Bytes per pixel from DSPCNTR's format field, or zero if the field names
+ * a format this does not know.
+ *
+ * The hardware's own answer, and it has to be: intel95 computed a watermark
+ * from v9x_hal->fb.bits_per_pixel reading 32 while DSPCNTR said format 5
+ * and the stride said two bytes a pixel, and programmed the live plane down
+ * to 12 where 20 was right. The plane's control register is what the
+ * scanout actually fetches by.
+ *
+ * Zero for an unknown format is deliberate. A caller that cannot name the
+ * format must not compute a watermark for it, in the way
+ * v9x_i9xx_wm_fifo_split declines a partition it cannot believe.
+ */
+v9x_u32 v9x_i9xx_wm_cpp_from_dspcntr(v9x_u32 dspcntr);
 
 #endif /* VELOCITY9X_I9XX_WM_H */

@@ -1198,6 +1198,30 @@ static void v9x_note_lock_flip_pending(void)
     }
 }
 
+/*
+ * The same again, on the path the other two cannot see.
+ *
+ * v9x_blt_drain is where blt_flip_pending is sampled, and a successful
+ * engine fill, depth fill or copy RETURNS BEFORE REACHING IT (review of
+ * 05d47b5). So every accelerated clear went uncounted, and the ViRGE's zero
+ * covered CPU blits alone - which is the opposite of reassuring, because
+ * the accelerated path is the one a game's clear actually takes.
+ *
+ * Called before the engine is dispatched, so it samples the state the
+ * operation is about to run against rather than the state it left behind.
+ * The destination is recorded with it: a pending flip during a clear only
+ * matters if the clear lands where the scanout is reading, and the count
+ * alone cannot say. Nothing here waits.
+ */
+static void v9x_note_engine_blt_flip_pending(DWORD destination_offset)
+{
+    if (v9x_hal != 0 && v9x_flip_pending()) {
+        ++v9x_hal->d3d_diagnostics.blt_engine_flip_pending;
+        v9x_hal->d3d_diagnostics.blt_engine_flip_last_dest =
+            destination_offset;
+    }
+}
+
 static int v9x_blt_drain(int wait)
 {
     const V9X_ENGINE32_OPS *ops = v9x_engine32();
@@ -1279,8 +1303,11 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
             (V9X_DDBLT_ASYNC | V9X_DDBLT_DONOTWAIT)) == 0ul;
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
-        int outcome = ops->copy(data, source_offset, destination_offset,
-                                bytes_per_pixel, wait);
+        int outcome;
+
+        v9x_note_engine_blt_flip_pending(destination_offset);
+        outcome = ops->copy(data, source_offset, destination_offset,
+                            bytes_per_pixel, wait);
 
         if (outcome == V9X_BLT_BUSY) {
             data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1338,6 +1365,7 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
+        v9x_note_engine_blt_flip_pending(offset);
         outcome = ops->fill(data, offset, bytes_per_pixel, wait);
     }
     if (outcome == V9X_BLT_BUSY) {
@@ -1414,6 +1442,7 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {
+        v9x_note_engine_blt_flip_pending(offset);
         outcome = ops->fill(data, offset, bytes_per_pixel, wait);
     }
     if (outcome == V9X_BLT_BUSY) {

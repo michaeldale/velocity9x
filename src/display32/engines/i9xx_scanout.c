@@ -66,6 +66,25 @@ static int v9x_i9xx_scanout_active(void)
  * Returns the register offsets through the pointers; zero declines.
  */
 static DWORD v9x_i9xx_scanout_plane = 0ul;   /* the last resolved plane */
+/*
+ * And the pipe it was routed to, which is NOT the plane's namesake: a
+ * plane carries pipe-select bits and either one can drive either pipe.
+ * v9x_i9xx_scanout_pipe resolves both and used to keep only the plane, so
+ * a caller wanting the pipe's timing had to assume they matched (review of
+ * 05d47b5). They do on the netbook and that is not a licence to assume it.
+ */
+static DWORD v9x_i9xx_scanout_pipe_index = 0ul;
+/*
+ * The inputs the last watermark calculation used. Programming is driven by
+ * these rather than by the diagnostic log, which fills; see the comment in
+ * v9x_i9xx_note_watermarks.
+ */
+static int v9x_i9xx_wm_last_valid = 0;
+static DWORD v9x_i9xx_wm_last_pipesrc = 0ul;
+static DWORD v9x_i9xx_wm_last_rate_khz = 0ul;
+static DWORD v9x_i9xx_wm_last_cpp = 0ul;
+static DWORD v9x_i9xx_wm_last_dsparb = 0ul;
+static DWORD v9x_i9xx_wm_last_fw_blc = 0ul;
 static DWORD v9x_i9xx_scanout_stride_reg = 0ul;
 /* The last flip: which base register, and the offset it was asked for, so
  * a later read can say whether the hardware has taken it. */
@@ -190,6 +209,7 @@ static int v9x_i9xx_scanout_pipe(DWORD *dsl, DWORD *vtotal, DWORD *base)
     *vtotal = vtotal_reg[pipe];
     *base = addr_reg[plane];
     v9x_i9xx_scanout_plane = plane;
+    v9x_i9xx_scanout_pipe_index = pipe;
     v9x_i9xx_scanout_stride_reg = stride_reg[plane];
     v9x_i9xx_scanout_framehigh_reg = framehigh_reg[pipe];
     v9x_i9xx_scanout_framepixel_reg = framepixel_reg[pipe];
@@ -331,53 +351,109 @@ static void v9x_i9xx_note_layout(DWORD byte_offset)
  */
 static void v9x_i9xx_note_watermarks(void)
 {
-    DWORD src_reg = v9x_i9xx_scanout_plane == 0ul
+    /*
+     * The PIPE's registers, selected by the resolved pipe. The plane is a
+     * separate thing and selects the plane's own control register below.
+     */
+    DWORD src_reg = v9x_i9xx_scanout_pipe_index == 0ul
                     ? V9X_I9XX_REG_PIPEA_SRC : V9X_I9XX_REG_PIPEB_SRC;
-    DWORD htotal_reg = v9x_i9xx_scanout_plane == 0ul
+    DWORD htotal_reg = v9x_i9xx_scanout_pipe_index == 0ul
                        ? V9X_I9XX_REG_PIPEA_HTOTAL
                        : V9X_I9XX_REG_PIPEB_HTOTAL;
-    DWORD vtotal_reg = v9x_i9xx_scanout_plane == 0ul
+    DWORD vtotal_reg = v9x_i9xx_scanout_pipe_index == 0ul
                        ? V9X_I9XX_REG_PIPEA_VTOTAL
                        : V9X_I9XX_REG_PIPEB_VTOTAL;
+    DWORD cntr_reg = v9x_i9xx_scanout_plane == 0ul
+                     ? V9X_I9XX_REG_DSPA_CNTR : V9X_I9XX_REG_DSPB_CNTR;
     DWORD pipesrc = *v9x_i9xx_scanout_reg(src_reg);
     DWORD count = v9x_hal->d3d_diagnostics.wm_log_count;
     DWORD slot;
     DWORD dsparb;
+    DWORD fw_blc;
     DWORD fifo_a = 0ul;
     DWORD fifo_b = 0ul;
     DWORD rate_khz;
     DWORD cpp;
     DWORD want = 0ul;
 
-    /* Only when the mode changes, and only while there is room. */
-    if (count != 0ul &&
-        v9x_hal->d3d_diagnostics.wm_log_pipesrc[count - 1ul] == pipesrc) {
-        return;
-    }
-    if (count >= (DWORD)V9X_D3D_WM_LOG) {
-        return;
-    }
-    slot = count;
-    dsparb = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_DSPARB);
-
-    v9x_hal->d3d_diagnostics.wm_log_pipesrc[slot] = pipesrc;
-    v9x_hal->d3d_diagnostics.wm_log_dsparb[slot] = dsparb;
-    v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot] =
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
-    v9x_hal->d3d_diagnostics.wm_log_fw_blc2[slot] =
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
-    v9x_hal->d3d_diagnostics.wm_log_fw_blc_self[slot] =
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
-
     /*
-     * The pixel rate from the pipe's own totals at the 60 Hz this driver
-     * reports, and the bytes per pixel from the mode. Both totals are
-     * stored less one, as vactive is elsewhere in this file.
+     * The pixel rate from the PIPE's own totals at the 60 Hz this driver
+     * reports. Both totals are stored less one, as vactive is elsewhere in
+     * this file.
      */
     rate_khz = (((*v9x_i9xx_scanout_reg(htotal_reg) >> 16) & 0x0ffful) + 1ul) *
                (((*v9x_i9xx_scanout_reg(vtotal_reg) >> 16) & 0x0ffful) + 1ul);
     rate_khz = rate_khz / 1000ul * 60ul;
-    cpp = (v9x_hal->fb.bits_per_pixel + 7ul) / 8ul;
+
+    /*
+     * And the bytes per pixel from the PLANE's control register, which is
+     * what the scanout actually fetches by.
+     *
+     * Not v9x_hal->fb.bits_per_pixel. intel95 read that as 32 while DSPCNTR
+     * said format 5 and the stride said 1280 bytes for a 640-wide line, and
+     * the arithmetic then put the live plane's watermark at 12 where 20 was
+     * right - below the 20 this driver had installed one mode change
+     * earlier, and only twice what the BIOS left. A watermark computed from
+     * a depth the hardware is not in is worse than none.
+     */
+    cpp = v9x_i9xx_wm_cpp_from_dspcntr(*v9x_i9xx_scanout_reg(cntr_reg));
+    dsparb = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_DSPARB);
+    fw_blc = *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
+
+    /*
+     * Nothing to do unless an INPUT to the calculation moved.
+     *
+     * The source size alone is not that set: intel95 alternated two modes
+     * at the same 54,180 kHz and the same partition, so a depth change at an
+     * unchanged source would have gone unnoticed (review of 05d47b5). The
+     * rate, the depth and the partition are all in the test now, and so is
+     * the register's own value, so a watermark something else overwrote is
+     * put back rather than left.
+     */
+    if (v9x_i9xx_wm_last_valid != 0 &&
+        v9x_i9xx_wm_last_pipesrc == pipesrc &&
+        v9x_i9xx_wm_last_rate_khz == rate_khz &&
+        v9x_i9xx_wm_last_cpp == cpp &&
+        v9x_i9xx_wm_last_dsparb == dsparb &&
+        v9x_i9xx_wm_last_fw_blc == fw_blc) {
+        return;
+    }
+    v9x_i9xx_wm_last_valid = 1;
+    v9x_i9xx_wm_last_pipesrc = pipesrc;
+    v9x_i9xx_wm_last_rate_khz = rate_khz;
+    v9x_i9xx_wm_last_cpp = cpp;
+    v9x_i9xx_wm_last_dsparb = dsparb;
+    v9x_i9xx_wm_last_fw_blc = fw_blc;
+
+    /*
+     * The log is a diagnostic and it fills. The programming below is not,
+     * and used to stop with it: four mode changes and the driver went quiet
+     * for the rest of the session (review of 05d47b5). Capacity now gates
+     * the logging alone.
+     */
+    if (count < (DWORD)V9X_D3D_WM_LOG) {
+        slot = count;
+        v9x_hal->d3d_diagnostics.wm_log_pipesrc[slot] = pipesrc;
+        v9x_hal->d3d_diagnostics.wm_log_dsparb[slot] = dsparb;
+        v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot] = fw_blc;
+        v9x_hal->d3d_diagnostics.wm_log_fw_blc2[slot] =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC2);
+        v9x_hal->d3d_diagnostics.wm_log_fw_blc_self[slot] =
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC_SELF);
+        v9x_hal->d3d_diagnostics.wm_log_rate_khz[slot] = rate_khz;
+        ++v9x_hal->d3d_diagnostics.wm_log_count;
+    }
+
+    /*
+     * A depth DSPCNTR names in a way this driver does not know is a refusal
+     * and not a guess, the way v9x_i9xx_wm_fifo_split declines a partition
+     * it cannot believe. intel93's DSPARB error cost one capture rather than
+     * a conclusion precisely because it reported nothing.
+     */
+    if (cpp == 0ul) {
+        ++v9x_hal->d3d_diagnostics.wm_declined;
+        return;
+    }
 
     if (v9x_i9xx_wm_fifo_split(dsparb, &fifo_a, &fifo_b) != V9X_FALSE) {
         /*
@@ -396,15 +472,15 @@ static void v9x_i9xx_note_watermarks(void)
         DWORD rate_b = v9x_i9xx_scanout_plane == 0ul ? 0ul : rate_khz;
 
         want = v9x_i9xx_wm_fw_blc_merge(
-                   v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot],
+                   fw_blc,
                    v9x_i9xx_wm_plane(rate_a, cpp, fifo_a,
                                      V9X_I9XX_WM_LATENCY_NS),
                    v9x_i9xx_wm_plane(rate_b, cpp, fifo_b,
                                      V9X_I9XX_WM_LATENCY_NS));
-        v9x_hal->d3d_diagnostics.wm_log_computed[slot] = want;
+        if (count < (DWORD)V9X_D3D_WM_LOG) {
+            v9x_hal->d3d_diagnostics.wm_log_computed[slot] = want;
+        }
     }
-    v9x_hal->d3d_diagnostics.wm_log_rate_khz[slot] = rate_khz;
-    ++v9x_hal->d3d_diagnostics.wm_log_count;
 
     /*
      * And program it.
@@ -436,12 +512,15 @@ static void v9x_i9xx_note_watermarks(void)
      * caught is inference from the symptom's shape and its concentration in
      * heavy scenes.
      */
-    if (want != 0ul && want != v9x_hal->d3d_diagnostics.wm_log_fw_blc[slot]) {
+    if (want != 0ul && want != fw_blc) {
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC) = want;
         /* Posting read, and the record of what the register now holds. */
         v9x_hal->d3d_diagnostics.wm_written =
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
         ++v9x_hal->d3d_diagnostics.wm_writes;
+        /* What the register holds now, so the input test above compares
+         * against this driver's own value and not the one it replaced. */
+        v9x_i9xx_wm_last_fw_blc = v9x_hal->d3d_diagnostics.wm_written;
     }
 }
 
@@ -483,8 +562,15 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
         v9x_hal->d3d_diagnostics.pipestat_b_or |=
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
-        /* And the watermarks, once, at the same boundary: this is what the
-         * BIOS left for the mode the game is actually in. Never written. */
+        /*
+         * And the watermarks, once, at the same boundary.
+         *
+         * This said "never written" until 2026-09-20 and the driver now
+         * writes them, so the reading is whatever was in force when the
+         * boundary was taken - the BIOS's value on a first session, this
+         * driver's on a later one. WmWritten is what the last write put
+         * there; the two differing is ordering, not a lost write.
+         */
         v9x_hal->d3d_diagnostics.fw_blc =
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC);
         v9x_hal->d3d_diagnostics.fw_blc2 =
@@ -674,6 +760,15 @@ void v9x_scanout_reset(void)
     v9x_i9xx_pipestat_baselined = 0;
     v9x_i9xx_scanout_entry_line = 0ul;
     v9x_i9xx_scanout_flip_outstanding = 0;
+    /* The remembered watermark inputs are session-scoped for the reason the
+     * pipestat baseline is: carrying them across a DriverInit would skip the
+     * first calculation of the new session against the old one's mode. */
+    v9x_i9xx_wm_last_valid = 0;
+    v9x_i9xx_wm_last_pipesrc = 0ul;
+    v9x_i9xx_wm_last_rate_khz = 0ul;
+    v9x_i9xx_wm_last_cpp = 0ul;
+    v9x_i9xx_wm_last_dsparb = 0ul;
+    v9x_i9xx_wm_last_fw_blc = 0ul;
     if (v9x_hal == 0) {
         return;
     }

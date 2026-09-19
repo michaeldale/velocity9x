@@ -64,22 +64,60 @@ v9x_u32 v9x_i9xx_wm_plane(v9x_u32 pixel_rate_khz, v9x_u32 cpp,
     entries = v9x_i9xx_wm_div_up(entries, V9X_I9XX_WM_CACHELINE);
 
     /*
-     * What is left of the FIFO once that much is in flight, less the
-     * guard. Too little room and i915 takes the default rather than zero:
-     * a watermark of zero is one no fetch ever satisfies.
+     * What is left of the FIFO once that much is in flight, less the guard,
+     * then the three clamps intel_calculate_wm applies IN ITS ORDER: the
+     * maximum, then the default for a result with no room in it, then the
+     * burst floor last of all.
+     *
+     * The order is the point. This file's first cut returned the default
+     * early for the no-room case, which meant a tight mode escaped the
+     * floor entirely and got 1 - and the host test agreed with it, because
+     * the test was written from the same misreading. Upstream lets the
+     * default fall through to the floor and so the answer there is 8.
      */
     if (fifo_size <= entries + V9X_I9XX_WM_GUARD) {
-        return V9X_I9XX_WM_DEFAULT;
+        size = V9X_I9XX_WM_DEFAULT;
+    } else {
+        size = fifo_size - entries - V9X_I9XX_WM_GUARD;
+        if (size > V9X_I9XX_WM_MAX) {
+            size = V9X_I9XX_WM_MAX;
+        }
     }
-    size = fifo_size - entries - V9X_I9XX_WM_GUARD;
-    if (size > V9X_I9XX_WM_MAX) {
-        return V9X_I9XX_WM_MAX;
-    }
-    if (size < V9X_I9XX_WM_DEFAULT) {
-        return V9X_I9XX_WM_DEFAULT;
+
+    if (size < V9X_I9XX_WM_MIN_BURST) {
+        return V9X_I9XX_WM_MIN_BURST;
     }
 
     return size;
+}
+
+v9x_u32 v9x_i9xx_wm_cpp_from_dspcntr(v9x_u32 dspcntr)
+{
+    /*
+     * DISPPLANE_* from i915, bits 29:26. Only the formats a Gen3 plane can
+     * be programmed to are named; anything else returns zero and the caller
+     * computes nothing.
+     */
+    switch ((dspcntr & 0x3c000000ul) >> 26) {
+    case 0x2ul:                 /* 8bpp indexed                            */
+        return 1ul;
+    case 0x3ul:                 /* BGRA5551                                */
+    case 0x4ul:                 /* BGRX5551                                */
+    case 0x5ul:                 /* BGRX565 - the netbook's                 */
+        return 2ul;
+    case 0x6ul:                 /* BGRX8888                                */
+    case 0x7ul:                 /* BGRA8888                                */
+    case 0x8ul:                 /* RGBX1010102                             */
+    case 0x9ul:                 /* RGBA1010102                             */
+    case 0xaul:                 /* BGRX1010102                             */
+    case 0xeul:                 /* RGBX8888                                */
+    case 0xful:                 /* RGBA8888                                */
+        return 4ul;
+    case 0xcul:                 /* RGBX16161616F                           */
+        return 8ul;
+    default:
+        return 0ul;
+    }
 }
 
 v9x_u32 v9x_i9xx_wm_fw_blc(v9x_u32 plane_a_wm, v9x_u32 plane_b_wm)
