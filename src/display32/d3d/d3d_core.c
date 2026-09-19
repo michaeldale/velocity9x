@@ -256,12 +256,31 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
     if (v9x_in_vblank()) {
         ++v9x_hal->d3d_diagnostics.vblank_in_blank;
     }
-    if (v9x_present_draw_is_first()) {
-        v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
-                          (DWORD)(context - v9x_d3d_contexts),
-                          context->target_offset);
+    /*
+     * The DRAW record is taken AFTER the backend returns, not before it.
+     *
+     * The backends wait here: d3d_i9xx.c for a pending flip since intel78,
+     * d3d_virge.c since 2026-09-19. That wait calls v9x_flip_done, which
+     * emits the FLIP_DONE record. Tracing the draw first therefore wrote
+     * ACCEPTED, DRAW, DONE for a batch that had correctly waited - the
+     * exact pattern this ring exists to call premature reuse. The ordering
+     * is the whole instrument, so the record has to mark SUBMISSION, which
+     * is after any synchronisation the backend performs.
+     *
+     * The arming is consumed before the call so that the batch which took
+     * the wait is the one reported, whatever the backend returns.
+     */
+    {
+        int first = v9x_present_draw_is_first();
+        int ok = ops->draw_triangles(context, vertices, triangle_count);
+
+        if (first) {
+            v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
+                              (DWORD)(context - v9x_d3d_contexts),
+                              context->target_offset);
+        }
+        return ok;
     }
-    return ops->draw_triangles(context, vertices, triangle_count);
 }
 
 static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,

@@ -1335,11 +1335,20 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
      * plainly showed a half-drawn buffer (2026-09-19).
      *
      * The exposure is still counted, before the wait, so the count says
-     * how often the wait was needed. A wait that runs out draws anyway
-     * rather than refusing: the frame is lost either way and the
-     * application keeps running, which is the rule the Intel path settled
-     * on. draws_flip_waited and draws_flip_wait_timeouts are engine
-     * neutral and only one engine is ever live, so they carry this too.
+     * how often the wait was needed. draws_flip_waited and
+     * draws_flip_wait_timeouts are engine neutral and only one engine is
+     * ever live, so they carry this too.
+     *
+     * A wait that RUNS OUT refuses the batch. The Intel path draws anyway
+     * on the reasoning that the frame is lost either way, but that reopens
+     * the hazard this guard exists to close: the flip is still unresolved,
+     * so which buffer the panel owns is exactly what is not known, and
+     * drawing into it is the fault being chased. Losing the batch is the
+     * lesser outcome, and a timeout is seconds of polling - if it ever
+     * fires, something is wrong that should be visible rather than papered
+     * over. The Intel path keeps its own rule until a netbook boot can
+     * measure the change; the two differ deliberately and the counters say
+     * which path a capture came from.
      */
     if (v9x_hal != 0 && v9x_flip_pending()) {
         ++v9x_hal->d3d_diagnostics.virge_draws_flip_pending;
@@ -1349,9 +1358,12 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
 
         if (waited != V9X_FLIP_WAIT_NONE && v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.draws_flip_waited;
-            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+        }
+        if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+            if (v9x_hal != 0) {
                 ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
             }
+            return 0;
         }
     }
 
