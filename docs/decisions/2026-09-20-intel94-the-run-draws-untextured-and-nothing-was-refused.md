@@ -1,8 +1,19 @@
-# intel94: 3DMark99 draws untextured, and nothing was refused
+# intel94: the run draws untextured, and nothing was refused
 
-2026-09-20, MICHAEL-NETBOOK (945GSE), build `5d9fbf6-dirty`, 3DMark99.
-Reported symptom: textures missing from the picture, and the application
-very slow to open. Attached: `C:\temp\intel94`.
+2026-09-20, MICHAEL-NETBOOK (945GSE), build `5d9fbf6-dirty`. Reported
+symptom: textures missing from the picture, and the application very slow to
+open. Attached: `C:\temp\intel94`.
+
+> **Corrected 2026-09-20.** This was filed as a 3DMark99 capture because
+> that is how it was handed over. `intel94\V9XSNAP.INI` is byte-identical to
+> `intel95\FinalReality\V9XSNAP.INI` (md5 `c7c82ff...`), so the same file is
+> now filed under Final Reality. One of the two labels is wrong and the
+> capture does not say which: nothing in a snapshot names the application.
+>
+> Every measurement below is unaffected - the counters are the driver's, not
+> the application's - but the title and the references to 3DMark99 were an
+> assertion the evidence never supported, so they are removed rather than
+> swapped for the other guess.
 
 ## The measurement
 
@@ -12,9 +23,9 @@ I9xxDrawsSubmitted=252084    I9xxTextureDraws=8868
 I9xxDrawsRefused=7           I9xxDepthDraws=252084
 ```
 
-**Three and a half per cent of draws sampled a texture.** 3DMark99's scenes
-are texture-mapped throughout, so 243,216 of those draws are the missing
-textures, one triangle at a time. The draws are reaching the ring - the
+**Three and a half per cent of draws sampled a texture**, so 243,216 of
+those draws are the missing textures, one triangle at a time. The draws are
+reaching the ring - the
 frame is being built, the geometry is there, the depth test runs on every
 one of them. What is not there is the map.
 
