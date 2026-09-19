@@ -264,6 +264,30 @@ static int v9x_append_text(char *buffer, int offset, const char *text)
     return offset;
 }
 
+/*
+ * When this dump was taken, and how long the machine had been up.
+ *
+ * The rollover tells two runs of one boot apart; it does nothing across
+ * boots, and a counter that RESETS is how intel95's two snapshots were
+ * first read as one boot's before-and-after when they were two separate
+ * ones. The tick count settles that - it only ever climbs within a boot, so
+ * a lower one in a later file means a different boot, with no inference
+ * required. The wall clock orders the files for a reader.
+ */
+static void v9x_write_dump_identity(void)
+{
+    SYSTEMTIME now;
+    char text[32];
+
+    GetLocalTime(&now);
+    wsprintf(text, "%04u-%02u-%02u %02u:%02u:%02u",
+             (unsigned)now.wYear, (unsigned)now.wMonth, (unsigned)now.wDay,
+             (unsigned)now.wHour, (unsigned)now.wMinute,
+             (unsigned)now.wSecond);
+    v9x_write_text("DumpTime", text);
+    v9x_write_uint("DumpUptimeMs", GetTickCount());
+}
+
 static void v9x_write_ring(const V9X_DD_TRACE *trace)
 {
     char key[16];
@@ -381,6 +405,7 @@ void __stdcall V9xTraceDumpEntry(void)
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
+    v9x_write_dump_identity();
 
     screen = GetDC(0);
     if (screen == 0) {
@@ -732,6 +757,9 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.blt_engine_flip_pending);
     v9x_write_hex("BltEngineFlipLastDest",
                   snapshot.d3d.blt_engine_flip_last_dest);
+    v9x_write_hex("D3dPidFirst", snapshot.d3d.d3d_pid_first);
+    v9x_write_hex("D3dPidLast", snapshot.d3d.d3d_pid_last);
+    v9x_write_uint("D3dPidDistinct", snapshot.d3d.d3d_pid_distinct);
     {
         DWORD index;
 

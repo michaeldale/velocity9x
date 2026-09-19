@@ -335,6 +335,45 @@ static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
 
 static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site);
 
+/*
+ * The Direct3D clients seen in this DLL's lifetime.
+ *
+ * Eight is enough to say "one application" or "more than one", which is the
+ * question: a capture whose counters are cumulative from the boot cannot be
+ * attributed to a run without it. Beyond eight the distinct count keeps
+ * rising and the table stops growing, because the exact number matters far
+ * less than whether it is one.
+ */
+#define V9X_D3D_CLIENT_SLOTS 8u
+static DWORD v9x_d3d_clients[V9X_D3D_CLIENT_SLOTS];
+static DWORD v9x_d3d_client_count = 0ul;
+
+static void v9x_d3d_note_client(DWORD pid)
+{
+    DWORD index;
+
+    if (v9x_hal == 0 || pid == 0ul) {
+        return;
+    }
+    v9x_hal->d3d_diagnostics.d3d_pid_last = pid;
+    if (v9x_hal->d3d_diagnostics.d3d_pid_first == 0ul) {
+        v9x_hal->d3d_diagnostics.d3d_pid_first = pid;
+    }
+
+    for (index = 0ul; index < v9x_d3d_client_count &&
+                      index < (DWORD)V9X_D3D_CLIENT_SLOTS; ++index) {
+        if (v9x_d3d_clients[index] == pid) {
+            return;
+        }
+    }
+
+    if (v9x_d3d_client_count < (DWORD)V9X_D3D_CLIENT_SLOTS) {
+        v9x_d3d_clients[v9x_d3d_client_count] = pid;
+    }
+    ++v9x_d3d_client_count;
+    ++v9x_hal->d3d_diagnostics.d3d_pid_distinct;
+}
+
 static void v9x_d3d_textures_destroy_context(DWORD context)
 {
     DWORD index;
@@ -917,6 +956,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
                 return V9X_DDHAL_DRIVER_HANDLED;
             }
             context->pid = data->dwPID;
+            v9x_d3d_note_client(data->dwPID);
             context->specular_enable = 0ul;
             context->fog_enable = 0ul;
             context->fog_color = 0ul;

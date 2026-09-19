@@ -1136,6 +1136,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026092004: V9X_D3D_DIAGNOSTICS gains the D3D client identity. An append.
+ *
  * 2026092003: V9X_D3D_DIAGNOSTICS gains wm_declined and the accelerated
  * blit's own pending-flip sample. An append.
  *
@@ -1324,7 +1326,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026092003ul
+#define V9X_DD_SHARED_ABI   2026092004ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2330,6 +2332,24 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD blt_engine_flip_pending;
     DWORD blt_engine_flip_last_dest;
+    /*
+     * Which applications used Direct3D in this DLL's lifetime.
+     *
+     * The counters here are cumulative from the boot and nothing in a
+     * snapshot named the application that ran, so two captures could not be
+     * attributed: intel95's two snapshots agree to within 0.8 per cent on
+     * texture creates and 1.1 per cent on render states while their draw
+     * counts differ fourteenfold, and which game produced which could not
+     * be settled from the files at all.
+     *
+     * A PID does not name a program, but it distinguishes one: two captures
+     * with the same last PID saw the same process, and a distinct count of
+     * one says the numbers belong to a single application rather than
+     * several added together.
+     */
+    DWORD d3d_pid_first;
+    DWORD d3d_pid_last;
+    DWORD d3d_pid_distinct;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
