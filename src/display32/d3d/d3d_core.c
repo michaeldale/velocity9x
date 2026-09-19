@@ -344,6 +344,16 @@ static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site);
  * rising and the table stops growing, because the exact number matters far
  * less than whether it is one.
  */
+/*
+ * The most render states this driver will walk in one block.
+ *
+ * A backstop, not a limit on what an application may send: the real bound is
+ * the execute buffer's extent, and this only catches a buffer that reports
+ * none. 1024 states is 8 KB, against the 276 intel96 measured - and against
+ * the 64 that used to make a longer block apply nothing at all.
+ */
+#define V9X_D3D_STATE_MAX 1024u
+
 #define V9X_D3D_CLIENT_SLOTS 8u
 static DWORD v9x_d3d_clients[V9X_D3D_CLIENT_SLOTS];
 static DWORD v9x_d3d_client_count = 0ul;
@@ -957,6 +967,9 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             }
             context->pid = data->dwPID;
             v9x_d3d_note_client(data->dwPID);
+            if (v9x_hal->d3d_diagnostics.uptime_first_d3d == 0ul) {
+                v9x_hal->d3d_diagnostics.uptime_first_d3d = GetTickCount();
+            }
             context->specular_enable = 0ul;
             context->fog_enable = 0ul;
             context->fog_color = 0ul;
@@ -1259,12 +1272,25 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     /*
      * Everything below applies or nothing does, and until intel94 nothing
      * counted the nothing. A call whose context or execute buffer does not
-     * resolve - or whose block is longer than the loop will walk - returns
-     * handled and applies no state at all, so a texture handle in it is a
-     * binding the application believes it made and the driver never saw.
+     * resolve returns handled and applies no state at all, so a texture
+     * handle in it is a binding the application believes it made and the
+     * driver never saw.
+     *
+     * The LENGTH used to be one of those cases and is not any more. intel96
+     * measured 3DMark99 sending a block of 276 states and Final Reality one
+     * of 81, and a cap of 64 threw every state in them away - not the
+     * excess, the whole block. The cap was this loop's, not the interface's.
+     *
+     * What replaces it is a bound that means something. The states must lie
+     * inside the execute buffer, whose size DirectDraw reports in
+     * dwBlockSizeX for a linear surface; that field's meaning on this path
+     * is not established by measurement, so it is used only to make the
+     * bound TIGHTER and never to widen it, and the value seen is recorded so
+     * a capture can settle what it holds. V9X_D3D_STATE_MAX is the backstop
+     * for a zero or absurd report, and is larger than anything measured.
      */
     if (!(context != 0 && exe != 0 && exe->lpGbl != 0 &&
-          exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) &&
+          exe->lpGbl->fpVidMem != 0ul) &&
         v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_state_dropped;
         /* Preserve the failed precondition and the affected context without
@@ -1273,8 +1299,7 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
         v9x_hal->d3d_diagnostics.state_drop_reason = context == 0
             ? V9X_D3D_STATE_DROP_CONTEXT : exe == 0
             ? V9X_D3D_STATE_DROP_SURFACE : exe->lpGbl == 0
-            ? V9X_D3D_STATE_DROP_GLOBAL : exe->lpGbl->fpVidMem == 0ul
-            ? V9X_D3D_STATE_DROP_MEMORY : V9X_D3D_STATE_DROP_COUNT;
+            ? V9X_D3D_STATE_DROP_GLOBAL : V9X_D3D_STATE_DROP_MEMORY;
         v9x_hal->d3d_diagnostics.state_drop_context =
             data != 0 ? data->dwhContext : 0ul;
         v9x_hal->d3d_diagnostics.state_drop_count =
@@ -1286,9 +1311,44 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     }
 
     if (context != 0 && exe != 0 && exe->lpGbl != 0 &&
-        exe->lpGbl->fpVidMem != 0ul && data->dwCount <= 64ul) {
+        exe->lpGbl->fpVidMem != 0ul) {
+        DWORD applied = data->dwCount;
+        DWORD room;
+
+        if (v9x_hal != 0) {
+            if (data->dwCount > v9x_hal->d3d_diagnostics.state_max_count) {
+                v9x_hal->d3d_diagnostics.state_max_count = data->dwCount;
+            }
+            v9x_hal->d3d_diagnostics.state_exe_bytes_last =
+                exe->lpGbl->dwBlockSizeX;
+        }
+
+        if (applied > (DWORD)V9X_D3D_STATE_MAX) {
+            applied = (DWORD)V9X_D3D_STATE_MAX;
+        }
+
+        /*
+         * The buffer's own extent, when it reports one. An offset at or past
+         * the end leaves nothing to read and applies nothing, which is the
+         * one length case that still declines the block entirely.
+         */
+        if (exe->lpGbl->dwBlockSizeX > data->dwOffset) {
+            room = (exe->lpGbl->dwBlockSizeX - data->dwOffset) /
+                   (DWORD)sizeof(V9X_D3DSTATE);
+            if (applied > room) {
+                applied = room;
+            }
+        } else if (exe->lpGbl->dwBlockSizeX != 0ul) {
+            applied = 0ul;
+        }
+
+        if (applied != data->dwCount && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.state_clamped;
+            v9x_hal->d3d_diagnostics.state_clamped_count = data->dwCount;
+        }
+
         states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
-        for (index = 0ul; index < data->dwCount; ++index) {
+        for (index = 0ul; index < applied; ++index) {
             switch (states[index].type) {
             case V9X_D3DRENDERSTATE_SHADEMODE:
                 context->shade_mode = states[index].argument;

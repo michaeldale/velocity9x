@@ -1326,9 +1326,13 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092006: append the long-state-block and uptime counters, and set
+ * DDHALINFO_GETDRIVERINFOSET so DirectDraw calls the GetDriverInfo entry
+ * point this driver has published unannounced since it existed. An append.
+ */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092005ul
+#define V9X_DD_SHARED_ABI   2026092006ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1518,6 +1522,8 @@ typedef struct v9x_dd_cb32 {
 #define V9X_D3D_STATE_DROP_SURFACE 2ul
 #define V9X_D3D_STATE_DROP_GLOBAL  3ul
 #define V9X_D3D_STATE_DROP_MEMORY  4ul
+/* Retired 2026-09-20: a long block is clamped now, never discarded. The
+ * number is not reused so an intel96-era capture still reads. */
 #define V9X_D3D_STATE_DROP_COUNT   5ul
 /* Engine-blit operation; outcome uses V9X_BLT_DONE/BUSY/DECLINED (0/1/2). */
 #define V9X_D3D_BLT_COPY  1ul
@@ -2384,6 +2390,36 @@ typedef struct v9x_d3d_diagnostics {
      * BUSY/DECLINED records must not be read as executed clears. */
     DWORD blt_flip_log_count;
     V9X_D3D_BLT_FLIP_RECORD blt_flip_log[V9X_D3D_BLT_FLIP_LOG];
+    /*
+     * Long render-state blocks, which used to be discarded whole.
+     *
+     * intel96 measured 3DMark99 sending 276 states in one block and Final
+     * Reality 81, against a cap of 64 that threw away every state in them.
+     * state_max_count is the longest block seen, state_clamped counts the
+     * blocks not applied in full, and state_exe_bytes_last is the execute
+     * buffer's reported dwBlockSizeX.
+     *
+     * That last one is a measurement, not a fact yet: the field's meaning on
+     * this path has never been established, so the code uses it only to make
+     * its bound tighter and records it here so a capture can settle what it
+     * holds. A value that tracks the block sizes confirms it; a zero says
+     * the backstop is doing the work alone.
+     */
+    DWORD state_max_count;
+    DWORD state_clamped;
+    DWORD state_clamped_count;
+    DWORD state_exe_bytes_last;
+    /*
+     * Milliseconds of uptime at three points, to bracket the slow start.
+     *
+     * 3DMark99 is reported slow to open and nothing has ever measured a
+     * duration. Against the dump's own DumpUptimeMs these bound the
+     * intervals without timing anything directly: driver ready, first
+     * Direct3D context, first flip.
+     */
+    DWORD uptime_driver_init;
+    DWORD uptime_first_d3d;
+    DWORD uptime_first_flip;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -868,6 +868,11 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
     V9X_FPU_AREA fpu;
     DWORD result;
 
+    /* The first flip of the session, for the slow-start bracket. */
+    if (v9x_hal != 0 && v9x_hal->d3d_diagnostics.uptime_first_flip == 0ul) {
+        v9x_hal->d3d_diagnostics.uptime_first_flip = GetTickCount();
+    }
+
     v9x_trace_enter(V9X_TRACE_FLIP, data->dwFlags);
     v9x_fpu_save(&fpu);
     result = v9x_flip_body(data);
@@ -1667,9 +1672,42 @@ DWORD __stdcall DriverInit(DWORD context)
     v9x_scanout_reset();
     v9x_trace_enter(V9X_TRACE_DRIVERINIT, (DWORD)shared);
 
+    /*
+     * When this happened, so the slow start can be bracketed.
+     *
+     * 3DMark99 is reported slow to open and nothing has ever measured a
+     * duration: intel96 could say it created 405 textures and destroyed
+     * 4,336 surfaces against 806 creations, and not how long any of it took.
+     * Three stamps against the dump's own DumpUptimeMs bound the intervals
+     * without timing anything directly - driver ready, first Direct3D
+     * context, first flip.
+     */
+    shared->d3d_diagnostics.uptime_driver_init = GetTickCount();
+
     shared->info.dwSize = sizeof(V9X_DDHALINFO);
     shared->info.dwNumModes = mode_count;
-    shared->info.dwFlags = V9X_DDHALINFO_ISPRIMARYDISPLAY;
+    /*
+     * GETDRIVERINFOSET, which this driver has never set.
+     *
+     * DirectDraw calls GetDriverInfo only when the flag is present, so the
+     * entry point published two lines below has never once been called:
+     * intel96 read DriverInfoCalls as zero in all three captures, and the
+     * GUID_D3DCallbacks2 answer behind V9X_C3_SERVE_D3D_CALLBACKS2 has
+     * therefore never executed.
+     *
+     * It matters beyond that path. GUID_D3DExtendedCaps is where a DirectX
+     * 6 application's texture limits and texture-operation caps come from,
+     * and with the driver never asked the runtime supplies its own defaults.
+     * What 3DMark99 was told about this device was not this driver's answer.
+     *
+     * Declining an unknown GUID with dwActualSize zero is the documented
+     * answer for "not supported", which is what V9xHalGetDriverInfo already
+     * does, so turning the channel on does not commit to serving anything.
+     * DriverInfoCalls and DriverInfoLast will now say what the runtime asks
+     * for, which is what decides whether answering any of it is worth doing.
+     */
+    shared->info.dwFlags = V9X_DDHALINFO_ISPRIMARYDISPLAY |
+                           V9X_DDHALINFO_GETDRIVERINFOSET;
     shared->info.dwMonitorFrequency = 60ul;
     /* The 16-bit side stamps the owning selector immediately before
      * DDHAL_SetInfo; a flat DLL base is not a valid DDRAW16 instance. */

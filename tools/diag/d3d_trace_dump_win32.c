@@ -791,6 +791,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("D3dPidFirst", snapshot.d3d.d3d_pid_first);
     v9x_write_hex("D3dPidLast", snapshot.d3d.d3d_pid_last);
     v9x_write_uint("D3dPidDistinct", snapshot.d3d.d3d_pid_distinct);
+    v9x_write_uint("StateMaxCount", snapshot.d3d.state_max_count);
+    v9x_write_uint("StateClamped", snapshot.d3d.state_clamped);
+    v9x_write_uint("StateClampedCount", snapshot.d3d.state_clamped_count);
+    v9x_write_uint("StateExeBytesLast", snapshot.d3d.state_exe_bytes_last);
+    v9x_write_uint("UptimeDriverInit", snapshot.d3d.uptime_driver_init);
+    v9x_write_uint("UptimeFirstD3d", snapshot.d3d.uptime_first_d3d);
+    v9x_write_uint("UptimeFirstFlip", snapshot.d3d.uptime_first_flip);
     {
         DWORD index;
 
