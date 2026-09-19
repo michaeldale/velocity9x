@@ -1,4 +1,10 @@
-# Five mechanisms measured out, and the metric that got there
+# Five mechanisms narrowed, and the metric that got there
+
+**REVISED after review, same night.** The title and the conclusions below
+claimed more than the measurements carry. None of the tested changes
+demonstrated a flicker reduction, and the probes narrow the search without
+closing any of the five mechanisms. Four specific over-readings are
+corrected in the section at the end; read that first.
 
 2026-09-19 night. A8U4I5 with the Trio3D/2X, Final Reality Robots on
 hardware Direct3D, the panel captured at 1080p60 for every run. Five builds
@@ -88,14 +94,61 @@ that was already being paid.
 The unblank completion stays on the documented-VGA-discipline grounds given
 in its own record, not because it helps.
 
+## What this document got wrong
+
+**The Lock reading was never taken.** `blt_flip_pending` is sampled in
+`v9x_blt_drain`, and `V9xHalLock` does not go through it - it calls the
+engine and render waits directly. So the zero covered 520 Blts and not one
+of the 308 Locks, and mechanism 4 below is a statement about Blts only.
+The sample is now taken in Lock as well, and the reading has to be redone.
+
+**The metric does not require an isolated frame.** `dip_local.py` flags any
+frame below three quarters of its neighbours' median, so two adjacent dark
+frames both count, and a rapid scene change can trigger it. It is
+scene-normalised, not scene-independent, and calling the counts "isolated
+dips" overstates what they are.
+
+**"An improvement of any size would have shown" does not follow.** The
+metric caught a four-times regression on one run per build against a fault
+that is bursty. That establishes some sensitivity, not enough to exclude a
+modest improvement.
+
+**"Completion is honest" is stronger than the result.** The 8,192-read
+window establishes that the idle bit did not change during that
+observation, using the very signal whose reliability is in question. It is
+negative evidence against a short false-idle interval, not proof that
+rendering had finished.
+
+**The reuse probe speaks for its own workload.** It weakens routine
+premature release under that probe's pattern. It does not establish that
+the display never fetches a released buffer under the game's.
+
 ## Where to look next, and where not to
 
-Not at more driver-side counters. Five mechanisms, five instruments, five
-clean reads, and the fault is untouched. The remaining gap is between the
-CRTC start address being latched and what the panel actually fetches, and
-no register on this part reports it - which is the same gap the Intel side
-has been stuck in since intel73, on a different chip with a different
-register file.
+The claim that the remaining cause must lie between the latch and the panel
+is also withdrawn. Correct destinations and completed commands do not prove
+the submitted commands produced a complete frame: rejected or missing
+geometry, wrong depth or blend state, and a clear issued at the wrong point
+all remain open, and the fault concentrating in particular scene sections
+makes them likelier rather than less.
+
+**The strongest untested hypothesis is a display FIFO underrun.** The
+scanout starving part way down a frame produces exactly the observed shape
+- top band right, remainder not - depends on memory bandwidth rather than
+on presentation, and would concentrate in heavy parts of a scene, which is
+the burstiness nothing else here explains. GMCH parts have no underrun
+interrupt at all, only a sticky status bit in PIPESTAT bit 31, which is why
+two days in the flip path could not have found it. That bit is now read and
+accumulated on the Intel side (`PipestatAOr`, `PipestatBOr`); it has never
+been looked at.
+
+The experiment that separates the two families cleanly is to keep the
+rendered target itself: save the back buffer immediately before Flip, tagged
+with a frame sequence, and correlate against the panel recording. If the
+saved image is also missing the robot, the fault is in rendering, state,
+clears or rejected submissions. If it is complete while the displayed frame
+is not, presentation is implicated and the FIFO reading discriminates within
+that.
 
 The Intel side has one advantage the S3 side does not: i915 documents an
 answer to compare against. `Ecoskpd` and `FlipIssueLine{Last,Min,Max}`

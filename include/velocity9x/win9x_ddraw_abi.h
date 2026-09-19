@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091912: V9X_D3D_DIAGNOSTICS gains the PIPESTAT accumulators, whose
+ * bit 31 is the display FIFO underrun. An append; the stamp moves for the
+ * reason 2026091603 gives.
+ *
  * 2026091911: V9X_D3D_DIAGNOSTICS gains the flip-issue delta, the
  * scanlines the write path costs between the window test and the flip
  * actually being issued. An append; the stamp moves for the reason
@@ -1280,7 +1284,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091911ul
+#define V9X_DD_SHARED_ABI   2026091912ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2097,6 +2101,19 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD flip_issue_delta_last;
     DWORD flip_issue_delta_max;
+    /*
+     * PIPESTAT for both pipes, ORed across every flip. Bit 31 is the
+     * display FIFO underrun status and it is sticky, so a single set bit
+     * anywhere in the run says the scanout starved at least once.
+     *
+     * An underrun shows a frame whose top is right and whose remainder is
+     * not, depends on memory bandwidth rather than on presentation, and has
+     * no interrupt on GMCH parts - which together would explain a fault
+     * that concentrates in heavy parts of a scene and that no instrument in
+     * the flip path can see. Untested; this is the first read.
+     */
+    DWORD pipestat_a_or;
+    DWORD pipestat_b_or;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

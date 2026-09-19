@@ -203,6 +203,29 @@
  * is what this reads.
  */
 #define V9X_I9XX_REG_ECOSKPD             ((v9x_u32)0x000021d0ul)
+/*
+ * PIPESTAT, and the one bit read from it.
+ *
+ * Bit 31 is the display FIFO underrun status: the scanout ran out of data
+ * part way down a frame. It is STICKY - set by the hardware, cleared only
+ * by writing a one back - and on GMCH parts there is no underrun interrupt
+ * at all, only this indication, which is why nothing has ever noticed one.
+ *
+ * It matters here because an underrun puts a frame on the panel whose top
+ * is right and whose remainder is not, which is the shape of the flicker
+ * this driver has been chasing through the flip path for two days, and
+ * because it depends on memory bandwidth rather than on presentation -
+ * which would explain a fault that concentrates in heavy parts of a scene
+ * and that no flip instrument can see.
+ *
+ * Read and never written. Writing PIPESTAT would clear the status, but its
+ * upper half also carries interrupt ENABLES and a careless write would
+ * disturb them; a sticky bit read once already answers "has this ever
+ * happened", which is the question.
+ */
+#define V9X_I9XX_REG_PIPEA_STAT          ((v9x_u32)0x00070024ul)
+#define V9X_I9XX_REG_PIPEB_STAT          ((v9x_u32)0x00071024ul)
+#define V9X_I9XX_PIPESTAT_FIFO_UNDERRUN  ((v9x_u32)0x80000000ul)
 #define V9X_I9XX_ECO_FLIP_DONE           ((v9x_u32)0x00000001ul)
 #define V9X_I9XX_ISR_PLANE_A_FLIP_PENDING ((v9x_u32)0x00000800ul)
 #define V9X_I9XX_ISR_PLANE_B_FLIP_PENDING ((v9x_u32)0x00000400ul)

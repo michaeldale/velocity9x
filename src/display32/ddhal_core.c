@@ -408,6 +408,9 @@ static int v9x_can_set_display_start(void)
  */
 /* Defined with the Blt drain below; used by Flip and Lock above it. */
 static int v9x_render_drain(int wait);
+/* Defined beside v9x_blt_drain; Lock samples it too, and Lock comes
+ * first in this file. */
+static void v9x_note_blt_flip_pending(void);
 
 #define V9X_FLIP_IDLE          0ul
 #define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
@@ -696,7 +699,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
      * and all of them happen at mid-frame settles. The check answered its
      * question and is gone; two million register reads a pass for something
      * that never fires is not a default worth carrying.
-     * docs\decisions6-09-19-five-mechanisms-measured-out.md
+     * docs\decisions6-09-19-five-mechanisms-narrowed.md
      */
     /* And the frame about to be shown has to be DRAWN: rendering the GPU
      * has not finished is the one thing the flip must not present. */
@@ -944,6 +947,14 @@ DWORD __stdcall V9xHalSetExclusiveMode(
 DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_LOCK, data->dwFlags);
+    /*
+     * Sampled HERE as well as in v9x_blt_drain, because this path does not
+     * go through it: Lock calls the engine and render waits directly. The
+     * 2026-09-19 reading of blt_flip_pending as zero therefore covered the
+     * Blts and not one of the 308 Locks, and was reported as though it
+     * covered both (review of 3340476).
+     */
+    v9x_note_blt_flip_pending();
     /* Serialize CPU access after asynchronous engine work. DDRAW still
      * computes and returns the actual surface pointer. */
     if ((v9x_engine_status_validated() &&

@@ -318,6 +318,14 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
+    /* And PIPESTAT, whose bit 31 is the display FIFO underrun - sticky, so
+     * the OR across a run says whether the scanout ever starved. Read
+     * only; see the register's note in intel_gma.h for why it is never
+     * written back. */
+    v9x_hal->d3d_diagnostics.pipestat_a_or |=
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEA_STAT);
+    v9x_hal->d3d_diagnostics.pipestat_b_or |=
+        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
     /*
      * The scanline at the moment the base is read back, which settles what
      * that readback IS.
