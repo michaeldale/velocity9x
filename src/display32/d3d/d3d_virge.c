@@ -225,6 +225,9 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
         if (next->lpGbl == 0 || size < 2ul ||
             (DWORD)next->lpGbl->wWidth != size / 2ul ||
             (DWORD)next->lpGbl->wHeight != size / 2ul) {
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            }
             break;
         }
         next_offset = v9x_surface_offset(next);
@@ -233,6 +236,15 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
                 next_offset - top_offset;
         }
         if (next_offset != expected) {
+            /* The pair that says WHAT the layout is, rather than only that
+             * it is not this one: a constant difference is padding or
+             * alignment, a negative one is a chain laid out backwards, and
+             * something unrelated is a chain that is not adjacent at all. */
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_offset;
+                v9x_hal->d3d_diagnostics.mip_gap_expected = expected;
+                v9x_hal->d3d_diagnostics.mip_gap_actual = next_offset;
+            }
             break;
         }
         /* The level is where the engine will read it; it must also end
@@ -242,10 +254,15 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
             ((size / 2ul) * (size / 2ul) * 2ul > v9x_hal->fb.vram_bytes ||
              next_offset > v9x_hal->fb.vram_bytes -
                            (size / 2ul) * (size / 2ul) * 2ul)) {
+            ++v9x_hal->d3d_diagnostics.mip_gap_bounds;
             break;
         }
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.mip_chain_levels;
+            if (*levels_out + 1ul >
+                    v9x_hal->d3d_diagnostics.mip_levels_max) {
+                v9x_hal->d3d_diagnostics.mip_levels_max = *levels_out + 1ul;
+            }
         }
         ++*levels_out;
         size /= 2ul;

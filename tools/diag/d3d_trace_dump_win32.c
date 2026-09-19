@@ -810,6 +810,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("UptimeDriverInit", snapshot.d3d.uptime_driver_init);
     v9x_write_uint("UptimeFirstD3d", snapshot.d3d.uptime_first_d3d);
     v9x_write_uint("UptimeFirstFlip", snapshot.d3d.uptime_first_flip);
+    v9x_write_uint("MipGapShape", snapshot.d3d.mip_gap_shape);
+    v9x_write_uint("MipGapOffset", snapshot.d3d.mip_gap_offset);
+    v9x_write_uint("MipGapBounds", snapshot.d3d.mip_gap_bounds);
+    v9x_write_hex("MipGapExpected", snapshot.d3d.mip_gap_expected);
+    v9x_write_hex("MipGapActual", snapshot.d3d.mip_gap_actual);
+    v9x_write_uint("MipLevelsMax", snapshot.d3d.mip_levels_max);
     {
         DWORD index;
 

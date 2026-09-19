@@ -1349,6 +1349,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092008: V9X_D3D_DIAGNOSTICS gains the mip-chain refusal breakdown. An
+ * append.
+ */
 /* 2026092007: V9X_DD_SHARED gains d3d_extended_caps, and the diagnostics the
  * distinct GUID table. The shared block GROWS, so the 16-bit driver and the
  * 32-bit HAL must be deployed together - which the 2026-09-20 ViRGE run
@@ -1361,7 +1364,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092007ul
+#define V9X_DD_SHARED_ABI   2026092008ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2449,6 +2452,26 @@ typedef struct v9x_d3d_diagnostics {
     DWORD uptime_driver_init;
     DWORD uptime_first_d3d;
     DWORD uptime_first_flip;
+    /*
+     * WHY a mip chain was refused, and the largest one ever accepted.
+     *
+     * mip_chain_levels and mip_chain_delta are reset at the top of every
+     * check, so after the 64,827 checks of 2026-09-20 they described one
+     * arbitrary check and not the run. These accumulate.
+     *
+     * The reasons are the three places the walk breaks: a level whose
+     * dimensions are not half the one above, a level that does not begin
+     * exactly where the previous one ended, and a level that would run past
+     * the end of video memory. mip_gap_expected and mip_gap_actual carry the
+     * two offsets from the last mismatch, which is the pair that says whether
+     * the layout is padded, reordered, or somewhere else entirely.
+     */
+    DWORD mip_gap_shape;
+    DWORD mip_gap_offset;
+    DWORD mip_gap_bounds;
+    DWORD mip_gap_expected;
+    DWORD mip_gap_actual;
+    DWORD mip_levels_max;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart
