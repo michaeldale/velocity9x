@@ -188,6 +188,17 @@ void v9x_engine_3d_launched(void)
  */
 static struct v9x_done_wait v9x_virge_done_wait;
 
+/*
+ * Consecutive idle reads required before idle is believed on a part with
+ * no done bit. Short on purpose: the failure this tests for is idle
+ * reading set while work is queued and not yet started, which resolves
+ * within a few reads once the engine picks it up - a long spin would
+ * instead be measuring rasterisation time. The settle runs on the order of
+ * a quarter of a million times in a Robots pass, so the window is also the
+ * cost.
+ */
+#define V9X_VIRGE_IDLE_CONFIRM_READS 32ul
+
 static int v9x_virge_settled(void)
 {
     DWORD status = v9x_engine_status();
@@ -201,9 +212,35 @@ static int v9x_virge_settled(void)
     }
     if (!v9x_done_wait_should_spin(&v9x_virge_done_wait)) {
         /*
-         * Decided against: this part has never produced the bit. Idle is
-         * taken at its word, as it was before the bit was ever waited for.
+         * Decided against: this part has never produced the bit, so idle
+         * is all there is. But idle is taken at its word only after it has
+         * HELD, because whether it is trustworthy here while triangles are
+         * outstanding has never been established either way - the gap the
+         * done bit exists to close was characterised on 86Box, and this
+         * part answers the bit not at all (D3dDoneSeen=0 against 273,597
+         * skips, 2026-09-19).
+         *
+         * Every part of the presentation path is measured honest on this
+         * card - the flip completes when it says it does, the reuse probe
+         * is clean at every delay, nothing draws into the presented buffer
+         * - and the panel still shows a buffer holding only the clear and
+         * the sky. If presentation is honest then the frame was
+         * incomplete when it was presented, and this is the only place
+         * left that could have let it through.
+         *
+         * So: confirm. If the engine goes busy again inside the window,
+         * the first read was a lie and the count says so - which is the
+         * measurement, needing no assumption about the silicon. The caller
+         * then handles it exactly as it handles any busy engine.
          */
+        DWORD confirm = V9X_VIRGE_IDLE_CONFIRM_READS;
+
+        while (confirm-- != 0ul) {
+            if ((v9x_engine_status() & V9X_VIRGE_STATUS_IDLE) == 0ul) {
+                ++v9x_hal->d3d_diagnostics.virge_idle_false_settle;
+                return 0;
+            }
+        }
         v9x_virge_3d_pending = 0;
         ++v9x_hal->d3d_diagnostics.done_skipped;
         return 1;

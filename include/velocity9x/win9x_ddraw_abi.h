@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091909: V9X_D3D_DIAGNOSTICS gains virge_idle_false_settle, the times
+ * the ViRGE idle bit read set and then went clear inside a confirmation
+ * window. An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091908: V9X_D3D_DIAGNOSTICS gains blt_flip_pending, the Blt and Lock
  * exposure the D3D guard cannot see. An append; the stamp moves for the
  * reason 2026091603 gives.
@@ -1267,7 +1271,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091908ul
+#define V9X_DD_SHARED_ABI   2026091909ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2056,6 +2060,18 @@ typedef struct v9x_d3d_diagnostics {
      * there is something to guard.
      */
     DWORD blt_flip_pending;
+    /*
+     * Settles where the ViRGE idle bit read SET and then went clear inside
+     * the confirmation window - the engine was working after all.
+     *
+     * Non-zero is direct proof that idle alone is not a completion signal
+     * on this part, which is the one thing the 3D-done bit would have said
+     * and which this card has never once reported. Zero across a run says
+     * idle is honest and the frame was complete when it was presented,
+     * which would leave nothing in the driver's presentation path
+     * unmeasured.
+     */
+    DWORD virge_idle_false_settle;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
