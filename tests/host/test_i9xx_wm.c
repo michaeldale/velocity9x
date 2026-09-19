@@ -126,14 +126,44 @@ static void test_the_netbook_as_captured(void)
     v9x_u32 b = 0ul;
 
     WMCHECK(v9x_i9xx_wm_fifo_split(0x00001D9Cul, &a, &b) == V9X_TRUE);
-    WMCHECK(v9x_i9xx_wm_plane(54180ul, 2ul, a, 5000ul) == 17ul);
+    /*
+     * Plane B drives the panel; plane A is idle (LivePlane=1 in every
+     * capture). The idle one gets its FIFO less the guard, NOT a watermark
+     * computed from a rate it does not consume - computing plane A as live
+     * gave 17 where the answer is 26, and that would have been programmed.
+     */
+    WMCHECK(v9x_i9xx_wm_plane(0ul, 2ul, a, 5000ul) == 26ul);
     WMCHECK(v9x_i9xx_wm_plane(54180ul, 2ul, b, 5000ul) == 20ul);
     /* What the BIOS leaves there instead, from intel91 through intel93. */
-    WMCHECK(v9x_i9xx_wm_fw_blc(17ul, 20ul) != 0x03060106ul);
+    WMCHECK(v9x_i9xx_wm_fw_blc(26ul, 20ul) != 0x03060106ul);
+}
+
+/*
+ * The merge keeps what it does not understand. The netbook's FW_BLC carries
+ * bit 25, which i915 never writes and nothing here explains; programming a
+ * watermark must not silently drop it.
+ */
+static void test_merge_preserves_the_unknown(void)
+{
+    v9x_u32 merged = v9x_i9xx_wm_fw_blc_merge(0x03060106ul, 26ul, 20ul);
+
+    /* The watermarks and bursts are ours. */
+    WMCHECK((merged & 0x3ful) == 26ul);
+    WMCHECK(((merged >> 16) & 0x3ful) == 20ul);
+    WMCHECK((merged & ((v9x_u32)1ul << 8)) != 0ul);
+    WMCHECK((merged & ((v9x_u32)1ul << 24)) != 0ul);
+    /* Bit 25 is not, and survives. */
+    WMCHECK((merged & ((v9x_u32)1ul << 25)) != 0ul);
+    WMCHECK(merged == 0x0314011Aul);
+
+    /* Nothing outside the managed fields is invented either. */
+    WMCHECK(v9x_i9xx_wm_fw_blc_merge(0ul, 0ul, 0ul) ==
+            (((v9x_u32)1ul << 8) | ((v9x_u32)1ul << 24)));
 }
 
 unsigned int v9x_run_i9xx_wm_tests(void)
 {
+    test_merge_preserves_the_unknown();
     test_the_netbook_mode();
     test_inactive_plane();
     test_demanding_mode_falls_back();

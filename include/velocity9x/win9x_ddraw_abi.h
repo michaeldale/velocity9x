@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091918: V9X_D3D_DIAGNOSTICS gains the watermark write counters. The
+ * driver now programs FW_BLC. An append; the stamp moves for the reason
+ * 2026091603 gives.
+ *
  * 2026091917: the watermark log gains DSPARB, the pixel rate and the
  * COMPUTED watermark, and is triggered by the pipe source changing rather
  * than by a session boundary. An append; the stamp moves for the reason
@@ -1306,7 +1310,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091917ul
+#define V9X_DD_SHARED_ABI   2026091918ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2223,6 +2227,21 @@ typedef struct v9x_d3d_diagnostics {
     DWORD wm_log_dsparb[V9X_D3D_WM_LOG];
     DWORD wm_log_computed[V9X_D3D_WM_LOG];
     DWORD wm_log_rate_khz[V9X_D3D_WM_LOG];
+    /*
+     * The watermark writes this driver has made, and what FW_BLC read back
+     * after the last one.
+     *
+     * From 2026-09-20 the driver programs FW_BLC when the mode changes,
+     * because intel93 measured the live plane's watermark at 6 where the
+     * arithmetic i915 uses gives 20, on a pipe intel90 and intel91 both
+     * measured underrunning. Zero writes with a non-zero wm_log_computed
+     * means the computed value already matched.
+     *
+     * UNCONFIRMED as a fix. The underrun and the shortfall are measured;
+     * that the underrun is the flicker is not.
+     */
+    DWORD wm_writes;
+    DWORD wm_written;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
