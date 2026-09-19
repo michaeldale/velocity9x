@@ -337,6 +337,13 @@ int v9x_flip_pending(void);
 #define V9X_PRESENT_TRACE_FLIP_DONE     2ul
 #define V9X_PRESENT_TRACE_DRAW          3ul
 void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
+/* The offset of the most recently accepted flip - the buffer the panel was
+ * last told to show. A draw aimed at it is a draw into the presented
+ * buffer. */
+DWORD v9x_present_flip_offset(void);
+/* Non-zero once per accepted flip, for the first draw that follows it, and
+ * it clears the arming. */
+int v9x_present_draw_is_first(void);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

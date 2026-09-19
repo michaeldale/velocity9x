@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091904: V9X_D3D_DIAGNOSTICS gains draws_into_presented, and the
+ * present trace records only the first draw after each flip. A 32-record
+ * ring filled 355,422 times in one Robots run and could never span a flip.
+ * An append; the stamp moves for the reason 2026091603 gives.
+ *
  * 2026091903: the 2026091902 target-offset counters are replaced (never
  * deployed) by the present trace and the ViRGE pending-draw counter. The
  * counters compared against one global value on every context lookup, so a
@@ -1245,7 +1250,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091903ul
+#define V9X_DD_SHARED_ABI   2026091904ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1963,6 +1968,15 @@ typedef struct v9x_d3d_diagnostics {
      * after, so the two can be compared.
      */
     DWORD virge_draws_flip_pending;
+    /*
+     * Draw batches aimed at the buffer the most recently accepted flip
+     * named - the one the panel was last told to show. Counted for every
+     * batch rather than traced, so it is independent of the ring's length.
+     * Zero across a run says the engine was never aimed at the presented
+     * buffer; a large count is the fault the flicker would need, and the
+     * present trace says whether it is premature reuse or a stale binding.
+     */
+    DWORD draws_into_presented;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

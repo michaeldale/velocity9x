@@ -462,6 +462,30 @@ static DWORD v9x_present_seq = 0ul;
  * the buffer it presented. */
 static DWORD v9x_present_offset = 0ul;
 
+/*
+ * Set when a flip is accepted, cleared by the first draw recorded after it.
+ * The ring is short and a frame is hundreds of batches, so recording every
+ * draw fills it inside one frame and can never span a flip - the first
+ * attempt did exactly that and came back with 32 teardown draws out of
+ * 355,422 records. The first draw after a flip is the one the question is
+ * about; the rest of the frame is counted, not traced.
+ */
+static DWORD v9x_present_draw_armed = 0ul;
+
+DWORD v9x_present_flip_offset(void)
+{
+    return v9x_present_offset;
+}
+
+int v9x_present_draw_is_first(void)
+{
+    if (v9x_present_draw_armed == 0ul) {
+        return 0;
+    }
+    v9x_present_draw_armed = 0ul;
+    return 1;
+}
+
 void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)
 {
     DWORD slot;
@@ -686,6 +710,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * after this carries the number of the flip it follows. */
         ++v9x_present_seq;
         v9x_present_offset = offset;
+        v9x_present_draw_armed = 1ul;
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
                           offset);
         v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);

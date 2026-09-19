@@ -238,9 +238,21 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
                               const V9X_D3DTLVERTEX *vertices,
                               DWORD triangle_count)
 {
-    v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
-                      (DWORD)(context - v9x_d3d_contexts),
-                      context->target_offset);
+    /*
+     * Into the buffer the panel was last told to show? Counted for every
+     * batch, so it does not depend on the ring's length. Zero across a run
+     * says the engine was never aimed at the presented buffer; a large
+     * count is premature reuse or a stale binding, and the trace below
+     * says which by where it sits relative to the flip.
+     */
+    if (context->target_offset == v9x_present_flip_offset()) {
+        ++v9x_hal->d3d_diagnostics.draws_into_presented;
+    }
+    if (v9x_present_draw_is_first()) {
+        v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
+                          (DWORD)(context - v9x_d3d_contexts),
+                          context->target_offset);
+    }
     return ops->draw_triangles(context, vertices, triangle_count);
 }
 
