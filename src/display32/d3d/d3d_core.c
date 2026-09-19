@@ -1264,6 +1264,126 @@ DWORD __stdcall V9xD3dTextureGetSurf(V9X_D3DHAL_TEXTUREGETSURFDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * One render state, applied.
+ *
+ * Lifted out of V9xD3dRenderState on 2026-09-20 because it has a second
+ * caller. DrawPrimitives carries its state changes INSIDE the command buffer
+ * as (state, value) pairs, and this driver stepped over them with a pointer
+ * addition - so an application that sets state only that way set none at
+ * all. 3DMark99 is such an application: it ran the whole benchmark on the
+ * ViRGE guest with 24,033 primitive calls, zero RenderState calls and every
+ * context still holding the NEAREST filter its creation sets, while the caps
+ * told it bilinear and trilinear were available.
+ *
+ * One switch serves both paths so the two cannot drift, which is the whole
+ * reason this is a function rather than a copy.
+ */
+static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
+                                DWORD argument)
+{
+    switch (type) {
+    case V9X_D3DRENDERSTATE_SHADEMODE:
+        context->shade_mode = argument;
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
+        context->texture_handle = argument;
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.texture_handle_sets;
+            v9x_hal->d3d_diagnostics.texture_handle_last = argument;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE:
+        /* Perspective setup is added after the affine texture gate. */
+        break;
+    case V9X_D3DRENDERSTATE_WRAPU:
+    case V9X_D3DRENDERSTATE_WRAPV:
+        context->texture_wrap = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREMAG:
+        context->texture_mag = argument;
+        /* One bit per value, so the capture says which filters the
+         * application asked for rather than how often. The values
+         * run 1..7; anything outside that lands in bit 0. */
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.filter_mag_seen |=
+                argument < 32ul ? (1ul << argument) : 1ul;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREMIN:
+        context->texture_min = argument;
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.filter_min_seen |=
+                argument < 32ul ? (1ul << argument) : 1ul;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
+        context->texture_blend = argument;
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREADDRESS:
+    case V9X_D3DRENDERSTATE_TEXTUREADDRESSU:
+    case V9X_D3DRENDERSTATE_TEXTUREADDRESSV:
+        context->texture_address = argument;
+        break;
+    case V9X_D3DRENDERSTATE_BORDERCOLOR:
+        context->texture_border = argument;
+        break;
+    case V9X_D3DRENDERSTATE_SRCBLEND:
+        context->src_blend = argument;
+        break;
+    case V9X_D3DRENDERSTATE_DESTBLEND:
+        context->dest_blend = argument;
+        break;
+    case V9X_D3DRENDERSTATE_ALPHABLENDENABLE:
+        context->alpha_blend_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_COLORKEYENABLE:
+        context->color_key_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_V9X_ALPHAFORCE:
+        /*
+         * An instrument riding on a real render state; see the
+         * header. Only the magic argument is taken, so a stipple
+         * pattern - which is what this state is - leaves the engine's
+         * choice alone however it is written.
+         */
+        if ((argument & V9X_D3D_ALPHAFORCE_MASK) ==
+            V9X_D3D_ALPHAFORCE_MAGIC) {
+            context->alpha_force =
+        argument & ~V9X_D3D_ALPHAFORCE_MASK;
+        } else {
+            context->alpha_force = V9X_D3D_ALPHAFORCE_ENGINE;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_FOGENABLE:
+        context->fog_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_SPECULARENABLE:
+        context->specular_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_FOGCOLOR:
+        context->fog_color = argument;
+        break;
+    case V9X_D3DRENDERSTATE_ZENABLE:
+        /* DirectX 5 allows D3DZB_USEW (2) here. This driver publishes
+         * no W-buffer capability, so anything non-zero is plain Z. */
+        context->z_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_ZWRITEENABLE:
+        context->z_write = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_ZFUNC:
+        /* Not validated here. The engine's mapping table has a
+         * default arm, which is where an unknown function is decided
+         * - and the safe default is not the one a zeroed field would
+         * give. */
+        context->z_func = argument;
+        break;
+    default:
+        break;
+    }
+}
+
 DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
 {
     V9X_D3D_CONTEXT *context;
@@ -1361,109 +1481,8 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
 
         states = (V9X_D3DSTATE *)(exe->lpGbl->fpVidMem + data->dwOffset);
         for (index = 0ul; index < applied; ++index) {
-            switch (states[index].type) {
-            case V9X_D3DRENDERSTATE_SHADEMODE:
-                context->shade_mode = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
-                context->texture_handle = states[index].argument;
-                if (v9x_hal != 0) {
-                    ++v9x_hal->d3d_diagnostics.texture_handle_sets;
-                    v9x_hal->d3d_diagnostics.texture_handle_last =
-                        states[index].argument;
-                }
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE:
-                /* Perspective setup is added after the affine texture gate. */
-                break;
-            case V9X_D3DRENDERSTATE_WRAPU:
-            case V9X_D3DRENDERSTATE_WRAPV:
-                context->texture_wrap = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMAG:
-                context->texture_mag = states[index].argument;
-                /* One bit per value, so the capture says which filters the
-                 * application asked for rather than how often. The values
-                 * run 1..7; anything outside that lands in bit 0. */
-                if (v9x_hal != 0) {
-                    v9x_hal->d3d_diagnostics.filter_mag_seen |=
-                        states[index].argument < 32ul
-                            ? (1ul << states[index].argument) : 1ul;
-                }
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMIN:
-                context->texture_min = states[index].argument;
-                if (v9x_hal != 0) {
-                    v9x_hal->d3d_diagnostics.filter_min_seen |=
-                        states[index].argument < 32ul
-                            ? (1ul << states[index].argument) : 1ul;
-                }
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
-                context->texture_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_TEXTUREADDRESS:
-            case V9X_D3DRENDERSTATE_TEXTUREADDRESSU:
-            case V9X_D3DRENDERSTATE_TEXTUREADDRESSV:
-                context->texture_address = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_BORDERCOLOR:
-                context->texture_border = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_SRCBLEND:
-                context->src_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_DESTBLEND:
-                context->dest_blend = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_ALPHABLENDENABLE:
-                context->alpha_blend_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_COLORKEYENABLE:
-                context->color_key_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_V9X_ALPHAFORCE:
-                /*
-                 * An instrument riding on a real render state; see the
-                 * header. Only the magic argument is taken, so a stipple
-                 * pattern - which is what this state is - leaves the engine's
-                 * choice alone however it is written.
-                 */
-                if ((states[index].argument & V9X_D3D_ALPHAFORCE_MASK) ==
-                    V9X_D3D_ALPHAFORCE_MAGIC) {
-                    context->alpha_force =
-                        states[index].argument & ~V9X_D3D_ALPHAFORCE_MASK;
-                } else {
-                    context->alpha_force = V9X_D3D_ALPHAFORCE_ENGINE;
-                }
-                break;
-            case V9X_D3DRENDERSTATE_FOGENABLE:
-                context->fog_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_SPECULARENABLE:
-                context->specular_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_FOGCOLOR:
-                context->fog_color = states[index].argument;
-                break;
-            case V9X_D3DRENDERSTATE_ZENABLE:
-                /* DirectX 5 allows D3DZB_USEW (2) here. This driver publishes
-                 * no W-buffer capability, so anything non-zero is plain Z. */
-                context->z_enable = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_ZWRITEENABLE:
-                context->z_write = states[index].argument != 0ul;
-                break;
-            case V9X_D3DRENDERSTATE_ZFUNC:
-                /* Not validated here. The engine's mapping table has a
-                 * default arm, which is where an unknown function is decided
-                 * - and the safe default is not the one a zeroed field would
-                 * give. */
-                context->z_func = states[index].argument;
-                break;
-            default:
-                break;
-            }
+            v9x_d3d_apply_state(context, states[index].type,
+                                states[index].argument);
         }
     }
     if (data != 0) {
@@ -1860,9 +1879,30 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
         for (record = 0ul; record < 64ul; ++record) {
             counts = (V9X_D3DHAL_DRAWPRIMCOUNTS *)cursor;
             cursor += sizeof(*counts);
-            if (counts->wNumStateChanges > 64u) {
-                ok = 0;
-                break;
+            /*
+             * The state changes, APPLIED. This used to add the pairs' width
+             * to the cursor and walk on, which is why 3DMark99 ran an entire
+             * benchmark without ever setting a filter: it sends its states
+             * here and nowhere else.
+             *
+             * The pairs are (state, value), the same shape V9X_D3DSTATE has,
+             * so one switch serves this and the RenderState callback.
+             */
+            {
+                DWORD change;
+                DWORD *pairs = (DWORD *)cursor;
+
+                if (v9x_hal != 0 &&
+                    (DWORD)counts->wNumStateChanges >
+                        v9x_hal->d3d_diagnostics.state_max_count) {
+                    v9x_hal->d3d_diagnostics.state_max_count =
+                        (DWORD)counts->wNumStateChanges;
+                }
+                for (change = 0ul;
+                     change < (DWORD)counts->wNumStateChanges; ++change) {
+                    v9x_d3d_apply_state(context, pairs[change * 2ul],
+                                        pairs[change * 2ul + 1ul]);
+                }
             }
             cursor += (DWORD)counts->wNumStateChanges * 2ul * sizeof(DWORD);
             if (counts->wNumVertices == 0u) {
