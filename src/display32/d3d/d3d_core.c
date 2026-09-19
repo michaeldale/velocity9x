@@ -1254,9 +1254,22 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREMAG:
                 context->texture_mag = states[index].argument;
+                /* One bit per value, so the capture says which filters the
+                 * application asked for rather than how often. The values
+                 * run 1..7; anything outside that lands in bit 0. */
+                if (v9x_hal != 0) {
+                    v9x_hal->d3d_diagnostics.filter_mag_seen |=
+                        states[index].argument < 32ul
+                            ? (1ul << states[index].argument) : 1ul;
+                }
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREMIN:
                 context->texture_min = states[index].argument;
+                if (v9x_hal != 0) {
+                    v9x_hal->d3d_diagnostics.filter_min_seen |=
+                        states[index].argument < 32ul
+                            ? (1ul << states[index].argument) : 1ul;
+                }
                 break;
             case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
                 context->texture_blend = states[index].argument;
@@ -1791,9 +1804,26 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
                     (DWORD)data->guidInfo[0]);
     data->dwActualSize = 0ul;
     data->ddRVal = 0x88760028ul;
+    /*
+     * What was asked for, and whether it was declined. This entry point
+     * answers GUID_D3DCallbacks2 alone; intel95 raised the question of
+     * whether an application's capability report depends on one of the
+     * GUIDs it turns away, and nothing recorded which arrived.
+     */
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.driver_info_calls;
+        v9x_hal->d3d_diagnostics.driver_info_last =
+            ((DWORD)data->guidInfo[3] << 24) |
+            ((DWORD)data->guidInfo[2] << 16) |
+            ((DWORD)data->guidInfo[1] << 8) |
+            (DWORD)data->guidInfo[0];
+    }
 #if V9X_C3_SERVE_D3D_CALLBACKS2
     for (index = 0ul; index < 16ul; ++index) {
         if (data->guidInfo[index] != v9x_guid_d3d_callbacks2[index]) {
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.driver_info_declined;
+            }
             v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
@@ -1811,6 +1841,9 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         data->ddRVal = V9X_DD_OK;
     }
 #endif
+    if (v9x_hal != 0 && data->ddRVal != V9X_DD_OK) {
+        ++v9x_hal->d3d_diagnostics.driver_info_declined;
+    }
     v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
     return V9X_DDHAL_DRIVER_HANDLED;
 }

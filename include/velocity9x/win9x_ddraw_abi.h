@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026092002: V9X_D3D_DIAGNOSTICS gains the sampler-filter and
+ * GetDriverInfo counters. intel95 had 3DMark99 report bilinear filtering
+ * unsupported against a driver that publishes it. An append.
+ *
  * 2026092001: V9X_D3D_DIAGNOSTICS gains the five counters that say why a
  * draw sampled nothing. intel94 measured 3DMark99 drawing 96.5 per cent of
  * its primitives untextured with every refusal counter at zero, which means
@@ -1317,7 +1321,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026092001ul
+#define V9X_DD_SHARED_ABI   2026092002ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2274,6 +2278,34 @@ typedef struct v9x_d3d_diagnostics {
     DWORD render_state_dropped;
     DWORD texture_handle_sets;  /* TEXTUREHANDLE seen in a state block     */
     DWORD texture_handle_last;  /* the value it was last set to            */
+    /*
+     * What the application asked of the sampler, and what it asked of the
+     * driver's caps.
+     *
+     * intel95 ran 3DMark99 with 97 per cent of draws textured - the missing
+     * textures of intel94 did not repeat - and the application reported
+     * bilinear filtering unsupported. The driver publishes
+     * D3DPTFILTERCAPS_LINEAR on dpcTriCaps with D3DDD_TRICAPS set, so either
+     * the application reads a capability the driver does not fill, or it
+     * asked for a linear filter and did not get one. Nothing measured which.
+     *
+     * filter_mag_seen and filter_min_seen are one bit per D3DFILTER value
+     * the application actually set, so they say whether LINEAR was ever
+     * asked for at all. A bitmask rather than a count because the question
+     * is which values appear, not how often.
+     *
+     * The driver_info fields say what the runtime asked GetDriverInfo for.
+     * It answers GUID_D3DCallbacks2 alone and declines everything else,
+     * including GUID_D3DExtendedCaps, which a DirectX 6 application's caps
+     * are partly built from. Whether 3DMark99's filter line comes from there
+     * is exactly what is not known.
+     */
+    DWORD filter_mag_seen;      /* bit per D3DFILTER value set for MAG     */
+    DWORD filter_min_seen;      /* bit per D3DFILTER value set for MIN     */
+    DWORD draws_mag_linear;     /* draws that sampled bilinear             */
+    DWORD driver_info_calls;
+    DWORD driver_info_declined;
+    DWORD driver_info_last;     /* first four bytes of the last GUID asked */
 } V9X_D3D_DIAGNOSTICS;
 
 /*

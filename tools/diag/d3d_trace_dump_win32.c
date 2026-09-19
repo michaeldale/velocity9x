@@ -721,6 +721,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("RenderStateDropped", snapshot.d3d.render_state_dropped);
     v9x_write_uint("TextureHandleSets", snapshot.d3d.texture_handle_sets);
     v9x_write_hex("TextureHandleLast", snapshot.d3d.texture_handle_last);
+    v9x_write_hex("FilterMagSeen", snapshot.d3d.filter_mag_seen);
+    v9x_write_hex("FilterMinSeen", snapshot.d3d.filter_min_seen);
+    v9x_write_uint("DrawsMagLinear", snapshot.d3d.draws_mag_linear);
+    v9x_write_uint("DriverInfoCalls", snapshot.d3d.driver_info_calls);
+    v9x_write_uint("DriverInfoDeclined", snapshot.d3d.driver_info_declined);
+    v9x_write_hex("DriverInfoLast", snapshot.d3d.driver_info_last);
     {
         DWORD index;
 
