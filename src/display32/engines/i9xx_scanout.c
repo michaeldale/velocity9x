@@ -424,7 +424,9 @@ int v9x_set_display_start(DWORD byte_offset)
  * display side applies at the retrace, for what looks like this reason.
  * So on this path the write waits for the blank, and the flip completes
  * when that blank ends. A hypothesis from a picture, with the counters
- * to say whether the wait happened (FlipStillDrawing rises per flip).
+ * to say whether the wait happened (FlipWindowClosed rises per flip from
+ * 2026091901; before that it was folded into FlipStillDrawing, which is
+ * why intel86 could not separate them).
  */
 #define V9X_I9XX_FLIP_WRITE_IN_BLANK 1
 /*
@@ -462,7 +464,20 @@ int v9x_set_display_start(DWORD byte_offset)
  * on the wrong side of it, and the buffer is released at the frame tick,
  * which follows the latch in the same blank. Any active line serves; the
  * window is the whole active frame less the guard, so a Flip retried every
- * 0.3 ms finds it at once. UNMEASURED as a fix until the next boot.
+ * 0.3 ms finds it at once.
+ *
+ * MEASURED, and not a fix: intel86 (2026-09-19, netbook, Final Reality
+ * robot benchmark) ran this window for 585 presents and the operator saw
+ * the same flicker. So the write window is not what makes the panel show
+ * the buffer under construction, and neither are the two models this run
+ * also closed - DrawsFlipWaited=0 says no batch ever arrived while a flip
+ * was pending (intel78's exposure), and RenderDrainWaits=0 against a
+ * working completion channel says no flip ever presented drawing the GPU
+ * had not finished (the whole point of the breadcrumb). The latch model
+ * above remains unread from a register; what is now known is that moving
+ * the write inside it does not change the picture.
+ * docs\decisions\2026-09-19-intel86-the-completion-channel-works-and-the-
+ * flicker-is-not-unfinished-drawing.md
  */
 #define V9X_I9XX_FLIP_LATCH_GUARD_LINES 8ul
 

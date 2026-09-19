@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091901: V9X_D3D_DIAGNOSTICS gains flip_window_closed, which splits the
+ * two conditions flip_still_drawing counted together. An append; the stamp
+ * moves for the reason 2026091603 gives.
+ *
  * 2026091717: the 2026091716 ACTHD fields are replaced by raw-transition
  * fields (never deployed), and the layout capture gains its sample's offset,
  * frame and count. The stamp moves for the reason 2026091603 gives.
@@ -1229,7 +1233,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091717ul
+#define V9X_DD_SHARED_ABI   2026091901ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1669,6 +1673,10 @@ typedef struct v9x_d3d_diagnostics {
      * pending flips the bound in v9x_flip_done gave up on, and
      * scanout_unresolved the Intel vblank/base reads that found no single
      * live pipe and plane to act on.
+     *
+     * From 2026091901 flip_still_drawing is the previous flip not yet
+     * taken alone; the window test has its own counter at the end of this
+     * structure.
      */
     DWORD flip_handled;
     DWORD flip_still_drawing;
@@ -1887,6 +1895,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD scan_sample_offset;
     DWORD scan_sample_frame;
     DWORD scan_layout_samples;
+    /*
+     * Flips refused because the issue window was shut, split out of
+     * flip_still_drawing (intel86: 52,608 of 53,193 Flips were refused and
+     * the counter could not say by which of the two tests, so the thing
+     * throttling presents to 585 could not be named). From here
+     * flip_still_drawing is the previous flip not yet taken, and this is
+     * the beam being outside v9x_scanout_flip_window_open.
+     */
+    DWORD flip_window_closed;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

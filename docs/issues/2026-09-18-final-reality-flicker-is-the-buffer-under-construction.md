@@ -527,13 +527,49 @@ reads at that page, which the 2026-09-14 measurement says they should,
 and the difference between that scratch page and this one is the next
 question.
 
+## intel86: it reads 1, and the model it was built to test is dead
+
+2026-09-19, netbook, Final Reality robot benchmark.
+`docs\decisions\2026-09-19-intel86-the-completion-channel-works-and-the-
+flicker-is-not-unfinished-drawing.md`.
+
+`HwsSelfTest=1` at zero polls, then 575,868 breadcrumbs with
+`BreadcrumbTimeouts=0`, `BreadcrumbLate=0`, `BreadcrumbAbandoned=0`. The
+channel exists. What it measures is that the drawing was always finished:
+`RenderDrainWaits=0`, so no flip on this run presented a frame the GPU had
+not completed. The unfinished-frame model is closed.
+
+Two others closed with it. `DrawsFlipWaited=0` - no batch ever arrived
+while a flip was pending, so intel78's exposure did not occur.
+`DrawsToFront=0` against 575,868 batches - the buffers are right, as they
+were in intel74. And the active-video write window, which stood
+"UNMEASURED as a fix until the next boot", ran 585 presents and the
+operator saw the same flicker.
+
+So every mechanism above is now measured out and the picture is unchanged.
+`FlipHandled=585` of `CountFlip=53193`: ninety-nine per cent of Flips were
+refused, and `flip_still_drawing` counted two tests at once so the cause of
+that refusal cannot be named from this capture. `FlipWindowClosed` splits
+them from ABI stamp 2026091901.
+
+What has never been read is the latch: whether the plane base takes effect
+where it is written or at the blank. No register on this part has been
+found that reports it, and the flip-completion bit is not one - ISR read
+before and after all 605 flips ORs to zero, as in intel71 and intel72.
+
 ## How to run the next boot
 
 1. Deploy the package as usual and run Final Reality; capture as usual.
-   Read `FlipStrideLast` against `DrawsPitchLast` first.
+   Read `FlipWindowClosed` against `FlipStillDrawing` first: the two
+   together are the 52,608 refusals of intel86, and which one carries them
+   says whether presents are throttled by the beam or by the previous
+   flip.
 2. Run `V9XDDP.EXE /reuse` from the package directory with the camera on
    the panel. Note at which delays green appears. The run takes about
    two minutes and ends with the normal probe result files.
+3. The latch is the open question and no register reports it, so the
+   camera is the instrument: record the panel through several flips and
+   read where in the frame the buffer changes.
 
 ## Not in scope here
 

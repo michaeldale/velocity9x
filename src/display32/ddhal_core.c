@@ -634,7 +634,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
             }
             if (!v9x_scanout_flip_window_open()) {
                 data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
-                ++v9x_hal->d3d_diagnostics.flip_still_drawing;
+                ++v9x_hal->d3d_diagnostics.flip_window_closed;
                 return V9X_DDHAL_DRIVER_HANDLED;
             }
         }
