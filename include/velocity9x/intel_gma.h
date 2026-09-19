@@ -185,6 +185,25 @@
 #define V9X_I9XX_MI_DISPLAY_FLIP_I915    ((v9x_u32)0x0a000001ul)
 #define V9X_I9XX_MI_DISPLAY_FLIP_PLANE_SHIFT 20
 #define V9X_I9XX_REG_ISR                 ((v9x_u32)0x000020acul)
+/*
+ * ECOSKPD, and the one bit of it that matters here.
+ *
+ * On Gen3 - and only Gen3 - the hardware DECLARES what its flip-pending
+ * interrupt means. i915 reads this at init: with ECO_FLIP_DONE set, the
+ * IIR/ISR "flip pending" bit means the flip is DONE; with it clear, the bit
+ * means the flip is merely queued and completion arrives at the vblank
+ * instead (drm/i915 "gen3 page flipping fixes", ECOSKPD 0x021D0 bit 0).
+ *
+ * This driver has never read it, and has spent intel71, intel72 and
+ * intel86 concluding that the flip-pending bit is never set - across 795
+ * and then 605 flips, with the bits i915 itself uses,
+ * DISPLAY_PLANE_FLIP_PENDING(plane) = 1 << (11 - plane), so plane A is bit
+ * 11 and plane B bit 10. The bits and the register were right. What was
+ * never established is which of the two meanings this part declares, which
+ * is what this reads.
+ */
+#define V9X_I9XX_REG_ECOSKPD             ((v9x_u32)0x000021d0ul)
+#define V9X_I9XX_ECO_FLIP_DONE           ((v9x_u32)0x00000001ul)
 #define V9X_I9XX_ISR_PLANE_A_FLIP_PENDING ((v9x_u32)0x00000800ul)
 #define V9X_I9XX_ISR_PLANE_B_FLIP_PENDING ((v9x_u32)0x00000400ul)
 /* Command, pitch, base, and a NOOP so the tail stays qword aligned. */

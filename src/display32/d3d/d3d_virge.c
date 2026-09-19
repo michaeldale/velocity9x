@@ -1323,16 +1323,36 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD index;
 
     /*
-     * Batches that begin while a flip is still pending. The Intel path
-     * waits here (intel78, v9x_flip_wait_done); this one never has, so the
-     * two backends are not in the same state with respect to the hazard
-     * and a flicker that looks the same on both may reach the panel by two
-     * routes. Counted and not changed: the build that waits comes after,
-     * so the exposure can be compared against it. One advance of the flip
-     * state machine per batch, no wait.
+     * Wait for a pending flip before drawing, which this path never did.
+     *
+     * The VGA start address is latched at the start of the vertical
+     * retrace, so between Flip returning and that retrace ending the panel
+     * is still fetching the buffer the application has just been told it
+     * may draw into. The Intel path has waited here since intel78; the
+     * ViRGE path did not, and v9x_flip_done completed at the START of the
+     * blank, so the window was neither guarded nor observable - which is
+     * why virge_draws_flip_pending read zero on silicon while the panel
+     * plainly showed a half-drawn buffer (2026-09-19).
+     *
+     * The exposure is still counted, before the wait, so the count says
+     * how often the wait was needed. A wait that runs out draws anyway
+     * rather than refusing: the frame is lost either way and the
+     * application keeps running, which is the rule the Intel path settled
+     * on. draws_flip_waited and draws_flip_wait_timeouts are engine
+     * neutral and only one engine is ever live, so they carry this too.
      */
-    if (v9x_flip_pending() && v9x_hal != 0) {
+    if (v9x_hal != 0 && v9x_flip_pending()) {
         ++v9x_hal->d3d_diagnostics.virge_draws_flip_pending;
+    }
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
     }
 
     for (index = 0ul; index < triangle_count; ++index) {

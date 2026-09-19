@@ -425,6 +425,11 @@ static int v9x_d3d_i9xx_hws_open(void)
     /* HWS_PGA is read for the record and no longer written: the fill form
      * of the breadcrumb goes through the GTT like every other GPU write,
      * and the page's physical address is only recorded. */
+    /* ECOSKPD, for the record: on Gen3 its bit 0 says whether this part's
+     * flip-pending bit means done or merely queued. Read, never acted on
+     * here; the report is where it is interpreted. */
+    v9x_hal->d3d_diagnostics.ecoskpd =
+        *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ECOSKPD);
     v9x_hal->d3d_diagnostics.hws_pga_before =
         *v9x_d3d_i9xx_reg(V9X_I9XX_REG_HWS_PGA);
     v9x_hal->d3d_diagnostics.hws_pga_written = physical;

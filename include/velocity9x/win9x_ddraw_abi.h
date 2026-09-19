@@ -1136,6 +1136,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091906: V9X_D3D_DIAGNOSTICS gains ecoskpd, the Gen3 register that
+ * declares what the flip-pending bit means. An append; the stamp moves for
+ * the reason 2026091603 gives.
+ *
  * 2026091905: V9X_D3D_DIAGNOSTICS gains the flip-release and vblank-duty
  * counters, which test whether a flip ever waits and whether the retrace
  * source is honest. An append; the stamp moves for the reason 2026091603
@@ -1255,7 +1259,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091905ul
+#define V9X_DD_SHARED_ABI   2026091906ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2008,6 +2012,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD flip_armed_in_blank;
     DWORD vblank_samples;
     DWORD vblank_in_blank;
+    /*
+     * ECOSKPD as read once the engine is up, raw. Bit 0 is ECO_FLIP_DONE:
+     * set, and this part's flip-pending bit means the flip is DONE; clear,
+     * and it means queued with completion at the vblank. Gen3 is the only
+     * generation that declares this, and three of this project's
+     * investigations into a flip-pending bit that never sets were run
+     * without ever asking. Raw, and interpreted nowhere but in the report.
+     */
+    DWORD ecoskpd;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
