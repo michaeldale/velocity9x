@@ -33,7 +33,37 @@ This is the "buffer under construction" the issue doc is named for, seen
 directly for the first time rather than inferred: the panel is fetching a
 buffer into which the scene has been only partly drawn.
 
-## Why the driver let it happen
+## CORRECTION, same day: the causal chain below is NOT established
+
+This document first asserted that the missing completion signal explains the
+frame above. On review that does not hold, and the assertion is withdrawn.
+
+Two things break it. First, `v9x_virge_settled` returns 0 whenever the IDLE
+bit is clear, so an engine still rasterising already makes the flip wait; for
+the panel to show a cleared buffer with only the sky in it, IDLE must have
+been reading SET while nearly the whole scene was undrawn, which a
+one-triangle queued-but-not-yet-busy gap cannot produce. Second, the gap that
+the 3D-done bit exists to close was measured **on 86Box** - the comment on
+`V9X_VIRGE_STATUS_3D_DONE` says so, a render thread not yet marked busy - so
+on silicon that hands the work straight to the engine, IDLE may be the honest
+signal and `D3dDoneSkipped` may cost nothing.
+
+What survives is the observation, not the explanation: **the Trio3D has no
+3D completion evidence and 273,597 waits were answered by a bit whose
+sufficiency on this part has never been established either way.** That is
+worth fixing on its own terms and is not known to be this flicker.
+
+The frame is at least as well explained by the buffer the panel is fetching
+being the one drawn into - the ownership and latch path - which
+`DrawsIntoPresented` cannot see, because it compares the draw target against
+the driver's own record of the last accepted flip rather than against what
+the scanout is really fetching. That blind spot was already recorded against
+`DrawsToFront` on the Intel side and it applies here unchanged.
+
+The section below is kept as written, as the record of the reading that was
+made and then withdrawn.
+
+## Why the driver let it happen (WITHDRAWN - see the correction above)
 
 The Flip path gates on the engine being settled
 (`ddhal_core.c`, `v9x_wait_idle`). For the ViRGE family, "settled" is

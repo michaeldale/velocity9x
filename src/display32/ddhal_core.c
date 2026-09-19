@@ -504,6 +504,12 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)
 
 static void v9x_flip_note_done(void)
 {
+    /* Taken on the first poll after arming: the flip waited for nothing.
+     * v9x_flip_pending_polls is reset by v9x_flip_arm and incremented once
+     * per v9x_flip_done, so 1 is the first poll. */
+    if (v9x_hal != 0 && v9x_flip_pending_polls <= 1ul) {
+        ++v9x_hal->d3d_diagnostics.flip_done_first_poll;
+    }
     v9x_flip_state = V9X_FLIP_IDLE;
     v9x_scanout_note_flip_done();
     v9x_present_trace(V9X_PRESENT_TRACE_FLIP_DONE, 0xfffffffful,
@@ -543,8 +549,14 @@ static void v9x_flip_arm(int novsync)
         v9x_flip_state = V9X_FLIP_WAIT_UNBLANK_DONE;
         return;
     }
-    v9x_flip_state = v9x_in_vblank() ? V9X_FLIP_WAIT_UNBLANK
-                                     : V9X_FLIP_WAIT_BLANK;
+    if (v9x_in_vblank()) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.flip_armed_in_blank;
+        }
+        v9x_flip_state = V9X_FLIP_WAIT_UNBLANK;
+        return;
+    }
+    v9x_flip_state = V9X_FLIP_WAIT_BLANK;
 }
 
 /* Advance the state from what the CRTC says now; non-zero when the flip has
@@ -696,6 +708,45 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
                 data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
                 ++v9x_hal->d3d_diagnostics.flip_window_closed;
                 return V9X_DDHAL_DRIVER_HANDLED;
+            }
+        }
+        /*
+         * Put the start-address write as far from the latch as the one bit
+         * this path has allows.
+         *
+         * The VGA start address is double buffered and latched at the start
+         * of the vertical retrace. This path writes it at whatever point in
+         * the frame Flip happens to be called - v9x_scanout_writes_in_blank
+         * is false for every non-Intel family, so the window test above is
+         * skipped entirely and there has never been any timing here at all.
+         * A write that lands just before the latch is taken a frame later
+         * than the state machine then believes, and for that frame the panel
+         * is still fetching the buffer the application has been told it may
+         * draw into. That is the shape of the Trio3D recording of
+         * 2026-09-19: a presented buffer holding only the clear and the sky.
+         *
+         * With no scanline counter on this path, the only distinguishable
+         * moment is the edge where the blank ends. Writing there puts the
+         * write nearly a whole frame ahead of the next latch, which is the
+         * largest margin obtainable from a single status bit. Bounded, and
+         * skipped for DONOTWAIT, which is the application declining to wait.
+         *
+         * The Intel path keeps its own window (an eight-line guard before
+         * the latch) and is not affected: this runs only where that window
+         * is absent. UNMEASURED as a fix at the time of writing.
+         */
+        if ((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul &&
+            !v9x_scanout_writes_in_blank() &&
+            v9x_scanout_vblank_available()) {
+            DWORD spins = V9X_VBLANK_SPIN_LIMIT;
+
+            /* Into the blank, then out of it: the edge is where the next
+             * latch is furthest away. Either spin running out leaves the
+             * write where it would have been anyway. */
+            while (spins-- != 0ul && !v9x_in_vblank()) {
+            }
+            spins = V9X_VBLANK_SPIN_LIMIT;
+            while (spins-- != 0ul && v9x_in_vblank()) {
             }
         }
         /* Same reasoning one step further in: an offset the display-start

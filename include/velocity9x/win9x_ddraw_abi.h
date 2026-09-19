@@ -1136,6 +1136,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * dwSize/abi mismatch and leaves a driverinit-pending trace rather than
  * running against the wrong layout. */
 /*
+ * 2026091905: V9X_D3D_DIAGNOSTICS gains the flip-release and vblank-duty
+ * counters, which test whether a flip ever waits and whether the retrace
+ * source is honest. An append; the stamp moves for the reason 2026091603
+ * gives.
+ *
  * 2026091904: V9X_D3D_DIAGNOSTICS gains draws_into_presented, and the
  * present trace records only the first draw after each flip. A 32-record
  * ring filled 355,422 times in one Robots run and could never span a flip.
@@ -1250,7 +1255,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
-#define V9X_DD_SHARED_ABI   2026091904ul
+#define V9X_DD_SHARED_ABI   2026091905ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1977,6 +1982,32 @@ typedef struct v9x_d3d_diagnostics {
      * present trace says whether it is premature reuse or a stale binding.
      */
     DWORD draws_into_presented;
+    /*
+     * Does a flip ever actually wait, and is the retrace source telling the
+     * truth?
+     *
+     * On the S3 path a flip is armed WAIT_BLANK or WAIT_UNBLANK and is
+     * declared taken the first time v9x_in_vblank agrees. If that source
+     * answers yes when the beam is not in a retrace, every flip completes
+     * on its first poll, the buffer is released before the CRTC start has
+     * latched, and the application draws into memory the panel is still
+     * fetching - which is what the Trio3D recording of 2026-09-19 shows,
+     * and what draws_into_presented cannot see because it compares against
+     * the driver's own record rather than the scanout.
+     *
+     *   flip_done_first_poll  flips declared taken on the first poll after
+     *                         arming. Near the flip count means no flip
+     *                         ever waited for anything.
+     *   flip_armed_in_blank   flips armed while the source said blank.
+     *   vblank_samples /      the source sampled once per draw batch. A
+     *   vblank_in_blank       real retrace is a few per cent of a frame;
+     *                         a ratio near 1 is a source stuck at yes, and
+     *                         near 0 one stuck at no.
+     */
+    DWORD flip_done_first_poll;
+    DWORD flip_armed_in_blank;
+    DWORD vblank_samples;
+    DWORD vblank_in_blank;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

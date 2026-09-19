@@ -248,6 +248,14 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
     if (context->target_offset == v9x_present_flip_offset()) {
         ++v9x_hal->d3d_diagnostics.draws_into_presented;
     }
+    /* The retrace source's duty cycle, sampled where the batches are. A
+     * real vertical blank is a few per cent of a frame; a ratio near 1 is
+     * a source that always says yes, which would release every buffer
+     * before its latch. */
+    ++v9x_hal->d3d_diagnostics.vblank_samples;
+    if (v9x_in_vblank()) {
+        ++v9x_hal->d3d_diagnostics.vblank_in_blank;
+    }
     if (v9x_present_draw_is_first()) {
         v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
                           (DWORD)(context - v9x_d3d_contexts),
