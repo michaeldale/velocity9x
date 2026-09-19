@@ -31,6 +31,18 @@ static const BYTE v9x_guid_d3d_callbacks2[16] = {
 };
 #endif
 
+/*
+ * GUID_D3DExtendedCaps, transcribed from the Windows 98 DDK's DDRAWI.H:
+ *   0x7de41f80, 0x9d93, 0x11d0, {0x89,0xab,0x00,0xa0,0xc9,0x05,0x41,0x29}
+ *
+ * Its Data1 is what the 2026-09-20 ViRGE run saw the runtime asking for and
+ * being refused. Laid out little-endian, the way the guidInfo bytes arrive.
+ */
+static const BYTE v9x_guid_d3d_extended_caps[16] = {
+    0x80u, 0x1fu, 0xe4u, 0x7du, 0x93u, 0x9du, 0xd0u, 0x11u,
+    0x89u, 0xabu, 0x00u, 0xa0u, 0xc9u, 0x05u, 0x41u, 0x29u
+};
+
 static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
 
@@ -1901,6 +1913,48 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(void *data)
 }
 
 
+/*
+ * Sixteen bytes, compared. The callbacks2 path below walks its own GUID
+ * inline and is left as it is; this exists because a second GUID makes the
+ * comparison worth naming.
+ */
+static int v9x_d3d_guid_matches(const BYTE *asked, const BYTE *known)
+{
+    DWORD index;
+
+    for (index = 0ul; index < 16ul; ++index) {
+        if (asked[index] != known[index]) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/*
+ * Every distinct GUID the runtime asks for, by Data1.
+ *
+ * driver_info_last held only the most recent and the trace ring is bounded,
+ * so the 2026-09-20 run could name three of eighteen calls. The table is not
+ * a set of results - whether each was served is a separate question - only
+ * of what was asked.
+ */
+static void v9x_d3d_note_driver_info_guid(DWORD data1)
+{
+    DWORD index;
+    DWORD count = v9x_hal->d3d_diagnostics.driver_info_guid_count;
+
+    for (index = 0ul; index < count && index < 16ul; ++index) {
+        if (v9x_hal->d3d_diagnostics.driver_info_guids[index] == data1) {
+            return;
+        }
+    }
+    if (count < 16ul) {
+        v9x_hal->d3d_diagnostics.driver_info_guids[count] = data1;
+    }
+    ++v9x_hal->d3d_diagnostics.driver_info_guid_count;
+}
+
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
 {
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -1927,12 +1981,53 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
      * GUIDs it turns away, and nothing recorded which arrived.
      */
     if (v9x_hal != 0) {
+        DWORD data1 = ((DWORD)data->guidInfo[3] << 24) |
+                      ((DWORD)data->guidInfo[2] << 16) |
+                      ((DWORD)data->guidInfo[1] << 8) |
+                      (DWORD)data->guidInfo[0];
+
         ++v9x_hal->d3d_diagnostics.driver_info_calls;
-        v9x_hal->d3d_diagnostics.driver_info_last =
-            ((DWORD)data->guidInfo[3] << 24) |
-            ((DWORD)data->guidInfo[2] << 16) |
-            ((DWORD)data->guidInfo[1] << 8) |
-            (DWORD)data->guidInfo[0];
+        v9x_hal->d3d_diagnostics.driver_info_last = data1;
+        v9x_d3d_note_driver_info_guid(data1);
+    }
+
+    /*
+     * GUID_D3DExtendedCaps, which the runtime asks for and this driver
+     * refused until 2026-09-20.
+     *
+     * The answer comes from the shared block, where the engine that
+     * published the device description put its own texture limits; the
+     * handler cannot ask v9x_d3d_engine() because it may run before the
+     * engine descriptor is filled, which is the same reason
+     * v9x_d3d_publish_engine exists.
+     *
+     * An engine that filled nothing leaves dwSize zero and is declined
+     * rather than answered with zeros: a maximum texture width of zero is a
+     * worse answer than no answer, and the runtime's own default is at
+     * least a working one.
+     */
+    if (v9x_hal != 0 &&
+        v9x_hal->d3d_extended_caps.dwSize != 0ul &&
+        v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_extended_caps)) {
+        DWORD copy = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+        DWORD index;
+        BYTE *destination;
+        const BYTE *source;
+
+        if (data->dwExpectedSize < copy) {
+            copy = data->dwExpectedSize;
+        }
+        data->dwActualSize = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+        if (data->lpvData != 0 && copy != 0ul) {
+            destination = (BYTE *)data->lpvData;
+            source = (const BYTE *)&v9x_hal->d3d_extended_caps;
+            for (index = 0ul; index < copy; ++index) {
+                destination[index] = source[index];
+            }
+            data->ddRVal = V9X_DD_OK;
+        }
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
     }
 #if V9X_C3_SERVE_D3D_CALLBACKS2
     for (index = 0ul; index < 16ul; ++index) {

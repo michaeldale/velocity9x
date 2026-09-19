@@ -783,6 +783,18 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("DriverInfoCalls", snapshot.d3d.driver_info_calls);
     v9x_write_uint("DriverInfoDeclined", snapshot.d3d.driver_info_declined);
     v9x_write_hex("DriverInfoLast", snapshot.d3d.driver_info_last);
+    v9x_write_uint("DriverInfoGuidCount",
+                   snapshot.d3d.driver_info_guid_count);
+    {
+        DWORD guid;
+        char key[32];
+
+        for (guid = 0ul; guid < 16ul &&
+                         guid < snapshot.d3d.driver_info_guid_count; ++guid) {
+            wsprintf(key, "DriverInfoGuid%02u", (unsigned)guid);
+            v9x_write_hex(key, snapshot.d3d.driver_info_guids[guid]);
+        }
+    }
     v9x_write_uint("WmDeclined", snapshot.d3d.wm_declined);
     v9x_write_uint("BltEngineFlipPending",
                    snapshot.d3d.blt_engine_flip_pending);

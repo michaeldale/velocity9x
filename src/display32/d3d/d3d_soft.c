@@ -628,6 +628,26 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
         V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_CLAMP;
+    /*
+     * GUID_D3DExtendedCaps, which the runtime asks for and which carries the
+     * texture limits D3DDEVICEDESC_V1 has nowhere to put. These are the same
+     * numbers the bind enforces, so what is published and what is accepted
+     * are one statement rather than two that can drift.
+     *
+     * No stipple: this driver has no stippled-fill path, and zero is what a
+     * device without one reports.
+     */
+    shared->d3d_extended_caps.dwSize =
+        sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+    shared->d3d_extended_caps.dwMinTextureWidth = v9x_d3d_soft_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureWidth = v9x_d3d_soft_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinTextureHeight = v9x_d3d_soft_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureHeight = v9x_d3d_soft_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
+
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     shared->d3d_global.dwNumVertices = 0ul;

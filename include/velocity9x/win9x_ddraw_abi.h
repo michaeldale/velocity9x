@@ -728,6 +728,29 @@ typedef struct v9x_d3dhal_callbacks2 {
 } V9X_D3DHAL_CALLBACKS2;
 
 /*
+ * D3DHAL_D3DEXTENDEDCAPS, exactly as the Windows 98 DDK declares it in
+ * inc\win98\D3DHAL.H - nine DWORDs and no more.
+ *
+ * Transcribed from the DDK rather than from memory, because a later DDK adds
+ * fields after dwMaxStippleHeight (guard band, texture-operation caps,
+ * simultaneous textures) and writing those into a caller's buffer that does
+ * not have them is how a driver corrupts the runtime. dwActualSize reports
+ * this size and the copy is bounded by the caller's dwExpectedSize, so a
+ * runtime wanting a longer form gets the prefix it understands.
+ */
+typedef struct v9x_d3dhal_d3dextendedcaps {
+    DWORD dwSize;
+    DWORD dwMinTextureWidth;
+    DWORD dwMaxTextureWidth;
+    DWORD dwMinTextureHeight;
+    DWORD dwMaxTextureHeight;
+    DWORD dwMinStippleWidth;
+    DWORD dwMaxStippleWidth;
+    DWORD dwMinStippleHeight;
+    DWORD dwMaxStippleHeight;
+} V9X_D3DHAL_D3DEXTENDEDCAPS;
+
+/*
  * 32-bit-side views of the runtime structures DDRAW passes to flat
  * callbacks. Only the fields the HAL reads are laid out; access is by
  * documented offset, so trailing fields are omitted.
@@ -1326,13 +1349,19 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092007: V9X_DD_SHARED gains d3d_extended_caps, and the diagnostics the
+ * distinct GUID table. The shared block GROWS, so the 16-bit driver and the
+ * 32-bit HAL must be deployed together - which the 2026-09-20 ViRGE run
+ * showed is already true of any stamp change, since the guard rejected a
+ * half-updated guest outright.
+ */
 /* 2026092006: append the long-state-block and uptime counters, and set
  * DDHALINFO_GETDRIVERINFOSET so DirectDraw calls the GetDriverInfo entry
  * point this driver has published unannounced since it existed. An append.
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092006ul
+#define V9X_DD_SHARED_ABI   2026092007ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2420,6 +2449,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD uptime_driver_init;
     DWORD uptime_first_d3d;
     DWORD uptime_first_flip;
+    /*
+     * Every distinct GUID the runtime has asked GetDriverInfo for, by its
+     * Data1 - the first four bytes, which tell the DDK's own GUIDs apart
+     * from one another without storing sixteen bytes each.
+     *
+     * driver_info_last held only the most recent, and the trace ring is
+     * bounded, so the 2026-09-20 run could name three of eighteen calls and
+     * lost the rest. Sixteen slots is more than the runtime is known to ask
+     * for; past that the count keeps rising and the table stops.
+     */
+    DWORD driver_info_guids[16];
+    DWORD driver_info_guid_count;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
@@ -2853,6 +2894,21 @@ typedef struct v9x_dd_shared {
     V9X_DDHALMODEINFO modes[V9X_DD_MODE_COUNT];
     V9X_DD_TRACE trace;
     V9X_D3D_DRAW_CENSUS census;
+    /*
+     * What GUID_D3DExtendedCaps answers, filled by the engine that published
+     * the caps above it.
+     *
+     * It lives in the shared block rather than in the GetDriverInfo handler
+     * because the limits are the ENGINE's - the ViRGE takes 4 to 512 and the
+     * Gen3 sampler 8 to 256 - and the handler is engine-neutral core code
+     * that runs before v9x_d3d_engine() can resolve anything.
+     *
+     * The 86Box ViRGE guest measured the runtime asking for this GUID and
+     * being declined (2026-09-20), which is where a DirectX 6 application's
+     * texture-size limits come from. Declining meant the runtime invented
+     * them.
+     */
+    V9X_D3DHAL_D3DEXTENDEDCAPS d3d_extended_caps;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)
