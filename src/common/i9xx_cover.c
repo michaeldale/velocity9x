@@ -90,6 +90,20 @@ void v9x_i9xx_cover_request(struct v9x_i9xx_cover_state *state)
     state->image_wanted = 1ul;
 }
 
+v9x_u16 v9x_i9xx_cover_commit_image(struct v9x_i9xx_cover_state *state,
+                                    v9x_u32 status)
+{
+    if (state == 0) {
+        return V9X_FALSE;
+    }
+    if (status != 1ul) {           /* V9X_D3D_IMAGE_WRITTEN */
+        return V9X_FALSE;
+    }
+    state->image_wanted = 0ul;
+
+    return V9X_TRUE;
+}
+
 v9x_u16 v9x_i9xx_cover_begin(struct v9x_i9xx_cover_state *state,
                              v9x_u32 slots)
 {

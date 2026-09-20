@@ -239,6 +239,45 @@ static void test_the_degenerate_cases(void)
     v9x_i9xx_cover_request(0);
 }
 
+/*
+ * A failed replacement must not claim the retained image.
+ *
+ * Capture A succeeds. B is requested and fails part-way. A's identity has to
+ * survive, because the file on disk is still A - the writer builds into a
+ * temporary and moves it over only when whole, so a failure leaves the old
+ * image exactly where it was.
+ */
+static void test_a_failed_image_keeps_the_previous_one(void)
+{
+    struct v9x_i9xx_cover_state state;
+
+    state.rearm = 0ul;
+    state.image_wanted = 1ul;
+    state.records = 0ul;
+    state.attempts = 0ul;
+
+    /* A: written. */
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 1ul) == V9X_TRUE);
+    COVERCHECK(state.image_wanted == 0ul);
+
+    /* B: requested, then every way it can fail. */
+    v9x_i9xx_cover_request(&state);
+    COVERCHECK(state.image_wanted == 1ul);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 2ul) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 3ul) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 4ul) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 5ul) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 6ul) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 0ul) == V9X_FALSE);
+    /* Still wanted, so the caller keeps A and keeps trying for B. */
+    COVERCHECK(state.image_wanted == 1ul);
+
+    /* And when B finally lands, it takes over. */
+    COVERCHECK(v9x_i9xx_cover_commit_image(&state, 1ul) == V9X_TRUE);
+    COVERCHECK(state.image_wanted == 0ul);
+    COVERCHECK(v9x_i9xx_cover_commit_image(0, 1ul) == V9X_FALSE);
+}
+
 unsigned int v9x_run_i9xx_cover_tests(void)
 {
     cover_failures = 0u;
@@ -252,6 +291,7 @@ unsigned int v9x_run_i9xx_cover_tests(void)
     test_the_first_flip_after_a_request_keeps_its_record();
     test_the_slots_fill_once();
     test_the_degenerate_cases();
+    test_a_failed_image_keeps_the_previous_one();
 
     return cover_failures;
 }

@@ -719,7 +719,15 @@ static DWORD v9x_i9xx_cover_write_image(const BYTE *base,
         return V9X_D3D_IMAGE_FORMAT;
     }
 
-    file = CreateFileA(V9X_DIAG_FRAME_PPM, GENERIC_WRITE, 0, 0,
+    /*
+     * Built in a temporary and moved over the retained image only once it
+     * is whole. The previous version opened the real file with
+     * CREATE_ALWAYS, which truncates before anything is known about whether
+     * the new image can be written - so a failure part-way through left a
+     * truncated file on disk that the retained metadata still described as
+     * a valid capture.
+     */
+    file = CreateFileA(V9X_DIAG_FRAME_TMP, GENERIC_WRITE, 0, 0,
                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE || file == 0) {
         return V9X_D3D_IMAGE_OPEN_FAILED;
@@ -786,7 +794,20 @@ static DWORD v9x_i9xx_cover_write_image(const BYTE *base,
             return V9X_D3D_IMAGE_WRITE_FAILED;
         }
     }
-    CloseHandle(file);
+    if (!CloseHandle(file)) {
+        return V9X_D3D_IMAGE_WRITE_FAILED;
+    }
+
+    /*
+     * And only now is the old image touched. Win9x's MoveFileA will not
+     * overwrite, so the target goes first - which is the one window in
+     * which neither file is complete, and it is as small as this can be
+     * made without a rename API that build's KERNEL32 does not have.
+     */
+    DeleteFileA(V9X_DIAG_FRAME_PPM);
+    if (!MoveFileA(V9X_DIAG_FRAME_TMP, V9X_DIAG_FRAME_PPM)) {
+        return V9X_D3D_IMAGE_REPLACE_FAILED;
+    }
 
     return V9X_D3D_IMAGE_WRITTEN;
 }
@@ -921,7 +942,8 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
         v9x_hal->d3d_diagnostics.frame_cover_image_attempts =
             v9x_i9xx_cover_sched.attempts;
         status = v9x_i9xx_cover_write_image(base, &plan);
-        if (status == V9X_D3D_IMAGE_WRITTEN) {
+        if (v9x_i9xx_cover_commit_image(&v9x_i9xx_cover_sched, status) !=
+                V9X_FALSE) {
             /*
              * Only now is the previous image's identity replaced. Until a
              * new one is actually on disk, the old status, sequence and
@@ -933,7 +955,6 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
             v9x_hal->d3d_diagnostics.frame_cover_image_sequence = 0ul;
             v9x_hal->d3d_diagnostics.frame_cover_image_session =
                 v9x_hal->d3d_diagnostics.frame_cover_session;
-            v9x_i9xx_cover_sched.image_wanted = 0ul;
         } else {
             /* A failure is reported without discarding what is on disk. */
             v9x_hal->d3d_diagnostics.frame_cover_image_last_error = status;

@@ -808,6 +808,9 @@ typedef struct v9x_d3d_frame_cover {
 #define V9X_D3D_IMAGE_WRITE_FAILED 3ul  /* short or failed write          */
 #define V9X_D3D_IMAGE_FORMAT      4ul   /* a pixel format with no decoder */
 #define V9X_D3D_IMAGE_TOO_WIDE    5ul   /* more columns than the row buffer */
+/* The new image was written whole but could not be moved over the old one,
+ * so the retained identity describes a file that is no longer there. */
+#define V9X_D3D_IMAGE_REPLACE_FAILED 6ul
 
 /* Bounded retries: a failed write re-arms, so a transient failure does not
  * cost the session its only image, and a persistent one cannot spin. */

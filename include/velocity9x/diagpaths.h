@@ -63,6 +63,11 @@
  * beside it are colour differences and only the image says what the scene
  * actually looks like. See i9xx_scanout.c. */
 #define V9X_DIAG_FRAME_PPM   V9X_DIAG_PATH("V9XFRAME.PPM")  /* i9xx_scanout.c */
+/* The replacement is built here and moved over the one above only once it is
+ * complete. Opening the real file with CREATE_ALWAYS truncated a good image
+ * before the new one was known to be writable, so a failure part-way through
+ * destroyed the capture its own metadata still described as valid. */
+#define V9X_DIAG_FRAME_TMP   V9X_DIAG_PATH("V9XFRAME.TMP")  /* i9xx_scanout.c */
 #define V9X_DIAG_MSW_INI     V9X_DIAG_PATH("V9XMSW.INI")    /* mode_switch_win32.c */
 #define V9X_DIAG_PWR_INI     V9X_DIAG_PATH("V9XPWR.INI")    /* power_cycle_win32.c */
 #define V9X_DIAG_PAL_INI     V9X_DIAG_PATH("V9XPAL.INI")    /* palette_smoke_win32.c */

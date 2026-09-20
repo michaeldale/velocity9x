@@ -90,6 +90,17 @@ struct v9x_i9xx_cover_state {
 void v9x_i9xx_cover_request(struct v9x_i9xx_cover_state *state);
 
 /*
+ * Whether a finished image attempt should replace the retained identity.
+ *
+ * True only when the write succeeded. A failed replacement leaves the
+ * previous image's status, sequence and session exactly as they were, which
+ * is the whole point: metadata that survives a failure must describe a file
+ * that survived it too.
+ */
+v9x_u16 v9x_i9xx_cover_commit_image(struct v9x_i9xx_cover_state *state,
+                                    v9x_u32 status);
+
+/*
  * Begin a sample. Applies any pending request, which is the point at which
  * the previous run's records are dropped - and only then. Returns V9X_TRUE
  * if this sample should be recorded, which is false once the slots are
