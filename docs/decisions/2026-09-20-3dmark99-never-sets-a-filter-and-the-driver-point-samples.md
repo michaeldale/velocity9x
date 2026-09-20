@@ -1,5 +1,18 @@
 # 3DMark99 never sets a filter, and the driver point-samples
 
+> **Corrected 2026-09-20.** The claim that draws "sampled bilinear" is
+> withdrawn. `DrawsMagLinear` and `DrawsMinLinear` are incremented where the
+> driver submits a batch whose sampler state names a linear filter. That
+> establishes the state this driver sent; it does not establish which filter
+> produced any pixel, which nothing in this project has measured. Read them
+> as "textured submissions carrying linear filter state".
+>
+> Two things this document treats as outstanding were fixed after it was
+> written and should not be read as open: the missing
+> `DDHALINFO_GETDRIVERINFOSET` advertisement, and `V9xD3dRenderState`
+> discarding blocks longer than 64 states.
+
+
 2026-09-20, 86Box `Win86SE` guest (ViRGE/DX, Win98SE, DirectX 4.06.03.0518 -
 6.1), boot 613, build `facf2f5`. 3DMark 99 Max Pro ran the full suite to
 completion: **353 3DMarks, 1780 CPU 3DMarks**, no crash and no hang.
@@ -45,10 +58,11 @@ application asks for are silently discarded and the defaults stand.
 
 ## This corrects what was said after intel96
 
-intel96 measured `FilterMagSeen=0x4` and 7,631,631 draws sampling bilinear,
-and that was reported here as "the driver filters bilinear throughout, the
-complaint is about a capability list". On this guest the same benchmark sets
-no filter at all.
+intel96 measured `FilterMagSeen=0x4` and 7,631,631 textured submissions
+carrying linear filter state, and that was reported here as "the driver
+filters bilinear throughout, the complaint is about a capability list" - an
+overstatement twice over, since a submission is not a fetched texel. On this
+guest the same benchmark sets no filter at all.
 
 Both measurements are sound; they cannot both describe 3DMark99. The
 difference reinforces the open question about which application produced

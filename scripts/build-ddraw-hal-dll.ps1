@@ -60,6 +60,7 @@ $sources = @(
     # The Gen3 display FIFO watermark, as arithmetic: pure, and
     # host-tested in tests\host\test_i9xx_wm.c because the
     # machine it describes has no network.
+    "src\common\i9xx_cover.c",
     "src\common\i9xx_depth.c",
     "src\common\i9xx_wm.c",
     "src\display32\ddhal_core.c",

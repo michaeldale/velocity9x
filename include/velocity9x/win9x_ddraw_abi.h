@@ -758,6 +758,36 @@ typedef struct v9x_d3dhal_d3dextendedcaps {
 } V9X_D3DHAL_D3DEXTENDEDCAPS;
 
 /*
+ * One sampled frame, identified.
+ *
+ * The first version of this overwrote a single set of fields every time it
+ * sampled, so a capture described one arbitrary frame with nothing to tie
+ * it to a scene or a panel photograph. These carry the flip sequence, the
+ * buffer sampled and the geometry used to read it, which is what lets a
+ * record be matched against the recording and against the image file.
+ */
+typedef struct v9x_d3d_frame_cover {
+    DWORD sequence;             /* flip sequence when this was taken       */
+    DWORD offset;               /* the buffer read, in bytes from VRAM base */
+    DWORD width;
+    DWORD height;
+    DWORD pitch;
+    DWORD bytes_per_pixel;
+    DWORD step;
+    DWORD sampled;              /* grid points visited                     */
+    DWORD drawn;                /* grid points differing from `reference`  */
+    DWORD reference;            /* the top-left pixel, as read             */
+    DWORD x0;                   /* box of the differing points, in pixels  */
+    DWORD y0;
+    DWORD x1;
+    DWORD y1;
+} V9X_D3D_FRAME_COVER;
+
+/* Four is enough to see whether a run is steady or a single odd frame, and
+ * small enough to leave the shared block's headroom alone. */
+#define V9X_D3D_FRAME_COVER_SLOTS 4u
+
+/*
  * 32-bit-side views of the runtime structures DDRAW passes to flat
  * callbacks. Only the fields the HAL reads are laid out; access is by
  * documented offset, so trailing fields are omitted.
@@ -2411,7 +2441,17 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD filter_mag_seen;      /* bit per D3DFILTER value set for MAG     */
     DWORD filter_min_seen;      /* bit per D3DFILTER value set for MIN     */
-    DWORD draws_mag_linear;     /* successful submissions with MAG linear  */
+    /*
+     * Textured submissions whose sampler state named a linear filter -
+     * NOT a count of pixels filtered bilinearly.
+     *
+     * These say what this driver sent, which is all a driver-side counter
+     * can say; which filter produced a pixel is a property of the part and
+     * has never been measured in this project. Two 2026-09-20 records read
+     * them as proof the driver "sampled bilinear" and that claim is
+     * withdrawn in both.
+     */
+    DWORD draws_mag_linear;
     DWORD driver_info_calls;
     DWORD driver_info_declined;
     DWORD driver_info_last;     /* first four bytes of the last GUID asked */
@@ -2617,39 +2657,35 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD batches_engine_refused;
     /*
-     * What actually reached the back buffer, read back out of it.
+     * COLOUR-DIFFERENCE STATISTICS read back out of the presented surface.
      *
      * Every other counter in this structure is upstream of the framebuffer:
      * they say what was handed to the ring. intel99 submitted 3,170
-     * triangles a frame across 2,796 frames, 83 per cent textured, with 31
-     * refusals in the whole run and nothing declined - and one object
-     * appeared on the panel. Three explanations survived that and no
-     * counter here separated them: the hardware rejecting fragments, the
-     * geometry landing outside the viewport, or it being drawn and then
-     * overwritten.
+     * triangles a frame across 2,796 frames with 31 refusals in the whole
+     * run, and one object appeared on the panel, so "submitted" was
+     * established and "drawn" was not.
      *
-     * So this reads the buffer instead of counting submissions. A sampled
-     * grid of the frame just finished, counting pixels that differ from the
-     * one at its top-left corner, with their bounding box. Three thousand
-     * triangles and two hundred changed pixels is a fragment or transform
-     * problem; a full frame changed while one object shows is an overwrite.
+     * WHAT THESE ARE NOT. They are not proof of fragment rejection, of an
+     * overwrite, or of nothing reaching memory, and an earlier version of
+     * this comment claimed all three. The reference is the pixel at the
+     * surface's top-left corner, which is the clear colour only if the
+     * application cleared to a flat colour: a background gradient makes
+     * almost every pixel differ and the box fill the frame while every
+     * object is missing, and geometry drawn in the reference colour differs
+     * from it nowhere at all. A low count is a reason to look at the image;
+     * it is not a diagnosis.
      *
-     * frame_cover_sampled is the grid size, not the frame size, so the
-     * fraction is drawn over sampled and not over width times height. The
-     * bounding box is in SAMPLE coordinates multiplied back up by the step,
-     * so it is approximate by that step and no better.
+     * The image is what settles it, and one frame per session is written to
+     * V9X_DIAG_FRAME_PPM for that reason.
      *
-     * Aperture reads are slow, so one frame in V9X_D3D_COVER_INTERVAL is
-     * sampled and the rest cost nothing.
+     * `sampled` is the grid size, not the frame size, so the fraction is
+     * drawn over sampled and never over width times height. The box is in
+     * PIXEL coordinates but quantised to the step, so it is approximate by
+     * that step and no better.
      */
     DWORD frame_cover_frames;
-    DWORD frame_cover_sampled;
-    DWORD frame_cover_drawn;
-    DWORD frame_cover_reference;
-    DWORD frame_cover_x0;
-    DWORD frame_cover_y0;
-    DWORD frame_cover_x1;
-    DWORD frame_cover_y1;
+    DWORD frame_cover_records;
+    V9X_D3D_FRAME_COVER frame_cover[V9X_D3D_FRAME_COVER_SLOTS];
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

@@ -493,6 +493,11 @@ void v9x_present_note_submission(void)
     ++v9x_present_submit_count;
 }
 
+DWORD v9x_present_sequence(void)
+{
+    return v9x_present_seq;
+}
+
 DWORD v9x_present_submissions(void)
 {
     return v9x_present_submit_count;

@@ -1,5 +1,18 @@
 # DirectDraw was never told GetDriverInfo exists
 
+> **Corrected 2026-09-20.** The claim that draws "sampled bilinear" is
+> withdrawn. `DrawsMagLinear` and `DrawsMinLinear` are incremented where the
+> driver submits a batch whose sampler state names a linear filter. That
+> establishes the state this driver sent; it does not establish which filter
+> produced any pixel, which nothing in this project has measured. Read them
+> as "textured submissions carrying linear filter state".
+>
+> Two things this document treats as outstanding were fixed after it was
+> written and should not be read as open: the missing
+> `DDHALINFO_GETDRIVERINFOSET` advertisement, and `V9xD3dRenderState`
+> discarding blocks longer than 64 states.
+
+
 2026-09-20. Three changes for the 3DMark99 reports, and two candidates
 deliberately left alone. Nothing here has run on hardware.
 
@@ -98,7 +111,9 @@ honour. Whichever way the complaint goes, the two paths should not disagree.
 
 ## What is measured about the complaint itself
 
-Nothing here addresses the picture, because the picture is right.
-intel96 measured every one of 3DMark99's 7,631,631 textured draws sampling
-bilinear in both directions, with the application's own LINEAR state. The
-report is about a capability list, not about filtering.
+Nothing here addresses the picture. intel96 measured 7,631,631 textured
+submissions carrying linear filter state in both directions, from the
+application's own LINEAR render state - which establishes that the request
+reaches the sampler rather than being dropped, and not which filter produced
+any pixel. Whether the picture is right was not measured, and the original
+wording of this paragraph asserted that it was.

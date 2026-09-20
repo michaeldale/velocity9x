@@ -859,13 +859,51 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("BatchesEngineRefused",
                    snapshot.d3d.batches_engine_refused);
     v9x_write_uint("FrameCoverFrames", snapshot.d3d.frame_cover_frames);
-    v9x_write_uint("FrameCoverSampled", snapshot.d3d.frame_cover_sampled);
-    v9x_write_uint("FrameCoverDrawn", snapshot.d3d.frame_cover_drawn);
-    v9x_write_hex("FrameCoverReference", snapshot.d3d.frame_cover_reference);
-    v9x_write_uint("FrameCoverX0", snapshot.d3d.frame_cover_x0);
-    v9x_write_uint("FrameCoverY0", snapshot.d3d.frame_cover_y0);
-    v9x_write_uint("FrameCoverX1", snapshot.d3d.frame_cover_x1);
-    v9x_write_uint("FrameCoverY1", snapshot.d3d.frame_cover_y1);
+    v9x_write_uint("FrameCoverRecords", snapshot.d3d.frame_cover_records);
+    {
+        /*
+         * One line per identified frame. These are COLOUR DIFFERENCES from
+         * the surface's top-left pixel - not a measure of scene
+         * completeness - and V9XFRAME.PPM beside this file is the image
+         * that says what the frame actually looks like.
+         */
+        DWORD cover;
+        char key[40];
+
+        for (cover = 0ul; cover < (DWORD)V9X_D3D_FRAME_COVER_SLOTS &&
+                          cover < snapshot.d3d.frame_cover_records; ++cover) {
+            const V9X_D3D_FRAME_COVER *record =
+                &snapshot.d3d.frame_cover[cover];
+
+            wsprintf(key, "Cover%luSeq", cover);
+            v9x_write_uint(key, record->sequence);
+            wsprintf(key, "Cover%luOffset", cover);
+            v9x_write_hex(key, record->offset);
+            wsprintf(key, "Cover%luGeom", cover);
+            {
+                char text[64];
+
+                wsprintf(text, "%lux%lu pitch %lu cpp %lu step %lu",
+                         record->width, record->height, record->pitch,
+                         record->bytes_per_pixel, record->step);
+                v9x_write_text(key, text);
+            }
+            wsprintf(key, "Cover%luSampled", cover);
+            v9x_write_uint(key, record->sampled);
+            wsprintf(key, "Cover%luDrawn", cover);
+            v9x_write_uint(key, record->drawn);
+            wsprintf(key, "Cover%luReference", cover);
+            v9x_write_hex(key, record->reference);
+            wsprintf(key, "Cover%luBox", cover);
+            {
+                char text[64];
+
+                wsprintf(text, "%lu,%lu %lu,%lu",
+                         record->x0, record->y0, record->x1, record->y1);
+                v9x_write_text(key, text);
+            }
+        }
+    }
     {
         DWORD index;
 

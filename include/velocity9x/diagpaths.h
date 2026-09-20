@@ -58,6 +58,11 @@
 #define V9X_DIAG_DD_INI      V9X_DIAG_PATH("V9XDD.INI")     /* ddraw_probe_win32.c */
 #define V9X_DIAG_SOFTBENCH_INI V9X_DIAG_PATH("V9XSOFT.INI") /* software_bench_win32.c */
 #define V9X_DIAG_SNAP_INI    V9X_DIAG_PATH("V9XSNAP.INI")   /* d3d_trace_dump_win32.c */
+/* One presented frame, as a binary PPM, written by the 32-bit HAL itself -
+ * the dump tool cannot read video memory. Once per session: the counters
+ * beside it are colour differences and only the image says what the scene
+ * actually looks like. See i9xx_scanout.c. */
+#define V9X_DIAG_FRAME_PPM   V9X_DIAG_PATH("V9XFRAME.PPM")  /* i9xx_scanout.c */
 #define V9X_DIAG_MSW_INI     V9X_DIAG_PATH("V9XMSW.INI")    /* mode_switch_win32.c */
 #define V9X_DIAG_PWR_INI     V9X_DIAG_PATH("V9XPWR.INI")    /* power_cycle_win32.c */
 #define V9X_DIAG_PAL_INI     V9X_DIAG_PATH("V9XPAL.INI")    /* palette_smoke_win32.c */

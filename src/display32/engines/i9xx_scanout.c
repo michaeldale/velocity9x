@@ -30,6 +30,8 @@
  * the VGA controls exactly as before.
  */
 #include "ddhal_internal.h"
+#include "velocity9x/diagpaths.h"
+#include "velocity9x/i9xx_cover.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/i9xx_wm.h"
 
@@ -528,7 +530,7 @@ static void v9x_i9xx_note_watermarks(void)
 }
 
 /*
- * What reached the back buffer, read back out of it.
+ * Colour-difference statistics for the presented surface, and one image.
  *
  * Every other counter this driver keeps is upstream of the framebuffer.
  * intel99 submitted 3,170 triangles a frame across 2,796 frames with 31
@@ -536,44 +538,167 @@ static void v9x_i9xx_note_watermarks(void)
  * "the geometry was submitted" is established and "the geometry was drawn"
  * is not, and no counter that watches the ring can tell them apart.
  *
- * This samples the frame being flipped away from, which is the one the
- * application has just finished drawing. The pixel at its top-left corner
- * is taken as the background - a clear colour this driver never sees, since
- * the application picks it - and every sampled pixel differing from it is
- * counted, with the bounding box of those that differ.
+ * WHAT THIS MEASURES, precisely: how many sampled pixels differ in value
+ * from the pixel at the surface's top-left corner, and where they are.
  *
- * What the numbers mean, decided before reading them:
- *  - a small drawn count with a small box is fragment rejection or a
- *    transform putting the scene somewhere it should not be;
- *  - a large drawn count with a full-frame box, while the panel shows one
- *    object, is an overwrite between the draw and the scanout;
- *  - a drawn count near zero is nothing reaching memory at all.
+ * WHAT IT DOES NOT MEASURE. It is not proof of fragment rejection, of an
+ * overwrite, or of nothing reaching memory. The corner pixel is the clear
+ * colour only if the application cleared to a flat colour; a gradient
+ * background makes nearly every pixel differ and the box fill the frame
+ * while every object is missing, and geometry drawn in the reference colour
+ * differs from it nowhere. The first version of this comment asserted all
+ * three diagnoses from these numbers and was wrong to.
  *
- * APERTURE READS ARE SLOW and this runs in the flip path, so one frame in
- * V9X_I9XX_COVER_INTERVAL is sampled and the step keeps even that to a few
- * thousand reads. It is a diagnostic on a machine reached by carrying a USB
- * stick, not something to leave running at every flip.
+ * So the image is what settles it. One frame per session is written to
+ * V9X_DIAG_FRAME_PPM, downsampled by the same step, and the statistics are
+ * there to say which frames are worth looking at.
+ *
+ * THE LAYOUT COMES FROM THE SCANOUT, not from a Direct3D context. The first
+ * version took the offset from the flip and the width, height and pitch
+ * from the last context lookup, which can describe an entirely different
+ * surface or an earlier mode, and assumed 16 bits a pixel. The plan is
+ * validated in v9x_i9xx_cover_plan before a single aperture read, and a
+ * surface that cannot be believed is not sampled at all.
+ *
+ * Aperture reads are slow and this sits in the flip path, so one frame in
+ * V9X_I9XX_COVER_INTERVAL is sampled and the step keeps even that bounded.
  */
 #define V9X_I9XX_COVER_INTERVAL   64ul
 #define V9X_I9XX_COVER_STEP       8ul
 
 static DWORD v9x_i9xx_cover_countdown = 0ul;
+static int v9x_i9xx_cover_image_done = 0;
+
+/* One pixel, read at the width the surface actually uses. */
+static DWORD v9x_i9xx_cover_pixel(const BYTE *at, DWORD bytes_per_pixel)
+{
+    if (bytes_per_pixel == 1ul) {
+        return (DWORD)*at;
+    }
+    if (bytes_per_pixel == 2ul) {
+        return (DWORD)*(const WORD *)at;
+    }
+
+    return *(const DWORD *)at;
+}
+
+/* An unsigned decimal, because this DLL has no C runtime and no USER32.
+ * Returns the number of characters written. */
+static DWORD v9x_i9xx_cover_decimal(char *out, DWORD value)
+{
+    char digits[12];
+    DWORD count = 0ul;
+    DWORD written = 0ul;
+
+    if (value == 0ul) {
+        out[0] = '0';
+        return 1ul;
+    }
+    while (value != 0ul && count < 12ul) {
+        digits[count++] = (char)('0' + (value % 10ul));
+        value /= 10ul;
+    }
+    while (count != 0ul) {
+        out[written++] = digits[--count];
+    }
+
+    return written;
+}
+
+/*
+ * The sampled frame as a binary PPM, written once.
+ *
+ * Eight bits a channel whatever the surface is, because the point is to
+ * look at it. A 565 pixel's channels are scaled by repeating their high
+ * bits, which is exact at the endpoints and close enough everywhere else
+ * for a diagnostic thumbnail.
+ */
+static void v9x_i9xx_cover_write_image(const BYTE *base,
+                                       const struct v9x_i9xx_cover_plan *plan)
+{
+    HANDLE file;
+    char header[64];
+    BYTE row[256 * 3];
+    DWORD written;
+    DWORD x;
+    DWORD y;
+    DWORD length = 0ul;
+
+    if (plan->columns > 256ul) {
+        return;
+    }
+    file = CreateFileA(V9X_DIAG_FRAME_PPM, GENERIC_WRITE, 0, 0,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    /* Formatted by hand: this DLL imports KERNEL32 and nothing else,
+     * which the build gate enforces, and wsprintf lives in USER32. */
+    header[length++] = 'P';
+    header[length++] = '6';
+    header[length++] = '\n';
+    length += v9x_i9xx_cover_decimal(header + length, plan->columns);
+    header[length++] = ' ';
+    length += v9x_i9xx_cover_decimal(header + length, plan->rows);
+    header[length++] = '\n';
+    header[length++] = '2';
+    header[length++] = '5';
+    header[length++] = '5';
+    header[length++] = '\n';
+    WriteFile(file, header, length, &written, 0);
+
+    for (y = 0ul; y < plan->height; y += plan->step) {
+        const BYTE *line = base + y * plan->pitch;
+        DWORD out = 0ul;
+
+        for (x = 0ul; x < plan->width; x += plan->step) {
+            DWORD pixel = v9x_i9xx_cover_pixel(
+                line + x * plan->bytes_per_pixel, plan->bytes_per_pixel);
+            DWORD r;
+            DWORD g;
+            DWORD b;
+
+            if (plan->bytes_per_pixel == 2ul) {
+                r = (pixel >> 11) & 0x1ful;
+                g = (pixel >> 5) & 0x3ful;
+                b = pixel & 0x1ful;
+                r = (r << 3) | (r >> 2);
+                g = (g << 2) | (g >> 4);
+                b = (b << 3) | (b >> 2);
+            } else if (plan->bytes_per_pixel == 4ul) {
+                r = (pixel >> 16) & 0xfful;
+                g = (pixel >> 8) & 0xfful;
+                b = pixel & 0xfful;
+            } else {
+                r = pixel & 0xfful;
+                g = r;
+                b = r;
+            }
+            row[out++] = (BYTE)r;
+            row[out++] = (BYTE)g;
+            row[out++] = (BYTE)b;
+        }
+        WriteFile(file, row, out, &written, 0);
+    }
+    CloseHandle(file);
+}
 
 static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
 {
+    struct v9x_i9xx_cover_plan plan;
     const BYTE *base;
-    WORD reference;
+    V9X_D3D_FRAME_COVER *record;
+    DWORD reference;
     DWORD sampled = 0ul;
     DWORD drawn = 0ul;
-    DWORD x0 = 0xfffffffful;
-    DWORD y0 = 0xfffffffful;
+    DWORD x0 = 0ul;
+    DWORD y0 = 0ul;
     DWORD x1 = 0ul;
     DWORD y1 = 0ul;
+    DWORD seen = 0ul;
     DWORD x;
     DWORD y;
-    DWORD width;
-    DWORD height;
-    DWORD pitch;
+    DWORD slot;
 
     if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul) {
         return;
@@ -584,52 +709,80 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
     }
     v9x_i9xx_cover_countdown = V9X_I9XX_COVER_INTERVAL;
 
-    width = v9x_hal->d3d_diagnostics.target_width;
-    height = v9x_hal->d3d_diagnostics.target_height;
-    pitch = v9x_hal->d3d_diagnostics.target_pitch;
-    if (width == 0ul || height == 0ul || pitch == 0ul) {
-        return;
-    }
     /*
-     * The whole sampled area must lie inside video memory. This reads the
-     * aperture directly, so the bound is the memory-safety check and not a
-     * tidiness one.
+     * The presented surface's own geometry, from the pipe and the plane
+     * that are showing it - never from a Direct3D context, which describes
+     * whatever target was bound last.
      */
-    if (byte_offset > v9x_hal->fb.vram_bytes ||
-        height * pitch > v9x_hal->fb.vram_bytes - byte_offset) {
+    if (v9x_i9xx_cover_plan(
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_pipe_index == 0ul
+                                      ? V9X_I9XX_REG_PIPEA_SRC
+                                      : V9X_I9XX_REG_PIPEB_SRC),
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_plane == 0ul
+                                      ? V9X_I9XX_REG_DSPA_CNTR
+                                      : V9X_I9XX_REG_DSPB_CNTR),
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg),
+            byte_offset, v9x_hal->fb.vram_bytes,
+            V9X_I9XX_COVER_STEP, &plan) == V9X_FALSE) {
         return;
     }
 
     base = (const BYTE *)v9x_hal->fb.linear_base + byte_offset;
-    reference = *(const WORD *)base;
+    reference = v9x_i9xx_cover_pixel(base, plan.bytes_per_pixel);
 
-    for (y = 0ul; y < height; y += V9X_I9XX_COVER_STEP) {
-        const WORD *row = (const WORD *)(base + y * pitch);
+    for (y = 0ul; y < plan.height; y += plan.step) {
+        const BYTE *line = base + y * plan.pitch;
 
-        for (x = 0ul; x < width; x += V9X_I9XX_COVER_STEP) {
+        for (x = 0ul; x < plan.width; x += plan.step) {
             ++sampled;
-            if (row[x] != reference) {
+            if (v9x_i9xx_cover_pixel(line + x * plan.bytes_per_pixel,
+                                     plan.bytes_per_pixel) != reference) {
                 ++drawn;
-                if (x < x0) { x0 = x; }
-                if (y < y0) { y0 = y; }
-                if (x > x1) { x1 = x; }
-                if (y > y1) { y1 = y; }
+                if (seen == 0ul) {
+                    x0 = x;
+                    y0 = y;
+                    x1 = x;
+                    y1 = y;
+                    seen = 1ul;
+                } else {
+                    if (x < x0) { x0 = x; }
+                    if (y < y0) { y0 = y; }
+                    if (x > x1) { x1 = x; }
+                    if (y > y1) { y1 = y; }
+                }
             }
         }
     }
 
-    if (drawn == 0ul) {
-        x0 = 0ul;
-        y0 = 0ul;
+    /* The records fill once and stop, so the first four sampled frames of a
+     * session are kept whole rather than the last one overwriting the rest. */
+    slot = v9x_hal->d3d_diagnostics.frame_cover_records;
+    if (slot < (DWORD)V9X_D3D_FRAME_COVER_SLOTS) {
+        record = &v9x_hal->d3d_diagnostics.frame_cover[slot];
+        record->sequence = v9x_present_sequence();
+        record->offset = byte_offset;
+        record->width = plan.width;
+        record->height = plan.height;
+        record->pitch = plan.pitch;
+        record->bytes_per_pixel = plan.bytes_per_pixel;
+        record->step = plan.step;
+        record->sampled = sampled;
+        record->drawn = drawn;
+        record->reference = reference;
+        record->x0 = x0;
+        record->y0 = y0;
+        record->x1 = x1;
+        record->y1 = y1;
+        ++v9x_hal->d3d_diagnostics.frame_cover_records;
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
-    v9x_hal->d3d_diagnostics.frame_cover_sampled = sampled;
-    v9x_hal->d3d_diagnostics.frame_cover_drawn = drawn;
-    v9x_hal->d3d_diagnostics.frame_cover_reference = (DWORD)reference;
-    v9x_hal->d3d_diagnostics.frame_cover_x0 = x0;
-    v9x_hal->d3d_diagnostics.frame_cover_y0 = y0;
-    v9x_hal->d3d_diagnostics.frame_cover_x1 = x1;
-    v9x_hal->d3d_diagnostics.frame_cover_y1 = y1;
+
+    /* And one image, because the numbers above cannot tell a missing object
+     * from a background that happens to match. */
+    if (!v9x_i9xx_cover_image_done) {
+        v9x_i9xx_cover_image_done = 1;
+        v9x_i9xx_cover_write_image(base, &plan);
+    }
 }
 
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)

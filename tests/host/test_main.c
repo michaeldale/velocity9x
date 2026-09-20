@@ -66,6 +66,7 @@ unsigned int v9x_run_donewait_tests(void);
 unsigned int v9x_run_drawnote_tests(void);
 /* tests/host/test_i9xx_wm.c: the Gen3 display FIFO watermark arithmetic,
  * settled here because the machine it runs on has no network. */
+unsigned int v9x_run_i9xx_cover_tests(void);
 unsigned int v9x_run_i9xx_depth_tests(void);
 unsigned int v9x_run_i9xx_wm_tests(void);
 
@@ -1046,6 +1047,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_raster_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
+    failures += v9x_run_i9xx_cover_tests();
     failures += v9x_run_i9xx_depth_tests();
     failures += v9x_run_i9xx_wm_tests();
     failures += v9x_run_i9xx_mmio_tests();

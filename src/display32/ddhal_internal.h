@@ -358,6 +358,12 @@ int v9x_present_draw_record(int submitted);
  * call put anything on the hardware. */
 void v9x_present_note_submission(void);
 DWORD v9x_present_submissions(void);
+/*
+ * The flip sequence, so a diagnostic taken in the scanout path can be tied
+ * to the present trace and to a panel recording. One more reader of the
+ * same counter the trace already stamps; nothing here changes it.
+ */
+DWORD v9x_present_sequence(void);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

@@ -1,5 +1,18 @@
 # intel96: the watermark is programmed correctly and the pipe still underruns
 
+> **Corrected 2026-09-20.** The claim that draws "sampled bilinear" is
+> withdrawn. `DrawsMagLinear` and `DrawsMinLinear` are incremented where the
+> driver submits a batch whose sampler state names a linear filter. That
+> establishes the state this driver sent; it does not establish which filter
+> produced any pixel, which nothing in this project has measured. Read them
+> as "textured submissions carrying linear filter state".
+>
+> Two things this document treats as outstanding were fixed after it was
+> written and should not be read as open: the missing
+> `DDHALINFO_GETDRIVERINFOSET` advertisement, and `V9xD3dRenderState`
+> discarding blocks longer than 64 states.
+
+
 2026-09-20, MICHAEL-NETBOOK (945GSE), build `3b27391-dirty`. Three runs,
 each its own boot with a shutdown between, one application apiece.
 Attached: `C:\temp\intel96`.
@@ -93,12 +106,19 @@ DriverInfoCalls=0
 ```
 
 Bit 2 is D3DFILTER value 2, LINEAR. The application asked for a linear
-filter, and **every one of 3DMark99's 7,631,631 textured draws sampled
-bilinear**, magnification and minification alike. The Full Run's
-`0x00000006` is NEAREST and LINEAR, so Final Reality sets both.
+filter, and **7,631,631 textured submissions carried linear filter state**,
+magnification and minification alike. The Full Run's `0x00000006` is NEAREST
+and LINEAR, so Final Reality sets both.
 
-So "bilinear filtering is not supported" is not a rendering defect. The
-driver filters bilinear throughout.
+That is what this driver SENT. It is not a measurement of which filter
+produced a pixel, which is the part's business and has never been measured
+here - the counters increment where a batch is submitted, not where a texel
+is fetched. The original wording of this section claimed the draws "sampled
+bilinear" and that claim is withdrawn.
+
+What it does establish is that the linear state reaches the sampler rather
+than being dropped on the way, so "bilinear filtering is not supported" is
+not a report of this driver discarding the request.
 
 Both candidates named in intel95 are now dead or weakened:
 
