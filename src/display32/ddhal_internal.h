@@ -364,6 +364,12 @@ DWORD v9x_present_submissions(void);
  * same counter the trace already stamps; nothing here changes it.
  */
 DWORD v9x_present_sequence(void);
+/*
+ * Tell the scanout layer which flip carried the buffer it last sampled.
+ * Called after the sequence advances, because the sample is taken while
+ * the flip can still be declined.
+ */
+void v9x_scanout_note_flip_sequence(DWORD sequence);
 /* Intel rendering completion (d3d_i9xx.c). render_drain: 1 when nothing the
  * GPU was given is still unfinished, 0 when something is and the caller
  * should answer WASSTILLDRAWING; one bounded poll with wait, none without.

@@ -774,6 +774,9 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         /* Accepted: the sequence advances here, so every draw recorded
          * after this carries the number of the flip it follows. */
         ++v9x_present_seq;
+        /* The coverage sample taken inside v9x_set_display_start belongs to
+         * THIS flip, which only now exists. */
+        v9x_scanout_note_flip_sequence(v9x_present_seq);
         v9x_present_retiring = v9x_surface_offset(data->lpSurfCurr);
         v9x_present_offset = offset;
         v9x_draw_note_flip(&v9x_present_draw_note);

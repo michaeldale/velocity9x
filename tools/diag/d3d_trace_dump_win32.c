@@ -860,6 +860,17 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.batches_engine_refused);
     v9x_write_uint("FrameCoverFrames", snapshot.d3d.frame_cover_frames);
     v9x_write_uint("FrameCoverRecords", snapshot.d3d.frame_cover_records);
+    /* Anything but 1 (WRITTEN) means V9XFRAME.PPM is absent, stale or
+     * truncated: 2 open failed, 3 write failed, 4 unsupported format,
+     * 5 too wide. The sequence and offset identify which frame it holds. */
+    v9x_write_uint("FrameImageStatus",
+                   snapshot.d3d.frame_cover_image_status);
+    v9x_write_uint("FrameImageAttempts",
+                   snapshot.d3d.frame_cover_image_attempts);
+    v9x_write_uint("FrameImageSeq",
+                   snapshot.d3d.frame_cover_image_sequence);
+    v9x_write_hex("FrameImageOffset",
+                  snapshot.d3d.frame_cover_image_offset);
     {
         /*
          * One line per identified frame. These are COLOUR DIFFERENCES from

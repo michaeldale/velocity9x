@@ -767,7 +767,13 @@ typedef struct v9x_d3dhal_d3dextendedcaps {
  * record be matched against the recording and against the image file.
  */
 typedef struct v9x_d3d_frame_cover {
-    DWORD sequence;             /* flip sequence when this was taken       */
+    /*
+     * The flip this buffer was presented BY, stamped after the flip is
+     * accepted rather than read while it is being issued. The sampler runs
+     * inside v9x_set_display_start, which can still decline, and reading
+     * the counter there gave every record the PREVIOUS flip's number.
+      */
+    DWORD sequence;
     DWORD offset;               /* the buffer read, in bytes from VRAM base */
     DWORD width;
     DWORD height;
@@ -786,6 +792,19 @@ typedef struct v9x_d3d_frame_cover {
 /* Four is enough to see whether a run is steady or a single odd frame, and
  * small enough to leave the shared block's headroom alone. */
 #define V9X_D3D_FRAME_COVER_SLOTS 4u
+
+/* How the one image write went. Anything but WRITTEN means V9XFRAME.PPM is
+ * absent, stale or truncated, and the statistics stand alone. */
+#define V9X_D3D_IMAGE_NONE        0ul   /* not attempted yet              */
+#define V9X_D3D_IMAGE_WRITTEN     1ul   /* complete, and matches the ids  */
+#define V9X_D3D_IMAGE_OPEN_FAILED 2ul
+#define V9X_D3D_IMAGE_WRITE_FAILED 3ul  /* short or failed write          */
+#define V9X_D3D_IMAGE_FORMAT      4ul   /* a pixel format with no decoder */
+#define V9X_D3D_IMAGE_TOO_WIDE    5ul   /* more columns than the row buffer */
+
+/* Bounded retries: a failed write re-arms, so a transient failure does not
+ * cost the session its only image, and a persistent one cannot spin. */
+#define V9X_D3D_IMAGE_ATTEMPTS    3ul
 
 /*
  * 32-bit-side views of the runtime structures DDRAW passes to flat
@@ -1405,6 +1424,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092016: the coverage readback becomes a bounded set of identified
+ * records with an image status, replacing the eight loose fields of
+ * 2026092015. A LAYOUT CHANGE, not an append - and 2026092015 was reused for
+ * it once already, which is the mistake this entry exists to not repeat.
+ */
 /* 2026092015: V9X_D3D_DIAGNOSTICS gains the back-buffer coverage readback.
  * An append.
  */
@@ -1438,7 +1462,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092015ul
+#define V9X_DD_SHARED_ABI   2026092016ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2686,6 +2710,19 @@ typedef struct v9x_d3d_diagnostics {
     DWORD frame_cover_frames;
     DWORD frame_cover_records;
     V9X_D3D_FRAME_COVER frame_cover[V9X_D3D_FRAME_COVER_SLOTS];
+    /*
+     * The image write, which is the thing that actually answers the
+     * question the statistics only point at.
+     *
+     * V9X_D3D_IMAGE_* below. The status is recorded because the writer used
+     * to mark itself done before opening the file and ignore every result
+     * after that, so a failed or truncated write left a stale V9XFRAME.PPM
+     * on disk and consumed the one capture the session had.
+     */
+    DWORD frame_cover_image_status;
+    DWORD frame_cover_image_sequence;
+    DWORD frame_cover_image_offset;
+    DWORD frame_cover_image_attempts;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

@@ -352,6 +352,10 @@ static void v9x_i9xx_note_layout(DWORD byte_offset)
  * to do about it is a later change, made once the computation has been
  * seen to agree with the hardware on a real mode.
  */
+/* Defined with the coverage sampler below; the watermark path arms it
+ * because it already detects the mode change that matters. */
+static void v9x_i9xx_cover_arm(DWORD pipesrc);
+
 static void v9x_i9xx_note_watermarks(void)
 {
     /*
@@ -422,6 +426,7 @@ static void v9x_i9xx_note_watermarks(void)
         v9x_i9xx_wm_last_fw_blc == fw_blc) {
         return;
     }
+    v9x_i9xx_cover_arm(pipesrc);
     v9x_i9xx_wm_last_valid = 1;
     v9x_i9xx_wm_last_plane = v9x_i9xx_scanout_plane;
     v9x_i9xx_wm_last_pipesrc = pipesrc;
@@ -566,8 +571,63 @@ static void v9x_i9xx_note_watermarks(void)
 #define V9X_I9XX_COVER_INTERVAL   64ul
 #define V9X_I9XX_COVER_STEP       8ul
 
+/*
+ * SESSION STATE, and it is reset in v9x_scanout_reset with the rest.
+ *
+ * None of this was, so the image and all four records described the first
+ * capture opportunity in the DLL's lifetime - which is a menu, or whatever
+ * application ran first, and never the benchmark scene anyone wanted. The
+ * same defect as the pipestat baseline before it, in the same file.
+ */
 static DWORD v9x_i9xx_cover_countdown = 0ul;
-static int v9x_i9xx_cover_image_done = 0;
+static DWORD v9x_i9xx_cover_armed_src = 0ul;
+/* The record waiting for the flip that carries it to be accepted. */
+static DWORD v9x_i9xx_cover_pending = 0xfffffffful;
+
+/*
+ * Re-arm on a mode change, which is what makes the BENCHMARK's scene
+ * capturable rather than the menu's.
+ *
+ * An application that runs in its own mode - which every one of these
+ * benchmarks does - switches into it after its menu, and that switch is
+ * exactly the moment the previous capture stopped being the interesting
+ * one. Called from the watermark path, which already watches the pipe
+ * source for the same reason.
+ */
+static void v9x_i9xx_cover_arm(DWORD pipesrc)
+{
+    if (v9x_hal == 0 || pipesrc == v9x_i9xx_cover_armed_src) {
+        return;
+    }
+    v9x_i9xx_cover_armed_src = pipesrc;
+    v9x_i9xx_cover_countdown = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_records = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_image_status = V9X_D3D_IMAGE_NONE;
+    v9x_hal->d3d_diagnostics.frame_cover_image_attempts = 0ul;
+}
+
+/*
+ * The flip that presents a sampled buffer, stamped once it is accepted.
+ *
+ * v9x_set_display_start can decline after the sample is taken, so reading
+ * the sequence there numbered every record with the PREVIOUS flip. This is
+ * called from the flip body immediately after the counter advances.
+ */
+void v9x_scanout_note_flip_sequence(DWORD sequence)
+{
+    DWORD slot = v9x_i9xx_cover_pending;
+
+    v9x_i9xx_cover_pending = 0xfffffffful;
+    if (v9x_hal == 0 || slot >= (DWORD)V9X_D3D_FRAME_COVER_SLOTS) {
+        return;
+    }
+    v9x_hal->d3d_diagnostics.frame_cover[slot].sequence = sequence;
+    if (v9x_hal->d3d_diagnostics.frame_cover_image_status ==
+            V9X_D3D_IMAGE_WRITTEN &&
+        v9x_hal->d3d_diagnostics.frame_cover_image_sequence == 0ul) {
+        v9x_hal->d3d_diagnostics.frame_cover_image_sequence = sequence;
+    }
+}
 
 /* One pixel, read at the width the surface actually uses. */
 static DWORD v9x_i9xx_cover_pixel(const BYTE *at, DWORD bytes_per_pixel)
@@ -606,34 +666,53 @@ static DWORD v9x_i9xx_cover_decimal(char *out, DWORD value)
 }
 
 /*
- * The sampled frame as a binary PPM, written once.
+ * The sampled frame as a binary PPM.
  *
- * Eight bits a channel whatever the surface is, because the point is to
- * look at it. A 565 pixel's channels are scaled by repeating their high
- * bits, which is exact at the endpoints and close enough everywhere else
- * for a diagnostic thumbnail.
+ * Returns the V9X_D3D_IMAGE_* status. Every result is checked - the first
+ * version marked itself done before opening the file and ignored every
+ * write after that, so a failed or short write left a stale or truncated
+ * V9XFRAME.PPM behind and silently consumed the session's one capture.
+ *
+ * The pixel is decoded from the PLANE'S ACTUAL FORMAT and not from its byte
+ * width: two bytes is 555 or 565 and four is 8888 or 1010102, and guessing
+ * from the width gave every format but the netbook's wrong colours. A
+ * format with no decoder here declines the IMAGE and leaves the statistics
+ * alone, because they do not care what the bits mean.
  */
-static void v9x_i9xx_cover_write_image(const BYTE *base,
-                                       const struct v9x_i9xx_cover_plan *plan)
+static DWORD v9x_i9xx_cover_write_image(const BYTE *base,
+                                        const struct v9x_i9xx_cover_plan *plan)
 {
     HANDLE file;
     char header[64];
     BYTE row[256 * 3];
-    DWORD written;
+    DWORD written = 0ul;
     DWORD x;
     DWORD y;
     DWORD length = 0ul;
 
     if (plan->columns > 256ul) {
-        return;
+        return V9X_D3D_IMAGE_TOO_WIDE;
     }
+    /*
+     * BGRX5551 and BGRA5551 are 3 and 4, BGRX565 is 5, and 6, 7, 0xe and
+     * 0xf are the 8888 layouts. The 1010102 formats and the 8-bit indexed
+     * one are declined: the first needs a different shift and the second a
+     * palette this code does not have.
+     */
+    if (plan->format != 3ul && plan->format != 4ul && plan->format != 5ul &&
+        plan->format != 6ul && plan->format != 7ul &&
+        plan->format != 0x0eul && plan->format != 0x0ful) {
+        return V9X_D3D_IMAGE_FORMAT;
+    }
+
     file = CreateFileA(V9X_DIAG_FRAME_PPM, GENERIC_WRITE, 0, 0,
                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-    if (file == INVALID_HANDLE_VALUE) {
-        return;
+    if (file == INVALID_HANDLE_VALUE || file == 0) {
+        return V9X_D3D_IMAGE_OPEN_FAILED;
     }
-    /* Formatted by hand: this DLL imports KERNEL32 and nothing else,
-     * which the build gate enforces, and wsprintf lives in USER32. */
+
+    /* Formatted by hand: this DLL imports KERNEL32 and nothing else, which
+     * the build gate enforces, and wsprintf lives in USER32. */
     header[length++] = 'P';
     header[length++] = '6';
     header[length++] = '\n';
@@ -645,7 +724,10 @@ static void v9x_i9xx_cover_write_image(const BYTE *base,
     header[length++] = '5';
     header[length++] = '5';
     header[length++] = '\n';
-    WriteFile(file, header, length, &written, 0);
+    if (!WriteFile(file, header, length, &written, 0) || written != length) {
+        CloseHandle(file);
+        return V9X_D3D_IMAGE_WRITE_FAILED;
+    }
 
     for (y = 0ul; y < plan->height; y += plan->step) {
         const BYTE *line = base + y * plan->pitch;
@@ -658,29 +740,41 @@ static void v9x_i9xx_cover_write_image(const BYTE *base,
             DWORD g;
             DWORD b;
 
-            if (plan->bytes_per_pixel == 2ul) {
+            if (plan->format == 5ul) {
+                /* 565: five, six, five. */
                 r = (pixel >> 11) & 0x1ful;
                 g = (pixel >> 5) & 0x3ful;
                 b = pixel & 0x1ful;
                 r = (r << 3) | (r >> 2);
                 g = (g << 2) | (g >> 4);
                 b = (b << 3) | (b >> 2);
-            } else if (plan->bytes_per_pixel == 4ul) {
+            } else if (plan->format == 3ul || plan->format == 4ul) {
+                /* 555, with or without the alpha bit above it. */
+                r = (pixel >> 10) & 0x1ful;
+                g = (pixel >> 5) & 0x1ful;
+                b = pixel & 0x1ful;
+                r = (r << 3) | (r >> 2);
+                g = (g << 3) | (g >> 2);
+                b = (b << 3) | (b >> 2);
+            } else {
+                /* 8888. The two orderings differ in where alpha sits, which
+                 * this discards either way, so one decode serves both. */
                 r = (pixel >> 16) & 0xfful;
                 g = (pixel >> 8) & 0xfful;
                 b = pixel & 0xfful;
-            } else {
-                r = pixel & 0xfful;
-                g = r;
-                b = r;
             }
             row[out++] = (BYTE)r;
             row[out++] = (BYTE)g;
             row[out++] = (BYTE)b;
         }
-        WriteFile(file, row, out, &written, 0);
+        if (!WriteFile(file, row, out, &written, 0) || written != out) {
+            CloseHandle(file);
+            return V9X_D3D_IMAGE_WRITE_FAILED;
+        }
     }
     CloseHandle(file);
+
+    return V9X_D3D_IMAGE_WRITTEN;
 }
 
 static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
@@ -759,7 +853,10 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
     slot = v9x_hal->d3d_diagnostics.frame_cover_records;
     if (slot < (DWORD)V9X_D3D_FRAME_COVER_SLOTS) {
         record = &v9x_hal->d3d_diagnostics.frame_cover[slot];
-        record->sequence = v9x_present_sequence();
+        /* Stamped by v9x_scanout_note_flip_sequence once this flip is
+         * accepted; the counter has not advanced yet. */
+        record->sequence = 0ul;
+        v9x_i9xx_cover_pending = slot;
         record->offset = byte_offset;
         record->width = plan.width;
         record->height = plan.height;
@@ -777,11 +874,32 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
 
-    /* And one image, because the numbers above cannot tell a missing object
-     * from a background that happens to match. */
-    if (!v9x_i9xx_cover_image_done) {
-        v9x_i9xx_cover_image_done = 1;
-        v9x_i9xx_cover_write_image(base, &plan);
+    /*
+     * And one image, because the numbers above cannot tell a missing object
+     * from a background that happens to match.
+     *
+     * Marked done only on success, and a failure re-arms up to
+     * V9X_D3D_IMAGE_ATTEMPTS times, so a transient one does not cost the
+     * session its image and a persistent one cannot spin.
+     */
+    if (v9x_hal->d3d_diagnostics.frame_cover_image_status !=
+            V9X_D3D_IMAGE_WRITTEN &&
+        v9x_hal->d3d_diagnostics.frame_cover_image_attempts <
+            V9X_D3D_IMAGE_ATTEMPTS) {
+        DWORD status;
+
+        ++v9x_hal->d3d_diagnostics.frame_cover_image_attempts;
+        status = v9x_i9xx_cover_write_image(base, &plan);
+        v9x_hal->d3d_diagnostics.frame_cover_image_status = status;
+        if (status == V9X_D3D_IMAGE_WRITTEN) {
+            v9x_hal->d3d_diagnostics.frame_cover_image_offset = byte_offset;
+            v9x_hal->d3d_diagnostics.frame_cover_image_sequence = 0ul;
+        } else if (status == V9X_D3D_IMAGE_FORMAT ||
+                   status == V9X_D3D_IMAGE_TOO_WIDE) {
+            /* Not transient - retrying cannot change the surface. */
+            v9x_hal->d3d_diagnostics.frame_cover_image_attempts =
+                V9X_D3D_IMAGE_ATTEMPTS;
+        }
     }
 }
 
@@ -1037,6 +1155,12 @@ void v9x_scanout_reset(void)
     v9x_i9xx_wm_last_cpp = 0ul;
     v9x_i9xx_wm_last_dsparb = 0ul;
     v9x_i9xx_wm_last_fw_blc = 0ul;
+    /* The capture is session state too, for the reason the baseline above
+     * is: carried across a DriverInit, the image and all four records
+     * describe whatever ran first in this DLL's lifetime. */
+    v9x_i9xx_cover_countdown = 0ul;
+    v9x_i9xx_cover_armed_src = 0ul;
+    v9x_i9xx_cover_pending = 0xfffffffful;
     if (v9x_hal == 0) {
         return;
     }
@@ -1045,6 +1169,12 @@ void v9x_scanout_reset(void)
     v9x_hal->d3d_diagnostics.pipestat_a_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_b_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_cleared = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_records = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_frames = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_image_status = V9X_D3D_IMAGE_NONE;
+    v9x_hal->d3d_diagnostics.frame_cover_image_attempts = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_image_sequence = 0ul;
+    v9x_hal->d3d_diagnostics.frame_cover_image_offset = 0ul;
     v9x_hal->d3d_diagnostics.fw_blc = 0ul;
     v9x_hal->d3d_diagnostics.fw_blc2 = 0ul;
     v9x_hal->d3d_diagnostics.fw_blc_self = 0ul;

@@ -65,6 +65,7 @@ v9x_u16 v9x_i9xx_cover_plan(v9x_u32 pipesrc, v9x_u32 dspcntr,
     plan->height = height;
     plan->pitch = stride;
     plan->bytes_per_pixel = cpp;
+    plan->format = (dspcntr >> 26) & 0x0ful;
     plan->step = step;
     /* Ceiling division: the first sample of a row is always taken, so a
      * width of one at a step of eight is one column and not none. */

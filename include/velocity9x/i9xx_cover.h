@@ -33,6 +33,13 @@ struct v9x_i9xx_cover_plan {
     v9x_u32 height;             /* pixels down                             */
     v9x_u32 pitch;              /* bytes per row, from the plane's stride  */
     v9x_u32 bytes_per_pixel;    /* 1, 2 or 4 - from DSPCNTR's format       */
+    /*
+     * DSPCNTR's format field itself, bits 29:26, kept because the byte
+     * width does not determine the layout: two bytes is 555 or 565 and
+     * four is 8888 or 1010102, and a writer that guessed from the width
+     * produced wrong colours for every format but the netbook's.
+     */
+    v9x_u32 format;
     v9x_u32 step;               /* sample every step'th pixel, both axes   */
     v9x_u32 columns;            /* samples per sampled row                 */
     v9x_u32 rows;               /* sampled rows                            */
