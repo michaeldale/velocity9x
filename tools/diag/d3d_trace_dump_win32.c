@@ -856,6 +856,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("DpDrawnBeforeRefusal",
                    snapshot.d3d.dp_drawn_before_refusal);
     v9x_write_uint("TrianglesDeclined", snapshot.d3d.triangles_declined);
+    v9x_write_uint("BatchesEngineRefused",
+                   snapshot.d3d.batches_engine_refused);
     {
         DWORD index;
 

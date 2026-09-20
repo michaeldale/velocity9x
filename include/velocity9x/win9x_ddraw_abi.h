@@ -621,6 +621,10 @@ typedef struct v9x_ddhalinfo {
 /* D3DPT_TRIANGLESTRIP, from the DDK's D3DTYPES.H. Added 2026-09-20 when the
  * ViRGE guest measured every indexed refusal as this one type. */
 #define V9X_D3DPT_TRIANGLESTRIP                    5ul
+/* D3DPT_TRIANGLEFAN, from the DDK's D3DTYPES.H. Added 2026-09-20 when the
+ * ViRGE guest measured 192,259 DrawPrimitives records refused for this one
+ * type - every test Final Reality runs past its intro. */
+#define V9X_D3DPT_TRIANGLEFAN                      6ul
 #define V9X_D3DVT_TLVERTEX                         3ul
 
 #define V9X_D3DHAL2_CB32_SETRENDERTARGET   0x00000001ul
@@ -1371,6 +1375,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092014: V9X_D3D_DIAGNOSTICS gains batches_engine_refused. An append.
+ */
 /* 2026092013: V9X_D3D_DIAGNOSTICS gains triangles_declined. An append.
  */
 /* 2026092012: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives record refusal
@@ -1399,7 +1405,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092013ul
+#define V9X_DD_SHARED_ABI   2026092014ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2584,6 +2590,29 @@ typedef struct v9x_d3d_diagnostics {
      * failing over. A degenerate triangle in a stitched strip is the
      * ordinary case; a large count against a small drawn count is not. */
     DWORD triangles_declined;
+    /*
+     * Batches the ENGINE refused, which are reported to the application as
+     * DD_OK and counted here rather than as a parameter error.
+     *
+     * The three reasons are different and only one of them is the
+     * application's business. A shape this driver does not serve is
+     * declined with DRIVER_NOTHANDLED so the runtime does the work. An index
+     * outside the vertex pool is a malformed call and keeps
+     * DDERR_INVALIDPARAMS, which is what that error means. An engine that
+     * refused the batch - out of ring capacity, rejected by the decoder,
+     * failed to submit - is this driver's problem and not a description of
+     * the call, and telling an application its parameters are wrong made
+     * Final Reality quit on the ViRGE guest.
+     *
+     * So a refused batch loses its geometry and says so here. A hole in the
+     * frame is what the rest of this driver already chooses over an abort;
+     * an uncounted hole is what it does not.
+     *
+     * The Intel path makes this matter more than the ViRGE did: it builds
+     * one ring packet for a whole batch, so it has no partial success to
+     * fall back on, and intel97 measured 28 refused draws in a single run.
+     */
+    DWORD batches_engine_refused;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

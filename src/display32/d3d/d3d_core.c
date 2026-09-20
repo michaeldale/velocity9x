@@ -1697,6 +1697,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
     DWORD fan_triangles;
     DWORD index;
     int ok = 0;
+    int served = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_RENDERPRIM,
                     data != 0
@@ -1719,6 +1720,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
         data->diInstruction.bSize >= sizeof(V9X_D3DTRIANGLE) &&
         data->diInstruction.wCount != 0u) {
         ok = 1;
+        served = 1;
     } else if (data != 0) {
         /* A refused instruction is a whole mesh not drawn, and until now it
          * left nothing behind but an HRESULT the application ignores. The
@@ -1793,12 +1795,29 @@ DWORD __stdcall V9xD3dRenderPrimitive(
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_primitive_calls;
     }
+
+    /*
+     * The same three answers the two single-primitive paths give.
+     *
+     * An instruction this path does not serve is handed back for the
+     * runtime to execute; a batch the engine refused is DD_OK with a count,
+     * because it is this driver's problem and not a description of the
+     * call. Final Reality quits on DDERR_INVALIDPARAMS from any of them,
+     * and this entry point was the last one still returning it.
+     */
+    if (!served) {
+        v9x_fpu_restore(&fpu);
+        v9x_trace_exit(V9X_TRACE_D3D_RENDERPRIM, 0ul);
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (!ok && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+    }
     if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+        data->ddrval = V9X_DD_OK;
     }
     v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_RENDERPRIM,
-                   ok ? V9X_DD_OK : 0x80070057ul);
+    v9x_trace_exit(V9X_TRACE_D3D_RENDERPRIM, V9X_DD_OK);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -1938,12 +1957,17 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
         v9x_trace_exit(V9X_TRACE_D3D_DRAWONEPRIM, 0ul);
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+    /* There is no malformed case on this path - the vertices are the
+     * caller's own contiguous array - so a failure here is always the
+     * engine's, and always DD_OK with a count. */
+    if (!ok && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+    }
     if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+        data->ddrval = V9X_DD_OK;
     }
     v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEPRIM,
-                   ok ? V9X_DD_OK : 0x80070057ul);
+    v9x_trace_exit(V9X_TRACE_D3D_DRAWONEPRIM, V9X_DD_OK);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -1953,8 +1977,10 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
     V9X_D3D_CONTEXT *context;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
     V9X_D3DHAL_DRAWPRIMCOUNTS *counts;
+    V9X_D3DTLVERTEX fan_batch[V9X_D3D_INDEXED_BATCH * 3u];
     BYTE *cursor;
     DWORD record;
+    DWORD fan_triangles;
     int ok = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWPRIMS,
@@ -2028,10 +2054,13 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                 v9x_hal->d3d_diagnostics.dp_verttype_seen |=
                     v9x_d3d_type_bit((DWORD)counts->wVertexType);
             }
-            if (counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST ||
+            if ((counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST &&
+                 counts->wPrimitiveType != V9X_D3DPT_TRIANGLEFAN) ||
                 counts->wVertexType != V9X_D3DVT_TLVERTEX ||
                 counts->wNumVertices > 192u ||
-                (counts->wNumVertices % 3u) != 0u) {
+                (counts->wPrimitiveType == V9X_D3DPT_TRIANGLEFAN
+                     ? counts->wNumVertices < 3u
+                     : (counts->wNumVertices % 3u) != 0u)) {
                 /* Which of the four, and whether this buffer had already
                  * drawn - see the note beside dp_primtype_seen. */
                 if (v9x_hal != 0) {
@@ -2051,11 +2080,58 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                 ok = 0;
                 break;
             }
-            /* Already a triangle list, so the whole record is one batch. */
-            if (!v9x_d3d_draw_batch(ops, context,
+            /*
+             * A LIST is already one batch. A FAN is not: its N vertices are
+             * N-2 triangles all sharing vertex 0, so they are gathered the
+             * way the indexed path gathers its pool.
+             *
+             * This type was refused until 2026-09-20, and the ViRGE guest
+             * measured what that meant: 192,259 records turned away, every
+             * one a fan, which is every test Final Reality runs past its
+             * intro. The benchmark stopped aborting once a refused batch
+             * reported DD_OK, and then drew a black screen, because none of
+             * its geometry was a shape this path would take.
+             */
+            if (counts->wPrimitiveType == V9X_D3DPT_TRIANGLEFAN) {
+                const V9X_D3DTLVERTEX *fan =
+                    (const V9X_D3DTLVERTEX *)cursor;
+                DWORD apex;
+
+                fan_triangles = 0ul;
+                for (apex = 1ul;
+                     apex + 1ul < (DWORD)counts->wNumVertices; ++apex) {
+                    fan_batch[fan_triangles * 3ul] = fan[0];
+                    fan_batch[fan_triangles * 3ul + 1ul] = fan[apex];
+                    fan_batch[fan_triangles * 3ul + 2ul] = fan[apex + 1ul];
+                    ++fan_triangles;
+                    if (fan_triangles == (DWORD)V9X_D3D_INDEXED_BATCH) {
+                        if (!v9x_d3d_draw_batch(ops, context, fan_batch,
+                                                fan_triangles)) {
+                            ok = 0;
+                            break;
+                        }
+                        fan_triangles = 0ul;
+                    }
+                }
+                if (ok && fan_triangles != 0ul &&
+                    !v9x_d3d_draw_batch(ops, context, fan_batch,
+                                        fan_triangles)) {
+                    ok = 0;
+                }
+                if (!ok && v9x_hal != 0) {
+                    ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+                    ok = 1;
+                }
+            } else if (!v9x_d3d_draw_batch(ops, context,
                                      (const V9X_D3DTLVERTEX *)cursor,
                                      (DWORD)counts->wNumVertices / 3ul)) {
-                ok = 0;
+                /* The engine refused this record. Counted and carried on to
+                 * the next one: see batches_engine_refused. Aborting the
+                 * rest of a buffer over one refused record is the mistake
+                 * the ViRGE's per-triangle loop was making. */
+                if (v9x_hal != 0) {
+                    ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+                }
             }
             if (!ok) {
                 break;
@@ -2070,12 +2146,17 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.render_primitive_calls;
     }
+    /* A record shape this build cannot parse leaves the rest of the buffer
+     * undrawn, which is a hole; saying INVALIDPARAMS makes an application
+     * stop altogether, which is worse. Counted, not reported. */
+    if (!ok && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+    }
     if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+        data->ddrval = V9X_DD_OK;
     }
     v9x_fpu_restore(&fpu);
-    v9x_trace_exit(V9X_TRACE_D3D_DRAWPRIMS,
-                   ok ? V9X_DD_OK : 0x80070057ul);
+    v9x_trace_exit(V9X_TRACE_D3D_DRAWPRIMS, V9X_DD_OK);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -2112,6 +2193,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     DWORD index;
     int ok = 0;
     int served = 0;
+    int bad_index = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED,
                     data != 0
@@ -2172,6 +2254,8 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
                 if (v9x_hal != 0) {
                     ++v9x_hal->d3d_diagnostics.indexed_refused_index;
                 }
+                /* The one failure that IS the call's description. */
+                bad_index = 1;
                 ok = 0;
                 break;
             }
@@ -2247,12 +2331,15 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
         v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED, 0ul);
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+    if (!ok && !bad_index && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+    }
     if (data != 0) {
-        data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+        data->ddrval = bad_index ? 0x80070057ul : V9X_DD_OK;
     }
     v9x_fpu_restore(&fpu);
     v9x_trace_exit(V9X_TRACE_D3D_DRAWONEINDEXED,
-                   ok ? V9X_DD_OK : 0x80070057ul);
+                   bad_index ? 0x80070057ul : V9X_DD_OK);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
