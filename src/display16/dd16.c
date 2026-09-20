@@ -958,6 +958,15 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
         v9x_serial_write("V9X-DD newcallbackfns\r\n");
         v9x_dd_trace_good("newcallbackfns");
         return 1;
+    case V9X_DDARMFRAME:
+        /* Ask the scanout for a fresh frame capture. One counter bump; the
+         * 32-bit sampler notices the change on its next sampled flip and
+         * replaces the retained image only once a new one is written. */
+        if (v9x_dd_block() == 0) {
+            return 0;
+        }
+        ++v9x_dd_shared->d3d_diagnostics.frame_cover_request;
+        return 1;
     case V9X_DDGETTRACE:
         /* Copy a snapshot of the trace state for the diagnostics tool.
          * Byte copy keeps the 16-bit build free of runtime helpers. */

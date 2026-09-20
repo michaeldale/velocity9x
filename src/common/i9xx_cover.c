@@ -74,3 +74,42 @@ v9x_u16 v9x_i9xx_cover_plan(v9x_u32 pipesrc, v9x_u32 dspcntr,
 
     return V9X_TRUE;
 }
+
+void v9x_i9xx_cover_request(struct v9x_i9xx_cover_state *state)
+{
+    if (state == 0) {
+        return;
+    }
+    /*
+     * Scheduling only. Nothing is cleared here, because the caller may be
+     * the desktop-restoration flip on the way out of a benchmark, and the
+     * records and image it is about to discard are the evidence that run
+     * just produced.
+     */
+    state->rearm = 1ul;
+    state->image_wanted = 1ul;
+}
+
+v9x_u16 v9x_i9xx_cover_begin(struct v9x_i9xx_cover_state *state,
+                             v9x_u32 slots)
+{
+    if (state == 0) {
+        return V9X_FALSE;
+    }
+    /*
+     * The pending request is applied HERE, at the sample, and not where it
+     * was made. That is what stops an arming path that runs later in the
+     * same flip from erasing the capture that flip just took.
+     */
+    if (state->rearm != 0ul) {
+        state->rearm = 0ul;
+        state->records = 0ul;
+        state->attempts = 0ul;
+    }
+    if (state->records >= slots) {
+        return V9X_FALSE;
+    }
+    ++state->records;
+
+    return V9X_TRUE;
+}

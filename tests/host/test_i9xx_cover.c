@@ -164,6 +164,81 @@ static void test_the_step(void)
     COVERCHECK(plan.rows == 1ul);
 }
 
+/*
+ * The first accepted flip after a request keeps its capture.
+ *
+ * This is the defect the split exists for: arming used to clear the records
+ * directly, and the arming path ran AFTER the sampler on the same flip, so
+ * the first flip of a new mode wrote its record and then had it erased.
+ * Applying the request at the sample makes the order irrelevant.
+ */
+static void test_the_first_flip_after_a_request_keeps_its_record(void)
+{
+    struct v9x_i9xx_cover_state state;
+
+    state.rearm = 0ul;
+    state.image_wanted = 0ul;
+    state.records = 3ul;
+    state.attempts = 2ul;
+
+    v9x_i9xx_cover_request(&state);
+    /* Nothing discarded yet - the requester may be on its way out of the
+     * application whose results these are. */
+    COVERCHECK(state.records == 3ul);
+    COVERCHECK(state.attempts == 2ul);
+    COVERCHECK(state.image_wanted == 1ul);
+
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 4ul) == V9X_TRUE);
+    /* Now the old run is dropped, and THIS sample is the first of the new. */
+    COVERCHECK(state.records == 1ul);
+    COVERCHECK(state.attempts == 0ul);
+    COVERCHECK(state.rearm == 0ul);
+
+    /* A second request arriving after the sample does not erase it either,
+     * until another sample is actually taken. */
+    v9x_i9xx_cover_request(&state);
+    COVERCHECK(state.records == 1ul);
+}
+
+/* Without a request the slots fill and then refuse, so the first frames of a
+ * run are kept whole rather than the last overwriting them. */
+static void test_the_slots_fill_once(void)
+{
+    struct v9x_i9xx_cover_state state;
+
+    state.rearm = 0ul;
+    state.image_wanted = 0ul;
+    state.records = 0ul;
+    state.attempts = 0ul;
+
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 2ul) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 2ul) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 2ul) == V9X_FALSE);
+    COVERCHECK(state.records == 2ul);
+
+    /* And a request re-opens them. */
+    v9x_i9xx_cover_request(&state);
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 2ul) == V9X_TRUE);
+    COVERCHECK(state.records == 1ul);
+}
+
+/* Zero slots refuses rather than writing past the array, and a null state
+ * refuses rather than faulting. */
+static void test_the_degenerate_cases(void)
+{
+    struct v9x_i9xx_cover_state state;
+
+    state.rearm = 1ul;
+    state.image_wanted = 1ul;
+    state.records = 5ul;
+    state.attempts = 5ul;
+    COVERCHECK(v9x_i9xx_cover_begin(&state, 0ul) == V9X_FALSE);
+    /* The request was still applied - the old run is gone, nothing recorded. */
+    COVERCHECK(state.records == 0ul);
+    COVERCHECK(v9x_i9xx_cover_begin(0, 4ul) == V9X_FALSE);
+    v9x_i9xx_cover_request(0);
+}
+
 unsigned int v9x_run_i9xx_cover_tests(void)
 {
     cover_failures = 0u;
@@ -174,6 +249,9 @@ unsigned int v9x_run_i9xx_cover_tests(void)
     test_the_refusals();
     test_a_refusal_writes_nothing();
     test_the_step();
+    test_the_first_flip_after_a_request_keeps_its_record();
+    test_the_slots_fill_once();
+    test_the_degenerate_cases();
 
     return cover_failures;
 }

@@ -581,8 +581,11 @@ static void v9x_i9xx_note_watermarks(void)
  */
 static DWORD v9x_i9xx_cover_countdown = 0ul;
 static DWORD v9x_i9xx_cover_armed_src = 0ul;
+static DWORD v9x_i9xx_cover_requested = 0ul;
 /* The record waiting for the flip that carries it to be accepted. */
 static DWORD v9x_i9xx_cover_pending = 0xfffffffful;
+/* Scheduling, kept apart from the results - see i9xx_cover.h. */
+static struct v9x_i9xx_cover_state v9x_i9xx_cover_sched;
 
 /*
  * Re-arm on a mode change, which is what makes the BENCHMARK's scene
@@ -601,9 +604,20 @@ static void v9x_i9xx_cover_arm(DWORD pipesrc)
     }
     v9x_i9xx_cover_armed_src = pipesrc;
     v9x_i9xx_cover_countdown = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_records = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_image_status = V9X_D3D_IMAGE_NONE;
-    v9x_hal->d3d_diagnostics.frame_cover_image_attempts = 0ul;
+    /*
+     * SCHEDULES ONLY. Nothing is discarded here, for two reasons that both
+     * cost a capture before this split existed.
+     *
+     * This runs AFTER the sampler on the same flip, so clearing here erased
+     * the record and the image the first flip of a new mode had just
+     * written. And the desktop-restoration flip comes through here too, so
+     * leaving a benchmark threw away the evidence that run produced while
+     * capturing nothing to replace it.
+     *
+     * v9x_i9xx_cover_begin applies this at the next sample, which is the
+     * only moment at which there is a replacement to swap in.
+     */
+    v9x_i9xx_cover_request(&v9x_i9xx_cover_sched);
 }
 
 /*
@@ -850,9 +864,27 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
 
     /* The records fill once and stop, so the first four sampled frames of a
      * session are kept whole rather than the last one overwriting the rest. */
-    slot = v9x_hal->d3d_diagnostics.frame_cover_records;
-    if (slot < (DWORD)V9X_D3D_FRAME_COVER_SLOTS) {
+    /*
+     * An explicit request from the diagnostics tool, which is the only way
+     * to aim this at a scene that does not change the mode - a benchmark
+     * that runs every test at one resolution would otherwise only ever be
+     * captured at its first.
+     */
+    if (v9x_hal->d3d_diagnostics.frame_cover_request !=
+            v9x_i9xx_cover_requested) {
+        v9x_i9xx_cover_requested =
+            v9x_hal->d3d_diagnostics.frame_cover_request;
+        v9x_i9xx_cover_request(&v9x_i9xx_cover_sched);
+    }
+
+    slot = v9x_i9xx_cover_sched.records;
+    if (v9x_i9xx_cover_begin(&v9x_i9xx_cover_sched,
+                             (DWORD)V9X_D3D_FRAME_COVER_SLOTS) != V9X_FALSE) {
+        slot = v9x_i9xx_cover_sched.records - 1ul;
+        v9x_hal->d3d_diagnostics.frame_cover_records =
+            v9x_i9xx_cover_sched.records;
         record = &v9x_hal->d3d_diagnostics.frame_cover[slot];
+        record->session = v9x_hal->d3d_diagnostics.frame_cover_session;
         /* Stamped by v9x_scanout_note_flip_sequence once this flip is
          * accepted; the counter has not advanced yet. */
         record->sequence = 0ul;
@@ -870,7 +902,6 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
         record->y0 = y0;
         record->x1 = x1;
         record->y1 = y1;
-        ++v9x_hal->d3d_diagnostics.frame_cover_records;
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
 
@@ -882,23 +913,35 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
      * V9X_D3D_IMAGE_ATTEMPTS times, so a transient one does not cost the
      * session its image and a persistent one cannot spin.
      */
-    if (v9x_hal->d3d_diagnostics.frame_cover_image_status !=
-            V9X_D3D_IMAGE_WRITTEN &&
-        v9x_hal->d3d_diagnostics.frame_cover_image_attempts <
-            V9X_D3D_IMAGE_ATTEMPTS) {
+    if (v9x_i9xx_cover_sched.image_wanted != 0ul &&
+        v9x_i9xx_cover_sched.attempts < V9X_D3D_IMAGE_ATTEMPTS) {
         DWORD status;
 
-        ++v9x_hal->d3d_diagnostics.frame_cover_image_attempts;
+        ++v9x_i9xx_cover_sched.attempts;
+        v9x_hal->d3d_diagnostics.frame_cover_image_attempts =
+            v9x_i9xx_cover_sched.attempts;
         status = v9x_i9xx_cover_write_image(base, &plan);
-        v9x_hal->d3d_diagnostics.frame_cover_image_status = status;
         if (status == V9X_D3D_IMAGE_WRITTEN) {
+            /*
+             * Only now is the previous image's identity replaced. Until a
+             * new one is actually on disk, the old status, sequence and
+             * offset stand - a benchmark's capture is not invalidated by
+             * the desktop flip that follows it.
+             */
+            v9x_hal->d3d_diagnostics.frame_cover_image_status = status;
             v9x_hal->d3d_diagnostics.frame_cover_image_offset = byte_offset;
             v9x_hal->d3d_diagnostics.frame_cover_image_sequence = 0ul;
-        } else if (status == V9X_D3D_IMAGE_FORMAT ||
-                   status == V9X_D3D_IMAGE_TOO_WIDE) {
-            /* Not transient - retrying cannot change the surface. */
-            v9x_hal->d3d_diagnostics.frame_cover_image_attempts =
-                V9X_D3D_IMAGE_ATTEMPTS;
+            v9x_hal->d3d_diagnostics.frame_cover_image_session =
+                v9x_hal->d3d_diagnostics.frame_cover_session;
+            v9x_i9xx_cover_sched.image_wanted = 0ul;
+        } else {
+            /* A failure is reported without discarding what is on disk. */
+            v9x_hal->d3d_diagnostics.frame_cover_image_last_error = status;
+            if (status == V9X_D3D_IMAGE_FORMAT ||
+                status == V9X_D3D_IMAGE_TOO_WIDE) {
+                /* Not transient - retrying cannot change the surface. */
+                v9x_i9xx_cover_sched.attempts = V9X_D3D_IMAGE_ATTEMPTS;
+            }
         }
     }
 }
@@ -1158,9 +1201,15 @@ void v9x_scanout_reset(void)
     /* The capture is session state too, for the reason the baseline above
      * is: carried across a DriverInit, the image and all four records
      * describe whatever ran first in this DLL's lifetime. */
+    /*
+     * A new session SCHEDULES a capture; it does not throw away the last
+     * one. The records and the image carry a session number so a reader can
+     * see which run produced them, which is what makes keeping them safe.
+     */
     v9x_i9xx_cover_countdown = 0ul;
     v9x_i9xx_cover_armed_src = 0ul;
     v9x_i9xx_cover_pending = 0xfffffffful;
+    v9x_i9xx_cover_request(&v9x_i9xx_cover_sched);
     if (v9x_hal == 0) {
         return;
     }
@@ -1169,12 +1218,7 @@ void v9x_scanout_reset(void)
     v9x_hal->d3d_diagnostics.pipestat_a_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_b_or = 0ul;
     v9x_hal->d3d_diagnostics.pipestat_cleared = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_records = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_frames = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_image_status = V9X_D3D_IMAGE_NONE;
-    v9x_hal->d3d_diagnostics.frame_cover_image_attempts = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_image_sequence = 0ul;
-    v9x_hal->d3d_diagnostics.frame_cover_image_offset = 0ul;
+    ++v9x_hal->d3d_diagnostics.frame_cover_session;
     v9x_hal->d3d_diagnostics.fw_blc = 0ul;
     v9x_hal->d3d_diagnostics.fw_blc2 = 0ul;
     v9x_hal->d3d_diagnostics.fw_blc_self = 0ul;

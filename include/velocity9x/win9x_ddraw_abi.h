@@ -52,6 +52,12 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * without needing the hardware to actually hang. See fault_inject below. */
 #define V9X_DDFAULTINJECT        0x56394649ul /* 'V9FI' */
 
+/* Project-private DCICOMMAND: ask the scanout to capture the next sampled
+ * frame, image included, replacing the retained one only once the new write
+ * succeeds. The automatic trigger fires on a mode change, which cannot reach
+ * a later scene in a benchmark that never changes mode. */
+#define V9X_DDARMFRAME           0x56394652ul /* 'V9FR' */
+
 /*
  * Project-private DCICOMMANDs for the 16-bit GDI acceleration path
  * (docs\plans\gdi-acceleration.md). They are answered by src\display16, not by
@@ -767,6 +773,7 @@ typedef struct v9x_d3dhal_d3dextendedcaps {
  * record be matched against the recording and against the image file.
  */
 typedef struct v9x_d3d_frame_cover {
+    DWORD session;              /* which run produced this record          */
     /*
      * The flip this buffer was presented BY, stamped after the flip is
      * accepted rather than read while it is being issued. The sampler runs
@@ -1424,6 +1431,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092017: the coverage capture separates scheduling from results - a
+ * session number, a retained image identity, and an explicit request from
+ * the diagnostics tool. A layout change.
+ */
 /* 2026092016: the coverage readback becomes a bounded set of identified
  * records with an image status, replacing the eight loose fields of
  * 2026092015. A LAYOUT CHANGE, not an append - and 2026092015 was reused for
@@ -1462,7 +1473,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092016ul
+#define V9X_DD_SHARED_ABI   2026092017ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2723,6 +2734,24 @@ typedef struct v9x_d3d_diagnostics {
     DWORD frame_cover_image_sequence;
     DWORD frame_cover_image_offset;
     DWORD frame_cover_image_attempts;
+    /*
+     * Which session produced the retained image, and what went wrong with
+     * the last attempt to replace it.
+     *
+     * The status and identity survive until a NEW image is written, so a
+     * benchmark's capture is not invalidated by the desktop flip that
+     * follows it or by the next DriverInit. The session number is what tells
+     * a reader the image is from an earlier run than the counters beside it.
+     */
+    DWORD frame_cover_image_session;
+    DWORD frame_cover_image_last_error;
+    DWORD frame_cover_session;
+    /*
+     * Incremented by the V9X_DDARMFRAME escape. The mode-change trigger
+     * cannot aim at a later scene when a benchmark runs every test at one
+     * resolution; this can.
+     */
+    DWORD frame_cover_request;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

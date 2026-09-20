@@ -355,6 +355,30 @@ static void v9x_write_counters(const V9X_DD_TRACE *trace)
  * purpose: nothing in this tool issues a blit, so the count is consumed by
  * whatever real workload runs between the arming call and the next dump.
  */
+/* Is this switch on the command line? Same hand-rolled scan as the parser
+ * below, because this tool links no C runtime. */
+static int v9x_has_switch(const char *match)
+{
+    const char *cmd = GetCommandLineA();
+    int index;
+
+    if (cmd == 0) {
+        return 0;
+    }
+    for (; *cmd != ' '; ++cmd) {
+        for (index = 0; match[index] != ' '; ++index) {
+            if (cmd[index] != match[index]) {
+                break;
+            }
+        }
+        if (match[index] == ' ') {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static DWORD v9x_parse_inject(void)
 {
     const char *cmd = GetCommandLineA();
@@ -428,6 +452,26 @@ void __stdcall V9xTraceDumpEntry(void)
                            (LPCSTR)&command, 0, 0);
         v9x_write_uint("InjectRequested", inject);
         v9x_write_uint("InjectArmed", result > 0 ? 1ul : 0ul);
+    }
+
+    /*
+     * "-arm" asks the scanout to capture the next sampled frame, image and
+     * all. The automatic trigger fires on a mode change, which cannot reach
+     * a later scene in a benchmark that runs every test at one resolution -
+     * so run to the scene that is wrong, run this, and the next capture is
+     * of that. The retained image is replaced only once the new one is
+     * written, so an -arm that never gets a flip costs nothing.
+     */
+    if (v9x_has_switch("-arm")) {
+        command.dwCommand = V9X_DDARMFRAME;
+        command.dwParam1 = 0ul;
+        command.dwParam2 = 0ul;
+        command.dwVersion = V9X_DD_VERSION;
+        command.dwReserved = 0ul;
+        result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                           (LPCSTR)&command, 0, 0);
+        v9x_write_uint("FrameArmRequested", 1ul);
+        v9x_write_uint("FrameArmAccepted", result > 0 ? 1ul : 0ul);
     }
 
     bytes = (unsigned char *)&snapshot;
@@ -871,6 +915,12 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.frame_cover_image_sequence);
     v9x_write_hex("FrameImageOffset",
                   snapshot.d3d.frame_cover_image_offset);
+    v9x_write_uint("FrameImageSession",
+                   snapshot.d3d.frame_cover_image_session);
+    v9x_write_uint("FrameImageLastError",
+                   snapshot.d3d.frame_cover_image_last_error);
+    v9x_write_uint("FrameCoverSession", snapshot.d3d.frame_cover_session);
+    v9x_write_uint("FrameCoverRequest", snapshot.d3d.frame_cover_request);
     {
         /*
          * One line per identified frame. These are COLOUR DIFFERENCES from
@@ -886,6 +936,8 @@ void __stdcall V9xTraceDumpEntry(void)
             const V9X_D3D_FRAME_COVER *record =
                 &snapshot.d3d.frame_cover[cover];
 
+            wsprintf(key, "Cover%luSession", cover);
+            v9x_write_uint(key, record->session);
             wsprintf(key, "Cover%luSeq", cover);
             v9x_write_uint(key, record->sequence);
             wsprintf(key, "Cover%luOffset", cover);

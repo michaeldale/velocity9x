@@ -62,4 +62,40 @@ v9x_u16 v9x_i9xx_cover_plan(v9x_u32 pipesrc, v9x_u32 dspcntr,
                             v9x_u32 vram_bytes, v9x_u32 step,
                             struct v9x_i9xx_cover_plan *plan);
 
+/*
+ * WHEN a capture happens, kept apart from the results it produces.
+ *
+ * Two defects made this worth separating. Arming cleared the records and the
+ * image status directly, and the sampler ran BEFORE the arming path on the
+ * same flip - so the first flip after a mode change wrote its image and its
+ * statistics and then had them erased by the arm that followed. And the
+ * desktop-restoration flip goes through the same arming path, so leaving a
+ * benchmark cleared the evidence it had just collected while capturing
+ * nothing to replace it.
+ *
+ * So arming only SCHEDULES. The results are replaced when a new capture is
+ * actually taken, which is at the top of the sampler, and the image's status
+ * and identity survive until a new image is successfully written. Applying
+ * the schedule inside the sampler is also what makes the ordering
+ * irrelevant: it cannot run after the thing it gates.
+ */
+struct v9x_i9xx_cover_state {
+    v9x_u32 rearm;          /* a capture has been asked for, not yet begun */
+    v9x_u32 image_wanted;   /* and it should replace the image too         */
+    v9x_u32 records;        /* records written since the last begin        */
+    v9x_u32 attempts;       /* image attempts since the last begin         */
+};
+
+/* Ask for a new capture. Nothing is discarded here. */
+void v9x_i9xx_cover_request(struct v9x_i9xx_cover_state *state);
+
+/*
+ * Begin a sample. Applies any pending request, which is the point at which
+ * the previous run's records are dropped - and only then. Returns V9X_TRUE
+ * if this sample should be recorded, which is false once the slots are
+ * full and no new capture has been asked for.
+ */
+v9x_u16 v9x_i9xx_cover_begin(struct v9x_i9xx_cover_state *state,
+                             v9x_u32 slots);
+
 #endif /* VELOCITY9X_I9XX_COVER_H */
