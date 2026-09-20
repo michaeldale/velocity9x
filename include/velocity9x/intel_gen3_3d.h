@@ -605,6 +605,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 /* Is this one of the four S6 factor codes this driver emits? */
@@ -1444,6 +1445,20 @@ struct v9x_i9xx_decode_limits {
     v9x_u32 depth_offset;
     v9x_u32 depth_bytes;
     v9x_u32 kind;
+    /*
+     * Which depth comparison the engine says it emitted, for a RUNTIME
+     * stream. A generated SCENE leaves this zero and is checked against
+     * COMPAREFUNC_LESS, which is what its artefacts were audited with; the
+     * two cannot be confused because the decoder reads it only for
+     * V9X_I9XX_SCENE_RUNTIME.
+     *
+     * It is checked at all for the reason every other field here is: the
+     * decoder and the builder are two opinions, and a stream that reaches
+     * the ring has passed both. A depth comparison the builder got wrong
+     * renders the wrong picture rather than faulting, which is exactly the
+     * class of defect a second opinion is for.
+     */
+    v9x_u32 depth_compare;
     /*
      * APPEND ONLY past this point, and the reason is the two file-scope
      * initialisers in the host tests: they are positional, C89 has no

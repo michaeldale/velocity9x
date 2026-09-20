@@ -27,6 +27,7 @@ function Get-V9xHostSourceNames {
         'src\common\vbe_crtc.c',
         'src\common\donewait.c',
         'src\common\drawnote.c',
+        'src\common\i9xx_depth.c',
         'src\common\i9xx_wm.c',
         # Intel Gen3 read-only fingerprint decoding; no MMIO access here.
         'src\chipsets\intel\i9xx_mmio.c',
@@ -68,6 +69,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_d3d_raster.c',
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
+        'tests\host\test_i9xx_depth.c',
         'tests\host\test_i9xx_wm.c',
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',

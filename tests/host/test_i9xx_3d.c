@@ -2612,9 +2612,14 @@ static void test_runtime_textured_and_depth(void)
     limits.depth_bytes = height * depth_pitch;
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = 1ul;
+    /* What the engine says it emitted. The decoder reads this only for a
+     * RUNTIME stream, and leaving it zero means COMPAREFUNC_ALWAYS, which
+     * is a different comparison and rightly refused. */
+    limits.depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        depth_offset, depth_pitch, 1ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS,
                                        0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
@@ -2721,7 +2726,8 @@ static void test_runtime_batch_bound(void)
     limits.target_height = height;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, 0ul, 0ul, stream + at,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul, stream + at,
                                        2200ul - at, &produced) ==
           V9X_STATUS_OK);
     at += produced;
@@ -3638,7 +3644,8 @@ static void test_runtime_texture_formats(void)
     limits.texture_format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3711,7 +3718,8 @@ static void test_runtime_texture_formats(void)
     map.min_linear = 1ul;
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3744,7 +3752,8 @@ static void test_runtime_texture_formats(void)
      */
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
-                                       0ul, 0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3814,6 +3823,7 @@ static void test_runtime_blend(void)
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA,
                                        V9X_I9XX_BLENDFACT_INV_SRC_ALPHA,
                                        stream + at, 400ul - at,
@@ -3872,7 +3882,8 @@ static void test_runtime_blend(void)
      * enable; either way not OK. */
     at = 0ul;
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
-                                       0ul, 0ul, 0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
                                        stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
@@ -3931,7 +3942,7 @@ static void test_runtime_blend_pairs(void)
             v9x_u32 seen = 0ul;
 
             CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul,
-                                               384ul, 0, 0ul, 0ul, 0ul,
+                                               384ul, 0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                                codes[s], codes[d],
                                                stream, 64ul, &produced) ==
                   V9X_STATUS_OK);
@@ -3953,12 +3964,12 @@ static void test_runtime_blend_pairs(void)
 
     /* Half a pair, and a code the audit excludes. */
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
-                                       0, 0ul, 0ul, 0ul,
+                                       0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 0ul,
                                        stream, 64ul, &produced) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
-                                       0, 0ul, 0ul, 0ul,
+                                       0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 3ul,
                                        stream, 64ul, &produced) !=
           V9X_STATUS_OK);

@@ -209,6 +209,12 @@ v9x_u32 v9x_i9xx_textured_state_extent(void)
  * and target emitters is what this avoids, and it is what the packet-offset
  * defect and the primitive-offset defect were both made of.
  */
+/*
+ * A bound depth buffer: where it is, how wide, whether the draw writes to
+ * it, and WHICH COMPARISON it uses. The last was a constant in the emitter
+ * until 2026-09-20 - COMPAREFUNC_LESS for every draw - and the runtime path
+ * skipped depth entirely for anything else.
+ */
 struct v9x_i9xx_depth_binding {
     v9x_u32 offset;
     v9x_u32 pitch;
@@ -216,6 +222,7 @@ struct v9x_i9xx_depth_binding {
      * existence because a depth TEST without writes is a distinct scene and
      * the two must not be reachable by the same argument. */
     v9x_u32 writes;
+    v9x_u32 compare;
 };
 
 static v9x_status v9x_i9xx_build_state_common(
@@ -285,6 +292,8 @@ v9x_status v9x_i9xx_build_depth_state(
     depth.offset = depth_offset;
     depth.pitch = depth_pitch;
     depth.writes = writes;
+    /* A generated scene is pinned to what was audited, which is LESS. */
+    depth.compare = V9X_I9XX_COMPAREFUNC_LESS;
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, &depth,
                                        (writes != 0ul)
@@ -353,6 +362,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
@@ -387,6 +397,7 @@ v9x_status v9x_i9xx_build_runtime_state(
         depth.offset = depth_offset;
         depth.pitch = depth_pitch;
         depth.writes = depth_writes;
+        depth.compare = depth_compare & 7ul;
     }
     return v9x_i9xx_build_state_common(
         target_offset, target_pitch, width, height, texture,
@@ -565,8 +576,18 @@ static v9x_status v9x_i9xx_build_state_common(
                   (blend_dst << V9X_I9XX_S6_DST_FACTOR_SHIFT);
         }
         if (depth != 0) {
+            /*
+             * The caller's comparison, not a constant. This emitted
+             * COMPAREFUNC_LESS for every draw and the runtime path skipped
+             * the depth test entirely for anything else, which intel98
+             * measured as eighty-five per cent of a 3DMark99 run.
+             *
+             * Only the runtime builder takes this; the generated scenes
+             * pass LESS and their artefacts are unchanged, which is what
+             * keeps the Phase 4 and Phase 5 CRCs where they were.
+             */
             s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
-                  (V9X_I9XX_COMPAREFUNC_LESS <<
+                  ((depth->compare & 7ul) <<
                        V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
             if (depth->writes != 0ul) {
                 s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;

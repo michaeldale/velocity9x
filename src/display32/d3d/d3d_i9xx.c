@@ -33,6 +33,7 @@
  * docs\plans\hardware-d3d-on-intel-gma950.md phase 7.
  */
 #include "d3d_internal.h"
+#include "velocity9x/i9xx_depth.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
 /* The render-target binding is a LEAF unit so the host suite can reach it;
@@ -983,18 +984,42 @@ static DWORD v9x_d3d_i9xx_texture_program(const V9X_D3D_CONTEXT *context,
 static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
                                            DWORD *offset_out,
                                            DWORD *pitch_out,
-                                           DWORD *writes_out)
+                                           DWORD *writes_out,
+                                           DWORD *compare_out)
 {
     DWORD address = 0ul;
+    DWORD compare = 0ul;
 
     *offset_out = 0ul;
     *pitch_out = 0ul;
     *writes_out = 0ul;
+    /*
+     * LESS while nothing is bound, so a caller that ignores the return
+     * value cannot emit a comparison that was never resolved. It is the
+     * value this engine emitted unconditionally until 2026-09-20.
+     */
+    *compare_out = V9X_I9XX_COMPAREFUNC_LESS;
 
     if (context->depth_offset == 0ul || context->z_enable == 0ul) {
         return 0;
     }
-    if (context->z_func != V9X_D3DCMP_LESS) {
+    /*
+     * Any comparison the part implements, which is all eight.
+     *
+     * This accepted D3DCMP_LESS alone and skipped the depth test for
+     * everything else. intel98 measured the cost: 3DMark99 asks for
+     * LESSEQUAL, so 192,069 of 224,838 draws - eighty-five per cent - went
+     * to the ring with no depth test, and the netbook photograph shows one
+     * correctly textured object against an empty scene, because geometry
+     * without a depth test paints in submission order and what is drawn
+     * late covers what came before.
+     *
+     * A function outside D3DCMP's range is still skipped rather than
+     * guessed at, and still recorded, because the alternative is emitting
+     * some other comparison into a scene that asked for one this driver did
+     * not recognise.
+     */
+    if (v9x_i9xx_depth_func(context->z_func, &compare) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
         v9x_hal->d3d_diagnostics.i9xx_depth_last_func = context->z_func;
         return 0;
@@ -1008,6 +1033,7 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
     }
     *offset_out = address;
     *pitch_out = context->depth_pitch;
+    *compare_out = compare;
     *writes_out = context->z_write != 0ul ? 1ul : 0ul;
     return 1;
 }
@@ -1145,7 +1171,25 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * that claims none while accepting a Z buffer is the shape that let
      * intel52's depth test silently do nothing.
      */
-    shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps = V9X_D3DPCMPCAPS_LESS;
+    /*
+     * All eight, because the part implements all eight and the engine now
+     * emits what it is asked for.
+     *
+     * LESS alone was published and LESS alone was emitted, so an
+     * application asking for anything else lost its depth test silently:
+     * intel98 measured 3DMark99 asking for LESSEQUAL and 192,069 of 224,838
+     * draws going to the ring untested, with the netbook photograph showing
+     * one correctly textured object against an empty scene.
+     *
+     * Publishing the full set is not the advertise-then-ignore pattern this
+     * file warns about elsewhere; the mapping is in i9xx_depth.c and every
+     * arm of it is host-tested against Mesa's table.
+     */
+    shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps =
+        V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
+        V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
+        V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
+        V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
     /* The one measured pair and the one that means "off". Same shape as
      * the ViRGE's, which is where Final Reality and 3DMark99 already run. */
     shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
@@ -1320,6 +1364,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD depth_offset = 0ul;
     DWORD depth_pitch = 0ul;
     DWORD depth_writes = 0ul;
+    DWORD depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
 
     if (context == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -1397,7 +1442,8 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
      */
     textured = v9x_d3d_i9xx_bind_texture(context, &map);
     depthed = v9x_d3d_i9xx_bind_depth_surface(context, &depth_offset,
-                                              &depth_pitch, &depth_writes);
+                                              &depth_pitch, &depth_writes,
+                                              &depth_compare);
     v9x_d3d_i9xx_bind_blend(context, &blend_src, &blend_dst);
     if (textured != 0) {
         program = v9x_d3d_i9xx_texture_program(context, map.format);
@@ -1453,6 +1499,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                      context->width, context->height,
                                      textured != 0 ? &map : 0,
                                      depth_offset, depth_pitch, depth_writes,
+                                     depth_compare,
                                      blend_src, blend_dst, stream + at,
                                      V9X_I9XX_SUBMIT_DWORDS - at,
                                      &produced) != V9X_STATUS_OK) {
@@ -1586,6 +1633,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = depth_writes;
+    limits.depth_compare = depth_compare;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_expected != 0ul
                                    ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul;

@@ -758,8 +758,15 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                     V9X_I9XX_S6_DST_FACTOR_SHIFT);
                 }
                 if (depthed != V9X_FALSE) {
+                    /*
+                     * A generated scene is pinned to the comparison its
+                     * artefacts were audited with; a runtime stream carries
+                     * the application's, which the engine declares here.
+                     */
                     want_s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
-                               (V9X_I9XX_COMPAREFUNC_LESS <<
+                               ((limits->kind == V9X_I9XX_SCENE_RUNTIME
+                                     ? (limits->depth_compare & 7ul)
+                                     : V9X_I9XX_COMPAREFUNC_LESS) <<
                                     V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
                     /*
                      * Whether writes are enabled: the scene's kind, or for a
