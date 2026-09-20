@@ -921,6 +921,28 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.frame_cover_image_last_error);
     v9x_write_uint("FrameCoverSession", snapshot.d3d.frame_cover_session);
     v9x_write_uint("FrameCoverRequest", snapshot.d3d.frame_cover_request);
+    /* Where the draws went, as a set. A last value sampled after teardown
+     * cannot tell a run's behaviour from its shutdown. */
+    v9x_write_uint("DrawTargetCount", snapshot.d3d.draw_target_count);
+    v9x_write_uint("DrawTargetOther", snapshot.d3d.draw_target_other);
+    {
+        DWORD target;
+        char key[40];
+
+        for (target = 0ul; target < (DWORD)V9X_D3D_TARGET_SLOTS &&
+                           target < snapshot.d3d.draw_target_count;
+             ++target) {
+            wsprintf(key, "DrawTarget%lu", target);
+            {
+                char text[64];
+
+                wsprintf(text, "offset %08lx draws %lu",
+                         snapshot.d3d.draw_target_offset[target],
+                         snapshot.d3d.draw_target_draws[target]);
+                v9x_write_text(key, text);
+            }
+        }
+    }
     {
         /*
          * One line per identified frame. These are COLOUR DIFFERENCES from

@@ -1419,6 +1419,34 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     {
         DWORD displayed = v9x_scanout_displayed_offset();
 
+        /*
+         * The set of targets, not just the last one. See the census comment
+         * in the ABI header: a last value read after teardown says nothing
+         * about where a run's draws went.
+         */
+        {
+            DWORD slot;
+            DWORD count = v9x_hal->d3d_diagnostics.draw_target_count;
+
+            for (slot = 0ul; slot < count &&
+                             slot < (DWORD)V9X_D3D_TARGET_SLOTS; ++slot) {
+                if (v9x_hal->d3d_diagnostics.draw_target_offset[slot] ==
+                        context->target_offset) {
+                    break;
+                }
+            }
+            if (slot < (DWORD)V9X_D3D_TARGET_SLOTS) {
+                if (slot == count) {
+                    v9x_hal->d3d_diagnostics.draw_target_offset[slot] =
+                        context->target_offset;
+                    ++v9x_hal->d3d_diagnostics.draw_target_count;
+                }
+                ++v9x_hal->d3d_diagnostics.draw_target_draws[slot];
+            } else {
+                ++v9x_hal->d3d_diagnostics.draw_target_other;
+            }
+        }
+
         if (displayed != 0xfffffffful) {
             v9x_hal->d3d_diagnostics.draws_target_last =
                 context->target_offset;

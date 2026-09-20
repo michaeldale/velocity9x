@@ -821,6 +821,12 @@ typedef struct v9x_d3d_frame_cover {
     DWORD recheck_now;
 } V9X_D3D_FRAME_COVER;
 
+/* Distinct render-target offsets worth remembering. A double-buffered
+ * application uses two, a triple-buffered one three; more than four means
+ * something this census was not built to describe, and the count says so
+ * while the table stops. */
+#define V9X_D3D_TARGET_SLOTS 4u
+
 /* Four is enough to see whether a run is steady or a single odd frame, and
  * small enough to leave the shared block's headroom alone. */
 #define V9X_D3D_FRAME_COVER_SLOTS 4u
@@ -1459,6 +1465,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092020: V9X_D3D_DIAGNOSTICS gains the render-target census. An append.
+ */
 /* 2026092019: the coverage record re-reads ITS OWN buffer at the next flip
  * instead of sampling a different one, which is the only comparison that
  * speaks to timing. The 2026092018 fields never populated - the branch
@@ -1509,7 +1517,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092019ul
+#define V9X_DD_SHARED_ABI   2026092020ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2788,6 +2796,26 @@ typedef struct v9x_d3d_diagnostics {
      * resolution; this can.
      */
     DWORD frame_cover_request;
+    /*
+     * WHERE the draws went, as a set rather than a last value.
+     *
+     * draws_target_last and d3d_target_offset both read 0x00000000 in
+     * intel101 while the flip chain alternated 0x00120000 and 0x00240000 -
+     * which would mean every draw landed somewhere nothing is ever
+     * presented from, and would explain buffers that stay black. But both
+     * are LAST values, sampled after the benchmark exited and the desktop
+     * context took over, and intel99 read 0x00120000 from the same field.
+     * A last value cannot tell a run's behaviour from its teardown.
+     *
+     * So the distinct offsets are collected as they are drawn to, with a
+     * count of how many draws went to each. Two offsets matching the flip
+     * chain is an application double-buffering correctly. One offset that
+     * is never flipped to is the whole answer.
+     */
+    DWORD draw_target_count;
+    DWORD draw_target_offset[V9X_D3D_TARGET_SLOTS];
+    DWORD draw_target_draws[V9X_D3D_TARGET_SLOTS];
+    DWORD draw_target_other;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart
