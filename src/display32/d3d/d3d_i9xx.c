@@ -49,6 +49,23 @@
  * rather than a truncated one.
  */
 #define V9X_I9XX_SUBMIT_VERTICES  ((DWORD)192ul)
+
+/*
+ * The core's batch size against this engine's limits, checked by the
+ * compiler rather than by a capture.
+ *
+ * v9x_d3d_i9xx_draw_triangles refuses anything past either bound, and since
+ * 2026-09-20 a refused batch is reported to the application as DD_OK and
+ * counted, not as an error - so a mismatch here would not crash, or warn, or
+ * appear in a log. It would take geometry out of the picture and leave
+ * batches_engine_refused as the only trace. That is precisely the class of
+ * fault this project keeps finding by accident weeks later, so it is made
+ * impossible to build instead.
+ */
+typedef char v9x_assert_batch_fits_runtime[
+    (V9X_D3D_INDEXED_BATCH <= V9X_I9XX_RUNTIME_MAX_TRIANGLES) ? 1 : -1];
+typedef char v9x_assert_batch_fits_vertices[
+    (V9X_D3D_INDEXED_BATCH * 3u <= 192u) ? 1 : -1];
 /* Sized for the largest batch: a textured, depth-bound state block, the
  * modulate program, and 64 triangles of seven-dword vertices. */
 #define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)1536ul)

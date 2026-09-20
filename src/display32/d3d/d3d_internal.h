@@ -52,6 +52,25 @@
  */
 #define V9X_D3D_MAX_FAN_TRIANGLES 6u
 
+/*
+ * The most triangles the core hands an engine in one call.
+ *
+ * Every path that converts a primitive into a triangle list chunks at this:
+ * the indexed path, DrawOnePrimitive's long lists, and the fan gather in
+ * DrawPrimitives. A record-shaped list is bounded separately by
+ * DrawPrimitives' own 192-vertex cap, which is the same 64 triangles.
+ *
+ * IT IS NOT A FREE PARAMETER. The Gen3 engine refuses a batch past
+ * V9X_I9XX_RUNTIME_MAX_TRIANGLES, which is also 64, and its vertex arrays
+ * hold 192. Raising this without raising those makes every Intel batch
+ * refuse - and since 2026-09-20 a refused batch reports DD_OK, so it would
+ * show up as geometry quietly missing from the picture rather than as an
+ * error. d3d_i9xx.c asserts the relationship at compile time so that cannot
+ * happen silently; this comment is here so the next person knows why the
+ * assertion exists before they trip it.
+ */
+#define V9X_D3D_INDEXED_BATCH 64u
+
 typedef struct v9x_d3d_context {
     DWORD active;
     DWORD pid;

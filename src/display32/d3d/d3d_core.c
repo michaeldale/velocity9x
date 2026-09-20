@@ -1848,14 +1848,6 @@ DWORD __stdcall V9xD3dSetRenderTarget(
  * anything outside a mask's width lands in bit 0 rather than shifting off
  * the end, which is undefined and would report nothing at all.
  */
-/*
- * The most triangles handed to an engine in one call. Both single-primitive
- * paths chunk at it: the indexed one because its gather scratch is this
- * size, and the list one for the same reason a long state block is flushed
- * in pieces rather than refused.
- */
-#define V9X_D3D_INDEXED_BATCH 64u
-
 static DWORD v9x_d3d_type_bit(DWORD value)
 {
     return value < 32ul ? (1ul << value) : 1ul;
