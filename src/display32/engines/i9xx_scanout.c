@@ -812,9 +812,39 @@ static DWORD v9x_i9xx_cover_write_image(const BYTE *base,
     return V9X_D3D_IMAGE_WRITTEN;
 }
 
+/*
+ * Count the sampled pixels of one surface that differ from its own
+ * top-left. Returns the count and reports the reference it compared
+ * against; the caller has already validated the plan.
+ */
+static DWORD v9x_i9xx_cover_count(const BYTE *base,
+                                  const struct v9x_i9xx_cover_plan *plan,
+                                  DWORD *reference_out)
+{
+    DWORD reference = v9x_i9xx_cover_pixel(base, plan->bytes_per_pixel);
+    DWORD drawn = 0ul;
+    DWORD x;
+    DWORD y;
+
+    for (y = 0ul; y < plan->height; y += plan->step) {
+        const BYTE *line = base + y * plan->pitch;
+
+        for (x = 0ul; x < plan->width; x += plan->step) {
+            if (v9x_i9xx_cover_pixel(line + x * plan->bytes_per_pixel,
+                                     plan->bytes_per_pixel) != reference) {
+                ++drawn;
+            }
+        }
+    }
+    *reference_out = reference;
+
+    return drawn;
+}
+
 static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
 {
     struct v9x_i9xx_cover_plan plan;
+    struct v9x_i9xx_cover_plan prev;
     const BYTE *base;
     V9X_D3D_FRAME_COVER *record;
     DWORD reference;
@@ -923,6 +953,35 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
         record->y0 = y0;
         record->x1 = x1;
         record->y1 = y1;
+        /*
+         * And the buffer being retired, which has been on the panel and is
+         * therefore certainly finished. This is the control for the reading
+         * above: blank incoming against a drawn retiring buffer means the
+         * sample is early, not that nothing renders.
+         */
+        record->prev_offset = 0ul;
+        record->prev_drawn = 0ul;
+        record->prev_reference = 0ul;
+        if (v9x_i9xx_scanout_last_offset != byte_offset &&
+            v9x_i9xx_cover_plan(
+                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_pipe_index == 0ul
+                                          ? V9X_I9XX_REG_PIPEA_SRC
+                                          : V9X_I9XX_REG_PIPEB_SRC),
+                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_plane == 0ul
+                                          ? V9X_I9XX_REG_DSPA_CNTR
+                                          : V9X_I9XX_REG_DSPB_CNTR),
+                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg),
+                v9x_i9xx_scanout_last_offset, v9x_hal->fb.vram_bytes,
+                V9X_I9XX_COVER_STEP, &prev) != V9X_FALSE) {
+            DWORD prev_reference = 0ul;
+            const BYTE *prev_base = (const BYTE *)v9x_hal->fb.linear_base +
+                                    v9x_i9xx_scanout_last_offset;
+
+            record->prev_offset = v9x_i9xx_scanout_last_offset;
+            record->prev_drawn = v9x_i9xx_cover_count(prev_base, &prev,
+                                                      &prev_reference);
+            record->prev_reference = prev_reference;
+        }
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
 

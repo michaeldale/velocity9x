@@ -794,6 +794,21 @@ typedef struct v9x_d3d_frame_cover {
     DWORD y0;
     DWORD x1;
     DWORD y1;
+    /*
+     * The buffer this flip retires, sampled the same way.
+     *
+     * The incoming buffer is the one the application has just drawn, and
+     * reading it at flip time cannot distinguish "nothing was rendered"
+     * from "the read beat the engine to it". The RETIRING buffer has
+     * already been scanned out, so whatever it holds was finished - and if
+     * it carries a scene while the incoming one is blank, the sample is
+     * simply early and the renderer is not the problem.
+     *
+     * Zero offset means there was no previous flip to compare against.
+     */
+    DWORD prev_offset;
+    DWORD prev_drawn;
+    DWORD prev_reference;
 } V9X_D3D_FRAME_COVER;
 
 /* Four is enough to see whether a run is steady or a single odd frame, and
@@ -1434,6 +1449,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092018: each coverage record also samples the buffer the flip retires,
+ * which has been scanned out and is therefore finished. An append.
+ */
 /* 2026092017: the coverage capture separates scheduling from results - a
  * session number, a retained image identity, and an explicit request from
  * the diagnostics tool. A layout change.
@@ -1476,7 +1494,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092017ul
+#define V9X_DD_SHARED_ABI   2026092018ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same

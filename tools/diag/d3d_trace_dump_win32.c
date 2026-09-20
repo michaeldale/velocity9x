@@ -957,6 +957,15 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_uint(key, record->drawn);
             wsprintf(key, "Cover%luReference", cover);
             v9x_write_hex(key, record->reference);
+            wsprintf(key, "Cover%luPrev", cover);
+            {
+                char text[64];
+
+                wsprintf(text, "offset %08lx drawn %lu ref %04lx",
+                         record->prev_offset, record->prev_drawn,
+                         record->prev_reference);
+                v9x_write_text(key, text);
+            }
             wsprintf(key, "Cover%luBox", cover);
             {
                 char text[64];
