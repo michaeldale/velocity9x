@@ -90,6 +90,24 @@ void v9x_i9xx_cover_request(struct v9x_i9xx_cover_state *state)
     state->image_wanted = 1ul;
 }
 
+v9x_u16 v9x_i9xx_cover_plan_same(const struct v9x_i9xx_cover_plan *first,
+                                 const struct v9x_i9xx_cover_plan *second)
+{
+    if (first == 0 || second == 0) {
+        return V9X_FALSE;
+    }
+    if (first->width != second->width ||
+        first->height != second->height ||
+        first->pitch != second->pitch ||
+        first->bytes_per_pixel != second->bytes_per_pixel ||
+        first->format != second->format ||
+        first->step != second->step) {
+        return V9X_FALSE;
+    }
+
+    return V9X_TRUE;
+}
+
 v9x_u16 v9x_i9xx_cover_commit_image(struct v9x_i9xx_cover_state *state,
                                     v9x_u32 status)
 {

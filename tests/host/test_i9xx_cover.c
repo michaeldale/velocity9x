@@ -278,6 +278,57 @@ static void test_a_failed_image_keeps_the_previous_one(void)
     COVERCHECK(v9x_i9xx_cover_commit_image(0, 1ul) == V9X_FALSE);
 }
 
+/*
+ * A second read must sample the same bytes as the first.
+ *
+ * A mode change between the two reads needs no DriverInit, so a plan rebuilt
+ * from the registers at recheck time can describe different memory while
+ * every other guard still passes - and a count over different bytes reads as
+ * the engine having written late when nothing did.
+ */
+static void test_a_layout_change_between_reads_is_refused(void)
+{
+    struct v9x_i9xx_cover_plan first;
+    struct v9x_i9xx_cover_plan second;
+
+    COVERCHECK(v9x_i9xx_cover_plan(COVER_SRC, COVER_CNTR, COVER_STRIDE,
+                                   0x00120000ul, COVER_VRAM, 8ul,
+                                   &first) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_plan(COVER_SRC, COVER_CNTR, COVER_STRIDE,
+                                   0x00240000ul, COVER_VRAM, 8ul,
+                                   &second) == V9X_TRUE);
+    /* Same surface shape at a different offset is still the same sample. */
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, &second) == V9X_TRUE);
+
+    /* 640x480 where it was 1024x576. */
+    COVERCHECK(v9x_i9xx_cover_plan((639ul << 16) | 479ul, COVER_CNTR,
+                                   COVER_STRIDE, 0ul, COVER_VRAM, 8ul,
+                                   &second) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, &second) == V9X_FALSE);
+
+    /* Same dimensions, different pitch. */
+    COVERCHECK(v9x_i9xx_cover_plan(COVER_SRC, COVER_CNTR, 4096ul, 0ul,
+                                   COVER_VRAM, 8ul, &second) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, &second) == V9X_FALSE);
+
+    /* Same dimensions and pitch, different pixel format - 555 where it was
+     * 565, which is the same byte width and NOT the same bytes. */
+    COVERCHECK(v9x_i9xx_cover_plan(COVER_SRC, 0x90000000ul, COVER_STRIDE,
+                                   0ul, COVER_VRAM, 8ul,
+                                   &second) == V9X_TRUE);
+    COVERCHECK(second.bytes_per_pixel == first.bytes_per_pixel);
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, &second) == V9X_FALSE);
+
+    /* Same surface, different step - a different set of pixels. */
+    COVERCHECK(v9x_i9xx_cover_plan(COVER_SRC, COVER_CNTR, COVER_STRIDE,
+                                   0ul, COVER_VRAM, 4ul,
+                                   &second) == V9X_TRUE);
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, &second) == V9X_FALSE);
+
+    COVERCHECK(v9x_i9xx_cover_plan_same(0, &first) == V9X_FALSE);
+    COVERCHECK(v9x_i9xx_cover_plan_same(&first, 0) == V9X_FALSE);
+}
+
 unsigned int v9x_run_i9xx_cover_tests(void)
 {
     cover_failures = 0u;
@@ -292,6 +343,7 @@ unsigned int v9x_run_i9xx_cover_tests(void)
     test_the_slots_fill_once();
     test_the_degenerate_cases();
     test_a_failed_image_keeps_the_previous_one();
+    test_a_layout_change_between_reads_is_refused();
 
     return cover_failures;
 }

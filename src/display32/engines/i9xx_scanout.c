@@ -864,8 +864,11 @@ static DWORD v9x_i9xx_recheck_offset = 0ul;
 static DWORD v9x_i9xx_recheck_then = 0ul;
 static DWORD v9x_i9xx_recheck_session = 0ul;
 static int v9x_i9xx_recheck_armed = 0;
+/* The plan the FIRST read used. The second must sample the same bytes or it
+ * is not a second read of the same thing. */
+static struct v9x_i9xx_cover_plan v9x_i9xx_recheck_plan;
 
-static void v9x_i9xx_cover_recheck(void)
+static void v9x_i9xx_cover_recheck(DWORD incoming_offset)
 {
     struct v9x_i9xx_cover_plan plan;
     V9X_D3D_FRAME_COVER *record;
@@ -875,6 +878,14 @@ static void v9x_i9xx_cover_recheck(void)
         return;
     }
     v9x_i9xx_recheck_armed = 0;
+    /*
+     * Ownership: if this flip is presenting the very buffer being
+     * rechecked, the application has had it back and may have drawn into
+     * it, so a second count would not be a second look at the same frame.
+     */
+    if (incoming_offset == v9x_i9xx_recheck_offset) {
+        return;
+    }
     if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul ||
         v9x_i9xx_recheck_slot >= (DWORD)V9X_D3D_FRAME_COVER_SLOTS ||
         v9x_i9xx_recheck_slot >= v9x_hal->d3d_diagnostics.frame_cover_records ||
@@ -892,6 +903,16 @@ static void v9x_i9xx_cover_recheck(void)
             *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg),
             v9x_i9xx_recheck_offset, v9x_hal->fb.vram_bytes,
             V9X_I9XX_COVER_STEP, &plan) == V9X_FALSE) {
+        return;
+    }
+    /*
+     * And it must describe the same bytes. A mode change between the two
+     * reads needs no DriverInit, so the session check above would still
+     * pass while the dimensions, pitch or format had moved - and a count
+     * taken over different memory would read as the engine writing late.
+     */
+    if (v9x_i9xx_cover_plan_same(&v9x_i9xx_recheck_plan, &plan) ==
+            V9X_FALSE) {
         return;
     }
 
@@ -997,6 +1018,15 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
             v9x_i9xx_cover_sched.records;
         record = &v9x_hal->d3d_diagnostics.frame_cover[slot];
         record->session = v9x_hal->d3d_diagnostics.frame_cover_session;
+        /*
+         * A reused slot must not inherit the previous capture's second
+         * read. Cleared here, so a record either carries its own recheck or
+         * carries none - including when the session ends before the
+         * following flip ever arrives.
+         */
+        record->recheck_offset = 0ul;
+        record->recheck_then = 0ul;
+        record->recheck_now = 0ul;
         /* Stamped by v9x_scanout_note_flip_sequence once this flip is
          * accepted; the counter has not advanced yet. */
         record->sequence = 0ul;
@@ -1019,6 +1049,7 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
         v9x_i9xx_recheck_offset = byte_offset;
         v9x_i9xx_recheck_then = drawn;
         v9x_i9xx_recheck_session = v9x_hal->d3d_diagnostics.frame_cover_session;
+        v9x_i9xx_recheck_plan = plan;
         v9x_i9xx_recheck_armed = 1;
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
@@ -1068,7 +1099,7 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 {
     /* Before anything here is overwritten: the buffer sampled at the last
      * flip is now the one on screen, and has not been reused. */
-    v9x_i9xx_cover_recheck();
+    v9x_i9xx_cover_recheck(byte_offset);
     v9x_i9xx_scanout_last_base_reg = base_reg;
     v9x_i9xx_scanout_last_offset = byte_offset;
     v9x_i9xx_scanout_flip_outstanding = 1;

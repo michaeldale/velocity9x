@@ -101,6 +101,22 @@ v9x_u16 v9x_i9xx_cover_commit_image(struct v9x_i9xx_cover_state *state,
                                     v9x_u32 status);
 
 /*
+ * Do two plans describe the same bytes?
+ *
+ * The second read of a buffer must sample exactly what the first did. A mode
+ * change between them alters the dimensions, the pitch or the pixel format
+ * without any DriverInit, so a plan rebuilt from the registers at recheck
+ * time can walk different memory and report a different count - which would
+ * read as the engine having written late when nothing of the sort happened.
+ *
+ * The step is compared too: it decides which pixels are visited, so two
+ * plans that agree on the surface and differ on the step do not agree on
+ * the sample.
+ */
+v9x_u16 v9x_i9xx_cover_plan_same(const struct v9x_i9xx_cover_plan *first,
+                                 const struct v9x_i9xx_cover_plan *second);
+
+/*
  * Begin a sample. Applies any pending request, which is the point at which
  * the previous run's records are dropped - and only then. Returns V9X_TRUE
  * if this sample should be recorded, which is false once the slots are
