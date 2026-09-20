@@ -1375,6 +1375,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092015: V9X_D3D_DIAGNOSTICS gains the back-buffer coverage readback.
+ * An append.
+ */
 /* 2026092014: V9X_D3D_DIAGNOSTICS gains batches_engine_refused. An append.
  */
 /* 2026092013: V9X_D3D_DIAGNOSTICS gains triangles_declined. An append.
@@ -1405,7 +1408,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092014ul
+#define V9X_DD_SHARED_ABI   2026092015ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2613,6 +2616,40 @@ typedef struct v9x_d3d_diagnostics {
      * fall back on, and intel97 measured 28 refused draws in a single run.
      */
     DWORD batches_engine_refused;
+    /*
+     * What actually reached the back buffer, read back out of it.
+     *
+     * Every other counter in this structure is upstream of the framebuffer:
+     * they say what was handed to the ring. intel99 submitted 3,170
+     * triangles a frame across 2,796 frames, 83 per cent textured, with 31
+     * refusals in the whole run and nothing declined - and one object
+     * appeared on the panel. Three explanations survived that and no
+     * counter here separated them: the hardware rejecting fragments, the
+     * geometry landing outside the viewport, or it being drawn and then
+     * overwritten.
+     *
+     * So this reads the buffer instead of counting submissions. A sampled
+     * grid of the frame just finished, counting pixels that differ from the
+     * one at its top-left corner, with their bounding box. Three thousand
+     * triangles and two hundred changed pixels is a fragment or transform
+     * problem; a full frame changed while one object shows is an overwrite.
+     *
+     * frame_cover_sampled is the grid size, not the frame size, so the
+     * fraction is drawn over sampled and not over width times height. The
+     * bounding box is in SAMPLE coordinates multiplied back up by the step,
+     * so it is approximate by that step and no better.
+     *
+     * Aperture reads are slow, so one frame in V9X_D3D_COVER_INTERVAL is
+     * sampled and the rest cost nothing.
+     */
+    DWORD frame_cover_frames;
+    DWORD frame_cover_sampled;
+    DWORD frame_cover_drawn;
+    DWORD frame_cover_reference;
+    DWORD frame_cover_x0;
+    DWORD frame_cover_y0;
+    DWORD frame_cover_x1;
+    DWORD frame_cover_y1;
     /*
      * Every distinct GUID the runtime has asked GetDriverInfo for, by its
      * Data1 - the first four bytes, which tell the DDK's own GUIDs apart

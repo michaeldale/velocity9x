@@ -527,6 +527,111 @@ static void v9x_i9xx_note_watermarks(void)
     }
 }
 
+/*
+ * What reached the back buffer, read back out of it.
+ *
+ * Every other counter this driver keeps is upstream of the framebuffer.
+ * intel99 submitted 3,170 triangles a frame across 2,796 frames with 31
+ * refusals in the entire run, and one object appeared on the panel - so
+ * "the geometry was submitted" is established and "the geometry was drawn"
+ * is not, and no counter that watches the ring can tell them apart.
+ *
+ * This samples the frame being flipped away from, which is the one the
+ * application has just finished drawing. The pixel at its top-left corner
+ * is taken as the background - a clear colour this driver never sees, since
+ * the application picks it - and every sampled pixel differing from it is
+ * counted, with the bounding box of those that differ.
+ *
+ * What the numbers mean, decided before reading them:
+ *  - a small drawn count with a small box is fragment rejection or a
+ *    transform putting the scene somewhere it should not be;
+ *  - a large drawn count with a full-frame box, while the panel shows one
+ *    object, is an overwrite between the draw and the scanout;
+ *  - a drawn count near zero is nothing reaching memory at all.
+ *
+ * APERTURE READS ARE SLOW and this runs in the flip path, so one frame in
+ * V9X_I9XX_COVER_INTERVAL is sampled and the step keeps even that to a few
+ * thousand reads. It is a diagnostic on a machine reached by carrying a USB
+ * stick, not something to leave running at every flip.
+ */
+#define V9X_I9XX_COVER_INTERVAL   64ul
+#define V9X_I9XX_COVER_STEP       8ul
+
+static DWORD v9x_i9xx_cover_countdown = 0ul;
+
+static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
+{
+    const BYTE *base;
+    WORD reference;
+    DWORD sampled = 0ul;
+    DWORD drawn = 0ul;
+    DWORD x0 = 0xfffffffful;
+    DWORD y0 = 0xfffffffful;
+    DWORD x1 = 0ul;
+    DWORD y1 = 0ul;
+    DWORD x;
+    DWORD y;
+    DWORD width;
+    DWORD height;
+    DWORD pitch;
+
+    if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul) {
+        return;
+    }
+    if (v9x_i9xx_cover_countdown != 0ul) {
+        --v9x_i9xx_cover_countdown;
+        return;
+    }
+    v9x_i9xx_cover_countdown = V9X_I9XX_COVER_INTERVAL;
+
+    width = v9x_hal->d3d_diagnostics.target_width;
+    height = v9x_hal->d3d_diagnostics.target_height;
+    pitch = v9x_hal->d3d_diagnostics.target_pitch;
+    if (width == 0ul || height == 0ul || pitch == 0ul) {
+        return;
+    }
+    /*
+     * The whole sampled area must lie inside video memory. This reads the
+     * aperture directly, so the bound is the memory-safety check and not a
+     * tidiness one.
+     */
+    if (byte_offset > v9x_hal->fb.vram_bytes ||
+        height * pitch > v9x_hal->fb.vram_bytes - byte_offset) {
+        return;
+    }
+
+    base = (const BYTE *)v9x_hal->fb.linear_base + byte_offset;
+    reference = *(const WORD *)base;
+
+    for (y = 0ul; y < height; y += V9X_I9XX_COVER_STEP) {
+        const WORD *row = (const WORD *)(base + y * pitch);
+
+        for (x = 0ul; x < width; x += V9X_I9XX_COVER_STEP) {
+            ++sampled;
+            if (row[x] != reference) {
+                ++drawn;
+                if (x < x0) { x0 = x; }
+                if (y < y0) { y0 = y; }
+                if (x > x1) { x1 = x; }
+                if (y > y1) { y1 = y; }
+            }
+        }
+    }
+
+    if (drawn == 0ul) {
+        x0 = 0ul;
+        y0 = 0ul;
+    }
+    ++v9x_hal->d3d_diagnostics.frame_cover_frames;
+    v9x_hal->d3d_diagnostics.frame_cover_sampled = sampled;
+    v9x_hal->d3d_diagnostics.frame_cover_drawn = drawn;
+    v9x_hal->d3d_diagnostics.frame_cover_reference = (DWORD)reference;
+    v9x_hal->d3d_diagnostics.frame_cover_x0 = x0;
+    v9x_hal->d3d_diagnostics.frame_cover_y0 = y0;
+    v9x_hal->d3d_diagnostics.frame_cover_x1 = x1;
+    v9x_hal->d3d_diagnostics.frame_cover_y1 = y1;
+}
+
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 {
     v9x_i9xx_scanout_last_base_reg = base_reg;
@@ -537,6 +642,12 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
      * in-game sample on the way out (review of 2347f59). */
     if (byte_offset != 0ul) {
         v9x_i9xx_note_layout(byte_offset);
+        /*
+         * The buffer being flipped TO is the one just drawn, which is the
+         * one worth measuring - the application has finished with it and
+         * the scanout has not started on it.
+         */
+        v9x_i9xx_note_frame_coverage(byte_offset);
     }
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=

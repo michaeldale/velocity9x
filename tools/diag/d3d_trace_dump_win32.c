@@ -858,6 +858,14 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("TrianglesDeclined", snapshot.d3d.triangles_declined);
     v9x_write_uint("BatchesEngineRefused",
                    snapshot.d3d.batches_engine_refused);
+    v9x_write_uint("FrameCoverFrames", snapshot.d3d.frame_cover_frames);
+    v9x_write_uint("FrameCoverSampled", snapshot.d3d.frame_cover_sampled);
+    v9x_write_uint("FrameCoverDrawn", snapshot.d3d.frame_cover_drawn);
+    v9x_write_hex("FrameCoverReference", snapshot.d3d.frame_cover_reference);
+    v9x_write_uint("FrameCoverX0", snapshot.d3d.frame_cover_x0);
+    v9x_write_uint("FrameCoverY0", snapshot.d3d.frame_cover_y0);
+    v9x_write_uint("FrameCoverX1", snapshot.d3d.frame_cover_x1);
+    v9x_write_uint("FrameCoverY1", snapshot.d3d.frame_cover_y1);
     {
         DWORD index;
 
