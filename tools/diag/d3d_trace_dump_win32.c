@@ -957,13 +957,17 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_uint(key, record->drawn);
             wsprintf(key, "Cover%luReference", cover);
             v9x_write_hex(key, record->reference);
-            wsprintf(key, "Cover%luPrev", cover);
+            /* The same buffer read again one flip later. "now" above
+             * "then" means the first read was early; equal is consistent
+             * with the buffer holding what was read and proves nothing.
+             * A zero offset means the second read never happened. */
+            wsprintf(key, "Cover%luRecheck", cover);
             {
                 char text[64];
 
-                wsprintf(text, "offset %08lx drawn %lu ref %04lx",
-                         record->prev_offset, record->prev_drawn,
-                         record->prev_reference);
+                wsprintf(text, "offset %08lx then %lu now %lu",
+                         record->recheck_offset, record->recheck_then,
+                         record->recheck_now);
                 v9x_write_text(key, text);
             }
             wsprintf(key, "Cover%luBox", cover);

@@ -841,10 +841,71 @@ static DWORD v9x_i9xx_cover_count(const BYTE *base,
     return drawn;
 }
 
+/*
+ * The buffer sampled at the last flip, read a second time.
+ *
+ * This is the only comparison here that speaks to TIMING. Reading a buffer
+ * once at flip time cannot tell "nothing was rendered" from "the read beat
+ * the engine to it", and comparing it against a different frame cannot
+ * either - that frame could have been cleared, drawn wrongly, or meant to
+ * be blank.
+ *
+ * The same memory at two points can. It runs on the NEXT flip, at which
+ * point the buffer just sampled is the one being scanned out and the
+ * application is drawing into the other, so nothing has reused it in
+ * between.
+ *
+ * A higher count the second time means the engine wrote after the driver
+ * had already sampled - the first read was early. Equal counts are
+ * consistent with the buffer holding what was read and do not prove it.
+ */
+static DWORD v9x_i9xx_recheck_slot = 0ul;
+static DWORD v9x_i9xx_recheck_offset = 0ul;
+static DWORD v9x_i9xx_recheck_then = 0ul;
+static DWORD v9x_i9xx_recheck_session = 0ul;
+static int v9x_i9xx_recheck_armed = 0;
+
+static void v9x_i9xx_cover_recheck(void)
+{
+    struct v9x_i9xx_cover_plan plan;
+    V9X_D3D_FRAME_COVER *record;
+    DWORD reference = 0ul;
+
+    if (!v9x_i9xx_recheck_armed) {
+        return;
+    }
+    v9x_i9xx_recheck_armed = 0;
+    if (v9x_hal == 0 || v9x_hal->fb.linear_base == 0ul ||
+        v9x_i9xx_recheck_slot >= (DWORD)V9X_D3D_FRAME_COVER_SLOTS ||
+        v9x_i9xx_recheck_slot >= v9x_hal->d3d_diagnostics.frame_cover_records ||
+        v9x_i9xx_recheck_session !=
+            v9x_hal->d3d_diagnostics.frame_cover_session) {
+        return;
+    }
+    if (v9x_i9xx_cover_plan(
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_pipe_index == 0ul
+                                      ? V9X_I9XX_REG_PIPEA_SRC
+                                      : V9X_I9XX_REG_PIPEB_SRC),
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_plane == 0ul
+                                      ? V9X_I9XX_REG_DSPA_CNTR
+                                      : V9X_I9XX_REG_DSPB_CNTR),
+            *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg),
+            v9x_i9xx_recheck_offset, v9x_hal->fb.vram_bytes,
+            V9X_I9XX_COVER_STEP, &plan) == V9X_FALSE) {
+        return;
+    }
+
+    record = &v9x_hal->d3d_diagnostics.frame_cover[v9x_i9xx_recheck_slot];
+    record->recheck_offset = v9x_i9xx_recheck_offset;
+    record->recheck_then = v9x_i9xx_recheck_then;
+    record->recheck_now = v9x_i9xx_cover_count(
+        (const BYTE *)v9x_hal->fb.linear_base + v9x_i9xx_recheck_offset,
+        &plan, &reference);
+}
+
 static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
 {
     struct v9x_i9xx_cover_plan plan;
-    struct v9x_i9xx_cover_plan prev;
     const BYTE *base;
     V9X_D3D_FRAME_COVER *record;
     DWORD reference;
@@ -953,35 +1014,12 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
         record->y0 = y0;
         record->x1 = x1;
         record->y1 = y1;
-        /*
-         * And the buffer being retired, which has been on the panel and is
-         * therefore certainly finished. This is the control for the reading
-         * above: blank incoming against a drawn retiring buffer means the
-         * sample is early, not that nothing renders.
-         */
-        record->prev_offset = 0ul;
-        record->prev_drawn = 0ul;
-        record->prev_reference = 0ul;
-        if (v9x_i9xx_scanout_last_offset != byte_offset &&
-            v9x_i9xx_cover_plan(
-                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_pipe_index == 0ul
-                                          ? V9X_I9XX_REG_PIPEA_SRC
-                                          : V9X_I9XX_REG_PIPEB_SRC),
-                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_plane == 0ul
-                                          ? V9X_I9XX_REG_DSPA_CNTR
-                                          : V9X_I9XX_REG_DSPB_CNTR),
-                *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_stride_reg),
-                v9x_i9xx_scanout_last_offset, v9x_hal->fb.vram_bytes,
-                V9X_I9XX_COVER_STEP, &prev) != V9X_FALSE) {
-            DWORD prev_reference = 0ul;
-            const BYTE *prev_base = (const BYTE *)v9x_hal->fb.linear_base +
-                                    v9x_i9xx_scanout_last_offset;
-
-            record->prev_offset = v9x_i9xx_scanout_last_offset;
-            record->prev_drawn = v9x_i9xx_cover_count(prev_base, &prev,
-                                                      &prev_reference);
-            record->prev_reference = prev_reference;
-        }
+        /* Armed here, read again on the next flip - see the recheck. */
+        v9x_i9xx_recheck_slot = slot;
+        v9x_i9xx_recheck_offset = byte_offset;
+        v9x_i9xx_recheck_then = drawn;
+        v9x_i9xx_recheck_session = v9x_hal->d3d_diagnostics.frame_cover_session;
+        v9x_i9xx_recheck_armed = 1;
     }
     ++v9x_hal->d3d_diagnostics.frame_cover_frames;
 
@@ -1028,6 +1066,9 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
 
 static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 {
+    /* Before anything here is overwritten: the buffer sampled at the last
+     * flip is now the one on screen, and has not been reused. */
+    v9x_i9xx_cover_recheck();
     v9x_i9xx_scanout_last_base_reg = base_reg;
     v9x_i9xx_scanout_last_offset = byte_offset;
     v9x_i9xx_scanout_flip_outstanding = 1;
@@ -1289,6 +1330,7 @@ void v9x_scanout_reset(void)
     v9x_i9xx_cover_countdown = 0ul;
     v9x_i9xx_cover_armed_src = 0ul;
     v9x_i9xx_cover_pending = 0xfffffffful;
+    v9x_i9xx_recheck_armed = 0;
     v9x_i9xx_cover_request(&v9x_i9xx_cover_sched);
     if (v9x_hal == 0) {
         return;

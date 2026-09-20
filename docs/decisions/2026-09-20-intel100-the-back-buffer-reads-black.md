@@ -75,21 +75,22 @@ An overwrite between the draw and the scanout becomes hard to hold: the
 buffer is black in its own memory, before anything downstream touches it.
 That was one of the three explanations standing after intel99.
 
-And it found the HWS_PGA failure, which no capture had been read against
-before.
-
 ## Next, in this order
 
-1. **Sample the retiring buffer as well as the incoming one** - done in the
-   commit that carries this correction. The retiring buffer has been scanned
-   out, so whatever it holds was finished. Content there against black here
-   means the sample is simply early and the renderer is not the problem;
-   black in both, with a scene on the panel, means the sampler is reading
-   the wrong memory.
+1. **Read the same buffer twice** - added in the commit after this
+   correction. A buffer flipped to is sampled again on the very next flip,
+   at which point it is the one being scanned out and the application is
+   drawing into the other, so nothing has reused it. A higher count the
+   second time means the engine wrote after the driver had already sampled:
+   the first read was early. Equal counts are consistent with the buffer
+   holding what was read and prove nothing on their own.
+
+   A first attempt compared the incoming buffer against the RETIRING one.
+   That was doubly wrong: the branch tested a value the caller had already
+   overwritten so it never ran at all, and comparing two different frames
+   could not have isolated timing anyway - the incoming frame could have
+   been cleared, drawn wrongly, or meant to be blank.
 2. Only then ask about fragment rejection or transforms.
 
-The HWS_PGA investigation this section used to lead with is struck: there is
-no failed write to investigate.
-
-No rendering change should follow from this capture. The instrument that
-would say whether such a change helped is the one that is broken.
+No rendering change should follow from this capture, because what it
+measures is not yet distinguishable from when it measures it.

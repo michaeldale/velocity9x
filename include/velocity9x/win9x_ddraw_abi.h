@@ -795,20 +795,30 @@ typedef struct v9x_d3d_frame_cover {
     DWORD x1;
     DWORD y1;
     /*
-     * The buffer this flip retires, sampled the same way.
+     * THE SAME BUFFER, READ AGAIN AT THE NEXT FLIP.
      *
-     * The incoming buffer is the one the application has just drawn, and
-     * reading it at flip time cannot distinguish "nothing was rendered"
-     * from "the read beat the engine to it". The RETIRING buffer has
-     * already been scanned out, so whatever it holds was finished - and if
-     * it carries a scene while the incoming one is blank, the sample is
-     * simply early and the renderer is not the problem.
+     * Reading the incoming buffer at flip time cannot tell "nothing was
+     * rendered" from "the read beat the engine to it", and comparing it
+     * against a DIFFERENT frame cannot either - that frame could have been
+     * cleared, drawn wrongly, or meant to be blank. Only the same memory at
+     * two points in time speaks to timing.
      *
-     * Zero offset means there was no previous flip to compare against.
+     * So this buffer is read once when it is flipped to, and again on the
+     * very next flip - by which time it is the one being scanned out and
+     * the application is drawing into the other, so nothing has reused it.
+     *
+     * recheck_now above recheck_then means the first read was early: the
+     * engine wrote to that memory after the driver had already sampled it.
+     * The two being equal is consistent with the buffer genuinely holding
+     * what was read, and does not prove it - the engine could have finished
+     * before both reads, or after both.
+     *
+     * A zero recheck_offset means the second read never happened: no
+     * following flip, or a surface that could not be validated.
      */
-    DWORD prev_offset;
-    DWORD prev_drawn;
-    DWORD prev_reference;
+    DWORD recheck_offset;
+    DWORD recheck_then;
+    DWORD recheck_now;
 } V9X_D3D_FRAME_COVER;
 
 /* Four is enough to see whether a run is steady or a single odd frame, and
@@ -1449,6 +1459,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092019: the coverage record re-reads ITS OWN buffer at the next flip
+ * instead of sampling a different one, which is the only comparison that
+ * speaks to timing. The 2026092018 fields never populated - the branch
+ * tested a value the caller had already overwritten.
+ */
 /* 2026092018: each coverage record also samples the buffer the flip retires,
  * which has been scanned out and is therefore finished. An append.
  */
@@ -1494,7 +1509,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092018ul
+#define V9X_DD_SHARED_ABI   2026092019ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
