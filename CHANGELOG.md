@@ -4,6 +4,43 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+Diagnostic tooling and one hardware question answered from outside the
+project. Nothing in the shipped driver changed.
+
+- **The survey reads a linear window above 16 MB.** INT 15h AH=87h builds a
+  24-bit descriptor base, so the aperture step could never reach where VLB
+  windows are actually placed - the Trio64V+ VLB report submitted to the
+  Vogons thread on 2026-08-28 put the window at `62000000h` and came back
+  `skipped`. `V9XSURV` now reads through a read-only unreal-mode excursion
+  above the ceiling and keeps the BIOS service below it, naming in the report
+  which produced the bytes, and refusing outright without a confirmed 386 in
+  real mode. It proves the flat read against the BIOS ROM first, because
+  otherwise a dead window and a flat read that never worked are the same
+  report. Measured in 86Box on a ViRGE/DX at `E0000000h`
+  ([evidence](docs/decisions/2026-09-22-survey-flat-read-86box.md)).
+- **The survey's safety contract was relaxed, narrowly and on purpose.**
+  `lgdt` and a write to `cr0` were banned outright; they are now permitted for
+  that one sequence, and in exchange the build gate pins the `cli`, the
+  clearing of PE, the reset of FS and the self-test comparison, newly refuses a
+  store through the flat segment, and keeps `lidt`, CR1-4 and the debug
+  registers banned. Eighteen gate mutations are rejected where fifteen were.
+- **`parse-vga-survey.ps1` no longer blames a memory manager for a flat read.**
+  Its virtual-8086 caveat named INT 15h AH=87h unconditionally, which would
+  have discredited reports produced by a path that refuses to run in V86 at
+  all. It is method-aware, and warns when a flat read's self-test did not pass.
+- **The ViRGE's VL defect is named, and it is not the MMIO window.** mkarcher
+  answered this project's question in the thread: the fault needs framebuffer
+  access and certain MMIO regions to be *mixed*, the damage is silent
+  configuration corruption that locks the bus later, and the exact pattern is
+  under NDA. That retires the DOS-box mode-transition theory, rejects the
+  B-window and any ViRGE/DX substitution, and puts the configuration the VLB
+  plan had chosen inside the susceptible set - the mixing he describes is this
+  driver's own architecture
+  ([decision](docs/decisions/2026-09-22-virge-vl-mmio-framebuffer-mixing.md),
+  [revised plan](docs/plans/virge-vlb-old-mmio.md)).
+
 ## 0.8.0 - 2026-09-17
 
 Hardware Direct3D on the Intel GMA 950 (945GSE), the first engine outside
