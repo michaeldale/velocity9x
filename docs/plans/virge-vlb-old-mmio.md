@@ -1,9 +1,13 @@
 # ViRGE 325 on VESA Local Bus, through old MMIO
 
-Date: 2026-08-22
-Status: revised plan; implementation has not started. Stage 4 is re-weighted
-to expected-to-fail pending the answers in "Secondhand report of mkarcher's
-own attempt" below; Stages 0-3 are unaffected.
+Date: 2026-08-22, substantially revised 2026-09-22
+Status: revised plan; implementation has not started. **The acceleration
+premise is now known to be unsound as written** - see
+[the mixing decision](../decisions/2026-09-22-virge-vl-mmio-framebuffer-mixing.md)
+and "What the defect actually is" below. Stages 0-2 remain worth doing as PCI
+work. Stage 4 survives only as a way to measure the narrow
+full-screen-exclusive hypothesis, and the B-window and any ViRGE/DX
+substitution are rejected outright.
 
 ## Outcome
 
@@ -67,6 +71,10 @@ at `0xC0504`. All register offsets the current 2D backend uses are between
 the engine code. The A-window's lower 32 KiB is the image-transfer area; the
 B-window omits that area, which Velocity9x does not use.
 
+The B-window form is documented here for completeness only. It is rejected on
+VL for a reason the databook does not cover; see "What the defect actually is"
+below.
+
 The vendored 86Box model agrees with the databook: CR53[4] enables its old-MMIO
 mapping, CR53[5] chooses `0xA0000`/64 KiB or `0xB8000`/32 KiB, and both mappings
 feed the same handler
@@ -89,60 +97,95 @@ person whose Vogons replies 155, 206 and 208 this plan is built on:
 - He did get Terminal Velocity's S3D acceleration working on the VLB 325 by
   avoiding MMIO in that special case.
 
-A follow-up on 2026-08-23, answering "which access patterns trigger it":
+A follow-up on 2026-08-23 said the corruption especially shows on switching a
+Win9x DOS window between text and graphics mode and back, but not only there,
+that no reliable reproduction pattern was found, and that nothing further could
+be told. This plan was revised around that report. **Both readings are now
+superseded**; the section below records what replaced them.
 
-- The corruption "especially approaches on switching a Windows 9x DOS window
-  from text mode to graphics mode and vice versa - but not only!"
-- The graphics-to-text return is the harder case, and even there no reliable
-  reproduction pattern was found.
-- "We currently cannot tell more about it." Further asking is exhausted; the
-  remaining instruments are measurement and hardware.
+## What the defect actually is
 
-Re-reading the thread against this report (verified 2026-08-22) sharpens what
-"the MMIO issue" is. mkarcher never claims the old-MMIO window *decode* is
-broken. In reply 208 he calls the new-to-old-MMIO driver port essentially a
-single-location patch — and immediately adds that this is where the issues
-with the ViRGE's broken VL bus interface start. Reply 206 says the problems go
-far beyond new MMIO being unavailable in VL mode. Reply 155 states the
-hardware defect: certain **valid** VL access patterns corrupt vital control
-registers, can lock the VL bus, and can accidentally activate the bus-master
-DMA engine; 1WS late decode plus the SAUP2 delay is his partial workaround.
-So the failed attempts were almost certainly already old-MMIO ports — the
-window is not the variable; the bus interface's transaction handling is.
+On 2026-09-21 and 2026-09-22 mkarcher answered this project's question directly
+in the thread. The finding, the quotes and the hypotheses it kills are recorded
+in
+[the mixing decision](../decisions/2026-09-22-virge-vl-mmio-framebuffer-mixing.md).
+In short: the MMIO window is not the variable, and the trigger is **mixing
+framebuffer memory access with certain regions of MMIO space**. The exact
+pattern is under NDA and will not be disclosed. The damage is silent
+configuration corruption whose worst case enables bus-interface features such
+as PCI retries while in VL mode, locking the bus some time later.
 
-Consequences for this plan:
+What that does to this plan:
 
-- The failure is in the VL bus interface's handling of the access patterns
-  that MMIO engine use generates, not in the S3D engine, the LFB, or the
-  choice of A- versus B-window. The unaccelerated VLB desktop path and the
-  LFB work remain validated.
-- Stage 4's fallback ("capture or document the known patched-driver sequence")
-  is now known to have no known answer: the inventor of the workaround has no
-  working sequence even with a CPLD. Stage 4 is expected to fail as written.
-- The failures cluster on **Win9x DOS-box text/graphics mode transitions**,
-  worst on the return to text, with no reliable reproduction pattern and no
-  further detail available. This is the answer to the old open question 1, and
-  it lands on the transition this plan already identified as the one that
-  matters (`ResetHiResMode` / full-screen DOS). Two supporting observations:
-  the old-MMIO A-window shares physical addresses with VGA graphics-mode
-  memory, which is exactly what a DOS-box mode set re-decodes and what BIOS
-  mode-set traffic hammers; and the framebuffer-only configuration survives
-  the same transitions, so the fault needs the MMIO/acceleration
-  configuration to be active when the transition happens.
-- Because no pattern was isolated, "not only" must be read as *the trigger set
-  is unbounded*. No software sequence may be presented as a fix, and Stage 4
-  stays expected-to-fail regardless of how well the mitigation below works.
-- Terminal Velocity drove S3D while avoiding MMIO, so *some* way of feeding
-  the engine survives the broken interface — plausibly the command-list fetch
-  path this plan currently forbids, which would touch MMIO only sparsely for
-  setup instead of hammering the register window per operation. Knowing
-  exactly what mechanism he used, and whether it is sane for the two Windows
-  2D operations Velocity9x needs, is now open question 2.
-- Nothing near the engine may be assumed safe merely because it avoids MMIO:
-  "valid access patterns corrupt control registers" is a bus-interface claim.
-  CRTC port I/O demonstrably works (the framebuffer desktop works), so flip
-  and vblank via ports remain the best-supported reduced tier, but they get
-  measured, not assumed.
+- The 2026-08-23 mode-transition reading is retired. That clustering was where
+  framebuffer and accelerator traffic interleave most densely, not a cause,
+  and sequencing CR53 around the transition is not a mitigation.
+- **The configuration this plan chose - variant A plus the high LFB - is in
+  the susceptible set.** Variant A is immune only with no LFB at all, because
+  then nothing can reach the framebuffer; the immunity comes from having no
+  drawing path, not from the window.
+- **Variant B is rejected, not a fallback.** It places a framebuffer window at
+  `A000` alongside MMIO at `B800`, which is the mixing condition by
+  construction, and is susceptible with no high LFB at all.
+- The defect is in the VL interface alone. A PCI-connected ViRGE handles the
+  same patterns perfectly, so Stages 0-2 are unaffected as PCI work.
+- A ViRGE/DX cannot substitute for a 325: strap-modded to select VL it stayed
+  in PCI mode, with one bus-type strap never read back at all.
+- Terminal Velocity is explained rather than mysterious. A full-screen S3D
+  game draws everything through the engine, so there is no unaccelerated GDI
+  framebuffer traffic to interleave. The old open question about its transport
+  is closed; what mattered was the absence of CPU framebuffer access, not the
+  presence of a clever one.
+- Most seriously, the mixing he describes - accelerator MMIO interleaved with
+  unaccelerated framebuffer drawing where acceleration makes no sense - **is
+  this driver's architecture**. Velocity9x is a DIB Engine driver: GDI
+  rasterises into the framebuffer through `V9xScreenSelector` while the HAL
+  accelerates DirectDraw through MMIO. On VL that is the steady state, not an
+  edge case, from the first mouse move over an accelerated surface.
+
+### Can all 2D go through the S3D engine instead?
+
+The obvious response is to remove CPU framebuffer access entirely and drive
+every operation through the engine, reaching the immune configuration by
+construction. It is the right instinct - it targets the named defect rather
+than a symptom - but as a whole-driver strategy it does not survive contact:
+
+- **It is the full DDI this project deliberately does not implement.** Every
+  operation must be hardware or it falls back to the DIB Engine, which needs a
+  framebuffer pointer. There is no partial credit: one interleaved framebuffer
+  write is enough to corrupt the configuration silently.
+- **Unaccelerated pixels still have to cross the bus.** Operations the engine
+  cannot do natively would be rendered into a system-memory shadow and pushed
+  up through the image-transfer window - MMIO writes rather than framebuffer
+  writes, so safe, but the same volume of VL traffic plus a second write into
+  the shadow. For typical GDI work it would be slower than the DIB Engine
+  driver it replaced.
+- **A shadow diverges.** Once some operations run on the engine and others in
+  the shadow, any operation reading existing screen content is wrong unless
+  every hardware operation is mirrored in the shadow as well, which spends the
+  acceleration it was meant to protect.
+- **Screen-to-host is not established.** `GetDIBits` and any read-modify-write
+  of screen content need pixels back. If the engine has no screen-to-host
+  transfer, the only route is a CPU framebuffer read - the forbidden access.
+- **DirectDraw `Lock` defeats it outright.** A locked surface hands the
+  application a raw pointer and it writes video memory with the CPU. That
+  cannot be intercepted, and DirectDraw is this project's entire purpose.
+
+So: no, not as a general driver architecture. There is a narrower version worth
+recording, because it is the Terminal Velocity configuration rather than a
+guess at one - **acceleration only in full-screen exclusive DirectDraw**. The
+desktop stays framebuffer-only and unaccelerated, which mkarcher confirms works
+flawlessly; MMIO is enabled only while an exclusive full-screen DirectDraw app
+owns the display, where GDI is not drawing; and a `Lock` request on a video
+memory surface drops that app to unaccelerated for the rest of its session
+rather than being served. That is bounded, is detectable at runtime, and
+matches the one configuration known to have worked on real VL hardware. It is
+still a hypothesis, it still needs the readback diagnostic below to be trusted,
+and it is worth nothing until Stage 0 exists.
+
+Whether Ironfield locks its surfaces or blits them decides whether the narrow
+version would help it at all. That is measurable on PCI today, before any VL
+work.
 
 Do not buy or build Stage 4 hardware before both questions are answered,
 directly or via the Vogons thread.
@@ -227,23 +270,26 @@ mapping gate.
 
 ### On the register path, do not leave old MMIO enabled at rest
 
-The 2026-08-23 follow-up puts the failures on DOS-box text/graphics
-transitions while the acceleration configuration is live. The A-window at
-`0xA0000` overlaps VGA graphics-mode memory, which those transitions
-re-decode, so a plausible mitigation is to keep old MMIO exposed only while
-the driver is actually issuing S3D commands: set CR53[4:3] to `10b` before a
-batch of accelerated operations, restore `00b` after the batch has drained
-and status is idle. Velocity9x issues only fills and screen copies, so the
-per-batch CR53 cost is affordable and the window is closed whenever a DOS box,
-a VBE mode set or `ResetHiResMode` can occur.
+Keep old MMIO exposed only while the driver is actually issuing S3D commands:
+set CR53[4:3] to `10b` before a batch of accelerated operations, restore `00b`
+once the batch has drained and status is idle.
 
-Treat this as a **hypothesis to measure on the register path only**, not as a
-fix and not as a reason to advance Stage 4's odds. Nothing about the reported
-failure was reproducible, "but not only" leaves the trigger set unbounded, and
-a mitigation that merely narrows a window cannot be shown correct by passing
-tests. PCI keeps its current always-enabled new-MMIO behaviour; do not
-introduce batch bracketing there, where it would add state and risk to a
-working path.
+The justification is not the DOS-box transition, which is retired as a cause.
+It is that the defect needs framebuffer and MMIO access to be mixed, and a
+closed window makes the accelerator unreachable, so there is nothing to
+interleave with GDI's framebuffer writes. That also sets the real requirement,
+which is stricter than the CR53 writes themselves: **no framebuffer access may
+occur between opening and closing the window.** With the DIB Engine free to
+rasterise on another thread's GDI call, bracketing CR53 alone does not deliver
+that. Whether Win9x's serialisation actually holds GDI off for the duration of
+a DirectDraw HAL call is checkable, and it must be checked rather than assumed
+before this is called a mitigation.
+
+Treat it as a **hypothesis to measure on the register path only**, not as a
+fix. A mitigation that narrows a window cannot be shown correct by passing
+tests when the failure it prevents is silent and delayed. PCI keeps its
+current always-enabled new-MMIO behaviour; do not introduce batch bracketing
+there, where it would add state and risk to a working path.
 
 If bracketing is implemented, the enable and disable must be the same exact
 CR53 leaf functions the binary audit already covers, and the diagnostics must
@@ -264,10 +310,10 @@ separate access-path test for the runtime VLB cap reduction, and make
 `V9XHW.INI` derive its Direct3D statement from the effective descriptor rather
 than the device entry's current static `hardware-s3d` string.
 
-Use `0xA0000`/64 KiB first because it preserves the current offsets without a
-bias. Treat `0xB8000`/32 KiB as a measured fallback. If it is needed, map only
-the physical 32 KiB and publish a logical base biased by `-0x8000`; add a test
-that `base + 0x8504` resolves to the mapped address plus `0x0504`.
+Use `0xA0000`/64 KiB. **`0xB8000` is rejected, not a fallback**: that variant
+exposes a framebuffer window at `A000` alongside MMIO at `B800`, which is the
+mixing condition by construction and is susceptible even with no high LFB. Do
+not implement the biased base, and do not spend a test on it.
 
 ## Stage 0 - support the chip that the board uses
 
@@ -384,21 +430,22 @@ D3D, passes guarded DirectDraw fill/blit, survives DOS-box return, and reads
 
 This stage is **expected to fail as written**: the secondhand report above
 says the author of the SAUP2 workaround could not make an accelerated Windows
-driver work on his own VLB 325, even with a CPLD, and the thread localises the
-defect to the VL bus interface's transaction handling rather than to any
-particular MMIO window. It stays in the plan because the reported failures
-cluster on a specific transition this driver controls the sequencing of, and
-because a negative result here is bounded — it rejects only the physical
-acceleration claim.
+driver work on his own VLB 325, even with a CPLD. The mixing decision makes
+that sharper: the configuration this plan chose is in the susceptible set, and
+the only immune one cannot draw. Stage 4 stays in the plan only as the way to
+measure a specific bounded hypothesis - the full-screen-exclusive design
+above - and because a negative result is bounded, rejecting the physical
+acceleration claim and nothing else.
 
-The gating question is no longer answerable by asking; the original
-investigator has said as much. Run the Terminal Velocity measurement (open
-question 1) before acquiring hardware, because a working non-MMIO transport
-would change what this stage should even attempt.
+Do not start it to test the plan as originally written. The question it can
+still answer is whether a configuration with no CPU framebuffer access while
+MMIO is live survives on real VL hardware.
 
 Required hardware and firmware:
 
-- an MK-765VL-class board and a ViRGE 325, not a ViRGE/DX standing in for it;
+- an MK-765VL-class board and a ViRGE 325. **A ViRGE/DX cannot stand in**:
+  strap-modded for VL it stays in PCI mode, and one bus-type strap is never
+  read back at all;
 - a VL-correct ViRGE ROM whose mode list was inventoried in Stage 0;
 - 1 WS late decode and mkarcher's one-VL-clock SAUP2 delay, using 74ACT74 or
   74F74 as described in
@@ -415,15 +462,22 @@ Bring-up order is deliberately narrow:
    screen copy.
 5. The DirectDraw regression and DOS-box return; no Direct3D and no command DMA.
 
-Because the 2026-08-23 follow-up puts the failures on DOS-box text/graphics
-transitions, promote that transition from a late regression item to a measured
-step of its own: after step 3, with old MMIO enabled but no accelerated
-operation yet issued, cycle a DOS box into graphics mode and back repeatedly
-and check the control registers and bus for the reply-155 symptoms. Run the
-same cycling again after step 4, and once more with the batch bracketing from
-the design decisions enabled, recording each result separately. If read-only
-status sampling already survives the cycling but a fill does not, that
-distinction is the most useful finding this stage can produce.
+**Every step above is instrumented by configuration readback, not by waiting
+for a hang.** The corruption is silent and the lockup arrives later, so a step
+that completes proves nothing on its own. After each step, read the
+bus-interface configuration registers back and compare them against what was
+written; a divergence is the defect, caught where it happened. Record the
+readback with every result, including the passes.
+
+Order the steps so the mixing itself is the variable. Step 3 with no
+framebuffer access at all is the immune configuration and must come back
+clean - if it does not, the fault is elsewhere and the rest is meaningless.
+Step 4 issues engine work with the desktop idle. Only then introduce
+deliberate mixing: GDI drawing interleaved with accelerated operations, which
+is what the shipped DIB Engine driver does continuously. If readback stays
+clean without mixing and diverges with it, that confirms the decision doc on
+this project's own hardware and is the most useful finding this stage can
+produce.
 
 Use the driver's no-clear VBE mode flag so its own mode entry does not ask the
 BIOS to clear the framebuffer through an engine path. A ROM may still use the
@@ -491,37 +545,29 @@ Not modified in Stages 0-3:
 
 ## Open questions, in decision order
 
-**Answered, 2026-08-23:** which access patterns trigger the reply-155
-corruption. Answer: no isolated pattern, but the failures cluster on Win9x
-DOS-box text/graphics mode transitions with the acceleration configuration
-live, worst on the return to text, and explicitly "not only" there. No further
-detail is available from the original investigator, so this question cannot be
-refined by asking again — only by measurement. It does not by itself kill
-Stage 4, because ordinary old-MMIO register access away from a mode transition
-was never reported as failing; it does mean the mode transition is the gate,
-which is why Stage 4's bring-up now measures the DOS-box cycle before and
-after the first accelerated operation.
+**Answered and closed, 2026-09-22**, by
+[the mixing decision](../decisions/2026-09-22-virge-vl-mmio-framebuffer-mixing.md):
+which access patterns trigger the corruption (mixing framebuffer and MMIO
+access; exact pattern under NDA), what Terminal Velocity did differently (it
+had no unaccelerated framebuffer drawing to interleave), and whether the
+B-window or a ViRGE/DX offers a way round (neither does). None of these can be
+refined by asking further.
 
-1. What mechanism did Terminal Velocity use to drive S3D on the VLB 325 while
-   avoiding MMIO, and is that mechanism usable from the Win9x 2D backend for
-   solid fill and screen copy? (Plausibly the command-list fetch path this
-   plan currently forbids, with sparse MMIO setup writes; a measured answer
-   could reopen it as a separate plan. The instrumented-86Box Terminal
-   Velocity run can characterise the default S3D library behaviour without
-   hardware.)
+1. Does Ironfield - or the DirectDraw applications this driver targets - `Lock`
+   video memory surfaces, or does it blit into them? Measurable on PCI today,
+   and it decides whether the full-screen-exclusive design would help any real
+   application. Cheapest open question here and the only one needing no new
+   hardware.
 2. Does the Windows DPMI host map physical `0xA0000` with function 0800h while
    the high framebuffer mapping remains live?
-3. Does closing the old-MMIO window outside accelerated batches survive the
-   DOS-box transition cycle where leaving it open does not? Measurable on the
-   emulator for sequencing and on hardware for the actual defect.
+3. Does Win9x serialisation actually hold the DIB Engine off for the duration
+   of a DirectDraw HAL call, so that a bracketed MMIO window can guarantee no
+   framebuffer access inside it?
 4. Which measured VBE modes and memory configuration are honest for the 2 MiB
    ViRGE 325 ROM used by the emulator and eventual board?
-5. Does the A-window survive all PCI reset/mode transitions without needing the
-   B-window fallback?
-6. Which VL-correct ViRGE ROM is available for redistribution or local testing?
+5. Which VL-correct ViRGE ROM is available for redistribution or local testing?
 
-Question 1 blocks Stage 4 only and is now answerable by emulator measurement
-rather than by asking. Question 2 blocks all integrated old-MMIO work.
-Question 3 is a Stage 4 experiment, not a prerequisite. Question 4 blocks
-claiming support for the actual physical chip. Question 6 does not block
-Stages 0-2.
+Question 1 gates whether the narrow acceleration design is worth building at
+all. Question 2 blocks all integrated old-MMIO work. Question 3 blocks calling
+bracketing a mitigation. Question 4 blocks claiming support for the actual
+physical chip. Question 5 does not block Stages 0-2.
