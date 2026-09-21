@@ -19,6 +19,11 @@ were wrong, and all three change a step:
 - The untextured program **cannot write a constant** without an encoding
   this driver does not have. Step 2 needs a different lever.
 
+A fourth correction is not about the code but about the writing. Step 3 was
+put as a fix and is a probe, and the section-3 bullet under it assumes more
+than it shows. Both are marked down in place rather than deleted, because
+what the plan believed before a run is the thing a later reader needs.
+
 No netbook run has happened. Steps 1, 2 and 4 still need one, and step 3 is
 still gated on step 1.
 
@@ -106,6 +111,30 @@ Why the application would withhold textures from those objects:
   xf86-video-intel's `i915_render.c` accepts both up to 2048. Square-only is
   this driver's rule, not the chip's. `D3dTextureRefusedShape=0` is
   consistent with it: an application told "square only" never asks.
+
+  **Weakened 2026-09-21. This is the weakest bullet in the plan and was
+  written as though it were the strongest.** Three things are assumed:
+
+  - `D3dTextureRefusedShape=0` cannot tell "the application obeyed the
+    cap" from "the application's maps are square anyway". 3DMark99 is a
+    1999 DX6 benchmark built for hardware where square and power-of-two
+    was routine. That its data contains non-square maps at all is assumed
+    here, not shown, and no reachable source was found that says so.
+  - `DrawsNoHandle=30140`, 17 per cent, is not established as a defect.
+    Interface, overlays, sky gradients and shadow geometry are legitimately
+    untextured in a scene of that era. The plan asserts the application is
+    withholding textures; nothing measured says it is.
+  - Two separate caps are conflated. A 512-wide sky strip fails the 256
+    ceiling, not the square rule, so dropping `SQUAREONLY` does nothing
+    for the example the bullet leads with.
+
+  And square-only is not an oversight to correct. `v9x_d3d_i9xx_bind_texture`
+  states the policy: the limits say what has been measured, the engine says
+  what the packet can express, and the narrower is what an application may
+  have. intel45 sampled one 32x32 map. "Square only" and "any size to 2048"
+  are both generalisations from that one sample, and the conservative one
+  was chosen deliberately, under this project's rule on unmeasured claims.
+  Step 3 relaxes it to take a measurement, not because it is wrong.
 - ~~The extended-caps GUID is still declined~~ **Withdrawn.** It is
   answered. The block at `d3d_core.c:2432` copies the shared block's
   limits and returns `DDHAL_DRIVER_HANDLED` at `:2453`, ahead of the
@@ -166,9 +195,36 @@ Each step is one netbook run. Do not start step 3 until step 1 has run.
    audit, and puts exactly the same magenta on the panel. Whatever is
    magenta is the no-handle geometry. One photo, no counters. Not shipped,
    not gated: revert after the capture.
-3. **Drop SQUAREONLY and raise the published texture maximum** to what the
-   two reference trees license: independent width and height, POW2, up to
-   2048. ~~Bounds in `d3d_i9xx_target.c` and the caps move together.~~
+3. **Relax SQUAREONLY as a probe, and record it as one.** ~~Drop SQUAREONLY
+   and raise the published texture maximum.~~ Reframed 2026-09-21: the
+   original wording made this a fix with a mechanism behind it, and it is
+   not. It is one netbook run that can return only "no change" or "more
+   textured draws", and the reasoning it rests on is the weakened bullet in
+   section 3.
+
+   **It is still the step to run**, for two reasons that survive the
+   weakening. It is the only discriminator available: the cap steers
+   creation before anything observable happens, so no counter on the
+   current build can say whether the application has non-square maps, and
+   relaxing it and watching `DrawsNoHandle` is the measurement. And the
+   downside is bounded by code rather than by argument -
+   `v9x_d3d_i9xx_bind_map` proves the footprint lies inside the aperture
+   whatever the shape, and `v9x_i9xx_build_map_state` already takes width
+   and height independently and refuses what will not fit its fields.
+   There is no square assumption anywhere below the Direct3D layer. A
+   non-square map that the sampler dislikes is a wrong picture, not a write
+   outside the surface, which is what the limits comment already says.
+
+   **So it is a temporary relaxation of a deliberate conservative choice,
+   and the decision doc has to say that** - not "square-only was a bug".
+   Whichever way the run goes, what is learned is about 3DMark99's texture
+   data, not about the chip. If nothing changes, restore the cap: the
+   measured basis for it is unchanged either way, and leaving an unmeasured
+   widening in place because it did no visible harm is the failure this
+   project keeps writing decision docs about.
+
+   Mechanically: ~~bounds in `d3d_i9xx_target.c` and the caps move
+   together.~~
    `V9X_I9XX_MAP_DIMENSION_MAX` is already 2048 and `v9x_d3d_i9xx_bind_map`
    already checks width and height independently, so the target side does
    not move at all. What moves is in `d3d_i9xx.c`: `texture_size_max` in
@@ -180,8 +236,9 @@ Each step is one netbook run. Do not start step 3 until step 1 has run.
 
    The 256 ceiling has a stated reason - a 2048-square map is 8 MiB and
    stolen memory is 8 - so raising it interacts with step 4 rather than
-   being independent of it. Dropping SQUAREONLY alone, with the ceiling
-   left at 256, is the smaller first move and tests the more likely half.
+   being independent of it. Drop `SQUAREONLY` alone, with the ceiling left
+   at 256. That is one variable rather than two, and a run that moves both
+   cannot say which moved the picture.
 4. **Run at 640x480x16, or with a two-buffer chain**, with no code change.
    More textured objects at the smaller footprint means residency is part of
    the picture and the video-memory report to the application needs work.
