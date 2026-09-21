@@ -7,6 +7,21 @@ the netbook's boot INI, and an online check of the gen3 reference trees.
 Nothing here has run on the netbook. This plan states what the evidence
 supports, what it does not, and the order in which to spend captures.
 
+**Revised 2026-09-21**, after checking every code claim above against the
+tree at `491042c` rather than against the review that produced them. Three
+were wrong, and all three change a step:
+
+- `GUID_D3DExtendedCaps` is **already answered**, and has been since
+  `facf2f5`, which is an ancestor of the `8d4cf3c` build intel102 ran. Step
+  6 is done; section 3's second bullet is withdrawn below.
+- `V9X_I9XX_MAP_DIMENSION_MAX` is **already 2048**. Step 3 is smaller than
+  it was written to be.
+- The untextured program **cannot write a constant** without an encoding
+  this driver does not have. Step 2 needs a different lever.
+
+No netbook run has happened. Steps 1, 2 and 4 still need one, and step 3 is
+still gated on step 1.
+
 ## 1. The premise of intel100 to intel102 conflicts with the photograph
 
 The netbook photograph attached to intel98
@@ -91,8 +106,20 @@ Why the application would withhold textures from those objects:
   xf86-video-intel's `i915_render.c` accepts both up to 2048. Square-only is
   this driver's rule, not the chip's. `D3dTextureRefusedShape=0` is
   consistent with it: an application told "square only" never asks.
-- The extended-caps GUID is still declined (`DriverInfoDeclined=14` of 18),
-  so the `dwMaxTextureWidth` the driver fills never reaches the application.
+- ~~The extended-caps GUID is still declined~~ **Withdrawn.** It is
+  answered. `d3d_core.c:2432` returns `DDHAL_DRIVER_HANDLED` with the
+  shared block's limits before the declining loop is reached, and
+  `facf2f5` put it there ahead of the `8d4cf3c` build intel102 ran.
+  `DriverInfoGuid09=0x7DE41F80` in the intel102 snapshot is that GUID's
+  Data1, so the runtime did ask and did get an answer;
+  `DriverInfoDeclined=14` of 18 counts the other GUIDs.
+
+  This does not weaken the bullet above it - it **strengthens** it. The
+  application was told, explicitly and in the one structure that can carry
+  it, that this device takes textures from 8 to 256 and square. An
+  application given that and asking for nothing outside it is exactly
+  `D3dTextureRefusedShape=0`, and there is now no remaining reading in
+  which the limits were published and unheard.
 - 3DMark99 result dumps show it prefers `4444 RGBA` textures in 16-bit
   modes. The driver enumerates 565, 1555 and 4444 and records the two alpha
   types as unmeasured.
@@ -112,22 +139,56 @@ Each step is one netbook run. Do not start step 3 until step 1 has run.
    rail and a white field says the window was wrong and sections 1 and 2
    stand. A PPM that is still uniform says the instrument is wrong, and that
    becomes the only question. Record either as a decision doc.
-2. **Debug build: the untextured program writes a constant.** Replace
-   `mov oC, T8` with a constant magenta in a throwaway build. Whatever is
-   magenta on the panel is the no-handle geometry. One photo, no counters.
-   Not shipped, not gated: revert after the capture.
-3. **Drop SQUAREONLY and raise the texture maximum** to what the two
-   reference trees license: independent width and height, POW2, up to 2048.
-   Bounds in `d3d_i9xx_target.c` (`V9X_I9XX_MAP_DIMENSION_MAX`) and the caps
-   at `d3d_i9xx.c:1200` move together, host tests first. Measure with the
-   same photo, `DrawsNoHandle`, and `D3dTextureCreates`.
+
+   **The arm is not instantaneous, and the procedure has to allow for it.**
+   `v9x_i9xx_note_frame_coverage` returns on the countdown before it looks
+   at `frame_cover_request` (`i9xx_scanout.c:947` against `:1006`), so an
+   `-arm` is not seen until the next 64-flip boundary and the captured
+   frame is up to 64 flips later than the moment of arming. intel102's
+   2,794 flips make that a few seconds. So: arm while the rail is on
+   screen and with the scene still running, photograph the panel through
+   the following seconds, and only then dump.
+2. **Debug build: make the no-handle geometry magenta.** ~~Replace `mov oC,
+   T8` with a constant magenta.~~ That cannot be written. A Gen3 fragment
+   shader has no immediates, and this driver has neither a constant
+   register type nor a `_3DSTATE_PIXEL_SHADER_CONSTANTS` packet -
+   `intel_gen3_3d.h` declares `FS_REG_TYPE_R`, `_T`, `_S` and `_OC` and
+   nothing else. The alternatives are a new swizzle selector (Mesa's i915
+   spells ONE and ZERO as source selectors 4 and 5, which this tree's audit
+   has not recorded) or a new packet; both are unaudited encoding claims,
+   and the plan budgeted neither.
+
+   Do it in the vertex colours instead. The untextured branch at
+   `d3d_i9xx.c:1559` hands `colors` to `v9x_i9xx_build_runtime_run`;
+   overwriting that array with magenta for that branch alone is a throwaway
+   change to data the builder already carries, needs no new encoding and no
+   audit, and puts exactly the same magenta on the panel. Whatever is
+   magenta is the no-handle geometry. One photo, no counters. Not shipped,
+   not gated: revert after the capture.
+3. **Drop SQUAREONLY and raise the published texture maximum** to what the
+   two reference trees license: independent width and height, POW2, up to
+   2048. ~~Bounds in `d3d_i9xx_target.c` and the caps move together.~~
+   `V9X_I9XX_MAP_DIMENSION_MAX` is already 2048 and `v9x_d3d_i9xx_bind_map`
+   already checks width and height independently, so the target side does
+   not move at all. What moves is in `d3d_i9xx.c`: `texture_size_max` in
+   `v9x_d3d_i9xx_limits` (256), the `SQUAREONLY` bit in `dwTextureCaps`,
+   and the `wWidth != wHeight` test in `v9x_d3d_i9xx_bind_texture`. The
+   limits feed the extended caps, so raising them is what the application
+   is now known to read. Host tests first. Measure with the same photo,
+   `DrawsNoHandle`, and `D3dTextureCreates`.
+
+   The 256 ceiling has a stated reason - a 2048-square map is 8 MiB and
+   stolen memory is 8 - so raising it interacts with step 4 rather than
+   being independent of it. Dropping SQUAREONLY alone, with the ceiling
+   left at 256, is the smaller first move and tests the more likely half.
 4. **Run at 640x480x16, or with a two-buffer chain**, with no code change.
    More textured objects at the smaller footprint means residency is part of
    the picture and the video-memory report to the application needs work.
 5. **Record no-handle draws by screen area**, not count, only if steps 2
    to 4 leave the partition unexplained.
-6. **Answer `GUID_D3DExtendedCaps`.** Lowest priority: it changes what the
-   application believes, and the application already textures most draws.
+6. ~~**Answer `GUID_D3DExtendedCaps`.**~~ **Done, before this plan was
+   written.** `facf2f5`, in the build intel102 ran. Nothing to do; see the
+   revision note at the top for what its being answered implies.
 
 ## 5. What was looked for online and not found
 
