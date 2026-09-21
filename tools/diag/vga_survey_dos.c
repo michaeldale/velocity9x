@@ -27,8 +27,9 @@
  *   The aperture probe is opt-in again, on its own /aperture switch, because it
  *   is the only step that reads an address the card claims rather than a
  *   register the card answers for. It runs last, after Tier 2 has named the
- *   window base, and it goes through a BIOS service rather than driving the
- *   bus itself.
+ *   window base. Below 16 MB it goes through a BIOS service; above it, where
+ *   the service cannot reach and VLB windows usually are, through a read-only
+ *   unreal-mode excursion that proves itself against the BIOS ROM first.
  *
  * No video mode is ever set, and nothing is written to the card that outlives
  * the run.
@@ -64,6 +65,15 @@
 #define V9X_ROM_STRING_MIN 8
 #define V9X_ROM_STRING_MAX 72
 
+/*
+ * The unreal-mode self-test target: the system BIOS, read once as F000:0000
+ * through an ordinary far pointer and once as linear F0000h through FS. Sixteen
+ * bytes is enough to be sure the two agree without being uniform.
+ */
+#define V9X_SELFTEST_SEGMENT 0xf000u
+#define V9X_SELFTEST_LINEAR 0x000f0000ul
+#define V9X_SELFTEST_BYTES 16u
+
 /* The report is written a line at a time, so the only large buffers are the
  * fixed BIOS structures. Everything here lives in the single 64 KB data segment
  * of the small memory model. */
@@ -84,6 +94,19 @@ static unsigned char aperture_bytes[32];
  * the linear address handed to the BIOS is one this code can compute.
  */
 static unsigned char block_move_table[48];
+
+/*
+ * Unreal mode's GDT, its pseudo-descriptor, and the two readings the self-test
+ * compares. File scope for the same reason block_move_table has it: LGDT is
+ * given a linear address, and computing one means knowing which segment the
+ * bytes live in.
+ */
+static unsigned char gdt[16];
+static unsigned char gdtr[6];
+static unsigned char selftest_far[V9X_SELFTEST_BYTES];
+static unsigned char selftest_flat[V9X_SELFTEST_BYTES];
+static unsigned long unreal_gdt_linear;
+static int unreal_selftest_ok;
 
 struct display_device {
     unsigned char bus;
@@ -2035,6 +2058,172 @@ static void run_tier2(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Unreal mode - the only way past the BIOS service's 16 MB ceiling    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Why this is in a tool that otherwise implements no mechanisms at all.
+ *
+ * INT 15h AH=87h builds its descriptors from a 24-bit base, so it cannot reach
+ * above 16 MB. Measured 2026-08-28 on a Madao Trio64V+ VLB card, CR59/CR5A put
+ * the window at 62000000h and the aperture step declined - and the survey is
+ * handed to exactly the people whose cards sit up there. A probe that skips the
+ * normal case is not a probe.
+ *
+ * This is the same excursion as tools/diag/vlb_aperture_dos.c, reduced to what
+ * a read-only survey needs: FS is loaded with a 4 GB descriptor, protected mode
+ * is left again immediately, and the segment keeps the limit it was given
+ * because real mode only reloads one on a write to the register. Nothing here
+ * writes through that segment - there is no write_flat, deliberately, and the
+ * build gate refuses one.
+ *
+ * The residual risk is an NMI between setting PE and clearing it, which CLI
+ * cannot mask and no version of this technique can. It is accepted only behind
+ * /aperture, a confirmed 386, real mode, and no Windows.
+ */
+static void enter_unreal(void *descriptor);
+#pragma aux enter_unreal =      \
+    ".386p"                     \
+    "pushf"                     \
+    "cli"                       \
+    "lgdt fword ptr [si]"       \
+    "mov  eax,cr0"              \
+    "or   al,1"                 \
+    "mov  cr0,eax"              \
+    "jmp  short L1"             \
+    "L1:"                       \
+    "mov  bx,8"                 \
+    "mov  fs,bx"                \
+    "mov  eax,cr0"              \
+    "and  al,0feh"              \
+    "mov  cr0,eax"              \
+    "jmp  short L2"             \
+    "L2:"                       \
+    "popf"                      \
+    parm [si] modify exact [ax bx];
+
+static unsigned long read_flat(unsigned long linear);
+#pragma aux read_flat =  \
+    ".386"               \
+    "movzx eax,ax"       \
+    "movzx edx,dx"       \
+    "shl   edx,16"       \
+    "or    eax,edx"      \
+    "mov   esi,eax"      \
+    "mov   eax,fs:[esi]" \
+    "mov   edx,eax"      \
+    "shr   edx,16"       \
+    parm [dx ax] value [dx ax] modify exact [ax dx si];
+
+/*
+ * Put the ordinary 64 KB limit back rather than leaving DOS with a segment
+ * register that can address the whole machine.
+ */
+static void leave_unreal(void);
+#pragma aux leave_unreal = \
+    ".386"                 \
+    "xor  ax,ax"           \
+    "mov  fs,ax"           \
+    modify exact [ax];
+
+/*
+ * Selector 08h: base 0, limit 4 GB, 32-bit writable data. The pseudo-descriptor
+ * LGDT reads wants the GDT's *linear* address, which in the small model means
+ * building it from DS rather than from a pointer.
+ */
+static void build_gdt(void)
+{
+    struct SREGS segments;
+
+    segread(&segments);
+    unreal_gdt_linear = ((unsigned long)segments.ds << 4) +
+                        (unsigned long)FP_OFF((void far *)gdt);
+
+    memset(gdt, 0, sizeof(gdt));
+    gdt[8] = 0xffu;         /* limit 15:0                                */
+    gdt[9] = 0xffu;
+    gdt[10] = 0x00u;        /* base 15:0                                 */
+    gdt[11] = 0x00u;
+    gdt[12] = 0x00u;        /* base 23:16                                */
+    gdt[13] = 0x92u;        /* present, ring 0, data, writable           */
+    gdt[14] = 0xcfu;        /* 4 KB granularity, 32-bit, limit 19:16 = F */
+    gdt[15] = 0x00u;        /* base 31:24                                */
+
+    gdtr[0] = (unsigned char)(sizeof(gdt) - 1u);
+    gdtr[1] = 0x00u;
+    gdtr[2] = (unsigned char)(unreal_gdt_linear & 0xfful);
+    gdtr[3] = (unsigned char)((unreal_gdt_linear >> 8) & 0xfful);
+    gdtr[4] = (unsigned char)((unreal_gdt_linear >> 16) & 0xfful);
+    gdtr[5] = (unsigned char)((unreal_gdt_linear >> 24) & 0xfful);
+}
+
+static void read_flat_bytes(unsigned long linear, unsigned char *out,
+                            unsigned count)
+{
+    unsigned offset;
+
+    for (offset = 0u; offset < count; offset += 4u) {
+        unsigned long value = read_flat(linear + offset);
+
+        out[offset] = (unsigned char)(value & 0xfful);
+        out[offset + 1u] = (unsigned char)((value >> 8) & 0xfful);
+        out[offset + 2u] = (unsigned char)((value >> 16) & 0xfful);
+        out[offset + 3u] = (unsigned char)((value >> 24) & 0xfful);
+    }
+}
+
+/*
+ * Read the window through the flat segment, having first proved the flat read
+ * works at all.
+ *
+ * Without the self-test, "all FFh at the aperture" and "unreal mode is not
+ * working" are the same report, and the first is a conclusion this project has
+ * no business drawing confidently. The BIOS is read both ways and the two must
+ * agree; if they agree on a single repeated byte the comparison proves nothing
+ * and the result is declared inconclusive rather than passed.
+ *
+ * One excursion covers both reads, so a failure cannot be the descriptor having
+ * been rebuilt in between.
+ */
+static int unreal_aperture_read(unsigned long physical, unsigned byte_count)
+{
+    const unsigned char far *rom =
+        (const unsigned char far *)MK_FP(V9X_SELFTEST_SEGMENT, 0u);
+    unsigned index;
+    unsigned char first;
+    int uniform = 1;
+
+    for (index = 0u; index < V9X_SELFTEST_BYTES; ++index) {
+        selftest_far[index] = rom[index];
+    }
+
+    memset(aperture_bytes, 0, sizeof(aperture_bytes));
+    build_gdt();
+    enter_unreal(gdtr);
+    read_flat_bytes(V9X_SELFTEST_LINEAR, selftest_flat, V9X_SELFTEST_BYTES);
+    read_flat_bytes(physical, aperture_bytes, byte_count);
+    leave_unreal();
+
+    if (memcmp(selftest_far, selftest_flat, V9X_SELFTEST_BYTES) != 0) {
+        return 0;
+    }
+
+    first = selftest_far[0];
+    for (index = 1u; index < V9X_SELFTEST_BYTES; ++index) {
+        if (selftest_far[index] != first) {
+            uniform = 0;
+            break;
+        }
+    }
+    if (uniform) {
+        return 0;
+    }
+
+    unreal_selftest_ok = 1;
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* [Aperture] - opt-in linear window read                              */
 /* ------------------------------------------------------------------ */
 
@@ -2048,17 +2237,21 @@ static void run_tier2(void)
  * survey has to find out whether anything answers at the address the card
  * claims.
  *
- * The read goes through INT 15h AH=87h, the BIOS extended-memory block move.
- * That is a service, not a mechanism this tool implements: no unreal mode, no
- * DPMI, no descriptor loading of our own, and it is a copy *from* the address in
- * question *to* a buffer in this program's data segment. Nothing is written
- * anywhere near the card.
+ * Below 16 MB the read goes through INT 15h AH=87h, the BIOS extended-memory
+ * block move - a service rather than a mechanism of our own, copying *from* the
+ * address in question *to* a buffer in this program's data segment.
+ *
+ * Above 16 MB the service's 24-bit descriptor base cannot reach, and that is
+ * where VLB windows actually sit, so the read goes through the unreal-mode flat
+ * segment above instead. Both paths only read, and the report names which one
+ * produced the bytes.
  *
  * Three honest limits, all of which the report states rather than this comment
  * alone:
  *
- *   The descriptor base is 24 bits, so the service cannot reach past 16 MB. If
- *   CR59/CR5A point higher, the base is reported and the read is skipped.
+ *   The flat read needs a 386 in real mode with no Windows. Where those do not
+ *   hold and the base is above 16 MB, the base is reported and the read is
+ *   skipped, with the reason naming the precondition that failed.
  *
  *   No mode is set. On these parts the window may only answer once a mode has
  *   been set with linear addressing enabled, so a dead result is suggestive and
@@ -2124,6 +2317,7 @@ static void survey_aperture(void)
     const char *reason = 0;
     char text[48];
     int read_it = 0;
+    int used_unreal = 0;
 
     /*
      * Decide before writing, so Status is the first key in the section as it is
@@ -2142,8 +2336,28 @@ static void survey_aperture(void)
             status = "skipped";
             reason = "window-base-is-zero";
         } else if (base >= 0x01000000ul) {
-            status = "skipped";
-            reason = "base-above-int15h-ah87h-16mb-limit";
+            /*
+             * Above the BIOS service's ceiling, so the flat read is the only
+             * route. Its preconditions are the CPU's mode, not the card's, and
+             * each refusal names which one failed so a skipped report can be
+             * acted on rather than guessed at.
+             */
+            if (!cpu_386_confirmed) {
+                status = "skipped";
+                reason = "base-above-16mb-and-no-386-for-unreal-mode";
+            } else if (protected_or_v86 || windows_present) {
+                status = "skipped";
+                reason = protected_or_v86
+                             ? "base-above-16mb-and-cpu-in-protected-or-v86-mode"
+                             : "base-above-16mb-and-windows-is-running";
+            } else if (unreal_aperture_read(base, sizeof(aperture_bytes))) {
+                used_unreal = 1;
+                read_it = 1;
+            } else {
+                used_unreal = 1;
+                status = "error";
+                reason = "unreal-mode-self-test-failed";
+            }
         } else if (block_move_read(base, sizeof(aperture_bytes))) {
             read_it = 1;
         } else {
@@ -2157,7 +2371,8 @@ static void survey_aperture(void)
     wr_status(status);
     if (reason != 0) wr_str("Reason", reason);
     wr_str("Requested", "yes");
-    wr_str("Method", "int15h-ah87h-block-move");
+    wr_str("Method", used_unreal ? "unreal-mode-flat-read"
+                                 : "int15h-ah87h-block-move");
     wr_str("Access", "read-only");
     wr_str("BaseSource", "s3-cr59-cr5a");
     /*
@@ -2185,6 +2400,19 @@ static void survey_aperture(void)
     wr_x8("CR59", s3_cr59);
     wr_x8("CR5A", s3_cr5a);
     wr_x32("Base", base);
+
+    /*
+     * The self-test readings go in whether it passed or failed. A failure is
+     * the more interesting report of the two, and it is unreadable without the
+     * two byte strings that disagreed.
+     */
+    if (used_unreal) {
+        wr_x32("GdtLinear", unreal_gdt_linear);
+        wr_x32("SelfTestLinear", V9X_SELFTEST_LINEAR);
+        wr_str("SelfTestStatus", unreal_selftest_ok ? "ok" : "failed");
+        wr_hex_block("SelfTestFarPointer", selftest_far, V9X_SELFTEST_BYTES);
+        wr_hex_block("SelfTestFlatSegment", selftest_flat, V9X_SELFTEST_BYTES);
+    }
     if (!read_it) return;
 
     wr_u("ReadBytes", sizeof(aperture_bytes));

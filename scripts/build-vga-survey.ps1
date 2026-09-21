@@ -63,10 +63,21 @@ function Test-V9xSurveySafety {
         # starts with the same letters: the whole quoted string has to be the
         # mnemonic and its operands, so the tool's own /out: switch is not
         # mistaken for an OUT instruction.
-        @{ Pattern = '"\s*(lmsw|lgdt|lidt|wrmsr|invd|wbinvd|out|outs[bwd]?)(\s[^"]*)?"';
+        # LGDT and a write to CR0 are no longer banned outright: the aperture
+        # probe's unreal-mode excursion needs both to reach a window above the
+        # 16 MB ceiling of INT 15h AH=87h, which is where VLB windows actually
+        # sit. Everything else that changes machine state stays refused, LIDT
+        # included - the excursion runs with the real-mode IDT in place, and a
+        # tool that loaded its own would be doing something this one does not.
+        # The sequence itself is pinned verbatim below rather than left to drift.
+        @{ Pattern = '"\s*(lmsw|lidt|wrmsr|invd|wbinvd|out|outs[bwd]?)(\s[^"]*)?"';
            Why = "inline assembly that changes machine state" },
-        @{ Pattern = '"\s*mov\s+(cr|dr)\d[^"]*"';
-           Why = "inline control-register write" }
+        @{ Pattern = '"\s*mov\s+(cr[1-9]|dr\d)[^"]*"';
+           Why = "inline control-register write outside CR0" },
+        # The survey reads. A store through the flat segment is how a read-only
+        # probe becomes a write to an address nobody has proved is video memory.
+        @{ Pattern = '"[^"]*\bmov\s+fs:\[';
+           Why = "a write through the unreal-mode flat segment" }
     )
     foreach ($rule in $banned) {
         if ($lower -match $rule.Pattern) {
@@ -93,6 +104,28 @@ function Test-V9xSurveySafety {
         if ($Text -notmatch $rule.Pattern) {
             throw ("vga_survey_dos.c is missing $($rule.Why); without it a " +
                    "null buffer aims the BIOS at DS:0000.")
+        }
+    }
+
+    # The unreal-mode excursion, pinned. Relaxing the LGDT and CR0 bans bought
+    # one specific sequence, not a licence to enter protected mode generally,
+    # so each safety-critical piece of that sequence is asserted present. The
+    # failure these catch is an edit that leaves the machine in protected mode,
+    # takes an interrupt mid-excursion, or hands DOS back a 4 GB segment.
+    $unrealRequired = @(
+        @{ Pattern = '"cli"';
+           Why = "the interrupt mask across the excursion" },
+        @{ Pattern = '"and  al,0feh"';
+           Why = "the clearing of PE that returns the CPU to real mode" },
+        @{ Pattern = 'static void leave_unreal\(void\);';
+           Why = "the reset of FS that takes the 4 GB limit back off DOS" },
+        @{ Pattern = 'if \(memcmp\(selftest_far, selftest_flat, V9X_SELFTEST_BYTES\) != 0\)';
+           Why = "the self-test that separates a dead window from a dead read" }
+    )
+    foreach ($rule in $unrealRequired) {
+        if ($Text -notmatch $rule.Pattern) {
+            throw ("vga_survey_dos.c is missing $($rule.Why); the unreal-mode " +
+                   "excursion is only audited with it.")
         }
     }
 
@@ -156,7 +189,9 @@ if ($GateSelfTest) {
         @{ Name = "unaudited port";      Add = 'static void bad(void) { outp(0x0060u, 0u); }' },
         @{ Name = "unaudited port read"; Add = 'static int bad(void) { return inp(0x1ce); }' },
         @{ Name = "unallowlisted bytes"; Add = 'static void bad(void); #pragma aux bad = "db 0x0f, 0x22, 0xc0";' },
-        @{ Name = "descriptor load";     Add = 'static void bad(void); #pragma aux bad = "lgdt [si]";' },
+        @{ Name = "IDT load";            Add = 'static void bad(void); #pragma aux bad = "lidt [si]";' },
+        @{ Name = "CR3 write";           Add = 'static void bad(void); #pragma aux bad = "mov cr3,eax";' },
+        @{ Name = "flat-segment write";  Add = 'static void bad(void); #pragma aux bad = "mov fs:[esi],eax";' },
         @{ Name = "port write in asm";   Add = 'static void bad(void); #pragma aux bad = "out dx,al";' },
         @{ Name = "inline INT 10h";      Add = 'static void bad(void); #pragma aux bad = "int 10h";' },
         # The required rules fail by omission, so their mutations delete rather
@@ -166,7 +201,16 @@ if ($GateSelfTest) {
         @{ Name = "null buffer left unsubstituted";
            Remove = 'destination = (void far *)vbe_no_buffer_scratch;' },
         @{ Name = "ES left as the caller's";
-           Remove = 'segments.es = FP_SEG(destination);' }
+           Remove = 'segments.es = FP_SEG(destination);' },
+        # The unreal-mode pins, undone the way an edit would undo them.
+        @{ Name = "PE left set";
+           Remove = '"and  al,0feh"' },
+        @{ Name = "interrupts left enabled";
+           Remove = '"cli"' },
+        @{ Name = "flat segment left loaded";
+           Remove = 'static void leave_unreal(void);' },
+        @{ Name = "self-test removed";
+           Remove = 'if (memcmp(selftest_far, selftest_flat, V9X_SELFTEST_BYTES) != 0)' }
     )
     $failures = @()
     foreach ($mutation in $mutations) {

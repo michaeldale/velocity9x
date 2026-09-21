@@ -482,13 +482,28 @@ function Get-ApertureVerdict {
 
     $status = Get-IniValue $Ini "Aperture" "Status"
     $reason = Get-IniValue $Ini "Aperture" "Reason"
+    $method = Get-IniValue $Ini "Aperture" "Method"
     $caveats = @()
 
-    if ((Get-IniValue $Ini "Aperture" "ProtectedOrV86") -eq "yes" -or
-        (Get-IniValue $Ini "Aperture" "EmsPresent") -eq "yes") {
+    # The V86 caveat belongs to the BIOS path only. The flat read refuses to run
+    # in virtual-8086 mode at all, so a report that used it was not emulated by
+    # anything - saying otherwise would discredit the better of the two results.
+    if ($method -ne "unreal-mode-flat-read" -and
+        ((Get-IniValue $Ini "Aperture" "ProtectedOrV86") -eq "yes" -or
+         (Get-IniValue $Ini "Aperture" "EmsPresent") -eq "yes")) {
         $caveats += ("the CPU was in virtual-8086 mode, so INT 15h AH=87h was " +
                      "emulated by a memory manager rather than executed by the " +
                      "BIOS; re-run from a clean boot to confirm")
+    }
+
+    # A flat read that never proved itself against the BIOS ROM cannot tell a
+    # dead window from a dead read, which is the one mistake this probe exists
+    # to avoid making confidently.
+    if ($method -eq "unreal-mode-flat-read" -and
+        (Get-IniValue $Ini "Aperture" "SelfTestStatus") -ne "ok") {
+        $caveats += ("the unreal-mode self-test did not pass, so all-FF here " +
+                     "may mean the flat read failed rather than the window " +
+                     "being dead")
     }
 
     if ($status -ne "ok") {
