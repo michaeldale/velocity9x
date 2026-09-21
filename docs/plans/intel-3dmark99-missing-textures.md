@@ -107,8 +107,9 @@ Why the application would withhold textures from those objects:
   this driver's rule, not the chip's. `D3dTextureRefusedShape=0` is
   consistent with it: an application told "square only" never asks.
 - ~~The extended-caps GUID is still declined~~ **Withdrawn.** It is
-  answered. `d3d_core.c:2432` returns `DDHAL_DRIVER_HANDLED` with the
-  shared block's limits before the declining loop is reached, and
+  answered. The block at `d3d_core.c:2432` copies the shared block's
+  limits and returns `DDHAL_DRIVER_HANDLED` at `:2453`, ahead of the
+  declining loop at `:2456`, and
   `facf2f5` put it there ahead of the `8d4cf3c` build intel102 ran.
   `DriverInfoGuid09=0x7DE41F80` in the intel102 snapshot is that GUID's
   Data1, so the runtime did ask and did get an answer;
@@ -159,7 +160,7 @@ Each step is one netbook run. Do not start step 3 until step 1 has run.
    and the plan budgeted neither.
 
    Do it in the vertex colours instead. The untextured branch at
-   `d3d_i9xx.c:1559` hands `colors` to `v9x_i9xx_build_runtime_run`;
+   `d3d_i9xx.c:1558` hands `colors` to `v9x_i9xx_build_runtime_run`;
    overwriting that array with magenta for that branch alone is a throwaway
    change to data the builder already carries, needs no new encoding and no
    audit, and puts exactly the same magenta on the panel. Whatever is
