@@ -253,6 +253,24 @@ Each step is one netbook run. Do not start step 3 until step 1 has run.
 - No 915/945 Programmer's Reference Manual Volume 3 is mirrored anywhere
   reachable; the gen3 3D reference remains Mesa's classic `i915` driver and
   xf86-video-intel's `i915_render.c`.
+- 2026-09-22, settling it by inventory rather than by searching. The
+  Wayback index of `intellinuxgraphics.org`, the site Intel published its
+  documentation on, lists every PDF ever served from it: 965/G35 (`VOL_1`
+  to `VOL_4`), G45, Sandy Bridge and Ivy Bridge (`IHD_OS_Vol*_Part*`), four
+  conference talks, and the IGD OpRegion specification. Nothing for Gen3,
+  and nothing between the 810 and Broadwater. The site's own 2006 snapshot,
+  taken while the 945 was current, lists the 810 through the 965 as
+  supported hardware and offers a man page as the documentation. The x.org
+  mirror holds the 965 set and platforms from Broadwell on. Those two are
+  the only places Intel's older graphics PDFs have ever lived.
+- The sweep did turn up one document the collection lacked: the **Intel IGD
+  OpRegion Specification**, rev 1.0, October 2008, saved to
+  `intel driver research\igd-opregion-2008\`. It is the BIOS-to-driver
+  interface - ASLS at config FCh, the ACPI, SWSCI and ASLE mailboxes,
+  backlight and panel fitting, lid, and VBT retrieval - and it is the only
+  Intel PRM-class document in reach that bears on the netbook's panel. It
+  names Broadwater, Crestline and Cantiga; whether a 945GSE exposes an
+  OpRegion at all is unread and untested.
 - No Win9x Direct3D driver for GMA 900/950 exists. The repackaged 945GM
   driver for Windows 98 is 2D only.
 - JHRobotics `vmhal9x` (https://github.com/JHRobotics/vmhal9x) is a

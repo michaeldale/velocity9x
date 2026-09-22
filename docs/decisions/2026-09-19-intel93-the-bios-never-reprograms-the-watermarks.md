@@ -82,6 +82,49 @@ Four instruments in this investigation have been wrong in a way that read
 as a clean result. This is the first that was wrong in a way that read as
 no result, and it cost one capture instead of a conclusion.
 
+## Added 2026-09-22: Intel documents the layout, in a Gen4 volume
+
+The corrected shifts were taken from i915. Intel's own text says the same
+thing, and it was already on this machine unread. 965/G35 PRM Vol 3,
+section 2.10.1.8, page 134 (`intel driver research\965-g35-gen4-prm\
+965-G35-Vol3-Display-Registers.pdf`): DSPARB at 70030h, **CSTART bits 13:7,
+BSTART bits 6:0**, and a stated default of `00001D9Ch`, annotated "FIFO
+Sizes A=28, B=31, C=37". The netbook reads that value and this document
+partitions it the way `v9x_i9xx_wm_fifo_split` now does, so 28 and 31 are
+no longer a code-derived reading. The document's totals are per-part and
+neither is the 945's: `[DevBW]` 96 units, `[DevCL]` 128 with CSTART and
+BSTART ranging 0-127. `V9X_I9XX_WM_FIFO_TOTAL` is 127, from i915's
+`i945_wm_info`, and still rests on i915 alone - the Gen4 volume makes that
+number plausible for the family without confirming it for this part.
+
+Three further constraints from the same section. The driver reads DSPARB
+and does not write it, so none of them binds today; each would if the
+partition were ever reprogrammed, and the last bears on the reading above:
+
+- DSPARB is double buffered and updates on the leading edge of vblank of
+  the pipe its planes are assigned to; it "should only be changed when a
+  single pipe is enabled or if all of the Display A, B, C planes are
+  disabled".
+- Minimum FIFO per plane is `MaxLatencyForPlane * PixelRate * PixelSize +
+  512`, rounded up to 64B. The latency term is the number no public Intel
+  document supplies.
+- In C3 with one of display A and B active and plane C and the overlay
+  disabled, BSTART and CSTART are IGNORED and the whole RAM goes to the
+  live plane. On this machine plane A is off, so the idle-plane reasoning
+  above is about a partition the hardware may not even be using in C3.
+
+The arithmetic itself is documented, though only for Gen7.5: HSW PRM Vol
+11b, the Display Watermark Guide (`haswell-2013-display-watermark\`),
+method 1 is `ceiling[(pixel rate MHz * bytes per pixel * latency us) / 64 +
+2]` - the calculation `intel_calculate_wm` performs and this module copies,
+written out by Intel with worked examples.
+
+What no Intel document gives, checked 2026-09-22 across every PDF in that
+collection: `FW_BLC` at 20D8h in any form, and any latency figure for Gen3.
+Where a Gen4 PRM would state a watermark number it defers to a "high
+priority bandwidth analysis spreadsheet" that was never published. The 945,
+915 and 855 chipset datasheets contain no graphics MMIO at all.
+
 ## Where the flicker work stops
 
 Closing at the operator's decision, with the state as follows.
