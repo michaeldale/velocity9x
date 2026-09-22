@@ -86,6 +86,10 @@ issue's check applies verbatim.
 
 ## Later phases (sketch only)
 
+Prior 3dfx work in the retro-agent repository, its licences, and the Glide
+coexistence question are planned in
+[3dfx-voodoo3-prior-work.md](3dfx-voodoo3-prior-work.md).
+
 - **2D engine.** The Banshee/Avenger 2D core is a full GUI accelerator behind
   MMIO BAR0: screen-to-screen blt, solid fill, command FIFO with a status
   register. It becomes `V9X_DD_ENGINE_TYPE_TDFX`, an `engines\eng_tdfx.c` ops

@@ -1,6 +1,7 @@
 # Plans
 
 - [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
+- [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
 - [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.
 - [dispbench as the instrument mode 3 needs, and the four other products proposed alongside it](dispbench-as-the-measurement-instrument.md) - Open.
 - [Making the main VDD willing to manage the DOS-box round trip](dos-box-vdd-virtualization.md) - Open.
