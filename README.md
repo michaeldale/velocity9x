@@ -2,22 +2,31 @@
 
 A replacement display driver for Windows 9x, for 1990s PCI and VESA Local
 Bus graphics cards — S3 ViRGE, S3 Trio32/64, ATI Mach64/Rage, and generic
-VESA cards it has never been told about. It gives a supported card
-256-colour, High Color and — on the S3 targets — True Color modes up to
-1280x1024, a DirectDraw HAL with vertical-blank waits and hardware page
-flipping on S3, and a hardware Direct3D path on ViRGE/DX and Trio3D/2X.
+VESA cards it has never been told about — and, since 0.8.0, the Intel
+GMA 950. It gives a supported card 256-colour, High Color and — on the
+S3 targets — True Color modes up to 1280x1024, a DirectDraw HAL with
+vertical-blank waits and hardware page flipping on S3, and a hardware
+Direct3D path on ViRGE/DX and Trio3D/2X. 0.8.0 adds a second hardware
+Direct3D engine, for the GMA 950.
 
 It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
 HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Latest release: 0.7.1.** See
-[current status and roadmap](docs/STATUS.md) for defaults, validation coverage
-and open work, and [CHANGELOG.md](CHANGELOG.md) for the history.
+**Latest release: [0.8.0](releases/0.8.0/README.md).** Beyond 0.7.1 it adds:
+- hardware Direct3D on the Intel GMA 950;
+- Direct3D core fixes for every engine, found by running 3DMark 99 and
+  Final Reality;
+- perspective-correct texturing on the S3D.
+
+See [current status and roadmap](docs/STATUS.md) for defaults, validation
+coverage and open work, and [CHANGELOG.md](CHANGELOG.md) for the history,
+including what is still open.
 
 > Physical results include Trio64 on PCI under Windows 98 SE, Trio64 on VLB
-> under Windows 95, Intel GMA 950 through generic VBE, and S3 Trio3D/2X and
+> under Windows 95, Intel GMA 950 through generic VBE and, since 0.8.0,
+> through its own Gen3 Direct3D engine, and S3 Trio3D/2X and
 > ViRGE/DX. Coverage differs by feature and build: the Win95 path omits the
 > mini-VDD, text acceleration remains opt-in, and ATI is emulator-only.
 > Development and regression testing use [86Box](https://86box.net/) and QEMU.
@@ -67,8 +76,8 @@ The main features, subject to each target's limits:
   directions) run on the 2D engine, with a DIB Engine fallback and a poison
   latch that turns acceleration off for the session after a detected timeout.
   Text, lines and uploads use software by default. ViRGE monochrome uploads
-  are opt-in (`GdiAccelUpload=1`); the unreleased checkout also adds opt-in
-  text on Trio64 and ViRGE (`GdiAccelText=1`). Physical Trio64 text validation
+  are opt-in (`GdiAccelUpload=1`), and so, since 0.7.1, is text on Trio64
+  and ViRGE (`GdiAccelText=1`). Physical Trio64 text validation
   remains open, so its default stays off. ATI and generic VESA currently have
   no native acceleration backend.
 - **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory
@@ -87,6 +96,22 @@ The main features, subject to each target's limits:
   Hardware Direct3D selects a matching 5:5:5 High Color desktop automatically.
   Trio3D/2X uses bilinear filtering in place of the ViRGE's two-pass trilinear
   path and has unresolved blend behavior; see [current status](docs/STATUS.md).
+  The perspective correction is new in 0.8.0: until 2026-09-23 the caps
+  claimed it and every texture was drawn affine. 0.8.0 also
+  clips triangles that cross the screen edge, which 3DMark 99's full-screen
+  tests had been losing whole. The S3D has no additive or multiplicative
+  blend, and some 3DMark tests draw dimmer or plainer for it
+  ([record](docs/decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)).
+- **Direct3D acceleration on the Intel GMA 950** (new in 0.8.0, run on one
+  machine) — a Gen3 engine submitted through the ring:
+  - RGB565, ARGB1555 and ARGB4444 textures, modulate, Gouraud and flat
+    shading;
+  - a 16-bit Z buffer with the application's comparison, and SRCALPHA
+    blending;
+  - hardware page flipping.
+
+  Final Reality runs textured on one netbook. The flicker and 3DMark 99's
+  empty frames are open; see the [changelog](CHANGELOG.md).
 - **A Direct3D mode selector** on the Velocity9x page in Display Properties,
   offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
@@ -242,6 +267,25 @@ staged at 100 FPS from system RAM against ~20 from VRAM), and the heap policy
 change that would steer applications away from the trap is designed but
 deliberately unshipped until it is measured.
 
+### New in 0.8.0: Intel GMA 950 with hardware Direct3D
+
+0.8.0 adds an `intel-gma` family for the **GMA 950 on the 945GSE**
+(`8086:27AE`, `build/win98se-intel-gma`). It is the first release to ship
+it, and it has been run on one machine only.
+
+- **Display:** the video BIOS sets the modes, as on the generic VESA tier:
+  640x480 and 1024x576 at 8 and 16 bpp.
+- **Direct3D and flipping:** the driver owns the Gen3 engine for Direct3D
+  and the plane for page flipping.
+- **2D:** nothing is claimed. Fills and blits stay on the CPU.
+
+It has run on one machine, the netbook above. There, Final Reality renders
+textured with depth testing and flips in hardware. It flickers one frame in
+eight or nine, and 3DMark 99 draws nothing into its buffers. Both are open,
+and the same flicker appears on the Trio3D/2X
+([state of play](docs/issues/2026-09-19-the-flicker-state-of-play.md),
+[3DMark plan](docs/plans/intel-3dmark99-missing-textures.md)).
+
 ### Tier-0: how a new card starts
 
 The two right-hand columns are **tier-0**: the mode is set through the VESA BIOS,
@@ -375,6 +419,14 @@ packed 24-bpp mode at all — the VESA numbers usually described as 24-bit
 **Will my Direct3D games work?**
 Compatibility is limited and title-specific. Final Reality and 3DMark 99 run
 on the S3 hardware path, while Incoming currently refuses its texture formats.
+0.8.0 fixes a run of core faults those two benchmarks exposed:
+- state changes that were skipped;
+- indexed, strip and fan primitives that were declined;
+- full-screen triangles that were dropped instead of clipped;
+- textures drawn without perspective correction.
+
+On the Intel GMA 950, Final Reality runs textured, and 3DMark 99 does not
+yet draw.
 The S3, ATI and VBE packages also offer software Direct3D, with their own
 capability limits and no recorded period-machine performance baseline. It is
 opt-in on S3 and ATI, and already on in the VBE package, where the alternative
@@ -395,7 +447,8 @@ and [How it compares](docs/comparisons.md).
 
 **Can I run this on real hardware, or only in an emulator?**
 Both. Physical evidence covers Trio64 PCI and VLB, generic VBE on Intel GMA
-950 and Trio3D, hardware Direct3D on Trio3D/2X, and recent ViRGE/DX GDI tests.
+950 and Trio3D, hardware Direct3D on Trio3D/2X and, since 0.8.0, on the
+GMA 950, and recent ViRGE/DX GDI tests.
 Matrox has historical physical software-GDI evidence with its stock mini-VDD;
 ATI remains emulator-only. The [verification matrix](docs/STATUS.md) names the
 limits. Read [docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.

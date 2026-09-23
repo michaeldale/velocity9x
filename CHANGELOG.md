@@ -4,11 +4,156 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.8.0 - 2026-09-23
 
-Diagnostic tooling and one hardware question answered from outside the
-project. Nothing in the shipped driver changed.
+The first packaged release since 0.7.1. The version number was set on
+2026-09-17, when the Intel GMA 950 first ran Final Reality textured; that
+bring-up is the last subsection below. Everything after it falls into three
+groups:
+- Direct3D core fixes shared by every engine, found by running 3DMark 99 and
+  Final Reality against S3's own driver on the emulated ViRGE/DX.
+- Perspective texturing and edge clipping on the S3D, measured on a physical
+  Trio3D/2X (A8U4I5).
+- Presentation and depth work on the Intel GMA 950, measured on the netbook.
 
+Two problems stay open: the intermittent Final Reality flicker on both
+cards, and 3DMark 99 drawing nothing on the Intel. See **Still open** below.
+
+### Direct3D core (all engines)
+
+- **DrawPrimitives state changes are applied.** `V9xD3dDrawPrimitives`
+  stepped over the state pairs interleaved in its data, so 3DMark 99 ran a
+  whole benchmark without ever setting a filter, and state blocks longer
+  than 64 were discarded outright
+  ([record](docs/decisions/2026-09-20-the-state-changes-were-being-stepped-over.md)).
+- **DirectDraw is told `GetDriverInfo` exists, and extended caps are
+  answered.** `DDHALINFO_GETDRIVERINFOSET` was never set, so the runtime
+  never called the entry point the driver published. With it set, the
+  runtime asks for twelve GUIDs; `GUID_D3DExtendedCaps` is now answered with
+  each engine's own texture limits instead of limits the runtime invented
+  ([record](docs/decisions/2026-09-20-the-runtime-asks-for-twelve-guids-and-now-gets-extended-caps.md)).
+- **Indexed primitives, strips, fans and long lists are drawn.**
+  - DrawOneIndexedPrimitive was advertised and stubbed; it now draws lists
+    and strips
+    ([record](docs/decisions/2026-09-20-the-indexed-path-was-advertised-and-stubbed.md)).
+  - The single-primitive path takes a list of any length.
+  - DrawPrimitives takes triangle fans. Fans were every test Final Reality
+    runs, so it went from a black screen to a rendered scene
+    ([record](docs/decisions/2026-09-20-final-reality-renders-a-scene-triangle-fans-were-the-whole-benchmark.md)).
+- **A refused triangle no longer aborts the frame, and an unsupported shape
+  is declined rather than failed.** Final Reality quit on
+  `DDERR_INVALIDPARAMS` from shapes the driver should have handed back to
+  the runtime
+  ([record](docs/decisions/2026-09-20-a-refused-triangle-was-aborting-the-frame.md)).
+- **The DX5 draw paths clip.** DrawOnePrimitive, DrawPrimitives and
+  DrawOneIndexedPrimitive passed unclipped vertices, and the S3D declines any
+  triangle with a vertex off the screen. So every full-screen quad was
+  dropped: 3DMark 99's fill-rate test drew black and its filtering tunnel
+  lost its walls. One run declined 66,990 triangles; after the fix, none.
+  - The clipper now cuts at the viewport edge, 640 rather than 639, and
+    lets the hardware clip rectangle discard the last pixel.
+  - It interpolates texture coordinates perspective-correctly.
+  - Gen3 is left on its measured unclipped path
+  ([record](docs/decisions/2026-09-23-the-dx5-draw-paths-never-clipped.md)).
+- **Flat shading is honoured in the core**, by copying the provoking
+  vertex's colour, instead of being claimed and ignored.
+- **Alpha-test render states are recorded and counted**, so a capture shows
+  whether an application asks. None of the engines draws an alpha test.
+  3DMark 99 asks for none, even with alpha-compare caps published
+  ([record](docs/decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)).
+
+### S3 ViRGE/DX and Trio3D/2X
+
+- **Perspective-correct texturing.** The device published
+  `D3DPTEXTURECAPS_PERSPECTIVE` but drew every texture affine. Triangles
+  whose rhw values differ now use the perspective command types and W
+  registers, with S3's DDK encoding, checked against 86Box. Their mip level
+  is computed at each vertex and interpolated across the triangle.
+  Equal-rhw triangles, which covers every probe rung, keep the old encoding
+  bit for bit.
+  - On the Trio3D: the tunnel walls converge on the vanishing point, and
+    texture-rendering tiles and fill-rate lettering are sharper.
+  - 3DMark's fill-rate figures fall from 73.6 to 9.2 Mtexels/s (single) and
+    from 73.5 to 34.2 (multi). The old figures timed frames in which nothing
+    was drawn
+    ([record](docs/decisions/2026-09-23-perspective-texturing-on-the-s3d.md)).
+- **Flip timing.**
+  - The start address is written at the blank-to-active edge.
+  - A flip completes when the retrace ends, not when it begins.
+  - Direct3D draws wait while a flip is pending, and a batch whose wait
+    runs out is refused rather than drawn into the visible buffer.
+  - On a part with no 3D-done bit, the engine-idle bit is confirmed over
+    consecutive reads, because it was measured settling falsely
+    ([record](docs/decisions/2026-09-19-the-virge-idle-bit-lies-and-it-is-still-not-the-flicker.md)).
+  - None of this fixed the flicker; see **Still open**.
+- **Measured, and not a driver fault:**
+  - 3DMark 99's filtering tunnel has no checkerboard on this card. The
+    texture in video memory is a smooth gradient: 65,536 texels, no edges.
+    3DMark does not send the checker, most likely because it comes from a
+    multiplicative blend the S3D lacks.
+  - Fill rate is dimmer than on other cards, for want of additive blending.
+
+### Intel GMA 950 (945GSE)
+
+- **Runtime Direct3D and the flip are on by default.** The arm-file keys
+  are now off switches
+  ([decision](docs/decisions/2026-09-18-intel-runtime-3d-and-flip-on-by-default.md)).
+  Of the bring-up items that were open and gated off, the flip is now on,
+  and the depth test is resolved below.
+- **The depth comparison the application asks for is emitted, not LESS
+  alone.** 85% of a 3DMark 99 run had been drawn with no depth test
+  ([intel98](docs/decisions/2026-09-20-intel98-eighty-five-per-cent-of-the-run-had-no-depth-test.md),
+  [intel99](docs/decisions/2026-09-20-intel99-the-depth-fix-works-and-changes-nothing-visible.md)).
+  The fix works, and the picture is unchanged.
+- **Blending** is enabled for the one factor pair measured on silicon,
+  SRCALPHA/INVSRCALPHA. MODULATE takes its own alpha. ALPHAFLATBLEND is
+  withdrawn, because nothing here gives a flat triangle one alpha.
+- **The Gen3 flip, rebuilt against i915.**
+  - The pending bits were wrong, and every flip was declared done at once
+    ([audit](docs/decisions/2026-09-18-intel-gen3-page-flip-audit.md)).
+  - The flip is issued through the ring.
+  - The plane base is written in active video, since it latches at the start
+    of the blank
+    ([record](docs/decisions/2026-09-18-intel-plane-base-latches-at-vblank-start.md)).
+  - A flip completes on a frame-counter tick.
+  - Direct3D draws hold until the pending flip is taken.
+- **Batches complete through a status-page breadcrumb**, the way i915 does
+  on gen3. Each batch now flushes the render cache first and invalidates the
+  texture cache
+  ([record](docs/decisions/2026-09-19-intel86-the-completion-channel-works-and-the-flicker-is-not-unfinished-drawing.md)).
+- **The display watermark is programmed**, with its depth taken from
+  DSPCNTR. The BIOS never reprograms it. The pipe still underruns with it
+  correct
+  ([record](docs/decisions/2026-09-20-intel96-the-watermark-is-programmed-correctly-and-the-pipe-still-underruns.md)).
+
+### Still open
+
+- **The Final Reality flicker, on both cards.** One frame in eight or nine
+  shows only the clear and the sky band. Five mechanisms have been measured
+  and closed: premature completion, buffer ownership, draws racing a flip,
+  unfinished drawing, and a leaking flip window. The cause is not known
+  ([state of play](docs/issues/2026-09-19-the-flicker-state-of-play.md)).
+- **3DMark 99 draws nothing on the Intel.** The draws are aimed at the three
+  presented buffers and the back buffer still reads black
+  ([intel102](docs/decisions/2026-09-20-intel102-the-draws-are-aimed-correctly-and-still-nothing-lands.md),
+  [plan](docs/plans/intel-3dmark99-missing-textures.md)).
+- **Final Reality renders green speckle on the emulated ViRGE**
+  ([issue](docs/issues/2026-09-20-final-reality-renders-green-speckle-on-the-virge.md)).
+- **The Trio3D's two blend states.** Every run this week was in the bad one
+  (`TexMatrixOk=90`). The last register that seemed to track the state,
+  Input Status 0 bit 4, stopped tracking it on boot 104.
+
+### Diagnostics and research
+
+- **Measurement tooling.** A present trace and a submission-count rule,
+  host-tested, record which batches actually reached the hardware. The
+  capture adds a draw-target census, back-buffer and retired-buffer
+  readbacks, uptime and client stamps, and a trace file that rolls over, so
+  two games in one boot can be told apart.
+- **Documents only:** a Gen3 document inventory, an OpRegion review against
+  the 945
+  ([record](docs/decisions/2026-09-22-the-945-has-the-opregion-registers-the-spec-does-not-name-it.md)),
+  a GMA 950 2D plan and a Voodoo3 engine plan.
 - **The survey reads a linear window above 16 MB.** INT 15h AH=87h builds a
   24-bit descriptor base, so the aperture step could never reach where VLB
   windows are actually placed - the Trio64V+ VLB report submitted to the
@@ -41,13 +186,13 @@ project. Nothing in the shipped driver changed.
   ([decision](docs/decisions/2026-09-22-virge-vl-mmio-framebuffer-mixing.md),
   [revised plan](docs/plans/virge-vlb-old-mmio.md)).
 
-## 0.8.0 - 2026-09-17
+### Intel GMA 950 bring-up (2026-09-17)
 
 Hardware Direct3D on the Intel GMA 950 (945GSE), the first engine outside
-S3. Version bumped at the point where Final Reality runs textured on the
-netbook; the flip and the depth comparison are still open below, and
-nothing in this release has been packaged or run anywhere but that one
-machine (`MICHAEL-NETBOOK`, captures `C:\temp\intel52` through `intel60`).
+S3, as it stood when the version was set. The flip and the depth comparison
+were open then; both are covered in the Intel subsection above. Run
+nowhere but `MICHAEL-NETBOOK` (captures `C:\temp\intel52` through
+`intel60`).
 
 - **A 32-bit ring submission path for the Gen3.** The HAL builds each
   batch from the application's geometry, runs it through the same decoder
