@@ -1756,7 +1756,7 @@ if ($i9xxTargetText -notmatch
            'offset, which is what v9x_i9xx_build_map_state requires.')
 }
 if ($i9xxEngineText -notmatch
-        'V9X_I9XX_SANDBOX_PAGE_BYTES /\* texture_align') {
+        'V9X_I9XX_SANDBOX_PAGE_BYTES,? /\* texture_align') {
     throw ('The Gen3 engine limits must state texture_align as the same ' +
            'page constant bind_map enforces. A number in two places is how ' +
            'DirectDraw came to allocate textures the binder refuses.')

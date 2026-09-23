@@ -89,6 +89,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-05 A power cycle does not clear the Trio3D's blend state](2026-09-05-a-power-cycle-does-not-clear-the-trio3d-blend-state.md)
 - [2026-09-05 A register capture of both Trio3D blend states, and what it does not reach](2026-09-05-a-register-capture-of-both-trio3d-blend-states.md)
 - [2026-09-11 D3DSoftSysMem buys Final Reality nothing, because its textures never go there](2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)
+- [2026-09-23 The DX5 draw paths never clipped, and the S3D drops what reaches the edge](2026-09-23-the-dx5-draw-paths-never-clipped.md)
 
 ## Direct3D software rasterizer
 

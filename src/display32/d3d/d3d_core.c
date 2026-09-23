@@ -552,9 +552,20 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
         V9X_D3DTLVERTEX previous = input[count - 1ul];
         int previous_inside;
         DWORD output_count = 0ul;
+        /*
+         * The right and bottom edges are the viewport's, width and height,
+         * not the last pixel's. A full-screen quad is 0..640 in Direct3D's
+         * convention, and cut at 639 its spans end one column early on an
+         * engine that fills [ceil(x1), ceil(x2)) - a black line down the
+         * right and along the bottom of every full-screen plane. The pixel
+         * past the edge is the hardware clip rectangle's to discard: S3's
+         * own driver sets cmdHWCLIP_EN with CLIP_L_R at width - 1
+         * (98DDK s3v\D3DRENDR.C:64, 399-427) and so does this one, and the
+         * CPU rasterizer clamps to extent - 1 on its own.
+         */
         float boundary = (edge == 0ul || edge == 2ul) ? 0.0f :
-            (edge == 1ul ? (float)(context->width - 1ul) :
-                           (float)(context->height - 1ul));
+            (edge == 1ul ? (float)context->width :
+                           (float)context->height);
 
         if (edge < 2ul) {
             previous_inside = edge == 0ul ? previous.sx >= boundary
@@ -608,6 +619,104 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
         result[index] = input[index];
     }
     return (int)count;
+}
+
+/*
+ * Whether all three vertices lie on the render target, edges included.
+ *
+ * Written so that a NaN coordinate answers no and goes to the clipper, whose
+ * guard-band test refuses it, rather than answering yes and reaching the
+ * engine's fixed-point conversion.
+ */
+static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
+                                      const V9X_D3DTLVERTEX *triangle)
+{
+    float right = (float)context->width;
+    float bottom = (float)context->height;
+    DWORD index;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        if (!(triangle[index].sx >= 0.0f && triangle[index].sx <= right &&
+              triangle[index].sy >= 0.0f && triangle[index].sy <= bottom)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+ * A triangle list from one of the DX5 entry points, clipped where the engine
+ * needs it, then drawn.
+ *
+ * The engine contract says the core hands over vertices already clipped, and
+ * until 2026-09-23 only RenderPrimitive did. DrawOnePrimitive, DrawPrimitives
+ * and DrawOneIndexedPrimitive passed the application's vertices straight
+ * through, and the S3D emitter declines any triangle with a vertex off the
+ * target, so every triangle that crossed the screen edge was dropped whole.
+ * On the Trio3D/2X that was 3DMark 99's fill-rate test drawn entirely black -
+ * its planes are full-screen quads ending exactly at 640.0 - the filtering
+ * tunnel reduced to one or two walls, and 66,990 declined triangles in one
+ * run (build\driver-results\3dmark99-640-20260923-run2).
+ *
+ * Triangles already on the target go through as runs, windows on the
+ * caller's array, so the common case costs one bounds test per triangle and
+ * no copy. Only a triangle that crosses an edge is cut, and its fan is drawn
+ * on its own between the runs either side of it. A refused triangle - past
+ * the guard band, or one the engine declines - is counted by the caller as a
+ * refused batch and the rest of the list is still drawn.
+ */
+static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
+                             V9X_D3D_CONTEXT *context,
+                             const V9X_D3DTLVERTEX *vertices,
+                             DWORD triangle_count)
+{
+    V9X_D3DTLVERTEX clipped[8];
+    V9X_D3DTLVERTEX fan_list[V9X_D3D_MAX_FAN_TRIANGLES * 3u];
+    DWORD run_start = 0ul;
+    DWORD index;
+    int ok = 1;
+
+    if (ops->limits->clip_in_core == 0ul) {
+        return v9x_d3d_draw_batch(ops, context, vertices, triangle_count);
+    }
+    for (index = 0ul; index < triangle_count; ++index) {
+        const V9X_D3DTLVERTEX *triangle = &vertices[index * 3ul];
+        DWORD fan_triangles = 0ul;
+        int clipped_count;
+        int fan;
+
+        if (v9x_d3d_triangle_on_target(context, triangle)) {
+            continue;
+        }
+        if (index > run_start &&
+            !v9x_d3d_draw_batch(ops, context, &vertices[run_start * 3ul],
+                                index - run_start)) {
+            ok = 0;
+        }
+        run_start = index + 1ul;
+
+        clipped_count = v9x_d3d_clip_triangle(context, triangle, clipped);
+        if (clipped_count < 0) {
+            ok = 0;
+            continue;
+        }
+        for (fan = 1; fan + 1 < clipped_count; ++fan) {
+            fan_list[fan_triangles * 3ul] = clipped[0];
+            fan_list[fan_triangles * 3ul + 1ul] = clipped[fan];
+            fan_list[fan_triangles * 3ul + 2ul] = clipped[fan + 1];
+            ++fan_triangles;
+        }
+        if (fan_triangles != 0ul &&
+            !v9x_d3d_draw_batch(ops, context, fan_list, fan_triangles)) {
+            ok = 0;
+        }
+    }
+    if (run_start < triangle_count &&
+        !v9x_d3d_draw_batch(ops, context, &vertices[run_start * 3ul],
+                            triangle_count - run_start)) {
+        ok = 0;
+    }
+    return ok;
 }
 
 /*
@@ -1911,7 +2020,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
             DWORD batch = remaining > (DWORD)V9X_D3D_INDEXED_BATCH
                               ? (DWORD)V9X_D3D_INDEXED_BATCH : remaining;
 
-            if (!v9x_d3d_draw_batch(ops, context, vertices, batch)) {
+            if (!v9x_d3d_draw_list(ops, context, vertices, batch)) {
                 ok = 0;
                 break;
             }
@@ -2097,8 +2206,8 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                     fan_batch[fan_triangles * 3ul + 2ul] = fan[apex + 1ul];
                     ++fan_triangles;
                     if (fan_triangles == (DWORD)V9X_D3D_INDEXED_BATCH) {
-                        if (!v9x_d3d_draw_batch(ops, context, fan_batch,
-                                                fan_triangles)) {
+                        if (!v9x_d3d_draw_list(ops, context, fan_batch,
+                                               fan_triangles)) {
                             ok = 0;
                             break;
                         }
@@ -2106,17 +2215,17 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
                     }
                 }
                 if (ok && fan_triangles != 0ul &&
-                    !v9x_d3d_draw_batch(ops, context, fan_batch,
-                                        fan_triangles)) {
+                    !v9x_d3d_draw_list(ops, context, fan_batch,
+                                       fan_triangles)) {
                     ok = 0;
                 }
                 if (!ok && v9x_hal != 0) {
                     ++v9x_hal->d3d_diagnostics.batches_engine_refused;
                     ok = 1;
                 }
-            } else if (!v9x_d3d_draw_batch(ops, context,
-                                     (const V9X_D3DTLVERTEX *)cursor,
-                                     (DWORD)counts->wNumVertices / 3ul)) {
+            } else if (!v9x_d3d_draw_list(ops, context,
+                                    (const V9X_D3DTLVERTEX *)cursor,
+                                    (DWORD)counts->wNumVertices / 3ul)) {
                 /* The engine refused this record. Counted and carried on to
                  * the next one: see batches_engine_refused. Aborting the
                  * rest of a buffer over one refused record is the mistake
@@ -2257,7 +2366,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
             ++triangles;
 
             if (triangles == (DWORD)V9X_D3D_INDEXED_BATCH) {
-                if (!v9x_d3d_draw_batch(ops, context, batch, triangles)) {
+                if (!v9x_d3d_draw_list(ops, context, batch, triangles)) {
                     ok = 0;
                     break;
                 }
@@ -2268,7 +2377,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
             }
         }
         if (ok && triangles != 0ul) {
-            if (!v9x_d3d_draw_batch(ops, context, batch, triangles)) {
+            if (!v9x_d3d_draw_list(ops, context, batch, triangles)) {
                 ok = 0;
             } else if (v9x_hal != 0) {
                 v9x_hal->d3d_diagnostics.indexed_triangles += triangles;

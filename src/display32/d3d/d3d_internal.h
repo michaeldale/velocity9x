@@ -260,6 +260,17 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD texture_align;
     /*
+     * Whether the core must clip a triangle to the render target before this
+     * engine sees it, on every draw path and not only the execute-buffer one.
+     *
+     * Non-zero for an engine that cannot draw a vertex off the target: the
+     * S3D unit's emitter declines the whole triangle, and the CPU rasterizer
+     * clamps the vertex, which moves the edge. Zero for an engine with
+     * a hardware guard band that has been measured drawing unclipped
+     * geometry correctly, where clipping in the core would only cost time.
+     */
+    DWORD clip_in_core;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

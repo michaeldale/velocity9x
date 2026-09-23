@@ -125,7 +125,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * of stolen memory that is affordable; if it ever stops being, the answer
      * is to measure the real alignment rather than to guess a smaller one.
      */
-    V9X_I9XX_SANDBOX_PAGE_BYTES /* texture_align          */
+    V9X_I9XX_SANDBOX_PAGE_BYTES, /* texture_align         */
+    /* Gen3 clips against its own drawing rectangle inside the 4096 guard
+     * band above, and 3DMark99 ran on the netbook with the DX5 paths
+     * unclipped; that measured behaviour is kept. */
+    0ul                         /* clip_in_core           */
 };
 
 /*

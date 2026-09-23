@@ -45,7 +45,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_virge_limits = {
     /* The ViRGE and the CPU rasterizer both bind a texture at any
      * eight-byte offset, which is the core default - stated rather than
      * left zero so the field reads as an answer and not an omission. */
-    8ul                         /* texture_align          */
+    8ul,                        /* texture_align          */
+    /* The emitter declines any vertex off the target; see
+     * v9x_d3d_draw_list in d3d_core.c. */
+    1ul                         /* clip_in_core           */
 };
 
 /*
@@ -666,12 +669,19 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     int skip_blend = 0;
     int textured;
 
-    if (!(p0->sx >= 0.0f && p0->sx <= (float)(context->width - 1ul) &&
-          p0->sy >= 0.0f && p0->sy <= (float)(context->height - 1ul) &&
-          p1->sx >= 0.0f && p1->sx <= (float)(context->width - 1ul) &&
-          p1->sy >= 0.0f && p1->sy <= (float)(context->height - 1ul) &&
-          p2->sx >= 0.0f && p2->sx <= (float)(context->width - 1ul) &&
-          p2->sy >= 0.0f && p2->sy <= (float)(context->height - 1ul))) {
+    /*
+     * The viewport, edges included: the core clips to 0..width and
+     * 0..height, and the CLIP_L_R / CLIP_T_B rectangle written below, at
+     * width - 1 and height - 1 with the command word's HWCLIP_EN set, discards
+     * the pixel past the edge. Bounding this at width - 1 declined every
+     * full-screen quad an application sent.
+     */
+    if (!(p0->sx >= 0.0f && p0->sx <= (float)context->width &&
+          p0->sy >= 0.0f && p0->sy <= (float)context->height &&
+          p1->sx >= 0.0f && p1->sx <= (float)context->width &&
+          p1->sy >= 0.0f && p1->sy <= (float)context->height &&
+          p2->sx >= 0.0f && p2->sx <= (float)context->width &&
+          p2->sy >= 0.0f && p2->sy <= (float)context->height)) {
         return 0;
     }
     if (p2->sy > p1->sy) { temp = p2; p2 = p1; p1 = temp; }

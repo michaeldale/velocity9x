@@ -173,7 +173,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
     /* The ViRGE and the CPU rasterizer both bind a texture at any
      * eight-byte offset, which is the core default - stated rather than
      * left zero so the field reads as an answer and not an omission. */
-    8ul                         /* texture_align          */
+    8ul,                        /* texture_align          */
+    /* v9x_d3d_soft_coordinate clamps an off-target vertex, which moves the
+     * triangle's edge rather than cutting it. */
+    1ul                         /* clip_in_core           */
 };
 
 /*
