@@ -515,8 +515,33 @@ static void v9x_d3d_lerp_vertex(V9X_D3DTLVERTEX *result,
     result->color = v9x_d3d_lerp_color(first->color, second->color, amount);
     result->specular = v9x_d3d_lerp_color(first->specular,
                                           second->specular, amount);
-    result->tu = first->tu + (second->tu - first->tu) * amount;
-    result->tv = first->tv + (second->tv - first->tv) * amount;
+    /*
+     * Texture coordinates are not linear in screen space unless both ends
+     * have the same rhw. rhw is, and so is tu * rhw, so the coordinate at the
+     * cut is their quotient. Blending tu itself put every clipped vertex of a
+     * receding polygon too far along the texture - on 3DMark 99's tunnel,
+     * whose walls are clipped at every screen edge, that squeezed the whole
+     * texture into the visible part of the wall and drove the mip level to
+     * the bottom of the chain. Colour, depth and rhw stay linear: the engines
+     * interpolate them that way.
+     *
+     * Equal rhw keeps the plain blend, so an affine triangle is cut exactly
+     * as before, bit for bit.
+     */
+    if (first->rhw != second->rhw && first->rhw > 0.0f &&
+        second->rhw > 0.0f && result->rhw > 0.0f) {
+        float first_u = first->tu * first->rhw;
+        float first_v = first->tv * first->rhw;
+        float inverse = 1.0f / result->rhw;
+
+        result->tu = (first_u +
+                      (second->tu * second->rhw - first_u) * amount) * inverse;
+        result->tv = (first_v +
+                      (second->tv * second->rhw - first_v) * amount) * inverse;
+    } else {
+        result->tu = first->tu + (second->tu - first->tu) * amount;
+        result->tv = first->tv + (second->tv - first->tv) * amount;
+    }
 }
 
 static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,

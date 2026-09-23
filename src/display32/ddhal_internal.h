@@ -51,6 +51,16 @@
 #define V9X_VIRGE_3D_TBV              0x0000b504ul
 #define V9X_VIRGE_3D_TBU              0x0000b508ul
 /*
+ * The perspective divisor: W's two per-axis steps and its start value, 13.19.
+ * Read only under the perspective command types. Offsets from VIRGE1.H:246-248
+ * (TRI_3D_dWdX/dWdY/WS, relative to the 0xb504 triangle-data base),
+ * cross-checked against 86Box's register decode in
+ * build\reference-vid_s3_virge.c:1820-1828.
+ */
+#define V9X_VIRGE_3D_DWDX             0x0000b50cul
+#define V9X_VIRGE_3D_DWDY             0x0000b510ul
+#define V9X_VIRGE_3D_WS               0x0000b514ul
+/*
  * The mip-level gradients. D is interpolated across the triangle like U and V
  * are, from a start value in DS and these two per-axis steps - and until
  * 2026-09-03 the driver wrote DS and never these, so the level index drifted
@@ -58,7 +68,9 @@
  * after power-on, another driver's leftovers after a game, and different on
  * every boot. That is what "the Trio3D fetches the wrong mip level" and "the
  * emulated ViRGE returns a colour the texture does not contain" both were.
- * The engine picks one level per triangle, so both steps are written as zero.
+ * An affine triangle takes one level for the whole triangle, so both steps are
+ * written as zero; a perspective one interpolates a level computed at each
+ * vertex, as S3's driver does (98DDK s3v\GENTRI.C:210-296).
  */
 #define V9X_VIRGE_3D_DDDX             0x0000b518ul
 #define V9X_VIRGE_3D_DVDX             0x0000b51cul
@@ -148,6 +160,13 @@ typedef char v9x_assert_cmd_base_unchanged
 #define V9X_VIRGE_3D_CMD_ALPHA_ENABLE   0x00080000ul
 #define V9X_VIRGE_3D_CMD_TEXTURE_UNLIT  0x10000000ul
 #define V9X_VIRGE_3D_CMD_TEXTURE_LIT    0x08000000ul
+/*
+ * Added to either texture type above, the perspective-corrected form of it:
+ * LitTex 0x08000000 becomes LitTexPersp 0x28000000 and UnlitTex 0x10000000
+ * becomes UnlitTexPersp 0x30000000 (98DDK s3v\VIRGE1.H:179-182; 86Box selects
+ * its tex_sample_persp_* on command-type bit 3, reference-vid_s3_virge.c:4530).
+ */
+#define V9X_VIRGE_3D_CMD_TEX_PERSPECTIVE 0x20000000ul
 #define V9X_VIRGE_3D_CMD_TEX_ARGB1555   0x00000040ul
 #define V9X_VIRGE_3D_CMD_TEX_ARGB4444   0x00000020ul
 #define V9X_VIRGE_3D_CMD_FILTER_NEAREST 0x00004000ul

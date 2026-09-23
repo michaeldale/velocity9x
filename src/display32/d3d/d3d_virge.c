@@ -605,6 +605,277 @@ static WORD v9x_d3d_fixed_8_7(float value)
 }
 
 /*
+ * A value for one of the perspective or mip-level registers, saturated.
+ *
+ * fistp stores the integer indefinite, 80000000h, for anything past 32 bits,
+ * and the engine would take that as the most negative step it has. A thin
+ * triangle's 1/dx is large enough to reach it for a W or D gradient, so these
+ * registers clamp where the affine ones never needed to. A NaN answers zero.
+ */
+#define V9X_D3D_FIXED_LIMIT 2147483520.0f
+
+static DWORD v9x_d3d_fixed_scaled(float value, float scale)
+{
+    float scaled = value * scale;
+
+    if (!(scaled == scaled)) {
+        return 0ul;
+    }
+    if (scaled >= V9X_D3D_FIXED_LIMIT) {
+        return 0x7fffff80ul;
+    }
+    if (scaled <= -V9X_D3D_FIXED_LIMIT) {
+        return 0x80000080ul;
+    }
+    return (DWORD)v9x_float_to_long(scaled);
+}
+
+/*
+ * log2 of a positive float, to within 0.09.
+ *
+ * The exponent is the integer part and the mantissa, taken as a straight
+ * line, the fraction - the same approximation S3's driver uses for the same
+ * job (98DDK s3v\GENTRI.C:178-191, mylog2), with all 23 mantissa bits rather
+ * than its 8. The HAL links no runtime, so there is no log2f to call, and a
+ * mip level is a quantity the engine truncates or blends by a few bits.
+ */
+static float v9x_d3d_log2(float value)
+{
+    union {
+        float f;
+        DWORD bits;
+    } pun;
+    LONG exponent;
+    LONG mantissa;
+
+    pun.f = value;
+    exponent = (LONG)((pun.bits >> 23) & 0xfful) - 127l;
+    mantissa = (LONG)(pun.bits & 0x007ffffful);
+    return (float)exponent + (float)mantissa / 8388608.0f;
+}
+
+/*
+ * The perspective-correct form of a triangle's texture setup.
+ *
+ * Every textured triangle was drawn with the affine command types, which
+ * interpolate U and V linearly in screen space, while the device published
+ * D3DPTEXTURECAPS_PERSPECTIVE. A polygon receding from the camera then spreads
+ * its texture evenly from the near edge to the far one; on 3DMark 99's
+ * filtering tunnel that is a checkerboard compressed into one uniform band per
+ * wall, and the one mip level chosen for that band averaged it to a gradient.
+ *
+ * Under the perspective types the engine interpolates U*W, V*W and W and
+ * divides per pixel. The encoding is S3's (98DDK s3v\GENTRI.C:611-791), and
+ * every scale in it was checked against 86Box's tex_sample_persp_*_375, the
+ * form both parts this backend binds - 8A01 and 8A13 - are modelled with
+ * (build\reference-vid_s3_virge.c:3889-3930, 4530-4560):
+ *
+ * - W is rhw rescaled so the largest vertex is 256 (GENTRI.C:693, MAGIC),
+ *   written 13.19.
+ * - U and V are in texels relative to a whole-texel base, times that W,
+ *   written 20.12 and shifted right four for the DX-class parts (DXGX,
+ *   D3DCTXT.C:167). The sampler takes (U * 2^46 / W) >> (8 + size_log), which
+ *   is exactly the tu * 2^27 the affine path writes.
+ * - The base goes to TBU/TBV as texels * 2^(16 - size_log) in twenty bits,
+ *   which 86Box shifts left eleven onto the same scale. Reduced modulo the
+ *   texture, which the wrap makes equivalent. Bit 31 of TBU is S3's uBaseHigh
+ *   for these parts (D3DCTXT.C:168, "ViRGE DX/GX without D change"); its
+ *   meaning is not documented and it is set because S3 set it.
+ *
+ * The mip level is computed at each vertex from the perspective mapping's
+ * Jacobian there, and interpolated through DS/DDDX/DDDY, as S3's
+ * _SETUP_D_PERSPECTIVE does. The level is log2 of the longer screen-axis
+ * footprint, the usual Direct3D rule, rather than S3's larger singular value:
+ * it needs no square root, which this HAL has no runtime for, and the two
+ * differ by at most half a level. Each vertex is clamped to the levels the
+ * chain actually has, and a linear blend of in-range values stays in range.
+ *
+ * Returns zero, and the caller keeps the affine form, where the encoding does
+ * not fit: a vertex without a positive finite rhw, or a U or V span of 2048
+ * texels or more, where S3's driver chopped the triangle instead
+ * (D3DRENDR.C:618-650, __UVRANGE).
+ */
+typedef struct v9x_d3d_virge_persp {
+    DWORD tbu;
+    DWORD tbv;
+    DWORD ws;
+    DWORD dwdx;
+    DWORD dwdy;
+    DWORD us;
+    DWORD vs;
+    DWORD dudx;
+    DWORD dvdx;
+    DWORD dudy;
+    DWORD dvdy;
+    DWORD ds;
+    DWORD dddx;
+    DWORD dddy;
+} V9X_D3D_VIRGE_PERSP;
+
+#define V9X_D3D_PERSP_W_MAX       256.0f
+#define V9X_D3D_PERSP_W_SCALE     524288.0f     /* 13.19 */
+#define V9X_D3D_PERSP_UV_SCALE    256.0f        /* 20.12, >> 4 */
+#define V9X_D3D_PERSP_UV_RANGE    2047.99f
+#define V9X_D3D_PERSP_BASE_BITS   16ul
+#define V9X_D3D_PERSP_BASE_MASK   0x000ffffful
+#define V9X_D3D_PERSP_BASE_HIGH   0x80000000ul
+#define V9X_D3D_MIP_SCALE         134217728.0f  /* 4.27 */
+
+static int v9x_d3d_virge_perspective(const V9X_D3DTLVERTEX *p0,
+                                     const V9X_D3DTLVERTEX *p1,
+                                     const V9X_D3DTLVERTEX *p2,
+                                     DWORD size_log, DWORD mip_levels,
+                                     int mipmapped,
+                                     float fdy02r, float fdy01, float fdxr,
+                                     float fdycc,
+                                     V9X_D3D_VIRGE_PERSP *out)
+{
+    const V9X_D3DTLVERTEX *p[3];
+    float size = (float)(1ul << size_log);
+    float ut[3], vt[3], w[3];
+    float u_low, u_high, v_low, v_high;
+    float q_max;
+    float uu0, uu1, uu2, vv0, vv1, vv2;
+    float dwdy, dwdx, duudy, duudx, dvvdy, dvvdx;
+    LONG u_base, v_base;
+    DWORD index;
+
+    p[0] = p0;
+    p[1] = p1;
+    p[2] = p2;
+    q_max = 0.0f;
+    for (index = 0ul; index < 3ul; ++index) {
+        if (!(p[index]->rhw > 0.0f && p[index]->rhw < 1.0e30f)) {
+            return 0;
+        }
+        if (p[index]->rhw > q_max) {
+            q_max = p[index]->rhw;
+        }
+        ut[index] = p[index]->tu * size;
+        vt[index] = p[index]->tv * size;
+    }
+    u_low = u_high = ut[0];
+    v_low = v_high = vt[0];
+    for (index = 1ul; index < 3ul; ++index) {
+        if (ut[index] < u_low) {
+            u_low = ut[index];
+        }
+        if (ut[index] > u_high) {
+            u_high = ut[index];
+        }
+        if (vt[index] < v_low) {
+            v_low = vt[index];
+        }
+        if (vt[index] > v_high) {
+            v_high = vt[index];
+        }
+    }
+    if (!(u_high - u_low < V9X_D3D_PERSP_UV_RANGE &&
+          v_high - v_low < V9X_D3D_PERSP_UV_RANGE &&
+          u_low > -1.0e6f && u_high < 1.0e6f &&
+          v_low > -1.0e6f && v_high < 1.0e6f)) {
+        return 0;
+    }
+    u_base = v9x_float_to_long(u_low);
+    v_base = v9x_float_to_long(v_low);
+    for (index = 0ul; index < 3ul; ++index) {
+        w[index] = p[index]->rhw * (V9X_D3D_PERSP_W_MAX / q_max);
+    }
+
+    uu0 = (ut[0] - (float)u_base) * w[0];
+    uu1 = (ut[1] - (float)u_base) * w[1];
+    uu2 = (ut[2] - (float)u_base) * w[2];
+    vv0 = (vt[0] - (float)v_base) * w[0];
+    vv1 = (vt[1] - (float)v_base) * w[1];
+    vv2 = (vt[2] - (float)v_base) * w[2];
+
+    /* The same edge-walk gradients as the colours in v9x_d3d_triangle:
+     * per scanline along 0-2, and per pixel across it. */
+    dwdy = (w[2] - w[0]) * fdy02r;
+    dwdx = (w[1] - (dwdy * fdy01 + w[0])) * fdxr;
+    duudy = (uu2 - uu0) * fdy02r;
+    duudx = (uu1 - (duudy * fdy01 + uu0)) * fdxr;
+    dvvdy = (vv2 - vv0) * fdy02r;
+    dvvdx = (vv1 - (dvvdy * fdy01 + vv0)) * fdxr;
+
+    out->tbu = ((((DWORD)u_base & ((1ul << size_log) - 1ul)) <<
+                 (V9X_D3D_PERSP_BASE_BITS - size_log)) &
+                V9X_D3D_PERSP_BASE_MASK) | V9X_D3D_PERSP_BASE_HIGH;
+    out->tbv = (((DWORD)v_base & ((1ul << size_log) - 1ul)) <<
+                (V9X_D3D_PERSP_BASE_BITS - size_log)) &
+               V9X_D3D_PERSP_BASE_MASK;
+    out->ws = v9x_d3d_fixed_scaled(w[0] + dwdy * fdycc,
+                                   V9X_D3D_PERSP_W_SCALE);
+    out->dwdx = v9x_d3d_fixed_scaled(dwdx, V9X_D3D_PERSP_W_SCALE);
+    out->dwdy = v9x_d3d_fixed_scaled(dwdy, V9X_D3D_PERSP_W_SCALE);
+    out->us = v9x_d3d_fixed_scaled(uu0 + duudy * fdycc,
+                                   V9X_D3D_PERSP_UV_SCALE);
+    out->vs = v9x_d3d_fixed_scaled(vv0 + dvvdy * fdycc,
+                                   V9X_D3D_PERSP_UV_SCALE);
+    out->dudx = v9x_d3d_fixed_scaled(duudx, V9X_D3D_PERSP_UV_SCALE);
+    out->dvdx = v9x_d3d_fixed_scaled(dvvdx, V9X_D3D_PERSP_UV_SCALE);
+    out->dudy = v9x_d3d_fixed_scaled(duudy, V9X_D3D_PERSP_UV_SCALE);
+    out->dvdy = v9x_d3d_fixed_scaled(dvvdy, V9X_D3D_PERSP_UV_SCALE);
+    out->ds = 0ul;
+    out->dddx = 0ul;
+    out->dddy = 0ul;
+
+    if (mipmapped) {
+        /*
+         * True screen-space plane gradients of U*W, V*W and W, from the
+         * vertex positions - not the edge-walk steps above, which mix the
+         * two axes. The determinant is non-zero: the caller has already
+         * returned for a triangle whose width at vertex 1 is under 2e-6.
+         */
+        float x10 = p1->sx - p0->sx;
+        float y10 = p1->sy - p0->sy;
+        float x20 = p2->sx - p0->sx;
+        float y20 = p2->sy - p0->sy;
+        float det_r = 1.0f / (x10 * y20 - x20 * y10);
+        float ax = ((uu1 - uu0) * y20 - (uu2 - uu0) * y10) * det_r;
+        float ay = ((uu2 - uu0) * x10 - (uu1 - uu0) * x20) * det_r;
+        float bx = ((vv1 - vv0) * y20 - (vv2 - vv0) * y10) * det_r;
+        float by = ((vv2 - vv0) * x10 - (vv1 - vv0) * x20) * det_r;
+        float qx = ((w[1] - w[0]) * y20 - (w[2] - w[0]) * y10) * det_r;
+        float qy = ((w[2] - w[0]) * x10 - (w[1] - w[0]) * x20) * det_r;
+        float uu[3], vv[3], d[3];
+        float ddy, ddx;
+
+        uu[0] = uu0; uu[1] = uu1; uu[2] = uu2;
+        vv[0] = vv0; vv[1] = vv1; vv[2] = vv2;
+        for (index = 0ul; index < 3ul; ++index) {
+            /* d(U/W)/dx = (A_x - u * W_x) / W at the vertex, with u the
+             * vertex's own relative texel coordinate. */
+            float u = uu[index] / w[index];
+            float v = vv[index] / w[index];
+            float dux = (ax - u * qx) / w[index];
+            float dvx = (bx - v * qx) / w[index];
+            float duy = (ay - u * qy) / w[index];
+            float dvy = (by - v * qy) / w[index];
+            float along_x = dux * dux + dvx * dvx;
+            float along_y = duy * duy + dvy * dvy;
+            float rho2 = along_x > along_y ? along_x : along_y;
+            float level = 0.0f;
+
+            if (rho2 > 1.0f && rho2 < 1.0e30f) {
+                level = 0.5f * v9x_d3d_log2(rho2);
+            }
+            if (level > (float)mip_levels) {
+                level = (float)mip_levels;
+            }
+            d[index] = level;
+        }
+        ddy = (d[2] - d[0]) * fdy02r;
+        ddx = (d[1] - (ddy * fdy01 + d[0])) * fdxr;
+        out->ds = v9x_d3d_fixed_scaled(d[0] + ddy * fdycc,
+                                       V9X_D3D_MIP_SCALE);
+        out->dddx = v9x_d3d_fixed_scaled(ddx, V9X_D3D_MIP_SCALE);
+        out->dddy = v9x_d3d_fixed_scaled(ddy, V9X_D3D_MIP_SCALE);
+    }
+    return 1;
+}
+
+/*
  * D3D's comparison function as the S3D unit encodes it.
  *
  * A table, not arithmetic: the chip's order is NEVER, GREATER, EQUAL,
@@ -668,6 +939,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     DWORD alpha_bits = 0ul;
     int skip_blend = 0;
     int textured;
+    int perspective = 0;
+    V9X_D3D_VIRGE_PERSP persp;
 
     /*
      * The viewport, edges included: the core clips to 0..width and
@@ -879,6 +1152,21 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                 texture_d = level << 27;
             }
         }
+        /*
+         * Perspective only where it changes the picture: three equal rhw
+         * values are an affine mapping, and those triangles - every probe
+         * rung, every screen-aligned quad - keep the encoding that was
+         * measured, bit for bit. The two-pass trilinear stays affine as well:
+         * its second pass re-emits the affine registers and a single level.
+         */
+        if (!trilinear_blend &&
+            !(p0->rhw == p1->rhw && p1->rhw == p2->rhw)) {
+            perspective = v9x_d3d_virge_perspective(
+                p0, p1, p2, texture_size_log, texture_levels,
+                texture_mipmapped &&
+                    context->texture_min >= V9X_D3DFILTER_MIPNEAREST,
+                fdy02r, fdy01, fdxr, fdycc, &persp);
+        }
     }
     color = p0->color;
 
@@ -973,7 +1261,27 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BORDER, context->texture_border);
     v9x_mmio_write(V9X_VIRGE_3D_FADE_COLOR, 0ul);
 
-    if (textured) {
+    if (perspective) {
+        /* Fourteen: the eleven below plus W's three, still inside the
+         * FIFO's sixteen. S3's driver reserves the same (GENTRI.C:762). */
+        if (!v9x_wait_fifo(14ul, 1)) {
+            return 0;
+        }
+        v9x_mmio_write(V9X_VIRGE_3D_TBV, persp.tbv);
+        v9x_mmio_write(V9X_VIRGE_3D_TBU, persp.tbu);
+        v9x_mmio_write(V9X_VIRGE_3D_DWDX, persp.dwdx);
+        v9x_mmio_write(V9X_VIRGE_3D_DWDY, persp.dwdy);
+        v9x_mmio_write(V9X_VIRGE_3D_WS, persp.ws);
+        v9x_mmio_write(V9X_VIRGE_3D_DDDX, persp.dddx);
+        v9x_mmio_write(V9X_VIRGE_3D_DDDY, persp.dddy);
+        v9x_mmio_write(V9X_VIRGE_3D_DVDX, persp.dvdx);
+        v9x_mmio_write(V9X_VIRGE_3D_DUDX, persp.dudx);
+        v9x_mmio_write(V9X_VIRGE_3D_DVDY, persp.dvdy);
+        v9x_mmio_write(V9X_VIRGE_3D_DUDY, persp.dudy);
+        v9x_mmio_write(V9X_VIRGE_3D_DS, persp.ds);
+        v9x_mmio_write(V9X_VIRGE_3D_VS, persp.vs);
+        v9x_mmio_write(V9X_VIRGE_3D_US, persp.us);
+    } else if (textured) {
         /* Eleven writes, not nine: the two mip-level gradients are part of
          * the texture setup and were never written before, which left the
          * level index to drift across the triangle - see V9X_VIRGE_3D_DDDX.
@@ -1046,6 +1354,9 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
                        V9X_VIRGE_3D_CMD_TEX_MODULATE;
         } else {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_UNLIT;
+        }
+        if (perspective) {
+            command |= V9X_VIRGE_3D_CMD_TEX_PERSPECTIVE;
         }
         if (texture_mipmapped &&
             context->texture_min == V9X_D3DFILTER_MIPNEAREST) {
