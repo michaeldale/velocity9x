@@ -412,6 +412,17 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
 {
     *skip_out = 0;
     if (context->alpha_blend_enable == 0ul) {
+        /*
+         * The unit has no alpha test and the device publishes no alpha
+         * comparison caps, so a test is not drawn - as in S3's driver
+         * (98DDK s3v\D3DSTATE.C:98). It is counted, so a capture says whether
+         * an application asked. 3DMark 99 does not, even with the caps
+         * published (2026-09-23): see alpha_test_* in V9X_D3D_DIAGNOSTICS.
+         */
+        if (context->alpha_test_enable != 0ul &&
+            context->alpha_func != V9X_D3DCMP_ALWAYS && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.alpha_test_unexpressed;
+        }
         return 0ul;
     }
     if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&

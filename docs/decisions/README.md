@@ -91,6 +91,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-11 D3DSoftSysMem buys Final Reality nothing, because its textures never go there](2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)
 - [2026-09-23 The DX5 draw paths never clipped, and the S3D drops what reaches the edge](2026-09-23-the-dx5-draw-paths-never-clipped.md)
 - [2026-09-23 Perspective texturing on the S3D, and what the tunnel's missing checker is not](2026-09-23-perspective-texturing-on-the-s3d.md)
+- [2026-09-23 The tunnel texture has no checker, and 3DMark 99 never asks for alpha test](2026-09-23-the-tunnel-texture-has-no-checker.md)
 
 ## Direct3D software rasterizer
 

@@ -839,6 +839,11 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_hex(key, snapshot.d3d.driver_info_guids[guid]);
         }
     }
+    v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
+    v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
+    v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);
+    v9x_write_uint("AlphaTestUnexpressed",
+                   snapshot.d3d.alpha_test_unexpressed);
     v9x_write_uint("WmDeclined", snapshot.d3d.wm_declined);
     v9x_write_uint("BltEngineFlipPending",
                    snapshot.d3d.blt_engine_flip_pending);

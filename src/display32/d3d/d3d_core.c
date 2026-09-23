@@ -1139,6 +1139,9 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
              * depth surface. D3DCMP_LESS is the DDK's default (D3DCTXT.C:351).
              */
             context->z_func = V9X_D3DCMP_LESS;
+            context->alpha_test_enable = 0ul;
+            context->alpha_func = V9X_D3DCMP_ALWAYS;
+            context->alpha_ref = 0ul;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -1206,6 +1209,9 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->z_enable = 0ul;
     context->z_write = 0ul;
     context->z_func = 0ul;
+    context->alpha_test_enable = 0ul;
+    context->alpha_func = 0ul;
+    context->alpha_ref = 0ul;
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.context_destroys;
     v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, data->ddrval);
@@ -1253,6 +1259,9 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].z_enable = 0ul;
             v9x_d3d_contexts[index].z_write = 0ul;
             v9x_d3d_contexts[index].z_func = 0ul;
+            v9x_d3d_contexts[index].alpha_test_enable = 0ul;
+            v9x_d3d_contexts[index].alpha_func = 0ul;
+            v9x_d3d_contexts[index].alpha_ref = 0ul;
         }
     }
     data->ddrval = V9X_DD_OK;
@@ -1512,6 +1521,25 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
          * - and the safe default is not the one a zeroed field would
          * give. */
         context->z_func = argument;
+        break;
+    case V9X_D3DRENDERSTATE_ALPHATESTENABLE:
+        context->alpha_test_enable = argument != 0ul;
+        if (argument != 0ul && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.alpha_test_sets;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_ALPHAFUNC:
+        context->alpha_func = argument;
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.alpha_test_func_seen |=
+                argument < 32ul ? (1ul << argument) : 1ul;
+        }
+        break;
+    case V9X_D3DRENDERSTATE_ALPHAREF:
+        context->alpha_ref = argument;
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.alpha_test_ref_last = argument;
+        }
         break;
     default:
         break;

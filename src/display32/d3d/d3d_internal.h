@@ -151,6 +151,15 @@ typedef struct v9x_d3d_context {
      * is the shipping behaviour.
      */
     DWORD alpha_force;
+    /*
+     * D3DRENDERSTATE_ALPHATESTENABLE, ALPHAFUNC and ALPHAREF, recorded so
+     * an engine can see them. The S3D unit has no alpha test and does not
+     * draw one; it counts the triangles that asked. Direct3D's defaults:
+     * off, ALWAYS, 0.
+     */
+    DWORD alpha_test_enable;
+    DWORD alpha_func;
+    DWORD alpha_ref;
 } V9X_D3D_CONTEXT;
 
 /*

@@ -583,6 +583,12 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_ZENABLE                   7ul
 #define V9X_D3DRENDERSTATE_ZWRITEENABLE             14ul
 #define V9X_D3DRENDERSTATE_ZFUNC                    23ul
+/* Alpha test: enable, reference (0..255 as a D3DFIXED low byte on DX5) and
+ * comparison. Values from the DDK's D3DTYPES.H:911, 920-921
+ * (C:\98DDK\src\display\inc). */
+#define V9X_D3DRENDERSTATE_ALPHATESTENABLE          15ul
+#define V9X_D3DRENDERSTATE_ALPHAREF                 24ul
+#define V9X_D3DRENDERSTATE_ALPHAFUNC                25ul
 /* D3DCMP_*, the comparison functions D3DRENDERSTATE_ZFUNC selects between.
  * The chip's own encoding is a different order entirely; the engine maps
  * between them. */
@@ -1465,6 +1471,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092301: V9X_D3D_DIAGNOSTICS gains the alpha-test counters. An append.
+ */
 /* 2026092020: V9X_D3D_DIAGNOSTICS gains the render-target census. An append.
  */
 /* 2026092019: the coverage record re-reads ITS OWN buffer at the next flip
@@ -1517,7 +1525,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092020ul
+#define V9X_DD_SHARED_ABI   2026092301ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2828,6 +2836,19 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD driver_info_guids[16];
     DWORD driver_info_guid_count;
+    /*
+     * Alpha test, which the S3D unit does not have and this driver does not
+     * draw. Counted so that a capture says whether an application asks for
+     * it at all: alpha_test_sets counts ALPHATESTENABLE set non-zero, the
+     * func mask is one bit per D3DCMP value seen, ref_last the last
+     * reference, and alpha_test_unexpressed the triangles drawn with a test
+     * on that was not ALWAYS. 3DMark 99 set none, with or without alpha
+     * comparison caps published (A8U4I5, 2026-09-23).
+     */
+    DWORD alpha_test_sets;
+    DWORD alpha_test_func_seen;
+    DWORD alpha_test_ref_last;
+    DWORD alpha_test_unexpressed;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
