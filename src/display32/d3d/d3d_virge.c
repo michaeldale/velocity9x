@@ -621,24 +621,39 @@ static WORD v9x_d3d_fixed_8_7(float value)
  * fistp stores the integer indefinite, 80000000h, for anything past 32 bits,
  * and the engine would take that as the most negative step it has. A thin
  * triangle's 1/dx is large enough to reach it for a W or D gradient, so these
- * registers clamp where the affine ones never needed to. A NaN answers zero.
+ * registers clamp where the affine ones never needed to.
+ *
+ * A NaN answers zero, and is found from its bits: under Open Watcom
+ * `scaled == scaled` is TRUE for a NaN, and the two clamps below then sent it
+ * to 0x80000080, the most negative step
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). The
+ * union store also rounds the product to float, so the bits tested are the
+ * value converted.
  */
 #define V9X_D3D_FIXED_LIMIT 2147483520.0f
+#define V9X_D3D_FLOAT_EXPONENT_MASK 0x7f800000ul
+#define V9X_D3D_FLOAT_MANTISSA_MASK 0x007ffffful
 
 static DWORD v9x_d3d_fixed_scaled(float value, float scale)
 {
-    float scaled = value * scale;
+    union {
+        float value;
+        DWORD bits;
+    } scaled;
 
-    if (!(scaled == scaled)) {
+    scaled.value = value * scale;
+    if ((scaled.bits & V9X_D3D_FLOAT_EXPONENT_MASK) ==
+            V9X_D3D_FLOAT_EXPONENT_MASK &&
+        (scaled.bits & V9X_D3D_FLOAT_MANTISSA_MASK) != 0ul) {
         return 0ul;
     }
-    if (scaled >= V9X_D3D_FIXED_LIMIT) {
+    if (scaled.value >= V9X_D3D_FIXED_LIMIT) {
         return 0x7fffff80ul;
     }
-    if (scaled <= -V9X_D3D_FIXED_LIMIT) {
+    if (scaled.value <= -V9X_D3D_FIXED_LIMIT) {
         return 0x80000080ul;
     }
-    return (DWORD)v9x_float_to_long(scaled);
+    return (DWORD)v9x_float_to_long(scaled.value);
 }
 
 /*

@@ -545,6 +545,31 @@ static void v9x_d3d_lerp_vertex(V9X_D3DTLVERTEX *result,
     }
 }
 
+/*
+ * Whether a screen coordinate is finite, from its bits: an all-ones exponent
+ * is NaN or infinity.
+ *
+ * No float comparison can be trusted to refuse a NaN under Open Watcom. It
+ * branches on `fcomp; fnstsw; sahf` without testing PF, so an unordered
+ * result reads as below and equal at once, and whether a range test passes a
+ * NaN depends on which way round each comparison happened to be compiled
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). An
+ * infinity is refused here too; the range tests would have refused it anyway.
+ */
+#define V9X_D3D_FLOAT_EXPONENT_MASK 0x7f800000ul
+
+static int v9x_d3d_coordinate_finite(float value)
+{
+    union {
+        float value;
+        unsigned long bits;
+    } stored;
+
+    stored.value = value;
+    return (stored.bits & V9X_D3D_FLOAT_EXPONENT_MASK) !=
+           V9X_D3D_FLOAT_EXPONENT_MASK ? 1 : 0;
+}
+
 static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
                                  const V9X_D3DTLVERTEX *triangle,
                                  V9X_D3DTLVERTEX *result)
@@ -563,9 +588,14 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
     }
     /* The guard band belongs to the engine, not to the clipper: a vertex
      * outside it overflows that engine's fixed-point coordinate conversion,
-     * so it is refused here rather than wrapped there. */
+     * so it is refused here rather than wrapped there. A non-finite one is
+     * refused from its bits before the range test sees it. */
     limit = ops->limits->coordinate_limit;
     for (index = 0ul; index < 3ul; ++index) {
+        if (!v9x_d3d_coordinate_finite(triangle[index].sx) ||
+            !v9x_d3d_coordinate_finite(triangle[index].sy)) {
+            return -1;
+        }
         if (!(triangle[index].sx >= -limit &&
               triangle[index].sx < limit &&
               triangle[index].sy >= -limit &&
@@ -650,9 +680,10 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
 /*
  * Whether all three vertices lie on the render target, edges included.
  *
- * Written so that a NaN coordinate answers no and goes to the clipper, whose
- * guard-band test refuses it, rather than answering yes and reaching the
- * engine's fixed-point conversion.
+ * A NaN coordinate answers no and goes to the clipper, whose guard-band test
+ * refuses it, rather than answering yes and reaching the engine's fixed-point
+ * conversion. That is decided from the bits: the range test below, compiled
+ * by Open Watcom, passed a NaN on all four comparisons.
  */
 static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
                                       const V9X_D3DTLVERTEX *triangle)
@@ -662,6 +693,10 @@ static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
     DWORD index;
 
     for (index = 0ul; index < 3ul; ++index) {
+        if (!v9x_d3d_coordinate_finite(triangle[index].sx) ||
+            !v9x_d3d_coordinate_finite(triangle[index].sy)) {
+            return 0;
+        }
         if (!(triangle[index].sx >= 0.0f && triangle[index].sx <= right &&
               triangle[index].sy >= 0.0f && triangle[index].sy <= bottom)) {
             return 0;

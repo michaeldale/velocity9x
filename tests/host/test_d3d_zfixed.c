@@ -113,11 +113,55 @@ static void test_gradients_are_signed_and_saturate(void)
     ZCHECK((unsigned long)v9x_d3d_z_to_1_31_signed(-4.0f) != 0x80000000ul);
 }
 
+/* A float from its IEEE-754 bits. 0.0f / 0.0f and 1.0f / 0.0f are folded by
+ * the compiler or trap, and HUGE_VAL is a double; the bits are unambiguous. */
+static float zfixed_from_bits(unsigned long bits)
+{
+    union {
+        unsigned long bits;
+        float value;
+    } pun;
+
+    pun.bits = bits;
+    return pun.value;
+}
+
+/*
+ * Non-finite inputs resolve to the values d3d_zfixed.h documents.
+ *
+ * Built from bits, not from a comparison-friendly expression, because under
+ * Open Watcom's x87 code generation a float comparison cannot be trusted to
+ * report NaN as unordered (tests\host\test_d3d_cull.c). Both quiet-NaN signs
+ * are fed: the sign bit is whatever the arithmetic that made the NaN left.
+ */
+static void test_non_finite_inputs(void)
+{
+    float quiet_nan = zfixed_from_bits(0x7fc00000ul);
+    float negative_nan = zfixed_from_bits(0xffc00000ul);
+    float positive_infinity = zfixed_from_bits(0x7f800000ul);
+    float negative_infinity = zfixed_from_bits(0xff800000ul);
+
+    /* NaN is the far plane: garbage is occluded rather than occluding. */
+    ZCHECK(v9x_d3d_z_to_1_31_depth(quiet_nan) == V9X_D3D_Z_1_31_MAX);
+    ZCHECK(v9x_d3d_z_to_1_31_depth(negative_nan) == V9X_D3D_Z_1_31_MAX);
+    /* Infinities clamp like any other out-of-range depth. */
+    ZCHECK(v9x_d3d_z_to_1_31_depth(positive_infinity) == V9X_D3D_Z_1_31_MAX);
+    ZCHECK(v9x_d3d_z_to_1_31_depth(negative_infinity) == 0l);
+
+    /* NaN is a flat slope, not the indefinite's maximal negative one. */
+    ZCHECK(v9x_d3d_z_to_1_31_signed(quiet_nan) == 0l);
+    ZCHECK(v9x_d3d_z_to_1_31_signed(negative_nan) == 0l);
+    ZCHECK(v9x_d3d_z_to_1_31_signed(positive_infinity) == V9X_D3D_Z_1_31_MAX);
+    ZCHECK(v9x_d3d_z_to_1_31_signed(negative_infinity) ==
+           -V9X_D3D_Z_1_31_MAX);
+}
+
 unsigned int v9x_run_d3d_zfixed_tests(void)
 {
     test_depth_never_negative_or_indefinite();
     test_depth_endpoints();
     test_depth_buckets();
     test_gradients_are_signed_and_saturate();
+    test_non_finite_inputs();
     return zfixed_failures;
 }

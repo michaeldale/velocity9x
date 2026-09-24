@@ -757,6 +757,32 @@ static v9x_s32 v9x_d3d_soft_coordinate(float value, DWORD extent)
 }
 
 /*
+ * NaN of either sign, from the bits: an all-ones exponent and a non-zero
+ * mantissa. Open Watcom compiles `value >= 1.0f` as an integer compare of the
+ * bit pattern and branches on its other float compares without testing PF, so
+ * a NaN reads as less-than and equal at once and `value == value` is true
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). The same
+ * predicate as d3d_zfixed.c's, repeated rather than exported.
+ */
+#define V9X_D3D_SOFT_EXPONENT_MASK 0x7f800000ul
+#define V9X_D3D_SOFT_MANTISSA_MASK 0x007ffffful
+
+static int v9x_d3d_soft_is_nan(float value)
+{
+    union {
+        float value;
+        unsigned long bits;
+    } stored;
+
+    stored.value = value;
+    if ((stored.bits & V9X_D3D_SOFT_EXPONENT_MASK) !=
+            V9X_D3D_SOFT_EXPONENT_MASK) {
+        return 0;
+    }
+    return (stored.bits & V9X_D3D_SOFT_MANTISSA_MASK) != 0ul ? 1 : 0;
+}
+
+/*
  * A vertex depth, scaled into the rasterizer's 16-bit buffer.
  *
  * sz is 0..1 and the buffer holds 0..65535, so this is a multiply and a clamp
@@ -767,17 +793,22 @@ static v9x_s32 v9x_d3d_soft_coordinate(float value, DWORD extent)
  * largest representable integer. Here the scale is 65535 rather than 2^31, so
  * the arithmetic has room - but the same input still has to be answered rather
  * than assumed away, and a NaN has to resolve to the far plane so that garbage
- * is occluded instead of occluding. The comparisons are written so a NaN takes
- * the else arm: !(value > 0.0f) is true for a NaN and value >= 1.0f is false.
- * d3d_zfixed.c is that argument at length.
+ * is occluded instead of occluding. d3d_zfixed.c is that argument at length.
+ *
+ * The NaN is found from its bits, before any comparison: under Open Watcom no
+ * float comparison sees one
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md).
  */
 static v9x_s32 v9x_d3d_soft_depth(float value)
 {
+    if (v9x_d3d_soft_is_nan(value)) {
+        return (v9x_s32)V9X_D3D_RASTER_DEPTH_MAX;
+    }
     if (value >= 1.0f) {
         return (v9x_s32)V9X_D3D_RASTER_DEPTH_MAX;
     }
     if (!(value > 0.0f)) {
-        return value == value ? 0l : (v9x_s32)V9X_D3D_RASTER_DEPTH_MAX;
+        return 0l;
     }
     return (v9x_s32)v9x_float_to_long(value * V9X_D3D_SOFT_DEPTH_SCALE);
 }
@@ -792,11 +823,15 @@ static v9x_s32 v9x_d3d_soft_depth(float value)
  * visibly wrong, where wrapping a coordinate the interpolator cannot carry
  * would put a seam in the middle of every triangle.
  *
- * NaN takes the else arm and resolves to zero, on the same reasoning as the
- * depth conversion above.
+ * NaN resolves to zero in both modes, found from its bits as the depth
+ * conversion above finds it. Left to the comparisons, a negative NaN reached
+ * v9x_float_to_long and came back as the integer indefinite.
  */
 static v9x_s32 v9x_d3d_soft_texcoord(float value, int wrapping)
 {
+    if (v9x_d3d_soft_is_nan(value)) {
+        return 0l;
+    }
     if (!wrapping) {
         if (value >= 1.0f) {
             return V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
@@ -809,9 +844,7 @@ static v9x_s32 v9x_d3d_soft_texcoord(float value, int wrapping)
     }
 
     /* Wrapping: negative is meaningful and the caller shifts the triangle
-     * into range afterwards, so only the magnitude is bounded here. The
-     * comparisons are written so that NaN fails both and falls through to the
-     * conversion, which is the arm the depth conversion uses for it too. */
+     * into range afterwards, so only the magnitude is bounded here. */
     if (value > V9X_D3D_SOFT_TEXCOORD_LIMIT) {
         value = V9X_D3D_SOFT_TEXCOORD_LIMIT;
     }

@@ -26,11 +26,22 @@
  * one is safe only because byte-range colours cannot overflow in the first
  * place.
  *
- * The comparisons are written so that a NaN takes the else arm rather than
- * reaching the conversion: `!(value > 0.0f)` is true for NaN, `value >= 1.0f`
- * is false for it.
+ * A NaN is detected from its bits before any comparison, because no
+ * comparison here can be trusted with one. Open Watcom compiles
+ * `value >= 1.0f` as a signed integer compare of the bit pattern, and its
+ * other float compares branch on `fcomp; fnstsw; sahf` without testing PF, so
+ * an unordered result reads as both less-than and equal. Measured on the host
+ * build before this check existed: depth(-NaN) = 0x80000000, the indefinite,
+ * and signed(+/-NaN) = +/- the register limit rather than zero
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). Once NaN
+ * is excluded the comparisons are ordered and correct, infinities included.
  */
 #include "d3d_zfixed.h"
+
+/* IEEE-754 single precision: an all-ones exponent with a non-zero mantissa is
+ * NaN; with a zero mantissa it is infinity, which the clamps handle. */
+#define V9X_D3D_Z_EXPONENT_MASK 0x7f800000ul
+#define V9X_D3D_Z_MANTISSA_MASK 0x007ffffful
 
 /*
  * 2^31. Exact as a float, and multiplying by a power of two loses no mantissa,
@@ -65,32 +76,53 @@ static long v9x_d3d_z_fistp(float value);
     "fistp dword ptr [esp]" \
     "pop eax" \
     parm [8087] value [eax] modify exact [eax];
+
+/* NaN of either sign, from the bits. `value != value` is FALSE for a NaN
+ * under this compiler; see the top of the file. */
+static int v9x_d3d_z_is_nan(float value)
+{
+    union {
+        float value;
+        unsigned long bits;
+    } stored;
+
+    stored.value = value;
+    if ((stored.bits & V9X_D3D_Z_EXPONENT_MASK) != V9X_D3D_Z_EXPONENT_MASK) {
+        return 0;
+    }
+    return (stored.bits & V9X_D3D_Z_MANTISSA_MASK) != 0ul ? 1 : 0;
+}
+
 long v9x_d3d_z_to_1_31_depth(float value)
 {
+    if (v9x_d3d_z_is_nan(value)) {
+        /* A NaN vertex resolves to the far plane so that garbage is occluded
+         * rather than occluding. */
+        return V9X_D3D_Z_1_31_MAX;
+    }
     if (value >= 1.0f) {
         return V9X_D3D_Z_1_31_MAX;
     }
     if (!(value > 0.0f)) {
-        /* Zero, negative, or NaN. A NaN vertex resolves to the far plane so
-         * that garbage is occluded rather than occluding; a negative depth is
-         * in front of the near plane and clamps to it. */
-        return value == value ? 0l : V9X_D3D_Z_1_31_MAX;
+        /* Zero or negative. A negative depth is in front of the near plane
+         * and clamps to it. */
+        return 0l;
     }
     return v9x_d3d_z_fistp(value * V9X_D3D_Z_1_31_SCALE);
 }
 
 long v9x_d3d_z_to_1_31_signed(float value)
 {
+    if (v9x_d3d_z_is_nan(value)) {
+        /* A flat-depth triangle degrades gracefully; the indefinite would be
+         * a maximal negative slope across the whole span. */
+        return 0l;
+    }
     if (value >= 1.0f) {
         return V9X_D3D_Z_1_31_MAX;
     }
     if (value <= -1.0f) {
         return -V9X_D3D_Z_1_31_MAX;
-    }
-    if (value != value) {
-        /* NaN. A flat-depth triangle degrades gracefully; the indefinite
-         * would be a maximal negative slope across the whole span. */
-        return 0l;
     }
     return v9x_d3d_z_fistp(value * V9X_D3D_Z_1_31_SCALE);
 }
