@@ -15,6 +15,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "velocity9x/intel_gma.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -143,6 +144,76 @@ static void v9x_census_name(char *out, DWORD index, const char *field)
         out[at++] = *field++;
     }
     out[at] = 0;
+}
+
+/*
+ * The Gen3 display layout as it stands NOW, read by this tool straight from
+ * the BAR0 window the mini-VDD mapped.
+ *
+ * Why here and not in the driver: every other capture of these registers is
+ * taken at a moment that disturbs them. INTELMM.TXT is written at enable and
+ * mode switch - and a mode switch is what repairs the netbook's DOS-VM
+ * scanout corruption (docs\issues\2026-09-12-netbook-dos-box-return-
+ * hardlock.md) - and the HAL's ScanReg set is sampled only at a flip, inside
+ * a DirectDraw session. Neither can say what the display is doing while the
+ * panel is wrong. This can, because running it changes nothing: it is a
+ * Win32 process, it starts no DOS VM, and it only reads.
+ *
+ * The window is a system-arena linear address, global to every process on
+ * Windows 9x; the HAL reads the same registers through it from ring 3 in
+ * DirectDraw's process. IsBadReadPtr is checked anyway, so a descriptor this
+ * tool misreads costs a LiveRegError key rather than the process.
+ *
+ * The list is the HAL's own (i9xx_scanout.c, review H4), so a live capture
+ * and a flip-time capture compare register for register.
+ */
+static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
+{
+    static const DWORD regs[V9X_I9XX_SCAN_REG_COUNT] = {
+        V9X_I9XX_REG_PIPEA_CONF, V9X_I9XX_REG_PIPEA_HTOTAL,
+        V9X_I9XX_REG_PIPEA_VTOTAL, V9X_I9XX_REG_PIPEA_SRC,
+        V9X_I9XX_REG_DSPA_CNTR, V9X_I9XX_REG_DSPA_ADDR,
+        V9X_I9XX_REG_DSPA_STRIDE, V9X_I9XX_REG_DSPA_POS,
+        V9X_I9XX_REG_DSPA_SIZE,
+        V9X_I9XX_REG_PIPEB_CONF, V9X_I9XX_REG_PIPEB_HTOTAL,
+        V9X_I9XX_REG_PIPEB_VTOTAL, V9X_I9XX_REG_PIPEB_SRC,
+        V9X_I9XX_REG_DSPB_CNTR, V9X_I9XX_REG_DSPB_ADDR,
+        V9X_I9XX_REG_DSPB_STRIDE, V9X_I9XX_REG_DSPB_POS,
+        V9X_I9XX_REG_DSPB_SIZE,
+        V9X_I9XX_REG_PFIT_CONTROL, V9X_I9XX_REG_PFIT_PGM_RATIOS,
+        V9X_I9XX_REG_LVDS, V9X_I9XX_REG_VGACNTRL,
+        V9X_I9XX_REG_PIPEB_DSL, V9X_I9XX_REG_PIPEB_FRAMEHIGH
+    };
+    DWORD index;
+    char key[16];
+
+    v9x_write_hex("LiveControlBase", engine->control_linear_base);
+    if (engine->engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        v9x_write_text("LiveRegError", "not-gen3");
+        return;
+    }
+    if (engine->control_linear_base == 0ul) {
+        v9x_write_text("LiveRegError", "no-control-window");
+        return;
+    }
+    if (IsBadReadPtr((const void *)(engine->control_linear_base +
+                                    V9X_I9XX_REG_VGACNTRL),
+                     sizeof(DWORD))) {
+        v9x_write_text("LiveRegError", "window-unreadable");
+        return;
+    }
+
+    for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT; ++index) {
+        key[0] = 'L'; key[1] = 'i'; key[2] = 'v'; key[3] = 'e';
+        key[4] = 'R'; key[5] = 'e'; key[6] = 'g';
+        key[7] = (char)('0' + index / 10ul);
+        key[8] = (char)('0' + index % 10ul);
+        key[9] = 'O'; key[10] = 'f'; key[11] = 'f'; key[12] = '\0';
+        v9x_write_hex(key, regs[index]);
+        key[9] = 'V'; key[10] = 'a'; key[11] = 'l'; key[12] = '\0';
+        v9x_write_hex(key, *(volatile DWORD *)(engine->control_linear_base +
+                                               regs[index]));
+    }
 }
 
 /*
@@ -415,6 +486,62 @@ static DWORD v9x_parse_inject(void)
     return 0ul;
 }
 
+/*
+ * "-dd": hold a DirectDraw object open across the snapshot.
+ *
+ * The engine descriptor - and with it the BAR0 window the live display
+ * capture reads through - is stamped into the shared block when a DirectDraw
+ * session is set up, and a mode switch leaves control_linear_base zero until
+ * the next one. Creating the object is enough to stamp it; no cooperative
+ * level is set, so nothing here changes the mode, which is what would repair
+ * the state being captured.
+ *
+ * DDRAW is loaded at run time rather than imported, keeping this tool's
+ * three-DLL import contract (build-trace-dump.ps1). The object is released
+ * through its IUnknown vtable, slot 2, so no DirectDraw header is needed.
+ */
+typedef HRESULT (WINAPI *V9X_DIRECTDRAWCREATE)(void *guid, void **object,
+                                              void *outer);
+
+static void *v9x_dd_hold_open(void)
+{
+    HMODULE ddraw;
+    V9X_DIRECTDRAWCREATE create;
+    void *object = 0;
+    HRESULT hr;
+
+    ddraw = LoadLibraryA("DDRAW.DLL");
+    if (ddraw == 0) {
+        v9x_write_text("DdHold", "load-failed");
+        return 0;
+    }
+    create = (V9X_DIRECTDRAWCREATE)GetProcAddress(ddraw, "DirectDrawCreate");
+    if (create == 0) {
+        v9x_write_text("DdHold", "no-entry");
+        return 0;
+    }
+    hr = create(0, &object, 0);
+    if (hr != 0 || object == 0) {
+        v9x_write_hex("DdHoldHresult", (DWORD)hr);
+        v9x_write_text("DdHold", "create-failed");
+        return 0;
+    }
+    v9x_write_text("DdHold", "open");
+    return object;
+}
+
+static void v9x_dd_release(void *object)
+{
+    typedef ULONG (WINAPI *V9X_RELEASE)(void *self);
+    V9X_RELEASE release;
+
+    if (object == 0) {
+        return;
+    }
+    release = (V9X_RELEASE)(*(void ***)object)[2];
+    release(object);
+}
+
 void __stdcall V9xTraceDumpEntry(void)
 {
     V9X_DCICMD command;
@@ -425,11 +552,15 @@ void __stdcall V9xTraceDumpEntry(void)
     int result;
     unsigned index;
     unsigned char *bytes;
+    void *dd_object = 0;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
     v9x_write_dump_identity();
+    if (v9x_has_switch("-dd")) {
+        dd_object = v9x_dd_hold_open();
+    }
 
     screen = GetDC(0);
     if (screen == 0) {
@@ -667,6 +798,10 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_hex(key, snapshot.d3d.scan_reg_value[index]);
         }
     }
+    v9x_write_live_display(&snapshot.engine);
+    /* Released only after the live read, so the window is read while the
+     * session that published it is still open. */
+    v9x_dd_release(dd_object);
     v9x_write_uint("D3dBlendSkipped", snapshot.d3d.blend_skipped);
     v9x_write_hex("D3dBlendLastPair", snapshot.d3d.blend_last_pair);
     v9x_write_uint("D3dColorKeySets", snapshot.d3d.color_key_sets);
