@@ -1,0 +1,76 @@
+TEST	Current Results	UNITS
+
+Quality/ 1/Flat Shading	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 2/Gouraud Shading	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 3/Dithering	NotCapable [1,2,3,4,6,7,8] 	 
+Quality/ 4/Z-buffer	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 5/Perspective Correction	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 6/Nearest	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 7/Linear	Capable [1,3,4,5,6,7,9] 	 
+Quality/ 8/Nearest Mipmap Nearest	NotCapable [1,3,4,6,7,9,10] 	 
+Quality/ 9/Nearest Mipmap Linear	NotCapable [1,3,4,6,7,9,11] 	 
+Quality/10/Linear Mipmap Nearest	NotCapable [1,3,4,6,7,9,12] 	 
+Quality/11/Linear Mipmap Linear	NotCapable [1,3,4,6,7,9,13] 	 
+Quality/12/Modulate Texture Blending	Capable [1,3,4,5,6,7,9] 	 
+Quality/13/Decal Texture Blending	NotCapable [1,3,4,6,7,9,14] 	 
+Quality/14/DecalAlpha Texture Blending	NotCapable [1,3,4,6,7,9,14] 	 
+Quality/15/ModulateAlpha Texture Blending	Capable [1,2,3,4,5,6,7] 	 
+Quality/16/Flat Wrap Texture Addressing	Capable [1,2,3,4,5,6,7] 	 
+Quality/17/Cylindrical Wrap u	Incorrect [1,3,4,5,6,7,9,15] 	 
+Quality/18/Cylindrical Wrap v	Incorrect [1,2,3,4,5,6,7,16] 	 
+Quality/19/Clamp Texture Addressing	Capable [1,2,3,4,5,6,7] 	 
+Quality/20/Mirror Texture Addressing	NotCapable [1,2,3,4,6,7,17] 	 
+Quality/21/Cull Counterclockwise	Incorrect [1,3,4,5,6,7,9,18] 	 
+Quality/22/Cull Clockwise	NotCapable [1,3,4,6,7,9,19] 	 
+Quality/23/Cull None	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/24/Fog Vertex Linear	NotCapable [1,3,4,6,7,9,21] 	 
+Quality/25/Fog Table Linear	NotCapable [1,3,4,6,7,9,22] 	 
+Quality/26/Fog Table Exponential	NotCapable [1,3,4,6,7,9,23] 	 
+Quality/27/Specular Highlights	NotCapable [1,3,4,6,7,9,24] 	 
+Quality/28/Color Key Transparency	NotCapable [1,3,4,6,7,9,25] 	 
+Quality/29/Alpha Transparency	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/30/Source Alpha Pixel Blending	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/31/Add Pixel Blending	NotCapable [1,3,4,6,7,9,26] 	 
+Quality/32/Modulate Pixel Blending	NotCapable [1,3,4,6,7,9,27] 	 
+Quality/33/Alpha Vertices	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/34/Fog Vertex and Color Key	NotCapable [1,3,4,6,7,9,28] 	 
+Quality/35/Fog Vertex and Alpha	NotCapable [1,3,4,6,7,9,29] 	 
+Quality/36/Anti-aliasing	NotCapable [1,3,4,6,7,9,30] 	 
+Quality/37/Texture Swapping	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/38/Narrow Z Accuracy	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/39/Wide Z Accuracy	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/40/High Triangle Count	NotCapable [1,3,4,6,7,9,20] 	 
+Quality/41/Texture Fidelity	NotCapable [1,3,4,6,7,9,20] 	 
+
+NOTES
+
+ [1]  Direct3D HAL was used.
+ [2]  The refresh rate was 30 Hz.
+ [3]  The scene was rendered using Direct3D Execute buffers.
+ [4]  The test ran full screen at 640x480x16bpp.
+ [5]  Z buffer depth: 16 bits. Texture formats. Normal: 565 RGB. Transparent: 5551 RGBA. Alpha: 4444 RGBA.
+ [6]  The test ran with the following driver fixes: World in Fog Table(on) .
+ [7]  The following Windows tasks were running during this test and could affect the test results: EAPWAKE.EXE, MSTASK.EXE, TASKMON.EXE, V9XAGNT.EXE, WG111V3.EXE, WMIEXE.EXE
+ [8]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Dithering.
+ [9]  The refresh rate was 29 Hz.
+ [10]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Mipmap Nearest.
+ [11]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Mipmap Linear.
+ [12]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Lin. Mipmap Nearest.
+ [13]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Lin. Mipmap Linear.
+ [14]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Texture Blending.
+ [15]  User comments: HAL claims wrap u but frame matches bad image
+ [16]  User comments: HAL claims wrap v but frame matches bad image
+ [17]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Texture Addressing.
+ [18]  User comments: CCW cap forced on by override. HAL culls nothing
+ [19]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: CCW Culling,CW Culling.
+ [20]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: CCW Culling.
+ [21]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Fog Vertex Linear,CCW Culling.
+ [22]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Fog Pixel Linear,CCW Culling.
+ [23]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Fog Pixel Exp,CCW Culling.
+ [24]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Specular Highlights,CCW Culling.
+ [25]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Color Key Transparency,CCW Culling.
+ [26]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: CCW Culling,Add Pixel Blending.
+ [27]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: CCW Culling,Modulate Pixel Blending.
+ [28]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Fog Vertex Linear,Color Key Transparency,Fog Vertex and Color Key,CCW Culling.
+ [29]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Fog Vertex Linear,Fog Vertex and Alpha,CCW Culling.
+ [30]  The HAL on Primary Display Driver cannot run this test.  The unsupported settings are: Anti-aliasing,CCW Culling.
