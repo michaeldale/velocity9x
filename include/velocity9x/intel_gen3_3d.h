@@ -107,6 +107,37 @@
 #define V9X_I9XX_S2_ALL_TEXCOORD_ABSENT  ((v9x_u32)0xfffffffful)
 
 /*
+ * S3: per-coordinate-set interpolation controls, one nibble per set, set 0 in
+ * bits 0-3. WRAP_SHORTEST interpolates that coordinate the short way round
+ * the unit interval - 0.9 to 0.1 through 1.0/0.0 rather than back through 0.5
+ * - which is Direct3D's D3DRENDERSTATE_WRAPU (TCX) and WRAPV (TCY),
+ * "cylindrical" wrap.
+ *
+ * Sources: xf86-video-intel src\sna\gen3_render.h:350-358
+ * (TEXCOORD_WRAP_SHORTEST_TCX 8, _TCY 4, shifted by unit * 4) and Mesa
+ * 21.3's classic src\mesa\drivers\dri\i915\intel_reg.h:97-100
+ * (S3_TEXCOORD_WRAP_SHORTEST_TCX(unit) 1 << (unit*4+3), _TCY +2). Two trees
+ * DEFINE it identically; neither USES the wrap bits - GL has no cylindrical
+ * wrap - so the audit's two-use-site rule is not met. What is used is the
+ * layout: Mesa's i915_fragprog.c:1306 sets S3_TEXCOORD_PERSPECTIVE_DISABLE,
+ * bit 0 of the same nibble. A recorded judgement, overturnable by evidence,
+ * and measured by 3D WinBench 98's Cylindrical Wrap u/v tests
+ * (docs\decisions\2026-09-25-cylindrical-wrap-through-s3.md).
+ *
+ * Every other S3 bit stays zero, and the decoder holds it there.
+ */
+#define V9X_I9XX_S3_WRAP_SHORTEST_TCX0   ((v9x_u32)0x00000008ul)
+#define V9X_I9XX_S3_WRAP_SHORTEST_TCY0   ((v9x_u32)0x00000004ul)
+
+/*
+ * The runtime builder's cylinder request: which of tu and tv wrap the short
+ * way. Driver vocabulary, not a hardware field - the builder translates it to
+ * the S3 bits above, so a caller cannot set an S3 bit by mistake.
+ */
+#define V9X_I9XX_CYLINDER_U              ((v9x_u32)0x00000001ul)
+#define V9X_I9XX_CYLINDER_V              ((v9x_u32)0x00000002ul)
+
+/*
  * S4: vertex format, culling and shading.
  *
  * XYZW plus per-vertex colour. Audit section 7 records why this is Mesa's
@@ -597,6 +628,10 @@ v9x_status v9x_i9xx_build_3d_state(
  * measured SRC_ALPHA over INV_SRC_ALPHA (intel47), and the other pairings of
  * the same four codes are the same two fields with other values, UNMEASURED.
  * Destination-alpha factors are not codes this builder accepts.
+ *
+ * cylinder is V9X_I9XX_CYLINDER_U and/or _V, or zero: which texture
+ * coordinates wrap the short way (S3). Refused without a texture - there is
+ * no coordinate to wrap - and refused with any other bit.
  */
 v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
                                       v9x_u32 blend);
@@ -607,6 +642,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
     v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 cylinder,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 /* Is this one of the four S6 factor codes this driver emits? */
 v9x_u16 v9x_i9xx_blend_factor_known(v9x_u32 factor);
@@ -1529,6 +1565,12 @@ struct v9x_i9xx_decode_limits {
      * for one build, intel81/82; that form never landed on this part.)
      */
     v9x_u32 breadcrumb_offset;
+    /*
+     * The cylinder request (V9X_I9XX_CYLINDER_*) a runtime stream's S3 must
+     * encode, exactly. Zero - every scene, every positional initialiser -
+     * means S3 is zero. Append-only, as above.
+     */
+    v9x_u32 texture_cylinder;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

@@ -1378,6 +1378,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     DWORD depth_pitch = 0ul;
     DWORD depth_writes = 0ul;
     DWORD depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
+    DWORD cylinder = 0ul;
 
     if (context == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -1488,6 +1489,22 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     v9x_d3d_i9xx_bind_blend(context, &blend_src, &blend_dst);
     if (textured != 0) {
         program = v9x_d3d_i9xx_texture_program(context, map.format);
+        /*
+         * WRAPU / WRAPV, by the hardware: the S3 wrap-shortest bits of
+         * coordinate set 0. Only with a texture, because an untextured draw
+         * has no coordinate to wrap and the builder refuses the request.
+         *
+         * Until 2026-09-25 this engine read neither state, and 3D WinBench
+         * 98's Cylindrical Wrap u and v tests drew the seam interpolated the
+         * long way round the whole cylinder
+         * (docs\decisions\2026-09-24-3d-winbench-98-quality-on-the-netbook.md).
+         */
+        if (context->wrap_u != 0ul) {
+            cylinder |= V9X_I9XX_CYLINDER_U;
+        }
+        if (context->wrap_v != 0ul) {
+            cylinder |= V9X_I9XX_CYLINDER_V;
+        }
     }
 
     for (vertex = 0ul; vertex < count; ++vertex) {
@@ -1541,7 +1558,8 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                      textured != 0 ? &map : 0,
                                      depth_offset, depth_pitch, depth_writes,
                                      depth_compare,
-                                     blend_src, blend_dst, stream + at,
+                                     blend_src, blend_dst, cylinder,
+                                     stream + at,
                                      V9X_I9XX_SUBMIT_DWORDS - at,
                                      &produced) != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
@@ -1676,6 +1694,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.depth_writes = depth_writes;
     limits.depth_compare = depth_compare;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    limits.texture_cylinder = cylinder;
     limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_expected != 0ul
                                    ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul;
     if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=

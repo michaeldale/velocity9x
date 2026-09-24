@@ -496,6 +496,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->blend_dst = 0ul;
     limits->texture_program = 0ul;
     limits->breadcrumb_offset = 0ul;
+    limits->texture_cylinder = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -2621,7 +2622,7 @@ static void test_runtime_textured_and_depth(void)
                                        depth_offset, depth_pitch, 1ul,
                                        V9X_I9XX_COMPAREFUNC_LESS,
                                        0ul, 0ul,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -2727,7 +2728,7 @@ static void test_runtime_batch_bound(void)
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
-                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul, stream + at,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul, 0ul, stream + at,
                                        2200ul - at, &produced) ==
           V9X_STATUS_OK);
     at += produced;
@@ -3646,7 +3647,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -3720,7 +3721,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -3754,7 +3755,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
@@ -3826,7 +3827,7 @@ static void test_runtime_blend(void)
                                        V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA,
                                        V9X_I9XX_BLENDFACT_INV_SRC_ALPHA,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     CHECK(produced == v9x_i9xx_runtime_state_extent(0ul, 0ul, 1ul));
     /* The IAB disable is in the block, once, as the exact dword, and the
@@ -3884,7 +3885,7 @@ static void test_runtime_blend(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       stream + at, 400ul - at,
+                                       0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
@@ -3944,7 +3945,7 @@ static void test_runtime_blend_pairs(void)
             CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul,
                                                384ul, 0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                                codes[s], codes[d],
-                                               stream, 64ul, &produced) ==
+                                               0ul, stream, 64ul, &produced) ==
                   V9X_STATUS_OK);
             for (scan = 0ul; scan < produced; ++scan) {
                 if (stream[scan] == V9X_I9XX_IAB_DISABLE_DWORD) {
@@ -3966,12 +3967,12 @@ static void test_runtime_blend_pairs(void)
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
                                        0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 0ul,
-                                       stream, 64ul, &produced) !=
+                                       0ul, stream, 64ul, &produced) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
                                        0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 3ul,
-                                       stream, 64ul, &produced) !=
+                                       0ul, stream, 64ul, &produced) !=
           V9X_STATUS_OK);
 }
 
@@ -4566,6 +4567,163 @@ static void test_textured_run(void)
           V9X_STATUS_OK);
 }
 
+/*
+ * Where S3 sits in a stream: two dwords past the LOAD_STATE_IMMEDIATE_1 that
+ * loads S2..S6, which is the only form the builders emit.
+ */
+static v9x_u32 v9x_test_find_s3(const v9x_u32 *stream, v9x_u32 count)
+{
+    const v9x_u32 load = V9X_I9XX_3DSTATE_LOAD_STATE_IMM1 |
+                         V9X_I9XX_I1_LOAD_S2 | V9X_I9XX_I1_LOAD_S3 |
+                         V9X_I9XX_I1_LOAD_S4 | V9X_I9XX_I1_LOAD_S5 |
+                         V9X_I9XX_I1_LOAD_S6 | 4ul;
+    v9x_u32 index;
+
+    for (index = 0ul; index + 2ul < count; ++index) {
+        if (stream[index] == load) {
+            return index + 2ul;
+        }
+    }
+    return count;
+}
+
+/*
+ * Cylindrical wrap: D3DRENDERSTATE_WRAPU / WRAPV become the S3 wrap-shortest
+ * bits for coordinate set 0, and nothing else does.
+ *
+ * The stream carries exactly what the caller asked for, the decoder accepts
+ * it only when the limits declare the same, and a stream built without the
+ * bits is refused when the limits claim them - the S3 equality works in both
+ * directions, as S6's does for depth writes. An untextured request and an
+ * undefined bit are refused by the builder: there is no coordinate to wrap,
+ * and S3 has other fields (PERSPECTIVE_DISABLE) that a stray bit would set.
+ */
+static void test_runtime_cylindrical_wrap(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 s3;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    const v9x_u32 map_offset = 0x00300000ul;
+    const v9x_u32 map_edge = 64ul;
+    const v9x_u32 both = V9X_I9XX_CYLINDER_U | V9X_I9XX_CYLINDER_V;
+
+    map.offset = map_offset;
+    map.width = map_edge;
+    map.height = map_edge;
+    map.pitch = map_edge * 2ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.mag_linear = 0ul;
+    map.min_linear = 0ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map_offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    limits.texture_cylinder = both;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       both, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    s3 = v9x_test_find_s3(stream, at);
+    CHECK(s3 < at);
+    if (s3 < at) {
+        CHECK(stream[s3] == (V9X_I9XX_S3_WRAP_SHORTEST_TCX0 |
+                             V9X_I9XX_S3_WRAP_SHORTEST_TCY0));
+    }
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0xffffffful;
+    colors[1] = 0xffffffful;
+    colors[2] = 0xffffffful;
+    uv[0] = 0ul;  uv[1] = 0ul;
+    uv[2] = one;  uv[3] = 0ul;
+    uv[4] = 0ul;  uv[5] = one;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    /* Declared both, built both. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        /* Declared one axis, or none, over a stream carrying both. */
+        wrong.texture_cylinder = V9X_I9XX_CYLINDER_U;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong.texture_cylinder = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
+    /* A stray S3 bit the builder never sets is refused whatever the limits
+     * say - here PERSPECTIVE_DISABLE for set 0. */
+    if (s3 < at) {
+        stream[s3] |= 0x00000001ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        stream[s3] &= ~0x00000001ul;
+    }
+
+    /* One axis at a time lands on its own bit. */
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       V9X_I9XX_CYLINDER_V, stream, 400ul,
+                                       &produced) == V9X_STATUS_OK);
+    s3 = v9x_test_find_s3(stream, produced);
+    CHECK(s3 < produced);
+    if (s3 < produced) {
+        CHECK(stream[s3] == V9X_I9XX_S3_WRAP_SHORTEST_TCY0);
+    }
+
+    /* No texture, nothing to wrap: refused. An undefined request bit:
+     * refused. */
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       V9X_I9XX_CYLINDER_U, stream, 400ul,
+                                       &produced) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0x4ul, stream, 400ul,
+                                       &produced) != V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -4585,6 +4743,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_refusals();
     test_map_state_formats();
     test_runtime_texture_formats();
+    test_runtime_cylindrical_wrap();
     test_runtime_blend();
     test_runtime_blend_pairs();
     test_texture_programs();

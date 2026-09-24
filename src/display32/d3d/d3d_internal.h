@@ -130,6 +130,14 @@ typedef struct v9x_d3d_context {
     DWORD texture_address;
     DWORD texture_border;
     /*
+     * D3DRENDERSTATE_WRAPU and WRAPV, one field each. texture_wrap above is
+     * the ViRGE's "either is set" and stays as it was; an engine that can wrap
+     * each axis on its own - the Intel S3 wrap-shortest bits - needs to know
+     * which. Direct3D's default for both is FALSE.
+     */
+    DWORD wrap_u;
+    DWORD wrap_v;
+    /*
      * D3DRENDERSTATE_SHADEMODE. FLAT is honoured in the core, before any
      * engine sees the triangle, by copying the first vertex's colour and
      * specular to the other two - which is Direct3D's definition (the first

@@ -1165,6 +1165,8 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
              * application that never sets it tiles rather than stretching. */
             context->texture_address = V9X_D3DTADDRESS_WRAP;
             context->texture_border = 0ul;
+            context->wrap_u = 0ul;
+            context->wrap_v = 0ul;
             context->shade_mode = V9X_D3DSHADE_GOURAUD;
             /* Direct3D's own default: back faces run counterclockwise. */
             context->cull_mode = V9X_D3DCULL_CCW;
@@ -1240,6 +1242,8 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->texture_wrap = 0ul;
     context->texture_address = V9X_D3DTADDRESS_WRAP;
     context->texture_border = 0ul;
+    context->wrap_u = 0ul;
+    context->wrap_v = 0ul;
     context->depth_offset = 0ul;
     context->depth_pitch = 0ul;
     context->z_enable = 0ul;
@@ -1290,6 +1294,8 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].texture_wrap = 0ul;
             v9x_d3d_contexts[index].texture_address = V9X_D3DTADDRESS_WRAP;
             v9x_d3d_contexts[index].texture_border = 0ul;
+            v9x_d3d_contexts[index].wrap_u = 0ul;
+            v9x_d3d_contexts[index].wrap_v = 0ul;
             v9x_d3d_contexts[index].depth_offset = 0ul;
             v9x_d3d_contexts[index].depth_pitch = 0ul;
             v9x_d3d_contexts[index].z_enable = 0ul;
@@ -1481,6 +1487,11 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
     case V9X_D3DRENDERSTATE_WRAPU:
     case V9X_D3DRENDERSTATE_WRAPV:
         context->texture_wrap = argument != 0ul;
+        if (type == V9X_D3DRENDERSTATE_WRAPU) {
+            context->wrap_u = argument != 0ul;
+        } else {
+            context->wrap_v = argument != 0ul;
+        }
         break;
     case V9X_D3DRENDERSTATE_TEXTUREMAG:
         context->texture_mag = argument;

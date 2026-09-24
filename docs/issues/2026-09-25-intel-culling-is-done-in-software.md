@@ -33,8 +33,11 @@ Neither is a reason to keep it this way.
 ## To do
 
 1. Name the S4 cull encodings in `include\velocity9x\intel_gen3_3d.h`
-   (i915_reg.h: `S4_CULLMODE_BOTH` 0, `NONE` 1, `CW` 2, `CCW` 3 at bits
-   13-14), citing the source.
+   (`S4_CULLMODE_BOTH` 0, `NONE` 1, `CW` 2, `CCW` 3 at bits 13-14). Two
+   trees agree, read 2026-09-25: Mesa gallium
+   `src\gallium\drivers\i915\i915_reg.h` and xf86-video-intel
+   `src\sna\gen3_render.h:371-375`. What they call CW still needs the
+   measurement in step 3.
 2. Make the cull field a parameter of the runtime state builder, as S2 and
    S6 already are, and let the decoder accept exactly the three values the
    builder can produce - and require the value the limits say, like S6.

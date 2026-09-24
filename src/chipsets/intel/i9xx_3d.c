@@ -135,7 +135,8 @@ static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
  * S2 through S6 in one load, which is the shape Mesa's steady state uses. The
  * trailing length field is (S dwords - 1); five independent use sites agree.
  */
-static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2, v9x_u32 s6)
+static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2,
+                                      v9x_u32 s3, v9x_u32 s6)
 {
     v9x_u32 at = 0ul;
 
@@ -153,8 +154,13 @@ static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2, v9x_u32 s6)
      * and which was the largest risk the plan had named.
      */
     stream[at++] = s2;
-    /* S3: no texture coordinate wrapping. */
-    stream[at++] = 0ul;
+    /*
+     * S3: zero for every scene; for a runtime draw, the wrap-shortest bits of
+     * coordinate set 0 when the application set WRAPU or WRAPV. Only
+     * v9x_i9xx_build_runtime_state produces a non-zero value, and only those
+     * two bits.
+     */
+    stream[at++] = s3;
     /*
      * S4 must agree exactly with the vertex dwords i9xx_vertex.c emits: four
      * floats of position then one packed colour dword. A disagreement here is
@@ -231,6 +237,7 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 s3,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
@@ -248,7 +255,7 @@ v9x_status v9x_i9xx_build_textured_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, texture, 0,
                                        V9X_I9XX_SCENE_TEXTURED, 0ul, 0ul,
-                                       stream, capacity, written);
+                                       0ul, stream, capacity, written);
 }
 
 /*
@@ -299,7 +306,8 @@ v9x_status v9x_i9xx_build_depth_state(
                                        (writes != 0ul)
                                            ? V9X_I9XX_SCENE_DEPTH_WRITE
                                            : V9X_I9XX_SCENE_DEPTH_TEST,
-                                       0ul, 0ul, stream, capacity, written);
+                                       0ul, 0ul, 0ul,
+                                       stream, capacity, written);
 }
 
 v9x_status v9x_i9xx_build_3d_state(
@@ -310,7 +318,7 @@ v9x_status v9x_i9xx_build_3d_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0,
                                        V9X_I9XX_SCENE_PLAIN, 0ul, 0ul,
-                                       stream, capacity, written);
+                                       0ul, stream, capacity, written);
 }
 
 /*
@@ -364,11 +372,30 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
     v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 cylinder,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_i9xx_depth_binding depth;
+    v9x_u32 s3 = 0ul;
 
     if (written != 0) { *written = 0ul; }
+    /*
+     * The cylinder request, translated here so the S3 dword can only ever
+     * carry the two wrap-shortest bits for set 0. Refused without a texture
+     * rather than emitted anyway: an untextured stream has no coordinate set
+     * to wrap, and the decoder would refuse the stream later with less to
+     * say about why.
+     */
+    if ((cylinder & ~(V9X_I9XX_CYLINDER_U | V9X_I9XX_CYLINDER_V)) != 0ul ||
+        (cylinder != 0ul && texture == 0)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((cylinder & V9X_I9XX_CYLINDER_U) != 0ul) {
+        s3 |= V9X_I9XX_S3_WRAP_SHORTEST_TCX0;
+    }
+    if ((cylinder & V9X_I9XX_CYLINDER_V) != 0ul) {
+        s3 |= V9X_I9XX_S3_WRAP_SHORTEST_TCY0;
+    }
     /* Both codes or neither, and each one of the four. ONE/ZERO with the
      * enable is a legal request that draws opaque; the caller passes zeros
      * for it rather than asking for an enable that does nothing
@@ -402,7 +429,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     return v9x_i9xx_build_state_common(
         target_offset, target_pitch, width, height, texture,
         depth_offset != 0ul ? &depth : 0,
-        V9X_I9XX_SCENE_RUNTIME, blend_src, blend_dst,
+        V9X_I9XX_SCENE_RUNTIME, blend_src, blend_dst, s3,
         stream, capacity, written);
 }
 
@@ -437,7 +464,7 @@ v9x_status v9x_i9xx_build_alpha_state(
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0, kind, 0ul, 0ul,
-                                       stream, capacity, written);
+                                       0ul, stream, capacity, written);
 }
 
 static v9x_status v9x_i9xx_build_state_common(
@@ -446,6 +473,7 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 s3,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     /* Blending is the enable's presence; the codes were checked by the
@@ -597,7 +625,7 @@ static v9x_status v9x_i9xx_build_state_common(
                                      (texture != 0)
                                          ? V9X_I9XX_S2_TEXTURED_UNIT0
                                          : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT,
-                                     s6);
+                                     s3, s6);
     }
 
     if (at != needed) {

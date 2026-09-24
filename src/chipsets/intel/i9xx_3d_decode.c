@@ -700,6 +700,38 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                          : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index + 1ul);
             }
+            /*
+             * S3, by equality with what the limits declare, which until
+             * 2026-09-25 nothing checked at all: any S3 passed. It carries
+             * PERSPECTIVE_DISABLE beside the wrap bits, and a stream that set
+             * it would draw every texture affine with nothing saying why.
+             *
+             * Zero for every scene and every untextured stream; for a
+             * textured runtime stream, the wrap-shortest bits of set 0 for
+             * exactly the axes the engine asked for. An undefined request
+             * bit in the limits is itself a refusal.
+             */
+            {
+                v9x_u32 cylinder = limits->texture_cylinder;
+                v9x_u32 s3 = 0ul;
+
+                if ((cylinder & ~(V9X_I9XX_CYLINDER_U |
+                                  V9X_I9XX_CYLINDER_V)) != 0ul ||
+                    (cylinder != 0ul &&
+                     (textured == V9X_FALSE ||
+                      limits->kind != V9X_I9XX_SCENE_RUNTIME))) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
+                }
+                if ((cylinder & V9X_I9XX_CYLINDER_U) != 0ul) {
+                    s3 |= V9X_I9XX_S3_WRAP_SHORTEST_TCX0;
+                }
+                if ((cylinder & V9X_I9XX_CYLINDER_V) != 0ul) {
+                    s3 |= V9X_I9XX_S3_WRAP_SHORTEST_TCY0;
+                }
+                if (stream[index + 2ul] != s3) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
+                }
+            }
             s4 = stream[index + 3ul];
             if (s4 != (V9X_I9XX_S4_POINT_WIDTH_ONE |
                        V9X_I9XX_S4_LINE_WIDTH_ONE |

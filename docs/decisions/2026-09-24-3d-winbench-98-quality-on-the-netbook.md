@@ -143,7 +143,8 @@ triangle count, texture fidelity.
    neither will any title that culls and checks the cap. **Done
    2026-09-25**: `2026-09-25-back-face-culling-in-the-d3d-core.md`.
 2. **Cylindrical wrap** (`D3DRENDERSTATE_WRAPU`/`WRAPV`): implement it or
-   stop claiming it.
+   stop claiming it. **Done 2026-09-25, in hardware (S3)**:
+   `2026-09-25-cylindrical-wrap-through-s3.md`.
 3. **Z accuracy** at 16 bits: find which of format, range or the HAL's
    computed Z loses the wide-range cube.
 4. The OFF list is the backlog: mipmapping, fog, decal modes, mirror
