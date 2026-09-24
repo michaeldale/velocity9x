@@ -139,6 +139,13 @@ typedef struct v9x_d3d_context {
      */
     DWORD shade_mode;
     /*
+     * D3DRENDERSTATE_CULLMODE, one of the V9X_D3DCULL values in d3d_cull.h.
+     * Like FLAT it is honoured in the core, before any engine sees the
+     * triangle - but only for an engine that advertises the matching
+     * D3DPMISCCAPS bit (v9x_d3d_cull_honoured). Direct3D's default is CCW.
+     */
+    DWORD cull_mode;
+    /*
      * D3DRENDERSTATE_COLORKEYENABLE. The key itself lives in the HAL's
      * per-surface table (v9x_d3d_color_key_find); this only says whether the
      * application wants it applied.

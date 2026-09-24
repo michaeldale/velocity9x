@@ -91,9 +91,14 @@ software emulation), front/back buffer, resolution, colour depth, full
 screen or windowed, and **execute buffers or DrawPrimitive** (the Readme's
 publication example lists "Direct3D HAL, MMX Emulation, Front Buffer ...,
 640 by 480 pixels, 16-bit color, Full Screen, Execute buffers"). Execute
-buffers are the DX3/DX5 path that 3DMark99 did not use on the netbook
-(`D3dExecuteCalls=0`), so this suite reaches driver code 3DMark99 never
-did.
+buffers reach a DX5 HAL through its RenderPrimitive callback, one
+`D3DOP_TRIANGLE` instruction at a time - V9XTRACE's
+`D3dRenderPrimitiveCalls` - and not through `Execute`, which the runtime
+did not call in either this suite or 3DMark99 (`D3dExecuteCalls=0`). An
+earlier version of this file read that zero as "execute buffers never
+reached the HAL"; that was wrong (corrected 2026-09-25). The DrawPrimitive
+API setting would exercise the other entry points (`DrawOnePrimitive`,
+`DrawPrimitives`, `DrawOneIndexedPrimitive`).
 
 ## Output
 
@@ -212,8 +217,9 @@ First results, including why every test is refused on an unmodified run
 Two operating lessons from that run: **answering No writes an override**
 (a No on Cull Counterclockwise resets a FORCE ON to DEFAULT, so later tests
 are refused - press Cancel, then Ignore, to skip a verdict without
-recording one), and the default "Execute buffers" API reaches our HAL as
-DrawPrimitive (`D3dExecuteCalls=0`).
+recording one), and the default "Execute buffers" API reaches our HAL
+through RenderPrimitive, not Execute (`D3dExecuteCalls=0` with
+`D3dRenderPrimitiveCalls` in the tens of thousands).
 
 ## Installing on the netbook, as it went (2026-09-24)
 

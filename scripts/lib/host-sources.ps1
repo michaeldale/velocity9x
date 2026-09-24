@@ -54,6 +54,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_chain.c',
         # Pure rasterizer arithmetic: no DDHAL, MMIO or assembly dependencies.
         'src\display32\d3d\d3d_raster.c',
+        # Back-face culling decision; the core applies it, no DDHAL here.
+        'src\display32\d3d\d3d_cull.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',
@@ -68,6 +70,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_d3dmode.c',
         'tests\host\test_vbe_crtc.c',
         'tests\host\test_d3d_raster.c',
+        'tests\host\test_d3d_cull.c',
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
         'tests\host\test_i9xx_cover.c',

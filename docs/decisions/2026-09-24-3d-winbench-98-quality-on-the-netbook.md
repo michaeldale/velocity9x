@@ -65,11 +65,14 @@ set FORCE OFF on the two wrap rows answered No). Every later test needing
 CCW culling was then refused.
 
 Driver counters for pass 1: 13 contexts created and destroyed (one per
-test that rendered), 10,820 DrawPrimitive and 8,893 render-state calls,
+test that rendered), 10,820 RenderPrimitive and 8,893 render-state calls,
 3,154 textures with none refused, 4,411 flips, no engine timeouts or
-resets. **`D3dExecuteCalls=0`**: the benchmark reports "Execute buffers",
-but the Direct3D runtime converted them to DrawPrimitive before the HAL -
-this run did not exercise any execute-buffer path in our driver.
+resets. `D3dExecuteCalls=0` while `D3dRenderPrimitiveCalls=10820`: the
+execute buffers reach the HAL as RenderPrimitive, one `D3DOP_TRIANGLE`
+instruction at a time, and the runtime never calls the whole-buffer
+`Execute`. (Corrected 2026-09-25: this paragraph first read the zero as
+"the runtime converted them to DrawPrimitive and no execute-buffer path
+ran", which was wrong - RenderPrimitive IS the execute-buffer path.)
 
 ## Pass 2: re-measuring the nine (incomplete)
 
@@ -100,7 +103,7 @@ format of `3d98all.zds`), CCW override still FORCE ON
 (`OverrideCullCCW=1` in `C:\WINDOWS\3DWB98.INI` survived the restart).
 Table: `2026-09-25-netbook-3dwb98-quality-pass3.txt`; V9XTRACE:
 `...-pass3-V9XTRACE.ini` (6 contexts, 6 depth buffers accepted, 85,105
-DrawPrimitive calls, 5,357 textures, none refused, no timeouts,
+RenderPrimitive calls, 5,357 textures, none refused, no timeouts,
 `D3dExecuteCalls=0`).
 
 | test | result |
@@ -137,7 +140,8 @@ triangle count, texture fidelity.
 
 1. **Cull modes** (`D3DRENDERSTATE_CULLMODE` CW/CCW, `D3DPMISCCAPS_CULLCW`
    / `CULLCCW`). Without them this benchmark runs nothing unmodified, and
-   neither will any title that culls and checks the cap.
+   neither will any title that culls and checks the cap. **Done
+   2026-09-25**: `2026-09-25-back-face-culling-in-the-d3d-core.md`.
 2. **Cylindrical wrap** (`D3DRENDERSTATE_WRAPU`/`WRAPV`): implement it or
    stop claiming it.
 3. **Z accuracy** at 16 bits: find which of format, range or the HAL's

@@ -528,6 +528,9 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DSHADE_FLAT                           1ul
 #define V9X_D3DSHADE_GOURAUD                        2ul
 #define V9X_D3DSHADE_PHONG                          3ul
+/* D3DRENDERSTATE_CULLMODE (22), d3dtypes.h. Its D3DCULL values live beside
+ * the decision that uses them, in src\display32\d3d\d3d_cull.h. */
+#define V9X_D3DRENDERSTATE_CULLMODE                 22ul
 #define V9X_D3DRENDERSTATE_TEXTUREMIN               18ul
 #define V9X_D3DRENDERSTATE_TEXTUREMAPBLEND          21ul
 #define V9X_D3DRENDERSTATE_TEXTUREADDRESS            3ul

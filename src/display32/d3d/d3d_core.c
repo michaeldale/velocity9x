@@ -22,6 +22,7 @@
  * for one this file has no implementation for.
  */
 #include "d3d_internal.h"
+#include "d3d_cull.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -670,6 +671,32 @@ static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
 }
 
 /*
+ * Whether this triangle is a back face the application asked to remove.
+ *
+ * The mode applied is the context's, gated on the caps the engine published
+ * (d3d_cull.h says why): describe_caps wrote them into the shared block, and
+ * the same bits are what the application read before choosing a cull mode.
+ * Decided on the vertices as handed over - before clipping, which keeps the
+ * winding, and after the strip builders, which swap every odd triangle so
+ * that a strip arrives here with one consistent winding.
+ */
+static int v9x_d3d_triangle_culled(const V9X_D3D_CONTEXT *context,
+                                   const V9X_D3DTLVERTEX *triangle)
+{
+    DWORD misc = v9x_hal != 0
+        ? v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps : 0ul;
+    unsigned long mode = v9x_d3d_cull_honoured(
+        context->cull_mode,
+        (misc & V9X_D3DPMISCCAPS_CULLCW) != 0ul,
+        (misc & V9X_D3DPMISCCAPS_CULLCCW) != 0ul);
+
+    return v9x_d3d_cull_triangle(mode,
+                                 triangle[0].sx, triangle[0].sy,
+                                 triangle[1].sx, triangle[1].sy,
+                                 triangle[2].sx, triangle[2].sy);
+}
+
+/*
  * A triangle list from one of the DX5 entry points, clipped where the engine
  * needs it, then drawn.
  *
@@ -689,6 +716,11 @@ static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
  * on its own between the runs either side of it. A refused triangle - past
  * the guard band, or one the engine declines - is counted by the caller as a
  * refused batch and the rest of the list is still drawn.
+ *
+ * A culled triangle ends the run the same way a clipped one does, and is then
+ * simply not drawn. That holds for an engine that clips for itself too, which
+ * is why the clip_in_core test is inside the loop rather than a shortcut
+ * around it.
  */
 static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
                              V9X_D3D_CONTEXT *context,
@@ -701,16 +733,15 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     DWORD index;
     int ok = 1;
 
-    if (ops->limits->clip_in_core == 0ul) {
-        return v9x_d3d_draw_batch(ops, context, vertices, triangle_count);
-    }
     for (index = 0ul; index < triangle_count; ++index) {
         const V9X_D3DTLVERTEX *triangle = &vertices[index * 3ul];
         DWORD fan_triangles = 0ul;
+        int culled = v9x_d3d_triangle_culled(context, triangle);
         int clipped_count;
         int fan;
 
-        if (v9x_d3d_triangle_on_target(context, triangle)) {
+        if (!culled && (ops->limits->clip_in_core == 0ul ||
+                        v9x_d3d_triangle_on_target(context, triangle))) {
             continue;
         }
         if (index > run_start &&
@@ -719,6 +750,9 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
             ok = 0;
         }
         run_start = index + 1ul;
+        if (culled) {
+            continue;
+        }
 
         clipped_count = v9x_d3d_clip_triangle(context, triangle, clipped);
         if (clipped_count < 0) {
@@ -1132,6 +1166,8 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->texture_address = V9X_D3DTADDRESS_WRAP;
             context->texture_border = 0ul;
             context->shade_mode = V9X_D3DSHADE_GOURAUD;
+            /* Direct3D's own default: back faces run counterclockwise. */
+            context->cull_mode = V9X_D3DCULL_CCW;
             /*
              * Only z_func. depth_offset, depth_pitch, z_enable and z_write are
              * owned by v9x_d3d_set_target, which ran above - resetting them
@@ -1428,6 +1464,9 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
     switch (type) {
     case V9X_D3DRENDERSTATE_SHADEMODE:
         context->shade_mode = argument;
+        break;
+    case V9X_D3DRENDERSTATE_CULLMODE:
+        context->cull_mode = argument;
         break;
     case V9X_D3DRENDERSTATE_TEXTUREHANDLE:
         context->texture_handle = argument;
@@ -1921,6 +1960,10 @@ DWORD __stdcall V9xD3dRenderPrimitive(
                                ((DWORD)triangle->v1 << 16) |
                                (DWORD)data->diInstruction.wCount);
             }
+            /* A back face is dropped before any work is spent on it. */
+            if (v9x_d3d_triangle_culled(context, source)) {
+                continue;
+            }
             v9x_d3d_apply_vertex_color(context, &source[0]);
             v9x_d3d_apply_vertex_color(context, &source[1]);
             v9x_d3d_apply_vertex_color(context, &source[2]);
@@ -2385,10 +2428,9 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
          *
          * A strip of N indices is N-2 triangles sharing edges, and its
          * winding alternates: the odd triangle takes its first two vertices
-         * swapped. This driver sets CULLMODE_NONE so nothing is culled by
-         * it, but the order still decides which vertex is the provoking one
-         * for flat shading, so the alternation is kept rather than dropped
-         * as unobservable.
+         * swapped. The swap is what gives the whole strip one winding, which
+         * the core's back-face culling depends on (v9x_d3d_triangle_culled),
+         * and the order also decides which vertex provokes for flat shading.
          */
         DWORD step = data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP
                          ? 1ul : 3ul;

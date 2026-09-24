@@ -1138,12 +1138,21 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcLineCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
     shared->d3d_global.hwCaps.dpcTriCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
     /*
-     * CULLNONE, and it is a statement about the stream rather than a
-     * convenience: the runtime state block sets S4_CULLMODE_NONE, so the
-     * hardware culls nothing and an application must not be told it will.
+     * All three cull modes, from 2026-09-25, and still with S4_CULLMODE_NONE.
+     *
+     * The hardware culls nothing: the runtime state block programs NONE and
+     * the decoder holds it there. CW and CCW are done by the core, which
+     * drops back faces before this engine sees them and does so only because
+     * these two bits are set (d3d_cull.h, v9x_d3d_cull_honoured).
+     *
+     * CULLNONE alone was honest and cost everything: 3D WinBench 98 renders
+     * every scene with CCW culling and refused all 41 quality tests before
+     * creating a device, "unsupported settings: CCW Culling"
+     * (docs\decisions\2026-09-24-3d-winbench-98-quality-on-the-netbook.md).
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps =
-        V9X_D3DPMISCCAPS_CULLNONE;
+        V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
+        V9X_D3DPMISCCAPS_CULLCCW;
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST;
     /*
