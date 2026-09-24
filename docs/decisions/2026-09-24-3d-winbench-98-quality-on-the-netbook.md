@@ -51,7 +51,7 @@ good image (`...-modulate-pass.png` as an example).
   matching "culling turned off" (`...-cull-ccw-draws-all.png`). Expected
   under the override; it confirms the hardware culls nothing.
 
-**NotCapable on the feature's own cap (18)**, each matching an OFF row in
+**NotCapable on the feature's own cap (19)**, each matching an OFF row in
 the caps readout: 3 Dithering; 8-11 all four mipmap filters; 13 Decal,
 14 DecalAlpha; 20 Mirror addressing; 22 Cull Clockwise; 24-26 fog
 (vertex linear, table linear, table exponential); 27 Specular; 28 Color
@@ -82,7 +82,7 @@ exactly. Of the nine:
 | 23 Cull None | **Capable** - all nine squares (`...-cull-none-pass.png`) |
 | 29 Alpha Transparency | **Capable** - background through leaves and pickets (`...-alpha-transparency-pass.png`) |
 | 30 Source Alpha Pixel Blending | **Capable** - translucent sphere (`...-source-alpha-pass.png`) |
-| 33, 37-41 | not reached |
+| 33, 37-41 | see pass 3 |
 
 **Stopped at test 31 of 41** because the remote agent's screenshot had
 degraded from about 2 s to 99 s per capture while input stayed at 0.2 s,
@@ -92,6 +92,47 @@ screenshot helper per capture is the suspect; not established. Given
 this evening's hard lock during a screenshot-plus-transfer overlap, the
 run was not pushed further. Pass 2's table was not exported.
 
+## Pass 3: the last six, after a reboot (2026-09-25, boot 4)
+
+A reboot restored the screenshot to 4.7 s. The six were run as their own
+suite (`C:\ZDBENCH\SUITES\REMAIN.ZDS`, written by hand in the `.ZDS`
+format of `3d98all.zds`), CCW override still FORCE ON
+(`OverrideCullCCW=1` in `C:\WINDOWS\3DWB98.INI` survived the restart).
+Table: `2026-09-25-netbook-3dwb98-quality-pass3.txt`; V9XTRACE:
+`...-pass3-V9XTRACE.ini` (6 contexts, 6 depth buffers accepted, 85,105
+DrawPrimitive calls, 5,357 textures, none refused, no timeouts,
+`D3dExecuteCalls=0`).
+
+| test | result |
+|---|---|
+| 33 Alpha Vertices | **Capable** (`2026-09-25-...-alpha-vertices-pass.png`) |
+| 37 Texture Swapping | **Capable** on the captured frame; the test also asks for frame-to-frame texture errors, which only the panel can show |
+| 38 Narrow Z Accuracy | **Incorrect** - the left pair intersects in a sawtooth, the right pair straight (`2026-09-25-...-narrow-z-incorrect.png`) |
+| 39 Wide Z Accuracy | **Incorrect** - the left pair's blue cube is missing entirely, as in the bad reference (`2026-09-25-...-wide-z-incorrect.png`) |
+| 40 High Triangle Count | **Capable** |
+| 41 Texture Fidelity | **Capable** - gradient banding not ruled out at screenshot scale |
+
+Both Z-accuracy failures are at 16-bit Z (note 5: "Z buffer depth: 16
+bits"). The benchmark's bad reference is the RGB emulator's own Z, so a
+16-bit buffer is not automatically a fail; whether the netbook's depth
+format, depth range, or the Z the HAL computes is short is not
+established. `D3dDepthCaps=0x10024000`.
+
+## Final tally, all 41
+
+**Capable 17:** 1, 2, 4, 5, 6, 7, 12, 15, 16, 19, 23, 29, 30, 33, 37, 40,
+41 - shading, Z-buffer, perspective, nearest and linear filtering,
+modulate and modulatealpha, flat wrap and clamp, cull none, alpha
+transparency, source alpha blend, alpha vertices, texture swapping, high
+triangle count, texture fidelity.
+
+**Incorrect 5:** 17 and 18 cylindrical wrap (claimed, not honoured),
+21 cull CCW (the hardware culls nothing), 38 and 39 Z accuracy.
+
+**NotCapable 19:** the OFF-cap list above.
+
+17 + 5 + 19 = 41.
+
 ## What the suite says to fix, in order of reach
 
 1. **Cull modes** (`D3DRENDERSTATE_CULLMODE` CW/CCW, `D3DPMISCCAPS_CULLCW`
@@ -99,7 +140,9 @@ run was not pushed further. Pass 2's table was not exported.
    neither will any title that culls and checks the cap.
 2. **Cylindrical wrap** (`D3DRENDERSTATE_WRAPU`/`WRAPV`): implement it or
    stop claiming it.
-3. The OFF list is the backlog: mipmapping, fog, decal modes, mirror
+3. **Z accuracy** at 16 bits: find which of format, range or the HAL's
+   computed Z loses the wide-range cube.
+4. The OFF list is the backlog: mipmapping, fog, decal modes, mirror
    addressing, colour key, add/modulate framebuffer blends, specular,
    dithering. Mipmapping and colour key are the likeliest to matter for
    3DMark99's missing textures; that link is not tested.
@@ -107,5 +150,5 @@ run was not pushed further. Pass 2's table was not exported.
 ## Not established
 
 - Anything about the panel: every verdict is from the captured frame.
-- Tests 33 and 37-41 under a working CCW cap.
+- Why Z accuracy fails at 16 bits (format, range or computed Z).
 - Whether the Incorrect wrap results change with a DrawPrimitive API run.

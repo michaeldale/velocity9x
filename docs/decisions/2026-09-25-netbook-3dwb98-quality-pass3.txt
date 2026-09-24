@@ -1,0 +1,21 @@
+TEST	Current Results	UNITS
+
+Quality/33/Alpha Vertices	Capable [1,2,3,4,5,6,7] 	 
+Quality/37/Texture Swapping	Capable [1,2,3,4,5,6,7,8] 	 
+Quality/38/Narrow Z Accuracy	Incorrect [1,2,3,4,5,6,7,9] 	 
+Quality/39/Wide Z Accuracy	Incorrect [1,2,3,4,5,6,7,10] 	 
+Quality/40/High Triangle Count	Capable [1,2,3,4,5,6,7] 	 
+Quality/41/Texture Fidelity	Capable [1,2,3,4,5,6,7] 	 
+
+NOTES
+
+ [1]  Direct3D HAL was used.
+ [2]  The refresh rate was 30 Hz.
+ [3]  The scene was rendered using Direct3D Execute buffers.
+ [4]  The test ran full screen at 640x480x16bpp.
+ [5]  Z buffer depth: 16 bits. Texture formats. Normal: 565 RGB. Transparent: 5551 RGBA. Alpha: 4444 RGBA.
+ [6]  The test ran with the following driver fixes: World in Fog Table(on) .
+ [7]  The following Windows tasks were running during this test and could affect the test results: EAPWAKE.EXE, MSTASK.EXE, TASKMON.EXE, V9XAGNT.EXE, WG111V3.EXE, WMIEXE.EXE
+ [8]  User comments: Last frame matches good. Panel not watched live
+ [9]  User comments: Left cube intersection is a sawtooth. Right cube straight. 16 bit Z
+ [10]  User comments: Left pair blue cube missing as in bad image. 16 bit Z
