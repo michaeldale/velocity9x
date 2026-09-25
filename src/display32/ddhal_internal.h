@@ -228,6 +228,64 @@ typedef struct v9x_fpu_area {
 /* The shared block, published by DriverInit and read by every module. */
 extern V9X_DD_SHARED *v9x_hal;
 
+/*
+ * The HAL's timing buckets (2026-09-25), counted into
+ * V9X_D3D_DIAGNOSTICS.time_cycles / time_calls.
+ *
+ * RDTSC, emitted as its opcode bytes (0F 31) so no assembler level is
+ * assumed; the pair form stores EDX:EAX through ECX (89 01, 89 51 04). A
+ * bucket is timed only on the Gen3 engine: every host of a GMA 950 has a
+ * TSC, and the 486s this HAL also serves would take an invalid-opcode fault
+ * on the instruction. Macros rather than functions, so the instrument adds
+ * no symbol. A bucket's delta is taken from the low dword, which is safe for
+ * any interval under 2^32 cycles - seconds on this part, and every bucket
+ * below is a single call.
+ *
+ * Nested buckets overlap by design: ENGINE_DRAW contains DECODE, RING_WRITE,
+ * HEAD_WAIT and CRUMB_WAIT, and D3D_CALLS contains ENGINE_DRAW. The
+ * remainders are the reader's arithmetic, not a bucket.
+ */
+static DWORD v9x_rdtsc_low(void);
+#pragma aux v9x_rdtsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
+
+static void v9x_rdtsc_pair(DWORD *pair);
+#pragma aux v9x_rdtsc_pair = 0x0f 0x31 0x89 0x01 0x89 0x51 0x04 \
+    parm [ecx] modify exact [eax edx];
+
+#define V9X_TIME_D3D_CALLS     0u   /* the four D3D draw entry points   */
+#define V9X_TIME_ENGINE_DRAW   1u   /* Gen3 draw_triangles, whole       */
+#define V9X_TIME_DECODE        2u   /* the allowlist over one stream    */
+#define V9X_TIME_RING_WRITE    3u   /* stream into the ring, and TAIL   */
+#define V9X_TIME_HEAD_WAIT     4u   /* until HEAD reaches the tail      */
+#define V9X_TIME_CRUMB_WAIT    5u   /* until the breadcrumb lands       */
+#define V9X_TIME_FLIP          6u   /* V9xHalFlip                       */
+#define V9X_TIME_LOCK          7u   /* V9xHalLock                       */
+#define V9X_TIME_BLT_COPY      8u   /* V9xHalBlt with a source          */
+#define V9X_TIME_BLT_FILL      9u   /* V9xHalBlt without one            */
+#define V9X_TIME_CREATESURFACE 10u  /* V9xHalCreateSurface              */
+/* From a successful Lock to the next Unlock: the application's own access
+ * through the aperture. Nested or interleaved locks are measured from the
+ * latest Lock, so this is an approximation where they occur. */
+#define V9X_TIME_LOCK_HELD     11u
+
+#define V9X_TIME_ENABLED() \
+    (v9x_hal != 0 && \
+     v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3)
+#define V9X_TIME_BEGIN() (V9X_TIME_ENABLED() ? v9x_rdtsc_low() : 0ul)
+#define V9X_TIME_END(bucket, start) \
+    { \
+        if (V9X_TIME_ENABLED()) { \
+            DWORD v9x_time_delta_ = v9x_rdtsc_low() - (start); \
+            DWORD *v9x_time_sum_ = \
+                &v9x_hal->d3d_diagnostics.time_cycles[(bucket) * 2u]; \
+            v9x_time_sum_[0] += v9x_time_delta_; \
+            if (v9x_time_sum_[0] < v9x_time_delta_) { \
+                ++v9x_time_sum_[1]; \
+            } \
+            ++v9x_hal->d3d_diagnostics.time_calls[(bucket)]; \
+        } \
+    }
+
 /* Bounded callback trace, in ddhal.c. */
 void v9x_trace_push(WORD id, DWORD detail);
 void v9x_trace_count(WORD id, DWORD detail);

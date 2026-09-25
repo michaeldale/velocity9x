@@ -807,6 +807,7 @@ DWORD __stdcall V9xHalCanCreateSurface(
 DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     DWORD handled;
+    DWORD started = V9X_TIME_BEGIN();
 
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
@@ -818,6 +819,7 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
      * exactly as before. */
     handled = v9x_d3d_create_surface(data);
     v9x_trace_exit(V9X_TRACE_CREATESURFACE, V9X_DD_OK);
+    V9X_TIME_END(V9X_TIME_CREATESURFACE, started);
     return handled;
 }
 
@@ -882,10 +884,21 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
 {
     V9X_FPU_AREA fpu;
     DWORD result;
+    DWORD started = V9X_TIME_BEGIN();
 
     /* The first flip of the session, for the slow-start bracket. */
     if (v9x_hal != 0 && v9x_hal->d3d_diagnostics.uptime_first_flip == 0ul) {
         v9x_hal->d3d_diagnostics.uptime_first_flip = GetTickCount();
+    }
+    /* The timing buckets' clock calibration: TSC and tick count at the
+     * first flip and the latest. */
+    if (V9X_TIME_ENABLED()) {
+        if (v9x_hal->d3d_diagnostics.time_tick_first == 0ul) {
+            v9x_rdtsc_pair(v9x_hal->d3d_diagnostics.time_tsc_first);
+            v9x_hal->d3d_diagnostics.time_tick_first = GetTickCount();
+        }
+        v9x_rdtsc_pair(v9x_hal->d3d_diagnostics.time_tsc_last);
+        v9x_hal->d3d_diagnostics.time_tick_last = GetTickCount();
     }
 
     v9x_trace_enter(V9X_TRACE_FLIP, data->dwFlags);
@@ -893,6 +906,7 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
     result = v9x_flip_body(data);
     v9x_fpu_restore(&fpu);
     v9x_trace_exit(V9X_TRACE_FLIP, data->ddRVal);
+    V9X_TIME_END(V9X_TIME_FLIP, started);
     return result;
 }
 
@@ -969,7 +983,28 @@ DWORD __stdcall V9xHalSetExclusiveMode(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/* When the latest successful Lock returned, for V9X_TIME_LOCK_HELD; zero
+ * when no lock is being timed. */
+static DWORD v9x_lock_held_started;
+
+static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data);
+
 DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_lock_body(data);
+
+    V9X_TIME_END(V9X_TIME_LOCK, started);
+    if (V9X_TIME_ENABLED() && data->ddRVal == V9X_DD_OK) {
+        v9x_lock_held_started = v9x_rdtsc_low();
+        if (v9x_lock_held_started == 0ul) {
+            v9x_lock_held_started = 1ul;
+        }
+    }
+    return result;
+}
+
+static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_LOCK, data->dwFlags);
     /*
@@ -997,6 +1032,10 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_UNLOCK, 0ul);
+    if (v9x_lock_held_started != 0ul) {
+        V9X_TIME_END(V9X_TIME_LOCK_HELD, v9x_lock_held_started);
+        v9x_lock_held_started = 0ul;
+    }
     /* The CPU may have written texels: a keyed texture must be rewritten
      * before its next draw. Cheap - a table walk - and only a flag. */
     v9x_d3d_color_key_touch(data->lpDDSurface);
@@ -1546,6 +1585,7 @@ static DWORD v9x_blt_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
 {
     DWORD result;
+    DWORD started = V9X_TIME_BEGIN();
 
     int engine_used = 0;
 
@@ -1565,6 +1605,11 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
                         data != 0 ? data->bltFX.dwFillColor : 0ul);
     }
     v9x_trace_exit(V9X_TRACE_BLT, result);
+    if (data != 0 && data->lpDDSrcSurface != 0) {
+        V9X_TIME_END(V9X_TIME_BLT_COPY, started);
+    } else {
+        V9X_TIME_END(V9X_TIME_BLT_FILL, started);
+    }
     return result;
 }
 

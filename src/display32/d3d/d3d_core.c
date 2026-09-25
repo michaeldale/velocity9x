@@ -1950,7 +1950,21 @@ DWORD __stdcall V9xD3dExecuteClipped(
     return handled;
 }
 
+static DWORD v9x_d3d_render_primitive_body(
+    V9X_D3DHAL_RENDERPRIMITIVEDATA *data);
+
+/* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
 DWORD __stdcall V9xD3dRenderPrimitive(
+    V9X_D3DHAL_RENDERPRIMITIVEDATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_d3d_render_primitive_body(data);
+
+    V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
+    return result;
+}
+
+static DWORD v9x_d3d_render_primitive_body(
     V9X_D3DHAL_RENDERPRIMITIVEDATA *data)
 {
     V9X_FPU_AREA fpu;
@@ -2124,7 +2138,21 @@ static DWORD v9x_d3d_type_bit(DWORD value)
     return value < 32ul ? (1ul << value) : 1ul;
 }
 
+static DWORD v9x_d3d_draw_one_primitive_body(
+    V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data);
+
+/* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
 DWORD __stdcall V9xD3dDrawOnePrimitive(
+    V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_d3d_draw_one_primitive_body(data);
+
+    V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
+    return result;
+}
+
+static DWORD v9x_d3d_draw_one_primitive_body(
     V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data)
 {
     V9X_FPU_AREA fpu;
@@ -2234,7 +2262,22 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
+static DWORD v9x_d3d_draw_primitives_body(
+    V9X_D3DHAL_DRAWPRIMITIVESDATA *data);
+
+/* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
+DWORD __stdcall V9xD3dDrawPrimitives(
+    V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_d3d_draw_primitives_body(data);
+
+    V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
+    return result;
+}
+
+static DWORD v9x_d3d_draw_primitives_body(
+    V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
 {
     V9X_FPU_AREA fpu;
     V9X_D3D_CONTEXT *context;
@@ -2444,7 +2487,21 @@ DWORD __stdcall V9xD3dDrawPrimitives(V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
  * driver trusts is an arbitrary read at four-byte granularity out of a
  * pointer the runtime supplied.
  */
+static DWORD v9x_d3d_draw_one_indexed_primitive_body(
+    V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data);
+
+/* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
 DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
+    V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_d3d_draw_one_indexed_primitive_body(data);
+
+    V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
+    return result;
+}
+
+static DWORD v9x_d3d_draw_one_indexed_primitive_body(
     V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
 {
     V9X_FPU_AREA fpu;

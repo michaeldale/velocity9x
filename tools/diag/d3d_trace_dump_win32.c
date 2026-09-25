@@ -987,6 +987,32 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("MipTreeLastOffset", snapshot.d3d.mip_tree_last_offset);
     v9x_write_hex("MipTreeLastShape", snapshot.d3d.mip_tree_last_shape);
     v9x_write_uint("MipDraws", snapshot.d3d.mip_draws);
+    /* The timing buckets as raw TSC pairs and call counts, with the two
+     * calibration readings; the host converts, so this tool assumes no
+     * clock rate. Names match V9X_TIME_* in ddhal_internal.h. */
+    {
+        static const char *time_names[12] = {
+            "D3dCalls", "EngineDraw", "Decode", "RingWrite", "HeadWait",
+            "CrumbWait", "Flip", "Lock", "BltCopy", "BltFill",
+            "CreateSurface", "LockHeld" };
+        char key[48];
+        DWORD bucket;
+
+        for (bucket = 0ul; bucket < 12ul; ++bucket) {
+            wsprintf(key, "Time%sCyclesLo", time_names[bucket]);
+            v9x_write_hex(key, snapshot.d3d.time_cycles[bucket * 2ul]);
+            wsprintf(key, "Time%sCyclesHi", time_names[bucket]);
+            v9x_write_hex(key, snapshot.d3d.time_cycles[bucket * 2ul + 1ul]);
+            wsprintf(key, "Time%sCalls", time_names[bucket]);
+            v9x_write_uint(key, snapshot.d3d.time_calls[bucket]);
+        }
+        v9x_write_hex("TimeTscFirstLo", snapshot.d3d.time_tsc_first[0]);
+        v9x_write_hex("TimeTscFirstHi", snapshot.d3d.time_tsc_first[1]);
+        v9x_write_uint("TimeTickFirst", snapshot.d3d.time_tick_first);
+        v9x_write_hex("TimeTscLastLo", snapshot.d3d.time_tsc_last[0]);
+        v9x_write_hex("TimeTscLastHi", snapshot.d3d.time_tsc_last[1]);
+        v9x_write_uint("TimeTickLast", snapshot.d3d.time_tick_last);
+    }
     v9x_write_uint("WmDeclined", snapshot.d3d.wm_declined);
     v9x_write_uint("BltEngineFlipPending",
                    snapshot.d3d.blt_engine_flip_pending);

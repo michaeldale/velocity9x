@@ -557,6 +557,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
     DWORD tail;
     DWORD polls;
     DWORD index;
+    DWORD phase_started;
     volatile DWORD *ring;
 
     if (v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0) {
@@ -582,6 +583,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
     }
 
     ring = (volatile DWORD *)ring_linear;
+    phase_started = V9X_TIME_BEGIN();
     /* The pad first, where one is needed: MI_NOOPs to the ring's end. */
     for (index = 0ul; index < plan.pad_dwords; ++index) {
         ring[(tail / 4ul) + index] = V9X_I9XX_MI_NOOP;
@@ -596,12 +598,17 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
      * the texture paint and the depth clear needed for the same reason.
      */
     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) = plan.next_tail;
+    V9X_TIME_END(V9X_TIME_RING_WRITE, phase_started);
 
+    phase_started = V9X_TIME_BEGIN();
     for (polls = 0ul; polls < V9X_I9XX_SUBMIT_POLLS; ++polls) {
         if (v9x_i9xx_ring_submission_complete(
                 *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD),
                 plan.next_tail) != V9X_FALSE) {
             DWORD lag;
+
+            V9X_TIME_END(V9X_TIME_HEAD_WAIT, phase_started);
+            phase_started = V9X_TIME_BEGIN();
 
             /*
              * The parser is at the tail. Is the ENGINE? ACTHD and
@@ -639,6 +646,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
                         v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max = lag;
                     }
                     v9x_d3d_i9xx_note_outstanding(0ul);
+                    V9X_TIME_END(V9X_TIME_CRUMB_WAIT, phase_started);
                     return 1;
                 }
             }
@@ -1785,9 +1793,26 @@ static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
 static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
 static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
 
+static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
+                                            const V9X_D3DTLVERTEX *vertices,
+                                            DWORD triangle_count);
+
+/* The engine's whole draw, timed; the work is in the body. */
 static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                        const V9X_D3DTLVERTEX *vertices,
                                        DWORD triangle_count)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    int ok = v9x_d3d_i9xx_draw_triangles_body(context, vertices,
+                                              triangle_count);
+
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return ok;
+}
+
+static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
+                                            const V9X_D3DTLVERTEX *vertices,
+                                            DWORD triangle_count)
 {
     struct v9x_i9xx_decode_limits limits;
     struct v9x_i9xx_texture map;
@@ -2133,10 +2158,16 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     limits.texture_max_lod = textured != 0 ? map.max_lod : 0ul;
     limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_expected != 0ul
                                    ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul;
-    if (v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected) !=
-            V9X_I9XX_P5_OK) {
-        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
-        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
+    {
+        DWORD decode_started = V9X_TIME_BEGIN();
+        v9x_u16 decoded = v9x_i9xx_decode_phase5_stream(stream, at, &limits,
+                                                        &rejected);
+
+        V9X_TIME_END(V9X_TIME_DECODE, decode_started);
+        if (decoded != V9X_I9XX_P5_OK) {
+            v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
+        }
     }
 
     v9x_present_note_submission();
