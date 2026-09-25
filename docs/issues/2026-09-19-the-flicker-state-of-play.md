@@ -13,6 +13,27 @@ of 2026-09-19 carry the captures and the arguments; the long-running
 narrative is
 `2026-09-18-final-reality-flicker-is-the-buffer-under-construction.md`.
 
+## 2026-09-25: 3D WinBench 98 flickers too, on the netbook
+
+**Operator observation, not a capture.** Watching the netbook panel during
+the mipmapping quality run (boot 8, driver with the Gen3 mip trees, see
+`docs\decisions\2026-09-25-mip-trees-on-gen3.md`), Michael saw flicker
+"similar to Final Reality": the scene's blue background leaking through
+the rendered geometry while a test ran. The captured last frames of the
+same tests are complete and match their references, so a screenshot or
+the benchmark's own capture does not show it - the same shape as Final
+Reality, where rendering looks right and the fault is intermittent frames.
+
+A lead, not a finding: 3D WinBench 98 reports every test "rendered using
+Direct3D Execute buffers" (note [3] of
+`2026-09-25-netbook-mip-3dwb98-quality.txt`), Final Reality is also a
+DirectX 5-era title, and 3DMark99 - whose run on this machine the
+operator described as having "no flickering" (2026-09-24) - is the one
+title tried that is not. That is three titles, and the pairing could as
+easily be the titles' own frame pacing (the benchmark ran at a 30 Hz
+refresh setting, note [2]). Not investigated; parked for after the
+3DMark99 re-run.
+
 ## The symptom, photographed
 
 **Operator clarification, 2026-09-20:** rendering looks correct; the problem

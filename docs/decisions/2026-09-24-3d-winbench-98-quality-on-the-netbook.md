@@ -151,8 +151,10 @@ triangle count, texture fidelity.
    Gen3's 24-bit depth format, planned in `docs\plans\intel-24-bit-depth.md`.
 4. **2026-09-25: mirror addressing, Add and Modulate pixel blending and
    DECAL done** (`2026-09-25-mirror-colour-blend-factors-and-decal.md`).
-   The rest of the OFF list is the backlog: mipmapping, fog, DecalAlpha,
-   colour key, specular, dithering, anti-aliasing. Mipmapping and colour key are the likeliest to matter for
+   **Mipmapping done the same day** (`2026-09-25-mip-trees-on-gen3.md`),
+   with the LOD differences recorded there. The rest of the OFF list is the
+   backlog: fog, DecalAlpha, colour key, specular, dithering,
+   anti-aliasing. Mipmapping and colour key are the likeliest to matter for
    3DMark99's missing textures; that link is not tested.
 
 ## Not established

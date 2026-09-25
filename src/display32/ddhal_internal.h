@@ -461,6 +461,16 @@ void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface);
  * moment: a record outlives the context that created it now, so a destroyed
  * surface has to be what ends one. */
 void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface);
+/*
+ * Surface memory an engine lays out itself. CreateSurface asks the engine
+ * first and returns what it answers: DRIVER_HANDLED with every surface of
+ * the list placed, or DRIVER_NOTHANDLED for DirectDraw's heap to place them
+ * as before. DestroySurface tells the engine so it can release what it
+ * placed. Both are no-ops for an engine that places nothing - today every
+ * engine but Gen3, which must place a mip chain where its sampler reads it.
+ */
+DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data);
+void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data);
 V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 DWORD v9x_d3d_depth_bytes_per_pixel(void);
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data);

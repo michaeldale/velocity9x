@@ -1483,6 +1483,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092501: V9X_D3D_DIAGNOSTICS gains the Gen3 mip-tree counters. An
+ * append.
+ */
 /* 2026092301: V9X_D3D_DIAGNOSTICS gains the alpha-test counters. An append.
  */
 /* 2026092020: V9X_D3D_DIAGNOSTICS gains the render-target census. An append.
@@ -1537,7 +1540,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092301ul
+#define V9X_DD_SHARED_ABI   2026092501ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2861,6 +2864,24 @@ typedef struct v9x_d3d_diagnostics {
     DWORD alpha_test_func_seen;
     DWORD alpha_test_ref_last;
     DWORD alpha_test_unexpressed;
+    /*
+     * Gen3 mip trees, from 2026-09-25: chains the HAL laid out itself at
+     * CreateSurface so the sampler finds every level where its fixed layout
+     * says. allocs and frees count trees placed and released; declined
+     * counts mip chains left to DirectDraw's heap, with the reason of the
+     * last in declined_last (V9X_D3D_I9XX_MIPTREE_* in d3d_i9xx.c).
+     * last_offset is the last tree's graphics offset and last_shape its
+     * (pitch << 16) | rows. mip_draws counts textured submissions whose map
+     * carried levels - the bind-time chain check itself uses the mip_chain_*
+     * and mip_gap_* counters above, which the ViRGE introduced.
+     */
+    DWORD mip_tree_allocs;
+    DWORD mip_tree_frees;
+    DWORD mip_tree_declined;
+    DWORD mip_tree_declined_last;
+    DWORD mip_tree_last_offset;
+    DWORD mip_tree_last_shape;
+    DWORD mip_draws;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -369,6 +369,22 @@ typedef struct v9x_d3d_engine_ops {
      * question. The software engine answers yes.
      */
     int (*ready)(void);
+
+    /*
+     * Surface placement, APPENDED 2026-09-25 under the same rule as `ready`.
+     * Null for an engine that leaves every surface to DirectDraw's heap,
+     * which the positional initialisers get by omission.
+     *
+     * An engine whose sampler derives a mip chain's levels from one address
+     * cannot use chains DirectDraw placed level by level; Gen3 is that
+     * engine. create_surface returns V9X_DDHAL_DRIVER_HANDLED only when it
+     * has given EVERY surface of the list its memory and pitch, and
+     * V9X_DDHAL_DRIVER_NOTHANDLED, touching nothing, otherwise.
+     * destroy_surface releases what create_surface placed, and must ignore a
+     * surface it did not.
+     */
+    DWORD (*create_surface)(V9X_DDHAL_CREATESURFACEDATA *data);
+    void (*destroy_surface)(V9X_DDHAL_DESTROYSURFACEDATA *data);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

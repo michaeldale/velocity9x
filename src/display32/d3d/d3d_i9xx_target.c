@@ -161,6 +161,106 @@ v9x_u16 v9x_d3d_i9xx_bind_depth(
     return V9X_TRUE;
 }
 
+/*
+ * The mip-tree alignment units and the pitch granule. Mesa 20.3 classic
+ * intel_tex_layout.c:40-110 cites the Gen3 spec's "Alignment Unit Size"
+ * section for 4 texels across and 2 rows down for every uncompressed format;
+ * gallium i915_resource_texture.c:465 states the same pair and aligns the
+ * pitch to 64 bytes at :497.
+ */
+#define V9X_I9XX_MIP_ALIGN_TEXELS    4ul
+#define V9X_I9XX_MIP_ALIGN_ROWS      2ul
+#define V9X_I9XX_MIP_PITCH_ALIGN     64ul
+
+/* A level's edge, never below one texel: the u_minify / minify rule. */
+static v9x_u32 v9x_d3d_i9xx_minify(v9x_u32 edge, v9x_u32 times)
+{
+    while (times != 0ul && edge > 1ul) {
+        edge >>= 1;
+        --times;
+    }
+    return edge;
+}
+
+static v9x_u32 v9x_d3d_i9xx_align(v9x_u32 value, v9x_u32 unit)
+{
+    return (value + unit - 1ul) & ~(unit - 1ul);
+}
+
+v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
+                                    struct v9x_d3d_i9xx_miptree *tree)
+{
+    v9x_u32 level;
+    v9x_u32 edge;
+    v9x_u32 top_levels = 1ul;
+    v9x_u32 x = 0ul;
+    v9x_u32 y = 0ul;
+    v9x_u32 pitch_texels;
+
+    if (tree == 0) {
+        return V9X_FALSE;
+    }
+    tree->levels = 0ul;
+    tree->pitch = 0ul;
+    tree->rows = 0ul;
+    for (level = 0ul; level < V9X_D3D_I9XX_MIP_LEVELS_MAX; ++level) {
+        tree->level_offset[level] = 0ul;
+    }
+
+    if (size == 0ul || size > V9X_I9XX_MAP_DIMENSION_MAX ||
+        (size & (size - 1ul)) != 0ul) {
+        return V9X_FALSE;
+    }
+    for (edge = size; edge > 1ul; edge >>= 1) {
+        ++top_levels;
+    }
+    if (levels == 0ul || levels > top_levels) {
+        return V9X_FALSE;
+    }
+
+    /*
+     * The pitch: level 0's row, widened when level 1 (aligned) and level 2
+     * side by side are wider - which happens only for a top of four texels
+     * or fewer - then aligned to the granule.
+     */
+    pitch_texels = size;
+    if (levels > 1ul) {
+        v9x_u32 mip1 =
+            v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(size, 1ul),
+                               V9X_I9XX_MIP_ALIGN_TEXELS) +
+            v9x_d3d_i9xx_minify(size, 2ul);
+
+        if (mip1 > pitch_texels) {
+            pitch_texels = mip1;
+        }
+    }
+    tree->pitch = v9x_d3d_i9xx_align(pitch_texels * 2ul,
+                                     V9X_I9XX_MIP_PITCH_ALIGN);
+
+    /*
+     * Down the chain. After level 1 the position steps RIGHT by level 1's
+     * aligned width instead of down, which puts level 2 and everything
+     * after it in a column beside level 1 - Mesa's "Layout_below: step
+     * right after second mipmap".
+     */
+    for (level = 0ul; level < levels; ++level) {
+        v9x_u32 width = v9x_d3d_i9xx_minify(size, level);
+        v9x_u32 rows = v9x_d3d_i9xx_align(width, V9X_I9XX_MIP_ALIGN_ROWS);
+
+        tree->level_offset[level] = y * tree->pitch + x * 2ul;
+        if (y + rows > tree->rows) {
+            tree->rows = y + rows;
+        }
+        if (level == 1ul) {
+            x += v9x_d3d_i9xx_align(width, V9X_I9XX_MIP_ALIGN_TEXELS);
+        } else {
+            y += rows;
+        }
+    }
+    tree->levels = levels;
+    return V9X_TRUE;
+}
+
 v9x_u16 v9x_d3d_i9xx_bind_target(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes,

@@ -1,0 +1,21 @@
+TEST	Current Results	UNITS
+
+Quality/ 6/Nearest	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 7/Linear	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 8/Nearest Mipmap Nearest	Capable [1,2,3,4,5,6,7] 	 
+Quality/ 9/Nearest Mipmap Linear	Capable [1,2,3,4,5,6,7] 	 
+Quality/10/Linear Mipmap Nearest	Capable [1,2,3,4,5,6,7,8] 	 
+Quality/11/Linear Mipmap Linear	Capable [1,2,3,4,5,6,7,9] 	 
+Quality/12/Modulate Texture Blending	Capable [1,2,3,4,5,6,7] 	 
+
+NOTES
+
+ [1]  Direct3D HAL was used.
+ [2]  The refresh rate was 30 Hz.
+ [3]  The scene was rendered using Direct3D Execute buffers.
+ [4]  The test ran full screen at 640x480x16bpp.
+ [5]  Z buffer depth: 16 bits. Texture formats. Normal: 565 RGB. Transparent: 5551 RGBA. Alpha: 4444 RGBA.
+ [6]  The test ran with the following driver fixes: World in Fog Table(on) .
+ [7]  The following Windows tasks were running during this test and could affect the test results: EAPWAKE.EXE, MSTASK.EXE, TASKMON.EXE, V9XAGNT.EXE, WG111V3.EXE, WMIEXE.EXE
+ [8]  User comments: LOD range compressed vs reference - far end reaches level 3-4 not 7
+ [9]  User comments: near end about one level coarser than reference

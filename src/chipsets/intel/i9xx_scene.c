@@ -969,6 +969,8 @@ v9x_status v9x_i9xx_build_scene_stream(
     texture.wrap = 0ul;
     texture.mag_linear = 0ul;
     texture.min_linear = 0ul;
+    texture.mip_filter = 0ul;
+    texture.max_lod = 0ul;
 
     if (v9x_i9xx_scene_kind_textured(scene->kind) != V9X_FALSE) {
         if (v9x_i9xx_build_texture_paint(&texture, stream + at,

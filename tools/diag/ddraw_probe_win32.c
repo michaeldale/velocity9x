@@ -1484,6 +1484,42 @@ static void v9x_fill_surface(struct v9x_dds *surface, DWORD pattern)
 }
 
 /*
+ * One 16-bit texel over the surface's own width, row by row.
+ *
+ * v9x_fill_surface writes lPitch * height bytes in one run, which is the
+ * surface's memory on a heap surface and NOT on a Gen3 mip level: there the
+ * levels share one pitch, level 2 sits beside level 1, and a run through
+ * level 2's row padding lands in level 1. The netbook's first ladder read
+ * level 1 as blue for exactly that reason (2026-09-25). A chain level is
+ * filled with this.
+ */
+static void v9x_fill_surface_rows(struct v9x_dds *surface, WORD texel_value)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+    DWORD y;
+    DWORD x;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return;
+    }
+    row = (BYTE FAR *)desc.lpSurface;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        WORD FAR *texel = (WORD FAR *)row;
+
+        for (x = 0ul; x < desc.dwWidth; ++x) {
+            texel[x] = texel_value;
+        }
+        row += desc.lPitch;
+    }
+    surface->vtbl->Unlock(surface, 0);
+}
+
+/*
  * Left half of every row one 16-bit texel, right half another. A solid fill
  * cannot tell a sampler that reads the right texture from one that reads it
  * with the wrong stride, size or level - every texel is the same - and that
@@ -5104,9 +5140,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             ladder_hr = 0x80004005ul;
                             break;
                         }
-                        v9x_fill_surface(ladder[li2],
-                            (DWORD)ladder_fill[li2] |
-                            ((DWORD)ladder_fill[li2] << 16));
+                        v9x_fill_surface_rows(ladder[li2], ladder_fill[li2]);
                         /*
                          * Lock, not GetSurfaceDesc. A video-memory surface's
                          * desc carries lpSurface = 0 until it is locked -
@@ -5143,6 +5177,16 @@ void __stdcall V9xDdrawProbeEntry(void)
                             ladder_shape_ok = 0ul;
                         }
                     }
+                    /*
+                     * A record, not a gate. The deltas are DirectDraw's heap
+                     * laying the levels end to end, which is the ViRGE's layout
+                     * and not Gen3's: from 2026-09-25 the Intel HAL places a
+                     * chain itself, level 2 beside level 1 at a shared pitch,
+                     * and a correct chain there reads ShapeOk 0. Which level
+                     * the sampler read is what the colours below answer, and a
+                     * chain in the wrong place fails them by reading the wrong
+                     * colour, so they no longer require this.
+                     */
                     v9x_write_uint("MipLadderShapeOk", ladder_shape_ok);
 
                     if (ladder_hr == 0 && ladder[0] != 0) {
@@ -5214,7 +5258,6 @@ void __stdcall V9xDdrawProbeEntry(void)
                      * the rule the matrix's loosened one replaced.
                      */
                     ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
-                                ladder_shape_ok != 0ul &&
                                 target_layout.valid != 0ul ? 1ul : 0ul;
                     if (ladder_ok != 0ul) {
                         if (v9x_layout_red(&target_layout,
@@ -5244,7 +5287,6 @@ void __stdcall V9xDdrawProbeEntry(void)
                      * do share the ends of, or nothing was blended at all.
                      */
                     ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
-                                ladder_shape_ok != 0ul &&
                                 target_layout.valid != 0ul ? 1ul : 0ul;
                     if (ladder_ok != 0ul) {
                         if (v9x_layout_blue(&target_layout,
@@ -5287,7 +5329,6 @@ void __stdcall V9xDdrawProbeEntry(void)
                      * its chip allows.
                      */
                     ladder_ok = ladder_draw_hr == 0 && ladder_handle != 0ul &&
-                                ladder_shape_ok != 0ul &&
                                 target_layout.valid != 0ul ? 1ul : 0ul;
                     if (ladder_ok != 0ul) {
                         for (li2 = 0ul; li2 < 3ul; ++li2) {

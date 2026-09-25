@@ -733,6 +733,20 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
  * form is one constant away.
  */
 #define V9X_I9XX_MS4_PITCH_SHIFT         21
+/*
+ * MS4 MAX_LOD: the lowest-resolution level the sampler may reach, in QUARTER
+ * levels (u4.2). Mesa gallium i915_reg.h:751-752 defines the field at bits
+ * 9-14; i915_state_sampler.c:291 fills it with num_levels * 4, and Mesa 21.3
+ * classic i915_texstate.c:196 with U_FIXED(maxlod, 2) clamped to 11 - the
+ * two trees agree on the unit and on the ceiling. Zero, the value every map
+ * carried before 2026-09-25, keeps the sampler on the top level. The macro is
+ * shared by the builder and the decoder so the two cannot compose it
+ * differently.
+ */
+#define V9X_I9XX_MS4_MAX_LOD_SHIFT       9
+#define V9X_I9XX_MAX_LOD_LEVELS          ((v9x_u32)11ul)
+#define V9X_I9XX_MS4_MAX_LOD(levels) \
+    ((v9x_u32)((levels) << 2) << V9X_I9XX_MS4_MAX_LOD_SHIFT)
 
 /*
  * The field widths, which bound what a texture may be. Height occupies bits
@@ -754,10 +768,10 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
  * Shifts from the audit's SS2 table (both trees); FILTER_LINEAR is 1 in
  * i915_reg.h beside FILTER_NEAREST 0. MIN and MAG are separate fields and
  * are set separately, because Direct3D's TEXTUREMIN and TEXTUREMAG are two
- * render states and an application may ask for one without the other. No
- * mip filter: the mip field stays MIPFILTER_NONE because no map has levels.
- * Added 2026-09-17 for Final Reality's linear filter; UNMEASURED until the
- * boot that carries it.
+ * render states and an application may ask for one without the other. The
+ * mip field is V9X_I9XX_SS2_MIP's, below, and stays MIPFILTER_NONE for a map
+ * without levels. Added 2026-09-17 for Final Reality's linear filter;
+ * UNMEASURED until the boot that carries it.
  */
 #define V9X_I9XX_SS2_MIN_FILTER_SHIFT    14
 #define V9X_I9XX_SS2_MAG_FILTER_SHIFT    17
@@ -770,6 +784,24 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
     (V9X_I9XX_FILTER_LINEAR << V9X_I9XX_SS2_MAG_FILTER_SHIFT)
 /* The SS2 word for a map: nearest is the absence of both bits. */
 v9x_u32 v9x_i9xx_sampler_filter_word(v9x_u32 min_linear, v9x_u32 mag_linear);
+/*
+ * The SS2 mip filter field, bits 20-21: NONE 0, NEAREST 1, LINEAR 3. Mesa
+ * gallium i915_reg.h:773-775 defines the three; gallium i915_state.c:90-95
+ * maps PIPE_TEX_MIPFILTER_* onto them and Mesa 21.3 classic
+ * i915_texstate.c:203-227 maps the GL mipmap minification filters, both
+ * shifting by SS2_MIP_FILTER_SHIFT. Value 2 is defined by neither and is
+ * refused. Added 2026-09-25 with the mip trees; NONE is what every map
+ * without levels still carries.
+ */
+#define V9X_I9XX_MIPFILTER_NONE          ((v9x_u32)0ul)
+#define V9X_I9XX_MIPFILTER_NEAREST       ((v9x_u32)1ul)
+#define V9X_I9XX_MIPFILTER_LINEAR        ((v9x_u32)3ul)
+#define V9X_I9XX_MIPFILTER_KNOWN(filter) \
+    ((filter) == V9X_I9XX_MIPFILTER_NONE || \
+     (filter) == V9X_I9XX_MIPFILTER_NEAREST || \
+     (filter) == V9X_I9XX_MIPFILTER_LINEAR)
+#define V9X_I9XX_SS2_MIP(filter) \
+    ((v9x_u32)(filter) << V9X_I9XX_SS2_MIP_FILTER_SHIFT)
 
 /*
  * SS3: addressing. Coordinates are normalized to [0,1], every axis clamps to
@@ -925,6 +957,17 @@ struct v9x_i9xx_texture {
     v9x_u32 wrap;
     v9x_u32 mag_linear;
     v9x_u32 min_linear;
+    /*
+     * The mip chain, APPENDED 2026-09-25 so every positional initialiser
+     * keeps its meaning with zeros here: no levels below the top, no mip
+     * filter. `max_lod` counts the levels BELOW the top (a 256 chain to 1x1
+     * is 8), at most V9X_I9XX_MAX_LOD_LEVELS; the sampler finds each one at
+     * the offset Gen3's fixed layout gives it from `offset` and `pitch`,
+     * which is v9x_d3d_i9xx_layout_miptree's business and not this
+     * builder's. `mip_filter` is a V9X_I9XX_MIPFILTER_* value.
+     */
+    v9x_u32 mip_filter;
+    v9x_u32 max_lod;
 };
 
 /* src\chipsets\intel\i9xx_texture.c */
@@ -1623,6 +1666,14 @@ struct v9x_i9xx_decode_limits {
      * means S3 is zero. Append-only, as above.
      */
     v9x_u32 texture_cylinder;
+    /*
+     * The mip filter (V9X_I9XX_MIPFILTER_*) and the levels below the top a
+     * runtime stream's SS2 and MS4 must carry, exactly. Zero for both - every
+     * scene, every positional initialiser - is a map with one level, as the
+     * audited streams have. Append-only, as above.
+     */
+    v9x_u32 texture_mip_filter;
+    v9x_u32 texture_max_lod;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

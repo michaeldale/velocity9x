@@ -153,15 +153,38 @@ v9x_status v9x_i9xx_build_map_state(
                 0ul) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
+        /*
+         * The levels below the top: no more than the field's ceiling, and no
+         * more than the top has - a 16-texel map halves four times, and a
+         * fifth MAX_LOD would send the sampler to a level that is not there.
+         * Halved in a loop rather than shifted by a variable count, which
+         * keeps a long-shift helper out of I9XXCODE for the reason the
+         * multiplies above are 16-bit.
+         */
+        {
+            v9x_u32 edge = width > height ? width : height;
+            v9x_u32 level;
+
+            if (maps[index].max_lod > V9X_I9XX_MAX_LOD_LEVELS) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+            for (level = 0ul; level < maps[index].max_lod; ++level) {
+                edge >>= 1;
+            }
+            if (edge == 0ul) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+        }
 
         stream[at++] = maps[index].offset;
         /* Tiling bits deliberately absent: the texture is linear. */
         stream[at++] = maps[index].format |
                        ((height - 1ul) << V9X_I9XX_MS3_HEIGHT_SHIFT) |
                        ((width - 1ul) << V9X_I9XX_MS3_WIDTH_SHIFT);
-        /* Pitch alone. See the header for the divergence between the two
-         * trees over the cube-face mask, and why this is the form taken. */
-        stream[at++] = ((pitch >> 2) - 1ul) << V9X_I9XX_MS4_PITCH_SHIFT;
+        /* Pitch and MAX_LOD. See the header for the divergence between the
+         * two trees over the cube-face mask, and why it is left out. */
+        stream[at++] = (((pitch >> 2) - 1ul) << V9X_I9XX_MS4_PITCH_SHIFT) |
+                       V9X_I9XX_MS4_MAX_LOD(maps[index].max_lod);
     }
 
     *written = at;
@@ -171,7 +194,8 @@ v9x_status v9x_i9xx_build_map_state(
 /*
  * SS2 from the two filter requests. Nearest is FILTER_NEAREST (0) in both
  * fields, so the nearest/no-mip word is V9X_I9XX_SS2_NEAREST_NO_MIP by
- * construction; the mip field is never set because no map has levels. One
+ * construction. The mip field is not this function's: callers OR in
+ * V9X_I9XX_SS2_MIP, so a map without levels keeps the word it always had. One
  * function so the builder and the decoder cannot compose it differently.
  */
 v9x_u32 v9x_i9xx_sampler_filter_word(v9x_u32 min_linear, v9x_u32 mag_linear)
@@ -213,7 +237,8 @@ v9x_status v9x_i9xx_build_sampler_state(
     stream[at++] = v9x_i9xx_unit_enable_mask(count);
 
     for (index = 0ul; index < count; ++index) {
-        if (!V9X_I9XX_ADDRESS_KNOWN(maps[index].wrap)) {
+        if (!V9X_I9XX_ADDRESS_KNOWN(maps[index].wrap) ||
+            !V9X_I9XX_MIPFILTER_KNOWN(maps[index].mip_filter)) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
     }
@@ -223,9 +248,11 @@ v9x_status v9x_i9xx_build_sampler_state(
          * so the dword has one shape. */
         v9x_u32 mode = V9X_I9XX_ADDRESS_TEXCOORDMODE(maps[index].wrap);
 
-        /* MIN and MAG each nearest or bilinear, no mips either way. */
+        /* MIN and MAG each nearest or bilinear, and the mip filter between
+         * levels - NONE for a map without them. */
         stream[at++] = v9x_i9xx_sampler_filter_word(maps[index].min_linear,
-                                                    maps[index].mag_linear);
+                                                    maps[index].mag_linear) |
+                       V9X_I9XX_SS2_MIP(maps[index].mip_filter);
         /*
          * Normalized coordinates, the address mode on every axis, and the
          * MAP INDEX written explicitly.

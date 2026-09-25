@@ -53,4 +53,39 @@ v9x_u16 v9x_d3d_i9xx_bind_depth(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes, v9x_u32 *address_out);
 
+/*
+ * Where Gen3's sampler reads each level of a square 16-bit mip chain.
+ *
+ * MAP_STATE carries one address and one pitch for the whole chain, and the
+ * sampler derives every level from them by a layout fixed in the part - so a
+ * chain is usable only if its levels sit exactly there. DirectDraw's heap
+ * places each level wherever it likes with its own pitch, which never
+ * matches, and that is why the HAL lays chains out itself at CreateSurface.
+ *
+ * The layout is Mesa's i945 one (gallium i915_resource_texture.c:462-522,
+ * classic intel_tex_layout.c:121-186; the two agree): level 0 at the origin,
+ * level 1 below it, level 2 to the right of level 1, each later level below
+ * the one before; level widths aligned to 4 texels and heights to 2 rows; the
+ * pitch widened if levels 1 and 2 side by side overrun level 0, and aligned
+ * to 64 bytes. UNMEASURED on this part until the probe's mip ladder reads
+ * each level's colour back.
+ *
+ * `size` is the top level's edge, a power of two up to MAP_STATE's 2048;
+ * `levels` counts the top, from 1 to log2(size) + 1. level_offset[n] is
+ * level n's byte offset from the chain's base, pitch is bytes and rows is
+ * the chain's height - pitch * rows is its footprint. Returns V9X_FALSE, the
+ * tree zeroed, for anything else.
+ */
+#define V9X_D3D_I9XX_MIP_LEVELS_MAX 12ul
+
+struct v9x_d3d_i9xx_miptree {
+    v9x_u32 levels;
+    v9x_u32 pitch;
+    v9x_u32 rows;
+    v9x_u32 level_offset[V9X_D3D_I9XX_MIP_LEVELS_MAX];
+};
+
+v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
+                                    struct v9x_d3d_i9xx_miptree *tree);
+
 #endif /* VELOCITY9X_D3D_I9XX_TARGET_H */

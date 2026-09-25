@@ -806,13 +806,19 @@ DWORD __stdcall V9xHalCanCreateSurface(
 
 DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
+    DWORD handled;
+
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
+    /* The engine places the surfaces itself only where DirectDraw's heap
+     * cannot place them usably - a Gen3 mip chain. Otherwise the heap does,
+     * exactly as before. */
+    handled = v9x_d3d_create_surface(data);
     v9x_trace_exit(V9X_TRACE_CREATESURFACE, V9X_DD_OK);
-    return V9X_DDHAL_DRIVER_NOTHANDLED;
+    return handled;
 }
 
 DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
@@ -824,6 +830,7 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         v9x_d3d_textures_forget_surface(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
+        v9x_d3d_destroy_surface(data);
         data->ddRVal = V9X_DD_OK;
     }
     v9x_trace_exit(V9X_TRACE_DESTROYSURFACE, V9X_DD_OK);

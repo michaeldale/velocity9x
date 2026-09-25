@@ -543,8 +543,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         v9x_u32 map_height = V9X_I9XX_TEXTURE_HEIGHT;
                         v9x_u32 map_pitch = V9X_I9XX_TEXTURE_PITCH;
                         v9x_u32 map_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+                        v9x_u32 map_max_lod = 0ul;
 
                         if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                            /* The levels below the top the engine declared;
+                             * the field's ceiling is refused here, and the
+                             * builder bounds it by the top level too. */
+                            map_max_lod = limits->texture_max_lod;
+                            if (map_max_lod > V9X_I9XX_MAX_LOD_LEVELS) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                                index + 4ul);
+                            }
                             map_width = limits->texture_width;
                             map_height = limits->texture_height;
                             map_pitch = limits->texture_pitch;
@@ -579,8 +588,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                             index + 3ul);
                         }
                         if (stream[index + 4ul] !=
-                                (((map_pitch >> 2) - 1ul) <<
-                                 V9X_I9XX_MS4_PITCH_SHIFT)) {
+                                ((((map_pitch >> 2) - 1ul) <<
+                                  V9X_I9XX_MS4_PITCH_SHIFT) |
+                                 V9X_I9XX_MS4_MAX_LOD(map_max_lod))) {
                             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
                                             index + 4ul);
                         }
@@ -639,9 +649,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         v9x_u32 mode = V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
 
                         if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
+                            /* And the mip filter, from the same macro the
+                             * builder ORs in; an undefined one is refused. */
+                            if (!V9X_I9XX_MIPFILTER_KNOWN(
+                                    limits->texture_mip_filter)) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                                index + 2ul);
+                            }
                             ss2 = v9x_i9xx_sampler_filter_word(
-                                limits->texture_min_linear,
-                                limits->texture_mag_linear);
+                                      limits->texture_min_linear,
+                                      limits->texture_mag_linear) |
+                                  V9X_I9XX_SS2_MIP(
+                                      limits->texture_mip_filter);
                             /* Clamp, wrap or mirror, translated by the same
                              * macro the builder uses; an undefined request
                              * is itself a refusal. */

@@ -497,6 +497,8 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_program = 0ul;
     limits->breadcrumb_offset = 0ul;
     limits->texture_cylinder = 0ul;
+    limits->texture_mip_filter = 0ul;
+    limits->texture_max_lod = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -653,6 +655,8 @@ static void test_decoder_texture_mode(void)
     texture.wrap = 0ul;
     texture.mag_linear = 0ul;
     texture.min_linear = 0ul;
+    texture.mip_filter = 0ul;
+    texture.max_lod = 0ul;
 
     /*
      * A complete textured stream, assembled from the same builders the scene
@@ -2598,6 +2602,8 @@ static void test_runtime_textured_and_depth(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -3419,6 +3425,8 @@ static void test_map_state(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     CHECK(v9x_i9xx_map_state_extent(1ul) == 5ul);
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
@@ -3455,6 +3463,107 @@ static void test_map_state(void)
     CHECK((stream[3] & 0xffe00000ul) == 0ul);
     CHECK((stream[3] & 0x001ffc00ul) == 0ul);
     CHECK(stream[4] == 0ul);
+
+    /*
+     * MAX_LOD, from 2026-09-25: MS4 bits 9-14 in quarter levels, so four
+     * levels below a 16-texel top is 16 << 9 = 0x2000 beside the pitch
+     * (Mesa gallium i915_state_sampler.c:291, num_levels * 4). The top level
+     * bounds it - a 16 map has four levels below it and not five - and so
+     * does the field's ceiling of eleven, which a 2048 map reaches exactly.
+     */
+    map.width = 16ul;
+    map.height = 16ul;
+    map.pitch = 32ul;
+    map.max_lod = 4ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[4] == 0x00e02000ul);
+    map.max_lod = 5ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+    map.width = 2048ul;
+    map.height = 2048ul;
+    map.pitch = 4096ul;
+    map.max_lod = 11ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK((stream[4] & 0x00007e00ul) == (44ul << 9));
+    map.max_lod = 12ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+    map.max_lod = 0ul;
+}
+
+/*
+ * The Gen3 mip tree, against Mesa's i945 layout.
+ *
+ * Mesa gallium i915_resource_texture.c:462-522 and Mesa 20.3 classic
+ * intel_tex_layout.c:121-186 lay a 2D chain out the same way: level 0 at the
+ * origin, level 1 below it, level 2 to the right of level 1, and every later
+ * level below level 2; widths aligned to 4 texels, heights to 2 rows, and the
+ * pitch widened when level 1 plus level 2 overrun level 0, then aligned to 64
+ * bytes. The numbers below were worked by hand from that code, not from this
+ * implementation.
+ */
+static void test_i9xx_miptree_layout(void)
+{
+    struct v9x_d3d_i9xx_miptree tree;
+
+    /*
+     * 256 to 1, nine levels, pitch 512. Level 1 at row 256; level 2 at
+     * column 128 of row 256 (128 texels right = 256 bytes); then 320, 352,
+     * 368, 376, 380, 382 down the right-hand column. Level 1 ends at row 384
+     * and the 1x1 level's two aligned rows end there too.
+     */
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 9ul, &tree) == V9X_TRUE);
+    CHECK(tree.levels == 9ul);
+    CHECK(tree.pitch == 512ul);
+    CHECK(tree.rows == 384ul);
+    CHECK(tree.level_offset[0] == 0ul);
+    CHECK(tree.level_offset[1] == 131072ul);
+    CHECK(tree.level_offset[2] == 131328ul);
+    CHECK(tree.level_offset[3] == 164096ul);
+    CHECK(tree.level_offset[4] == 180480ul);
+    CHECK(tree.level_offset[5] == 188672ul);
+    CHECK(tree.level_offset[6] == 192768ul);
+    CHECK(tree.level_offset[7] == 194816ul);
+    CHECK(tree.level_offset[8] == 195840ul);
+
+    /* The probe's ladder: 128 to 16, four levels, pitch 256. Level 2 at
+     * column 64 of row 128; level 3 at row 160 in that column. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(128ul, 4ul, &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 256ul);
+    CHECK(tree.rows == 192ul);
+    CHECK(tree.level_offset[1] == 32768ul);
+    CHECK(tree.level_offset[2] == 32896ul);
+    CHECK(tree.level_offset[3] == 41088ul);
+
+    /*
+     * 4 to 1: level 1 is 2 texels, aligned to 4, and level 2 beside it makes
+     * the row 5 texels - wider than level 0's 4, so the pitch grows to 10
+     * bytes and then to 64. Level 2 sits 4 texels (8 bytes) right of level
+     * 1, and its single row takes two.
+     */
+    CHECK(v9x_d3d_i9xx_layout_miptree(4ul, 3ul, &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 64ul);
+    CHECK(tree.rows == 6ul);
+    CHECK(tree.level_offset[1] == 256ul);
+    CHECK(tree.level_offset[2] == 264ul);
+
+    /* One level is a tree too: no widening, one aligned level. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 1ul, &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 512ul);
+    CHECK(tree.rows == 256ul);
+
+    /* Refusals: not a power of two, zero, too large, more levels than the
+     * top has, and none at all. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(96ul, 2ul, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(0ul, 1ul, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(4096ul, 1ul, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 6ul, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 5ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 0ul, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 1ul, 0) == V9X_FALSE);
 }
 
 /* Every bound MAP_STATE refuses, and both sides of each. */
@@ -3472,6 +3581,8 @@ static void test_map_state_refusals(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     CHECK(v9x_i9xx_build_map_state(0, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
@@ -3555,6 +3666,8 @@ static void test_map_state_formats(void)
     map.width = 16ul;
     map.height = 16ul;
     map.pitch = 32ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_RGB565) !=
           V9X_FALSE);
@@ -3580,6 +3693,8 @@ static void test_map_state_formats(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
           V9X_STATUS_OK);
     CHECK(stream[3] == 0x01e03d10ul);
@@ -3631,6 +3746,8 @@ static void test_runtime_texture_formats(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -4229,6 +4346,8 @@ static void test_sampler_state(void)
     maps[0].wrap = 0ul;
     maps[0].mag_linear = 0ul;
     maps[0].min_linear = 0ul;
+    maps[0].mip_filter = 0ul;
+    maps[0].max_lod = 0ul;
     maps[1] = maps[0];
 
     CHECK(v9x_i9xx_sampler_state_extent(1ul) == 5ul);
@@ -4301,6 +4420,8 @@ static void test_sampler_state(void)
     CHECK(v9x_i9xx_sampler_filter_word(1ul, 1ul) == 0x00024000ul);
     maps[0].mag_linear = 0ul;
     maps[0].min_linear = 0ul;
+    maps[0].mip_filter = 0ul;
+    maps[0].max_lod = 0ul;
 
     /*
      * MIRROR, the third address mode: TEXCOORDMODE 1 on all three axes.
@@ -4325,6 +4446,28 @@ static void test_sampler_state(void)
     CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) !=
           V9X_STATUS_OK);
     maps[0].wrap = 0ul;
+
+    /*
+     * The MIP filter, from 2026-09-25: SS2 bits 20-21, NONE 0, NEAREST 1 and
+     * LINEAR 3 (Mesa gallium i915_reg.h:773-775), a field of its own beside
+     * MIN and MAG. NEAREST alone is 1 << 20; LINEAR with a bilinear MIN is
+     * 3 << 20 | 1 << 14. Value 2 is defined by neither tree and is refused.
+     */
+    maps[0].mip_filter = V9X_I9XX_MIPFILTER_NEAREST;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[2] == 0x00100000ul);
+    CHECK(stream[3] == 0x000024a0ul);
+    maps[0].mip_filter = V9X_I9XX_MIPFILTER_LINEAR;
+    maps[0].min_linear = 1ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[2] == 0x00304000ul);
+    maps[0].mip_filter = 2ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    maps[0].mip_filter = 0ul;
+    maps[0].min_linear = 0ul;
 
     /* Refusals, both sides of the unit bound and of the capacity. */
     CHECK(v9x_i9xx_build_sampler_state(maps, 0ul, stream, 32ul, &written) !=
@@ -4505,6 +4648,8 @@ static void test_texture_paint(void)
     texture.wrap = 0ul;
     texture.mag_linear = 0ul;
     texture.min_linear = 0ul;
+    texture.mip_filter = 0ul;
+    texture.max_lod = 0ul;
 
     CHECK(v9x_i9xx_texture_paint_extent() == 25ul);
     CHECK(v9x_i9xx_build_texture_paint(&texture, stream, 40ul, &written) ==
@@ -4726,6 +4871,8 @@ static void test_runtime_cylindrical_wrap(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -4853,6 +5000,8 @@ static void test_runtime_decal_program(void)
     map.wrap = 0ul;
     map.mag_linear = 0ul;
     map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
 
     v9x_test_limits(&limits, surface, pitch * height,
                     V9X_I9XX_SCENE_RUNTIME);
@@ -4905,6 +5054,115 @@ static void test_runtime_decal_program(void)
           V9X_I9XX_P5_SHADER);
 }
 
+/*
+ * A runtime stream sampling a mip chain decodes only when the limits declare
+ * the same chain: the MS4 MAX_LOD and the SS2 mip filter are each compared,
+ * exactly, and an undefined filter or a MAX_LOD past the field's ceiling is
+ * refused whatever the stream carries. A 64-texel map with six levels below
+ * it, trilinear.
+ */
+static void test_runtime_mip_chain(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    map.offset = 0x00300000ul;
+    map.width = 64ul;
+    map.height = 64ul;
+    map.pitch = 128ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.mag_linear = 1ul;
+    map.min_linear = 1ul;
+    map.mip_filter = V9X_I9XX_MIPFILTER_LINEAR;
+    map.max_lod = 6ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map.offset;
+    limits.texture_bytes = 96ul * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    limits.texture_mag_linear = 1ul;
+    limits.texture_min_linear = 1ul;
+    limits.texture_mip_filter = V9X_I9XX_MIPFILTER_LINEAR;
+    limits.texture_max_lod = 6ul;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0xffffffful;
+    colors[1] = 0xffffffful;
+    colors[2] = 0xffffffful;
+    uv[0] = 0ul;  uv[1] = 0ul;
+    uv[2] = one;  uv[3] = 0ul;
+    uv[4] = 0ul;  uv[5] = one;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        /* Declared as one level - the audited map - over a chain. */
+        wrong.texture_max_lod = 0ul;
+        wrong.texture_mip_filter = V9X_I9XX_MIPFILTER_NONE;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        /* One field at a time. */
+        wrong = limits;
+        wrong.texture_max_lod = 5ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong = limits;
+        wrong.texture_mip_filter = V9X_I9XX_MIPFILTER_NEAREST;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        /* Undefined, refused before any compare. */
+        wrong = limits;
+        wrong.texture_mip_filter = 2ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong = limits;
+        wrong.texture_max_lod = 12ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -4926,6 +5184,8 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_runtime_texture_formats();
     test_runtime_cylindrical_wrap();
     test_runtime_decal_program();
+    test_runtime_mip_chain();
+    test_i9xx_miptree_layout();
     test_runtime_blend();
     test_runtime_blend_pairs();
     test_texture_programs();

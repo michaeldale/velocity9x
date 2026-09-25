@@ -979,6 +979,14 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);
     v9x_write_uint("AlphaTestUnexpressed",
                    snapshot.d3d.alpha_test_unexpressed);
+    v9x_write_uint("MipTreeAllocs", snapshot.d3d.mip_tree_allocs);
+    v9x_write_uint("MipTreeFrees", snapshot.d3d.mip_tree_frees);
+    v9x_write_uint("MipTreeDeclined", snapshot.d3d.mip_tree_declined);
+    v9x_write_uint("MipTreeDeclinedLast",
+                   snapshot.d3d.mip_tree_declined_last);
+    v9x_write_hex("MipTreeLastOffset", snapshot.d3d.mip_tree_last_offset);
+    v9x_write_hex("MipTreeLastShape", snapshot.d3d.mip_tree_last_shape);
+    v9x_write_uint("MipDraws", snapshot.d3d.mip_draws);
     v9x_write_uint("WmDeclined", snapshot.d3d.wm_declined);
     v9x_write_uint("BltEngineFlipPending",
                    snapshot.d3d.blt_engine_flip_pending);

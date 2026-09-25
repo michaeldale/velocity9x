@@ -445,6 +445,26 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
     }
 }
 
+DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (data == 0 || ops == 0 || ops->create_surface == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    return ops->create_surface(data);
+}
+
+void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (data == 0 || ops == 0 || ops->destroy_surface == 0) {
+        return;
+    }
+    ops->destroy_surface(data);
+}
+
 /*
  * The surface the context has a texture bound to, or null.
  *
