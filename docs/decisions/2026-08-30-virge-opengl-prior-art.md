@@ -84,3 +84,7 @@ question is picked up, the four dead ends above are not walked again.
 
 The one item that is live now is the blend limitation, since the HAL is already
 shipping blend states.
+
+Superseded on the deliverable, 2026-09-26: the project chose a full ICD on a
+render core shared with Direct3D, with the blend wall served by a per-draw
+software fallback. See `2026-09-26-opengl-icd-interface-research.md`, section 8.

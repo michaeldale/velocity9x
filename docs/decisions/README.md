@@ -112,6 +112,10 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-11 The lightmap pass now draws, instead of being skipped](2026-09-11-the-lightmap-pass-now-draws.md)
 - [2026-09-11 The software engine drew a blend it cannot express, opaque](2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)
 
+## OpenGL
+
+- [2026-09-26 The Win9x OpenGL ICD contract, from four sources that agree, and what GLQuake and Quake 2 actually ask of a driver](2026-09-26-opengl-icd-interface-research.md)
+
 ## VBE generic family and dynamic modes
 
 - [2026-08-16 The VBE tier-0 family](2026-08-16-vbe-tier0-family.md)
