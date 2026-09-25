@@ -1134,7 +1134,11 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
          */
         depth_expected =
             (((DWORD)depth->lpGbl->wWidth * depth_bytes) + 7ul) & ~7ul;
-        if (depth_pitch != depth_expected) {
+        /* An engine that programs the surface's own pitch may have one wider
+         * than the packed row (depth_pitch_own); it may never be narrower. */
+        if (limits->depth_pitch_own != 0ul
+                ? depth_pitch < depth_expected
+                : depth_pitch != depth_expected) {
             return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
         }
         if ((depth_pitch & (limits->target_pitch_align - 1ul)) != 0ul ||

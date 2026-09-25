@@ -1483,6 +1483,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092504: V9X_D3D_DIAGNOSTICS gains the padded-Z placement counters.
+ * An append.
+ */
 /* 2026092503: V9X_D3D_DIAGNOSTICS gains the head wait by batch shape. An
  * append.
  */
@@ -1545,7 +1548,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092503ul
+#define V9X_DD_SHARED_ABI   2026092504ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2913,6 +2916,14 @@ typedef struct v9x_d3d_diagnostics {
      * growth along each axis.
      */
     DWORD batch_cells[6 * 6 * 3];
+    /*
+     * Gen3 Z buffers the HAL placed itself with a padded pitch (2026-09-25),
+     * and the pitch of the last: a power-of-two row, 2048 bytes at
+     * 1024x576, gets 64 bytes more, to test whether colour and depth rows
+     * aliasing is what makes each pixel ten times dearer in that mode.
+     */
+    DWORD z_placed;
+    DWORD z_placed_pitch;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

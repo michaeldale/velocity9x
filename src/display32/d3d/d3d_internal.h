@@ -295,6 +295,16 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD clip_in_core;
     /*
+     * Non-zero for an engine that programs the depth surface's own lPitch
+     * into the hardware, so the core may accept a pitch wider than the
+     * packed row. Zero keeps the DDK's rule - the ViRGE programs its own
+     * stride, (width * bytes + 7) & ~7, and a surface pitch that disagrees
+     * would put the two sides' rows in different places. Appended
+     * 2026-09-25 for Gen3, whose BUF_INFO carries the pitch and whose
+     * CreateSurface pads a power-of-two Z pitch.
+     */
+    DWORD depth_pitch_own;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

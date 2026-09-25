@@ -129,7 +129,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     /* Gen3 clips against its own drawing rectangle inside the 4096 guard
      * band above, and 3DMark99 ran on the netbook with the DX5 paths
      * unclipped; that measured behaviour is kept. */
-    0ul                         /* clip_in_core           */
+    0ul,                        /* clip_in_core           */
+    /* BUF_INFO carries the depth pitch, so a padded Z surface is drawn at
+     * its own pitch (v9x_d3d_i9xx_create_surface). */
+    1ul                         /* depth_pitch_own        */
 };
 
 /*
@@ -922,6 +925,126 @@ static DWORD v9x_d3d_i9xx_miptree_decline(DWORD reason)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
+/*
+ * One block of pitch * rows from DirectDraw's heap, page aligned, with
+ * surface n of the list pointed at base + offsets[n] at that pitch.
+ *
+ * Shared by the mip trees and the padded Z buffer. The block's own start is
+ * kept in the first surface's dwReserved1 and every surface's lpVidMemHeap
+ * left NULL, which is the signature destroy_surface frees by. Returns zero
+ * and the block's graphics offset, or a V9X_D3D_I9XX_MIPTREE_* reason having
+ * placed nothing.
+ */
+static DWORD v9x_d3d_i9xx_place_block(V9X_DDHAL_CREATESURFACEDATA *data,
+                                      DWORD pitch, DWORD rows,
+                                      const v9x_u32 *offsets,
+                                      DWORD *base_out)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    DWORD index;
+    DWORD block;
+    DWORD base;
+    DWORD footprint;
+    DWORD vram;
+
+    *base_out = 0ul;
+    if (!v9x_d3d_i9xx_vidmem_resolve()) {
+        return V9X_D3D_I9XX_MIPTREE_EXPORT;
+    }
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        (v9x_hal->fb.linear_base & (V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul)) !=
+            0ul) {
+        return V9X_D3D_I9XX_MIPTREE_BOUNDS;
+    }
+
+    /*
+     * The block plus a page of rows, so it can be rounded up to a page and
+     * still hold everything. Heap 0 is the one heap this driver publishes
+     * (vmiData.dwNumHeaps); width is bytes, as the DDK sample passes lPitch.
+     */
+    block = v9x_d3d_i9xx_vidmem_alloc(
+        data->lpDD, 0, pitch,
+        rows + (V9X_I9XX_SANDBOX_PAGE_BYTES + pitch - 1ul) / pitch);
+    if (block == 0ul) {
+        return V9X_D3D_I9XX_MIPTREE_ALLOC;
+    }
+    vram = v9x_hal->fb.vram_bytes;
+    footprint = pitch * rows;
+    base = 0xfffffffful;
+    if (block >= v9x_hal->fb.linear_base &&
+        block - v9x_hal->fb.linear_base < vram) {
+        base = (block - v9x_hal->fb.linear_base +
+                V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul) &
+               ~(V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul);
+    }
+    if (base == 0xfffffffful || base > vram || footprint > vram - base) {
+        v9x_d3d_i9xx_vidmem_free(data->lpDD, 0, block);
+        return V9X_D3D_I9XX_MIPTREE_BOUNDS;
+    }
+
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
+
+        surface->fpVidMem = v9x_hal->fb.linear_base + base + offsets[index];
+        surface->lPitch = (LONG)pitch;
+        /* lpVidMemHeap, in the union DDRAWI.H shares with dwBlockSizeX:
+         * NULL is "not DirectDraw's to free". */
+        surface->dwBlockSizeX = 0ul;
+        surface->dwReserved1 = 0ul;
+    }
+    list[0]->lpGbl->dwReserved1 = block;
+    *base_out = base;
+    return 0ul;
+}
+
+/*
+ * The Z buffer, padded where its row would be a power of two.
+ *
+ * 3DMark99 filled about ten times more slowly per pixel at 1024x576 than at
+ * 640x480 on this part (2026-09-25-the-gen3-head-wait-is-pixels.md), and the
+ * one layout property that separates the two modes is the 2048-byte pitch
+ * the colour and depth surfaces share at 1024x576 against 1280. A
+ * power-of-two pitch can put every row of both on the same cache sets or
+ * DRAM banks. The scanout never reads the Z buffer, so its pitch is this
+ * driver's to choose: 64 bytes more - the granule Mesa aligns linear
+ * surfaces to - breaks the power of two without moving the colour side.
+ * This is the EXPERIMENT that tests the hypothesis; a pitch that is not a
+ * power of two is left to DirectDraw exactly as before.
+ */
+#define V9X_D3D_I9XX_Z_PAD_BYTES 64ul
+
+static DWORD v9x_d3d_i9xx_create_depth(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL *surface = ((V9X_DD_SURFACE_LCL **)data->lplpSList)[0];
+    v9x_u32 offsets[1];
+    DWORD natural;
+    DWORD pitch;
+    DWORD base;
+
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+        surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    natural = (((DWORD)surface->lpGbl->wWidth * 2ul) + 7ul) & ~7ul;
+    if (natural == 0ul || (natural & (natural - 1ul)) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    pitch = natural + V9X_D3D_I9XX_Z_PAD_BYTES;
+    if (pitch > v9x_d3d_i9xx_limits.target_pitch_max) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    offsets[0] = 0ul;
+    if (v9x_d3d_i9xx_place_block(data, pitch,
+                                 (DWORD)surface->lpGbl->wHeight,
+                                 offsets, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    ++v9x_hal->d3d_diagnostics.z_placed;
+    v9x_hal->d3d_diagnostics.z_placed_pitch = pitch;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
 static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
@@ -930,14 +1053,22 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     struct v9x_d3d_i9xx_miptree tree;
     DWORD size;
     DWORD index;
-    DWORD block;
     DWORD base;
-    DWORD footprint;
-    DWORD vram;
+    DWORD reason;
 
+    if (v9x_hal == 0 || list == 0 || data->dwSCnt == 0ul || list[0] == 0 ||
+        list[0]->lpGbl == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    /* A lone video-memory Z buffer. */
+    if (data->dwSCnt == 1ul &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) == 0ul) {
+        return v9x_d3d_i9xx_create_depth(data);
+    }
     /* A mip chain in video memory, or nothing this engine places - and not
      * counted, because every other surface arrives here too. */
-    if (v9x_hal == 0 || list == 0 || data->dwSCnt < 2ul) {
+    if (data->dwSCnt < 2ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     top = list[0];
@@ -985,53 +1116,11 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     if (v9x_d3d_i9xx_layout_miptree(size, data->dwSCnt, &tree) == V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
-    if (!v9x_d3d_i9xx_vidmem_resolve()) {
-        return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_EXPORT);
+    reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
+                                      tree.level_offset, &base);
+    if (reason != 0ul) {
+        return v9x_d3d_i9xx_miptree_decline(reason);
     }
-    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        (v9x_hal->fb.linear_base & (V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul)) !=
-            0ul) {
-        return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_BOUNDS);
-    }
-
-    /*
-     * The tree plus a page of rows, so the block can be rounded up to a page
-     * and still hold it. Heap 0 is the one heap this driver publishes
-     * (vmiData.dwNumHeaps); width is bytes, as the DDK sample passes lPitch.
-     */
-    block = v9x_d3d_i9xx_vidmem_alloc(
-        data->lpDD, 0, tree.pitch,
-        tree.rows + (V9X_I9XX_SANDBOX_PAGE_BYTES + tree.pitch - 1ul) /
-                    tree.pitch);
-    if (block == 0ul) {
-        return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_ALLOC);
-    }
-    vram = v9x_hal->fb.vram_bytes;
-    footprint = tree.pitch * tree.rows;
-    base = 0xfffffffful;
-    if (block >= v9x_hal->fb.linear_base &&
-        block - v9x_hal->fb.linear_base < vram) {
-        base = (block - v9x_hal->fb.linear_base +
-                V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul) &
-               ~(V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul);
-    }
-    if (base == 0xfffffffful || base > vram || footprint > vram - base) {
-        v9x_d3d_i9xx_vidmem_free(data->lpDD, 0, block);
-        return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_BOUNDS);
-    }
-
-    for (index = 0ul; index < data->dwSCnt; ++index) {
-        V9X_DD_SURFACE_GBL *level = list[index]->lpGbl;
-
-        level->fpVidMem = v9x_hal->fb.linear_base + base +
-                          tree.level_offset[index];
-        level->lPitch = (LONG)tree.pitch;
-        /* lpVidMemHeap, in the union DDRAWI.H shares with dwBlockSizeX:
-         * NULL is "not DirectDraw's to free". */
-        level->dwBlockSizeX = 0ul;
-        level->dwReserved1 = 0ul;
-    }
-    top->lpGbl->dwReserved1 = block;
 
     ++v9x_hal->d3d_diagnostics.mip_tree_allocs;
     v9x_hal->d3d_diagnostics.mip_tree_last_offset = base;
@@ -1042,10 +1131,11 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 }
 
 /*
- * The top level of a tree placed above is going; free the block.
+ * The top level of a tree placed above, or a padded Z buffer, is going; free
+ * the block. Both count in mip_tree_frees.
  *
  * Recognised by the signature create_surface leaves and the heap never does:
- * a mip level whose lpVidMemHeap is NULL, whose dwReserved1 holds a block
+ * a mip level or Z buffer whose lpVidMemHeap is NULL, whose dwReserved1 holds a block
  * start, and whose fpVidMem lies within the page that start was rounded up
  * across. A surface DirectDraw placed has its heap set and is ignored, and
  * so is every lower level, whose dwReserved1 is zero. Cleared after the
@@ -1062,7 +1152,8 @@ static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     }
     global = surface->lpGbl;
     block = global->dwReserved1;
-    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul ||
+    if ((surface->ddsCaps &
+         (V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_ZBUFFER)) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         block == 0ul || global->dwBlockSizeX != 0ul ||
         global->fpVidMem < block ||
