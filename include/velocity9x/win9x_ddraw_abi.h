@@ -1070,6 +1070,20 @@ typedef struct v9x_ddhal_bltdata {
     V9X_DDBLTFX bltFX;
     DWORD ddRVal;
     DWORD Blt;
+    /*
+     * The clipped-blit tail of the Win98 DDK's DDHAL_BLTDATA
+     * (C:\98DDK\inc\win98\DDRAWI.H, after Blt), appended 2026-09-26 so the
+     * HAL can measure what the runtime hands it for a windowed blit through
+     * a clipper (docs\plans\opengl-1.1-icd.md, Phase 0.3). The runtime owns
+     * this allocation, so the HAL only reads these, and only IsClipped and
+     * dwRectCnt; a runtime older than DirectX 5 would not carry them and the
+     * counts would be noise, which the record beside them says.
+     */
+    DWORD IsClipped;
+    LONG rOrigDest[4];
+    LONG rOrigSrc[4];
+    DWORD dwRectCnt;
+    LONG *prDestRects;
 } V9X_DDHAL_BLTDATA;
 
 typedef struct v9x_ddhal_getbltstatusdata {
@@ -1502,6 +1516,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092603: V9X_D3D_DIAGNOSTICS gains the clipped-blit counters, and
+ * V9X_DDHAL_BLTDATA gains the DDK's clipped-blit tail, which the runtime
+ * owns and the HAL only reads. An append.
+ */
 /* 2026092602: the Win16 measurement grows to nine sites and five arrays
  * (unheld and depth_max appended), after run1 showed the answer is a
  * recursion depth. The arrays are the struct's tail, so growing them is
@@ -1578,7 +1596,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092602ul
+#define V9X_DD_SHARED_ABI   2026092603ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2997,6 +3015,17 @@ typedef struct v9x_d3d_diagnostics {
     DWORD win16_last[V9X_WIN16_SITE_COUNT];
     DWORD win16_unheld[V9X_WIN16_SITE_COUNT];
     DWORD win16_depth_max[V9X_WIN16_SITE_COUNT];
+    /*
+     * Clipped blits (2026-09-26, OpenGL plan Phase 0.3): how many Blt
+     * callbacks arrived with IsClipped set, the largest and the latest
+     * dwRectCnt among them, and the destination offset of the latest. The
+     * HAL has never read IsClipped; this says whether the runtime sends one
+     * call carrying a rect list, one call per rectangle, or none.
+     */
+    DWORD blt_clipped;
+    DWORD blt_clipped_rects_max;
+    DWORD blt_clipped_rects_last;
+    DWORD blt_clipped_last_dest;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
@@ -3512,8 +3541,9 @@ typedef char v9x_dd_assert_dd32data[
 #ifdef __386__
 typedef char v9x_dd_assert_surface_gbl[
     sizeof(V9X_DD_SURFACE_GBL) == 72 ? 1 : -1];
+/* 160 to Blt, plus the DDK's 44-byte clipped-blit tail appended 2026-09-26. */
 typedef char v9x_dd_assert_bltdata[
-    sizeof(V9X_DDHAL_BLTDATA) == 160 ? 1 : -1];
+    sizeof(V9X_DDHAL_BLTDATA) == 204 ? 1 : -1];
 #endif
 typedef char v9x_dd_assert_trace_entry[
     sizeof(V9X_DD_TRACE_ENTRY) == 8 ? 1 : -1];

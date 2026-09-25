@@ -84,6 +84,7 @@
 #define V9X_DIAG_TC32_INI    V9X_DIAG_PATH("V9XTC32.INI")   /* trio_ctx_probe.c (Win32 arm) */
 #define V9X_DIAG_TC16_INI    V9X_DIAG_PATH("V9XTC16.INI")   /* trio_ctx_probe.c (Win16 arm) */
 #define V9X_DIAG_W16L_INI    V9X_DIAG_PATH("V9XW16L.INI")   /* win16lock_probe_win32.c */
+#define V9X_DIAG_SCLP_INI    V9X_DIAG_PATH("V9XSCLP.INI")   /* surface_clip_probe_win32.c */
 
 /* DOS tools. Defaults only: each accepts /out: to redirect, which stays the
  * recovery route when C: is absent or read-only (vga_survey_dos.c prints it

@@ -993,6 +993,11 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("ZPlacedPitch", snapshot.d3d.z_placed_pitch);
     v9x_write_uint("TexturePlaced", snapshot.d3d.texture_placed);
     v9x_write_uint("TexturePlacedBytes", snapshot.d3d.texture_placed_bytes);
+    /* Clipped blits (2026-09-26): what the runtime's Blt requests carried. */
+    v9x_write_uint("BltClipped", snapshot.d3d.blt_clipped);
+    v9x_write_uint("BltClippedRectsMax", snapshot.d3d.blt_clipped_rects_max);
+    v9x_write_uint("BltClippedRectsLast", snapshot.d3d.blt_clipped_rects_last);
+    v9x_write_hex("BltClippedLastDest", snapshot.d3d.blt_clipped_last_dest);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

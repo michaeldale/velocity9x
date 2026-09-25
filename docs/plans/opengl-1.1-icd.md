@@ -248,11 +248,19 @@ versions are recorded.
    - The HAL never reads `IsClipped` (grep of `src/`).
    - If it is wrong, windowed D3D is already affected: file an issue in
      `docs/issues/` and fix the HAL before Phase 3.
+   - **98SE measured 2026-09-26**
+     (`2026-09-26-98se-clipped-blits-arrive-one-hal-call-per-rectangle-and-an-application-can-walk-int-lcl-gbl.md`):
+     the runtime splits a clipped blit into one HAL call per visible
+     rectangle with `rDest` already clipped; the HAL needs no fix, and its
+     new `BltClipped*` counters stay as the check for other runtimes.
 4. **INT→LCL from an app.** Add a V9XDDP rung that checks INT and LCL are
    above 2 GB, that `lpGbl->fpVidMem` matches the pointer Lock returns, and
    whether `lpSurfMore->lpDD_lcl->dwProcessId` equals the caller's process
    id (nothing in the tree reads it today; it is the only ownership check
    available).
+   **98SE measured 2026-09-26** (same record as 0.3): INT, LCL and GBL all
+   above 2 GB, `fpVidMem` equal to the Lock address, and the LCL's own
+   `dwProcessId` (at +24, no `lpSurfMore` needed) equal to the caller's.
 5. **Mixed-engine colour and Z.** Add a V9XDDP rung that draws hardware,
    then soft, then hardware into shared colour and Z buffers, and compares
    with an all-soft image. Exercise overlapping blended draws, depth

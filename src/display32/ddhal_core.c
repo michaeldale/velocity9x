@@ -1671,6 +1671,20 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
+        /* The clipped-blit tail is read and counted, never acted on: the
+         * blit below still uses rDest alone, which is the behaviour this
+         * measurement exists to judge (OpenGL plan Phase 0.3). */
+        if (data->IsClipped != 0ul && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.blt_clipped;
+            v9x_hal->d3d_diagnostics.blt_clipped_rects_last = data->dwRectCnt;
+            if (data->dwRectCnt >
+                v9x_hal->d3d_diagnostics.blt_clipped_rects_max) {
+                v9x_hal->d3d_diagnostics.blt_clipped_rects_max =
+                    data->dwRectCnt;
+            }
+            v9x_hal->d3d_diagnostics.blt_clipped_last_dest =
+                v9x_surface_offset(data->lpDDDestSurface);
+        }
     }
     result = v9x_blt_body(data, &engine_used);
     /* Three outcomes have to stay distinguishable, and ddRVal is DD_OK for
