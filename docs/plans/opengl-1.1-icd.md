@@ -281,6 +281,10 @@ versions are recorded.
    differences; matching generic GL alone is not proof of conformance.
 7. **Quake media.** Check which guests have GLQuake 0.97 with the shareware
    pak0 and the Quake 2 demo. Missing media is a dependency on Michael.
+   **Checked 2026-09-26:** neither `Win86SE` nor `Win98SE-Fast-D3D` has
+   either game (roots and `Program Files` listed; 3DMark 99, Final Reality,
+   Doom shareware and Microsoft Games are what is there). Both are needed
+   before Phase 5.
 8. **Windows 95 feasibility.** Start with one installation and record its
    edition/build, installed DirectX version and OpenGL runtime version.
    - First establish display-driver startup and DirectDraw surface
