@@ -75,6 +75,14 @@ static void raster_reset(V9X_D3D_RASTER_TARGET *target)
     /* RGB565 unless a test says otherwise, which is what every draw here
      * meant before the target carried a format at all. */
     target->format = V9X_D3D_RASTER_PIXFMT_RGB565;
+    /* The whole target and every channel, likewise. */
+    target->clip_left = 0ul;
+    target->clip_top = 0ul;
+    target->clip_right = target->width;
+    target->clip_bottom = target->height;
+    target->write_red = 1ul;
+    target->write_green = 1ul;
+    target->write_blue = 1ul;
 }
 
 /*
@@ -864,6 +872,13 @@ static void test_depth_full_height_interpolation(void)
     target.width = RASTER_TALL_WIDTH;
     target.height = RASTER_TALL_HEIGHT;
     target.format = V9X_D3D_RASTER_PIXFMT_RGB565;
+    target.clip_left = 0ul;
+    target.clip_top = 0ul;
+    target.clip_right = target.width;
+    target.clip_bottom = target.height;
+    target.write_red = 1ul;
+    target.write_green = 1ul;
+    target.write_blue = 1ul;
     depth.pixels = raster_tall_depth;
     depth.pitch = RASTER_TALL_WIDTH * 2ul;
     depth.compare = V9X_D3D_RASTER_CMP_LESS;
@@ -2519,6 +2534,143 @@ static void test_alpha_test_refusals(void)
     RCHECK(raster_pixel(12u, 10u) == RASTER_BACKGROUND);
 }
 
+/*
+ * The scissor: nothing outside the rectangle is touched, colour or depth,
+ * and the rectangle's edges are half-open. Quake 2's glScissor. The white
+ * quad covers 4..24 x 4..20; the scissor 8..20 x 6..14 sits inside it, so
+ * every pixel the quad would have painted outside the scissor must still
+ * be background, and the ones on the far edges must not. An empty
+ * rectangle draws nothing. These failed before the entry and the span read
+ * the rectangle (Phase 2 of the OpenGL plan, 2026-09-26).
+ */
+static void test_scissor_clips_colour_and_depth(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    unsigned int index;
+
+    raster_reset(&target);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_depth_cells[index] = 0xffffu;
+    }
+    depth.pixels = &raster_depth_cells[RASTER_GUARD];
+    depth.pitch = RASTER_STRIDE * 2ul;
+    depth.compare = V9X_D3D_RASTER_CMP_LESSEQUAL;
+    depth.write = 1ul;
+    target.clip_left = 8ul;
+    target.clip_top = 6ul;
+    target.clip_right = 20ul;
+    target.clip_bottom = 14ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    RCHECK(raster_alpha_tested_quad(&target, &depth, 0, 255l) != 0);
+
+    /* Inside. */
+    RCHECK(raster_pixel(12u, 10u) == 0xffffu);
+    RCHECK(raster_pixel(8u, 6u) == 0xffffu);
+    RCHECK(raster_pixel(19u, 13u) == 0xffffu);
+    RCHECK(raster_depth_cells[RASTER_GUARD + 10u * RASTER_STRIDE + 12u] == 30000u);
+    /* Outside, though inside the quad. */
+    RCHECK(raster_pixel(7u, 6u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(8u, 5u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(20u, 13u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(19u, 14u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(5u, 5u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(22u, 18u) == RASTER_BACKGROUND);
+    RCHECK(raster_depth_cells[RASTER_GUARD + 5u * RASTER_STRIDE + 5u] == 0xffffu);
+    RCHECK(raster_depth_cells[RASTER_GUARD + 13u * RASTER_STRIDE + 20u] == 0xffffu);
+
+    /* Empty. */
+    raster_reset(&target);
+    target.clip_left = 10ul;
+    target.clip_top = 10ul;
+    target.clip_right = 10ul;
+    target.clip_bottom = 12ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    RCHECK(raster_alpha_tested_quad(&target, 0, 0, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == RASTER_BACKGROUND);
+    RCHECK(raster_pixel(10u, 10u) == RASTER_BACKGROUND);
+
+    /* Inverted or outside the target: refused. */
+    raster_reset(&target);
+    target.clip_left = 12ul;
+    target.clip_right = 8ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+    RCHECK(raster_alpha_tested_quad(&target, 0, 0, 255l) == 0);
+    raster_reset(&target);
+    target.clip_bottom = RASTER_HEIGHT + 1ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+    raster_reset(&target);
+    target.clip_right = RASTER_WIDTH + 1ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+    RCHECK(raster_pixel(12u, 10u) == RASTER_BACKGROUND);
+}
+
+/*
+ * The colour mask keeps the channels the target does not write, on both
+ * pixel layouts and on every store path - plain, the legacy blend and the
+ * general blend - and a draw with every channel masked still writes depth.
+ */
+static void test_colour_mask_keeps_channels(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_DEPTH depth;
+    V9X_D3D_RASTER_ALPHA alpha;
+    unsigned int index;
+    v9x_u16 fill = v9x_d3d_raster_rgb565(99l, 101l, 99l);
+
+    /* White with green masked over black: magenta. */
+    raster_reset(&target);
+    raster_fill(0x0000u);
+    target.write_green = 0ul;
+    RCHECK(raster_alpha_tested_quad(&target, 0, 0, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0xf81fu);
+    raster_check_untouched_margins_value(0x0000u);
+
+    /* The same on XRGB1555 with red masked, over a fill with the unused top
+     * bit set, which the masked store must keep. */
+    raster_reset(&target);
+    raster_fill(0x8000u);
+    target.format = V9X_D3D_RASTER_PIXFMT_XRGB1555;
+    target.write_red = 0ul;
+    RCHECK(raster_alpha_tested_quad(&target, 0, 0, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0x83ffu);
+
+    /* Every channel masked: colour untouched, depth written. */
+    raster_reset(&target);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_depth_cells[index] = 0xffffu;
+    }
+    depth.pixels = &raster_depth_cells[RASTER_GUARD];
+    depth.pitch = RASTER_STRIDE * 2ul;
+    depth.compare = V9X_D3D_RASTER_CMP_LESSEQUAL;
+    depth.write = 1ul;
+    target.write_red = 0ul;
+    target.write_green = 0ul;
+    target.write_blue = 0ul;
+    RCHECK(raster_alpha_tested_quad(&target, &depth, 0, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == RASTER_BACKGROUND);
+    RCHECK(raster_depth_cells[RASTER_GUARD + 10u * RASTER_STRIDE + 12u] == 30000u);
+
+    /* The legacy blend path: opaque white, SRCALPHA over INVSRCALPHA, blue
+     * masked, over black. */
+    raster_reset(&target);
+    raster_fill(0x0000u);
+    target.write_blue = 0ul;
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0xffe0u);
+
+    /* The general blend path: ONE over ONE with red masked. */
+    raster_reset(&target);
+    raster_fill(fill);
+    target.write_red = 0ul;
+    alpha.src = V9X_D3D_RASTER_FACTOR_ONE;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_ONE;
+    RCHECK(raster_blended_quad(&target, &alpha, 99l, 101l, 99l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(99l, 202l, 198l));
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -2555,6 +2707,8 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_alpha_replace_and_modulate();
     test_alpha_test_gates_colour_and_depth();
     test_alpha_test_refusals();
+    test_scissor_clips_colour_and_depth();
+    test_colour_mask_keeps_channels();
     test_texture_wrap_tiles();
     test_texture_wrap_extreme_coordinate();
     test_texture_address_refusals();

@@ -712,6 +712,13 @@ static void emit_intel_3d_reference(void)
     target.width = V9X_I9XX_TARGET_WIDTH;
     target.height = V9X_I9XX_TARGET_HEIGHT;
     target.format = V9X_D3D_RASTER_PIXFMT_RGB565;
+    target.clip_left = 0ul;
+    target.clip_top = 0ul;
+    target.clip_right = target.width;
+    target.clip_bottom = target.height;
+    target.write_red = 1ul;
+    target.write_green = 1ul;
+    target.write_blue = 1ul;
 
     for (index = 0ul; index < 3ul; ++index) {
         vertices[index].z = 0;

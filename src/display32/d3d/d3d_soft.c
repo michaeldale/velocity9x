@@ -1005,6 +1005,16 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     target.width = draw->target.width;
     target.height = draw->target.height;
     target.format = draw->target.format;
+    /* Direct3D's DX5 DDI has no scissor and no colour mask: the whole
+     * target and every channel, which is what this engine drew before the
+     * rasterizer carried either. */
+    target.clip_left = 0ul;
+    target.clip_top = 0ul;
+    target.clip_right = target.width;
+    target.clip_bottom = target.height;
+    target.write_red = 1ul;
+    target.write_green = 1ul;
+    target.write_blue = 1ul;
     if (!v9x_d3d_raster_target_valid(&target)) {
         return 0;
     }

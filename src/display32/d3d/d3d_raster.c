@@ -327,6 +327,14 @@ int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
         target->format != V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         return 0;
     }
+    /* The scissor inside the target, and not inverted. An empty rectangle
+     * is legal and draws nothing. */
+    if (target->clip_left > target->clip_right ||
+        target->clip_top > target->clip_bottom ||
+        target->clip_right > target->width ||
+        target->clip_bottom > target->height) {
+        return 0;
+    }
     return 1;
 }
 
@@ -876,6 +884,22 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
 }
 
 /*
+ * The span's pixel store under the colour mask. The unmasked case is the
+ * plain store it always was; the masked one reads the pixel back and keeps
+ * the channels the target does not write. A macro because it sits in the
+ * per-pixel loop, and it names the span's own locals.
+ */
+#define V9X_D3D_RASTER_STORE(out_red, out_green, out_blue) do { \
+    if (write_mask == 0xfffful) { \
+        pixels[column] = pack(out_red, out_green, out_blue); \
+    } else { \
+        pixels[column] = (v9x_u16)(((v9x_u32)pixels[column] & ~write_mask) | \
+                                   ((v9x_u32)pack(out_red, out_green, \
+                                                  out_blue) & write_mask)); \
+    } \
+} while (0)
+
+/*
  * Fill one scanline between two edge crossings.
  *
  * Every gradient is per subpixel and the walk is per pixel, which is the
@@ -944,12 +968,26 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
      * blend, by the alpha test, or by a texel alpha op. When it is not, the
      * per-pixel clamp and combine are skipped as they always were. */
     int alpha_used = 0;
+    /* The bits of a packed pixel this span may change: all of them unless
+     * the target masks a channel, in which case the store below keeps the
+     * rest of what was there. */
+    v9x_u32 write_mask = 0xfffful;
 
     if (first < 0l) {
         first = 0l;
     }
     if (last > (v9x_s32)target->width) {
         last = (v9x_s32)target->width;
+    }
+    /* The scissor's columns, inside the target by validation. The stepping
+     * below counts from the span's own left edge, so a clipped-off start is
+     * walked over by the initial offset like any other, and the gradients
+     * are unaffected. */
+    if (first < (v9x_s32)target->clip_left) {
+        first = (v9x_s32)target->clip_left;
+    }
+    if (last > (v9x_s32)target->clip_right) {
+        last = (v9x_s32)target->clip_right;
     }
     if (first >= last) {
         return;
@@ -1020,6 +1058,21 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         pack = v9x_d3d_raster_pack1555;
         unpack = v9x_d3d_raster_unpack1555;
+    }
+    if (target->write_red == 0ul || target->write_green == 0ul ||
+        target->write_blue == 0ul) {
+        int fifteen = target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555;
+
+        write_mask = 0ul;
+        if (target->write_red != 0ul) {
+            write_mask |= fifteen ? 0x7c00ul : 0xf800ul;
+        }
+        if (target->write_green != 0ul) {
+            write_mask |= fifteen ? 0x03e0ul : 0x07e0ul;
+        }
+        if (target->write_blue != 0ul) {
+            write_mask |= 0x001ful;
+        }
     }
 
     pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
@@ -1250,7 +1303,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     V9X_D3D_RASTER_BLEND_GENERAL(out_blue, out_blue, dst_blue,
                                                  src_factor_blue,
                                                  dst_factor_blue);
-                    pixels[column] = pack(out_red, out_green, out_blue);
+                    V9X_D3D_RASTER_STORE(out_red, out_green, out_blue);
                     red += red_step;
                     green += green_step;
                     blue += blue_step;
@@ -1297,7 +1350,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                                 destination_weight);
             }
 
-            pixels[column] = pack(out_red, out_green, out_blue);
+            V9X_D3D_RASTER_STORE(out_red, out_green, out_blue);
         }
 
         /* Stepped for every pixel, drawn or not. A failed depth test skips
@@ -1408,6 +1461,14 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     if (last_row > (v9x_s32)target->height) {
         last_row = (v9x_s32)target->height;
+    }
+    /* The scissor's rows. The validator has put the rectangle inside the
+     * target, so these only ever narrow the two clamps above. */
+    if (first_row < (v9x_s32)target->clip_top) {
+        first_row = (v9x_s32)target->clip_top;
+    }
+    if (last_row > (v9x_s32)target->clip_bottom) {
+        last_row = (v9x_s32)target->clip_bottom;
     }
 
     if (first_row >= last_row) {

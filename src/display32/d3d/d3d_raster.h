@@ -365,6 +365,29 @@ typedef struct v9x_d3d_raster_target {
      * the surface was created in, and the caller reads it from the surface
      * rather than assuming it. */
     v9x_u32 format;
+    /*
+     * The scissor: a half-open rectangle in pixels, inside the target, and
+     * nothing outside it is touched, colour or depth (Phase 2 of the OpenGL
+     * plan). The whole target - 0, 0, width, height - is what every caller
+     * meant before the field existed, and there is no "off" value: a caller
+     * that wants no scissor says so with the whole extent, so a zeroed
+     * struct is refused rather than drawing nothing in silence.
+     */
+    v9x_u32 clip_left;
+    v9x_u32 clip_top;
+    v9x_u32 clip_right;
+    v9x_u32 clip_bottom;
+    /*
+     * The colour mask, one nonzero-means-written flag per channel. With all
+     * three set the packed pixel is stored whole, as before; with any clear
+     * the store keeps the other bits of what was there, which on XRGB1555
+     * includes the unused top bit. Depth is written regardless - a draw
+     * with every channel masked still updates the depth buffer, which is
+     * what both APIs specify and what a depth-only pre-pass relies on.
+     */
+    v9x_u32 write_red;
+    v9x_u32 write_green;
+    v9x_u32 write_blue;
 } V9X_D3D_RASTER_TARGET;
 
 /*

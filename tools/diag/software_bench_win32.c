@@ -270,6 +270,13 @@ void __stdcall V9xSoftwareBenchEntry(void)
         target.width = V9X_BENCH_WIDTH;
         target.height = V9X_BENCH_HEIGHT;
         target.format = V9X_D3D_RASTER_PIXFMT_RGB565;
+        target.clip_left = 0ul;
+        target.clip_top = 0ul;
+        target.clip_right = target.width;
+        target.clip_bottom = target.height;
+        target.write_red = 1ul;
+        target.write_green = 1ul;
+        target.write_blue = 1ul;
         depth.pixels = location ? locked[1].lpSurface : ram[1];
         depth.pitch = location ? (DWORD)locked[1].lPitch : target.pitch;
         depth.compare = V9X_D3D_RASTER_CMP_LESSEQUAL;
