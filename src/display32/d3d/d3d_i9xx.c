@@ -1783,7 +1783,7 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      * The hardware culls nothing: the runtime state block programs NONE and
      * the decoder holds it there. CW and CCW are done by the core, which
      * drops back faces before this engine sees them and does so only because
-     * these two bits are set (d3d_cull.h, v9x_d3d_cull_honoured).
+     * these two bits are set (r3d3d_cull.h, v9x_r3d_cull_honoured).
      *
      * CULLNONE alone was honest and cost everything: 3D WinBench 98 renders
      * every scene with CCW culling and refused all 41 quality tests before

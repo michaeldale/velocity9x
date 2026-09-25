@@ -83,7 +83,10 @@ $sources = @(
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
     # The core's back-face culling decision, a leaf for the host build.
-    "src\display32\d3d\d3d_cull.c",
+    # The neutral render core (Phase 1a of the OpenGL plan): the clipper,
+    # list builder and cull decision the D3D core hands its triangles to.
+    "src\display32\r3d\r3d_clip.c",
+    "src\display32\r3d\r3d_cull.c",
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",

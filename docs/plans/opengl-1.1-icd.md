@@ -350,6 +350,10 @@ below is its own commit with its own gate.
     `__CHP` under `-zl`.
   - Move `d3d_cull.c` to `r3d_cull.c`, with the caps check passed in. Rename
     the entries in `host-sources.ps1:60,75` and in the HAL `$sources` list.
+  - **Done 2026-09-26**
+    (`2026-09-26-phase1a-the-clipper-moves-to-the-render-core-and-the-virge-draws-the-same.md`):
+    host tests and the ViRGE guest gate passed; the netbook gate is pending
+    the machine (its agent timed out).
 - **1b. `r3d.h` and `ops->draw`.**
   - `V9X_R3D_DRAW` carries:
     - target {offset, pitch, width, height, format, lcl}

@@ -65,9 +65,13 @@ unsigned int v9x_run_d3d_zfixed_tests(void);
  * refusals and its Gouraud interpolation, same convention. */
 unsigned int v9x_run_d3d_raster_tests(void);
 
-/* tests\host\test_d3d_cull.c: which triangles D3DRENDERSTATE_CULLMODE
+/* tests\host\test_r3d_cull.c: which triangles D3DRENDERSTATE_CULLMODE
  * removes, in screen space where y grows down, and the caps gate. */
-unsigned int v9x_run_d3d_cull_tests(void);
+unsigned int v9x_run_r3d_cull_tests(void);
+
+/* tests\host\test_r3d_clip.c: the neutral core's clipper and list builder
+ * against what d3d_core.c did before the move, same convention. */
+unsigned int v9x_run_r3d_clip_tests(void);
 
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
@@ -1062,7 +1066,8 @@ int main(int argc, char **argv)
     puts("SKIP: ViRGE x87 depth conversion (requires Open Watcom)");
 #endif
     failures += v9x_run_d3d_raster_tests();
-    failures += v9x_run_d3d_cull_tests();
+    failures += v9x_run_r3d_cull_tests();
+    failures += v9x_run_r3d_clip_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
     failures += v9x_run_i9xx_cover_tests();

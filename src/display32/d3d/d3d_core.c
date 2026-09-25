@@ -22,7 +22,11 @@
  * for one this file has no implementation for.
  */
 #include "d3d_internal.h"
-#include "d3d_cull.h"
+/* offsetof only: a header of macros, nothing the nodefaultlibs link must
+ * find, for the layout assertions against the neutral core's vertex. */
+#include <stddef.h>
+#include "r3d/r3d.h"
+#include "r3d/r3d_cull.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -507,229 +511,48 @@ V9X_DD_SURFACE_LCL *v9x_d3d_context_texture_surface(
 DWORD __stdcall V9xD3dRenderPrimitive(
     V9X_D3DHAL_RENDERPRIMITIVEDATA *data);
 
-static BYTE v9x_d3d_lerp_byte(BYTE first, BYTE second, float amount)
-{
-    return (BYTE)v9x_float_to_long((float)first +
-        ((float)second - (float)first) * amount);
-}
-
-static DWORD v9x_d3d_lerp_color(DWORD first, DWORD second, float amount)
-{
-    return ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 24),
-                                     (BYTE)(second >> 24), amount) << 24) |
-           ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 16),
-                                     (BYTE)(second >> 16), amount) << 16) |
-           ((DWORD)v9x_d3d_lerp_byte((BYTE)(first >> 8),
-                                     (BYTE)(second >> 8), amount) << 8) |
-           (DWORD)v9x_d3d_lerp_byte((BYTE)first, (BYTE)second, amount);
-}
-
-static void v9x_d3d_lerp_vertex(V9X_D3DTLVERTEX *result,
-                                const V9X_D3DTLVERTEX *first,
-                                const V9X_D3DTLVERTEX *second,
-                                float amount)
-{
-    result->sx = first->sx + (second->sx - first->sx) * amount;
-    result->sy = first->sy + (second->sy - first->sy) * amount;
-    result->sz = first->sz + (second->sz - first->sz) * amount;
-    result->rhw = first->rhw + (second->rhw - first->rhw) * amount;
-    result->color = v9x_d3d_lerp_color(first->color, second->color, amount);
-    result->specular = v9x_d3d_lerp_color(first->specular,
-                                          second->specular, amount);
-    /*
-     * Texture coordinates are not linear in screen space unless both ends
-     * have the same rhw. rhw is, and so is tu * rhw, so the coordinate at the
-     * cut is their quotient. Blending tu itself put every clipped vertex of a
-     * receding polygon too far along the texture - on 3DMark 99's tunnel,
-     * whose walls are clipped at every screen edge, that squeezed the whole
-     * texture into the visible part of the wall and drove the mip level to
-     * the bottom of the chain. Colour, depth and rhw stay linear: the engines
-     * interpolate them that way.
-     *
-     * Equal rhw keeps the plain blend, so an affine triangle is cut exactly
-     * as before, bit for bit.
-     */
-    if (first->rhw != second->rhw && first->rhw > 0.0f &&
-        second->rhw > 0.0f && result->rhw > 0.0f) {
-        float first_u = first->tu * first->rhw;
-        float first_v = first->tv * first->rhw;
-        float inverse = 1.0f / result->rhw;
-
-        result->tu = (first_u +
-                      (second->tu * second->rhw - first_u) * amount) * inverse;
-        result->tv = (first_v +
-                      (second->tv * second->rhw - first_v) * amount) * inverse;
-    } else {
-        result->tu = first->tu + (second->tu - first->tu) * amount;
-        result->tv = first->tv + (second->tv - first->tv) * amount;
-    }
-}
-
 /*
- * Whether a screen coordinate is finite, from its bits: an all-ones exponent
- * is NaN or infinity.
- *
- * No float comparison can be trusted to refuse a NaN under Open Watcom. It
- * branches on `fcomp; fnstsw; sahf` without testing PF, so an unordered
- * result reads as below and equal at once, and whether a range test passes a
- * NaN depends on which way round each comparison happened to be compiled
- * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). An
- * infinity is refused here too; the range tests would have refused it anyway.
+ * The screen-space clipper and the list builder live in the neutral render
+ * core, src\display323d3d_clip.c, since Phase 1a of the OpenGL plan
+ * (2026-09-26); what stays here is the Direct3D context's part of each
+ * call - the executing engine's guard band and the render target's size -
+ * and the two decisions the list builder asks the front end for. The
+ * V9X_D3DTLVERTEX arrays are handed over as V9X_R3D_VERTEX, the same layout
+ * field for field: the size is asserted here, the offsets on the host.
  */
-#define V9X_D3D_FLOAT_EXPONENT_MASK 0x7f800000ul
-
-static int v9x_d3d_coordinate_finite(float value)
-{
-    union {
-        float value;
-        unsigned long bits;
-    } stored;
-
-    stored.value = value;
-    return (stored.bits & V9X_D3D_FLOAT_EXPONENT_MASK) !=
-           V9X_D3D_FLOAT_EXPONENT_MASK ? 1 : 0;
-}
+typedef char v9x_d3d_assert_r3d_vertex[
+    sizeof(V9X_R3D_VERTEX) == sizeof(V9X_D3DTLVERTEX) ? 1 : -1];
+typedef char v9x_d3d_assert_r3d_vertex_offsets[
+    (offsetof(V9X_R3D_VERTEX, sx) == offsetof(V9X_D3DTLVERTEX, sx) &&
+     offsetof(V9X_R3D_VERTEX, rhw) == offsetof(V9X_D3DTLVERTEX, rhw) &&
+     offsetof(V9X_R3D_VERTEX, color) == offsetof(V9X_D3DTLVERTEX, color) &&
+     offsetof(V9X_R3D_VERTEX, specular) == offsetof(V9X_D3DTLVERTEX, specular) &&
+     offsetof(V9X_R3D_VERTEX, tu) == offsetof(V9X_D3DTLVERTEX, tu) &&
+     offsetof(V9X_R3D_VERTEX, tv) == offsetof(V9X_D3DTLVERTEX, tv)) ? 1 : -1];
+typedef char v9x_d3d_assert_r3d_fan[
+    V9X_D3D_MAX_FAN_TRIANGLES == V9X_R3D_MAX_FAN_TRIANGLES ? 1 : -1];
 
 static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
                                  const V9X_D3DTLVERTEX *triangle,
                                  V9X_D3DTLVERTEX *result)
 {
-    V9X_D3DTLVERTEX buffers[2][8];
-    V9X_D3DTLVERTEX *input = buffers[0];
-    V9X_D3DTLVERTEX *output = buffers[1];
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
-    float limit;
-    DWORD count = 3ul;
-    DWORD edge;
-    DWORD index;
 
     if (ops == 0) {
         return -1;
     }
-    /* The guard band belongs to the engine, not to the clipper: a vertex
-     * outside it overflows that engine's fixed-point coordinate conversion,
-     * so it is refused here rather than wrapped there. A non-finite one is
-     * refused from its bits before the range test sees it. */
-    limit = ops->limits->coordinate_limit;
-    for (index = 0ul; index < 3ul; ++index) {
-        if (!v9x_d3d_coordinate_finite(triangle[index].sx) ||
-            !v9x_d3d_coordinate_finite(triangle[index].sy)) {
-            return -1;
-        }
-        if (!(triangle[index].sx >= -limit &&
-              triangle[index].sx < limit &&
-              triangle[index].sy >= -limit &&
-              triangle[index].sy < limit)) {
-            return -1;
-        }
-        input[index] = triangle[index];
-    }
-    for (edge = 0ul; edge < 4ul && count != 0ul; ++edge) {
-        V9X_D3DTLVERTEX previous = input[count - 1ul];
-        int previous_inside;
-        DWORD output_count = 0ul;
-        /*
-         * The right and bottom edges are the viewport's, width and height,
-         * not the last pixel's. A full-screen quad is 0..640 in Direct3D's
-         * convention, and cut at 639 its spans end one column early on an
-         * engine that fills [ceil(x1), ceil(x2)) - a black line down the
-         * right and along the bottom of every full-screen plane. The pixel
-         * past the edge is the hardware clip rectangle's to discard: S3's
-         * own driver sets cmdHWCLIP_EN with CLIP_L_R at width - 1
-         * (98DDK s3v\D3DRENDR.C:64, 399-427) and so does this one, and the
-         * CPU rasterizer clamps to extent - 1 on its own.
-         */
-        float boundary = (edge == 0ul || edge == 2ul) ? 0.0f :
-            (edge == 1ul ? (float)context->width :
-                           (float)context->height);
-
-        if (edge < 2ul) {
-            previous_inside = edge == 0ul ? previous.sx >= boundary
-                                          : previous.sx <= boundary;
-        } else {
-            previous_inside = edge == 2ul ? previous.sy >= boundary
-                                          : previous.sy <= boundary;
-        }
-        for (index = 0ul; index < count; ++index) {
-            V9X_D3DTLVERTEX current = input[index];
-            int current_inside;
-
-            if (edge < 2ul) {
-                current_inside = edge == 0ul ? current.sx >= boundary
-                                             : current.sx <= boundary;
-            } else {
-                current_inside = edge == 2ul ? current.sy >= boundary
-                                             : current.sy <= boundary;
-            }
-            if (current_inside != previous_inside) {
-                float denominator = edge < 2ul
-                    ? current.sx - previous.sx : current.sy - previous.sy;
-                float numerator = edge < 2ul
-                    ? boundary - previous.sx : boundary - previous.sy;
-
-                if (denominator != 0.0f && output_count < 8ul) {
-                    v9x_d3d_lerp_vertex(&output[output_count], &previous,
-                                        &current, numerator / denominator);
-                    if (edge < 2ul) {
-                        output[output_count].sx = boundary;
-                    } else {
-                        output[output_count].sy = boundary;
-                    }
-                    ++output_count;
-                }
-            }
-            if (current_inside && output_count < 8ul) {
-                output[output_count++] = current;
-            }
-            previous = current;
-            previous_inside = current_inside;
-        }
-        count = output_count;
-        {
-            V9X_D3DTLVERTEX *swap = input;
-            input = output;
-            output = swap;
-        }
-    }
-    for (index = 0ul; index < count; ++index) {
-        result[index] = input[index];
-    }
-    return (int)count;
-}
-
-/*
- * Whether all three vertices lie on the render target, edges included.
- *
- * A NaN coordinate answers no and goes to the clipper, whose guard-band test
- * refuses it, rather than answering yes and reaching the engine's fixed-point
- * conversion. That is decided from the bits: the range test below, compiled
- * by Open Watcom, passed a NaN on all four comparisons.
- */
-static int v9x_d3d_triangle_on_target(const V9X_D3D_CONTEXT *context,
-                                      const V9X_D3DTLVERTEX *triangle)
-{
-    float right = (float)context->width;
-    float bottom = (float)context->height;
-    DWORD index;
-
-    for (index = 0ul; index < 3ul; ++index) {
-        if (!v9x_d3d_coordinate_finite(triangle[index].sx) ||
-            !v9x_d3d_coordinate_finite(triangle[index].sy)) {
-            return 0;
-        }
-        if (!(triangle[index].sx >= 0.0f && triangle[index].sx <= right &&
-              triangle[index].sy >= 0.0f && triangle[index].sy <= bottom)) {
-            return 0;
-        }
-    }
-    return 1;
+    return v9x_r3d_clip_triangle((const V9X_R3D_VERTEX *)triangle,
+                                 ops->limits->coordinate_limit,
+                                 (float)context->width,
+                                 (float)context->height,
+                                 (V9X_R3D_VERTEX *)result);
 }
 
 /*
  * Whether this triangle is a back face the application asked to remove.
  *
  * The mode applied is the context's, gated on the caps the engine published
- * (d3d_cull.h says why): describe_caps wrote them into the shared block, and
+ * (r3d_cull.h says why): describe_caps wrote them into the shared block, and
  * the same bits are what the application read before choosing a cull mode.
  * Decided on the vertices as handed over - before clipping, which keeps the
  * winding, and after the strip builders, which swap every odd triangle so
@@ -740,97 +563,65 @@ static int v9x_d3d_triangle_culled(const V9X_D3D_CONTEXT *context,
 {
     DWORD misc = v9x_hal != 0
         ? v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps : 0ul;
-    unsigned long mode = v9x_d3d_cull_honoured(
+    unsigned long mode = v9x_r3d_cull_honoured(
         context->cull_mode,
         (misc & V9X_D3DPMISCCAPS_CULLCW) != 0ul,
         (misc & V9X_D3DPMISCCAPS_CULLCCW) != 0ul);
 
-    return v9x_d3d_cull_triangle(mode,
+    return v9x_r3d_cull_triangle(mode,
                                  triangle[0].sx, triangle[0].sy,
                                  triangle[1].sx, triangle[1].sy,
                                  triangle[2].sx, triangle[2].sy);
 }
 
+/* What the list builder is given back: the engine and the context a batch
+ * is drawn on, behind the void pointer the neutral core carries. */
+typedef struct v9x_d3d_list_sink {
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_D3D_CONTEXT *context;
+} V9X_D3D_LIST_SINK;
+
+static int v9x_d3d_list_batch(void *user, const V9X_R3D_VERTEX *vertices,
+                              v9x_u32 triangle_count)
+{
+    V9X_D3D_LIST_SINK *sink = (V9X_D3D_LIST_SINK *)user;
+
+    return v9x_d3d_draw_batch(sink->ops, sink->context,
+                              (const V9X_D3DTLVERTEX *)vertices,
+                              triangle_count);
+}
+
+static int v9x_d3d_list_culled(void *user, const V9X_R3D_VERTEX *triangle)
+{
+    V9X_D3D_LIST_SINK *sink = (V9X_D3D_LIST_SINK *)user;
+
+    return v9x_d3d_triangle_culled(sink->context,
+                                   (const V9X_D3DTLVERTEX *)triangle);
+}
+
 /*
  * A triangle list from one of the DX5 entry points, clipped where the engine
- * needs it, then drawn.
- *
- * The engine contract says the core hands over vertices already clipped, and
- * until 2026-09-23 only RenderPrimitive did. DrawOnePrimitive, DrawPrimitives
- * and DrawOneIndexedPrimitive passed the application's vertices straight
- * through, and the S3D emitter declines any triangle with a vertex off the
- * target, so every triangle that crossed the screen edge was dropped whole.
- * On the Trio3D/2X that was 3DMark 99's fill-rate test drawn entirely black -
- * its planes are full-screen quads ending exactly at 640.0 - the filtering
- * tunnel reduced to one or two walls, and 66,990 declined triangles in one
- * run (build\driver-results\3dmark99-640-20260923-run2).
- *
- * Triangles already on the target go through as runs, windows on the
- * caller's array, so the common case costs one bounds test per triangle and
- * no copy. Only a triangle that crosses an edge is cut, and its fan is drawn
- * on its own between the runs either side of it. A refused triangle - past
- * the guard band, or one the engine declines - is counted by the caller as a
- * refused batch and the rest of the list is still drawn.
- *
- * A culled triangle ends the run the same way a clipped one does, and is then
- * simply not drawn. That holds for an engine that clips for itself too, which
- * is why the clip_in_core test is inside the loop rather than a shortcut
- * around it.
+ * needs it, then drawn; r3d_clip.c says how the runs and fans are formed.
  */
 static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
                              V9X_D3D_CONTEXT *context,
                              const V9X_D3DTLVERTEX *vertices,
                              DWORD triangle_count)
 {
-    V9X_D3DTLVERTEX clipped[8];
-    V9X_D3DTLVERTEX fan_list[V9X_D3D_MAX_FAN_TRIANGLES * 3u];
-    DWORD run_start = 0ul;
-    DWORD index;
-    int ok = 1;
+    V9X_D3D_LIST_SINK sink;
+    V9X_R3D_LIST list;
 
-    for (index = 0ul; index < triangle_count; ++index) {
-        const V9X_D3DTLVERTEX *triangle = &vertices[index * 3ul];
-        DWORD fan_triangles = 0ul;
-        int culled = v9x_d3d_triangle_culled(context, triangle);
-        int clipped_count;
-        int fan;
-
-        if (!culled && (ops->limits->clip_in_core == 0ul ||
-                        v9x_d3d_triangle_on_target(context, triangle))) {
-            continue;
-        }
-        if (index > run_start &&
-            !v9x_d3d_draw_batch(ops, context, &vertices[run_start * 3ul],
-                                index - run_start)) {
-            ok = 0;
-        }
-        run_start = index + 1ul;
-        if (culled) {
-            continue;
-        }
-
-        clipped_count = v9x_d3d_clip_triangle(context, triangle, clipped);
-        if (clipped_count < 0) {
-            ok = 0;
-            continue;
-        }
-        for (fan = 1; fan + 1 < clipped_count; ++fan) {
-            fan_list[fan_triangles * 3ul] = clipped[0];
-            fan_list[fan_triangles * 3ul + 1ul] = clipped[fan];
-            fan_list[fan_triangles * 3ul + 2ul] = clipped[fan + 1];
-            ++fan_triangles;
-        }
-        if (fan_triangles != 0ul &&
-            !v9x_d3d_draw_batch(ops, context, fan_list, fan_triangles)) {
-            ok = 0;
-        }
-    }
-    if (run_start < triangle_count &&
-        !v9x_d3d_draw_batch(ops, context, &vertices[run_start * 3ul],
-                            triangle_count - run_start)) {
-        ok = 0;
-    }
-    return ok;
+    sink.ops = ops;
+    sink.context = context;
+    list.guard_limit = ops->limits->coordinate_limit;
+    list.width = (float)context->width;
+    list.height = (float)context->height;
+    list.clip_in_core = ops->limits->clip_in_core;
+    list.batch = v9x_d3d_list_batch;
+    list.culled = v9x_d3d_list_culled;
+    list.user = &sink;
+    return v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,
+                             triangle_count);
 }
 
 /*
@@ -1228,7 +1019,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->wrap_v = 0ul;
             context->shade_mode = V9X_D3DSHADE_GOURAUD;
             /* Direct3D's own default: back faces run counterclockwise. */
-            context->cull_mode = V9X_D3DCULL_CCW;
+            context->cull_mode = V9X_R3D_CULL_CCW;
             /*
              * Only z_func. depth_offset, depth_pitch, z_enable and z_write are
              * owned by v9x_d3d_set_target, which ran above - resetting them

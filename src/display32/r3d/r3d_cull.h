@@ -3,10 +3,12 @@
  *
  * A leaf translation unit like d3d_zfixed.h: it includes nothing from the
  * DDHAL side, so scripts\build-host.ps1 compiles it and
- * tests\host\test_d3d_cull.c holds it to its cases. It sits under
- * src\display32\d3d rather than src\common because D3DRENDERSTATE_CULLMODE is
- * Direct3D vocabulary, which belongs to the core half of the core/engine
- * split (docs\decisions\2026-08-29-d3d-core-engine-split.md).
+ * tests\host\test_r3d_cull.c holds it to its cases. It began life in
+ * src\display32\d3d as d3d_cull.c and moved to the neutral render core in
+ * Phase 1a of the OpenGL plan (2026-09-26): the decision is a sign test on
+ * screen-space vertices, the same for any front end. The mode values are
+ * still D3DRENDERSTATE_CULLMODE's numbers, so the D3D core passes its state
+ * through untranslated; a front end with another vocabulary maps to these.
  *
  * WHY IN SOFTWARE, and not the Gen3 S4 cull field that the Intel engine
  * already programs to NONE. Three reasons, each sufficient:
@@ -21,16 +23,16 @@
  * - It is the same decision for every engine, so an engine gains culling by
  *   advertising the caps, not by learning a register.
  */
-#ifndef VELOCITY9X_D3D_CULL_H
-#define VELOCITY9X_D3D_CULL_H
+#ifndef VELOCITY9X_R3D_CULL_H
+#define VELOCITY9X_R3D_CULL_H
 
 /*
  * D3DRENDERSTATE_CULLMODE's values, d3dtypes.h. Direct3D's default is CCW:
  * back faces are the ones whose vertices run counterclockwise on screen.
  */
-#define V9X_D3DCULL_NONE 1ul
-#define V9X_D3DCULL_CW   2ul
-#define V9X_D3DCULL_CCW  3ul
+#define V9X_R3D_CULL_NONE 1ul
+#define V9X_R3D_CULL_CW   2ul
+#define V9X_R3D_CULL_CCW  3ul
 
 /*
  * Non-zero when a triangle with these screen-space vertices is removed under
@@ -42,7 +44,7 @@
  * triangle: a degenerate one covers nothing either way, and a NaN vertex must
  * reach the clipper, which refuses it with a count.
  */
-int v9x_d3d_cull_triangle(unsigned long mode,
+int v9x_r3d_cull_triangle(unsigned long mode,
                           float ax, float ay,
                           float bx, float by,
                           float cx, float cy);
@@ -56,7 +58,7 @@ int v9x_d3d_cull_triangle(unsigned long mode,
  * have been setting D3D's default CCW at it all along - turning culling on
  * for it would change its output with nothing it published saying so.
  */
-unsigned long v9x_d3d_cull_honoured(unsigned long mode,
+unsigned long v9x_r3d_cull_honoured(unsigned long mode,
                                     int claims_cw, int claims_ccw);
 
 #endif

@@ -453,6 +453,29 @@ foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_',
                "docs\decisions\2026-08-29-d3d-core-engine-split.md.")
     }
 }
+# The neutral render core under src\display32\r3d is held to a stricter form
+# of the same rule: no chip vocabulary, and no API's either. It is what the
+# D3D core and the OpenGL ICD share (docs\plans\opengl-1.1-icd.md, Phase 1),
+# so a DDHAL type or a Direct3D render-state name in it would tie the OpenGL
+# side to Direct3D's headers. It must also stay free of the OS boundary,
+# which the allowlist above already enforces.
+$r3dDir = Join-Path $repoRoot "src\display32\r3d"
+if (-not (Test-Path -LiteralPath $r3dDir)) {
+    throw "src\display32\r3d is missing; the neutral render core expects it."
+}
+foreach ($r3dFile in @(Get-ChildItem -LiteralPath $r3dDir -File)) {
+    $text = Get-Content -LiteralPath $r3dFile.FullName -Raw
+    foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_',
+                             'V9X_TRIO_', 'V9X_I9XX_', 'V9X_DD_', 'V9X_D3DHAL_',
+                             'V9X_D3DRENDERSTATE_', 'ddhal_internal.h',
+                             'd3d_internal.h', 'win9x_ddraw_abi.h')) {
+        if ($text -match [regex]::Escape($forbidden)) {
+            throw ("src\display32\r3d\$($r3dFile.Name) names $forbidden. The " +
+                   "neutral render core is chip- and API-neutral; see " +
+                   "src\display32\r3d\r3d.h.")
+        }
+    }
+}
 # The other half of the same rule: an engine must not carry a DDHAL entry
 # point. Those are the core's, and a chip file growing one is how the seam
 # would quietly stop being a seam.
