@@ -372,21 +372,31 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
         texture->address != V9X_D3D_RASTER_ADDRESS_CLAMP) {
         return 0;
     }
-    if (texture->size < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
-        texture->size > V9X_D3D_RASTER_TEXTURE_SIZE_MAX) {
-        return 0;
+    /* Each dimension a power of two within the bounds, checked rather than
+     * assumed: the sampler wraps each texel index with (extent - 1) as a
+     * mask, and on a non-power-of-two extent that mask indexes outside the
+     * surface instead of looking wrong. */
+    {
+        v9x_u32 extents[2];
+        unsigned int axis;
+
+        extents[0] = texture->width;
+        extents[1] = texture->height;
+        for (axis = 0u; axis < 2u; ++axis) {
+            if (extents[axis] < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
+                extents[axis] > V9X_D3D_RASTER_TEXTURE_SIZE_MAX) {
+                return 0;
+            }
+            bit = 1ul;
+            while (bit < extents[axis]) {
+                bit <<= 1;
+            }
+            if (bit != extents[axis]) {
+                return 0;
+            }
+        }
     }
-    /* Power of two, checked rather than assumed: the sampler wraps its texel
-     * index with size - 1 as a mask, and on a non-power-of-two size that mask
-     * indexes outside the surface instead of looking wrong. */
-    bit = 1ul;
-    while (bit < texture->size) {
-        bit <<= 1;
-    }
-    if (bit != texture->size) {
-        return 0;
-    }
-    if (texture->pitch < texture->size * 2ul) {
+    if (texture->pitch < texture->width * 2ul) {
         return 0;
     }
     return 1;
@@ -492,9 +502,14 @@ typedef struct V9X_D3D_RASTER_FIELD {
 typedef struct V9X_D3D_RASTER_SAMPLER {
     const v9x_u8 *pixels;
     v9x_u32 pitch;
-    v9x_s32 shift;
-    v9x_s32 mask;
-    v9x_s32 bias;
+    /* Per axis: the texel scale, the wrap mask and the bilinear bias are
+     * each the axis's own extent, since a texture need not be square. */
+    v9x_s32 shift_u;
+    v9x_s32 shift_v;
+    v9x_s32 mask_u;
+    v9x_s32 mask_v;
+    v9x_s32 bias_u;
+    v9x_s32 bias_v;
     int linear;
     int clamp;
     int modulate;
@@ -515,17 +530,24 @@ static void v9x_d3d_raster_field(V9X_D3D_RASTER_FIELD *field, v9x_s32 shift,
 static void v9x_d3d_raster_sampler_start(
     const V9X_D3D_RASTER_TEXTURE *texture, V9X_D3D_RASTER_SAMPLER *sampler)
 {
-    v9x_s32 shift = 0l;
+    v9x_s32 shift_u = 0l;
+    v9x_s32 shift_v = 0l;
 
-    while ((1ul << shift) < texture->size) {
-        ++shift;
+    while ((1ul << shift_u) < texture->width) {
+        ++shift_u;
+    }
+    while ((1ul << shift_v) < texture->height) {
+        ++shift_v;
     }
 
     sampler->pixels = (const v9x_u8 *)texture->pixels;
     sampler->pitch = texture->pitch;
-    sampler->shift = shift;
-    sampler->mask = (v9x_s32)texture->size - 1l;
-    sampler->bias = (v9x_s32)texture->size << 16;
+    sampler->shift_u = shift_u;
+    sampler->shift_v = shift_v;
+    sampler->mask_u = (v9x_s32)texture->width - 1l;
+    sampler->mask_v = (v9x_s32)texture->height - 1l;
+    sampler->bias_u = (v9x_s32)texture->width << 16;
+    sampler->bias_v = (v9x_s32)texture->height << 16;
     sampler->linear = texture->filter == V9X_D3D_RASTER_FILTER_LINEAR;
     sampler->clamp = texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP;
     sampler->modulate = texture->blend == V9X_D3D_RASTER_BLEND_MODULATE;
@@ -603,12 +625,12 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
     v9x_u32 word;
 
     if (sampler->linear) {
-        v9x_s32 bu = su + sampler->bias - V9X_D3D_RASTER_TEXEL_HALF;
-        v9x_s32 bv = sv + sampler->bias - V9X_D3D_RASTER_TEXEL_HALF;
-        v9x_s32 x0 = (bu >> 16) & sampler->mask;
-        v9x_s32 y0 = (bv >> 16) & sampler->mask;
-        v9x_s32 x1 = (x0 + 1l) & sampler->mask;
-        v9x_s32 y1 = (y0 + 1l) & sampler->mask;
+        v9x_s32 bu = su + sampler->bias_u - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 bv = sv + sampler->bias_v - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 x0 = (bu >> 16) & sampler->mask_u;
+        v9x_s32 y0 = (bv >> 16) & sampler->mask_v;
+        v9x_s32 x1 = (x0 + 1l) & sampler->mask_u;
+        v9x_s32 y1 = (y0 + 1l) & sampler->mask_v;
         v9x_s32 fu = (bu >> 8) & 0xffl;
         v9x_s32 fv = (bv >> 8) & 0xffl;
         v9x_s32 w11 = fu * fv;
@@ -636,9 +658,9 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
     }
 
     row = (const v9x_u16 *)(sampler->pixels +
-                            (v9x_u32)((sv >> 16) & sampler->mask) *
+                            (v9x_u32)((sv >> 16) & sampler->mask_v) *
                                 sampler->pitch);
-    word = (v9x_u32)row[(su >> 16) & sampler->mask];
+    word = (v9x_u32)row[(su >> 16) & sampler->mask_u];
     V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
 }
 
@@ -965,8 +987,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                     texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                 }
-                v9x_d3d_raster_sample(sampler, texel_u << sampler->shift,
-                                      texel_v << sampler->shift,
+                v9x_d3d_raster_sample(sampler, texel_u << sampler->shift_u,
+                                      texel_v << sampler->shift_v,
                                       &tex_red, &tex_green, &tex_blue);
                 if (sampler->modulate) {
                     /* Both factors are 0..255 - the texel by decode, the

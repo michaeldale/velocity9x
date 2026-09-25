@@ -277,13 +277,14 @@ void __stdcall V9xSoftwareBenchEntry(void)
         depth.write = 1ul;
         texture.pixels = location ? locked[2].lpSurface : ram[2];
         texture.pitch = location ? (DWORD)locked[2].lPitch : target.pitch;
-        texture.size = V9X_BENCH_TEX_SIZE;
+        texture.width = V9X_BENCH_TEX_SIZE;
+        texture.height = V9X_BENCH_TEX_SIZE;
         texture.format = V9X_D3D_RASTER_TEXFMT_RGB565;
         texture.blend = V9X_D3D_RASTER_BLEND_MODULATE;
         texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;
-        for (y = 0; y < texture.size; ++y) {
+        for (y = 0; y < texture.height; ++y) {
             WORD *row = (WORD *)((BYTE *)texture.pixels + y * texture.pitch);
-            for (x = 0; x < texture.size; ++x) {
+            for (x = 0; x < texture.width; ++x) {
                 row[x] = (WORD)((x * 977ul + y * 619ul) & 65535ul);
             }
         }

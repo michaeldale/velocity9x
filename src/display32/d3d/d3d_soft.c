@@ -425,7 +425,8 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
         texture->pixels = (void *)(v9x_hal->fb.linear_base + offset);
     }
     texture->pitch = (DWORD)surface->lpGbl->lPitch;
-    texture->size = size;
+    texture->width = size;
+    texture->height = size;
     texture->format = format;
     /*
      * One filter for both minification and magnification, taken from the

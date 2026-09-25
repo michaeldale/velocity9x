@@ -971,7 +971,8 @@ static void raster_texture_reset(V9X_D3D_RASTER_TEXTURE *texture,
     }
     texture->pixels = &raster_texture_cells[RASTER_TEX_GUARD];
     texture->pitch = RASTER_TEX_SIZE * 2ul;
-    texture->size = RASTER_TEX_SIZE;
+    texture->width = RASTER_TEX_SIZE;
+    texture->height = RASTER_TEX_SIZE;
     texture->format = format;
     texture->filter = filter;
     texture->blend = blend;
@@ -1070,18 +1071,22 @@ static void test_texture_validation(void)
     raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
                          V9X_D3D_RASTER_FILTER_POINT,
                          V9X_D3D_RASTER_BLEND_DECAL);
-    texture.size = 6ul;
+    texture.width = 6ul;
+    texture.height = 6ul;
     RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
-    texture.size = 8ul;
+    texture.width = 8ul;
+    texture.height = 8ul;
     texture.pitch = 16ul;
     RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
 
     raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
                          V9X_D3D_RASTER_FILTER_POINT,
                          V9X_D3D_RASTER_BLEND_DECAL);
-    texture.size = V9X_D3D_RASTER_TEXTURE_SIZE_MIN / 2ul;
+    texture.width = V9X_D3D_RASTER_TEXTURE_SIZE_MIN / 2ul;
+    texture.height = V9X_D3D_RASTER_TEXTURE_SIZE_MIN / 2ul;
     RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
-    texture.size = V9X_D3D_RASTER_TEXTURE_SIZE_MAX * 2ul;
+    texture.width = V9X_D3D_RASTER_TEXTURE_SIZE_MAX * 2ul;
+    texture.height = V9X_D3D_RASTER_TEXTURE_SIZE_MAX * 2ul;
     RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
 
     raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB1555,
@@ -1128,6 +1133,66 @@ static void test_texture_point_sampling(void)
     raster_texture_check_margins();
 }
 
+
+/*
+ * A texture wider than it is tall samples each axis by its own extent.
+ *
+ * Eight texels across and four down over the 32x24 target: a texel is four
+ * columns by six rows. Four corner texels carry four colours. Before the
+ * sampler learned two extents it folded the width into both axes, so the
+ * bottom corners read from rows that do not exist; this is the test that
+ * failed first (Phase 2 of the OpenGL plan, 2026-09-26).
+ */
+#define RASTER_WIDE_W 8u
+#define RASTER_WIDE_H 4u
+static v9x_u16 raster_wide_cells[RASTER_TEX_GUARD * 2u + RASTER_WIDE_W * RASTER_WIDE_H];
+
+static void test_texture_non_square_point_sampling(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    unsigned int index;
+
+    raster_reset(&target);
+    for (index = 0u; index < sizeof(raster_wide_cells) / sizeof(raster_wide_cells[0]); ++index) {
+        raster_wide_cells[index] = 0u;
+    }
+    texture.pixels = &raster_wide_cells[RASTER_TEX_GUARD];
+    texture.pitch = RASTER_WIDE_W * 2ul;
+    texture.width = RASTER_WIDE_W;
+    texture.height = RASTER_WIDE_H;
+    texture.format = V9X_D3D_RASTER_TEXFMT_ARGB1555;
+    texture.filter = V9X_D3D_RASTER_FILTER_POINT;
+    texture.blend = V9X_D3D_RASTER_BLEND_DECAL;
+    texture.address = V9X_D3D_RASTER_ADDRESS_CLAMP;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    raster_wide_cells[RASTER_TEX_GUARD + 0u * RASTER_WIDE_W + 0u] = 0x7c00u; /* red */
+    raster_wide_cells[RASTER_TEX_GUARD + 0u * RASTER_WIDE_W + 7u] = 0x03e0u; /* green */
+    raster_wide_cells[RASTER_TEX_GUARD + 3u * RASTER_WIDE_W + 0u] = 0x001fu; /* blue */
+    raster_wide_cells[RASTER_TEX_GUARD + 3u * RASTER_WIDE_W + 7u] = 0x7fffu; /* white */
+
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(1u, 2u) == 0xf800u);
+    RCHECK(raster_pixel(30u, 2u) == 0x07e0u);
+    RCHECK(raster_pixel(1u, 21u) == 0x001fu);
+    RCHECK(raster_pixel(30u, 21u) == 0xffffu);
+    RCHECK(raster_pixel(14u, 8u) == 0x0000u);
+    raster_check_untouched_margins();
+    for (index = 0u; index < RASTER_TEX_GUARD; ++index) {
+        RCHECK(raster_wide_cells[index] == 0u);
+        RCHECK(raster_wide_cells[sizeof(raster_wide_cells) / sizeof(raster_wide_cells[0]) - 1u - index] == 0u);
+    }
+
+    /* A tall one the other way round, and the validator's view of shapes:
+     * 8x6 is not a power of two on one axis, and a pitch narrower than the
+     * width's row is refused whatever the height. */
+    texture.width = 8ul;
+    texture.height = 6ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.height = 4ul;
+    texture.pitch = 14ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+}
 
 /*
  * WRAP tiles the texture; CLAMP stretches its edge.
@@ -2018,7 +2083,9 @@ static void test_texture_refusals(void)
     raster_vertex(&triangle[1], PX(28), PX(2), 255l, 255l, 255l);
     raster_vertex(&triangle[2], PX(2), PX(20), 255l, 255l, 255l);
 
-    texture.size = 6ul;
+    texture.width = 6ul;
+
+    texture.height = 6ul;
     RCHECK(v9x_d3d_raster_triangle(&target, 0, &texture, 0, triangle) == 0);
     RCHECK(raster_pixel(10u, 8u) == RASTER_BACKGROUND);
 
@@ -2132,6 +2199,7 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_depth_full_height_interpolation();
     test_texture_validation();
     test_texture_point_sampling();
+    test_texture_non_square_point_sampling();
     test_texture_format_decode();
     test_texture_format_decode_565();
     test_alpha_one_zero_replaces();

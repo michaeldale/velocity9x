@@ -257,14 +257,17 @@ typedef struct v9x_d3d_raster_depth {
  * for the whole struct means untextured, which is what every draw was before
  * this existed and what the engine passes when no handle is bound.
  *
- * `size` is the edge of a square, power-of-two texture. It is not derived from
- * the pitch, because a surface may be padded, and it is not inferred at all:
- * the engine validates the surface and states it.
+ * `width` and `height` are each a power of two within the declared bounds;
+ * they need not be equal (Phase 2 of the OpenGL plan: GLQuake's 64x32 and
+ * 512x256 are ordinary). Neither is derived from the pitch, because a surface
+ * may be padded, and neither is inferred at all: the engine validates the
+ * surface and states them.
  */
 typedef struct v9x_d3d_raster_texture {
     void *pixels;
     v9x_u32 pitch;
-    v9x_u32 size;
+    v9x_u32 width;
+    v9x_u32 height;
     v9x_u32 format;
     v9x_u32 filter;
     v9x_u32 blend;
