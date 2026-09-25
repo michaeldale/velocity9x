@@ -14,11 +14,14 @@ HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Latest release: [0.8.0](releases/0.8.0/README.md).** Beyond 0.7.1 it adds:
-- hardware Direct3D on the Intel GMA 950;
-- Direct3D core fixes for every engine, found by running 3DMark 99 and
-  Final Reality;
-- perspective-correct texturing on the S3D.
+**Latest release: [0.8.1](releases/0.8.1/README.md).** An Intel GMA 950
+release. Beyond 0.8.0 it adds:
+- 3DMark 99 rendering and scoring on the GMA 950 (717 at 640x480, 643 at
+  1024x576), with mipmapping;
+- DirectDraw fills and copies on the Gen3 blitter, and the application's
+  alpha test - Half-Life runs, see-through fences and all;
+- 3D WinBench 98's quality suite completing: culling, texture wrap and four
+  more blend modes.
 
 See [current status and roadmap](docs/STATUS.md) for defaults, validation
 coverage and open work, and [CHANGELOG.md](CHANGELOG.md) for the history,
@@ -104,14 +107,15 @@ The main features, subject to each target's limits:
   ([record](docs/decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)).
 - **Direct3D acceleration on the Intel GMA 950** (new in 0.8.0, run on one
   machine) — a Gen3 engine submitted through the ring:
-  - RGB565, ARGB1555 and ARGB4444 textures, modulate, Gouraud and flat
-    shading;
-  - a 16-bit Z buffer with the application's comparison, and SRCALPHA
-    blending;
-  - hardware page flipping.
+  - RGB565, ARGB1555 and ARGB4444 textures with mipmaps, modulate, decal,
+    Gouraud and flat shading, texture wrap and alpha test;
+  - a 16-bit Z buffer with the application's comparison, and colour and
+    alpha blending;
+  - hardware page flipping, and DirectDraw fills and copies on the blitter
+    (0.8.1).
 
-  Final Reality runs textured on one netbook. The flicker and 3DMark 99's
-  empty frames are open; see the [changelog](CHANGELOG.md).
+  3DMark 99, Final Reality and Half-Life run on one netbook; see the
+  [changelog](CHANGELOG.md) for what is open.
 - **A Direct3D mode selector** on the Velocity9x page in Display Properties,
   offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw
@@ -128,22 +132,22 @@ The main features, subject to each target's limits:
 Cards are grouped into *families*, one built package each. A family's driver
 binary serves every chip in it and picks the right one by PCI id at boot.
 
-| | **S3 ViRGE/DX** | **S3 Trio32/64** | **ATI Mach64 / Rage** | **Generic VESA** |
-|---|---|---|---|---|
-| PCI ID | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
-| Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
-| Status | Primary target | Conservative baseline, verified on 2 physical machines | Tier-0 bring-up | Tier-0 fallback, verified on a physical Intel GMA 950 and an S3 Trio3D |
-| Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
-| Live resolution change | Yes | Yes | Yes | Yes |
-| Live colour-depth change | Yes | Yes | Yes | Yes |
-| DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes |
-| Hardware primary page flip | Yes | Yes | No; HAL declines | No; HAL declines |
-| Hardware colour fill | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
-| Hardware BitBLT | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
-| Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | same | Software rasterizer, **on by default** at 16 bpp |
-| Direct3D mode selector | Hardware / Software / Disabled | Software / Disabled | same | same |
-| GDI acceleration by default | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
-| Hardware cursor | No (software cursor) | No | No | No |
+| | **S3 ViRGE/DX** | **S3 Trio32/64** | **Intel GMA 950** | **ATI Mach64 / Rage** | **Generic VESA** |
+|---|---|---|---|---|---|
+| PCI ID | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `8086:27AE` (945GSE) exactly | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
+| Package | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-intel-gma` | `build/win98se-ati` | `build/win98se-vbe` |
+| Status | Primary target | Conservative baseline, verified on 2 physical machines | Hardware Direct3D, verified on one physical netbook | Tier-0 bring-up | Tier-0 fallback, verified on a physical Intel GMA 950 and an S3 Trio3D |
+| Display modes | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x480 and native 1024x576 at 8 and 16 bpp, set by the video BIOS | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
+| Live resolution change | Yes | Yes | Yes, as games switch 1024x576 to 640x480 | Yes | Yes |
+| Live colour-depth change | Yes | Yes | Not recorded | Yes | Yes |
+| DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes | Yes |
+| Hardware primary page flip | Yes | Yes | Yes (through the ring) | No; HAL declines | No; HAL declines |
+| Hardware colour fill | Yes (S3D) | Yes (8514/A) | DirectDraw only (Gen3 blitter) | **No** — CPU | **No** — CPU |
+| Hardware BitBLT | Yes (S3D) | Yes (8514/A) | DirectDraw only, non-overlapping (Gen3 blitter) | **No** — CPU | **No** — CPU |
+| Direct3D | Yes (narrow S3D path) | Software rasterizer, opt-in | Yes (Gen3 3D engine) | same as Trio | Software rasterizer, **on by default** at 16 bpp |
+| Direct3D mode selector | Hardware / Software / Disabled | Software / Disabled | Hardware / Software / Disabled | same as Trio | same as Trio |
+| GDI acceleration by default | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; the blitter is not yet used for GDI | Software; no native backend yet | Software; generic BIOS path |
+| Hardware cursor | No (software cursor) | No | No | No | No |
 
 The Trio32/64 target accelerates GDI fills and screen copies, plus DirectDraw
 fills and blits, at supported depths. Other GDI drawing uses the DIB Engine

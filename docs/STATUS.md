@@ -76,6 +76,7 @@ Software is selected.
 | S3 Trio3D/2X (`5333:8A13`) | Physical hardware Direct3D: Final Reality and 3DMark 99 complete in [0.7.0](../CHANGELOG.md#070---2026-09-05); [generic VBE also tested](decisions/2026-09-02-vbe-tier0-on-a-real-trio3d.md) | Uses the S3D backend with measured chip-specific restrictions; still no emulator validation, though the reason is no longer that no profile exists - 86Box build 9001 carries `trio3d2x_agp` with an 8 MiB ROM, unbooted here ([guests](vm-environment.md)) |
 | S3 Trio64 / Trio32 | Trio64 86Box regression, [physical PCI GDI](decisions/2026-08-27-crystalmark-barry-accelerated.md), [physical VLB Win95 bring-up](handoffs/2026-08-22-vlb-manual-select-handover.md), [Trio32 guest](decisions/2026-08-29-s3-trio32-alias-guest.md) | VLB Win95 omits the mini-VDD. Text remains off. Trio32 BIOS refuses 800x600x32 |
 | S3 aliases `8810`, `8812`, `8813`, `8814`, `8901` | Bound to the Trio64 path by the manifest | [Installation aliases, not validated targets](decisions/2026-08-29-s3-device-id-survey.md); `8811` is also shared by Trio32 and Trio64V+ |
+| Intel GMA 950 (`8086:27AE`) | One physical netbook (945GSE): hardware Direct3D with 3DMark 99 [scoring 717 at 640x480 and 643 at 1024x576](decisions/2026-09-25-placing-plain-textures-on-gen3.md), [DirectDraw blits on the Gen3 blitter](decisions/2026-09-25-gen3-engine-blits-half-life.md) and Half-Life [with its alpha test](decisions/2026-09-25-gen3-runtime-alpha-test.md) in 0.8.1 | No emulator can run the engine, so every change is measured on the one machine. Modes are the video BIOS's four; GDI is software; the CPU waits on the GPU after every batch ([plan](plans/intel-gen3-async-submission.md)) |
 | ATI Mach64 / Rage | Mach64 VT2 emulator bring-up | [Mach64 16-bpp scanout is wrong](issues/2026-08-16-tier0-defects-deferred.md); no physical ATI validation or native 2D backend |
 | Generic VESA | QEMU/86Box plus [physical GMA 950](issues/2026-08-27-netbook-gma950-findings.md) and physical Trio3D | Dynamic BIOS modes, software drawing; Have-Disk permits unlisted cards, whose behavior still needs measurement |
 | Matrox Millennium II | Historical physical and 86Box software-GDI passes with the stock Matrox mini-VDD | [Guarded mixed-pair boundary](specifications/matrox-millennium2-bringup.md); no claim that the current archive or replacement mini-VDD is physically validated |
@@ -86,7 +87,7 @@ DirectDraw surface allocation and VGA-port vblank services are shared by the
 S3, ATI and VBE packages. The guarded Matrox candidate packages the display
 driver and settings page without `V9XHAL.DLL`; its historical mixed-pair result
 establishes software GDI only.
-Hardware primary page flipping is S3-only: the
+Hardware primary page flipping is S3 and Intel GMA 950 only: the
 [HAL](../src/display32/ddhal_core.c) declines it without a native display-start
 capability. A successful surface allocation or vblank probe does not establish
 hardware flipping on ATI or VBE. All targets use software cursors.

@@ -4,6 +4,40 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.8.1 - 2026-09-25
+
+An Intel GMA 950 release. Everything here was measured on the netbook
+(945GSE, MICHAEL-NETBOOK); the S3 and other families carry no functional
+change beyond the shared Direct3D core items marked below.
+
+- **3DMark 99 renders on the Intel**, and fast enough to score: 717 at
+  640x480 once mip chains are laid out by the HAL
+  ([record](docs/decisions/2026-09-25-mip-trees-on-gen3.md)), and 244 to
+  643 at 1024x576 across a padded Z pitch, a 2112-byte scanout stride,
+  flip buffers at the display pitch and textures placed at their own pitch
+  ([record](docs/decisions/2026-09-25-placing-plain-textures-on-gen3.md)).
+- **3D WinBench 98's quality suite** runs to the end on the Intel:
+  WRAPU/WRAPV wrap the short way, and Decal, Mirror, Add and Modulate
+  blending pass. Back faces are culled in the Direct3D core, which is
+  shared by every engine
+  ([record](docs/decisions/2026-09-25-back-face-culling-in-the-d3d-core.md)).
+- **DirectDraw blits run on the Gen3 blitter.** Half-Life's per-frame
+  present went from about 33 ms on the CPU to 0.6 ms; fills from 6 ms to
+  0.3 ms ([record](docs/decisions/2026-09-25-gen3-engine-blits-half-life.md)).
+- **The application's alpha test is drawn**, so Half-Life's see-through
+  fences are see-through instead of black
+  ([record](docs/decisions/2026-09-25-gen3-runtime-alpha-test.md)).
+- NaN is detected from the bits in the Direct3D core (every engine),
+  because Watcom's float compares never see one.
+- **Installing:** the intel-gma package is for `8086:27AE` only. Its mode
+  list is the video BIOS's: 640x480 and 1024x576 at 8 and 16 bpp. The
+  panel has 576 lines, so there is no 800x600.
+
+Still open: the Gen3 heap may fragment under repeated benchmarks
+(`docs/issues/`), 4% of Half-Life's draws are untextured for a non-square
+texture, and the CPU still waits on the GPU after every batch
+([plan](docs/plans/intel-gen3-async-submission.md)).
+
 ## 0.8.0 - 2026-09-23
 
 The first packaged release since 0.7.1. The version number was set on

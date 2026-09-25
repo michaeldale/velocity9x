@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA (Gen3)'
-    Description = 'Intel GMA 950 on 945GSE: VBE display with guarded Phase 4 ring experiment; no acceleration advertised.'
+    Description = 'Intel GMA 950 on 945GSE: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine.'
 
     Chips = @(
         @{
@@ -130,7 +130,7 @@
 
     Package = @{
         ModesSummary = '640x480 and native 1024x576 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU blits only)'
+        HalDescription = 'V9XHAL.DLL (vidmem + ring flip, engine blits, Gen3 Direct3D)'
     }
 
     Floppy = @{
