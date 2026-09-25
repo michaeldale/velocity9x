@@ -124,6 +124,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 1a: the clipper, list builder and cull decision move to the neutral render core, and the ViRGE guest's Direct3D probe reports the same](2026-09-26-phase1a-the-clipper-moves-to-the-render-core-and-the-virge-draws-the-same.md)
 - [2026-09-26 Phase 1d: the software engine reads the neutral draw and nothing of the Direct3D context, and the Fast-D3D guest's probe reports the same](2026-09-26-phase1d-the-software-engine-reads-the-neutral-draw-and-draws-the-same.md)
 - [2026-09-26 Phase 1d: the ViRGE engine reads the neutral draw, and the 86Box ViRGE probe reports the same as before the move](2026-09-26-phase1d-the-virge-engine-reads-the-neutral-draw-and-draws-the-same.md)
+- [2026-09-26 Phase 1d: the Gen3 engine reads the neutral draw, the netbook's probe reports the same, and its callbacks hold the Win16 mutex too](2026-09-26-phase1d-the-gen3-engine-reads-the-neutral-draw-and-draws-the-same.md)
 
 ## VBE generic family and dynamic modes
 

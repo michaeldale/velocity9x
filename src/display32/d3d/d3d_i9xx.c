@@ -900,14 +900,14 @@ static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
 static void v9x_d3d_i9xx_filter(DWORD filter, DWORD *linear_out,
                                 DWORD *mip_out)
 {
-    *linear_out = (filter == V9X_D3DFILTER_LINEAR ||
-                   filter == V9X_D3DFILTER_MIPLINEAR ||
-                   filter == V9X_D3DFILTER_LINEARMIPLINEAR) ? 1ul : 0ul;
-    if (filter == V9X_D3DFILTER_MIPNEAREST ||
-        filter == V9X_D3DFILTER_MIPLINEAR) {
+    *linear_out = (filter == V9X_R3D_FILTER_LINEAR ||
+                   filter == V9X_R3D_FILTER_MIPLINEAR ||
+                   filter == V9X_R3D_FILTER_LINEARMIPLINEAR) ? 1ul : 0ul;
+    if (filter == V9X_R3D_FILTER_MIPNEAREST ||
+        filter == V9X_R3D_FILTER_MIPLINEAR) {
         *mip_out = V9X_I9XX_MIPFILTER_NEAREST;
-    } else if (filter == V9X_D3DFILTER_LINEARMIPNEAREST ||
-               filter == V9X_D3DFILTER_LINEARMIPLINEAR) {
+    } else if (filter == V9X_R3D_FILTER_LINEARMIPNEAREST ||
+               filter == V9X_R3D_FILTER_LINEARMIPLINEAR) {
         *mip_out = V9X_I9XX_MIPFILTER_LINEAR;
     } else {
         *mip_out = V9X_I9XX_MIPFILTER_NONE;
@@ -1394,11 +1394,11 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     return verified;
 }
 
-static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_DRAW *draw,
                                      struct v9x_i9xx_texture *map,
                                      DWORD *bytes_out)
 {
-    V9X_DD_SURFACE_LCL *surface = v9x_d3d_context_texture_surface(context);
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
     struct v9x_d3d_i9xx_miptree tree;
     DWORD format = 0ul;
     DWORD offset;
@@ -1504,15 +1504,15 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
      * without them keeps the SS2 word it always had. MAG's has no meaning -
      * magnification is level 0 - and is dropped.
      */
-    if (context->texture_address == V9X_D3DTADDRESS_WRAP) {
+    if (draw->texture.address == V9X_R3D_ADDRESS_WRAP) {
         map->wrap = V9X_I9XX_ADDRESS_WRAP;
-    } else if (context->texture_address == V9X_D3DTADDRESS_MIRROR) {
+    } else if (draw->texture.address == V9X_R3D_ADDRESS_MIRROR) {
         map->wrap = V9X_I9XX_ADDRESS_MIRROR;
     } else {
         map->wrap = V9X_I9XX_ADDRESS_CLAMP;
     }
-    v9x_d3d_i9xx_filter(context->texture_mag, &map->mag_linear, &mag_mip);
-    v9x_d3d_i9xx_filter(context->texture_min, &map->min_linear, &mip_filter);
+    v9x_d3d_i9xx_filter(draw->texture.mag_filter, &map->mag_linear, &mag_mip);
+    v9x_d3d_i9xx_filter(draw->texture.min_filter, &map->min_linear, &mip_filter);
     map->mip_filter = V9X_I9XX_MIPFILTER_NONE;
     map->max_lod = 0ul;
     if (levels > 1ul) {
@@ -1548,19 +1548,19 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
  */
 static DWORD v9x_d3d_i9xx_blend_factor(DWORD d3d)
 {
-    if (d3d == V9X_D3DBLEND_ZERO) { return V9X_I9XX_BLENDFACT_ZERO; }
-    if (d3d == V9X_D3DBLEND_ONE) { return V9X_I9XX_BLENDFACT_ONE; }
-    if (d3d == V9X_D3DBLEND_SRCALPHA) { return V9X_I9XX_BLENDFACT_SRC_ALPHA; }
-    if (d3d == V9X_D3DBLEND_INVSRCALPHA) {
+    if (d3d == V9X_R3D_BLEND_ZERO) { return V9X_I9XX_BLENDFACT_ZERO; }
+    if (d3d == V9X_R3D_BLEND_ONE) { return V9X_I9XX_BLENDFACT_ONE; }
+    if (d3d == V9X_R3D_BLEND_SRCALPHA) { return V9X_I9XX_BLENDFACT_SRC_ALPHA; }
+    if (d3d == V9X_R3D_BLEND_INVSRCALPHA) {
         return V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
     }
     /* The colour factors, from 2026-09-25. */
-    if (d3d == V9X_D3DBLEND_SRCCOLOR) { return V9X_I9XX_BLENDFACT_SRC_COLR; }
-    if (d3d == V9X_D3DBLEND_INVSRCCOLOR) {
+    if (d3d == V9X_R3D_BLEND_SRCCOLOR) { return V9X_I9XX_BLENDFACT_SRC_COLR; }
+    if (d3d == V9X_R3D_BLEND_INVSRCCOLOR) {
         return V9X_I9XX_BLENDFACT_INV_SRC_COLR;
     }
-    if (d3d == V9X_D3DBLEND_DESTCOLOR) { return V9X_I9XX_BLENDFACT_DST_COLR; }
-    if (d3d == V9X_D3DBLEND_INVDESTCOLOR) {
+    if (d3d == V9X_R3D_BLEND_DESTCOLOR) { return V9X_I9XX_BLENDFACT_DST_COLR; }
+    if (d3d == V9X_R3D_BLEND_INVDESTCOLOR) {
         return V9X_I9XX_BLENDFACT_INV_DST_COLR;
     }
     return 0ul;
@@ -1575,7 +1575,7 @@ static DWORD v9x_d3d_i9xx_blend_factor(DWORD d3d)
  * is passed as off, because it is Direct3D's default with the enable set.
  * A factor outside the four draws opaque and is counted with the pair.
  */
-static void v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context,
+static void v9x_d3d_i9xx_bind_blend(const V9X_R3D_DRAW *draw,
                                     DWORD *src_out, DWORD *dst_out)
 {
     DWORD src;
@@ -1583,19 +1583,19 @@ static void v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context,
 
     *src_out = 0ul;
     *dst_out = 0ul;
-    if (context->alpha_blend_enable == 0ul) {
+    if (draw->blend_enable == 0ul) {
         return;
     }
-    if (context->src_blend == V9X_D3DBLEND_ONE &&
-        context->dest_blend == V9X_D3DBLEND_ZERO) {
+    if (draw->src_blend == V9X_R3D_BLEND_ONE &&
+        draw->dst_blend == V9X_R3D_BLEND_ZERO) {
         return;
     }
-    src = v9x_d3d_i9xx_blend_factor(context->src_blend);
-    dst = v9x_d3d_i9xx_blend_factor(context->dest_blend);
+    src = v9x_d3d_i9xx_blend_factor(draw->src_blend);
+    dst = v9x_d3d_i9xx_blend_factor(draw->dst_blend);
     if (src == 0ul || dst == 0ul) {
         ++v9x_hal->d3d_diagnostics.blend_skipped;
         v9x_hal->d3d_diagnostics.blend_last_pair =
-            (context->src_blend << 16) | (context->dest_blend & 0xfffful);
+            (draw->src_blend << 16) | (draw->dst_blend & 0xfffful);
         return;
     }
     *src_out = src;
@@ -1608,14 +1608,14 @@ static void v9x_d3d_i9xx_bind_blend(const V9X_D3D_CONTEXT *context,
  * it does not. Anything else the application sets is drawn as MODULATE,
  * the one operation published besides MODULATEALPHA.
  */
-static DWORD v9x_d3d_i9xx_texture_program(const V9X_D3D_CONTEXT *context,
+static DWORD v9x_d3d_i9xx_texture_program(const V9X_R3D_DRAW *draw,
                                           DWORD format)
 {
-    if (context->texture_blend == V9X_D3DTBLEND_MODULATEALPHA) {
+    if (draw->texture.op == V9X_R3D_TEXOP_MODULATEALPHA) {
         return V9X_I9XX_TEXPROG_MODULATE_ALPHA;
     }
     /* DECAL, from 2026-09-25: the texel alone, the vertex colour unused. */
-    if (context->texture_blend == V9X_D3DTBLEND_DECAL) {
+    if (draw->texture.op == V9X_R3D_TEXOP_DECAL) {
         return V9X_I9XX_TEXPROG_DECAL;
     }
     if (format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 ||
@@ -1625,7 +1625,7 @@ static DWORD v9x_d3d_i9xx_texture_program(const V9X_D3D_CONTEXT *context,
     return V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA;
 }
 
-static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_i9xx_bind_depth_surface(const V9X_R3D_DRAW *draw,
                                            DWORD *offset_out,
                                            DWORD *pitch_out,
                                            DWORD *writes_out,
@@ -1644,7 +1644,7 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
      */
     *compare_out = V9X_I9XX_COMPAREFUNC_LESS;
 
-    if (context->depth_offset == 0ul || context->z_enable == 0ul) {
+    if (draw->depth.offset == 0ul || draw->depth_enable == 0ul) {
         return 0;
     }
     /*
@@ -1663,22 +1663,22 @@ static int v9x_d3d_i9xx_bind_depth_surface(V9X_D3D_CONTEXT *context,
      * some other comparison into a scene that asked for one this driver did
      * not recognise.
      */
-    if (v9x_i9xx_depth_func(context->z_func, &compare) == V9X_FALSE) {
+    if (v9x_i9xx_depth_func(draw->depth_func, &compare) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
-        v9x_hal->d3d_diagnostics.i9xx_depth_last_func = context->z_func;
+        v9x_hal->d3d_diagnostics.i9xx_depth_last_func = draw->depth_func;
         return 0;
     }
-    if (v9x_d3d_i9xx_bind_depth(context->depth_offset, context->depth_pitch,
-                                context->width, context->height,
+    if (v9x_d3d_i9xx_bind_depth(draw->depth.offset, draw->depth.pitch,
+                                draw->target.width, draw->target.height,
                                 v9x_hal->fb.vram_bytes,
                                 &address) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
         return 0;
     }
     *offset_out = address;
-    *pitch_out = context->depth_pitch;
+    *pitch_out = draw->depth.pitch;
     *compare_out = compare;
-    *writes_out = context->z_write != 0ul ? 1ul : 0ul;
+    *writes_out = draw->depth_write != 0ul ? 1ul : 0ul;
     return 1;
 }
 
@@ -2016,7 +2016,7 @@ static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
 static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
 static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
 
-static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                             const V9X_D3DTLVERTEX *vertices,
                                             DWORD triangle_count);
 
@@ -2074,15 +2074,18 @@ static void v9x_d3d_i9xx_note_batch(const V9X_D3DTLVERTEX *vertices,
 }
 
 /* The engine's whole draw, timed; the work is in the body. */
-static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
-                                       const V9X_D3DTLVERTEX *vertices,
-                                       DWORD triangle_count)
+static int v9x_d3d_i9xx_draw(const V9X_R3D_DRAW *draw,
+                             const V9X_R3D_VERTEX *r3d_vertices,
+                             DWORD triangle_count)
 {
+    /* The same layout, asserted in d3d_core.c; the stream builders below
+     * are written on the D3DTLVERTEX field names and stay so. */
+    const V9X_D3DTLVERTEX *vertices = (const V9X_D3DTLVERTEX *)r3d_vertices;
     DWORD started = V9X_TIME_BEGIN();
     int ok;
 
     v9x_d3d_i9xx_last_head_cycles = 0ul;
-    ok = v9x_d3d_i9xx_draw_triangles_body(context, vertices, triangle_count);
+    ok = v9x_d3d_i9xx_draw_triangles_body(draw, vertices, triangle_count);
     V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
     if (ok && V9X_TIME_ENABLED() && v9x_d3d_i9xx_last_head_cycles != 0ul &&
         vertices != 0) {
@@ -2092,7 +2095,7 @@ static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
     return ok;
 }
 
-static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                             const V9X_D3DTLVERTEX *vertices,
                                             DWORD triangle_count)
 {
@@ -2122,7 +2125,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     DWORD map_bytes = 0ul;
     DWORD alpha_test = 0ul;
 
-    if (context == 0 || vertices == 0 || triangle_count == 0ul) {
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
     }
     /*
@@ -2144,8 +2147,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
      * against what this produced, which cannot catch an engine that was wrong
      * about the surface, and this is what makes sure it was not.
      */
-    if (v9x_d3d_i9xx_bind_target(context->target_offset, context->pitch,
-                                 context->width, context->height,
+    if (v9x_d3d_i9xx_bind_target(draw->target.offset, draw->target.pitch,
+                                 draw->target.width, draw->target.height,
                                  v9x_hal->fb.vram_bytes,
                                  &identity, &address) == V9X_FALSE) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
@@ -2187,14 +2190,14 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
             for (slot = 0ul; slot < count &&
                              slot < (DWORD)V9X_D3D_TARGET_SLOTS; ++slot) {
                 if (v9x_hal->d3d_diagnostics.draw_target_offset[slot] ==
-                        context->target_offset) {
+                        draw->target.offset) {
                     break;
                 }
             }
             if (slot < (DWORD)V9X_D3D_TARGET_SLOTS) {
                 if (slot == count) {
                     v9x_hal->d3d_diagnostics.draw_target_offset[slot] =
-                        context->target_offset;
+                        draw->target.offset;
                     ++v9x_hal->d3d_diagnostics.draw_target_count;
                 }
                 ++v9x_hal->d3d_diagnostics.draw_target_draws[slot];
@@ -2205,12 +2208,12 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
 
         if (displayed != 0xfffffffful) {
             v9x_hal->d3d_diagnostics.draws_target_last =
-                context->target_offset;
+                draw->target.offset;
             v9x_hal->d3d_diagnostics.draws_displayed_last = displayed;
-            v9x_hal->d3d_diagnostics.draws_pitch_last = context->pitch;
+            v9x_hal->d3d_diagnostics.draws_pitch_last = draw->target.pitch;
             v9x_hal->d3d_diagnostics.draws_extent_last =
-                (context->width << 16) | (context->height & 0xfffful);
-            if (displayed == context->target_offset) {
+                (draw->target.width << 16) | (draw->target.height & 0xfffful);
+            if (displayed == draw->target.offset) {
                 ++v9x_hal->d3d_diagnostics.draws_to_front;
             } else {
                 ++v9x_hal->d3d_diagnostics.draws_to_back;
@@ -2224,11 +2227,11 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
      * un-Z'd, both counted. A hole in the frame is worse than a wrong colour
      * in it, and the counters are what keep the fallback from being silent.
      */
-    textured = v9x_d3d_i9xx_bind_texture(context, &map, &map_bytes);
-    depthed = v9x_d3d_i9xx_bind_depth_surface(context, &depth_offset,
+    textured = v9x_d3d_i9xx_bind_texture(draw, &map, &map_bytes);
+    depthed = v9x_d3d_i9xx_bind_depth_surface(draw, &depth_offset,
                                               &depth_pitch, &depth_writes,
                                               &depth_compare);
-    v9x_d3d_i9xx_bind_blend(context, &blend_src, &blend_dst);
+    v9x_d3d_i9xx_bind_blend(draw, &blend_src, &blend_dst);
     /*
      * ALPHATESTENABLE, ALPHAFUNC and ALPHAREF, as S6's alpha test - the
      * three fields the Phase 6 scene measured rejecting by alpha (intel47).
@@ -2237,14 +2240,14 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
      * function outside D3DCMP's range draws untested and is counted, as the
      * ViRGE counts every alpha test it cannot draw.
      */
-    if (v9x_i9xx_alpha_test_bits(context->alpha_test_enable,
-                                 context->alpha_func, context->alpha_ref,
+    if (v9x_i9xx_alpha_test_bits(draw->alpha_test_enable,
+                                 draw->alpha_func, draw->alpha_ref,
                                  &alpha_test) == V9X_FALSE) {
         alpha_test = 0ul;
         ++v9x_hal->d3d_diagnostics.alpha_test_unexpressed;
     }
     if (textured != 0) {
-        program = v9x_d3d_i9xx_texture_program(context, map.format);
+        program = v9x_d3d_i9xx_texture_program(draw, map.format);
         /*
          * WRAPU / WRAPV, by the hardware: the S3 wrap-shortest bits of
          * coordinate set 0. Only with a texture, because an untextured draw
@@ -2255,10 +2258,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
          * long way round the whole cylinder
          * (docs\decisions\2026-09-24-3d-winbench-98-quality-on-the-netbook.md).
          */
-        if (context->wrap_u != 0ul) {
+        if (draw->texture.wrap_u != 0ul) {
             cylinder |= V9X_I9XX_CYLINDER_U;
         }
-        if (context->wrap_v != 0ul) {
+        if (draw->texture.wrap_v != 0ul) {
             cylinder |= V9X_I9XX_CYLINDER_V;
         }
     }
@@ -2309,8 +2312,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     }
     stream[at++] = V9X_I9XX_MI_FLUSH_READ;
 
-    if (v9x_i9xx_build_runtime_state(context->target_offset, context->pitch,
-                                     context->width, context->height,
+    if (v9x_i9xx_build_runtime_state(draw->target.offset, draw->target.pitch,
+                                     draw->target.width, draw->target.height,
                                      textured != 0 ? &map : 0,
                                      depth_offset, depth_pitch, depth_writes,
                                      depth_compare,
@@ -2340,11 +2343,11 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     if ((textured != 0
             ? v9x_i9xx_build_textured_runtime_run(
                   xyzw, colors, uv, triangle_count,
-                  context->width, context->height, stream + at,
+                  draw->target.width, draw->target.height, stream + at,
                   V9X_I9XX_SUBMIT_DWORDS - at, &produced)
             : v9x_i9xx_build_runtime_run(
                   xyzw, colors, triangle_count,
-                  context->width, context->height, stream + at,
+                  draw->target.width, draw->target.height, stream + at,
                   V9X_I9XX_SUBMIT_DWORDS - at, &produced))
             != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
@@ -2421,11 +2424,11 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
      * is the whole point: the builders and the decoder are two opinions, and
      * a stream that reaches the ring has passed both.
      */
-    limits.target_offset = context->target_offset;
-    limits.target_bytes = context->pitch * context->height;
-    limits.target_pitch = context->pitch;
-    limits.target_width = context->width;
-    limits.target_height = context->height;
+    limits.target_offset = draw->target.offset;
+    limits.target_bytes = draw->target.pitch * draw->target.height;
+    limits.target_pitch = draw->target.pitch;
+    limits.target_width = draw->target.width;
+    limits.target_height = draw->target.height;
     limits.texture_offset = textured != 0 ? map.offset : 0ul;
     /*
      * Non-zero is what tells the decoder this stream samples, and the value is
@@ -2445,7 +2448,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     limits.blend_dst = blend_dst;
     limits.texture_program = program;
     limits.depth_offset = depth_offset;
-    limits.depth_bytes = depthed != 0 ? context->height * depth_pitch : 0ul;
+    limits.depth_bytes = depthed != 0 ? draw->target.height * depth_pitch : 0ul;
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = depth_writes;
     limits.depth_compare = depth_compare;
@@ -2545,12 +2548,19 @@ static int v9x_d3d_i9xx_ready(void)
     return 1;
 }
 
+/*
+ * Positional; draw_triangles is null and the neutral draw entry is set
+ * (Phase 1d of the OpenGL plan, 2026-09-26): this engine reads nothing
+ * from V9X_D3D_CONTEXT. The texture is the object the core resolved once
+ * per batch, and the mip-tree and bind checks read it as they always did.
+ */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {
     &v9x_d3d_i9xx_limits,
     v9x_d3d_i9xx_texture_format,
     v9x_d3d_i9xx_describe_caps,
-    v9x_d3d_i9xx_draw_triangles,
+    0,
     v9x_d3d_i9xx_ready,
     v9x_d3d_i9xx_create_surface,
-    v9x_d3d_i9xx_destroy_surface
+    v9x_d3d_i9xx_destroy_surface,
+    v9x_d3d_i9xx_draw
 };
