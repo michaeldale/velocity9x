@@ -414,9 +414,11 @@ below is its own commit with its own gate.
     V9XDDP on MICHAEL-NETBOOK identical before (0.8.1-era driver) and after
     outside one HAL code address; the netbook's callbacks also hold the
     Win16 mutex at every site. All three engines are on `draw` and
-    `draw_triangles` is null everywhere (1e). Owed for the Phase 1 record:
-    3DMark 99 and 3D WinBench 98 on the netbook (operator-run), Final
-    Reality on 86Box, the A8U4I5.
+    `draw_triangles` is null everywhere (1e). **3DMark 99 done 2026-09-26**
+    (`2026-09-26-phase1-netbook-3dmark99-669-against-643.md`): 669 at
+    1024x576 against the 643 reference, no regression; the gain is not
+    attributed. Owed for the Phase 1 record: 3D WinBench 98 on the netbook,
+    Final Reality on 86Box, the A8U4I5.
 - **1e.** Set `draw_triangles` to null in all three tables. The member stays,
   so the positional initialisers do not shift.
 - **check-tree.** Extend the chip-neutral rule (`check-tree.ps1:434`, which is

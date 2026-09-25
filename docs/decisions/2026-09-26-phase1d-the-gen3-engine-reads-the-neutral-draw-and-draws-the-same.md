@@ -53,7 +53,9 @@ probe has no windowed blit).
   (within noise of 643) and the 3D WinBench 98 quality suite on this
   machine, which earlier records ran with an operator at the keyboard;
   Final Reality on the 86Box ViRGE; the physical A8U4I5. Nothing in the
-  tree launches those from the agent.
+  tree launches those from the agent. *Later the same day:* 3DMark 99 ran
+  through the agent and scored 669
+  (`2026-09-26-phase1-netbook-3dmark99-669-against-643.md`).
 
 ## Standing
 
