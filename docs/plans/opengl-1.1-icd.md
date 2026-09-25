@@ -389,6 +389,13 @@ below is its own commit with its own gate.
 - **1c. `d3d_state.c` (pure) translates D3D state to r3d.** Its host test is
   `test_d3d_state.c`. It is called from `v9x_d3d_apply_state`
   (`d3d_core.c:1526`), and the raw fields stay in `V9X_D3D_CONTEXT`.
+  - **1b and 1c done 2026-09-26** (commit after Phase 1a): `r3d.h` carries
+    `V9X_R3D_DRAW` with D3D's numbers for the shared vocabulary, asserted in
+    `d3d_state.c`; `ops->draw` is appended and null in every engine; the
+    core builds the description per batch (`v9x_d3d_describe_draw`) and
+    dispatches on `draw` when set. The translation is called per batch
+    rather than from `apply_state`, since it is the identity and the raw
+    fields are the DDI's; the surfaces are resolved by the core.
 - **1d. One engine per commit** moves to `draw`: soft, then virge, then i9xx.
   Each is gated on its own machine. The ViRGE colour-key rewrite stays in the
   engine, driven by `color_key_enable` and the texture LCL.

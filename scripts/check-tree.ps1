@@ -463,7 +463,10 @@ $r3dDir = Join-Path $repoRoot "src\display32\r3d"
 if (-not (Test-Path -LiteralPath $r3dDir)) {
     throw "src\display32\r3d is missing; the neutral render core expects it."
 }
-foreach ($r3dFile in @(Get-ChildItem -LiteralPath $r3dDir -File)) {
+# d3d_state.c is the D3D front end's translation into that core and is held
+# to the same rule: it names Direct3D's numbers, never its headers.
+foreach ($r3dFile in @(Get-ChildItem -LiteralPath $r3dDir -File) +
+                     @(Get-Item -LiteralPath (Join-Path $repoRoot "src\display32\d3d\d3d_state.c"))) {
     $text = Get-Content -LiteralPath $r3dFile.FullName -Raw
     foreach ($forbidden in @('v9x_mmio_write', 'v9x_mmio_read', 'V9X_VIRGE_',
                              'V9X_TRIO_', 'V9X_I9XX_', 'V9X_DD_', 'V9X_D3DHAL_',

@@ -73,6 +73,10 @@ unsigned int v9x_run_r3d_cull_tests(void);
  * against what d3d_core.c did before the move, same convention. */
 unsigned int v9x_run_r3d_clip_tests(void);
 
+/* tests\host\test_d3d_state.c: the Direct3D-to-neutral state routing and
+ * the vocabulary's numbers against d3dtypes.h, same convention. */
+unsigned int v9x_run_d3d_state_tests(void);
+
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
 unsigned int v9x_run_donewait_tests(void);
@@ -1068,6 +1072,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_raster_tests();
     failures += v9x_run_r3d_cull_tests();
     failures += v9x_run_r3d_clip_tests();
+    failures += v9x_run_d3d_state_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
     failures += v9x_run_i9xx_cover_tests();

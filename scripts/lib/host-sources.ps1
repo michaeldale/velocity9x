@@ -68,6 +68,9 @@ function Get-V9xHostSourceNames {
         # and the cull decision, shared by the D3D core and the OpenGL ICD.
         'src\display32\r3d\r3d_clip.c',
         'src\display32\r3d\r3d_cull.c',
+        # Direct3D render state to the neutral draw: the identity, asserted.
+        'src\display32\d3d\d3d_state.c',
+        'tests\host\test_d3d_state.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',

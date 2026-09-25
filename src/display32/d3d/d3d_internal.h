@@ -23,6 +23,9 @@
 #define VELOCITY9X_D3D_INTERNAL_H
 
 #include "ddhal_internal.h"
+/* The neutral render core's vertex and draw description, which the ops
+ * table's `draw` entry takes. */
+#include "r3d/r3d.h"
 
 #define V9X_D3D_CONTEXT_COUNT 16u
 #define V9X_D3D_TEXTURE_COUNT 256u
@@ -395,6 +398,21 @@ typedef struct v9x_d3d_engine_ops {
      */
     DWORD (*create_surface)(V9X_DDHAL_CREATESURFACEDATA *data);
     void (*destroy_surface)(V9X_DDHAL_DESTROYSURFACEDATA *data);
+
+    /*
+     * The neutral draw entry, APPENDED 2026-09-26 under the same rule as
+     * `ready` (docs\plans\opengl-1.1-icd.md, Phase 1b). Null for an engine
+     * still on draw_triangles, which the positional initialisers get by
+     * omission; the core calls draw when it is set and draw_triangles
+     * otherwise. The description carries what the engine used to read from
+     * V9X_D3D_CONTEXT - the surfaces resolved by the core, the render state
+     * through d3d_state.c - so an engine on this entry reads no context and
+     * can serve a front end that has none. Engines move one at a time
+     * (Phase 1d) and draw_triangles is retired when the last has.
+     */
+    int (*draw)(const V9X_R3D_DRAW *draw,
+                const V9X_R3D_VERTEX *vertices,
+                DWORD triangle_count);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

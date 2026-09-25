@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include "r3d/r3d.h"
 #include "r3d/r3d_cull.h"
+#include "d3d_state.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -250,6 +251,75 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
  * goes with it: a trace that cannot name the context cannot tell a second
  * context's target from the same context rebound.
  */
+/*
+ * The batch as the neutral core describes it, from the context: the three
+ * surfaces resolved here, because they are DirectDraw's, and the render
+ * state through d3d_state.c, whose identity mapping the compiler checks.
+ * An engine on ops->draw reads this and nothing else of the context.
+ *
+ * The texture is resolved once per batch rather than once per triangle as
+ * the engines did through v9x_d3d_context_texture_surface, so the
+ * draws_no_handle and draws_handle_unresolved counters count batches from
+ * here on (docs\plans\opengl-1.1-icd.md, Phase 1b).
+ */
+static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
+{
+    V9X_D3D_STATE_RAW raw;
+
+    draw->target.offset = context->target_offset;
+    draw->target.pitch = context->pitch;
+    draw->target.width = context->width;
+    draw->target.height = context->height;
+    draw->target.format = context->target_format;
+    draw->target.object = context->target;
+    draw->depth.offset = context->depth_offset;
+    draw->depth.pitch = context->depth_pitch;
+    draw->depth.width = context->width;
+    draw->depth.height = context->height;
+    draw->depth.format = 0ul;
+    draw->depth.object = context->zbuffer;
+    draw->texture.object = v9x_d3d_context_texture_surface(context);
+    raw.z_enable = context->z_enable;
+    raw.z_write = context->z_write;
+    raw.z_func = context->z_func;
+    raw.alpha_blend_enable = context->alpha_blend_enable;
+    raw.src_blend = context->src_blend;
+    raw.dest_blend = context->dest_blend;
+    raw.texture_min = context->texture_min;
+    raw.texture_mag = context->texture_mag;
+    raw.texture_blend = context->texture_blend;
+    raw.texture_address = context->texture_address;
+    raw.texture_border = context->texture_border;
+    raw.texture_wrap = context->texture_wrap;
+    raw.wrap_u = context->wrap_u;
+    raw.wrap_v = context->wrap_v;
+    raw.shade_mode = context->shade_mode;
+    raw.specular_enable = context->specular_enable;
+    raw.fog_enable = context->fog_enable;
+    raw.fog_color = context->fog_color;
+    raw.alpha_test_enable = context->alpha_test_enable;
+    raw.alpha_func = context->alpha_func;
+    raw.alpha_ref = context->alpha_ref;
+    raw.alpha_force = context->alpha_force;
+    raw.color_key_enable = context->color_key_enable;
+    v9x_d3d_state_fill(&raw, draw);
+}
+
+/* One batch to the engine, by whichever entry it serves. */
+static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
+                                 V9X_D3D_CONTEXT *context,
+                                 const V9X_D3DTLVERTEX *vertices,
+                                 DWORD triangle_count)
+{
+    V9X_R3D_DRAW draw;
+
+    if (ops->draw == 0) {
+        return ops->draw_triangles(context, vertices, triangle_count);
+    }
+    v9x_d3d_describe_draw(context, &draw);
+    return ops->draw(&draw, (const V9X_R3D_VERTEX *)vertices, triangle_count);
+}
+
 static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
                               V9X_D3D_CONTEXT *context,
                               const V9X_D3DTLVERTEX *vertices,
@@ -290,7 +360,8 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
      */
     {
         DWORD before = v9x_present_submissions();
-        int ok = ops->draw_triangles(context, vertices, triangle_count);
+        int ok = v9x_d3d_dispatch_draw(ops, context, vertices,
+                                       triangle_count);
         int submitted = v9x_present_submissions() != before ? 1 : 0;
 
         /*
