@@ -28,3 +28,4 @@
 - [Intel Phase 4: the first write, designed to make one boot answer everything](intel-phase4-first-write-design.md) - Design for approval; nothing coded.
 - [Intel Gen3: DirectDraw blits through the ring](intel-gen3-directdraw-blits.md) - Open; needs its own errata decision before the first armed boot.
 - [OpenGL 1.1 ICD on a render core shared with Direct3D](opengl-1.1-icd.md) - Design for approval; nothing coded.
+- [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
