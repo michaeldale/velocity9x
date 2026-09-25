@@ -272,7 +272,9 @@ versions are recorded.
    is a prerequisite for fallback.
 6. **Generic GL as a reference.** Check that a probe can choose a generic
    format with the ICD installed, and that a controlled scene hashes the
-   same twice. Match colour/depth precision, dimensions and relevant state,
+   same twice. **Half measured 2026-09-26** (baseline run in the Phase 0.9
+   record): the generic renderer is 24 formats, "GDI Generic" 1.1.0, and
+   serves a clear and swap; the hash check waits on a scene. Match colour/depth precision, dimensions and relevant state,
    including dithering; cover both 565 and 555 where available. Record exact
    state/error assertions separately from image comparisons. Define image
    tolerances and their specification-based justification before accepting
@@ -315,6 +317,15 @@ versions are recorded.
      process", while the build marks every section shared (`:179-191`).
    - Record the result before investing in the full refactor, and reuse the
      probe for the Windows 95 feasibility check.
+   - **98SE measured 2026-09-26**
+     (`2026-09-26-98se-opengl32-loads-the-icd-lists-its-format-first-and-creates-every-context-through-layer-0.md`):
+     the contract holds. Two things it adds to Phase 3: contexts are created
+     through `DrvCreateLayerContext(hdc, 0)`, never `DrvCreateContext`; and
+     OPENGL32 calls `glFinish` before `DrvSwapBuffers` and `glFlush` after,
+     through the table. `src/opengl/gl_icd.c`, the generator
+     `scripts/lib/gl-dispatch.ps1` and `tests/host/test_gl_dispatch.c` are
+     the probe and stay as Phase 3's skeleton. The one 16-bit format was
+     chosen for GLQuake's request and not for 3D Pipes'.
 
 Repeat the OS-sensitive clipped-Blt, INT-to-LCL, surface restore and mode-change
 checks on original Windows 98 and ME as well as 98SE. Keep the GL front end

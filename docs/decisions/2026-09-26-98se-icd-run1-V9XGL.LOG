@@ -1,0 +1,64 @@
+1 pid=FFFDA5FF attach instance=005C0000 build-marker=1
+2 pid=FFFDA5FF DrvValidateVersion version=1
+3 pid=FFFDA5FF DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+5 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+6 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=40 pfd=0054FDEC
+7 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+8 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+9 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+10 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+11 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+12 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+13 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+14 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+15 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+16 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+17 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+18 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+19 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+20 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+21 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+22 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+23 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+24 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+25 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+26 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+27 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+28 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+29 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+30 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+31 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+32 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=40 pfd=0054FD74
+33 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+34 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+35 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+36 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+37 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+38 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+39 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+40 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+41 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+42 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+43 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+44 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+45 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+46 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+47 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+48 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+49 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+50 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+51 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+52 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+53 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+54 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+55 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+56 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+57 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+58 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=40 pfd=0054FDEC
+59 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+60 pid=FFFDA5FF DrvSetPixelFormat hdc=0000077E index=1
+61 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+62 pid=FFFDA5FF DrvDescribePixelFormat index=1 bytes=40 pfd=0054FD78
+63 pid=FFFDA5FF DrvCreateLayerContext hdc=0000077E layer=0
+64 pid=FFFDA5FF detach slots-called=0 stub-calls=0

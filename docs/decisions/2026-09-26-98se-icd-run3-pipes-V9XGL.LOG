@@ -1,0 +1,13 @@
+1 pid=FFFECE4B attach instance=00AF0000 build-marker=1
+2 pid=FFFECE4B DrvValidateVersion version=1
+3 pid=FFFECE4B DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+5 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=40 pfd=0056F970
+6 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+7 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+8 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+9 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+10 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+11 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+12 pid=FFFECE4B DrvDescribePixelFormat index=1 bytes=0 pfd=00000000
+13 pid=FFFECE4B detach slots-called=0 stub-calls=0

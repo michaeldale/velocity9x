@@ -120,6 +120,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 98SE's OPENGL32 asks the display driver QUERYESCSUPPORT(0x1101), then OPENGL_GETINFO with an unprimed buffer, seven times for one screensaver, and falls back to its own renderer when the name has no registry value](2026-09-26-98se-opengl32-asks-the-display-driver-through-escape-0x1101-seven-times.md)
 - [2026-09-26 DirectDraw 6.1a holds the Win16 mutex around every HAL callback measured on 98SE, at depth 1 everywhere and depth 2 inside Lock](2026-09-26-98se-directdraw-holds-the-win16-mutex-around-every-hal-callback-measured.md)
 - [2026-09-26 On 98SE a clipped windowed blit reaches the HAL as one call per visible rectangle with rDest already clipped, and an application can walk INT to LCL to GBL and find what the HAL sees](2026-09-26-98se-clipped-blits-arrive-one-hal-call-per-rectangle-and-an-application-can-walk-int-lcl-gbl.md)
+- [2026-09-26 98SE's OPENGL32 loads the ICD, lists its pixel format first, creates every context through DrvCreateLayerContext with layer 0, and calls the 336-slot table it is handed](2026-09-26-98se-opengl32-loads-the-icd-lists-its-format-first-and-creates-every-context-through-layer-0.md)
 
 ## VBE generic family and dynamic modes
 

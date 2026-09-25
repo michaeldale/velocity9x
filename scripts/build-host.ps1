@@ -41,6 +41,10 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 # manifests; see scripts\lib\family-matrix.ps1 for why.
 . (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
 $null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
+# And the OpenGL dispatch table, generated from its manifest for the same
+# reason; see scripts\lib\gl-dispatch.ps1.
+. (Join-Path $PSScriptRoot "lib\gl-dispatch.ps1")
+$null = Write-V9xGlDispatchHeader -RepoRoot $repoRoot -OutputDir $outputDir
 
 # Both compilers consume one portable source list, with the Watcom-only x87
 # converter and its test selected explicitly by the shared helper.

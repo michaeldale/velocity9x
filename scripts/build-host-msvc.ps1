@@ -79,6 +79,8 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 # a header the Watcom build happened to leave behind.
 . (Join-Path $PSScriptRoot "lib\family-matrix.ps1")
 $null = Write-V9xFamilyMatrixHeader -RepoRoot $repoRoot -OutputDir $outputDir
+. (Join-Path $PSScriptRoot "lib\gl-dispatch.ps1")
+$null = Write-V9xGlDispatchHeader -RepoRoot $repoRoot -OutputDir $outputDir
 
 # Both compilers consume one portable source list, with the Watcom-only x87
 # converter and its test selected explicitly by the shared helper.

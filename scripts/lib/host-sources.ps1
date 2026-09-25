@@ -34,6 +34,9 @@ function Get-V9xHostSourceNames {
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
         'tests\host\test_pe_export.c',
+        # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
+        # executable), asserted against the two reference headers' order.
+        'tests\host\test_gl_dispatch.c',
         # Intel Gen3 read-only fingerprint decoding; no MMIO access here.
         'src\chipsets\intel\i9xx_mmio.c',
         # Scanline/frame-counter summary; the HAL reads, this counts.
