@@ -750,7 +750,7 @@ static void emit_intel_3d_reference(void)
     vertices[2].x = V9X_I9XX_TRI_X2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
     vertices[2].y = V9X_I9XX_TRI_Y2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
 
-    if (v9x_d3d_raster_triangle(&target, 0, 0, 0, vertices) == 0) {
+    if (v9x_d3d_raster_triangle(&target, 0, 0, 0, 0, vertices) == 0) {
         printf("REFERROR=raster\n");
         return;
     }

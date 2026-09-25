@@ -372,6 +372,11 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
         texture->address != V9X_D3D_RASTER_ADDRESS_CLAMP) {
         return 0;
     }
+    if (texture->alpha != V9X_D3D_RASTER_TEXALPHA_IGNORE &&
+        texture->alpha != V9X_D3D_RASTER_TEXALPHA_REPLACE &&
+        texture->alpha != V9X_D3D_RASTER_TEXALPHA_MODULATE) {
+        return 0;
+    }
     /* Each dimension a power of two within the bounds, checked rather than
      * assumed: the sampler wraps each texel index with (extent - 1) as a
      * mask, and on a non-power-of-two extent that mask indexes outside the
@@ -397,6 +402,21 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
         }
     }
     if (texture->pitch < texture->width * 2ul) {
+        return 0;
+    }
+    return 1;
+}
+
+int v9x_d3d_raster_alpha_test_valid(const V9X_D3D_RASTER_ALPHA_TEST *test)
+{
+    if (test == 0) {
+        return 0;
+    }
+    if (test->compare < V9X_D3D_RASTER_CMP_NEVER ||
+        test->compare > V9X_D3D_RASTER_CMP_ALWAYS) {
+        return 0;
+    }
+    if (test->reference < 0l || test->reference > 255l) {
         return 0;
     }
     return 1;
@@ -516,7 +536,29 @@ typedef struct V9X_D3D_RASTER_SAMPLER {
     V9X_D3D_RASTER_FIELD red;
     V9X_D3D_RASTER_FIELD green;
     V9X_D3D_RASTER_FIELD blue;
+    /* The texel's alpha: none (opaque), one bit at 15, or four bits at 12;
+     * and what the span does with it, one of V9X_D3D_RASTER_TEXALPHA_*. */
+    v9x_u32 alpha_bits;
+    v9x_u32 alpha_op;
 } V9X_D3D_RASTER_SAMPLER;
+
+/*
+ * A texel's alpha as 0..255. One bit is all or nothing; four bits replicate
+ * as the colour fields do (17 * v); a format with none is opaque. Not a
+ * V9X_D3D_RASTER_FIELD because the one-bit case's replication shift would
+ * be negative in that formula.
+ */
+static v9x_s32 v9x_d3d_raster_texel_alpha(const V9X_D3D_RASTER_SAMPLER *sampler,
+                                          v9x_u32 word)
+{
+    if (sampler->alpha_bits == 1ul) {
+        return (word & 0x8000ul) != 0ul ? 255l : 0l;
+    }
+    if (sampler->alpha_bits == 4ul) {
+        return (v9x_s32)(((word >> 12) & 0xful) * 17ul);
+    }
+    return 255l;
+}
 
 static void v9x_d3d_raster_field(V9X_D3D_RASTER_FIELD *field, v9x_s32 shift,
                                  v9x_s32 width)
@@ -551,6 +593,9 @@ static void v9x_d3d_raster_sampler_start(
     sampler->linear = texture->filter == V9X_D3D_RASTER_FILTER_LINEAR;
     sampler->clamp = texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP;
     sampler->modulate = texture->blend == V9X_D3D_RASTER_BLEND_MODULATE;
+    sampler->alpha_op = texture->alpha;
+    sampler->alpha_bits = texture->format == V9X_D3D_RASTER_TEXFMT_ARGB1555 ? 1ul
+        : (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444 ? 4ul : 0ul);
 
     if (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444) {
         v9x_d3d_raster_field(&sampler->red, 8l, 4l);
@@ -619,7 +664,8 @@ static void v9x_d3d_raster_sampler_start(
  */
 static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
                                   v9x_s32 su, v9x_s32 sv,
-                                  v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
+                                  v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue,
+                                  v9x_s32 *texel_alpha)
 {
     const v9x_u16 *row;
     v9x_u32 word;
@@ -654,6 +700,13 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
         *red = (r00 * w00 + r10 * w10 + r01 * w01 + r11 * w11) >> 16;
         *green = (g00 * w00 + g10 * w10 + g01 * w01 + g11 * w11) >> 16;
         *blue = (b00 * w00 + b10 * w10 + b01 * w01 + b11 * w11) >> 16;
+        if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+            *texel_alpha =
+                (v9x_d3d_raster_texel_alpha(sampler, t00) * w00 +
+                 v9x_d3d_raster_texel_alpha(sampler, t10) * w10 +
+                 v9x_d3d_raster_texel_alpha(sampler, t01) * w01 +
+                 v9x_d3d_raster_texel_alpha(sampler, t11) * w11) >> 16;
+        }
         return;
     }
 
@@ -662,6 +715,9 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
                                 sampler->pitch);
     word = (v9x_u32)row[(su >> 16) & sampler->mask_u];
     V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
+    if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+        *texel_alpha = v9x_d3d_raster_texel_alpha(sampler, word);
+    }
 }
 
 /*
@@ -760,6 +816,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_DEPTH *depth,
                                 const V9X_D3D_RASTER_SAMPLER *sampler,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
+                                const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -801,6 +858,11 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     V9X_D3D_RASTER_PACK pack = v9x_d3d_raster_pack565;
     V9X_D3D_RASTER_UNPACK unpack = v9x_d3d_raster_unpack565;
     v9x_s32 depth_mask = 0l;
+    v9x_s32 alpha_test_mask = 0l;
+    /* Whether the fragment's alpha is consumed at all this span: by the
+     * blend, by the alpha test, or by a texel alpha op. When it is not, the
+     * per-pixel clamp and combine are skipped as they always were. */
+    int alpha_used = 0;
 
     if (first < 0l) {
         first = 0l;
@@ -858,6 +920,13 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             alpha->src == V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
     }
 
+    if (alpha_test != 0) {
+        alpha_test_mask = v9x_d3d_raster_depth_mask(alpha_test->compare);
+    }
+    alpha_used = alpha_varies || alpha_test != 0 ||
+                 (sampler != 0 &&
+                  sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE);
+
     if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         pack = v9x_d3d_raster_pack1555;
         unpack = v9x_d3d_raster_unpack1555;
@@ -872,6 +941,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     }
     for (column = first; column < last; ++column) {
         int visible = 1;
+        /* The depth the fragment will store, held until the alpha test has
+         * had its say: a discarded fragment writes neither colour nor depth,
+         * which is the pipeline's order in both APIs. */
+        v9x_s32 depth_fragment = 0l;
 
         if (depths != 0) {
             /* Clamped before the comparison, not after: the interpolator can
@@ -898,9 +971,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 relation = V9X_D3D_RASTER_RELATION_GREATER;
             }
             visible = (depth_mask & relation) != 0l;
-            if (visible && depth->write != 0ul) {
-                depths[column] = (v9x_u16)fragment;
-            }
+            depth_fragment = fragment;
         }
 
         if (visible) {
@@ -922,6 +993,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             v9x_s32 out_red = red >> V9X_D3D_RASTER_COLOUR_BITS;
             v9x_s32 out_green = green >> V9X_D3D_RASTER_COLOUR_BITS;
             v9x_s32 out_blue = blue >> V9X_D3D_RASTER_COLOUR_BITS;
+            /* The fragment's alpha, resolved only when something consumes
+             * it: the vertex's, then the texel's if the draw says so. */
+            v9x_s32 out_alpha = 255l;
+            v9x_s32 tex_alpha = 255l;
 
             V9X_D3D_RASTER_CLAMP255(out_red);
             V9X_D3D_RASTER_CLAMP255(out_green);
@@ -989,7 +1064,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 }
                 v9x_d3d_raster_sample(sampler, texel_u << sampler->shift_u,
                                       texel_v << sampler->shift_v,
-                                      &tex_red, &tex_green, &tex_blue);
+                                      &tex_red, &tex_green, &tex_blue,
+                                      &tex_alpha);
                 if (sampler->modulate) {
                     /* Both factors are 0..255 - the texel by decode, the
                      * interpolant by the clamp above - which is what puts the
@@ -1006,6 +1082,44 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 }
             }
 
+            if (alpha_used) {
+                out_alpha = fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS;
+                V9X_D3D_RASTER_CLAMP255(out_alpha);
+                if (sampler != 0) {
+                    if (sampler->alpha_op == V9X_D3D_RASTER_TEXALPHA_REPLACE) {
+                        out_alpha = tex_alpha;
+                    } else if (sampler->alpha_op ==
+                               V9X_D3D_RASTER_TEXALPHA_MODULATE) {
+                        out_alpha = V9X_D3D_RASTER_DIV255(tex_alpha * out_alpha +
+                                                          127l);
+                    }
+                }
+                if (alpha_test != 0) {
+                    v9x_s32 relation = V9X_D3D_RASTER_RELATION_EQUAL;
+
+                    if (out_alpha < alpha_test->reference) {
+                        relation = V9X_D3D_RASTER_RELATION_LESS;
+                    } else if (out_alpha > alpha_test->reference) {
+                        relation = V9X_D3D_RASTER_RELATION_GREATER;
+                    }
+                    if ((alpha_test_mask & relation) == 0l) {
+                        /* Discarded: no colour, no depth, and the
+                         * interpolants still step below. */
+                        red += red_step;
+                        green += green_step;
+                        blue += blue_step;
+                        fragment_alpha += alpha_step;
+                        z += z_step;
+                        u += u_step;
+                        v += v_step;
+                        continue;
+                    }
+                }
+            }
+            if (depths != 0 && depth->write != 0ul) {
+                depths[column] = (v9x_u16)depth_fragment;
+            }
+
             if (alpha != 0) {
                 v9x_u16 stored = pixels[column];
                 v9x_s32 dst_red;
@@ -1019,8 +1133,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                  * true; it is the span's own clamp, above, that now
                  * guarantees the range on every path into this arm. */
                 if (alpha_varies) {
-                    v9x_s32 weight = v9x_d3d_raster_weight(
-                        fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS);
+                    v9x_s32 weight = v9x_d3d_raster_weight(out_alpha);
 
                     if (alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA) {
                         source_weight = weight;
@@ -1077,6 +1190,7 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
                             const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_ALPHA *alpha,
+                            const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
@@ -1098,6 +1212,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     const V9X_D3D_RASTER_SAMPLER *bound = 0;
 
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
+        return 0;
+    }
+    /* Like the blend: null is off, and a non-null test that fails its own
+     * check is a caller error, refused rather than skipped. */
+    if (alpha_test != 0 && !v9x_d3d_raster_alpha_test_valid(alpha_test)) {
         return 0;
     }
     /* A null depth pointer is "no depth"; a non-null one that fails its own
@@ -1179,10 +1298,10 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
-            v9x_d3d_raster_span(target, depth, bound, alpha, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, row,
                                 &along.value, &across.value);
         } else {
-            v9x_d3d_raster_span(target, depth, bound, alpha, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, row,
                                 &across.value, &along.value);
         }
         if (row + 1l < last_row) {

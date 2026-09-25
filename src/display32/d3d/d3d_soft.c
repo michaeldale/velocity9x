@@ -426,6 +426,10 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
     }
     texture->pitch = (DWORD)surface->lpGbl->lPitch;
     texture->width = size;
+    /* No texel alpha for Direct3D's software engine yet: its caps publish
+     * none, and an alpha decoded and used would be the advertise-then-ignore
+     * pattern the other way round. */
+    texture->alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
     texture->height = size;
     texture->format = format;
     /*
@@ -1082,8 +1086,7 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
         if (wrapping) {
             v9x_d3d_soft_normalise(triangle);
         }
-        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg,
-                                     alpha_arg, triangle)) {
+        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg, alpha_arg, 0, triangle)) {
             return 0;
         }
     }

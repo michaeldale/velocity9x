@@ -97,8 +97,7 @@ static int v9x_bench_frame(DWORD scene, const V9X_D3D_RASTER_TARGET *target,
         v9x_bench_vertex(&triangle[0], x + 3l, y + 1l, 255l, 32l, 160l);
         v9x_bench_vertex(&triangle[1], x + width, y + 9l, 16l, 240l, 64l);
         v9x_bench_vertex(&triangle[2], x + 17l, y + height, 128l, 0l, 255l);
-        if (!v9x_d3d_raster_triangle(target, scene >= 4ul ? depth : 0,
-                scene >= 2ul ? texture : 0, scene == 5ul ? &alpha : 0, triangle)) {
+        if (!v9x_d3d_raster_triangle(target, scene >= 4ul ? depth : 0, scene >= 2ul ? texture : 0, scene == 5ul ? &alpha : 0, 0, triangle)) {
             return 0;
         }
     }
@@ -279,6 +278,7 @@ void __stdcall V9xSoftwareBenchEntry(void)
         texture.pitch = location ? (DWORD)locked[2].lPitch : target.pitch;
         texture.width = V9X_BENCH_TEX_SIZE;
         texture.height = V9X_BENCH_TEX_SIZE;
+        texture.alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
         texture.format = V9X_D3D_RASTER_TEXFMT_RGB565;
         texture.blend = V9X_D3D_RASTER_BLEND_MODULATE;
         texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;

@@ -274,7 +274,32 @@ typedef struct v9x_d3d_raster_texture {
     /* V9X_D3D_RASTER_ADDRESS_WRAP or _CLAMP. Render state like the two above
      * it, and per draw for the same reason. */
     v9x_u32 address;
+    /*
+     * What the texel's alpha does to the fragment's (Phase 2 of the OpenGL
+     * plan): IGNORE leaves the vertex alpha, which is what every draw did
+     * before this field existed; REPLACE takes the texel's; MODULATE
+     * multiplies the two. ARGB1555 carries one bit, ARGB4444 four, and
+     * RGB565 none, which decodes as opaque.
+     */
+    v9x_u32 alpha;
 } V9X_D3D_RASTER_TEXTURE;
+
+#define V9X_D3D_RASTER_TEXALPHA_IGNORE   0ul
+#define V9X_D3D_RASTER_TEXALPHA_REPLACE  1ul
+#define V9X_D3D_RASTER_TEXALPHA_MODULATE 2ul
+
+/*
+ * The alpha test: a fragment whose alpha does not stand in `compare`'s
+ * relation to `reference` is discarded before it writes colour or depth,
+ * which is the pipeline's order in both Direct3D and OpenGL. Per draw and
+ * null for off, like the blend. `compare` is a V9X_D3D_RASTER_CMP_* value
+ * and `reference` is 0..255.
+ */
+typedef struct v9x_d3d_raster_alpha_test {
+    v9x_u32 compare;
+    v9x_s32 reference;
+} V9X_D3D_RASTER_ALPHA_TEST;
+
 
 /*
  * How a fragment combines with what is already in the target.
@@ -375,6 +400,10 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture);
  */
 int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha);
 
+/* Whether an alpha test is one this rasterizer will apply: non-null, a known
+ * comparison and a reference inside 0..255. */
+int v9x_d3d_raster_alpha_test_valid(const V9X_D3D_RASTER_ALPHA_TEST *test);
+
 /*
  * Rasterize one triangle - exactly three vertices - into the target, testing
  * and updating `depth` if it is not null, sampling `texture` if it is not.
@@ -400,6 +429,7 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_DEPTH *depth,
                             const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_ALPHA *alpha,
+                            const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                             const V9X_D3D_RASTER_VERTEX *vertices);
 
 #endif
