@@ -22,6 +22,10 @@ unsigned int v9x_run_hw16_mode_tests(void);
  * convention. */
 unsigned int v9x_run_vbe_parse_tests(void);
 
+/* tests\host\test_pe_export.c: the PE32 export-by-ordinal walk against a
+ * synthetic image, same convention. */
+unsigned int v9x_run_pe_export_tests(void);
+
 /* tests\host\test_vbe_modes.c: runtime mode-table construction from the
  * family baseline plus the scanned BIOS list, same convention. */
 unsigned int v9x_run_vbe_modes_tests(void);
@@ -1044,6 +1048,7 @@ int main(int argc, char **argv)
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
+    failures += v9x_run_pe_export_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vbe_crtc_tests();
 #ifdef __WATCOMC__

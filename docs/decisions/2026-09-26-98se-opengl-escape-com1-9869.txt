@@ -1,0 +1,92 @@
+V9X-DRV disable
+V9X-MINI init build=a3a3e0d
+V9X-MINI power-callbacks-ok callbacks=4 build=a3a3e0d
+V9X-MINI advfunc-shield on build=a3a3e0d
+V9X-MINI vbe-collect disabled build=a3a3e0d
+V9X-DRV load build=1fa48b0-dirty
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-MINI regdd-calledV9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD opengl-query yes
+V9X-DD opengl-getinfo Velocity9x
+V9X-DD get32bitname
+V9X-DD newcallbackfns
+V9X-DD setinfo-ok
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=640x480x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=640x480x16
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=1024x768x16
+V9X-DD destroy-driver
+V9X-DRV disable
+V9X-MINI init build=a3a3e0d
+V9X-MINI power-callbacks-ok callbacks=4 build=a3a3e0d
+V9X-MINI advfunc-shield on build=a3a3e0d
+V9X-MINI vbe-collect disabled build=a3a3e0d
+V9X-DRV load build=1fa48b0-dirty
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-MINI regdd-calledV9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD get32bitname
+V9X-DD newcallbackfns
+V9X-DD setinfo-ok
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=640x480x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=640x480x16
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=1024x768x16
+V9X-DD destroy-driver
+V9X-DRV disable
+V9X-MINI init build=a3a3e0d
+V9X-MINI power-callbacks-ok callbacks=4 build=a3a3e0d
+V9X-MINI advfunc-shield on build=a3a3e0d
+V9X-MINI vbe-collect disabled build=a3a3e0d
+V9X-DRV load build=1fa48b0-dirty
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-MINI regdd-calledV9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD get32bitname
+V9X-DD newcallbackfns
+V9X-DD setinfo-ok
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=640x480x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=640x480x16
+V9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-DRV lfb=0xE0000000 bytes=0x00400000
+V9X-DRV enable-ok mode=1024x768x16 lfb-mapped
+V9X-DD setinfo-ok
+V9X-DRV switch-ok mode=1024x768x16
+V9X-DD destroy-driver

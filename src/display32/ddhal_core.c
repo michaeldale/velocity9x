@@ -877,6 +877,7 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
 
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
+    v9x_win16_sample(V9X_WIN16_SITE_CREATESURFACE);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -896,6 +897,7 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_DESTROYSURFACE,
                     data != 0 ? data->lpDDSurface : 0ul);
+    v9x_win16_sample(V9X_WIN16_SITE_DESTROYSURFACE);
     if (data != 0) {
         v9x_d3d_color_key_forget(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
@@ -955,6 +957,7 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
     DWORD result;
     DWORD started = V9X_TIME_BEGIN();
 
+    v9x_win16_sample(V9X_WIN16_SITE_FLIP);
     /* The first flip of the session, for the slow-start bracket. */
     if (v9x_hal != 0 && v9x_hal->d3d_diagnostics.uptime_first_flip == 0ul) {
         v9x_hal->d3d_diagnostics.uptime_first_flip = GetTickCount();
@@ -1061,7 +1064,10 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data);
 DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_lock_body(data);
+    DWORD result;
+
+    v9x_win16_sample(V9X_WIN16_SITE_LOCK);
+    result = v9x_lock_body(data);
 
     V9X_TIME_END(V9X_TIME_LOCK, started);
     if (V9X_TIME_ENABLED() && data->ddRVal == V9X_DD_OK) {
@@ -1662,6 +1668,7 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     int engine_used = 0;
 
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
+    v9x_win16_sample(V9X_WIN16_SITE_BLT);
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
     }
@@ -1789,6 +1796,10 @@ DWORD __stdcall DriverInit(DWORD context)
     }
     v9x_hal = shared;
     SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);
+    /* The Win16 mutex instrument: resolved from this process's KERNEL32
+     * mapping, which is the same in every process. */
+    v9x_win16_resolve();
+    v9x_win16_publish();
     /* A new mode is a new scanout: a flip left pending across the switch
      * would wait for a retrace of a timing that no longer exists. intel63
      * answered 54,688 Flips with WASSTILLDRAWING after a mode change. */

@@ -286,6 +286,16 @@ static void v9x_rdtsc_pair(DWORD *pair);
         } \
     }
 
+/*
+ * The Win16 mutex measurement, in win16lock.c. resolve walks KERNEL32 once
+ * (DriverInit, before v9x_hal may be read by anyone), publish writes the
+ * outcome into the shared block once v9x_hal is set, and sample records
+ * _ConfirmWin16Lock's answer under one of the V9X_WIN16_SITE_* slots.
+ */
+void v9x_win16_resolve(void);
+void v9x_win16_publish(void);
+void v9x_win16_sample(DWORD site);
+
 /* Bounded callback trace, in ddhal.c. */
 void v9x_trace_push(WORD id, DWORD detail);
 void v9x_trace_count(WORD id, DWORD detail);

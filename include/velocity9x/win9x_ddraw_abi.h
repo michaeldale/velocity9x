@@ -32,6 +32,21 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 /* Escape plumbing (values from the DDK DCI/DDRAWI contracts). */
 #define V9X_QUERYESCSUPPORT               8u
 #define V9X_DCICOMMAND                 3075u
+/*
+ * The OpenGL client's discovery escape (docs\plans\opengl-1.1-icd.md, Phases
+ * 0.1 and 3). OPENGL32.DLL asks QUERYESCSUPPORT for this code and then issues
+ * it, and the driver answers with the name of the registry value under
+ * HKLM\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers whose data is
+ * the ICD's file name. The 9x layout below - two longs and an ANSI name, not
+ * NT's WCHAR one - is what vmdisp9x measured from shipping vendor drivers
+ * (docs\decisions\2026-09-26-opengl-icd-interface-research.md, section 1);
+ * the Dd16OpenGL* trace events are how a guest confirms or kills it here.
+ */
+#define V9X_OPENGL_GETINFO             0x1101u
+#define V9X_OPENGL_INFO_VERSION        2ul
+#define V9X_OPENGL_DRIVER_VERSION      1ul
+#define V9X_OPENGL_DRIVER_NAME         "Velocity9x"
+#define V9X_OPENGL_NAME_BYTES          262u
 #define V9X_DD_VERSION           0x00000200ul
 #define V9X_DD_HAL_VERSION           0x00ffu
 #define V9X_DD_RUNTIME_VERSION   0x0000050aul
@@ -1487,6 +1502,14 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092602: the Win16 measurement grows to nine sites and five arrays
+ * (unheld and depth_max appended), after run1 showed the answer is a
+ * recursion depth. The arrays are the struct's tail, so growing them is
+ * still an append.
+ */
+/* 2026092601: V9X_D3D_DIAGNOSTICS gains the Win16 mutex measurement
+ * (win16_resolved and three six-slot arrays). An append.
+ */
 /* 2026092505: V9X_D3D_DIAGNOSTICS gains the plain-texture placement
  * counters. An append.
  */
@@ -1555,7 +1578,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092505ul
+#define V9X_DD_SHARED_ABI   2026092602ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1761,6 +1784,22 @@ typedef struct v9x_d3d_blt_flip_record {
     DWORD retiring;
     DWORD pending;
 } V9X_D3D_BLT_FLIP_RECORD;
+
+/* Where d3d_diagnostics.win16_* was sampled: one slot per HAL entry point
+ * that the OpenGL plan's render interface will share a lock with. */
+#define V9X_WIN16_SITE_BLT            0u
+#define V9X_WIN16_SITE_LOCK           1u
+#define V9X_WIN16_SITE_CREATESURFACE  2u
+#define V9X_WIN16_SITE_D3D_DRAWPRIMS  3u  /* DrawPrimitives                 */
+#define V9X_WIN16_SITE_FLIP           4u
+#define V9X_WIN16_SITE_DESTROYSURFACE 5u
+/* The other three Direct3D draw entries, split out after the first run
+ * counted 5 of 591 draws as something other than depth 1 and could not say
+ * which entry or what depth. */
+#define V9X_WIN16_SITE_D3D_DRAWONE    6u  /* DrawOnePrimitive               */
+#define V9X_WIN16_SITE_D3D_DRAWINDEX  7u  /* DrawOneIndexedPrimitive        */
+#define V9X_WIN16_SITE_D3D_RENDERPRIM 8u  /* RenderPrimitive                */
+#define V9X_WIN16_SITE_COUNT          9u
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -2939,6 +2978,25 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD texture_placed;
     DWORD texture_placed_bytes;
+    /*
+     * The Win16 mutex as seen from inside the callbacks (2026-09-26, OpenGL
+     * plan Phase 0.2). win16_resolved is the bit mask src\display32\
+     * win16lock.c leaves after DriverInit resolved KERNEL32's ordinals by
+     * walking its export table; the three arrays are indexed by
+     * V9X_WIN16_SITE_* and count calls to _ConfirmWin16Lock at that entry
+     * point, how many answered non-zero (the calling thread holds it), how
+     * many answered zero, the deepest answer seen and the last raw answer.
+     * The answer is the recursion depth, not a boolean: the first run
+     * (2026-09-26, run1) saw 2 inside every Lock callback and counted it as
+     * "not held" under an == 1 test. The tree has assumed "held" since the
+     * first engine; this is the first measurement.
+     */
+    DWORD win16_resolved;
+    DWORD win16_calls[V9X_WIN16_SITE_COUNT];
+    DWORD win16_held[V9X_WIN16_SITE_COUNT];
+    DWORD win16_last[V9X_WIN16_SITE_COUNT];
+    DWORD win16_unheld[V9X_WIN16_SITE_COUNT];
+    DWORD win16_depth_max[V9X_WIN16_SITE_COUNT];
 } V9X_D3D_DIAGNOSTICS;
 
 /*
@@ -2965,6 +3023,13 @@ typedef struct v9x_d3d_diagnostics {
 #define V9X_TRACE_DD16_DESTROYDRIVER   3u
 #define V9X_TRACE_DD16_NEWCALLBACKFNS  4u
 #define V9X_TRACE_DD16_GET32BITNAME    5u
+/* OpenGL discovery (2026-09-26): the QUERYESCSUPPORT for OPENGL_GETINFO,
+ * detail 1 when answered yes; and OPENGL_GETINFO itself, detail the first
+ * DWORD found in the caller's buffer before the driver wrote it, or
+ * 0xFFFFFFFF for no buffer. 60 and 61: 50 and 51 are D3D ids, and dd16.c also emits raw ids 6-9
+ * for the SetInfo fields. */
+#define V9X_TRACE_DD16_OPENGL_QUERY   60u
+#define V9X_TRACE_DD16_OPENGL_GETINFO 61u
 #define V9X_TRACE_FLIP                10u
 #define V9X_TRACE_GETFLIPSTATUS       11u
 #define V9X_TRACE_LOCK                12u
@@ -3067,6 +3132,14 @@ typedef struct v9x_d3d_draw_census {
     DWORD overflow;     /* draws whose word found no free slot            */
     V9X_D3D_CENSUS_ENTRY entries[V9X_D3D_CENSUS_SLOTS];
 } V9X_D3D_DRAW_CENSUS;
+
+/* OPENGL_GETINFO output, 9x layout: see V9X_OPENGL_GETINFO above. Named
+ * _DATA because V9X_OPENGL_GETINFO is the escape code. */
+typedef struct v9x_opengl_getinfo {
+    DWORD version;          /* V9X_OPENGL_INFO_VERSION                  */
+    DWORD driver_version;   /* V9X_OPENGL_DRIVER_VERSION                */
+    char dll[V9X_OPENGL_NAME_BYTES]; /* ANSI, NUL-terminated registry value name */
+} V9X_OPENGL_GETINFO_DATA;
 
 /* V9X_DDGETTRACE output. Field-for-field copy of the live shared state;
  * dwSize/abi let the reader reject a mismatched driver build. */
@@ -3457,6 +3530,9 @@ typedef char v9x_dd_assert_gdi_text_dump[
  * nothing after it moves; the snapshot's dwSize rejects a stale reader. */
 typedef char v9x_dd_assert_trace[
     sizeof(V9X_DD_TRACE) == 576 ? 1 : -1];
+/* Two longs and 262 name bytes; OPENGL32's output buffer is 532 bytes. */
+typedef char v9x_dd_assert_opengl_getinfo[
+    sizeof(V9X_OPENGL_GETINFO_DATA) == 270 ? 1 : -1];
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[

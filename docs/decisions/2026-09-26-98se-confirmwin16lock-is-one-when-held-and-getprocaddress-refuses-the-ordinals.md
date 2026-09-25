@@ -54,10 +54,15 @@ returning DWORD:
 | After that `Unlock` | 0 |
 | Inside `Lock` of a 64x64 **offscreen VRAM** surface with `DDLOCK_WAIT \| DDLOCK_NOSYSLOCK` | 0 |
 
-So it is a boolean for "held by the calling thread", it returns rather than
-asserting when the answer is no, and DirectDraw does hold the mutex across a
-primary-surface Lock and does honour `NOSYSLOCK` on an offscreen surface,
-both as the `Lock` documentation says.
+So it returns rather than asserting when the answer is no, and DirectDraw
+does hold the mutex across a primary-surface Lock and does honour
+`NOSYSLOCK` on an offscreen surface, both as the `Lock` documentation says.
+
+**Amended the same day:** the 1 is the calling thread's **recursion
+depth**, not a boolean. This probe only ever entered once, so it only ever
+saw 1; the HAL instrument that followed saw 2 inside every `V9xHalLock`
+callback (`2026-09-26-98se-directdraw-holds-the-win16-mutex-around-every-hal-callback-measured.md`).
+"Held" is non-zero.
 
 **The structure itself** (six DWORDs at `0x00017CE4`) is `Type=4` followed
 by fields that move with the lock: word 1 reads 1 while held and word 2

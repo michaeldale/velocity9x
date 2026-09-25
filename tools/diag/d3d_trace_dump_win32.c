@@ -262,6 +262,8 @@ static const char *v9x_trace_name(WORD id)
     case V9X_TRACE_DD16_DESTROYDRIVER:   return "Dd16DestroyDriver";
     case V9X_TRACE_DD16_NEWCALLBACKFNS:  return "Dd16NewCallbackFns";
     case V9X_TRACE_DD16_GET32BITNAME:    return "Dd16Get32BitName";
+    case V9X_TRACE_DD16_OPENGL_QUERY:    return "Dd16OpenGLQuery";
+    case V9X_TRACE_DD16_OPENGL_GETINFO:  return "Dd16OpenGLGetInfo";
     case V9X_TRACE_FLIP:                 return "Flip";
     case V9X_TRACE_GETFLIPSTATUS:        return "GetFlipStatus";
     case V9X_TRACE_LOCK:                 return "Lock";
@@ -991,6 +993,30 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("ZPlacedPitch", snapshot.d3d.z_placed_pitch);
     v9x_write_uint("TexturePlaced", snapshot.d3d.texture_placed);
     v9x_write_uint("TexturePlacedBytes", snapshot.d3d.texture_placed_bytes);
+    /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
+     * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
+    v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);
+    {
+        static const char *site_names[V9X_WIN16_SITE_COUNT] = {
+            "Blt", "Lock", "CreateSurface", "D3dDrawPrims", "Flip",
+            "DestroySurface", "D3dDrawOne", "D3dDrawIndexed",
+            "D3dRenderPrim" };
+        char key[48];
+        DWORD site;
+
+        for (site = 0ul; site < V9X_WIN16_SITE_COUNT; ++site) {
+            wsprintf(key, "Win16%sCalls", site_names[site]);
+            v9x_write_uint(key, snapshot.d3d.win16_calls[site]);
+            wsprintf(key, "Win16%sHeld", site_names[site]);
+            v9x_write_uint(key, snapshot.d3d.win16_held[site]);
+            wsprintf(key, "Win16%sUnheld", site_names[site]);
+            v9x_write_uint(key, snapshot.d3d.win16_unheld[site]);
+            wsprintf(key, "Win16%sDepthMax", site_names[site]);
+            v9x_write_uint(key, snapshot.d3d.win16_depth_max[site]);
+            wsprintf(key, "Win16%sLast", site_names[site]);
+            v9x_write_hex(key, snapshot.d3d.win16_last[site]);
+        }
+    }
     /* The timing buckets as raw TSC pairs and call counts, with the two
      * calibration readings; the host converts, so this tool assumes no
      * clock rate. Names match V9X_TIME_* in ddhal_internal.h. */

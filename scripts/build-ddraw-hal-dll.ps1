@@ -63,7 +63,14 @@ $sources = @(
     "src\common\i9xx_cover.c",
     "src\common\i9xx_depth.c",
     "src\common\i9xx_wm.c",
+    # PE32 export-by-ordinal walk, as arithmetic over a bounded byte range:
+    # pure, and host-tested in tests\host\test_pe_export.c. The HAL uses it
+    # to reach KERNEL32's Win16-mutex ordinals, which GetProcAddress refuses.
+    "src\common\pe_export.c",
     "src\display32\ddhal_core.c",
+    # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
+    # walk above and counts its answer at six callback entry points.
+    "src\display32\win16lock.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",
     # The Intel pipe controls and the dispatch between them and the VGA ones.

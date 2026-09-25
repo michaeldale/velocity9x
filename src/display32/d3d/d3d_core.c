@@ -1962,7 +1962,10 @@ DWORD __stdcall V9xD3dRenderPrimitive(
     V9X_D3DHAL_RENDERPRIMITIVEDATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_d3d_render_primitive_body(data);
+    DWORD result;
+
+    v9x_win16_sample(V9X_WIN16_SITE_D3D_RENDERPRIM);
+    result = v9x_d3d_render_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
     return result;
@@ -2150,7 +2153,10 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_d3d_draw_one_primitive_body(data);
+    DWORD result;
+
+    v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWONE);
+    result = v9x_d3d_draw_one_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
     return result;
@@ -2274,7 +2280,10 @@ DWORD __stdcall V9xD3dDrawPrimitives(
     V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_d3d_draw_primitives_body(data);
+    DWORD result;
+
+    v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWPRIMS);
+    result = v9x_d3d_draw_primitives_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
     return result;
@@ -2499,7 +2508,10 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_d3d_draw_one_indexed_primitive_body(data);
+    DWORD result;
+
+    v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWINDEX);
+    result = v9x_d3d_draw_one_indexed_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
     return result;

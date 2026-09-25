@@ -221,6 +221,11 @@ versions are recorded.
    a trace build of v9xdisp.drv, then run a GL app. This confirms or kills
    the vmdisp9x layout (Version 2, ANSI name, NULL input). Record OS build
    and the versions of OPENGL32.DLL and DDRAW.DLL for each installation.
+   **98SE measured 2026-09-26**
+   (`2026-09-26-98se-opengl32-asks-the-display-driver-through-escape-0x1101-seven-times.md`):
+   QUERYESCSUPPORT then OPENGL_GETINFO with an unprimed buffer, seven times
+   for one screensaver; the answer ships in `dd16.c`. Original 98 and ME
+   wait on their guests.
 2. **Win16 lock.**
    - Dump the imports of the guest `SYSTEM\DDRAW.DLL` on original 98,
      98SE and ME. Record the installed DirectX version and whether
@@ -228,6 +233,15 @@ versions are recorded.
    - In a HAL trace build, call `_ConfirmWin16Lock` (#96) inside the
      DrawPrimitives, Blt, CreateSurface and Lock callbacks. The assumption in
      `gdi-acceleration.md:29` has never been measured.
+   - **98SE measured 2026-09-26**, both halves
+     (`2026-09-26-98se-ddraw-imports-the-win16-mutex-ordinals.md`,
+     `2026-09-26-98se-confirmwin16lock-is-one-when-held-and-getprocaddress-refuses-the-ordinals.md`,
+     `2026-09-26-98se-directdraw-holds-the-win16-mutex-around-every-hal-callback-measured.md`):
+     DDRAW imports 93/97/98; GetProcAddress refuses the ordinals and the
+     export walk (`src/common/pe_export.c`) resolves them; the mutex is held
+     at every callback sampled, depth 2 inside Lock. The instrument stays in
+     the HAL (`src/display32/win16lock.c`). ME and original 98 wait on their
+     guests.
 3. **Clipped Blt.** Find out what 98SE DDraw hands the HAL when a
    clipper-attached app blits into a window that is partly covered:
    `IsClipped` plus `prDestRects`, split calls, or HEL.
@@ -492,9 +506,11 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   approved by this plan.
   - Every entry fails closed unless `v9x_hal`, DriverInit completion and
     `v9x_d3d_engine()` are all present.
-  - It resolves ordinals 93/97/98 by walking KERNEL32's export table, and
-    asserts each pointer lies inside the KERNEL32 image. That adds no imports.
-    `GetModuleHandleA` is already used (`d3d_i9xx.c:975`).
+  - It resolves ordinals 93/97/98 by walking KERNEL32's export table
+    (`src/common/pe_export.c`, host-tested; already used by the Phase 0.2
+    instrument), and asserts each pointer lies inside the KERNEL32 image.
+    That adds no imports. `GetModuleHandleA` is already used
+    (`d3d_i9xx.c:975`). `GetProcAddress` by ordinal is refused on 98SE.
   - **Lock order:** the ICD's critical section, then the Win16 mutex, never
     reversed, and never a wait on another thread under either. Under the
     mutex the only hardware wait is the shared drain, bounded by `wait_idle`'s

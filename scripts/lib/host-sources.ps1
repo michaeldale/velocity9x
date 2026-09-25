@@ -30,6 +30,10 @@ function Get-V9xHostSourceNames {
         'src\common\i9xx_cover.c',
         'src\common\i9xx_depth.c',
         'src\common\i9xx_wm.c',
+        # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
+        # route to KERNEL32's Win16-mutex ordinals.
+        'src\common\pe_export.c',
+        'tests\host\test_pe_export.c',
         # Intel Gen3 read-only fingerprint decoding; no MMIO access here.
         'src\chipsets\intel\i9xx_mmio.c',
         # Scanline/frame-counter summary; the HAL reads, this counts.

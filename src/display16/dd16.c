@@ -1123,11 +1123,87 @@ static LONG v9x_gdi_command(V9X_DCICMD FAR *command, LPVOID output)
     }
 }
 
+/*
+ * OpenGL's discovery escape (docs\plans\opengl-1.1-icd.md).
+ *
+ * OPENGL32.DLL asks QUERYESCSUPPORT for OPENGL_GETINFO and, told yes, issues
+ * it to learn which value under the OpenGLDrivers registry key names the
+ * ICD. The answer is "Velocity9x" when this family advertises Direct3D - the
+ * same capability decision the DirectDraw HAL publishes on, so a family with
+ * no engine, or one whose Direct3D the settings page turned off, is never
+ * asked for an ICD it cannot serve and the system's generic renderer takes
+ * over as if this driver had never answered. No INI key: the D3D decision is
+ * the OpenGL decision.
+ *
+ * The layout written is the one vendor drivers on 9x were measured to
+ * return (win9x_ddraw_abi.h, V9X_OPENGL_GETINFO). The trace events record
+ * what was asked, whether a buffer came with it and what its first DWORD
+ * held before the driver wrote, which is the Phase 0.1 measurement.
+ *
+ * Under the same guard as the DCI branch in Control, and for the same
+ * reason: the Millennium build ships no DirectDraw HAL and has no shared
+ * block, so it has no capability word to answer from. The escape is simply
+ * unsupported there and the DIB engine's default answers it.
+ */
+#ifndef V9X_TARGET_MATROX_MILLENNIUM2
+static int v9x_dd_opengl_advertised(void)
+{
+    if (v9x_dd_block() == 0) {
+        return 0;
+    }
+    return (v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul
+        ? 1 : 0;
+}
+
+static LONG v9x_dd_opengl_query(void)
+{
+    int advertised = v9x_dd_opengl_advertised();
+
+    v9x_dd_trace_event(V9X_TRACE_DD16_OPENGL_QUERY, advertised ? 1ul : 0ul);
+    v9x_serial_write(advertised ? "V9X-DD opengl-query yes\r\n"
+                                : "V9X-DD opengl-query no\r\n");
+    return advertised ? 1 : 0;
+}
+
+static LONG v9x_dd_opengl_getinfo(LPVOID output)
+{
+    V9X_OPENGL_GETINFO_DATA FAR *info = (V9X_OPENGL_GETINFO_DATA FAR *)output;
+    const char *name = V9X_OPENGL_DRIVER_NAME;
+    DWORD found = output != 0 ? info->version : 0xFFFFFFFFul;
+    WORD index;
+
+    v9x_dd_trace_event(V9X_TRACE_DD16_OPENGL_GETINFO, found);
+    if (output == 0 || !v9x_dd_opengl_advertised()) {
+        v9x_serial_write("V9X-DD opengl-getinfo refused\r\n");
+        return 0;
+    }
+    info->version = V9X_OPENGL_INFO_VERSION;
+    info->driver_version = V9X_OPENGL_DRIVER_VERSION;
+    for (index = 0u; index < V9X_OPENGL_NAME_BYTES; ++index) {
+        info->dll[index] = *name;
+        if (*name != '\0') {
+            ++name;
+        }
+    }
+    v9x_serial_write("V9X-DD opengl-getinfo Velocity9x\r\n");
+    return 1;
+}
+#endif
+
 LONG __loadds FAR PASCAL Control(LPVOID device,
                                  WORD function,
                                  LPVOID input,
                                  LPVOID output)
 {
+#ifndef V9X_TARGET_MATROX_MILLENNIUM2
+    if (function == V9X_QUERYESCSUPPORT && input != 0 &&
+        *(WORD FAR *)input == V9X_OPENGL_GETINFO) {
+        return v9x_dd_opengl_query();
+    }
+    if (function == V9X_OPENGL_GETINFO) {
+        return v9x_dd_opengl_getinfo(output);
+    }
+#endif
     if (function == V9X_DCICOMMAND && input != 0) {
         V9X_DCICMD FAR *command = (V9X_DCICMD FAR *)input;
 
