@@ -16,10 +16,15 @@ Decisions taken with Michael on 2026-09-26:
   - Its two ViRGE walls still hold: no triangle setup and no multiplicative
     blend. The plan answers the second with a per-draw software fallback,
     not by dropping GL semantics.
-- **First-release back ends:** software, Intel GMA 950 Gen3 and S3 ViRGE.
-- **Done means** GLQuake and Quake 2 run correctly on all three. The plan
-  still covers **all of GL 1.1**, ordered so that the Quake paths land first.
-- **Targets:** Win98/SE and ME. Win95 is out.
+- **Back ends:** software, Intel GMA 950 Gen3 and S3 ViRGE.
+- **Correctness milestones:** GLQuake and Quake 2 run correctly on all three
+  in Phase 5; Phase 6 completes the remaining GL 1.1 functionality. Work is
+  driven by code and rendered output. Public-release timing is decided later.
+- **Performance:** measure frame rates and fallback costs, with no minimum
+  performance targets yet, including on the ViRGE.
+- **Targets:** original Windows 98, Windows 98 SE and Windows ME. Windows 95
+  feasibility is measured in Phase 0 on one precisely specified installation;
+  support for every Windows 95 variant or all three engines is not assumed.
 - **Route to hardware:** a private, versioned, stateless render interface
   exported by V9XHAL.DLL. The alternative was to make the ICD a D3D
   immediate-mode client. It was rejected because it caps GL at the DX5 DDI
@@ -59,8 +64,11 @@ What exists today that shapes the design:
   `v9x_hal` is set only in DriverInit (`ddhal_core.c:1790`). An ICD that
   linked the same sources would own a second ring and flip state.
 - **Drains already exist** and are used by Lock and Blt:
-  `v9x_render_drain`/`v9x_blt_drain` (`ddhal_core.c:1292-1397`), dispatching
-  to `v9x_d3d_i9xx_render_drain` or `wait_idle`.
+  `v9x_render_drain`/`v9x_blt_drain` (`ddhal_core.c:1292-1397`). The former
+  waits on Intel only and otherwise returns success; the latter also calls
+  the engine's `wait_idle`. Calling `v9x_render_drain` alone is insufficient
+  before a CPU fallback on ViRGE. Phase 2 establishes a shared drain contract
+  using the existing backend waits.
 
 ## Architecture
 
@@ -92,12 +100,31 @@ Principles:
   - Engines see only `V9X_R3D_DRAW`.
 - **The HAL interface is stateless.** Every call carries target, depth,
   texture and state, so the HAL holds no per-process GL state.
-  - All GL surfaces are DirectDraw surfaces that the ICD creates in its own
-    process. They go through `V9xHalCreateSurface`, so Gen3 placement
-    (`d3d_i9xx.c:917-1289`) applies unchanged.
-  - The ICD passes each surface's LCL (`INT->lpLcl`). The HAL validates it
-    with the existing `IsBadReadPtr` guard (`d3d_core.c:862-885`), requires
-    ≥0x80000000, and requires `v9x_surface_offset != 0xffffffff`.
+  - Render targets, depth buffers and hardware texture realizations are
+    DirectDraw surfaces created by the ICD in its own process. HAL-managed
+    allocations go through `V9xHalCreateSurface`, so Gen3 placement
+    (`d3d_i9xx.c:917-1289`) applies. Logical texture images remain in system
+    memory and are also available to the software sampler when no faithful
+    hardware realization is possible.
+  - The ICD passes each DirectDraw surface's LCL (`INT->lpLcl`). The existing
+    `IsBadReadPtr` guard (`d3d_core.c:862-885`) checks only the INT wrapper;
+    neither it nor an address ≥0x80000000 establishes LCL/GBL validity or
+    ownership. `v9x_surface_offset` checks only the starting VRAM address.
+  - Before dereferencing or submitting, validate the measured INT/LCL/GBL
+    layout, format, dimensions, pitch, allocation extent and every mip level
+    using overflow-checked arithmetic. A readable pointer is not evidence of
+    a live allocation. Resolve authoritative allocation metadata under the
+    serialization contract; reject mismatched descriptors and stale surfaces.
+  - Retain DirectDraw references and prevent allocation reuse until submitted
+    work completes. Define how allocation stability is guaranteed, including
+    eviction, destruction and mode changes; AddRef alone is not a pin against
+    surface loss. CPU texture descriptors carry explicit byte extents and are
+    consumed synchronously, with their storage retained for the call.
+  - `describe` returns a HAL generation that changes on reinitialization;
+    submissions carry it. The ICD also invalidates cached descriptors on
+    surface loss/restore, even without a HAL generation change. Re-resolve
+    offsets before reuse. The HAL retains no per-process GL state or client
+    pointers after a call; its existing device/submission bookkeeping remains.
 - **Pure logic is host-testable,** in the `mtrr.c` pattern. A host end-to-end
   test drives GL calls through r3d into `d3d_raster.c` and hashes pixels.
 - **No new INI keys and no new selector values.** GL uses the engine that
@@ -139,15 +166,26 @@ labelled confirmed or inferred and its source given. It covers:
   `build/hellbender-cd`.
 - **The Quake census**, summarised below.
 - **Supersession.** Why the 2026-08-30 MiniGL conclusion no longer stands.
+- **Semantic baseline.** Use the [OpenGL 1.1 specification](https://registry.khronos.org/OpenGL/specs/gl/glspec11.pdf)
+  for required behaviour and generic GL for comparison evidence. Record
+  requirements separately from behaviour observed in one implementation.
+- **Requirements inventory.** Create `docs/plans/opengl-1.1-requirements.md`
+  before implementation, expanding the coverage matrix below into all 336
+  entry points and cross-cutting semantic requirements. Each row names its
+  specification section, owning phase/module, test and current evidence.
+  Track temporary stubs, error cases, defaults, queries and implementation
+  limits explicitly; a callable entry point is not a completed requirement.
 
 **Guest measurements**, one decision doc each:
 
-1. **Discovery on 98SE and ME.** Log every `Control` escape in a trace build
-   of v9xdisp.drv, then run a GL app. This confirms or kills the vmdisp9x
-   layout (Version 2, ANSI name, NULL input).
+1. **Discovery on original 98, 98SE and ME.** Log every `Control` escape in
+   a trace build of v9xdisp.drv, then run a GL app. This confirms or kills
+   the vmdisp9x layout (Version 2, ANSI name, NULL input). Record OS build
+   and the versions of OPENGL32.DLL and DDRAW.DLL for each installation.
 2. **Win16 lock.**
-   - Dump the imports of the guest `SYSTEM\DDRAW.DLL`: DX6.1 on 98SE, DX7 on
-     ME. Record whether 93/97/98 are named.
+   - Dump the imports of the guest `SYSTEM\DDRAW.DLL` on original 98,
+     98SE and ME. Record the installed DirectX version and whether
+     93/97/98 are named; do not infer runtime versions from the OS name.
    - In a HAL trace build, call `_ConfirmWin16Lock` (#96) inside the
      DrawPrimitives, Blt, CreateSurface and Lock callbacks. The assumption in
      `gdi-acceleration.md:29` has never been measured.
@@ -159,16 +197,57 @@ labelled confirmed or inferred and its source given. It covers:
      `docs/issues/` and fix the HAL before Phase 3.
 4. **INT→LCL from an app.** Add a V9XDDP rung that checks INT and LCL are
    above 2 GB and that `lpGbl->fpVidMem` matches the pointer Lock returns.
-5. **Mixed-engine Z.** Add a V9XDDP rung that draws hardware, then soft, then
-   hardware into one Z buffer, and compares the result with an all-soft
-   image. Soft stores `sz*65535` (`d3d_soft.c:58`) and the ViRGE uses 1.31
-   registers (`d3d_zfixed.h`). Nobody has shown the two agree. The fallback
-   design depends on this answer.
-6. **Generic GL as the oracle.** Check that a probe can choose a generic
-   format with the ICD installed, and that the same 565 scene hashes the same
-   twice.
+5. **Mixed-engine colour and Z.** Add a V9XDDP rung that draws hardware,
+   then soft, then hardware into shared colour and Z buffers, and compares
+   with an all-soft image. Exercise overlapping blended draws, depth
+   comparisons/writes, clears and texture updates on both hardware engines.
+   Soft stores `sz*65535` (`d3d_soft.c:58`) and the ViRGE uses 1.31 registers
+   (`d3d_zfixed.h`). Nobody has shown the two agree. The probe must use a
+   drain that actually waits on the selected engine. Agreement in encoding,
+   operation ordering and visibility is a prerequisite for fallback.
+6. **Generic GL as a reference.** Check that a probe can choose a generic
+   format with the ICD installed, and that a controlled scene hashes the
+   same twice. Match colour/depth precision, dimensions and relevant state,
+   including dithering; cover both 565 and 555 where available. Record exact
+   state/error assertions separately from image comparisons. Define image
+   tolerances and their specification-based justification before accepting
+   differences; matching generic GL alone is not proof of conformance.
 7. **Quake media.** Check which guests have GLQuake 0.97 with the shareware
    pak0 and the Quake 2 demo. Missing media is a dependency on Michael.
+8. **Windows 95 feasibility.** Start with one installation and record its
+   edition/build, installed DirectX version and OpenGL runtime version.
+   - First establish display-driver startup and DirectDraw surface
+     allocation, including the target, depth and texture surfaces needed
+     by this design. Audit required imports and the Win16-lock mechanism.
+   - The existing physical Win95 4.00.950 Trio64 VLB result omits the
+     mini-VDD because it did not load (`README.md`, "Verified on physical
+     hardware: S3 Trio64 on VESA Local Bus, under Windows 95"). That result
+     does not establish the driver services needed by this ICD. Determine
+     whether this path can work without the mini-VDD or requires driver work.
+   - Use a minimal ICD probe to establish discovery, dispatch and
+     clear/present through DirectDraw and the HAL before treating the full
+     Phase 3 implementation as Windows 95-compatible.
+   - Original Windows 95 needs the OpenGL runtime installed; OSR2 includes
+     it. Record the prerequisite rather than silently replacing system DLLs.
+     Source: Microsoft KB154877, [OpenGL 1.1 release notes (archived)](https://ftp.zx.net.nz/pub/Patches/ftp.microsoft.com/MISC/KB/en-us/154/877.HTM).
+   - Record pass/fail evidence and the required compatibility work in a
+     decision doc. Expand the OS/engine matrix only after this result;
+     a failed Win95 probe does not block the Windows 98/SE/ME work.
+9. **Minimal ICD integration before Phases 1-2.** On 98SE and ME, use a
+   disposable probe build to exercise system OPENGL32 discovery, correctly
+   typed dispatch, DirectDraw surface creation, a private call into the one
+   HAL instance, and clear/present. Include overlap clipping and teardown;
+   repeat on original Windows 98 for its compatibility gate. A narrow
+   provisional clear interface is sufficient: this experiment does not
+   require the neutral-core refactor or freeze the final ABI. Record the
+   result before investing in the full refactor, and reuse the probe for
+   the Windows 95 feasibility check.
+
+Repeat the OS-sensitive clipped-Blt, INT-to-LCL, surface restore and mode-change
+checks on original Windows 98 and ME as well as 98SE. Keep the GL front end
+and render core shared; isolate any measured OS differences at the platform
+boundary. Required guest images and their exact runtime versions must be
+identified before their gates can be reported as passed.
 
 ## Phase 1: extract the neutral render core (D3D only, no behaviour change)
 
@@ -188,8 +267,9 @@ below is its own commit with its own gate.
   - `V9X_R3D_DRAW` carries:
     - target {offset, pitch, width, height, format, lcl}
     - depth {lcl, offset, pitch, enable, write, func}
-    - texture {lcl, per-level {offset, pitch}, min, mag, mip, address,
-      border, wrap_u, wrap_v}
+    - texture {storage kind, logical format/dimensions, lcl for hardware
+      storage, per-level {offset or CPU pointer, byte extent, width, height,
+      pitch}, min, mag, mip, address, border, wrap_u, wrap_v}
     - blend {enable, src, dst}
     - alpha test {enable, func, raw ref}
     - combine {colour op, alpha op, env colour}
@@ -203,8 +283,11 @@ below is its own commit with its own gate.
     decal-lerp, env-blend), because neither API's modes map 1:1. GL MODULATE
     on an RGBA texture is D3D MODULATEALPHA; on an RGB texture it is D3D
     MODULATE.
-  - `V9X_R3D_VERTEX` is layout-identical to `V9X_D3DTLVERTEX`, with offset
-    asserts. Fog travels as a factor in `specular.a`.
+  - Phase 1's D3D adapter uses a `V9X_R3D_VERTEX` layout identical to
+    `V9X_D3DTLVERTEX`, with offset asserts. Fog travels as a factor in
+    `specular.a`. This does not freeze the public vertex ABI: Phase 2 must
+    establish how projective GL texture coordinates are represented before
+    the Phase 3 interface is fixed.
   - **Append** `draw` to `V9X_D3D_ENGINE_OPS`, following the append-only rule
     (`d3d_internal.h:307-318,362-367`). The core calls `draw` when it is
     non-null, and `draw_triangles` otherwise.
@@ -236,8 +319,20 @@ below is its own commit with its own gate.
 
 ## Phase 2: grow the shared core
 
-Each item gets a failing host pixel test first.
+Rasterization changes get a failing host pixel test first. ABI, lifetime and
+synchronization changes get the corresponding host contract test or guest
+probe; pixel hashes alone cannot establish ordering or allocation safety.
 
+- **Rasterization contract, before the public ABI is fixed.** Document the
+  GL-to-r3d mapping for lower-left window coordinates versus surface rows,
+  sample positions, winding after Y conversion, shared-edge coverage, scissor
+  rectangles and readback orientation. Preserve Phase 1's D3D behaviour
+  through its adapter. Specify interpolation of depth, colour, fog and
+  homogeneous texture coordinates, including varying texture q; either prove
+  a mapping to the vertex representation or extend it and use software where
+  hardware cannot express it. Do not assume one reciprocal-w field serves
+  every interpolation rule. Tests include projective textures through
+  clipping, adjacent triangles, viewport/scissor boundaries and reversed Z.
 - **Software rasterizer** (`d3d_raster.c`, `d3d_soft.c`):
   - texture alpha decode, perspective-correct u/v, and mip selection using
     per-level offsets, so it works on Gen3 miptrees (`d3d_i9xx_target.c:190-257`)
@@ -249,16 +344,34 @@ Each item gets a failing host pixel test first.
   - the clip rect
   - post-texture fog, applied from `specular.a`
   - Per-pixel helpers stay macros, because the build does no inlining.
-- **`r3d_line.c`**: lines and points expanded to triangles for engines
-  without them.
-- **Clear op** over a rect list: engine fill, or CPU fill.
+- **`r3d_line.c`**: use triangle expansion only where it satisfies the
+  required point/line coverage and interpolation rules. GL line endpoint
+  handling must avoid double-blending shared endpoints and gaps in connected
+  segments, within the specification's permitted rasterization variation.
+  Otherwise use a software point/line path. Test horizontal, vertical and
+  diagonal segments, connected blended lines, clipped endpoints and points
+  at pixel boundaries; add width, stipple and smoothing cases in Phase 6.
+- **Clear op** over a rect list: engine fill, or CPU fill, respecting GL
+  scissor and write masks. Test partial clears and preservation of masked
+  channels and depth independently of ordinary draw state.
+- **Shared drain and CPU/GPU ordering.** Factor an all-engine helper around
+  the existing Intel breadcrumb drain and validated backend `wait_idle`.
+  Do not use the current Intel-only `v9x_render_drain` as the full contract.
+  Use the helper for CPU fallback, CPU clear/readback, resource reuse and
+  `finish`; no additional backend idle operation is needed. Establish both
+  GPU-to-CPU and CPU-to-GPU visibility for colour, depth and texture storage.
+  Test the Phase 0.5 transitions and timeout handling on ViRGE and Gen3.
 - **Append `accepts(const V9X_R3D_DRAW *)`**. The core asks *before*
   clipping, and clips with the limits of whichever engine will execute. For
   example, Gen3 draws with `clip_in_core=0` and a 4096 guard band, while soft
   clamps at 2048.
-  - A refused draw goes to the software engine on the same surfaces, after
-    the existing `v9x_render_drain`. No new idle op is added.
-  - If the drain times out, the draw is skipped and counted.
+  - A capability refusal, before any submission, selects the software engine
+    on the same target/depth surfaces after the shared drain above. Preserve
+    logical texture images when hardware texture storage cannot represent
+    them. `accepts` has no rendering side effects.
+  - A drain timeout prevents CPU access, is counted and returns an explicit
+    failure to the ICD. It must not be reported as successful rendering or
+    trigger a replay of potentially executed work.
   - Examples of refused draws: the ViRGE's `ZERO/SRC_COLOR` and
     `ZERO/ONE_MINUS_SRC_COLOR` blends, non-square CLAMP, and fog on Gen3.
   - D3D keeps skip-and-count. Moving D3D onto the fallback is a separate
@@ -275,9 +388,28 @@ Each item gets a failing host pixel test first.
 
 - **`include/velocity9x/r3d_abi.h`** defines `V9X_R3D_INTERFACE`:
   `abi_version`, `struct_bytes`, `describe` (engine, limits, accepted-state
-  mask, strings), `draw`, `clear`, `flush` and `finish`. It carries size
-  asserts. GL batches are chunked at `V9X_D3D_INDEXED_BATCH` (64), or Gen3
-  refuses them silently.
+  mask, strings, HAL generation), `draw`, `clear`, `flush` and `finish`.
+  Fix calling conventions, field widths, packing, buffer ownership and size
+  asserts. Specify version/size negotiation and reject incompatible requests
+  before dereferencing their payloads. Finish the Phase 2 rasterization and
+  texture-storage contracts before freezing the vertex and draw layouts.
+  - Define results for success, invalid descriptors, incompatible ABI, stale
+    generation/lost surfaces, unsupported state, allocation failure and
+    timeout. Record the ICD's handling of each; distinguish legal GL errors
+    from device failures, without inventing a GL 1.1 context-loss error.
+  - Validate before emitting. Distinguish a capability refusal with no work
+    emitted from a submission failure after a prefix may have executed.
+    Report a known submitted prefix when possible, and an indeterminate
+    outcome otherwise. Never replay an already submitted or uncertain prefix
+    through software: blended pixels would be applied twice. Device failures
+    stop the affected operation and require an explicit recovery decision.
+  - GL batches are chunked at `V9X_D3D_INDEXED_BATCH` (64), including any
+    triangles produced by clipping/expansion. An oversized public request is
+    rejected explicitly, never silently discarded by Gen3.
+  - `flush` submits pending work for progress; successful `finish` establishes
+    completion and visibility. A timeout is a failure, not completion. Test
+    malformed descriptors, arithmetic overflow, stale generations, batch
+    boundaries and failures after partial submission.
 - **V9XHAL.DLL export `V9xRenderInterface`.** This is a new external symbol,
   approved by this plan.
   - Every entry fails closed unless `v9x_hal`, DriverInit completion and
@@ -285,8 +417,14 @@ Each item gets a failing host pixel test first.
   - It resolves ordinals 93/97/98 by walking KERNEL32's export table, and
     asserts each pointer lies inside the KERNEL32 image. That adds no imports.
     `GetModuleHandleA` is already used (`d3d_i9xx.c:975`).
-  - The Win16 mutex is held only across build-and-submit. It never calls
-    USER, GDI or DDraw while holding it.
+  - Document one lock order for ICD globals/context ownership and the Win16
+    mutex. Hold the latter across protected validation and build-and-submit;
+    serialize drain/CPU fallback so another process cannot race the same
+    resources. Prove allocation stability under this protocol in the probe.
+    Never call USER, GDI or DDraw while holding the mutex. Perform required
+    DirectDraw lifetime operations outside it and revalidate on entry.
+    Bound waits and CPU work per protected operation, measuring hold times
+    and testing contention; do not assume fallback has submission-only cost.
   - `build-ddraw-hal-dll.ps1` gets an `export` line near :147 and an export
     presence check beside :197.
 - **16-bit driver.** `Control` (`dd16.c:1126-1158`) answers the OpenGL
@@ -296,24 +434,47 @@ Each item gets a failing host pixel test first.
   - This is a module-boundary change, checked against
     `win9x-driver-boundaries.md`.
 - **`src/opengl/`** builds `v9xgl.dll`, per process and not shared.
-  - **`gl_icd.c`** is the only `<windows.h>`/ddraw file, and is on the
-    check-tree allowlist.
+  - **Platform boundary:** `gl_icd.c` and `gl_surface.c` may use Windows and
+    DirectDraw headers and are explicitly on the check-tree allowlist.
+    Their internal platform header is confined to these files. Other GL
+    files consume project-owned types and interfaces and remain host-testable.
+  - **`gl_icd.c`** owns:
     - The 17 `Drv*` exports, pixel formats, and contexts.
     - DrvSetContext/DrvReleaseContext keep the ICD's own TLS slot.
     - A critical section guards the ICD globals.
+    - Context ownership permits only one current thread per context. Define
+      detach/rebind, failed binds, deletion and rebinding to another compatible
+      HDC, with pending work flushed at the required boundaries. Keep drawable
+      storage/lifetime distinct from GL context state.
+    - Establish share-group ownership/refcounts and `DrvShareLists` handling
+      before texture objects arrive; add display-list storage in Phase 6.
+      Define `DrvCopyContext` state-mask behaviour and failure handling rather
+      than leaving mandatory exports as unexplained success stubs.
     - It creates DirectDraw, requires `DDCAPS_3D`, finds the module with
       `GetModuleHandleA("V9XHAL")`, and re-runs `describe` after
       SURFACELOST or a mode change. DriverInit re-runs on a mode change
       (`ddhal_core.c:1800`).
   - **`gl_dispatch.c`**: the static `GLCLTPROCTABLE`, 336 non-null
     `__stdcall` slots.
+    - Every implementation and temporary stub has the exact parameter and
+      return types for its slot. A shared untyped stdcall stub is forbidden:
+      stack cleanup and return-value conventions differ between functions.
     - A slot whose phase has not landed counts as unimplemented and sets
-      `GL_INVALID_OPERATION`.
-    - A host test checks slot order against a name table.
+      `GL_INVALID_OPERATION` where a current context exists, with a defined
+      ABI-safe return value. These are development placeholders, not correct
+      implementations of those entry points; track every one in the matrix.
+    - A host test checks slot order against an independently verified name
+      table. A 32-bit guest test exercises representative argument sizes,
+      including float/double arguments, and void, integer and pointer returns
+      to catch stack/ABI errors.
   - **`gl_surface.c`**:
     - `DDSCL_NORMAL`, a primary plus a clipper (`SetHWnd`), and VRAM back
       and Z surfaces.
-    - SURFACELOST leads to Restore or re-create.
+    - SURFACELOST leads to Restore or re-create, invalidation of old surface
+      descriptors and reconstruction from retained logical texture images.
+    - Track drawable resize, minimize/restore, client-to-screen translation
+      and single/front/back buffer selection. Wait for dependent work before
+      storage is replaced or released, and preserve GL context state.
     - SwapBuffers is a Blt from back to the client rect.
     - Front-buffer drawing clips to `GetClipList`.
 - **Build and packaging:**
@@ -332,6 +493,16 @@ Each item gets a failing host pixel test first.
   - Clear and swap work both windowed and fullscreen.
   - An overlapping window is not drawn over.
   - 100 create/destroy cycles leave VRAM free space unchanged.
+  - Context switching between two drawables, detach/rebind across threads,
+    rejection of simultaneous ownership, resize/minimize/restore, and mode
+    changes preserve the specified context and drawable behaviour.
+  - Two GL processes and concurrent GL/D3D activity preserve ordering and
+    isolation without deadlock; exercise loss/destruction with work pending.
+  - Follow-up Phase 4 tests cover shared texture visibility and deletion;
+    Phase 6 tests extend the same lifetime cases to shared display lists.
+  - Use the [WGL binding contract](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-wglmakecurrent)
+    and [sharing contract](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-wglsharelists)
+    as semantic references, with the Win9x ICD mechanics measured separately.
 
 ## Phase 4: geometry pipeline and Quake-path state (host-tested to pixels)
 
@@ -354,28 +525,44 @@ Each pure file in `src/opengl/` has a `tests/host/test_gl_*.c` alongside it.
   - Z is initialised when the context is created.
 - **`gl_varray.c`**: vertex arrays, including `glArrayElement` inside
   Begin/End, DrawArrays, DrawElements and InterleavedArrays.
+- **`gl_pixelstore.c`**: pack/unpack state and checked row/skip/alignment
+  arithmetic land with texture upload, before Phase 5 readback. Honour the
+  default alignment as well as explicit settings. Test tightly packed and
+  padded rows, narrow RGB images, sub-rectangles and output guard bytes;
+  extend format/type coverage with the Phase 6 pixel operations.
 - **`gl_texobj.c`, `gl_teximage.c`**:
   - Names that were never generated are allowed.
   - Internal formats 1-4, L/A/I/LA and the sized formats. L takes R.
   - Level images are kept in system memory and realised as a DirectDraw
-    texture chain on first bind, so eviction and restore are cheap.
+    texture chain when first needed for drawing and when faithfully supported
+    by the engine. Keep logical image state separate from hardware residency
+    so queries, software sampling, eviction and restore use the same images.
   - TexSubImage on sub-rectangles.
-  - Chains below the engine's minimum edge are truncated.
-  - Over-limit images are box-downscaled, because GLQuake never queries the
-    maximum texture size.
-  - On the ViRGE, non-square textures are tiled to a square, which is exact
-    for REPEAT.
+  - Advertised GL limits describe the implementation, including software,
+    independently of hardware limits. Preserve accepted dimensions, contents
+    and all mip levels down to 1x1; use software for valid textures that the
+    hardware cannot represent. Do not silently downscale images or truncate
+    mip chains. Uploads outside the advertised GL limit follow GL error rules.
+  - Define texture completeness, border handling, proxy queries and allocation
+    failure behaviour. Test missing levels, mismatched formats/dimensions,
+    every minification filter, 1xN/Nx1 tails and the advertised limit boundary.
+  - ViRGE square tiling is an optimization only after tests establish correct
+    coordinate scaling, REPEAT seams, filtering and mip selection across the
+    whole chain. Cases without a proven faithful mapping use software.
+    Include CLAMP/border cases and mutation of shared textures.
 - **Lighting and fog.** GL lighting adds its specular term into the colour.
   Fog is computed per vertex into `specular.a`, and engines report through
   `accepts()` whether they can do post-texture fog.
 - **`gl_bridge.c`**: GL state to `V9X_R3D_DRAW`.
 - **`test_gl_scene.c`**: GL call sequences go through the front end, r3d and
-  `d3d_raster` to pixel hashes, checked against the Phase 0.6 oracle images.
-  Where an exact match is not expected, the tolerance is recorded.
+  `d3d_raster` to pixel hashes, checked against the Phase 0.6 reference images
+  and the requirements matrix. Use exact assertions for state, errors and
+  deterministic scenes; image differences require the previously documented
+  tolerance and its reason. Do not widen tolerances simply to pass a backend.
 - **Gate:** V9XGLP matches generic GL on software (86Box), then Gen3 (the
   netbook), then ViRGE (86Box 9869 and physical A8U4I5, on a 555 desktop).
 
-## Phase 5: GLQuake and Quake 2 (the "done" gate)
+## Phase 5: GLQuake and Quake 2 (game-correctness gate)
 
 - **Features first:** `glReadPixels` with GL_RGB, front-buffer draws for the
   loading disc, and `glFinish`.
@@ -386,13 +573,18 @@ Each pure file in `src/opengl/` has a `tests/host/test_gl_*.c` alongside it.
 - **Per engine, record:**
   - frame rate
   - screenshots compared with generic GL
-  - the ICD's fallback count
+  - fallback draw counts and reason codes, CPU time, drain/wait time and
+    pixels processed (define whether each counter measures candidate,
+    covered or written pixels; label estimates explicitly)
   - on the ViRGE, the cost of the software lightmap fallback, and
     `gl_monolightmap AF` / `-lm_4` as the path with no fallback
 - One decision doc per machine.
+- Frame rates and fallback costs are observations, not pass/fail thresholds.
+  This gate establishes game correctness; it does not decide public-release
+  timing or replace the remaining GL 1.1 work in Phase 6.
 - **Extensions come next, in a sub-plan:** `GL_SGIS_multitexture`, which
-  needs a second u/v (vertex ABI v2), `WGL_EXT_swap_control` and
-  `GL_EXT_compiled_vertex_array`.
+  needs a second texture-coordinate set and an explicit ABI revision,
+  `WGL_EXT_swap_control` and `GL_EXT_compiled_vertex_array`.
 
 ## Phase 6: the rest of OpenGL 1.1
 
@@ -404,15 +596,45 @@ Each pure file in `src/opengl/` has a `tests/host/test_gl_*.c` alongside it.
 - Feedback and selection.
 - Raster position, Bitmap, DrawPixels, CopyPixels, and ReadPixels for all
   formats and types, with transfer, maps and zoom.
-- Pixel store, CopyTex(Sub)Image and GetTexImage.
-- Stipple, logic op, polygon offset, and point and line width.
+- Remaining pixel format/type coverage using the Phase 4 pack/unpack helpers,
+  CopyTex(Sub)Image and GetTexImage.
+- Stipple, logic op, polygon offset, point and line width, smoothing and
+  dithering, with semantic coverage beyond the Quake scenes.
 - All push-attrib groups, and texture priorities.
 
-CPU pixel paths go through DirectDraw Lock, which drains the engine. Any
-state an engine refuses goes through the fallback.
+CPU framebuffer paths go through DirectDraw Lock with the shared all-engine
+drain and lifetime contract verified; logical CPU texture images use their
+bounded synchronous descriptors. Unsupported hardware state selects software
+before emission. Runtime submission failures follow the explicit ABI failure
+contract and are not capability fallbacks.
 
-**Gate:** the V9XGLP conformance scenes compared with generic GL, plus a host
-test per unit.
+**Gate:** the requirements matrix is complete, with specification-based state,
+error and rasterization assertions, V9XGLP reference comparisons and relevant
+host tests. All 336 dispatch slots have implemented semantics; no temporary
+unimplemented stubs remain. Successful Quake runs alone do not satisfy this gate.
+
+## Requirements coverage matrix
+
+This groups the implementation work; the Phase 0 inventory expands it into
+individual requirements. Tests listed here are planned, not passing evidence.
+
+| Requirement | Owning phase | Required evidence |
+|---|---|---|
+| ICD discovery, exports and calling conventions | 0, 3 | Early clear/present experiment, dispatch order and 32-bit ABI probes |
+| Surface bounds, generations and lifetime | 2, 3 | Invalid/stale descriptors, overflow, loss/restore, destruction with work pending |
+| Submission ordering, fallback and completion | 2, 3 | ViRGE/Gen3 colour and Z transitions, texture visibility, timeouts and partial failures |
+| Context/drawable ownership and WGL operations | 3, 4, 6 | Rebind/thread tests, concurrent processes/D3D, shared textures then lists |
+| State, errors, defaults, queries and advertised limits | 4, completed in 6 | Exact assertions for legal/illegal calls and every supported query; no unexplained stubs |
+| Transform, clipping and primitive assembly | 2, 4 | Projective coordinates, provoking vertices, winding, shared edges and reversed depth |
+| Point/line coverage and rasterization options | 2, 4, 6 | Endpoint/coverage tests, then width, stipple, smoothing and polygon offset |
+| Texture objects, images, sampling and environments | 2, 4 | Logical image preservation, completeness, borders, mip tails, filters and limit errors |
+| Fragment operations and framebuffer selection | 2, 4, 6 | Alpha/depth/blend/masks, scissored clears, front/back selection, logic op and dithering |
+| Pixel pack/unpack and readback | 4, 5, completed in 6 | Row alignment/skips, narrow images, buffer guards, orientation and all formats/types |
+| Lighting, texgen and texture transforms | 4, completed in 6 | Per-feature state and rendered tests, including two-sided lighting and texture q |
+| Lists, evaluators, feedback, selection and attribute stacks | 6 | State/output assertions, list compile/execute semantics and shared-object lifetime |
+| Raster position, bitmap, pixel transfer/copy and zoom | 6 | Valid/invalid raster positions and pixel-operation reference scenes |
+| Formats without alpha, stencil, accumulation or auxiliary buffers | 3, 6 | Accurate pixel-format/GL queries and specified behaviour of related calls when buffers are absent |
+| GLQuake and Quake 2 integration | 5 | Controlled screenshots, restart/lifetime checks and measured fallback costs on each engine |
 
 ## Quake requirements that bind earlier phases (census, 2026-09-26)
 
@@ -431,15 +653,19 @@ test per unit.
 
 ## Risks
 
-- **Win16-mutex deadlock.** It is held only across build-and-submit. Code
-  holding it never blocks and never calls USER, GDI or DDraw, and the
-  existing spins stay bounded.
+- **Win16-mutex deadlock or excessive hold time.** Phase 3 specifies lock
+  order and serialized submission/CPU access. Code holding it never calls
+  USER, GDI or DDraw; waits and CPU work are bounded. Measure contention and
+  fallback hold time, including simultaneous GL and D3D clients.
 - **The Phase 1 refactor regresses D3D.** Every commit is gated on pixel
   hashes and scores, on the engine it touches.
 - **The INT→LCL cast is not documented for applications.** Phase 0.4
-  measures it, and the HAL validates the pointer.
-- **Mixed-engine Z and Gen3 CPU coherence are unmeasured.** Phase 0.5 and the
-  Phase 2 probe rung measure them before any fallback is relied on.
+  measures the layout. Pointer readability alone cannot validate ownership
+  or lifetime; the descriptor, allocation and generation contract must also
+  pass its Phase 3 tests before client-supplied surfaces are used.
+- **Mixed-engine colour/Z and CPU coherence are unmeasured.** Phase 0.5 and
+  Phase 2 verify ordering and both directions of visibility. The present
+  Intel-only render drain cannot establish ViRGE fallback correctness.
 - **Speed.** Software-rasterizer speed with perspective correction on a
   Pentium-class CPU is measured, not promised. The Gen3 per-batch ring-head
   wait (`intel-gen3-async-submission.md`) is inherited.
@@ -457,6 +683,7 @@ test per unit.
   - `scripts/build-opengl-icd.ps1`, `scripts/build-gl-probe.ps1`
   - `tests/host/test_{r3d_clip,d3d_state,gl_*}.c`
   - `docs/plans/opengl-1.1-icd.md`, which is this plan checked in
+  - `docs/plans/opengl-1.1-requirements.md`, the detailed coverage inventory
   - The Phase 0 decision docs.
 - **Modified:**
   - `d3d_internal.h`, `d3d_core.c`, `d3d_soft.c`, `d3d_raster.{c,h}`,
@@ -481,6 +708,16 @@ test per unit.
   - A8U4I5 (ViRGE/DX)
   - MICHAEL-NETBOOK (Gen3)
   Each run is compared with generic GL on the same guest.
+- **OS compatibility:** add explicitly identified original Windows 98 and ME
+  guests for ICD discovery, dispatch, clear/present, window clipping, surface
+  restore and mode-change validation. Start with software, then validate the
+  applicable hardware paths. Record OS/runtime and engine coverage separately.
+  Windows 95 initially runs only the Phase 0 feasibility gate; extend its
+  verification matrix according to the resulting decision doc.
 - **Phase 5:** GLQuake and Quake 2 timedemos on each engine. Screenshots,
-  frame rates and fallback counts go in `docs/decisions/`.
+  frame rates, fallback reasons/counts, pixels processed and CPU/drain times
+  go in `docs/decisions/`. There is no minimum frame-rate gate.
+- **Phase 6:** close every requirements-inventory row with evidence. Keep
+  exact semantic assertions separate from image tolerances and record the
+  OS/runtime, engine, pixel format and relevant state for each comparison.
 - Nothing is reported as working on the strength of reading the code.
