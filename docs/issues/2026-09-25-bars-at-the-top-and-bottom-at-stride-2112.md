@@ -1,6 +1,25 @@
 # Bars at the top and bottom of 3DMark99's frames at the 2112-byte stride
 
-**Status: OPEN.** MICHAEL-NETBOOK, 945GSE, 1024x576x16, driver with the
+**Status: RESOLVED 2026-09-25, boot 16.** The Z buffer overlapped the third
+flip-chain buffer. The back-buffer block request tested
+DDSCAPS_BACKBUFFER, which in a triple-buffered chain only the first back
+buffer carries; the third (FLIP alone) was still sized by the packed row, and
+DirectDraw allocated the Z buffer over its last rows. Depth writes painted the
+band. Measured: at a 2304 pitch the third buffer spanned 0x288000-0x3CC000
+and the Z buffer began at 0x3A8000, 64 rows early - the band the operator
+photographed (`docs\decisions\2026-09-25-netbook-stride-2304-bottom-band.jpg`);
+at 2112 the same overlap was 17 rows. With every non-primary FLIP surface
+requested at display pitch the chain ends at 0x37B000 and the Z buffer starts
+there; the operator reports games 1 and 2 correct.
+
+Hypotheses this killed, kept because each was plausible: a 64 KB plane-base
+alignment (640x480's bases are not aligned either and show no bars; Linux
+gives Gen3 planes no alignment), a stride that must be a multiple of 256
+(2304 made the band larger, not smaller), and a display FIFO underrun
+(PIPEBSTAT bit 31 set in the bar-free 640x480 run and clear in the barred
+ones).
+
+**Original report, as filed:** MICHAEL-NETBOOK, 945GSE, 1024x576x16, driver with the
 unaliased stride (`docs\decisions\2026-09-25-scanning-out-at-2112-on-gen3.md`).
 
 ## Symptom

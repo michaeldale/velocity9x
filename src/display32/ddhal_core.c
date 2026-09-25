@@ -835,8 +835,18 @@ static void v9x_request_back_buffer_blocks(V9X_DDHAL_CREATESURFACEDATA *data)
         V9X_DD_SURFACE_LCL *surface = list[index];
         DWORD packed;
 
+        /*
+         * Every buffer of the chain but the primary, not only the one marked
+         * BACKBUFFER: in a triple-buffered chain only the first back buffer
+         * carries that bit and the third carries FLIP alone. Testing
+         * BACKBUFFER left the third sized by the packed row, and the Z buffer
+         * DirectDraw allocated next landed on its last rows - 64 of them at
+         * a 2304 pitch (0x3A8000 inside 0x288000-0x3CC000), the band of depth
+         * data 3DMark99 showed at the bottom of the frame (2026-09-25).
+         */
         if (surface == 0 || surface->lpGbl == 0 ||
-            (surface->ddsCaps & V9X_DDSCAPS_BACKBUFFER) == 0ul ||
+            (surface->ddsCaps &
+             (V9X_DDSCAPS_BACKBUFFER | V9X_DDSCAPS_FLIP)) == 0ul ||
             (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
                                  V9X_DDSCAPS_SYSTEMMEMORY)) != 0ul ||
             (DWORD)surface->lpGbl->wWidth != v9x_hal->fb.width ||

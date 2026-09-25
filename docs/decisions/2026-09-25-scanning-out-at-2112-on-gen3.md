@@ -64,11 +64,26 @@
 established. The CPU side is now the larger share the HAL can account for:
 CPU fills 7.0% and application Lock writes 4.6%.
 
-## Open
+## The bars, found (boots 15-16)
 
-- **The bars**, with the flip chain now spaced correctly and the fills
-  writing at each surface's own pitch (`blt_cpu.c:109`). Not explained;
-  `docs\issues\2026-09-25-bars-at-the-top-and-bottom-at-stride-2112.md`.
+The Z buffer was allocated over the third flip-chain buffer's last rows,
+because the block request tested BACKBUFFER and the third buffer of a
+triple chain carries FLIP only. Found by reading `D3dDepthOffset` against
+the chain: 0x3A8000 inside 0x288000-0x3CC000 at a 2304 pitch, a 64-row
+overlap matching the band photographed. Now every non-primary FLIP
+surface is requested at display pitch; on boot 16 the chain ends at
+0x37B000 where the Z buffer begins, and the operator reports games 1 and
+2 correct. The 2304 pitch tried on boot 15 was reverted to 2112. Detail
+and the killed hypotheses:
+`docs\issues\2026-09-25-bars-at-the-top-and-bottom-at-stride-2112.md`.
+
+Armed captures (`V9XTRACE -arm`) of the later tests, which the operator
+saw as blank, show drawn frames in the flipped buffers with the plane
+registers pointing at them (`...-chain-fixed-later-test-captures.png`,
+`...-stride-2112-chain-fixed-V9XTRACE.ini`); what the panel showed then is
+not yet explained.
+
+## Open
 - Whether the VBIOS answers 4F06h's get from the register or from what it
   last set is not measured; the unconditional set is correct either way.
 - The white rectangles and black tests are older and separate.
