@@ -116,6 +116,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 
 - [2026-09-26 The Win9x OpenGL ICD contract, from four sources that agree, and what GLQuake and Quake 2 actually ask of a driver](2026-09-26-opengl-icd-interface-research.md)
 - [2026-09-26 98SE's DDRAW.DLL imports the Win16 mutex by ordinals 93/97/98, and its OPENGL32 looks up all eighteen Drv* names and one registry value](2026-09-26-98se-ddraw-imports-the-win16-mutex-ordinals.md)
+- [2026-09-26 On 98SE, _ConfirmWin16Lock returns 1 exactly when the calling thread holds the mutex, and GetProcAddress refuses the KERNEL32 ordinals that name it](2026-09-26-98se-confirmwin16lock-is-one-when-held-and-getprocaddress-refuses-the-ordinals.md)
 
 ## VBE generic family and dynamic modes
 
