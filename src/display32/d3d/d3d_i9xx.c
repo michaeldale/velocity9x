@@ -1045,6 +1045,54 @@ static DWORD v9x_d3d_i9xx_create_depth(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * A plain texture at the pitch its row needs.
+ *
+ * DirectDraw's heap gives every texture surface a pitch aligned to the 4 KiB
+ * texture alignment this engine publishes (MipGapActual=0x1000 on the
+ * netbook), so a 64-texel texture of 128 bytes a row holds 256 KB instead of
+ * 8. With a 1024x576 triple-buffered chain and Z buffer that left about a
+ * megabyte of a 5.66 MB heap for textures, and 3DMark99 had thousands of mip
+ * chains declined and drawn untextured for want of room (2026-09-25). So a
+ * texture the bind can sample - 16 bits, square, a power of two within the
+ * limits - is placed in a block of its own at the tree layout's one-level
+ * pitch (64-byte aligned), page aligned as MAP_STATE needs. The page of slack
+ * the alignment costs is the price of not knowing where the heap will put
+ * the block; it is still an order of magnitude less than the pitch it
+ * replaces. Anything else is left to DirectDraw exactly as before.
+ */
+static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL *surface = ((V9X_DD_SURFACE_LCL **)data->lplpSList)[0];
+    const V9X_DDPIXELFORMAT *pixel;
+    struct v9x_d3d_i9xx_miptree tree;
+    DWORD size = (DWORD)surface->lpGbl->wWidth;
+    DWORD base;
+
+    if (size != (DWORD)surface->lpGbl->wHeight ||
+        size < v9x_d3d_i9xx_limits.texture_size_min ||
+        size > v9x_d3d_i9xx_limits.texture_size_max ||
+        (size & (size - 1ul)) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    pixel = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+        ? &surface->lpGbl->ddpfSurface
+        : &v9x_hal->info.vmiData.ddpfDisplay;
+    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        pixel->dwRGBBitCount != 16ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (v9x_d3d_i9xx_layout_miptree(size, 1ul, &tree) == V9X_FALSE ||
+        v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
+                                 tree.level_offset, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    ++v9x_hal->d3d_diagnostics.texture_placed;
+    v9x_hal->d3d_diagnostics.texture_placed_bytes += tree.pitch * tree.rows;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
 static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
@@ -1065,6 +1113,12 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         (list[0]->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul &&
         (list[0]->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) == 0ul) {
         return v9x_d3d_i9xx_create_depth(data);
+    }
+    /* A lone video-memory texture, including a MIPMAP surface of one level. */
+    if (data->dwSCnt == 1ul &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) == 0ul) {
+        return v9x_d3d_i9xx_create_texture(data);
     }
     /* A mip chain in video memory, or nothing this engine places - and not
      * counted, because every other surface arrives here too. */
@@ -1131,8 +1185,8 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 }
 
 /*
- * The top level of a tree placed above, or a padded Z buffer, is going; free
- * the block. Both count in mip_tree_frees.
+ * The top level of a tree placed above, a padded Z buffer or a placed plain
+ * texture is going; free the block. All three count in mip_tree_frees.
  *
  * Recognised by the signature create_surface leaves and the heap never does:
  * a mip level or Z buffer whose lpVidMemHeap is NULL, whose dwReserved1 holds a block
@@ -1152,8 +1206,8 @@ static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     }
     global = surface->lpGbl;
     block = global->dwReserved1;
-    if ((surface->ddsCaps &
-         (V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_ZBUFFER)) == 0ul ||
+    if ((surface->ddsCaps & (V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_ZBUFFER |
+                             V9X_DDSCAPS_TEXTURE)) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         block == 0ul || global->dwBlockSizeX != 0ul ||
         global->fpVidMem < block ||

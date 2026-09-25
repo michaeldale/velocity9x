@@ -989,6 +989,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("MipDraws", snapshot.d3d.mip_draws);
     v9x_write_uint("ZPlaced", snapshot.d3d.z_placed);
     v9x_write_uint("ZPlacedPitch", snapshot.d3d.z_placed_pitch);
+    v9x_write_uint("TexturePlaced", snapshot.d3d.texture_placed);
+    v9x_write_uint("TexturePlacedBytes", snapshot.d3d.texture_placed_bytes);
     /* The timing buckets as raw TSC pairs and call counts, with the two
      * calibration readings; the host converts, so this tool assumes no
      * clock rate. Names match V9X_TIME_* in ddhal_internal.h. */

@@ -1487,6 +1487,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092505: V9X_D3D_DIAGNOSTICS gains the plain-texture placement
+ * counters. An append.
+ */
 /* 2026092504: V9X_D3D_DIAGNOSTICS gains the padded-Z placement counters.
  * An append.
  */
@@ -1552,7 +1555,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092504ul
+#define V9X_DD_SHARED_ABI   2026092505ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2928,6 +2931,14 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD z_placed;
     DWORD z_placed_pitch;
+    /*
+     * Plain Gen3 textures the HAL placed itself at the tree layout's pitch
+     * (2026-09-25) instead of DirectDraw's 4 KiB one, and the bytes those
+     * placements took. Frees count in mip_tree_frees with the trees and the
+     * padded Z buffers.
+     */
+    DWORD texture_placed;
+    DWORD texture_placed_bytes;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
