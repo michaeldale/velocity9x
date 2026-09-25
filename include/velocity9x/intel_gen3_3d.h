@@ -221,11 +221,13 @@
  * S6's COLOUR BLEND. Double-sourced by use: Mesa and xf86 assemble the same
  * four terms - enable, function, source factor, destination factor.
  *
- * Only SOURCE-side factors are licensed. Mesa carries a remap that rewrites
- * DST_ALPHA factors for targets whose alpha does not exist and does NOT apply
- * it to 565, so whether a 565 destination reads alpha as one is stated by
- * neither tree. SRC_ALPHA and INV_SRC_ALPHA are functions of the fragment and
- * are unaffected - and they are what "source-alpha blend" means.
+ * The destination-ALPHA factors are not licensed. Mesa carries a remap that
+ * rewrites DST_ALPHA factors for targets whose alpha does not exist and does
+ * NOT apply it to 565, so whether a 565 destination reads alpha as one is
+ * stated by neither tree. SRC_ALPHA and INV_SRC_ALPHA are functions of the
+ * fragment and are unaffected - and they are what "source-alpha blend"
+ * means. (Until 2026-09-25 this said only SOURCE-side factors were licensed;
+ * the destination COLOUR factors below read channels a 565 target has.)
  */
 #define V9X_I9XX_S6_BLEND_ENABLE         ((v9x_u32)0x00008000ul)
 #define V9X_I9XX_S6_BLEND_FUNC_SHIFT     12u
@@ -234,6 +236,20 @@
 #define V9X_I9XX_BLENDFUNC_ADD           ((v9x_u32)0ul)
 #define V9X_I9XX_BLENDFACT_SRC_ALPHA     ((v9x_u32)5ul)
 #define V9X_I9XX_BLENDFACT_INV_SRC_ALPHA ((v9x_u32)6ul)
+/*
+ * The colour factors, from 2026-09-25, for Direct3D's SRCCOLOR,
+ * INVSRCCOLOR, DESTCOLOR and INVDESTCOLOR - what 3D WinBench 98's Add and
+ * Modulate pixel blending need beside ONE/ONE. Defined identically in Mesa
+ * gallium src\gallium\drivers\i915\i915_reg.h:930-937 and xf86-video-intel
+ * src\sna\gen3_render.h:240-247, and used by Mesa gallium
+ * i915_state_inlines.h:122-128. DST_COLR reads the destination's COLOUR,
+ * which a 565 target has - unlike the destination-alpha codes (7 and 8),
+ * which stay unlicensed for the reason given above.
+ */
+#define V9X_I9XX_BLENDFACT_SRC_COLR      ((v9x_u32)3ul)
+#define V9X_I9XX_BLENDFACT_INV_SRC_COLR  ((v9x_u32)4ul)
+#define V9X_I9XX_BLENDFACT_DST_COLR      ((v9x_u32)9ul)
+#define V9X_I9XX_BLENDFACT_INV_DST_COLR  ((v9x_u32)10ul)
 
 /*
  * _3DSTATE_INDEPENDENT_ALPHA_BLEND, emitted ONLY to disable it.
@@ -767,6 +783,34 @@ v9x_u32 v9x_i9xx_sampler_filter_word(v9x_u32 min_linear, v9x_u32 mag_linear);
  * is the horizontal streaking intel62's photograph shows on Final Reality's
  * sky and terrain. Added 2026-09-17; UNMEASURED until that boot. */
 #define V9X_I9XX_TEXCOORDMODE_WRAP       ((v9x_u32)0ul)
+/*
+ * TEXCOORDMODE_MIRROR, 1: Direct3D's D3DTADDRESS_MIRROR, the texture
+ * reflected on every repeat. Defined identically in Mesa gallium
+ * src\gallium\drivers\i915\i915_reg.h:809 and xf86-video-intel
+ * src\sna\gen3_render.h:822, and USED by Mesa gallium i915_state.c:69-70
+ * (PIPE_TEX_WRAP_MIRROR_REPEAT), Mesa 21.3 classic i915_texstate.c:126-127
+ * (GL_MIRRORED_REPEAT) and xf86-video-intel gen3_render.c:362. Added
+ * 2026-09-25; measured by 3D WinBench 98's Mirror Texture Addressing test.
+ */
+#define V9X_I9XX_TEXCOORDMODE_MIRROR     ((v9x_u32)1ul)
+
+/*
+ * The address mode a map asks for, in struct v9x_i9xx_texture's `wrap` and
+ * the decode limits' `texture_wrap`. Driver vocabulary, translated to a
+ * TEXCOORDMODE by the two macros below, which the builder and the decoder
+ * both use so the two cannot disagree. Macros rather than a function so the
+ * translation adds no exported symbol. 0 and 1 are the values every caller
+ * used before MIRROR existed, and they keep their meanings.
+ */
+#define V9X_I9XX_ADDRESS_CLAMP           ((v9x_u32)0ul)
+#define V9X_I9XX_ADDRESS_WRAP            ((v9x_u32)1ul)
+#define V9X_I9XX_ADDRESS_MIRROR          ((v9x_u32)2ul)
+#define V9X_I9XX_ADDRESS_KNOWN(address) \
+    ((address) <= V9X_I9XX_ADDRESS_MIRROR)
+#define V9X_I9XX_ADDRESS_TEXCOORDMODE(address) \
+    ((address) == V9X_I9XX_ADDRESS_WRAP ? V9X_I9XX_TEXCOORDMODE_WRAP : \
+     (address) == V9X_I9XX_ADDRESS_MIRROR ? V9X_I9XX_TEXCOORDMODE_MIRROR : \
+     V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE)
 #define V9X_I9XX_SS3_TCX_SHIFT           12
 #define V9X_I9XX_SS3_TCY_SHIFT           9
 #define V9X_I9XX_SS3_TCZ_SHIFT           6
@@ -935,6 +979,14 @@ v9x_status v9x_i9xx_build_sampling_program(
 #define V9X_I9XX_TEXPROG_MODULATE_ALPHA     ((v9x_u32)0ul)
 #define V9X_I9XX_TEXPROG_MODULATE_TEXALPHA  ((v9x_u32)1ul)
 #define V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA ((v9x_u32)2ul)
+/*
+ * DECAL, from 2026-09-25: Direct3D's D3DTBLEND_DECAL, the texel's colour and
+ * alpha as the result with the vertex colour ignored. That is the sampling
+ * program - texld straight to oC - which scene 1 has run on this part, so no
+ * new instruction is involved; the declaration only lets a runtime stream
+ * carry it.
+ */
+#define V9X_I9XX_TEXPROG_DECAL              ((v9x_u32)3ul)
 v9x_u32 v9x_i9xx_texture_program_extent(v9x_u32 program);
 v9x_status v9x_i9xx_build_texture_program(
     v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);

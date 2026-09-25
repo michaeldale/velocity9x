@@ -642,9 +642,16 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                             ss2 = v9x_i9xx_sampler_filter_word(
                                 limits->texture_min_linear,
                                 limits->texture_mag_linear);
-                            if (limits->texture_wrap != 0ul) {
-                                mode = V9X_I9XX_TEXCOORDMODE_WRAP;
+                            /* Clamp, wrap or mirror, translated by the same
+                             * macro the builder uses; an undefined request
+                             * is itself a refusal. */
+                            if (!V9X_I9XX_ADDRESS_KNOWN(
+                                    limits->texture_wrap)) {
+                                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                                index + 3ul);
                             }
+                            mode = V9X_I9XX_ADDRESS_TEXCOORDMODE(
+                                limits->texture_wrap);
                         }
                         if (stream[index + 2ul] != ss2) {
                             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,

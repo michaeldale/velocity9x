@@ -146,10 +146,13 @@ triangle count, texture fidelity.
    stop claiming it. **Done 2026-09-25, in hardware (S3)**:
    `2026-09-25-cylindrical-wrap-through-s3.md`.
 3. **Z accuracy** at 16 bits: find which of format, range or the HAL's
-   computed Z loses the wide-range cube.
-4. The OFF list is the backlog: mipmapping, fog, decal modes, mirror
-   addressing, colour key, add/modulate framebuffer blends, specular,
-   dithering. Mipmapping and colour key are the likeliest to matter for
+   computed Z loses the wide-range cube. **Diagnosed 2026-09-25, parked**:
+   both results are what a 16-bit screen-space Z buffer gives; the remedy is
+   Gen3's 24-bit depth format, planned in `docs\plans\intel-24-bit-depth.md`.
+4. **2026-09-25: mirror addressing, Add and Modulate pixel blending and
+   DECAL done** (`2026-09-25-mirror-colour-blend-factors-and-decal.md`).
+   The rest of the OFF list is the backlog: mipmapping, fog, DecalAlpha,
+   colour key, specular, dithering, anti-aliasing. Mipmapping and colour key are the likeliest to matter for
    3DMark99's missing textures; that link is not tested.
 
 ## Not established

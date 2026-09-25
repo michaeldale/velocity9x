@@ -213,10 +213,15 @@ v9x_status v9x_i9xx_build_sampler_state(
     stream[at++] = v9x_i9xx_unit_enable_mask(count);
 
     for (index = 0ul; index < count; ++index) {
-        /* The address mode for every axis, from the map. Z has no coordinate
-         * in a 2D fetch and takes the same mode so the dword has one shape. */
-        v9x_u32 mode = maps[index].wrap != 0ul
-            ? V9X_I9XX_TEXCOORDMODE_WRAP : V9X_I9XX_TEXCOORDMODE_CLAMP_EDGE;
+        if (!V9X_I9XX_ADDRESS_KNOWN(maps[index].wrap)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    for (index = 0ul; index < count; ++index) {
+        /* The address mode for every axis, from the map: clamp, wrap or
+         * mirror. Z has no coordinate in a 2D fetch and takes the same mode
+         * so the dword has one shape. */
+        v9x_u32 mode = V9X_I9XX_ADDRESS_TEXCOORDMODE(maps[index].wrap);
 
         /* MIN and MAG each nearest or bilinear, no mips either way. */
         stream[at++] = v9x_i9xx_sampler_filter_word(maps[index].min_linear,

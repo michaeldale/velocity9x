@@ -3744,6 +3744,41 @@ static void test_runtime_texture_formats(void)
     limits.texture_min_linear = 1ul;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
           V9X_I9XX_P5_OK);
+    /* The same wrap stream declared as MIRROR, and an undefined mode. */
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        wrong.texture_wrap = V9X_I9XX_ADDRESS_MIRROR;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong.texture_wrap = 3ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
+    /* Built MIRROR, accepted only when declared MIRROR. */
+    map.wrap = V9X_I9XX_ADDRESS_MIRROR;
+    at = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    limits.texture_wrap = V9X_I9XX_ADDRESS_MIRROR;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    map.wrap = V9X_I9XX_ADDRESS_WRAP;
+    limits.texture_wrap = V9X_I9XX_ADDRESS_WRAP;
 
     /*
      * The declared PROGRAM. The same stream with the alpha-keeping program
@@ -3911,14 +3946,21 @@ static void test_runtime_blend(void)
  * independently selectable factors, so publishing SRCALPHA|ONE against
  * INVSRCALPHA|ZERO promised SRCALPHA/ZERO and ONE/INVSRCALPHA too, and both
  * drew opaque. Each pair now lands in S6's two 4-bit fields as declared. A
- * code outside the four is refused by the builder, and half a pair is
+ * code outside the set is refused by the builder, and half a pair is
  * refused as well.
+ *
+ * Eight codes from 2026-09-25: the four colour factors joined the four above
+ * for 3D WinBench 98's Add and Modulate pixel blending tests. The
+ * destination-ALPHA factors stay out - a 565 target has no alpha, and
+ * neither tree says what the part reads for it.
  */
 static void test_runtime_blend_pairs(void)
 {
-    static const v9x_u32 codes[4] = {
+    static const v9x_u32 codes[8] = {
         V9X_I9XX_BLENDFACT_ZERO, V9X_I9XX_BLENDFACT_ONE,
-        V9X_I9XX_BLENDFACT_SRC_ALPHA, V9X_I9XX_BLENDFACT_INV_SRC_ALPHA
+        V9X_I9XX_BLENDFACT_SRC_COLR, V9X_I9XX_BLENDFACT_INV_SRC_COLR,
+        V9X_I9XX_BLENDFACT_SRC_ALPHA, V9X_I9XX_BLENDFACT_INV_SRC_ALPHA,
+        V9X_I9XX_BLENDFACT_DST_COLR, V9X_I9XX_BLENDFACT_INV_DST_COLR
     };
     v9x_u32 stream[64];
     v9x_u32 produced = 0ul;
@@ -3932,14 +3974,27 @@ static void test_runtime_blend_pairs(void)
           V9X_FALSE);
     CHECK(v9x_i9xx_blend_factor_known(V9X_I9XX_BLENDFACT_INV_SRC_ALPHA) !=
           V9X_FALSE);
-    /* DST_ALPHA (3) and INV_DST_ALPHA (4) exist on the part and are what
-     * the audit excludes; 0 is "off" and never a factor. */
+    /* The encodings, from i915_reg.h and sna\gen3_render.h alike. Until
+     * 2026-09-25 this comment named 3 and 4 as the destination-alpha codes;
+     * both trees say 3 and 4 are SRC_COLR and INV_SRC_COLR and destination
+     * alpha is 7 and 8. */
+    CHECK(codes[2] == 3ul);
+    CHECK(codes[3] == 4ul);
+    CHECK(codes[6] == 9ul);
+    CHECK(codes[7] == 10ul);
+    for (s = 0ul; s < 8ul; ++s) {
+        CHECK(v9x_i9xx_blend_factor_known(codes[s]) != V9X_FALSE);
+    }
+    /* DST_ALPHA (7) and INV_DST_ALPHA (8) exist on the part and stay
+     * excluded, as does anything past INV_DST_COLR; 0 is "off" and never a
+     * factor. */
     CHECK(v9x_i9xx_blend_factor_known(0ul) == V9X_FALSE);
-    CHECK(v9x_i9xx_blend_factor_known(3ul) == V9X_FALSE);
-    CHECK(v9x_i9xx_blend_factor_known(4ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(7ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(8ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_blend_factor_known(11ul) == V9X_FALSE);
 
-    for (s = 0ul; s < 4ul; ++s) {
-        for (d = 0ul; d < 4ul; ++d) {
+    for (s = 0ul; s < 8ul; ++s) {
+        for (d = 0ul; d < 8ul; ++d) {
             v9x_u32 seen = 0ul;
 
             CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul,
@@ -3971,7 +4026,7 @@ static void test_runtime_blend_pairs(void)
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
                                        0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
-                                       V9X_I9XX_BLENDFACT_SRC_ALPHA, 3ul,
+                                       V9X_I9XX_BLENDFACT_SRC_ALPHA, 7ul,
                                        0ul, stream, 64ul, &produced) !=
           V9X_STATUS_OK);
 }
@@ -4082,7 +4137,27 @@ static void test_texture_programs(void)
               V9X_I9XX_TEXPROG_MODULATE_TEXALPHA) == 19ul);
     CHECK(v9x_i9xx_texture_program_extent(
               V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) == 19ul);
-    CHECK(v9x_i9xx_texture_program_extent(3ul) == 0ul);
+    /*
+     * DECAL, from 2026-09-25: the texel is the result, colour and alpha -
+     * which is the sampling program, texld straight to oC, dword for dword.
+     * Its length is its own (ten), so the decoder's length check tells it
+     * from both modulate forms.
+     */
+    CHECK(v9x_i9xx_texture_program_extent(V9X_I9XX_TEXPROG_DECAL) ==
+          v9x_i9xx_sampling_program_extent());
+    CHECK(v9x_i9xx_texture_program_extent(V9X_I9XX_TEXPROG_DECAL) == 10ul);
+    CHECK(v9x_i9xx_texture_program_extent(4ul) == 0ul);
+    CHECK(v9x_i9xx_build_sampling_program(base, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_DECAL,
+                                         tex, 24ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 10ul);
+    for (index = 0ul; index < 10ul; ++index) {
+        CHECK(tex[index] == base[index]);
+    }
+    CHECK(v9x_i9xx_build_texture_program(4ul, tex, 24ul, &written) !=
+          V9X_STATUS_OK);
 
     /* Kind 0 is the original, dword for dword. */
     CHECK(v9x_i9xx_build_modulate_program(base, 24ul, &written) ==
@@ -4132,8 +4207,8 @@ static void test_texture_programs(void)
         }
     }
 
-    /* Refusals. */
-    CHECK(v9x_i9xx_build_texture_program(3ul, tex, 24ul, &written) !=
+    /* Refusals. 4 is the first undefined program since DECAL took 3. */
+    CHECK(v9x_i9xx_build_texture_program(4ul, tex, 24ul, &written) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
                                          tex, 18ul, &written) !=
@@ -4226,6 +4301,30 @@ static void test_sampler_state(void)
     CHECK(v9x_i9xx_sampler_filter_word(1ul, 1ul) == 0x00024000ul);
     maps[0].mag_linear = 0ul;
     maps[0].min_linear = 0ul;
+
+    /*
+     * MIRROR, the third address mode: TEXCOORDMODE 1 on all three axes.
+     * 0x20 | (1<<12) | (1<<9) | (1<<6) = 0x20 | 0x1000 | 0x200 | 0x40. The
+     * named values keep their meanings - 0 clamps, 1 wraps - so every caller
+     * written before mirror existed says what it said. Any other value is
+     * refused rather than guessed at.
+     */
+    maps[0].wrap = V9X_I9XX_ADDRESS_MIRROR;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x00001260ul);
+    maps[0].wrap = V9X_I9XX_ADDRESS_WRAP;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x00000020ul);
+    maps[0].wrap = V9X_I9XX_ADDRESS_CLAMP;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x000024a0ul);
+    maps[0].wrap = 3ul;
+    CHECK(v9x_i9xx_build_sampler_state(maps, 1ul, stream, 32ul, &written) !=
+          V9X_STATUS_OK);
+    maps[0].wrap = 0ul;
 
     /* Refusals, both sides of the unit bound and of the capacity. */
     CHECK(v9x_i9xx_build_sampler_state(maps, 0ul, stream, 32ul, &written) !=
@@ -4724,6 +4823,88 @@ static void test_runtime_cylindrical_wrap(void)
                                        &produced) != V9X_STATUS_OK);
 }
 
+/*
+ * A runtime stream carrying the DECAL program decodes only when the limits
+ * declare DECAL: declared as the original modulate, or as nothing - which is
+ * the same thing - it is refused on the shader length.
+ */
+static void test_runtime_decal_program(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    map.offset = 0x00300000ul;
+    map.width = 64ul;
+    map.height = 64ul;
+    map.pitch = 128ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.mag_linear = 0ul;
+    map.min_linear = 0ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map.offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    limits.texture_program = V9X_I9XX_TEXPROG_DECAL;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_DECAL,
+                                         stream + at, 400ul - at,
+                                         &produced) == V9X_STATUS_OK);
+    at += produced;
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0xffffffful;
+    colors[1] = 0xffffffful;
+    colors[2] = 0xffffffful;
+    uv[0] = 0ul;  uv[1] = 0ul;
+    uv[2] = one;  uv[3] = 0ul;
+    uv[4] = 0ul;  uv[5] = one;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    limits.texture_program = V9X_I9XX_TEXPROG_MODULATE_ALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_SHADER);
+    limits.texture_program = V9X_I9XX_TEXPROG_MODULATE_TEXALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_SHADER);
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
     test_float_round_trip();
@@ -4744,6 +4925,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_formats();
     test_runtime_texture_formats();
     test_runtime_cylindrical_wrap();
+    test_runtime_decal_program();
     test_runtime_blend();
     test_runtime_blend_pairs();
     test_texture_programs();

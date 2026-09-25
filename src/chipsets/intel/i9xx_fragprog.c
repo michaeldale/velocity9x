@@ -286,6 +286,9 @@ v9x_u32 v9x_i9xx_texture_program_extent(v9x_u32 program)
         program == V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) {
         return V9X_I9XX_MODULATE2_DWORDS;
     }
+    if (program == V9X_I9XX_TEXPROG_DECAL) {
+        return V9X_I9XX_SAMPLING_DWORDS;
+    }
     return 0ul;
 }
 
@@ -298,6 +301,10 @@ v9x_status v9x_i9xx_build_texture_program(
 
     if (program == V9X_I9XX_TEXPROG_MODULATE_ALPHA) {
         return v9x_i9xx_build_modulate_program(stream, capacity, written);
+    }
+    /* DECAL is the sampling program itself: the texel is the answer. */
+    if (program == V9X_I9XX_TEXPROG_DECAL) {
+        return v9x_i9xx_build_sampling_program(stream, capacity, written);
     }
     if (written != 0) { *written = 0ul; }
     if (program == V9X_I9XX_TEXPROG_MODULATE_TEXALPHA) {

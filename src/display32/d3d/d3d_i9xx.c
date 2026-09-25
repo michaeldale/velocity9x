@@ -881,16 +881,23 @@ static int v9x_d3d_i9xx_bind_texture(V9X_D3D_CONTEXT *context,
     map->pitch = (DWORD)surface->lpGbl->lPitch;
     map->format = format;
     /*
-     * The sampler, from the render states the core kept. WRAP tiles; CLAMP
-     * and anything else (MIRROR, which this driver does not publish) clamp
-     * to the edge. MIN and MAG are read separately, because Direct3D sets
+     * The sampler, from the render states the core kept. WRAP tiles, MIRROR
+     * reflects on every repeat (from 2026-09-25), and CLAMP and anything else
+     * - BORDER, which this driver does not publish - clamp to the edge. MIN
+     * and MAG are read separately, because Direct3D sets
      * them separately and the SS2 word has a field for each: LINEAR and the
      * two LINEARMIP* forms are bilinear within a level, and the rest -
      * NEAREST, MIPNEAREST, MIPLINEAR - are nearest within a level. The mip
      * part of every MIP* value is dropped, because no map has levels. All
      * of it UNMEASURED on this part until intel62's successor.
      */
-    map->wrap = context->texture_address == V9X_D3DTADDRESS_WRAP ? 1ul : 0ul;
+    if (context->texture_address == V9X_D3DTADDRESS_WRAP) {
+        map->wrap = V9X_I9XX_ADDRESS_WRAP;
+    } else if (context->texture_address == V9X_D3DTADDRESS_MIRROR) {
+        map->wrap = V9X_I9XX_ADDRESS_MIRROR;
+    } else {
+        map->wrap = V9X_I9XX_ADDRESS_CLAMP;
+    }
     map->mag_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_mag);
     map->min_linear = v9x_d3d_i9xx_filter_is_linear(context->texture_min);
     v9x_hal->d3d_diagnostics.texture_last_offset = address;
@@ -926,6 +933,15 @@ static DWORD v9x_d3d_i9xx_blend_factor(DWORD d3d)
     if (d3d == V9X_D3DBLEND_SRCALPHA) { return V9X_I9XX_BLENDFACT_SRC_ALPHA; }
     if (d3d == V9X_D3DBLEND_INVSRCALPHA) {
         return V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
+    }
+    /* The colour factors, from 2026-09-25. */
+    if (d3d == V9X_D3DBLEND_SRCCOLOR) { return V9X_I9XX_BLENDFACT_SRC_COLR; }
+    if (d3d == V9X_D3DBLEND_INVSRCCOLOR) {
+        return V9X_I9XX_BLENDFACT_INV_SRC_COLR;
+    }
+    if (d3d == V9X_D3DBLEND_DESTCOLOR) { return V9X_I9XX_BLENDFACT_DST_COLR; }
+    if (d3d == V9X_D3DBLEND_INVDESTCOLOR) {
+        return V9X_I9XX_BLENDFACT_INV_DST_COLR;
     }
     return 0ul;
 }
@@ -977,6 +993,10 @@ static DWORD v9x_d3d_i9xx_texture_program(const V9X_D3D_CONTEXT *context,
 {
     if (context->texture_blend == V9X_D3DTBLEND_MODULATEALPHA) {
         return V9X_I9XX_TEXPROG_MODULATE_ALPHA;
+    }
+    /* DECAL, from 2026-09-25: the texel alone, the vertex colour unused. */
+    if (context->texture_blend == V9X_D3DTBLEND_DECAL) {
+        return V9X_I9XX_TEXPROG_DECAL;
     }
     if (format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 ||
         format == V9X_I9XX_MAPSURF_16BIT_ARGB4444) {
@@ -1203,12 +1223,23 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
-    /* The one measured pair and the one that means "off". Same shape as
-     * the ViRGE's, which is where Final Reality and 3DMark99 already run. */
+    /*
+     * Every factor the engine builds, on both sides, from 2026-09-25.
+     *
+     * This published SRCALPHA|ONE as source and INVSRCALPHA|ZERO as
+     * destination - the one measured pair and the one that means "off" -
+     * while bind_blend already honoured every pairing of the four codes. So
+     * ONE/ONE was buildable and never offered, and 3D WinBench 98 reported
+     * Add Pixel Blending unsupported. The colour factors join them; the
+     * destination-alpha factors stay out, because a 565 target has no alpha.
+     */
     shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps =
-        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_ONE;
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
     shared->d3d_global.hwCaps.dpcTriCaps.dwDestBlendCaps =
-        V9X_D3DPBLENDCAPS_INVSRCALPHA | V9X_D3DPBLENDCAPS_ZERO;
+        shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
         V9X_D3DPTEXTURECAPS_PERSPECTIVE | V9X_D3DPTEXTURECAPS_POW2 |
         V9X_D3DPTEXTURECAPS_SQUAREONLY | V9X_D3DPTEXTURECAPS_ALPHA;
@@ -1223,12 +1254,17 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
         V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR;
-    /* MODULATE with Direct3D's alpha rule, and MODULATEALPHA, which is
-     * the original program: two of the three textured programs. */
+    /* MODULATE with Direct3D's alpha rule, MODULATEALPHA, which is the
+     * original program, and from 2026-09-25 DECAL, the sampling program.
+     * DECALALPHA needs a lerp program this engine does not build yet. */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
-        V9X_D3DPTBLENDCAPS_MODULATE | V9X_D3DPTBLENDCAPS_MODULATEALPHA;
+        V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE |
+        V9X_D3DPTBLENDCAPS_MODULATEALPHA;
+    /* MIRROR from 2026-09-25: the sampler's TEXCOORDMODE_MIRROR, one value
+     * in the SS3 address fields the other two modes already use. */
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureAddressCaps =
-        V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_CLAMP;
+        V9X_D3DPTADDRESSCAPS_WRAP | V9X_D3DPTADDRESSCAPS_MIRROR |
+        V9X_D3DPTADDRESSCAPS_CLAMP;
     /*
      * GUID_D3DExtendedCaps, which the runtime asks for and which carries the
      * texture limits D3DDEVICEDESC_V1 has nowhere to put. These are the same

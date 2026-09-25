@@ -337,8 +337,12 @@ v9x_u16 v9x_i9xx_blend_factor_known(v9x_u32 factor)
 {
     if (factor == V9X_I9XX_BLENDFACT_ZERO ||
         factor == V9X_I9XX_BLENDFACT_ONE ||
+        factor == V9X_I9XX_BLENDFACT_SRC_COLR ||
+        factor == V9X_I9XX_BLENDFACT_INV_SRC_COLR ||
         factor == V9X_I9XX_BLENDFACT_SRC_ALPHA ||
-        factor == V9X_I9XX_BLENDFACT_INV_SRC_ALPHA) {
+        factor == V9X_I9XX_BLENDFACT_INV_SRC_ALPHA ||
+        factor == V9X_I9XX_BLENDFACT_DST_COLR ||
+        factor == V9X_I9XX_BLENDFACT_INV_DST_COLR) {
         return V9X_TRUE;
     }
     return V9X_FALSE;

@@ -506,6 +506,10 @@ typedef struct v9x_ddhalinfo {
 /* D3DCAPS.H: the source is scaled by the destination colour, per channel.
  * The software engine publishes this one; the S3D unit cannot express it. */
 #define V9X_D3DPBLENDCAPS_DESTCOLOR       0x00000100ul
+/* D3DCAPS.H: the other colour factors, published by the Intel engine. */
+#define V9X_D3DPBLENDCAPS_SRCCOLOR        0x00000004ul
+#define V9X_D3DPBLENDCAPS_INVSRCCOLOR     0x00000008ul
+#define V9X_D3DPBLENDCAPS_INVDESTCOLOR    0x00000200ul
 #define V9X_D3DRENDERSTATE_SRCBLEND                19ul
 #define V9X_D3DRENDERSTATE_DESTBLEND               20ul
 #define V9X_D3DRENDERSTATE_ALPHABLENDENABLE        27ul
@@ -518,6 +522,10 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DBLEND_SRCALPHA                       5ul
 #define V9X_D3DBLEND_INVSRCALPHA                    6ul
 #define V9X_D3DBLEND_DESTCOLOR                      9ul
+/* D3DTYPES.H: the other colour factors. */
+#define V9X_D3DBLEND_SRCCOLOR                       3ul
+#define V9X_D3DBLEND_INVSRCCOLOR                    4ul
+#define V9X_D3DBLEND_INVDESTCOLOR                  10ul
 #define V9X_D3DRENDERSTATE_TEXTUREHANDLE             1ul
 #define V9X_D3DRENDERSTATE_TEXTUREPERSPECTIVE        4ul
 #define V9X_D3DRENDERSTATE_WRAPU                     5ul
@@ -631,6 +639,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DPTBLENDCAPS_MODULATEALPHA  0x00000008ul
 #define V9X_D3DPTBLENDCAPS_COPY           0x00000040ul
 #define V9X_D3DPTADDRESSCAPS_WRAP         0x00000001ul
+#define V9X_D3DPTADDRESSCAPS_MIRROR       0x00000002ul
 #define V9X_D3DPTADDRESSCAPS_CLAMP        0x00000004ul
 #define V9X_D3DPT_TRIANGLELIST                     4ul
 /* D3DPT_TRIANGLESTRIP, from the DDK's D3DTYPES.H. Added 2026-09-20 when the
