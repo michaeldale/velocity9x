@@ -278,12 +278,12 @@ static int v9x_d3d_mip_chain_contiguous(const V9X_DD_SURFACE_LCL *top,
     return 0;
 }
 
-static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_texture_info(const V9X_R3D_DRAW *draw,
                                 DWORD *offset_out, DWORD *size_log_out,
                                 int *mipmapped_out, DWORD *levels_out,
                                 DWORD *format_out)
 {
-    V9X_DD_SURFACE_LCL *surface = v9x_d3d_context_texture_surface(context);
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
     DWORD size;
     DWORD size_log = 0ul;
     DWORD offset;
@@ -407,11 +407,11 @@ static int v9x_d3d_texture_info(V9X_D3D_CONTEXT *context,
  * Returns the alpha bits for the command word; *skip_out is set when the
  * triangle must not be drawn at all.
  */
-static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
+static DWORD v9x_d3d_virge_alpha_bits(const V9X_R3D_DRAW *draw,
                                       int textured, int *skip_out)
 {
     *skip_out = 0;
-    if (context->alpha_blend_enable == 0ul) {
+    if (draw->blend_enable == 0ul) {
         /*
          * The unit has no alpha test and the device publishes no alpha
          * comparison caps, so a test is not drawn - as in S3's driver
@@ -419,14 +419,14 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
          * an application asked. 3DMark 99 does not, even with the caps
          * published (2026-09-23): see alpha_test_* in V9X_D3D_DIAGNOSTICS.
          */
-        if (context->alpha_test_enable != 0ul &&
-            context->alpha_func != V9X_D3DCMP_ALWAYS && v9x_hal != 0) {
+        if (draw->alpha_test_enable != 0ul &&
+            draw->alpha_func != V9X_R3D_CMP_ALWAYS && v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.alpha_test_unexpressed;
         }
         return 0ul;
     }
-    if (context->src_blend == V9X_D3DBLEND_SRCALPHA &&
-        context->dest_blend == V9X_D3DBLEND_INVSRCALPHA) {
+    if (draw->src_blend == V9X_R3D_BLEND_SRCALPHA &&
+        draw->dst_blend == V9X_R3D_BLEND_INVSRCALPHA) {
         /*
          * Where A comes from. Direct3D's rule for DECAL, MODULATE and COPY is
          * "the texture's alpha if the texture has an alpha channel, else the
@@ -447,15 +447,15 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
         }
         return V9X_VIRGE_3D_CMD_ALPHA_SOURCE | V9X_VIRGE_3D_CMD_ALPHA_ENABLE;
     }
-    if (context->src_blend == V9X_D3DBLEND_ONE &&
-        context->dest_blend == V9X_D3DBLEND_ZERO) {
+    if (draw->src_blend == V9X_R3D_BLEND_ONE &&
+        draw->dst_blend == V9X_R3D_BLEND_ZERO) {
         return 0ul;
     }
     *skip_out = 1;
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.blend_skipped;
         v9x_hal->d3d_diagnostics.blend_last_pair =
-            (context->src_blend << 16) | (context->dest_blend & 0xfffful);
+            (draw->src_blend << 16) | (draw->dst_blend & 0xfffful);
     }
     return 0ul;
 }
@@ -483,10 +483,10 @@ static DWORD v9x_d3d_virge_alpha_bits(const V9X_D3D_CONTEXT *context,
 #define V9X_VIRGE_CENSUS_SIZE_MASK 0x00000f00ul
 
 /* The bound texture's ddsCaps, or zero when there is no record to read. */
-static DWORD v9x_d3d_virge_census_caps(const V9X_D3D_CONTEXT *context)
+static DWORD v9x_d3d_virge_census_caps(const V9X_R3D_DRAW *draw)
 {
     const V9X_DD_SURFACE_LCL *surface =
-        v9x_d3d_context_texture_surface((V9X_D3D_CONTEXT *)context);
+        (V9X_DD_SURFACE_LCL *)draw->texture.object;
 
     if (surface == 0) {
         return 0ul;
@@ -497,7 +497,7 @@ static DWORD v9x_d3d_virge_census_caps(const V9X_D3D_CONTEXT *context)
 static void v9x_d3d_virge_census(DWORD command, int textured,
                                  DWORD texture_size_log,
                                  DWORD texture_offset,
-                                 const V9X_D3D_CONTEXT *context)
+                                 const V9X_R3D_DRAW *draw)
 {
     V9X_D3D_DRAW_CENSUS *census;
     DWORD key;
@@ -517,7 +517,7 @@ static void v9x_d3d_virge_census(DWORD command, int textured,
             census->entries[index].size_mask |= 1ul << (texture_size_log & 31ul);
             census->entries[index].tex_offset = texture_offset;
             census->entries[index].tex_caps =
-                v9x_d3d_virge_census_caps(context);
+                v9x_d3d_virge_census_caps(draw);
         }
         return;
     }
@@ -532,7 +532,7 @@ static void v9x_d3d_virge_census(DWORD command, int textured,
         textured ? 1ul << (texture_size_log & 31ul) : 0ul;
     census->entries[index].tex_offset = textured ? texture_offset : 0ul;
     census->entries[index].tex_caps =
-        textured ? v9x_d3d_virge_census_caps(context) : 0ul;
+        textured ? v9x_d3d_virge_census_caps(draw) : 0ul;
 }
 
 /*
@@ -917,18 +917,18 @@ static int v9x_d3d_virge_perspective(const V9X_D3DTLVERTEX *p0,
 static DWORD v9x_d3d_z_compare(DWORD func)
 {
     switch (func) {
-    case V9X_D3DCMP_NEVER:        return V9X_VIRGE_3D_CMD_Z_CMP_NEVER;
-    case V9X_D3DCMP_LESS:         return V9X_VIRGE_3D_CMD_Z_CMP_LESS;
-    case V9X_D3DCMP_EQUAL:        return V9X_VIRGE_3D_CMD_Z_CMP_EQUAL;
-    case V9X_D3DCMP_LESSEQUAL:    return V9X_VIRGE_3D_CMD_Z_CMP_LESSEQUAL;
-    case V9X_D3DCMP_GREATER:      return V9X_VIRGE_3D_CMD_Z_CMP_GREATER;
-    case V9X_D3DCMP_NOTEQUAL:     return V9X_VIRGE_3D_CMD_Z_CMP_NOTEQUAL;
-    case V9X_D3DCMP_GREATEREQUAL: return V9X_VIRGE_3D_CMD_Z_CMP_GREATEREQUAL;
+    case V9X_R3D_CMP_NEVER:        return V9X_VIRGE_3D_CMD_Z_CMP_NEVER;
+    case V9X_R3D_CMP_LESS:         return V9X_VIRGE_3D_CMD_Z_CMP_LESS;
+    case V9X_R3D_CMP_EQUAL:        return V9X_VIRGE_3D_CMD_Z_CMP_EQUAL;
+    case V9X_R3D_CMP_LESSEQUAL:    return V9X_VIRGE_3D_CMD_Z_CMP_LESSEQUAL;
+    case V9X_R3D_CMP_GREATER:      return V9X_VIRGE_3D_CMD_Z_CMP_GREATER;
+    case V9X_R3D_CMP_NOTEQUAL:     return V9X_VIRGE_3D_CMD_Z_CMP_NOTEQUAL;
+    case V9X_R3D_CMP_GREATEREQUAL: return V9X_VIRGE_3D_CMD_Z_CMP_GREATEREQUAL;
     default:                      return V9X_VIRGE_3D_CMD_Z_CMP_ALWAYS;
     }
 }
 
-static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
+static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
                             const V9X_D3DTLVERTEX *first)
 {
     const V9X_D3DTLVERTEX *p0 = &first[0];
@@ -975,12 +975,12 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * the pixel past the edge. Bounding this at width - 1 declined every
      * full-screen quad an application sent.
      */
-    if (!(p0->sx >= 0.0f && p0->sx <= (float)context->width &&
-          p0->sy >= 0.0f && p0->sy <= (float)context->height &&
-          p1->sx >= 0.0f && p1->sx <= (float)context->width &&
-          p1->sy >= 0.0f && p1->sy <= (float)context->height &&
-          p2->sx >= 0.0f && p2->sx <= (float)context->width &&
-          p2->sy >= 0.0f && p2->sy <= (float)context->height)) {
+    if (!(p0->sx >= 0.0f && p0->sx <= (float)draw->target.width &&
+          p0->sy >= 0.0f && p0->sy <= (float)draw->target.height &&
+          p1->sx >= 0.0f && p1->sx <= (float)draw->target.width &&
+          p1->sy >= 0.0f && p1->sy <= (float)draw->target.height &&
+          p2->sx >= 0.0f && p2->sx <= (float)draw->target.width &&
+          p2->sy >= 0.0f && p2->sy <= (float)draw->target.height)) {
         return 0;
     }
     if (p2->sy > p1->sy) { temp = p2; p2 = p1; p1 = temp; }
@@ -1045,8 +1045,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * hardware on that would point the depth unit at depth_offset 0, which is
      * the visible framebuffer.
      */
-    z_active = context->z_enable != 0ul && context->zbuffer != 0 &&
-               context->depth_pitch != 0ul;
+    z_active = draw->depth_enable != 0ul && draw->depth.object != 0 &&
+               draw->depth.pitch != 0ul;
     if (z_active) {
         /* Same shape as the colour gradients below, and the same fdxr. That
          * value is 1/|dx|; the triangle's orientation is carried once, in bit
@@ -1055,16 +1055,16 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         dzdy = (p2->sz - p0->sz) * fdy02r;
         dzdx = (p1->sz - (dzdy * fdy01 + p0->sz)) * fdxr;
     }
-    textured = v9x_d3d_texture_info(context, &texture_offset,
+    textured = v9x_d3d_texture_info(draw, &texture_offset,
                                     &texture_size_log, &texture_mipmapped,
                                     &texture_levels, &texture_format);
-    alpha_bits = v9x_d3d_virge_alpha_bits(context, textured, &skip_blend);
+    alpha_bits = v9x_d3d_virge_alpha_bits(draw, textured, &skip_blend);
     if (skip_blend) {
         return 1;   /* a blend the unit has no expression for: not drawn */
     }
-    if (textured && context->color_key_enable != 0ul) {
+    if (textured && draw->color_key_enable != 0ul) {
         const V9X_DD_SURFACE_LCL *keyed_surface =
-            v9x_d3d_context_texture_surface(context);
+            (V9X_DD_SURFACE_LCL *)draw->texture.object;
         V9X_D3D_COLOR_KEY *key = v9x_d3d_color_key_find(keyed_surface);
 
         /* Instrument: where in the LCL does DirectDraw keep the key? Kept
@@ -1118,7 +1118,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
         dvdx = ((p1->tv - p0->tv) * 134217728.0f - dvdy * fdy01) *
                 fdxr;
         if (texture_mipmapped &&
-            context->texture_min >= V9X_D3DFILTER_MIPNEAREST) {
+            draw->texture.min_filter >= V9X_R3D_FILTER_MIPNEAREST) {
             float rho = dudx < 0.0f ? -dudx : dudx;
             float derivative;
             float level_base = 134217728.0f /
@@ -1148,15 +1148,15 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             }
             texture_d = level << 27;
             texture_level = level;
-            if ((context->texture_min == V9X_D3DFILTER_MIPLINEAR ||
-                 context->texture_min == V9X_D3DFILTER_LINEARMIPLINEAR) &&
+            if ((draw->texture.min_filter == V9X_R3D_FILTER_MIPLINEAR ||
+                 draw->texture.min_filter == V9X_R3D_FILTER_LINEARMIPLINEAR) &&
                 level < texture_levels && rho > level_base) {
                 texture_d += (DWORD)v9x_float_to_long(
                     ((rho - level_base) / level_base) * 134217727.0f);
             }
-            if (context->texture_min ==
-                    V9X_D3DFILTER_LINEARMIPLINEAR &&
-                context->alpha_blend_enable == 0ul &&
+            if (draw->texture.min_filter ==
+                    V9X_R3D_FILTER_LINEARMIPLINEAR &&
+                draw->blend_enable == 0ul &&
                 level < texture_levels &&
                 (texture_d & 0x07fffffful) != 0ul) {
                 if (v9x_d3d_virge_two_pass_ok()) {
@@ -1190,7 +1190,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             perspective = v9x_d3d_virge_perspective(
                 p0, p1, p2, texture_size_log, texture_levels,
                 texture_mipmapped &&
-                    context->texture_min >= V9X_D3DFILTER_MIPNEAREST,
+                    draw->texture.min_filter >= V9X_R3D_FILTER_MIPNEAREST,
                 fdy02r, fdy01, fdxr, fdycc, &persp);
         }
     }
@@ -1218,7 +1218,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * is most of what any application draws.
      */
     if (textured && alpha_bits != 0ul &&
-        context->texture_blend != V9X_D3DTBLEND_MODULATE &&
+        draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
         !v9x_d3d_virge_unlit_alpha_ok()) {
         unlit_alpha_lit = 1;
         color = 0xfffffffful;
@@ -1235,10 +1235,10 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * keep doing so: a base of 0 with the mode field enabled writes depth
      * values over the visible framebuffer. */
     v9x_mmio_write(V9X_VIRGE_3D_Z_BASE,
-                   z_active ? context->depth_offset : 0ul);
-    v9x_mmio_write(V9X_VIRGE_3D_DEST_BASE, context->target_offset);
-    v9x_mmio_write(V9X_VIRGE_3D_CLIP_L_R, context->width - 1ul);
-    v9x_mmio_write(V9X_VIRGE_3D_CLIP_T_B, context->height - 1ul);
+                   z_active ? draw->depth.offset : 0ul);
+    v9x_mmio_write(V9X_VIRGE_3D_DEST_BASE, draw->target.offset);
+    v9x_mmio_write(V9X_VIRGE_3D_CLIP_L_R, draw->target.width - 1ul);
+    v9x_mmio_write(V9X_VIRGE_3D_CLIP_T_B, draw->target.height - 1ul);
     /*
      * Both halves. The register is destination stride in the high word and
      * source stride in the low, and this wrote only the high one - which the
@@ -1277,14 +1277,14 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * reads-the-texture-stride.md.
      */
     v9x_mmio_write(V9X_VIRGE_3D_DEST_SRC_STRIDE,
-                   (context->pitch << 16) |
+                   (draw->target.pitch << 16) |
                    (textured ? ((2ul << texture_size_log) & 0xfffful)
-                             : (context->pitch & 0xfffful)));
+                             : (draw->target.pitch & 0xfffful)));
     v9x_mmio_write(V9X_VIRGE_3D_Z_STRIDE,
-                   z_active ? context->depth_pitch : 0ul);
+                   z_active ? draw->depth.pitch : 0ul);
     v9x_mmio_write(V9X_VIRGE_3D_TEX_BASE,
                    textured ? texture_offset : 0ul);
-    v9x_mmio_write(V9X_VIRGE_3D_TEX_BORDER, context->texture_border);
+    v9x_mmio_write(V9X_VIRGE_3D_TEX_BORDER, draw->texture.border);
     v9x_mmio_write(V9X_VIRGE_3D_FADE_COLOR, 0ul);
 
     if (perspective) {
@@ -1366,15 +1366,15 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      */
     command = z_active
         ? (V9X_VIRGE_3D_CMD_GOURAUD_16 |
-           v9x_d3d_z_compare(context->z_func) |
-           (context->z_write != 0ul ? V9X_VIRGE_3D_CMD_Z_UPDATE : 0ul))
+           v9x_d3d_z_compare(draw->depth_func) |
+           (draw->depth_write != 0ul ? V9X_VIRGE_3D_CMD_Z_UPDATE : 0ul))
         : V9X_VIRGE_3D_CMD_GOURAUD_16_AE;
     if (textured) {
         command |= (texture_format == V9X_TEX_FORMAT_ARGB4444
                         ? V9X_VIRGE_3D_CMD_TEX_ARGB4444
                         : V9X_VIRGE_3D_CMD_TEX_ARGB1555) |
                    (texture_size_log << 8);
-        if (context->texture_blend == V9X_D3DTBLEND_MODULATE ||
+        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE ||
             unlit_alpha_lit) {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_LIT |
                        V9X_VIRGE_3D_CMD_TEX_MODULATE;
@@ -1385,18 +1385,18 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             command |= V9X_VIRGE_3D_CMD_TEX_PERSPECTIVE;
         }
         if (texture_mipmapped &&
-            context->texture_min == V9X_D3DFILTER_MIPNEAREST) {
+            draw->texture.min_filter == V9X_R3D_FILTER_MIPNEAREST) {
             command |= V9X_VIRGE_3D_CMD_MIP_NEAREST;
         } else if (texture_mipmapped &&
-                   context->texture_min == V9X_D3DFILTER_MIPLINEAR) {
+                   draw->texture.min_filter == V9X_R3D_FILTER_MIPLINEAR) {
             command |= V9X_VIRGE_3D_CMD_MIP_LINEAR;
         } else if (texture_mipmapped &&
-                   context->texture_min ==
-                       V9X_D3DFILTER_LINEARMIPNEAREST) {
+                   draw->texture.min_filter ==
+                       V9X_R3D_FILTER_LINEARMIPNEAREST) {
             command |= V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST;
         } else if (texture_mipmapped &&
-                   context->texture_min ==
-                       V9X_D3DFILTER_LINEARMIPLINEAR) {
+                   draw->texture.min_filter ==
+                       V9X_R3D_FILTER_LINEARMIPLINEAR) {
             /*
              * The two-pass form draws level N here and blends N+1 over it, so
              * this pass is bilinear on one level. The degraded form is that
@@ -1406,8 +1406,8 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
             command |= (trilinear_blend || trilinear_degrade)
                 ? V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST
                 : V9X_VIRGE_3D_CMD_LINEAR_MIP_LINEAR;
-        } else if (context->texture_min == V9X_D3DFILTER_LINEAR ||
-                   context->texture_mag == V9X_D3DFILTER_LINEAR) {
+        } else if (draw->texture.min_filter == V9X_R3D_FILTER_LINEAR ||
+                   draw->texture.mag_filter == V9X_R3D_FILTER_LINEAR) {
             command |= V9X_VIRGE_3D_CMD_FILTER_LINEAR;
         } else {
             command |= V9X_VIRGE_3D_CMD_FILTER_NEAREST;
@@ -1436,9 +1436,9 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
          * asked for. WRAPU/WRAPV still set it, as before, so nothing that
          * worked stops working.
          */
-        if (context->texture_wrap != 0ul ||
-            context->texture_address == V9X_D3DTADDRESS_WRAP ||
-            context->texture_address == V9X_D3DTADDRESS_CLAMP) {
+        if (draw->texture.wrap_either != 0ul ||
+            draw->texture.address == V9X_R3D_ADDRESS_WRAP ||
+            draw->texture.address == V9X_R3D_ADDRESS_CLAMP) {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_WRAP;
         }
     }
@@ -1450,9 +1450,9 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
      * no expression for. Zero is what every application leaves the state at,
      * and is this block doing nothing. See V9X_D3DRENDERSTATE_V9X_ALPHAFORCE.
      */
-    if (context->alpha_force != V9X_D3D_ALPHAFORCE_ENGINE &&
+    if (draw->alpha_force != V9X_D3D_ALPHAFORCE_ENGINE &&
         alpha_bits != 0ul) {
-        switch (context->alpha_force) {
+        switch (draw->alpha_force) {
         case V9X_D3D_ALPHAFORCE_NONE:
             alpha_bits = 0ul;
             break;
@@ -1472,7 +1472,7 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
     }
     command |= alpha_bits;
     v9x_d3d_virge_census(command, textured, texture_size_log, texture_offset,
-                         context);
+                         draw);
     v9x_mmio_write(V9X_VIRGE_3D_COMMAND, command);
     gs_bs = (((color >> 8) & 0xfful) << 23) |
             ((color & 0xfful) << 7);
@@ -1587,13 +1587,13 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
          */
         if (z_active) {
             second_command &= ~V9X_VIRGE_3D_CMD_Z_UPDATE;
-            if (context->z_write != 0ul) {
+            if (draw->depth_write != 0ul) {
                 second_command &= ~V9X_VIRGE_3D_CMD_Z_CMP_ALWAYS;
                 second_command |= V9X_VIRGE_3D_CMD_Z_CMP_EQUAL;
             }
         }
         v9x_mmio_write(V9X_VIRGE_3D_COMMAND, second_command);
-        if (context->texture_blend == V9X_D3DTBLEND_MODULATE) {
+        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE) {
             v9x_mmio_write(V9X_VIRGE_3D_DGDX_DBDX,
                            ((DWORD)v9x_d3d_fixed_8_7(dgdx) << 16) |
                            (DWORD)v9x_d3d_fixed_8_7(dbdx));
@@ -1680,10 +1680,13 @@ static int v9x_d3d_triangle(V9X_D3D_CONTEXT *context,
  * Stops at the first triangle the emitter refuses, which is what the three
  * call sites did when they held the loop themselves.
  */
-static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
-                                        const V9X_D3DTLVERTEX *vertices,
-                                        DWORD triangle_count)
+static int v9x_d3d_virge_draw(const V9X_R3D_DRAW *draw,
+                              const V9X_R3D_VERTEX *r3d_vertices,
+                              DWORD triangle_count)
 {
+    /* The same layout, asserted in d3d_core.c; the setup below is written
+     * on the D3DTLVERTEX field names and stays so. */
+    const V9X_D3DTLVERTEX *vertices = (const V9X_D3DTLVERTEX *)r3d_vertices;
     DWORD index;
     DWORD drawn = 0ul;
 
@@ -1753,7 +1756,7 @@ static int v9x_d3d_virge_draw_triangles(V9X_D3D_CONTEXT *context,
      * telling the application about.
      */
     for (index = 0ul; index < triangle_count; ++index) {
-        if (v9x_d3d_triangle(context, &vertices[index * 3ul])) {
+        if (v9x_d3d_triangle(draw, &vertices[index * 3ul])) {
             ++drawn;
         } else if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.triangles_declined;
@@ -1955,10 +1958,20 @@ static int v9x_d3d_virge_ready(void)
     return v9x_engine_status_validated();
 }
 
+/*
+ * Positional; draw_triangles is null and the neutral draw entry is set
+ * (Phase 1d of the OpenGL plan, 2026-09-26). This engine reads nothing
+ * from V9X_D3D_CONTEXT: the texture is the object the core resolved, and
+ * the colour key is still looked up through the core's table by that
+ * object.
+ */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge = {
     &v9x_d3d_virge_limits,
     v9x_d3d_texture_format,
     v9x_d3d_virge_describe_caps,
-    v9x_d3d_virge_draw_triangles,
-    v9x_d3d_virge_ready
+    0,
+    v9x_d3d_virge_ready,
+    0,
+    0,
+    v9x_d3d_virge_draw
 };

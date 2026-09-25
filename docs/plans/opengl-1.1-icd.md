@@ -404,6 +404,11 @@ below is its own commit with its own gate.
     V9XDDP identical before and after on `Win98SE-Fast-D3D`. Deploy note
     for that guest: the vbe driver, HAL and mini-VDD go together; a newer
     driver on the old VxD falls back to VGA (`VbeDetail=minivdd-no-api`).
+  - **ViRGE done 2026-09-26**
+    (`2026-09-26-phase1d-the-virge-engine-reads-the-neutral-draw-and-draws-the-same.md`):
+    V9XDDP on `Win86SE` identical to both Phase 1a runs outside the
+    per-process keys. Not run: Final Reality on 86Box, and the physical
+    A8U4I5. Gen3 remains, on the netbook.
 - **1e.** Set `draw_triangles` to null in all three tables. The member stays,
   so the positional initialisers do not shift.
 - **check-tree.** Extend the chip-neutral rule (`check-tree.ps1:434`, which is
