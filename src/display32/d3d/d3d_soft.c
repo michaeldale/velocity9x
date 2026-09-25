@@ -25,6 +25,7 @@
  * docs\plans\s3-trio64-voodoo2-hybrid-3d.md, mode 2, work-order steps 5 and 6.
  */
 #include "d3d_internal.h"
+#include "d3d_state.h"
 #include "d3d_raster.h"
 
 /*
@@ -333,11 +334,10 @@ static int v9x_d3d_soft_sysmem_allowed(void)
             V9X_DD_ENGINE_CAP_D3D_SOFT_SYSMEM) != 0ul;
 }
 
-static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
+static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
                                       V9X_D3D_RASTER_TEXTURE *texture)
 {
-    V9X_DD_SURFACE_LCL *surface =
-        v9x_d3d_context_texture_surface((V9X_D3D_CONTEXT *)context);
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
     DWORD format;
     DWORD size;
     DWORD offset;
@@ -439,14 +439,14 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
      * magnification state decides, and the caps publish NEAREST and LINEAR
      * only.
      */
-    texture->filter = context->texture_mag == V9X_D3DFILTER_LINEAR
+    texture->filter = draw->texture.mag_filter == V9X_R3D_FILTER_LINEAR
         ? V9X_D3D_RASTER_FILTER_LINEAR : V9X_D3D_RASTER_FILTER_POINT;
     /*
      * DECAL and MODULATE, with MODULATE the default. COPY is not published and
      * lands here as DECAL, which differs from it only in alpha - and no alpha
      * is sampled.
      */
-    texture->blend = context->texture_blend == V9X_D3DTBLEND_DECAL
+    texture->blend = draw->texture.op == V9X_R3D_TEXOP_DECAL
         ? V9X_D3D_RASTER_BLEND_DECAL : V9X_D3D_RASTER_BLEND_MODULATE;
     /*
      * WRAP unless the application asked for CLAMP. MIRROR and BORDER are
@@ -455,7 +455,7 @@ static int v9x_d3d_soft_texture_setup(const V9X_D3D_CONTEXT *context,
      * expects - a MIRROR request comes out tiled rather than mirrored, which
      * is wrong in the same visible way an unpublished texture blend is.
      */
-    texture->address = context->texture_address == V9X_D3DTADDRESS_CLAMP
+    texture->address = draw->texture.address == V9X_R3D_ADDRESS_CLAMP
         ? V9X_D3D_RASTER_ADDRESS_CLAMP : V9X_D3D_RASTER_ADDRESS_WRAP;
     if (!v9x_d3d_raster_texture_valid(texture)) {
         /* The rasterizer's own validation, which the arms above cannot
@@ -925,13 +925,13 @@ static void v9x_d3d_soft_normalise(V9X_D3D_RASTER_VERTEX *triangle)
  * one is interpolated independently. Packing to RGB565 happens per pixel, at
  * the far end of the interpolation, not here.
  */
-static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
-                                const V9X_D3D_CONTEXT *context,
+static void v9x_d3d_soft_vertex(const V9X_R3D_VERTEX *source,
+                                const V9X_R3D_DRAW *draw,
                                 int wrapping,
                                 V9X_D3D_RASTER_VERTEX *result)
 {
-    result->x = v9x_d3d_soft_coordinate(source->sx, context->width);
-    result->y = v9x_d3d_soft_coordinate(source->sy, context->height);
+    result->x = v9x_d3d_soft_coordinate(source->sx, draw->target.width);
+    result->y = v9x_d3d_soft_coordinate(source->sy, draw->target.height);
     result->z = v9x_d3d_soft_depth(source->sz);
     result->u = v9x_d3d_soft_texcoord(source->tu, wrapping);
     result->v = v9x_d3d_soft_texcoord(source->tv, wrapping);
@@ -959,9 +959,9 @@ static void v9x_d3d_soft_vertex(const V9X_D3DTLVERTEX *source,
  * v9x_d3d_soft_vertex has already clamped every coordinate into range, so a
  * zero here means the render target itself is not one this engine can write.
  */
-static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
-                                       const V9X_D3DTLVERTEX *vertices,
-                                       DWORD triangle_count)
+static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
+                             const V9X_R3D_VERTEX *vertices,
+                             DWORD triangle_count)
 {
     V9X_D3D_RASTER_TARGET target;
     V9X_D3D_RASTER_DEPTH depth;
@@ -973,15 +973,15 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     int wrapping;
     DWORD index;
 
-    if (context == 0 || vertices == 0 || v9x_hal == 0) {
+    if (draw == 0 || vertices == 0 || v9x_hal == 0) {
         return 0;
     }
 
-    target.pixels = (void *)(v9x_hal->fb.linear_base + context->target_offset);
-    target.pitch = context->pitch;
-    target.width = context->width;
-    target.height = context->height;
-    target.format = context->target_format;
+    target.pixels = (void *)(v9x_hal->fb.linear_base + draw->target.offset);
+    target.pitch = draw->target.pitch;
+    target.width = draw->target.width;
+    target.height = draw->target.height;
+    target.format = draw->target.format;
     if (!v9x_d3d_raster_target_valid(&target)) {
         return 0;
     }
@@ -994,13 +994,14 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
      * would point the depth unit at depth_offset 0, which is the visible
      * framebuffer. The DDK makes the same test - D3DRENDR.C:266.
      */
-    if (context->z_enable != 0ul && context->zbuffer != 0 &&
-        context->depth_pitch != 0ul) {
+    if (v9x_d3d_state_depth_active(draw->depth_enable,
+                                   draw->depth.object != 0 ? 1ul : 0ul,
+                                   draw->depth.pitch) != 0ul) {
         depth.pixels = (void *)(v9x_hal->fb.linear_base +
-                                context->depth_offset);
-        depth.pitch = context->depth_pitch;
-        depth.compare = context->z_func;
-        depth.write = context->z_write;
+                                draw->depth.offset);
+        depth.pitch = draw->depth.pitch;
+        depth.compare = draw->depth_func;
+        depth.write = draw->depth_write;
         if (!v9x_d3d_raster_depth_valid(&depth, &target)) {
             return 0;
         }
@@ -1017,8 +1018,8 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
      * is what an engine with no sampler would have done and is visibly
      * untextured rather than absent.
      */
-    if (context->texture_handle != 0ul &&
-        v9x_d3d_soft_texture_setup(context, &texture)) {
+    if (draw->texture.object != 0 &&
+        v9x_d3d_soft_texture_setup(draw, &texture)) {
         texture_arg = &texture;
     }
 
@@ -1047,15 +1048,15 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
      * Counted in the same two fields the ViRGE path uses, because a boot runs
      * one engine and a skipped blend is the same fact either way.
      */
-    if (context->alpha_blend_enable != 0ul) {
-        alpha.src = context->src_blend;
-        alpha.dst = context->dest_blend;
+    if (draw->blend_enable != 0ul) {
+        alpha.src = draw->src_blend;
+        alpha.dst = draw->dst_blend;
         if (!v9x_d3d_raster_alpha_valid(&alpha)) {
             if (v9x_hal != 0) {
                 ++v9x_hal->d3d_diagnostics.blend_skipped;
                 v9x_hal->d3d_diagnostics.blend_last_pair =
-                    (context->src_blend << 16) |
-                    (context->dest_blend & 0xfffful);
+                    (draw->src_blend << 16) |
+                    (draw->dst_blend & 0xfffful);
             }
             return 1;
         }
@@ -1074,7 +1075,7 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
         DWORD corner;
 
         for (corner = 0ul; corner < 3ul; ++corner) {
-            v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], context,
+            v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], draw,
                                 wrapping, &triangle[corner]);
         }
         if (wrapping) {
@@ -1088,10 +1089,19 @@ static int v9x_d3d_soft_draw_triangles(V9X_D3D_CONTEXT *context,
     return 1;
 }
 
+/*
+ * Positional, and draw_triangles is null: this engine moved to the neutral
+ * draw entry in Phase 1d of the OpenGL plan (2026-09-26) and reads nothing
+ * from V9X_D3D_CONTEXT. The two null placement entries are the append-only
+ * rule's price for reaching the slot after them.
+ */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_soft = {
     &v9x_d3d_soft_limits,
     v9x_d3d_soft_texture_format,
     v9x_d3d_soft_describe_caps,
-    v9x_d3d_soft_draw_triangles,
-    v9x_d3d_soft_ready
+    0,
+    v9x_d3d_soft_ready,
+    0,
+    0,
+    v9x_d3d_soft_draw
 };

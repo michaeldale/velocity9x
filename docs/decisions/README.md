@@ -122,6 +122,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 On 98SE a clipped windowed blit reaches the HAL as one call per visible rectangle with rDest already clipped, and an application can walk INT to LCL to GBL and find what the HAL sees](2026-09-26-98se-clipped-blits-arrive-one-hal-call-per-rectangle-and-an-application-can-walk-int-lcl-gbl.md)
 - [2026-09-26 98SE's OPENGL32 loads the ICD, lists its pixel format first, creates every context through DrvCreateLayerContext with layer 0, and calls the 336-slot table it is handed](2026-09-26-98se-opengl32-loads-the-icd-lists-its-format-first-and-creates-every-context-through-layer-0.md)
 - [2026-09-26 Phase 1a: the clipper, list builder and cull decision move to the neutral render core, and the ViRGE guest's Direct3D probe reports the same](2026-09-26-phase1a-the-clipper-moves-to-the-render-core-and-the-virge-draws-the-same.md)
+- [2026-09-26 Phase 1d: the software engine reads the neutral draw and nothing of the Direct3D context, and the Fast-D3D guest's probe reports the same](2026-09-26-phase1d-the-software-engine-reads-the-neutral-draw-and-draws-the-same.md)
 
 ## VBE generic family and dynamic modes
 

@@ -399,6 +399,11 @@ below is its own commit with its own gate.
 - **1d. One engine per commit** moves to `draw`: soft, then virge, then i9xx.
   Each is gated on its own machine. The ViRGE colour-key rewrite stays in the
   engine, driven by `color_key_enable` and the texture LCL.
+  - **Soft done 2026-09-26**
+    (`2026-09-26-phase1d-the-software-engine-reads-the-neutral-draw-and-draws-the-same.md`):
+    V9XDDP identical before and after on `Win98SE-Fast-D3D`. Deploy note
+    for that guest: the vbe driver, HAL and mini-VDD go together; a newer
+    driver on the old VxD falls back to VGA (`VbeDetail=minivdd-no-api`).
 - **1e.** Set `draw_triangles` to null in all three tables. The member stays,
   so the positional initialisers do not shift.
 - **check-tree.** Extend the chip-neutral rule (`check-tree.ps1:434`, which is
