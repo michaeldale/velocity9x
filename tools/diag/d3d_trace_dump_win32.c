@@ -1012,6 +1012,19 @@ void __stdcall V9xTraceDumpEntry(void)
         v9x_write_hex("TimeTscLastLo", snapshot.d3d.time_tsc_last[0]);
         v9x_write_hex("TimeTscLastHi", snapshot.d3d.time_tsc_last[1]);
         v9x_write_uint("TimeTickLast", snapshot.d3d.time_tick_last);
+        /* The head wait by batch shape: triangle-count class t by area
+         * class a, as in V9X_D3D_DIAGNOSTICS.batch_cells. */
+        for (bucket = 0ul; bucket < 36ul; ++bucket) {
+            wsprintf(key, "BatchT%uA%uCyclesLo", (unsigned)(bucket / 6ul),
+                     (unsigned)(bucket % 6ul));
+            v9x_write_hex(key, snapshot.d3d.batch_cells[bucket * 3ul]);
+            wsprintf(key, "BatchT%uA%uCyclesHi", (unsigned)(bucket / 6ul),
+                     (unsigned)(bucket % 6ul));
+            v9x_write_hex(key, snapshot.d3d.batch_cells[bucket * 3ul + 1ul]);
+            wsprintf(key, "BatchT%uA%uCalls", (unsigned)(bucket / 6ul),
+                     (unsigned)(bucket % 6ul));
+            v9x_write_uint(key, snapshot.d3d.batch_cells[bucket * 3ul + 2ul]);
+        }
     }
     v9x_write_uint("WmDeclined", snapshot.d3d.wm_declined);
     v9x_write_uint("BltEngineFlipPending",

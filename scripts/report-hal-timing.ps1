@@ -34,3 +34,19 @@ foreach ($n in $names) {
     $us = if ($calls -gt 0) { $ms * 1000 / $calls } else { 0 }
     '{0,-14} {1,12:N0} {2,10:N0} {3,12:N1} {4,8:N1}' -f $n, $calls, $ms, $us, (100 * $ms / $wallMs)
 }
+
+# The head wait by batch shape, microseconds per batch (batches in brackets).
+$tNames = '1','2-3','4-7','8-15','16-31','32+'
+$aNames = '<1K','1K-10K','10K-50K','50K-200K','200K-1M','1M+'
+''
+'Head wait per batch, us (batches), rows = triangles, columns = pixels'
+('{0,-7}' -f 'tris') + (($aNames | ForEach-Object { '{0,17}' -f $_ }) -join '')
+for ($t = 0; $t -lt 6; ++$t) {
+    $row = '{0,-7}' -f $tNames[$t]
+    for ($c = 0; $c -lt 6; ++$c) {
+        $cyc = (Pair $b "BatchT${t}A${c}CyclesLo" "BatchT${t}A${c}CyclesHi") - (Pair $a "BatchT${t}A${c}CyclesLo" "BatchT${t}A${c}CyclesHi")
+        $n = (Num $b "BatchT${t}A${c}Calls") - (Num $a "BatchT${t}A${c}Calls")
+        if ($n -gt 0) { $row += '{0,17}' -f ('{0:N0} ({1:N0})' -f ($cyc / $perMs * 1000 / $n), $n) } else { $row += '{0,17}' -f '-' }
+    }
+    $row
+}

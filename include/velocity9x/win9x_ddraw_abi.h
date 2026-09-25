@@ -1483,6 +1483,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092503: V9X_D3D_DIAGNOSTICS gains the head wait by batch shape. An
+ * append.
+ */
 /* 2026092502: V9X_D3D_DIAGNOSTICS gains the HAL timing buckets. An append.
  */
 /* 2026092501: V9X_D3D_DIAGNOSTICS gains the Gen3 mip-tree counters. An
@@ -1542,7 +1545,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092502ul
+#define V9X_DD_SHARED_ABI   2026092503ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2899,6 +2902,17 @@ typedef struct v9x_d3d_diagnostics {
     DWORD time_tick_first;
     DWORD time_tsc_last[2];
     DWORD time_tick_last;
+    /*
+     * The Gen3 head wait per batch, by the batch's shape (2026-09-25): six
+     * triangle-count classes (1, 2-3, 4-7, 8-15, 16-31, 32+) by six
+     * screen-area classes (under 1K, 1K-10K, 10K-50K, 50K-200K, 200K-1M,
+     * 1M+ pixels, summed over the batch's triangles), each cell three
+     * DWORDs: cycles lo, cycles hi, batches. Index
+     * ((count_class * 6) + area_class) * 3. A fixed per-batch cost shows
+     * as a floor in the smallest cells; per-triangle and per-pixel costs as
+     * growth along each axis.
+     */
+    DWORD batch_cells[6 * 6 * 3];
 } V9X_D3D_DIAGNOSTICS;
 
 /*

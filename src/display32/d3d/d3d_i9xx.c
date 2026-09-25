@@ -548,6 +548,13 @@ void v9x_d3d_i9xx_reset(void)
     v9x_d3d_i9xx_drain_polls_spent = 0ul;
 }
 
+/*
+ * The head wait of the latest submission, in TSC cycles, for the batch-shape
+ * cells (V9X_D3D_DIAGNOSTICS.batch_cells). Zero when the latest submission
+ * did not reach the tail or timing is off.
+ */
+static DWORD v9x_d3d_i9xx_last_head_cycles;
+
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
 {
     struct v9x_i9xx_ring_plan plan;
@@ -560,6 +567,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
     DWORD phase_started;
     volatile DWORD *ring;
 
+    v9x_d3d_i9xx_last_head_cycles = 0ul;
     if (v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0) {
         return 0;
     }
@@ -607,6 +615,10 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
                 plan.next_tail) != V9X_FALSE) {
             DWORD lag;
 
+            if (V9X_TIME_ENABLED()) {
+                v9x_d3d_i9xx_last_head_cycles =
+                    v9x_rdtsc_low() - phase_started;
+            }
             V9X_TIME_END(V9X_TIME_HEAD_WAIT, phase_started);
             phase_started = V9X_TIME_BEGIN();
 
@@ -1797,16 +1809,75 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
                                             const V9X_D3DTLVERTEX *vertices,
                                             DWORD triangle_count);
 
+/*
+ * One submitted batch's head wait, filed by the batch's shape.
+ *
+ * The question is whether the GPU's time per batch is a fixed cost - the
+ * flushes and the state reload every submission carries - or grows with
+ * triangles or with pixels, and a single total cannot say. The area is the
+ * sum of the triangles' screen areas from the vertices the engine was given,
+ * so overdraw counts and depth-rejected pixels count too; it is a size, not
+ * a fill measurement. Thresholds are powers of ten and five around a
+ * 1024x576 frame of 590K pixels.
+ */
+#define V9X_D3D_I9XX_BATCH_CLASSES 6ul
+
+static void v9x_d3d_i9xx_note_batch(const V9X_D3DTLVERTEX *vertices,
+                                    DWORD triangle_count, DWORD cycles)
+{
+    float area = 0.0f;
+    DWORD triangle;
+    DWORD edge;
+    DWORD count_class = 0ul;
+    DWORD area_class = 0ul;
+    DWORD *cell;
+
+    for (triangle = 0ul; triangle < triangle_count; ++triangle) {
+        const V9X_D3DTLVERTEX *v = &vertices[triangle * 3ul];
+        float twice = (v[1].sx - v[0].sx) * (v[2].sy - v[0].sy) -
+                      (v[2].sx - v[0].sx) * (v[1].sy - v[0].sy);
+
+        if (twice < 0.0f) {
+            twice = -twice;
+        }
+        area += twice * 0.5f;
+    }
+    for (edge = triangle_count;
+         edge > 1ul && count_class < V9X_D3D_I9XX_BATCH_CLASSES - 1ul;
+         edge >>= 1) {
+        ++count_class;
+    }
+    if (area >= 1000.0f) { area_class = 1ul; }
+    if (area >= 10000.0f) { area_class = 2ul; }
+    if (area >= 50000.0f) { area_class = 3ul; }
+    if (area >= 200000.0f) { area_class = 4ul; }
+    if (area >= 1000000.0f) { area_class = 5ul; }
+
+    cell = &v9x_hal->d3d_diagnostics.batch_cells[
+        ((count_class * V9X_D3D_I9XX_BATCH_CLASSES) + area_class) * 3ul];
+    cell[0] += cycles;
+    if (cell[0] < cycles) {
+        ++cell[1];
+    }
+    ++cell[2];
+}
+
 /* The engine's whole draw, timed; the work is in the body. */
 static int v9x_d3d_i9xx_draw_triangles(V9X_D3D_CONTEXT *context,
                                        const V9X_D3DTLVERTEX *vertices,
                                        DWORD triangle_count)
 {
     DWORD started = V9X_TIME_BEGIN();
-    int ok = v9x_d3d_i9xx_draw_triangles_body(context, vertices,
-                                              triangle_count);
+    int ok;
 
+    v9x_d3d_i9xx_last_head_cycles = 0ul;
+    ok = v9x_d3d_i9xx_draw_triangles_body(context, vertices, triangle_count);
     V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    if (ok && V9X_TIME_ENABLED() && v9x_d3d_i9xx_last_head_cycles != 0ul &&
+        vertices != 0) {
+        v9x_d3d_i9xx_note_batch(vertices, triangle_count,
+                                v9x_d3d_i9xx_last_head_cycles);
+    }
     return ok;
 }
 
