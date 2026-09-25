@@ -164,6 +164,20 @@ typedef v9x_u16 (*v9x_vbe_distrust_fn)(const struct v9x_vbe_scan_entry *entry);
 void v9x_mode_english(v9x_u16 width, short *low, short *high);
 
 /*
+ * The scan-out stride for a mode whose packed pitch is a power of two: that
+ * pitch plus 64 bytes, and any other pitch unchanged.
+ *
+ * Measured on the GMA 950 (2026-09-25): at 1024x576x16 the colour and depth
+ * surfaces' shared 2048-byte pitch made each pixel several times dearer to
+ * draw than at 640x480's 1280, and padding the depth pitch alone to 2112 cut
+ * the cost by a third. A family opts in through V9X_HW16_OPS; nothing here
+ * decides which chip wants it. 16 bpp only and 1024 bytes up, because that is
+ * the one depth and range measured; 64 is Mesa's linear-surface granule and
+ * the multiple Gen3's plane stride register holds.
+ */
+v9x_u16 v9x_mode_pitch_unaliased(v9x_u16 bits_per_pixel, v9x_u16 pitch);
+
+/*
  * Is this scanned mode one the driver can put in its table?
  *
  * Stricter than v9x_vbe_mode_summary_is_drivable, which asks only whether a

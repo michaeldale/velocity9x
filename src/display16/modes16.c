@@ -205,6 +205,28 @@ void v9x_modes16_resolve_layout(WORD d3d_state, WORD engine_wants_555)
     }
 }
 
+/*
+ * The family's unaliased stride, applied to the committed rows (2026-09-25).
+ *
+ * After the commit, so both the baseline and the scanned table get it and
+ * the scan's "take the BIOS's stride" rule cannot undo it; the BIOS stride
+ * is what the mode is defined as, and this is what Enable then programs
+ * through 4F06h. A family without the flag keeps every row as committed.
+ */
+static void v9x_modes16_unalias(void)
+{
+    WORD index;
+
+    if (v9x_hw16.unalias_pitch == 0u) {
+        return;
+    }
+    for (index = 0u; index < v9x_runtime_count; ++index) {
+        v9x_runtime_modes[index].pitch = v9x_mode_pitch_unaliased(
+            v9x_runtime_modes[index].bits_per_pixel,
+            v9x_runtime_modes[index].pitch);
+    }
+}
+
 /* Copy the family baseline in and publish every row: the committed fallback
  * state, and the whole story for a build whose scan never happens. */
 static void v9x_modes16_commit_baseline(void)
@@ -238,6 +260,7 @@ static void v9x_modes16_commit_baseline(void)
     v9x_runtime_count = count;
     v9x_runtime_published = count;
     v9x_runtime_first = 0u;
+    v9x_modes16_unalias();
 }
 
 /* One cached record into a scan entry, from the same two API calls the
@@ -419,6 +442,7 @@ void v9x_modes16_init(void)
     v9x_runtime_count = count;
     v9x_runtime_published = published;
     v9x_runtime_first = first;
+    v9x_modes16_unalias();
     v9x_runtime_scan_state = trusted == V9X_TRUE ? 1u : 2u;
 }
 

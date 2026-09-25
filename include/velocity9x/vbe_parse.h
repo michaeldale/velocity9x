@@ -213,6 +213,21 @@ v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
                              v9x_u16 bits_per_pixel, v9x_u16 pitch);
 
 /*
+ * The same intersection for a family that scans its surface out at a stride
+ * wider than the mode's own (v9x_mode_pitch_unaliased). 4F01h describes the
+ * mode as defined, not as the hardware was left, so a widened table pitch
+ * never equals its stride; it is accepted only when confirmed_stride - the
+ * 4F06h answer just after the stride was set - equals the table pitch
+ * exactly, and the pitch is not narrower than the mode's. A packed pitch
+ * behaves as v9x_vbe_mode_matches, confirmed or not. Zero confirmed_stride
+ * means nothing was confirmed.
+ */
+v9x_u16 v9x_vbe_mode_matches_widened(
+    const struct v9x_vbe_mode_summary *summary,
+    v9x_u16 width, v9x_u16 height, v9x_u16 bits_per_pixel, v9x_u16 pitch,
+    v9x_u16 confirmed_stride);
+
+/*
  * The channel layout as the three 32-bit masks DirectDraw and the DIB engine
  * want. V9X_FALSE, with the masks zeroed, for a mode whose layout cannot be
  * expressed that way.

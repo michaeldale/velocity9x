@@ -314,6 +314,33 @@ v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
     return stride == pitch ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u16 v9x_vbe_mode_matches_widened(
+    const struct v9x_vbe_mode_summary *summary,
+    v9x_u16 width, v9x_u16 height, v9x_u16 bits_per_pixel, v9x_u16 pitch,
+    v9x_u16 confirmed_stride)
+{
+    v9x_u16 stride;
+
+    if (v9x_vbe_mode_matches(summary, width, height, bits_per_pixel,
+                             pitch) == V9X_TRUE) {
+        return V9X_TRUE;
+    }
+    if (summary == 0 || summary->width != width ||
+        summary->height != height ||
+        summary->bits_per_pixel != bits_per_pixel) {
+        return V9X_FALSE;
+    }
+    /* Wider than the mode defines, and exactly what the hardware was just
+     * seen to scan at. Narrower would overlap every row with the next. */
+    stride = summary->lin_bytes_per_scan_line != 0u
+                 ? summary->lin_bytes_per_scan_line
+                 : summary->bytes_per_scan_line;
+    if (pitch <= stride || confirmed_stride != pitch) {
+        return V9X_FALSE;
+    }
+    return V9X_TRUE;
+}
+
 /* One channel: size bits starting at position, or 0 when it does not fit. */
 static v9x_u32 v9x_vbe_channel_mask(v9x_u16 size, v9x_u16 position,
                                     v9x_u16 bits_per_pixel)

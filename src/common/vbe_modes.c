@@ -111,6 +111,19 @@ void v9x_mode_english(v9x_u16 width, short *low, short *high)
     *high = (short)(value / 2ul);
 }
 
+/* The padding and the smallest pitch it applies to; see vbe_modes.h. */
+#define V9X_MODE_UNALIAS_PAD_BYTES  64u
+#define V9X_MODE_UNALIAS_MIN_PITCH  1024u
+
+v9x_u16 v9x_mode_pitch_unaliased(v9x_u16 bits_per_pixel, v9x_u16 pitch)
+{
+    if (bits_per_pixel != 16u || pitch < V9X_MODE_UNALIAS_MIN_PITCH ||
+        (pitch & (pitch - 1u)) != 0u) {
+        return pitch;
+    }
+    return (v9x_u16)(pitch + V9X_MODE_UNALIAS_PAD_BYTES);
+}
+
 /* The stride a mode set with the linear bit actually produces. */
 static v9x_u16 v9x_effective_stride(const struct v9x_vbe_mode_summary *summary)
 {

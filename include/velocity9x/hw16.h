@@ -338,6 +338,16 @@ typedef struct v9x_hw16_ops {
      */
     unsigned long (*reserve_video_memory)(unsigned long usable_bytes,
                                            unsigned long visible_bytes);
+
+    /*
+     * Non-zero: scan every mode out at v9x_mode_pitch_unaliased's stride
+     * rather than the BIOS's packed one, programmed through VBE 4F06h at
+     * Enable. APPENDED 2026-09-25 so every family's positional initialiser
+     * keeps its meaning with zero here. Only the Gen3 family sets it, where
+     * the power-of-two pitch was measured to multiply the cost of every
+     * rendered pixel.
+     */
+    unsigned short unalias_pitch;
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

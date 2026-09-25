@@ -161,7 +161,11 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDLOCK_DONOTWAIT         0x00004000ul
 
 #define V9X_DDSD_CAPS                0x00000001ul
+#define V9X_DDSD_PITCH               0x00000008ul
 #define V9X_DDSD_PIXELFORMAT         0x00001000ul
+/* DDRAWI.H:341: fpVidMem set to this by CreateSurface asks DirectDraw to
+ * allocate dwBlockSizeX bytes by dwBlockSizeY rows for the surface. */
+#define V9X_DDHAL_PLEASEALLOC_BLOCKSIZE 0x00000002ul
 #define V9X_DDRAWISURF_HASPIXELFORMAT 0x00002000ul
 
 #pragma pack(push, 1)

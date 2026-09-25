@@ -804,6 +804,62 @@ DWORD __stdcall V9xHalCanCreateSurface(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * Flip-chain back buffers at the display's pitch, in blocks that hold it.
+ *
+ * A back buffer must share the primary's pitch - it is scanned out after a
+ * flip - and DirectDraw gives it lDisplayPitch, but sizes its heap block from
+ * the packed row. That is the same thing for every mode but one: at
+ * 1024x576x16 on Gen3 the display pitch is 2112 (v9x_mode_pitch_unaliased)
+ * and the packed row 2048, and the netbook's flip chain came back at
+ * 0x000000, 0x129000 and 0x249000 - the second buffer's last 17 rows were the
+ * third buffer's first, and 3DMark99 showed bars at the top and bottom of
+ * every frame (2026-09-25). The Windows 98 DDK's S3 driver asks for the block
+ * itself with DDHAL_PLEASEALLOC_BLOCKSIZE (S3_DD32.C:3211-3222); this does
+ * the same, for a back buffer only, and only when the pitches differ, so a
+ * packed-pitch mode allocates exactly as before. DirectDraw still owns and
+ * frees the block.
+ */
+static void v9x_request_back_buffer_blocks(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    V9X_DDSURFACEDESC *desc = (V9X_DDSURFACEDESC *)data->lpDDSurfaceDesc;
+    DWORD pitch;
+    DWORD index;
+
+    if (v9x_hal == 0 || list == 0 || v9x_hal->info.vmiData.lDisplayPitch <= 0l) {
+        return;
+    }
+    pitch = (DWORD)v9x_hal->info.vmiData.lDisplayPitch;
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        V9X_DD_SURFACE_LCL *surface = list[index];
+        DWORD packed;
+
+        if (surface == 0 || surface->lpGbl == 0 ||
+            (surface->ddsCaps & V9X_DDSCAPS_BACKBUFFER) == 0ul ||
+            (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
+                                 V9X_DDSCAPS_SYSTEMMEMORY)) != 0ul ||
+            (DWORD)surface->lpGbl->wWidth != v9x_hal->fb.width ||
+            (DWORD)surface->lpGbl->wHeight != v9x_hal->fb.height ||
+            (v9x_hal->fb.bits_per_pixel / 8ul) == 0ul) {
+            continue;
+        }
+        packed = ((DWORD)surface->lpGbl->wWidth *
+                  (v9x_hal->fb.bits_per_pixel / 8ul) + 7ul) & ~7ul;
+        if (packed == pitch) {
+            continue;
+        }
+        surface->lpGbl->lPitch = (LONG)pitch;
+        surface->lpGbl->fpVidMem = V9X_DDHAL_PLEASEALLOC_BLOCKSIZE;
+        surface->lpGbl->dwBlockSizeX = pitch;
+        surface->lpGbl->dwBlockSizeY = (DWORD)surface->lpGbl->wHeight;
+        if (desc != 0) {
+            desc->lPitch = (LONG)pitch;
+            desc->dwFlags |= V9X_DDSD_PITCH;
+        }
+    }
+}
+
 DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     DWORD handled;
@@ -818,6 +874,9 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
      * cannot place them usably - a Gen3 mip chain. Otherwise the heap does,
      * exactly as before. */
     handled = v9x_d3d_create_surface(data);
+    if (data != 0 && handled == V9X_DDHAL_DRIVER_NOTHANDLED) {
+        v9x_request_back_buffer_blocks(data);
+    }
     v9x_trace_exit(V9X_TRACE_CREATESURFACE, V9X_DD_OK);
     V9X_TIME_END(V9X_TIME_CREATESURFACE, started);
     return handled;

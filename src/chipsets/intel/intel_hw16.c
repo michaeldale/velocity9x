@@ -131,5 +131,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* Strict PCI identity: only 8086:27AE is claimed. */
     0u,
     0,
-    v9x_gma950_reserve_video_memory
+    v9x_gma950_reserve_video_memory,
+    /* 1024x576x16 scans out at 2112 bytes, not 2048: see
+     * docs\decisions\2026-09-25-padding-the-z-pitch-on-gen3.md. */
+    1u
 };

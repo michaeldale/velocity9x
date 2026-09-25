@@ -1296,6 +1296,21 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     }
 
     v9x_driver_pdevice = (V9X_DIB_ENGINE FAR *)device_info;
+    /*
+     * A family scanning out at an unaliased stride (v9x_mode_pitch_unaliased)
+     * draws at the mode's pitch, not the packed row. CreateDIBPDevice derives
+     * the stride from biWidth - 1024 pixels, 2048 bytes - while 4F06h has set
+     * the scanout to 2112, and the first boot with the wider stride showed
+     * exactly that: Surface=pitch=2112 dwb=2048 dds=2048 and a sheared panel
+     * (MICHAEL-NETBOOK, 2026-09-25). The two stride fields are set to the
+     * mode's, as the Millennium II's own record builder does
+     * (v9x_mga2_build_screen_pdevice).
+     */
+    if (v9x_hw16.unalias_pitch != 0u && v9x_selected_mode != 0 &&
+        v9x_driver_pdevice->deWidthBytes != v9x_selected_mode->pitch) {
+        v9x_driver_pdevice->deWidthBytes = v9x_selected_mode->pitch;
+        v9x_driver_pdevice->deDeltaScan = (DWORD)v9x_selected_mode->pitch;
+    }
     v9x_driver_pdevice->deBeginAccess = V9xDibBeginAccess;
     v9x_driver_pdevice->deEndAccess = V9xDibEndAccess;
     v9x_driver_pdevice->deVersion = V9X_DE_VERSION;

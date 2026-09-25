@@ -214,6 +214,45 @@ static void test_mode_matches(void)
 }
 
 /*
+ * A table pitch WIDER than the mode's own stride, accepted only when 4F06h
+ * has just confirmed the hardware scans at exactly that pitch (2026-09-25,
+ * the Gen3 unaliased stride). Everything v9x_vbe_mode_matches refuses on
+ * geometry is still refused; a pitch narrower than the mode's is refused;
+ * and a wider one the BIOS did not confirm is refused, because GDI would
+ * draw at a stride the scanout does not read.
+ */
+static void test_mode_matches_widened(void)
+{
+    struct v9x_vbe_mode_summary summary;
+
+    build_mode();
+    VCHECK(v9x_vbe_parse_mode_info(mode_block, &summary) == V9X_TRUE);
+    /* The packed case is v9x_vbe_mode_matches, confirmed or not. */
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 640u,
+                                        640u) == V9X_TRUE);
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 640u,
+                                        0u) == V9X_TRUE);
+    /* Wider, and confirmed by 4F06h. */
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 704u,
+                                        704u) == V9X_TRUE);
+    /* Wider, but the hardware reads another stride, or nothing said. */
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 704u,
+                                        640u) == V9X_FALSE);
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 704u,
+                                        0u) == V9X_FALSE);
+    /* Narrower than the mode's stride: every row would overlap the next. */
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 8u, 512u,
+                                        512u) == V9X_FALSE);
+    /* Geometry still has to match exactly. */
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 800u, 480u, 8u, 704u,
+                                        704u) == V9X_FALSE);
+    VCHECK(v9x_vbe_mode_matches_widened(&summary, 640u, 480u, 16u, 704u,
+                                        704u) == V9X_FALSE);
+    VCHECK(v9x_vbe_mode_matches_widened(0, 640u, 480u, 8u, 704u,
+                                        704u) == V9X_FALSE);
+}
+
+/*
  * The drivability rule, exercised directly rather than through a byte block.
  *
  * The mini-VDD hands its answers back in registers, so the 16-bit side builds a
@@ -582,6 +621,7 @@ unsigned int v9x_run_vbe_parse_tests(void)
     test_controller_info();
     test_mode_info();
     test_mode_matches();
+    test_mode_matches_widened();
     test_mode_summary_is_drivable();
     test_controller_identity();
     test_colour_field_source();

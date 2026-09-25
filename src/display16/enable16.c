@@ -735,14 +735,34 @@ static WORD v9x_vbe_default_pitch(void)
         v9x_vbe_trace("pitch-no-4f06");
         return 1u;
     }
-    if (v9x_vbe_scan_bytes == pitch) {
+    /*
+     * Agreeing is enough for a packed pitch, which is what the mode set
+     * produces. A WIDER one (v9x_mode_pitch_unaliased) is set every time:
+     * the mode set puts the hardware back to the packed stride, and the
+     * netbook showed a sheared panel after 3DMark99 switched screens with
+     * this driver trusting the get (2026-09-25) - consistent with a VBIOS
+     * that answers 4F06h's get from what it last set rather than from the
+     * register. Not established which; the unconditional set covers both.
+     */
+    if (v9x_vbe_scan_bytes == pitch &&
+        pitch == (WORD)(width * (WORD)(bpp / 8u))) {
         return 1u;
     }
 
-    /* It disagrees. Ask for the geometry width in pixels, which is what the
-     * family's packed pitch was computed from. */
+    /*
+     * It disagrees. Ask for the table pitch in pixels: the geometry width for
+     * a packed pitch, which is every family's case but one, and more for a
+     * family that scans out at an unaliased stride (v9x_mode_pitch_unaliased,
+     * 1056 pixels for 1024x576x16 on Gen3). A pitch that is not a whole
+     * number of pixels cannot be asked for and is refused.
+     */
     v9x_vbe_pitch_before = v9x_vbe_scan_bytes;
-    if (v9x_vbe_set_scan_line_pixels(width) == 0u) {
+    if (bpp < 8u || (pitch % (WORD)(bpp / 8u)) != 0u) {
+        v9x_vbe_trace("pitch-not-pixels");
+        return 0u;
+    }
+    if (v9x_vbe_set_scan_line_pixels((WORD)(pitch / (WORD)(bpp / 8u))) ==
+            0u) {
         v9x_vbe_trace("pitch-set-refused");
         return 0u;
     }
@@ -853,7 +873,10 @@ static DWORD v9x_vbe_default_aperture(void)
         v9x_vbe_trace("4f01-mode-rejected");
         return 0ul;
     }
-    if (v9x_vbe_mode_matches(&mode, width, height, bpp, pitch) == 0u) {
+    /* A widened stride matches only as the one 4F06h just confirmed; a
+     * packed one exactly as before. */
+    if (v9x_vbe_mode_matches_widened(&mode, width, height, bpp, pitch,
+                                     v9x_vbe_scan_bytes) == 0u) {
         v9x_vbe_trace("stride-disagrees");
         return 0ul;
     }

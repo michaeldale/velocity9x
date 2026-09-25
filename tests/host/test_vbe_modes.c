@@ -95,6 +95,29 @@ static void test_english_values(void)
     MODECHECK(low == 458 && high == 229);
 }
 
+/*
+ * The unaliased stride (2026-09-25): a 16-bpp power-of-two pitch of 1024
+ * bytes or more gains 64 bytes; anything else is returned unchanged.
+ * 1024x576x16 is the measured case, 2048 to 2112; 640x480x16's 1280 is not a
+ * power of two and stays; 8 bpp is left alone because nothing has measured
+ * it; 512 (a 256-pixel mode) is below the floor.
+ */
+static void test_pitch_unaliased(void)
+{
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 2048u) == 2112u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 1024u) == 1088u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 4096u) == 4160u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 1280u) == 1280u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 1600u) == 1600u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 512u) == 512u);
+    MODECHECK(v9x_mode_pitch_unaliased(8u, 1024u) == 1024u);
+    MODECHECK(v9x_mode_pitch_unaliased(32u, 4096u) == 4096u);
+    MODECHECK(v9x_mode_pitch_unaliased(16u, 0u) == 0u);
+    /* Already widened is not a power of two, so applying twice is a no-op. */
+    MODECHECK(v9x_mode_pitch_unaliased(16u,
+              v9x_mode_pitch_unaliased(16u, 2048u)) == 2112u);
+}
+
 static void test_accept_admits_a_good_mode(void)
 {
     struct v9x_vbe_scan_entry entry;
@@ -1227,5 +1250,6 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_555_mode_pairs();
     test_555_masks();
     test_highcolor_resolve();
+    test_pitch_unaliased();
     return modes_failures;
 }
