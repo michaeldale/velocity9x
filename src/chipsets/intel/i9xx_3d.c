@@ -237,7 +237,7 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 s3,
+    v9x_u32 s3, v9x_u32 alpha_test,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
@@ -255,7 +255,7 @@ v9x_status v9x_i9xx_build_textured_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, texture, 0,
                                        V9X_I9XX_SCENE_TEXTURED, 0ul, 0ul,
-                                       0ul, stream, capacity, written);
+                                       0ul, 0ul, stream, capacity, written);
 }
 
 /*
@@ -306,7 +306,7 @@ v9x_status v9x_i9xx_build_depth_state(
                                        (writes != 0ul)
                                            ? V9X_I9XX_SCENE_DEPTH_WRITE
                                            : V9X_I9XX_SCENE_DEPTH_TEST,
-                                       0ul, 0ul, 0ul,
+                                       0ul, 0ul, 0ul, 0ul,
                                        stream, capacity, written);
 }
 
@@ -318,7 +318,7 @@ v9x_status v9x_i9xx_build_3d_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0,
                                        V9X_I9XX_SCENE_PLAIN, 0ul, 0ul,
-                                       0ul, stream, capacity, written);
+                                       0ul, 0ul, stream, capacity, written);
 }
 
 /*
@@ -376,13 +376,20 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
     v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 cylinder,
+    v9x_u32 cylinder, v9x_u32 alpha_test,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_i9xx_depth_binding depth;
     v9x_u32 s3 = 0ul;
 
     if (written != 0) { *written = 0ul; }
+    /* The alpha-test field and nothing else, and never a function or
+     * reference without the enable that makes them mean anything. */
+    if ((alpha_test & ~V9X_I9XX_S6_ALPHA_TEST_MASK) != 0ul ||
+        (alpha_test != 0ul &&
+         (alpha_test & V9X_I9XX_S6_ALPHA_TEST_ENABLE) == 0ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     /*
      * The cylinder request, translated here so the S3 dword can only ever
      * carry the two wrap-shortest bits for set 0. Refused without a texture
@@ -433,7 +440,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     return v9x_i9xx_build_state_common(
         target_offset, target_pitch, width, height, texture,
         depth_offset != 0ul ? &depth : 0,
-        V9X_I9XX_SCENE_RUNTIME, blend_src, blend_dst, s3,
+        V9X_I9XX_SCENE_RUNTIME, blend_src, blend_dst, s3, alpha_test,
         stream, capacity, written);
 }
 
@@ -468,7 +475,7 @@ v9x_status v9x_i9xx_build_alpha_state(
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0, kind, 0ul, 0ul,
-                                       0ul, stream, capacity, written);
+                                       0ul, 0ul, stream, capacity, written);
 }
 
 static v9x_status v9x_i9xx_build_state_common(
@@ -477,11 +484,13 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 s3,
+    v9x_u32 s3, v9x_u32 alpha_test,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     /* Blending is the enable's presence; the codes were checked by the
-     * runtime builder, the only caller that passes any. */
+     * runtime builder, the only caller that passes any. The alpha test is
+     * the same: the runtime builder checked the field, and it goes into S6
+     * whole. */
     v9x_u32 blend = (blend_src != 0ul || blend_dst != 0ul) ? 1ul : 0ul;
 
     v9x_u32 at = 0ul;
@@ -585,6 +594,9 @@ static v9x_status v9x_i9xx_build_state_common(
                        V9X_I9XX_S6_ALPHA_FUNC_SHIFT) |
                   (V9X_I9XX_ALPHA_REF << V9X_I9XX_S6_ALPHA_REF_SHIFT);
         }
+        /* The application's alpha test, the same three fields the scene
+         * above measured (intel47) with its function and reference. */
+        s6 |= alpha_test;
         if (kind == V9X_I9XX_SCENE_BLEND) {
             /* Source alpha over one minus source alpha, added. Both factors
              * are functions of the FRAGMENT, so neither depends on a

@@ -91,6 +91,60 @@ static void test_the_function_3dmark99_asks_for(void)
     DEPTHCHECK(encoded != V9X_I9XX_COMPAREFUNC_LESS_V);
 }
 
+/*
+ * The alpha test's field: enable at 31, function at 30:28, reference at
+ * 27:20 (intel_gen3_3d.h, and the Phase 6 scene intel47 measured).
+ */
+static void test_alpha_test_bits(void)
+{
+    v9x_u32 bits = 0x5a5a5a5aul;
+
+    /* Off, whatever the other two say. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(0ul, 5ul, 0x80ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0ul);
+
+    /* What Half-Life asks for: GREATER and NOTEQUAL against zero. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 5ul, 0ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0xd0000000ul);
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 6ul, 0ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0xe0000000ul);
+
+    /* The Phase 6 scene's own test, GREATER against 0x80, rebuilt from
+     * Direct3D terms: the same dword the scene measured. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 5ul, 0x80ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0xd8000000ul);
+
+    /* ALWAYS is no test, and emitted as none. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 8ul, 0x80ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0ul);
+
+    /* NEVER is a test, and honoured. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 1ul, 0ul, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0x90000000ul);
+
+    /* The reference: a byte as a byte, the top of the byte range, and
+     * DirectX 5's 16.16 above it - one half, one, and past one. */
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 7ul, 0xfful, &bits) == V9X_TRUE);
+    DEPTHCHECK(bits == 0xfff00000ul);
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 7ul, 0x8000ul, &bits) ==
+               V9X_TRUE);
+    DEPTHCHECK(bits == (0xf0000000ul | (0x80ul << 20)));
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 7ul, 0x10000ul, &bits) ==
+               V9X_TRUE);
+    DEPTHCHECK(bits == 0xfff00000ul);
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 7ul, 0xfffffffful, &bits) ==
+               V9X_TRUE);
+    DEPTHCHECK(bits == 0xfff00000ul);
+
+    /* An unknown function is refused and the output left alone. */
+    bits = 0x5a5a5a5aul;
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 0ul, 0ul, &bits) == V9X_FALSE);
+    DEPTHCHECK(bits == 0x5a5a5a5aul);
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 9ul, 0ul, &bits) == V9X_FALSE);
+    DEPTHCHECK(bits == 0x5a5a5a5aul);
+    DEPTHCHECK(v9x_i9xx_alpha_test_bits(1ul, 5ul, 0ul, 0) == V9X_FALSE);
+}
+
 unsigned int v9x_run_i9xx_depth_tests(void)
 {
     depth_failures = 0u;
@@ -98,6 +152,7 @@ unsigned int v9x_run_i9xx_depth_tests(void)
     test_always_is_zero_not_eight();
     test_an_unknown_function_is_refused();
     test_the_function_3dmark99_asks_for();
+    test_alpha_test_bits();
 
     return depth_failures;
 }

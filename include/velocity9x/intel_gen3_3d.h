@@ -216,6 +216,8 @@
 #define V9X_I9XX_S6_ALPHA_TEST_ENABLE    ((v9x_u32)0x80000000ul)
 #define V9X_I9XX_S6_ALPHA_FUNC_SHIFT     28u
 #define V9X_I9XX_S6_ALPHA_REF_SHIFT      20u
+/* The whole field: enable 31, function 30:28, reference 27:20. */
+#define V9X_I9XX_S6_ALPHA_TEST_MASK      ((v9x_u32)0xfff00000ul)
 
 /*
  * S6's COLOUR BLEND. Double-sourced by use: Mesa and xf86 assemble the same
@@ -648,6 +650,10 @@ v9x_status v9x_i9xx_build_3d_state(
  * cylinder is V9X_I9XX_CYLINDER_U and/or _V, or zero: which texture
  * coordinates wrap the short way (S3). Refused without a texture - there is
  * no coordinate to wrap - and refused with any other bit.
+ *
+ * alpha_test is S6's alpha-test field as v9x_i9xx_alpha_test_bits builds
+ * it - enable, function, reference - or zero for none. Refused with any bit
+ * outside the field, or with the field set and the enable clear.
  */
 v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
                                       v9x_u32 blend);
@@ -658,7 +664,7 @@ v9x_status v9x_i9xx_build_runtime_state(
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
     v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 cylinder,
+    v9x_u32 cylinder, v9x_u32 alpha_test,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 /* Is this one of the four S6 factor codes this driver emits? */
 v9x_u16 v9x_i9xx_blend_factor_known(v9x_u32 factor);
@@ -1674,6 +1680,13 @@ struct v9x_i9xx_decode_limits {
      */
     v9x_u32 texture_mip_filter;
     v9x_u32 texture_max_lod;
+    /*
+     * The alpha-test bits (V9X_I9XX_S6_ALPHA_TEST_MASK) a runtime stream's S6
+     * must carry, exactly: the enable, function and reference, or zero for no
+     * test. A scene leaves it zero; the ALPHA_TEST scene is pinned by its
+     * kind instead. Append-only, as above.
+     */
+    v9x_u32 alpha_test;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

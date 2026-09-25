@@ -54,4 +54,20 @@
  */
 v9x_u16 v9x_i9xx_depth_func(v9x_u32 d3d_compare, v9x_u32 *encoded_out);
 
+/*
+ * The S6 alpha-test field for Direct3D's ALPHATESTENABLE, ALPHAFUNC and
+ * ALPHAREF: the same comparison table, at bits 30:28 instead of 18:16, with
+ * the enable and an eight-bit reference.
+ *
+ * Zero when the test is off or its function is ALWAYS. V9X_FALSE for a
+ * function outside D3DCMP's range, output untouched, for the reason above:
+ * the caller draws without the test and counts it, rather than this module
+ * choosing a function nobody asked for.
+ *
+ * Until 2026-09-25 the Gen3 runtime path read none of the three, and every
+ * alpha-tested texel drew - Half-Life's see-through fences as solid black.
+ */
+v9x_u16 v9x_i9xx_alpha_test_bits(v9x_u32 enable, v9x_u32 d3d_compare,
+                                 v9x_u32 d3d_ref, v9x_u32 *bits_out);
+
 #endif /* VELOCITY9X_I9XX_DEPTH_H */

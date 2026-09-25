@@ -499,6 +499,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_cylinder = 0ul;
     limits->texture_mip_filter = 0ul;
     limits->texture_max_lod = 0ul;
+    limits->alpha_test = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -2628,7 +2629,7 @@ static void test_runtime_textured_and_depth(void)
                                        depth_offset, depth_pitch, 1ul,
                                        V9X_I9XX_COMPAREFUNC_LESS,
                                        0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -2734,7 +2735,7 @@ static void test_runtime_batch_bound(void)
 
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
-                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul, 0ul, stream + at,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul, 0ul, 0ul, stream + at,
                                        2200ul - at, &produced) ==
           V9X_STATUS_OK);
     at += produced;
@@ -3764,7 +3765,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -3838,7 +3839,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -3878,7 +3879,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -3907,7 +3908,7 @@ static void test_runtime_texture_formats(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA,
@@ -3979,7 +3980,7 @@ static void test_runtime_blend(void)
                                        V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA,
                                        V9X_I9XX_BLENDFACT_INV_SRC_ALPHA,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     CHECK(produced == v9x_i9xx_runtime_state_extent(0ul, 0ul, 1ul));
     /* The IAB disable is in the block, once, as the exact dword, and the
@@ -4037,7 +4038,7 @@ static void test_runtime_blend(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
@@ -4051,6 +4052,139 @@ static void test_runtime_blend(void)
           V9X_I9XX_P5_OK);
     limits.blend_src = V9X_I9XX_BLENDFACT_SRC_ALPHA;
     limits.blend_dst = V9X_I9XX_BLENDFACT_INV_SRC_ALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+}
+
+/*
+ * The application's alpha test on a runtime stream.
+ *
+ * The Phase 6 scene measured S6's alpha test rejecting by alpha (intel47),
+ * but only the scene could carry it: the runtime builder took no alpha
+ * state, and Half-Life's see-through fences drew black on the netbook
+ * (2026-09-25). This pins the runtime builder to the field it is given and
+ * the decoder to the engine's declaration of it, field for field.
+ */
+static void test_runtime_alpha_test(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 scan;
+    v9x_u32 s6_seen = 0ul;
+    /* GREATER against zero, what Half-Life sets. */
+    const v9x_u32 greater_zero = 0xd0000000ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    /* The field and nothing else, and never without its enable. */
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, greater_zero | 0x00000004ul,
+                                       stream, 400ul, &produced) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, 0x50000000ul,
+                                       stream, 400ul, &produced) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.alpha_test = greater_zero;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, greater_zero, stream + at,
+                                       400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    /* No longer than the untested block: the test lives in S6. */
+    CHECK(produced == v9x_i9xx_runtime_state_extent(0ul, 0ul, 0ul));
+    /* S6 is colour write plus the test, exactly once. */
+    for (scan = 0ul; scan < produced; ++scan) {
+        if (stream[scan] == (V9X_I9XX_S6_PHASE5 | greater_zero)) {
+            ++s6_seen;
+        }
+    }
+    CHECK(s6_seen == 1ul);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x80ffffful;
+    colors[1] = 0x80ffffful;
+    colors[2] = 0x80ffffful;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    /* Declared as built. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    /* Declared untested, or with another function or reference. */
+    limits.alpha_test = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+    limits.alpha_test = 0xe0000000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+    limits.alpha_test = 0xd8000000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+    /* A declaration outside the field, or without the enable, is refused
+     * whatever the stream carries. */
+    limits.alpha_test = greater_zero | 0x00000004ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+    limits.alpha_test = 0x50000000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+
+    /* Built untested, declared tested: refused at S6. */
+    at = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, 0ul, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    limits.alpha_test = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    limits.alpha_test = greater_zero;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DEPTH_FORBIDDEN);
+
+    /* A scene may not declare one: its alpha test is its kind's. */
+    limits.kind = V9X_I9XX_SCENE_PLAIN;
     CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
           V9X_I9XX_P5_OK);
 }
@@ -4117,7 +4251,7 @@ static void test_runtime_blend_pairs(void)
             CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul,
                                                384ul, 0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                                codes[s], codes[d],
-                                               0ul, stream, 64ul, &produced) ==
+                                               0ul, 0ul, stream, 64ul, &produced) ==
                   V9X_STATUS_OK);
             for (scan = 0ul; scan < produced; ++scan) {
                 if (stream[scan] == V9X_I9XX_IAB_DISABLE_DWORD) {
@@ -4139,12 +4273,12 @@ static void test_runtime_blend_pairs(void)
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
                                        0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 0ul,
-                                       0ul, stream, 64ul, &produced) !=
+                                       0ul, 0ul, stream, 64ul, &produced) !=
           V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_runtime_state(0x00200000ul, 1024ul, 512ul, 384ul,
                                        0, 0ul, 0ul, 0ul, V9X_I9XX_COMPAREFUNC_LESS,
                                        V9X_I9XX_BLENDFACT_SRC_ALPHA, 7ul,
-                                       0ul, stream, 64ul, &produced) !=
+                                       0ul, 0ul, stream, 64ul, &produced) !=
           V9X_STATUS_OK);
 }
 
@@ -4890,7 +5024,7 @@ static void test_runtime_cylindrical_wrap(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       both, stream + at, 400ul - at,
+                                       both, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     s3 = v9x_test_find_s3(stream, at);
@@ -4948,7 +5082,7 @@ static void test_runtime_cylindrical_wrap(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       V9X_I9XX_CYLINDER_V, stream, 400ul,
+                                       V9X_I9XX_CYLINDER_V, 0ul, stream, 400ul,
                                        &produced) == V9X_STATUS_OK);
     s3 = v9x_test_find_s3(stream, produced);
     CHECK(s3 < produced);
@@ -4961,12 +5095,12 @@ static void test_runtime_cylindrical_wrap(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       V9X_I9XX_CYLINDER_U, stream, 400ul,
+                                       V9X_I9XX_CYLINDER_U, 0ul, stream, 400ul,
                                        &produced) != V9X_STATUS_OK);
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0x4ul, stream, 400ul,
+                                       0x4ul, 0ul, stream, 400ul,
                                        &produced) != V9X_STATUS_OK);
 }
 
@@ -5019,7 +5153,7 @@ static void test_runtime_decal_program(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_texture_program(V9X_I9XX_TEXPROG_DECAL,
@@ -5108,7 +5242,7 @@ static void test_runtime_mip_chain(void)
     CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
                                        0ul, 0ul, 0ul,
                                        V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
-                                       0ul, stream + at, 400ul - at,
+                                       0ul, 0ul, stream + at, 400ul - at,
                                        &produced) == V9X_STATUS_OK);
     at += produced;
     CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
@@ -5187,6 +5321,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_runtime_mip_chain();
     test_i9xx_miptree_layout();
     test_runtime_blend();
+    test_runtime_alpha_test();
     test_runtime_blend_pairs();
     test_texture_programs();
     test_flip_stream();

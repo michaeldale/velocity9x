@@ -787,6 +787,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                (V9X_I9XX_ALPHA_REF <<
                                     V9X_I9XX_S6_ALPHA_REF_SHIFT);
                 }
+                /* A runtime stream's alpha test is the one its engine
+                 * declared, field for field; a scene declares none. */
+                if (limits->alpha_test != 0ul &&
+                    (limits->kind != V9X_I9XX_SCENE_RUNTIME ||
+                     (limits->alpha_test &
+                      ~V9X_I9XX_S6_ALPHA_TEST_MASK) != 0ul ||
+                     (limits->alpha_test &
+                      V9X_I9XX_S6_ALPHA_TEST_ENABLE) == 0ul)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_DEPTH_FORBIDDEN, index + 5ul);
+                }
+                want_s6 |= limits->alpha_test;
                 /* A runtime stream whose engine declared a factor pair:
                  * the declared codes, each one of the four, same equality. */
                 if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&

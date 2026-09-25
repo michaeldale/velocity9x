@@ -2120,6 +2120,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     DWORD depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
     DWORD cylinder = 0ul;
     DWORD map_bytes = 0ul;
+    DWORD alpha_test = 0ul;
 
     if (context == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -2228,6 +2229,20 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
                                               &depth_pitch, &depth_writes,
                                               &depth_compare);
     v9x_d3d_i9xx_bind_blend(context, &blend_src, &blend_dst);
+    /*
+     * ALPHATESTENABLE, ALPHAFUNC and ALPHAREF, as S6's alpha test - the
+     * three fields the Phase 6 scene measured rejecting by alpha (intel47).
+     * Until 2026-09-25 this engine read none of them, and Half-Life's
+     * see-through fences drew their transparent texels solid black. A
+     * function outside D3DCMP's range draws untested and is counted, as the
+     * ViRGE counts every alpha test it cannot draw.
+     */
+    if (v9x_i9xx_alpha_test_bits(context->alpha_test_enable,
+                                 context->alpha_func, context->alpha_ref,
+                                 &alpha_test) == V9X_FALSE) {
+        alpha_test = 0ul;
+        ++v9x_hal->d3d_diagnostics.alpha_test_unexpressed;
+    }
     if (textured != 0) {
         program = v9x_d3d_i9xx_texture_program(context, map.format);
         /*
@@ -2300,7 +2315,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
                                      depth_offset, depth_pitch, depth_writes,
                                      depth_compare,
                                      blend_src, blend_dst, cylinder,
-                                     stream + at,
+                                     alpha_test, stream + at,
                                      V9X_I9XX_SUBMIT_DWORDS - at,
                                      &produced) != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
@@ -2434,6 +2449,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(V9X_D3D_CONTEXT *context,
     limits.depth_pitch = depth_pitch;
     limits.depth_writes = depth_writes;
     limits.depth_compare = depth_compare;
+    limits.alpha_test = alpha_test;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     limits.texture_cylinder = cylinder;
     limits.texture_mip_filter = textured != 0 ? map.mip_filter : 0ul;
