@@ -43,7 +43,43 @@ wait by its triangle count and by the screen area its triangles cover
   application's own work; it cannot make the GPU draw faster, and at this
   fill rate the GPU is the limit whenever the scene is large.
 
-## A lead, not a finding
+## Measured at 640x480: the per-pixel cost depends on the mode
+
+Same boot, same build, 3DMark 99 at 640x480x16, triple buffering: 692
+3DMarks. Report `2026-09-25-netbook-batch-shape-3dmark640-report.txt`.
+
+| triangles | <1K px | 1K-10K | 10K-50K | 50K-200K | 200K-1M |
+|---|---|---|---|---|---|
+| 1 | 7 (11,979) | 82 (231) | 168 (14) | - | - |
+| 2-3 | 27 (46,158) | 161 (13,289) | 211 (852) | 611 (40) | - |
+| 4-7 | 10 (9,206) | 58 (2,823) | 241 (854) | 580 (326) | 2,850 (1,016) |
+| 8-15 | 12 (5,438) | 68 (2,117) | 320 (597) | 1,018 (1,301) | 5,697 (508) |
+| 16-31 | 12 (3,990) | 77 (1,837) | 270 (2,262) | 861 (96) | 3,029 (1,506) |
+| 32+ | 21 (85,699) | 45 (66,645) | 195 (7,766) | 995 (1,148) | 2,264 (12) |
+
+Every area class costs about **ten times less per batch than at
+1024x576** - around 10 ns a pixel, 100 Mpixels/s, against 70-130 ns. The
+head wait falls from 43% of the run to 2.7% (91.5 us a batch against
+877), and the fixed cost is the same few microseconds. So the slow fill
+at 1024x576 is not the pixel pipeline's own rate: something about that
+mode makes each pixel about ten times dearer.
+
+What differs between the two modes, none of it yet tested:
+
+- the colour and depth pitch, 2048 bytes (a power of two) against 1280;
+- where the three colour buffers and the Z buffer sit, 1.18 MB each
+  against 0.61 MB, and so how they alias each other in the render cache
+  and in DRAM banks;
+- the amount of heap left for textures (the mip-tree declines show it is
+  short at 1024x576), which changes nothing on the GPU's pixel path but is
+  recorded because it differs.
+
+The discriminating experiment is the 1024x576 mode with a non-power-of-two
+pitch for the surfaces the GPU renders into (the Z buffer at least, whose
+pitch the driver controls independently of the scanout), or with the
+buffers moved so the colour and Z rows do not alias.
+
+## The lead that prompted it
 
 3DMark's fill rate was 38.8 MTexels/s at 640x480 against 8.1 at 1024x576
 (`2026-09-25-netbook-3dmark99-with-mip-trees.md`). A pixel pipeline with a
