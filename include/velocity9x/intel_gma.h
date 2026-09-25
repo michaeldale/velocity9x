@@ -529,6 +529,99 @@ v9x_status v9x_i9xx_build_breadcrumb_stream(
     v9x_u32 destination, v9x_u32 value,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
+/*
+ * DirectDraw blits through the ring (src\chipsets\intel\i9xx_blt.c).
+ * docs\plans\intel-gen3-directdraw-blits.md.
+ *
+ * gt/intel_gpu_commands.h, as transcribed in section 5 of
+ * docs\decisions\2026-08-17-intel-gma-gen3-hardware-audit.md:
+ *
+ *   XY_COLOR_BLT    = 2 << 29 | 0x50 << 22, length 4: cmd, BR13, (y1 << 16 |
+ *                     x1), (y2 << 16 | x2), destination address, colour
+ *   XY_SRC_COPY_BLT = 2 << 29 | 0x53 << 22, length 6: the same five, then
+ *                     (src y1 << 16 | src x1), source pitch, source address
+ *   BR13            = colour depth (bits 25:24) | ROP (bits 23:16) | pitch
+ *
+ * Neither 2D header carries the write-enable bits 21:20 that
+ * V9X_I9XX_XY_COLOR_BLT has: they select the alpha and RGB channels of a
+ * 32-bpp destination, and xf86-video-intel's i830_accel.c sets them only
+ * when bitsPerPixel is 32. This path serves 8 and 16 bpp only (plan
+ * decision 2).
+ *
+ * The 16-bit depth code is RGB565 for every 16-bit surface, including a
+ * 1555 texture or a depth buffer: PATCOPY and SRCCOPY do no per-channel
+ * arithmetic, so at this depth the field says how wide a pixel is and
+ * nothing else. That is the audit's reading of the encodings and it is
+ * unmeasured on this part.
+ */
+#define V9X_I9XX_XY_COLOR_BLT_2D         ((v9x_u32)0x54000004ul)
+#define V9X_I9XX_XY_SRC_COPY_BLT         ((v9x_u32)0x54c00006ul)
+#define V9X_I9XX_BLT_ROP_SRCCOPY         ((v9x_u32)0x00cc0000ul)
+#define V9X_I9XX_BLT_DEPTH_8             ((v9x_u32)0x00000000ul)
+#define V9X_I9XX_BLT_DEPTH_565           ((v9x_u32)0x01000000ul)
+#define V9X_I9XX_BLT_COLOR_DWORDS        6ul
+#define V9X_I9XX_BLT_COPY_DWORDS         8ul
+/* BR13's pitch and each coordinate are 16-bit fields; the audit bounds the
+ * pitch below 32 KiB, and the coordinates are held to the same bound so
+ * that neither can be read as negative. */
+#define V9X_I9XX_BLT_FIELD_LIMIT         32768ul
+/* The longest sealed stream: copy, MI_FLUSH, breadcrumb, pad. */
+#define V9X_I9XX_BLT_STREAM_DWORDS       (V9X_I9XX_BLT_COPY_DWORDS + 1ul + \
+                                          V9X_I9XX_BREADCRUMB_STREAM_DWORDS + \
+                                          1ul)
+
+/*
+ * One blit's operands, in the terms the DirectDraw core already has: each
+ * surface's base as a framebuffer byte offset (which is its graphics
+ * address on this part - the flip relies on the same identity) and its
+ * pitch, and the rectangle surface-relative, right and bottom exclusive.
+ * The source fields are ignored by a fill and the colour by a copy.
+ */
+struct v9x_i9xx_blt {
+    v9x_u32 bytes_per_pixel;
+    v9x_u32 vram_bytes;
+    v9x_u32 destination_base;
+    v9x_u32 destination_pitch;
+    v9x_u32 left;
+    v9x_u32 top;
+    v9x_u32 right;
+    v9x_u32 bottom;
+    v9x_u32 source_base;
+    v9x_u32 source_pitch;
+    v9x_u32 source_left;
+    v9x_u32 source_top;
+    v9x_u32 color;
+};
+
+/*
+ * The blit and the MI_FLUSH behind it: 7 dwords for a fill, 9 for a copy.
+ * The caller seals the stream with a breadcrumb and pads it even.
+ * INVALID_ARGUMENT for an operand the packet cannot carry,
+ * INSUFFICIENT_MEMORY for a rectangle reaching past vram_bytes, and
+ * UNSUPPORTED for a copy whose source and destination overlap.
+ */
+v9x_status v9x_i9xx_build_fill_blt(const struct v9x_i9xx_blt *blt,
+                                   v9x_u32 *stream, v9x_u32 capacity,
+                                   v9x_u32 *written);
+v9x_status v9x_i9xx_build_copy_blt(const struct v9x_i9xx_blt *blt,
+                                   v9x_u32 *stream, v9x_u32 capacity,
+                                   v9x_u32 *written);
+/*
+ * The 2D allowlist, applied to the sealed stream and trusting nothing the
+ * builders did: 8- or 16-bpp fills and copies wholly inside vram_bytes,
+ * each followed by MI_FLUSH; MI_FLUSH and MI_NOOP; and, when
+ * breadcrumb_offset is non-zero, exactly one breadcrumb packet there,
+ * directly behind an MI_FLUSH and followed by nothing but MI_NOOP. When
+ * breadcrumb_offset is zero no breadcrumb is accepted. V9X_TRUE, or
+ * V9X_FALSE with the first offending dword's index.
+ */
+v9x_u16 v9x_i9xx_decode_blt_stream(const v9x_u32 *stream,
+                                   v9x_u32 dword_count,
+                                   v9x_u32 bytes_per_pixel,
+                                   v9x_u32 vram_bytes,
+                                   v9x_u32 breadcrumb_offset,
+                                   v9x_u32 *rejected_index);
+
 /* src\chipsets\intel\i9xx_scanline.c */
 void v9x_i9xx_scan_begin(struct v9x_i9xx_scan_summary *summary);
 void v9x_i9xx_scan_feed(struct v9x_i9xx_scan_summary *summary,

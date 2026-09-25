@@ -689,6 +689,72 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
 }
 
 /*
+ * A DirectDraw blit through the ring, for engines\eng_i9xx.c.
+ *
+ * `stream` holds the blit and its MI_FLUSH, `dwords` long, with room for
+ * `capacity`. This seals it the way the draw path seals a batch - the
+ * breadcrumb behind the flush, then a pad to an even count - runs the 2D
+ * allowlist over the result, and submits it. Sealing is the whole of the
+ * synchronisation (plan decision 5): a blit whose breadcrumb has not landed
+ * is outstanding, and Flip, Lock and the CPU blits already wait for that.
+ *
+ * Exported rather than letting the engine build the breadcrumb because the
+ * sequence and its expected value are this file's state and stay so.
+ * 1 when the ring took the stream, 0 when anything refused it.
+ */
+int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
+                            DWORD bytes_per_pixel)
+{
+    DWORD at = dwords;
+    DWORD rejected = 0ul;
+    DWORD produced = 0ul;
+    int submitted;
+
+    if (v9x_hal == 0 || stream == 0 || dwords == 0ul || dwords > capacity) {
+        return 0;
+    }
+    if (v9x_d3d_i9xx_hws_open()) {
+        /* As the draw path: a landed predecessor is resolved without
+         * waiting, because one engine runs its commands in order. */
+        (void)v9x_d3d_i9xx_render_drain(0);
+        v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+        if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
+            v9x_d3d_i9xx_breadcrumb_expected =
+                ++v9x_d3d_i9xx_breadcrumb_sequence;
+        }
+        if (v9x_i9xx_build_breadcrumb_stream(
+                v9x_d3d_i9xx_breadcrumb_offset(),
+                v9x_d3d_i9xx_breadcrumb_expected, stream + at,
+                capacity - at, &produced) != V9X_STATUS_OK) {
+            v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+            return 0;
+        }
+        at += produced;
+    } else {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    }
+    if ((at & 1ul) != 0ul) {
+        if (at >= capacity) {
+            v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+            return 0;
+        }
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+
+    if (v9x_i9xx_decode_blt_stream(
+            stream, at, bytes_per_pixel, v9x_hal->fb.vram_bytes,
+            v9x_d3d_i9xx_breadcrumb_expected != 0ul
+                ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul,
+            &rejected) == V9X_FALSE) {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+        return 0;
+    }
+    submitted = v9x_d3d_i9xx_ring_submit(stream, at);
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    return submitted;
+}
+
+/*
  * Why a draw was refused, for the counters. intel52 had 404 calls and about
  * eighty submissions with nothing to say what became of the rest.
  */

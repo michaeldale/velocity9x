@@ -1283,10 +1283,11 @@ static int v9x_copy_rect_valid(const V9X_DD_SURFACE_LCL *surface,
 /* Drain whichever engine owns this chipset before touching the same memory
  * from the CPU. With no engine enabled there is nothing in flight. */
 /*
- * Intel has no V9X_ENGINE32_OPS - v9x_engine32 selects the S3 engines and
- * v9x_engine_status_validated is the ViRGE's - so until this existed no
- * Flip, Lock or CPU fill on Intel waited for GPU rendering at all (review
- * R1). This is that wait, on the breadcrumb the batches leave.
+ * Until 2026-09-25 Intel had no V9X_ENGINE32_OPS - v9x_engine32 selected
+ * the S3 engines and v9x_engine_status_validated is the ViRGE's - so until
+ * this existed no Flip, Lock or CPU fill on Intel waited for GPU rendering
+ * at all (review R1). This is that wait, on the breadcrumb the batches
+ * leave. Flip and Lock reach it directly and not through the ops table.
  */
 static int v9x_render_drain(int wait)
 {
@@ -1421,6 +1422,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_virge;
     case V9X_DD_ENGINE_TYPE_S3_TRIO64:
         return &v9x_engine32_trio;
+    case V9X_DD_ENGINE_TYPE_INTEL_GEN3:
+        return &v9x_engine32_i9xx;
     default:
         break;
     }

@@ -40,6 +40,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_gtt.c',
         # Phase 4 sandbox/ring arithmetic and exact command allowlist.
         'src\chipsets\intel\i9xx_ring.c',
+        # DirectDraw 2D blit builders and allowlist; the HAL submits them.
+        'src\chipsets\intel\i9xx_blt.c',
         # One-shot Phase 4 arm contract and packet CRC.
         'src\chipsets\intel\i9xx_arm.c',
         'src\chipsets\intel\i9xx_float.c',
@@ -79,6 +81,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',
         'tests\host\test_i9xx_ring.c',
+        'tests\host\test_i9xx_blt.c',
         'tests\host\test_i9xx_arm.c',
         'tests\host\test_i9xx_3d.c',
         'tests\host\test_main.c'

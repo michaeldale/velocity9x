@@ -70,6 +70,8 @@ $sources = @(
     "src\display32\engines\i9xx_scanout.c",
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
+    # The Gen3 blitter: DirectDraw fills and copies through the ring.
+    "src\display32\engines\eng_i9xx.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -103,6 +105,7 @@ $sources = @(
     # The scanline summary the draw path feeds once per boot.
     "src\chipsets\intel\i9xx_scanline.c"
     "src\chipsets\intel\i9xx_flip.c"
+    "src\chipsets\intel\i9xx_blt.c"
 )
 $dll = Join-Path $outputDir "v9xhal.dll"
 $mapFile = Join-Path $outputDir "v9xhal.map"

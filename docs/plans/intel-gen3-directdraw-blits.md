@@ -1,7 +1,10 @@
 # Intel Gen3: DirectDraw blits through the ring
 
-Date: 2026-09-22. Status: plan, nothing coded. Needs an errata decision
-(below) before the first build is armed on the netbook.
+Date: 2026-09-22. Status: builds 000-002 landed together on 2026-09-25
+(fill, depth fill and non-overlapping copy);
+`docs\decisions\2026-09-25-gen3-engine-blits-half-life.md` has the
+measurement and `2026-09-25-intel-2d-blits-errata-gate.md` the errata
+decision. Build 003 (overlap) is open.
 
 The Intel family runs DirectDraw today with `V9XHAL.DLL (vidmem + flip, CPU
 blits only)`: `v9x_engine32()` knows the two S3 tables and nothing else, so

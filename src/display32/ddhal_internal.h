@@ -356,6 +356,7 @@ typedef struct v9x_engine32_ops {
 /* One table per engine, each in its own module under engines\. */
 extern const V9X_ENGINE32_OPS v9x_engine32_virge;
 extern const V9X_ENGINE32_OPS v9x_engine32_trio;
+extern const V9X_ENGINE32_OPS v9x_engine32_i9xx;
 
 /* Selects one of them from engine.engine_type, or null. In ddhal_core.c. */
 const V9X_ENGINE32_OPS *v9x_engine32(void);
@@ -466,6 +467,12 @@ void v9x_scanout_note_flip_done(void);
  * 2026-09-18 so the scanout module can put a flip in the same ring; every
  * stream through it has passed an allowlist first. */
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords);
+/* A 2D blit stream (blit plus MI_FLUSH) sealed with the breadcrumb, passed
+ * through the 2D allowlist and submitted; 1 when the ring took it. For
+ * engines\eng_i9xx.c. EXTERNAL from 2026-09-25, for the reason the ring
+ * submit is: the breadcrumb sequence stays private to d3d_i9xx.c. */
+int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
+                            DWORD bytes_per_pixel);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
