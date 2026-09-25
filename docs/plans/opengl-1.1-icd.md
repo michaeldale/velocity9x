@@ -1,5 +1,8 @@
 # OpenGL 1.1 ICD for Velocity9x, on a render core shared with Direct3D
 
+Status: design for approval; nothing coded. Revised 2026-09-26 after two
+reviews against the tree; the review notes are at the end.
+
 ## Context
 
 Velocity9x ships a DX5-level Direct3D HAL with three engines: the software
@@ -66,9 +69,18 @@ What exists today that shapes the design:
 - **Drains already exist** and are used by Lock and Blt:
   `v9x_render_drain`/`v9x_blt_drain` (`ddhal_core.c:1292-1397`). The former
   waits on Intel only and otherwise returns success; the latter also calls
-  the engine's `wait_idle`. Calling `v9x_render_drain` alone is insufficient
+  the engine's `wait_idle`, which on the ViRGE covers 3D-done once
+  `v9x_engine_3d_launched` has been called (`eng_s3_virge.c:414-419`,
+  `d3d_virge.c:1527-1533`). Calling `v9x_render_drain` alone is insufficient
   before a CPU fallback on ViRGE. Phase 2 establishes a shared drain contract
-  using the existing backend waits.
+  from `v9x_blt_drain`.
+- **The HAL keeps no surface registry.** `V9xHalDestroySurface`
+  (`ddhal_core.c:895-909`) clears colour-key and texture-handle entries and
+  calls the engine's destroy; Gen3 recognises its own block by a signature in
+  the GBL (`d3d_i9xx.c:1274-1281`) and frees it **without draining**
+  (`:1283-1287`) while a ring batch may still read it. No DDHAL callback
+  fires on SURFACELOST; the HAL sees a mode change only as a DriverInit re-run
+  (`ddhal_core.c:1790-1800`).
 
 ## Architecture
 
@@ -83,8 +95,8 @@ What exists today that shapes the design:
  DDRAW.DLL ──DDHAL/D3DHAL──► V9XHAL.DLL (shared arena, one instance)
                               d3d_core.c: DX5 DDI front end ─┐
                               r3d/: neutral render core ◄────┘
-                                 clip rect, cull, lines/points, clear,
-                                 per-draw software fallback
+                                 validate, clip rect, cull, lines/points,
+                                 clear, per-draw software fallback
                               engines: soft (d3d_raster) | virge | i9xx
  v9xdisp.drv Control(): QUERYESCSUPPORT/OPENGL_GETINFO → "Velocity9x"
  INF: HKLM,"Software\Microsoft\Windows\CurrentVersion\OpenGLdrivers","Velocity9x",,"v9xgl.dll"
@@ -99,7 +111,9 @@ Principles:
     vertex and culling.
   - Engines see only `V9X_R3D_DRAW`.
 - **The HAL interface is stateless.** Every call carries target, depth,
-  texture and state, so the HAL holds no per-process GL state.
+  texture and state, so the HAL holds no per-process GL state and retains no
+  client pointer after a call. Its existing device and submission bookkeeping
+  remains.
   - Render targets, depth buffers and hardware texture realizations are
     DirectDraw surfaces created by the ICD in its own process. HAL-managed
     allocations go through `V9xHalCreateSurface`, so Gen3 placement
@@ -110,21 +124,32 @@ Principles:
     `IsBadReadPtr` guard (`d3d_core.c:862-885`) checks only the INT wrapper;
     neither it nor an address ≥0x80000000 establishes LCL/GBL validity or
     ownership. `v9x_surface_offset` checks only the starting VRAM address.
-  - Before dereferencing or submitting, validate the measured INT/LCL/GBL
-    layout, format, dimensions, pitch, allocation extent and every mip level
-    using overflow-checked arithmetic. A readable pointer is not evidence of
-    a live allocation. Resolve authoritative allocation metadata under the
-    serialization contract; reject mismatched descriptors and stale surfaces.
-  - Retain DirectDraw references and prevent allocation reuse until submitted
-    work completes. Define how allocation stability is guaranteed, including
-    eviction, destruction and mode changes; AddRef alone is not a pin against
-    surface loss. CPU texture descriptors carry explicit byte extents and are
-    consumed synchronously, with their storage retained for the call.
-  - `describe` returns a HAL generation that changes on reinitialization;
-    submissions carry it. The ICD also invalidates cached descriptors on
-    surface loss/restore, even without a HAL generation change. Re-resolve
-    offsets before reuse. The HAL retains no per-process GL state or client
-    pointers after a call; its existing device/submission bookkeeping remains.
+  - **What the HAL checks, per call:** INT, LCL and GBL readability; caps,
+    width, height, pitch and pixel format; `fpVidMem` inside the aperture and
+    extent = pitch × rows within VRAM, with overflow-checked arithmetic (the
+    pattern at `d3d_soft.c:393-426`, factored out); each mip level's LCL the
+    same way; and, if Phase 0.4 measures it usable, ownership through
+    `lpSurfMore->lpDD_lcl->dwProcessId`. The check is a **pure function in
+    `r3d_validate.c`** over a project-owned `V9X_R3D_SURFACE`, filled from
+    the LCL/GBL in the boundary file, with `test_r3d_validate.c` covering
+    malformed descriptors and overflow.
+  - **What the HAL cannot check:** that the allocation is live or that the
+    VRAM range is still this surface's. Calls are synchronous under Win16
+    serialization, so no destroy can interleave a call. Staleness is the
+    ICD's responsibility, through the generation and surface-lost tracking
+    below. The remaining hazard is pending GPU work when a surface is
+    destroyed: `V9xHalDestroySurface` drains (shared drain, Phase 2) before
+    the Gen3 block is freed. That closes a pre-existing D3D hazard as well and
+    is gated on the netbook.
+  - CPU texture descriptors carry explicit byte extents, are consumed
+    synchronously, with their storage retained for the call, and are checked
+    with `IsBadReadPtr` over the declared extent before sampling. A bad
+    pointer would fault inside HAL code with the mutex held, which is the
+    wedge `INSTALL.md:198` describes.
+  - `describe` returns a HAL generation, a counter in the shared block that
+    DriverInit increments; submissions carry it. The ICD also invalidates
+    cached descriptors on surface loss/restore, even without a HAL generation
+    change, and re-resolves offsets before reuse.
 - **Pure logic is host-testable,** in the `mtrr.c` pattern. A host end-to-end
   test drives GL calls through r3d into `d3d_raster.c` and hashes pixels.
 - **No new INI keys and no new selector values.** GL uses the engine that
@@ -146,7 +171,7 @@ Principles:
 
 ## Phase 0: measurements and records, before code depends on them
 
-**Desk record.** Today's research goes into
+**Desk record.** The 2026-09-26 research goes into
 `docs/decisions/2026-09-26-opengl-icd-interface-research.md`, with each fact
 labelled confirmed or inferred and its source given. It covers:
 
@@ -158,12 +183,15 @@ labelled confirmed or inferred and its source given. It covers:
   returns TRUE.
 - **Dispatch table.** `GLCLTPROCTABLE` = `{336; 336 stdcall slots}`, in the
   order given by Mesa `gldrv.h` and ReactOS `icd.h`. Slot 7 is Begin, 305 is
-  Viewport, 306 is ArrayElement and 335 is PushClientAttrib.
+  Viewport, 306 is ArrayElement and 335 is PushClientAttrib. The verified
+  list becomes the manifest `src/opengl/gl_entrypoints.psd1` (Phase 3).
 - **Pixel formats.** ICD formats are numbered 1..n, before the generic ones.
   They set neither `PFD_GENERIC_*` flag.
 - **Win16 lock.** The Win16 mutex is reached through KERNEL32 ordinals 93, 97
   and 98. DDRAW.DLL imports them; this was checked on the DX3 build in
-  `build/hellbender-cd`.
+  `build/hellbender-cd`. Microsoft KB125867 ("Understanding Win16Mutex") is
+  cited here: its warning is a desktop stall while a Win32 thread holds the
+  mutex, and a deadlock only if the holder waits on another thread.
 - **The Quake census**, summarised below.
 - **Supersession.** Why the 2026-08-30 MiniGL conclusion no longer stands.
 - **Semantic baseline.** Use the [OpenGL 1.1 specification](https://registry.khronos.org/OpenGL/specs/gl/glspec11.pdf)
@@ -175,6 +203,17 @@ labelled confirmed or inferred and its source given. It covers:
   specification section, owning phase/module, test and current evidence.
   Track temporary stubs, error cases, defaults, queries and implementation
   limits explicitly; a callable entry point is not a completed requirement.
+
+**Guests that do not exist yet (dependency on Michael).** Every 86Box profile
+is Windows 98 SE (`docs/vm-environment.md:64-78`). ME has no validated
+configuration (`README.md:406`), and Windows 95 exists only on the physical
+486 VLB Trio64 without the mini-VDD and without a D3D-capable engine
+(`README.md:230-245`). Phase 0 needs, with install media as an external
+input: an original Windows 98 (4.10.1998) guest, a Windows ME (4.90.3000)
+guest, and one named Windows 95 installation (OSR2 recommended, so the
+OpenGL runtime is present). Gates that name these guests cannot be reported
+passed until the guests exist and their OS build, OPENGL32.DLL and DDRAW.DLL
+versions are recorded.
 
 **Guest measurements**, one decision doc each:
 
@@ -196,15 +235,19 @@ labelled confirmed or inferred and its source given. It covers:
    - If it is wrong, windowed D3D is already affected: file an issue in
      `docs/issues/` and fix the HAL before Phase 3.
 4. **INT→LCL from an app.** Add a V9XDDP rung that checks INT and LCL are
-   above 2 GB and that `lpGbl->fpVidMem` matches the pointer Lock returns.
+   above 2 GB, that `lpGbl->fpVidMem` matches the pointer Lock returns, and
+   whether `lpSurfMore->lpDD_lcl->dwProcessId` equals the caller's process
+   id (nothing in the tree reads it today; it is the only ownership check
+   available).
 5. **Mixed-engine colour and Z.** Add a V9XDDP rung that draws hardware,
    then soft, then hardware into shared colour and Z buffers, and compares
    with an all-soft image. Exercise overlapping blended draws, depth
    comparisons/writes, clears and texture updates on both hardware engines.
    Soft stores `sz*65535` (`d3d_soft.c:58`) and the ViRGE uses 1.31 registers
-   (`d3d_zfixed.h`). Nobody has shown the two agree. The probe must use a
-   drain that actually waits on the selected engine. Agreement in encoding,
-   operation ordering and visibility is a prerequisite for fallback.
+   (`d3d_zfixed.h`). Nobody has shown the two agree. The rung drains through
+   DirectDraw Lock, which already calls `v9x_blt_drain` and so waits on the
+   selected engine. Agreement in encoding, operation ordering and visibility
+   is a prerequisite for fallback.
 6. **Generic GL as a reference.** Check that a probe can choose a generic
    format with the ICD installed, and that a controlled scene hashes the
    same twice. Match colour/depth precision, dimensions and relevant state,
@@ -220,11 +263,10 @@ labelled confirmed or inferred and its source given. It covers:
      allocation, including the target, depth and texture surfaces needed
      by this design. Audit required imports and the Win16-lock mechanism.
    - The existing physical Win95 4.00.950 Trio64 VLB result omits the
-     mini-VDD because it did not load (`README.md`, "Verified on physical
-     hardware: S3 Trio64 on VESA Local Bus, under Windows 95"). That result
+     mini-VDD because it did not load (`README.md:244-246`). That result
      does not establish the driver services needed by this ICD. Determine
      whether this path can work without the mini-VDD or requires driver work.
-   - Use a minimal ICD probe to establish discovery, dispatch and
+   - Use the Phase 0.9 probe to establish discovery, dispatch and
      clear/present through DirectDraw and the HAL before treating the full
      Phase 3 implementation as Windows 95-compatible.
    - Original Windows 95 needs the OpenGL runtime installed; OSR2 includes
@@ -235,19 +277,27 @@ labelled confirmed or inferred and its source given. It covers:
      a failed Win95 probe does not block the Windows 98/SE/ME work.
 9. **Minimal ICD integration before Phases 1-2.** On 98SE and ME, use a
    disposable probe build to exercise system OPENGL32 discovery, correctly
-   typed dispatch, DirectDraw surface creation, a private call into the one
-   HAL instance, and clear/present. Include overlap clipping and teardown;
-   repeat on original Windows 98 for its compatibility gate. A narrow
-   provisional clear interface is sufficient: this experiment does not
-   require the neutral-core refactor or freeze the final ABI. Record the
-   result before investing in the full refactor, and reuse the probe for
-   the Windows 95 feasibility check.
+   typed dispatch, DirectDraw surface creation, clear/present, overlap
+   clipping and teardown; repeat on original Windows 98 for its
+   compatibility gate.
+   - Clear and present need **no HAL change**: `Blt(DDBLT_COLORFILL)`
+     already reaches every engine's fill through `V9xHalBlt`
+     (`ddhal_core.c:1509-1549`), and SwapBuffers is a Blt.
+   - The one private call into the HAL instance is measured by exporting
+     the real `V9xRenderInterface` at `abi_version` 0 with `describe` only.
+     Version negotiation (Phase 3) retires v0, so nothing is frozen and no
+     throwaway export is added and later removed (each is a design change
+     under CLAUDE.md, and touches `build-ddraw-hal-dll.ps1:147,197`).
+   - The probe also settles whether a call from the GL process sees the same
+     HAL data as DirectDraw's: `d3d_i9xx.c:964` calls its cache "per
+     process", while the build marks every section shared (`:179-191`).
+   - Record the result before investing in the full refactor, and reuse the
+     probe for the Windows 95 feasibility check.
 
 Repeat the OS-sensitive clipped-Blt, INT-to-LCL, surface restore and mode-change
 checks on original Windows 98 and ME as well as 98SE. Keep the GL front end
 and render core shared; isolate any measured OS differences at the platform
-boundary. Required guest images and their exact runtime versions must be
-identified before their gates can be reported as passed.
+boundary.
 
 ## Phase 1: extract the neutral render core (D3D only, no behaviour change)
 
@@ -269,7 +319,7 @@ below is its own commit with its own gate.
     - depth {lcl, offset, pitch, enable, write, func}
     - texture {storage kind, logical format/dimensions, lcl for hardware
       storage, per-level {offset or CPU pointer, byte extent, width, height,
-      pitch}, min, mag, mip, address, border, wrap_u, wrap_v}
+      pitch}, level count, min, mag, mip, address, border, wrap_u, wrap_v}
     - blend {enable, src, dst}
     - alpha test {enable, func, raw ref}
     - combine {colour op, alpha op, env colour}
@@ -308,8 +358,9 @@ below is its own commit with its own gate.
   files to `$required`.
 - **External symbols.** The new cross-file symbols
   (`v9x_r3d_clip_triangle`, `v9x_r3d_draw_list`, `v9x_r3d_cull_triangle`,
-  `v9x_d3d_state_apply`) are external, which is a design change. They are
-  listed here for agreement.
+  `v9x_r3d_validate_*`, `v9x_d3d_state_apply`, and the externalised drain
+  from Phase 2) are external, which is a design change. They are listed here
+  for agreement.
 - **Gates, per commit where they apply:**
   - Host: `test_d3d_raster.c` hashes unchanged, and `test_i9xx_3d.c` green.
   - Netbook: 3DMark99 at 1024x576 within noise of 643, and the 3D WinBench 98
@@ -334,6 +385,19 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   every interpolation rule. Tests include projective textures through
   clipping, adjacent triangles, viewport/scissor boundaries and reversed Z.
 - **Software rasterizer** (`d3d_raster.c`, `d3d_soft.c`):
+  - `V9X_D3D_RASTER_TEXTURE` (`d3d_raster.h:264-274`) is one square level,
+    4..512, three 16-bit formats, mask-wrapped. It becomes per-level
+    {pixels, pitch, width, height} × level count, with per-axis wrap and a
+    mip filter. `V9X_D3D_RASTER_TEXCOORD_REPEATS` (`:110-121`) is derived
+    from the 512 limit; if the limit rises, it and its test are re-derived.
+  - **Formats stay 565/1555/4444.** The ICD converts each logical level to a
+    sampler-ready 16-bit copy at upload; `d3d_raster.c` does not decode
+    L/A/I/LA or 32-bit. The logical image (for queries, GetTexImage and
+    restore) and the sampler copy are separate.
+  - CPU-pointer levels are **not** subject to the `D3DSoftSysMem` gate
+    (`d3d_soft.c:329-368`): that gate is 16-bit-side policy for DirectDraw
+    system-memory surfaces whose extent the HAL cannot see, and the GL
+    descriptor carries its extent. `d3d_soft.c` says so in a comment.
   - texture alpha decode, perspective-correct u/v, and mip selection using
     per-level offsets, so it works on Gen3 miptrees (`d3d_i9xx_target.c:190-257`)
   - non-square textures, and sizes down to 1x1
@@ -354,13 +418,25 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
 - **Clear op** over a rect list: engine fill, or CPU fill, respecting GL
   scissor and write masks. Test partial clears and preservation of masked
   channels and depth independently of ordinary draw state.
-- **Shared drain and CPU/GPU ordering.** Factor an all-engine helper around
-  the existing Intel breadcrumb drain and validated backend `wait_idle`.
-  Do not use the current Intel-only `v9x_render_drain` as the full contract.
-  Use the helper for CPU fallback, CPU clear/readback, resource reuse and
-  `finish`; no additional backend idle operation is needed. Establish both
-  GPU-to-CPU and CPU-to-GPU visibility for colour, depth and texture storage.
-  Test the Phase 0.5 transitions and timeout handling on ViRGE and Gen3.
+- **Shared drain and CPU/GPU ordering.** The all-engine helper is
+  `v9x_blt_drain` (`ddhal_core.c:1384-1397`) made external, with three
+  changes:
+  - it does not bump `blt_flip_pending` (`:1388`), which GL must not inflate;
+  - it calls `validate_status` before testing `status_validated`, because
+    on the ViRGE the latch is unset before any 2D operation and `wait_idle`
+    would be skipped;
+  - it returns three states, done / busy / abandoned. Today the Gen3 drain
+    returns success after 4,000,000 polls (`d3d_i9xx.c:533-538`), which the
+    2026-09-18 independent review already said must not be read as
+    correctness. Changing that is a D3D behaviour change with its own
+    netbook gate.
+  - The software engine falls out for free: `v9x_engine32()` selects by chip
+    (`:1414-1431`), so a VBE card has no ops and Intel's breadcrumb is idle.
+  - Use the helper for CPU fallback, CPU clear/readback, resource reuse,
+    `finish`, and `V9xHalDestroySurface` before a Gen3 block is freed. No
+    additional backend idle operation is needed. Establish both GPU-to-CPU
+    and CPU-to-GPU visibility for colour, depth and texture storage. Test the
+    Phase 0.5 transitions and timeout handling on ViRGE and Gen3.
 - **Append `accepts(const V9X_R3D_DRAW *)`**. The core asks *before*
   clipping, and clips with the limits of whichever engine will execute. For
   example, Gen3 draws with `clip_in_core=0` and a 4096 guard band, while soft
@@ -369,9 +445,9 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     on the same target/depth surfaces after the shared drain above. Preserve
     logical texture images when hardware texture storage cannot represent
     them. `accepts` has no rendering side effects.
-  - A drain timeout prevents CPU access, is counted and returns an explicit
-    failure to the ICD. It must not be reported as successful rendering or
-    trigger a replay of potentially executed work.
+  - A drain that reports busy or abandoned prevents CPU access, is counted
+    and returns an explicit failure to the ICD. It must not be reported as
+    successful rendering or trigger a replay of potentially executed work.
   - Examples of refused draws: the ViRGE's `ZERO/SRC_COLOR` and
     `ZERO/ONE_MINUS_SRC_COLOR` blends, non-square CLAMP, and fog on Gen3.
   - D3D keeps skip-and-count. Moving D3D onto the fallback is a separate
@@ -391,18 +467,20 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   mask, strings, HAL generation), `draw`, `clear`, `flush` and `finish`.
   Fix calling conventions, field widths, packing, buffer ownership and size
   asserts. Specify version/size negotiation and reject incompatible requests
-  before dereferencing their payloads. Finish the Phase 2 rasterization and
-  texture-storage contracts before freezing the vertex and draw layouts.
+  before dereferencing their payloads; the Phase 0.9 v0 (`describe` only) is
+  retired here. Finish the Phase 2 rasterization and texture-storage
+  contracts before freezing the vertex and draw layouts.
   - Define results for success, invalid descriptors, incompatible ABI, stale
     generation/lost surfaces, unsupported state, allocation failure and
     timeout. Record the ICD's handling of each; distinguish legal GL errors
     from device failures, without inventing a GL 1.1 context-loss error.
-  - Validate before emitting. Distinguish a capability refusal with no work
-    emitted from a submission failure after a prefix may have executed.
-    Report a known submitted prefix when possible, and an indeterminate
-    outcome otherwise. Never replay an already submitted or uncertain prefix
-    through software: blended pixels would be applied twice. Device failures
-    stop the affected operation and require an explicit recovery decision.
+  - Validate before emitting, through `r3d_validate.c`. Distinguish a
+    capability refusal with no work emitted from a submission failure after a
+    prefix may have executed. Report a known submitted prefix when possible,
+    and an indeterminate outcome otherwise. Never replay an already submitted
+    or uncertain prefix through software: blended pixels would be applied
+    twice. Device failures stop the affected operation and require an
+    explicit recovery decision.
   - GL batches are chunked at `V9X_D3D_INDEXED_BATCH` (64), including any
     triangles produced by clipping/expansion. An oversized public request is
     rejected explicitly, never silently discarded by Gen3.
@@ -417,14 +495,17 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   - It resolves ordinals 93/97/98 by walking KERNEL32's export table, and
     asserts each pointer lies inside the KERNEL32 image. That adds no imports.
     `GetModuleHandleA` is already used (`d3d_i9xx.c:975`).
-  - Document one lock order for ICD globals/context ownership and the Win16
-    mutex. Hold the latter across protected validation and build-and-submit;
-    serialize drain/CPU fallback so another process cannot race the same
-    resources. Prove allocation stability under this protocol in the probe.
-    Never call USER, GDI or DDraw while holding the mutex. Perform required
-    DirectDraw lifetime operations outside it and revalidate on entry.
-    Bound waits and CPU work per protected operation, measuring hold times
-    and testing contention; do not assume fallback has submission-only cost.
+  - **Lock order:** the ICD's critical section, then the Win16 mutex, never
+    reversed, and never a wait on another thread under either. Under the
+    mutex the only hardware wait is the shared drain, bounded by `wait_idle`'s
+    timeout (`win9x-driver-boundaries.md:116`), and the only CPU work is
+    validation plus at most one 64-triangle batch inside the clip rect. CPU
+    rasterization under the Win16 lock is already how the D3D software engine
+    runs (`d3d_i9xx.c:2010-2012`, `gdi-acceleration.md:29`); what is new is
+    the ICD taking the mutex itself. Never call USER, GDI or DDraw while
+    holding it; do DirectDraw lifetime operations outside it and revalidate
+    on entry. Hold times are measured per batch, including with simultaneous
+    GL and D3D clients, not assumed.
   - `build-ddraw-hal-dll.ps1` gets an `export` line near :147 and an export
     presence check beside :197.
 - **16-bit driver.** `Control` (`dd16.c:1126-1158`) answers the OpenGL
@@ -455,7 +536,14 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
       SURFACELOST or a mode change. DriverInit re-runs on a mode change
       (`ddhal_core.c:1800`).
   - **`gl_dispatch.c`**: the static `GLCLTPROCTABLE`, 336 non-null
-    `__stdcall` slots.
+    `__stdcall` slots, **generated**.
+    - One manifest, `src/opengl/gl_entrypoints.psd1`, holds {slot, name,
+      prototype} for all 336, verified once against Mesa `gldrv.h` and
+      ReactOS `icd.h` in the Phase 0 desk record. `scripts/lib/gl-dispatch.ps1`
+      mirrors `scripts/lib/family-matrix.ps1` (`build-host.ps1:42-43`,
+      `test_family_matrix.c`): it emits the typedefs and typed stubs for the
+      ICD build and the name table for the host test, from both
+      `build-host.ps1` (and its MSVC twin) and `build-opengl-icd.ps1`.
     - Every implementation and temporary stub has the exact parameter and
       return types for its slot. A shared untyped stdcall stub is forbidden:
       stack cleanup and return-value conventions differ between functions.
@@ -463,10 +551,10 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
       `GL_INVALID_OPERATION` where a current context exists, with a defined
       ABI-safe return value. These are development placeholders, not correct
       implementations of those entry points; track every one in the matrix.
-    - A host test checks slot order against an independently verified name
-      table. A 32-bit guest test exercises representative argument sizes,
-      including float/double arguments, and void, integer and pointer returns
-      to catch stack/ABI errors.
+    - A host test checks slot order against the manifest. A 32-bit guest test
+      exercises representative argument sizes, including float/double
+      arguments, and void, integer and pointer returns to catch stack/ABI
+      errors.
   - **`gl_surface.c`**:
     - `DDSCL_NORMAL`, a primary plus a clipper (`SetHWnd`), and VRAM back
       and Z surfaces.
@@ -533,10 +621,11 @@ Each pure file in `src/opengl/` has a `tests/host/test_gl_*.c` alongside it.
 - **`gl_texobj.c`, `gl_teximage.c`**:
   - Names that were never generated are allowed.
   - Internal formats 1-4, L/A/I/LA and the sized formats. L takes R.
-  - Level images are kept in system memory and realised as a DirectDraw
-    texture chain when first needed for drawing and when faithfully supported
-    by the engine. Keep logical image state separate from hardware residency
-    so queries, software sampling, eviction and restore use the same images.
+  - Level images are kept in system memory (the logical image) alongside a
+    sampler-ready 16-bit copy, and realised as a DirectDraw texture chain
+    when first needed for drawing and when faithfully supported by the
+    engine. Keep logical image state separate from hardware residency so
+    queries, software sampling, eviction and restore use the same images.
   - TexSubImage on sub-rectangles.
   - Advertised GL limits describe the implementation, including software,
     independently of hardware limits. Preserve accepted dimensions, contents
@@ -621,7 +710,7 @@ individual requirements. Tests listed here are planned, not passing evidence.
 | Requirement | Owning phase | Required evidence |
 |---|---|---|
 | ICD discovery, exports and calling conventions | 0, 3 | Early clear/present experiment, dispatch order and 32-bit ABI probes |
-| Surface bounds, generations and lifetime | 2, 3 | Invalid/stale descriptors, overflow, loss/restore, destruction with work pending |
+| Surface bounds, generations and lifetime | 2, 3 | Invalid descriptors, overflow, loss/restore, destruction with work pending |
 | Submission ordering, fallback and completion | 2, 3 | ViRGE/Gen3 colour and Z transitions, texture visibility, timeouts and partial failures |
 | Context/drawable ownership and WGL operations | 3, 4, 6 | Rebind/thread tests, concurrent processes/D3D, shared textures then lists |
 | State, errors, defaults, queries and advertised limits | 4, completed in 6 | Exact assertions for legal/illegal calls and every supported query; no unexplained stubs |
@@ -653,43 +742,50 @@ individual requirements. Tests listed here are planned, not passing evidence.
 
 ## Risks
 
-- **Win16-mutex deadlock or excessive hold time.** Phase 3 specifies lock
-  order and serialized submission/CPU access. Code holding it never calls
-  USER, GDI or DDraw; waits and CPU work are bounded. Measure contention and
-  fallback hold time, including simultaneous GL and D3D clients.
+- **Win16-mutex deadlock or excessive hold time.** Phase 3 fixes the lock
+  order and the bound (drain timeout plus one batch). Code holding it never
+  calls USER, GDI or DDraw and never waits on another thread. Measure
+  contention and fallback hold time, including simultaneous GL and D3D
+  clients.
 - **The Phase 1 refactor regresses D3D.** Every commit is gated on pixel
   hashes and scores, on the engine it touches.
 - **The INT→LCL cast is not documented for applications.** Phase 0.4
-  measures the layout. Pointer readability alone cannot validate ownership
-  or lifetime; the descriptor, allocation and generation contract must also
-  pass its Phase 3 tests before client-supplied surfaces are used.
+  measures the layout and the ownership field. Pointer readability alone
+  cannot validate ownership or lifetime; the HAL validates what it can per
+  call, and staleness is the ICD's, through generation and surface-lost
+  tracking.
 - **Mixed-engine colour/Z and CPU coherence are unmeasured.** Phase 0.5 and
   Phase 2 verify ordering and both directions of visibility. The present
   Intel-only render drain cannot establish ViRGE fallback correctness.
+- **Changing the Gen3 abandon-after-timeout from success to failure** is a
+  D3D behaviour change. It is gated separately on the netbook.
 - **Speed.** Software-rasterizer speed with perspective correction on a
   Pentium-class CPU is measured, not promised. The Gen3 per-batch ring-head
   wait (`intel-gen3-async-submission.md`) is inherited.
 - **VRAM on a 4 MB ViRGE.** Front, back and Z at 640x480x16 take about
   1.8 MB. The system-memory copies make eviction cheap.
+- **Three target guests do not exist** (original 98, ME, Win95). Their gates
+  wait on the guests.
 
 ## Files (representative)
 
 - **New:**
-  - `src/display32/r3d/{r3d.h,r3d_clip.c,r3d_cull.c,r3d_line.c}`
+  - `src/display32/r3d/{r3d.h,r3d_clip.c,r3d_cull.c,r3d_line.c,r3d_validate.c}`
   - `src/display32/d3d/d3d_state.c`
   - `include/velocity9x/r3d_abi.h`
-  - `src/opengl/gl_*.c`
+  - `src/opengl/gl_*.c`, `src/opengl/gl_entrypoints.psd1`
+  - `scripts/lib/gl-dispatch.ps1`
   - `tools/diag/gl_probe_win32.c`
   - `scripts/build-opengl-icd.ps1`, `scripts/build-gl-probe.ps1`
-  - `tests/host/test_{r3d_clip,d3d_state,gl_*}.c`
-  - `docs/plans/opengl-1.1-icd.md`, which is this plan checked in
+  - `tests/host/test_{r3d_clip,r3d_validate,d3d_state,gl_*}.c`
   - `docs/plans/opengl-1.1-requirements.md`, the detailed coverage inventory
   - The Phase 0 decision docs.
 - **Modified:**
   - `d3d_internal.h`, `d3d_core.c`, `d3d_soft.c`, `d3d_raster.{c,h}`,
     `d3d_virge.c`, `d3d_i9xx.c`, `ddhal_core.c`
   - `src/display16/dd16.c`
-  - `scripts/build-ddraw-hal-dll.ps1`, `scripts/lib/host-sources.ps1`,
+  - `scripts/build-ddraw-hal-dll.ps1`, `scripts/build-host.ps1`,
+    `scripts/build-host-msvc.ps1`, `scripts/lib/host-sources.ps1`,
     `tests/host/test_main.c`, `scripts/check-tree.ps1`
   - `scripts/lib/inf.ps1`, `scripts/build-active-package.ps1`,
     `packaging/win98se/V9XCOPY.BAT`, `scripts/update-associated-driver.ps1`
@@ -708,8 +804,8 @@ individual requirements. Tests listed here are planned, not passing evidence.
   - A8U4I5 (ViRGE/DX)
   - MICHAEL-NETBOOK (Gen3)
   Each run is compared with generic GL on the same guest.
-- **OS compatibility:** add explicitly identified original Windows 98 and ME
-  guests for ICD discovery, dispatch, clear/present, window clipping, surface
+- **OS compatibility:** the original Windows 98 and ME guests, once they
+  exist, run ICD discovery, dispatch, clear/present, window clipping, surface
   restore and mode-change validation. Start with software, then validate the
   applicable hardware paths. Record OS/runtime and engine coverage separately.
   Windows 95 initially runs only the Phase 0 feasibility gate; extend its
@@ -721,3 +817,54 @@ individual requirements. Tests listed here are planned, not passing evidence.
   exact semantic assertions separate from image tolerances and record the
   OS/runtime, engine, pixel format and relevant state for each comparison.
 - Nothing is reported as working on the strength of reading the code.
+
+## Review notes, 2026-09-26
+
+Two reviewers checked the d7aed01 revision against the tree. The claims that
+held: `v9x_render_drain` is Intel-only and `v9x_blt_drain` adds `wait_idle`
+(`ddhal_core.c:1292-1397`); `IsBadReadPtr` checks only the INT wrapper
+(`d3d_core.c:862-885`); the Win95 result omits the mini-VDD
+(`README.md:244-246`). What the review changed, and why:
+
+1. **"Reject stale surfaces" contradicted "the HAL retains no client pointers".**
+   The HAL has no surface registry, and `V9xHalDestroySurface` only clears
+   colour-key and texture-handle entries. A freed wrapper has been measured
+   readable (`d3d_core.c:433-436`). Staleness moved to the ICD; the HAL
+   validates layout, format and extent per call, and the one real lifetime
+   hazard, Gen3 freeing a placed block without draining
+   (`d3d_i9xx.c:1264-1289`, pre-existing), is closed by a drain in
+   DestroySurface.
+2. **The validator is pure**, in `r3d_validate.c`, over a project-owned
+   descriptor that the boundary file fills from the LCL/GBL. Otherwise the
+   overflow tests could not be host tests (`win9x-driver-boundaries.md:8-11`).
+3. **CPU texture descriptors** are exempt from the `D3DSoftSysMem` gate
+   (`d3d_soft.c:329-368`), which is 16-bit-side policy for DirectDraw
+   system-memory surfaces, and are checked with `IsBadReadPtr` over the
+   declared extent. `V9X_D3D_RASTER_TEXTURE` (`d3d_raster.h:264-274`) grows
+   per-level fields, and `V9X_D3D_RASTER_TEXCOORD_REPEATS` (`:110-121`) is
+   re-derived if the size limit rises. The ICD keeps a sampler-ready 16-bit
+   copy of each level rather than teaching `d3d_raster.c` L/A/I/LA decode.
+4. **The shared drain** is `v9x_blt_drain` made external, minus the
+   `blt_flip_pending` counter, with `validate_status` called first (the
+   ViRGE skips `wait_idle` while the latch is unset). Gen3's drain returns
+   success after 4,000,000 polls (`d3d_i9xx.c:533-538`); "timeout is a
+   failure" needs a three-state return, which changes D3D behaviour and gets
+   its own netbook gate.
+5. **Phase 0.9 needs no throwaway export.** `Blt(DDBLT_COLORFILL)` already
+   reaches every engine's fill through `V9xHalBlt` (`ddhal_core.c:1509-1549`).
+   The private-call experiment exports the real `V9xRenderInterface` at
+   `abi_version` 0 with `describe` only; version negotiation retires it.
+6. **The dispatch table is generated**, mirroring `scripts/lib/family-matrix.ps1`
+   → `build/host/v9x_family_matrix.h` (`build-host.ps1:42-43`,
+   `test_family_matrix.c`). One manifest of 336 {slot, name, prototype}
+   feeds both the typed stubs and the host slot-order test.
+7. **Three guests do not exist:** original Windows 98, Windows ME and any
+   Windows 95 with a D3D-capable engine. Every 86Box profile is 98 SE
+   (`vm-environment.md:64-78`); ME has no validated configuration
+   (`README.md:406`). They are a dependency on Michael, named in Phase 0.
+8. **Win16 wording.** CPU rasterization under the Win16 lock is the status quo
+   (`d3d_i9xx.c:2010-2012`, `gdi-acceleration.md:29`); what is new is the ICD
+   taking the mutex. "Serialize so another process cannot race" was replaced
+   by a concrete lock order and bound. KB125867 goes into the desk record.
+   The Phase 0.5 rung drains through Lock, which already calls
+   `v9x_blt_drain`.
