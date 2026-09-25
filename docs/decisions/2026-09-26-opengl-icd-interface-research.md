@@ -519,7 +519,8 @@ not to be walked.
 
 - Anything about original Windows 98, ME or 95: every source above is
   version-agnostic or NT, and no guest for those OSes exists here.
-- That DDRAW.DLL on 98SE or ME still imports #93/#97/#98, or holds the
+- That DDRAW.DLL on ME still imports #93/#97/#98 (98SE does: see
+  `2026-09-26-98se-ddraw-imports-the-win16-mutex-ordinals.md`), or holds the
   Win16 lock around HAL callbacks.
 - What 98SE hands the HAL for a clipped Blt.
 - Whether the INT→LCL cast and `dwProcessId` behave as inferred from an
