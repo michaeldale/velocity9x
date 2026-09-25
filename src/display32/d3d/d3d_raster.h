@@ -181,14 +181,42 @@
  * all. It applies per channel, so it cannot use the scalar weight pair the
  * other factors share.
  *
- * Anything outside these is refused rather than approximated, and
- * describe_caps advertises exactly these.
+ * Direct3D's describe_caps advertises exactly these five, and d3d_soft.c
+ * refuses any other pair before it reaches this layer, so the picture and
+ * the caps agree. The rasterizer itself has since taken the whole set,
+ * below, for the render core's other client.
  */
 #define V9X_D3D_RASTER_BLEND_SRC_ONE         2ul
 #define V9X_D3D_RASTER_BLEND_SRC_SRCALPHA    5ul
 #define V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR   9ul
 #define V9X_D3D_RASTER_BLEND_DST_ZERO        1ul
 #define V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA 6ul
+
+/*
+ * The whole factor set, on either side, with D3D's numbers - the same
+ * numbers the five names above carry, which stay for their callers (Phase 2
+ * of the OpenGL plan, 2026-09-26). The five pairs those names make keep
+ * their weight arithmetic; every other pair takes a per-channel path that
+ * resolves both factors to 0..255 and divides each product exactly.
+ *
+ * No target format here carries alpha, so the destination alpha is 1:
+ * DESTALPHA is ONE, INVDESTALPHA is ZERO, and SRCALPHASAT - min(As, 1 - Ad)
+ * - is ZERO. That is the reading both APIs give a framebuffer without an
+ * alpha plane. D3D's BOTHSRCALPHA and BOTHINVSRCALPHA (12, 13) are a
+ * source-side shorthand for two of the pairs and are refused here; a front
+ * end that accepts them spells the pair out.
+ */
+#define V9X_D3D_RASTER_FACTOR_ZERO          1ul
+#define V9X_D3D_RASTER_FACTOR_ONE           2ul
+#define V9X_D3D_RASTER_FACTOR_SRCCOLOR      3ul
+#define V9X_D3D_RASTER_FACTOR_INVSRCCOLOR   4ul
+#define V9X_D3D_RASTER_FACTOR_SRCALPHA      5ul
+#define V9X_D3D_RASTER_FACTOR_INVSRCALPHA   6ul
+#define V9X_D3D_RASTER_FACTOR_DESTALPHA     7ul
+#define V9X_D3D_RASTER_FACTOR_INVDESTALPHA  8ul
+#define V9X_D3D_RASTER_FACTOR_DESTCOLOR     9ul
+#define V9X_D3D_RASTER_FACTOR_INVDESTCOLOR 10ul
+#define V9X_D3D_RASTER_FACTOR_SRCALPHASAT  11ul
 
 #define V9X_D3D_RASTER_FILTER_POINT   1ul
 #define V9X_D3D_RASTER_FILTER_LINEAR  2ul

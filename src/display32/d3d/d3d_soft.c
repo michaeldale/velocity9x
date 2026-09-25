@@ -950,6 +950,24 @@ static void v9x_d3d_soft_vertex(const V9X_R3D_VERTEX *source,
 }
 
 /*
+ * The pairs describe_caps advertises, which is no longer everything the
+ * rasterizer accepts: Phase 2 of the OpenGL plan widened it to the whole
+ * factor set for the render core's other client. Direct3D keeps the five
+ * until a guest gate says otherwise, so a pair outside them is skipped and
+ * counted exactly as before and the caps and the picture still agree.
+ */
+static int v9x_d3d_soft_blend_advertised(v9x_u32 src, v9x_u32 dst)
+{
+    if (src != V9X_D3D_RASTER_BLEND_SRC_ONE &&
+        src != V9X_D3D_RASTER_BLEND_SRC_SRCALPHA &&
+        src != V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR) {
+        return 0;
+    }
+    return dst == V9X_D3D_RASTER_BLEND_DST_ZERO ||
+           dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+}
+
+/*
  * Rasterize the batch, one triangle at a time.
  *
  * The render target is described once and handed down: the rasterizer takes a
@@ -1056,7 +1074,7 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     if (draw->blend_enable != 0ul) {
         alpha.src = draw->src_blend;
         alpha.dst = draw->dst_blend;
-        if (!v9x_d3d_raster_alpha_valid(&alpha)) {
+        if (!v9x_d3d_soft_blend_advertised(alpha.src, alpha.dst)) {
             if (v9x_hal != 0) {
                 ++v9x_hal->d3d_diagnostics.blend_skipped;
                 v9x_hal->d3d_diagnostics.blend_last_pair =

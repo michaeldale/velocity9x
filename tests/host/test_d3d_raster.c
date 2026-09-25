@@ -1659,14 +1659,15 @@ static void test_alpha_destcolor_white_is_identity(void)
 }
 
 /*
- * The factor pairs this engine does not implement are refused, not
- * approximated.
+ * Factors outside the set are refused, not approximated.
  *
  * A driver that substituted the nearest factor it had would draw a plausible
- * wrong picture with nothing anywhere to say so, and the caps published in
- * d3d_soft.c claim exactly the five this rasterizer implements. The engine
- * there skips a refused pair rather than reaching here with it; this is the
- * layer that says no.
+ * wrong picture with nothing anywhere to say so. Until Phase 2 of the OpenGL
+ * plan this test refused SRCCOLOR and a destination DESTCOLOR; both are in
+ * the set now (`test_factor_*` below), and what is left outside it is zero,
+ * D3D's two BOTH* shorthands and anything past them. d3d_soft.c keeps its
+ * own check on the five pairs its caps advertise, so Direct3D still skips
+ * and counts what it did before.
  */
 static void test_alpha_refusals(void)
 {
@@ -1684,19 +1685,168 @@ static void test_alpha_refusals(void)
     RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
     RCHECK(v9x_d3d_raster_alpha_valid(0) == 0);
 
-    /* D3DBLEND_SRCCOLOR, a legal render state and not one of the four. */
-    alpha.src = 3ul;
+    /* Zero on either side. */
+    alpha.src = 0ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) == 0);
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_ONE;
+    alpha.dst = 0ul;
     RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
     RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) == 0);
 
-    /* D3DBLEND_DESTCOLOR on the other side. */
+    /* D3DBLEND_BOTHSRCALPHA and BOTHINVSRCALPHA, and the first past them. */
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    alpha.src = 12ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) == 0);
+    alpha.src = 13ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    alpha.src = 14ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_ONE;
+    alpha.dst = 12ul;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) == 0);
+
+    /* The two the old test refused are accepted now. */
+    alpha.src = V9X_D3D_RASTER_FACTOR_SRCCOLOR;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_ZERO;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
     alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
-    alpha.dst = 9ul;
-    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) == 0);
-    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) == 0);
+    alpha.dst = V9X_D3D_RASTER_FACTOR_DESTCOLOR;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
 
-    /* Nothing was drawn by either refusal. */
+    /* Nothing was drawn by any refusal. */
     RCHECK(raster_pixel(4u, 4u) == RASTER_BACKGROUND);
+}
+
+/*
+ * Quake's lightmap pair as OpenGL spells it, ZERO over SRC_COLOR: the
+ * destination multiplied by the source, per channel, which is DESTCOLOR over
+ * ZERO with the sides swapped. Same fill and source as the DESTCOLOR test,
+ * so the two paths must agree to the pixel; the alpha is zero to say
+ * neither factor consults it. Then INVSRCCOLOR: the destination by one
+ * minus the source. Both failed before the general path existed (Phase 2 of
+ * the OpenGL plan, 2026-09-26).
+ */
+static void test_factor_zero_srccolor_multiplies(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+
+    raster_reset(&target);
+    raster_fill(0xf81fu);       /* magenta: 255, 0, 255 after expansion */
+    alpha.src = V9X_D3D_RASTER_FACTOR_ZERO;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_SRCCOLOR;
+    RCHECK(v9x_d3d_raster_alpha_valid(&alpha) != 0);
+    RCHECK(raster_blended_quad(&target, &alpha, 128l, 255l, 64l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(128l, 0l, 64l));
+    raster_check_untouched_margins_value(0xf81fu);
+
+    /* White multiplies to the identity on this path too. */
+    raster_reset(&target);
+    raster_fill(0x18e3u);
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0x18e3u);
+
+    /* ZERO over INVSRCCOLOR: 255 * (255 - 128) / 255 on the blue channel,
+     * nothing on the others. */
+    raster_reset(&target);
+    raster_fill(0xf81fu);
+    alpha.dst = V9X_D3D_RASTER_FACTOR_INVSRCCOLOR;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 128l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(0l, 0l, 127l));
+}
+
+/*
+ * ONE over ONE adds and saturates - Quake's additive pass - and SRCALPHA
+ * over ONE adds a fraction of the source. The fill channels are ones that
+ * survive the 565 round trip (99 and 101), so the sums are exact.
+ */
+static void test_factor_additive_pairs(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    v9x_u16 fill = v9x_d3d_raster_rgb565(99l, 101l, 99l);
+
+    raster_reset(&target);
+    raster_fill(fill);
+    alpha.src = V9X_D3D_RASTER_FACTOR_ONE;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_ONE;
+    RCHECK(raster_blended_quad(&target, &alpha, 99l, 101l, 99l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(198l, 202l, 198l));
+    raster_check_untouched_margins_value(fill);
+
+    raster_reset(&target);
+    raster_fill(fill);
+    RCHECK(raster_blended_quad(&target, &alpha, 200l, 200l, 200l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == 0xffffu);      /* 299 saturates */
+
+    /* SRCALPHA over ONE: white at alpha 128 adds 128 to each channel. */
+    raster_reset(&target);
+    raster_fill(0x0000u);
+    alpha.src = V9X_D3D_RASTER_FACTOR_SRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 128l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(128l, 128l, 128l));
+    raster_reset(&target);
+    raster_fill(fill);
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 128l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(227l, 229l, 227l));
+
+    /* INVSRCALPHA over SRCALPHA, D3D's BOTHINVSRCALPHA spelled out: white at
+     * alpha 64 over black is 191. */
+    raster_reset(&target);
+    raster_fill(0x0000u);
+    alpha.src = V9X_D3D_RASTER_FACTOR_INVSRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_SRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 64l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(191l, 191l, 191l));
+}
+
+/*
+ * INVDESTCOLOR on the source: white by one minus the destination inverts
+ * it. And the three destination-alpha factors read as the header says on a
+ * target without an alpha plane: DESTALPHA is ONE, INVDESTALPHA is ZERO,
+ * SRCALPHASAT is ZERO.
+ */
+static void test_factor_destination_terms(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    v9x_u16 fill = v9x_d3d_raster_rgb565(0l, 255l, 99l);
+
+    raster_reset(&target);
+    raster_fill(fill);
+    alpha.src = V9X_D3D_RASTER_FACTOR_INVDESTCOLOR;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_ZERO;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(255l, 0l, 156l));
+
+    /* DESTALPHA over ZERO replaces; ONE over INVDESTALPHA replaces. */
+    raster_reset(&target);
+    raster_fill(0xffffu);
+    alpha.src = V9X_D3D_RASTER_FACTOR_DESTALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 99l, 101l, 99l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(99l, 101l, 99l));
+    raster_reset(&target);
+    raster_fill(0xffffu);
+    alpha.src = V9X_D3D_RASTER_FACTOR_ONE;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_INVDESTALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 99l, 101l, 99l, 0l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(99l, 101l, 99l));
+
+    /* SRCALPHASAT over ONE keeps the destination; so does ZERO over
+     * DESTALPHA. */
+    raster_reset(&target);
+    raster_fill(fill);
+    alpha.src = V9X_D3D_RASTER_FACTOR_SRCALPHASAT;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_ONE;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == fill);
+    alpha.src = V9X_D3D_RASTER_FACTOR_ZERO;
+    alpha.dst = V9X_D3D_RASTER_FACTOR_DESTALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(12u, 10u) == fill);
 }
 
 /*
@@ -2399,6 +2549,9 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_alpha_destcolor_multiplies();
     test_alpha_destcolor_white_is_identity();
     test_alpha_refusals();
+    test_factor_zero_srccolor_multiplies();
+    test_factor_additive_pairs();
+    test_factor_destination_terms();
     test_texture_alpha_replace_and_modulate();
     test_alpha_test_gates_colour_and_depth();
     test_alpha_test_refusals();

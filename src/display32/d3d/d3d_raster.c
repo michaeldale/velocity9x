@@ -427,13 +427,14 @@ int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
     if (alpha == 0) {
         return 0;
     }
-    if (alpha->src != V9X_D3D_RASTER_BLEND_SRC_ONE &&
-        alpha->src != V9X_D3D_RASTER_BLEND_SRC_SRCALPHA &&
-        alpha->src != V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR) {
+    /* Either side takes any of the eleven; the two D3D shorthands above
+     * that, and zero, are refused. */
+    if (alpha->src < V9X_D3D_RASTER_FACTOR_ZERO ||
+        alpha->src > V9X_D3D_RASTER_FACTOR_SRCALPHASAT) {
         return 0;
     }
-    if (alpha->dst != V9X_D3D_RASTER_BLEND_DST_ZERO &&
-        alpha->dst != V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA) {
+    if (alpha->dst < V9X_D3D_RASTER_FACTOR_ZERO ||
+        alpha->dst > V9X_D3D_RASTER_FACTOR_SRCALPHASAT) {
         return 0;
     }
     return 1;
@@ -464,6 +465,83 @@ static v9x_s32 v9x_d3d_raster_weight(v9x_s32 value)
  * here would repeat the branch three times a pixel. The product is at most
  * 255 * 256 twice, which is 130,560 - nowhere near the edge of anything.
  */
+/*
+ * One blend factor of the general path, resolved per channel to 0..255.
+ *
+ * The colour factors differ per channel; the alpha ones and the constants
+ * are the same in all three. The destination-alpha readings are the ones the
+ * header explains: no target here has an alpha plane, so it reads as 1.
+ * A function rather than a macro, like the blend helper below it: an
+ * eleven-way choice has no macro form worth reading, and it runs twice a
+ * pixel on this path only.
+ */
+static void v9x_d3d_raster_factor(v9x_u32 kind,
+                                  v9x_s32 src_red, v9x_s32 src_green,
+                                  v9x_s32 src_blue,
+                                  v9x_s32 dst_red, v9x_s32 dst_green,
+                                  v9x_s32 dst_blue,
+                                  v9x_s32 src_alpha,
+                                  v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue)
+{
+    v9x_s32 scalar;
+
+    if (kind == V9X_D3D_RASTER_FACTOR_SRCCOLOR) {
+        *red = src_red;
+        *green = src_green;
+        *blue = src_blue;
+        return;
+    }
+    if (kind == V9X_D3D_RASTER_FACTOR_INVSRCCOLOR) {
+        *red = 255l - src_red;
+        *green = 255l - src_green;
+        *blue = 255l - src_blue;
+        return;
+    }
+    if (kind == V9X_D3D_RASTER_FACTOR_DESTCOLOR) {
+        *red = dst_red;
+        *green = dst_green;
+        *blue = dst_blue;
+        return;
+    }
+    if (kind == V9X_D3D_RASTER_FACTOR_INVDESTCOLOR) {
+        *red = 255l - dst_red;
+        *green = 255l - dst_green;
+        *blue = 255l - dst_blue;
+        return;
+    }
+
+    if (kind == V9X_D3D_RASTER_FACTOR_ONE ||
+        kind == V9X_D3D_RASTER_FACTOR_DESTALPHA) {
+        scalar = 255l;
+    } else if (kind == V9X_D3D_RASTER_FACTOR_SRCALPHA) {
+        scalar = src_alpha;
+    } else if (kind == V9X_D3D_RASTER_FACTOR_INVSRCALPHA) {
+        scalar = 255l - src_alpha;
+    } else {
+        /* ZERO, INVDESTALPHA and SRCALPHASAT. */
+        scalar = 0l;
+    }
+    *red = scalar;
+    *green = scalar;
+    *blue = scalar;
+}
+
+/*
+ * source * source_factor + destination * destination_factor on the general
+ * path, both factors 0..255, each product divided exactly and the sum
+ * saturated. Two divides rather than one over the sum because the sum of
+ * two full products is past V9X_D3D_RASTER_DIV255_MAX; the rounding of each
+ * term is exact at 0 and 255, which is where identity has to hold.
+ */
+#define V9X_D3D_RASTER_BLEND_GENERAL(channel, source, destination, \
+                                     source_factor, destination_factor) \
+    do { \
+        (channel) = V9X_D3D_RASTER_DIV255((source) * (source_factor) + 127l) + \
+                    V9X_D3D_RASTER_DIV255((destination) * (destination_factor) + \
+                                          127l); \
+        V9X_D3D_RASTER_CLAMP255(channel); \
+    } while (0)
+
 static v9x_s32 v9x_d3d_raster_blend(v9x_s32 source, v9x_s32 destination,
                                     v9x_s32 source_weight,
                                     v9x_s32 destination_weight)
@@ -846,6 +924,9 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
      * constant 256 whatever the fragment's alpha is, so only SRCALPHA has to
      * be recomputed per pixel, and the flag says which. */
     int alpha_varies = 0;
+    /* The general per-channel blend path, for any pair outside the five the
+     * weight arithmetic below was written for. */
+    int blend_general = 0;
     /* DESTCOLOR is not a weight. It scales each channel by that channel's own
      * stored value, so it cannot join the pair below and is carried as its
      * own per-span flag; the weights then apply to the product. */
@@ -914,10 +995,19 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
 
     if (alpha != 0) {
-        alpha_varies = alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA ||
-                       alpha->dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+        int legacy = (alpha->src == V9X_D3D_RASTER_BLEND_SRC_ONE ||
+                      alpha->src == V9X_D3D_RASTER_BLEND_SRC_SRCALPHA ||
+                      alpha->src == V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR) &&
+                     (alpha->dst == V9X_D3D_RASTER_BLEND_DST_ZERO ||
+                      alpha->dst == V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA);
+
+        blend_general = !legacy;
+        alpha_varies = alpha->src == V9X_D3D_RASTER_FACTOR_SRCALPHA ||
+                       alpha->src == V9X_D3D_RASTER_FACTOR_INVSRCALPHA ||
+                       alpha->dst == V9X_D3D_RASTER_FACTOR_SRCALPHA ||
+                       alpha->dst == V9X_D3D_RASTER_FACTOR_INVSRCALPHA;
         modulate_destination =
-            alpha->src == V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
+            legacy && alpha->src == V9X_D3D_RASTER_BLEND_SRC_DESTCOLOR;
     }
 
     if (alpha_test != 0) {
@@ -1132,6 +1222,44 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                  * rather than an obviously wrong colour - and that is still
                  * true; it is the span's own clamp, above, that now
                  * guarantees the range on every path into this arm. */
+                unpack(stored, &dst_red, &dst_green, &dst_blue);
+                if (blend_general) {
+                    v9x_s32 src_factor_red;
+                    v9x_s32 src_factor_green;
+                    v9x_s32 src_factor_blue;
+                    v9x_s32 dst_factor_red;
+                    v9x_s32 dst_factor_green;
+                    v9x_s32 dst_factor_blue;
+
+                    v9x_d3d_raster_factor(alpha->src, out_red, out_green,
+                                          out_blue, dst_red, dst_green,
+                                          dst_blue, out_alpha,
+                                          &src_factor_red, &src_factor_green,
+                                          &src_factor_blue);
+                    v9x_d3d_raster_factor(alpha->dst, out_red, out_green,
+                                          out_blue, dst_red, dst_green,
+                                          dst_blue, out_alpha,
+                                          &dst_factor_red, &dst_factor_green,
+                                          &dst_factor_blue);
+                    V9X_D3D_RASTER_BLEND_GENERAL(out_red, out_red, dst_red,
+                                                 src_factor_red,
+                                                 dst_factor_red);
+                    V9X_D3D_RASTER_BLEND_GENERAL(out_green, out_green,
+                                                 dst_green, src_factor_green,
+                                                 dst_factor_green);
+                    V9X_D3D_RASTER_BLEND_GENERAL(out_blue, out_blue, dst_blue,
+                                                 src_factor_blue,
+                                                 dst_factor_blue);
+                    pixels[column] = pack(out_red, out_green, out_blue);
+                    red += red_step;
+                    green += green_step;
+                    blue += blue_step;
+                    fragment_alpha += alpha_step;
+                    z += z_step;
+                    u += u_step;
+                    v += v_step;
+                    continue;
+                }
                 if (alpha_varies) {
                     v9x_s32 weight = v9x_d3d_raster_weight(out_alpha);
 
@@ -1143,7 +1271,6 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         destination_weight = 256l - weight;
                     }
                 }
-                unpack(stored, &dst_red, &dst_green, &dst_blue);
                 if (modulate_destination) {
                     /* Both factors are 0..255 - the source by the span clamp
                      * above, the destination by expand5/expand6 - so the
