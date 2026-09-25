@@ -36,8 +36,10 @@ the trees and the padded Z buffer. Two appended counters,
 
 ## Not settled
 
-- `MipTreeDeclined` rose to 11,456 (all reason 4, the heap had no
-  contiguous room), against 4,408 before. The page of slack each placed
+- `MipTreeDeclined` rose to 11,456 against 4,408 before; the last was
+  reason 4, the heap had no contiguous room (only the last reason is
+  recorded). See
+  `docs\issues\2026-09-25-gen3-video-memory-heap-may-fragment.md`. The page of slack each placed
   block carries may be fragmenting the heap. With bound refusals at zero,
   those declined chains are not being drawn from misplaced memory; how the
   application copes with them (retry, evict, smaller texture) is not
