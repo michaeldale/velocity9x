@@ -4,7 +4,7 @@
  * (docs\plans\opengl-1.1-icd.md, Phase 3).
  *
  * Pure: every check is arithmetic over project-owned descriptors. The HAL's
- * boundary file resolves a DirectDraw LCL into a V9X_R3D_SURFACE and hands
+ * boundary resolves a DirectDraw surface into a V9X_R3D_SURFACE and hands
  * it here; it is the only part that touches a DDHAL structure, and it checks
  * readability, not layout. What these functions cannot establish - that an
  * allocation is still live, that a VRAM range is still this surface's - is

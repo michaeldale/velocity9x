@@ -653,6 +653,15 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     completion and visibility. A timeout is a failure, not completion. Test
     malformed descriptors, arithmetic overflow, stale generations, batch
     boundaries and failures after partial submission.
+- **ABI and validators landed 2026-09-26** (b4f94c0): `r3d_abi.h` v1 and
+  `r3d_validate.c`, host-tested. Surfaces travel as the ICD's
+  IDirectDrawSurface (the INT), resolved by the Direct3D target path.
+- **Export landed and measured 2026-09-26** (see the record above): v1
+  draws exactly on the 86Box software guest from another process's
+  `LoadLibrary`; on the RGB565 ViRGE desktop it offers no target format and
+  refuses every draw before the S3D; every refusal returns its own code.
+  Version 1 answers UNSUPPORTED for CPU textures, a scissor, a colour mask
+  and combines no D3D op expresses. Gen3 not yet run.
 - **V9XHAL.DLL export `V9xRenderInterface`.** This is a new external symbol,
   approved by this plan.
   - Every entry fails closed unless `v9x_hal`, DriverInit completion and
@@ -699,7 +708,11 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
       Define `DrvCopyContext` state-mask behaviour and failure handling rather
       than leaving mandatory exports as unexplained success stubs.
     - It creates DirectDraw, requires `DDCAPS_3D`, finds the module with
-      `GetModuleHandleA("V9XHAL")`, and re-runs `describe` after
+      `LoadLibraryA("V9XHAL.DLL")` - not `GetModuleHandleA`: DirectDraw
+      loads the HAL in its helper process, and the application's own load
+      returns the one shared instance (measured 2026-09-26,
+      `2026-09-26-phase3-render-interface-v1-draws-from-another-process.md`)
+      - and re-runs `describe` after
       SURFACELOST or a mode change. DriverInit re-runs on a mode change
       (`ddhal_core.c:1800`).
   - **`gl_dispatch.c`**: the static `GLCLTPROCTABLE`, 336 non-null

@@ -201,7 +201,7 @@ static void texture_reset(V9X_R3D_ABI_TEXTURE *texture,
 {
     texture->storage = V9X_R3D_ABI_TEXTURE_CPU;
     texture->format = V9X_R3D_ABI_FORMAT_ARGB4444;
-    texture->surface.lcl = 0;
+    texture->surface.surface = 0;
     texture->levels = levels;
     texture->level_count = 7ul;
     texture->min_filter = V9X_R3D_ABI_FILTER_LINEAR;
@@ -270,7 +270,7 @@ static void test_texture_description(void)
     t.levels = 0;
     t.level_count = 0ul;
     VCHECK(v9x_r3d_validate_texture(&t, 512ul) == V9X_R3D_RESULT_INVALID);
-    t.surface.lcl = &hw_surface;
+    t.surface.surface = &hw_surface;
     VCHECK(v9x_r3d_validate_texture(&t, 512ul) == V9X_R3D_RESULT_OK);
 }
 
@@ -350,17 +350,17 @@ static void test_state_ranges(void)
 
 static V9X_R3D_ABI_VERTEX draw_vertices[3u * 65u];
 
-static void draw_reset(V9X_R3D_ABI_DRAW *d, int *target_lcl)
+static void draw_reset(V9X_R3D_ABI_DRAW *d, int *target_surface)
 {
     V9X_R3D_ABI_STATE state;
 
     d->struct_bytes = sizeof(*d);
     d->generation = 7ul;
-    d->target.lcl = target_lcl;
-    d->depth.lcl = 0;
+    d->target.surface = target_surface;
+    d->depth.surface = 0;
     d->texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
     d->texture.format = 0ul;
-    d->texture.surface.lcl = 0;
+    d->texture.surface.surface = 0;
     d->texture.levels = 0;
     d->texture.level_count = 0ul;
     d->texture.min_filter = V9X_R3D_ABI_FILTER_NEAREST;
@@ -396,11 +396,11 @@ static void test_draw_header(void)
     /* Then the generation, before the payload. */
     draw_reset(&d, &target);
     d.generation = 6ul;
-    d.target.lcl = 0;
+    d.target.surface = 0;
     VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_STALE);
 
     draw_reset(&d, &target);
-    d.target.lcl = 0;
+    d.target.surface = 0;
     VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
     draw_reset(&d, &target);
     d.vertices = 0;
@@ -429,8 +429,8 @@ static void test_clear_header_and_rects(void)
 
     c.struct_bytes = sizeof(c);
     c.generation = 3ul;
-    c.target.lcl = &target;
-    c.depth.lcl = 0;
+    c.target.surface = &target;
+    c.depth.surface = 0;
     c.clear_color = 1ul;
     c.clear_depth = 0ul;
     c.color_value = 0x00102030ul;

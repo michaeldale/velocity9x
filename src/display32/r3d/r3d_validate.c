@@ -193,7 +193,7 @@ v9x_u32 v9x_r3d_validate_texture(const V9X_R3D_ABI_TEXTURE *texture,
     if (texture->storage == V9X_R3D_ABI_TEXTURE_HW) {
         /* The chain is the surface's attachments, resolved at the boundary;
          * a CPU chain alongside it would be two answers to one question. */
-        if (texture->surface.lcl == 0 || texture->levels != 0 ||
+        if (texture->surface.surface == 0 || texture->levels != 0 ||
             texture->level_count != 0ul) {
             return V9X_R3D_RESULT_INVALID;
         }
@@ -275,7 +275,7 @@ v9x_u32 v9x_r3d_validate_draw(const V9X_R3D_ABI_DRAW *draw,
     if (draw->generation != generation) {
         return V9X_R3D_RESULT_STALE;
     }
-    if (draw->target.lcl == 0 || draw->vertices == 0 ||
+    if (draw->target.surface == 0 || draw->vertices == 0 ||
         draw->triangle_count == 0ul ||
         draw->triangle_count > V9X_R3D_ABI_BATCH_MAX) {
         return V9X_R3D_RESULT_INVALID;
@@ -295,8 +295,8 @@ v9x_u32 v9x_r3d_validate_clear(const V9X_R3D_ABI_CLEAR *clear,
     if (clear->generation != generation) {
         return V9X_R3D_RESULT_STALE;
     }
-    if (clear->target.lcl == 0 ||
-        (clear->clear_depth != 0ul && clear->depth.lcl == 0) ||
+    if (clear->target.surface == 0 ||
+        (clear->clear_depth != 0ul && clear->depth.surface == 0) ||
         (clear->rect_count != 0ul && clear->rects == 0)) {
         return V9X_R3D_RESULT_INVALID;
     }

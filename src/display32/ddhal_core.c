@@ -1850,6 +1850,9 @@ DWORD __stdcall DriverInit(DWORD context)
     /* And the completion channel: a new session brings the status page up
      * again and proves it again (review R3). */
     v9x_d3d_i9xx_reset();
+    /* And the render interface's generation: every surface description an
+     * ICD built before this point may name memory the new mode reuses. */
+    v9x_d3d_render_new_session();
     /* And the scanout readings, whose PIPESTAT boundary is per session: a
      * baseline taken once per DLL lifetime would let the next run's mode
      * change contaminate the underrun measurement. */

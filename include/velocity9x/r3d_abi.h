@@ -102,12 +102,15 @@ typedef struct v9x_r3d_abi_vertex {
 } V9X_R3D_ABI_VERTEX;
 
 /*
- * A DirectDraw surface the ICD created in its own process, named by its
- * LCL (the INT's lpLcl). The HAL reads the layout from the LCL's GBL and
- * validates it on every call; `lcl` is never kept.
+ * A DirectDraw surface the ICD created in its own process, named by the
+ * interface pointer the ICD holds - the IDirectDrawSurface, which is
+ * DirectDraw's INT. That is what the DX5 callbacks hand the HAL as lpDDS,
+ * so the HAL resolves it through the same guarded INT -> LCL -> GBL path
+ * and the same engine rules as a Direct3D render target, and validates it
+ * on every call; `surface` is never kept.
  */
 typedef struct v9x_r3d_abi_surface {
-    void *lcl;
+    void *surface;
 } V9X_R3D_ABI_SURFACE;
 
 /*
@@ -220,7 +223,7 @@ typedef struct v9x_r3d_abi_draw {
     v9x_u32 struct_bytes;
     v9x_u32 generation;
     V9X_R3D_ABI_SURFACE target;
-    V9X_R3D_ABI_SURFACE depth;  /* lcl null: no depth buffer */
+    V9X_R3D_ABI_SURFACE depth;  /* surface null: no depth buffer */
     V9X_R3D_ABI_TEXTURE texture;
     V9X_R3D_ABI_STATE state;
     const V9X_R3D_ABI_VERTEX *vertices;  /* 3 * triangle_count, a list */

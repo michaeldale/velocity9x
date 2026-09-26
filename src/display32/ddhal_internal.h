@@ -295,6 +295,16 @@ static void v9x_rdtsc_pair(DWORD *pair);
 void v9x_win16_resolve(void);
 void v9x_win16_publish(void);
 void v9x_win16_sample(DWORD site);
+/* Take and release the mutex for a caller DirectDraw does not wrap - the
+ * render interface. enter answers zero, taking nothing, unless all three
+ * of #93/#97/#98 resolved; every successful enter is paired with a leave. */
+int v9x_win16_enter(void);
+void v9x_win16_leave(void);
+
+/* Whether a new DriverInit - a mode change - has begun a new session, which
+ * makes every render interface request carrying an older generation STALE.
+ * In d3d_core.c; DriverInit calls it. */
+void v9x_d3d_render_new_session(void);
 
 /* Bounded callback trace, in ddhal.c. */
 void v9x_trace_push(WORD id, DWORD detail);

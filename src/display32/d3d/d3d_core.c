@@ -27,6 +27,8 @@
 #include <stddef.h>
 #include "r3d/r3d.h"
 #include "r3d/r3d_cull.h"
+#include "r3d/r3d_validate.h"
+#include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
 
 
@@ -420,6 +422,9 @@ static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
 #define V9X_D3D_LCL_SITE_RENDERPRIM_EXE   9ul
 #define V9X_D3D_LCL_SITE_RENDERPRIM_TL   10ul
 #define V9X_D3D_LCL_SITE_TEXTURE_CREATE  11ul
+/* The render interface's texture surface (its target and depth go through
+ * v9x_d3d_set_target, and are counted as sites 3 and 4). */
+#define V9X_D3D_LCL_SITE_R3D_TEXTURE     12ul
 
 static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site);
 
@@ -2821,4 +2826,558 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
         (V9X_DD_CODE_PTR)V9xD3dDrawOneIndexedPrimitive;
     v9x_d3d_callbacks2.DrawPrimitives =
         (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives;
+}
+
+/*
+ * The render interface, version 1 (include\velocity9x\r3d_abi.h;
+ * docs\plans\opengl-1.1-icd.md, Phase 3).
+ *
+ * A second front end on the same engines, and it lives here rather than in
+ * a file of its own for one reason: its surfaces are resolved by
+ * v9x_d3d_set_target, the guarded INT -> LCL -> GBL path and every engine
+ * rule a Direct3D render target is held to, and its batches go through the
+ * same neutral list builder into ops->draw. Moving those out would make
+ * them external for the sake of a file boundary. What it does not share is
+ * a context: every request is described afresh on a scratch one, under the
+ * Win16 mutex, and nothing from it is kept.
+ *
+ * Version 1 draws what the engines already draw for Direct3D - untextured
+ * and DirectDraw-texture batches - and refuses the rest as UNSUPPORTED
+ * rather than approximating it: CPU-resident textures, a scissor, a colour
+ * mask, and texture combines no D3D texture op expresses. Each engine's
+ * accepts() then refuses what that engine cannot draw.
+ */
+
+typedef char v9x_d3d_assert_r3d_abi_vertex[
+    (sizeof(V9X_R3D_ABI_VERTEX) == sizeof(V9X_R3D_VERTEX) &&
+     offsetof(V9X_R3D_ABI_VERTEX, rhw) == offsetof(V9X_R3D_VERTEX, rhw) &&
+     offsetof(V9X_R3D_ABI_VERTEX, specular) ==
+         offsetof(V9X_R3D_VERTEX, specular) &&
+     offsetof(V9X_R3D_ABI_VERTEX, tv) == offsetof(V9X_R3D_VERTEX, tv))
+        ? 1 : -1];
+
+typedef char v9x_d3d_assert_r3d_abi_numbers[
+    (V9X_R3D_ABI_FORMAT_RGB565 == V9X_D3D_TARGET_FORMAT_RGB565 &&
+     V9X_R3D_ABI_FORMAT_XRGB1555 == V9X_D3D_TARGET_FORMAT_XRGB1555 &&
+     V9X_R3D_ABI_FORMAT_RGB565 == V9X_R3D_FORMAT_RGB565 &&
+     V9X_R3D_ABI_FORMAT_XRGB1555 == V9X_R3D_FORMAT_XRGB1555 &&
+     V9X_R3D_ABI_ADDRESS_WRAP == V9X_R3D_ADDRESS_WRAP &&
+     V9X_R3D_ABI_ADDRESS_CLAMP == V9X_R3D_ADDRESS_CLAMP &&
+     V9X_R3D_ABI_FILTER_NEAREST == V9X_R3D_FILTER_NEAREST &&
+     V9X_R3D_ABI_FILTER_LINEAR == V9X_R3D_FILTER_LINEAR) ? 1 : -1];
+
+/* The current session. Starts at one so a zeroed request is always STALE. */
+static DWORD v9x_r3d_generation = 1ul;
+/* Scratch for one request's surfaces; valid only under the mutex. */
+static V9X_D3D_CONTEXT v9x_r3d_context;
+
+void v9x_d3d_render_new_session(void)
+{
+    ++v9x_r3d_generation;
+    if (v9x_r3d_generation == 0ul) {
+        v9x_r3d_generation = 1ul;
+    }
+}
+
+/* The HAL links no C runtime, and a struct assignment may become a call to
+ * one; a byte loop cannot. */
+static void v9x_r3d_zero(void *memory, DWORD bytes)
+{
+    BYTE *cursor = (BYTE *)memory;
+
+    while (bytes-- != 0ul) {
+        *cursor++ = 0u;
+    }
+}
+
+/* The engine that would draw, ready to, or null. */
+static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (v9x_hal == 0 || ops == 0 || ops->ready == 0 || !ops->ready() ||
+        ops->draw == 0) {
+        return 0;
+    }
+    return ops;
+}
+
+/*
+ * Bind target and depth on the scratch context through the Direct3D
+ * target path. INVALID when either is refused; the depth refusal reason is
+ * recorded where Direct3D's is (d3d_diagnostics.depth_reject), which is
+ * shared bookkeeping, not state.
+ */
+static DWORD v9x_r3d_bind(void *target, void *depth)
+{
+    v9x_r3d_zero(&v9x_r3d_context, sizeof(v9x_r3d_context));
+    if (!v9x_d3d_set_target(&v9x_r3d_context, target, depth)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (depth != 0 && v9x_r3d_context.zbuffer == 0) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
+/*
+ * The texture combine as the D3D texture op the engines implement, or zero
+ * when none is exactly it. D3D MODULATE takes the texel's alpha when the
+ * texture has one and the fragment's when it does not, so which ABI alpha op
+ * it is depends on the format.
+ */
+static DWORD v9x_r3d_texture_op(const V9X_R3D_ABI_TEXTURE *texture)
+{
+    int has_alpha = texture->format != V9X_R3D_ABI_FORMAT_RGB565;
+
+    if (texture->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+        texture->alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE) {
+        return V9X_R3D_TEXOP_DECAL;
+    }
+    if (texture->color_op == V9X_R3D_ABI_COLOROP_MODULATE) {
+        if (texture->alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE) {
+            return V9X_R3D_TEXOP_MODULATEALPHA;
+        }
+        if (texture->alpha_op == (has_alpha ? V9X_R3D_ABI_ALPHAOP_REPLACE
+                                            : V9X_R3D_ABI_ALPHAOP_FRAGMENT)) {
+            return V9X_R3D_TEXOP_MODULATE;
+        }
+        return 0ul;
+    }
+    if (texture->color_op == V9X_R3D_ABI_COLOROP_DECALALPHA &&
+        texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        return V9X_R3D_TEXOP_DECALALPHA;
+    }
+    return 0ul;
+}
+
+/* D3D's six TEXTUREMIN values from a texel filter and a level filter. */
+static DWORD v9x_r3d_min_filter(const V9X_R3D_ABI_TEXTURE *texture)
+{
+    int linear = texture->min_filter == V9X_R3D_ABI_FILTER_LINEAR;
+
+    if (texture->mip == V9X_R3D_ABI_MIP_POINT) {
+        return linear ? V9X_R3D_FILTER_MIPLINEAR : V9X_R3D_FILTER_MIPNEAREST;
+    }
+    if (texture->mip == V9X_R3D_ABI_MIP_LINEAR) {
+        return linear ? V9X_R3D_FILTER_LINEARMIPLINEAR
+                      : V9X_R3D_FILTER_LINEARMIPNEAREST;
+    }
+    return texture->min_filter;
+}
+
+/* The request as the neutral core describes a batch. */
+static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
+                              V9X_R3D_DRAW *draw)
+{
+    const V9X_R3D_ABI_STATE *state = &request->state;
+    const V9X_D3D_CONTEXT *context = &v9x_r3d_context;
+
+    v9x_r3d_zero(draw, sizeof(*draw));
+    draw->target.offset = context->target_offset;
+    draw->target.pitch = context->pitch;
+    draw->target.width = context->width;
+    draw->target.height = context->height;
+    draw->target.format = context->target_format;
+    draw->target.object = context->target;
+    draw->depth.offset = context->depth_offset;
+    draw->depth.pitch = context->depth_pitch;
+    draw->depth.width = context->width;
+    draw->depth.height = context->height;
+    draw->depth.object = context->zbuffer;
+
+    if (request->texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+    if (request->texture.storage == V9X_R3D_ABI_TEXTURE_HW) {
+        draw->texture.object = v9x_d3d_surface_lcl(
+            request->texture.surface.surface, V9X_D3D_LCL_SITE_R3D_TEXTURE);
+        if (draw->texture.object == 0) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        draw->texture.op = v9x_r3d_texture_op(&request->texture);
+        if (draw->texture.op == 0ul) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        draw->texture.min_filter = v9x_r3d_min_filter(&request->texture);
+        draw->texture.mag_filter = request->texture.mag_filter;
+        draw->texture.address = request->texture.address;
+    }
+
+    /* Neither the Direct3D engines nor their accepts() know a scissor or a
+     * write mask; the CPU rasterizer does, and it is reached from here only
+     * when the software engine takes explicit state (not in version 1). */
+    if (state->write_mask != V9X_R3D_ABI_WRITE_RGB ||
+        state->scissor_left != 0ul || state->scissor_top != 0ul ||
+        state->scissor_right != context->width ||
+        state->scissor_bottom != context->height) {
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+
+    draw->depth_enable = state->depth_enable != 0ul && context->zbuffer != 0
+        ? 1ul : 0ul;
+    draw->depth_write = draw->depth_enable != 0ul ? state->depth_write : 0ul;
+    draw->depth_func = draw->depth_enable != 0ul ? state->depth_func
+                                                 : V9X_R3D_CMP_ALWAYS;
+    draw->blend_enable = state->blend_enable != 0ul ? 1ul : 0ul;
+    draw->src_blend = draw->blend_enable != 0ul ? state->src_blend
+                                                : V9X_R3D_BLEND_ONE;
+    draw->dst_blend = draw->blend_enable != 0ul ? state->dst_blend
+                                                : V9X_R3D_BLEND_ZERO;
+    draw->alpha_test_enable = state->alpha_test_enable != 0ul ? 1ul : 0ul;
+    draw->alpha_func = draw->alpha_test_enable != 0ul ? state->alpha_func
+                                                      : V9X_R3D_CMP_ALWAYS;
+    draw->alpha_ref = state->alpha_ref;
+    draw->shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw->fog_enable = state->fog_enable != 0ul ? 1ul : 0ul;
+    draw->fog_color = state->fog_color;
+    return V9X_R3D_RESULT_OK;
+}
+
+/* The list builder's sink: every batch to the engine, counting what went. */
+typedef struct v9x_r3d_sink {
+    const V9X_D3D_ENGINE_OPS *ops;
+    const V9X_R3D_DRAW *draw;
+    DWORD submitted;
+} V9X_R3D_SINK;
+
+static int v9x_r3d_sink_batch(void *user, const V9X_R3D_VERTEX *vertices,
+                              v9x_u32 triangle_count)
+{
+    V9X_R3D_SINK *sink = (V9X_R3D_SINK *)user;
+
+    if (!sink->ops->draw(sink->draw, vertices, triangle_count)) {
+        return 0;
+    }
+    sink->submitted += triangle_count;
+    return 1;
+}
+
+/* The ICD culls in window space before it sends anything. */
+static int v9x_r3d_sink_culled(void *user, const V9X_R3D_VERTEX *triangle)
+{
+    (void)user;
+    (void)triangle;
+    return 0;
+}
+
+static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
+                               V9X_R3D_ABI_OUTCOME *outcome)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
+    V9X_R3D_DRAW draw;
+    V9X_R3D_LIST list;
+    V9X_R3D_SINK sink;
+    DWORD result;
+
+    if (ops == 0) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    result = v9x_r3d_validate_draw(request, v9x_r3d_generation,
+                                   ops->limits->texture_size_max);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    if (IsBadReadPtr(request->vertices,
+                     request->triangle_count * 3ul *
+                         sizeof(V9X_R3D_ABI_VERTEX))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    result = v9x_r3d_bind(request->target.surface, request->depth.surface);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    result = v9x_r3d_validate_state(&request->state, v9x_r3d_context.width,
+                                    v9x_r3d_context.height);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    result = v9x_r3d_describe(request, &draw);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    if (ops->accepts == 0 || !ops->accepts(&draw)) {
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+
+    sink.ops = ops;
+    sink.draw = &draw;
+    sink.submitted = 0ul;
+    list.guard_limit = ops->limits->coordinate_limit;
+    list.width = (float)v9x_r3d_context.width;
+    list.height = (float)v9x_r3d_context.height;
+    list.clip_in_core = ops->limits->clip_in_core;
+    list.batch = v9x_r3d_sink_batch;
+    list.culled = v9x_r3d_sink_culled;
+    list.user = &sink;
+    if (v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)request->vertices,
+                          request->triangle_count)) {
+        outcome->submitted = sink.submitted;
+        return V9X_R3D_RESULT_OK;
+    }
+    /* An engine that declines a batch does not say how much of it reached
+     * the hardware, and a triangle refused by the guard band ends nothing
+     * but itself; either way the target's contents are no longer known. */
+    outcome->submitted = sink.submitted;
+    return V9X_R3D_RESULT_INDETERMINATE;
+}
+
+/* The shared drain to completion: DONE, or the one failure it can end in. */
+static DWORD v9x_r3d_drain(void)
+{
+    int drained = v9x_render_drain(1);
+
+    while (drained == V9X_RENDER_DRAIN_BUSY) {
+        drained = v9x_render_drain(1);
+    }
+    return drained == V9X_RENDER_DRAIN_DONE ? V9X_R3D_RESULT_OK
+                                            : V9X_R3D_RESULT_TIMEOUT;
+}
+
+static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
+    V9X_R3D_CLEAR clear;
+    DWORD result;
+
+    if (ops == 0) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    result = v9x_r3d_validate_clear(request, v9x_r3d_generation);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    if (request->rect_count != 0ul &&
+        IsBadReadPtr(request->rects,
+                     request->rect_count * sizeof(V9X_R3D_ABI_RECT))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    result = v9x_r3d_bind(request->target.surface,
+                          request->clear_depth != 0ul ? request->depth.surface
+                                                      : 0);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    result = v9x_r3d_validate_rects(request->rects, request->rect_count,
+                                    v9x_r3d_context.width,
+                                    v9x_r3d_context.height);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    /* The CPU writes both surfaces; anything the engine still owes them has
+     * to land first, or it would land on top of the clear. */
+    result = v9x_r3d_drain();
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    clear.color = (void *)(v9x_hal->fb.linear_base +
+                           v9x_r3d_context.target_offset);
+    clear.color_pitch = v9x_r3d_context.pitch;
+    clear.depth = v9x_r3d_context.zbuffer != 0
+        ? (void *)(v9x_hal->fb.linear_base + v9x_r3d_context.depth_offset)
+        : 0;
+    clear.depth_pitch = v9x_r3d_context.depth_pitch;
+    clear.width = v9x_r3d_context.width;
+    clear.height = v9x_r3d_context.height;
+    clear.format = v9x_r3d_context.target_format;
+    clear.clear_color = request->clear_color;
+    clear.clear_depth = request->clear_depth;
+    clear.color_value = request->color_value;
+    clear.depth_value = request->depth_value;
+    clear.write_red = (request->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
+    clear.write_green = (request->write_mask & V9X_R3D_ABI_WRITE_GREEN) != 0ul;
+    clear.write_blue = (request->write_mask & V9X_R3D_ABI_WRITE_BLUE) != 0ul;
+    clear.write_depth = request->write_depth;
+    clear.rects = (const V9X_R3D_CLEAR_RECT *)request->rects;
+    clear.rect_count = request->rect_count;
+    return v9x_r3d_clear(&clear) ? V9X_R3D_RESULT_OK
+                                 : V9X_R3D_RESULT_INVALID;
+}
+
+typedef char v9x_d3d_assert_r3d_abi_rect[
+    (sizeof(V9X_R3D_ABI_RECT) == sizeof(V9X_R3D_CLEAR_RECT) &&
+     offsetof(V9X_R3D_ABI_RECT, bottom) ==
+         offsetof(V9X_R3D_CLEAR_RECT, bottom)) ? 1 : -1];
+
+static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
+    const char *name = "Velocity9x";
+    DWORD format = 0ul;
+    DWORD index;
+
+    if (ops == 0) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    out->abi_version = V9X_R3D_ABI_VERSION;
+    out->generation = v9x_r3d_generation;
+    out->engine = 0ul;
+    if (ops == &v9x_d3d_engine_soft) {
+        out->engine = V9X_R3D_ABI_ENGINE_SOFTWARE;
+        name = "Velocity9x Software";
+    } else if (ops == &v9x_d3d_engine_virge) {
+        out->engine = V9X_R3D_ABI_ENGINE_VIRGE;
+        name = "Velocity9x ViRGE";
+    } else if (ops == &v9x_d3d_engine_i9xx) {
+        out->engine = V9X_R3D_ABI_ENGINE_GEN3;
+        name = "Velocity9x GMA 950";
+    }
+    /* The desktop's layout, when an engine can write it: the S3D writes
+     * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
+     * none (docs\decisions\2026-09-26-phase05-mixed-engine-ordering-and-
+     * virge-colour-mismatch.md). */
+    out->target_formats = 0ul;
+    if (v9x_d3d_target_format_of(&v9x_hal->info.vmiData.ddpfDisplay,
+                                 &format) &&
+        !(ops == &v9x_d3d_engine_virge &&
+          format != V9X_D3D_TARGET_FORMAT_XRGB1555)) {
+        out->target_formats = 1ul << format;
+    }
+    out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_RGB565) |
+                           (1ul << V9X_R3D_ABI_FORMAT_ARGB1555) |
+                           (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
+    out->texture_size_max = ops->limits->texture_size_max;
+    out->batch_max = V9X_R3D_ABI_BATCH_MAX;
+    for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
+                      name[index] != '\0'; ++index) {
+        out->renderer[index] = name[index];
+    }
+    while (index < sizeof(out->renderer)) {
+        out->renderer[index++] = '\0';
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
+/*
+ * The five entries. Each takes the Win16 mutex for the whole call - the
+ * ICD is not DirectDraw, so nobody has taken it on the HAL's behalf - and
+ * never calls USER, GDI or DirectDraw while holding it. The only waits under
+ * it are the shared drain's, bounded by the engines' own timeouts.
+ */
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_describe(V9X_R3D_ABI_DESCRIBE *out)
+{
+    DWORD result;
+
+    if (out == 0 || IsBadWritePtr(out, sizeof(v9x_u32))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (out->struct_bytes != (v9x_u32)sizeof(V9X_R3D_ABI_DESCRIBE)) {
+        return V9X_R3D_RESULT_ABI;
+    }
+    if (IsBadWritePtr(out, sizeof(V9X_R3D_ABI_DESCRIBE))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (!v9x_win16_enter()) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    result = v9x_r3d_describe_body(out);
+    v9x_win16_leave();
+    return result;
+}
+
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
+                                               V9X_R3D_ABI_OUTCOME *outcome)
+{
+    DWORD result;
+
+    if (outcome == 0 || IsBadWritePtr(outcome, sizeof(*outcome))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    outcome->submitted = 0ul;
+    if (draw == 0 || IsBadReadPtr(draw, sizeof(v9x_u32))) {
+        outcome->result = V9X_R3D_RESULT_INVALID;
+        return outcome->result;
+    }
+    if (draw->struct_bytes == (v9x_u32)sizeof(V9X_R3D_ABI_DRAW) &&
+        IsBadReadPtr(draw, sizeof(V9X_R3D_ABI_DRAW))) {
+        outcome->result = V9X_R3D_RESULT_INVALID;
+        return outcome->result;
+    }
+    if (!v9x_win16_enter()) {
+        outcome->result = V9X_R3D_RESULT_NOT_READY;
+        return outcome->result;
+    }
+    result = v9x_r3d_draw_body(draw, outcome);
+    v9x_win16_leave();
+    outcome->result = result;
+    return result;
+}
+
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_clear(const V9X_R3D_ABI_CLEAR *clear)
+{
+    DWORD result;
+
+    if (clear == 0 || IsBadReadPtr(clear, sizeof(v9x_u32))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (clear->struct_bytes == (v9x_u32)sizeof(V9X_R3D_ABI_CLEAR) &&
+        IsBadReadPtr(clear, sizeof(V9X_R3D_ABI_CLEAR))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (!v9x_win16_enter()) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    result = v9x_r3d_clear_body(clear);
+    v9x_win16_leave();
+    return result;
+}
+
+/* Every engine submits each batch before its draw returns, so there is
+ * nothing pending to push; flush answers only whether the session holds. */
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_flush(v9x_u32 generation)
+{
+    DWORD result;
+
+    if (!v9x_win16_enter()) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    if (v9x_r3d_engine() == 0) {
+        result = V9X_R3D_RESULT_NOT_READY;
+    } else if (generation != v9x_r3d_generation) {
+        result = V9X_R3D_RESULT_STALE;
+    } else {
+        result = V9X_R3D_RESULT_OK;
+    }
+    v9x_win16_leave();
+    return result;
+}
+
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_finish(v9x_u32 generation)
+{
+    DWORD result;
+
+    if (!v9x_win16_enter()) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    if (v9x_r3d_engine() == 0) {
+        result = V9X_R3D_RESULT_NOT_READY;
+    } else if (generation != v9x_r3d_generation) {
+        result = V9X_R3D_RESULT_STALE;
+    } else {
+        result = v9x_r3d_drain();
+    }
+    v9x_win16_leave();
+    return result;
+}
+
+static const V9X_R3D_INTERFACE v9x_r3d_interface = {
+    V9X_R3D_ABI_VERSION,
+    sizeof(V9X_R3D_INTERFACE),
+    v9x_r3d_entry_describe,
+    v9x_r3d_entry_draw,
+    v9x_r3d_entry_clear,
+    v9x_r3d_entry_flush,
+    v9x_r3d_entry_finish
+};
+
+/* The export (build-ddraw-hal-dll.ps1 names it). Exact negotiation: the
+ * ICD gets this build's table only when it was built against this header. */
+const V9X_R3D_INTERFACE * __stdcall V9xRenderInterface(v9x_u32 abi_version,
+                                                       v9x_u32 struct_bytes)
+{
+    if (abi_version != V9X_R3D_ABI_VERSION ||
+        struct_bytes != (v9x_u32)sizeof(V9X_R3D_INTERFACE)) {
+        return 0;
+    }
+    return &v9x_r3d_interface;
 }

@@ -14,10 +14,11 @@
  * refuses these ordinals on 98SE. The walk itself is the OS-free
  * src\common\pe_export.c; this file supplies the module base and the image
  * size and touches nothing it has not first shown to be readable. The four
- * ordinals are resolved together so the record also says whether the ICD's
- * route to _EnterSysLevel/_LeaveSysLevel (#97/#98) resolves from a HAL
- * callback's context, but only #96 is ever called: this build measures the
- * lock and never takes it.
+ * ordinals are resolved together. #96 is what the callbacks sample; #93,
+ * #97 and #98 - GetpWin16Lock, _EnterSysLevel and _LeaveSysLevel - are what
+ * the render interface takes the mutex with (v9x_win16_enter/leave), because
+ * its calls come from the ICD directly and not through DirectDraw, which is
+ * what holds the mutex around every HAL callback (Phase 0.2).
  *
  * KERNEL32 is mapped at one address in every process on Win9x, so the
  * resolved pointers are valid from whichever process DirectDraw calls in,
@@ -57,8 +58,17 @@
 #define V9X_WIN16_FUNCTION_COUNT_MAX 65536ul
 
 typedef DWORD (WINAPI *V9X_WIN16_CONFIRM)(void);
+/* GetpWin16Lock stores the mutex's SYSLEVEL; _EnterSysLevel and
+ * _LeaveSysLevel take and release it, recursively (Wine's syslevel.c
+ * declares all three WINAPI, and the DX3 DDRAW.DLL imports them by these
+ * ordinals). */
+typedef VOID (WINAPI *V9X_WIN16_GETLOCK)(void **lock);
+typedef VOID (WINAPI *V9X_WIN16_SYSLEVEL)(void *lock);
 
 static V9X_WIN16_CONFIRM v9x_win16_confirm;
+static V9X_WIN16_SYSLEVEL v9x_win16_enter_level;
+static V9X_WIN16_SYSLEVEL v9x_win16_leave_level;
+static void *v9x_win16_lock;
 static DWORD v9x_win16_resolved_mask;
 
 static DWORD v9x_win16_walk(const BYTE *image, DWORD image_bytes, DWORD ordinal)
@@ -84,6 +94,9 @@ void v9x_win16_resolve(void)
     DWORD address;
 
     v9x_win16_confirm = 0;
+    v9x_win16_enter_level = 0;
+    v9x_win16_leave_level = 0;
+    v9x_win16_lock = 0;
     kernel32 = GetModuleHandleA("KERNEL32.DLL");
     if (kernel32 == 0) {
         v9x_win16_resolved_mask = mask;
@@ -118,14 +131,35 @@ void v9x_win16_resolve(void)
         return;
     }
     mask |= V9X_WIN16_RESOLVED_ENTRIES;
-    if (v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_GETPWIN16LOCK) != 0ul) {
-        mask |= V9X_WIN16_RESOLVED_93;
-    }
-    if (v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_ENTER) != 0ul) {
-        mask |= V9X_WIN16_RESOLVED_97;
-    }
-    if (v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_LEAVE) != 0ul) {
-        mask |= V9X_WIN16_RESOLVED_98;
+    /* The three the render interface needs, kept only as a set: a mutex it
+     * could enter and not leave, or leave without entering, is worse than
+     * refusing every call with NOT_READY. The walk has already bounded each
+     * RVA inside KERNEL32's image. */
+    {
+        DWORD getlock = v9x_win16_walk(image, image_bytes,
+                                       V9X_WIN16_ORD_GETPWIN16LOCK);
+        DWORD enter = v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_ENTER);
+        DWORD leave = v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_LEAVE);
+
+        if (getlock != 0ul) {
+            mask |= V9X_WIN16_RESOLVED_93;
+        }
+        if (enter != 0ul) {
+            mask |= V9X_WIN16_RESOLVED_97;
+        }
+        if (leave != 0ul) {
+            mask |= V9X_WIN16_RESOLVED_98;
+        }
+        if (getlock != 0ul && enter != 0ul && leave != 0ul) {
+            void *lock = 0;
+
+            ((V9X_WIN16_GETLOCK)getlock)(&lock);
+            if (lock != 0) {
+                v9x_win16_lock = lock;
+                v9x_win16_enter_level = (V9X_WIN16_SYSLEVEL)enter;
+                v9x_win16_leave_level = (V9X_WIN16_SYSLEVEL)leave;
+            }
+        }
     }
     address = v9x_win16_walk(image, image_bytes, V9X_WIN16_ORD_CONFIRM);
     if (address != 0ul) {
@@ -163,4 +197,22 @@ void v9x_win16_sample(DWORD site)
         v9x_hal->d3d_diagnostics.win16_depth_max[site] = answer;
     }
     v9x_hal->d3d_diagnostics.win16_last[site] = answer;
+}
+
+int v9x_win16_enter(void)
+{
+    if (v9x_win16_lock == 0 || v9x_win16_enter_level == 0 ||
+        v9x_win16_leave_level == 0) {
+        return 0;
+    }
+    v9x_win16_enter_level(v9x_win16_lock);
+    return 1;
+}
+
+void v9x_win16_leave(void)
+{
+    if (v9x_win16_lock == 0 || v9x_win16_leave_level == 0) {
+        return;
+    }
+    v9x_win16_leave_level(v9x_win16_lock);
 }

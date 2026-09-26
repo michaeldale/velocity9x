@@ -85,6 +85,7 @@
 #define V9X_DIAG_TC16_INI    V9X_DIAG_PATH("V9XTC16.INI")   /* trio_ctx_probe.c (Win16 arm) */
 #define V9X_DIAG_W16L_INI    V9X_DIAG_PATH("V9XW16L.INI")   /* win16lock_probe_win32.c */
 #define V9X_DIAG_SCLP_INI    V9X_DIAG_PATH("V9XSCLP.INI")   /* surface_clip_probe_win32.c */
+#define V9X_DIAG_R3DP_INI    V9X_DIAG_PATH("V9XR3DP.INI")   /* r3d_probe_win32.c */
 #define V9X_DIAG_GLP_INI     V9X_DIAG_PATH("V9XGLP.INI")    /* gl_probe_win32.c */
 
 /* The OpenGL ICD (src\opengl). A log rather than an INI: the ICD's calls

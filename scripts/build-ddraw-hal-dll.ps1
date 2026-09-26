@@ -161,6 +161,9 @@ $linkLines = @(
     "option map='$mapFile'",
     "option modname='V9XHAL'",
     "export DriverInit='_DriverInit@4'",
+    # The private render interface the OpenGL ICD negotiates with
+    # (include\velocity9x\r3d_abi.h; docs\plans\opengl-1.1-icd.md, Phase 3).
+    "export V9xRenderInterface='_V9xRenderInterface@8'",
     "name '$dll'"
 ) + @($objects | ForEach-Object { "file '$_'" }) + @(
     "library '$kernel32'"
@@ -212,6 +215,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 if ($dumpText -notmatch "DriverInit") {
     throw "The DirectDraw HAL DLL does not export DriverInit."
+}
+if ($dumpText -notmatch "V9xRenderInterface") {
+    throw "The DirectDraw HAL DLL does not export V9xRenderInterface."
 }
 $dllNames = [regex]::Matches($dumpText, "DLL name = <([^>]+)>") |
     ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
