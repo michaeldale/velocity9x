@@ -271,6 +271,17 @@ versions are recorded.
    DirectDraw Lock, which already calls `v9x_blt_drain` and so waits on the
    selected engine. Agreement in encoding, operation ordering and visibility
    is a prerequisite for fallback.
+   - **Rung landed; ViRGE ordering passes but colour encoding blocks fallback
+     (2026-09-26):** `V9XDDP /mixed` performs HAL draw -> Lock/CPU colour and
+     depth stores -> HAL depth-tested draw on one target/Z pair. On `Win86SE`
+     boot 637, `MixedOrderingOk=1` and `MixedDepthEncodingOk=1`: the depth
+     words were exactly `0x8000`, CPU `0x4000`, and HAL `0x6000`. However,
+     `MixedColorEncodingOk=0`: the RGB565 target expects red `0xF800` and the
+     ViRGE wrote `0x7C00` (its 1555 encoding). The all-software 9878 guest,
+     boot 595, passed all three and `MixedOk=1`. See
+     `2026-09-26-phase05-mixed-engine-ordering-and-virge-colour-mismatch.md`.
+     Texture-update and blended-overlap cells, 555 coverage, and the Gen3
+     run remain open; the netbook was offline at its documented endpoint.
 6. **Generic GL as a reference.** Check that a probe can choose a generic
    format with the ICD installed, and that a controlled scene hashes the
    same twice. **Half measured 2026-09-26** (baseline run in the Phase 0.9
@@ -556,15 +567,17 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     additional backend idle operation is needed. Establish both GPU-to-CPU
     and CPU-to-GPU visibility for colour, depth and texture storage. Test the
     Phase 0.5 transitions and timeout handling on ViRGE and Gen3.
-  - **Implemented, guest gates pending (2026-09-26):**
+  - **Implemented; ViRGE ordering gate passed, Gen3 pending (2026-09-26):**
     `v9x_render_drain` is now the external all-engine helper and returns
     done / busy / abandoned. It actively validates the selected engine,
     waits for ViRGE 2D/3D completion, and preserves Gen3 abandonment as a
     failure instead of converting it to success. Flip, Lock and CPU Blt use
     the explicit result; DestroySurface retains a placed allocation unless
-    completion is observed. This deliberately changes timeout behaviour and
-    is not accepted as working until the netbook and ViRGE ordering/timeout
-    gates pass.
+    completion is observed. `V9XDDP /mixed` on `Win86SE` boot 637 proved the
+    drain boundary orders HAL -> CPU -> HAL colour and Z access
+    (`MixedOrderingOk=1`, `MixedDepthEncodingOk=1`). Timeout injection and
+    Gen3 remain untested, and the same run exposed the independent ViRGE
+    RGB565/1555 mismatch, so fallback is still not enabled.
 - **Append `accepts(const V9X_R3D_DRAW *)`**. The core asks *before*
   clipping, and clips with the limits of whichever engine will execute. For
   example, Gen3 draws with `clip_in_core=0` and a 4096 guard band, while soft
@@ -590,7 +603,10 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     the predicate and keeps skip-and-count. The neutral texture description
     does not yet carry logical level extents, so shape, completeness and
     storage checks remain bind-time decisions; the render-interface ABI must
-    add those before `accepts` can be the complete pre-clipping decision.
+    add those before `accepts` can be the complete pre-clipping decision. The
+    Phase 0.5 ViRGE colour mismatch is a second hard gate: a refusal cannot
+    route to CPU while hardware and CPU encode the shared RGB565 target
+    differently.
 - **Gen3 non-square textures.** MAP_STATE carries width and height
   separately. `v9x_d3d_i9xx_layout_miptree` is checked against a non-square
   chain in `test_i9xx_3d.c`. The D3D caps keep SQUAREONLY.
@@ -892,9 +908,11 @@ individual requirements. Tests listed here are planned, not passing evidence.
   cannot validate ownership or lifetime; the HAL validates what it can per
   call, and staleness is the ICD's, through generation and surface-lost
   tracking.
-- **Mixed-engine colour/Z and CPU coherence are unmeasured.** Phase 0.5 and
-  Phase 2 verify ordering and both directions of visibility. The present
-  Intel-only render drain cannot establish ViRGE fallback correctness.
+- **Mixed-engine colour/Z and CPU coherence are only partly measured.** The
+  new Phase 0.5 Lock boundary proves both directions of colour/Z visibility
+  and the 16-bit depth encoding on ViRGE, but also proves its hardware colour
+  encoding disagrees with the declared RGB565 target. Gen3, texture updates,
+  blended overlap and a 555 target remain unmeasured.
 - **Changing the Gen3 abandon-after-timeout from success to failure** is a
   D3D behaviour change. It is gated separately on the netbook.
 - **Speed.** Software-rasterizer speed with perspective correction on a

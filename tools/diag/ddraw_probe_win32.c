@@ -1792,6 +1792,37 @@ static int v9x_depth_word_at(struct v9x_dds *surface, DWORD x, DWORD y,
 }
 
 /*
+ * Store one 16-bit word through the application's DirectDraw mapping.
+ *
+ * Lock is deliberately part of this helper.  It is the public transition
+ * which makes the HAL drain whichever render engine last owned the surface;
+ * writing through a pointer saved by an earlier Lock would skip the very
+ * ordering contract the mixed-engine rung is meant to measure.
+ */
+static HRESULT v9x_surface_store16(struct v9x_dds *surface,
+                                   DWORD x, DWORD y, WORD value)
+{
+    V9X_DDSURFACEDESC desc;
+    HRESULT hr;
+    BYTE FAR *row;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0);
+    if (hr != 0) {
+        return hr;
+    }
+    if (desc.lpSurface == 0 || desc.lPitch <= 0l ||
+        x >= desc.dwWidth || y >= desc.dwHeight) {
+        surface->vtbl->Unlock(surface, 0);
+        return (HRESULT)0x80004005ul;
+    }
+    row = (BYTE FAR *)desc.lpSurface + y * (DWORD)desc.lPitch;
+    ((WORD FAR *)row)[x] = value;
+    return surface->vtbl->Unlock(surface, 0);
+}
+
+/*
  * DDBLT_DEPTHFILL, verified by reading the depth words back.
  *
  * Two different values, in sequence, and both are checked. One fill cannot
@@ -2507,6 +2538,29 @@ void __stdcall V9xDdrawProbeEntry(void)
     /* Depth gradients are deliberately NOT exercised: every vertex in the
      * ladders below carries the same sz. See the block itself for why. */
     v9x_write_uint("D3DZGradientTested", 0ul);
+    /* Phase 0.5 mixed-engine probe.  The values stay seeded on ordinary
+     * runs; /mixed overwrites them after a HAL -> CPU -> HAL sequence. */
+    v9x_write_uint("MixedRun", 0ul);
+    v9x_write_hresult("MixedFirstDrawHr",
+                      (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("MixedColorStoreHr",
+                      (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("MixedDepthStoreHr",
+                      (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_hresult("MixedSecondDrawHr",
+                      (HRESULT)V9X_DDERR_UNSUPPORTED);
+    v9x_write_uint("MixedFirstColorRaw", 65535ul);
+    v9x_write_uint("MixedFirstDepthRaw", 65535ul);
+    v9x_write_uint("MixedCpuColorRaw", 65535ul);
+    v9x_write_uint("MixedCpuDepthRaw", 65535ul);
+    v9x_write_uint("MixedRejectColorRaw", 65535ul);
+    v9x_write_uint("MixedRejectDepthRaw", 65535ul);
+    v9x_write_uint("MixedAcceptColorRaw", 65535ul);
+    v9x_write_uint("MixedAcceptDepthRaw", 65535ul);
+    v9x_write_uint("MixedOrderingOk", 0ul);
+    v9x_write_uint("MixedColorEncodingOk", 0ul);
+    v9x_write_uint("MixedDepthEncodingOk", 0ul);
+    v9x_write_uint("MixedOk", 0ul);
 
     winmm = LoadLibraryA("WINMM.DLL");
     v9x_time = winmm != 0
@@ -6207,6 +6261,120 @@ void __stdcall V9xDdrawProbeEntry(void)
                         triangle[1].sx = 55.75f;
                         triangle[2] = triangle[0];
                         triangle[2].sy = 55.75f;
+
+                        /*
+                         * PHASE 0.5: ONE SURFACE PAIR, THREE OWNERSHIP
+                         * TRANSITIONS.
+                         *
+                         * The first red draw is hardware and writes depth
+                         * 0.5.  Lock then has to wait for it before the CPU
+                         * replaces one sample with green at the software
+                         * engine's exact 0.25 encoding (round(0.25*65535)).
+                         * A blue hardware draw at 0.375 must be rejected at
+                         * that sample and accepted at its untouched neighbour.
+                         * Reading both surfaces locks them again and proves
+                         * the final hardware work was drained and visible.
+                         *
+                         * Flat primary colours make the expected image an
+                         * exact software reference rather than a tolerant
+                         * screenshot comparison: green/0x4000 at (16,16),
+                         * blue/round(0.375*65535) at (20,16).
+                         */
+                        if (v9x_has_switch("/mixed")) {
+                            DWORD mixed_first = 65535ul;
+                            DWORD mixed_reject = 65535ul;
+                            WORD mixed_first_z = 0xffffu;
+                            WORD mixed_cpu_z = 0xffffu;
+                            WORD mixed_reject_z = 0xffffu;
+                            WORD mixed_accept_z = 0xffffu;
+                            WORD mixed_accept;
+                            HRESULT mixed_state_hr = 0;
+                            HRESULT mixed_draw_hr = 0;
+                            HRESULT mixed_color_hr;
+                            HRESULT mixed_depth_hr;
+                            int mixed_first_ok;
+                            int mixed_second_ok;
+                            int mixed_ordering_ok;
+                            int mixed_color_encoding_ok;
+                            int mixed_depth_encoding_ok;
+
+                            v9x_write_uint("MixedRun", 1ul);
+                            v9x_fill_surface(d3d_target, 0ul);
+                            v9x_write_hresult("MixedClearDepthHr",
+                                v9x_probe_clear_depth(z_surface));
+                            v9x_probe_reset_state(d3d_device, triangle);
+                            mixed_first_ok = v9x_z_step(
+                                d3d_device, triangle, 0.5f, 0xffff0000ul,
+                                V9X_D3DCMP_LESS, 1ul, d3d_target,
+                                &mixed_first, &mixed_state_hr,
+                                &mixed_draw_hr);
+                            v9x_write_hresult("MixedFirstDrawHr",
+                                mixed_draw_hr != 0 ? mixed_draw_hr
+                                                   : mixed_state_hr);
+                            (void)v9x_depth_word_at(z_surface, 16ul, 16ul,
+                                                    &mixed_first_z);
+                            v9x_write_uint("MixedFirstColorRaw", mixed_first);
+                            v9x_write_uint("MixedFirstDepthRaw",
+                                           (DWORD)mixed_first_z);
+
+                            mixed_color_hr = v9x_surface_store16(
+                                d3d_target, 16ul, 16ul, expect_green);
+                            mixed_depth_hr = v9x_surface_store16(
+                                z_surface, 16ul, 16ul, 0x4000u);
+                            v9x_write_hresult("MixedColorStoreHr",
+                                              mixed_color_hr);
+                            v9x_write_hresult("MixedDepthStoreHr",
+                                              mixed_depth_hr);
+                            v9x_write_uint("MixedCpuColorRaw",
+                                v9x_surface_pixel16(d3d_target, 16ul, 16ul));
+                            (void)v9x_depth_word_at(z_surface, 16ul, 16ul,
+                                                    &mixed_cpu_z);
+                            v9x_write_uint("MixedCpuDepthRaw",
+                                           (DWORD)mixed_cpu_z);
+
+                            mixed_second_ok = v9x_z_step(
+                                d3d_device, triangle, 0.375f, 0xff0000fful,
+                                V9X_D3DCMP_LESS, 1ul, d3d_target,
+                                &mixed_reject, 0, &mixed_draw_hr);
+                            v9x_write_hresult("MixedSecondDrawHr",
+                                              mixed_draw_hr);
+                            mixed_accept = v9x_surface_pixel16(
+                                d3d_target, 20ul, 16ul);
+                            (void)v9x_depth_word_at(z_surface, 16ul, 16ul,
+                                                    &mixed_reject_z);
+                            (void)v9x_depth_word_at(z_surface, 20ul, 16ul,
+                                                    &mixed_accept_z);
+                            v9x_write_uint("MixedRejectColorRaw",
+                                           mixed_reject);
+                            v9x_write_uint("MixedRejectDepthRaw",
+                                           (DWORD)mixed_reject_z);
+                            v9x_write_uint("MixedAcceptColorRaw",
+                                           (DWORD)mixed_accept);
+                            v9x_write_uint("MixedAcceptDepthRaw",
+                                           (DWORD)mixed_accept_z);
+                            mixed_ordering_ok =
+                                mixed_first_ok && mixed_second_ok &&
+                                mixed_color_hr == 0 && mixed_depth_hr == 0 &&
+                                mixed_first != 0ul &&
+                                mixed_reject == (DWORD)expect_green &&
+                                mixed_accept == expect_blue;
+                            mixed_color_encoding_ok =
+                                mixed_first == (DWORD)expect_red;
+                            mixed_depth_encoding_ok =
+                                mixed_first_z == 0x8000u &&
+                                mixed_reject_z == 0x4000u &&
+                                mixed_accept_z == 0x6000u;
+                            v9x_write_uint("MixedOrderingOk",
+                                mixed_ordering_ok ? 1ul : 0ul);
+                            v9x_write_uint("MixedColorEncodingOk",
+                                mixed_color_encoding_ok ? 1ul : 0ul);
+                            v9x_write_uint("MixedDepthEncodingOk",
+                                mixed_depth_encoding_ok ? 1ul : 0ul);
+                            v9x_write_uint("MixedOk",
+                                mixed_ordering_ok &&
+                                mixed_color_encoding_ok &&
+                                mixed_depth_encoding_ok ? 1ul : 0ul);
+                        }
 
                         v9x_fill_surface(d3d_target, 0ul);
 

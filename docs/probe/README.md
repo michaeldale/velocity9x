@@ -107,6 +107,30 @@ correctly, because a texture handle or a blend left on by the previous rung
 landed on whichever rung came next. A rung that needs a non-default state sets
 it after the reset, visibly.
 
+## The mixed-engine ownership rung
+
+Run `V9XDDP.EXE /mixed`. `Mixed*` uses one 64x64 colour/depth pair for a HAL
+draw at depth 0.5, DirectDraw Lock and CPU stores at one pixel using the
+software renderer's `round(sz*65535)` encoding, then a HAL draw at depth
+0.375. The CPU-touched pixel must reject the last draw while its untouched
+neighbor accepts it. Every read is another Lock, so the rung crosses the
+driver's shared drain in both directions instead of reading an old mapping.
+
+Read the split verdicts before `MixedOk`:
+
+- `MixedOrderingOk` covers HAL -> CPU -> HAL visibility and the depth-test
+  decision without assuming that the hardware stores the target's declared
+  colour format.
+- `MixedColorEncodingOk` compares the first hardware primary colour with the
+  exact value derived from the target's masks.
+- `MixedDepthEncodingOk` requires the three exact depth words `0x8000`,
+  `0x4000`, and `0x6000`.
+- `MixedOk` is one only when all three pass.
+
+The split is intentional. On the 86Box ViRGE an RGB565 target can have correct
+ordering and depth while the S3D engine writes 1555 colour; folding those into
+one unexplained zero would hide which prerequisite failed.
+
 ## The alpha transfer curve
 
 `AlphaCurve_<a>_Raw`, `AlphaCurveB_*`, `AlphaCurveC_*` and
