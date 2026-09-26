@@ -76,6 +76,7 @@ static void v9x_bench_vertex(V9X_D3D_RASTER_VERTEX *v, LONG x, LONG y,
     v->blue = blue;
     v->alpha = 128l;
     v->q = V9X_D3D_RASTER_Q_ONE;
+    v->fog = 255l;
 }
 
 static int v9x_bench_frame(DWORD scene, const V9X_D3D_RASTER_TARGET *target,
@@ -98,7 +99,7 @@ static int v9x_bench_frame(DWORD scene, const V9X_D3D_RASTER_TARGET *target,
         v9x_bench_vertex(&triangle[0], x + 3l, y + 1l, 255l, 32l, 160l);
         v9x_bench_vertex(&triangle[1], x + width, y + 9l, 16l, 240l, 64l);
         v9x_bench_vertex(&triangle[2], x + 17l, y + height, 128l, 0l, 255l);
-        if (!v9x_d3d_raster_triangle(target, scene >= 4ul ? depth : 0, scene >= 2ul ? texture : 0, scene == 5ul ? &alpha : 0, 0, triangle)) {
+        if (!v9x_d3d_raster_triangle(target, scene >= 4ul ? depth : 0, scene >= 2ul ? texture : 0, scene == 5ul ? &alpha : 0, 0, 0, triangle)) {
             return 0;
         }
     }

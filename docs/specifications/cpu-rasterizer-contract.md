@@ -96,8 +96,15 @@ Where this document says "tested", the test is named. Where it says
     1.013 texels past a boundary, two hundred units against that bound.
   - Tested: `test_perspective_divides_texture_coordinates`,
     `test_perspective_equal_q_is_affine`, `test_perspective_refusals`.
-- **Fog and specular:** not carried by the rasterizer. Owed: post-texture
-  fog from a per-vertex factor (plan, Phase 2).
+- **Fog:** a per-vertex factor, 0..255 with 255 unfogged and 0 the fog
+  colour (Direct3D's specular alpha and OpenGL's f), interpolated linearly
+  like colour and clamped where read; the caller computes it from its own
+  eye-space depth. The draw carries the fog colour, null for off. Applied
+  after the texture stage and before the alpha test and the blend, to
+  colour only (`test_fog_mixes_toward_fog_colour`,
+  `test_fog_order_and_refusals`).
+- **Specular:** not carried by the rasterizer; the front end adds it into
+  the colour (Direct3D's core does; the GL front end will).
 
 ## Texture sampling
 
@@ -141,9 +148,9 @@ For each covered pixel, in this order:
 
 1. Scissor - already applied to the rows and columns.
 2. Depth test: compare only, against the bound depth buffer.
-3. Texture sample and colour combine; then the fragment alpha, resolved
-   only when something consumes it: the vertex alpha, then the texel's
-   under REPLACE or MODULATE.
+3. Texture sample and colour combine; then fog, if the draw carries a
+   colour; then the fragment alpha, resolved only when something consumes
+   it: the vertex alpha, then the texel's under REPLACE or MODULATE.
 4. Alpha test (`V9X_D3D_RASTER_ALPHA_TEST`, compare and 0..255
    reference). A fragment that fails writes nothing - neither colour nor
    depth (`test_alpha_test_gates_colour_and_depth`).
@@ -170,7 +177,6 @@ both, there is no stencil, and no target has alpha to blend into.
 
 ## Owed before Phase 3 freezes the layouts
 
-- Post-texture fog and where its factor travels in the vertex.
 - Lines and points (`r3d_line.c`): the coverage and endpoint rules the
   plan names, which this document does not yet state.
 - The clear operation's interaction with the scissor and the mask.

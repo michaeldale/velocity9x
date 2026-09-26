@@ -297,6 +297,15 @@ typedef struct v9x_d3d_raster_vertex {
      * draw took before the field existed, bit for bit.
      */
     v9x_s32 q;
+    /*
+     * The fog factor, 0..255 with 255 unfogged and 0 the fog colour -
+     * Direct3D's specular alpha and OpenGL's f alike - interpolated exactly
+     * as the colour channels are and read only when the draw carries a fog
+     * colour. Clamped where it is consumed, like alpha, for the same
+     * reason. The caller computes it per vertex: the rasterizer has no
+     * eye-space depth to compute it from.
+     */
+    v9x_s32 fog;
 } V9X_D3D_RASTER_VERTEX;
 
 /*
@@ -389,6 +398,18 @@ typedef struct v9x_d3d_raster_alpha_test {
     v9x_u32 compare;
     v9x_s32 reference;
 } V9X_D3D_RASTER_ALPHA_TEST;
+
+/*
+ * The fog colour, 0..255 per channel. Per draw and null for off, like the
+ * blend and the alpha test. Applied after the texture stage and before the
+ * alpha test and the blend, to colour only - where both APIs put it - by
+ * each vertex's factor interpolated to the pixel.
+ */
+typedef struct v9x_d3d_raster_fog {
+    v9x_s32 red;
+    v9x_s32 green;
+    v9x_s32 blue;
+} V9X_D3D_RASTER_FOG;
 
 
 /*
@@ -517,9 +538,15 @@ int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha);
  * comparison and a reference inside 0..255. */
 int v9x_d3d_raster_alpha_test_valid(const V9X_D3D_RASTER_ALPHA_TEST *test);
 
+/* Whether a fog colour is one this rasterizer will apply: non-null, every
+ * channel inside 0..255. */
+int v9x_d3d_raster_fog_valid(const V9X_D3D_RASTER_FOG *fog);
+
 /*
  * Rasterize one triangle - exactly three vertices - into the target, testing
- * and updating `depth` if it is not null, sampling `texture` if it is not.
+ * and updating `depth` if it is not null, sampling `texture` if it is not,
+ * and blending by `alpha`, discarding by `alpha_test` and fogging by `fog`
+ * if they are not.
  *
  * Returns non-zero when the triangle was processed, which includes a
  * degenerate one that covers no pixel centre. Returns zero only when the
@@ -543,6 +570,7 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_ALPHA *alpha,
                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                            const V9X_D3D_RASTER_FOG *fog,
                             const V9X_D3D_RASTER_VERTEX *vertices);
 
 #endif

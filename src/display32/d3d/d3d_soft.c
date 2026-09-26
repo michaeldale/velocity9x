@@ -959,6 +959,9 @@ static void v9x_d3d_soft_vertex(const V9X_R3D_VERTEX *source,
      * D3DPTEXTURECAPS_PERSPECTIVE, and feeding the vertex's rhw here is a
      * Direct3D behaviour change that gets its own gate. */
     result->q = V9X_D3D_RASTER_Q_ONE;
+    /* Unfogged, and the draw carries no fog colour: the core has folded
+     * fog into the vertex colour already on the path that fogs at all. */
+    result->fog = 255l;
 }
 
 /*
@@ -1126,7 +1129,7 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
         if (wrapping) {
             v9x_d3d_soft_normalise(triangle);
         }
-        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg, alpha_arg, 0, triangle)) {
+        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg, alpha_arg, 0, 0, triangle)) {
             return 0;
         }
     }

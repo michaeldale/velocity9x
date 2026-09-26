@@ -464,6 +464,18 @@ int v9x_d3d_raster_alpha_test_valid(const V9X_D3D_RASTER_ALPHA_TEST *test)
     return 1;
 }
 
+int v9x_d3d_raster_fog_valid(const V9X_D3D_RASTER_FOG *fog)
+{
+    if (fog == 0) {
+        return 0;
+    }
+    if (fog->red < 0l || fog->red > 255l || fog->green < 0l ||
+        fog->green > 255l || fog->blue < 0l || fog->blue > 255l) {
+        return 0;
+    }
+    return 1;
+}
+
 int v9x_d3d_raster_alpha_valid(const V9X_D3D_RASTER_ALPHA *alpha)
 {
     if (alpha == 0) {
@@ -1207,6 +1219,7 @@ static int v9x_d3d_raster_edge_start(const V9X_D3D_RASTER_VERTEX *from,
     V9X_EDGE_START(blue);
     V9X_EDGE_START(alpha);
     V9X_EDGE_START(q);
+    V9X_EDGE_START(fog);
 #undef V9X_EDGE_START
     return 1;
 }
@@ -1232,9 +1245,26 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
     V9X_EDGE_NEXT(blue);
     V9X_EDGE_NEXT(alpha);
     V9X_EDGE_NEXT(q);
+    V9X_EDGE_NEXT(fog);
 #undef V9X_EDGE_NEXT
     edge->value.y += V9X_D3D_RASTER_SUBPIXEL_ONE;
 }
+
+/*
+ * One channel toward the fog colour by a 0..255 factor, 255 keeping the
+ * channel. Written as fog plus or minus the scaled difference so the product
+ * is at most 255 * 255 - inside V9X_D3D_RASTER_DIV255's range, which the
+ * plain sum of two products is not - and exact at both ends.
+ */
+#define V9X_D3D_RASTER_FOG_CHANNEL(channel, fog_value, factor) do { \
+    if ((channel) >= (fog_value)) { \
+        (channel) = (fog_value) + \
+            V9X_D3D_RASTER_DIV255(((channel) - (fog_value)) * (factor) + 127l); \
+    } else { \
+        (channel) = (fog_value) - \
+            V9X_D3D_RASTER_DIV255(((fog_value) - (channel)) * (factor) + 127l); \
+    } \
+} while (0)
 
 /*
  * The span's pixel store under the colour mask. The unmasked case is the
@@ -1272,6 +1302,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_SAMPLER *sampler,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
                                 const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                                const V9X_D3D_RASTER_FOG *fog,
                                 int perspective,
                                 const V9X_D3D_RASTER_GRADIENTS *slopes,
                                 v9x_s32 row,
@@ -1285,6 +1316,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 green_step = 0l;
     v9x_s32 blue_step = 0l;
     v9x_s32 alpha_step = 0l;
+    v9x_s32 fog_step = 0l;
     v9x_s32 z_step = 0l;
     v9x_s32 u_step = 0l;
     v9x_s32 v_step = 0l;
@@ -1297,6 +1329,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 green;
     v9x_s32 blue;
     v9x_s32 fragment_alpha;
+    v9x_s32 fog_factor;
     v9x_s32 z;
     v9x_s32 u;
     v9x_s32 v;
@@ -1364,6 +1397,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                      V9X_D3D_RASTER_COLOUR_BITS) / width;
         alpha_step = ((right->alpha - left->alpha) <<
                       V9X_D3D_RASTER_COLOUR_BITS) / width;
+        fog_step = ((right->fog - left->fog) <<
+                    V9X_D3D_RASTER_COLOUR_BITS) / width;
         z_step = ((right->z - left->z) << V9X_D3D_RASTER_DEPTH_BITS) / width;
         /* Texture coordinates share the depth interpolator's eight fractional
          * bits, and for the same reason: both run to 65535, and sixteen would
@@ -1384,6 +1419,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     blue = (left->blue << V9X_D3D_RASTER_COLOUR_BITS) + blue_step * offset;
     fragment_alpha = (left->alpha << V9X_D3D_RASTER_COLOUR_BITS) +
                      alpha_step * offset;
+    fog_factor = (left->fog << V9X_D3D_RASTER_COLOUR_BITS) +
+                 fog_step * offset;
     z = (left->z << V9X_D3D_RASTER_DEPTH_BITS) + z_step * offset;
     u = (left->u << V9X_D3D_RASTER_DEPTH_BITS) + u_step * offset;
     v = (left->v << V9X_D3D_RASTER_DEPTH_BITS) + v_step * offset;
@@ -1392,6 +1429,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     alpha_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    fog_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     z_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
@@ -1644,6 +1682,21 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 }
             }
 
+            if (fog != 0) {
+                /* After the texture stage and before the alpha test and the
+                 * blend, to colour only: where both APIs put fog. The factor
+                 * is clamped here like the channels are, and the mix is
+                 * written as colour toward fog so that each product stays
+                 * inside the exact divide's range and an unfogged pixel is
+                 * the identity. */
+                v9x_s32 factor = fog_factor >> V9X_D3D_RASTER_COLOUR_BITS;
+
+                V9X_D3D_RASTER_CLAMP255(factor);
+                V9X_D3D_RASTER_FOG_CHANNEL(out_red, fog->red, factor);
+                V9X_D3D_RASTER_FOG_CHANNEL(out_green, fog->green, factor);
+                V9X_D3D_RASTER_FOG_CHANNEL(out_blue, fog->blue, factor);
+            }
+
             if (alpha_used) {
                 out_alpha = fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS;
                 V9X_D3D_RASTER_CLAMP255(out_alpha);
@@ -1671,6 +1724,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         green += green_step;
                         blue += blue_step;
                         fragment_alpha += alpha_step;
+                        fog_factor += fog_step;
                         z += z_step;
                         u += u_step;
                         v += v_step;
@@ -1728,6 +1782,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     green += green_step;
                     blue += blue_step;
                     fragment_alpha += alpha_step;
+                    fog_factor += fog_step;
                     z += z_step;
                     u += u_step;
                     v += v_step;
@@ -1781,6 +1836,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         green += green_step;
         blue += blue_step;
         fragment_alpha += alpha_step;
+        fog_factor += fog_step;
         z += z_step;
         u += u_step;
         v += v_step;
@@ -1793,6 +1849,7 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_TEXTURE *texture,
                             const V9X_D3D_RASTER_ALPHA *alpha,
                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                            const V9X_D3D_RASTER_FOG *fog,
                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
@@ -1828,6 +1885,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     /* Like the blend: null is off, and a non-null test that fails its own
      * check is a caller error, refused rather than skipped. */
     if (alpha_test != 0 && !v9x_d3d_raster_alpha_test_valid(alpha_test)) {
+        return 0;
+    }
+    if (fog != 0 && !v9x_d3d_raster_fog_valid(fog)) {
         return 0;
     }
     /* A null depth pointer is "no depth"; a non-null one that fails its own
@@ -1947,11 +2007,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, fog,
                                 perspective, slopes, row,
                                 &along.value, &across.value);
         } else {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, fog,
                                 perspective, slopes, row,
                                 &across.value, &along.value);
         }

@@ -742,6 +742,7 @@ static void emit_intel_3d_reference(void)
             (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful);
         vertices[index].alpha = 0xff;
         vertices[index].q = V9X_D3D_RASTER_Q_ONE;
+        vertices[index].fog = 255l;
     }
     /*
      * The rasteriser takes SUBPIXEL coordinates - four fractional bits, so
@@ -758,7 +759,7 @@ static void emit_intel_3d_reference(void)
     vertices[2].x = V9X_I9XX_TRI_X2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
     vertices[2].y = V9X_I9XX_TRI_Y2 << V9X_D3D_RASTER_SUBPIXEL_BITS;
 
-    if (v9x_d3d_raster_triangle(&target, 0, 0, 0, 0, vertices) == 0) {
+    if (v9x_d3d_raster_triangle(&target, 0, 0, 0, 0, 0, vertices) == 0) {
         printf("REFERROR=raster\n");
         return;
     }
