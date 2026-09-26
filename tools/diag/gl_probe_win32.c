@@ -1153,6 +1153,95 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_hex("ErrorAfterNonSquare", (DWORD)glGetError());
             glDisable(GL_TEXTURE_2D);
             glDeleteTextures(1, &texture);
+
+            /*
+             * Small textures, which Serious Sam draws with (1x1 layers):
+             * 1x1 red, 2x2 green, 4x4 blue, 4x1 yellow, 1x4 cyan, each
+             * one solid colour, NEAREST, MODULATE with white, on a 16x16
+             * quad. The centre must be the texture's colour (Small1x1,
+             * Small2x2, Small4x4, Small4x1, Small1x4).
+             */
+            {
+                static const int small_w[5] = { 1, 2, 4, 4, 1 };
+                static const int small_h[5] = { 1, 2, 4, 1, 4 };
+                static const GLubyte small_rgb[5][3] = {
+                    { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 },
+                    { 255, 255, 0 }, { 0, 255, 255 }
+                };
+                static const char *const small_key[5] = {
+                    "Small1x1", "Small2x2", "Small4x4", "Small4x1", "Small1x4"
+                };
+                GLuint small_tex[5];
+                int k;
+                int t;
+
+                glGenTextures(5, small_tex);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+                glColor3f(1.0f, 1.0f, 1.0f);
+                glEnable(GL_TEXTURE_2D);
+                glClear(GL_COLOR_BUFFER_BIT);
+                for (k = 0; k < 5; ++k) {
+                    GLfloat x0 = (GLfloat)(20 + k * 30);
+
+                    for (t = 0; t < small_w[k] * small_h[k]; ++t) {
+                        map[t * 3 + 0] = small_rgb[k][0];
+                        map[t * 3 + 1] = small_rgb[k][1];
+                        map[t * 3 + 2] = small_rgb[k][2];
+                    }
+                    glBindTexture(GL_TEXTURE_2D, small_tex[k]);
+                    glTexImage2D(GL_TEXTURE_2D, 0, 3, small_w[k], small_h[k],
+                                 0, GL_RGB, GL_UNSIGNED_BYTE, map);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    GL_NEAREST);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(x0, 40.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f(x0 + 16.0f, 40.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f(x0 + 16.0f, 56.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(x0, 56.0f);
+                    glEnd();
+                }
+                glFinish();
+                for (k = 0; k < 5; ++k) {
+                    v9x_glp_hex(small_key[k], v9x_glp_read(28 + k * 30, 48));
+                }
+                v9x_glp_hex("ErrorAfterSmall", (DWORD)glGetError());
+                glDisable(GL_TEXTURE_2D);
+                glDeleteTextures(5, small_tex);
+            }
+
+            /*
+             * The scissor as geometry: a scissor of x 40..80, y 30..70 and
+             * a quad over the whole window, red over a black clear. Inside
+             * red, just outside black (ScissorGeomIn, ScissorGeomLeft,
+             * ScissorGeomRight, ScissorGeomBelow, ScissorGeomAbove).
+             */
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(40, 30, 40, 40);
+            glColor3f(1.0f, 0.0f, 0.0f);
+            glBegin(GL_QUADS);
+            glVertex2f(0.0f, 0.0f);
+            glVertex2f((GLfloat)width, 0.0f);
+            glVertex2f((GLfloat)width, (GLfloat)height);
+            glVertex2f(0.0f, (GLfloat)height);
+            glEnd();
+            glDisable(GL_SCISSOR_TEST);
+            glFinish();
+            v9x_glp_hex("ScissorGeomIn", v9x_glp_read(60, 50));
+            v9x_glp_hex("ScissorGeomInCorner", v9x_glp_read(40, 30));
+            v9x_glp_hex("ScissorGeomInFar", v9x_glp_read(79, 69));
+            v9x_glp_hex("ScissorGeomLeft", v9x_glp_read(39, 50));
+            v9x_glp_hex("ScissorGeomRight", v9x_glp_read(80, 50));
+            v9x_glp_hex("ScissorGeomBelow", v9x_glp_read(60, 29));
+            v9x_glp_hex("ScissorGeomAbove", v9x_glp_read(60, 70));
+            glColor3f(1.0f, 1.0f, 1.0f);
         }
         /*
          * Front-buffer drawing, as GLQuake draws its loading disc: a black

@@ -10,6 +10,8 @@
 
 static unsigned int gl_prim_failures;
 
+#define V9X_GL_SCISSOR_TEST_CAP 0x0C11u
+
 #define PCHECK(condition) do { \
     if (!(condition)) { \
         printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, \
@@ -439,6 +441,70 @@ static void test_clipped_vertices_stay_inside(void)
 }
 
 /* Which batches may be merged: equal state and texture only. */
+/*
+ * The scissor box and the drawable as clip planes: a triangle covering the
+ * whole 320x200 drawable comes out inside a scissor of x 100..200, y
+ * 50..150 (GL window coordinates, y up; surface rows 50..150 too), the
+ * interface's scissor is the whole surface - so an engine without one
+ * draws it - and a viewport larger than the drawable is cut to the
+ * drawable. A triangle outside the box draws nothing.
+ */
+static void test_scissor_clips_geometry(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    V9X_R3D_ABI_STATE a;
+    v9x_u32 i;
+    int outside = 0;
+
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_SCISSOR_TEST_CAP, 1);
+    v9x_gl_state_scissor(&s, 100, 50, 100, 100);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, -50.0f, -50.0f);
+    vertex(&s, &p, 700.0f, -50.0f);
+    vertex(&s, &p, -50.0f, 450.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles != 0ul);
+    for (i = 0ul; i < sunk_triangles * 3ul && i < 3ul * SINK_MAX; ++i) {
+        if (sunk[i].sx < 99.999f || sunk[i].sx > 200.001f ||
+            sunk[i].sy < 49.999f || sunk[i].sy > 150.001f) {
+            outside = 1;
+        }
+    }
+    PCHECK(!outside);
+    v9x_gl_prim_abi_state(&s, &p, &a);
+    PCHECK(a.scissor_left == 0ul && a.scissor_top == 0ul &&
+           a.scissor_right == 320ul && a.scissor_bottom == 200ul);
+
+    /* Entirely outside the box: nothing. */
+    sunk_triangles = 0ul;
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 0.0f, 0.0f);
+    vertex(&s, &p, 50.0f, 0.0f);
+    vertex(&s, &p, 0.0f, 40.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 0ul);
+
+    /* No scissor, a viewport past the drawable on every side. */
+    scene(&s, &p);
+    v9x_gl_state_viewport(&s, -100, -100, 520, 400);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, -10.0f, -10.0f);
+    vertex(&s, &p, 330.0f, -10.0f);
+    vertex(&s, &p, -10.0f, 210.0f);
+    v9x_gl_prim_end(&s, &p);
+    outside = 0;
+    PCHECK(sunk_triangles != 0ul);
+    for (i = 0ul; i < sunk_triangles * 3ul && i < 3ul * SINK_MAX; ++i) {
+        if (sunk[i].sx < 0.0f || sunk[i].sx > 320.0f ||
+            sunk[i].sy < 0.0f || sunk[i].sy > 200.0f) {
+            outside = 1;
+        }
+    }
+    PCHECK(!outside);
+}
+
 static void test_same_draw(void)
 {
     static v9x_u16 texels_a[4];
@@ -542,6 +608,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_fragment_alpha_used();
     test_clipped_vertices_stay_inside();
     test_same_draw();
+    test_scissor_clips_geometry();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
     }

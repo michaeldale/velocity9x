@@ -84,6 +84,16 @@ typedef char v9x_assert_batch_fits_vertices[
  * Deliberately narrower than the hardware. A limit that claims more than has
  * been measured is a promise the first application collects on.
  */
+/*
+ * The smallest map placement, the bind and accepts take: one texel. The
+ * published floor (texture_size_min below, the Direct3D caps) stays 8;
+ * its reason is the pitch of a map laid out at its own width, and every
+ * map this engine places is laid out by v9x_d3d_i9xx_layout_miptree,
+ * whose pitch is padded to 64 bytes whatever the width. Measured with
+ * V9XGLP's small-texture scene (2026-09-26).
+ */
+#define V9X_D3D_I9XX_SAMPLER_SIZE_MIN 1ul
+
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     16ul,                       /* target_bits_per_pixel  */
     V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max       */
@@ -1137,7 +1147,7 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD base;
 
     if (v9x_d3d_i9xx_texture_shape(width, height,
-                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
                                    v9x_d3d_i9xx_limits.texture_size_max) ==
             V9X_FALSE) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1213,7 +1223,7 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     height = (DWORD)top->lpGbl->wHeight;
     if (data->dwSCnt > V9X_D3D_I9XX_MIP_LEVELS_MAX ||
         v9x_d3d_i9xx_texture_shape(width, height,
-                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
                                    v9x_d3d_i9xx_limits.texture_size_max) ==
             V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
@@ -1452,7 +1462,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_DRAW *draw,
      */
     if (v9x_d3d_i9xx_texture_shape((DWORD)surface->lpGbl->wWidth,
                                    (DWORD)surface->lpGbl->wHeight,
-                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
                                    v9x_d3d_i9xx_limits.texture_size_max) ==
             V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.texture_refused_shape;
@@ -2576,7 +2586,7 @@ static int v9x_d3d_i9xx_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
     }
     if (v9x_d3d_i9xx_texture_shape((DWORD)surface->lpGbl->wWidth,
                                    (DWORD)surface->lpGbl->wHeight,
-                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
                                    v9x_d3d_i9xx_limits.texture_size_max) ==
             V9X_FALSE) {
         return 0;

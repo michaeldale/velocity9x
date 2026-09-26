@@ -1,0 +1,5 @@
+before (Michael's session, ICD at 73edbc8):
+paths batches/triangles untextured=441/1917 hw=57302/683069 cpu=0/0 cpu-nonsquare=0/0 hw-refused=6153/147532
+after (this change, one session):
+paths batches/triangles untextured=1559/11702 hw=178467/1782353 cpu=8850/95953 cpu-nonsquare=12515/145211 hw-refused=0/0
+counters hwtex live=0 creates=51831 create-failed=25926 evictions=25754 uploads=25969 upload-kb=365304 stubs=1178 failed r4=0 r7=0 r8=0 other=0

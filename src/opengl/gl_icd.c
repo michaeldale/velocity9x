@@ -102,6 +102,21 @@ static const char *const v9x_gl_slot_names[V9X_GL_SLOT_COUNT] = V9X_GL_SLOT_NAME
 static V9X_GLCLTPROCTABLE v9x_gl_table = { V9X_GL_SLOT_COUNT, V9X_GL_DISPATCH_INIT };
 static DWORD v9x_gl_slot_calls[V9X_GL_SLOT_COUNT];
 static DWORD v9x_gl_sequence;
+
+/* Texture copies made and refilled, failed batches by result, and the
+ * time of the last periodic report. */
+static DWORD v9x_gl_hw_creates;
+static DWORD v9x_gl_hw_create_failures;
+static DWORD v9x_gl_hw_uploads;
+static DWORD v9x_gl_hw_upload_kb;
+static DWORD v9x_gl_stub_total;
+#define V9X_GL_RESULT_SLOTS 10u
+static DWORD v9x_gl_draw_failures[V9X_GL_RESULT_SLOTS];
+static DWORD v9x_gl_failures_dumped;
+static DWORD v9x_gl_report_last;
+#define V9X_GL_REPORT_MS 10000ul
+#define V9X_GL_FAILURES_DUMPED_MAX 6ul
+
 static int v9x_gl_overrides_installed;
 static CRITICAL_SECTION v9x_gl_lock;
 static DWORD v9x_gl_tls = 0xfffffffful;
@@ -154,6 +169,7 @@ static void v9x_gl_stub_called(unsigned int slot)
     if (slot >= V9X_GL_SLOT_COUNT) {
         return;
     }
+    ++v9x_gl_stub_total;
     if (v9x_gl_slot_calls[slot]++ == 0ul) {
         char text[128];
 
@@ -811,8 +827,18 @@ static void V9X_GL_API v9x_gl_api_tex_sub_image_2d(GLenum target, GLint level,
  * The ICD's copy of one texture object's images in video memory. Made when
  * the engine describes surface textures and the object fits them, filled
  * again whenever the object's images change (its revision), and dropped
- * with the object, the context, or a mode change. `unusable` remembers a
- * shape DirectDraw or the upload refused, so it is not retried each draw.
+ * with the object, the context, or a mode change. `unusable` remembers an
+ * upload that failed, so it is not retried each draw.
+ *
+ * Video memory is small (about 5 MB free on the 945GSE netbook), and a
+ * game's textures are not: every live copy is in one table, stamped with
+ * the use clock, and when DirectDraw cannot make a new one the least
+ * recently used are evicted - surface released, record kept - until it
+ * can. An evicted copy is made again on its next use. A copy that still
+ * cannot be made waits V9X_GL_HWTEX_RETRY uses of the clock before it is
+ * tried again, and until then the texture is drawn from its CPU copy.
+ * Releasing a surface mid-frame is safe: the HAL's DestroySurface drains
+ * the engine before the memory goes back.
  */
 typedef struct v9x_gl_hwtex {
     void *surface;
@@ -823,15 +849,81 @@ typedef struct v9x_gl_hwtex {
     v9x_u32 revision;
     int filled;
     int unusable;
+    v9x_u32 last_used;
+    v9x_u32 retry_at;
+    unsigned int slot;
 } V9X_GL_HWTEX;
 
-/* V9X_GL_TEXTURES.hw_release: the surface, then the record. */
+#define V9X_GL_HWTEX_MAX      2048u
+#define V9X_GL_HWTEX_RETRY    256ul
+#define V9X_GL_HWTEX_EVICT_MAX 64u
+
+static V9X_GL_HWTEX *v9x_gl_hwtex_live[V9X_GL_HWTEX_MAX];
+static unsigned int v9x_gl_hwtex_count;
+static v9x_u32 v9x_gl_hwtex_clock;
+static DWORD v9x_gl_hw_evictions;
+
+/* V9X_GL_TEXTURES.hw_release: the surface, the table entry, the record. */
 static void v9x_gl_hwtex_free(void *memory)
 {
     V9X_GL_HWTEX *hw = (V9X_GL_HWTEX *)memory;
+    unsigned int last;
 
     v9x_gl_hwtex_release(hw->surface);
+    if (hw->slot < v9x_gl_hwtex_count && v9x_gl_hwtex_live[hw->slot] == hw) {
+        last = v9x_gl_hwtex_count - 1u;
+        v9x_gl_hwtex_live[hw->slot] = v9x_gl_hwtex_live[last];
+        v9x_gl_hwtex_live[hw->slot]->slot = hw->slot;
+        v9x_gl_hwtex_count = last;
+    }
     HeapFree(GetProcessHeap(), 0, hw);
+}
+
+/* The least recently used copy that holds a surface, other than `keep`. */
+static V9X_GL_HWTEX *v9x_gl_hwtex_oldest(const V9X_GL_HWTEX *keep)
+{
+    V9X_GL_HWTEX *oldest = 0;
+    unsigned int i;
+
+    for (i = 0u; i < v9x_gl_hwtex_count; ++i) {
+        V9X_GL_HWTEX *candidate = v9x_gl_hwtex_live[i];
+
+        if (candidate != keep && candidate->surface != 0 &&
+            (oldest == 0 || candidate->last_used < oldest->last_used)) {
+            oldest = candidate;
+        }
+    }
+    return oldest;
+}
+
+/* Make `hw`'s surface, evicting the least recently used copies while
+ * DirectDraw has no room. Non-zero when it exists. */
+static int v9x_gl_hwtex_make(V9X_GL_HWTEX *hw)
+{
+    unsigned int evicted;
+
+    for (evicted = 0u; ; ++evicted) {
+        V9X_GL_HWTEX *victim;
+
+        hw->surface = v9x_gl_hwtex_create(hw->width, hw->height, hw->levels,
+                                          hw->format);
+        ++v9x_gl_hw_creates;
+        if (hw->surface != 0) {
+            hw->filled = 0;
+            return 1;
+        }
+        ++v9x_gl_hw_create_failures;
+        victim = evicted < V9X_GL_HWTEX_EVICT_MAX ? v9x_gl_hwtex_oldest(hw)
+                                                  : 0;
+        if (victim == 0) {
+            hw->retry_at = v9x_gl_hwtex_clock + V9X_GL_HWTEX_RETRY;
+            return 0;
+        }
+        v9x_gl_hwtex_release(victim->surface);
+        victim->surface = 0;
+        victim->filled = 0;
+        ++v9x_gl_hw_evictions;
+    }
 }
 
 /* After a mode change every surface is lost: forget every copy, in every
@@ -872,6 +964,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_TEXOBJ *object;
     V9X_GL_HWTEX *hw;
+    v9x_u32 level;
     v9x_u32 width;
     v9x_u32 height;
 
@@ -909,18 +1002,28 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         if (hw == 0) {
             return 0;
         }
+        if (v9x_gl_hwtex_count >= V9X_GL_HWTEX_MAX) {
+            HeapFree(GetProcessHeap(), 0, hw);
+            return 0;
+        }
         hw->width = width;
         hw->height = height;
         hw->levels = texture->level_count;
         hw->format = texture->format;
-        hw->surface = v9x_gl_hwtex_create(width, height, texture->level_count,
-                                          texture->format);
-        hw->unusable = hw->surface == 0;
+        hw->slot = v9x_gl_hwtex_count;
+        v9x_gl_hwtex_live[v9x_gl_hwtex_count++] = hw;
         object->hw = hw;
     }
+    ++v9x_gl_hwtex_clock;
     if (hw->unusable) {
         return 0;
     }
+    if (hw->surface == 0) {
+        if (v9x_gl_hwtex_clock < hw->retry_at || !v9x_gl_hwtex_make(hw)) {
+            return 0;
+        }
+    }
+    hw->last_used = v9x_gl_hwtex_clock;
     if (!hw->filled || hw->revision != object->revision) {
         if (!v9x_gl_hwtex_upload(hw->surface, texture->level_count,
                                  texture->levels)) {
@@ -931,6 +1034,10 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         }
         hw->revision = object->revision;
         hw->filled = 1;
+        ++v9x_gl_hw_uploads;
+        for (level = 0ul; level < texture->level_count; ++level) {
+            v9x_gl_hw_upload_kb += texture->levels[level].bytes / 1024ul;
+        }
     }
 
     texture->storage = V9X_R3D_ABI_TEXTURE_HW;
@@ -950,19 +1057,47 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
 
 static v9x_u32 v9x_gl_state_seen[V9X_GL_STATE_SEEN_MAX][4];
 static unsigned int v9x_gl_state_seen_count;
+/* The same, for the states the engine refused: what a game asks for that
+ * sends it to the CPU. */
+static v9x_u32 v9x_gl_refused_seen[V9X_GL_STATE_SEEN_MAX][4];
+static unsigned int v9x_gl_refused_seen_count;
+
+static void v9x_gl_note_state_in(v9x_u32 (*seen)[4], unsigned int *count,
+                                 const char *tag,
+                                 const V9X_GL_CONTEXT *context,
+                                 const V9X_R3D_ABI_DRAW *draw);
 
 static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
                               const V9X_R3D_ABI_DRAW *draw)
+{
+    v9x_gl_note_state_in(v9x_gl_state_seen, &v9x_gl_state_seen_count,
+                         "state", context, draw);
+}
+
+static void v9x_gl_note_refused(const V9X_GL_CONTEXT *context,
+                                const V9X_R3D_ABI_DRAW *draw)
+{
+    v9x_gl_note_state_in(v9x_gl_refused_seen, &v9x_gl_refused_seen_count,
+                         "refused", context, draw);
+}
+
+static void v9x_gl_note_state_in(v9x_u32 (*seen)[4], unsigned int *count,
+                                 const char *tag,
+                                 const V9X_GL_CONTEXT *context,
+                                 const V9X_R3D_ABI_DRAW *draw)
 {
     const V9X_R3D_ABI_TEXTURE *texture = &draw->texture;
     v9x_u32 key[4];
     v9x_u32 edge = 0ul;
     unsigned int i;
-    char text[200];
+    char text[240];
 
-    if (texture->storage == V9X_R3D_ABI_TEXTURE_CPU &&
-        texture->levels != 0) {
-        edge = (texture->levels[0].width << 16) | texture->levels[0].height;
+    /* The size from the batch's CPU description, which a surface
+     * texture's does not carry. */
+    if (context->pending.texture.storage == V9X_R3D_ABI_TEXTURE_CPU &&
+        context->pending.texture.levels != 0) {
+        edge = (context->pending.texture.levels[0].width << 16) |
+               context->pending.texture.levels[0].height;
     }
     key[0] = context->pending.texture_name;
     key[1] = (texture->storage << 24) | (texture->format << 16) |
@@ -971,25 +1106,27 @@ static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
              (draw->state.dst_blend << 8) | draw->state.alpha_test_enable;
     key[3] = (draw->state.depth_enable << 24) | (draw->state.depth_func << 16) |
              (draw->state.depth_write << 8) | texture->mip;
-    for (i = 0u; i < v9x_gl_state_seen_count; ++i) {
-        if (v9x_gl_state_seen[i][0] == key[0] &&
-            v9x_gl_state_seen[i][1] == key[1] &&
-            v9x_gl_state_seen[i][2] == key[2] &&
-            v9x_gl_state_seen[i][3] == key[3]) {
+    for (i = 0u; i < *count; ++i) {
+        if (seen[i][0] == key[0] && seen[i][1] == key[1] &&
+            seen[i][2] == key[2] && seen[i][3] == key[3]) {
             return;
         }
     }
-    if (v9x_gl_state_seen_count >= V9X_GL_STATE_SEEN_MAX) {
+    if (*count >= V9X_GL_STATE_SEEN_MAX) {
         return;
     }
     for (i = 0u; i < 4u; ++i) {
-        v9x_gl_state_seen[v9x_gl_state_seen_count][i] = key[i];
+        seen[*count][i] = key[i];
     }
-    ++v9x_gl_state_seen_count;
-    wsprintfA(text, "state tex=%lu size=%08lX tex=%08lX blend=%08lX "
-              "depth=%08lX colour=%08lX",
-              key[0], edge, key[1], key[2], key[3],
-              draw->vertices != 0 ? draw->vertices[0].color : 0ul);
+    ++*count;
+    wsprintfA(text, "%s tex=%lu size=%08lX tex=%08lX blend=%08lX "
+              "depth=%08lX colour=%08lX mask=%lX scissor=%lu,%lu,%lu,%lu "
+              "fog=%lu",
+              tag, key[0], edge, key[1], key[2], key[3],
+              draw->vertices != 0 ? draw->vertices[0].color : 0ul,
+              draw->state.write_mask, draw->state.scissor_left,
+              draw->state.scissor_top, draw->state.scissor_right,
+              draw->state.scissor_bottom, draw->state.fog_enable);
     v9x_gl_log(text);
 }
 
@@ -1015,6 +1152,78 @@ static void v9x_gl_path_note(unsigned int path, v9x_u32 triangles)
 {
     ++v9x_gl_path_batches[path];
     v9x_gl_path_triangles[path] += triangles;
+}
+
+static void v9x_gl_path_log(void);
+
+static void v9x_gl_counters_log(void)
+{
+    char text[240];
+
+    v9x_gl_path_log();
+    wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
+              "evictions=%lu uploads=%lu "
+              "upload-kb=%lu stubs=%lu failed r4=%lu r7=%lu r8=%lu "
+              "other=%lu",
+              (DWORD)v9x_gl_hwtex_count, v9x_gl_hw_creates,
+              v9x_gl_hw_create_failures, v9x_gl_hw_evictions,
+              v9x_gl_hw_uploads, v9x_gl_hw_upload_kb, v9x_gl_stub_total,
+              v9x_gl_draw_failures[4], v9x_gl_draw_failures[7],
+              v9x_gl_draw_failures[8],
+              v9x_gl_draw_failures[0] + v9x_gl_draw_failures[1] +
+                  v9x_gl_draw_failures[2] + v9x_gl_draw_failures[3] +
+                  v9x_gl_draw_failures[5] + v9x_gl_draw_failures[6] +
+                  v9x_gl_draw_failures[9]);
+    v9x_gl_log(text);
+}
+
+/* Every ten seconds while drawing: a game that runs slowly is measured
+ * while it runs, not only when it exits. */
+static void v9x_gl_counters_tick(void)
+{
+    DWORD now = GetTickCount();
+
+    if (now - v9x_gl_report_last >= V9X_GL_REPORT_MS) {
+        v9x_gl_report_last = now;
+        v9x_gl_counters_log();
+    }
+}
+
+/* A float's bits, for a log line wsprintf cannot print as a float. */
+static DWORD v9x_gl_bits(float value)
+{
+    return *(const DWORD *)&value;
+}
+
+/*
+ * A failed batch: counted by result, and the first few dumped with the
+ * first triangle's vertices as raw bits (sx sy sz rhw tu tv), which is
+ * what an engine's range checks read. After that only the count, so a game
+ * that fails a batch every frame does not also open the log every frame.
+ */
+static void v9x_gl_note_failure(v9x_u32 result, const V9X_GL_PENDING *pending,
+                                v9x_u32 submitted)
+{
+    char text[240];
+    unsigned int i;
+
+    ++v9x_gl_draw_failures[result < V9X_GL_RESULT_SLOTS ? result : 0u];
+    if (v9x_gl_failures_dumped >= V9X_GL_FAILURES_DUMPED_MAX) {
+        return;
+    }
+    ++v9x_gl_failures_dumped;
+    v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu", result,
+                pending->triangles, submitted);
+    for (i = 0u; i < 3u && i < pending->triangles * 3ul; ++i) {
+        const V9X_R3D_ABI_VERTEX *v = &pending->vertices[i];
+
+        wsprintfA(text, "  v%u sx=%08lX sy=%08lX sz=%08lX rhw=%08lX "
+                  "tu=%08lX tv=%08lX", i, v9x_gl_bits(v->sx),
+                  v9x_gl_bits(v->sy), v9x_gl_bits(v->sz),
+                  v9x_gl_bits(v->rhw), v9x_gl_bits(v->tu),
+                  v9x_gl_bits(v->tv));
+        v9x_gl_log(text);
+    }
 }
 
 static void v9x_gl_path_log(void)
@@ -1094,6 +1303,7 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         /* Refused before anything was emitted: the same batch with the CPU
          * copy, which the software fallback draws. */
         path = V9X_GL_PATH_HW_REFUSED;
+        v9x_gl_note_refused(context, &draw);
         draw.texture = pending->texture;
         result = iface->draw(&draw, outcome);
     }
@@ -1142,11 +1352,11 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
         outcome.submitted = 0ul;
         result = v9x_gl_draw_into(context, which, &outcome);
         if (result != V9X_R3D_RESULT_OK) {
-            v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu",
-                        result, pending->triangles, outcome.submitted);
+            v9x_gl_note_failure(result, pending, outcome.submitted);
         }
     }
     pending->triangles = 0ul;
+    v9x_gl_counters_tick();
     LeaveCriticalSection(&v9x_gl_lock);
 }
 
@@ -1889,7 +2099,7 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
         ok = TRUE;
     }
     LeaveCriticalSection(&v9x_gl_lock);
-    v9x_gl_path_log();
+    v9x_gl_counters_log();
     v9x_gl_log3("DrvDeleteContext context=%lu -> %lu", handle, (DWORD)ok, 0ul);
     return ok;
 }

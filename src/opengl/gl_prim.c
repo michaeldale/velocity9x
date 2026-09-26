@@ -275,10 +275,49 @@ void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline)
 
 /* ---- One triangle through clipping to the batch --------------------- */
 
-/* The six frustum planes, as the signed distance of a clip-space vertex
- * inside when non-negative (2.11): w + x, w - x, w + y, w - y, w + z,
- * w - z. */
-static GLfloat v9x_gl_prim_plane(const V9X_GL_VERTEX *v, unsigned int plane)
+/*
+ * The rectangle a draw may write, in GL window coordinates (y up): the
+ * drawable, cut to the scissor box when the scissor test is on. Zero when
+ * it is empty. Pixels outside it are not written (4.1.2), so geometry is
+ * clipped to it here rather than tested per pixel by the engine: the same
+ * pixels, and an engine without a scissor (Gen3's builder emits none) can
+ * draw it, as can one that refuses coordinates past the surface.
+ */
+static int v9x_gl_prim_draw_rect(const V9X_GL_STATE *state, GLfloat *rect)
+{
+    GLfloat left = 0.0f;
+    GLfloat bottom = 0.0f;
+    GLfloat right = (GLfloat)state->drawable_width;
+    GLfloat top = (GLfloat)state->drawable_height;
+
+    if (v9x_gl_state_cap(state, V9X_GL_SCISSOR_TEST)) {
+        GLfloat sl = (GLfloat)state->scissor[0];
+        GLfloat sb = (GLfloat)state->scissor[1];
+        GLfloat sr = sl + (GLfloat)state->scissor[2];
+        GLfloat st = sb + (GLfloat)state->scissor[3];
+
+        left = sl > left ? sl : left;
+        bottom = sb > bottom ? sb : bottom;
+        right = sr < right ? sr : right;
+        top = st < top ? st : top;
+    }
+    rect[0] = left;
+    rect[1] = bottom;
+    rect[2] = right;
+    rect[3] = top;
+    return right > left && top > bottom;
+}
+
+/*
+ * The clip planes, as the signed distance of a clip-space vertex inside
+ * when non-negative. 0 to 5 are the frustum's (2.11): w + x, w - x, w + y,
+ * w - y, w + z, w - z. 6 to 9 are the draw rectangle's, carried into clip
+ * space through the viewport: x_w >= left is x - a w >= 0 with
+ * a = 2 (left - vx) / vw - 1, and likewise for the other three sides, so
+ * attributes interpolate across them exactly as across the frustum's.
+ */
+static GLfloat v9x_gl_prim_plane(const V9X_GL_VERTEX *v, unsigned int plane,
+                                 const GLfloat *edge)
 {
     GLfloat w = v->clip[3];
 
@@ -288,7 +327,11 @@ static GLfloat v9x_gl_prim_plane(const V9X_GL_VERTEX *v, unsigned int plane)
     case 2u: return w + v->clip[1];
     case 3u: return w - v->clip[1];
     case 4u: return w + v->clip[2];
-    default: return w - v->clip[2];
+    case 5u: return w - v->clip[2];
+    case 6u: return v->clip[0] - edge[0] * w;
+    case 7u: return edge[2] * w - v->clip[0];
+    case 8u: return v->clip[1] - edge[1] * w;
+    default: return edge[3] * w - v->clip[1];
     }
 }
 
@@ -304,22 +347,41 @@ static void v9x_gl_prim_lerp(V9X_GL_VERTEX *out, const V9X_GL_VERTEX *a,
     }
 }
 
-/* A triangle clipped against the six planes grows by at most one vertex
+/* A triangle clipped against the ten planes grows by at most one vertex
  * per plane. */
-#define V9X_GL_PRIM_CLIP_MAX 9u
+#define V9X_GL_PRIM_CLIP_PLANES 10u
+#define V9X_GL_PRIM_CLIP_MAX 13u
 
 /*
  * Sutherland-Hodgman in clip space, where colour and texture coordinates
  * interpolate linearly (2.11: the clipped attributes are the linear blend
  * of the edge's). Returns the vertex count, 0 when nothing is left.
  */
-static unsigned int v9x_gl_prim_clip(V9X_GL_VERTEX *polygon,
+static unsigned int v9x_gl_prim_clip(const V9X_GL_STATE *state,
+                                     V9X_GL_VERTEX *polygon,
                                      unsigned int count)
 {
     V9X_GL_VERTEX scratch[V9X_GL_PRIM_CLIP_MAX];
+    GLfloat rect[4];
+    GLfloat edge[4];
+    GLfloat vx = (GLfloat)state->viewport[0];
+    GLfloat vy = (GLfloat)state->viewport[1];
+    GLfloat vw = (GLfloat)state->viewport[2];
+    GLfloat vh = (GLfloat)state->viewport[3];
     unsigned int plane;
 
-    for (plane = 0u; plane < 6u && count != 0u; ++plane) {
+    if (!v9x_gl_prim_draw_rect(state, rect) || !(vw > 0.0f) ||
+        !(vh > 0.0f)) {
+        return 0u;
+    }
+    /* The rectangle's sides in normalised device coordinates. */
+    edge[0] = 2.0f * (rect[0] - vx) / vw - 1.0f;
+    edge[1] = 2.0f * (rect[1] - vy) / vh - 1.0f;
+    edge[2] = 2.0f * (rect[2] - vx) / vw - 1.0f;
+    edge[3] = 2.0f * (rect[3] - vy) / vh - 1.0f;
+
+    for (plane = 0u; plane < V9X_GL_PRIM_CLIP_PLANES && count != 0u;
+         ++plane) {
         unsigned int out = 0u;
         unsigned int i;
 
@@ -327,8 +389,8 @@ static unsigned int v9x_gl_prim_clip(V9X_GL_VERTEX *polygon,
             const V9X_GL_VERTEX *current = &polygon[i];
             const V9X_GL_VERTEX *previous = &polygon[i == 0u ? count - 1u
                                                              : i - 1u];
-            GLfloat dc = v9x_gl_prim_plane(current, plane);
-            GLfloat dp = v9x_gl_prim_plane(previous, plane);
+            GLfloat dc = v9x_gl_prim_plane(current, plane, edge);
+            GLfloat dp = v9x_gl_prim_plane(previous, plane, edge);
 
             if ((dc >= 0.0f) != (dp >= 0.0f) &&
                 out < V9X_GL_PRIM_CLIP_MAX) {
@@ -368,6 +430,7 @@ static void v9x_gl_prim_window(const V9X_GL_STATE *state,
                                const V9X_GL_VERTEX *v, V9X_GL_WINDOW *out)
 {
     GLfloat rhw = 1.0f / v->clip[3];
+    GLfloat rect[4];
     GLfloat xd = v->clip[0] * rhw;
     GLfloat yd = v->clip[1] * rhw;
     GLfloat zd = v->clip[2] * rhw;
@@ -388,16 +451,14 @@ static void v9x_gl_prim_window(const V9X_GL_STATE *state,
      * exact arithmetic. In floats the clip and the divide can leave it a
      * rounding step outside, or at -0.0, and Gen3's stream builder refuses
      * both (a sign bit or a coordinate past the surface names a write
-     * outside it). Clamping to the bounds the mathematics already
-     * guarantees moves no correct vertex. The low bounds are tested as
+     * outside it). Clamping to the bounds the clip already guarantees -
+     * the draw rectangle and the depth range - moves no correct vertex.
+     * The low bounds are tested as
      * "not above", which also replaces -0.0 by the bound's +0.0.
      */
-    out->x = v9x_gl_prim_clamp(out->x, (GLfloat)state->viewport[0],
-                               (GLfloat)state->viewport[0] +
-                                   (GLfloat)state->viewport[2]);
-    out->y = v9x_gl_prim_clamp(out->y, (GLfloat)state->viewport[1],
-                               (GLfloat)state->viewport[1] +
-                                   (GLfloat)state->viewport[3]);
+    (void)v9x_gl_prim_draw_rect(state, rect);
+    out->x = v9x_gl_prim_clamp(out->x, rect[0], rect[2]);
+    out->y = v9x_gl_prim_clamp(out->y, rect[1], rect[3]);
     out->z = pipeline->depth_near <= pipeline->depth_far
         ? v9x_gl_prim_clamp(out->z, (GLfloat)pipeline->depth_near,
                             (GLfloat)pipeline->depth_far)
@@ -456,7 +517,7 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
             polygon[i].color[3] = provoking->color[3];
         }
     }
-    count = v9x_gl_prim_clip(polygon, 3u);
+    count = v9x_gl_prim_clip(state, polygon, 3u);
     if (count < 3u) {
         return;
     }
@@ -627,28 +688,12 @@ void v9x_gl_prim_abi_state(V9X_GL_STATE *state,
     out->write_mask = (state->color_mask[0] ? V9X_R3D_ABI_WRITE_RED : 0ul) |
                       (state->color_mask[1] ? V9X_R3D_ABI_WRITE_GREEN : 0ul) |
                       (state->color_mask[2] ? V9X_R3D_ABI_WRITE_BLUE : 0ul);
-    /* The scissor box in surface rows, or the whole drawable. */
+    /* The whole drawable: the scissor box has already cut the geometry
+     * (v9x_gl_prim_draw_rect), so the engine is not asked to test it. */
     out->scissor_left = 0ul;
     out->scissor_top = 0ul;
     out->scissor_right = state->drawable_width;
     out->scissor_bottom = state->drawable_height;
-    if (v9x_gl_state_cap(state, V9X_GL_SCISSOR_TEST)) {
-        long left = state->scissor[0];
-        long right = left + state->scissor[2];
-        long bottom = state->scissor[1];
-        long top = bottom + state->scissor[3];
-        long width = (long)state->drawable_width;
-        long height = (long)state->drawable_height;
-
-        left = left < 0l ? 0l : (left > width ? width : left);
-        right = right < left ? left : (right > width ? width : right);
-        bottom = bottom < 0l ? 0l : (bottom > height ? height : bottom);
-        top = top < bottom ? bottom : (top > height ? height : top);
-        out->scissor_left = (v9x_u32)left;
-        out->scissor_right = (v9x_u32)right;
-        out->scissor_top = (v9x_u32)(height - top);
-        out->scissor_bottom = (v9x_u32)(height - bottom);
-    }
 }
 
 /* A blend factor that reads the source alpha (table 4.1/4.2). */
