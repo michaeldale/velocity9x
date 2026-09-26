@@ -55,3 +55,4 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-09-10 A render-target switch silently loses every texture](2026-09-10-a-target-switch-loses-every-texture.md)
 - [2026-09-11 Every Final Reality texture is refused for having no pixel format](2026-09-11-every-final-reality-texture-is-refused-for-having-no-pixel-format.md)
 - [2026-09-26 Gen3 and the software fallback disagree in one Quake 2 frame](2026-09-26-software-engine-quake2-sky.md)
+- [2026-09-26 The floppy transfer folder no longer fits once the OpenGL ICD is packaged](2026-09-26-floppy-over-capacity-with-opengl-icd.md)
