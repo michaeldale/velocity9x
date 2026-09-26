@@ -1,7 +1,8 @@
 # OpenGL 1.1 ICD for Velocity9x, on a render core shared with Direct3D
 
-Status: design for approval; nothing coded. Revised 2026-09-26 after two
-reviews against the tree; the review notes are at the end.
+Status: implementation in progress. Phase 1 is complete and Phase 2's
+host-side raster work is underway. Revised 2026-09-26; the original design
+review notes are at the end and each landed slice is recorded in its phase.
 
 ## Context
 
@@ -455,7 +456,7 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   derivative bound, per span when affine and per pixel under perspective,
   POINT and LINEAR level filters, sizes down to 1x1 and 1xN tails;
   post-texture fog from a per-vertex factor toward a per-draw colour;
-  independent texture colour/alpha combine for REPLACE, MODULATE,
+  independent texture colour/alpha combine (edc074f) for REPLACE, MODULATE,
   DECAL's texel-alpha lerp and GL BLEND's environment-colour lerp, with the
   software D3D engine now publishing and applying MODULATEALPHA. Not on any
   guest; except for MODULATEALPHA the software engine asks for none of the
