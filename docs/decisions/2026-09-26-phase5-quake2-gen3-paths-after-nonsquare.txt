@@ -1,0 +1,1 @@
+paths batches/triangles untextured=100/224 hw=1231233/3300541 cpu=0/0 cpu-nonsquare=0/0 hw-refused=440/1319

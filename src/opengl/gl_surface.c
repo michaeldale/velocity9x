@@ -330,7 +330,8 @@ static int v9x_gl_hwtex_pixel_format(v9x_u32 format, DDPIXELFORMAT *out)
     return 0;
 }
 
-void *v9x_gl_hwtex_create(v9x_u32 edge, v9x_u32 levels, v9x_u32 format)
+void *v9x_gl_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                          v9x_u32 format)
 {
     DDSURFACEDESC desc;
     LPDIRECTDRAWSURFACE surface = 0;
@@ -342,8 +343,8 @@ void *v9x_gl_hwtex_create(v9x_u32 edge, v9x_u32 levels, v9x_u32 format)
     v9x_gl_surface_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
-    desc.dwWidth = edge;
-    desc.dwHeight = edge;
+    desc.dwWidth = width;
+    desc.dwHeight = height;
     if (!v9x_gl_hwtex_pixel_format(format, &desc.ddpfPixelFormat)) {
         return 0;
     }
@@ -358,8 +359,8 @@ void *v9x_gl_hwtex_create(v9x_u32 edge, v9x_u32 levels, v9x_u32 format)
     }
     hr = IDirectDraw_CreateSurface(v9x_gl_ddraw, &desc, &surface, 0);
     if (hr != DD_OK) {
-        v9x_gl_log3("hwtex create edge=%lu levels=%lu hr=%08lX", edge, levels,
-                    (DWORD)hr);
+        v9x_gl_log3("hwtex create %08lX levels=%lu hr=%08lX",
+                    (width << 16) | height, levels, (DWORD)hr);
         return 0;
     }
     return surface;

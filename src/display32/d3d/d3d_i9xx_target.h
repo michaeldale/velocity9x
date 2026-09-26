@@ -92,4 +92,16 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
                                     v9x_u32 levels,
                                     struct v9x_d3d_i9xx_miptree *tree);
 
+/*
+ * The texture shapes the sampler is given: each edge a power of two, the
+ * larger within [size_min, size_max], the smaller at least one texel. The
+ * placement, the chain walk, the bind and accepts all ask this, so the
+ * rule is stated once.
+ */
+v9x_u16 v9x_d3d_i9xx_texture_shape(v9x_u32 width, v9x_u32 height,
+                                   v9x_u32 size_min, v9x_u32 size_max);
+/* Level `level`'s edge of a chain whose level 0 edge is `edge`: halved per
+ * level, never below one texel. */
+v9x_u32 v9x_d3d_i9xx_level_edge(v9x_u32 edge, v9x_u32 level);
+
 #endif /* VELOCITY9X_D3D_I9XX_TARGET_H */

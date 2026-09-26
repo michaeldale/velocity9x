@@ -104,11 +104,44 @@ resized at cycle 25. No failures on either engine, and free video
 memory after cycle 26 equals free video memory after cycle 50 exactly
 (Gen3 5,392,640 bytes; software 14,801,152).
 
+## Later: non-square textures on Gen3, 11 to 22 fps
+
+Counted per path in the ICD (`...-paths-before-nonsquare.txt`): with
+square maps on Gen3, 180,748 of Quake 2's batches (478,294 triangles, a
+quarter of the textured ones) went to the CPU for being non-square, each
+after a drain of the GPU.
+
+Gen3's shape rule is now one pure function, `v9x_d3d_i9xx_texture_shape`
+(powers of two, the larger edge within 8..256, the smaller down to one
+texel), host-tested and asked by the placement, the chain walk, the bind
+and accepts; describe drops the square flag. MAP_STATE has always carried
+width and height separately; the square rule was this driver's, not the
+sampler's, and the Direct3D caps still say SQUAREONLY. The ICD's texture
+chains take width and height (they were square by construction, so the
+first non-square upload failed and fell back).
+
+V9XGLP's non-square scene (`2026-09-26-phase5-gen3-nonsquare-{gen3,soft}-
+V9XGLP.ini`): a 64x16 map of 4 x 2 coded cells on a 256x64 quad, its
+16x64 transpose, and a 64x16 chain whose levels 0 and 2 are selected by
+quad size. Every cell's centre reads the texel it should, identically on
+Gen3 and the software engine, and the ICD's counters show every batch on
+Gen3.
+
+Quake 2, `timerefresh` at demo1's spawn point with `notarget` (so no
+monster moves the player; the earlier 11.05 was also at the spawn point,
+untouched): 21.69 and 21.82 fps (`...-timerefresh-nonsquare.log`). Every
+textured batch is Gen3's (`...-paths-after-nonsquare.txt`: 1,231,233
+batches, 440 refused and resent to the CPU, none non-square).
+
+The frame (`...-frame-all-hardware.png`) agrees with the software
+engine's: the grey sky, the pale ledge and the top-right piece were
+products of the mixed frame, not of either engine. The issue is retitled
+and keeps the mixed-engine depth hypothesis open.
+
 ## Not established
 
-- What the software engine does to Quake 2's sky.
-- Non-square textures on Gen3, which still take the CPU path (the bind is
-  square-only; its layout for non-square exists since d7a07ce).
+- Why Gen3 and the software fallback disagree when they share a frame
+  (the issue's depth hypothesis is unmeasured).
 - Two GL processes at once, GL beside Direct3D, and a context used from
   a second thread.
 - The per-batch cost left: every GL_POLYGON is its own batch, because

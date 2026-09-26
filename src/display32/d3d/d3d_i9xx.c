@@ -1132,13 +1132,14 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
     V9X_DD_SURFACE_LCL *surface = ((V9X_DD_SURFACE_LCL **)data->lplpSList)[0];
     const V9X_DDPIXELFORMAT *pixel;
     struct v9x_d3d_i9xx_miptree tree;
-    DWORD size = (DWORD)surface->lpGbl->wWidth;
+    DWORD width = (DWORD)surface->lpGbl->wWidth;
+    DWORD height = (DWORD)surface->lpGbl->wHeight;
     DWORD base;
 
-    if (size != (DWORD)surface->lpGbl->wHeight ||
-        size < v9x_d3d_i9xx_limits.texture_size_min ||
-        size > v9x_d3d_i9xx_limits.texture_size_max ||
-        (size & (size - 1ul)) != 0ul) {
+    if (v9x_d3d_i9xx_texture_shape(width, height,
+                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   v9x_d3d_i9xx_limits.texture_size_max) ==
+            V9X_FALSE) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     pixel = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
@@ -1148,7 +1149,7 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, size, 1ul, &tree) == V9X_FALSE ||
+    if (v9x_d3d_i9xx_layout_miptree(width, height, 1ul, &tree) == V9X_FALSE ||
         v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
                                  tree.level_offset, &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1165,7 +1166,8 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     V9X_DD_SURFACE_LCL *top;
     const V9X_DDPIXELFORMAT *pixel;
     struct v9x_d3d_i9xx_miptree tree;
-    DWORD size;
+    DWORD width;
+    DWORD height;
     DWORD index;
     DWORD base;
     DWORD reason;
@@ -1200,26 +1202,31 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
 
     /*
-     * The shape the sampler can read: a square power-of-two top the bind
-     * would accept, and every level after it square and half the one
-     * before, in list order. The list is DirectDraw's, top first; one that
-     * is not in that order is declined rather than sorted.
+     * The shape the sampler can read: a top the bind would accept, and
+     * every level after it each edge half the one before down to one
+     * texel, in list order (a non-square chain keeps halving its longer
+     * edge after the shorter reaches one). The list is DirectDraw's, top
+     * first; one that is not in that order is declined rather than sorted.
+     * The layout below rejects a chain longer than the larger edge allows.
      */
-    size = (DWORD)top->lpGbl->wWidth;
+    width = (DWORD)top->lpGbl->wWidth;
+    height = (DWORD)top->lpGbl->wHeight;
     if (data->dwSCnt > V9X_D3D_I9XX_MIP_LEVELS_MAX ||
-        size != (DWORD)top->lpGbl->wHeight ||
-        size < v9x_d3d_i9xx_limits.texture_size_min ||
-        size > v9x_d3d_i9xx_limits.texture_size_max) {
+        v9x_d3d_i9xx_texture_shape(width, height,
+                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   v9x_d3d_i9xx_limits.texture_size_max) ==
+            V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
     for (index = 1ul; index < data->dwSCnt; ++index) {
         const V9X_DD_SURFACE_LCL *level = list[index];
-        DWORD edge = size >> index;
 
-        if (level == 0 || level->lpGbl == 0 || edge == 0ul ||
+        if (level == 0 || level->lpGbl == 0 ||
             (level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul ||
-            (DWORD)level->lpGbl->wWidth != edge ||
-            (DWORD)level->lpGbl->wHeight != edge) {
+            (DWORD)level->lpGbl->wWidth !=
+                v9x_d3d_i9xx_level_edge(width, index) ||
+            (DWORD)level->lpGbl->wHeight !=
+                v9x_d3d_i9xx_level_edge(height, index)) {
             return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
         }
     }
@@ -1233,7 +1240,8 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_FORMAT);
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, size, data->dwSCnt, &tree) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree(width, height, data->dwSCnt, &tree) ==
+            V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
     reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
@@ -1307,7 +1315,8 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
 {
     const V9X_DD_SURFACE_LCL *chain[V9X_D3D_I9XX_MIP_LEVELS_MAX];
     const V9X_DD_SURFACE_LCL *level = top;
-    DWORD size = (DWORD)top->lpGbl->wWidth;
+    DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
     DWORD count = 1ul;
     DWORD verified;
 
@@ -1337,9 +1346,11 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
         if (next == 0) {
             break;
         }
-        if (next->lpGbl == 0 || (size >> count) == 0ul ||
-            (DWORD)next->lpGbl->wWidth != (size >> count) ||
-            (DWORD)next->lpGbl->wHeight != (size >> count)) {
+        if (next->lpGbl == 0 ||
+            (DWORD)next->lpGbl->wWidth !=
+                v9x_d3d_i9xx_level_edge(width, count) ||
+            (DWORD)next->lpGbl->wHeight !=
+                v9x_d3d_i9xx_level_edge(height, count)) {
             ++v9x_hal->d3d_diagnostics.mip_gap_shape;
             break;
         }
@@ -1349,7 +1360,8 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (count == 1ul) {
         return 1ul;
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, size, count, tree) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree(width, height, count, tree) ==
+            V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         return 1ul;
@@ -1383,7 +1395,8 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (verified < count) {
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         if (verified <= 1ul ||
-            v9x_d3d_i9xx_layout_miptree(size, size, verified, tree) == V9X_FALSE) {
+            v9x_d3d_i9xx_layout_miptree(width, height, verified, tree) ==
+                V9X_FALSE) {
             return 1ul;
         }
     }
@@ -1431,18 +1444,17 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_DRAW *draw,
         return 0;
     }
     /*
-     * SQUARE and a power of two, which is the sampler's rule rather than
-     * MAP_STATE's - the packet's fields hold any dimension. The limits say
-     * what has been measured; the engine says what the packet can express;
-     * and the narrower of the two is what an application may have.
+     * Powers of two within the limits, square or not
+     * (v9x_d3d_i9xx_texture_shape): MAP_STATE holds width and height
+     * separately. Until 2026-09-26 this refused non-square maps as the
+     * sampler's rule; the Direct3D caps still say SQUAREONLY, so Direct3D
+     * applications are not offered them, and the OpenGL ICD is.
      */
-    if (surface->lpGbl->wWidth != surface->lpGbl->wHeight ||
-        (DWORD)surface->lpGbl->wWidth <
-            v9x_d3d_i9xx_limits.texture_size_min ||
-        (DWORD)surface->lpGbl->wWidth >
-            v9x_d3d_i9xx_limits.texture_size_max ||
-        ((DWORD)surface->lpGbl->wWidth &
-         ((DWORD)surface->lpGbl->wWidth - 1ul)) != 0ul) {
+    if (v9x_d3d_i9xx_texture_shape((DWORD)surface->lpGbl->wWidth,
+                                   (DWORD)surface->lpGbl->wHeight,
+                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   v9x_d3d_i9xx_limits.texture_size_max) ==
+            V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.texture_refused_shape;
         v9x_hal->d3d_diagnostics.texture_refused_last =
             ((DWORD)surface->lpGbl->wWidth << 16) |
@@ -2552,23 +2564,21 @@ static int v9x_d3d_i9xx_ready(void)
  * mip layout; this rejects state the command builder would approximate. */
 /*
  * Whether bind_texture would take this surface: a video-memory texture,
- * sixteen bits a texel, square, a power of two, inside the limits. The same
+ * sixteen bits a texel, powers of two inside the limits. The same
  * tests as the bind, without its counters - the caller only asks.
  */
 static int v9x_d3d_i9xx_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
 {
-    DWORD edge;
-
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
         return 0;
     }
-    edge = (DWORD)surface->lpGbl->wWidth;
-    if (edge != (DWORD)surface->lpGbl->wHeight ||
-        edge < v9x_d3d_i9xx_limits.texture_size_min ||
-        edge > v9x_d3d_i9xx_limits.texture_size_max ||
-        (edge & (edge - 1ul)) != 0ul) {
+    if (v9x_d3d_i9xx_texture_shape((DWORD)surface->lpGbl->wWidth,
+                                   (DWORD)surface->lpGbl->wHeight,
+                                   v9x_d3d_i9xx_limits.texture_size_min,
+                                   v9x_d3d_i9xx_limits.texture_size_max) ==
+            V9X_FALSE) {
         return 0;
     }
     if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {

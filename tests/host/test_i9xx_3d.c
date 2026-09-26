@@ -3506,6 +3506,34 @@ static void test_map_state(void)
  * bytes. The numbers below were worked by hand from that code, not from this
  * implementation.
  */
+/* The one shape rule the placement, chain walk, bind and accepts share. */
+static void test_i9xx_texture_shape(void)
+{
+    /* Squares within 8..256, as before. */
+    CHECK(v9x_d3d_i9xx_texture_shape(8ul, 8ul, 8ul, 256ul) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_texture_shape(256ul, 256ul, 8ul, 256ul) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_texture_shape(512ul, 512ul, 8ul, 256ul) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_texture_shape(4ul, 4ul, 8ul, 256ul) == V9X_FALSE);
+    /* Non-square: the larger edge bounded, the smaller down to one. */
+    CHECK(v9x_d3d_i9xx_texture_shape(64ul, 16ul, 8ul, 256ul) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_texture_shape(16ul, 64ul, 8ul, 256ul) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_texture_shape(256ul, 1ul, 8ul, 256ul) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_texture_shape(512ul, 64ul, 8ul, 256ul) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_texture_shape(4ul, 2ul, 8ul, 256ul) == V9X_FALSE);
+    /* Not powers of two, or empty. */
+    CHECK(v9x_d3d_i9xx_texture_shape(96ul, 64ul, 8ul, 256ul) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_texture_shape(64ul, 24ul, 8ul, 256ul) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_texture_shape(64ul, 0ul, 8ul, 256ul) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_texture_shape(0ul, 0ul, 8ul, 256ul) == V9X_FALSE);
+
+    /* Level edges: halve, stop at one. */
+    CHECK(v9x_d3d_i9xx_level_edge(64ul, 0ul) == 64ul);
+    CHECK(v9x_d3d_i9xx_level_edge(64ul, 2ul) == 16ul);
+    CHECK(v9x_d3d_i9xx_level_edge(16ul, 4ul) == 1ul);
+    CHECK(v9x_d3d_i9xx_level_edge(16ul, 6ul) == 1ul);
+    CHECK(v9x_d3d_i9xx_level_edge(1ul, 3ul) == 1ul);
+}
+
 static void test_i9xx_miptree_layout(void)
 {
     struct v9x_d3d_i9xx_miptree tree;
@@ -5368,6 +5396,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_runtime_decal_program();
     test_runtime_mip_chain();
     test_i9xx_miptree_layout();
+    test_i9xx_texture_shape();
     test_runtime_blend();
     test_runtime_alpha_test();
     test_runtime_blend_pairs();

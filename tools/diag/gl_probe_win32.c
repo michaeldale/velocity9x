@@ -1015,6 +1015,146 @@ void __stdcall V9xGlProbeEntry(void)
             }
         }
         /*
+         * Non-square textures. A 64x16 map of four column bands by two row
+         * halves, cell (band b, half h) coloured red 40 + 60 b, green
+         * 60 + 120 h, blue 200, NEAREST on a 256x64 quad: each cell's
+         * centre names the texel column and row the sampler used
+         * (NonSq64x16B<b>H<h>). The transpose at 16x64 on a 64x256 quad
+         * (NonSq16x64...). Then a 64x16 chain, each level one colour
+         * (level L: red 30 L, green 255 - 30 L, blue 0), on quads of 64x16
+         * and 16x4 pixels: levels 0 and 2 (NonSqMipL0, NonSqMipL2).
+         */
+        if (context != 0) {
+            static GLubyte map[64 * 16 * 3];
+            static const char *const cell_key[2][8] = {
+                { "NonSq64x16B0H0", "NonSq64x16B1H0", "NonSq64x16B2H0",
+                  "NonSq64x16B3H0", "NonSq64x16B0H1", "NonSq64x16B1H1",
+                  "NonSq64x16B2H1", "NonSq64x16B3H1" },
+                { "NonSq16x64B0H0", "NonSq16x64B1H0", "NonSq16x64B2H0",
+                  "NonSq16x64B3H0", "NonSq16x64B0H1", "NonSq16x64B1H1",
+                  "NonSq16x64B2H1", "NonSq16x64B3H1" }
+            };
+            RECT client;
+            LONG width;
+            LONG height;
+            GLuint texture = 0u;
+            int pass;
+            int x;
+            int y;
+            int level;
+            int w;
+            int h;
+
+            GetClientRect(window, &client);
+            width = client.right - client.left;
+            height = client.bottom - client.top;
+            glViewport(0, 0, width, height);
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+            glDrawBuffer(GL_BACK);
+            glReadBuffer(GL_BACK);
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+            glEnable(GL_TEXTURE_2D);
+            for (pass = 0; pass < 2; ++pass) {
+                /* Pass 0: 64 wide, 16 tall, bands along s. Pass 1: 16 wide,
+                 * 64 tall, bands along t. The half is along the other axis. */
+                int tw = pass == 0 ? 64 : 16;
+                int th = pass == 0 ? 16 : 64;
+                GLfloat qw = (GLfloat)(pass == 0 ? 256 : 64);
+                GLfloat qh = (GLfloat)(pass == 0 ? 64 : 256);
+                int b;
+                int half;
+
+                for (y = 0; y < th; ++y) {
+                    for (x = 0; x < tw; ++x) {
+                        GLubyte *texel = &map[(y * tw + x) * 3];
+
+                        b = pass == 0 ? x / 16 : y / 16;
+                        half = pass == 0 ? y / 8 : x / 8;
+                        texel[0] = (GLubyte)(40 + 60 * b);
+                        texel[1] = (GLubyte)(60 + 120 * half);
+                        texel[2] = 200;
+                    }
+                }
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, tw, th, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, map);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex2f(0.0f, 0.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex2f(qw, 0.0f);
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex2f(qw, qh);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex2f(0.0f, qh);
+                glEnd();
+                glFinish();
+                for (half = 0; half < 2; ++half) {
+                    for (b = 0; b < 4; ++b) {
+                        /* Band centre along the banded axis, half centre
+                         * along the other; window y up matches t up. */
+                        GLint rx = pass == 0 ? 32 + b * 64 : 16 + half * 32;
+                        GLint ry = pass == 0 ? 16 + half * 32 : 32 + b * 64;
+
+                        v9x_glp_hex(cell_key[pass][half * 4 + b],
+                                    v9x_glp_read(rx, ry));
+                    }
+                }
+            }
+            for (level = 0, w = 64, h = 16; w >= 1 || h >= 1; ++level) {
+                for (y = 0; y < w * h; ++y) {
+                    map[y * 3 + 0] = (GLubyte)(30 * level);
+                    map[y * 3 + 1] = (GLubyte)(255 - 30 * level);
+                    map[y * 3 + 2] = 0;
+                }
+                glTexImage2D(GL_TEXTURE_2D, level, 3, w, h, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, map);
+                if (w == 1 && h == 1) {
+                    break;
+                }
+                w = w > 1 ? w / 2 : 1;
+                h = h > 1 ? h / 2 : 1;
+            }
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                            GL_NEAREST_MIPMAP_NEAREST);
+            glClear(GL_COLOR_BUFFER_BIT);
+            for (pass = 0; pass < 2; ++pass) {
+                GLfloat x0 = (GLfloat)(20 + pass * 100);
+                GLfloat qw = pass == 0 ? 64.0f : 16.0f;
+                GLfloat qh = pass == 0 ? 16.0f : 4.0f;
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex2f(x0, 40.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex2f(x0 + qw, 40.0f);
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex2f(x0 + qw, 40.0f + qh);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex2f(x0, 40.0f + qh);
+                glEnd();
+            }
+            glFinish();
+            v9x_glp_hex("NonSqMipL0", v9x_glp_read(20 + 32, 40 + 8));
+            v9x_glp_hex("NonSqMipL2", v9x_glp_read(120 + 8, 40 + 2));
+            v9x_glp_hex("ErrorAfterNonSquare", (DWORD)glGetError());
+            glDisable(GL_TEXTURE_2D);
+            glDeleteTextures(1, &texture);
+        }
+        /*
          * Front-buffer drawing, as GLQuake draws its loading disc: a black
          * frame swapped to the window, then with glDrawBuffer(GL_FRONT) a
          * yellow quad over the lower-left quarter and a glFlush, no swap.

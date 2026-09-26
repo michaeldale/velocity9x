@@ -786,7 +786,8 @@ static void V9X_GL_API v9x_gl_api_tex_sub_image_2d(GLenum target, GLint level,
  */
 typedef struct v9x_gl_hwtex {
     void *surface;
-    v9x_u32 edge;
+    v9x_u32 width;
+    v9x_u32 height;
     v9x_u32 levels;
     v9x_u32 format;
     v9x_u32 revision;
@@ -841,17 +842,19 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_TEXOBJ *object;
     V9X_GL_HWTEX *hw;
-    v9x_u32 edge;
+    v9x_u32 width;
+    v9x_u32 height;
 
     if (texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
         description->hw_texture_size_max == 0ul) {
         return 0;
     }
-    edge = texture->levels[0].width;
-    if (edge > description->hw_texture_size_max ||
-        texture->levels[0].height > description->hw_texture_size_max ||
+    width = texture->levels[0].width;
+    height = texture->levels[0].height;
+    if (width > description->hw_texture_size_max ||
+        height > description->hw_texture_size_max ||
         ((description->hw_texture_shape & V9X_R3D_ABI_HWTEX_SQUARE) != 0ul &&
-         texture->levels[0].height != edge) ||
+         height != width) ||
         (description->texture_formats & (1ul << texture->format)) == 0ul) {
         return 0;
     }
@@ -860,7 +863,8 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
 
     object = v9x_gl_tex_bound_object(&context->textures);
     hw = (V9X_GL_HWTEX *)object->hw;
-    if (hw != 0 && (hw->edge != edge || hw->levels != texture->level_count ||
+    if (hw != 0 && (hw->width != width || hw->height != height ||
+                    hw->levels != texture->level_count ||
                     hw->format != texture->format)) {
         v9x_gl_hwtex_free(hw);
         object->hw = 0;
@@ -872,10 +876,11 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
         if (hw == 0) {
             return 0;
         }
-        hw->edge = edge;
+        hw->width = width;
+        hw->height = height;
         hw->levels = texture->level_count;
         hw->format = texture->format;
-        hw->surface = v9x_gl_hwtex_create(edge, texture->level_count,
+        hw->surface = v9x_gl_hwtex_create(width, height, texture->level_count,
                                           texture->format);
         hw->unusable = hw->surface == 0;
         object->hw = hw;
@@ -955,6 +960,45 @@ static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
     v9x_gl_log(text);
 }
 
+/*
+ * Where the process's batches went, logged when a context is deleted: the
+ * numbers that say which remaining path costs a game its frame rate.
+ * Batches and triangles for each of: untextured; a texture the engine
+ * sampled from its own surface; a texture sent as CPU levels because it
+ * does not fit the engine's surface rules (non-square counted apart); and
+ * a surface texture the engine refused, sent again as CPU levels.
+ */
+#define V9X_GL_PATH_UNTEXTURED   0u
+#define V9X_GL_PATH_HW_TEXTURE   1u
+#define V9X_GL_PATH_CPU_TEXTURE  2u
+#define V9X_GL_PATH_CPU_NONSQUARE 3u
+#define V9X_GL_PATH_HW_REFUSED   4u
+#define V9X_GL_PATH_COUNT        5u
+
+static DWORD v9x_gl_path_batches[V9X_GL_PATH_COUNT];
+static DWORD v9x_gl_path_triangles[V9X_GL_PATH_COUNT];
+
+static void v9x_gl_path_note(unsigned int path, v9x_u32 triangles)
+{
+    ++v9x_gl_path_batches[path];
+    v9x_gl_path_triangles[path] += triangles;
+}
+
+static void v9x_gl_path_log(void)
+{
+    char text[200];
+
+    wsprintfA(text, "paths batches/triangles untextured=%lu/%lu "
+              "hw=%lu/%lu cpu=%lu/%lu cpu-nonsquare=%lu/%lu "
+              "hw-refused=%lu/%lu",
+              v9x_gl_path_batches[0], v9x_gl_path_triangles[0],
+              v9x_gl_path_batches[1], v9x_gl_path_triangles[1],
+              v9x_gl_path_batches[2], v9x_gl_path_triangles[2],
+              v9x_gl_path_batches[3], v9x_gl_path_triangles[3],
+              v9x_gl_path_batches[4], v9x_gl_path_triangles[4]);
+    v9x_gl_log(text);
+}
+
 /* The surface a colour buffer is drawn in: the back, or the front made on
  * first use. */
 static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
@@ -980,6 +1024,7 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     V9X_R3D_ABI_DRAW draw;
     v9x_u32 result;
     unsigned int i;
+    unsigned int path;
     int hardware;
 
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
@@ -1001,14 +1046,25 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     draw.vertices = vertices;
     draw.triangle_count = triangle_count;
     v9x_gl_note_state(context, &draw);
+    if (draw.texture.storage == V9X_R3D_ABI_TEXTURE_NONE) {
+        path = V9X_GL_PATH_UNTEXTURED;
+    } else {
+        path = draw.texture.levels[0].width != draw.texture.levels[0].height
+            ? V9X_GL_PATH_CPU_NONSQUARE : V9X_GL_PATH_CPU_TEXTURE;
+    }
     hardware = v9x_gl_hw_texture(context, &draw.texture);
+    if (hardware) {
+        path = V9X_GL_PATH_HW_TEXTURE;
+    }
     result = iface->draw(&draw, outcome);
     if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
         /* Refused before anything was emitted: the same batch with the CPU
          * copy, which the software fallback draws. */
+        path = V9X_GL_PATH_HW_REFUSED;
         v9x_gl_describe_texture(context, &draw.texture);
         result = iface->draw(&draw, outcome);
     }
+    v9x_gl_path_note(path, triangle_count);
     if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
         drawable = v9x_gl_bind_window(context,
                                       v9x_gl_context_window(context));
@@ -1748,6 +1804,7 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
         ok = TRUE;
     }
     LeaveCriticalSection(&v9x_gl_lock);
+    v9x_gl_path_log();
     v9x_gl_log3("DrvDeleteContext context=%lu -> %lu", handle, (DWORD)ok, 0ul);
     return ok;
 }

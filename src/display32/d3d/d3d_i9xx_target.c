@@ -312,3 +312,26 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
     *address_out = offset;
     return V9X_TRUE;
 }
+
+v9x_u16 v9x_d3d_i9xx_texture_shape(v9x_u32 width, v9x_u32 height,
+                                   v9x_u32 size_min, v9x_u32 size_max)
+{
+    v9x_u32 larger = width > height ? width : height;
+
+    /* MAP_STATE carries width and height in separate fields (i915
+     * MS3), so a map need not be square; the sampler normalises each
+     * axis by its own size. Powers of two because the mip chain and the
+     * WRAP address arithmetic assume them. */
+    if (width == 0ul || height == 0ul ||
+        (width & (width - 1ul)) != 0ul ||
+        (height & (height - 1ul)) != 0ul) {
+        return V9X_FALSE;
+    }
+    return larger >= size_min && larger <= size_max ? V9X_TRUE
+                                                    : V9X_FALSE;
+}
+
+v9x_u32 v9x_d3d_i9xx_level_edge(v9x_u32 edge, v9x_u32 level)
+{
+    return v9x_d3d_i9xx_minify(edge, level);
+}

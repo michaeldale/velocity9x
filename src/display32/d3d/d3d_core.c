@@ -3333,16 +3333,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     out->texture_size_max = v9x_r3d_texture_size_max(ops);
     out->batch_max = V9X_R3D_ABI_BATCH_MAX;
     /* Surface textures, where the engine samples them for the interface:
-     * Gen3's bind takes a square power of two within its limits (the
-     * sampler's rule, v9x_d3d_i9xx_bind_texture). The ViRGE's texture path
+     * Gen3's bind takes powers of two within its limits, square or not
+     * (v9x_d3d_i9xx_texture_shape). The ViRGE's texture path
      * has not been measured through the interface, and the software engine
      * reads CPU levels. */
     out->hw_texture_size_max = 0ul;
     out->hw_texture_shape = 0ul;
     if (ops == &v9x_d3d_engine_i9xx) {
         out->hw_texture_size_max = ops->limits->texture_size_max;
-        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
-                                V9X_R3D_ABI_HWTEX_POW2;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {
