@@ -7,15 +7,29 @@ GMA 950. It gives a supported card 256-colour, High Color and — on the
 S3 targets — True Color modes up to 1280x1024, a DirectDraw HAL with
 vertical-blank waits and hardware page flipping on S3, and a hardware
 Direct3D path on ViRGE/DX and Trio3D/2X. 0.8.0 adds a second hardware
-Direct3D engine, for the GMA 950.
+Direct3D engine, for the GMA 950, and 0.9.0 an OpenGL 1.1 driver on the
+same engines.
 
 It is written from scratch against the Windows 98 DDI, DIB Engine, DirectDraw
 HAL and Direct3D HAL contracts, rather than derived from anyone's driver
 sources. It began as an S3 driver and grew the ATI and generic VESA paths
 later.
 
-**Latest release: [0.8.1](releases/0.8.1/README.md).** An Intel GMA 950
-release. Beyond 0.8.0 it adds:
+**Current version: 0.9.0, the OpenGL release.** Beyond 0.8.1 it adds:
+- an OpenGL 1.1 installable client driver, `V9XGL.DLL`, loaded by
+  Windows' own OPENGL32 - Quake 2 runs on the GMA 950 at 28 fps with
+  hardware textures, Serious Sam runs there, and the ViRGE draws the
+  textures its S3D can express;
+- a neutral render core shared by Direct3D and OpenGL, a render interface
+  exported by the HAL, and a CPU rasterizer that takes any blend, the
+  alpha test, perspective-correct mip-mapped textures and fog.
+
+`V9XGL.DLL` is not yet in the driver packages; the changelog says how to
+install it by hand until the one-family-per-disk floppy is built. The
+0.9.0 downloads are not published yet.
+
+**Latest published downloads: [0.8.1](releases/0.8.1/README.md).** An
+Intel GMA 950 release. Beyond 0.8.0 it adds:
 - 3DMark 99 rendering and scoring on the GMA 950 (717 at 640x480, 643 at
   1024x576), with mipmapping;
 - DirectDraw fills and copies on the Gen3 blitter, and the application's
@@ -116,6 +130,23 @@ The main features, subject to each target's limits:
 
   3DMark 99, Final Reality and Half-Life run on one netbook; see the
   [changelog](CHANGELOG.md) for what is open.
+- **OpenGL 1.1** (new in 0.9.0) — an installable client driver,
+  `V9XGL.DLL`, that OPENGL32 finds through the display driver and loads in
+  place of Microsoft's software renderer on a 16 bpp desktop the engine can
+  draw into (565 or 555; 555 only on the ViRGE). It draws through the same
+  engines as Direct3D:
+  - on the GMA 950, textures of any power-of-two shape sampled by the GPU,
+    and anything the GPU cannot express drawn by the CPU into the same
+    frame - Quake 2 at 28 fps, Serious Sam drawn with its textures on the GPU;
+  - on the CPU rasterizer, every fragment operation the drivers implement;
+  - on the ViRGE, square textures in the S3D's own formats, and nothing it
+    cannot draw exactly - Quake 3's text and additive effects are refused.
+
+  Immediate mode, vertex arrays, texture objects, state queries,
+  glReadPixels and front-buffer drawing are implemented; lighting,
+  display lists and the rest of OpenGL 1.1 are not yet
+  ([requirements](docs/plans/opengl-1.1-requirements.md)). It is not yet
+  in the driver packages ([changelog](CHANGELOG.md)).
 - **A Direct3D mode selector** on the Velocity9x page in Display Properties,
   offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw

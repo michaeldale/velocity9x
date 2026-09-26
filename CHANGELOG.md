@@ -4,6 +4,94 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.9.0 - 2026-09-26
+
+The OpenGL release. Velocity9x now has an OpenGL 1.1 installable client
+driver, V9XGL.DLL, loaded by Windows' own OPENGL32.DLL and drawing
+through the same render core as Direct3D. Quake 2 runs on the Intel
+GMA 950 with hardware textures and on the software engine, Serious Sam on
+the GMA 950, and the ViRGE draws what its S3D can express. Measured on the netbook
+(945GSE), A8U4I5 (physical ViRGE/DX) and the 86Box guests.
+
+**Packaging:** V9XGL.DLL is not yet inside the driver packages. Putting
+it in every family overfills the shared install floppy, and the fix -
+one family per disk - is decided but not built
+([issue](docs/issues/2026-09-26-floppy-over-capacity-with-opengl-icd.md)).
+Until then it is built with `scripts\build-opengl-icd.ps1` and installed
+by copying it to `C:\WINDOWS\SYSTEM` and adding
+`HKLM\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers`,
+`Velocity9x` = `V9XGL.DLL`.
+
+### OpenGL
+
+- **The ICD** answers OPENGL32's contract: the display driver's
+  OPENGL_GETINFO escape, the `Drv*` exports and a 336-slot dispatch table
+  generated from one manifest. It offers a double-buffered 16-bit colour,
+  16-bit depth format on 16 bpp desktops the engine can draw into (565 or
+  555; 555 only on the ViRGE), and OPENGL32's generic formats otherwise
+  ([record](docs/decisions/2026-09-26-phase3-icd-clears-and-presents-through-opengl32.md)).
+- **Implemented:** the matrix stacks, immediate mode, vertex arrays with
+  all fourteen interleaved layouts, clipping in clip space (the scissor
+  box included, as geometry), texture objects and images with the table
+  3.18 environments, state queries, glReadPixels for the colour formats,
+  front-buffer drawing, and GL_NONE. Every pure module is host-tested; the
+  remaining entry points set GL_INVALID_OPERATION and are listed in the
+  [requirements inventory](docs/plans/opengl-1.1-requirements.md).
+- **Quake 2 on the GMA 950:** 1.2 fps with every texture drawn by the CPU,
+  11 with square textures sampled by Gen3, 22 with non-square ones, 28
+  with triangles held across glEnd (`timerefresh` at demo1's spawn point;
+  [record](docs/decisions/2026-09-26-phase5-quake2-gen3-hardware-textures.md)).
+  Fullscreen and `vid_restart` work.
+- **Serious Sam** on the GMA 950: its letterbox scissor, 1x1 textures and
+  the part's 5 MB of free video memory no longer send it to the CPU -
+  1.78 million triangles on Gen3 in a demo session, none refused
+  ([record](docs/decisions/2026-09-26-phase5-serious-sam-on-gen3.md)).
+- **The ViRGE** samples OpenGL textures where the S3D can express them
+  exactly: square 1555 and 4444 maps (RGB images converted at upload).
+  Non-square textures, textures under 4 texels and blends other than
+  source alpha over its inverse are refused, not drawn wrong; the Quake 3
+  demo's menu model draws, its text does not
+  ([record](docs/decisions/2026-09-26-phase5-virge-hardware-textures-for-opengl.md)).
+- **Logging** for bring-up: the ICD writes `C:\V9XDIAG\V9XGL.LOG`, with
+  per-path batch and texture counters every ten seconds and each state an
+  engine refuses.
+
+### Render core and HAL (all engines)
+
+- **A neutral render core** (`src/display32/r3d/`): the clipper, list
+  builder and cull decision moved out of the Direct3D front end, and every
+  engine draws from a neutral description. The V9XDDP probes and 3DMark 99
+  measured the same before and after on the ViRGE, the software engine
+  and the netbook.
+- **Render interface v2**, exported by V9XHAL.DLL: versioned, stateless,
+  validated before anything is read or emitted, taking the Win16 mutex
+  itself. Describe states each engine's hardware texture limits.
+- **Draining is three-state** (done, busy, abandoned): a Gen3 drain that
+  times out is reported instead of treated as finished, and DestroySurface
+  no longer leaks a Gen3 block after a slow drain.
+- **A refused draw falls back to the software engine** on Gen3, after a
+  drain; not on the ViRGE, where the shared 555 frame is unmeasured.
+
+### CPU rasterizer
+
+Non-square textures, texel alpha and the alpha test, the whole blend
+factor set, a scissor and colour mask, perspective-correct texture
+coordinates, mip chains and post-texture fog - for the render interface.
+Direct3D on the software engine keeps the caps it advertised.
+
+### Gen3 (GMA 950)
+
+- Textures that are non-square or down to one texel are placed, bound
+  and sampled. The Direct3D caps still say square and at least 8, so
+  Direct3D applications are offered nothing new.
+- 3DMark 99 after the render-core move: 669 at 1024x576 (643 in 0.8.1),
+  the difference unattributed.
+
+Still open: the ICD in the packages (above); the ViRGE's missing blends
+and non-square textures; a Gen3 and CPU-fallback disagreement in one
+Quake 2 frame ([issue](docs/issues/2026-09-26-software-engine-quake2-sky.md));
+and video memory, which Serious Sam's textures outgrow on the netbook.
+
 ## 0.8.1 - 2026-09-25
 
 An Intel GMA 950 release. Everything here was measured on the netbook
