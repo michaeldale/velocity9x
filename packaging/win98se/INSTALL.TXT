@@ -6,6 +6,9 @@ V9XSET.EXE is a read-only settings/status panel and is safe to open before
 installation. It exposes no hardware programming controls in this build.
 V9XSETP.DLL adds the same read-only status as a "Velocity9x" tab inside the
 native Display Properties dialog. It is copied and registered by the INF.
+V9XGL.DLL is the OpenGL 1.1 driver. The INF copies it and registers it under
+OpenGLDrivers; OpenGL programs then use it on a High Color desktop the card
+can draw into, and Windows' own software OpenGL everywhere else.
 V9XSTAGE.EXE is an optional one-click preflight. It loads the VxD lifecycle
 probe and asks the DRV only for GDIINFO/mode validation; it never sets a mode.
 V9XGDI.EXE is the post-boot framebuffer test. Run it only after the new desktop

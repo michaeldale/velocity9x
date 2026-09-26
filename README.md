@@ -24,9 +24,9 @@ later.
   exported by the HAL, and a CPU rasterizer that takes any blend, the
   alpha test, perspective-correct mip-mapped textures and fog.
 
-`V9XGL.DLL` is not yet in the driver packages; the changelog says how to
-install it by hand until the one-family-per-disk floppy is built. The
-0.9.0 downloads are not published yet.
+Every driver package installs `V9XGL.DLL` along with the display driver,
+and the offline transfer disk is now one floppy per family. The 0.9.0
+downloads are not published yet.
 
 **Latest published downloads: [0.8.1](releases/0.8.1/README.md).** An
 Intel GMA 950 release. Beyond 0.8.0 it adds:
@@ -145,8 +145,8 @@ The main features, subject to each target's limits:
   Immediate mode, vertex arrays, texture objects, state queries,
   glReadPixels and front-buffer drawing are implemented; lighting,
   display lists and the rest of OpenGL 1.1 are not yet
-  ([requirements](docs/plans/opengl-1.1-requirements.md)). It is not yet
-  in the driver packages ([changelog](CHANGELOG.md)).
+  ([requirements](docs/plans/opengl-1.1-requirements.md)). The INF installs
+  and registers it with the display driver.
 - **A Direct3D mode selector** on the Velocity9x page in Display Properties,
   offering the chip's own engine, the CPU rasterizer, or nothing at all.
   Turning it off makes the driver advertise no Direct3D at all, so DirectDraw

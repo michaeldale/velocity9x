@@ -1,7 +1,7 @@
 # The floppy transfer folder no longer fits once the OpenGL ICD is packaged
 
-Found 2026-09-26 while making V9XGL.DLL part of every package. Open;
-decided: one family per disk (below), not yet implemented.
+Found 2026-09-26 while making V9XGL.DLL part of every package. Closed
+2026-09-27: one family per disk (below), built.
 
 ## Symptom
 
@@ -69,8 +69,14 @@ room to spare, and the INF on each disk can copy `v9xgl.dll` as it does
 from the network package. Shrinking the ICD stays worth doing, but is no
 longer needed for the floppy to fit.
 
-## State of the tree
+## Resolution (2026-09-27)
 
-The packaging change (build, INF copy and `OpenGLDrivers` entry, file
-list, manifest line, `V9XCOPY.BAT`) is in the working tree, uncommitted,
-because the gate fails at this step.
+`scripts/build-floppy-package.ps1` now makes one disk per family under
+`build/floppy/<Folder>`: the package in its folder, `RECOVER.TXT`, and a
+`README.TXT` naming that family's chips and hardware IDs. Each disk is
+checked against the 1,457,664 usable bytes on its own; `-Zip` makes one
+archive per disk. Measured on the first build: ATI 806,874, S3 811,342
+and VBE 808,044 bytes. The packaging change went in with it, and the
+full gate passes. The ICD's zero-filled image tables are still worth
+moving to the heap, for a smaller package, but the disks no longer
+depend on it.

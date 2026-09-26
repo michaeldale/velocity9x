@@ -188,20 +188,21 @@ signatures and none of any other family's.
 ./scripts/build-floppy-package.ps1
 ```
 
-Builds every family that opts into the disk and assembles `build/floppy` —
-roughly 460 KB, so it fits one 1.44 MB floppy with room to spare. It carries
-`VIRGE\` and `TRIO64\` side by side plus a root `README.TXT` written for the
-real-hardware case (identifying the card, the Have Disk flow, recovery, and
-which `C:\V9X*.INI` files to collect when reporting a problem). Which folders
-appear, in what order, and the chip table printed in `README.TXT` all come from
-the family manifests.
+Builds every family that opts into the disk and assembles one floppy per
+family under `build/floppy/<Folder>` — about 810 KB each since the OpenGL
+ICD joined the packages, so each fits one 1.44 MB floppy. Each disk holds
+its family's package in a folder of the same name, `RECOVER.TXT`, and a
+root `README.TXT` written for the real-hardware case (identifying the card,
+the Have Disk flow, recovery, and which `C:\V9X*` files to collect when
+reporting a problem). Which disks are made, and the chip table printed in
+each `README.TXT`, come from the family manifests.
 
 The output is a plain directory tree on purpose: Windows 98 has no built-in
 extractor, so an offline machine must be able to use the files directly. Pass
-`-Zip` to also produce an archive for network transfer, and `-SkipBuild` to
-assemble from packages you have already built.
+`-Zip` to also produce one archive per disk for network transfer, and
+`-SkipBuild` to assemble from packages you have already built.
 
-The script refuses to finish if the tree exceeds the usable space on a floppy.
+The script refuses to finish if any disk exceeds the usable space on a floppy.
 
 ## Component builds
 

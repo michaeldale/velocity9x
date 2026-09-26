@@ -154,6 +154,7 @@ function New-V9xInfText {
         'v9xmini.vxd=1'
         'v9xsetp.dll=1'
         'v9xhal.dll=1'
+        'v9xgl.dll=1'
         ''
         '[Manufacturer]'
         ('{0}={1}' -f $inf.Manufacturer, $models)
@@ -255,6 +256,7 @@ function New-V9xInfText {
         'v9xmini.vxd,,,12'
         'v9xsetp.dll,,,12'
         'v9xhal.dll,,,12'
+        'v9xgl.dll,,,12'
         ''
         '[Velocity9x.Previous]'
         'HKR,,Ver'
@@ -334,6 +336,15 @@ function New-V9xInfText {
         # where the shell first reads the handler list.
         ('HKLM,Software\Microsoft\Windows\CurrentVersion\RunOnce,V9xSettingsPage,,' +
          '"rundll32.exe v9xsetp.dll,V9xRegisterPage"')
+        # The OpenGL ICD (src\opengl). OPENGL32 asks the display driver's
+        # OPENGL_GETINFO escape for a name and looks that value up here; the
+        # name is V9X_OPENGL_DRIVER_NAME (win9x_ddraw_abi.h), which dd16.c
+        # answers with. Every family carries it: where the HAL describes no
+        # render target the ICD offers no pixel format, and OPENGL32 serves
+        # its generic ones as it would without an ICD (measured on the 565
+        # ViRGE guest, 2026-09-26). The key path is quoted like the two above.
+        ('HKLM,"Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers",' +
+         'Velocity9x,,"v9xgl.dll"')
     ) + @(if ($Family.Build.MiniVddVbeCollect -ne $false) {
         # Run, not RunOnce, and the two must not be mistaken for each other:
         # V9xRegisterPage writes the property-sheet Tag once, at the first
@@ -465,6 +476,8 @@ function Assert-V9xInf {
     }
 
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
+                  'v9xgl.dll,,,12', 'v9xgl.dll=1',
+                  'CurrentVersion\OpenGLDrivers",Velocity9x,,"v9xgl.dll"',
                   'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
                   'RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"',
                   "CLSID\$script:V9xSettingsPageClsid\InProcServer32",

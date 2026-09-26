@@ -72,7 +72,7 @@ foreach ($manifest in $families) {
 if (-not $SkipFloppy -and @($families | Where-Object { $_.Floppy.Include }).Count -ne 0) {
     & (Join-Path $PSScriptRoot "build-floppy-package.ps1") `
         -BuildId $BuildId -DdkRoot $DdkRoot -SkipBuild | Write-Verbose
-    Write-Output "Assembled floppy transfer folder: build\floppy"
+    Write-Output "Assembled floppy disks, one per family: build\floppy\<family>"
 }
 
 $index = [pscustomobject]@{

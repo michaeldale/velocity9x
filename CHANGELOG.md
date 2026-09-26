@@ -13,14 +13,14 @@ GMA 950 with hardware textures and on the software engine, Serious Sam on
 the GMA 950, and the ViRGE draws what its S3D can express. Measured on the netbook
 (945GSE), A8U4I5 (physical ViRGE/DX) and the 86Box guests.
 
-**Packaging:** V9XGL.DLL is not yet inside the driver packages. Putting
-it in every family overfills the shared install floppy, and the fix -
-one family per disk - is decided but not built
+**Packaging:** every family's package carries V9XGL.DLL, and its INF
+copies it and registers it under
+`HKLM\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers`
+(`Velocity9x` = `v9xgl.dll`), so an install through Display Properties
+sets up OpenGL too. With the ICD the families no longer fit one floppy
+together, so the transfer disk is now one disk per family,
+`build\floppy\<family>`, each about 810 KB
 ([issue](docs/issues/2026-09-26-floppy-over-capacity-with-opengl-icd.md)).
-Until then it is built with `scripts\build-opengl-icd.ps1` and installed
-by copying it to `C:\WINDOWS\SYSTEM` and adding
-`HKLM\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers`,
-`Velocity9x` = `V9XGL.DLL`.
 
 ### OpenGL
 
@@ -87,7 +87,7 @@ Direct3D on the software engine keeps the caps it advertised.
 - 3DMark 99 after the render-core move: 669 at 1024x576 (643 in 0.8.1),
   the difference unattributed.
 
-Still open: the ICD in the packages (above); the ViRGE's missing blends
+Still open: the ViRGE's missing blends
 and non-square textures; a Gen3 and CPU-fallback disagreement in one
 Quake 2 frame ([issue](docs/issues/2026-09-26-software-engine-quake2-sky.md));
 and video memory, which Serious Sam's textures outgrow on the netbook.
