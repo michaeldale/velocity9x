@@ -76,6 +76,8 @@ unsigned int v9x_run_r3d_line_tests(void);
 unsigned int v9x_run_r3d_clear_tests(void);
 /* tests\host\test_r3d_validate.c: the render interface's validators. */
 unsigned int v9x_run_r3d_validate_tests(void);
+/* tests\host\test_gl_state.c: the ICD's OpenGL context state. */
+unsigned int v9x_run_gl_state_tests(void);
 
 /* tests\host\test_d3d_state.c: the Direct3D-to-neutral state routing and
  * the vocabulary's numbers against d3dtypes.h, same convention. */
@@ -1088,6 +1090,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r3d_line_tests();
     failures += v9x_run_r3d_clear_tests();
     failures += v9x_run_r3d_validate_tests();
+    failures += v9x_run_gl_state_tests();
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();

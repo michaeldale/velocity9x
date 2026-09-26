@@ -71,6 +71,7 @@ function Get-V9xHostSourceNames {
         'src\display32\r3d\r3d_line.c',
         'src\display32\r3d\r3d_clear.c',
         'src\display32\r3d\r3d_validate.c',
+        'src\opengl\gl_state.c',
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
@@ -93,6 +94,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_r3d_line.c',
         'tests\host\test_r3d_clear.c',
         'tests\host\test_r3d_validate.c',
+        'tests\host\test_gl_state.c',
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
         'tests\host\test_i9xx_cover.c',
