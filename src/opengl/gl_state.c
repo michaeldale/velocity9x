@@ -126,6 +126,7 @@ void v9x_gl_state_init(V9X_GL_STATE *state)
     for (index = 0u; index < V9X_GL_CAP_COUNT; ++index) {
         state->caps[index] = v9x_gl_caps[index] == V9X_GL_DITHER ? 1 : 0;
     }
+    v9x_gl_matrices_init(&state->matrices);
 }
 
 void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,

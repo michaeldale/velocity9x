@@ -361,77 +361,186 @@ static void V9X_GL_API v9x_gl_flush(void)
     (void)iface->flush(description->generation);
 }
 
-/* Each override checked against its slot's generated type: a signature
- * that does not match the slot cannot compile. */
-static const V9X_GL_PFN_glGetString v9x_gl_check_get_string = v9x_gl_get_string;
-static const V9X_GL_PFN_glGetError v9x_gl_check_get_error = v9x_gl_get_error;
-static const V9X_GL_PFN_glClearColor v9x_gl_check_clear_color = v9x_gl_clear_color;
-static const V9X_GL_PFN_glClearDepth v9x_gl_check_clear_depth = v9x_gl_clear_depth;
-static const V9X_GL_PFN_glViewport v9x_gl_check_viewport = v9x_gl_viewport;
-static const V9X_GL_PFN_glScissor v9x_gl_check_scissor = v9x_gl_scissor;
-static const V9X_GL_PFN_glColorMask v9x_gl_check_color_mask = v9x_gl_color_mask;
-static const V9X_GL_PFN_glDepthMask v9x_gl_check_depth_mask = v9x_gl_depth_mask;
-static const V9X_GL_PFN_glEnable v9x_gl_check_enable = v9x_gl_enable;
-static const V9X_GL_PFN_glDisable v9x_gl_check_disable = v9x_gl_disable;
-static const V9X_GL_PFN_glIsEnabled v9x_gl_check_is_enabled = v9x_gl_is_enabled;
-static const V9X_GL_PFN_glClear v9x_gl_check_clear = v9x_gl_clear;
-static const V9X_GL_PFN_glFinish v9x_gl_check_finish = v9x_gl_finish;
-static const V9X_GL_PFN_glFlush v9x_gl_check_flush = v9x_gl_flush;
+/* ---- Matrix commands (2.10.2), through gl_matrix.c ------------------ */
 
-typedef struct v9x_gl_override {
-    const char *name;
-    V9X_GL_PROC proc;
-} V9X_GL_OVERRIDE;
+#define V9X_GL_WITH_CONTEXT(call) do { \
+    V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
+    if (context_ != 0) { \
+        call; \
+    } \
+} while (0)
+
+static void V9X_GL_API v9x_gl_matrix_mode(GLenum mode)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_matrix_mode(&context_->state, mode));
+}
+
+static void V9X_GL_API v9x_gl_load_identity(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_load_identity(&context_->state));
+}
+
+static void V9X_GL_API v9x_gl_load_matrixf(const GLfloat *m)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_load_matrix(&context_->state, m));
+}
+
+static void V9X_GL_API v9x_gl_mult_matrixf(const GLfloat *m)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_mult_matrix(&context_->state, m));
+}
+
+/* The double forms convert on entry: the stacks are single precision, which
+ * is what the specification's implementation latitude allows (2.10.2). */
+static void v9x_gl_to_floats(const GLdouble *in, GLfloat *out)
+{
+    unsigned int index;
+
+    for (index = 0u; index < 16u; ++index) {
+        out[index] = (GLfloat)in[index];
+    }
+}
+
+static void V9X_GL_API v9x_gl_load_matrixd(const GLdouble *m)
+{
+    GLfloat f[16];
+
+    v9x_gl_to_floats(m, f);
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_load_matrix(&context_->state, f));
+}
+
+static void V9X_GL_API v9x_gl_mult_matrixd(const GLdouble *m)
+{
+    GLfloat f[16];
+
+    v9x_gl_to_floats(m, f);
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_mult_matrix(&context_->state, f));
+}
+
+static void V9X_GL_API v9x_gl_translatef(GLfloat x, GLfloat y, GLfloat z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_translate(&context_->state, x, y, z));
+}
+
+static void V9X_GL_API v9x_gl_translated(GLdouble x, GLdouble y, GLdouble z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_translate(&context_->state, (GLfloat)x,
+                                               (GLfloat)y, (GLfloat)z));
+}
+
+static void V9X_GL_API v9x_gl_scalef(GLfloat x, GLfloat y, GLfloat z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_scale(&context_->state, x, y, z));
+}
+
+static void V9X_GL_API v9x_gl_scaled(GLdouble x, GLdouble y, GLdouble z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_scale(&context_->state, (GLfloat)x,
+                                           (GLfloat)y, (GLfloat)z));
+}
+
+static void V9X_GL_API v9x_gl_rotatef(GLfloat angle, GLfloat x, GLfloat y,
+                                      GLfloat z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_rotate(&context_->state, angle, x, y,
+                                            z));
+}
+
+static void V9X_GL_API v9x_gl_rotated(GLdouble angle, GLdouble x,
+                                      GLdouble y, GLdouble z)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_rotate(&context_->state, (GLfloat)angle,
+                                            (GLfloat)x, (GLfloat)y,
+                                            (GLfloat)z));
+}
+
+static void V9X_GL_API v9x_gl_frustum(GLdouble left, GLdouble right,
+                                      GLdouble bottom, GLdouble top,
+                                      GLdouble near_plane, GLdouble far_plane)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_frustum(&context_->state, left, right,
+                                             bottom, top, near_plane,
+                                             far_plane));
+}
+
+static void V9X_GL_API v9x_gl_ortho(GLdouble left, GLdouble right,
+                                    GLdouble bottom, GLdouble top,
+                                    GLdouble near_plane, GLdouble far_plane)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_ortho(&context_->state, left, right,
+                                           bottom, top, near_plane,
+                                           far_plane));
+}
+
+static void V9X_GL_API v9x_gl_push_matrix(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_push_matrix(&context_->state));
+}
+
+static void V9X_GL_API v9x_gl_pop_matrix(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_pop_matrix(&context_->state));
+}
+
+/* ---- The table ----------------------------------------------------- */
+
+static void v9x_gl_set_slot(const char *name, V9X_GL_PROC proc)
+{
+    unsigned int slot;
+
+    for (slot = 0u; slot < V9X_GL_SLOT_COUNT; ++slot) {
+        if (lstrcmpA(v9x_gl_slot_names[slot], name) == 0) {
+            v9x_gl_table.entries[slot] = proc;
+            return;
+        }
+    }
+    v9x_gl_log(name);
+}
+
+/* Each override is assigned to a local of its slot's generated type before
+ * it is stored, so a signature that does not match the slot - the stack
+ * cleanup a caller relies on - cannot compile. */
+#define V9X_GL_OVERRIDE(slot_name, function) do { \
+    V9X_GL_PFN_##slot_name typed_ = function; \
+    v9x_gl_set_slot(#slot_name, (V9X_GL_PROC)typed_); \
+} while (0)
 
 static void v9x_gl_install_overrides(void)
 {
-    V9X_GL_OVERRIDE overrides[14];
-    unsigned int slot;
-    unsigned int index;
-
     if (v9x_gl_overrides_installed) {
         return;
     }
     v9x_gl_overrides_installed = 1;
-    overrides[0].name = "glGetString";
-    overrides[0].proc = (V9X_GL_PROC)v9x_gl_check_get_string;
-    overrides[1].name = "glGetError";
-    overrides[1].proc = (V9X_GL_PROC)v9x_gl_check_get_error;
-    overrides[2].name = "glClearColor";
-    overrides[2].proc = (V9X_GL_PROC)v9x_gl_check_clear_color;
-    overrides[3].name = "glClearDepth";
-    overrides[3].proc = (V9X_GL_PROC)v9x_gl_check_clear_depth;
-    overrides[4].name = "glViewport";
-    overrides[4].proc = (V9X_GL_PROC)v9x_gl_check_viewport;
-    overrides[5].name = "glScissor";
-    overrides[5].proc = (V9X_GL_PROC)v9x_gl_check_scissor;
-    overrides[6].name = "glColorMask";
-    overrides[6].proc = (V9X_GL_PROC)v9x_gl_check_color_mask;
-    overrides[7].name = "glDepthMask";
-    overrides[7].proc = (V9X_GL_PROC)v9x_gl_check_depth_mask;
-    overrides[8].name = "glEnable";
-    overrides[8].proc = (V9X_GL_PROC)v9x_gl_check_enable;
-    overrides[9].name = "glDisable";
-    overrides[9].proc = (V9X_GL_PROC)v9x_gl_check_disable;
-    overrides[10].name = "glIsEnabled";
-    overrides[10].proc = (V9X_GL_PROC)v9x_gl_check_is_enabled;
-    overrides[11].name = "glClear";
-    overrides[11].proc = (V9X_GL_PROC)v9x_gl_check_clear;
-    overrides[12].name = "glFinish";
-    overrides[12].proc = (V9X_GL_PROC)v9x_gl_check_finish;
-    overrides[13].name = "glFlush";
-    overrides[13].proc = (V9X_GL_PROC)v9x_gl_check_flush;
-    for (index = 0u; index < 14u; ++index) {
-        for (slot = 0u; slot < V9X_GL_SLOT_COUNT; ++slot) {
-            if (lstrcmpA(v9x_gl_slot_names[slot], overrides[index].name) == 0) {
-                v9x_gl_table.entries[slot] = overrides[index].proc;
-                break;
-            }
-        }
-        if (slot == V9X_GL_SLOT_COUNT) {
-            v9x_gl_log(overrides[index].name);
-        }
-    }
+    V9X_GL_OVERRIDE(glGetString, v9x_gl_get_string);
+    V9X_GL_OVERRIDE(glGetError, v9x_gl_get_error);
+    V9X_GL_OVERRIDE(glClearColor, v9x_gl_clear_color);
+    V9X_GL_OVERRIDE(glClearDepth, v9x_gl_clear_depth);
+    V9X_GL_OVERRIDE(glViewport, v9x_gl_viewport);
+    V9X_GL_OVERRIDE(glScissor, v9x_gl_scissor);
+    V9X_GL_OVERRIDE(glColorMask, v9x_gl_color_mask);
+    V9X_GL_OVERRIDE(glDepthMask, v9x_gl_depth_mask);
+    V9X_GL_OVERRIDE(glEnable, v9x_gl_enable);
+    V9X_GL_OVERRIDE(glDisable, v9x_gl_disable);
+    V9X_GL_OVERRIDE(glIsEnabled, v9x_gl_is_enabled);
+    V9X_GL_OVERRIDE(glClear, v9x_gl_clear);
+    V9X_GL_OVERRIDE(glFinish, v9x_gl_finish);
+    V9X_GL_OVERRIDE(glFlush, v9x_gl_flush);
+    V9X_GL_OVERRIDE(glMatrixMode, v9x_gl_matrix_mode);
+    V9X_GL_OVERRIDE(glLoadIdentity, v9x_gl_load_identity);
+    V9X_GL_OVERRIDE(glLoadMatrixf, v9x_gl_load_matrixf);
+    V9X_GL_OVERRIDE(glLoadMatrixd, v9x_gl_load_matrixd);
+    V9X_GL_OVERRIDE(glMultMatrixf, v9x_gl_mult_matrixf);
+    V9X_GL_OVERRIDE(glMultMatrixd, v9x_gl_mult_matrixd);
+    V9X_GL_OVERRIDE(glTranslatef, v9x_gl_translatef);
+    V9X_GL_OVERRIDE(glTranslated, v9x_gl_translated);
+    V9X_GL_OVERRIDE(glScalef, v9x_gl_scalef);
+    V9X_GL_OVERRIDE(glScaled, v9x_gl_scaled);
+    V9X_GL_OVERRIDE(glRotatef, v9x_gl_rotatef);
+    V9X_GL_OVERRIDE(glRotated, v9x_gl_rotated);
+    V9X_GL_OVERRIDE(glFrustum, v9x_gl_frustum);
+    V9X_GL_OVERRIDE(glOrtho, v9x_gl_ortho);
+    V9X_GL_OVERRIDE(glPushMatrix, v9x_gl_push_matrix);
+    V9X_GL_OVERRIDE(glPopMatrix, v9x_gl_pop_matrix);
 }
 
 /* ---- Pixel formats ------------------------------------------------- */

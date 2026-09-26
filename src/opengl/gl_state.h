@@ -17,6 +17,7 @@
 
 #include "velocity9x/types.h"
 #include "velocity9x/gl_types.h"
+#include "gl_matrix.h"
 
 /* The values this file names, as <GL/gl.h> numbers them; V9X_ so the ICD
  * can include both. */
@@ -66,6 +67,7 @@ typedef struct v9x_gl_state {
     GLboolean color_mask[4];
     GLboolean depth_mask;
     GLboolean caps[V9X_GL_CAP_COUNT];
+    V9X_GL_MATRICES matrices;
 } V9X_GL_STATE;
 
 /*
@@ -128,5 +130,26 @@ GLboolean v9x_gl_state_is_enabled(V9X_GL_STATE *state, GLenum cap);
  */
 int v9x_gl_state_clear(V9X_GL_STATE *state, GLbitfield mask,
                        int has_depth, V9X_GL_CLEAR_PLAN *plan);
+
+/* The matrix commands (2.10.2), in gl_matrix.c. Each is INVALID_OPERATION
+ * between glBegin and glEnd. */
+void v9x_gl_state_matrix_mode(V9X_GL_STATE *state, GLenum mode);
+void v9x_gl_state_load_identity(V9X_GL_STATE *state);
+void v9x_gl_state_load_matrix(V9X_GL_STATE *state, const GLfloat *m);
+void v9x_gl_state_mult_matrix(V9X_GL_STATE *state, const GLfloat *m);
+void v9x_gl_state_translate(V9X_GL_STATE *state, GLfloat x, GLfloat y,
+                            GLfloat z);
+void v9x_gl_state_scale(V9X_GL_STATE *state, GLfloat x, GLfloat y,
+                        GLfloat z);
+void v9x_gl_state_rotate(V9X_GL_STATE *state, GLfloat angle, GLfloat x,
+                         GLfloat y, GLfloat z);
+void v9x_gl_state_frustum(V9X_GL_STATE *state, GLdouble left,
+                          GLdouble right, GLdouble bottom, GLdouble top,
+                          GLdouble near_plane, GLdouble far_plane);
+void v9x_gl_state_ortho(V9X_GL_STATE *state, GLdouble left, GLdouble right,
+                        GLdouble bottom, GLdouble top, GLdouble near_plane,
+                        GLdouble far_plane);
+void v9x_gl_state_push_matrix(V9X_GL_STATE *state);
+void v9x_gl_state_pop_matrix(V9X_GL_STATE *state);
 
 #endif /* VELOCITY9X_GL_STATE_H */
