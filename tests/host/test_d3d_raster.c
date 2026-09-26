@@ -1000,6 +1000,10 @@ static void raster_texture_reset(V9X_D3D_RASTER_TEXTURE *texture,
     texture->address = V9X_D3D_RASTER_ADDRESS_CLAMP;
     /* IGNORE unless a test says otherwise: the vertex alpha, as before. */
     texture->alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    /* And one level, likewise. */
+    texture->mip = V9X_D3D_RASTER_MIP_NONE;
+    texture->mip_count = 0ul;
+    texture->mips = 0;
 }
 
 static void raster_texel_set(unsigned int x, unsigned int y, v9x_u16 value)
@@ -1185,6 +1189,9 @@ static void test_texture_non_square_point_sampling(void)
     texture.blend = V9X_D3D_RASTER_BLEND_DECAL;
     texture.address = V9X_D3D_RASTER_ADDRESS_CLAMP;
     texture.alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    texture.mip = V9X_D3D_RASTER_MIP_NONE;
+    texture.mip_count = 0ul;
+    texture.mips = 0;
     RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
     raster_wide_cells[RASTER_TEX_GUARD + 0u * RASTER_WIDE_W + 0u] = 0x7c00u; /* red */
     raster_wide_cells[RASTER_TEX_GUARD + 0u * RASTER_WIDE_W + 7u] = 0x03e0u; /* green */
@@ -2893,6 +2900,263 @@ static void test_shared_edge_pixels_drawn_once(void)
     raster_check_untouched_margins_value(0x0000u);
 }
 
+/*
+ * Mip chains for the tests: one block of cells holding every level of a
+ * chain in turn, each level filled with its own flat colour so that which
+ * level was sampled reads straight off the pixel. Level 0 goes in the
+ * texture itself and the rest in raster_mip_levels.
+ */
+#define RASTER_MIP_CELLS 1024u
+static v9x_u16 raster_mip_cells[RASTER_MIP_CELLS];
+static V9X_D3D_RASTER_LEVEL raster_mip_levels[V9X_D3D_RASTER_MIPS_MAX];
+static const v9x_u16 raster_level_colours[10] = {
+    0xf800u, 0x07e0u, 0x001fu, 0xffffu, 0xf81fu,
+    0xffe0u, 0x07ffu, 0x8410u, 0x4208u, 0x2104u
+};
+
+static void raster_mip_chain(V9X_D3D_RASTER_TEXTURE *texture,
+                             unsigned int width, unsigned int height,
+                             v9x_u32 mip)
+{
+    unsigned int offset = 0u;
+    unsigned int level = 0u;
+    unsigned int w = width;
+    unsigned int h = height;
+
+    raster_texture_reset(texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    texture->address = V9X_D3D_RASTER_ADDRESS_WRAP;
+    for (;;) {
+        unsigned int i;
+
+        for (i = 0u; i < w * h; ++i) {
+            raster_mip_cells[offset + i] = raster_level_colours[level];
+        }
+        if (level == 0u) {
+            texture->pixels = &raster_mip_cells[offset];
+            texture->pitch = w * 2ul;
+            texture->width = w;
+            texture->height = h;
+        } else {
+            raster_mip_levels[level - 1u].pixels = &raster_mip_cells[offset];
+            raster_mip_levels[level - 1u].pitch = w * 2ul;
+            raster_mip_levels[level - 1u].width = w;
+            raster_mip_levels[level - 1u].height = h;
+        }
+        offset += w * h;
+        if (w == 1u && h == 1u) {
+            break;
+        }
+        w = w > 1u ? w / 2u : 1u;
+        h = h > 1u ? h / 2u : 1u;
+        ++level;
+    }
+    texture->mip = mip;
+    texture->mip_count = level;
+    texture->mips = raster_mip_levels;
+}
+
+/* Two triangles over the whole target with u running 0..u_repeats left to
+ * right and v 0..v_repeats top to bottom, affine. */
+static int raster_scaled_quad(const V9X_D3D_RASTER_TARGET *target,
+                              const V9X_D3D_RASTER_TEXTURE *texture,
+                              v9x_s32 u_repeats, v9x_s32 v_repeats)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    v9x_s32 u1 = u_repeats * V9X_D3D_RASTER_TEXCOORD_ONE;
+    v9x_s32 v1 = v_repeats * V9X_D3D_RASTER_TEXCOORD_ONE;
+    int ok;
+
+    raster_vertex(&triangle[0], PX(0), PX(0), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[1].u = u1;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].v = v1;
+    ok = v9x_d3d_raster_triangle(target, 0, texture, 0, 0, triangle) != 0;
+    raster_vertex(&triangle[0], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[0].u = u1;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(RASTER_HEIGHT),
+                  255l, 255l, 255l);
+    triangle[1].u = u1;
+    triangle[1].v = v1;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].v = v1;
+    return ok &&
+           v9x_d3d_raster_triangle(target, 0, texture, 0, 0, triangle) != 0;
+}
+
+/*
+ * POINT picks the level by how many texels cross a pixel.
+ *
+ * An 8x8 chain over a 32x24 target: u running R repeats across 32 pixels is
+ * 8R/32 texels per pixel, so R = 1 and 4 are level 0, R = 8 is level 1,
+ * 16 level 2 and 32 the 1x1 level 3. The same along v over 24 rows: R = 6
+ * is two texels per row, level 1, and R = 12 level 2. NONE with the same
+ * chain stays on level 0. These failed before the sampler carried a chain
+ * (Phase 2 of the OpenGL plan, 2026-09-26).
+ */
+static void test_mip_point_selects_by_scale(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_POINT);
+    RCHECK(texture.mip_count == 3ul);
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 1l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 4l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 8l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x07e0u);
+    RCHECK(raster_pixel(2u, 2u) == 0x07e0u);
+    RCHECK(raster_pixel(29u, 21u) == 0x07e0u);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 16l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x001fu);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 32l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xffffu);
+
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 0l, 6l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x07e0u);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 0l, 12l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x001fu);
+
+    texture.mip = V9X_D3D_RASTER_MIP_NONE;
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 16l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);
+    raster_check_untouched_margins();
+}
+
+/*
+ * LINEAR blends the two levels either side of the level of detail.
+ *
+ * R = 11 across 32 pixels is 2.75 texels per pixel, lambda 1.46: level 1
+ * (green) by 0.54 and level 2 (blue) by 0.46, about (0, 138, 117), which
+ * on 565 is green 34 and blue 14, checked to a couple of levels. Below one
+ * texel per pixel it is level 0 alone, and at the chain's end the last
+ * level alone.
+ */
+static void test_mip_linear_blends_levels(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    v9x_u16 value;
+
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_LINEAR);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 11l, 0l) != 0);
+    value = raster_pixel(16u, 10u);
+    RCHECK((value >> 11) == 0u);
+    RCHECK(((value >> 5) & 0x3fu) >= 31u && ((value >> 5) & 0x3fu) <= 37u);
+    RCHECK((value & 0x1fu) >= 12u && (value & 0x1fu) <= 16u);
+
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 2l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 32l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0xffffu);
+}
+
+/*
+ * A chain is refused unless every level is present and each extent is
+ * max(1, half the one before); POINT or LINEAR without a chain is refused;
+ * NONE with a chain is fine. A non-square chain ends in a 1xN tail: 8x2 is
+ * 4x1, 2x1, 1x1, and R = 16 across it (four texels per pixel) is level 2.
+ */
+static void test_mip_chain_refusals_and_tails(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_POINT);
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    raster_mip_levels[1].width = 4ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    raster_mip_levels[1].width = 2ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    raster_mip_levels[0].pixels = 0;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_POINT);
+    raster_mip_levels[2].pitch = 1ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_POINT);
+    texture.mip_count = V9X_D3D_RASTER_MIPS_MAX + 1ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.mip_count = 3ul;
+    texture.mip = 0ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.mip = 4ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.mip = V9X_D3D_RASTER_MIP_NONE;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    texture.mips = 0;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    texture.mip = V9X_D3D_RASTER_MIP_POINT;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.mip = V9X_D3D_RASTER_MIP_LINEAR;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+
+    /* Sizes down to one are textures now. */
+    texture.mip = V9X_D3D_RASTER_MIP_NONE;
+    texture.width = 1ul;
+    texture.height = 2ul;
+    texture.pitch = 2ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+
+    raster_mip_chain(&texture, 8u, 2u, V9X_D3D_RASTER_MIP_POINT);
+    RCHECK(texture.mip_count == 3ul);
+    RCHECK(raster_mip_levels[0].width == 4ul && raster_mip_levels[0].height == 1ul);
+    RCHECK(raster_mip_levels[2].width == 1ul && raster_mip_levels[2].height == 1ul);
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    raster_reset(&target);
+    RCHECK(raster_scaled_quad(&target, &texture, 16l, 0l) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x001fu);
+}
+
+/*
+ * On the perspective path the level follows the derivatives at each pixel,
+ * not a span's ends.
+ *
+ * A 64x4 chain under the perspective quad (q from 1 to 1/4 across the
+ * target): the texels per pixel are 64 * (1/32) * 4 / (4 - 3t)^2, which is
+ * 0.5 at the left edge, 1.3 at column 16, 2.8 at column 24 and 6.2 at
+ * column 30 - levels 0, 0, 1 and 3 under POINT. A level chosen once per
+ * span from its ends and interpolated linearly would put column 24, which
+ * sits mid-span in the lower-right triangle, on level 2; per-pixel
+ * derivatives put it on level 1, and that is what this checks.
+ */
+static void test_mip_perspective_selects_per_pixel(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_mip_chain(&texture, 64u, 4u, V9X_D3D_RASTER_MIP_POINT);
+    RCHECK(texture.mip_count == 6ul);
+    raster_reset(&target);
+    RCHECK(raster_perspective_quad(&target, &texture, V9X_D3D_RASTER_Q_ONE,
+                                   V9X_D3D_RASTER_Q_ONE / 4l) != 0);
+    RCHECK(raster_pixel(1u, 10u) == 0xf800u);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);
+    RCHECK(raster_pixel(24u, 10u) == 0x07e0u);
+    RCHECK(raster_pixel(30u, 10u) == 0xffffu);
+    RCHECK(raster_pixel(24u, 2u) == raster_pixel(24u, 21u));
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -2935,6 +3199,10 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_perspective_equal_q_is_affine();
     test_perspective_refusals();
     test_shared_edge_pixels_drawn_once();
+    test_mip_point_selects_by_scale();
+    test_mip_linear_blends_levels();
+    test_mip_chain_refusals_and_tails();
+    test_mip_perspective_selects_per_pixel();
     test_texture_wrap_tiles();
     test_texture_wrap_extreme_coordinate();
     test_texture_address_refusals();

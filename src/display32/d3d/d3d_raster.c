@@ -412,6 +412,40 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
     if (texture->pitch < texture->width * 2ul) {
         return 0;
     }
+    if (texture->mip != V9X_D3D_RASTER_MIP_NONE &&
+        texture->mip != V9X_D3D_RASTER_MIP_POINT &&
+        texture->mip != V9X_D3D_RASTER_MIP_LINEAR) {
+        return 0;
+    }
+    if (texture->mip_count > V9X_D3D_RASTER_MIPS_MAX) {
+        return 0;
+    }
+    if (texture->mip_count == 0ul) {
+        return texture->mip == V9X_D3D_RASTER_MIP_NONE;
+    }
+    /* The chain: every level present and each extent max(1, half the one
+     * before). The sampler's masks rely on that as much as on the powers of
+     * two above, and a chain that skipped a level would be sampled a level
+     * off, which looks like a blur rather than a fault. */
+    if (texture->mips == 0) {
+        return 0;
+    }
+    {
+        v9x_u32 width = texture->width;
+        v9x_u32 height = texture->height;
+        v9x_u32 level;
+
+        for (level = 0ul; level < texture->mip_count; ++level) {
+            const V9X_D3D_RASTER_LEVEL *mip = &texture->mips[level];
+
+            width = width > 1ul ? width / 2ul : 1ul;
+            height = height > 1ul ? height / 2ul : 1ul;
+            if (mip->pixels == 0 || mip->width != width ||
+                mip->height != height || mip->pitch < width * 2ul) {
+                return 0;
+            }
+        }
+    }
     return 1;
 }
 
@@ -605,17 +639,28 @@ typedef struct V9X_D3D_RASTER_FIELD {
     v9x_s32 right;
 } V9X_D3D_RASTER_FIELD;
 
-typedef struct V9X_D3D_RASTER_SAMPLER {
+/* One level's addressing. Per axis: the texel scale, the wrap mask and the
+ * bilinear bias are each the axis's own extent, since a texture need not be
+ * square. */
+typedef struct V9X_D3D_RASTER_SAMPLER_LEVEL {
     const v9x_u8 *pixels;
     v9x_u32 pitch;
-    /* Per axis: the texel scale, the wrap mask and the bilinear bias are
-     * each the axis's own extent, since a texture need not be square. */
     v9x_s32 shift_u;
     v9x_s32 shift_v;
     v9x_s32 mask_u;
     v9x_s32 mask_v;
     v9x_s32 bias_u;
     v9x_s32 bias_v;
+} V9X_D3D_RASTER_SAMPLER_LEVEL;
+
+typedef struct V9X_D3D_RASTER_SAMPLER {
+    /* Level 0 first, then the chain; at least one. */
+    V9X_D3D_RASTER_SAMPLER_LEVEL levels[V9X_D3D_RASTER_MIPS_MAX + 1ul];
+    v9x_u32 level_count;
+    /* One of V9X_D3D_RASTER_MIP_*, and whether it selects at all: NONE, or
+     * a chain of one level, samples level 0 and costs the span nothing. */
+    v9x_u32 mip;
+    int select;
     int linear;
     int clamp;
     int modulate;
@@ -655,27 +700,48 @@ static void v9x_d3d_raster_field(V9X_D3D_RASTER_FIELD *field, v9x_s32 shift,
     field->right = 2l * width - 8l;
 }
 
-static void v9x_d3d_raster_sampler_start(
-    const V9X_D3D_RASTER_TEXTURE *texture, V9X_D3D_RASTER_SAMPLER *sampler)
+static void v9x_d3d_raster_sampler_level(V9X_D3D_RASTER_SAMPLER_LEVEL *level,
+                                         const void *pixels, v9x_u32 pitch,
+                                         v9x_u32 width, v9x_u32 height)
 {
     v9x_s32 shift_u = 0l;
     v9x_s32 shift_v = 0l;
 
-    while ((1ul << shift_u) < texture->width) {
+    while ((1ul << shift_u) < width) {
         ++shift_u;
     }
-    while ((1ul << shift_v) < texture->height) {
+    while ((1ul << shift_v) < height) {
         ++shift_v;
     }
+    level->pixels = (const v9x_u8 *)pixels;
+    level->pitch = pitch;
+    level->shift_u = shift_u;
+    level->shift_v = shift_v;
+    level->mask_u = (v9x_s32)width - 1l;
+    level->mask_v = (v9x_s32)height - 1l;
+    level->bias_u = (v9x_s32)width << 16;
+    level->bias_v = (v9x_s32)height << 16;
+}
 
-    sampler->pixels = (const v9x_u8 *)texture->pixels;
-    sampler->pitch = texture->pitch;
-    sampler->shift_u = shift_u;
-    sampler->shift_v = shift_v;
-    sampler->mask_u = (v9x_s32)texture->width - 1l;
-    sampler->mask_v = (v9x_s32)texture->height - 1l;
-    sampler->bias_u = (v9x_s32)texture->width << 16;
-    sampler->bias_v = (v9x_s32)texture->height << 16;
+static void v9x_d3d_raster_sampler_start(
+    const V9X_D3D_RASTER_TEXTURE *texture, V9X_D3D_RASTER_SAMPLER *sampler)
+{
+    v9x_u32 level;
+
+    v9x_d3d_raster_sampler_level(&sampler->levels[0], texture->pixels,
+                                 texture->pitch, texture->width,
+                                 texture->height);
+    for (level = 0ul; level < texture->mip_count; ++level) {
+        v9x_d3d_raster_sampler_level(&sampler->levels[level + 1ul],
+                                     texture->mips[level].pixels,
+                                     texture->mips[level].pitch,
+                                     texture->mips[level].width,
+                                     texture->mips[level].height);
+    }
+    sampler->level_count = texture->mip_count + 1ul;
+    sampler->mip = texture->mip;
+    sampler->select = texture->mip != V9X_D3D_RASTER_MIP_NONE &&
+                      texture->mip_count != 0ul;
     sampler->linear = texture->filter == V9X_D3D_RASTER_FILTER_LINEAR;
     sampler->clamp = texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP;
     sampler->modulate = texture->blend == V9X_D3D_RASTER_BLEND_MODULATE;
@@ -749,30 +815,35 @@ static void v9x_d3d_raster_sampler_start(
  * coordinate wide enough to reach one.
  */
 static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
-                                  v9x_s32 su, v9x_s32 sv,
+                                  const V9X_D3D_RASTER_SAMPLER_LEVEL *level,
+                                  v9x_s32 texel_u, v9x_s32 texel_v,
                                   v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue,
                                   v9x_s32 *texel_alpha)
 {
     const v9x_u16 *row;
     v9x_u32 word;
+    /* Into the level's texel units: a shift, since the coordinate is inside
+     * one repeat and the extent is a power of two. */
+    v9x_s32 su = texel_u << level->shift_u;
+    v9x_s32 sv = texel_v << level->shift_v;
 
     if (sampler->linear) {
-        v9x_s32 bu = su + sampler->bias_u - V9X_D3D_RASTER_TEXEL_HALF;
-        v9x_s32 bv = sv + sampler->bias_v - V9X_D3D_RASTER_TEXEL_HALF;
-        v9x_s32 x0 = (bu >> 16) & sampler->mask_u;
-        v9x_s32 y0 = (bv >> 16) & sampler->mask_v;
-        v9x_s32 x1 = (x0 + 1l) & sampler->mask_u;
-        v9x_s32 y1 = (y0 + 1l) & sampler->mask_v;
+        v9x_s32 bu = su + level->bias_u - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 bv = sv + level->bias_v - V9X_D3D_RASTER_TEXEL_HALF;
+        v9x_s32 x0 = (bu >> 16) & level->mask_u;
+        v9x_s32 y0 = (bv >> 16) & level->mask_v;
+        v9x_s32 x1 = (x0 + 1l) & level->mask_u;
+        v9x_s32 y1 = (y0 + 1l) & level->mask_v;
         v9x_s32 fu = (bu >> 8) & 0xffl;
         v9x_s32 fv = (bv >> 8) & 0xffl;
         v9x_s32 w11 = fu * fv;
         v9x_s32 w10 = (fu << 8) - w11;
         v9x_s32 w01 = (fv << 8) - w11;
         v9x_s32 w00 = 65536l - (fu << 8) - (fv << 8) + w11;
-        const v9x_u16 *row0 = (const v9x_u16 *)(sampler->pixels +
-                                                (v9x_u32)y0 * sampler->pitch);
-        const v9x_u16 *row1 = (const v9x_u16 *)(sampler->pixels +
-                                                (v9x_u32)y1 * sampler->pitch);
+        const v9x_u16 *row0 = (const v9x_u16 *)(level->pixels +
+                                                (v9x_u32)y0 * level->pitch);
+        const v9x_u16 *row1 = (const v9x_u16 *)(level->pixels +
+                                                (v9x_u32)y1 * level->pitch);
         v9x_u32 t00 = (v9x_u32)row0[x0];
         v9x_u32 t10 = (v9x_u32)row0[x1];
         v9x_u32 t01 = (v9x_u32)row1[x0];
@@ -796,10 +867,10 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
         return;
     }
 
-    row = (const v9x_u16 *)(sampler->pixels +
-                            (v9x_u32)((sv >> 16) & sampler->mask_v) *
-                                sampler->pitch);
-    word = (v9x_u32)row[(su >> 16) & sampler->mask_u];
+    row = (const v9x_u16 *)(level->pixels +
+                            (v9x_u32)((sv >> 16) & level->mask_v) *
+                                level->pitch);
+    word = (v9x_u32)row[(su >> 16) & level->mask_u];
     V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
     if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
         *texel_alpha = v9x_d3d_raster_texel_alpha(sampler, word);
@@ -876,6 +947,223 @@ static v9x_s32 v9x_d3d_raster_divide_by_q(v9x_s32 scaled, v9x_s32 reciprocal)
            ((scaled_high * reciprocal_low) >> 3) +
            ((scaled_low * reciprocal_high) << 1) +
            ((scaled_low * reciprocal_low) >> 14);
+}
+
+/*
+ * log2 of a 16.16 magnitude as 16.16, negative below one: the leading bit
+ * gives the whole part and a sixteen-entry table of log2(1 + i/16) the
+ * fraction, from the four bits under the leading one. Good to about a
+ * fiftieth of a level, which is finer than a blend between two levels can
+ * show on 16-bit pixels.
+ */
+/*
+ * |value|, saturated at the widest coordinate the arithmetic carries. The
+ * level-of-detail helpers take derivatives that a sub-pixel span or a
+ * one-pixel plane can make far larger than any texture coordinate, and a
+ * derivative past thirty-three repeats per pixel is past every chain's
+ * last level anyway; saturating there keeps every product below inside
+ * the bounds its caller states.
+ */
+static v9x_s32 v9x_d3d_raster_bounded(v9x_s32 value, v9x_s32 limit)
+{
+    if (value > limit) {
+        return limit;
+    }
+    if (value < -limit) {
+        return -limit;
+    }
+    return value;
+}
+
+static v9x_s32 v9x_d3d_raster_magnitude(v9x_s32 value)
+{
+    value = v9x_d3d_raster_bounded(value, V9X_D3D_RASTER_TEXCOORD_MAX);
+    return value < 0l ? -value : value;
+}
+
+static v9x_s32 v9x_d3d_raster_log2(v9x_u32 value)
+{
+    static const v9x_u16 fraction[16] = {
+        0u, 5732u, 11136u, 16248u, 21098u, 25711u, 30109u, 34312u,
+        38336u, 42196u, 45904u, 49472u, 52911u, 56229u, 59435u, 62537u
+    };
+    v9x_s32 top = 31l;
+    v9x_u32 index;
+
+    if (value == 0ul) {
+        return -(16l << 16);
+    }
+    while ((value >> top) == 0ul) {
+        --top;
+    }
+    index = top >= 4l ? (value >> (top - 4l)) & 15ul
+                      : (value << (4l - top)) & 15ul;
+    return ((top - 16l) << 16) + (v9x_s32)fraction[index];
+}
+
+/*
+ * The level of detail from the four derivatives of the texture coordinates
+ * (16.16 repeats per pixel, any sign), scaled by level 0's extents into
+ * texels per pixel. The scale factor is the largest of the four absolute
+ * values, which OpenGL 1.1 permits as the bound on the exact one (3.8.5);
+ * lambda is its log2, in 16.16.
+ */
+static v9x_s32 v9x_d3d_raster_lod(const V9X_D3D_RASTER_SAMPLER *sampler,
+                                  v9x_s32 du_dx, v9x_s32 dv_dx,
+                                  v9x_s32 du_dy, v9x_s32 dv_dy)
+{
+    const V9X_D3D_RASTER_SAMPLER_LEVEL *base = &sampler->levels[0];
+    v9x_u32 rho = 0ul;
+    v9x_u32 scale;
+
+    /* Each magnitude is at most 2^21 after saturation and the shift at
+     * most nine, so the scaled value stays under 2^31. */
+    scale = (v9x_u32)v9x_d3d_raster_magnitude(du_dx) << base->shift_u;
+    if (scale > rho) {
+        rho = scale;
+    }
+    scale = (v9x_u32)v9x_d3d_raster_magnitude(du_dy) << base->shift_u;
+    if (scale > rho) {
+        rho = scale;
+    }
+    scale = (v9x_u32)v9x_d3d_raster_magnitude(dv_dx) << base->shift_v;
+    if (scale > rho) {
+        rho = scale;
+    }
+    scale = (v9x_u32)v9x_d3d_raster_magnitude(dv_dy) << base->shift_v;
+    if (scale > rho) {
+        rho = scale;
+    }
+    return v9x_d3d_raster_log2(rho);
+}
+
+/*
+ * The magnitude of a coordinate's derivative on the perspective path, where
+ * u is (u * q) / q and so d(u)/dx is (d(u * q)/dx - u * dq/dx) / q, every
+ * term 16.16 per pixel. Saturated at thirty-three repeats per pixel, which
+ * is past any chain's last level and keeps the split multiply inside the
+ * bound its comment states.
+ */
+static v9x_s32 v9x_d3d_raster_derivative_q(v9x_s32 scaled_step,
+                                           v9x_s32 coordinate,
+                                           v9x_s32 q_step, v9x_s32 q16,
+                                           v9x_s32 reciprocal)
+{
+    /* Both terms bounded, signs kept, before the product and the
+     * difference: the coordinate is inside 2^21 by validation, the step of
+     * q per pixel is saturated at one whole unit either way (q itself is at
+     * most one), and the scaled step at the coordinate bound; (2^13)(2^8)
+     * and the difference then fit with room. */
+    v9x_s32 q_rate = v9x_d3d_raster_bounded(q_step, V9X_D3D_RASTER_Q_ONE);
+    v9x_s32 numerator =
+        v9x_d3d_raster_bounded(scaled_step, V9X_D3D_RASTER_TEXCOORD_MAX) -
+        (coordinate / 256l) * (q_rate / 256l);
+
+    if (numerator < 0l) {
+        numerator = -numerator;
+    }
+    if (numerator > (q16 << 5)) {
+        return V9X_D3D_RASTER_TEXCOORD_MAX;
+    }
+    return v9x_d3d_raster_divide_by_q(numerator, reciprocal);
+}
+
+/*
+ * Sample at a level of detail: POINT takes the nearest level, LINEAR the two
+ * either side blended by the fraction between them, both clamped to the
+ * chain. A lambda at or below zero is level 0 alone on either.
+ */
+static void v9x_d3d_raster_sample_mip(const V9X_D3D_RASTER_SAMPLER *sampler,
+                                      v9x_s32 lambda,
+                                      v9x_s32 texel_u, v9x_s32 texel_v,
+                                      v9x_s32 *red, v9x_s32 *green,
+                                      v9x_s32 *blue, v9x_s32 *texel_alpha)
+{
+    v9x_s32 last = (v9x_s32)sampler->level_count - 1l;
+    v9x_s32 level;
+    v9x_s32 fraction;
+    v9x_s32 red1, green1, blue1;
+    v9x_s32 alpha0 = 255l;
+    v9x_s32 alpha1 = 255l;
+
+    if (sampler->mip == V9X_D3D_RASTER_MIP_POINT) {
+        level = (lambda + 32768l) / 65536l;
+        if (level < 0l) {
+            level = 0l;
+        }
+        if (level > last) {
+            level = last;
+        }
+        v9x_d3d_raster_sample(sampler, &sampler->levels[level], texel_u,
+                              texel_v, red, green, blue, texel_alpha);
+        return;
+    }
+    if (lambda <= 0l) {
+        v9x_d3d_raster_sample(sampler, &sampler->levels[0], texel_u, texel_v,
+                              red, green, blue, texel_alpha);
+        return;
+    }
+    level = lambda / 65536l;
+    if (level >= last) {
+        v9x_d3d_raster_sample(sampler, &sampler->levels[last], texel_u,
+                              texel_v, red, green, blue, texel_alpha);
+        return;
+    }
+    fraction = (lambda & 0xffffl) >> 8;
+    v9x_d3d_raster_sample(sampler, &sampler->levels[level], texel_u, texel_v,
+                          red, green, blue, &alpha0);
+    v9x_d3d_raster_sample(sampler, &sampler->levels[level + 1l], texel_u,
+                          texel_v, &red1, &green1, &blue1, &alpha1);
+    *red = (*red * (256l - fraction) + red1 * fraction) >> 8;
+    *green = (*green * (256l - fraction) + green1 * fraction) >> 8;
+    *blue = (*blue * (256l - fraction) + blue1 * fraction) >> 8;
+    if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+        *texel_alpha = (alpha0 * (256l - fraction) + alpha1 * fraction) >> 8;
+    }
+}
+
+/*
+ * The screen-space gradient along y of one vertex attribute over a
+ * triangle, 16.16 per pixel, from the plane through the three vertices. In
+ * whole pixels and with the attribute at twelve fractional bits so that
+ * every product fits 32 bits: (2^11)(2^17) and (2^11)^2. Zero for a
+ * degenerate triangle, which draws nothing anyway.
+ */
+typedef struct V9X_D3D_RASTER_GRADIENTS {
+    v9x_s32 du_dy;
+    v9x_s32 dv_dy;
+    v9x_s32 dq_dy;
+} V9X_D3D_RASTER_GRADIENTS;
+
+static v9x_s32 v9x_d3d_raster_gradient_y(const V9X_D3D_RASTER_VERTEX *a,
+                                         const V9X_D3D_RASTER_VERTEX *b,
+                                         const V9X_D3D_RASTER_VERTEX *c,
+                                         v9x_s32 va, v9x_s32 vb, v9x_s32 vc)
+{
+    v9x_s32 x1 = (b->x - a->x) / V9X_D3D_RASTER_SUBPIXEL_ONE;
+    v9x_s32 x2 = (c->x - a->x) / V9X_D3D_RASTER_SUBPIXEL_ONE;
+    v9x_s32 y1 = (b->y - a->y) / V9X_D3D_RASTER_SUBPIXEL_ONE;
+    v9x_s32 y2 = (c->y - a->y) / V9X_D3D_RASTER_SUBPIXEL_ONE;
+    v9x_s32 a1 = (vb - va) / 16l;
+    v9x_s32 a2 = (vc - va) / 16l;
+    v9x_s32 denominator = y1 * x2 - y2 * x1;
+    v9x_s32 gradient;
+
+    if (denominator == 0l) {
+        return 0l;
+    }
+    /* Saturated before the return to sixteen fractional bits: a one-pixel
+     * denominator under a full-width attribute would otherwise carry the
+     * product past 32 bits, and a gradient past the coordinate bound is
+     * past every chain's last level regardless. */
+    gradient = (a1 * x2 - a2 * x1) / denominator;
+    if (gradient > V9X_D3D_RASTER_TEXCOORD_MAX / 16l) {
+        gradient = V9X_D3D_RASTER_TEXCOORD_MAX / 16l;
+    }
+    if (gradient < -(V9X_D3D_RASTER_TEXCOORD_MAX / 16l)) {
+        gradient = -(V9X_D3D_RASTER_TEXCOORD_MAX / 16l);
+    }
+    return gradient * 16l;
 }
 
 typedef struct V9X_D3D_RASTER_EDGE {
@@ -985,6 +1273,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
                                 const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                                 int perspective,
+                                const V9X_D3D_RASTER_GRADIENTS *slopes,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -1000,6 +1289,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 u_step = 0l;
     v9x_s32 v_step = 0l;
     v9x_s32 q_step = 0l;
+    /* The level of detail, 16.16; on the affine path once per span, on the
+     * perspective path per pixel from there. Only read when `slopes` is
+     * set, which is when the sampler selects a level. */
+    v9x_s32 lod = 0l;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
@@ -1103,6 +1396,13 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     q_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+
+    if (slopes != 0 && !perspective) {
+        /* Affine: the derivatives are the same at every pixel of the span,
+         * so the level is chosen once. The steps are 8.24 per pixel here. */
+        lod = v9x_d3d_raster_lod(sampler, u_step / 256l, v_step / 256l,
+                                 slopes->du_dy, slopes->dv_dy);
+    }
 
     if (alpha != 0) {
         int legacy = (alpha->src == V9X_D3D_RASTER_BLEND_SRC_ONE ||
@@ -1223,14 +1523,15 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_s32 tex_blue;
                 v9x_s32 texel_u;
                 v9x_s32 texel_v;
+                v9x_s32 lambda = lod;
+                v9x_s32 q16 = 0l;
+                v9x_s32 reciprocal = 0l;
 
                 if (perspective) {
                     /* q back to 1.16 - never below 1, since it is
                      * interpolated between vertices the entry checked - and
                      * one reciprocal for both axes. */
-                    v9x_s32 q16 = q >> V9X_D3D_RASTER_DEPTH_BITS;
-                    v9x_s32 reciprocal;
-
+                    q16 = q >> V9X_D3D_RASTER_DEPTH_BITS;
                     if (q16 < 1l) {
                         q16 = 1l;
                     }
@@ -1239,6 +1540,27 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         u >> V9X_D3D_RASTER_DEPTH_BITS, reciprocal);
                     texel_v = v9x_d3d_raster_divide_by_q(
                         v >> V9X_D3D_RASTER_DEPTH_BITS, reciprocal);
+                    if (slopes != 0) {
+                        /* The derivatives of (u * q) / q change along the
+                         * span, so the level is chosen per pixel - four
+                         * divides, the price of the plan's correctness-first
+                         * rule; the subdivided variants are its listed
+                         * follow-up. */
+                        lambda = v9x_d3d_raster_lod(
+                            sampler,
+                            v9x_d3d_raster_derivative_q(
+                                u_step / 256l, texel_u, q_step / 256l, q16,
+                                reciprocal),
+                            v9x_d3d_raster_derivative_q(
+                                v_step / 256l, texel_v, q_step / 256l, q16,
+                                reciprocal),
+                            v9x_d3d_raster_derivative_q(
+                                slopes->du_dy, texel_u, slopes->dq_dy, q16,
+                                reciprocal),
+                            v9x_d3d_raster_derivative_q(
+                                slopes->dv_dy, texel_v, slopes->dq_dy, q16,
+                                reciprocal));
+                    }
                 } else {
                     texel_u = u >> V9X_D3D_RASTER_DEPTH_BITS;
                     texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
@@ -1297,10 +1619,15 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                     texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
                 }
-                v9x_d3d_raster_sample(sampler, texel_u << sampler->shift_u,
-                                      texel_v << sampler->shift_v,
-                                      &tex_red, &tex_green, &tex_blue,
-                                      &tex_alpha);
+                if (!sampler->select) {
+                    v9x_d3d_raster_sample(sampler, &sampler->levels[0],
+                                          texel_u, texel_v, &tex_red,
+                                          &tex_green, &tex_blue, &tex_alpha);
+                } else {
+                    v9x_d3d_raster_sample_mip(sampler, lambda, texel_u,
+                                              texel_v, &tex_red, &tex_green,
+                                              &tex_blue, &tex_alpha);
+                }
                 if (sampler->modulate) {
                     /* Both factors are 0..255 - the texel by decode, the
                      * interpolant by the clamp above - which is what puts the
@@ -1490,6 +1817,10 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     V9X_D3D_RASTER_VERTEX carried[3];
     const V9X_D3D_RASTER_VERTEX *walked = vertices;
     int perspective = 0;
+    /* The plane gradients along y, formed once per triangle when a level
+     * has to be chosen; null otherwise, and the span never reads them. */
+    V9X_D3D_RASTER_GRADIENTS gradients;
+    const V9X_D3D_RASTER_GRADIENTS *slopes = 0;
 
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
@@ -1552,6 +1883,19 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         perspective = 1;
     }
 
+    if (bound != 0 && bound->select) {
+        gradients.du_dy = v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].u, walked[1].u, walked[2].u);
+        gradients.dv_dy = v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].v, walked[1].v, walked[2].v);
+        gradients.dq_dy = perspective ? v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].q, walked[1].q, walked[2].q) : 0l;
+        slopes = &gradients;
+    }
+
     top = &walked[0];
     middle = &walked[1];
     bottom = &walked[2];
@@ -1604,11 +1948,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
             v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
-                                perspective, row,
+                                perspective, slopes, row,
                                 &along.value, &across.value);
         } else {
             v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
-                                perspective, row,
+                                perspective, slopes, row,
                                 &across.value, &along.value);
         }
         if (row + 1l < last_row) {

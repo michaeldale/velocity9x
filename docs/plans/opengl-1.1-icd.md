@@ -451,9 +451,21 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   caps (d72fc9f); a scissor rectangle and a colour mask as explicit fields
   on the render target (cfd1ebd); perspective-correct texture coordinates
   from a per-vertex `q`, equal `q` being the untouched affine path
-  (208a743). Not on any guest; the software engine asks for none of it
-  yet. The rasterization contract below is drafted as
+  (208a743); mip chains with per-level descriptors, λ from the
+  derivative bound, per span when affine and per pixel under perspective,
+  POINT and LINEAR level filters, sizes down to 1x1 and 1xN tails. Not on
+  any guest; the software engine asks for none of it yet. The
+  rasterization contract below is drafted as
   `docs/specifications/cpu-rasterizer-contract.md`.
+- **Direct3D and `rhw` (decided 2026-09-26):** the software engine does
+  not feed `rhw` as `q` by default. A first perspective path for Direct3D
+  runs only when the application sets `D3DRENDERSTATE_TEXTUREPERSPECTIVE`,
+  with `D3DPTEXTURECAPS_PERSPECTIVE` still unadvertised, and is gated on
+  the Fast-D3D V9XDDP rungs and the software bench timing five variants:
+  affine, divide per pixel, divide per span, and 8- and 16-pixel
+  subdivision. Only with those numbers is the cap exposed and the normal
+  software device changed. The correctness picture is a foreshortened
+  checkerboard quad, where affine error shows on the diagonal.
 
 - **Rasterization contract, before the public ABI is fixed.** Document the
   GL-to-r3d mapping for lower-left window coordinates versus surface rows,

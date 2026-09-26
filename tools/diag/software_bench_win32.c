@@ -287,6 +287,9 @@ void __stdcall V9xSoftwareBenchEntry(void)
         texture.width = V9X_BENCH_TEX_SIZE;
         texture.height = V9X_BENCH_TEX_SIZE;
         texture.alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+        texture.mip = V9X_D3D_RASTER_MIP_NONE;
+        texture.mip_count = 0ul;
+        texture.mips = 0;
         texture.format = V9X_D3D_RASTER_TEXFMT_RGB565;
         texture.blend = V9X_D3D_RASTER_BLEND_MODULATE;
         texture.address = V9X_D3D_RASTER_ADDRESS_WRAP;

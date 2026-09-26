@@ -101,8 +101,26 @@ Where this document says "tested", the test is named. Where it says
 
 ## Texture sampling
 
-- One level, per-axis sizes that are powers of two from 4 to 512
-  (`test_texture_non_square_point_sampling`); mip selection is owed.
+- Per-axis sizes that are powers of two from 1 to 512
+  (`test_texture_non_square_point_sampling`), and a mip chain of up to
+  nine further levels, each extent max(1, half the previous), so a
+  non-square chain ends in a 1xN or Nx1 tail before 1x1; a chain that
+  skips a level is refused, as is POINT or LINEAR without a chain
+  (OpenGL's incomplete texture; `test_mip_chain_refusals_and_tails`).
+- **Level of detail.** ρ is the largest of the four absolute derivatives
+  of the texture coordinates, each scaled to level-0 texels per pixel -
+  the bound OpenGL 1.1 section 3.8.5 permits in place of the exact form -
+  and λ = log2 ρ, its fraction from a sixteen-entry table (about a
+  fiftieth of a level). The y derivatives come from the triangle's plane;
+  on the affine path λ is constant along a span and chosen once, on the
+  perspective path it is formed per pixel from the derivatives of
+  (u·q)/q, never from a span's ends
+  (`test_mip_perspective_selects_per_pixel`). POINT (D3D's, GL's
+  `*_MIPMAP_NEAREST`) takes level round(λ); LINEAR (`*_MIPMAP_LINEAR`)
+  blends levels floor(λ) and floor(λ) + 1 by the fraction; both clamp to
+  the chain, and λ ≤ 0 is level 0 alone
+  (`test_mip_point_selects_by_scale`, `test_mip_linear_blends_levels`).
+  NONE samples level 0 whatever the chain holds.
 - **Point:** texel index = floor(u * width). Under WRAP the index is
   taken modulo the size, so the coordinate tiles; under CLAMP a coordinate
   at or past 1 takes the last texel and one below 0 the first, per axis.
@@ -152,9 +170,7 @@ both, there is no stencil, and no target has alpha to blend into.
 
 ## Owed before Phase 3 freezes the layouts
 
-- The shared-edge blend test above.
 - Post-texture fog and where its factor travels in the vertex.
-- Mip level selection and per-level descriptors.
 - Lines and points (`r3d_line.c`): the coverage and endpoint rules the
   plan names, which this document does not yet state.
 - The clear operation's interaction with the scissor and the mask.

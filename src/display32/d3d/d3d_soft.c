@@ -373,7 +373,10 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
         return 0;
     }
     size = (DWORD)surface->lpGbl->wWidth;
-    if (size < V9X_D3D_RASTER_TEXTURE_SIZE_MIN ||
+    /* This engine's own minimum, which its caps publish; the rasterizer's
+     * has since dropped to one for the mip tails, and a Direct3D texture
+     * below four stays refused here as it always was. */
+    if (size < v9x_d3d_soft_limits.texture_size_min ||
         size > V9X_D3D_RASTER_TEXTURE_SIZE_MAX) {
         v9x_d3d_soft_refuse(surface, 1ul, size);
         return 0;
@@ -430,6 +433,11 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
      * none, and an alpha decoded and used would be the advertise-then-ignore
      * pattern the other way round. */
     texture->alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    /* Level 0 only, as this engine has always sampled: the mip filters it
+     * maps to point and linear stay that way until a gate says otherwise. */
+    texture->mip = V9X_D3D_RASTER_MIP_NONE;
+    texture->mip_count = 0ul;
+    texture->mips = 0;
     texture->height = size;
     texture->format = format;
     /*

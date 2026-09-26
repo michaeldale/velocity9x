@@ -231,9 +231,25 @@
 #define V9X_D3D_RASTER_BLEND_DECAL    1ul
 #define V9X_D3D_RASTER_BLEND_MODULATE 2ul
 
-/* Square, power-of-two texture edge bounds in texels, matching the ViRGE. */
-#define V9X_D3D_RASTER_TEXTURE_SIZE_MIN 4ul
+/* Power-of-two texture edge bounds in texels: down to one, so a mip chain's
+ * tail levels are textures like any other, and up to the ViRGE's 512. The
+ * Direct3D software engine keeps its own minimum of four in its limits. */
+#define V9X_D3D_RASTER_TEXTURE_SIZE_MIN 1ul
 #define V9X_D3D_RASTER_TEXTURE_SIZE_MAX 512ul
+
+/* The levels a chain may carry beyond its first: 512 halves to 1 in nine. */
+#define V9X_D3D_RASTER_MIPS_MAX 9ul
+
+/*
+ * How a level is chosen, numbered as D3DTEXTUREMIPFILTER numbers them
+ * (D3DTFP_NONE, _POINT, _LINEAR). NONE samples the first level whatever the
+ * chain holds; POINT picks the nearest level to the level of detail; LINEAR
+ * blends the two either side of it. OpenGL's *_MIPMAP_NEAREST is POINT and
+ * *_MIPMAP_LINEAR is LINEAR, the base filter being `filter`.
+ */
+#define V9X_D3D_RASTER_MIP_NONE   1ul
+#define V9X_D3D_RASTER_MIP_POINT  2ul
+#define V9X_D3D_RASTER_MIP_LINEAR 3ul
 
 /*
  * One vertex, already transformed, clipped and unpacked by the caller.
@@ -315,6 +331,15 @@ typedef struct v9x_d3d_raster_depth {
  * may be padded, and neither is inferred at all: the engine validates the
  * surface and states them.
  */
+/* One level of a mip chain beyond the first: the same four fields the
+ * texture carries for level 0. */
+typedef struct v9x_d3d_raster_level {
+    void *pixels;
+    v9x_u32 pitch;
+    v9x_u32 width;
+    v9x_u32 height;
+} V9X_D3D_RASTER_LEVEL;
+
 typedef struct v9x_d3d_raster_texture {
     void *pixels;
     v9x_u32 pitch;
@@ -334,6 +359,19 @@ typedef struct v9x_d3d_raster_texture {
      * RGB565 none, which decodes as opaque.
      */
     v9x_u32 alpha;
+    /*
+     * The mip chain (Phase 2 of the OpenGL plan). `pixels` to `height`
+     * above are level 0; `mips` points at `mip_count` further levels, each
+     * extent max(1, half the previous), so a non-square chain ends in a 1xN
+     * or Nx1 tail before 1x1. `mip` says how a level is chosen. With no
+     * chain only NONE is accepted: a front end that asks for POINT or
+     * LINEAR without building the levels is refused rather than given the
+     * first level in silence, which is OpenGL's "incomplete" texture and a
+     * caller error here.
+     */
+    v9x_u32 mip;
+    v9x_u32 mip_count;
+    const V9X_D3D_RASTER_LEVEL *mips;
 } V9X_D3D_RASTER_TEXTURE;
 
 #define V9X_D3D_RASTER_TEXALPHA_IGNORE   0ul
