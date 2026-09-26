@@ -34,6 +34,7 @@
 #include "velocity9x/diagpaths.h"
 #include "gl_state.h"
 #include "gl_surface.h"
+#include "gl_prim.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -63,6 +64,7 @@ typedef struct v9x_gl_context {
     V9X_GL_DRAWABLE *drawable;
     int bound_once;
     V9X_GL_STATE state;
+    V9X_GL_PIPELINE pipeline;
 } V9X_GL_CONTEXT;
 
 static const char v9x_gl_build_id[] = "V9XGL build=" V9X_BUILD_ID;
@@ -482,6 +484,258 @@ static void V9X_GL_API v9x_gl_pop_matrix(void)
     V9X_GL_WITH_CONTEXT(v9x_gl_state_pop_matrix(&context_->state));
 }
 
+/* ---- Geometry (2.6-2.11), through gl_prim.c ------------------------- */
+
+/*
+ * The pipeline's sink: one batch of up to 64 screen-space triangles to the
+ * render interface, drawn into the context's back and depth buffers with
+ * its fragment state. A batch only ever holds triangles from one
+ * glBegin/glEnd, and no state command is legal between those, so the state
+ * read here is the state the triangles were made with.
+ */
+static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                             v9x_u32 triangle_count)
+{
+    V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+    const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_GL_DRAWABLE *drawable;
+    V9X_R3D_ABI_DRAW draw;
+    V9X_R3D_ABI_OUTCOME outcome;
+    v9x_u32 result;
+    unsigned int i;
+
+    if (iface == 0) {
+        return 0;
+    }
+    EnterCriticalSection(&v9x_gl_lock);
+    drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
+    if (drawable == 0) {
+        LeaveCriticalSection(&v9x_gl_lock);
+        return 0;
+    }
+    for (i = 0u; i < sizeof(draw); ++i) {
+        ((BYTE *)&draw)[i] = 0u;
+    }
+    draw.struct_bytes = sizeof(draw);
+    draw.generation = description->generation;
+    draw.target.surface = v9x_gl_drawable_back(drawable);
+    draw.depth.surface = v9x_gl_drawable_depth(drawable);
+    draw.texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    v9x_gl_prim_abi_state(&context->state, &context->pipeline, &draw.state);
+    draw.vertices = vertices;
+    draw.triangle_count = triangle_count;
+    result = iface->draw(&draw, &outcome);
+    if (result == V9X_R3D_RESULT_STALE && v9x_gl_device_redescribe()) {
+        drawable = v9x_gl_bind_window(context,
+                                      v9x_gl_context_window(context));
+        if (drawable != 0) {
+            draw.generation = description->generation;
+            draw.target.surface = v9x_gl_drawable_back(drawable);
+            draw.depth.surface = v9x_gl_drawable_depth(drawable);
+            result = iface->draw(&draw, &outcome);
+        }
+    }
+    LeaveCriticalSection(&v9x_gl_lock);
+    if (result != V9X_R3D_RESULT_OK) {
+        v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu", result,
+                    triangle_count, outcome.submitted);
+        return 0;
+    }
+    return 1;
+}
+
+#define V9X_GL_WITH_PIPELINE(call) do { \
+    V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
+    if (context_ != 0) { \
+        call; \
+    } \
+} while (0)
+
+static void V9X_GL_API v9x_gl_begin(GLenum mode)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_begin(&context_->state,
+                                           &context_->pipeline, mode));
+}
+
+static void V9X_GL_API v9x_gl_end(void)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_end(&context_->state,
+                                         &context_->pipeline));
+}
+
+static void v9x_gl_vertex4(GLfloat x, GLfloat y, GLfloat z, GLfloat w)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_vertex(&context_->state,
+                                            &context_->pipeline, x, y, z,
+                                            w));
+}
+
+static void V9X_GL_API v9x_gl_vertex2f(GLfloat x, GLfloat y)
+{
+    v9x_gl_vertex4(x, y, 0.0f, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex2fv(const GLfloat *v)
+{
+    v9x_gl_vertex4(v[0], v[1], 0.0f, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex2i(GLint x, GLint y)
+{
+    v9x_gl_vertex4((GLfloat)x, (GLfloat)y, 0.0f, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex2d(GLdouble x, GLdouble y)
+{
+    v9x_gl_vertex4((GLfloat)x, (GLfloat)y, 0.0f, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex3f(GLfloat x, GLfloat y, GLfloat z)
+{
+    v9x_gl_vertex4(x, y, z, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex3fv(const GLfloat *v)
+{
+    v9x_gl_vertex4(v[0], v[1], v[2], 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex3i(GLint x, GLint y, GLint z)
+{
+    v9x_gl_vertex4((GLfloat)x, (GLfloat)y, (GLfloat)z, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex3d(GLdouble x, GLdouble y, GLdouble z)
+{
+    v9x_gl_vertex4((GLfloat)x, (GLfloat)y, (GLfloat)z, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_vertex4f(GLfloat x, GLfloat y, GLfloat z,
+                                       GLfloat w)
+{
+    v9x_gl_vertex4(x, y, z, w);
+}
+
+static void V9X_GL_API v9x_gl_vertex4fv(const GLfloat *v)
+{
+    v9x_gl_vertex4(v[0], v[1], v[2], v[3]);
+}
+
+static void v9x_gl_color4(GLfloat r, GLfloat g, GLfloat b, GLfloat a)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_color(&context_->pipeline, r, g, b, a));
+}
+
+/* Unsigned bytes map c / 255 (table 2.6). */
+#define V9X_GL_UB(value) ((GLfloat)(value) * (1.0f / 255.0f))
+
+static void V9X_GL_API v9x_gl_color3f(GLfloat r, GLfloat g, GLfloat b)
+{
+    v9x_gl_color4(r, g, b, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_color3fv(const GLfloat *v)
+{
+    v9x_gl_color4(v[0], v[1], v[2], 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_color3d(GLdouble r, GLdouble g, GLdouble b)
+{
+    v9x_gl_color4((GLfloat)r, (GLfloat)g, (GLfloat)b, 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_color4f(GLfloat r, GLfloat g, GLfloat b,
+                                      GLfloat a)
+{
+    v9x_gl_color4(r, g, b, a);
+}
+
+static void V9X_GL_API v9x_gl_color4fv(const GLfloat *v)
+{
+    v9x_gl_color4(v[0], v[1], v[2], v[3]);
+}
+
+static void V9X_GL_API v9x_gl_color3ub(GLubyte r, GLubyte g, GLubyte b)
+{
+    v9x_gl_color4(V9X_GL_UB(r), V9X_GL_UB(g), V9X_GL_UB(b), 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_color3ubv(const GLubyte *v)
+{
+    v9x_gl_color4(V9X_GL_UB(v[0]), V9X_GL_UB(v[1]), V9X_GL_UB(v[2]), 1.0f);
+}
+
+static void V9X_GL_API v9x_gl_color4ub(GLubyte r, GLubyte g, GLubyte b,
+                                       GLubyte a)
+{
+    v9x_gl_color4(V9X_GL_UB(r), V9X_GL_UB(g), V9X_GL_UB(b), V9X_GL_UB(a));
+}
+
+static void V9X_GL_API v9x_gl_color4ubv(const GLubyte *v)
+{
+    v9x_gl_color4(V9X_GL_UB(v[0]), V9X_GL_UB(v[1]), V9X_GL_UB(v[2]),
+                  V9X_GL_UB(v[3]));
+}
+
+static void V9X_GL_API v9x_gl_texcoord2f(GLfloat s, GLfloat t)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_texcoord(&context_->pipeline, s, t,
+                                              0.0f, 1.0f));
+}
+
+static void V9X_GL_API v9x_gl_texcoord2fv(const GLfloat *v)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_texcoord(&context_->pipeline, v[0], v[1],
+                                              0.0f, 1.0f));
+}
+
+static void V9X_GL_API v9x_gl_shade_model(GLenum mode)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_shade_model(&context_->state,
+                                                 &context_->pipeline, mode));
+}
+
+static void V9X_GL_API v9x_gl_cull_face(GLenum mode)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_cull_face(&context_->state,
+                                               &context_->pipeline, mode));
+}
+
+static void V9X_GL_API v9x_gl_front_face(GLenum mode)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_front_face(&context_->state,
+                                                &context_->pipeline, mode));
+}
+
+static void V9X_GL_API v9x_gl_depth_func(GLenum func)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_depth_func(&context_->state,
+                                                &context_->pipeline, func));
+}
+
+static void V9X_GL_API v9x_gl_blend_func(GLenum src, GLenum dst)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_blend_func(&context_->state,
+                                                &context_->pipeline, src,
+                                                dst));
+}
+
+static void V9X_GL_API v9x_gl_alpha_func(GLenum func, GLclampf ref)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_alpha_func(&context_->state,
+                                                &context_->pipeline, func,
+                                                ref));
+}
+
+static void V9X_GL_API v9x_gl_depth_range(GLclampd near_value,
+                                          GLclampd far_value)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_depth_range(&context_->state,
+                                                 &context_->pipeline,
+                                                 near_value, far_value));
+}
+
 /* ---- The table ----------------------------------------------------- */
 
 static void v9x_gl_set_slot(const char *name, V9X_GL_PROC proc)
@@ -541,6 +795,36 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glOrtho, v9x_gl_ortho);
     V9X_GL_OVERRIDE(glPushMatrix, v9x_gl_push_matrix);
     V9X_GL_OVERRIDE(glPopMatrix, v9x_gl_pop_matrix);
+    V9X_GL_OVERRIDE(glBegin, v9x_gl_begin);
+    V9X_GL_OVERRIDE(glEnd, v9x_gl_end);
+    V9X_GL_OVERRIDE(glVertex2f, v9x_gl_vertex2f);
+    V9X_GL_OVERRIDE(glVertex2fv, v9x_gl_vertex2fv);
+    V9X_GL_OVERRIDE(glVertex2i, v9x_gl_vertex2i);
+    V9X_GL_OVERRIDE(glVertex2d, v9x_gl_vertex2d);
+    V9X_GL_OVERRIDE(glVertex3f, v9x_gl_vertex3f);
+    V9X_GL_OVERRIDE(glVertex3fv, v9x_gl_vertex3fv);
+    V9X_GL_OVERRIDE(glVertex3i, v9x_gl_vertex3i);
+    V9X_GL_OVERRIDE(glVertex3d, v9x_gl_vertex3d);
+    V9X_GL_OVERRIDE(glVertex4f, v9x_gl_vertex4f);
+    V9X_GL_OVERRIDE(glVertex4fv, v9x_gl_vertex4fv);
+    V9X_GL_OVERRIDE(glColor3f, v9x_gl_color3f);
+    V9X_GL_OVERRIDE(glColor3fv, v9x_gl_color3fv);
+    V9X_GL_OVERRIDE(glColor3d, v9x_gl_color3d);
+    V9X_GL_OVERRIDE(glColor4f, v9x_gl_color4f);
+    V9X_GL_OVERRIDE(glColor4fv, v9x_gl_color4fv);
+    V9X_GL_OVERRIDE(glColor3ub, v9x_gl_color3ub);
+    V9X_GL_OVERRIDE(glColor3ubv, v9x_gl_color3ubv);
+    V9X_GL_OVERRIDE(glColor4ub, v9x_gl_color4ub);
+    V9X_GL_OVERRIDE(glColor4ubv, v9x_gl_color4ubv);
+    V9X_GL_OVERRIDE(glTexCoord2f, v9x_gl_texcoord2f);
+    V9X_GL_OVERRIDE(glTexCoord2fv, v9x_gl_texcoord2fv);
+    V9X_GL_OVERRIDE(glShadeModel, v9x_gl_shade_model);
+    V9X_GL_OVERRIDE(glCullFace, v9x_gl_cull_face);
+    V9X_GL_OVERRIDE(glFrontFace, v9x_gl_front_face);
+    V9X_GL_OVERRIDE(glDepthFunc, v9x_gl_depth_func);
+    V9X_GL_OVERRIDE(glBlendFunc, v9x_gl_blend_func);
+    V9X_GL_OVERRIDE(glAlphaFunc, v9x_gl_alpha_func);
+    V9X_GL_OVERRIDE(glDepthRange, v9x_gl_depth_range);
 }
 
 /* ---- Pixel formats ------------------------------------------------- */
@@ -618,6 +902,9 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 context->drawable = 0;
                 context->bound_once = 0;
                 v9x_gl_state_init(&context->state);
+                v9x_gl_pipeline_init(&context->pipeline);
+                v9x_gl_pipeline_sink(&context->pipeline, v9x_gl_draw_batch,
+                                     context);
                 v9x_gl_windows[index] = WindowFromDC(hdc);
                 handle = (V9X_DHGLRC)(index + 1u);
                 break;

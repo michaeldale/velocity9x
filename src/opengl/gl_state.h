@@ -121,6 +121,10 @@ void v9x_gl_state_color_mask(V9X_GL_STATE *state, GLboolean red,
 void v9x_gl_state_depth_mask(V9X_GL_STATE *state, GLboolean flag);
 void v9x_gl_state_enable(V9X_GL_STATE *state, GLenum cap, int enable);
 GLboolean v9x_gl_state_is_enabled(V9X_GL_STATE *state, GLenum cap);
+/* The same flag for the implementation's own use - the pipeline reads it
+ * between glBegin and glEnd, where glIsEnabled itself is an error. Zero
+ * for an unknown cap, with nothing recorded. */
+GLboolean v9x_gl_state_cap(const V9X_GL_STATE *state, GLenum cap);
 
 /*
  * glClear(mask): non-zero when there is work, with `plan` describing it;

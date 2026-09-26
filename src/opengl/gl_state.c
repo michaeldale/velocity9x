@@ -256,6 +256,13 @@ void v9x_gl_state_enable(V9X_GL_STATE *state, GLenum cap, int enable)
     state->caps[index] = enable ? 1 : 0;
 }
 
+GLboolean v9x_gl_state_cap(const V9X_GL_STATE *state, GLenum cap)
+{
+    int index = v9x_gl_cap_index(cap);
+
+    return index < 0 ? 0 : state->caps[index];
+}
+
 GLboolean v9x_gl_state_is_enabled(V9X_GL_STATE *state, GLenum cap)
 {
     int index;

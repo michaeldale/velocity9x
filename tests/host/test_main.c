@@ -80,6 +80,8 @@ unsigned int v9x_run_r3d_validate_tests(void);
 unsigned int v9x_run_gl_state_tests(void);
 /* tests\host\test_gl_matrix.c: the ICD's matrix stacks. */
 unsigned int v9x_run_gl_matrix_tests(void);
+/* tests\host\test_gl_prim.c: the ICD's vertex pipeline. */
+unsigned int v9x_run_gl_prim_tests(void);
 
 /* tests\host\test_d3d_state.c: the Direct3D-to-neutral state routing and
  * the vocabulary's numbers against d3dtypes.h, same convention. */
@@ -1094,6 +1096,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r3d_validate_tests();
     failures += v9x_run_gl_state_tests();
     failures += v9x_run_gl_matrix_tests();
+    failures += v9x_run_gl_prim_tests();
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();

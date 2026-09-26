@@ -228,8 +228,54 @@ void __stdcall V9xGlProbeEntry(void)
                         (DWORD)GetPixel(hdc, 4, height - 5));
             v9x_glp_hex("ScissorOutsidePixel",
                         (DWORD)GetPixel(hdc, width - 5, 4));
-            glBegin(GL_TRIANGLES);
+            glBegin(GL_POINTS);
+            glEnd();
+            glLineWidth(2.0f);
             v9x_glp_hex("ErrorAfterStub", (DWORD)glGetError());
+
+            /*
+             * Geometry: an ortho projection onto the window, depth test
+             * on. A green quad at window depth 0.5 over everything; a blue
+             * one at 0.75 over the left half, which LESS must reject; a
+             * red one at 0.25 over the right half, which must draw. Read
+             * back from the screen after the swap.
+             */
+            glViewport(0, 0, width, height);
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LESS);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClearDepth(1.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glBegin(GL_QUADS);
+            glColor3f(0.0f, 1.0f, 0.0f);
+            glVertex3f(0.0f, 0.0f, 0.0f);
+            glVertex3f((GLfloat)width, 0.0f, 0.0f);
+            glVertex3f((GLfloat)width, (GLfloat)height, 0.0f);
+            glVertex3f(0.0f, (GLfloat)height, 0.0f);
+            glColor3f(0.0f, 0.0f, 1.0f);            /* ndc z 0.5: behind */
+            glVertex3f(0.0f, 0.0f, -0.5f);
+            glVertex3f((GLfloat)(width / 2), 0.0f, -0.5f);
+            glVertex3f((GLfloat)(width / 2), (GLfloat)height, -0.5f);
+            glVertex3f(0.0f, (GLfloat)height, -0.5f);
+            glColor3f(1.0f, 0.0f, 0.0f);            /* ndc z -0.5: in front */
+            glVertex3f((GLfloat)(width / 2), 0.0f, 0.5f);
+            glVertex3f((GLfloat)width, 0.0f, 0.5f);
+            glVertex3f((GLfloat)width, (GLfloat)height, 0.5f);
+            glVertex3f((GLfloat)(width / 2), (GLfloat)height, 0.5f);
+            glEnd();
+            v9x_glp_hex("ErrorAfterGeometry", (DWORD)glGetError());
+            glFinish();
+            SwapBuffers(hdc);
+            v9x_glp_pump();
+            v9x_glp_hex("GeometryLeftPixel",
+                        (DWORD)GetPixel(hdc, width / 4, height / 2));
+            v9x_glp_hex("GeometryRightPixel",
+                        (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
         }
         {
             DWORD started = GetTickCount();

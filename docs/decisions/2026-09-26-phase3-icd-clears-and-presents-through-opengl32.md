@@ -38,6 +38,20 @@ format (24 colour bits, 32 depth, double-buffered):
 - Release and delete succeeded; the log's detach line counts one stub
   called once.
 
+## Later the same day: geometry (Phase 4)
+
+Evidence: `2026-09-26-phase4-icd-geometry-soft-V9XGLP.ini`, same guest and
+boot, with the ICD built with `gl_matrix.c` and `gl_prim.c`. After the
+clear checks above, V9XGLP sets an ortho projection onto the window,
+enables the depth test with LESS, clears depth to 1, and in one
+`glBegin(GL_QUADS)` draws a green quad at window depth 0.5 over
+everything, a blue one at 0.75 over the left half and a red one at 0.25
+over the right half. Read back after the swap: left `0x0000FF00` (green -
+the blue quad rejected), right `0x000000FF` (red, COLORREF being BGR).
+`glGetError` is clean after the geometry; `glLineWidth`, not implemented,
+answers INVALID_OPERATION. Transform, clipping, the viewport and depth
+mapping, the batches and the interface's depth test all reach the screen.
+
 ## Not established
 
 - Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565
