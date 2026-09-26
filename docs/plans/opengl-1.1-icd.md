@@ -454,8 +454,12 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   (208a743); mip chains with per-level descriptors, λ from the
   derivative bound, per span when affine and per pixel under perspective,
   POINT and LINEAR level filters, sizes down to 1x1 and 1xN tails;
-  post-texture fog from a per-vertex factor toward a per-draw colour. Not
-  on any guest; the software engine asks for none of it yet. The
+  post-texture fog from a per-vertex factor toward a per-draw colour;
+  independent texture colour/alpha combine for REPLACE, MODULATE,
+  DECAL's texel-alpha lerp and GL BLEND's environment-colour lerp, with the
+  software D3D engine now publishing and applying MODULATEALPHA. Not on any
+  guest; except for MODULATEALPHA the software engine asks for none of the
+  new paths yet. The
   rasterization contract below is drafted as
   `docs/specifications/cpu-rasterizer-contract.md`.
 - **Direct3D and `rhw` (decided 2026-09-26):** the software engine does

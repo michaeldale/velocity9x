@@ -133,14 +133,22 @@ Where this document says "tested", the test is named. Where it says
   at or past 1 takes the last texel and one below 0 the first, per axis.
 - **Linear:** texel centres sit at (i + 1/2) / width, the OpenGL and
   Direct3D convention; the four weights come from the fractional distance
-  to the neighbouring centres, and when a texel alpha op is on the four
-  alphas are blended with the same weights.
+  to the neighbouring centres. The four alphas are blended with the same
+  weights when the alpha combine consumes them or DECAL uses them as its
+  colour lerp factor.
 - **Texel alpha:** ARGB1555's bit is 0 or 255, ARGB4444's nibble is
   replicated (17 * n), RGB565 is opaque. `V9X_D3D_RASTER_TEXTURE.alpha`
   says whether it is ignored, replaces the vertex alpha, or multiplies it
   (`test_texture_alpha_replace_and_modulate`).
-- **Colour combine:** DECAL (the texel) or MODULATE (texel times vertex
-  colour). Owed: the remaining combine ops, including env-blend.
+- **Colour combine:** REPLACE takes the texel; MODULATE multiplies texel and
+  fragment; DECAL on an alpha-bearing texture lerps fragment toward texel by
+  texel alpha; GL BLEND lerps each fragment channel toward the corresponding
+  environment-colour channel by that texel-colour channel. The front end
+  chooses the independent colour and alpha operations from the API mode and
+  logical texture format: in particular GL MODULATE on RGBA and D3D
+  MODULATEALPHA multiply alpha, while legacy D3D MODULATE leaves it alone
+  (`test_texture_colour_combine_ops`,
+  `test_texture_alpha_replace_and_modulate`).
 
 ## Fragment order
 

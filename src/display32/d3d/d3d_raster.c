@@ -373,7 +373,15 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
         return 0;
     }
     if (texture->blend != V9X_D3D_RASTER_BLEND_DECAL &&
-        texture->blend != V9X_D3D_RASTER_BLEND_MODULATE) {
+        texture->blend != V9X_D3D_RASTER_BLEND_MODULATE &&
+        texture->blend != V9X_D3D_RASTER_BLEND_DECALALPHA &&
+        texture->blend != V9X_D3D_RASTER_BLEND_ENV) {
+        return 0;
+    }
+    if (texture->blend == V9X_D3D_RASTER_BLEND_ENV &&
+        (texture->env_red < 0l || texture->env_red > 255l ||
+         texture->env_green < 0l || texture->env_green > 255l ||
+         texture->env_blue < 0l || texture->env_blue > 255l)) {
         return 0;
     }
     if (texture->address != V9X_D3D_RASTER_ADDRESS_WRAP &&
@@ -675,7 +683,11 @@ typedef struct V9X_D3D_RASTER_SAMPLER {
     int select;
     int linear;
     int clamp;
-    int modulate;
+    v9x_u32 colour_op;
+    int sample_alpha;
+    v9x_s32 env_red;
+    v9x_s32 env_green;
+    v9x_s32 env_blue;
     V9X_D3D_RASTER_FIELD red;
     V9X_D3D_RASTER_FIELD green;
     V9X_D3D_RASTER_FIELD blue;
@@ -756,8 +768,20 @@ static void v9x_d3d_raster_sampler_start(
                       texture->mip_count != 0ul;
     sampler->linear = texture->filter == V9X_D3D_RASTER_FILTER_LINEAR;
     sampler->clamp = texture->address == V9X_D3D_RASTER_ADDRESS_CLAMP;
-    sampler->modulate = texture->blend == V9X_D3D_RASTER_BLEND_MODULATE;
+    sampler->colour_op = texture->blend;
     sampler->alpha_op = texture->alpha;
+    sampler->sample_alpha = texture->alpha != V9X_D3D_RASTER_TEXALPHA_IGNORE ||
+                            texture->blend ==
+                                V9X_D3D_RASTER_BLEND_DECALALPHA;
+    if (texture->blend == V9X_D3D_RASTER_BLEND_ENV) {
+        sampler->env_red = texture->env_red;
+        sampler->env_green = texture->env_green;
+        sampler->env_blue = texture->env_blue;
+    } else {
+        sampler->env_red = 0l;
+        sampler->env_green = 0l;
+        sampler->env_blue = 0l;
+    }
     sampler->alpha_bits = texture->format == V9X_D3D_RASTER_TEXFMT_ARGB1555 ? 1ul
         : (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444 ? 4ul : 0ul);
 
@@ -869,7 +893,7 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
         *red = (r00 * w00 + r10 * w10 + r01 * w01 + r11 * w11) >> 16;
         *green = (g00 * w00 + g10 * w10 + g01 * w01 + g11 * w11) >> 16;
         *blue = (b00 * w00 + b10 * w10 + b01 * w01 + b11 * w11) >> 16;
-        if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+        if (sampler->sample_alpha) {
             *texel_alpha =
                 (v9x_d3d_raster_texel_alpha(sampler, t00) * w00 +
                  v9x_d3d_raster_texel_alpha(sampler, t10) * w10 +
@@ -884,7 +908,7 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
                                 level->pitch);
     word = (v9x_u32)row[(su >> 16) & level->mask_u];
     V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
-    if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+    if (sampler->sample_alpha) {
         *texel_alpha = v9x_d3d_raster_texel_alpha(sampler, word);
     }
 }
@@ -1129,7 +1153,7 @@ static void v9x_d3d_raster_sample_mip(const V9X_D3D_RASTER_SAMPLER *sampler,
     *red = (*red * (256l - fraction) + red1 * fraction) >> 8;
     *green = (*green * (256l - fraction) + green1 * fraction) >> 8;
     *blue = (*blue * (256l - fraction) + blue1 * fraction) >> 8;
-    if (sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) {
+    if (sampler->sample_alpha) {
         *texel_alpha = (alpha0 * (256l - fraction) + alpha1 * fraction) >> 8;
     }
 }
@@ -1263,6 +1287,19 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
     } else { \
         (channel) = (fog_value) - \
             V9X_D3D_RASTER_DIV255(((fog_value) - (channel)) * (factor) + 127l); \
+    } \
+} while (0)
+
+/* Mix `from` toward `to` by a 0..255 factor, with one bounded product and
+ * the same exact divide used by modulation. Written in delta form so DECAL's
+ * alpha lerp and GL env BLEND do not add two rounded products. */
+#define V9X_D3D_RASTER_MIX_CHANNEL(channel, to, factor) do { \
+    if ((to) >= (channel)) { \
+        (channel) += \
+            V9X_D3D_RASTER_DIV255(((to) - (channel)) * (factor) + 127l); \
+    } else { \
+        (channel) -= \
+            V9X_D3D_RASTER_DIV255(((channel) - (to)) * (factor) + 127l); \
     } \
 } while (0)
 
@@ -1666,7 +1703,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                               texel_v, &tex_red, &tex_green,
                                               &tex_blue, &tex_alpha);
                 }
-                if (sampler->modulate) {
+                if (sampler->colour_op == V9X_D3D_RASTER_BLEND_MODULATE) {
                     /* Both factors are 0..255 - the texel by decode, the
                      * interpolant by the clamp above - which is what puts the
                      * rounded product inside the exact divide's range. */
@@ -1675,6 +1712,20 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         V9X_D3D_RASTER_DIV255(tex_green * out_green + 127l);
                     out_blue =
                         V9X_D3D_RASTER_DIV255(tex_blue * out_blue + 127l);
+                } else if (sampler->colour_op ==
+                           V9X_D3D_RASTER_BLEND_DECALALPHA) {
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_red, tex_red, tex_alpha);
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_green, tex_green,
+                                               tex_alpha);
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_blue, tex_blue, tex_alpha);
+                } else if (sampler->colour_op ==
+                           V9X_D3D_RASTER_BLEND_ENV) {
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_red, sampler->env_red,
+                                               tex_red);
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_green, sampler->env_green,
+                                               tex_green);
+                    V9X_D3D_RASTER_MIX_CHANNEL(out_blue, sampler->env_blue,
+                                               tex_blue);
                 } else {
                     out_red = tex_red;
                     out_green = tex_green;

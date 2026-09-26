@@ -1006,6 +1006,9 @@ static void raster_texture_reset(V9X_D3D_RASTER_TEXTURE *texture,
     texture->mip = V9X_D3D_RASTER_MIP_NONE;
     texture->mip_count = 0ul;
     texture->mips = 0;
+    texture->env_red = 0l;
+    texture->env_green = 0l;
+    texture->env_blue = 0l;
 }
 
 static void raster_texel_set(unsigned int x, unsigned int y, v9x_u16 value)
@@ -2439,6 +2442,63 @@ static void test_texture_alpha_replace_and_modulate(void)
     RCHECK((value & 0x1fu) >= 12u && (value & 0x1fu) <= 17u);   /* blue ~119 */
 }
 
+/*
+ * The four colour equations needed by the GL 1.1 texture environment.
+ * REPLACE and MODULATE are the two legacy D3D paths. DECAL with texture
+ * alpha lerps fragment blue toward texel red, while BLEND uses each texel
+ * colour channel as the factor toward the environment colour. Alpha is an
+ * independent operation and is covered immediately above.
+ */
+static void test_texture_colour_combine_ops(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    v9x_u16 value;
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    raster_texel_set(0u, 0u, 0xf800u);
+    RCHECK(raster_textured_quad(&target, &texture, 0l, 0l, 255l) != 0);
+    RCHECK(raster_pixel(2u, 2u) == 0xf800u);
+
+    raster_reset(&target);
+    texture.blend = V9X_D3D_RASTER_BLEND_MODULATE;
+    RCHECK(raster_textured_quad(&target, &texture, 128l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(2u, 2u) == v9x_d3d_raster_rgb565(128l, 0l, 0l));
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECALALPHA);
+    raster_texel_set(0u, 0u, 0x8f00u); /* alpha 136, red */
+    RCHECK(raster_textured_quad(&target, &texture, 0l, 0l, 255l) != 0);
+    value = raster_pixel(2u, 2u);
+    RCHECK((value >> 11) >= 15u && (value >> 11) <= 18u);
+    RCHECK((value & 0x1fu) >= 13u && (value & 0x1fu) <= 16u);
+
+    raster_reset(&target);
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_ENV);
+    texture.env_red = 200l;
+    texture.env_green = 210l;
+    texture.env_blue = 220l;
+    raster_texel_set(0u, 0u, 0xf800u); /* R factor 1, G/B factor 0 */
+    RCHECK(raster_textured_quad(&target, &texture, 10l, 20l, 30l) != 0);
+    RCHECK(raster_pixel(2u, 2u) == v9x_d3d_raster_rgb565(200l, 20l, 30l));
+
+    texture.env_green = 256l;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.env_green = -1l;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.env_green = 210l;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    texture.blend = 5ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+}
+
 /* Two triangles over the middle of the target, white, at one alpha, with no
  * blend, an optional depth buffer and an optional alpha test. */
 static int raster_alpha_tested_quad(const V9X_D3D_RASTER_TARGET *target,
@@ -3340,6 +3400,7 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_factor_additive_pairs();
     test_factor_destination_terms();
     test_texture_alpha_replace_and_modulate();
+    test_texture_colour_combine_ops();
     test_alpha_test_gates_colour_and_depth();
     test_alpha_test_refusals();
     test_scissor_clips_colour_and_depth();

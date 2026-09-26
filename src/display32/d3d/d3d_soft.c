@@ -429,10 +429,12 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
     }
     texture->pitch = (DWORD)surface->lpGbl->lPitch;
     texture->width = size;
-    /* No texel alpha for Direct3D's software engine yet: its caps publish
-     * none, and an alpha decoded and used would be the advertise-then-ignore
-     * pattern the other way round. */
-    texture->alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    /* Legacy MODULATE leaves vertex alpha alone. MODULATEALPHA is the same
+     * RGB product and multiplies the texel and vertex alpha as Direct3D
+     * specifies; RGB565 decodes as opaque, so that case is the identity. */
+    texture->alpha = draw->texture.op == V9X_R3D_TEXOP_MODULATEALPHA
+        ? V9X_D3D_RASTER_TEXALPHA_MODULATE
+        : V9X_D3D_RASTER_TEXALPHA_IGNORE;
     /* Level 0 only, as this engine has always sampled: the mip filters it
      * maps to point and linear stay that way until a gate says otherwise. */
     texture->mip = V9X_D3D_RASTER_MIP_NONE;
@@ -461,6 +463,9 @@ static int v9x_d3d_soft_texture_setup(const V9X_R3D_DRAW *draw,
      */
     texture->blend = draw->texture.op == V9X_R3D_TEXOP_DECAL
         ? V9X_D3D_RASTER_BLEND_DECAL : V9X_D3D_RASTER_BLEND_MODULATE;
+    texture->env_red = 0l;
+    texture->env_green = 0l;
+    texture->env_blue = 0l;
     /*
      * WRAP unless the application asked for CLAMP. MIRROR and BORDER are
      * published by neither engine and land here as WRAP, which is Direct3D's
@@ -634,7 +639,8 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
         V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureBlendCaps =
-        V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE;
+        V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE |
+        V9X_D3DPTBLENDCAPS_MODULATEALPHA;
     /*
      * WRAP as well as CLAMP since 2026-09-02. The sampler always wrapped -
      * it indexes texels through a mask - and what was missing was a coordinate

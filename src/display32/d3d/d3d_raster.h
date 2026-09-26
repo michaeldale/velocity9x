@@ -228,8 +228,21 @@
 
 #define V9X_D3D_RASTER_FILTER_POINT   1ul
 #define V9X_D3D_RASTER_FILTER_LINEAR  2ul
-#define V9X_D3D_RASTER_BLEND_DECAL    1ul
-#define V9X_D3D_RASTER_BLEND_MODULATE 2ul
+/*
+ * The texture colour combine. The first two names and values are the
+ * Direct3D software engine's old DECAL/MODULATE contract; keeping them makes
+ * every existing caller take the same path. DECALALPHA is the OpenGL DECAL
+ * equation for an alpha-bearing texture, and ENV_BLEND is OpenGL BLEND:
+ *
+ *   DECALALPHA: Cf * (1 - At) + Ct * At
+ *   ENV_BLEND:  Cf * (1 - Ct) + Cc * Ct, per colour channel
+ *
+ * A front end chooses DECAL rather than DECALALPHA for an RGB texture.
+ */
+#define V9X_D3D_RASTER_BLEND_DECAL      1ul
+#define V9X_D3D_RASTER_BLEND_MODULATE   2ul
+#define V9X_D3D_RASTER_BLEND_DECALALPHA 3ul
+#define V9X_D3D_RASTER_BLEND_ENV        4ul
 
 /* Power-of-two texture edge bounds in texels: down to one, so a mip chain's
  * tail levels are textures like any other, and up to the ViRGE's 512. The
@@ -381,6 +394,11 @@ typedef struct v9x_d3d_raster_texture {
     v9x_u32 mip;
     v9x_u32 mip_count;
     const V9X_D3D_RASTER_LEVEL *mips;
+    /* OpenGL's texture-environment colour, 0..255. Read only by ENV_BLEND;
+     * kept with the texture combine state so the span needs no extra pointer. */
+    v9x_s32 env_red;
+    v9x_s32 env_green;
+    v9x_s32 env_blue;
 } V9X_D3D_RASTER_TEXTURE;
 
 #define V9X_D3D_RASTER_TEXALPHA_IGNORE   0ul
