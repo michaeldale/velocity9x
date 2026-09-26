@@ -129,6 +129,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 2 on the netbook: the three-state drain draws the same, Gen3 passes the mixed-engine rung, and the new drain paths were never taken under load](2026-09-26-phase2-gen3-netbook-gates-drain-and-mixed-engine.md)
 - [2026-09-26 Phase 3: render interface v1 is exported, reached from an application's own LoadLibrary, and draws exactly on the software engine](2026-09-26-phase3-render-interface-v1-draws-from-another-process.md)
 - [2026-09-26 Phase 3: the ICD clears and presents through the system OPENGL32 on the software engine](2026-09-26-phase3-icd-clears-and-presents-through-opengl32.md)
+- [2026-09-26 Phase 4: the ICD on Gen3 - everything but textures draws and reads back](2026-09-26-phase4-icd-on-gen3-netbook.md)
 - [2026-09-26 Phase 3: explicit draws - the software engine takes CPU textures, a scissor and a colour mask through the render interface, and Direct3D draws the same](2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-masks.md)
 
 ## VBE generic family and dynamic modes
