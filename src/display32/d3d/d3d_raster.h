@@ -126,6 +126,14 @@
     (V9X_D3D_RASTER_TEXCOORD_ONE * V9X_D3D_RASTER_TEXCOORD_REPEATS - 1l)
 
 /*
+ * The vertex's q (see V9X_D3D_RASTER_VERTEX): 1.16, with ONE the nearest
+ * vertex of its triangle. The same fraction width as a texture coordinate,
+ * which is what lets u * q be formed in 32 bits at the vertex.
+ */
+#define V9X_D3D_RASTER_Q_BITS 16
+#define V9X_D3D_RASTER_Q_ONE  65536l
+
+/*
  * What happens to a coordinate outside the first repeat, numbered as
  * D3DTADDRESS_* numbers it.
  *
@@ -257,6 +265,22 @@ typedef struct v9x_d3d_raster_vertex {
      * channels do and for the same reason: the interpolator's endpoints can
      * sit a fraction outside the range the caller wrote. */
     v9x_s32 alpha;
+    /*
+     * The reciprocal of the vertex's homogeneous w, 1.16 fixed point,
+     * normalised by the caller so that the triangle's nearest vertex is
+     * V9X_D3D_RASTER_Q_ONE and no vertex is below 1 (Phase 2 of the OpenGL
+     * plan). Only the ratios within one triangle matter, which is why the
+     * caller scales rather than the rasterizer carrying a float.
+     *
+     * Texture coordinates are interpolated as u * q, v * q and q, linearly
+     * in screen space, and divided back per pixel - perspective correction.
+     * Depth and colour stay linear in screen space: Direct3D's z is already
+     * screen space, and OpenGL 1.1 permits linear colour (3.5.1) while
+     * requiring the correction for texture coordinates. Three equal values,
+     * whatever they are, make the triangle affine and take the path every
+     * draw took before the field existed, bit for bit.
+     */
+    v9x_s32 q;
 } V9X_D3D_RASTER_VERTEX;
 
 /*

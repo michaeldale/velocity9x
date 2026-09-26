@@ -75,6 +75,7 @@ static void v9x_bench_vertex(V9X_D3D_RASTER_VERTEX *v, LONG x, LONG y,
     v->green = green;
     v->blue = blue;
     v->alpha = 128l;
+    v->q = V9X_D3D_RASTER_Q_ONE;
 }
 
 static int v9x_bench_frame(DWORD scene, const V9X_D3D_RASTER_TARGET *target,

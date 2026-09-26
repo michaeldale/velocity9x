@@ -741,6 +741,7 @@ static void emit_intel_3d_reference(void)
         vertices[index].blue =
             (v9x_u8)(V9X_I9XX_TRI_COLOR_BGRA & 0xfful);
         vertices[index].alpha = 0xff;
+        vertices[index].q = V9X_D3D_RASTER_Q_ONE;
     }
     /*
      * The rasteriser takes SUBPIXEL coordinates - four fractional bits, so

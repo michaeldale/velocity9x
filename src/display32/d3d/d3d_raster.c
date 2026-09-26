@@ -815,6 +815,69 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
  * division by zero here is a fault inside a display driver's draw path, so it
  * is answered rather than assumed.
  */
+/*
+ * u * q at a vertex, 16.16 in and out, for the perspective path.
+ *
+ * Both are 16.16 and the plain product is 32.32, so the coordinate is split
+ * at its repeat: whole repeats times q stays inside 2^21 (thirty-three of
+ * them by at most 2^16), and the fraction times q is under 2^32, unsigned.
+ * The result is at most the coordinate itself, since q is at most one.
+ */
+static v9x_s32 v9x_d3d_raster_scale_by_q(v9x_s32 coordinate, v9x_s32 q)
+{
+    v9x_s32 whole = coordinate / V9X_D3D_RASTER_TEXCOORD_ONE;
+    v9x_u32 fraction = (v9x_u32)(coordinate % V9X_D3D_RASTER_TEXCOORD_ONE);
+
+    return whole * q +
+           (v9x_s32)((fraction * (v9x_u32)q) >> V9X_D3D_RASTER_Q_BITS);
+}
+
+/*
+ * The per-pixel divide of the perspective path: (u * q) / q back to 16.16,
+ * given the reciprocal 2^30 / q the span formed once for both axes.
+ *
+ * The product scaled * reciprocal is the coordinate times 2^14 and so at
+ * most 2^35, past 32 bits, and this build has no wider integer. It is
+ * formed in four pieces, scaled split at bit 11 and the reciprocal at bit
+ * 15 - a = ah * 2^11 + al, b = bh * 2^15 + bl, so a * b is ah * bh * 2^26
+ * + ah * bl * 2^11 + al * bh * 2^15 + al * bl - each partial product under
+ * 2^27 and each shifted into place by its own power; the two cross terms
+ * do not share a shift, which the first draft got wrong and the column-2
+ * check in the tests caught. The three truncations lose under three units
+ * of 16.16 between them. Every piece is bounded by the true product
+ * because the correct coordinate lies between the triangle's vertex
+ * coordinates, which the entry has checked.
+ *
+ * The reciprocal's own truncation costs up to 1 in 16384 of the coordinate
+ * at the near end of a triangle, a texel at 33 repeats on a 512 texture
+ * and 1/32 of one at a single repeat. That is the precision the contract
+ * document states.
+ */
+#define V9X_D3D_RASTER_Q_RECIPROCAL_ONE (1l << 30)
+
+static v9x_s32 v9x_d3d_raster_divide_by_q(v9x_s32 scaled, v9x_s32 reciprocal)
+{
+    v9x_s32 scaled_high;
+    v9x_s32 scaled_low;
+    v9x_s32 reciprocal_high = reciprocal >> 15;
+    v9x_s32 reciprocal_low = reciprocal & 0x7ffful;
+
+    /* A negative u * q is an interpolator that has drifted a fraction below
+     * zero between two non-negative endpoints. The span clamps the result
+     * to zero anyway, and the arithmetic shift below must not be asked
+     * about a negative value - the same rule the sampler's lower bound
+     * states. */
+    if (scaled < 0l) {
+        return 0l;
+    }
+    scaled_high = scaled >> 11;
+    scaled_low = scaled & 0x7ffl;
+    return ((scaled_high * reciprocal_high) << 12) +
+           ((scaled_high * reciprocal_low) >> 3) +
+           ((scaled_low * reciprocal_high) << 1) +
+           ((scaled_low * reciprocal_low) >> 14);
+}
+
 typedef struct V9X_D3D_RASTER_EDGE {
     V9X_D3D_RASTER_VERTEX value;
     V9X_D3D_RASTER_VERTEX step;
@@ -855,6 +918,7 @@ static int v9x_d3d_raster_edge_start(const V9X_D3D_RASTER_VERTEX *from,
     V9X_EDGE_START(green);
     V9X_EDGE_START(blue);
     V9X_EDGE_START(alpha);
+    V9X_EDGE_START(q);
 #undef V9X_EDGE_START
     return 1;
 }
@@ -879,6 +943,7 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
     V9X_EDGE_NEXT(green);
     V9X_EDGE_NEXT(blue);
     V9X_EDGE_NEXT(alpha);
+    V9X_EDGE_NEXT(q);
 #undef V9X_EDGE_NEXT
     edge->value.y += V9X_D3D_RASTER_SUBPIXEL_ONE;
 }
@@ -919,6 +984,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_SAMPLER *sampler,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
                                 const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                                int perspective,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -933,6 +999,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 z_step = 0l;
     v9x_s32 u_step = 0l;
     v9x_s32 v_step = 0l;
+    v9x_s32 q_step = 0l;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
@@ -940,6 +1007,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 z;
     v9x_s32 u;
     v9x_s32 v;
+    /* q, on the perspective path only; u and v are then u * q and v * q. */
+    v9x_s32 q;
     v9x_s32 offset;
     v9x_s32 column;
     v9x_u16 *pixels;
@@ -1008,6 +1077,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
          * put the step alone outside a signed 32-bit integer. */
         u_step = ((right->u - left->u) << V9X_D3D_RASTER_DEPTH_BITS) / width;
         v_step = ((right->v - left->v) << V9X_D3D_RASTER_DEPTH_BITS) / width;
+        q_step = ((right->q - left->q) << V9X_D3D_RASTER_DEPTH_BITS) / width;
     }
 
     /* The colour at the first pixel centre, then one whole pixel per step. */
@@ -1024,6 +1094,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     z = (left->z << V9X_D3D_RASTER_DEPTH_BITS) + z_step * offset;
     u = (left->u << V9X_D3D_RASTER_DEPTH_BITS) + u_step * offset;
     v = (left->v << V9X_D3D_RASTER_DEPTH_BITS) + v_step * offset;
+    q = (left->q << V9X_D3D_RASTER_DEPTH_BITS) + q_step * offset;
     red_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
@@ -1031,6 +1102,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     z_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    q_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
 
     if (alpha != 0) {
         int legacy = (alpha->src == V9X_D3D_RASTER_BLEND_SRC_ONE ||
@@ -1149,8 +1221,28 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 v9x_s32 tex_red;
                 v9x_s32 tex_green;
                 v9x_s32 tex_blue;
-                v9x_s32 texel_u = u >> V9X_D3D_RASTER_DEPTH_BITS;
-                v9x_s32 texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
+                v9x_s32 texel_u;
+                v9x_s32 texel_v;
+
+                if (perspective) {
+                    /* q back to 1.16 - never below 1, since it is
+                     * interpolated between vertices the entry checked - and
+                     * one reciprocal for both axes. */
+                    v9x_s32 q16 = q >> V9X_D3D_RASTER_DEPTH_BITS;
+                    v9x_s32 reciprocal;
+
+                    if (q16 < 1l) {
+                        q16 = 1l;
+                    }
+                    reciprocal = V9X_D3D_RASTER_Q_RECIPROCAL_ONE / q16;
+                    texel_u = v9x_d3d_raster_divide_by_q(
+                        u >> V9X_D3D_RASTER_DEPTH_BITS, reciprocal);
+                    texel_v = v9x_d3d_raster_divide_by_q(
+                        v >> V9X_D3D_RASTER_DEPTH_BITS, reciprocal);
+                } else {
+                    texel_u = u >> V9X_D3D_RASTER_DEPTH_BITS;
+                    texel_v = v >> V9X_D3D_RASTER_DEPTH_BITS;
+                }
 
                 /*
                  * Under CLAMP a coordinate past the end takes the edge texel;
@@ -1255,6 +1347,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         z += z_step;
                         u += u_step;
                         v += v_step;
+                        q += q_step;
                         continue;
                     }
                 }
@@ -1311,6 +1404,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     z += z_step;
                     u += u_step;
                     v += v_step;
+                    q += q_step;
                     continue;
                 }
                 if (alpha_varies) {
@@ -1363,6 +1457,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         z += z_step;
         u += u_step;
         v += v_step;
+        q += q_step;
     }
 }
 
@@ -1390,6 +1485,11 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
      * receive, and a null one is what untextured means. */
     V9X_D3D_RASTER_SAMPLER sampler;
     const V9X_D3D_RASTER_SAMPLER *bound = 0;
+    /* The perspective path walks a copy of the vertices with u and v
+     * already multiplied by q; the affine path walks the caller's. */
+    V9X_D3D_RASTER_VERTEX carried[3];
+    const V9X_D3D_RASTER_VERTEX *walked = vertices;
+    int perspective = 0;
 
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
@@ -1423,7 +1523,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
             vertices[index].u < 0l ||
             vertices[index].u > V9X_D3D_RASTER_TEXCOORD_MAX ||
             vertices[index].v < 0l ||
-            vertices[index].v > V9X_D3D_RASTER_TEXCOORD_MAX) {
+            vertices[index].v > V9X_D3D_RASTER_TEXCOORD_MAX ||
+            vertices[index].q < 1l ||
+            vertices[index].q > V9X_D3D_RASTER_Q_ONE) {
             return 0;
         }
     }
@@ -1435,9 +1537,24 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         bound = &sampler;
     }
 
-    top = &vertices[0];
-    middle = &vertices[1];
-    bottom = &vertices[2];
+    /* Perspective when the three q differ (see V9X_D3D_RASTER_VERTEX.q).
+     * Equal q, whatever the value, leaves the caller's coordinates and every
+     * line below exactly as they were. */
+    if (vertices[0].q != vertices[1].q || vertices[1].q != vertices[2].q) {
+        for (index = 0ul; index < 3ul; ++index) {
+            carried[index] = vertices[index];
+            carried[index].u = v9x_d3d_raster_scale_by_q(vertices[index].u,
+                                                         vertices[index].q);
+            carried[index].v = v9x_d3d_raster_scale_by_q(vertices[index].v,
+                                                         vertices[index].q);
+        }
+        walked = carried;
+        perspective = 1;
+    }
+
+    top = &walked[0];
+    middle = &walked[1];
+    bottom = &walked[2];
     if (top->y > middle->y) {
         swap = top;
         top = middle;
@@ -1486,10 +1603,12 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
+                                perspective, row,
                                 &along.value, &across.value);
         } else {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, row,
+            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test,
+                                perspective, row,
                                 &across.value, &along.value);
         }
         if (row + 1l < last_row) {

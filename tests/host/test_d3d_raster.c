@@ -171,6 +171,8 @@ static void raster_vertex(V9X_D3D_RASTER_VERTEX *vertex,
     /* Opaque unless a test says otherwise, so every draw that predates
      * blending keeps meaning what it meant. */
     vertex->alpha = 255l;
+    /* And affine, likewise. */
+    vertex->q = V9X_D3D_RASTER_Q_ONE;
 }
 
 /* The depth tests want the same vertex with a depth on it. Kept separate so
@@ -2328,6 +2330,9 @@ static void test_edge_stepping_corpus(void)
                 triangle[i].green = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
                 triangle[i].blue = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
                 triangle[i].alpha = (v9x_s32)((raster_corpus_random(&seed) >> 16) & 255ul);
+                /* Affine: the corpus is the record of the path every draw
+                 * took before q existed, and this consumes no random. */
+                triangle[i].q = V9X_D3D_RASTER_Q_ONE;
             }
             if (draw % 4u == 0u) {
                 triangle[1].y = triangle[0].y;
@@ -2671,6 +2676,169 @@ static void test_colour_mask_keeps_channels(void)
     RCHECK(raster_pixel(12u, 10u) == v9x_d3d_raster_rgb565(99l, 202l, 198l));
 }
 
+/*
+ * A quad over the whole target with u running 0..1 left to right, v zero,
+ * and q running from `near_q` on the left edge to `far_q` on the right -
+ * the top scanline of a floor seen at an angle.
+ */
+static int raster_perspective_quad(const V9X_D3D_RASTER_TARGET *target,
+                                   const V9X_D3D_RASTER_TEXTURE *texture,
+                                   v9x_s32 near_q, v9x_s32 far_q)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    v9x_s32 edge = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+    int ok;
+
+    raster_vertex(&triangle[0], PX(0), PX(0), 255l, 255l, 255l);
+    triangle[0].q = near_q;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[1].u = edge;
+    triangle[1].q = far_q;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].q = near_q;
+    ok = v9x_d3d_raster_triangle(target, 0, texture, 0, 0, triangle) != 0;
+
+    raster_vertex(&triangle[0], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[0].u = edge;
+    triangle[0].q = far_q;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(RASTER_HEIGHT),
+                  255l, 255l, 255l);
+    triangle[1].u = edge;
+    triangle[1].q = far_q;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].q = near_q;
+    return ok &&
+           v9x_d3d_raster_triangle(target, 0, texture, 0, 0, triangle) != 0;
+}
+
+/* A 4x4 point-sampled CLAMP texture whose columns are red, green, blue and
+ * white, every row the same. */
+static void raster_column_texture(V9X_D3D_RASTER_TEXTURE *texture)
+{
+    unsigned int row;
+
+    raster_texture_reset(texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    for (row = 0u; row < 4u; ++row) {
+        raster_texel_set(0u, row, 0xf800u);
+        raster_texel_set(1u, row, 0x07e0u);
+        raster_texel_set(2u, row, 0x001fu);
+        raster_texel_set(3u, row, 0xffffu);
+    }
+}
+
+/*
+ * Texture coordinates are perspective-correct when q varies.
+ *
+ * With q falling from 1 on the left edge to 1/4 on the right, the correct
+ * coordinate at fraction t across the target is t / (4 - 3t): 0.21 at the
+ * middle pixel (column 16, t = 0.516) and 0.45 at column 24 (t = 0.766).
+ * Point-sampled from four columns those are texel 0 and texel 1 - red and
+ * green - where an affine interpolator lands on texel 2 and 3, blue and
+ * white. Both ends agree either way. This failed before the entry, the
+ * edges and the spans carried q (Phase 2 of the OpenGL plan, 2026-09-26).
+ */
+static void test_perspective_divides_texture_coordinates(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_reset(&target);
+    raster_column_texture(&texture);
+    RCHECK(raster_perspective_quad(&target, &texture, V9X_D3D_RASTER_Q_ONE,
+                                   V9X_D3D_RASTER_Q_ONE / 4l) != 0);
+    RCHECK(raster_pixel(1u, 10u) == 0xf800u);
+    RCHECK(raster_pixel(16u, 10u) == 0xf800u);   /* affine: 0x001f */
+    RCHECK(raster_pixel(24u, 10u) == 0x07e0u);   /* affine: 0xffff */
+    RCHECK(raster_pixel(30u, 10u) == 0xffffu);
+    /* The two triangles agree across their shared diagonal: the same
+     * column on the top and bottom rows. */
+    RCHECK(raster_pixel(16u, 1u) == raster_pixel(16u, 22u));
+    RCHECK(raster_pixel(24u, 1u) == raster_pixel(24u, 22u));
+    raster_check_untouched_margins();
+
+    /* q rising left to right instead, 1/4 to 1: the coordinate is
+     * 4t / (1 + 3t), 0.33 at column 3 (t = 0.109), 0.63 at column 9
+     * (t = 0.297) and 0.81 at column 16 - texels 1, 2 and 3, where affine
+     * lands on 0, 1 and 2. The texture is stretched at the far end and
+     * compressed at the near one, the opposite of the draw above. Columns
+     * 3 and 9 sit a third of a texel clear of a boundary, so they measure
+     * the correction; column 2 (t = 0.078) is 0.2532, which is 1.013
+     * texels - 200 units of 16.16 above the boundary against an arithmetic
+     * error the divide's comment bounds under eight - so it measures the
+     * divide itself. It caught a wrong cross-term shift on the first run. */
+    raster_reset(&target);
+    RCHECK(raster_perspective_quad(&target, &texture,
+                                   V9X_D3D_RASTER_Q_ONE / 4l,
+                                   V9X_D3D_RASTER_Q_ONE) != 0);
+    RCHECK(raster_pixel(2u, 10u) == 0x07e0u);    /* affine: 0xf800 */
+    RCHECK(raster_pixel(3u, 10u) == 0x07e0u);    /* affine: 0xf800 */
+    RCHECK(raster_pixel(9u, 10u) == 0x001fu);    /* affine: 0x07e0 */
+    RCHECK(raster_pixel(16u, 10u) == 0xffffu);   /* affine: 0x001f */
+    RCHECK(raster_pixel(30u, 10u) == 0xffffu);
+}
+
+/*
+ * Three equal q, whatever the value, are the affine draw, bit for bit -
+ * the path every earlier test took - so the whole target is compared, and
+ * the middle pixel is blue as an affine interpolator makes it.
+ */
+static void test_perspective_equal_q_is_affine(void)
+{
+    static v9x_u16 affine[RASTER_CELLS];
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    unsigned int index;
+    int same = 1;
+
+    raster_reset(&target);
+    raster_column_texture(&texture);
+    RCHECK(raster_perspective_quad(&target, &texture, V9X_D3D_RASTER_Q_ONE,
+                                   V9X_D3D_RASTER_Q_ONE) != 0);
+    RCHECK(raster_pixel(16u, 10u) == 0x001fu);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        affine[index] = raster_cells[index];
+    }
+
+    raster_reset(&target);
+    RCHECK(raster_perspective_quad(&target, &texture,
+                                   V9X_D3D_RASTER_Q_ONE / 4l,
+                                   V9X_D3D_RASTER_Q_ONE / 4l) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        if (raster_cells[index] != affine[index]) {
+            same = 0;
+        }
+    }
+    RCHECK(same != 0);
+
+    raster_reset(&target);
+    RCHECK(raster_perspective_quad(&target, &texture, 1l, 1l) != 0);
+    same = 1;
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        if (raster_cells[index] != affine[index]) {
+            same = 0;
+        }
+    }
+    RCHECK(same != 0);
+}
+
+static void test_perspective_refusals(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_reset(&target);
+    raster_column_texture(&texture);
+    RCHECK(raster_perspective_quad(&target, &texture, 0l,
+                                   V9X_D3D_RASTER_Q_ONE) == 0);
+    RCHECK(raster_perspective_quad(&target, &texture, V9X_D3D_RASTER_Q_ONE,
+                                   V9X_D3D_RASTER_Q_ONE + 1l) == 0);
+    RCHECK(raster_perspective_quad(&target, &texture, -1l,
+                                   V9X_D3D_RASTER_Q_ONE) == 0);
+    RCHECK(raster_pixel(16u, 10u) == RASTER_BACKGROUND);
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -2709,6 +2877,9 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_alpha_test_refusals();
     test_scissor_clips_colour_and_depth();
     test_colour_mask_keeps_channels();
+    test_perspective_divides_texture_coordinates();
+    test_perspective_equal_q_is_affine();
+    test_perspective_refusals();
     test_texture_wrap_tiles();
     test_texture_wrap_extreme_coordinate();
     test_texture_address_refusals();

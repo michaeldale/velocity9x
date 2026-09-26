@@ -947,6 +947,10 @@ static void v9x_d3d_soft_vertex(const V9X_R3D_VERTEX *source,
      * with no blend ignores it, and reading it only when blending is enabled
      * would make the vertex mean two different things. */
     result->alpha = (v9x_s32)((source->color >> 24) & 0xfful);
+    /* Affine, as this engine has always drawn: its caps do not claim
+     * D3DPTEXTURECAPS_PERSPECTIVE, and feeding the vertex's rhw here is a
+     * Direct3D behaviour change that gets its own gate. */
+    result->q = V9X_D3D_RASTER_Q_ONE;
 }
 
 /*
