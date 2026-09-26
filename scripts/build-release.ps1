@@ -74,8 +74,40 @@ function New-V9xReleaseZip {
     if ($items.Count -eq 0) {
         throw "Nothing to publish in $SourceDir."
     }
-    Compress-Archive -LiteralPath @($items | ForEach-Object { $_.FullName }) `
-        -DestinationPath $ZipPath -CompressionLevel Optimal
+    # Not Compress-Archive: Windows PowerShell 5.1's opens each file with
+    # no sharing, so it fails whenever anything else has the file open -
+    # an 86Box guest with build\ mounted as a folder did, on 2026-09-27.
+    # Reading with FileShare.ReadWrite zips what is on disk regardless.
+    Add-Type -AssemblyName System.IO.Compression
+    $zipStream = [System.IO.File]::Open($ZipPath, [System.IO.FileMode]::CreateNew)
+    try {
+        $archive = New-Object System.IO.Compression.ZipArchive($zipStream,
+            [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            foreach ($item in $items) {
+                $entry = $archive.CreateEntry($item.Name,
+                    [System.IO.Compression.CompressionLevel]::Optimal)
+                $entry.LastWriteTime = $item.LastWriteTime
+                $source = [System.IO.File]::Open($item.FullName,
+                    [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+                    [System.IO.FileShare]::ReadWrite)
+                try {
+                    $target = $entry.Open()
+                    try {
+                        $source.CopyTo($target)
+                    } finally {
+                        $target.Dispose()
+                    }
+                } finally {
+                    $source.Dispose()
+                }
+            }
+        } finally {
+            $archive.Dispose()
+        }
+    } finally {
+        $zipStream.Dispose()
+    }
     return $items.Count
 }
 
