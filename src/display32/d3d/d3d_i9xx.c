@@ -1148,7 +1148,7 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, 1ul, &tree) == V9X_FALSE ||
+    if (v9x_d3d_i9xx_layout_miptree(size, size, 1ul, &tree) == V9X_FALSE ||
         v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
                                  tree.level_offset, &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1233,7 +1233,7 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_FORMAT);
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, data->dwSCnt, &tree) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree(size, size, data->dwSCnt, &tree) == V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
     reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
@@ -1349,7 +1349,7 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (count == 1ul) {
         return 1ul;
     }
-    if (v9x_d3d_i9xx_layout_miptree(size, count, tree) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree(size, size, count, tree) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         return 1ul;
@@ -1383,7 +1383,7 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (verified < count) {
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         if (verified <= 1ul ||
-            v9x_d3d_i9xx_layout_miptree(size, verified, tree) == V9X_FALSE) {
+            v9x_d3d_i9xx_layout_miptree(size, size, verified, tree) == V9X_FALSE) {
             return 1ul;
         }
     }

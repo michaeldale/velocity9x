@@ -187,7 +187,8 @@ static v9x_u32 v9x_d3d_i9xx_align(v9x_u32 value, v9x_u32 unit)
     return (value + unit - 1ul) & ~(unit - 1ul);
 }
 
-v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
+v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
+                                    v9x_u32 levels,
                                     struct v9x_d3d_i9xx_miptree *tree)
 {
     v9x_u32 level;
@@ -207,11 +208,15 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
         tree->level_offset[level] = 0ul;
     }
 
-    if (size == 0ul || size > V9X_I9XX_MAP_DIMENSION_MAX ||
-        (size & (size - 1ul)) != 0ul) {
+    if (width == 0ul || width > V9X_I9XX_MAP_DIMENSION_MAX ||
+        (width & (width - 1ul)) != 0ul ||
+        height == 0ul || height > V9X_I9XX_MAP_DIMENSION_MAX ||
+        (height & (height - 1ul)) != 0ul) {
         return V9X_FALSE;
     }
-    for (edge = size; edge > 1ul; edge >>= 1) {
+    /* The chain runs until both edges are one, so its length is the larger
+     * edge's; the smaller stops halving at one texel (minify). */
+    for (edge = width > height ? width : height; edge > 1ul; edge >>= 1) {
         ++top_levels;
     }
     if (levels == 0ul || levels > top_levels) {
@@ -221,14 +226,15 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
     /*
      * The pitch: level 0's row, widened when level 1 (aligned) and level 2
      * side by side are wider - which happens only for a top of four texels
-     * or fewer - then aligned to the granule.
+     * or fewer - then aligned to the granule. Widths only: the rows do not
+     * enter it, which is what lets a tall map keep a narrow pitch.
      */
-    pitch_texels = size;
+    pitch_texels = width;
     if (levels > 1ul) {
         v9x_u32 mip1 =
-            v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(size, 1ul),
+            v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(width, 1ul),
                                V9X_I9XX_MIP_ALIGN_TEXELS) +
-            v9x_d3d_i9xx_minify(size, 2ul);
+            v9x_d3d_i9xx_minify(width, 2ul);
 
         if (mip1 > pitch_texels) {
             pitch_texels = mip1;
@@ -241,18 +247,21 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
      * Down the chain. After level 1 the position steps RIGHT by level 1's
      * aligned width instead of down, which puts level 2 and everything
      * after it in a column beside level 1 - Mesa's "Layout_below: step
-     * right after second mipmap".
+     * right after second mipmap". The step across is level 1's WIDTH and
+     * each step down its own level's HEIGHT, which for a square were the
+     * same number (i945_miptree_layout_2d).
      */
     for (level = 0ul; level < levels; ++level) {
-        v9x_u32 width = v9x_d3d_i9xx_minify(size, level);
-        v9x_u32 rows = v9x_d3d_i9xx_align(width, V9X_I9XX_MIP_ALIGN_ROWS);
+        v9x_u32 level_width = v9x_d3d_i9xx_minify(width, level);
+        v9x_u32 rows = v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(height, level),
+                                          V9X_I9XX_MIP_ALIGN_ROWS);
 
         tree->level_offset[level] = y * tree->pitch + x * 2ul;
         if (y + rows > tree->rows) {
             tree->rows = y + rows;
         }
         if (level == 1ul) {
-            x += v9x_d3d_i9xx_align(width, V9X_I9XX_MIP_ALIGN_TEXELS);
+            x += v9x_d3d_i9xx_align(level_width, V9X_I9XX_MIP_ALIGN_TEXELS);
         } else {
             y += rows;
         }

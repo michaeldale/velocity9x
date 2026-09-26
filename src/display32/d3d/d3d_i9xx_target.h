@@ -85,7 +85,11 @@ struct v9x_d3d_i9xx_miptree {
     v9x_u32 level_offset[V9X_D3D_I9XX_MIP_LEVELS_MAX];
 };
 
-v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 size, v9x_u32 levels,
+/* Width and height separately (Phase 2 of the OpenGL plan): each a power of
+ * two within the map bounds, and the chain as long as the larger edge
+ * allows. Direct3D passes a square, which its caps still require. */
+v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
+                                    v9x_u32 levels,
                                     struct v9x_d3d_i9xx_miptree *tree);
 
 #endif /* VELOCITY9X_D3D_I9XX_TARGET_H */

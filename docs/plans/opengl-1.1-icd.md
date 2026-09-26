@@ -610,6 +610,15 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
 - **Gen3 non-square textures.** MAP_STATE carries width and height
   separately. `v9x_d3d_i9xx_layout_miptree` is checked against a non-square
   chain in `test_i9xx_3d.c`. The D3D caps keep SQUAREONLY.
+  - **Layout done, host only (2026-09-26):** `v9x_d3d_i9xx_layout_miptree`
+    takes width and height; the chain runs to the larger edge, the step
+    across is level 1's width and each step down its level's height
+    (Mesa's `i945_miptree_layout_2d`). 64x16 and 16x64 chains were worked
+    by hand and pass. MAP_STATE's builder already took the two edges
+    (`struct v9x_i9xx_texture`), so nothing below the bind is square-only
+    now; the D3D bind and caps still are. **Not measured on the netbook**
+    (offline): the first non-square sample on the GPU is the check that
+    the hand-worked offsets are the ones the sampler computes.
 - **Gate:** host tests green, and the Phase 1 D3D regression set.
 
 ## Phase 3: the render interface, the escape and the ICD skeleton
