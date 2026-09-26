@@ -413,6 +413,15 @@ typedef struct v9x_d3d_engine_ops {
     int (*draw)(const V9X_R3D_DRAW *draw,
                 const V9X_R3D_VERTEX *vertices,
                 DWORD triangle_count);
+
+    /*
+     * Capability decision, APPENDED 2026-09-26. It is passive: no counters,
+     * allocation, validation latch or command emission. A zero answer is
+     * made before clipping by the shared render interface and selects its
+     * CPU fallback; Direct3D keeps its established skip-and-count behavior
+     * and therefore does not consume this entry yet.
+     */
+    int (*accepts)(const V9X_R3D_DRAW *draw);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

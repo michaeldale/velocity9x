@@ -569,6 +569,14 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   - CPU coherence on Gen3 relies on MI_FLUSH plus the breadcrumb, which is
     marked unmeasured at `d3d_i9xx.c:2305,2364`. It gets a probe rung before
     Gen3 fallback is relied on.
+  - **Predicate landed, fallback pending (2026-09-26):** `accepts` is appended
+    to every engine table. The predicates are passive and conservative: they
+    reject unsupported blend/alpha/fog, texture-op and address state rather
+    than allowing the draw path to approximate it. Direct3D does not consume
+    the predicate and keeps skip-and-count. The neutral texture description
+    does not yet carry logical level extents, so shape, completeness and
+    storage checks remain bind-time decisions; the render-interface ABI must
+    add those before `accepts` can be the complete pre-clipping decision.
 - **Gen3 non-square textures.** MAP_STATE carries width and height
   separately. `v9x_d3d_i9xx_layout_miptree` is checked against a non-square
   chain in `test_i9xx_3d.c`. The D3D caps keep SQUAREONLY.

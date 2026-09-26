@@ -2548,6 +2548,42 @@ static int v9x_d3d_i9xx_ready(void)
     return 1;
 }
 
+/* Side-effect-free capability query. Binding still validates placement and
+ * mip layout; this rejects state the command builder would approximate. */
+static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
+{
+    if (draw == 0 ||
+        (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
+         draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
+        return 0;
+    }
+    if (draw->fog_enable != 0ul ||
+        (draw->alpha_test_enable != 0ul &&
+         draw->alpha_func != V9X_R3D_CMP_ALWAYS)) {
+        return 0;
+    }
+    if (draw->blend_enable != 0ul &&
+        !(draw->src_blend == V9X_R3D_BLEND_ONE &&
+          draw->dst_blend == V9X_R3D_BLEND_ZERO) &&
+        (v9x_d3d_i9xx_blend_factor(draw->src_blend) == 0ul ||
+         v9x_d3d_i9xx_blend_factor(draw->dst_blend) == 0ul)) {
+        return 0;
+    }
+    if (draw->texture.object != 0) {
+        if (draw->texture.op != V9X_R3D_TEXOP_DECAL &&
+            draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
+            draw->texture.op != V9X_R3D_TEXOP_MODULATEALPHA) {
+            return 0;
+        }
+        if (draw->texture.address != V9X_R3D_ADDRESS_WRAP &&
+            draw->texture.address != V9X_R3D_ADDRESS_MIRROR &&
+            draw->texture.address != V9X_R3D_ADDRESS_CLAMP) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /*
  * Positional; draw_triangles is null and the neutral draw entry is set
  * (Phase 1d of the OpenGL plan, 2026-09-26): this engine reads nothing
@@ -2562,5 +2598,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {
     v9x_d3d_i9xx_ready,
     v9x_d3d_i9xx_create_surface,
     v9x_d3d_i9xx_destroy_surface,
-    v9x_d3d_i9xx_draw
+    v9x_d3d_i9xx_draw,
+    v9x_d3d_i9xx_accepts
 };

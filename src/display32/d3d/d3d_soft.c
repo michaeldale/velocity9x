@@ -1142,6 +1142,44 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/* Passive capability half of the software draw path. Descriptor validity is
+ * the boundary validator's job; this answers only whether the state can be
+ * represented without the D3D path's skip/substitute behavior. */
+static int v9x_d3d_soft_accepts(const V9X_R3D_DRAW *draw)
+{
+    if (draw == 0 ||
+        (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
+         draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
+        return 0;
+    }
+    if (draw->blend_enable != 0ul &&
+        !v9x_d3d_soft_blend_advertised(draw->src_blend, draw->dst_blend)) {
+        return 0;
+    }
+    /* D3D's execute-buffer front end may already have folded fog into the
+     * vertex colour, but a neutral caller setting this bit asks for the
+     * post-texture operation. This adapter does not pass one yet. */
+    if (draw->fog_enable != 0ul) {
+        return 0;
+    }
+    if (draw->alpha_test_enable != 0ul &&
+        draw->alpha_func != V9X_R3D_CMP_ALWAYS) {
+        return 0;
+    }
+    if (draw->texture.object != 0) {
+        if (draw->texture.op != V9X_R3D_TEXOP_DECAL &&
+            draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
+            draw->texture.op != V9X_R3D_TEXOP_MODULATEALPHA) {
+            return 0;
+        }
+        if (draw->texture.address != V9X_R3D_ADDRESS_WRAP &&
+            draw->texture.address != V9X_R3D_ADDRESS_CLAMP) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /*
  * Positional, and draw_triangles is null: this engine moved to the neutral
  * draw entry in Phase 1d of the OpenGL plan (2026-09-26) and reads nothing
@@ -1156,5 +1194,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_soft = {
     v9x_d3d_soft_ready,
     0,
     0,
-    v9x_d3d_soft_draw
+    v9x_d3d_soft_draw,
+    v9x_d3d_soft_accepts
 };
