@@ -906,9 +906,23 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
         /* A placed Gen3 block may still be named by a submitted batch. Keep
          * it allocated unless completion was observed: leaking after a lost
          * completion channel is safer than handing live storage to a new
-         * surface. Other engines' destroy hooks are null. */
-        if (v9x_render_drain(1) == V9X_RENDER_DRAIN_DONE) {
-            v9x_d3d_destroy_surface(data);
+         * surface. Other engines' destroy hooks are null.
+         *
+         * BUSY is not a lost channel. One Gen3 call gives up after 20,000
+         * polls, well short of its 4,000,000-poll abandon bound, and a
+         * fill-heavy batch outlasts that; taking BUSY as "keep" leaked a
+         * block per slow destroy. DestroySurface cannot answer
+         * WASSTILLDRAWING, so it waits here until DONE or ABANDONED - the
+         * abandon bound, which accumulates across calls, ends the loop. */
+        {
+            int drained = v9x_render_drain(1);
+
+            while (drained == V9X_RENDER_DRAIN_BUSY) {
+                drained = v9x_render_drain(1);
+            }
+            if (drained == V9X_RENDER_DRAIN_DONE) {
+                v9x_d3d_destroy_surface(data);
+            }
         }
         data->ddRVal = V9X_DD_OK;
     }

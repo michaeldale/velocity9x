@@ -2557,10 +2557,20 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
          draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
         return 0;
     }
-    if (draw->fog_enable != 0ul ||
-        (draw->alpha_test_enable != 0ul &&
-         draw->alpha_func != V9X_R3D_CMP_ALWAYS)) {
+    if (draw->fog_enable != 0ul) {
         return 0;
+    }
+    /* The alpha test is emitted by the draw since 2026-09-25 (S6, through
+     * v9x_i9xx_alpha_test_bits); refuse only what that encoder cannot say,
+     * which is what the draw would count and draw untested. */
+    {
+        v9x_u32 alpha_test;
+
+        if (v9x_i9xx_alpha_test_bits(draw->alpha_test_enable,
+                                     draw->alpha_func, draw->alpha_ref,
+                                     &alpha_test) == V9X_FALSE) {
+            return 0;
+        }
     }
     if (draw->blend_enable != 0ul &&
         !(draw->src_blend == V9X_R3D_BLEND_ONE &&

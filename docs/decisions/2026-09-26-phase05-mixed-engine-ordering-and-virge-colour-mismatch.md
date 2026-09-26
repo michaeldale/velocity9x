@@ -16,9 +16,13 @@ stores RGB565 green and depth `0x4000` at `(16,16)`, then draws blue at depth
 The locks are the public shared-drain boundary; the final reads lock again.
 
 Both guests received fresh packages containing the external three-state
-`v9x_render_drain`. The result files are retained under
-`build/driver-results/phase05-mixed-20260926` and
-`build/driver-results/phase05-softref-20260926` in the working tree.
+`v9x_render_drain`. Evidence beside this record:
+`2026-09-26-phase05-mixed-virge-V9XDD.INI` (the split-verdict run on
+`Win86SE`, `V9XDD2-SPLIT.INI` in its result folder) and
+`2026-09-26-phase05-mixed-soft-V9XDD.INI` (`V9XDD2.INI` from the software
+guest). The other INIs in `build/driver-results/phase05-*-20260926` are the
+pre-`/mixed` default runs, with `MixedRun=0`, and are not evidence for
+anything below.
 
 ## ViRGE result
 
