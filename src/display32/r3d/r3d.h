@@ -251,4 +251,27 @@ int v9x_r3d_draw_line(const V9X_R3D_VERTEX *first,
                       v9x_u32 width, v9x_u32 height,
                       V9X_R3D_FRAGMENT_FN fragment, void *user);
 
+typedef struct v9x_r3d_clear_rect {
+    v9x_u32 left, top, right, bottom;
+} V9X_R3D_CLEAR_RECT;
+
+/* CPU clear description. Rectangles are the drawable/scissor intersection.
+ * Everything is validated before the first write, preventing partial clears
+ * from a malformed list. */
+typedef struct v9x_r3d_clear {
+    void *color;
+    v9x_u32 color_pitch;
+    void *depth;
+    v9x_u32 depth_pitch;
+    v9x_u32 width, height, format;
+    v9x_u32 clear_color, clear_depth;
+    v9x_u32 color_value; /* 0x00RRGGBB */
+    v9x_u32 depth_value; /* low 16 bits */
+    v9x_u32 write_red, write_green, write_blue, write_depth;
+    const V9X_R3D_CLEAR_RECT *rects;
+    v9x_u32 rect_count;
+} V9X_R3D_CLEAR;
+
+int v9x_r3d_clear(const V9X_R3D_CLEAR *clear);
+
 #endif

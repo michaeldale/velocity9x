@@ -193,4 +193,10 @@ both, there is no stencil, and no target has alpha to blend into.
   the original segment. This makes adjacent strip segments meet without a
   doubled blend or a gap (`test_r3d_line.c`). Width, stipple and smoothing
   remain Phase 6 work.
-- The clear operation's interaction with the scissor and the mask.
+- **Clear:** the CPU clear consumes a list of rectangles already intersected
+  with the drawable and scissor. It validates the complete list before any
+  write, then clears RGB565 or XRGB1555 colour under independent channel
+  masks and 16-bit depth under its own write mask. Colour and depth selection
+  are independent; an empty list succeeds without touching storage
+  (`test_r3d_clear.c`). Hardware-fill selection and ordering use the shared
+  drain when the render-interface boundary lands.

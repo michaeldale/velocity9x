@@ -530,6 +530,13 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
 - **Clear op** over a rect list: engine fill, or CPU fill, respecting GL
   scissor and write masks. Test partial clears and preservation of masked
   channels and depth independently of ordinary draw state.
+  - **CPU leaf implemented, host gate passed (2026-09-26):** validates all
+    rectangles before writing, supports RGB565/XRGB1555, independent RGB
+    channel masks and an independent 16-bit depth clear/write mask. Tests
+    cover partial and disjoint rectangles, pitch padding, masked preservation,
+    colour-only/depth-only operation, empty lists and refusal without partial
+    writes. Engine-fill selection waits for the render-interface boundary;
+    it must use the guest-gated shared drain before choosing CPU access.
 - **Shared drain and CPU/GPU ordering.** The all-engine helper is
   `v9x_blt_drain` (`ddhal_core.c:1384-1397`) made external, with three
   changes:
