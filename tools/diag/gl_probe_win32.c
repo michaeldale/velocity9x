@@ -382,6 +382,77 @@ void __stdcall V9xGlProbeEntry(void)
                              matrix[12] == 7.0f ? 1ul : 0ul);
                 v9x_glp_hex("ErrorAfterQueries", (DWORD)glGetError());
             }
+
+            /*
+             * Vertex arrays, the way Quake 2 draws its world: separate
+             * float vertex and ubyte colour arrays and glDrawElements
+             * with unsigned-short indices - a yellow quad over the left
+             * half - then an interleaved C4UB_V3F strip, cyan, over the
+             * right half through glDrawArrays. Read back through
+             * glReadPixels.
+             */
+            {
+                GLfloat quad[4 * 3];
+                static const GLubyte yellow[4 * 4] = {
+                    255, 255, 0, 255,  255, 255, 0, 255,
+                    255, 255, 0, 255,  255, 255, 0, 255
+                };
+                static const GLushort order[6] = { 0, 1, 2, 0, 2, 3 };
+                struct {
+                    GLubyte rgba[4];
+                    GLfloat xyz[3];
+                } strip[4];
+                GLfloat half = (GLfloat)(width / 2);
+                int i;
+
+                quad[0] = 0.0f;     quad[1] = 0.0f;
+                quad[3] = half;     quad[4] = 0.0f;
+                quad[6] = half;     quad[7] = (GLfloat)height;
+                quad[9] = 0.0f;     quad[10] = (GLfloat)height;
+                for (i = 0; i < 4; ++i) {
+                    quad[i * 3 + 2] = 0.0f;
+                    strip[i].rgba[0] = 0;
+                    strip[i].rgba[1] = 255;
+                    strip[i].rgba[2] = 255;
+                    strip[i].rgba[3] = 255;
+                    strip[i].xyz[0] = (i & 1) ? (GLfloat)width : half;
+                    strip[i].xyz[1] = (i & 2) ? (GLfloat)height : 0.0f;
+                    strip[i].xyz[2] = 0.0f;
+                }
+                glDisable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glVertexPointer(3, GL_FLOAT, 0, quad);
+                glColorPointer(4, GL_UNSIGNED_BYTE, 0, yellow);
+                glEnableClientState(GL_VERTEX_ARRAY);
+                glEnableClientState(GL_COLOR_ARRAY);
+                v9x_glp_uint("ColorArrayEnabled",
+                             glIsEnabled(GL_COLOR_ARRAY) ? 1ul : 0ul);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, order);
+                glInterleavedArrays(GL_C4UB_V3F, 0, strip);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                glDisableClientState(GL_VERTEX_ARRAY);
+                glDisableClientState(GL_COLOR_ARRAY);
+                v9x_glp_hex("ErrorAfterArrays", (DWORD)glGetError());
+                glFinish();
+                v9x_glp_hex("ReadArraysLeft",
+                            v9x_glp_read(width / 4, height / 2));
+                v9x_glp_hex("ReadArraysRight",
+                            v9x_glp_read(3 * width / 4, height / 2));
+                SwapBuffers(hdc);
+                v9x_glp_pump();
+                v9x_glp_hex("ArraysLeftPixel",
+                            (DWORD)GetPixel(hdc, width / 4, height / 2));
+                v9x_glp_hex("ArraysRightPixel",
+                            (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
+            }
         }
         {
             DWORD started = GetTickCount();

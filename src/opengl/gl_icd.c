@@ -38,6 +38,7 @@
 #include "gl_texture.h"
 #include "gl_get.h"
 #include "gl_pixels.h"
+#include "gl_varray.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -69,6 +70,8 @@ typedef struct v9x_gl_context {
     V9X_GL_STATE state;
     V9X_GL_PIPELINE pipeline;
     V9X_GL_TEXTURES textures;
+    /* Client state (2.8): the vertex arrays. */
+    V9X_GL_ARRAYS arrays;
     /* The levels a batch's texture names, valid for the draw call. */
     V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
 } V9X_GL_CONTEXT;
@@ -252,7 +255,16 @@ static GLboolean V9X_GL_API v9x_gl_is_enabled(GLenum cap)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
-    return context != 0 ? v9x_gl_state_is_enabled(&context->state, cap) : 0;
+    GLboolean enabled;
+
+    if (context == 0) {
+        return 0;
+    }
+    /* The client arrays are glIsEnabled's too (2.8), but not glEnable's. */
+    if (v9x_gl_arrays_is_enabled(&context->arrays, cap, &enabled)) {
+        return enabled;
+    }
+    return v9x_gl_state_is_enabled(&context->state, cap);
 }
 
 /*
@@ -958,6 +970,131 @@ static void V9X_GL_API v9x_gl_depth_range(GLclampd near_value,
                                                  near_value, far_value));
 }
 
+/* ---- Normals and vertex arrays (2.7, 2.8), gl_varray.c --------------- */
+
+static void V9X_GL_API v9x_gl_normal3f(GLfloat x, GLfloat y, GLfloat z)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_normal(&context_->pipeline, x, y, z));
+}
+
+static void V9X_GL_API v9x_gl_normal3fv(const GLfloat *v)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_normal(&context_->pipeline, v[0], v[1],
+                                            v[2]));
+}
+
+static void V9X_GL_API v9x_gl_enable_client_state(GLenum cap)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_client_state(&context_->state,
+                                                    &context_->arrays, cap,
+                                                    1));
+}
+
+static void V9X_GL_API v9x_gl_disable_client_state(GLenum cap)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_client_state(&context_->state,
+                                                    &context_->arrays, cap,
+                                                    0));
+}
+
+static void V9X_GL_API v9x_gl_vertex_pointer(GLint size, GLenum type,
+                                             GLsizei stride,
+                                             const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_pointer(&context_->state,
+                                               &context_->arrays,
+                                               V9X_GL_ARRAY_VERTEX, size,
+                                               type, stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_normal_pointer(GLenum type, GLsizei stride,
+                                             const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_pointer(&context_->state,
+                                               &context_->arrays,
+                                               V9X_GL_ARRAY_NORMAL, 3, type,
+                                               stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_color_pointer(GLint size, GLenum type,
+                                            GLsizei stride,
+                                            const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_pointer(&context_->state,
+                                               &context_->arrays,
+                                               V9X_GL_ARRAY_COLOR, size,
+                                               type, stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_index_pointer(GLenum type, GLsizei stride,
+                                            const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_pointer(&context_->state,
+                                               &context_->arrays,
+                                               V9X_GL_ARRAY_INDEX, 1, type,
+                                               stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_texcoord_pointer(GLint size, GLenum type,
+                                               GLsizei stride,
+                                               const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_pointer(&context_->state,
+                                               &context_->arrays,
+                                               V9X_GL_ARRAY_TEXCOORD, size,
+                                               type, stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_edge_flag_pointer(GLsizei stride,
+                                                const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_edge_flag_pointer(&context_->state,
+                                                         &context_->arrays,
+                                                         stride, pointer));
+}
+
+static void V9X_GL_API v9x_gl_get_pointerv(GLenum pname, GLvoid **out)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_get_pointer(&context_->state,
+                                                   &context_->arrays, pname,
+                                                   out));
+}
+
+static void V9X_GL_API v9x_gl_array_element(GLint index)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_element(&context_->state,
+                                               &context_->pipeline,
+                                               &context_->arrays, index));
+}
+
+static void V9X_GL_API v9x_gl_draw_arrays(GLenum mode, GLint first,
+                                          GLsizei count)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_draw(&context_->state,
+                                            &context_->pipeline,
+                                            &context_->arrays, mode, first,
+                                            count));
+}
+
+static void V9X_GL_API v9x_gl_draw_elements(GLenum mode, GLsizei count,
+                                            GLenum type,
+                                            const GLvoid *indices)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_draw_elements(&context_->state,
+                                                     &context_->pipeline,
+                                                     &context_->arrays, mode,
+                                                     count, type, indices));
+}
+
+static void V9X_GL_API v9x_gl_interleaved_arrays(GLenum format,
+                                                 GLsizei stride,
+                                                 const GLvoid *pointer)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_arrays_interleaved(&context_->state,
+                                                   &context_->arrays, format,
+                                                   stride, pointer));
+}
+
 /* ---- Queries and held state (6.1, 5.6, 3.5.4, 4.2.1), gl_get.c ------- */
 
 static void v9x_gl_get_any(GLenum pname, int kind, void *out)
@@ -1065,6 +1202,21 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glFinish, v9x_gl_finish);
     V9X_GL_OVERRIDE(glFlush, v9x_gl_flush);
     V9X_GL_OVERRIDE(glReadPixels, v9x_gl_read_pixels);
+    V9X_GL_OVERRIDE(glNormal3f, v9x_gl_normal3f);
+    V9X_GL_OVERRIDE(glNormal3fv, v9x_gl_normal3fv);
+    V9X_GL_OVERRIDE(glEnableClientState, v9x_gl_enable_client_state);
+    V9X_GL_OVERRIDE(glDisableClientState, v9x_gl_disable_client_state);
+    V9X_GL_OVERRIDE(glVertexPointer, v9x_gl_vertex_pointer);
+    V9X_GL_OVERRIDE(glNormalPointer, v9x_gl_normal_pointer);
+    V9X_GL_OVERRIDE(glColorPointer, v9x_gl_color_pointer);
+    V9X_GL_OVERRIDE(glIndexPointer, v9x_gl_index_pointer);
+    V9X_GL_OVERRIDE(glTexCoordPointer, v9x_gl_texcoord_pointer);
+    V9X_GL_OVERRIDE(glEdgeFlagPointer, v9x_gl_edge_flag_pointer);
+    V9X_GL_OVERRIDE(glGetPointerv, v9x_gl_get_pointerv);
+    V9X_GL_OVERRIDE(glArrayElement, v9x_gl_array_element);
+    V9X_GL_OVERRIDE(glDrawArrays, v9x_gl_draw_arrays);
+    V9X_GL_OVERRIDE(glDrawElements, v9x_gl_draw_elements);
+    V9X_GL_OVERRIDE(glInterleavedArrays, v9x_gl_interleaved_arrays);
     V9X_GL_OVERRIDE(glMatrixMode, v9x_gl_matrix_mode);
     V9X_GL_OVERRIDE(glLoadIdentity, v9x_gl_load_identity);
     V9X_GL_OVERRIDE(glLoadMatrixf, v9x_gl_load_matrixf);
@@ -1215,6 +1367,7 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 context->bound_once = 0;
                 v9x_gl_state_init(&context->state);
                 v9x_gl_pipeline_init(&context->pipeline);
+                v9x_gl_arrays_init(&context->arrays);
                 v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
                                      v9x_gl_heap_free);
                 v9x_gl_pipeline_sink(&context->pipeline, v9x_gl_draw_batch,

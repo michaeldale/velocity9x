@@ -90,6 +90,16 @@ DirectDraw Lock of the back buffer, whose HAL side drains the engine; on
 the software engine that drain has nothing to wait for, so the ordering
 is not exercised here.
 
+## And vertex arrays (Phase 4)
+
+Evidence: `2026-09-26-phase4-icd-vertex-arrays-soft-V9XGLP.ini`, same
+boot, the ICD built with `gl_varray.c`. A float vertex array and a
+ubyte colour array drawn by glDrawElements with unsigned-short indices
+filled the left half yellow; a C4UB_V3F glInterleavedArrays strip drawn
+by glDrawArrays filled the right half cyan. glReadPixels and GDI both
+read yellow at 25% and cyan at 75% of the width, glIsEnabled(COLOR_ARRAY)
+answered true, and no error was recorded. Every earlier check unchanged.
+
 ## Not established
 
 - Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565

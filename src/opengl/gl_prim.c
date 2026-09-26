@@ -43,6 +43,9 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
         pipeline->color[i] = 1.0f;
         pipeline->tex[i] = i == 3u ? 1.0f : 0.0f;
     }
+    pipeline->normal[0] = 0.0f;
+    pipeline->normal[1] = 0.0f;
+    pipeline->normal[2] = 1.0f;
     pipeline->shade_model = V9X_GL_SMOOTH;
     pipeline->cull_face = V9X_GL_BACK;
     pipeline->front_face = V9X_GL_CCW;
@@ -84,6 +87,14 @@ void v9x_gl_prim_texcoord(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t,
     pipeline->tex[1] = t;
     pipeline->tex[2] = r;
     pipeline->tex[3] = q;
+}
+
+void v9x_gl_prim_normal(V9X_GL_PIPELINE *pipeline, GLfloat x, GLfloat y,
+                        GLfloat z)
+{
+    pipeline->normal[0] = x;
+    pipeline->normal[1] = y;
+    pipeline->normal[2] = z;
 }
 
 static int v9x_gl_prim_allowed(V9X_GL_STATE *state)

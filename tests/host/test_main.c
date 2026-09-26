@@ -88,6 +88,8 @@ unsigned int v9x_run_gl_texture_tests(void);
 unsigned int v9x_run_gl_get_tests(void);
 /* tests\host\test_gl_pixels.c: glReadPixels' conversion. */
 unsigned int v9x_run_gl_pixels_tests(void);
+/* tests\host\test_gl_varray.c: vertex arrays. */
+unsigned int v9x_run_gl_varray_tests(void);
 
 /* tests\host\test_d3d_state.c: the Direct3D-to-neutral state routing and
  * the vocabulary's numbers against d3dtypes.h, same convention. */
@@ -1106,6 +1108,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_texture_tests();
     failures += v9x_run_gl_get_tests();
     failures += v9x_run_gl_pixels_tests();
+    failures += v9x_run_gl_varray_tests();
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();

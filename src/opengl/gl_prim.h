@@ -65,6 +65,9 @@ typedef int (*V9X_GL_SINK_FN)(void *user, const V9X_R3D_ABI_VERTEX *vertices,
 typedef struct v9x_gl_pipeline {
     GLfloat color[4];
     GLfloat tex[4];
+    /* The current normal (2.7). Held for queries and vertex arrays; no
+     * lighting reads it yet. */
+    GLfloat normal[3];
     GLenum shade_model;
     GLenum cull_face;
     GLenum front_face;
@@ -91,7 +94,7 @@ typedef struct v9x_gl_pipeline {
 } V9X_GL_PIPELINE;
 
 /* The initial values of the pipeline's state (colour 1,1,1,1, texture
- * coordinate 0,0,0,1, SMOOTH, BACK, CCW, LESS, ONE/ZERO, ALWAYS/0, depth
+ * coordinate 0,0,0,1, normal 0,0,1, SMOOTH, BACK, CCW, LESS, ONE/ZERO, ALWAYS/0, depth
  * range 0..1) and no sink. */
 void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline);
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
@@ -102,6 +105,8 @@ void v9x_gl_prim_color(V9X_GL_PIPELINE *pipeline, GLfloat r, GLfloat g,
                        GLfloat b, GLfloat a);
 void v9x_gl_prim_texcoord(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t,
                           GLfloat r, GLfloat q);
+void v9x_gl_prim_normal(V9X_GL_PIPELINE *pipeline, GLfloat x, GLfloat y,
+                        GLfloat z);
 
 /* State the pipeline or the fragment stage reads; each is
  * INVALID_OPERATION inside Begin/End and INVALID_ENUM for a bad value. */
