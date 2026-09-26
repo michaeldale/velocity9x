@@ -236,4 +236,19 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
                       const V9X_R3D_VERTEX *vertices,
                       v9x_u32 triangle_count);
 
+/* Unit-width aliased point/line coverage. A line owns its first rasterized
+ * pixel and excludes its final one, so consecutive strip segments neither
+ * double-blend nor leave a gap. The sink receives the covered pixel centre
+ * and attributes interpolated along the original segment. -1 is invalid or
+ * declined; otherwise the return is the number of fragments delivered. */
+typedef int (*V9X_R3D_FRAGMENT_FN)(void *user, v9x_s32 x, v9x_s32 y,
+                                   const V9X_R3D_VERTEX *vertex);
+int v9x_r3d_draw_point(const V9X_R3D_VERTEX *vertex,
+                       v9x_u32 width, v9x_u32 height,
+                       V9X_R3D_FRAGMENT_FN fragment, void *user);
+int v9x_r3d_draw_line(const V9X_R3D_VERTEX *first,
+                      const V9X_R3D_VERTEX *last,
+                      v9x_u32 width, v9x_u32 height,
+                      V9X_R3D_FRAGMENT_FN fragment, void *user);
+
 #endif

@@ -520,6 +520,13 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   Otherwise use a software point/line path. Test horizontal, vertical and
   diagonal segments, connected blended lines, clipped endpoints and points
   at pixel boundaries; add width, stipple and smoothing cases in Phase 6.
+  - **Unit coverage implemented, host gate passed (2026-09-26):** the neutral
+    leaf clips and walks aliased point/line fragments, assigns shared strip
+    endpoints once, and interpolates attributes at covered pixel centres.
+    Tests cover points on pixel boundaries, horizontal, vertical and diagonal
+    segments, connected segments, clipped endpoints and a declining sink.
+    It is the software fragment path; no backend triangle approximation is
+    selected yet.
 - **Clear op** over a rect list: engine fill, or CPU fill, respecting GL
   scissor and write masks. Test partial clears and preservation of masked
   channels and depth independently of ordinary draw state.

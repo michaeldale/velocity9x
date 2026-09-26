@@ -87,6 +87,7 @@ $sources = @(
     # list builder and cull decision the D3D core hands its triangles to.
     "src\display32\r3d\r3d_clip.c",
     "src\display32\r3d\r3d_cull.c",
+    "src\display32\r3d\r3d_line.c",
     # Direct3D render state to the neutral draw description; pure and
     # host-tested in tests\host\test_d3d_state.c.
     "src\display32\d3d\d3d_state.c",

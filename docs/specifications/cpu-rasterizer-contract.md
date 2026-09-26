@@ -185,6 +185,12 @@ both, there is no stencil, and no target has alpha to blend into.
 
 ## Owed before Phase 3 freezes the layouts
 
-- Lines and points (`r3d_line.c`): the coverage and endpoint rules the
-  plan names, which this document does not yet state.
+- **Unit points and lines:** `r3d_line.c` assigns a point to `floor(x),
+  floor(y)`. Lines use an integer Bresenham walk after Liang-Barsky clipping,
+  own the first fragment and exclude the application's final fragment. A
+  clipped high endpoint is included when it is not the application's endpoint.
+  Attributes are evaluated at each covered pixel centre by projection onto
+  the original segment. This makes adjacent strip segments meet without a
+  doubled blend or a gap (`test_r3d_line.c`). Width, stipple and smoothing
+  remain Phase 6 work.
 - The clear operation's interaction with the scissor and the mask.
