@@ -298,6 +298,9 @@ static HWND v9x_gl_context_window(const V9X_GL_CONTEXT *context);
 
 /* describe again after a mode change, dropping every texture copy. */
 static int v9x_gl_redescribe_all(void);
+/* The surface a colour buffer (V9X_GL_DRAW_*) is drawn in. */
+static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
+                                    unsigned int which);
 
 static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
 {
@@ -309,6 +312,9 @@ static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
     V9X_R3D_ABI_CLEAR clear;
     V9X_R3D_ABI_RECT rect;
     v9x_u32 result;
+    unsigned int targets;
+    unsigned int pass;
+    v9x_u32 depth_pending;
 
     if (context == 0 || iface == 0) {
         return;
@@ -329,31 +335,68 @@ static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
     rect.right = plan.rect_right;
     rect.bottom = plan.rect_bottom;
     clear.struct_bytes = sizeof(clear);
-    clear.generation = description->generation;
-    clear.target.surface = v9x_gl_drawable_back(drawable);
-    clear.depth.surface = v9x_gl_drawable_depth(drawable);
-    clear.clear_color = plan.clear_color;
-    clear.clear_depth = plan.clear_depth;
     clear.color_value = plan.color_value;
     clear.depth_value = plan.depth_value;
     clear.write_mask = plan.write_mask;
-    clear.write_depth = plan.clear_depth;
     clear.rects = &rect;
     clear.rect_count = 1ul;
-    result = iface->clear(&clear);
-    if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
-        /* A mode change: new generation, and the surfaces made again. */
-        drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
-        if (drawable != 0) {
-            clear.generation = description->generation;
-            clear.target.surface = v9x_gl_drawable_back(drawable);
-            clear.depth.surface = v9x_gl_drawable_depth(drawable);
-            result = iface->clear(&clear);
+
+    /*
+     * Each colour buffer the draw buffer names (4.2.3 clears those), the
+     * shared depth buffer with the first of them only. With GL_NONE the
+     * colour is not cleared but the depth still is, against the back
+     * buffer's surface, which the interface needs as a target.
+     */
+    targets = v9x_gl_state_draw_targets(&context->state);
+    depth_pending = plan.clear_depth;
+    for (pass = 0u; pass < 2u; ++pass) {
+        unsigned int which = pass == 0u ? V9X_GL_DRAW_BACK
+                                        : V9X_GL_DRAW_FRONT;
+        int colour = (targets & which) != 0u && plan.clear_color != 0ul;
+
+        if (!colour && !(pass == 1u && depth_pending != 0ul)) {
+            continue;
         }
-    }
-    if (result != V9X_R3D_RESULT_OK) {
-        v9x_gl_log3("glClear result=%lu mask=%08lX", result, (v9x_u32)mask,
-                    0ul);
+        clear.generation = description->generation;
+        clear.target.surface = colour
+            ? v9x_gl_drawable_target(drawable, which)
+            : v9x_gl_drawable_back(drawable);
+        clear.depth.surface = v9x_gl_drawable_depth(drawable);
+        clear.clear_color = colour ? 1ul : 0ul;
+        clear.clear_depth = depth_pending;
+        clear.write_depth = depth_pending;
+        if (clear.target.surface == 0) {
+            v9x_gl_state_error(&context->state, V9X_GL_OUT_OF_MEMORY);
+            continue;
+        }
+        if (clear.clear_color == 0ul && clear.clear_depth == 0ul) {
+            continue;
+        }
+        result = iface->clear(&clear);
+        if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
+            /* A mode change: new generation, and the surfaces made again. */
+            drawable = v9x_gl_bind_window(context,
+                                          v9x_gl_context_window(context));
+            if (drawable == 0) {
+                break;
+            }
+            clear.generation = description->generation;
+            clear.target.surface = colour
+                ? v9x_gl_drawable_target(drawable, which)
+                : v9x_gl_drawable_back(drawable);
+            clear.depth.surface = v9x_gl_drawable_depth(drawable);
+            result = clear.target.surface != 0 ? iface->clear(&clear)
+                                               : V9X_R3D_RESULT_NO_MEMORY;
+        }
+        if (result != V9X_R3D_RESULT_OK) {
+            v9x_gl_log3("glClear result=%lu mask=%08lX", result,
+                        (v9x_u32)mask, 0ul);
+            continue;
+        }
+        depth_pending = 0ul;
+        if (colour && which == V9X_GL_DRAW_FRONT) {
+            v9x_gl_drawable_show_front(drawable);
+        }
     }
     LeaveCriticalSection(&v9x_gl_lock);
 }
@@ -395,6 +438,7 @@ static void V9X_GL_API v9x_gl_read_pixels(GLint x, GLint y, GLsizei width,
     v9x_u32 surface_width;
     v9x_u32 surface_height;
     v9x_u32 result;
+    int front;
 
     if (context == 0 || iface == 0) {
         return;
@@ -414,14 +458,16 @@ static void V9X_GL_API v9x_gl_read_pixels(GLint x, GLint y, GLsizei width,
     if (result != V9X_R3D_RESULT_OK) {
         v9x_gl_log3("glReadPixels finish result=%lu", result, 0ul, 0ul);
     }
-    if (!v9x_gl_drawable_lock(drawable, &surface, &pitch)) {
+    front = v9x_gl_state_reads_front(&context->state) &&
+            v9x_gl_drawable_front_existing(drawable) != 0;
+    if (!v9x_gl_drawable_lock(drawable, front, &surface, &pitch)) {
         LeaveCriticalSection(&v9x_gl_lock);
         return;
     }
     v9x_gl_drawable_size(drawable, &surface_width, &surface_height);
     v9x_gl_read_convert(&plan, surface, pitch, surface_width, surface_height,
                         v9x_gl_device_format(), pixels);
-    v9x_gl_drawable_unlock(drawable);
+    v9x_gl_drawable_unlock(drawable, front);
     LeaveCriticalSection(&v9x_gl_lock);
 }
 
@@ -909,66 +955,116 @@ static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
     v9x_gl_log(text);
 }
 
-static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
-                             v9x_u32 triangle_count)
+/* The surface a colour buffer is drawn in: the back, or the front made on
+ * first use. */
+static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
+                                    unsigned int which)
 {
-    V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+    return which == V9X_GL_DRAW_FRONT ? v9x_gl_drawable_front(drawable)
+                                      : v9x_gl_drawable_back(drawable);
+}
+
+/*
+ * The batch into one colour buffer. The front's result is shown on the
+ * window at once: GL_FRONT drawing is what the application means to be
+ * seen without a swap, and nothing else would put it there.
+ */
+static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
+                                const V9X_R3D_ABI_VERTEX *vertices,
+                                v9x_u32 triangle_count,
+                                V9X_R3D_ABI_OUTCOME *outcome)
+{
     const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_DRAWABLE *drawable;
     V9X_R3D_ABI_DRAW draw;
-    V9X_R3D_ABI_OUTCOME outcome;
     v9x_u32 result;
     unsigned int i;
     int hardware;
 
-    if (iface == 0) {
-        return 0;
-    }
-    EnterCriticalSection(&v9x_gl_lock);
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
     if (drawable == 0) {
-        LeaveCriticalSection(&v9x_gl_lock);
-        return 0;
+        return V9X_R3D_RESULT_NO_MEMORY;
     }
     for (i = 0u; i < sizeof(draw); ++i) {
         ((BYTE *)&draw)[i] = 0u;
     }
     draw.struct_bytes = sizeof(draw);
     draw.generation = description->generation;
-    draw.target.surface = v9x_gl_drawable_back(drawable);
+    draw.target.surface = v9x_gl_drawable_target(drawable, which);
     draw.depth.surface = v9x_gl_drawable_depth(drawable);
+    if (draw.target.surface == 0) {
+        return V9X_R3D_RESULT_NO_MEMORY;
+    }
     v9x_gl_describe_texture(context, &draw.texture);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &draw.state);
     draw.vertices = vertices;
     draw.triangle_count = triangle_count;
     v9x_gl_note_state(context, &draw);
     hardware = v9x_gl_hw_texture(context, &draw.texture);
-    result = iface->draw(&draw, &outcome);
+    result = iface->draw(&draw, outcome);
     if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
         /* Refused before anything was emitted: the same batch with the CPU
          * copy, which the software fallback draws. */
         v9x_gl_describe_texture(context, &draw.texture);
-        result = iface->draw(&draw, &outcome);
+        result = iface->draw(&draw, outcome);
     }
     if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
         drawable = v9x_gl_bind_window(context,
                                       v9x_gl_context_window(context));
-        if (drawable != 0) {
-            draw.generation = description->generation;
-            draw.target.surface = v9x_gl_drawable_back(drawable);
-            draw.depth.surface = v9x_gl_drawable_depth(drawable);
-            v9x_gl_describe_texture(context, &draw.texture);
-            result = iface->draw(&draw, &outcome);
+        if (drawable == 0) {
+            return V9X_R3D_RESULT_NO_MEMORY;
+        }
+        draw.generation = description->generation;
+        draw.target.surface = v9x_gl_drawable_target(drawable, which);
+        draw.depth.surface = v9x_gl_drawable_depth(drawable);
+        if (draw.target.surface == 0) {
+            return V9X_R3D_RESULT_NO_MEMORY;
+        }
+        v9x_gl_describe_texture(context, &draw.texture);
+        result = iface->draw(&draw, outcome);
+    }
+    if (result == V9X_R3D_RESULT_OK && which == V9X_GL_DRAW_FRONT) {
+        v9x_gl_drawable_show_front(drawable);
+    }
+    return result;
+}
+
+/* The pipeline's sink: the batch into every colour buffer the draw buffer
+ * names (4.2.1), none for GL_NONE. */
+static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                             v9x_u32 triangle_count)
+{
+    V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+    V9X_R3D_ABI_OUTCOME outcome;
+    unsigned int targets;
+    unsigned int pass;
+    v9x_u32 result;
+    int ok = 1;
+
+    if (v9x_gl_device_interface() == 0) {
+        return 0;
+    }
+    targets = v9x_gl_state_draw_targets(&context->state);
+    EnterCriticalSection(&v9x_gl_lock);
+    for (pass = 0u; pass < 2u; ++pass) {
+        unsigned int which = pass == 0u ? V9X_GL_DRAW_BACK
+                                        : V9X_GL_DRAW_FRONT;
+
+        if ((targets & which) == 0u) {
+            continue;
+        }
+        outcome.submitted = 0ul;
+        result = v9x_gl_draw_into(context, which, vertices, triangle_count,
+                                  &outcome);
+        if (result != V9X_R3D_RESULT_OK) {
+            v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu",
+                        result, triangle_count, outcome.submitted);
+            ok = 0;
         }
     }
     LeaveCriticalSection(&v9x_gl_lock);
-    if (result != V9X_R3D_RESULT_OK) {
-        v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu", result,
-                    triangle_count, outcome.submitted);
-        return 0;
-    }
-    return 1;
+    return ok;
 }
 
 #define V9X_GL_WITH_PIPELINE(call) do { \

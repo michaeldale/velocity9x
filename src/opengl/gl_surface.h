@@ -40,6 +40,16 @@ void v9x_gl_drawable_size(const V9X_GL_DRAWABLE *drawable,
 /* The IDirectDrawSurface pointers the render interface names. */
 void *v9x_gl_drawable_back(const V9X_GL_DRAWABLE *drawable);
 void *v9x_gl_drawable_depth(const V9X_GL_DRAWABLE *drawable);
+/*
+ * The front buffer as a surface the engine can draw: made on first use as
+ * a copy of what the window shows, and kept equal to it by every present,
+ * which copies the back buffer into it too. Null when it cannot be made.
+ * show_front puts it on the window through the clipper, which is how a
+ * draw to GL_FRONT becomes visible. front_existing does not make one.
+ */
+void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable);
+void *v9x_gl_drawable_front_existing(const V9X_GL_DRAWABLE *drawable);
+int v9x_gl_drawable_show_front(V9X_GL_DRAWABLE *drawable);
 /* SwapBuffers: the back buffer to the window's client area through its
  * clipper. Non-zero on success. */
 int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable);
@@ -47,9 +57,9 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable);
  * the engine first, so completed rendering is visible. Row 0 is the top.
  * Zero when the surface is lost or cannot be locked; every successful
  * lock is paired with an unlock before the ICD returns to the caller. */
-int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
-                         v9x_u32 *pitch);
-void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable);
+int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, int front,
+                         const void **pixels, v9x_u32 *pitch);
+void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable, int front);
 /*
  * A texture the engine samples from video memory: a DirectDraw texture of
  * `edge` squared, `levels` levels (a mip chain when more than one), in

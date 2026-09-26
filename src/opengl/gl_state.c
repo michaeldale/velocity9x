@@ -504,3 +504,26 @@ int v9x_gl_state_clear(V9X_GL_STATE *state, GLbitfield mask,
     plan->rect_bottom = state->drawable_height - (v9x_u32)bottom;
     return 1;
 }
+
+unsigned int v9x_gl_state_draw_targets(const V9X_GL_STATE *state)
+{
+    GLenum buffer = state->draw_buffer;
+
+    if (buffer == 0x0404u || buffer == 0x0400u) {       /* FRONT, FRONT_LEFT */
+        return V9X_GL_DRAW_FRONT;
+    }
+    if (buffer == 0x0405u || buffer == 0x0402u) {       /* BACK, BACK_LEFT */
+        return V9X_GL_DRAW_BACK;
+    }
+    if (buffer == 0x0406u || buffer == 0x0408u) {       /* LEFT, FRONT_AND_BACK */
+        return V9X_GL_DRAW_FRONT | V9X_GL_DRAW_BACK;
+    }
+    return 0u;                                          /* NONE */
+}
+
+int v9x_gl_state_reads_front(const V9X_GL_STATE *state)
+{
+    GLenum buffer = state->read_buffer;
+
+    return buffer == 0x0404u || buffer == 0x0406u || buffer == 0x0400u;
+}

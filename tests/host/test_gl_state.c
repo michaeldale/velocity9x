@@ -194,6 +194,38 @@ static void test_clear_plan(void)
     GCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
 }
 
+/* Which colour buffers a draw writes and a read reads, per buffer name. */
+static void test_buffer_targets(void)
+{
+    static const GLenum draw_names[7] = {
+        0x0404u, 0x0405u, 0x0406u, 0x0400u, 0x0402u, 0x0408u, 0x0000u
+    };
+    static const unsigned int draw_bits[7] = {
+        V9X_GL_DRAW_FRONT, V9X_GL_DRAW_BACK,
+        V9X_GL_DRAW_FRONT | V9X_GL_DRAW_BACK, V9X_GL_DRAW_FRONT,
+        V9X_GL_DRAW_BACK, V9X_GL_DRAW_FRONT | V9X_GL_DRAW_BACK, 0u
+    };
+    static const GLenum read_names[5] = {
+        0x0404u, 0x0405u, 0x0406u, 0x0400u, 0x0402u
+    };
+    static const int read_front[5] = { 1, 0, 1, 1, 0 };
+    V9X_GL_STATE s;
+    unsigned int i;
+
+    v9x_gl_state_init(&s);
+    GCHECK(v9x_gl_state_draw_targets(&s) == V9X_GL_DRAW_BACK);
+    GCHECK(!v9x_gl_state_reads_front(&s));
+    for (i = 0u; i < 7u; ++i) {
+        v9x_gl_state_draw_buffer(&s, draw_names[i]);
+        GCHECK(v9x_gl_state_draw_targets(&s) == draw_bits[i]);
+    }
+    for (i = 0u; i < 5u; ++i) {
+        v9x_gl_state_read_buffer(&s, read_names[i]);
+        GCHECK(v9x_gl_state_reads_front(&s) == read_front[i]);
+    }
+    GCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+}
+
 unsigned int v9x_run_gl_state_tests(void)
 {
     gl_state_failures = 0u;
@@ -201,6 +233,7 @@ unsigned int v9x_run_gl_state_tests(void)
     test_error_model();
     test_state_commands();
     test_clear_plan();
+    test_buffer_targets();
     if (gl_state_failures == 0u) {
         printf("PASS: OpenGL context state and clear plan\n");
     }

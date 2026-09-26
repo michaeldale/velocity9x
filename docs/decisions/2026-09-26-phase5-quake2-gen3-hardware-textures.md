@@ -82,11 +82,34 @@ The hypotheses killed on the way: stale Gen3 mip levels, a stale texture
 cache, lost sky draws (a pink `gl_clear 1` never showed), the environment
 or filter or address mode, far depth and tiny rhw, RGBA storage.
 
+## Later: fullscreen, vid_restart, front buffer and lifetime
+
+Quake 2 as Michael runs it (fullscreen 640x480 from his config, a mode
+change from the 1024x576 desktop): `timerefresh` 11.21 fps, then
+`vid_restart` rebuilt the context and the frame came back textured
+(`...-fullscreen-vid-restart.{log,png}`).
+
+The ICD now draws GL_FRONT: a front surface per drawable, made on first
+use from the screen, kept equal to it by every swap and shown after each
+front draw or clear; GL_NONE draws nothing; glReadBuffer(GL_FRONT) reads
+the front. V9XGLP on both engines (`2026-09-26-phase5-front-and-
+lifetime-{gen3,soft}-V9XGLP.ini`): a yellow quad drawn to the front after
+a black swap is on the screen at once with the rest still black, reads
+yellow from the front and black from the back, and a GL_NONE quad
+changes neither.
+
+Lifetime: 50 cycles of create context, make current, a 64x64 mipmapped
+texture, a textured draw, swap, release and delete, with the window
+resized at cycle 25. No failures on either engine, and free video
+memory after cycle 26 equals free video memory after cycle 50 exactly
+(Gen3 5,392,640 bytes; software 14,801,152).
+
 ## Not established
 
 - What the software engine does to Quake 2's sky.
 - Non-square textures on Gen3, which still take the CPU path (the bind is
   square-only; its layout for non-square exists since d7a07ce).
-- Fullscreen, `vid_restart`, and a mode change through the texture copies.
+- Two GL processes at once, GL beside Direct3D, and a context used from
+  a second thread.
 - The per-batch cost left: every GL_POLYGON is its own batch, because
   glEnd flushes.

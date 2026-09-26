@@ -188,6 +188,16 @@ void v9x_gl_state_polygon_mode(V9X_GL_STATE *state, GLenum face,
                                GLenum mode);
 void v9x_gl_state_draw_buffer(V9X_GL_STATE *state, GLenum buffer);
 void v9x_gl_state_read_buffer(V9X_GL_STATE *state, GLenum buffer);
+
+/* The colour buffers a draw or clear writes, V9X_GL_DRAW_* bits (4.2.1):
+ * FRONT and FRONT_LEFT the front, BACK and BACK_LEFT the back, LEFT and
+ * FRONT_AND_BACK both, NONE neither. */
+#define V9X_GL_DRAW_FRONT 1u
+#define V9X_GL_DRAW_BACK  2u
+unsigned int v9x_gl_state_draw_targets(const V9X_GL_STATE *state);
+/* Non-zero when glReadPixels reads the front buffer: FRONT, LEFT and
+ * FRONT_LEFT (4.3.2); BACK and BACK_LEFT read the back. */
+int v9x_gl_state_reads_front(const V9X_GL_STATE *state);
 void v9x_gl_state_line_width(V9X_GL_STATE *state, GLfloat width);
 void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size);
 

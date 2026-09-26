@@ -25,6 +25,8 @@ struct v9x_gl_drawable {
     LPDIRECTDRAWCLIPPER clipper;
     LPDIRECTDRAWSURFACE back;
     LPDIRECTDRAWSURFACE depth;
+    /* Made on the first GL_FRONT draw, clear or read (v9x_gl_drawable_front). */
+    LPDIRECTDRAWSURFACE front;
     DWORD width;
     DWORD height;
 };
@@ -145,6 +147,10 @@ v9x_u32 v9x_gl_device_format(void)
 
 static void v9x_gl_drawable_release_surfaces(struct v9x_gl_drawable *drawable)
 {
+    if (drawable->front != 0) {
+        IDirectDrawSurface_Release(drawable->front);
+        drawable->front = 0;
+    }
     if (drawable->depth != 0) {
         IDirectDrawSurface_Release(drawable->depth);
         drawable->depth = 0;
@@ -442,13 +448,18 @@ void v9x_gl_hwtex_release(void *surface)
     }
 }
 
-int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
-                         v9x_u32 *pitch)
+int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, int front,
+                         const void **pixels, v9x_u32 *pitch)
 {
     DDSURFACEDESC description;
+    LPDIRECTDRAWSURFACE surface;
     HRESULT hr;
 
-    if (drawable == 0 || drawable->back == 0) {
+    if (drawable == 0) {
+        return 0;
+    }
+    surface = front ? drawable->front : drawable->back;
+    if (surface == 0) {
         return 0;
     }
     v9x_gl_surface_zero(&description, sizeof(description));
@@ -457,7 +468,7 @@ int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
     /* A lost back buffer has no contents to read: Restore gives it memory
      * again but not its pixels, so the read fails rather than returning
      * whatever the restored memory holds. */
-    hr = IDirectDrawSurface_Lock(drawable->back, 0, &description,
+    hr = IDirectDrawSurface_Lock(surface, 0, &description,
                                  DDLOCK_WAIT | DDLOCK_READONLY, 0);
     if (hr != DD_OK) {
         v9x_gl_log3("read lock hr=%08lX", (DWORD)hr, 0ul, 0ul);
@@ -468,9 +479,81 @@ int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
     return 1;
 }
 
-void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable)
+void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable, int front)
 {
-    IDirectDrawSurface_Unlock(drawable->back, 0);
+    IDirectDrawSurface_Unlock(front ? drawable->front : drawable->back, 0);
+}
+
+/* The window's client rectangle in screen coordinates, as the primary
+ * surface addresses it. */
+static void v9x_gl_drawable_screen_rect(const struct v9x_gl_drawable *drawable,
+                                        RECT *rect)
+{
+    POINT origin;
+
+    origin.x = 0;
+    origin.y = 0;
+    ClientToScreen(drawable->window, &origin);
+    rect->left = origin.x;
+    rect->top = origin.y;
+    rect->right = origin.x + (LONG)drawable->width;
+    rect->bottom = origin.y + (LONG)drawable->height;
+}
+
+void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable)
+{
+    RECT screen;
+    HRESULT hr;
+
+    if (drawable == 0 || drawable->back == 0) {
+        return 0;
+    }
+    if (drawable->front != 0) {
+        return drawable->front;
+    }
+    drawable->front = v9x_gl_make_surface(DDSCAPS_OFFSCREENPLAIN |
+                                          DDSCAPS_VIDEOMEMORY |
+                                          DDSCAPS_3DDEVICE,
+                                          drawable->width, drawable->height,
+                                          0ul);
+    if (drawable->front == 0) {
+        v9x_gl_log("front: surface refused");
+        return 0;
+    }
+    /* What the window shows now is what GL's front buffer holds (pixels
+     * of other windows over it are ones this context does not own, whose
+     * values GL leaves undefined). */
+    v9x_gl_drawable_screen_rect(drawable, &screen);
+    hr = IDirectDrawSurface_Blt(drawable->front, 0, v9x_gl_primary, &screen,
+                                DDBLT_WAIT, 0);
+    if (hr != DD_OK) {
+        v9x_gl_log3("front: copy from screen hr=%08lX", (DWORD)hr, 0ul, 0ul);
+    }
+    return drawable->front;
+}
+
+void *v9x_gl_drawable_front_existing(const V9X_GL_DRAWABLE *drawable)
+{
+    return drawable != 0 ? drawable->front : 0;
+}
+
+int v9x_gl_drawable_show_front(V9X_GL_DRAWABLE *drawable)
+{
+    RECT target;
+    HRESULT hr;
+
+    if (drawable == 0 || drawable->front == 0 || v9x_gl_primary == 0) {
+        return 0;
+    }
+    v9x_gl_drawable_screen_rect(drawable, &target);
+    IDirectDrawSurface_SetClipper(v9x_gl_primary, drawable->clipper);
+    hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->front, 0,
+                                DDBLT_WAIT, 0);
+    if (hr != DD_OK) {
+        v9x_gl_log3("show front hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        return 0;
+    }
+    return 1;
 }
 
 int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
@@ -503,6 +586,12 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
     if (hr != DD_OK) {
         v9x_gl_log3("present hr=%08lX", (DWORD)hr, 0ul, 0ul);
         return 0;
+    }
+    /* SwapBuffers makes the back buffer's image the front's (4.2.1). The
+     * copy exists only once something has used the front buffer. */
+    if (drawable->front != 0) {
+        IDirectDrawSurface_Blt(drawable->front, 0, drawable->back, 0,
+                               DDBLT_WAIT, 0);
     }
     return 1;
 }

@@ -14,7 +14,9 @@
  * Writes C:\V9XDIAG\V9XGLP.INI. Links OPENGL32 statically, as GLQuake does.
  */
 #define WIN32_LEAN_AND_MEAN
+#define COBJMACROS
 #include <windows.h>
+#include <ddraw.h>
 #include <GL/gl.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
@@ -54,6 +56,51 @@ static DWORD v9x_glp_read(GLint x, GLint y)
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(x, y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, rgb);
     return ((DWORD)rgb[0] << 16) | ((DWORD)rgb[1] << 8) | (DWORD)rgb[2];
+}
+
+/*
+ * Free video memory, from a DirectDraw object of the probe's own - loaded
+ * at run time, so the probe still links OPENGL32 and nothing else new.
+ * Zero when DirectDraw cannot say.
+ */
+/* IID_IDirectDraw2, {B3A6F3E0-2B43-11CF-A2DE-00AA00B93356} (ddraw.h), here
+ * because no library the probe links defines it. */
+static const GUID v9x_glp_iid_ddraw2 = {
+    0xB3A6F3E0ul, 0x2B43u, 0x11CFu,
+    { 0xA2u, 0xDEu, 0x00u, 0xAAu, 0x00u, 0xB9u, 0x33u, 0x56u }
+};
+
+typedef HRESULT (WINAPI *V9X_GLP_DDCREATE)(GUID *, LPDIRECTDRAW *,
+                                           IUnknown *);
+
+static DWORD v9x_glp_vram_free(void)
+{
+    HMODULE module = LoadLibraryA("DDRAW.DLL");
+    V9X_GLP_DDCREATE create;
+    LPDIRECTDRAW ddraw = 0;
+    LPDIRECTDRAW2 ddraw2 = 0;
+    DDSCAPS caps;
+    DWORD total = 0ul;
+    DWORD free_bytes = 0ul;
+
+    if (module == 0) {
+        return 0ul;
+    }
+    create = (V9X_GLP_DDCREATE)GetProcAddress(module, "DirectDrawCreate");
+    if (create != 0 && create(0, &ddraw, 0) == DD_OK) {
+        if (IDirectDraw_QueryInterface(ddraw, &v9x_glp_iid_ddraw2,
+                                       (void **)&ddraw2) == DD_OK) {
+            caps.dwCaps = DDSCAPS_VIDEOMEMORY;
+            if (IDirectDraw2_GetAvailableVidMem(ddraw2, &caps, &total,
+                                                &free_bytes) != DD_OK) {
+                free_bytes = 0ul;
+            }
+            IDirectDraw2_Release(ddraw2);
+        }
+        IDirectDraw_Release(ddraw);
+    }
+    FreeLibrary(module);
+    return free_bytes;
 }
 
 static void v9x_glp_zero(void *block, DWORD bytes)
@@ -966,6 +1013,152 @@ void __stdcall V9xGlProbeEntry(void)
                 glDepthFunc(GL_LESS);
                 glDeleteTextures(1, &texture);
             }
+        }
+        /*
+         * Front-buffer drawing, as GLQuake draws its loading disc: a black
+         * frame swapped to the window, then with glDrawBuffer(GL_FRONT) a
+         * yellow quad over the lower-left quarter and a glFlush, no swap.
+         * The screen must show it at once (GDI), the front read it
+         * (glReadBuffer(GL_FRONT)), and the back still hold black. A quad
+         * drawn with GL_NONE must change neither.
+         */
+        if (context != 0) {
+            RECT client;
+            LONG width;
+            LONG height;
+
+            GetClientRect(window, &client);
+            width = client.right - client.left;
+            height = client.bottom - client.top;
+            glDisable(GL_TEXTURE_2D);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+            glViewport(0, 0, width, height);
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glDrawBuffer(GL_BACK);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glFinish();
+            SwapBuffers(hdc);
+            v9x_glp_pump();
+            glDrawBuffer(GL_FRONT);
+            glColor3f(1.0f, 1.0f, 0.0f);
+            glBegin(GL_QUADS);
+            glVertex2f(0.0f, 0.0f);
+            glVertex2f((GLfloat)(width / 2), 0.0f);
+            glVertex2f((GLfloat)(width / 2), (GLfloat)(height / 2));
+            glVertex2f(0.0f, (GLfloat)(height / 2));
+            glEnd();
+            glFlush();
+            v9x_glp_pump();
+            v9x_glp_hex("FrontDrawScreen",
+                        (DWORD)GetPixel(hdc, width / 4, height - height / 4));
+            v9x_glp_hex("FrontDrawScreenOutside",
+                        (DWORD)GetPixel(hdc, 3 * width / 4, height / 4));
+            glReadBuffer(GL_FRONT);
+            v9x_glp_hex("FrontReadFront",
+                        v9x_glp_read(width / 4, height / 4));
+            glReadBuffer(GL_BACK);
+            v9x_glp_hex("FrontReadBack", v9x_glp_read(width / 4, height / 4));
+            glDrawBuffer(GL_NONE);
+            glColor3f(1.0f, 0.0f, 1.0f);
+            glBegin(GL_QUADS);
+            glVertex2f(0.0f, 0.0f);
+            glVertex2f((GLfloat)width, 0.0f);
+            glVertex2f((GLfloat)width, (GLfloat)height);
+            glVertex2f(0.0f, (GLfloat)height);
+            glEnd();
+            glFinish();
+            glReadBuffer(GL_BACK);
+            v9x_glp_hex("NoneReadBack",
+                        v9x_glp_read(3 * width / 4, 3 * height / 4));
+            glReadBuffer(GL_FRONT);
+            v9x_glp_hex("NoneReadFront",
+                        v9x_glp_read(3 * width / 4, 3 * height / 4));
+            glDrawBuffer(GL_BACK);
+            glReadBuffer(GL_BACK);
+            v9x_glp_hex("ErrorAfterFront", (DWORD)glGetError());
+        }
+        /*
+         * Lifetime: 50 cycles of wglCreateContext, wglMakeCurrent, a 64x64
+         * mipmapped texture, a textured clear-and-draw, a swap, then
+         * wglMakeCurrent(0) and wglDeleteContext - with the window resized
+         * at cycle 25, so the drawable's surfaces are remade once. Free
+         * video memory after the first cycle and after the last must
+         * agree: every texture chain and context goes back.
+         */
+        if (context != 0) {
+            static GLubyte image[64 * 64 * 3];
+            DWORD free_first = 0ul;
+            DWORD free_last = 0ul;
+            DWORD failures = 0ul;
+            int cycle;
+            int i;
+
+            for (i = 0; i < 64 * 64 * 3; ++i) {
+                image[i] = (GLubyte)(i * 7);
+            }
+            wglMakeCurrent(0, 0);
+            for (cycle = 0; cycle < 50; ++cycle) {
+                HGLRC cycle_context;
+                GLuint texture = 0u;
+                int level;
+                int edge;
+
+                if (cycle == 25) {
+                    SetWindowPos(window, 0, 0, 0, 360, 280,
+                                 SWP_NOMOVE | SWP_NOZORDER);
+                    v9x_glp_pump();
+                }
+                cycle_context = wglCreateContext(hdc);
+                if (cycle_context == 0 || !wglMakeCurrent(hdc, cycle_context)) {
+                    ++failures;
+                    if (cycle_context != 0) {
+                        wglDeleteContext(cycle_context);
+                    }
+                    continue;
+                }
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                for (level = 0, edge = 64; edge >= 1; ++level, edge /= 2) {
+                    glTexImage2D(GL_TEXTURE_2D, level, 3, edge, edge, 0,
+                                 GL_RGB, GL_UNSIGNED_BYTE, image);
+                }
+                glEnable(GL_TEXTURE_2D);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glBegin(GL_TRIANGLES);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex2f(-1.0f, -1.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex2f(1.0f, -1.0f);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex2f(-1.0f, 1.0f);
+                glEnd();
+                glFinish();
+                SwapBuffers(hdc);
+                if (glGetError() != GL_NO_ERROR) {
+                    ++failures;
+                }
+                wglMakeCurrent(0, 0);
+                if (!wglDeleteContext(cycle_context)) {
+                    ++failures;
+                }
+                v9x_glp_pump();
+                if (cycle == 26) {
+                    free_first = v9x_glp_vram_free();
+                }
+            }
+            free_last = v9x_glp_vram_free();
+            v9x_glp_uint("LifetimeCycles", 50ul);
+            v9x_glp_uint("LifetimeFailures", failures);
+            v9x_glp_uint("LifetimeVramFreeFirst", free_first);
+            v9x_glp_uint("LifetimeVramFreeLast", free_last);
+            wglMakeCurrent(hdc, context);
         }
         {
             DWORD started = GetTickCount();
