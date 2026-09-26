@@ -442,6 +442,19 @@ Rasterization changes get a failing host pixel test first. ABI, lifetime and
 synchronization changes get the corresponding host contract test or guest
 probe; pixel hashes alone cannot establish ordering or allocation safety.
 
+- **Progress, 2026-09-26** (host-only, Direct3D unchanged by construction
+  in each; every slice test-first with `run-checks` green): non-square
+  textures (c93533d); texel alpha REPLACE/MODULATE and the alpha test as a
+  sixth argument, with the depth write moved after the test (ec4ebaa); the
+  whole blend factor set `V9X_D3D_RASTER_FACTOR_*` on a per-channel exact
+  path, the five legacy pairs untouched and `d3d_soft.c` gating on its own
+  caps (d72fc9f); a scissor rectangle and a colour mask as explicit fields
+  on the render target (cfd1ebd); perspective-correct texture coordinates
+  from a per-vertex `q`, equal `q` being the untouched affine path
+  (208a743). Not on any guest; the software engine asks for none of it
+  yet. The rasterization contract below is drafted as
+  `docs/specifications/cpu-rasterizer-contract.md`.
+
 - **Rasterization contract, before the public ABI is fixed.** Document the
   GL-to-r3d mapping for lower-left window coordinates versus surface rows,
   sample positions, winding after Y conversion, shared-edge coverage, scissor
@@ -452,6 +465,12 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   hardware cannot express it. Do not assume one reciprocal-w field serves
   every interpolation rule. Tests include projective textures through
   clipping, adjacent triangles, viewport/scissor boundaries and reversed Z.
+  - **Drafted 2026-09-26:** `docs/specifications/cpu-rasterizer-contract.md`
+    states the coordinate mapping, the coverage rule, the scissor,
+    interpolation of colour, depth and texture coordinates with `q`
+    (projective texturing as `q = q_tex / w`), sampling, texel alpha and
+    the fragment order, each with the test that pins it, and lists what
+    is still owed: fog, mip selection, lines and points, the clear.
 - **Software rasterizer** (`d3d_raster.c`, `d3d_soft.c`):
   - `V9X_D3D_RASTER_TEXTURE` (`d3d_raster.h:264-274`) is one square level,
     4..512, three 16-bit formats, mask-wrapped. It becomes per-level

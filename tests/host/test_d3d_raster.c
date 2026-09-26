@@ -2839,6 +2839,60 @@ static void test_perspective_refusals(void)
     RCHECK(raster_pixel(16u, 10u) == RASTER_BACKGROUND);
 }
 
+/*
+ * Two triangles that share an edge cover each pixel along it exactly once.
+ *
+ * The contract's coverage rule (docs/specifications/cpu-rasterizer-contract.md):
+ * a centre exactly on a left edge is inside, exactly on a right edge it is
+ * not. A square from 4 to 20 split on its anti-diagonal, x + y = 24, puts
+ * the centre of pixel (11, 12) - (11.5, 12.5) - exactly on that edge, so it
+ * is the right edge of the upper-left triangle and the left edge of the
+ * lower-right one. Blended white at alpha 128 over black - weight 129 of
+ * 256 on the legacy path - one pass gives 128 per channel and two would
+ * give 191; the pixel must read 128, the same as a pixel well inside
+ * either triangle. This is the test the contract listed as owed.
+ */
+static void test_shared_edge_pixels_drawn_once(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    unsigned int corner;
+    v9x_u16 once = v9x_d3d_raster_rgb565(128l, 128l, 128l);
+
+    raster_reset(&target);
+    raster_fill(0x0000u);
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+
+    raster_vertex(&triangle[0], PX(4), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(20), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(4), PX(20), 255l, 255l, 255l);
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].alpha = 128l;
+    }
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) != 0);
+    raster_vertex(&triangle[0], PX(20), PX(4), 255l, 255l, 255l);
+    raster_vertex(&triangle[1], PX(20), PX(20), 255l, 255l, 255l);
+    raster_vertex(&triangle[2], PX(4), PX(20), 255l, 255l, 255l);
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].alpha = 128l;
+    }
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, &alpha, 0, triangle) != 0);
+
+    /* Inside each triangle, and on the shared edge. */
+    RCHECK(raster_pixel(6u, 6u) == once);
+    RCHECK(raster_pixel(17u, 17u) == once);
+    RCHECK(raster_pixel(11u, 12u) == once);
+    RCHECK(raster_pixel(12u, 11u) == once);
+    RCHECK(raster_pixel(8u, 15u) == once);
+    /* And no gap: every pixel of the square is painted. */
+    for (corner = 4u; corner < 20u; ++corner) {
+        RCHECK(raster_pixel(corner, 23u - corner) == once);
+    }
+    raster_check_untouched_margins_value(0x0000u);
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -2880,6 +2934,7 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_perspective_divides_texture_coordinates();
     test_perspective_equal_q_is_affine();
     test_perspective_refusals();
+    test_shared_edge_pixels_drawn_once();
     test_texture_wrap_tiles();
     test_texture_wrap_extreme_coordinate();
     test_texture_address_refusals();
