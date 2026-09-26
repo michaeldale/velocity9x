@@ -230,7 +230,7 @@ void __stdcall V9xGlProbeEntry(void)
                         (DWORD)GetPixel(hdc, width - 5, 4));
             glBegin(GL_POINTS);
             glEnd();
-            glLineWidth(2.0f);
+            glPushAttrib(GL_ALL_ATTRIB_BITS);   /* Phase 6: still a stub */
             v9x_glp_hex("ErrorAfterStub", (DWORD)glGetError());
 
             /*
@@ -341,6 +341,23 @@ void __stdcall V9xGlProbeEntry(void)
                                             height / 2));
                 glDeleteTextures(1, &texture);
                 v9x_glp_hex("ErrorAfterDelete", (DWORD)glGetError());
+            }
+
+            /* Queries, the way Quake 2 and GLQuake make them. */
+            {
+                GLint max_texture = 0;
+                GLfloat matrix[16];
+
+                glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
+                glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glTranslatef(7.0f, 0.0f, 0.0f);
+                glGetFloatv(GL_MODELVIEW_MATRIX, matrix);
+                v9x_glp_uint("MaxTextureSize", (DWORD)max_texture);
+                v9x_glp_uint("ModelviewTxIsSeven",
+                             matrix[12] == 7.0f ? 1ul : 0ul);
+                v9x_glp_hex("ErrorAfterQueries", (DWORD)glGetError());
             }
         }
         {

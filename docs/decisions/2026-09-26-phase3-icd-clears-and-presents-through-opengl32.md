@@ -67,6 +67,16 @@ glTexEnvi and glDeleteTextures left no error. The texture reached the
 software engine as CPU levels through the render interface, with q from
 each triangle's rhw.
 
+## And queries (Phase 4)
+
+Evidence: `2026-09-26-phase4-icd-queries-soft-V9XGLP.ini`, same boot, the
+ICD built with `gl_get.c`. glHint(PERSPECTIVE_CORRECTION_HINT, FASTEST),
+glGetIntegerv(MAX_TEXTURE_SIZE) = 512 and glGetFloatv(MODELVIEW_MATRIX)
+after glTranslatef(7,0,0) holding 7 in element 12, with no error; every
+earlier check unchanged. The unimplemented-slot check now calls
+glPushAttrib (Phase 6), since glLineWidth, which it used, is
+implemented; it answers INVALID_OPERATION.
+
 ## Not established
 
 - Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565

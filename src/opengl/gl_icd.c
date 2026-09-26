@@ -36,6 +36,7 @@
 #include "gl_surface.h"
 #include "gl_prim.h"
 #include "gl_texture.h"
+#include "gl_get.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -904,6 +905,69 @@ static void V9X_GL_API v9x_gl_depth_range(GLclampd near_value,
                                                  near_value, far_value));
 }
 
+/* ---- Queries and held state (6.1, 5.6, 3.5.4, 4.2.1), gl_get.c ------- */
+
+static void v9x_gl_get_any(GLenum pname, int kind, void *out)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context != 0) {
+        v9x_gl_get(&context->state, &context->pipeline, &context->textures,
+                   pname, kind, out);
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_booleanv(GLenum pname, GLboolean *out)
+{
+    v9x_gl_get_any(pname, V9X_GL_GET_BOOLEAN, out);
+}
+
+static void V9X_GL_API v9x_gl_get_integerv(GLenum pname, GLint *out)
+{
+    v9x_gl_get_any(pname, V9X_GL_GET_INTEGER, out);
+}
+
+static void V9X_GL_API v9x_gl_get_floatv(GLenum pname, GLfloat *out)
+{
+    v9x_gl_get_any(pname, V9X_GL_GET_FLOAT, out);
+}
+
+static void V9X_GL_API v9x_gl_get_doublev(GLenum pname, GLdouble *out)
+{
+    v9x_gl_get_any(pname, V9X_GL_GET_DOUBLE, out);
+}
+
+static void V9X_GL_API v9x_gl_hint(GLenum target, GLenum mode)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_hint(&context_->state, target, mode));
+}
+
+static void V9X_GL_API v9x_gl_polygon_mode(GLenum face, GLenum mode)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_polygon_mode(&context_->state, face,
+                                                  mode));
+}
+
+static void V9X_GL_API v9x_gl_draw_buffer(GLenum buffer)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_draw_buffer(&context_->state, buffer));
+}
+
+static void V9X_GL_API v9x_gl_read_buffer(GLenum buffer)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_read_buffer(&context_->state, buffer));
+}
+
+static void V9X_GL_API v9x_gl_line_width(GLfloat width)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_line_width(&context_->state, width));
+}
+
+static void V9X_GL_API v9x_gl_point_size(GLfloat size)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_point_size(&context_->state, size));
+}
+
 /* ---- The table ----------------------------------------------------- */
 
 static void v9x_gl_set_slot(const char *name, V9X_GL_PROC proc)
@@ -1009,6 +1073,16 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glPixelStoref, v9x_gl_pixel_storef);
     V9X_GL_OVERRIDE(glTexImage2D, v9x_gl_api_tex_image_2d);
     V9X_GL_OVERRIDE(glTexSubImage2D, v9x_gl_api_tex_sub_image_2d);
+    V9X_GL_OVERRIDE(glGetBooleanv, v9x_gl_get_booleanv);
+    V9X_GL_OVERRIDE(glGetIntegerv, v9x_gl_get_integerv);
+    V9X_GL_OVERRIDE(glGetFloatv, v9x_gl_get_floatv);
+    V9X_GL_OVERRIDE(glGetDoublev, v9x_gl_get_doublev);
+    V9X_GL_OVERRIDE(glHint, v9x_gl_hint);
+    V9X_GL_OVERRIDE(glPolygonMode, v9x_gl_polygon_mode);
+    V9X_GL_OVERRIDE(glDrawBuffer, v9x_gl_draw_buffer);
+    V9X_GL_OVERRIDE(glReadBuffer, v9x_gl_read_buffer);
+    V9X_GL_OVERRIDE(glLineWidth, v9x_gl_line_width);
+    V9X_GL_OVERRIDE(glPointSize, v9x_gl_point_size);
 }
 
 /* ---- Pixel formats ------------------------------------------------- */

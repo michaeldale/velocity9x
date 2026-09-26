@@ -68,7 +68,28 @@ typedef struct v9x_gl_state {
     GLboolean depth_mask;
     GLboolean caps[V9X_GL_CAP_COUNT];
     V9X_GL_MATRICES matrices;
+    /* Held state the rasterizer does not act on yet, kept exactly so the
+     * queries answer what was set: hints (PERSPECTIVE_CORRECTION, POINT,
+     * LINE, POLYGON smooth, FOG, in that order), polygon mode per face,
+     * the draw and read buffers, line width and point size. */
+    GLenum hints[5];
+    GLenum polygon_mode[2];
+    GLenum draw_buffer;
+    GLenum read_buffer;
+    GLfloat line_width;
+    GLfloat point_size;
 } V9X_GL_STATE;
+
+#define V9X_GL_DONT_CARE 0x1100u
+#define V9X_GL_FASTEST   0x1101u
+#define V9X_GL_NICEST    0x1102u
+#define V9X_GL_POINT     0x1B00u
+#define V9X_GL_LINE      0x1B01u
+#define V9X_GL_FILL      0x1B02u
+#define V9X_GL_FRONT_LEFT  0x0400u
+#define V9X_GL_BACK_LEFT   0x0402u
+#define V9X_GL_FRONT_BUFFER 0x0404u
+#define V9X_GL_BACK_BUFFER  0x0405u
 
 /*
  * A clear the HAL can execute: rectangles already in surface rows (top
@@ -155,5 +176,19 @@ void v9x_gl_state_ortho(V9X_GL_STATE *state, GLdouble left, GLdouble right,
                         GLdouble far_plane);
 void v9x_gl_state_push_matrix(V9X_GL_STATE *state);
 void v9x_gl_state_pop_matrix(V9X_GL_STATE *state);
+
+/* Held state (5.6, 3.5.4, 4.2.1, 3.4, 3.3): stored and queryable, each
+ * with its enum and value errors. The draw and read buffers take the
+ * buffers a double-buffered format has: FRONT, BACK, LEFT, FRONT_LEFT,
+ * BACK_LEFT, FRONT_AND_BACK (draw only) and NONE (draw only); a right or
+ * auxiliary buffer is INVALID_OPERATION, which is the error for a buffer
+ * the format lacks. */
+void v9x_gl_state_hint(V9X_GL_STATE *state, GLenum target, GLenum mode);
+void v9x_gl_state_polygon_mode(V9X_GL_STATE *state, GLenum face,
+                               GLenum mode);
+void v9x_gl_state_draw_buffer(V9X_GL_STATE *state, GLenum buffer);
+void v9x_gl_state_read_buffer(V9X_GL_STATE *state, GLenum buffer);
+void v9x_gl_state_line_width(V9X_GL_STATE *state, GLfloat width);
+void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size);
 
 #endif /* VELOCITY9X_GL_STATE_H */

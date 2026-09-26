@@ -127,6 +127,127 @@ void v9x_gl_state_init(V9X_GL_STATE *state)
         state->caps[index] = v9x_gl_caps[index] == V9X_GL_DITHER ? 1 : 0;
     }
     v9x_gl_matrices_init(&state->matrices);
+    for (index = 0u; index < 5u; ++index) {
+        state->hints[index] = V9X_GL_DONT_CARE;
+    }
+    state->polygon_mode[0] = V9X_GL_FILL;
+    state->polygon_mode[1] = V9X_GL_FILL;
+    /* Double-buffered formats start drawing and reading the back buffer
+     * (4.2.1, 4.3.2). */
+    state->draw_buffer = V9X_GL_BACK_BUFFER;
+    state->read_buffer = V9X_GL_BACK_BUFFER;
+    state->line_width = 1.0f;
+    state->point_size = 1.0f;
+}
+
+void v9x_gl_state_hint(V9X_GL_STATE *state, GLenum target, GLenum mode)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    if (target < 0x0C50u || target > 0x0C54u ||
+        (mode != V9X_GL_DONT_CARE && mode != V9X_GL_FASTEST &&
+         mode != V9X_GL_NICEST)) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+    state->hints[target - 0x0C50u] = mode;
+}
+
+void v9x_gl_state_polygon_mode(V9X_GL_STATE *state, GLenum face,
+                               GLenum mode)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    if ((face != 0x0404u && face != 0x0405u && face != 0x0408u) ||
+        (mode != V9X_GL_POINT && mode != V9X_GL_LINE &&
+         mode != V9X_GL_FILL)) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+    if (face != 0x0405u) {
+        state->polygon_mode[0] = mode;
+    }
+    if (face != 0x0404u) {
+        state->polygon_mode[1] = mode;
+    }
+}
+
+/* The colour buffers of a double-buffered, left-only format, or zero
+ * for a name no format has (INVALID_ENUM) and one for a real buffer this
+ * format lacks (INVALID_OPERATION). */
+static int v9x_gl_buffer_class(GLenum buffer, int draw)
+{
+    if (buffer == 0x0404u || buffer == 0x0405u || buffer == 0x0406u ||
+        buffer == 0x0400u || buffer == 0x0402u) {
+        return 2;               /* FRONT, BACK, LEFT, FRONT_LEFT, BACK_LEFT */
+    }
+    if (draw && (buffer == 0x0408u || buffer == 0u)) {
+        return 2;               /* FRONT_AND_BACK, NONE */
+    }
+    if (buffer == 0x0401u || buffer == 0x0403u || buffer == 0x0407u ||
+        (buffer >= 0x0409u && buffer <= 0x040Cu) ||
+        (!draw && buffer == 0x0408u)) {
+        return 1;               /* RIGHT, AUX0-3: absent here */
+    }
+    return 0;
+}
+
+void v9x_gl_state_draw_buffer(V9X_GL_STATE *state, GLenum buffer)
+{
+    int kind;
+
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    kind = v9x_gl_buffer_class(buffer, 1);
+    if (kind != 2) {
+        v9x_gl_state_error(state, kind == 0 ? V9X_GL_INVALID_ENUM
+                                            : V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    state->draw_buffer = buffer;
+}
+
+void v9x_gl_state_read_buffer(V9X_GL_STATE *state, GLenum buffer)
+{
+    int kind;
+
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    kind = v9x_gl_buffer_class(buffer, 0);
+    if (kind != 2) {
+        v9x_gl_state_error(state, kind == 0 ? V9X_GL_INVALID_ENUM
+                                            : V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    state->read_buffer = buffer;
+}
+
+void v9x_gl_state_line_width(V9X_GL_STATE *state, GLfloat width)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    if (!(width > 0.0f)) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
+        return;
+    }
+    state->line_width = width;
+}
+
+void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    if (!(size > 0.0f)) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
+        return;
+    }
+    state->point_size = size;
 }
 
 void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,

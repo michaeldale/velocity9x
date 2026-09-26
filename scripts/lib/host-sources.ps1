@@ -75,6 +75,7 @@ function Get-V9xHostSourceNames {
         'src\opengl\gl_matrix.c',
         'src\opengl\gl_prim.c',
         'src\opengl\gl_texture.c',
+        'src\opengl\gl_get.c',
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
@@ -101,6 +102,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_gl_matrix.c',
         'tests\host\test_gl_prim.c',
         'tests\host\test_gl_texture.c',
+        'tests\host\test_gl_get.c',
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
         'tests\host\test_i9xx_cover.c',
