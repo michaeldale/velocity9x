@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.9.0 - 2026-09-26
+## 0.9.0 - 2026-09-27
 
 The OpenGL release. Velocity9x now has an OpenGL 1.1 installable client
 driver, V9XGL.DLL, loaded by Windows' own OPENGL32.DLL and drawing

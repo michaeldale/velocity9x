@@ -19,8 +19,8 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
 **Current version: 0.9.0, the OpenGL release** — see the
-[changelog](CHANGELOG.md). The 0.9.0 downloads are not published yet;
-the latest published downloads are [0.8.1](releases/0.8.1/README.md).
+[changelog](CHANGELOG.md). Download it from
+[releases/0.9.0](releases/0.9.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
