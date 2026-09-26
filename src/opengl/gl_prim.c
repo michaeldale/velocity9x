@@ -671,3 +671,43 @@ int v9x_gl_prim_fragment_alpha_used(const V9X_GL_STATE *state,
     return v9x_gl_prim_factor_reads_alpha(pipeline->blend_src) ||
            v9x_gl_prim_factor_reads_alpha(pipeline->blend_dst);
 }
+
+int v9x_gl_prim_same_draw(const V9X_R3D_ABI_TEXTURE *texture_a,
+                          const V9X_R3D_ABI_STATE *state_a,
+                          const V9X_R3D_ABI_TEXTURE *texture_b,
+                          const V9X_R3D_ABI_STATE *state_b)
+{
+    const v9x_u8 *a = (const v9x_u8 *)state_a;
+    const v9x_u8 *b = (const v9x_u8 *)state_b;
+    const void *pixels_a;
+    const void *pixels_b;
+    unsigned int i;
+
+    /* The fragment state is sixteen words with no padding. */
+    for (i = 0u; i < sizeof(*state_a); ++i) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    if (texture_a->storage != texture_b->storage) {
+        return 0;
+    }
+    if (texture_a->storage == V9X_R3D_ABI_TEXTURE_NONE) {
+        return 1;
+    }
+    pixels_a = texture_a->levels != 0 && texture_a->level_count != 0ul
+        ? texture_a->levels[0].pixels : 0;
+    pixels_b = texture_b->levels != 0 && texture_b->level_count != 0ul
+        ? texture_b->levels[0].pixels : 0;
+    return texture_a->format == texture_b->format &&
+           texture_a->surface.surface == texture_b->surface.surface &&
+           texture_a->level_count == texture_b->level_count &&
+           pixels_a == pixels_b &&
+           texture_a->min_filter == texture_b->min_filter &&
+           texture_a->mag_filter == texture_b->mag_filter &&
+           texture_a->mip == texture_b->mip &&
+           texture_a->address == texture_b->address &&
+           texture_a->color_op == texture_b->color_op &&
+           texture_a->alpha_op == texture_b->alpha_op &&
+           texture_a->env_color == texture_b->env_color;
+}

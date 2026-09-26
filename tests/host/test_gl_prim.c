@@ -438,6 +438,70 @@ static void test_clipped_vertices_stay_inside(void)
     PCHECK(sunk_triangles != 0ul);
 }
 
+/* Which batches may be merged: equal state and texture only. */
+static void test_same_draw(void)
+{
+    static v9x_u16 texels_a[4];
+    static v9x_u16 texels_b[4];
+    V9X_R3D_ABI_LEVEL level_a;
+    V9X_R3D_ABI_LEVEL level_a2;
+    V9X_R3D_ABI_LEVEL level_b;
+    V9X_R3D_ABI_TEXTURE ta;
+    V9X_R3D_ABI_TEXTURE tb;
+    V9X_R3D_ABI_STATE sa;
+    V9X_R3D_ABI_STATE sb;
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    unsigned int i;
+
+    scene(&s, &p);
+    v9x_gl_prim_abi_state(&s, &p, &sa);
+    v9x_gl_prim_abi_state(&s, &p, &sb);
+    for (i = 0u; i < sizeof(ta); ++i) {
+        ((v9x_u8 *)&ta)[i] = 0u;
+        ((v9x_u8 *)&tb)[i] = 0u;
+    }
+    /* Untextured, same state. */
+    PCHECK(v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+
+    /* Textured: the same images through two level arrays still match -
+     * the batch's own copy of the description is a different array. */
+    level_a.pixels = texels_a;
+    level_a.width = 2ul;
+    level_a.height = 2ul;
+    level_a2 = level_a;
+    level_b = level_a;
+    level_b.pixels = texels_b;
+    ta.storage = V9X_R3D_ABI_TEXTURE_CPU;
+    ta.format = V9X_R3D_ABI_FORMAT_RGB565;
+    ta.levels = &level_a;
+    ta.level_count = 1ul;
+    ta.min_filter = V9X_R3D_ABI_FILTER_LINEAR;
+    ta.mag_filter = V9X_R3D_ABI_FILTER_LINEAR;
+    ta.mip = V9X_R3D_ABI_MIP_NONE;
+    ta.address = V9X_R3D_ABI_ADDRESS_WRAP;
+    ta.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    tb = ta;
+    tb.levels = &level_a2;
+    PCHECK(v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+    /* Another texture's images, a filter, an op: different draws. */
+    tb.levels = &level_b;
+    PCHECK(!v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+    tb = ta;
+    tb.min_filter = V9X_R3D_ABI_FILTER_NEAREST;
+    PCHECK(!v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+    tb = ta;
+    tb.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    PCHECK(!v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+    tb = ta;
+    tb.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    PCHECK(!v9x_gl_prim_same_draw(&ta, &sa, &tb, &sb));
+    /* A fragment state difference: blending on. */
+    v9x_gl_state_enable(&s, V9X_GL_BLEND, 1);
+    v9x_gl_prim_abi_state(&s, &p, &sb);
+    PCHECK(!v9x_gl_prim_same_draw(&ta, &sa, &ta, &sb));
+}
+
 static void test_fragment_alpha_used(void)
 {
     V9X_GL_STATE s;
@@ -477,6 +541,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_errors_and_abi_state();
     test_fragment_alpha_used();
     test_clipped_vertices_stay_inside();
+    test_same_draw();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
     }

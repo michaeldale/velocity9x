@@ -61,6 +61,26 @@ typedef void (__stdcall *V9X_PFN_SETPROCTABLE)(V9X_GLCLTPROCTABLE *table);
 
 #define V9X_GL_CONTEXTS_MAX 16u
 
+/*
+ * Triangles held across glEnd while nothing they are drawn with changes:
+ * Quake 2 ends a primitive every two or three triangles, and each batch
+ * through the render interface costs a lock, a validation and a
+ * submission whatever its size. The batch keeps its own copy of the
+ * texture description (its levels point at the object's images, which do
+ * not change before it is drawn: every texture command, clear, read,
+ * finish, flush, swap and context change draws it first) and the texture's
+ * name, so its hardware copy is found by name when it is drawn.
+ */
+typedef struct v9x_gl_pending {
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    V9X_R3D_ABI_STATE state;
+    GLuint texture_name;
+    unsigned int targets;
+    v9x_u32 triangles;
+    V9X_R3D_ABI_VERTEX vertices[3u * V9X_R3D_ABI_BATCH_MAX];
+} V9X_GL_PENDING;
+
 typedef struct v9x_gl_context {
     int in_use;
     /* The thread it is current on, or zero. */
@@ -72,6 +92,7 @@ typedef struct v9x_gl_context {
     V9X_GL_TEXTURES textures;
     /* Client state (2.8): the vertex arrays. */
     V9X_GL_ARRAYS arrays;
+    V9X_GL_PENDING pending;
     /* The levels a batch's texture names, valid for the draw call. */
     V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
 } V9X_GL_CONTEXT;
@@ -298,6 +319,8 @@ static HWND v9x_gl_context_window(const V9X_GL_CONTEXT *context);
 
 /* describe again after a mode change, dropping every texture copy. */
 static int v9x_gl_redescribe_all(void);
+/* Draw the context's held batch, if any. */
+static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context);
 /* The surface a colour buffer (V9X_GL_DRAW_*) is drawn in. */
 static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
                                     unsigned int which);
@@ -319,6 +342,7 @@ static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
     if (context == 0 || iface == 0) {
         return;
     }
+    v9x_gl_pending_flush(context);
     EnterCriticalSection(&v9x_gl_lock);
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
     if (drawable == 0) {
@@ -410,6 +434,7 @@ static void V9X_GL_API v9x_gl_finish(void)
     if (v9x_gl_current() == 0 || iface == 0) {
         return;
     }
+    v9x_gl_pending_flush(v9x_gl_current());
     result = iface->finish(description->generation);
     if (result != V9X_R3D_RESULT_OK) {
         v9x_gl_log3("glFinish result=%lu", result, 0ul, 0ul);
@@ -447,6 +472,7 @@ static void V9X_GL_API v9x_gl_read_pixels(GLint x, GLint y, GLsizei width,
                           height, format, type, &plan)) {
         return;
     }
+    v9x_gl_pending_flush(context);
     EnterCriticalSection(&v9x_gl_lock);
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
     if (drawable == 0) {
@@ -479,6 +505,7 @@ static void V9X_GL_API v9x_gl_flush(void)
     if (v9x_gl_current() == 0 || iface == 0) {
         return;
     }
+    v9x_gl_pending_flush(v9x_gl_current());
     (void)iface->flush(description->generation);
 }
 
@@ -622,9 +649,12 @@ static void v9x_gl_heap_free(void *memory)
     HeapFree(GetProcessHeap(), 0, memory);
 }
 
+/* Every texture command draws the held batch first: its levels point at
+ * images these commands replace, delete or rebind. */
 #define V9X_GL_WITH_TEXTURES(call) do { \
     V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
     if (context_ != 0) { \
+        v9x_gl_pending_flush(context_); \
         call; \
     } \
 } while (0)
@@ -836,7 +866,7 @@ static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
  * samples surfaces and the object fits what describe allows. Non-zero when
  * `texture` now names a surface. Runs under the ICD's critical section.
  */
-static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
+static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
                              V9X_R3D_ABI_TEXTURE *texture)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
@@ -861,7 +891,10 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
     /* GL 1.1 textures are powers of two already (gl_texture.c refuses any
      * other size), so V9X_R3D_ABI_HWTEX_POW2 always holds here. */
 
-    object = v9x_gl_tex_bound_object(&context->textures);
+    object = v9x_gl_tex_object(&context->textures, name);
+    if (object == 0) {
+        return 0;
+    }
     hw = (V9X_GL_HWTEX *)object->hw;
     if (hw != 0 && (hw->width != width || hw->height != height ||
                     hw->levels != texture->level_count ||
@@ -931,7 +964,7 @@ static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
         texture->levels != 0) {
         edge = (texture->levels[0].width << 16) | texture->levels[0].height;
     }
-    key[0] = context->textures.bound;
+    key[0] = context->pending.texture_name;
     key[1] = (texture->storage << 24) | (texture->format << 16) |
              (texture->color_op << 8) | texture->alpha_op;
     key[2] = (draw->state.blend_enable << 24) | (draw->state.src_blend << 16) |
@@ -1009,17 +1042,16 @@ static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
 }
 
 /*
- * The batch into one colour buffer. The front's result is shown on the
- * window at once: GL_FRONT drawing is what the application means to be
+ * The held batch into one colour buffer. The front's result is shown on
+ * the window at once: GL_FRONT drawing is what the application means to be
  * seen without a swap, and nothing else would put it there.
  */
 static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
-                                const V9X_R3D_ABI_VERTEX *vertices,
-                                v9x_u32 triangle_count,
                                 V9X_R3D_ABI_OUTCOME *outcome)
 {
     const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_GL_PENDING *pending = &context->pending;
     V9X_GL_DRAWABLE *drawable;
     V9X_R3D_ABI_DRAW draw;
     v9x_u32 result;
@@ -1041,10 +1073,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     if (draw.target.surface == 0) {
         return V9X_R3D_RESULT_NO_MEMORY;
     }
-    v9x_gl_describe_texture(context, &draw.texture);
-    v9x_gl_prim_abi_state(&context->state, &context->pipeline, &draw.state);
-    draw.vertices = vertices;
-    draw.triangle_count = triangle_count;
+    draw.texture = pending->texture;
+    draw.state = pending->state;
+    draw.vertices = pending->vertices;
+    draw.triangle_count = pending->triangles;
     v9x_gl_note_state(context, &draw);
     if (draw.texture.storage == V9X_R3D_ABI_TEXTURE_NONE) {
         path = V9X_GL_PATH_UNTEXTURED;
@@ -1052,7 +1084,8 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         path = draw.texture.levels[0].width != draw.texture.levels[0].height
             ? V9X_GL_PATH_CPU_NONSQUARE : V9X_GL_PATH_CPU_TEXTURE;
     }
-    hardware = v9x_gl_hw_texture(context, &draw.texture);
+    hardware = v9x_gl_hw_texture(context, pending->texture_name,
+                                 &draw.texture);
     if (hardware) {
         path = V9X_GL_PATH_HW_TEXTURE;
     }
@@ -1061,10 +1094,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         /* Refused before anything was emitted: the same batch with the CPU
          * copy, which the software fallback draws. */
         path = V9X_GL_PATH_HW_REFUSED;
-        v9x_gl_describe_texture(context, &draw.texture);
+        draw.texture = pending->texture;
         result = iface->draw(&draw, outcome);
     }
-    v9x_gl_path_note(path, triangle_count);
+    v9x_gl_path_note(path, pending->triangles);
     if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
         drawable = v9x_gl_bind_window(context,
                                       v9x_gl_context_window(context));
@@ -1077,7 +1110,7 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         if (draw.target.surface == 0) {
             return V9X_R3D_RESULT_NO_MEMORY;
         }
-        v9x_gl_describe_texture(context, &draw.texture);
+        draw.texture = pending->texture;
         result = iface->draw(&draw, outcome);
     }
     if (result == V9X_R3D_RESULT_OK && which == V9X_GL_DRAW_FRONT) {
@@ -1086,41 +1119,89 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     return result;
 }
 
-/* The pipeline's sink: the batch into every colour buffer the draw buffer
- * names (4.2.1), none for GL_NONE. */
-static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
-                             v9x_u32 triangle_count)
+static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
 {
-    V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+    V9X_GL_PENDING *pending;
     V9X_R3D_ABI_OUTCOME outcome;
-    unsigned int targets;
     unsigned int pass;
     v9x_u32 result;
-    int ok = 1;
 
-    if (v9x_gl_device_interface() == 0) {
-        return 0;
+    if (context == 0 || context->pending.triangles == 0ul ||
+        v9x_gl_device_interface() == 0) {
+        return;
     }
-    targets = v9x_gl_state_draw_targets(&context->state);
+    pending = &context->pending;
     EnterCriticalSection(&v9x_gl_lock);
     for (pass = 0u; pass < 2u; ++pass) {
         unsigned int which = pass == 0u ? V9X_GL_DRAW_BACK
                                         : V9X_GL_DRAW_FRONT;
 
-        if ((targets & which) == 0u) {
+        if ((pending->targets & which) == 0u) {
             continue;
         }
         outcome.submitted = 0ul;
-        result = v9x_gl_draw_into(context, which, vertices, triangle_count,
-                                  &outcome);
+        result = v9x_gl_draw_into(context, which, &outcome);
         if (result != V9X_R3D_RESULT_OK) {
             v9x_gl_log3("draw result=%lu triangles=%lu submitted=%lu",
-                        result, triangle_count, outcome.submitted);
-            ok = 0;
+                        result, pending->triangles, outcome.submitted);
         }
     }
+    pending->triangles = 0ul;
     LeaveCriticalSection(&v9x_gl_lock);
-    return ok;
+}
+
+/*
+ * The pipeline's sink: the batch joins the held one when it is drawn the
+ * same way into the same buffers and fits, and otherwise the held one is
+ * drawn and this one held in its place. GL_NONE holds nothing.
+ */
+static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                             v9x_u32 triangle_count)
+{
+    V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+    V9X_GL_PENDING *pending = &context->pending;
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_STATE state;
+    unsigned int targets;
+    v9x_u32 i;
+    v9x_u32 level;
+
+    if (v9x_gl_device_interface() == 0) {
+        return 0;
+    }
+    targets = v9x_gl_state_draw_targets(&context->state);
+    if (targets == 0u || triangle_count == 0ul) {
+        return 1;
+    }
+    v9x_gl_describe_texture(context, &texture);
+    v9x_gl_prim_abi_state(&context->state, &context->pipeline, &state);
+    if (pending->triangles != 0ul &&
+        (pending->targets != targets ||
+         pending->triangles + triangle_count > V9X_R3D_ABI_BATCH_MAX ||
+         !v9x_gl_prim_same_draw(&pending->texture, &pending->state,
+                                &texture, &state))) {
+        v9x_gl_pending_flush(context);
+    }
+    if (pending->triangles == 0ul) {
+        pending->texture = texture;
+        if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+            for (level = 0ul; level < texture.level_count; ++level) {
+                pending->levels[level] = texture.levels[level];
+            }
+            pending->texture.levels = pending->levels;
+        }
+        pending->state = state;
+        pending->targets = targets;
+        pending->texture_name = context->textures.bound;
+    }
+    for (i = 0ul; i < triangle_count * 3ul; ++i) {
+        pending->vertices[pending->triangles * 3ul + i] = vertices[i];
+    }
+    pending->triangles += triangle_count;
+    if (pending->triangles == V9X_R3D_ABI_BATCH_MAX) {
+        v9x_gl_pending_flush(context);
+    }
+    return 1;
 }
 
 #define V9X_GL_WITH_PIPELINE(call) do { \
@@ -1794,6 +1875,10 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
      * one current here is released first. */
     if (context != 0 &&
         (context->owner == 0ul || context->owner == GetCurrentThreadId())) {
+        if (context->owner == GetCurrentThreadId()) {
+            v9x_gl_pending_flush(context);
+        }
+        context->pending.triangles = 0ul;
         if (v9x_gl_current() == context) {
             TlsSetValue(v9x_gl_tls, 0);
         }
@@ -1819,6 +1904,9 @@ V9X_GLCLTPROCTABLE * __stdcall DrvSetContext(HDC hdc, V9X_DHGLRC handle,
     HWND window = WindowFromDC(hdc);
 
     (void)set_table;
+    if (previous != 0) {
+        v9x_gl_pending_flush(previous);
+    }
     EnterCriticalSection(&v9x_gl_lock);
     context = v9x_gl_context_of(handle);
     if (context != 0 && (context->owner == 0ul || context->owner == thread) &&
@@ -1845,6 +1933,10 @@ BOOL __stdcall DrvReleaseContext(V9X_DHGLRC handle)
     V9X_GL_CONTEXT *context;
     BOOL ok = FALSE;
 
+    context = v9x_gl_context_of(handle);
+    if (context != 0 && context->owner == GetCurrentThreadId()) {
+        v9x_gl_pending_flush(context);
+    }
     EnterCriticalSection(&v9x_gl_lock);
     context = v9x_gl_context_of(handle);
     if (context != 0 && context->owner == GetCurrentThreadId()) {
@@ -1879,6 +1971,9 @@ BOOL __stdcall DrvSwapBuffers(HDC hdc)
     V9X_GL_DRAWABLE *drawable;
     BOOL ok = FALSE;
 
+    if (v9x_gl_current() != 0) {
+        v9x_gl_pending_flush(v9x_gl_current());
+    }
     EnterCriticalSection(&v9x_gl_lock);
     drawable = v9x_gl_drawable_find(WindowFromDC(hdc));
     if (drawable != 0) {

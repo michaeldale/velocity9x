@@ -138,11 +138,44 @@ engine's: the grey sky, the pale ledge and the top-right piece were
 products of the mixed frame, not of either engine. The issue is retitled
 and keeps the mixed-engine depth hypothesis open.
 
+## Later: held batches, 22 to 28 fps
+
+After non-square textures, Quake 2 drew 1,231,233 batches of 2.7
+triangles on average: every glEnd went through the render interface, and
+each call costs the ICD's lock and window bind, the Win16 mutex, surface
+validation, the state translation and a Gen3 submission whatever its
+size.
+
+The ICD now holds triangles across glEnd while they would be drawn the
+same way - the same fragment state and texture description
+(`v9x_gl_prim_same_draw`, host-tested first) into the same colour
+buffers - up to the interface's 64 a batch. The held batch keeps its own
+copy of the texture description and the texture's name. It is drawn
+before every texture command, glClear, glReadPixels, glFlush, glFinish,
+SwapBuffers, and a context release, switch or delete, so the images its
+levels point at cannot change under it.
+
+V9XGLP on both engines reads back identically to the run before the
+change, scene for scene (`2026-09-26-phase5-batched-{gen3,soft}-V9XGLP.ini`).
+Quake 2 at demo1's spawn under notarget: 28.35 and 28.42 fps
+(`...-timerefresh-batched.log`), with 129,316 batches for 4,691,652
+triangles, 36 a batch (`...-paths-batched.txt`). The frame
+(`...-frame-batched.png`) differs from the unbatched one by 0.3, 0.2 and
+0.1 levels on average, in the gun's bob, the falling sparks and Quake 2's
+blinking help icon.
+
+| Netbook, timerefresh at demo1's spawn | fps |
+|---|---|
+| Every texture on the CPU fallback | 1.24 |
+| Square textures on Gen3 | 11.05 |
+| Non-square textures on Gen3 | 21.7 |
+| Held batches | 28.4 |
+
 ## Not established
 
 - Why Gen3 and the software fallback disagree when they share a frame
   (the issue's depth hypothesis is unmeasured).
 - Two GL processes at once, GL beside Direct3D, and a context used from
   a second thread.
-- The per-batch cost left: every GL_POLYGON is its own batch, because
-  glEnd flushes.
+- Which Quake 2 draws Gen3 refuses (683 batches in the batched run, sent
+  again to the CPU).

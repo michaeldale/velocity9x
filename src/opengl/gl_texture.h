@@ -147,6 +147,8 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
 
 /* The bound object (never null: name 0 is the default texture). */
 V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures);
+/* The object named `name` (0 the default), or null when there is none. */
+V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name);
 /* Every object's hardware copy released through the hook and forgotten:
  * a mode change has made them all lost. */
 void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures);

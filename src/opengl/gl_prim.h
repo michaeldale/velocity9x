@@ -137,6 +137,19 @@ void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline);
  * the batch was not made with). */
 void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline);
 
+/*
+ * Whether two batches may be drawn as one: the same fragment state and the
+ * same texture description - storage, format, the same level images (by
+ * their first level's pixels and the count), filters, mip, address, the
+ * combine and the environment colour. Vertices carry everything else. The
+ * caller keeps a batch's texture levels alive and unchanged until it is
+ * drawn, which is what makes the pixels pointer a fair identity.
+ */
+int v9x_gl_prim_same_draw(const V9X_R3D_ABI_TEXTURE *texture_a,
+                          const V9X_R3D_ABI_STATE *state_a,
+                          const V9X_R3D_ABI_TEXTURE *texture_b,
+                          const V9X_R3D_ABI_STATE *state_b);
+
 /* Non-zero when a fragment's alpha can change what is written: the alpha
  * test is on, or blending uses a source-alpha factor. There is no alpha
  * plane, so destination-alpha factors read one whatever the source. */

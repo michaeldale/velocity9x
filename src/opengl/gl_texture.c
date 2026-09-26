@@ -847,3 +847,8 @@ void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture)
         texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     }
 }
+
+V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name)
+{
+    return v9x_gl_texobj_find(textures, name);
+}
