@@ -451,6 +451,57 @@ static void test_hardware_copy_bookkeeping(void)
     d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
     v9x_gl_tex_fragment_alpha_unused(&d);
     TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    /* An alpha-bearing texture under REPLACE or MODULATE: with no reader
+     * of the result's alpha, the texel's serves (so an engine that has
+     * MODULATE but not MODULATEALPHA draws it). */
+    d.format = V9X_R3D_ABI_FORMAT_ARGB4444;
+    d.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    v9x_gl_tex_fragment_alpha_unused(&d);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_fragment_alpha_unused(&d);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+}
+
+/* RGB565 retargeted to ARGB1555 for an engine without 565. */
+static void test_retarget_to_1555(void)
+{
+    V9X_R3D_ABI_TEXTURE d;
+    unsigned int i;
+
+    /* White, black, pure red, pure green (six bits to five), pure blue,
+     * and a mixed value: F800 red, 07E0 green, 001F blue. */
+    TCHECK(v9x_gl_tex_565_to_1555(0xFFFFu) == 0xFFFFu);
+    TCHECK(v9x_gl_tex_565_to_1555(0x0000u) == 0x8000u);
+    TCHECK(v9x_gl_tex_565_to_1555(0xF800u) == 0xFC00u);
+    TCHECK(v9x_gl_tex_565_to_1555(0x07E0u) == 0x83E0u);
+    TCHECK(v9x_gl_tex_565_to_1555(0x001Fu) == 0x801Fu);
+    TCHECK(v9x_gl_tex_565_to_1555(0x0020u) == 0x8000u);  /* green LSB drops */
+    TCHECK(v9x_gl_tex_565_to_1555(0x0040u) == 0x8020u);
+    TCHECK(v9x_gl_tex_565_to_1555(0x8410u) == 0xC210u);
+
+    for (i = 0u; i < sizeof(d); ++i) {
+        ((v9x_u8 *)&d)[i] = 0u;
+    }
+    d.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_as_1555(&d, 1);
+    TCHECK(d.format == V9X_R3D_ABI_FORMAT_ARGB1555 &&
+           d.color_op == V9X_R3D_ABI_COLOROP_MODULATE &&
+           d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    d.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_as_1555(&d, 0);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    d.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    v9x_gl_tex_as_1555(&d, 1);
+    TCHECK(d.color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+           d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
 }
 
 unsigned int v9x_run_gl_texture_tests(void)
@@ -462,6 +513,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_completeness_and_describe();
     test_environment_table();
     test_hardware_copy_bookkeeping();
+    test_retarget_to_1555();
     if (gl_texture_failures == 0u) {
         printf("PASS: OpenGL texture objects and images\n");
     }

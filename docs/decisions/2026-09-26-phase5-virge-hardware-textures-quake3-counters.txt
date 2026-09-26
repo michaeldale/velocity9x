@@ -1,0 +1,6 @@
+before (Michael's run, no ViRGE texture path):
+paths batches/triangles untextured=0/0 hw=0/0 cpu=357875/13775717 cpu-nonsquare=316273/18308340 hw-refused=0/0
+counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=674148 r7=0 r8=0 other=0
+after (this change, menu):
+paths batches/triangles untextured=0/0 hw=6817/158658 cpu=0/0 cpu-nonsquare=30088/1743732 hw-refused=27431/1161552
+counters hwtex live=0 creates=10 create-failed=0 evictions=0 uploads=10 upload-kb=1026 stubs=0 failed r4=57519 r7=0 r8=0 other=0

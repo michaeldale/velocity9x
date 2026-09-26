@@ -132,6 +132,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 4: the ICD on Gen3 - everything but textures draws and reads back](2026-09-26-phase4-icd-on-gen3-netbook.md)
 - [2026-09-26 Phase 5: Quake 2 on Gen3 - hardware textures, 1.2 to 11 fps](2026-09-26-phase5-quake2-gen3-hardware-textures.md)
 - [2026-09-26 Phase 5: Serious Sam on Gen3 - scissor, small textures and video memory](2026-09-26-phase5-serious-sam-on-gen3.md)
+- [2026-09-26 Phase 5: OpenGL textures on the ViRGE - what draws and what cannot](2026-09-26-phase5-virge-hardware-textures-for-opengl.md)
 - [2026-09-26 Phase 3: explicit draws - the software engine takes CPU textures, a scissor and a colour mask through the render interface, and Direct3D draws the same](2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-masks.md)
 
 ## VBE generic family and dynamic modes

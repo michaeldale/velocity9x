@@ -77,6 +77,10 @@ typedef struct v9x_gl_pending {
     V9X_R3D_ABI_STATE state;
     GLuint texture_name;
     unsigned int targets;
+    /* Whether the batch's fragment alpha is read (alpha test, a source
+     * alpha blend factor): what a texture stored with alpha one may
+     * substitute for it (v9x_gl_tex_as_1555). */
+    int alpha_used;
     v9x_u32 triangles;
     V9X_R3D_ABI_VERTEX vertices[3u * V9X_R3D_ABI_BATCH_MAX];
 } V9X_GL_PENDING;
@@ -959,11 +963,13 @@ static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
  * `texture` now names a surface. Runs under the ICD's critical section.
  */
 static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
-                             V9X_R3D_ABI_TEXTURE *texture)
+                             int alpha_used, V9X_R3D_ABI_TEXTURE *texture)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_TEXOBJ *object;
     V9X_GL_HWTEX *hw;
+    v9x_u32 hw_format;
+    int to_1555;
     v9x_u32 level;
     v9x_u32 width;
     v9x_u32 height;
@@ -977,9 +983,21 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     if (width > description->hw_texture_size_max ||
         height > description->hw_texture_size_max ||
         ((description->hw_texture_shape & V9X_R3D_ABI_HWTEX_SQUARE) != 0ul &&
-         height != width) ||
-        (description->texture_formats & (1ul << texture->format)) == 0ul) {
+         height != width)) {
         return 0;
+    }
+    /* The layout the engine samples: the image's own, or for an RGB image
+     * on an engine without 565 (the ViRGE), 1555 with alpha one. */
+    hw_format = texture->format;
+    to_1555 = 0;
+    if ((description->texture_formats & (1ul << hw_format)) == 0ul) {
+        if (hw_format != V9X_R3D_ABI_FORMAT_RGB565 ||
+            (description->texture_formats &
+             (1ul << V9X_R3D_ABI_FORMAT_ARGB1555)) == 0ul) {
+            return 0;
+        }
+        hw_format = V9X_R3D_ABI_FORMAT_ARGB1555;
+        to_1555 = 1;
     }
     /* GL 1.1 textures are powers of two already (gl_texture.c refuses any
      * other size), so V9X_R3D_ABI_HWTEX_POW2 always holds here. */
@@ -991,7 +1009,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     hw = (V9X_GL_HWTEX *)object->hw;
     if (hw != 0 && (hw->width != width || hw->height != height ||
                     hw->levels != texture->level_count ||
-                    hw->format != texture->format)) {
+                    hw->format != hw_format)) {
         v9x_gl_hwtex_free(hw);
         object->hw = 0;
         hw = 0;
@@ -1009,7 +1027,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         hw->width = width;
         hw->height = height;
         hw->levels = texture->level_count;
-        hw->format = texture->format;
+        hw->format = hw_format;
         hw->slot = v9x_gl_hwtex_count;
         v9x_gl_hwtex_live[v9x_gl_hwtex_count++] = hw;
         object->hw = hw;
@@ -1026,7 +1044,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     hw->last_used = v9x_gl_hwtex_clock;
     if (!hw->filled || hw->revision != object->revision) {
         if (!v9x_gl_hwtex_upload(hw->surface, texture->level_count,
-                                 texture->levels)) {
+                                 texture->levels, to_1555)) {
             v9x_gl_hwtex_release(hw->surface);
             hw->surface = 0;
             hw->unusable = 1;
@@ -1040,6 +1058,9 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         }
     }
 
+    if (to_1555) {
+        v9x_gl_tex_as_1555(texture, alpha_used);
+    }
     texture->storage = V9X_R3D_ABI_TEXTURE_HW;
     texture->surface.surface = hw->surface;
     texture->levels = 0;
@@ -1294,7 +1315,7 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
             ? V9X_GL_PATH_CPU_NONSQUARE : V9X_GL_PATH_CPU_TEXTURE;
     }
     hardware = v9x_gl_hw_texture(context, pending->texture_name,
-                                 &draw.texture);
+                                 pending->alpha_used, &draw.texture);
     if (hardware) {
         path = V9X_GL_PATH_HW_TEXTURE;
     }
@@ -1403,6 +1424,9 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
         pending->state = state;
         pending->targets = targets;
         pending->texture_name = context->textures.bound;
+        pending->alpha_used =
+            v9x_gl_prim_fragment_alpha_used(&context->state,
+                                            &context->pipeline);
     }
     for (i = 0ul; i < triangle_count * 3ul; ++i) {
         pending->vertices[pending->triangles * 3ul + i] = vertices[i];

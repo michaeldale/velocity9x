@@ -839,11 +839,20 @@ void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures)
 
 void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture)
 {
-    /* Only a texture without alpha samples an alpha of one, and only the
-     * REPLACE colour op leaves the fragment nothing but its alpha. */
-    if (texture->format == V9X_R3D_ABI_FORMAT_RGB565 &&
-        texture->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
-        texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+    /* Without alpha, only REPLACE needs the change: MODULATE with the
+     * fragment's alpha is already the stage every engine has. */
+    if (texture->format == V9X_R3D_ABI_FORMAT_RGB565) {
+        if (texture->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+            texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+            texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+        }
+        return;
+    }
+    /* With alpha, REPLACE and MODULATE take the texel's: the DECAL and
+     * MODULATE stages, which an engine without MODULATEALPHA (the ViRGE)
+     * still has. The other colour ops read the alpha into the colour. */
+    if (texture->color_op == V9X_R3D_ABI_COLOROP_REPLACE ||
+        texture->color_op == V9X_R3D_ABI_COLOROP_MODULATE) {
         texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     }
 }
@@ -851,4 +860,23 @@ void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture)
 V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name)
 {
     return v9x_gl_texobj_find(textures, name);
+}
+
+v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel)
+{
+    v9x_u16 red = (v9x_u16)((texel >> 11) & 0x1Fu);
+    v9x_u16 green = (v9x_u16)((texel >> 6) & 0x1Fu);
+    v9x_u16 blue = (v9x_u16)(texel & 0x1Fu);
+
+    return (v9x_u16)(0x8000u | (red << 10) | (green << 5) | blue);
+}
+
+void v9x_gl_tex_as_1555(V9X_R3D_ABI_TEXTURE *texture, int alpha_used)
+{
+    texture->format = V9X_R3D_ABI_FORMAT_ARGB1555;
+    if (!alpha_used) {
+        texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    } else if (texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        texture->alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    }
 }

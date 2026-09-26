@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <ddraw.h>
 #include "gl_surface.h"
+#include "gl_texture.h"
 
 #define V9X_GL_DRAWABLES_MAX 16u
 
@@ -368,7 +369,7 @@ void *v9x_gl_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
 
 /* One level's rows into a locked surface. */
 static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
-                             const V9X_R3D_ABI_LEVEL *level)
+                             const V9X_R3D_ABI_LEVEL *level, int to_1555)
 {
     DDSURFACEDESC desc;
     const BYTE *source;
@@ -401,8 +402,15 @@ static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
     source = (const BYTE *)level->pixels;
     target = (BYTE *)desc.lpSurface;
     for (row = 0ul; row < level->height; ++row) {
-        for (i = 0ul; i < level->width * 2ul; ++i) {
-            target[i] = source[i];
+        if (to_1555) {
+            for (i = 0ul; i < level->width; ++i) {
+                ((v9x_u16 *)target)[i] =
+                    v9x_gl_tex_565_to_1555(((const v9x_u16 *)source)[i]);
+            }
+        } else {
+            for (i = 0ul; i < level->width * 2ul; ++i) {
+                target[i] = source[i];
+            }
         }
         source += level->pitch;
         target += desc.lPitch;
@@ -412,7 +420,7 @@ static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
 }
 
 int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
-                        const V9X_R3D_ABI_LEVEL *source)
+                        const V9X_R3D_ABI_LEVEL *source, int to_1555)
 {
     LPDIRECTDRAWSURFACE level = (LPDIRECTDRAWSURFACE)surface;
     LPDIRECTDRAWSURFACE next;
@@ -424,7 +432,7 @@ int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
      * adds a reference to what it returns; every one but the top is
      * released once filled. */
     for (index = 0ul; index < levels && ok; ++index) {
-        ok = v9x_gl_hwtex_fill(level, &source[index]);
+        ok = v9x_gl_hwtex_fill(level, &source[index], to_1555);
         next = 0;
         if (ok && index + 1ul < levels) {
             caps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP;

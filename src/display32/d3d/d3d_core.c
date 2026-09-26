@@ -3334,14 +3334,22 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     out->batch_max = V9X_R3D_ABI_BATCH_MAX;
     /* Surface textures, where the engine samples them for the interface:
      * Gen3's bind takes powers of two within its limits, square or not
-     * (v9x_d3d_i9xx_texture_shape). The ViRGE's texture path
-     * has not been measured through the interface, and the software engine
-     * reads CPU levels. */
+     * (v9x_d3d_i9xx_texture_shape); the ViRGE's takes a square power of
+     * two, 4 to 512, in ARGB1555 or ARGB4444 only - the S3D samples no
+     * 565, so its formats say so and the ICD stores RGB images as 1555
+     * with alpha one (v9x_d3d_virge_texture_bindable). The software
+     * engine reads CPU levels. */
     out->hw_texture_size_max = 0ul;
     out->hw_texture_shape = 0ul;
     if (ops == &v9x_d3d_engine_i9xx) {
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_virge) {
+        out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_ARGB1555) |
+                               (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
+                                V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {

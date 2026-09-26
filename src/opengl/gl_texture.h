@@ -153,11 +153,26 @@ V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name);
  * a mode change has made them all lost. */
 void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures);
 /*
- * When nothing reads the fragment's alpha, REPLACE (and DECAL) on a
- * texture without alpha may take the texel's alpha of one instead of the
- * fragment's: the pixels written are identical, and the combined form is
- * the one hardware texture stages have (Direct3D's DECAL).
+ * When nothing reads the result's alpha, the alpha op may be whichever
+ * the hardware has: REPLACE on a texture without alpha takes the texel's
+ * one instead of the fragment's (Direct3D's DECAL), and REPLACE or
+ * MODULATE on a texture with alpha take the texel's (DECAL, MODULATE)
+ * instead of the product. The pixels written are identical.
  */
 void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture);
+
+/* An RGB565 texel as ARGB1555 with alpha one: red and blue keep their five
+ * bits, green drops its lowest. For an engine that samples no 565 (the
+ * ViRGE's S3D takes 1555 and 4444). */
+v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel);
+/*
+ * A description of an RGB565 texture retargeted to the same images stored
+ * as ARGB1555 with alpha one. The colour op is unchanged; the alpha op
+ * becomes the one that gives the same result with a texel alpha of one:
+ * REPLACE when nothing reads the fragment's alpha (`alpha_used` zero, so
+ * any alpha is as good), MODULATE for the fragment's (one times it), and
+ * REPLACE stays REPLACE (one either way).
+ */
+void v9x_gl_tex_as_1555(V9X_R3D_ABI_TEXTURE *texture, int alpha_used);
 
 #endif /* VELOCITY9X_GL_TEXTURE_H */

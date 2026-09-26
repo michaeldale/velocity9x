@@ -1961,6 +1961,48 @@ static int v9x_d3d_virge_ready(void)
 /* What the S3D can execute faithfully, without touching the validation latch
  * or the diagnostic counters used by the draw path. Texture shape remains a
  * bind-time decision until V9X_R3D_TEXTURE carries logical level extents. */
+/*
+ * Whether the bind (v9x_d3d_virge_texture above) would sample this
+ * surface: a video-memory texture, square, a power of two within the
+ * limits, a tight pitch, ARGB1555 or ARGB4444. The same tests without the
+ * refusal counters - the caller only asks. A surface the bind refuses
+ * draws untextured, which Direct3D counts and accepts; an explicit draw
+ * is refused instead, so the render interface's caller knows.
+ */
+static int v9x_d3d_virge_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_DDPIXELFORMAT *pixel;
+    DWORD edge;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return 0;
+    }
+    edge = (DWORD)surface->lpGbl->wWidth;
+    if (edge != (DWORD)surface->lpGbl->wHeight ||
+        edge < v9x_d3d_virge_limits.texture_size_min ||
+        edge > v9x_d3d_virge_limits.texture_size_max ||
+        (edge & (edge - 1ul)) != 0ul ||
+        surface->lpGbl->lPitch != (LONG)edge * 2l) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul) {
+        return 0;
+    }
+    pixel = &surface->lpGbl->ddpfSurface;
+    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        pixel->dwRGBBitCount != 16ul) {
+        return 0;
+    }
+    return (pixel->dwRBitMask == 0x00007c00ul &&
+            pixel->dwGBitMask == 0x000003e0ul &&
+            pixel->dwBBitMask == 0x0000001ful) ||
+           (pixel->dwRBitMask == 0x00000f00ul &&
+            pixel->dwGBitMask == 0x000000f0ul &&
+            pixel->dwBBitMask == 0x0000000ful);
+}
+
 static int v9x_d3d_virge_accepts(const V9X_R3D_DRAW *draw)
 {
     if (draw == 0 || draw->target.format != V9X_R3D_FORMAT_XRGB1555) {
@@ -1985,6 +2027,11 @@ static int v9x_d3d_virge_accepts(const V9X_R3D_DRAW *draw)
            draw->dst_blend == V9X_R3D_BLEND_ZERO) ||
           (draw->src_blend == V9X_R3D_BLEND_SRCALPHA &&
            draw->dst_blend == V9X_R3D_BLEND_INVSRCALPHA))) {
+        return 0;
+    }
+    if (draw->explicit_state != 0ul && draw->texture.object != 0 &&
+        !v9x_d3d_virge_texture_bindable(
+            (const V9X_DD_SURFACE_LCL *)draw->texture.object)) {
         return 0;
     }
     if (draw->texture.object != 0) {
