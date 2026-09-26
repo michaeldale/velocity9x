@@ -126,6 +126,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 1d: the ViRGE engine reads the neutral draw, and the 86Box ViRGE probe reports the same as before the move](2026-09-26-phase1d-the-virge-engine-reads-the-neutral-draw-and-draws-the-same.md)
 - [2026-09-26 Phase 1d: the Gen3 engine reads the neutral draw, the netbook's probe reports the same, and its callbacks hold the Win16 mutex too](2026-09-26-phase1d-the-gen3-engine-reads-the-neutral-draw-and-draws-the-same.md)
 - [2026-09-26 Phase 1 gate: 3DMark 99 Max on the netbook after the Gen3 move scores 669 at 1024x576, against 643 before Phase 1](2026-09-26-phase1-netbook-3dmark99-669-against-643.md)
+- [2026-09-26 Phase 2 on the netbook: the three-state drain draws the same, Gen3 passes the mixed-engine rung, and the new drain paths were never taken under load](2026-09-26-phase2-gen3-netbook-gates-drain-and-mixed-engine.md)
 
 ## VBE generic family and dynamic modes
 

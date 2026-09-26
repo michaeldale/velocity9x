@@ -280,8 +280,10 @@ versions are recorded.
      ViRGE wrote `0x7C00` (its 1555 encoding). The all-software 9878 guest,
      boot 595, passed all three and `MixedOk=1`. See
      `2026-09-26-phase05-mixed-engine-ordering-and-virge-colour-mismatch.md`.
-     Texture-update and blended-overlap cells, 555 coverage, and the Gen3
-     run remain open; the netbook was offline at its documented endpoint.
+     Texture-update and blended-overlap cells and 555 coverage remain open.
+     **Gen3 passes all three cells** (netbook boots 38 and 39, both
+     drivers): see
+     `2026-09-26-phase2-gen3-netbook-gates-drain-and-mixed-engine.md`.
 6. **Generic GL as a reference.** Check that a probe can choose a generic
    format with the ICD installed, and that a controlled scene hashes the
    same twice. **Half measured 2026-09-26** (baseline run in the Phase 0.9
@@ -575,8 +577,10 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     the explicit result; DestroySurface retains a placed allocation unless
     completion is observed. `V9XDDP /mixed` on `Win86SE` boot 637 proved the
     drain boundary orders HAL -> CPU -> HAL colour and Z access
-    (`MixedOrderingOk=1`, `MixedDepthEncodingOk=1`). Timeout injection and
-    Gen3 remain untested, and the same run exposed the independent ViRGE
+    (`MixedOrderingOk=1`, `MixedDepthEncodingOk=1`). On the netbook the new
+    driver draws the same as Phase 1 and passes `/mixed`; under 3DMark 99 no
+    drain found work outstanding, so BUSY/ABANDONED were never taken there.
+    Timeout injection remains untested, and the same run exposed the independent ViRGE
     RGB565/1555 mismatch, so fallback is still not enabled.
 - **Append `accepts(const V9X_R3D_DRAW *)`**. The core asks *before*
   clipping, and clips with the limits of whichever engine will execute. For
