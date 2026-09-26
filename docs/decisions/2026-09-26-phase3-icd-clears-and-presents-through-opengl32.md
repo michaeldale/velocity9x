@@ -52,6 +52,21 @@ the blue quad rejected), right `0x000000FF` (red, COLORREF being BGR).
 answers INVALID_OPERATION. Transform, clipping, the viewport and depth
 mapping, the batches and the interface's depth test all reach the screen.
 
+## Later still: textures, perspective-correct (Phase 4)
+
+Evidence: `2026-09-26-phase4-icd-texture-soft-V9XGLP.ini`, boot 597 with
+the HAL of `2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-
+masks.md` and the ICD built with `gl_texture.c`. An 8x8 RGB texture, red
+on its left half and blue on its right, NEAREST and REPLACE, on a quad
+whose left edge is at z = -1 and right edge at z = -3 under
+`glFrustum(-1,1,-1,1,1,10)`: the texture's s = 0.5 lies at ndc 0 when
+interpolated with perspective and at ndc -1/3 when affine. Read back:
+10% of the width red, 42% (ndc -1/6) **red** - perspective-correct - and
+60% blue. glGenTextures, glBindTexture, glTexImage2D, glTexParameteri,
+glTexEnvi and glDeleteTextures left no error. The texture reached the
+software engine as CPU levels through the render interface, with q from
+each triangle's rhw.
+
 ## Not established
 
 - Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565

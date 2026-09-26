@@ -276,6 +276,72 @@ void __stdcall V9xGlProbeEntry(void)
                         (DWORD)GetPixel(hdc, width / 4, height / 2));
             v9x_glp_hex("GeometryRightPixel",
                         (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
+
+            /*
+             * Texturing, perspective-correct. An 8x8 texture, red on the
+             * left half and blue on the right, NEAREST, REPLACE, on a quad
+             * whose left edge is at z = -1 and right edge at z = -3 under
+             * glFrustum(-1,1,-1,1,1,10): the edges land at ndc -1 and 1/3,
+             * the texture's s = 0.5 (object x = 0, z = -2) at ndc 0. Affine
+             * interpolation would put s = 0.5 at ndc -1/3 instead. So the
+             * pixel at ndc -1/6 (42% of the width) is red when correct and
+             * blue when affine.
+             */
+            {
+                static GLubyte texels[8 * 8 * 3];
+                GLuint texture = 0u;
+                int i;
+
+                for (i = 0; i < 8 * 8; ++i) {
+                    int left = (i % 8) < 4;
+
+                    texels[i * 3 + 0] = (GLubyte)(left ? 255 : 0);
+                    texels[i * 3 + 1] = 0;
+                    texels[i * 3 + 2] = (GLubyte)(left ? 0 : 255);
+                }
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, 8, 8, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, texels);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glEnable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glFrustum(-1.0, 1.0, -1.0, 1.0, 1.0, 10.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClear(GL_COLOR_BUFFER_BIT);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex3f(-1.0f, -1.0f, -1.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex3f(1.0f, -3.0f, -3.0f);
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex3f(1.0f, 3.0f, -3.0f);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex3f(-1.0f, 1.0f, -1.0f);
+                glEnd();
+                v9x_glp_hex("ErrorAfterTexture", (DWORD)glGetError());
+                glFinish();
+                SwapBuffers(hdc);
+                v9x_glp_pump();
+                v9x_glp_hex("TextureFarLeftPixel",
+                            (DWORD)GetPixel(hdc, width / 10, height / 2));
+                v9x_glp_hex("TexturePerspectivePixel",
+                            (DWORD)GetPixel(hdc, (width * 5) / 12,
+                                            height / 2));
+                v9x_glp_hex("TextureRightPixel",
+                            (DWORD)GetPixel(hdc, (width * 3) / 5,
+                                            height / 2));
+                glDeleteTextures(1, &texture);
+                v9x_glp_hex("ErrorAfterDelete", (DWORD)glGetError());
+            }
         }
         {
             DWORD started = GetTickCount();

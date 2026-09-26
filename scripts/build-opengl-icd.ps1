@@ -29,7 +29,7 @@ $null = Write-V9xGlDispatchHeader -RepoRoot $repoRoot -OutputDir $output
 # gl_icd.c and gl_surface.c are the two platform files; gl_state.c is the
 # pure GL state, the same source the host tests compile.
 $objects = @()
-foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim')) {
+foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim', 'gl_texture')) {
     $source = Join-Path $repoRoot "src\opengl\$name.c"
     $object = Join-Path $output "$name.obj"
     & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' `

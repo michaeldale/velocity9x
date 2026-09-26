@@ -35,6 +35,7 @@
 #include "gl_state.h"
 #include "gl_surface.h"
 #include "gl_prim.h"
+#include "gl_texture.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -65,6 +66,9 @@ typedef struct v9x_gl_context {
     int bound_once;
     V9X_GL_STATE state;
     V9X_GL_PIPELINE pipeline;
+    V9X_GL_TEXTURES textures;
+    /* The levels a batch's texture names, valid for the draw call. */
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
 } V9X_GL_CONTEXT;
 
 static const char v9x_gl_build_id[] = "V9XGL build=" V9X_BUILD_ID;
@@ -484,6 +488,169 @@ static void V9X_GL_API v9x_gl_pop_matrix(void)
     V9X_GL_WITH_CONTEXT(v9x_gl_state_pop_matrix(&context_->state));
 }
 
+/* ---- Textures (3.8), through gl_texture.c --------------------------- */
+
+/* A float as a whole number, rounded to nearest, without the C runtime a
+ * cast would call (__CHP): the float forms of the integer commands carry
+ * enums and counts as whole numbers (2.3). */
+static long v9x_gl_whole(GLfloat value);
+#pragma aux v9x_gl_whole =     "sub esp,4"     "fistp dword ptr [esp]"     "pop eax"     parm [8087] value [eax] modify exact [eax];
+
+/* The texture tables' storage: the process heap, which the ICD owns. */
+static void *v9x_gl_heap_alloc(v9x_u32 bytes)
+{
+    return HeapAlloc(GetProcessHeap(), 0, bytes);
+}
+
+static void v9x_gl_heap_free(void *memory)
+{
+    HeapFree(GetProcessHeap(), 0, memory);
+}
+
+#define V9X_GL_WITH_TEXTURES(call) do { \
+    V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
+    if (context_ != 0) { \
+        call; \
+    } \
+} while (0)
+
+static void V9X_GL_API v9x_gl_gen_textures(GLsizei n, GLuint *names)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_gen(&context_->state, &context_->textures,
+                                        n, names));
+}
+
+static void V9X_GL_API v9x_gl_delete_textures(GLsizei n, const GLuint *names)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_delete(&context_->state,
+                                           &context_->textures, n, names));
+}
+
+static GLboolean V9X_GL_API v9x_gl_is_texture(GLuint name)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    return context != 0 ? v9x_gl_tex_is(&context->state, &context->textures,
+                                        name)
+                        : 0;
+}
+
+static void V9X_GL_API v9x_gl_bind_texture(GLenum target, GLuint name)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_bind(&context_->state,
+                                         &context_->textures, target, name));
+}
+
+static void V9X_GL_API v9x_gl_tex_parameteri(GLenum target, GLenum pname,
+                                             GLint value)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_parameter(&context_->state,
+                                              &context_->textures, target,
+                                              pname, value));
+}
+
+/* The float and vector forms carry enums as whole numbers (2.3). */
+static void V9X_GL_API v9x_gl_tex_parameterf(GLenum target, GLenum pname,
+                                             GLfloat value)
+{
+    v9x_gl_tex_parameteri(target, pname, (GLint)v9x_gl_whole(value));
+}
+
+static void V9X_GL_API v9x_gl_tex_parameteriv(GLenum target, GLenum pname,
+                                              const GLint *values)
+{
+    v9x_gl_tex_parameteri(target, pname, values[0]);
+}
+
+static void V9X_GL_API v9x_gl_tex_parameterfv(GLenum target, GLenum pname,
+                                              const GLfloat *values)
+{
+    v9x_gl_tex_parameteri(target, pname, (GLint)v9x_gl_whole(values[0]));
+}
+
+static void V9X_GL_API v9x_gl_tex_envfv(GLenum target, GLenum pname,
+                                        const GLfloat *values)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_env(&context_->state,
+                                        &context_->textures, target, pname,
+                                        values));
+}
+
+static void V9X_GL_API v9x_gl_tex_envf(GLenum target, GLenum pname,
+                                       GLfloat value)
+{
+    GLfloat values[4];
+
+    values[0] = value;
+    values[1] = 0.0f;
+    values[2] = 0.0f;
+    values[3] = 0.0f;
+    v9x_gl_tex_envfv(target, pname, values);
+}
+
+static void V9X_GL_API v9x_gl_tex_envi(GLenum target, GLenum pname,
+                                       GLint value)
+{
+    v9x_gl_tex_envf(target, pname, (GLfloat)value);
+}
+
+/* Integer colours map to [0,1] linearly from the full range (2.3); an
+ * integer mode is the enum itself. */
+static void V9X_GL_API v9x_gl_tex_enviv(GLenum target, GLenum pname,
+                                        const GLint *values)
+{
+    GLfloat converted[4];
+    unsigned int i;
+
+    for (i = 0u; i < 4u; ++i) {
+        converted[i] = pname == V9X_GL_TEXTURE_ENV_COLOR
+            ? (GLfloat)((double)values[i] / 2147483647.0)
+            : (GLfloat)values[i];
+        if (pname != V9X_GL_TEXTURE_ENV_COLOR) {
+            break;
+        }
+    }
+    v9x_gl_tex_envfv(target, pname, converted);
+}
+
+static void V9X_GL_API v9x_gl_pixel_storei(GLenum pname, GLint value)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_pixel_store(&context_->state,
+                                            &context_->textures, pname,
+                                            value));
+}
+
+static void V9X_GL_API v9x_gl_pixel_storef(GLenum pname, GLfloat value)
+{
+    v9x_gl_pixel_storei(pname, (GLint)v9x_gl_whole(value));
+}
+
+static void V9X_GL_API v9x_gl_api_tex_image_2d(GLenum target, GLint level,
+                                           GLint internal_format,
+                                           GLsizei width, GLsizei height,
+                                           GLint border, GLenum format,
+                                           GLenum type, const GLvoid *pixels)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_image_2d(&context_->state,
+                                             &context_->textures, target,
+                                             level, internal_format, width,
+                                             height, border, format, type,
+                                             pixels));
+}
+
+static void V9X_GL_API v9x_gl_api_tex_sub_image_2d(GLenum target, GLint level,
+                                               GLint xoffset, GLint yoffset,
+                                               GLsizei width, GLsizei height,
+                                               GLenum format, GLenum type,
+                                               const GLvoid *pixels)
+{
+    V9X_GL_WITH_TEXTURES(v9x_gl_tex_sub_image_2d(&context_->state,
+                                                 &context_->textures, target,
+                                                 level, xoffset, yoffset,
+                                                 width, height, format, type,
+                                                 pixels));
+}
+
 /* ---- Geometry (2.6-2.11), through gl_prim.c ------------------------- */
 
 /*
@@ -521,7 +688,8 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     draw.generation = description->generation;
     draw.target.surface = v9x_gl_drawable_back(drawable);
     draw.depth.surface = v9x_gl_drawable_depth(drawable);
-    draw.texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    v9x_gl_tex_describe(&context->state, &context->textures, &draw.texture,
+                        context->levels);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &draw.state);
     draw.vertices = vertices;
     draw.triangle_count = triangle_count;
@@ -825,6 +993,22 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glBlendFunc, v9x_gl_blend_func);
     V9X_GL_OVERRIDE(glAlphaFunc, v9x_gl_alpha_func);
     V9X_GL_OVERRIDE(glDepthRange, v9x_gl_depth_range);
+    V9X_GL_OVERRIDE(glGenTextures, v9x_gl_gen_textures);
+    V9X_GL_OVERRIDE(glDeleteTextures, v9x_gl_delete_textures);
+    V9X_GL_OVERRIDE(glIsTexture, v9x_gl_is_texture);
+    V9X_GL_OVERRIDE(glBindTexture, v9x_gl_bind_texture);
+    V9X_GL_OVERRIDE(glTexParameteri, v9x_gl_tex_parameteri);
+    V9X_GL_OVERRIDE(glTexParameterf, v9x_gl_tex_parameterf);
+    V9X_GL_OVERRIDE(glTexParameteriv, v9x_gl_tex_parameteriv);
+    V9X_GL_OVERRIDE(glTexParameterfv, v9x_gl_tex_parameterfv);
+    V9X_GL_OVERRIDE(glTexEnvf, v9x_gl_tex_envf);
+    V9X_GL_OVERRIDE(glTexEnvi, v9x_gl_tex_envi);
+    V9X_GL_OVERRIDE(glTexEnvfv, v9x_gl_tex_envfv);
+    V9X_GL_OVERRIDE(glTexEnviv, v9x_gl_tex_enviv);
+    V9X_GL_OVERRIDE(glPixelStorei, v9x_gl_pixel_storei);
+    V9X_GL_OVERRIDE(glPixelStoref, v9x_gl_pixel_storef);
+    V9X_GL_OVERRIDE(glTexImage2D, v9x_gl_api_tex_image_2d);
+    V9X_GL_OVERRIDE(glTexSubImage2D, v9x_gl_api_tex_sub_image_2d);
 }
 
 /* ---- Pixel formats ------------------------------------------------- */
@@ -903,6 +1087,8 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 context->bound_once = 0;
                 v9x_gl_state_init(&context->state);
                 v9x_gl_pipeline_init(&context->pipeline);
+                v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
+                                     v9x_gl_heap_free);
                 v9x_gl_pipeline_sink(&context->pipeline, v9x_gl_draw_batch,
                                      context);
                 v9x_gl_windows[index] = WindowFromDC(hdc);
@@ -985,6 +1171,7 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
         if (v9x_gl_current() == context) {
             TlsSetValue(v9x_gl_tls, 0);
         }
+        v9x_gl_textures_release(&context->textures);
         context->in_use = 0;
         context->owner = 0ul;
         context->drawable = 0;
