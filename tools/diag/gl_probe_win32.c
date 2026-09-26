@@ -453,6 +453,519 @@ void __stdcall V9xGlProbeEntry(void)
                 v9x_glp_hex("ArraysRightPixel",
                             (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
             }
+
+            /*
+             * Mip levels: a 64x64 texture whose seven levels are each one
+             * solid colour, NEAREST_MIPMAP_NEAREST and REPLACE, on quads of
+             * 64, 16 and 4 pixels - texel-to-pixel ratios 1, 4 and 16, so
+             * levels 0, 2 and 4. Each quad's centre pixel names the level
+             * the sampler read. Hardware and the CPU must agree; a wrong
+             * colour is a level uploaded or laid out wrongly.
+             */
+            {
+                static const GLubyte level_rgb[7][3] = {
+                    { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 },
+                    { 255, 255, 0 }, { 0, 255, 255 }, { 255, 0, 255 },
+                    { 255, 255, 255 }
+                };
+                static GLubyte image[64 * 64 * 3];
+                static const int quad_edge[3] = { 64, 16, 4 };
+                static const char *const quad_key[3] = {
+                    "MipQuad64", "MipQuad16", "MipQuad4"
+                };
+                GLuint texture = 0u;
+                int level;
+                int edge;
+                int i;
+                int q;
+
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                for (level = 0, edge = 64; edge >= 1; ++level, edge /= 2) {
+                    for (i = 0; i < edge * edge; ++i) {
+                        image[i * 3 + 0] = level_rgb[level][0];
+                        image[i * 3 + 1] = level_rgb[level][1];
+                        image[i * 3 + 2] = level_rgb[level][2];
+                    }
+                    glTexImage2D(GL_TEXTURE_2D, level, 3, edge, edge, 0,
+                                 GL_RGB, GL_UNSIGNED_BYTE, image);
+                }
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST_MIPMAP_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glEnable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_BLEND);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                for (q = 0; q < 3; ++q) {
+                    GLfloat x0 = (GLfloat)(20 + q * 100);
+                    GLfloat y0 = 40.0f;
+                    GLfloat e = (GLfloat)quad_edge[q];
+
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(x0, y0);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f(x0 + e, y0);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f(x0 + e, y0 + e);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(x0, y0 + e);
+                    glEnd();
+                }
+                v9x_glp_hex("ErrorAfterMips", (DWORD)glGetError());
+                glFinish();
+                for (q = 0; q < 3; ++q) {
+                    v9x_glp_hex(quad_key[q],
+                                v9x_glp_read(20 + q * 100 + quad_edge[q] / 2,
+                                             40 + quad_edge[q] / 2));
+                }
+                glDisable(GL_TEXTURE_2D);
+                glDeleteTextures(1, &texture);
+            }
+
+            /*
+             * Quake 2's sky, reduced: a 256x256 RGB texture of one grey-beige
+             * (160, 140, 100), one level, LINEAR both ways, CLAMP, REPLACE,
+             * drawn while the current colour is orange (1, 0.5, 0) - which
+             * REPLACE must ignore. Then the same texture MODULATE with white,
+             * and REPLACE with NEAREST and REPEAT, to separate the filter and
+             * the address mode from the environment.
+             */
+            {
+                static GLubyte sky[256 * 256 * 3];
+                static const char *const sky_key[3] = {
+                    "SkyReplaceLinearClamp", "SkyModulateWhite",
+                    "SkyReplaceNearestRepeat"
+                };
+                GLuint texture = 0u;
+                int i;
+                int v;
+
+                for (i = 0; i < 256 * 256; ++i) {
+                    sky[i * 3 + 0] = 160;
+                    sky[i * 3 + 1] = 140;
+                    sky[i * 3 + 2] = 100;
+                }
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, 256, 256, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, sky);
+                glEnable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_BLEND);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                for (v = 0; v < 3; ++v) {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    v == 2 ? GL_NEAREST : GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    v == 2 ? GL_NEAREST : GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                    v == 2 ? GL_REPEAT : GL_CLAMP);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                    v == 2 ? GL_REPEAT : GL_CLAMP);
+                    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                              v == 1 ? GL_MODULATE : GL_REPLACE);
+                    if (v == 1) {
+                        glColor3f(1.0f, 1.0f, 1.0f);
+                    } else {
+                        glColor3f(1.0f, 0.5f, 0.0f);
+                    }
+                    glClear(GL_COLOR_BUFFER_BIT);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(0.0f, 0.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f((GLfloat)width, 0.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f((GLfloat)width, (GLfloat)height);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(0.0f, (GLfloat)height);
+                    glEnd();
+                    glFinish();
+                    v9x_glp_hex(sky_key[v],
+                                v9x_glp_read(width / 2, height / 2));
+                }
+                v9x_glp_hex("ErrorAfterSky", (DWORD)glGetError());
+                glDisable(GL_TEXTURE_2D);
+                glDeleteTextures(1, &texture);
+            }
+
+            /*
+             * One texture rewritten between draws, as Quake 2 rewrites its
+             * dynamic lightmap several times a frame: colour A by
+             * glTexImage2D, a quad; B by glTexSubImage2D, a second quad; C,
+             * a third. Correct is A, B, C. A later colour on an earlier quad
+             * is a write that overtook queued work; an earlier colour on a
+             * later quad is a sampler reading stale texels.
+             */
+            {
+                static GLubyte block[64 * 64 * 3];
+                static const GLubyte colour[3][3] = {
+                    { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 }
+                };
+                static const char *const sub_key[3] = {
+                    "SubImageQuadA", "SubImageQuadB", "SubImageQuadC"
+                };
+                GLuint texture = 0u;
+                int i;
+                int q;
+
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glEnable(GL_TEXTURE_2D);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                for (q = 0; q < 3; ++q) {
+                    GLfloat x0 = (GLfloat)(20 + q * 100);
+
+                    for (i = 0; i < 64 * 64; ++i) {
+                        block[i * 3 + 0] = colour[q][0];
+                        block[i * 3 + 1] = colour[q][1];
+                        block[i * 3 + 2] = colour[q][2];
+                    }
+                    if (q == 0) {
+                        glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGB,
+                                     GL_UNSIGNED_BYTE, block);
+                    } else {
+                        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 64, 64,
+                                        GL_RGB, GL_UNSIGNED_BYTE, block);
+                    }
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(x0, 40.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f(x0 + 64.0f, 40.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f(x0 + 64.0f, 104.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(x0, 104.0f);
+                    glEnd();
+                }
+                glFinish();
+                for (q = 0; q < 3; ++q) {
+                    v9x_glp_hex(sub_key[q], v9x_glp_read(52 + q * 100, 72));
+                }
+                v9x_glp_hex("ErrorAfterSubImage", (DWORD)glGetError());
+                glDisable(GL_TEXTURE_2D);
+                glDeleteTextures(1, &texture);
+            }
+
+            /*
+             * Quake 2's translucent surfaces and its lightmap pass, each over
+             * a known background, on an RGB texture of (200, 100, 40):
+             *   TransModulate: MODULATE, colour (1, 1, 1, 0.33), SRC_ALPHA /
+             *     ONE_MINUS_SRC_ALPHA over grey (128) - 0.33 tex + 0.67 grey.
+             *   LightmapBlend: REPLACE, ZERO / SRC_COLOR over grey - grey
+             *     times the texel, as the lightmap multiply.
+             *   LightmapModulate: the same blend under MODULATE with white.
+             * Background and expected values are in the record; both engines
+             * must agree with the arithmetic.
+             */
+            {
+                static GLubyte tex[64 * 64 * 3];
+                static const char *const trans_key[3] = {
+                    "TransModulate", "LightmapBlend", "LightmapModulate"
+                };
+                GLuint texture = 0u;
+                int i;
+                int v;
+
+                for (i = 0; i < 64 * 64; ++i) {
+                    tex[i * 3 + 0] = 200;
+                    tex[i * 3 + 1] = 100;
+                    tex[i * 3 + 2] = 40;
+                }
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_LINEAR);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glDisable(GL_DEPTH_TEST);
+                for (v = 0; v < 3; ++v) {
+                    glDisable(GL_BLEND);
+                    glDisable(GL_TEXTURE_2D);
+                    glClearColor(128.0f / 255.0f, 128.0f / 255.0f,
+                                 128.0f / 255.0f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                    glEnable(GL_TEXTURE_2D);
+                    glEnable(GL_BLEND);
+                    if (v == 0) {
+                        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                                  GL_MODULATE);
+                        glColor4f(1.0f, 1.0f, 1.0f, 0.33f);
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    } else {
+                        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                                  v == 1 ? GL_REPLACE : GL_MODULATE);
+                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+                        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+                    }
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(0.0f, 0.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f((GLfloat)width, 0.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f((GLfloat)width, (GLfloat)height);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(0.0f, (GLfloat)height);
+                    glEnd();
+                    glFinish();
+                    v9x_glp_hex(trans_key[v],
+                                v9x_glp_read(width / 2, height / 2));
+                }
+                glDisable(GL_BLEND);
+                glBlendFunc(GL_ONE, GL_ZERO);
+                glDisable(GL_TEXTURE_2D);
+                v9x_glp_hex("ErrorAfterTrans", (DWORD)glGetError());
+                glDeleteTextures(1, &texture);
+            }
+
+            /*
+             * Quake 2's sky box, reduced: glFrustum with near 4 and far 4096
+             * (Quake 2's perspective), depth test LEQUAL against a cleared
+             * depth of 1, and a textured quad facing the viewer at z = -2300
+             * whose corners reach z = -3900 - so w runs to the thousands and
+             * rhw to a few ten-thousandths. The texture is one colour
+             * (40, 200, 120); the clear is black. FarQuadCentre and
+             * FarQuadEdge read the middle and near a corner.
+             */
+            {
+                static GLubyte tex[64 * 64 * 3];
+                GLuint texture = 0u;
+                int i;
+
+                for (i = 0; i < 64 * 64; ++i) {
+                    tex[i * 3 + 0] = 40;
+                    tex[i * 3 + 1] = 200;
+                    tex[i * 3 + 2] = 120;
+                }
+                glGenTextures(1, &texture);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGB,
+                             GL_UNSIGNED_BYTE, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_LINEAR);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glEnable(GL_TEXTURE_2D);
+                glDisable(GL_BLEND);
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(GL_LEQUAL);
+                glDepthMask(GL_TRUE);
+                glDepthRange(0.0, 1.0);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glFrustum(-4.0, 4.0, -3.0, 3.0, 4.0, 4096.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClearDepth(1.0);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex3f(-3000.0f, -2400.0f, -3900.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex3f(3000.0f, -2400.0f, -3900.0f);
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex3f(1800.0f, 1400.0f, -2300.0f);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex3f(-1800.0f, 1400.0f, -2300.0f);
+                glEnd();
+                glFinish();
+                v9x_glp_hex("FarQuadCentre", v9x_glp_read(width / 2,
+                                                          height / 2));
+                v9x_glp_hex("FarQuadEdge", v9x_glp_read(width / 8,
+                                                        height / 8));
+                v9x_glp_hex("ErrorAfterFar", (DWORD)glGetError());
+
+                /*
+                 * A ceiling the camera stands under, clipped at the near
+                 * plane as Quake 2's sky box is: the plane y = 100 from
+                 * z = +4000 (behind) to -4000, x -4000 to 4000, s and t
+                 * running 0 to 1 across it. The texture is a 4x4 grid,
+                 * cell (row, column) coloured red 40 + 60 row, green
+                 * 40 + 60 column, blue 200. A pixel at ndc (xn, yn) sees
+                 * the plane at distance 100 / (0.75 yn), so the cell it
+                 * must show is computable: CeilY90, Y50, Y10 are row 1 and
+                 * CeilY05 row 0, all column 2; CeilX50Y50 column 2.
+                 */
+                {
+                    static GLubyte grid[64 * 64 * 3];
+                    static const int probe_y[4] = { 90, 50, 10, 5 };
+                    static const char *const ceil_key[4] = {
+                        "CeilY90", "CeilY50", "CeilY10", "CeilY05"
+                    };
+                    int gx;
+                    int gy;
+                    int k;
+
+                    for (gy = 0; gy < 64; ++gy) {
+                        for (gx = 0; gx < 64; ++gx) {
+                            GLubyte *texel = &grid[(gy * 64 + gx) * 3];
+
+                            texel[0] = (GLubyte)(40 + 60 * (gy / 16));
+                            texel[1] = (GLubyte)(40 + 60 * (gx / 16));
+                            texel[2] = 200;
+                        }
+                    }
+                    glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGB,
+                                 GL_UNSIGNED_BYTE, grid);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    GL_NEAREST);
+                    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                              GL_REPLACE);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex3f(-4000.0f, 100.0f, 4000.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex3f(4000.0f, 100.0f, 4000.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex3f(4000.0f, 100.0f, -4000.0f);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex3f(-4000.0f, 100.0f, -4000.0f);
+                    glEnd();
+                    glFinish();
+                    for (k = 0; k < 4; ++k) {
+                        v9x_glp_hex(ceil_key[k],
+                                    v9x_glp_read(width / 2,
+                                                 height / 2 +
+                                                     (height / 2) *
+                                                         probe_y[k] / 100));
+                    }
+                    v9x_glp_hex("CeilX50Y50",
+                                v9x_glp_read(width / 2 + width / 4,
+                                             height / 2 + height / 4));
+                }
+
+                /* The same far quad with an RGBA texture (stored ARGB4444)
+                 * of (160, 140, 100, 255): REPLACE while the colour is
+                 * orange, then MODULATE with white. */
+                {
+                    static GLubyte rgba[64 * 64 * 4];
+                    int k;
+                    int v;
+
+                    for (k = 0; k < 64 * 64; ++k) {
+                        rgba[k * 4 + 0] = 160;
+                        rgba[k * 4 + 1] = 140;
+                        rgba[k * 4 + 2] = 100;
+                        rgba[k * 4 + 3] = 255;
+                    }
+                    glTexImage2D(GL_TEXTURE_2D, 0, 4, 64, 64, 0, GL_RGBA,
+                                 GL_UNSIGNED_BYTE, rgba);
+                    for (v = 0; v < 2; ++v) {
+                        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                                  v == 0 ? GL_REPLACE : GL_MODULATE);
+                        if (v == 0) {
+                            glColor3f(1.0f, 0.5f, 0.0f);
+                        } else {
+                            glColor3f(1.0f, 1.0f, 1.0f);
+                        }
+                        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                        glBegin(GL_QUADS);
+                        glTexCoord2f(0.0f, 0.0f);
+                        glVertex3f(-3000.0f, -2400.0f, -3900.0f);
+                        glTexCoord2f(1.0f, 0.0f);
+                        glVertex3f(3000.0f, -2400.0f, -3900.0f);
+                        glTexCoord2f(1.0f, 1.0f);
+                        glVertex3f(1800.0f, 1400.0f, -2300.0f);
+                        glTexCoord2f(0.0f, 1.0f);
+                        glVertex3f(-1800.0f, 1400.0f, -2300.0f);
+                        glEnd();
+                        glFinish();
+                        v9x_glp_hex(v == 0 ? "FarRgbaReplace"
+                                           : "FarRgbaModulate",
+                                    v9x_glp_read(width / 2, height / 2));
+                    }
+                    /* MODULATE with orange: the vertex colour must scale
+                     * the texel, (160,140,100) x (1, 0.5, 0). */
+                    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                              GL_MODULATE);
+                    glColor3f(1.0f, 0.5f, 0.0f);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex3f(-3000.0f, -2400.0f, -3900.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex3f(3000.0f, -2400.0f, -3900.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex3f(1800.0f, 1400.0f, -2300.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex3f(-1800.0f, 1400.0f, -2300.0f);
+                    glEnd();
+                    glFinish();
+                    v9x_glp_hex("FarRgbaModulateOrange",
+                                v9x_glp_read(width / 2, height / 2));
+                    /* And an RGB texture (RGB565), MODULATE with orange. */
+                    glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGBA,
+                                 GL_UNSIGNED_BYTE, rgba);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex3f(-3000.0f, -2400.0f, -3900.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex3f(3000.0f, -2400.0f, -3900.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex3f(1800.0f, 1400.0f, -2300.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex3f(-1800.0f, 1400.0f, -2300.0f);
+                    glEnd();
+                    glFinish();
+                    v9x_glp_hex("FarRgbModulateOrange",
+                                v9x_glp_read(width / 2, height / 2));
+                    glColor3f(1.0f, 1.0f, 1.0f);
+                    v9x_glp_hex("ErrorAfterFarRgba", (DWORD)glGetError());
+                }
+                glDisable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glDepthFunc(GL_LESS);
+                glDeleteTextures(1, &texture);
+            }
         }
         {
             DWORD started = GetTickCount();

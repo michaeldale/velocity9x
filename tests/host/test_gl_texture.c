@@ -367,6 +367,92 @@ static void test_environment_table(void)
     TCHECK(outstanding == 0l);
 }
 
+static v9x_u32 hw_released;
+static void *hw_last;
+
+static void test_hw_release(void *hw)
+{
+    ++hw_released;
+    hw_last = hw;
+}
+
+/* The hardware-copy bookkeeping: revisions, the release hook on delete,
+ * release and drop, and the alpha normalisation. */
+static void test_hardware_copy_bookkeeping(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    V9X_GL_TEXOBJ *object;
+    V9X_R3D_ABI_TEXTURE d;
+    GLuint name = 0u;
+    int token_a = 1;
+    int token_b = 2;
+    int token_c = 3;
+    v9x_u32 before;
+
+    v9x_gl_state_init(&s);
+    v9x_gl_textures_init(&t, test_alloc, test_free);
+    t.hw_release = test_hw_release;
+    hw_released = 0ul;
+    hw_last = 0;
+
+    v9x_gl_tex_gen(&s, &t, 1, &name);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, name);
+    object = v9x_gl_tex_bound_object(&t);
+    TCHECK(object != &t.default_object && object->name == name);
+    before = object->revision;
+    v9x_gl_pixel_store(&s, &t, V9X_GL_UNPACK_ALIGNMENT, 1);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 2, 2, 0, V9X_GL_RGB,
+                        V9X_GL_UNSIGNED_BYTE, "abcdefghijkl");
+    TCHECK(object->revision != before);
+    before = object->revision;
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 1, 1, 1, 1,
+                            V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, "xyz");
+    TCHECK(object->revision != before);
+    before = object->revision;
+    /* A parameter is not image content. */
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_NEAREST);
+    TCHECK(object->revision == before);
+
+    /* Deleting the object releases its copy through the hook. */
+    object->hw = &token_a;
+    v9x_gl_tex_delete(&s, &t, 1, &name);
+    TCHECK(hw_released == 1ul && hw_last == (void *)&token_a);
+
+    /* So do the context's release and a mode change's drop. */
+    object = v9x_gl_tex_bound_object(&t);
+    TCHECK(object == &t.default_object);
+    object->hw = &token_b;
+    v9x_gl_textures_drop_hw(&t);
+    TCHECK(hw_released == 2ul && hw_last == (void *)&token_b &&
+           object->hw == 0);
+    v9x_gl_textures_drop_hw(&t);
+    TCHECK(hw_released == 2ul);
+    object->hw = &token_c;
+    v9x_gl_textures_release(&t);
+    TCHECK(hw_released == 3ul && hw_last == (void *)&token_c);
+    TCHECK(outstanding == 0l);
+
+    /* The normalisation: REPLACE on RGB565 with the fragment's alpha
+     * becomes REPLACE/REPLACE; alpha-bearing textures and MODULATE are
+     * left as they are. */
+    d.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_fragment_alpha_unused(&d);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    d.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_fragment_alpha_unused(&d);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    d.format = V9X_R3D_ABI_FORMAT_ARGB4444;
+    d.color_op = V9X_R3D_ABI_COLOROP_DECALALPHA;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    v9x_gl_tex_fragment_alpha_unused(&d);
+    TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+}
+
 unsigned int v9x_run_gl_texture_tests(void)
 {
     gl_texture_failures = 0u;
@@ -375,6 +461,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_uploads();
     test_completeness_and_describe();
     test_environment_table();
+    test_hardware_copy_bookkeeping();
     if (gl_texture_failures == 0u) {
         printf("PASS: OpenGL texture objects and images\n");
     }

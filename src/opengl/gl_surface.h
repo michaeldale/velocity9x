@@ -50,6 +50,19 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable);
 int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
                          v9x_u32 *pitch);
 void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable);
+/*
+ * A texture the engine samples from video memory: a DirectDraw texture of
+ * `edge` squared, `levels` levels (a mip chain when more than one), in
+ * V9X_R3D_ABI_FORMAT_* `format`. Null when DirectDraw or the HAL's
+ * placement refuses it. Upload copies each level of `source` (level 0
+ * first, the interface's CPU description) through a Lock; the Lock's HAL
+ * side drains the engine first, so no queued draw reads a half-written
+ * texture. Zero when a level cannot be locked.
+ */
+void *v9x_gl_hwtex_create(v9x_u32 edge, v9x_u32 levels, v9x_u32 format);
+int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
+                        const V9X_R3D_ABI_LEVEL *source);
+void v9x_gl_hwtex_release(void *surface);
 /* The drawable for a window if one exists, without making or resizing. */
 V9X_GL_DRAWABLE *v9x_gl_drawable_find(void *window);
 

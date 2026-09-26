@@ -31,7 +31,8 @@
 
 #include "velocity9x/types.h"
 
-#define V9X_R3D_ABI_VERSION 1ul
+/* 2: describe states the hardware sampler's texture limits (2026-09-26). */
+#define V9X_R3D_ABI_VERSION 2ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -217,7 +218,15 @@ typedef struct v9x_r3d_abi_describe {
     v9x_u32 texture_size_max;
     v9x_u32 batch_max;
     char renderer[32];          /* NUL-terminated, for GL_RENDERER */
+    /* What a V9X_R3D_ABI_TEXTURE_HW texture may be: the largest edge, zero
+     * when the engine samples no surface textures for the interface, and
+     * the shape rules below. A texture outside them is refused at draw. */
+    v9x_u32 hw_texture_size_max;
+    v9x_u32 hw_texture_shape;   /* V9X_R3D_ABI_HWTEX_* */
 } V9X_R3D_ABI_DESCRIBE;
+
+#define V9X_R3D_ABI_HWTEX_SQUARE     1ul    /* width equal to height */
+#define V9X_R3D_ABI_HWTEX_POW2       2ul    /* power-of-two edges */
 
 typedef struct v9x_r3d_abi_draw {
     v9x_u32 struct_bytes;
@@ -294,7 +303,7 @@ typedef char v9x_r3d_abi_assert_vertex[sizeof(V9X_R3D_ABI_VERTEX) == 32 ? 1 : -1
 typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 64 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 72 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 136 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 28 ? 1 : -1];

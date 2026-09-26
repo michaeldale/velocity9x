@@ -137,6 +137,12 @@ void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline);
  * the batch was not made with). */
 void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline);
 
+/* Non-zero when a fragment's alpha can change what is written: the alpha
+ * test is on, or blending uses a source-alpha factor. There is no alpha
+ * plane, so destination-alpha factors read one whatever the source. */
+int v9x_gl_prim_fragment_alpha_used(const V9X_GL_STATE *state,
+                                    const V9X_GL_PIPELINE *pipeline);
+
 /* The fragment state as the render interface takes it, from the GL state
  * and the pipeline's functions. */
 void v9x_gl_prim_abi_state(V9X_GL_STATE *state,

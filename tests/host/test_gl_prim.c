@@ -39,6 +39,13 @@ static int sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     return 1;
 }
 
+/* Vertices captured so far, within the capture array. */
+static v9x_u32 vsunk_count(void)
+{
+    return sunk_triangles * 3ul < 3ul * SINK_MAX ? sunk_triangles * 3ul
+                                                 : 3ul * SINK_MAX;
+}
+
 static int near_value(float a, float b)
 {
     float d = a - b;
@@ -373,6 +380,92 @@ static void test_errors_and_abi_state(void)
     PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
 }
 
+/* A float's sign bit, read through its bytes (-0.0 compares equal to 0). */
+static int sign_set(float value)
+{
+    union {
+        float f;
+        v9x_u32 u;
+    } bits;
+
+    bits.f = value;
+    return (bits.u & 0x80000000ul) != 0ul;
+}
+
+/*
+ * Clipped vertices land inside the viewport and the depth range, with no
+ * negative zero: Gen3's stream builder refuses both a coordinate past the
+ * surface and any sign bit, and float error in the clip or the mapping can
+ * produce either at an edge. Skewed perspective triangles through every
+ * plane, several shapes, every emitted vertex checked.
+ */
+static void test_clipped_vertices_stay_inside(void)
+{
+    static const float far_x[6] = { -1000.0f, -333.3f, -0.001f, 700.1f,
+                                    1234.5f, 320.0001f };
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    v9x_u32 i;
+    unsigned int shape;
+    int bad = 0;
+
+    for (shape = 0u; shape < 6u; ++shape) {
+        scene(&s, &p);
+        v9x_gl_state_matrix_mode(&s, V9X_GL_PROJECTION);
+        v9x_gl_state_load_identity(&s);
+        v9x_gl_state_frustum(&s, -1.0, 1.0, -1.0, 1.0, 1.0, 10.0);
+        v9x_gl_state_matrix_mode(&s, V9X_GL_MODELVIEW);
+        v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+        v9x_gl_prim_vertex(&s, &p, far_x[shape] / 100.0f, -3.0f, -1.3f,
+                           1.0f);
+        v9x_gl_prim_vertex(&s, &p, 7.0f, -0.1f, -3.1f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, -0.2f, 9.0f, -2.7f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, -5.0f, -5.0f, -0.5f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 5.0f, 5.0f, -30.0f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 0.3f, 0.2f, -2.0f, 1.0f);
+        v9x_gl_prim_end(&s, &p);
+        for (i = 0ul; i < vsunk_count(); ++i) {
+            const V9X_R3D_ABI_VERTEX *v = &sunk[i];
+
+            if (sign_set(v->sx) || sign_set(v->sy) || sign_set(v->sz) ||
+                v->sx > 320.0f || v->sy > 200.0f || v->sz > 1.0f ||
+                !(v->rhw > 0.0f)) {
+                ++bad;
+            }
+        }
+    }
+    PCHECK(bad == 0);
+    PCHECK(sunk_triangles != 0ul);
+}
+
+static void test_fragment_alpha_used(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    scene(&s, &p);
+    PCHECK(!v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_state_enable(&s, V9X_GL_BLEND, 1);
+    /* ONE/ZERO, and Quake's lightmap pair ZERO/SRC_COLOR, read no alpha. */
+    PCHECK(!v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_prim_blend_func(&s, &p, V9X_GL_ZERO, 0x0300u /* SRC_COLOR */);
+    PCHECK(!v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_prim_blend_func(&s, &p, 0x0304u, 0x0305u);   /* DST_ALPHA pair */
+    PCHECK(!v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_prim_blend_func(&s, &p, V9X_GL_SRC_ALPHA,
+                           V9X_GL_ONE_MINUS_SRC_ALPHA);
+    PCHECK(v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_prim_blend_func(&s, &p, V9X_GL_ONE, V9X_GL_ONE_MINUS_SRC_ALPHA);
+    PCHECK(v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_prim_blend_func(&s, &p, V9X_GL_SRC_ALPHA_SATURATE, V9X_GL_ONE);
+    PCHECK(v9x_gl_prim_fragment_alpha_used(&s, &p));
+    /* The factors are held while blending is off, and read nothing. */
+    v9x_gl_state_enable(&s, V9X_GL_BLEND, 0);
+    PCHECK(!v9x_gl_prim_fragment_alpha_used(&s, &p));
+    v9x_gl_state_enable(&s, V9X_GL_ALPHA_TEST, 1);
+    PCHECK(v9x_gl_prim_fragment_alpha_used(&s, &p));
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
@@ -382,6 +475,8 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_clipping();
     test_depth_range_and_batches();
     test_errors_and_abi_state();
+    test_fragment_alpha_used();
+    test_clipped_vertices_stay_inside();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
     }

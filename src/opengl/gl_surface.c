@@ -293,6 +293,155 @@ void *v9x_gl_drawable_depth(const V9X_GL_DRAWABLE *drawable)
     return drawable->depth;
 }
 
+/* The DirectDraw pixel format of a V9X_R3D_ABI_FORMAT_* texture layout. */
+static int v9x_gl_hwtex_pixel_format(v9x_u32 format, DDPIXELFORMAT *out)
+{
+    v9x_gl_surface_zero(out, sizeof(*out));
+    out->dwSize = sizeof(*out);
+    out->dwFlags = DDPF_RGB;
+    out->dwRGBBitCount = 16ul;
+    if (format == V9X_R3D_ABI_FORMAT_RGB565) {
+        out->dwRBitMask = 0xF800ul;
+        out->dwGBitMask = 0x07E0ul;
+        out->dwBBitMask = 0x001Ful;
+        return 1;
+    }
+    out->dwFlags |= DDPF_ALPHAPIXELS;
+    if (format == V9X_R3D_ABI_FORMAT_ARGB1555) {
+        out->dwRBitMask = 0x7C00ul;
+        out->dwGBitMask = 0x03E0ul;
+        out->dwBBitMask = 0x001Ful;
+        out->dwRGBAlphaBitMask = 0x8000ul;
+        return 1;
+    }
+    if (format == V9X_R3D_ABI_FORMAT_ARGB4444) {
+        out->dwRBitMask = 0x0F00ul;
+        out->dwGBitMask = 0x00F0ul;
+        out->dwBBitMask = 0x000Ful;
+        out->dwRGBAlphaBitMask = 0xF000ul;
+        return 1;
+    }
+    return 0;
+}
+
+void *v9x_gl_hwtex_create(v9x_u32 edge, v9x_u32 levels, v9x_u32 format)
+{
+    DDSURFACEDESC desc;
+    LPDIRECTDRAWSURFACE surface = 0;
+    HRESULT hr;
+
+    if (v9x_gl_ddraw == 0 || levels == 0ul) {
+        return 0;
+    }
+    v9x_gl_surface_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    desc.dwWidth = edge;
+    desc.dwHeight = edge;
+    if (!v9x_gl_hwtex_pixel_format(format, &desc.ddpfPixelFormat)) {
+        return 0;
+    }
+    /* Video memory, so the HAL's placement puts it where the sampler
+     * reads (a chain as one mip tree); a system-memory texture would be a
+     * surface Gen3's bind refuses. */
+    desc.ddsCaps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
+    if (levels > 1ul) {
+        desc.dwFlags |= DDSD_MIPMAPCOUNT;
+        desc.dwMipMapCount = levels;
+        desc.ddsCaps.dwCaps |= DDSCAPS_MIPMAP | DDSCAPS_COMPLEX;
+    }
+    hr = IDirectDraw_CreateSurface(v9x_gl_ddraw, &desc, &surface, 0);
+    if (hr != DD_OK) {
+        v9x_gl_log3("hwtex create edge=%lu levels=%lu hr=%08lX", edge, levels,
+                    (DWORD)hr);
+        return 0;
+    }
+    return surface;
+}
+
+/* One level's rows into a locked surface. */
+static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
+                             const V9X_R3D_ABI_LEVEL *level)
+{
+    DDSURFACEDESC desc;
+    const BYTE *source;
+    BYTE *target;
+    DWORD row;
+    DWORD i;
+    HRESULT hr;
+
+    v9x_gl_surface_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = IDirectDrawSurface_Lock(surface, 0, &desc,
+                                 DDLOCK_WAIT | DDLOCK_WRITEONLY, 0);
+    if (hr == DDERR_SURFACELOST) {
+        /* Video memory given back after another application's mode or
+         * exclusive use: memory again, and this upload refills it. */
+        IDirectDrawSurface_Restore(surface);
+        hr = IDirectDrawSurface_Lock(surface, 0, &desc,
+                                     DDLOCK_WAIT | DDLOCK_WRITEONLY, 0);
+    }
+    if (hr != DD_OK) {
+        v9x_gl_log3("hwtex lock hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        return 0;
+    }
+    if (desc.dwWidth != level->width || desc.dwHeight != level->height) {
+        IDirectDrawSurface_Unlock(surface, 0);
+        v9x_gl_log3("hwtex level %lux%lu expected width %lu", desc.dwWidth,
+                    desc.dwHeight, level->width);
+        return 0;
+    }
+    source = (const BYTE *)level->pixels;
+    target = (BYTE *)desc.lpSurface;
+    for (row = 0ul; row < level->height; ++row) {
+        for (i = 0ul; i < level->width * 2ul; ++i) {
+            target[i] = source[i];
+        }
+        source += level->pitch;
+        target += desc.lPitch;
+    }
+    IDirectDrawSurface_Unlock(surface, 0);
+    return 1;
+}
+
+int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
+                        const V9X_R3D_ABI_LEVEL *source)
+{
+    LPDIRECTDRAWSURFACE level = (LPDIRECTDRAWSURFACE)surface;
+    LPDIRECTDRAWSURFACE next;
+    DDSCAPS caps;
+    v9x_u32 index;
+    int ok = 1;
+
+    /* The top level, then each attached level in turn. GetAttachedSurface
+     * adds a reference to what it returns; every one but the top is
+     * released once filled. */
+    for (index = 0ul; index < levels && ok; ++index) {
+        ok = v9x_gl_hwtex_fill(level, &source[index]);
+        next = 0;
+        if (ok && index + 1ul < levels) {
+            caps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP;
+            if (IDirectDrawSurface_GetAttachedSurface(level, &caps, &next) !=
+                    DD_OK) {
+                next = 0;
+                ok = 0;
+            }
+        }
+        if (index != 0ul) {
+            IDirectDrawSurface_Release(level);
+        }
+        level = next;
+    }
+    return ok;
+}
+
+void v9x_gl_hwtex_release(void *surface)
+{
+    if (surface != 0) {
+        IDirectDrawSurface_Release((LPDIRECTDRAWSURFACE)surface);
+    }
+}
+
 int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
                          v9x_u32 *pitch)
 {

@@ -355,6 +355,14 @@ typedef struct v9x_gl_window {
     GLfloat rhw;
 } V9X_GL_WINDOW;
 
+static GLfloat v9x_gl_prim_clamp(GLfloat value, GLfloat low, GLfloat high)
+{
+    if (!(value > low)) {
+        return low;
+    }
+    return value < high ? value : high;
+}
+
 static void v9x_gl_prim_window(const V9X_GL_STATE *state,
                                const V9X_GL_PIPELINE *pipeline,
                                const V9X_GL_VERTEX *v, V9X_GL_WINDOW *out)
@@ -373,6 +381,28 @@ static void v9x_gl_prim_window(const V9X_GL_STATE *state,
                            zd +
                        (pipeline->depth_near + pipeline->depth_far) * 0.5);
     out->rhw = rhw;
+
+    /*
+     * A clipped vertex lies inside the view volume, so its window position
+     * lies inside the viewport and its depth inside the depth range - in
+     * exact arithmetic. In floats the clip and the divide can leave it a
+     * rounding step outside, or at -0.0, and Gen3's stream builder refuses
+     * both (a sign bit or a coordinate past the surface names a write
+     * outside it). Clamping to the bounds the mathematics already
+     * guarantees moves no correct vertex. The low bounds are tested as
+     * "not above", which also replaces -0.0 by the bound's +0.0.
+     */
+    out->x = v9x_gl_prim_clamp(out->x, (GLfloat)state->viewport[0],
+                               (GLfloat)state->viewport[0] +
+                                   (GLfloat)state->viewport[2]);
+    out->y = v9x_gl_prim_clamp(out->y, (GLfloat)state->viewport[1],
+                               (GLfloat)state->viewport[1] +
+                                   (GLfloat)state->viewport[3]);
+    out->z = pipeline->depth_near <= pipeline->depth_far
+        ? v9x_gl_prim_clamp(out->z, (GLfloat)pipeline->depth_near,
+                            (GLfloat)pipeline->depth_far)
+        : v9x_gl_prim_clamp(out->z, (GLfloat)pipeline->depth_far,
+                            (GLfloat)pipeline->depth_near);
 }
 
 static v9x_u32 v9x_gl_prim_argb(const GLfloat *color)
@@ -619,4 +649,25 @@ void v9x_gl_prim_abi_state(V9X_GL_STATE *state,
         out->scissor_top = (v9x_u32)(height - top);
         out->scissor_bottom = (v9x_u32)(height - bottom);
     }
+}
+
+/* A blend factor that reads the source alpha (table 4.1/4.2). */
+static int v9x_gl_prim_factor_reads_alpha(GLenum factor)
+{
+    return factor == V9X_GL_SRC_ALPHA ||
+           factor == V9X_GL_ONE_MINUS_SRC_ALPHA ||
+           factor == V9X_GL_SRC_ALPHA_SATURATE;
+}
+
+int v9x_gl_prim_fragment_alpha_used(const V9X_GL_STATE *state,
+                                    const V9X_GL_PIPELINE *pipeline)
+{
+    if (v9x_gl_state_cap(state, V9X_GL_ALPHA_TEST)) {
+        return 1;
+    }
+    if (!v9x_gl_state_cap(state, V9X_GL_BLEND)) {
+        return 0;
+    }
+    return v9x_gl_prim_factor_reads_alpha(pipeline->blend_src) ||
+           v9x_gl_prim_factor_reads_alpha(pipeline->blend_dst);
 }

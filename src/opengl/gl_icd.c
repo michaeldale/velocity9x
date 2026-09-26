@@ -296,6 +296,9 @@ static V9X_GL_DRAWABLE *v9x_gl_bind_window(V9X_GL_CONTEXT *context,
  * is kept on the context so a command can re-bind after a resize. */
 static HWND v9x_gl_context_window(const V9X_GL_CONTEXT *context);
 
+/* describe again after a mode change, dropping every texture copy. */
+static int v9x_gl_redescribe_all(void);
+
 static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
@@ -338,7 +341,7 @@ static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
     clear.rects = &rect;
     clear.rect_count = 1ul;
     result = iface->clear(&clear);
-    if (result == V9X_R3D_RESULT_STALE && v9x_gl_device_redescribe()) {
+    if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
         /* A mode change: new generation, and the surfaces made again. */
         drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
         if (drawable != 0) {
@@ -726,6 +729,186 @@ static void V9X_GL_API v9x_gl_api_tex_sub_image_2d(GLenum target, GLint level,
  * glBegin/glEnd, and no state command is legal between those, so the state
  * read here is the state the triangles were made with.
  */
+/* ---- Hardware textures: GL images as surfaces the engine samples ---- */
+
+/*
+ * The ICD's copy of one texture object's images in video memory. Made when
+ * the engine describes surface textures and the object fits them, filled
+ * again whenever the object's images change (its revision), and dropped
+ * with the object, the context, or a mode change. `unusable` remembers a
+ * shape DirectDraw or the upload refused, so it is not retried each draw.
+ */
+typedef struct v9x_gl_hwtex {
+    void *surface;
+    v9x_u32 edge;
+    v9x_u32 levels;
+    v9x_u32 format;
+    v9x_u32 revision;
+    int filled;
+    int unusable;
+} V9X_GL_HWTEX;
+
+/* V9X_GL_TEXTURES.hw_release: the surface, then the record. */
+static void v9x_gl_hwtex_free(void *memory)
+{
+    V9X_GL_HWTEX *hw = (V9X_GL_HWTEX *)memory;
+
+    v9x_gl_hwtex_release(hw->surface);
+    HeapFree(GetProcessHeap(), 0, hw);
+}
+
+/* After a mode change every surface is lost: forget every copy, in every
+ * context, then describe again. */
+static int v9x_gl_redescribe_all(void)
+{
+    unsigned int index;
+
+    for (index = 0u; index < V9X_GL_CONTEXTS_MAX; ++index) {
+        if (v9x_gl_contexts[index].in_use) {
+            v9x_gl_textures_drop_hw(&v9x_gl_contexts[index].textures);
+        }
+    }
+    return v9x_gl_device_redescribe();
+}
+
+/* The bound texture as the interface's CPU description, its alpha op
+ * normalised when nothing reads the fragment's alpha (gl_texture.h). */
+static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
+                                    V9X_R3D_ABI_TEXTURE *texture)
+{
+    v9x_gl_tex_describe(&context->state, &context->textures, texture,
+                        context->levels);
+    if (!v9x_gl_prim_fragment_alpha_used(&context->state,
+                                         &context->pipeline)) {
+        v9x_gl_tex_fragment_alpha_unused(texture);
+    }
+}
+
+/*
+ * Replace a CPU description with the object's surface when the engine
+ * samples surfaces and the object fits what describe allows. Non-zero when
+ * `texture` now names a surface. Runs under the ICD's critical section.
+ */
+static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context,
+                             V9X_R3D_ABI_TEXTURE *texture)
+{
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_GL_TEXOBJ *object;
+    V9X_GL_HWTEX *hw;
+    v9x_u32 edge;
+
+    if (texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
+        description->hw_texture_size_max == 0ul) {
+        return 0;
+    }
+    edge = texture->levels[0].width;
+    if (edge > description->hw_texture_size_max ||
+        texture->levels[0].height > description->hw_texture_size_max ||
+        ((description->hw_texture_shape & V9X_R3D_ABI_HWTEX_SQUARE) != 0ul &&
+         texture->levels[0].height != edge) ||
+        (description->texture_formats & (1ul << texture->format)) == 0ul) {
+        return 0;
+    }
+    /* GL 1.1 textures are powers of two already (gl_texture.c refuses any
+     * other size), so V9X_R3D_ABI_HWTEX_POW2 always holds here. */
+
+    object = v9x_gl_tex_bound_object(&context->textures);
+    hw = (V9X_GL_HWTEX *)object->hw;
+    if (hw != 0 && (hw->edge != edge || hw->levels != texture->level_count ||
+                    hw->format != texture->format)) {
+        v9x_gl_hwtex_free(hw);
+        object->hw = 0;
+        hw = 0;
+    }
+    if (hw == 0) {
+        hw = (V9X_GL_HWTEX *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                       sizeof(V9X_GL_HWTEX));
+        if (hw == 0) {
+            return 0;
+        }
+        hw->edge = edge;
+        hw->levels = texture->level_count;
+        hw->format = texture->format;
+        hw->surface = v9x_gl_hwtex_create(edge, texture->level_count,
+                                          texture->format);
+        hw->unusable = hw->surface == 0;
+        object->hw = hw;
+    }
+    if (hw->unusable) {
+        return 0;
+    }
+    if (!hw->filled || hw->revision != object->revision) {
+        if (!v9x_gl_hwtex_upload(hw->surface, texture->level_count,
+                                 texture->levels)) {
+            v9x_gl_hwtex_release(hw->surface);
+            hw->surface = 0;
+            hw->unusable = 1;
+            return 0;
+        }
+        hw->revision = object->revision;
+        hw->filled = 1;
+    }
+
+    texture->storage = V9X_R3D_ABI_TEXTURE_HW;
+    texture->surface.surface = hw->surface;
+    texture->levels = 0;
+    texture->level_count = 0ul;
+    return 1;
+}
+
+/*
+ * The first draws of each distinct state, logged once each: what a game
+ * actually asks for, in the terms the render interface is given, so two
+ * engines' runs of the same scene can be compared entry by entry. Bounded
+ * by the table, so a long session writes a few dozen lines, not one a draw.
+ */
+#define V9X_GL_STATE_SEEN_MAX 48u
+
+static v9x_u32 v9x_gl_state_seen[V9X_GL_STATE_SEEN_MAX][4];
+static unsigned int v9x_gl_state_seen_count;
+
+static void v9x_gl_note_state(const V9X_GL_CONTEXT *context,
+                              const V9X_R3D_ABI_DRAW *draw)
+{
+    const V9X_R3D_ABI_TEXTURE *texture = &draw->texture;
+    v9x_u32 key[4];
+    v9x_u32 edge = 0ul;
+    unsigned int i;
+    char text[200];
+
+    if (texture->storage == V9X_R3D_ABI_TEXTURE_CPU &&
+        texture->levels != 0) {
+        edge = (texture->levels[0].width << 16) | texture->levels[0].height;
+    }
+    key[0] = context->textures.bound;
+    key[1] = (texture->storage << 24) | (texture->format << 16) |
+             (texture->color_op << 8) | texture->alpha_op;
+    key[2] = (draw->state.blend_enable << 24) | (draw->state.src_blend << 16) |
+             (draw->state.dst_blend << 8) | draw->state.alpha_test_enable;
+    key[3] = (draw->state.depth_enable << 24) | (draw->state.depth_func << 16) |
+             (draw->state.depth_write << 8) | texture->mip;
+    for (i = 0u; i < v9x_gl_state_seen_count; ++i) {
+        if (v9x_gl_state_seen[i][0] == key[0] &&
+            v9x_gl_state_seen[i][1] == key[1] &&
+            v9x_gl_state_seen[i][2] == key[2] &&
+            v9x_gl_state_seen[i][3] == key[3]) {
+            return;
+        }
+    }
+    if (v9x_gl_state_seen_count >= V9X_GL_STATE_SEEN_MAX) {
+        return;
+    }
+    for (i = 0u; i < 4u; ++i) {
+        v9x_gl_state_seen[v9x_gl_state_seen_count][i] = key[i];
+    }
+    ++v9x_gl_state_seen_count;
+    wsprintfA(text, "state tex=%lu size=%08lX tex=%08lX blend=%08lX "
+              "depth=%08lX colour=%08lX",
+              key[0], edge, key[1], key[2], key[3],
+              draw->vertices != 0 ? draw->vertices[0].color : 0ul);
+    v9x_gl_log(text);
+}
+
 static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
                              v9x_u32 triangle_count)
 {
@@ -737,6 +920,7 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     V9X_R3D_ABI_OUTCOME outcome;
     v9x_u32 result;
     unsigned int i;
+    int hardware;
 
     if (iface == 0) {
         return 0;
@@ -754,19 +938,27 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     draw.generation = description->generation;
     draw.target.surface = v9x_gl_drawable_back(drawable);
     draw.depth.surface = v9x_gl_drawable_depth(drawable);
-    v9x_gl_tex_describe(&context->state, &context->textures, &draw.texture,
-                        context->levels);
+    v9x_gl_describe_texture(context, &draw.texture);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &draw.state);
     draw.vertices = vertices;
     draw.triangle_count = triangle_count;
+    v9x_gl_note_state(context, &draw);
+    hardware = v9x_gl_hw_texture(context, &draw.texture);
     result = iface->draw(&draw, &outcome);
-    if (result == V9X_R3D_RESULT_STALE && v9x_gl_device_redescribe()) {
+    if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
+        /* Refused before anything was emitted: the same batch with the CPU
+         * copy, which the software fallback draws. */
+        v9x_gl_describe_texture(context, &draw.texture);
+        result = iface->draw(&draw, &outcome);
+    }
+    if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
         drawable = v9x_gl_bind_window(context,
                                       v9x_gl_context_window(context));
         if (drawable != 0) {
             draw.generation = description->generation;
             draw.target.surface = v9x_gl_drawable_back(drawable);
             draw.depth.surface = v9x_gl_drawable_depth(drawable);
+            v9x_gl_describe_texture(context, &draw.texture);
             result = iface->draw(&draw, &outcome);
         }
     }
@@ -1370,6 +1562,7 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 v9x_gl_arrays_init(&context->arrays);
                 v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
                                      v9x_gl_heap_free);
+                context->textures.hw_release = v9x_gl_hwtex_free;
                 v9x_gl_pipeline_sink(&context->pipeline, v9x_gl_draw_batch,
                                      context);
                 v9x_gl_windows[index] = WindowFromDC(hdc);

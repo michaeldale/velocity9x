@@ -37,6 +37,7 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
 
     textures->alloc = alloc;
     textures->release = release;
+    textures->hw_release = 0;
     v9x_gl_texobj_defaults(&textures->default_object, 0u);
     textures->objects = 0;
     textures->capacity = 0ul;
@@ -55,10 +56,22 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
     }
 }
 
+/* The ICD's copy of the images, through its hook. */
+static void v9x_gl_texobj_free_hw(V9X_GL_TEXTURES *textures,
+                                  V9X_GL_TEXOBJ *object)
+{
+    if (object->hw != 0 && textures->hw_release != 0) {
+        textures->hw_release(object->hw);
+    }
+    object->hw = 0;
+}
+
 static void v9x_gl_texobj_free_levels(V9X_GL_TEXTURES *textures,
                                       V9X_GL_TEXOBJ *object)
 {
     unsigned int level;
+
+    v9x_gl_texobj_free_hw(textures, object);
 
     for (level = 0u; level < V9X_GL_TEXTURE_LEVELS; ++level) {
         if (object->levels[level].texels != 0) {
@@ -607,6 +620,7 @@ void v9x_gl_tex_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     slot->texels = texels;
     slot->width = (v9x_u32)width;
     slot->height = (v9x_u32)height;
+    ++object->revision;
     if (level == 0) {
         object->base_format = base;
         object->storage_format =
@@ -658,6 +672,7 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                     format, object->base_format);
         }
     }
+    ++object->revision;
 }
 
 static int v9x_gl_tex_uses_mipmaps(GLenum min_filter)
@@ -798,5 +813,37 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
         out->color_op = V9X_R3D_ABI_COLOROP_MODULATE;
         out->alpha_op = has_alpha ? V9X_R3D_ABI_ALPHAOP_MODULATE
                                   : V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    }
+}
+
+V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures)
+{
+    V9X_GL_TEXOBJ *object = v9x_gl_texobj_find(textures, textures->bound);
+
+    /* glBindTexture makes every name it binds an object, so only a
+     * binding the tables lost could miss; the default stands in. */
+    return object != 0 ? object : &textures->default_object;
+}
+
+void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures)
+{
+    v9x_u32 i;
+
+    v9x_gl_texobj_free_hw(textures, &textures->default_object);
+    for (i = 0ul; i < textures->capacity; ++i) {
+        if (textures->objects[i].in_use) {
+            v9x_gl_texobj_free_hw(textures, &textures->objects[i]);
+        }
+    }
+}
+
+void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture)
+{
+    /* Only a texture without alpha samples an alpha of one, and only the
+     * REPLACE colour op leaves the fragment nothing but its alpha. */
+    if (texture->format == V9X_R3D_ABI_FORMAT_RGB565 &&
+        texture->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+        texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     }
 }

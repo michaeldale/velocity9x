@@ -1,0 +1,56 @@
+Winsock Initialized
+Console initialized.
+------- Loading ref_gl.dll -------
+ref_gl version: GL 0.01
+Initializing OpenGL display
+...setting mode 3: 640 480 W
+...setting windowed mode
+GL PFD: color(16-bits) Z(16-bit)
+GL_VENDOR: Velocity9x
+GL_RENDERER: Velocity9x GMA 950
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: 
+...allowing CDS
+...WGL_EXT_swap_control not found
+...WGL_EXT_gamma_control not found
+...GL_EXT_point_parameters not found
+...GL_EXT_shared_texture_palette not found
+...GL_SGIS_multitexture not found
+------------------------------------
+
+------- sound initialization -------
+Initializing DirectSound
+failed
+*** dsound init failed ***
+Initializing wave sound
+failed
+Wave sound init failed
+CD Audio Initialized
+====== Quake2 Initialized ======
+
+==== InitGame ====
+------- Server Initialization -------
+0 entities inhibited
+0 teams with 0 entities
+-------------------------------------
+loopback: client_connect
+********************
+ERROR: Couldn't open demos/demo1.dm2
+
+********************
+==== ShutdownGame ====
+0 frames, 44.1 seconds: 0.0 fps
+]map demo1
+==== InitGame ====
+------- Server Initialization -------
+38 entities inhibited
+1 teams with 2 entities
+-------------------------------------
+loopback: client_connect
+
+
+
+
+Outer Base
+Map: demo1                                     pics                                     maps/demo1.bsp                                     models/weapons/v_blast/tris.md2                                     models/objects/gibs/sm_meat/tris.md2                                     models/objects/gibs/arm/tris.md2                                     models/objects/gibs/bone/tris.md2                                     models/objects/gibs/bone2/tris.md2                                     models/objects/gibs/chest/tris.md2                                     models/objects/gibs/skull/tris.md2                                     models/objects/gibs/head2/tris.md2                                     models/monsters/soldier/tris.md2                                     models/objects/laser/tris.md2                                     models/deadbods/dude/tris.md2                                     models/items/healing/stimpack/tris.md                                     models/ships/strogg1/tris.md2                                     models/items/armor/shard/tris.md2                                     models/items/ammo/grenades/medium/tri                                     models/weapons/v_handgr/tris.md2                                     models/items/healing/large/tris.md2                                     models/items/adrenal/tris.md2                                     models/items/ammo/shells/medium/tris.                                     models/items/healing/medium/tris.md2                                     models/items/silencer/tris.md2                                     models/objects/debris1/tris.md2                                     models/objects/debris2/tris.md2                                     models/objects/debris3/tris.md2                                     models/objects/barrels/tris.md2                                     models/objects/gibs/head/tris.md2                                     models/objects/banner/tris.md2                                     models/weapons/g_shotg/tris.md2                                     models/weapons/v_shotg/tris.md2                                     models/items/armor/jacket/tris.md2                                     models/monsters/infantry/tris.md2                                     images                                     client 0                                     sky                                     ]timerefresh
+103.384003 seconds (1.238103 fps)

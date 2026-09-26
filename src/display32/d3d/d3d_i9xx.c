@@ -2550,6 +2550,34 @@ static int v9x_d3d_i9xx_ready(void)
 
 /* Side-effect-free capability query. Binding still validates placement and
  * mip layout; this rejects state the command builder would approximate. */
+/*
+ * Whether bind_texture would take this surface: a video-memory texture,
+ * sixteen bits a texel, square, a power of two, inside the limits. The same
+ * tests as the bind, without its counters - the caller only asks.
+ */
+static int v9x_d3d_i9xx_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD edge;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return 0;
+    }
+    edge = (DWORD)surface->lpGbl->wWidth;
+    if (edge != (DWORD)surface->lpGbl->wHeight ||
+        edge < v9x_d3d_i9xx_limits.texture_size_min ||
+        edge > v9x_d3d_i9xx_limits.texture_size_max ||
+        (edge & (edge - 1ul)) != 0ul) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        return (surface->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) != 0ul &&
+               surface->lpGbl->ddpfSurface.dwRGBBitCount == 16ul;
+    }
+    return 1;
+}
+
 static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
 {
     if (draw == 0 ||
@@ -2587,6 +2615,14 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
           draw->dst_blend == V9X_R3D_BLEND_ZERO) &&
         (v9x_d3d_i9xx_blend_factor(draw->src_blend) == 0ul ||
          v9x_d3d_i9xx_blend_factor(draw->dst_blend) == 0ul)) {
+        return 0;
+    }
+    /* A surface texture the bind would refuse draws untextured, which
+     * Direct3D counts and accepts; an explicit draw is refused instead, so
+     * the render interface's caller can send its CPU copy. */
+    if (draw->explicit_state != 0ul && draw->texture.object != 0 &&
+        !v9x_d3d_i9xx_texture_bindable(
+            (const V9X_DD_SURFACE_LCL *)draw->texture.object)) {
         return 0;
     }
     if (draw->texture.object != 0) {

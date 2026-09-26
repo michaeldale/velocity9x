@@ -76,11 +76,19 @@ typedef struct v9x_gl_texobj {
     GLenum mag_filter;
     GLenum wrap_s;
     GLenum wrap_t;
+    /* Bumped by every glTexImage2D and glTexSubImage2D on any level, so a
+     * copy made from the images can tell it is stale. */
+    v9x_u32 revision;
+    /* The ICD's hardware copy of the images, opaque here; released through
+     * V9X_GL_TEXTURES.hw_release when the object's storage goes. */
+    void *hw;
 } V9X_GL_TEXOBJ;
 
 typedef struct v9x_gl_textures {
     V9X_GL_ALLOC_FN alloc;
     V9X_GL_FREE_FN release;
+    /* Releases an object's `hw`; null when the ICD keeps none. */
+    V9X_GL_FREE_FN hw_release;
     /* Object 0 is the default texture; the rest grow on demand. */
     V9X_GL_TEXOBJ default_object;
     V9X_GL_TEXOBJ *objects;
@@ -136,5 +144,18 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
                          V9X_GL_TEXTURES *textures,
                          V9X_R3D_ABI_TEXTURE *out,
                          V9X_R3D_ABI_LEVEL *levels);
+
+/* The bound object (never null: name 0 is the default texture). */
+V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures);
+/* Every object's hardware copy released through the hook and forgotten:
+ * a mode change has made them all lost. */
+void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures);
+/*
+ * When nothing reads the fragment's alpha, REPLACE (and DECAL) on a
+ * texture without alpha may take the texel's alpha of one instead of the
+ * fragment's: the pixels written are identical, and the combined form is
+ * the one hardware texture stages have (Direct3D's DECAL).
+ */
+void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture);
 
 #endif /* VELOCITY9X_GL_TEXTURE_H */

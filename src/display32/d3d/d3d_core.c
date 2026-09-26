@@ -3179,7 +3179,12 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
          * the processor's write-combining buffers ahead of it. */
         const V9X_D3D_ENGINE_OPS *fallback = v9x_r3d_fallback(ops);
 
-        if (fallback == 0 || !fallback->accepts(&draw)) {
+        /* A surface texture stays with its engine: Gen3 places a mip chain
+         * as one tree in its own layout, which the software engine's
+         * surface sampler (one linear level) would read wrongly. The ICD
+         * answers UNSUPPORTED by sending its CPU copy instead. */
+        if (fallback == 0 || draw.texture.object != 0 ||
+            !fallback->accepts(&draw)) {
             return V9X_R3D_RESULT_UNSUPPORTED;
         }
         result = v9x_r3d_drain();
@@ -3327,6 +3332,18 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
                            (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
     out->texture_size_max = v9x_r3d_texture_size_max(ops);
     out->batch_max = V9X_R3D_ABI_BATCH_MAX;
+    /* Surface textures, where the engine samples them for the interface:
+     * Gen3's bind takes a square power of two within its limits (the
+     * sampler's rule, v9x_d3d_i9xx_bind_texture). The ViRGE's texture path
+     * has not been measured through the interface, and the software engine
+     * reads CPU levels. */
+    out->hw_texture_size_max = 0ul;
+    out->hw_texture_shape = 0ul;
+    if (ops == &v9x_d3d_engine_i9xx) {
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
+                                V9X_R3D_ABI_HWTEX_POW2;
+    }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {
         out->renderer[index] = name[index];
