@@ -2557,6 +2557,16 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
          draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
         return 0;
     }
+    /* An explicit draw's CPU texture, scissor or channel mask: the command
+     * builder here emits none of them yet (the ring could carry a scissor
+     * and a write mask; neither is built). */
+    if (draw->explicit_state != 0ul &&
+        (draw->texture.levels != 0 || draw->write_mask != 7ul ||
+         draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
+         draw->scissor_right != draw->target.width ||
+         draw->scissor_bottom != draw->target.height)) {
+        return 0;
+    }
     if (draw->fog_enable != 0ul) {
         return 0;
     }

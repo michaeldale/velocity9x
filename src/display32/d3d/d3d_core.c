@@ -281,6 +281,11 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     draw->depth.format = 0ul;
     draw->depth.object = context->zbuffer;
     draw->texture.object = v9x_d3d_context_texture_surface(context);
+    /* Direct3D never states the render interface's explicit fields; zero
+     * them, since `draw` is the caller's uninitialised local. */
+    draw->texture.levels = 0;
+    draw->texture.level_count = 0ul;
+    draw->explicit_state = 0ul;
     raw.z_enable = context->z_enable;
     raw.z_write = context->z_write;
     raw.z_func = context->z_func;
@@ -2841,11 +2846,13 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
  * a context: every request is described afresh on a scratch one, under the
  * Win16 mutex, and nothing from it is kept.
  *
- * Version 1 draws what the engines already draw for Direct3D - untextured
- * and DirectDraw-texture batches - and refuses the rest as UNSUPPORTED
- * rather than approximating it: CPU-resident textures, a scissor, a colour
- * mask, and texture combines no D3D texture op expresses. Each engine's
- * accepts() then refuses what that engine cannot draw.
+ * Every request is an explicit draw (r3d.h): its CPU texture levels,
+ * scissor, write mask, full blend factor set, alpha test and fog are all
+ * stated, and each engine's accepts() refuses what that engine cannot draw
+ * exactly - UNSUPPORTED, never an approximation. The software engine draws
+ * all of it; the hardware engines take untextured and DirectDraw-texture
+ * batches whose state they express. A DirectDraw texture's combine must be
+ * one a D3D texture op is, or it is UNSUPPORTED.
  */
 
 typedef char v9x_d3d_assert_r3d_abi_vertex[
@@ -2870,6 +2877,8 @@ typedef char v9x_d3d_assert_r3d_abi_numbers[
 static DWORD v9x_r3d_generation = 1ul;
 /* Scratch for one request's surfaces; valid only under the mutex. */
 static V9X_D3D_CONTEXT v9x_r3d_context;
+/* And for its CPU texture levels, likewise. */
+static V9X_R3D_LEVEL v9x_r3d_levels[V9X_R3D_ABI_LEVELS_MAX];
 
 void v9x_d3d_render_new_session(void)
 {
@@ -2987,7 +2996,38 @@ static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
     draw->depth.object = context->zbuffer;
 
     if (request->texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
-        return V9X_R3D_RESULT_UNSUPPORTED;
+        const V9X_R3D_ABI_TEXTURE *texture = &request->texture;
+        DWORD level;
+
+        /* The levels array, then each level's declared storage, proven
+         * readable before any engine samples it: a bad pointer here would
+         * fault inside the HAL with the Win16 mutex held. The validator has
+         * already bounded count, sizes and extents arithmetically. */
+        if (IsBadReadPtr(texture->levels,
+                         texture->level_count * sizeof(V9X_R3D_ABI_LEVEL))) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        for (level = 0ul; level < texture->level_count; ++level) {
+            const V9X_R3D_ABI_LEVEL *source = &texture->levels[level];
+
+            if (IsBadReadPtr(source->pixels, source->bytes)) {
+                return V9X_R3D_RESULT_INVALID;
+            }
+            v9x_r3d_levels[level].pixels = source->pixels;
+            v9x_r3d_levels[level].pitch = source->pitch;
+            v9x_r3d_levels[level].width = source->width;
+            v9x_r3d_levels[level].height = source->height;
+        }
+        draw->texture.levels = v9x_r3d_levels;
+        draw->texture.level_count = texture->level_count;
+        draw->texture.format = texture->format;
+        draw->texture.mip = texture->mip;
+        draw->texture.color_op = texture->color_op;
+        draw->texture.alpha_op = texture->alpha_op;
+        draw->texture.env_color = texture->env_color;
+        draw->texture.min_filter = v9x_r3d_min_filter(texture);
+        draw->texture.mag_filter = texture->mag_filter;
+        draw->texture.address = texture->address;
     }
     if (request->texture.storage == V9X_R3D_ABI_TEXTURE_HW) {
         draw->texture.object = v9x_d3d_surface_lcl(
@@ -3004,15 +3044,15 @@ static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
         draw->texture.address = request->texture.address;
     }
 
-    /* Neither the Direct3D engines nor their accepts() know a scissor or a
-     * write mask; the CPU rasterizer does, and it is reached from here only
-     * when the software engine takes explicit state (not in version 1). */
-    if (state->write_mask != V9X_R3D_ABI_WRITE_RGB ||
-        state->scissor_left != 0ul || state->scissor_top != 0ul ||
-        state->scissor_right != context->width ||
-        state->scissor_bottom != context->height) {
-        return V9X_R3D_RESULT_UNSUPPORTED;
-    }
+    /* Everything the request states, stated: each engine's accepts()
+     * refuses what it cannot draw exactly (the software engine draws all of
+     * it; the hardware engines refuse CPU levels, a scissor and a mask). */
+    draw->explicit_state = 1ul;
+    draw->scissor_left = state->scissor_left;
+    draw->scissor_top = state->scissor_top;
+    draw->scissor_right = state->scissor_right;
+    draw->scissor_bottom = state->scissor_bottom;
+    draw->write_mask = state->write_mask;
 
     draw->depth_enable = state->depth_enable != 0ul && context->zbuffer != 0
         ? 1ul : 0ul;

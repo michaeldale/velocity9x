@@ -347,9 +347,15 @@ void __stdcall V9xRenderInterfaceProbeEntry(void)
     v9x_r3dp_zero(&level, sizeof(level));
     v9x_r3dp_uint("RefuseNotSurface", iface->draw(&draw, &outcome));
     v9x_r3dp_draw_reset(&draw, describe.generation, target, depth, quad);
-    v9x_r3dp_zero(texels, sizeof(texels));
+    {
+        unsigned int i;
+
+        for (i = 0u; i < 16u; ++i) {
+            texels[i] = 0xF81Fu;        /* magenta in 565 */
+        }
+    }
     level.pixels = texels;
-    level.bytes = sizeof(texels);
+    level.bytes = sizeof(texels) - 2ul;     /* one texel short */
     level.pitch = 8ul;
     level.width = 4ul;
     level.height = 4ul;
@@ -361,11 +367,49 @@ void __stdcall V9xRenderInterfaceProbeEntry(void)
     draw.texture.mag_filter = V9X_R3D_ABI_FILTER_NEAREST;
     draw.texture.mip = V9X_R3D_ABI_MIP_NONE;
     draw.texture.address = V9X_R3D_ABI_ADDRESS_WRAP;
-    draw.texture.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
     draw.texture.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
-    v9x_r3dp_uint("RefuseCpuTexture", iface->draw(&draw, &outcome));
+    v9x_r3dp_uint("RefuseCpuTextureExtent", iface->draw(&draw, &outcome));
     v9x_r3dp_uint("RefusalsLeftTarget",
                   v9x_r3dp_read(target, 48ul, 32ul) == before ? 1ul : 0ul);
+
+    /*
+     * Explicit draws: a CPU texture, a scissor, a channel mask. The
+     * software engine draws them; a hardware engine refuses them as
+     * UNSUPPORTED in accepts() and leaves the target alone.
+     *
+     * D: the magenta texture, REPLACE, over the whole target at depth 0,
+     * depth test off, scissored to the top half (surface rows 0..31): the
+     * top turns magenta, the bottom keeps the blue of draw C.
+     */
+    level.bytes = sizeof(texels);
+    draw.state.depth_enable = 0ul;
+    draw.state.scissor_bottom = V9X_R3DP_EDGE / 2ul;
+    result = iface->draw(&draw, &outcome);
+    v9x_r3dp_uint("DrawTexturedScissorResult", result);
+    v9x_r3dp_hex("TexturedTopRaw", v9x_r3dp_read(target, 48ul, 10ul));
+    v9x_r3dp_hex("TexturedBottomRaw", v9x_r3dp_read(target, 48ul, 50ul));
+    v9x_r3dp_uint("TexturedScissorOk",
+                  result == V9X_R3D_RESULT_OK &&
+                  v9x_r3dp_read(target, 48ul, 10ul) ==
+                      v9x_r3dp_pack(&desc.ddpfPixelFormat, 255ul, 0ul, 255ul) &&
+                  v9x_r3dp_read(target, 48ul, 50ul) == blue ? 1ul : 0ul);
+
+    /* E: untextured white over everything, depth off, only red writable:
+     * the green of draw A at (16, 50) becomes yellow. */
+    v9x_r3dp_quad(quad, 0.0f, (float)V9X_R3DP_EDGE, 0.0f, 0xfffffffful);
+    v9x_r3dp_draw_reset(&draw, describe.generation, target, depth, quad);
+    draw.state.depth_enable = 0ul;
+    draw.state.write_mask = V9X_R3D_ABI_WRITE_RED;
+    result = iface->draw(&draw, &outcome);
+    v9x_r3dp_uint("DrawMaskedResult", result);
+    v9x_r3dp_hex("MaskedRaw", v9x_r3dp_read(target, 16ul, 50ul));
+    v9x_r3dp_uint("MaskedOk",
+                  result == V9X_R3D_RESULT_OK &&
+                  v9x_r3dp_read(target, 16ul, 50ul) ==
+                      v9x_r3dp_pack(&desc.ddpfPixelFormat, 255ul, 255ul, 0ul)
+                      ? 1ul : 0ul);
+    (void)iface->finish(describe.generation);
 
     IDirectDrawSurface_Release(depth);
     IDirectDrawSurface_Release(target);

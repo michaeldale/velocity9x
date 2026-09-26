@@ -166,7 +166,30 @@ typedef struct v9x_r3d_texture {
     v9x_u32 wrap_u;
     v9x_u32 wrap_v;
     v9x_u32 wrap_either;
+    /*
+     * A CPU-resident texture, for an explicit draw (below) whose front end
+     * keeps its own sampler-ready levels - the OpenGL ICD's: `object` is
+     * then null and `levels` names `level_count` of them, level 0 first,
+     * each validated by the render interface before it gets here. The
+     * format and the three combine fields take the render interface's
+     * numbers (V9X_R3D_ABI_FORMAT_*, _MIP_*, _COLOROP_*, _ALPHAOP_*).
+     */
+    const struct v9x_r3d_level *levels;
+    v9x_u32 level_count;
+    v9x_u32 format;
+    v9x_u32 mip;
+    v9x_u32 color_op;
+    v9x_u32 alpha_op;
+    v9x_u32 env_color;
 } V9X_R3D_TEXTURE;
+
+/* One CPU texture level: storage the front end owns for the call. */
+typedef struct v9x_r3d_level {
+    const void *pixels;
+    v9x_u32 pitch;
+    v9x_u32 width;
+    v9x_u32 height;
+} V9X_R3D_LEVEL;
 
 /*
  * One batch's whole description. Nothing initialises this positionally, so
@@ -199,6 +222,21 @@ typedef struct v9x_r3d_draw {
     v9x_u32 fog_color;
     v9x_u32 color_key_enable;
     v9x_u32 alpha_force;
+    /*
+     * Non-zero when the front end states everything below and the engine
+     * must honour it exactly or refuse the draw in accepts(): the render
+     * interface sets it; the Direct3D front end never does, so no Direct3D
+     * draw changes meaning. An explicit draw is perspective-correct, takes
+     * any factor pair and the alpha test, and carries a scissor in surface
+     * rows (half-open, inside the target) and a write mask
+     * (V9X_R3D_ABI_WRITE_*).
+     */
+    v9x_u32 explicit_state;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+    v9x_u32 write_mask;
 } V9X_R3D_DRAW;
 
 /*

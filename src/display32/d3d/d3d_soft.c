@@ -27,6 +27,7 @@
 #include "d3d_internal.h"
 #include "d3d_state.h"
 #include "d3d_raster.h"
+#include "velocity9x/r3d_abi.h"
 
 /*
  * The largest render target this engine accepts.
@@ -977,6 +978,135 @@ static void v9x_d3d_soft_vertex(const V9X_R3D_VERTEX *source,
  * until a guest gate says otherwise, so a pair outside them is skipped and
  * counted exactly as before and the caps and the picture still agree.
  */
+/*
+ * An explicit draw's CPU texture (V9X_R3D_TEXTURE.levels) as the rasterizer
+ * samples it. The render interface validated every level's extent and
+ * readability before the call; this maps its numbers onto the
+ * rasterizer's, which agree except for the format, and lets the
+ * rasterizer's own validation have the last word.
+ */
+typedef char v9x_assert_soft_explicit_numbers[
+    (V9X_R3D_ABI_COLOROP_REPLACE == V9X_D3D_RASTER_BLEND_DECAL &&
+     V9X_R3D_ABI_COLOROP_MODULATE == V9X_D3D_RASTER_BLEND_MODULATE &&
+     V9X_R3D_ABI_COLOROP_DECALALPHA == V9X_D3D_RASTER_BLEND_DECALALPHA &&
+     V9X_R3D_ABI_COLOROP_BLEND == V9X_D3D_RASTER_BLEND_ENV &&
+     V9X_R3D_ABI_ALPHAOP_FRAGMENT == V9X_D3D_RASTER_TEXALPHA_IGNORE &&
+     V9X_R3D_ABI_ALPHAOP_REPLACE == V9X_D3D_RASTER_TEXALPHA_REPLACE &&
+     V9X_R3D_ABI_ALPHAOP_MODULATE == V9X_D3D_RASTER_TEXALPHA_MODULATE &&
+     V9X_R3D_ABI_MIP_NONE == V9X_D3D_RASTER_MIP_NONE &&
+     V9X_R3D_ABI_MIP_LINEAR == V9X_D3D_RASTER_MIP_LINEAR) ? 1 : -1];
+
+static int v9x_d3d_soft_texture_levels(const V9X_R3D_DRAW *draw,
+                                       V9X_D3D_RASTER_TEXTURE *texture,
+                                       V9X_D3D_RASTER_LEVEL *mips)
+{
+    const V9X_R3D_TEXTURE *source = &draw->texture;
+    DWORD level;
+    DWORD min = source->min_filter;
+
+    if (source->levels == 0 || source->level_count == 0ul ||
+        source->level_count > V9X_D3D_RASTER_MIPS_MAX + 1ul) {
+        return 0;
+    }
+    texture->pixels = (void *)source->levels[0].pixels;
+    texture->pitch = source->levels[0].pitch;
+    texture->width = source->levels[0].width;
+    texture->height = source->levels[0].height;
+    if (source->format == V9X_R3D_ABI_FORMAT_ARGB1555) {
+        texture->format = V9X_D3D_RASTER_TEXFMT_ARGB1555;
+    } else if (source->format == V9X_R3D_ABI_FORMAT_ARGB4444) {
+        texture->format = V9X_D3D_RASTER_TEXFMT_ARGB4444;
+    } else {
+        texture->format = V9X_D3D_RASTER_TEXFMT_RGB565;
+    }
+    /* The rasterizer has one texel filter; minification is where most
+     * pixels of a textured scene are, so the minifying one decides it:
+     * LINEAR, MIPLINEAR or LINEARMIPLINEAR. */
+    texture->filter = (min == V9X_R3D_FILTER_LINEAR ||
+                       min == V9X_R3D_FILTER_MIPLINEAR ||
+                       min == V9X_R3D_FILTER_LINEARMIPLINEAR)
+        ? V9X_D3D_RASTER_FILTER_LINEAR : V9X_D3D_RASTER_FILTER_POINT;
+    texture->blend = source->color_op;
+    texture->alpha = source->alpha_op;
+    texture->env_red = (v9x_s32)((source->env_color >> 16) & 0xfful);
+    texture->env_green = (v9x_s32)((source->env_color >> 8) & 0xfful);
+    texture->env_blue = (v9x_s32)(source->env_color & 0xfful);
+    texture->address = source->address == V9X_R3D_ADDRESS_CLAMP
+        ? V9X_D3D_RASTER_ADDRESS_CLAMP : V9X_D3D_RASTER_ADDRESS_WRAP;
+    texture->mip = source->mip;
+    texture->mip_count = source->level_count - 1ul;
+    for (level = 1ul; level < source->level_count; ++level) {
+        mips[level - 1ul].pixels = (void *)source->levels[level].pixels;
+        mips[level - 1ul].pitch = source->levels[level].pitch;
+        mips[level - 1ul].width = source->levels[level].width;
+        mips[level - 1ul].height = source->levels[level].height;
+    }
+    texture->mips = texture->mip_count != 0ul ? mips : 0;
+    return v9x_d3d_raster_texture_valid(texture);
+}
+
+/*
+ * An explicit draw's vertex: the same conversions as Direct3D's, except
+ * that x and y may reach the target's far edge (a GL triangle that covers
+ * the last column puts its vertex exactly there; the Direct3D path clamps
+ * a column short, which is existing D3D behaviour left as it is), the fog
+ * factor is specular's alpha, and q is set by the caller per triangle.
+ */
+static v9x_s32 v9x_d3d_soft_edge_coordinate(float value, DWORD extent)
+{
+    LONG fixed = v9x_float_to_long(value * V9X_D3D_SOFT_SUBPIXEL_SCALE);
+    LONG limit = (LONG)extent << V9X_D3D_RASTER_SUBPIXEL_BITS;
+
+    if (limit > V9X_D3D_RASTER_COORD_MAX) {
+        limit = V9X_D3D_RASTER_COORD_MAX;
+    }
+    if (fixed < 0l) {
+        fixed = 0l;
+    }
+    if (fixed > limit) {
+        fixed = limit;
+    }
+    return (v9x_s32)fixed;
+}
+
+/*
+ * Perspective for an explicit triangle: q is each vertex's rhw over the
+ * triangle's largest, as 1.16 (the rasterizer's V9X_D3D_RASTER_VERTEX.q),
+ * never below 1. Equal rhw gives equal q and the affine path. A triangle
+ * with a non-positive or non-finite rhw stays affine rather than divide by
+ * it.
+ */
+static void v9x_d3d_soft_perspective(const V9X_R3D_VERTEX *source,
+                                     V9X_D3D_RASTER_VERTEX *triangle)
+{
+    float largest = source[0].rhw;
+    DWORD corner;
+
+    for (corner = 1ul; corner < 3ul; ++corner) {
+        if (source[corner].rhw > largest) {
+            largest = source[corner].rhw;
+        }
+    }
+    if (!(largest > 0.0f) || v9x_d3d_soft_is_nan(largest)) {
+        return;
+    }
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        LONG q = 0l;
+
+        if (source[corner].rhw > 0.0f) {
+            q = v9x_float_to_long(source[corner].rhw / largest *
+                                  (float)V9X_D3D_RASTER_Q_ONE);
+        }
+        if (q < 1l) {
+            q = 1l;
+        }
+        if (q > V9X_D3D_RASTER_Q_ONE) {
+            q = V9X_D3D_RASTER_Q_ONE;
+        }
+        triangle[corner].q = (v9x_s32)q;
+    }
+}
+
 static int v9x_d3d_soft_blend_advertised(v9x_u32 src, v9x_u32 dst)
 {
     if (src != V9X_D3D_RASTER_BLEND_SRC_ONE &&
@@ -1014,6 +1144,12 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     const V9X_D3D_RASTER_TEXTURE *texture_arg = 0;
     V9X_D3D_RASTER_ALPHA alpha;
     const V9X_D3D_RASTER_ALPHA *alpha_arg = 0;
+    V9X_D3D_RASTER_ALPHA_TEST alpha_test;
+    const V9X_D3D_RASTER_ALPHA_TEST *alpha_test_arg = 0;
+    V9X_D3D_RASTER_FOG fog;
+    const V9X_D3D_RASTER_FOG *fog_arg = 0;
+    V9X_D3D_RASTER_LEVEL mips[V9X_D3D_RASTER_MIPS_MAX];
+    int explicit_draw;
     int wrapping;
     DWORD index;
 
@@ -1036,6 +1172,18 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     target.write_red = 1ul;
     target.write_green = 1ul;
     target.write_blue = 1ul;
+    /* The render interface's explicit draws do carry both (r3d.h). */
+    explicit_draw = draw->explicit_state != 0ul;
+    if (explicit_draw) {
+        target.clip_left = draw->scissor_left;
+        target.clip_top = draw->scissor_top;
+        target.clip_right = draw->scissor_right;
+        target.clip_bottom = draw->scissor_bottom;
+        target.write_red = (draw->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
+        target.write_green =
+            (draw->write_mask & V9X_R3D_ABI_WRITE_GREEN) != 0ul;
+        target.write_blue = (draw->write_mask & V9X_R3D_ABI_WRITE_BLUE) != 0ul;
+    }
     if (!v9x_d3d_raster_target_valid(&target)) {
         return 0;
     }
@@ -1075,6 +1223,14 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     if (draw->texture.object != 0 &&
         v9x_d3d_soft_texture_setup(draw, &texture)) {
         texture_arg = &texture;
+    } else if (explicit_draw && draw->texture.levels != 0) {
+        /* An explicit draw's CPU texture refuses the batch when it does not
+         * validate, rather than drawing untextured: the front end asked
+         * for exactly this, and the render interface reports the refusal. */
+        if (!v9x_d3d_soft_texture_levels(draw, &texture, mips)) {
+            return 0;
+        }
+        texture_arg = &texture;
     }
 
     /*
@@ -1102,7 +1258,15 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
      * Counted in the same two fields the ViRGE path uses, because a boot runs
      * one engine and a skipped blend is the same fact either way.
      */
-    if (draw->blend_enable != 0ul) {
+    if (draw->blend_enable != 0ul && explicit_draw) {
+        /* Any pair the rasterizer takes - the whole factor set. */
+        alpha.src = draw->src_blend;
+        alpha.dst = draw->dst_blend;
+        if (!v9x_d3d_raster_alpha_valid(&alpha)) {
+            return 0;
+        }
+        alpha_arg = &alpha;
+    } else if (draw->blend_enable != 0ul) {
         alpha.src = draw->src_blend;
         alpha.dst = draw->dst_blend;
         if (!v9x_d3d_soft_blend_advertised(alpha.src, alpha.dst)) {
@@ -1124,18 +1288,48 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     wrapping = texture_arg != 0 &&
                texture.address == V9X_D3D_RASTER_ADDRESS_WRAP;
 
+    /* The alpha test and fog, for explicit draws only: Direct3D's caps on
+     * this engine publish neither, and a D3D draw keeps meaning what it
+     * meant. The reference is a byte on this path (the interface's). */
+    if (explicit_draw && draw->alpha_test_enable != 0ul) {
+        alpha_test.compare = draw->alpha_func;
+        alpha_test.reference = (v9x_s32)(draw->alpha_ref & 0xfful);
+        alpha_test_arg = &alpha_test;
+    }
+    if (explicit_draw && draw->fog_enable != 0ul) {
+        fog.red = (v9x_s32)((draw->fog_color >> 16) & 0xfful);
+        fog.green = (v9x_s32)((draw->fog_color >> 8) & 0xfful);
+        fog.blue = (v9x_s32)(draw->fog_color & 0xfful);
+        fog_arg = &fog;
+    }
+
     for (index = 0ul; index < triangle_count; ++index) {
         V9X_D3D_RASTER_VERTEX triangle[3];
         DWORD corner;
 
         for (corner = 0ul; corner < 3ul; ++corner) {
-            v9x_d3d_soft_vertex(&vertices[index * 3ul + corner], draw,
-                                wrapping, &triangle[corner]);
+            const V9X_R3D_VERTEX *source = &vertices[index * 3ul + corner];
+
+            v9x_d3d_soft_vertex(source, draw, wrapping, &triangle[corner]);
+            if (explicit_draw) {
+                triangle[corner].x =
+                    v9x_d3d_soft_edge_coordinate(source->sx,
+                                                 draw->target.width);
+                triangle[corner].y =
+                    v9x_d3d_soft_edge_coordinate(source->sy,
+                                                 draw->target.height);
+                triangle[corner].fog = (v9x_s32)(source->specular >> 24);
+            }
+        }
+        if (explicit_draw && texture_arg != 0) {
+            v9x_d3d_soft_perspective(&vertices[index * 3ul], triangle);
         }
         if (wrapping) {
             v9x_d3d_soft_normalise(triangle);
         }
-        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg, alpha_arg, 0, 0, triangle)) {
+        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg,
+                                     alpha_arg, alpha_test_arg, fog_arg,
+                                     triangle)) {
             return 0;
         }
     }
@@ -1151,6 +1345,13 @@ static int v9x_d3d_soft_accepts(const V9X_R3D_DRAW *draw)
         (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
          draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
         return 0;
+    }
+    /* An explicit draw is what the rasterizer implements in full - every
+     * factor pair, the alpha test, fog, a scissor, a mask, CPU levels -
+     * and its descriptors were validated by the render interface; the
+     * rasterizer's own checks decide the rest when it draws. */
+    if (draw->explicit_state != 0ul) {
+        return 1;
     }
     if (draw->blend_enable != 0ul &&
         !v9x_d3d_soft_blend_advertised(draw->src_blend, draw->dst_blend)) {
