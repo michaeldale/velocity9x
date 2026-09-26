@@ -301,7 +301,7 @@ evidence before the Phase 6 gate.
 | 253 | `glPixelMapusv` | 3.6.3 Pixel transfer modes (pixel maps) | 6 | `gl_pixel.c` | `test_gl_pixel.c` | none |
 | 254 | `glReadBuffer` | 4.3.2 Reading pixels (source buffer) | 4 | `gl_surface.c` | `V9XGLP front/back scene` | none |
 | 255 | `glCopyPixels` | 4.3.3 Copying pixels | 6 | `gl_pixel.c` | `test_gl_pixel.c` | none |
-| 256 | `glReadPixels` | 4.3.2 Reading pixels | 5, completed in 6 | `gl_pixel.c` | `test_gl_pixel.c` | none |
+| 256 | `glReadPixels` | 4.3.2 Reading pixels | 5, completed in 6 | `gl_pixels.c` | `test_gl_pixels.c` | partial: colour formats, unsigned byte, host-tested; GL_RGB on the software guest |
 | 257 | `glDrawPixels` | 3.6.4 Rasterization of pixel rectangles | 6 | `gl_pixel.c` | `test_gl_pixel.c` | none |
 | 258 | `glGetBooleanv` | 6.1.1 Simple queries | 4, completed in 6 | `gl_get.c` | `test_gl_get.c` | none |
 | 259 | `glGetClipPlane` | 6.1.3 Enumerated queries (clip planes) | 4 | `gl_get.c` | `test_gl_get.c` | none |

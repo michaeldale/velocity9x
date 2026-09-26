@@ -93,8 +93,8 @@ typedef struct v9x_gl_textures {
     GLint unpack_row_length;
     GLint unpack_skip_rows;
     GLint unpack_skip_pixels;
-    /* The pack parameters are stored for glReadPixels, which reads them in
-     * a later slice. */
+    /* The pack parameters, indexed by pname - PACK_SWAP_BYTES, which
+     * glReadPixels reads (gl_pixels.c). */
     GLint pack[6];
 } V9X_GL_TEXTURES;
 

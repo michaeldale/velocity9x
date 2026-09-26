@@ -37,6 +37,7 @@
 #include "gl_prim.h"
 #include "gl_texture.h"
 #include "gl_get.h"
+#include "gl_pixels.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -355,6 +356,58 @@ static void V9X_GL_API v9x_gl_finish(void)
     if (result != V9X_R3D_RESULT_OK) {
         v9x_gl_log3("glFinish result=%lu", result, 0ul, 0ul);
     }
+}
+
+/*
+ * glReadPixels (4.3.2) from the back buffer. glEnd hands every batched
+ * triangle to the interface and the call is an error inside glBegin, so
+ * nothing is held here; finish makes the submitted work complete, and the
+ * Lock's HAL side drains again before the CPU reads. READ_BUFFER FRONT
+ * reads the back buffer too: after SwapBuffers the two hold the same
+ * image, and the window's pixels on the primary may be covered.
+ */
+static void V9X_GL_API v9x_gl_read_pixels(GLint x, GLint y, GLsizei width,
+                                          GLsizei height, GLenum format,
+                                          GLenum type, GLvoid *pixels)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_GL_DRAWABLE *drawable;
+    V9X_GL_READ_PLAN plan;
+    const void *surface;
+    v9x_u32 pitch;
+    v9x_u32 surface_width;
+    v9x_u32 surface_height;
+    v9x_u32 result;
+
+    if (context == 0 || iface == 0) {
+        return;
+    }
+    if (!v9x_gl_read_plan(&context->state, &context->textures, x, y, width,
+                          height, format, type, &plan)) {
+        return;
+    }
+    EnterCriticalSection(&v9x_gl_lock);
+    drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
+    if (drawable == 0) {
+        v9x_gl_state_error(&context->state, V9X_GL_OUT_OF_MEMORY);
+        LeaveCriticalSection(&v9x_gl_lock);
+        return;
+    }
+    result = iface->finish(description->generation);
+    if (result != V9X_R3D_RESULT_OK) {
+        v9x_gl_log3("glReadPixels finish result=%lu", result, 0ul, 0ul);
+    }
+    if (!v9x_gl_drawable_lock(drawable, &surface, &pitch)) {
+        LeaveCriticalSection(&v9x_gl_lock);
+        return;
+    }
+    v9x_gl_drawable_size(drawable, &surface_width, &surface_height);
+    v9x_gl_read_convert(&plan, surface, pitch, surface_width, surface_height,
+                        v9x_gl_device_format(), pixels);
+    v9x_gl_drawable_unlock(drawable);
+    LeaveCriticalSection(&v9x_gl_lock);
 }
 
 static void V9X_GL_API v9x_gl_flush(void)
@@ -1011,6 +1064,7 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glClear, v9x_gl_clear);
     V9X_GL_OVERRIDE(glFinish, v9x_gl_finish);
     V9X_GL_OVERRIDE(glFlush, v9x_gl_flush);
+    V9X_GL_OVERRIDE(glReadPixels, v9x_gl_read_pixels);
     V9X_GL_OVERRIDE(glMatrixMode, v9x_gl_matrix_mode);
     V9X_GL_OVERRIDE(glLoadIdentity, v9x_gl_load_identity);
     V9X_GL_OVERRIDE(glLoadMatrixf, v9x_gl_load_matrixf);

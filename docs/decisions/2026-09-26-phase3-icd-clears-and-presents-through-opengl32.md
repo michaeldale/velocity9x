@@ -77,6 +77,19 @@ earlier check unchanged. The unimplemented-slot check now calls
 glPushAttrib (Phase 6), since glLineWidth, which it used, is
 implemented; it answers INVALID_OPERATION.
 
+## And glReadPixels (Phase 5's first feature)
+
+Evidence: `2026-09-26-phase4-icd-readpixels-soft-V9XGLP.ini`, same boot,
+the ICD built with `gl_pixels.c`. After the scissored clear, glReadPixels
+of one GL_RGB pixel at window (4, 4) returned green and at the top right
+magenta - the same colours GDI read from the screen at the bottom left
+and top right, so window rows count up from the surface's last row. After
+the geometry scene the left and right pixels read green and red, matching
+GetPixel. No error. The read follows the interface's finish with a
+DirectDraw Lock of the back buffer, whose HAL side drains the engine; on
+the software engine that drain has nothing to wait for, so the ordering
+is not exercised here.
+
 ## Not established
 
 - Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565
@@ -86,6 +99,8 @@ implemented; it answers INVALID_OPERATION.
   rebind, resize/minimise/restore, a mode change, two GL processes and
   GL beside D3D.
 - A timeout or device failure path: no clear failed.
+- glReadPixels after hardware rendering, where the Lock's drain matters,
+  and any format other than GL_RGB unsigned byte on a guest.
 
 ## Standing
 

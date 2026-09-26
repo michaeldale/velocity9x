@@ -293,6 +293,37 @@ void *v9x_gl_drawable_depth(const V9X_GL_DRAWABLE *drawable)
     return drawable->depth;
 }
 
+int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
+                         v9x_u32 *pitch)
+{
+    DDSURFACEDESC description;
+    HRESULT hr;
+
+    if (drawable == 0 || drawable->back == 0) {
+        return 0;
+    }
+    v9x_gl_surface_zero(&description, sizeof(description));
+    description.dwSize = sizeof(description);
+
+    /* A lost back buffer has no contents to read: Restore gives it memory
+     * again but not its pixels, so the read fails rather than returning
+     * whatever the restored memory holds. */
+    hr = IDirectDrawSurface_Lock(drawable->back, 0, &description,
+                                 DDLOCK_WAIT | DDLOCK_READONLY, 0);
+    if (hr != DD_OK) {
+        v9x_gl_log3("read lock hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        return 0;
+    }
+    *pixels = description.lpSurface;
+    *pitch = (v9x_u32)description.lPitch;
+    return 1;
+}
+
+void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable)
+{
+    IDirectDrawSurface_Unlock(drawable->back, 0);
+}
+
 int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
 {
     RECT target;

@@ -44,6 +44,18 @@ static void v9x_glp_hex(const char *key, DWORD value)
     v9x_glp_text(key, text);
 }
 
+/* One pixel through glReadPixels as 0xRRGGBB. GL rows count up from the
+ * bottom, so (x, y) is in window coordinates, not GDI's. */
+static DWORD v9x_glp_read(GLint x, GLint y)
+{
+    GLubyte rgb[4];
+
+    rgb[0] = rgb[1] = rgb[2] = rgb[3] = 0xAAu;
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(x, y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+    return ((DWORD)rgb[0] << 16) | ((DWORD)rgb[1] << 8) | (DWORD)rgb[2];
+}
+
 static void v9x_glp_zero(void *block, DWORD bytes)
 {
     DWORD i;
@@ -228,6 +240,13 @@ void __stdcall V9xGlProbeEntry(void)
                         (DWORD)GetPixel(hdc, 4, height - 5));
             v9x_glp_hex("ScissorOutsidePixel",
                         (DWORD)GetPixel(hdc, width - 5, 4));
+            /* The same two pixels from the back buffer through
+             * glReadPixels: green at the bottom left, magenta at the top
+             * right, or the rows are flipped. */
+            v9x_glp_hex("ReadScissorInside", v9x_glp_read(4, 4));
+            v9x_glp_hex("ReadScissorOutside",
+                        v9x_glp_read(width - 5, height - 5));
+            v9x_glp_hex("ErrorAfterRead", (DWORD)glGetError());
             glBegin(GL_POINTS);
             glEnd();
             glPushAttrib(GL_ALL_ATTRIB_BITS);   /* Phase 6: still a stub */
@@ -276,6 +295,10 @@ void __stdcall V9xGlProbeEntry(void)
                         (DWORD)GetPixel(hdc, width / 4, height / 2));
             v9x_glp_hex("GeometryRightPixel",
                         (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
+            v9x_glp_hex("ReadGeometryLeft",
+                        v9x_glp_read(width / 4, height / 2));
+            v9x_glp_hex("ReadGeometryRight",
+                        v9x_glp_read(3 * width / 4, height / 2));
 
             /*
              * Texturing, perspective-correct. An 8x8 texture, red on the

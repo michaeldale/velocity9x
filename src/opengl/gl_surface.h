@@ -43,6 +43,13 @@ void *v9x_gl_drawable_depth(const V9X_GL_DRAWABLE *drawable);
 /* SwapBuffers: the back buffer to the window's client area through its
  * clipper. Non-zero on success. */
 int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable);
+/* The back buffer for the CPU: a DirectDraw Lock, whose HAL side drains
+ * the engine first, so completed rendering is visible. Row 0 is the top.
+ * Zero when the surface is lost or cannot be locked; every successful
+ * lock is paired with an unlock before the ICD returns to the caller. */
+int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, const void **pixels,
+                         v9x_u32 *pitch);
+void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable);
 /* The drawable for a window if one exists, without making or resizing. */
 V9X_GL_DRAWABLE *v9x_gl_drawable_find(void *window);
 
