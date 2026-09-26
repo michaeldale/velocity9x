@@ -26,12 +26,18 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 
 $null = Write-V9xGlDispatchHeader -RepoRoot $repoRoot -OutputDir $output
 
-$source = Join-Path $repoRoot 'src\opengl\gl_icd.c'
-$object = Join-Path $output 'gl_icd.obj'
-& $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' `
-    "-i=$(Join-Path $repoRoot 'include')" "-i=$output" `
-    "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+# gl_icd.c and gl_surface.c are the two platform files; gl_state.c is the
+# pure GL state, the same source the host tests compile.
+$objects = @()
+foreach ($name in @('gl_icd', 'gl_surface', 'gl_state')) {
+    $source = Join-Path $repoRoot "src\opengl\$name.c"
+    $object = Join-Path $output "$name.obj"
+    & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' `
+        "-i=$(Join-Path $repoRoot 'include')" "-i=$output" `
+        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+    if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+    $objects += $object
+}
 
 $dll = Join-Path $output 'v9xgl.dll'
 $mapFile = Join-Path $output 'v9xgl.map'
@@ -61,7 +67,8 @@ $exports = @(
 $lines = @('format windows nt dll', 'runtime windows=4.0', 'option quiet',
     'option nodefaultlibs', "option start='_V9xGlEntry@12'",
     "alias '__DLLstart_'='_V9xGlEntry@12'",
-    "option map='$mapFile'", "option modname='V9XGL'", "name '$dll'", "file '$object'")
+    "option map='$mapFile'", "option modname='V9XGL'", "name '$dll'")
+$lines += $objects | ForEach-Object { "file '$_'" }
 $lines += $exports | ForEach-Object { $name, $symbol = $_ -split '='; "export $name='$symbol'" }
 $lines += @(
     "library '$(Join-Path $watcomRoot 'lib386\nt\kernel32.lib')'",

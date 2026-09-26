@@ -1,0 +1,54 @@
+# Phase 3: the ICD clears and presents through the system OPENGL32 on the software engine
+
+Date: 2026-09-26
+Plan: `docs/plans/opengl-1.1-icd.md`, Phase 3 (the first V9XGLP gate on
+86Box `Win98SE-Fast-D3D`: "the probe gets an ICD format; clear and swap
+work")
+Guest: 86Box `Win98SE-Fast-D3D` (port 9878, vbe package, `Direct3D=2`
+software), boot 596, 1024x768x16 RGB565; V9XHAL.DLL from 37a17d3's tree;
+V9XGL.DLL and V9XGLP.EXE from the tree this record is committed with;
+`HKLM\...\OpenGLDrivers\Velocity9x=V9XGL.DLL` added with regedit /S.
+Evidence: `2026-09-26-phase3-icd-clear-present-soft-V9XGLP.ini`,
+`2026-09-26-phase3-icd-clear-present-soft-V9XGL.log`
+
+## Measured
+
+V9XGLP links OPENGL32 statically, as GLQuake does, and asks for GLQuake's
+format (24 colour bits, 32 depth, double-buffered):
+
+- OPENGL32 listed 25 formats; `ChoosePixelFormat` picked format 1, the
+  ICD's: flags `0x425` (DRAW_TO_WINDOW, SUPPORT_OPENGL, DOUBLEBUFFER,
+  SWAP_COPY), `ChosenGeneric=0`, 16 colour bits, 16 depth bits. The ICD
+  described it from the HAL's `describe` (engine 1, target formats
+  `1 << RGB565`), opened on the first `DrvDescribePixelFormat`.
+- SetPixelFormat, wglCreateContext (through `DrvCreateLayerContext`, as
+  Phase 0.9 measured) and wglMakeCurrent succeeded; the ICD made a 400x300
+  drawable for the window.
+- `glGetString`: "Velocity9x", "Velocity9x Software", "1.1.0", "".
+- `glClearColor(1,0,1,1)`, `glClear(COLOR|DEPTH)`, SwapBuffers: no error,
+  and the window's pixel read through GDI is `0x00FF00FF` - magenta on the
+  screen.
+- Scissor on, box over the lower-left quarter in window coordinates,
+  green clear, swap: the pixel near the bottom-left is `0x0000FF00` and
+  the one near the top-right is still magenta. The window-to-surface y
+  flip and the scissor both reach the screen as specified.
+- `glBegin`, not implemented yet: `glGetError` answers
+  `GL_INVALID_OPERATION` (`0x502`) - a placeholder that says so, as the
+  plan requires, not a silent success.
+- Release and delete succeeded; the log's detach line counts one stub
+  called once.
+
+## Not established
+
+- Gen3 and the ViRGE: the netbook is offline, and the ViRGE guest's 565
+  desktop gets no ICD format by design (its generic formats would serve).
+- The plan's other Phase 3 gate items: fullscreen, an overlapping window,
+  100 create/destroy cycles against VRAM, two drawables, cross-thread
+  rebind, resize/minimise/restore, a mode change, two GL processes and
+  GL beside D3D.
+- A timeout or device failure path: no clear failed.
+
+## Standing
+
+Clear and present work end to end on the software engine through the
+system runtime. Drawing geometry needs the Phase 4 pipeline.

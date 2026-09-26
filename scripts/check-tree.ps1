@@ -204,10 +204,13 @@ $allowedOsBoundaries = @(
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only
     # that, so a new HAL module cannot quietly acquire its own.
     (Join-Path $repoRoot "src\display32\ddhal_internal.h"),
-    # The OpenGL ICD's one platform file: the Drv* exports OPENGL32 calls,
-    # the pixel-format descriptor and the log file. Everything the plan adds
-    # under src\opengl beyond this reaches Windows through it or not at all.
+    # The OpenGL ICD's two platform files: gl_icd.c, the Drv* exports
+    # OPENGL32 calls, the pixel-format descriptor and the log; gl_surface.c,
+    # its DirectDraw device and drawables. Everything else under src\opengl
+    # is pure GL state that the host tests compile, and reaches Windows
+    # through these or not at all.
     (Join-Path $repoRoot "src\opengl\gl_icd.c"),
+    (Join-Path $repoRoot "src\opengl\gl_surface.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |

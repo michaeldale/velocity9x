@@ -756,6 +756,13 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
   `scripts/build-gl-probe.ps1`. It renders each scene through the ICD format
   and through a generic format, and writes hashes, BMPs and
   `C:\V9XDIAG\V9XGL.INI`.
+- **Clear and present landed 2026-09-26**
+  (`2026-09-26-phase3-icd-clears-and-presents-through-opengl32.md`):
+  real contexts and TLS, the pixel format from `describe`, DirectDraw
+  back/depth surfaces per window, SwapBuffers as a clipped Blt, glClear
+  through the interface with the pure `gl_state.c` plan, and typed stubs
+  that set INVALID_OPERATION. The first two gate items below pass on the
+  software guest; the rest are open.
 - **Gate on 86Box `Win98SE-Fast-D3D` (software):**
   - The probe gets an ICD format.
   - Clear and swap work both windowed and fullscreen.

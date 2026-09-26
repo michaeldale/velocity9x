@@ -198,6 +198,39 @@ void __stdcall V9xGlProbeEntry(void)
         v9x_glp_hex("SwapBuffersLastError", GetLastError());
         v9x_glp_hex("ErrorAfterSwap", (DWORD)glGetError());
         ok = 1;
+        /*
+         * What reached the screen, read back through GDI from the window:
+         * the magenta clear, then a scissored green clear over the lower-
+         * left quarter, which must land there (window y is up) and not in
+         * the upper right. And a slot not yet implemented must say so with
+         * INVALID_OPERATION rather than succeed silently.
+         */
+        {
+            RECT client;
+            LONG width;
+            LONG height;
+
+            v9x_glp_pump();
+            GetClientRect(window, &client);
+            width = client.right - client.left;
+            height = client.bottom - client.top;
+            v9x_glp_hex("ClearPixel", (DWORD)GetPixel(hdc, 4, 4));
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, width / 2, height / 2);
+            glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
+            v9x_glp_hex("ErrorAfterScissorClear", (DWORD)glGetError());
+            glFinish();
+            SwapBuffers(hdc);
+            v9x_glp_pump();
+            v9x_glp_hex("ScissorInsidePixel",
+                        (DWORD)GetPixel(hdc, 4, height - 5));
+            v9x_glp_hex("ScissorOutsidePixel",
+                        (DWORD)GetPixel(hdc, width - 5, 4));
+            glBegin(GL_TRIANGLES);
+            v9x_glp_hex("ErrorAfterStub", (DWORD)glGetError());
+        }
         {
             DWORD started = GetTickCount();
 
