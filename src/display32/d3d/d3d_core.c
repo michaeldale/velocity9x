@@ -2912,6 +2912,38 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
 }
 
 /*
+ * The engine a refused draw falls back to, or null when it has none.
+ *
+ * The plan's answer to a capability refusal is the software engine on the
+ * same target and depth surfaces, after the shared drain. That is only
+ * sound where the hardware engine and the CPU are measured to agree on the
+ * colour and depth encodings and on ordering in a shared target: Phase 0.5
+ * measured it for Gen3, all three cells passing
+ * (docs\decisions\2026-09-26-phase05-mixed-engine-ordering-and-virge-
+ * colour-mismatch.md). The ViRGE is not included. Its S3D writes 1555 into
+ * a 565 target, and its 555 target has not been measured, so a mixed frame
+ * there could carry two encodings.
+ */
+static const V9X_D3D_ENGINE_OPS *v9x_r3d_fallback(
+    const V9X_D3D_ENGINE_OPS *ops)
+{
+    return ops == &v9x_d3d_engine_i9xx ? &v9x_d3d_engine_soft : 0;
+}
+
+/* The largest texture a draw may name: the fallback's when there is one,
+ * since a texture the hardware refuses for its size is then drawn by it. */
+static v9x_u32 v9x_r3d_texture_size_max(const V9X_D3D_ENGINE_OPS *ops)
+{
+    const V9X_D3D_ENGINE_OPS *fallback = v9x_r3d_fallback(ops);
+
+    if (fallback != 0 &&
+        fallback->limits->texture_size_max > ops->limits->texture_size_max) {
+        return fallback->limits->texture_size_max;
+    }
+    return ops->limits->texture_size_max;
+}
+
+/*
  * Bind target and depth on the scratch context through the Direct3D
  * target path. INVALID when either is refused; the depth refusal reason is
  * recorded where Direct3D's is (d3d_diagnostics.depth_reject), which is
@@ -3101,6 +3133,8 @@ static int v9x_r3d_sink_culled(void *user, const V9X_R3D_VERTEX *triangle)
     return 0;
 }
 
+static DWORD v9x_r3d_drain(void);
+
 static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
                                V9X_R3D_ABI_OUTCOME *outcome)
 {
@@ -3114,7 +3148,7 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
         return V9X_R3D_RESULT_NOT_READY;
     }
     result = v9x_r3d_validate_draw(request, v9x_r3d_generation,
-                                   ops->limits->texture_size_max);
+                                   v9x_r3d_texture_size_max(ops));
     if (result != V9X_R3D_RESULT_OK) {
         return result;
     }
@@ -3137,7 +3171,22 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
         return result;
     }
     if (ops->accepts == 0 || !ops->accepts(&draw)) {
-        return V9X_R3D_RESULT_UNSUPPORTED;
+        /* Refused before anything was emitted, so the fallback draws the
+         * whole request or nothing. The drain comes first: the CPU must
+         * not write the target or read the depth buffer while the engine
+         * still owes either. The engine then sees the CPU's writes because
+         * its next submission is an uncached register write, which empties
+         * the processor's write-combining buffers ahead of it. */
+        const V9X_D3D_ENGINE_OPS *fallback = v9x_r3d_fallback(ops);
+
+        if (fallback == 0 || !fallback->accepts(&draw)) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        result = v9x_r3d_drain();
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
+        }
+        ops = fallback;
     }
 
     sink.ops = ops;
@@ -3276,7 +3325,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_RGB565) |
                            (1ul << V9X_R3D_ABI_FORMAT_ARGB1555) |
                            (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
-    out->texture_size_max = ops->limits->texture_size_max;
+    out->texture_size_max = v9x_r3d_texture_size_max(ops);
     out->batch_max = V9X_R3D_ABI_BATCH_MAX;
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {

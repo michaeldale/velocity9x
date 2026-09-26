@@ -43,6 +43,35 @@ explicit fragment state) is what the Gen3 engine draws correctly. It also
 shows the gap is not in GL: a refused draw is lost silently. The
 application gets no error and an empty frame.
 
+## Later the same day: the software fallback, and textures draw
+
+The render interface's draw now answers a Gen3 refusal by draining the
+engine and drawing the whole request with the software engine on the same
+surfaces (`v9x_r3d_fallback` in `d3d_core.c`; Gen3 only, for the reason in
+Standing below). Validation and describe take the software engine's
+texture limit, 512, since it draws what the hardware refuses for size.
+Direct3D does not pass through this path and is unchanged.
+
+Deployed the same way (boot 43; the guest's V9XHAL.DLL hash-identical to
+the package). Evidence: `2026-09-26-phase4-icd-gen3-fallback-V9XR3DP.ini`,
+`...-V9XGLP.ini`, `...-V9XGL.log`.
+
+- V9XR3DP: describe reports texture size 512. The CPU-texture draw with a
+  scissor now answers OK and is exact (top row the texture's magenta
+  inside the scissor, bottom row the untouched blue), and so is the
+  red-only masked draw; both raw values (F81F, FFE0) equal the software
+  guest's. Clears and the three depth quads unchanged.
+- V9XGLP: the textured quad now draws, perspective-correct: red at 10%
+  and at 42% of the width, blue at 60%, as on the software guest. It was
+  drawn by the CPU into a back buffer the GPU had cleared, and the GPU
+  drew the following scenes into the same buffer; every scene before and
+  after it reads back as before. The ICD log records no refused batch.
+
+This is the first evidence of the CPU and Gen3 drawing into one GL
+surface in both orders within a frame sequence. It does not time the
+fallback, and a scene mixing the two engines inside a single frame with
+overlap was measured only by Phase 0.5's rung, not through GL.
+
 ## Standing
 
 The plan's answer to a capability refusal is the software engine on the
@@ -51,5 +80,7 @@ engine and the CPU agree on colour and depth encodings and ordering in a
 shared target (all three cells pass), so the fallback is licensed on Gen3.
 It is not licensed on the ViRGE's 565 target (the S3D writes 1555).
 
-Not established: the ViRGE, which offers no ICD format on its 565 guest;
-textures on any hardware engine; Gen3 lifetime and thread cases.
+Not established: the ViRGE, which offers no ICD format on its 565 guest
+and has no fallback; textures sampled by the Gen3 hardware itself (they
+are all drawn by the CPU); the fallback's cost; Gen3 lifetime and thread
+cases.

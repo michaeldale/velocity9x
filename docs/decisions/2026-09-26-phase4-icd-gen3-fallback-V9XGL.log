@@ -1,0 +1,141 @@
+1 pid=FFFE288F attach instance=005C0000 tls=2 build-marker=1
+2 pid=FFFE288F DrvValidateVersion version=1
+3 pid=FFFE288F DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE288F describe result=0 engine=3 formats=00000002
+5 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+7 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=40 -> count=1
+8 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=40 -> count=1
+34 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+35 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+37 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+39 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+40 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+41 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+42 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+43 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+44 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+45 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+46 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+47 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+48 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+49 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+50 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+51 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+52 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+53 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+54 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+55 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+56 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+57 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+58 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+59 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFE288F DrvSetPixelFormat hdc=0000077E index=1
+62 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFE288F DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFE288F DrvCreateLayerContext hdc=0000077E layer=0 -> 1
+65 pid=FFFE288F drawable window=00000338 400x300
+66 pid=FFFE288F DrvSetContext hdc=0000077E context=1 -> 1
+67 pid=FFFE288F stub first-call slot=219 glPushAttrib
+68 pid=FFFE288F draw result=4 triangles=3 submitted=0
+69 pid=FFFE288F DrvReleaseContext context=1 -> 1
+70 pid=FFFE288F DrvDeleteContext context=1 -> 1
+71 pid=FFFE288F detach slots-called=1 stub-calls=1
+1 pid=FFFE28B3 attach instance=005C0000 tls=2 build-marker=1
+2 pid=FFFE28B3 DrvValidateVersion version=1
+3 pid=FFFE28B3 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE28B3 describe result=0 engine=3 formats=00000002
+5 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+7 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+8 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+34 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+35 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+37 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+39 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+40 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+41 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+42 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+43 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+44 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+45 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+46 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+47 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+48 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+49 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+50 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+51 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+52 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+53 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+54 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+55 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+56 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+57 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+58 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+59 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFE28B3 DrvSetPixelFormat hdc=00000776 index=1
+62 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFE28B3 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFE28B3 DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+65 pid=FFFE28B3 drawable window=00000338 400x300
+66 pid=FFFE28B3 DrvSetContext hdc=00000776 context=1 -> 1
+67 pid=FFFE28B3 stub first-call slot=219 glPushAttrib
+68 pid=FFFE28B3 DrvReleaseContext context=1 -> 1
+69 pid=FFFE28B3 DrvDeleteContext context=1 -> 1
+70 pid=FFFE28B3 detach slots-called=1 stub-calls=1
