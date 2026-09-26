@@ -498,9 +498,9 @@ static int v9x_d3d_i9xx_hws_open(void)
  * a timed-out sequence seen now is counted once as a late arrival (R2).
  * Otherwise, with wait, one bounded poll; the polls spent on this sequence
  * accumulate across calls and past the abandon bound the channel is declared
- * dead: recorded, breadcrumbs stop, and the answer is yes because there is
- * no longer anything this side can wait for. Without wait, or before the
- * bound: no, and the caller answers WASSTILLDRAWING so DirectDraw retries -
+ * dead: recorded, breadcrumbs stop, and the answer is ABANDONED because
+ * completion was never observed. Without wait, or before the bound: BUSY,
+ * and the caller answers WASSTILLDRAWING so DirectDraw retries -
  * the wait is DirectDraw's loop, never an unbounded one here.
  */
 int v9x_d3d_i9xx_render_drain(int wait)
@@ -509,24 +509,24 @@ int v9x_d3d_i9xx_render_drain(int wait)
     DWORD polls;
 
     if (v9x_d3d_i9xx_breadcrumb_outstanding == 0ul) {
-        return 1;
+        return V9X_RENDER_DRAIN_DONE;
     }
     crumb = v9x_d3d_i9xx_breadcrumb_linear();
     if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
         ++v9x_hal->d3d_diagnostics.breadcrumb_late;
         v9x_d3d_i9xx_note_outstanding(0ul);
-        return 1;
+        return V9X_RENDER_DRAIN_DONE;
     }
     ++v9x_hal->d3d_diagnostics.render_drain_waits;
     if (!wait) {
         ++v9x_hal->d3d_diagnostics.render_drain_stalls;
-        return 0;
+        return V9X_RENDER_DRAIN_BUSY;
     }
     for (polls = 0ul; polls < V9X_I9XX_BREADCRUMB_POLLS; ++polls) {
         if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
             ++v9x_hal->d3d_diagnostics.breadcrumb_late;
             v9x_d3d_i9xx_note_outstanding(0ul);
-            return 1;
+            return V9X_RENDER_DRAIN_DONE;
         }
     }
     v9x_d3d_i9xx_drain_polls_spent += polls;
@@ -535,10 +535,10 @@ int v9x_d3d_i9xx_render_drain(int wait)
         v9x_hal->d3d_diagnostics.hws_value_last = *crumb;
         v9x_d3d_i9xx_note_outstanding(0ul);
         v9x_d3d_i9xx_hws_failed();
-        return 1;
+        return V9X_RENDER_DRAIN_ABANDONED;
     }
     ++v9x_hal->d3d_diagnostics.render_drain_stalls;
-    return 0;
+    return V9X_RENDER_DRAIN_BUSY;
 }
 
 /* A new session: the page is untried again and nothing is owed. The

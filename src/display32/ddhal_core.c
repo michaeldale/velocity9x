@@ -406,8 +406,6 @@ static int v9x_can_set_display_start(void)
  * frame with the Win16 lock held, and an application that asked for
  * DDFLIP_NOVSYNC gets the old behaviour on request.
  */
-/* Defined with the Blt drain below; used by Flip and Lock above it. */
-static int v9x_render_drain(int wait);
 /* Defined beside v9x_blt_drain; Lock samples it too, and Lock comes
  * first in this file. */
 static void v9x_note_blt_flip_pending(void);
@@ -712,7 +710,9 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
      */
     /* And the frame about to be shown has to be DRAWN: rendering the GPU
      * has not finished is the one thing the flip must not present. */
-    if (!v9x_render_drain((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {
+    if (v9x_render_drain(
+            (data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul) !=
+        V9X_RENDER_DRAIN_DONE) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
@@ -903,7 +903,13 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         v9x_d3d_textures_forget_surface(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
-        v9x_d3d_destroy_surface(data);
+        /* A placed Gen3 block may still be named by a submitted batch. Keep
+         * it allocated unless completion was observed: leaking after a lost
+         * completion channel is safer than handing live storage to a new
+         * surface. Other engines' destroy hooks are null. */
+        if (v9x_render_drain(1) == V9X_RENDER_DRAIN_DONE) {
+            v9x_d3d_destroy_surface(data);
+        }
         data->ddRVal = V9X_DD_OK;
     }
     v9x_trace_exit(V9X_TRACE_DESTROYSURFACE, V9X_DD_OK);
@@ -1094,7 +1100,8 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
      * computes and returns the actual surface pointer. */
     if ((v9x_engine_status_validated() &&
          !v9x_wait_idle((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) ||
-        !v9x_render_drain((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) {
+        v9x_render_drain((data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul) !=
+            V9X_RENDER_DRAIN_DONE) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
@@ -1295,13 +1302,28 @@ static int v9x_copy_rect_valid(const V9X_DD_SURFACE_LCL *surface,
  * at all (review R1). This is that wait, on the breadcrumb the batches
  * leave. Flip and Lock reach it directly and not through the ops table.
  */
-static int v9x_render_drain(int wait)
+int v9x_render_drain(int wait)
 {
+    const V9X_ENGINE32_OPS *ops;
+
     if (v9x_hal != 0 &&
         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         return v9x_d3d_i9xx_render_drain(wait);
     }
-    return 1;
+    ops = v9x_engine32();
+    if (ops == 0) {
+        return V9X_RENDER_DRAIN_DONE;
+    }
+    /* Validation is active, unlike the old passive status_validated test.
+     * The ViRGE latch starts clear before the first 2D command in a mode; a
+     * passive test therefore skipped the very wait this helper exists for. */
+    if (!ops->validate_status() || !ops->status_validated()) {
+        return V9X_RENDER_DRAIN_ABANDONED;
+    }
+    if (ops->wait_idle(wait)) {
+        return V9X_RENDER_DRAIN_DONE;
+    }
+    return wait ? V9X_RENDER_DRAIN_ABANDONED : V9X_RENDER_DRAIN_BUSY;
 }
 
 /*
@@ -1389,17 +1411,8 @@ static void v9x_note_engine_blt_result(V9X_D3D_BLT_FLIP_RECORD *record,
 
 static int v9x_blt_drain(int wait)
 {
-    const V9X_ENGINE32_OPS *ops = v9x_engine32();
-
     v9x_note_blt_flip_pending();
-
-    if (!v9x_render_drain(wait)) {
-        return 0;
-    }
-    if (ops != 0 && ops->status_validated()) {
-        return ops->wait_idle(wait);
-    }
-    return 1;
+    return v9x_render_drain(wait) == V9X_RENDER_DRAIN_DONE;
 }
 
 /*

@@ -314,6 +314,20 @@ int v9x_wait_idle(int wait);
  * bit before launching. */
 void v9x_engine_3d_launched(void);
 
+/*
+ * Completion before the CPU reuses engine-owned memory. DONE is the only
+ * state that permits access. BUSY means a non-blocking poll or bounded wait
+ * has not completed yet; ABANDONED means the completion channel or engine
+ * was lost and correctness can no longer be established.
+ *
+ * Values deliberately are not booleans: treating ABANDONED as success was
+ * the Gen3 bug this contract closes.
+ */
+#define V9X_RENDER_DRAIN_DONE       0
+#define V9X_RENDER_DRAIN_BUSY       1
+#define V9X_RENDER_DRAIN_ABANDONED  2
+int v9x_render_drain(int wait);
+
 /* Byte offset of a surface within the framebuffer, or 0xffffffff. */
 DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface);
 

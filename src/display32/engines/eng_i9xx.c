@@ -43,12 +43,12 @@ static int v9x_i9xx_engine_ready(void)
  */
 static int v9x_i9xx_engine_wait_idle(int wait)
 {
-    return v9x_d3d_i9xx_render_drain(wait);
+    return v9x_d3d_i9xx_render_drain(wait) == V9X_RENDER_DRAIN_DONE;
 }
 
 static int v9x_i9xx_engine_can_blt(void)
 {
-    return v9x_d3d_i9xx_render_drain(0);
+    return v9x_d3d_i9xx_render_drain(0) == V9X_RENDER_DRAIN_DONE;
 }
 
 /*

@@ -542,6 +542,15 @@ probe; pixel hashes alone cannot establish ordering or allocation safety.
     additional backend idle operation is needed. Establish both GPU-to-CPU
     and CPU-to-GPU visibility for colour, depth and texture storage. Test the
     Phase 0.5 transitions and timeout handling on ViRGE and Gen3.
+  - **Implemented, guest gates pending (2026-09-26):**
+    `v9x_render_drain` is now the external all-engine helper and returns
+    done / busy / abandoned. It actively validates the selected engine,
+    waits for ViRGE 2D/3D completion, and preserves Gen3 abandonment as a
+    failure instead of converting it to success. Flip, Lock and CPU Blt use
+    the explicit result; DestroySurface retains a placed allocation unless
+    completion is observed. This deliberately changes timeout behaviour and
+    is not accepted as working until the netbook and ViRGE ordering/timeout
+    gates pass.
 - **Append `accepts(const V9X_R3D_DRAW *)`**. The core asks *before*
   clipping, and clips with the limits of whichever engine will execute. For
   example, Gen3 draws with `clip_in_core=0` and a 4096 guard band, while soft
