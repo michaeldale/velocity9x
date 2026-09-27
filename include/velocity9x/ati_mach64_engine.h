@@ -77,6 +77,18 @@ struct v9x_m64_flat_triangle {
     v9x_u32 color;
 };
 
+struct v9x_m64_flat_state {
+    v9x_u32 vram_bytes;
+    v9x_u32 target_offset;
+    v9x_u32 target_pitch_bytes;
+    v9x_u32 target_width;
+    v9x_u32 target_height;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+};
+
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model);
@@ -105,6 +117,10 @@ v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
                               v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_flat_triangle(
                               const struct v9x_m64_flat_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_flat_state(
+                              const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 

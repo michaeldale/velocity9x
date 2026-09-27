@@ -8,9 +8,13 @@
 #define V9X_M64_DST_Y_X               0x0000050cul
 #define V9X_M64_DST_HEIGHT_WIDTH      0x00000518ul
 #define V9X_M64_DST_CNTL              0x00000530ul
+#define V9X_M64_Z_OFF_PITCH           0x00000548ul
+#define V9X_M64_Z_CNTL                0x0000054cul
+#define V9X_M64_ALPHA_TST_CNTL        0x00000550ul
 #define V9X_M64_SRC_OFF_PITCH         0x00000580ul
 #define V9X_M64_SRC_Y_X               0x0000058cul
 #define V9X_M64_SRC_WIDTH1            0x00000590ul
+#define V9X_M64_SCALE_3D_CNTL         0x000005fcul
 #define V9X_M64_SC_LEFT_RIGHT         0x000006a8ul
 #define V9X_M64_SC_TOP_BOTTOM         0x000006b4ul
 #define V9X_M64_DP_FRGD_CLR           0x000006c4ul
@@ -19,6 +23,8 @@
 #define V9X_M64_DP_MIX                0x000006d4ul
 #define V9X_M64_DP_SRC                0x000006d8ul
 #define V9X_M64_CLR_CMP_CNTL          0x00000708ul
+#define V9X_M64_TEX_SIZE_PITCH        0x00000770ul
+#define V9X_M64_TEX_CNTL              0x00000774ul
 #define V9X_M64_FIFO_STAT             0x00000310ul
 #define V9X_M64_GUI_TRAJ_CNTL         0x00000330ul
 #define V9X_M64_GUI_STAT              0x00000338ul
@@ -65,6 +71,7 @@
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
 #define V9X_M64_COPY_DWORDS           14ul
 #define V9X_M64_FLAT_TRIANGLE_DWORDS  19ul
+#define V9X_M64_FLAT_STATE_DWORDS     17ul
 
 #define V9X_M64_DST_X_DIR             0x00000001ul
 #define V9X_M64_DST_Y_DIR             0x00000002ul

@@ -514,3 +514,74 @@ v9x_status v9x_m64_build_flat_triangle(
     *written = V9X_M64_FLAT_TRIANGLE_DWORDS;
     return V9X_STATUS_OK;
 }
+
+v9x_status v9x_m64_build_flat_state(
+                              const struct v9x_m64_flat_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 pitch_pixels;
+    v9x_u32 last_row;
+    v9x_u32 end;
+    v9x_u32 off_pitch;
+    if (written != 0) *written = 0ul;
+    if (state == 0 || offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_FLAT_STATE_DWORDS || state->vram_bytes == 0ul ||
+        (state->target_offset & 7ul) != 0ul ||
+        state->target_pitch_bytes == 0ul ||
+        (state->target_pitch_bytes & 15ul) != 0ul ||
+        state->target_width == 0ul || state->target_height == 0ul ||
+        state->scissor_left >= state->scissor_right ||
+        state->scissor_top >= state->scissor_bottom ||
+        state->scissor_right > state->target_width ||
+        state->scissor_bottom > state->target_height ||
+        state->target_width > 4096ul || state->target_height > 16384ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    pitch_pixels = state->target_pitch_bytes >> 1;
+    if ((pitch_pixels & 7ul) != 0ul || (pitch_pixels >> 3) > 1023ul ||
+        state->target_width > pitch_pixels) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    last_row = state->target_height - 1ul;
+    if (last_row >
+        (0xfffffffful - state->target_offset) /
+        state->target_pitch_bytes) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end = state->target_offset + last_row * state->target_pitch_bytes;
+    if (state->target_width > (0xfffffffful - end) / 2ul) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end += state->target_width * 2ul;
+    if (end > state->vram_bytes) return V9X_STATUS_INSUFFICIENT_MEMORY;
+    off_pitch = ((pitch_pixels >> 3) << 22) |
+                (state->target_offset >> 3);
+
+    offsets[0] = V9X_M64_DP_MIX; values[0] = 0x00070007ul;
+    offsets[1] = V9X_M64_DP_SRC; values[1] = 0x00000505ul;
+    offsets[2] = V9X_M64_CLR_CMP_CNTL; values[2] = 0ul;
+    offsets[3] = V9X_M64_GUI_TRAJ_CNTL; values[3] = 3ul;
+    offsets[4] = V9X_M64_SC_LEFT_RIGHT;
+    values[4] = ((state->scissor_right - 1ul) << 16) |
+                state->scissor_left;
+    offsets[5] = V9X_M64_SC_TOP_BOTTOM;
+    values[5] = ((state->scissor_bottom - 1ul) << 16) |
+                state->scissor_top;
+    offsets[6] = V9X_M64_DST_OFF_PITCH; values[6] = off_pitch;
+    offsets[7] = V9X_M64_Z_OFF_PITCH; values[7] = off_pitch;
+    offsets[8] = V9X_M64_Z_CNTL; values[8] = 0ul;
+    offsets[9] = V9X_M64_ALPHA_TST_CNTL; values[9] = 0ul;
+    /* Shade, source factor ONE, destination factor ZERO; all extras off. */
+    offsets[10] = V9X_M64_SCALE_3D_CNTL; values[10] = 0x000100c0ul;
+    offsets[11] = V9X_M64_DP_FRGD_CLR; values[11] = 0ul;
+    offsets[12] = V9X_M64_DP_WRITE_MASK; values[12] = 0xfffffffful;
+    /* RGB565 in destination, composite, source, host and scale fields. */
+    offsets[13] = V9X_M64_DP_PIX_WIDTH; values[13] = 0x40040444ul;
+    /* Vertex 3 is the flat-shading provoking vertex. */
+    offsets[14] = V9X_M64_SETUP_CNTL; values[14] = 0x00000018ul;
+    offsets[15] = V9X_M64_TEX_SIZE_PITCH; values[15] = 0ul;
+    offsets[16] = V9X_M64_TEX_CNTL; values[16] = 0ul;
+    *written = V9X_M64_FLAT_STATE_DWORDS;
+    return V9X_STATUS_OK;
+}

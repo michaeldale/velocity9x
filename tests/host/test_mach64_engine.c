@@ -290,6 +290,7 @@ static void test_flat_triangle_builder(void)
               &written) == V9X_STATUS_OK);
     CHECK(written == V9X_M64_FLAT_TRIANGLE_DWORDS);
     CHECK(offsets[0] == V9X_M64_VERTEX_1_S && values[0] == 0ul);
+    CHECK(offsets[0] == 0x00000240ul);
     CHECK(offsets[1] == V9X_M64_VERTEX_1_T && values[1] == 0ul);
     CHECK(offsets[2] == V9X_M64_VERTEX_1_W &&
           values[2] == 0x3f800000ul);
@@ -305,6 +306,7 @@ static void test_flat_triangle_builder(void)
           values[17] == 0x00200060ul);
     CHECK(offsets[18] == V9X_M64_ONE_OVER_AREA &&
           values[18] == 0x3b800000ul);
+    CHECK(offsets[18] == 0x0000029cul);
 
     triangle.vertex[1].x = 8ul; triangle.vertex[1].y = 24ul;
     triangle.vertex[2].x = 24ul; triangle.vertex[2].y = 8ul;
@@ -324,6 +326,55 @@ static void test_flat_triangle_builder(void)
               &written) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_flat_state_builder(void)
+{
+    struct v9x_m64_flat_state state;
+    v9x_u32 offsets[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 written = 99ul;
+    state.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.target_offset = 0x00200000ul;
+    state.target_pitch_bytes = 128ul;
+    state.target_width = 64ul;
+    state.target_height = 32ul;
+    state.scissor_left = 4ul; state.scissor_top = 5ul;
+    state.scissor_right = 60ul; state.scissor_bottom = 28ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_FLAT_STATE_DWORDS);
+    CHECK(offsets[0] == V9X_M64_DP_MIX && values[0] == 0x00070007ul);
+    CHECK(offsets[1] == V9X_M64_DP_SRC && values[1] == 0x00000505ul);
+    CHECK(offsets[4] == V9X_M64_SC_LEFT_RIGHT &&
+          values[4] == 0x003b0004ul);
+    CHECK(offsets[5] == V9X_M64_SC_TOP_BOTTOM &&
+          values[5] == 0x001b0005ul);
+    CHECK(offsets[6] == V9X_M64_DST_OFF_PITCH &&
+          values[6] == 0x02040000ul);
+    CHECK(offsets[7] == V9X_M64_Z_OFF_PITCH &&
+          values[7] == values[6]);
+    CHECK(offsets[8] == V9X_M64_Z_CNTL && values[8] == 0ul);
+    CHECK(offsets[9] == V9X_M64_ALPHA_TST_CNTL && values[9] == 0ul);
+    CHECK(offsets[10] == V9X_M64_SCALE_3D_CNTL &&
+          values[10] == 0x000100c0ul);
+    CHECK(offsets[13] == V9X_M64_DP_PIX_WIDTH &&
+          values[13] == 0x40040444ul);
+    CHECK(offsets[14] == V9X_M64_SETUP_CNTL && values[14] == 0x18ul);
+    CHECK(offsets[14] == 0x00000304ul);
+    CHECK(offsets[15] == V9X_M64_TEX_SIZE_PITCH && values[15] == 0ul);
+    CHECK(offsets[16] == V9X_M64_TEX_CNTL && values[16] == 0ul);
+
+    state.scissor_right = 65ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    state.scissor_right = 60ul; state.target_offset = 0x003ffff8ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
@@ -333,5 +384,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_fill_builder();
     test_copy_builder();
     test_flat_triangle_builder();
+    test_flat_state_builder();
     return failures;
 }
