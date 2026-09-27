@@ -24,4 +24,3 @@ FirstMismatchIndex=4294967295
 FirstActual=0x00000000
 FirstExpected=0x00000000
 Result=PASS
-
