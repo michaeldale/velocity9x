@@ -29,3 +29,4 @@
 - [Intel Gen3: DirectDraw blits through the ring](intel-gen3-directdraw-blits.md) - Open; needs its own errata decision before the first armed boot.
 - [OpenGL 1.1 ICD on a render core shared with Direct3D](opengl-1.1-icd.md) - Design for approval; nothing coded.
 - [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
+- [Optional update checker, guarded auto-updater, and installed-file audit](optional-update-checker-and-auto-updater.md) - Proposed; nothing implemented.
