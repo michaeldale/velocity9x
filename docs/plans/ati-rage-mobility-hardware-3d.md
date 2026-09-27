@@ -2,8 +2,7 @@
 
 Date: 2026-09-27
 
-Status: proposed — research complete; Phase 0 not started. No Mach64 engine
-write is authorised by this document alone.
+Status: proposed — research complete; Phase 0 not started.
 
 ## Goal
 
@@ -70,7 +69,7 @@ measurements on the Gateway establish what Velocity9x may ship.
 | Texture scope | One power-of-two 2D texture, nearest/bilinear, wrap/clamp, no mipmaps. |
 | Unsupported state | Refuse before emission. Direct3D keeps skip-and-count; OpenGL may use whole-draw CPU fallback only after its safety gate passes. |
 | VT2 | Remains non-3D. Common 2D code may serve it, but a VT2 must never acquire Mach64LM 3D caps. |
-| Hardware writes | Private diagnostics first, one feature per armed build. No public capability bit before repeatable physical evidence. |
+| Hardware writes | Private diagnostics first, one feature per build, on by default. No public capability bit before repeatable physical evidence. |
 
 ## Hardware capability boundary
 
@@ -107,10 +106,10 @@ implementation that can be made truthful and testable with 4 MiB VRAM.
 
 ## The 4 MiB constraint
 
-Front, back and Z16 consume three 16-bpp surfaces before texture storage and
-alignment:
+A full-screen front, back and Z16 consume three 16-bpp surfaces before
+texture storage and alignment:
 
-| Mode | Front + back + Z16 | Approximate texture/scratch remainder |
+| Mode | Full-screen front + back + Z16 | Approximate texture/scratch remainder |
 |---|---:|---:|
 | 640x480x16 | 1,843,200 bytes (1.76 MiB) | 2.24 MiB |
 | 800x600x16 | 2,880,000 bytes (2.75 MiB) | 1.25 MiB |
@@ -121,18 +120,28 @@ Therefore:
 - 640x480 is the primary development and correctness mode;
 - 800x600 may expose double-buffered Z hardware 3D with a smaller texture
   heap after alignment is measured;
-- 1024x768 must not promise double-buffered Z hardware 3D. It may offer a
-  deliberately reduced configuration later, or decline hardware 3D;
+- full-screen double-buffered Z at 1024x768 does not fit and must not be
+  promised;
+- windowed 3D on the 1024x768 desktop is the common case on a fixed
+  1024x768 panel and can fit: a 640x480 window needs the 1.5 MiB front plus
+  about 1.2 MiB of back and Z. It is decided by the heap, not refused by mode;
 - every capability and surface-creation decision uses the current mode's
   measured heap, never the nominal 1024x1024 texture limit alone.
+
+The remainders above are upper bounds. They do not yet subtract the 2 KiB
+in-aperture register window at the top of VRAM, which stays reserved unless
+`BUS_APER_REG_DIS` is set (audit §2), or any off-screen VRAM the desktop
+itself holds. Phase 1 decides the first; the allocator accounts for both.
 
 ## Safety contract
 
 Every physical-write phase follows the same contract:
 
-1. An unarmed build is read-only and produces the pre-write fingerprint.
-2. An arm token names the exact build, chip ID, PCI revision, mode and one
-   bounded scene.
+1. Each build adds one bounded scene or feature, and runs it by default.
+   There is no enable key; the discipline is in what changes between builds,
+   and the previous build or the tier-0 package is the recovery path.
+2. The diagnostic writes nothing unless chip ID, PCI revision and mode match
+   the values the build was written for; a mismatch records `REVIEW`.
 3. The diagnostic reserves off-screen VRAM and places guard patterns on both
    sides of every target.
 4. FIFO waits have iteration and wall-clock bounds.
@@ -140,8 +149,7 @@ Every physical-write phase follows the same contract:
 6. A second timeout, guard overwrite, display corruption or unexplained hard
    hang stops the phase; the next build may diagnose but not expand the write
    set.
-7. The token is retired after one execution, pass or fail.
-8. Captures record every intended register write in order, before execution,
+7. Captures record every intended register write in order, before execution,
    so a failed boot remains reviewable.
 
 The laptop runs on AC power with a recoverable Win98 installation. The 86Box
@@ -174,10 +182,15 @@ verdict.
 **Done:** two cold boots produce stable identity and memory decodes; the active
 surface agrees with the VBE mode; reads are neither all-zero nor all-ones; no
 register changes between the two quiet snapshots except identified live
-status.
+status; and the audit's three pre-flight values hold: `HORZ_PANEL_SIZE = 127`,
+`VERT_PANEL_SIZE = 767` and `CFG_MEM_TYPE_T = 4` (SDRAM).
 
-**Kill:** chip ID mismatch, an unexplained register-window alias, or a memory
-decode contradicting the measured 4 MiB aperture.
+**Kill:** chip ID mismatch, an unexplained register-window alias, a memory
+decode contradicting the measured 4 MiB aperture, or a pre-flight value that
+disagrees with the audit.
+
+The audit's `SCRATCH_REG0` write/read probe is deliberately not part of this
+phase, which writes nothing.
 
 ## Phase 1 — shared Mach64 engine substrate
 
@@ -190,6 +203,9 @@ capability.
   header; do not import a historical driver's definitions wholesale.
 - Map block 0 from the dedicated MMIO BAR on the Mobility and the correct
   in-aperture page on VT2.
+- Decide whether the Mobility sets `BUS_APER_REG_DIS`. The audit recommends
+  it: it reclaims 2 KiB of VRAM and removes the chance of the engine writing
+  over its own registers. Record the choice and its effect on the heap.
 - Reserve an exact number of FIFO slots before a batch.
 - On Mobility, cache and decrement `GUI_STAT[25:16]`; re-read only when the
   cache cannot satisfy the next batch.
@@ -212,6 +228,11 @@ capability.
   `INVALIDATE_RB_CACHE` in `MEM_BUF_CNTL`.
 - Define the engine-to-CPU and CPU-to-engine boundaries once; the 2D, D3D,
   OpenGL fallback and screenshot paths must use the same helpers.
+- The most frequent CPU readers are DirectDraw `Lock` and GDI/DIB-engine
+  reads of the screen, not the 3D paths. From the moment Phase 2 wires engine
+  fill and copy into DirectDraw, every `Lock` of an engine-written surface
+  and every GDI read of engine-touched VRAM crosses the same boundary
+  (audit erratum E2).
 - Treat the documented Mobility screen-copy commit race separately: the first
   implementation waits idle after every screen copy until measurement proves
   a weaker rule safe.
@@ -221,7 +242,14 @@ accounting, timeout bounds, reset ordering, state replay and generation
 changes. A fake-MMIO transcript test must prove that a requested N-write batch
 performs no status read between those N writes.
 
-**Done:** the unarmed physical build fingerprints the engine and can exercise
+Triangle setup arithmetic is policy and belongs here too, host-tested before
+Phase 3 reaches the machine: the CPU-computed `ONE_OVER_AREA`, its sign and
+the degenerate-area refusal, and the vertex encodings (fixed-point X/Y, as the
+Mesa driver's 14.2 form; Z; S/T/W; colour). Tests compare against hand-worked
+triangles and the Mesa driver's encoding, not against the implementation's own
+output.
+
+**Done:** the physical build fingerprints the engine and can exercise
 the wait/recovery logic against injected software status without issuing a
 draw command.
 
@@ -233,7 +261,9 @@ Implement conservative Mach64 operations behind private diagnostics first:
 2. overlapping off-screen screen copy in all four direction combinations;
 3. color clear using fill;
 4. Z16 clear using a correctly sized/pitched depth surface;
-5. back-to-front presentation by screen copy.
+5. back-to-front presentation by screen copy;
+6. engine fill, then a CPU read of the same pixels through the shared
+   drain/invalidate boundary, as a DirectDraw `Lock` will do.
 
 Use `DST_OFF_PITCH`, scissors, pixel-width/datapath state and the documented
 last trigger write. Do not enable block write on the SDRAM board. Enforce the
@@ -244,7 +274,7 @@ it.
 final CRCs, sentinel values, write transcript, FIFO reads, waits and recovery
 counters.
 
-**Done:** all five operations match CPU references across 640x480x16 and
+**Done:** all six operations match CPU references across 640x480x16 and
 800x600x16, guards remain intact, and 1,000 alternating operations complete
 without timeout or display corruption across two cold boots.
 
@@ -254,7 +284,7 @@ exists; copy presentation is sufficient for the first 3D release.
 
 ## Phase 3 — first off-screen triangle
 
-This is the first setup-engine write and requires its own armed build.
+This is the first setup-engine write and gets a build of its own.
 
 Use 640x480x16 with a small off-screen RGB565 target:
 
@@ -339,11 +369,20 @@ current engine contract:
 Gen3 when its type is already present, and otherwise falls back to ViRGE. A
 second shipping hardware engine cannot inherit that behavior.
 
+The early stamp this needs already exists. `v9x_dd_stamp_engine_caps()` in
+`src/display16/dd16.c` writes `engine_type` and `V9X_DD_ENGINE_VALID` from the
+chip's `fill_engine_descriptor` hook before `DriverInit`, which is how Gen3 is
+published. The enable ordering does not need to change. The comments above
+`v9x_d3d_publish_engine()` still say `engine_type` is unreadable at publish
+time; they predate that stamp and must be corrected with this work.
+
 Before ATI exposes `V9X_DD_ENGINE_CAP_D3D`:
 
-- stamp the chip's engine type early enough for `DriverInit` capability
-  publication;
-- make publication and runtime resolution use the same selector;
+- implement `fill_engine_descriptor` for the Mobility (no ATI chip has one
+  today) so the existing stamp carries `V9X_DD_ENGINE_TYPE_ATI_MACH64`, and
+  never for VT2;
+- add the Mach64 branch to both `v9x_d3d_engine()` and
+  `v9x_d3d_publish_engine()`, and make them use the same selector;
 - fail closed for an unknown/unavailable type rather than publishing ViRGE;
 - add host tests for every engine type and for mismatched caps/type;
 - prove the ATI package's texture formats and caps contain no ViRGE-only
@@ -358,8 +397,9 @@ Before ATI exposes `V9X_DD_ENGINE_CAP_D3D`:
 - Run 3D WinBench 98 and Final Reality only after the probe passes. First
   record that hardware draw counters increase; a visual result alone does not
   prove the hardware path ran.
-- Run windowed and fullscreen at 640x480 and 800x600. At 1024x768 verify the
-  explicitly chosen reduced behavior or clean refusal.
+- Run windowed and fullscreen at 640x480 and 800x600. Run windowed on the
+  1024x768 desktop, the common case on this panel, and verify that a
+  full-screen 1024x768 request refuses cleanly.
 
 **Done:** Direct3D publishes the conservative caps, every probe scene matches
 the reference within its documented raster rules, unsupported state refuses
@@ -433,6 +473,11 @@ transitions, Alt-Tab, DOS-box entry/exit and Disable/Enable. A mode that cannot
 fit the requested 3D surfaces fails creation cleanly rather than overlapping
 the visible framebuffer.
 
+The BIOS can also reprogram the chip without any mode change: the Fn+F5
+LCD/CRT toggle does so unless `SCRATCH_REG3.DISPLAY_SWITCH_DISABLE` is set
+(audit erratum E5). Decide whether the driver sets it before hardware 3D
+ships. If it does not, add Fn+F5 during rendering to the test list above.
+
 After copy-based presentation is stable, decide separately whether native
 CRTC/vblank/page-flip ownership is worth its panel and DSP risk. It is not
 silently absorbed into this engine plan. If accepted, it needs its own
@@ -450,8 +495,8 @@ Release is a separate decision from successful diagnostics.
 Required evidence:
 
 - host suite and tree checks green;
-- unarmed build performs no Mach64 engine write before a capability is
-  deliberately enabled;
+- a VT2 or any unmatched chip ID, revision or mode performs no Mach64LM
+  engine write;
 - two cold-boot passes of the complete 2D/3D diagnostic matrix;
 - one-hour alternating D3D/OpenGL/2D stress at 640x480 and 800x600;
 - repeated live mode switching and surface loss/restore;
@@ -499,7 +544,7 @@ revision must not silently enable other Rage PCI IDs.
 ## Risks and mitigations
 
 - **A status-register mistake wedges the machine.** Exact-batch FIFO
-  reservation, bounded waits, one reset, one-feature armed builds.
+  reservation, bounded waits, one reset, one feature per build.
 - **CPU reads stale VRAM.** One shared drain/invalidate boundary used by
   readback, fallback, screenshots and texture updates.
 - **The copy-commit erratum corrupts presentation.** Idle after every copy
@@ -512,6 +557,8 @@ revision must not silently enable other Rage PCI IDs.
   until color, depth, ordering and blend-boundary tests all pass.
 - **VBE reprograms state behind the engine.** Mode changes are drain,
   invalidate, VBE set, rediscover, reinitialize, redescribe—not continuation.
+  The Fn+F5 display switch is the same hazard without a mode change; see
+  Phase 7 and erratum E5.
 - **Documentation covers close relatives rather than every LM quirk.** ATI
   guides establish the register model; every shipping claim is narrowed by
   physical measurement on `4C4D` revision `0x64`.
@@ -536,6 +583,11 @@ revision must not silently enable other Rage PCI IDs.
   March 2000: `PRG-215R3-00-10`.
 - ATI, *3D RAGE LT PRO Register Reference*, revision 2.01x, June 1998:
   `RRG-G03300`.
+
+  The only local copies of these two PDFs are
+  `tmp\pdfs\ati-rage-pro-programmers-guide.pdf` and
+  `tmp\pdfs\ati-rage-lt-pro-register-reference.pdf`. `tmp\` is untracked, so
+  they need a durable home before Phase 1 cites them in register code.
 - X.Org ATI/Mach64 driver documentation:
   <https://www.x.org/releases/X11R7.0/doc/html/ati3.html>.
 - Local MIT-licensed X.Org Mach64 source at `C:\everything\xf86-video-mach64`.
