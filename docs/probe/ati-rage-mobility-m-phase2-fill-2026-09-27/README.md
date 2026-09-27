@@ -28,3 +28,9 @@ each row and the lower half of the 4 KiB page as guards. The RGB565 clear to
 `0000` and Z16 clear to `FFFF` both passed; the final report contained zero
 interior, guard, and restore mismatches (`CRC32 C65EC052`, SHA-256
 `38ADA029C612FA645EDD1800F0F6DA35FC45A075BE2EBB2FABDC25D83F400951`).
+
+At 640x480x16, the same full-surface clear reproducibly left logical pixel
+`(0,0)` at sentinel `A55A`; all other target pixels, guards, and the restored
+page matched. `ATI2D0-640-ORIGIN-REVIEW.TXT` is retained as negative evidence.
+Changing the clear to right-to-left did not move or remove the mismatch, so no
+workaround is enabled and acceleration remains unpublished.

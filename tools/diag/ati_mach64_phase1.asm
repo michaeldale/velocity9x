@@ -26,7 +26,7 @@ ATIE1_PATTERN equ 55555555h
 ATIE2_MAGIC equ 32495441h
 ATIE2_DIOC_FILL equ 2
 ATIE3_DIOC_COPY equ 3
-ATIE2_RESULT_DWORDS equ 20
+ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
 ATIE2_TARGET_COLOR equ 0000f81fh
@@ -46,17 +46,18 @@ ATIE2_DP_SRC equ 06d8h
 ATIE2_CLR_CMP_CNTL equ 0708h
 ATIE2_MEM_BUF_CNTL equ 042ch
 ATIE3_MAGIC equ 33495441h
-ATIE3_RESULT_DWORDS equ 16
+ATIE3_RESULT_DWORDS equ 21
 ATIE3_SRC_OFF_PITCH equ 0580h
 ATIE3_SRC_Y_X equ 058ch
 ATIE3_SRC_WIDTH1 equ 0590h
+ATIE3_CRTC_OFF_PITCH equ 0414h
 VxD_LOCKED_DATA_SEG
 AtiE1Result label dword
  dd ATIE1_MAGIC
  dd 0,0,0,0,0,0,0,0,0,0,0
 AtiE2Result label dword
  dd ATIE2_MAGIC
- dd 19 dup (0)
+ dd 22 dup (0)
 AtiE2StateOffsets dd 0500h,0530h,06a8h,06b4h,06c4h
                   dd 06c8h,06d0h,06d4h,06d8h,0708h
 AtiE2StateSaved dd 10 dup (0)
@@ -65,7 +66,7 @@ AtiE2FbLinear dd 0
 AtiE2Backup db 4096 dup (0)
 AtiE3Result label dword
  dd ATIE3_MAGIC
- dd 15 dup (0)
+ dd 20 dup (0)
 AtiE3StateOffsets dd 06c8h,06d0h,0580h,0500h,06d8h
                   dd 06d4h,0708h,0530h,06a8h,06b4h
 AtiE3StateSaved dd 10 dup (0)
@@ -79,6 +80,10 @@ AtiE3DestinationX dd 0
 AtiE3DestinationY dd 0
 AtiE3Direction dd 0
 AtiE3Expected db 4096 dup (0)
+AtiE3FrontLinear dd 0
+AtiE3FrontOffPitch dd 0
+AtiE3FrontPitchPixels dd 0
+AtiE3FrontBackup db 4096 dup (0)
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -239,6 +244,7 @@ BeginProc AtiE2_Run
  mov dword ptr AtiE2Result[48],ATIE2_TARGET_OFFSET
  mov dword ptr AtiE2Result[52],02040000h
  mov dword ptr AtiE2Result[56],ATIE2_TARGET_COLOR
+ mov dword ptr AtiE2Result[80],0ffffffffh
 
  mov ebx,80000000h
 AtiE2_Pci_Next:
@@ -339,6 +345,8 @@ AtiE2_Save_State:
  mov ax,ATIE2_SENTINEL
  mov ecx,2048
  rep stosw
+ ; Complete posted host writes before the GUI engine can target this page.
+ mov ax,[edi-2]
  or AtiE2Result[4],40h
 
  mov esi,AtiE2MmioLinear
@@ -438,6 +446,7 @@ AtiE2_Clear_Next:
  mov ecx,2048
  cld
  rep stosw
+ mov ax,[edi-2]
  mov esi,AtiE2MmioLinear
  mov ecx,5
  call AtiE2_WaitFifo
@@ -476,6 +485,18 @@ AtiE2_Clear_Verify_Col:
  cmp ax,word ptr AtiE2Result[56]
  je short AtiE2_Clear_Verify_Next
  inc dword ptr AtiE2Result[60]
+ cmp dword ptr AtiE2Result[80],0ffffffffh
+ jne short AtiE2_Clear_Verify_Next
+ push eax
+ mov eax,edx
+ shl eax,6
+ add eax,ecx
+ mov AtiE2Result[80],eax
+ pop eax
+ and eax,0ffffh
+ mov AtiE2Result[84],eax
+ mov eax,AtiE2Result[56]
+ mov AtiE2Result[88],eax
  jmp short AtiE2_Clear_Verify_Next
 AtiE2_Clear_Expect_Guard:
  cmp ax,ATIE2_SENTINEL
@@ -564,6 +585,7 @@ AtiE3_Seed_Loop:
  inc ax
  dec ecx
  jnz short AtiE3_Seed_Loop
+ mov ax,[esi-2]
  popad
  ret
 EndProc AtiE3_Seed
@@ -639,6 +661,9 @@ BeginProc AtiE3_Run
  rep stosd
  mov AtiE2MmioLinear,0
  mov AtiE2FbLinear,0
+ mov AtiE3FrontLinear,0
+ mov dword ptr AtiE3Result[72],16
+ mov dword ptr AtiE3Result[76],2
 
  mov ebx,80000000h
 AtiE3_Pci_Next:
@@ -813,7 +838,7 @@ AtiE3_Compare_Next:
  jnz short AtiE3_Compare_Loop
  add AtiE3Result[40+ebx*4],eax
  test eax,eax
- jnz short AtiE3_Restore_State
+ jnz AtiE3_Restore_State
  mov eax,100h
  mov ecx,ebx
  shl eax,cl
@@ -823,10 +848,143 @@ AtiE3_Compare_Next:
  cmp ebx,4
  jb AtiE3_Case_Loop
  cmp dword ptr AtiE3Result[60],1000
- jae short AtiE3_Restore_State
+ jae short AtiE3_Presentation
  mov ebp,OFFSET32 AtiE3Cases
  xor ebx,ebx
  jmp AtiE3_Case_Loop
+
+ ; Present a 16x2 off-screen RGB565 rectangle into the first two scan lines.
+ ; A 4 KiB mapping covers at least two complete supported scan lines, allowing
+ ; every mapped destination guard word and exact restoration to be checked.
+AtiE3_Presentation:
+ call AtiE3_Seed
+ mov eax,AtiE3Result[16]
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE3_Restore_State
+ test eax,eax
+ jz AtiE3_Restore_State
+ mov AtiE3FrontLinear,eax
+ mov esi,eax
+ mov edi,OFFSET32 AtiE3FrontBackup
+ mov ecx,1024
+ cld
+ rep movsd
+
+ mov esi,AtiE2MmioLinear
+ mov eax,[esi+ATIE3_CRTC_OFF_PITCH]
+ mov AtiE3FrontOffPitch,eax
+ mov edx,eax
+ shr edx,22
+ shl edx,3
+ cmp edx,16
+ jb AtiE3_Restore_Front
+ cmp edx,1024
+ ja AtiE3_Restore_Front
+ mov AtiE3FrontPitchPixels,edx
+ shl edx,1
+ mov AtiE3Result[80],edx
+ mov ecx,14
+ call AtiE2_WaitFifo
+ jc AtiE3_Restore_Front
+ mov dword ptr [esi+ATIE2_DP_WRITE_MASK],0ffffffffh
+ mov dword ptr [esi+ATIE2_DP_PIX_WIDTH],00040404h
+ mov dword ptr [esi+ATIE3_SRC_OFF_PITCH],02040000h
+ mov eax,AtiE3FrontOffPitch
+ mov [esi+ATIE2_DST_OFF_PITCH],eax
+ mov dword ptr [esi+ATIE2_DP_SRC],00000300h
+ mov dword ptr [esi+ATIE2_DP_MIX],00070000h
+ mov dword ptr [esi+ATIE2_CLR_CMP_CNTL],0
+ mov dword ptr [esi+ATIE2_DST_CNTL],3
+ mov dword ptr [esi+ATIE2_SC_LEFT_RIGHT],000f0000h
+ mov dword ptr [esi+ATIE2_SC_TOP_BOTTOM],00010000h
+ mov dword ptr [esi+ATIE3_SRC_Y_X],0
+ mov dword ptr [esi+ATIE3_SRC_WIDTH1],16
+ mov dword ptr [esi+ATIE2_DST_Y_X],0
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00100002h
+ inc dword ptr AtiE3Result[60]
+ call AtiE2_WaitIdle
+ jc AtiE3_Restore_Front
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ or eax,00800000h
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+
+ mov esi,AtiE3FrontLinear
+ mov edi,OFFSET32 AtiE3FrontBackup
+ mov ebp,OFFSET32 AtiE3Expected
+ xor ebx,ebx
+ xor edx,edx
+ mov ecx,2048
+AtiE3_Presentation_Compare:
+ cmp ebx,16
+ jb short AtiE3_Presentation_Source
+ cmp ebx,AtiE3FrontPitchPixels
+ jb short AtiE3_Presentation_Guard
+ mov eax,AtiE3FrontPitchPixels
+ add eax,16
+ cmp ebx,eax
+ jb short AtiE3_Presentation_Source_Row1
+AtiE3_Presentation_Guard:
+ mov ax,[esi]
+ cmp ax,[edi]
+ je short AtiE3_Presentation_Compare_Next
+ inc edx
+ jmp short AtiE3_Presentation_Compare_Next
+AtiE3_Presentation_Source:
+ mov ax,[esi]
+ cmp ax,[ebp+ebx*2]
+ je short AtiE3_Presentation_Compare_Next
+ inc edx
+ jmp short AtiE3_Presentation_Compare_Next
+AtiE3_Presentation_Source_Row1:
+ push edi
+ mov edi,AtiE3FrontPitchPixels
+ sub edi,64
+ shl edi,1
+ neg edi
+ add edi,ebp
+ mov ax,[esi]
+ cmp ax,[edi+ebx*2]
+ pop edi
+ je short AtiE3_Presentation_Compare_Next
+ inc edx
+AtiE3_Presentation_Compare_Next:
+ add esi,2
+ add edi,2
+ inc ebx
+ dec ecx
+ jnz AtiE3_Presentation_Compare
+ mov AtiE3Result[64],edx
+ test edx,edx
+ jnz short AtiE3_Restore_Front
+ or AtiE3Result[4],4000h
+
+AtiE3_Restore_Front:
+ mov esi,OFFSET32 AtiE3FrontBackup
+ mov edi,AtiE3FrontLinear
+ test edi,edi
+ jz short AtiE3_Restore_State
+ mov ecx,1024
+ cld
+ rep movsd
+ mov esi,OFFSET32 AtiE3FrontBackup
+ mov edi,AtiE3FrontLinear
+ mov ecx,1024
+ xor eax,eax
+AtiE3_Check_Front_Restore:
+ mov edx,[esi]
+ cmp edx,[edi]
+ je short AtiE3_Check_Front_Restore_Next
+ inc eax
+AtiE3_Check_Front_Restore_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE3_Check_Front_Restore
+ mov AtiE3Result[68],eax
+ test eax,eax
+ jnz short AtiE3_Restore_State
+ or AtiE3Result[4],8000h
 
 AtiE3_Restore_State:
  mov esi,AtiE2MmioLinear

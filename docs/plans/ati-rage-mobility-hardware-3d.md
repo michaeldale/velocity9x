@@ -133,6 +133,32 @@ mismatches (`CRC32 C65EC052`). This closes the private single-boot color-clear,
 Z16-clear, and engine-write-to-CPU-read mechanics. Copy-based front-buffer
 presentation, target-mode coverage, and cold-boot repetition remain open.
 
+Build `ati-p2-present-20260927-b` then exercised copy-based presentation from
+the 2 MiB offscreen page into the live 1024x768x16 scanout. It copied a 16x2
+rectangle across different 128-byte source and 2048-byte destination pitches,
+waited fully idle, invalidated the read cache, verified the 32 destination
+pixels plus all 2,016 untouched words in the two mapped scan lines, and
+restored the complete 4 KiB front-buffer backup. Presentation and restoration
+mismatch counts were zero (`CRC32 BAA3520D`), and the display and agent stayed
+healthy. This closes the single-boot operation list at the current mode;
+640x480x16 and 800x600x16 repetitions plus cold-boot coverage remain open.
+
+The presentation diagnostic now derives the destination offset/pitch from the
+live `CRTC_OFF_PITCH`. The full 1,001-copy sequence passed after live switches
+to 640x480x16 (1,280-byte pitch) and 800x600x16 (1,600-byte pitch), with zero
+overlap, presentation, or restoration mismatches in both modes. The desktop
+was restored to 1024x768x16. Copy/presentation target-mode coverage is closed;
+cold-boot repetition remains open.
+
+The fill/clear mode repetition exposed one still-open defect at 640x480x16:
+the guarded full-surface color clear reproducibly leaves logical pixel `(0,0)`
+at the sentinel value while every other target pixel, every guard, and the
+restored page match. Reversing X direction did not change it, and an explicit
+host-write readback reduced but did not eliminate the observation. The
+offscreen `(8,8)` fill and all copy cases still pass. Acceleration therefore
+remains unpublished until the origin behavior has a proven workaround rather
+than being hidden by the otherwise successful mode matrix.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

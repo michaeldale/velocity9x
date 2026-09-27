@@ -18,3 +18,25 @@ reachable on the same boot (`CRC32 8A544F11`, SHA-256
 
 The diagnostic backed up and restored the target page, ten non-trigger engine
 registers, and `MEM_BUF_CNTL`. It never replayed a trigger register.
+
+Build `ati-p2-present-20260927-b` retained the 1,000-copy overlap stress and
+then copied a 16x2 rectangle from the 128-byte-pitch offscreen surface to the
+live 2048-byte-pitch, 1024-pixel scanout. The diagnostic backed up the complete
+first two scan lines, verified the 32 presented pixels and all 2,016 untouched
+guard pixels after the mandatory full-idle/cache-invalidate boundary, and
+restored the entire 4 KiB front-buffer window. Presentation and restoration
+mismatch counts were both zero (`CRC32 BAA3520D`, SHA-256
+`1D5A98B32AE9B19E4F0E4B3A8FDDD7522EAEB5FA255E6E44ED585A891689E38B`).
+
+An earlier invocation correctly refused while display power management had
+disabled PCI memory decode and cleared the live BARs. No MMIO or framebuffer
+access occurred on that path; waking the desktop restored the validated
+configuration before the successful run.
+
+The presentation path was then changed to consume the live `CRTC_OFF_PITCH`
+rather than assuming the native-mode pitch. Live mode switches with the stock
+ATI driver produced the expected 1,280-byte pitch at 640x480x16 and 1,600-byte
+pitch at 800x600x16. The complete 1,001-copy diagnostic passed at both modes
+with zero overlap, presentation, offscreen-restore, or front-restore
+mismatches (`ATI2CPY-640.TXT` CRC32 `CF7A4D85`; `ATI2CPY-800.TXT` CRC32
+`D826A592`). The desktop was restored to 1024x768x16 afterward.
