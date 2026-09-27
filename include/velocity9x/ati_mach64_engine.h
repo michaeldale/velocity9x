@@ -36,6 +36,19 @@ struct v9x_m64_engine {
     struct v9x_m64_shadow_entry shadow[V9X_M64_SHADOW_ENTRIES];
 };
 
+struct v9x_m64_fill {
+    v9x_u32 vram_bytes;
+    v9x_u32 target_offset;
+    v9x_u32 target_pitch_bytes;
+    v9x_u32 target_width;
+    v9x_u32 target_height;
+    v9x_u32 left;
+    v9x_u32 top;
+    v9x_u32 right;
+    v9x_u32 bottom;
+    v9x_u32 color;
+};
+
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model);
@@ -52,5 +65,8 @@ v9x_status v9x_m64_cpu_read_barrier(struct v9x_m64_engine *engine,
                                     v9x_u32 spin_limit);
 v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
                                 v9x_u32 spin_limit);
+v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
 
 #endif

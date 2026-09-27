@@ -82,6 +82,12 @@ static void test_exact_batch_has_no_inner_read(void)
     CHECK(fake.event_count == 9ul);
     CHECK(memcmp(fake.events + 5, "WWWW", 4u) == 0);
     CHECK(engine.fifo_reads == 1ul && engine.fifo_cached == 0ul);
+
+    /* A trigger is emitted but never retained for reset replay. */
+    offsets[0] = V9X_M64_DST_HEIGHT_WIDTH;
+    CHECK(v9x_m64_emit_batch(&engine, offsets, values, 1ul, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(engine.shadow_count == 4ul);
 }
 
 static void test_bounds_and_timeout(void)
@@ -146,11 +152,50 @@ static void test_barrier_and_reset_order(void)
     CHECK(fake.write_offset[fake.write_count - 1ul] == offsets[1]);
 }
 
+static void test_fill_builder(void)
+{
+    struct v9x_m64_fill fill;
+    v9x_u32 offsets[V9X_M64_FILL_DWORDS];
+    v9x_u32 values[V9X_M64_FILL_DWORDS];
+    v9x_u32 written = 99ul;
+    fill.vram_bytes = 4ul * 1024ul * 1024ul;
+    fill.target_offset = 0x00200000ul;
+    fill.target_pitch_bytes = 128ul;
+    fill.target_width = 64ul;
+    fill.target_height = 32ul;
+    fill.left = 8ul; fill.top = 8ul;
+    fill.right = 24ul; fill.bottom = 24ul;
+    fill.color = 0x0000f81ful;
+    CHECK(v9x_m64_build_fill(&fill, offsets, values,
+                             V9X_M64_FILL_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == 12ul);
+    CHECK(offsets[0] == V9X_M64_DST_OFF_PITCH &&
+          values[0] == 0x02040000ul);
+    CHECK(offsets[10] == V9X_M64_DST_Y_X && values[10] == 0x00080008ul);
+    CHECK(offsets[11] == V9X_M64_DST_HEIGHT_WIDTH &&
+          values[11] == 0x00100010ul);
+    CHECK(values[8] == 0x00000100ul && values[7] == 0x00070003ul);
+
+    fill.target_offset++;
+    CHECK(v9x_m64_build_fill(&fill, offsets, values, 12ul, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    fill.target_offset = 0x00200000ul;
+    fill.right = 65ul;
+    CHECK(v9x_m64_build_fill(&fill, offsets, values, 12ul, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    fill.right = 24ul;
+    fill.vram_bytes = 0x00200010ul;
+    CHECK(v9x_m64_build_fill(&fill, offsets, values, 12ul, &written) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
     test_exact_batch_has_no_inner_read();
     test_bounds_and_timeout();
     test_barrier_and_reset_order();
+    test_fill_builder();
     return failures;
 }

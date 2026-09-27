@@ -156,7 +156,8 @@ $required = @(
     "tools\diag\power_cycle_win32.c",
     "tools\diag\palette_smoke_win32.c",
     "tools\diag\ati_mach64_phase1.asm",
-    "tools\diag\ati_mach64_phase1_win32.c"
+    "tools\diag\ati_mach64_phase1_win32.c",
+    "tools\diag\ati_mach64_phase2_fill_win32.c"
 )
 
 $missing = @($required | Where-Object {

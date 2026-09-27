@@ -19,3 +19,8 @@ $source=Join-Path $repoRoot 'tools\diag\ati_mach64_phase1_win32.c';$exe=Join-Pat
 $build=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $source -Executable $exe -Object $exeObj -MapFile $map -LinkFile $lnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$exeObj",$source) -LinkOptions @("option start='_V9xAtiMach64Phase1Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($build.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATIENG1.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 1 VxD: $vxd";Write-Output "Built ATI Phase 1 publisher: $exe"
+
+$fillSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase2_fill_win32.c';$fillExe=Join-Path $outputDir 'ATI2D0.EXE';$fillObj=Join-Path $outputDir 'ati2d0.obj';$fillMap=Join-Path $outputDir 'ati2d0.map';$fillLnk=Join-Path $outputDir 'ati2d0.lnk'
+$fillBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $fillSource -Executable $fillExe -Object $fillObj -MapFile $fillMap -LinkFile $fillLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$fillObj",$fillSource) -LinkOptions @("option start='_V9xAtiMach64Phase2Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($fillBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI2D0.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 2 fill publisher: $fillExe"

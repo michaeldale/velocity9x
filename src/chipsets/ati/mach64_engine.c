@@ -92,6 +92,8 @@ static void v9x_m64_shadow(struct v9x_m64_engine *engine,
                            v9x_u32 offset, v9x_u32 value)
 {
     v9x_u32 index;
+    /* Replaying a trigger would execute the old operation again. */
+    if (offset == V9X_M64_DST_HEIGHT_WIDTH) return;
     for (index = 0ul; index < engine->shadow_count; ++index) {
         if (engine->shadow[index].offset == offset) {
             engine->shadow[index].value = value;
@@ -216,4 +218,62 @@ v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
         engine->quarantined = V9X_TRUE;
     }
     return status;
+}
+
+v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 pitch_pixels;
+    v9x_u32 end;
+    if (written != 0) *written = 0ul;
+    if (fill == 0 || offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_FILL_DWORDS || fill->vram_bytes == 0ul ||
+        (fill->target_offset & 7ul) != 0ul ||
+        (fill->target_pitch_bytes & 15ul) != 0ul ||
+        fill->target_pitch_bytes == 0ul || fill->target_width == 0ul ||
+        fill->target_height == 0ul || fill->left >= fill->right ||
+        fill->top >= fill->bottom || fill->right > fill->target_width ||
+        fill->bottom > fill->target_height || fill->right > 4096ul ||
+        fill->bottom > 16384ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    pitch_pixels = fill->target_pitch_bytes >> 1;
+    if ((pitch_pixels & 7ul) != 0ul || (pitch_pixels >> 3) > 1023ul ||
+        fill->target_width > pitch_pixels) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (fill->bottom - 1ul >
+        (0xfffffffful - fill->target_offset) / fill->target_pitch_bytes) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end = fill->target_offset +
+          (fill->bottom - 1ul) * fill->target_pitch_bytes;
+    if (fill->right > (0xfffffffful - end) / 2ul) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end += fill->right * 2ul;
+    if (end > fill->vram_bytes) return V9X_STATUS_INSUFFICIENT_MEMORY;
+
+    offsets[0] = V9X_M64_DST_OFF_PITCH;
+    values[0] = ((pitch_pixels >> 3) << 22) |
+                (fill->target_offset >> 3);
+    offsets[1] = V9X_M64_DST_CNTL; values[1] = 0x00000003ul;
+    offsets[2] = V9X_M64_SC_LEFT_RIGHT;
+    values[2] = ((fill->target_width - 1ul) << 16);
+    offsets[3] = V9X_M64_SC_TOP_BOTTOM;
+    values[3] = ((fill->target_height - 1ul) << 16);
+    offsets[4] = V9X_M64_DP_FRGD_CLR; values[4] = fill->color;
+    offsets[5] = V9X_M64_DP_WRITE_MASK; values[5] = 0xfffffffful;
+    offsets[6] = V9X_M64_DP_PIX_WIDTH; values[6] = 0x00040004ul;
+    offsets[7] = V9X_M64_DP_MIX; values[7] = 0x00070003ul;
+    offsets[8] = V9X_M64_DP_SRC; values[8] = 0x00000100ul;
+    offsets[9] = V9X_M64_CLR_CMP_CNTL; values[9] = 0ul;
+    offsets[10] = V9X_M64_DST_Y_X;
+    values[10] = (fill->left << 16) | fill->top;
+    offsets[11] = V9X_M64_DST_HEIGHT_WIDTH;
+    values[11] = ((fill->right - fill->left) << 16) |
+                 (fill->bottom - fill->top);
+    *written = V9X_M64_FILL_DWORDS;
+    return V9X_STATUS_OK;
 }
