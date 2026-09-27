@@ -425,8 +425,76 @@ AtiE2_Verify_Next:
  or AtiE2Result[4],200h
 AtiE2_Check_Guards:
  cmp dword ptr AtiE2Result[64],0
- jne short AtiE2_Restore_State
+ jne AtiE2_Restore_State
  or AtiE2Result[4],400h
+
+ ; Clear a correctly sized 32x16 surface twice while retaining guards in the
+ ; unused half of every pitch row and in the lower half of the mapped page.
+ ; The first pass is an RGB565 colour clear to zero; the second is Z16 FFFF.
+ mov ebp,2
+AtiE2_Clear_Next:
+ mov edi,AtiE2FbLinear
+ mov ax,ATIE2_SENTINEL
+ mov ecx,2048
+ cld
+ rep stosw
+ mov esi,AtiE2MmioLinear
+ mov ecx,5
+ call AtiE2_WaitFifo
+ jc AtiE2_Restore_State
+ mov dword ptr [esi+ATIE2_SC_LEFT_RIGHT],001f0000h
+ mov dword ptr [esi+ATIE2_SC_TOP_BOTTOM],000f0000h
+ cmp ebp,2
+ jne short AtiE2_Clear_Depth
+ xor eax,eax
+ jmp short AtiE2_Clear_Color_Ready
+AtiE2_Clear_Depth:
+ mov eax,0000ffffh
+AtiE2_Clear_Color_Ready:
+ mov AtiE2Result[56],eax
+ mov [esi+ATIE2_DP_FRGD_CLR],eax
+ mov dword ptr [esi+ATIE2_DST_Y_X],0
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00200010h
+ inc dword ptr AtiE2Result[76]
+ call AtiE2_WaitIdle
+ jc AtiE2_Restore_State
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ or eax,00800000h
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+
+ mov ebx,AtiE2FbLinear
+ xor edx,edx
+ mov edi,32
+AtiE2_Clear_Verify_Row:
+ xor ecx,ecx
+AtiE2_Clear_Verify_Col:
+ mov ax,[ebx]
+ cmp edx,16
+ jae short AtiE2_Clear_Expect_Guard
+ cmp ecx,32
+ jae short AtiE2_Clear_Expect_Guard
+ cmp ax,word ptr AtiE2Result[56]
+ je short AtiE2_Clear_Verify_Next
+ inc dword ptr AtiE2Result[60]
+ jmp short AtiE2_Clear_Verify_Next
+AtiE2_Clear_Expect_Guard:
+ cmp ax,ATIE2_SENTINEL
+ je short AtiE2_Clear_Verify_Next
+ inc dword ptr AtiE2Result[64]
+AtiE2_Clear_Verify_Next:
+ add ebx,2
+ inc ecx
+ cmp ecx,64
+ jb short AtiE2_Clear_Verify_Col
+ inc edx
+ dec edi
+ jnz short AtiE2_Clear_Verify_Row
+ cmp dword ptr AtiE2Result[60],0
+ jne short AtiE2_Restore_State
+ cmp dword ptr AtiE2Result[64],0
+ jne short AtiE2_Restore_State
+ dec ebp
+ jnz AtiE2_Clear_Next
 
 AtiE2_Restore_State:
  mov esi,AtiE2MmioLinear

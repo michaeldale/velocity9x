@@ -20,3 +20,11 @@ FIFO slots before each colour/trigger pair and drained once after the final
 fill. The final green rectangle, all guards, engine-state restoration, and the
 4 KiB VRAM restoration passed with zero mismatches. Its report CRC32 was
 `5954CD4E`.
+
+Build `ati-p2-clear-20260927-a` retained the 1,000-fill stress sequence and
+then used the same primitive for two guarded full-surface clears. The logical
+surface was 32x16 RGB565/Z16 at a 128-byte pitch, leaving the unused half of
+each row and the lower half of the 4 KiB page as guards. The RGB565 clear to
+`0000` and Z16 clear to `FFFF` both passed; the final report contained zero
+interior, guard, and restore mismatches (`CRC32 C65EC052`, SHA-256
+`38ADA029C612FA645EDD1800F0F6DA35FC45A075BE2EBB2FABDC25D83F400951`).

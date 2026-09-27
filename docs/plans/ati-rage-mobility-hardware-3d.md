@@ -124,6 +124,15 @@ The ATI manifest still publishes engine type `NONE`; neither proven primitive
 is public while the rest of the Phase 2 gate and cold-boot repetition remain
 open.
 
+Build `ati-p2-clear-20260927-a` reused the proven fill stream to clear a
+guarded 32x16 RGB565 color surface to `0000` and a correctly sized/pitched Z16
+surface to `FFFF`. Both clears were followed by full idle, read-cache
+invalidation, CPU verification, and exact restoration. The combined
+1,002-operation report passed with zero interior, guard, or restoration
+mismatches (`CRC32 C65EC052`). This closes the private single-boot color-clear,
+Z16-clear, and engine-write-to-CPU-read mechanics. Copy-based front-buffer
+presentation, target-mode coverage, and cold-boot repetition remain open.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
