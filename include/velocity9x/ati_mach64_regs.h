@@ -39,6 +39,7 @@
 #define V9X_M64_VERTEX_1_Z            0x00000250ul
 #define V9X_M64_VERTEX_1_ARGB         0x00000254ul
 #define V9X_M64_VERTEX_1_X_Y          0x00000258ul
+/* A7 alias follows vertex 3; 97/9F are equivalent, C0 is the DMA/UC alias. */
 #define V9X_M64_ONE_OVER_AREA         0x0000029cul
 #define V9X_M64_VERTEX_2_S            0x00000260ul
 #define V9X_M64_VERTEX_2_T            0x00000264ul
