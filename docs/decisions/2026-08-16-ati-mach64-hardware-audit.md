@@ -523,10 +523,15 @@ boolean block is good evidence the table is right.
 | 6 | SGRAM (2:1) 32-bit |
 | 7 | unknown |
 
-Our BIOS string is `ATI MACH64 SDRAM BIOS 4.216`, so **`CFG_MEM_TYPE_T` should
-read 4**. That is a third pre-flight assertion, alongside `HORZ_PANEL_SIZE`=127
-and `VERT_PANEL_SIZE`=767. It also means `BLOCK_WRITE_EN` is **not** available to
-us - that needs SGRAM.
+The BIOS string `ATI MACH64 SDRAM BIOS 4.216` originally led us to expect
+`CFG_MEM_TYPE_T` = 4. The first register-valid physical fingerprint on
+2026-09-27 disproved that inference: two byte-identical captures read
+`CONFIG_STAT0 = 0x00C00096`, so the field is 6 (32-bit SGRAM at 2:1). The panel
+pre-flight values remained 127 and 767 and the memory-size decode remained
+4 MiB. Treat memory technology as a measured contradiction, keep block write
+disabled, and do not begin hardware-write testing until the board type and the
+generic BIOS wording are reconciled. See
+`docs/probe/ati-rage-mobility-m-phase0-2026-09-27/`.
 
 ## 10. Confidence
 

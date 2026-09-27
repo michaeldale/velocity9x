@@ -2,7 +2,52 @@
 
 Date: 2026-09-27
 
-Status: proposed — research complete; Phase 0 not started.
+Status: stopped at the Phase 0 kill gate — the read-only fingerprint is
+register-valid, but the physical board reports memory-type code 6 rather than
+the audited code 4. No engine-write phase may start until that contradiction is
+resolved.
+
+## Progress — 2026-09-27
+
+The standalone `ATIMM.EXE` + `ATIMM.VXD` Phase 0 probe was built and run on the
+Gateway Solo 2150 through the remote agent at `10.0.1.22:9869`. It made no
+engine, framebuffer, scratch, or PCI configuration writes. The LCD selector
+path remained gated off because chip identity could not yet be established.
+
+The first capture established:
+
+- PCI identity `1002:4C4D`, revision `64`, subsystem `107B:2150`, at bus 1,
+  device 0, function 0;
+- the stock-driver session reads raw PCI BAR0/BAR2 as zero and command as
+  `0080`, while Windows Config Manager retains the expected allocations BAR0
+  `F5000000` and BAR2 `F4100000`;
+- read-only attempts through assigned BAR2 and the documented BAR0
+  in-aperture register page both returned zero, so neither was accepted as a
+  valid register window;
+- the probe returned `REVIEW` without attempting the indexed LCD reads or any
+  wider snapshot after `CONFIG_CHIP_ID` failed to match.
+
+After an explicitly authorized tier-0 driver-binding attempt and one reboot,
+Windows retained the stock ATI display driver but restored live PCI command
+and BAR values. The agent returned with the matching pending-job token and a
+ready 1024x768x16 desktop. Two complete probe executions then produced
+byte-identical reports (`CRC32 448C104B`) with:
+
+- command bits `0x7`, BAR0 `F5000000`, BAR2 `F4100000`, and a validated
+  `CONFIG_CHIP_ID` of `64004C4D`;
+- 4 MiB VRAM, 1024-pixel active pitch at offset zero, and stable 1024x768 LCD
+  size fields;
+- stable repeated MMIO reads with no unexpected deltas and a restored LCD
+  selector;
+- `CONFIG_STAT0 = 00C00096`, hence `CFG_MEM_TYPE_T = 6`, not the audited
+  expectation of 4.
+
+The 264xT decode table identifies code 6 as 32-bit SGRAM at 2:1. That conflicts
+with the generic `ATI MACH64 SDRAM BIOS 4.216` string used to infer code 4.
+Per this plan's kill rule, the probe remains `REVIEW` and work stops before any
+engine, framebuffer, scratch, or PCI configuration write. The durable capture
+and run notes are in
+[`../probe/ati-rage-mobility-m-phase0-2026-09-27/`](../probe/ati-rage-mobility-m-phase0-2026-09-27/).
 
 ## Goal
 
@@ -34,7 +79,9 @@ The `ati` family is tier-0 today:
 - the linear framebuffer is CPU-drawn;
 - both ATI chips declare `EngineType = NONE` and no engine capabilities;
 - no native 2D, vblank, flip or 3D operation is advertised;
-- the physical Mobility-M has 4 MiB SDRAM and a fixed 1024x768 panel;
+- the physical Mobility-M has 4 MiB and a fixed 1024x768 panel; its live
+  memory-type field reports code 6 (32-bit SGRAM at 2:1), contradicting the
+  BIOS-string-derived SDRAM assumption and requiring resolution before writes;
 - 86Box emulates a Mach64 VT2 2D engine, not the Mobility's Rage setup engine.
 
 The physical identity and register-window facts are settled in
@@ -597,4 +644,3 @@ revision must not silently enable other Rage PCI IDs.
   [`../decisions/2026-08-16-ati-mach64-hardware-audit.md`](../decisions/2026-08-16-ati-mach64-hardware-audit.md).
 - Shared OpenGL/render architecture:
   [`opengl-1.1-icd.md`](opengl-1.1-icd.md).
-

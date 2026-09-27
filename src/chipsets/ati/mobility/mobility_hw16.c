@@ -6,13 +6,17 @@
  * fixed 1024x768 LG LP141XA panel with no EDID - the panel identity was decoded
  * out of the captured video BIOS rather than read from the monitor.
  *
- * Three values are known in advance and are worth asserting the first time this
+ * Four values are known in advance and are worth asserting the first time this
  * chip is probed, because each proves a different register window is live:
  *
  *     CONFIG_CHIP_ID   low word  == 0x4C4D   ('LM')
  *     HORZ_PANEL_SIZE            == 127      (1024 = (127 + 1) * 8)
  *     VERT_PANEL_SIZE            == 767
- *     CFG_MEM_TYPE_T             == 4        (SDRAM, per the BIOS string)
+ *     CFG_MEM_TYPE_T             == 6        (measured twice on 2026-09-27)
+ *
+ * Code 6 decodes as 32-bit SGRAM at 2:1, contradicting the generic "SDRAM"
+ * BIOS wording.  Keep block write disabled and resolve that pre-flight
+ * contradiction before either hook can issue hardware writes.
  *
  * Both hooks are NULL at tier-0. When they are filled in, note that this part
  * is >= 264VTB, so it decodes video memory with the four-bit CTL_MEM_SIZEB

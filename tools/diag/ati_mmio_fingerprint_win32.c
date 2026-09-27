@@ -3,13 +3,49 @@
 
 #include "velocity9x/diagpaths.h"
 
+/* Minimal Win98 Config Manager ABI.  Open Watcom does not ship cfgmgr32.h;
+ * including the DDK's full Windows headers beside Watcom's headers conflicts.
+ * These scalar handle types and constants are the complete subset used here. */
+typedef DWORD CONFIGRET;
+typedef DWORD DEVINST;
+typedef DEVINST *PDEVINST;
+typedef char *DEVINSTID_A;
+typedef DWORD LOG_CONF;
+typedef LOG_CONF *PLOG_CONF;
+typedef DWORD RES_DES;
+typedef RES_DES *PRES_DES;
+typedef ULONG RESOURCEID;
+typedef RESOURCEID *PRESOURCEID;
+#define MAX_DEVICE_ID_LEN 200
+#define ResType_Mem 0x00000001ul
+#define ALLOC_LOG_CONF 0x00000002ul
+#define CM_LOCATE_DEVNODE_NORMAL 0x00000000ul
+#define CR_SUCCESS 0x00000000ul
+#define CR_NO_SUCH_DEVNODE 0x0000000dul
+#define CR_NO_MORE_RES_DES 0x0000000ful
+#define CR_FAILURE 0x00000013ul
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
 
 #define ATIMM_MAGIC 0x30495441ul
 #define ATIMM_REG_COUNT 29u
-#define ATIMM_REQUIRED_STATUS 0x0000000ful
+#define ATIMM_REQUIRED_STATUS 0x0000001ful
+
+struct atimm_request {
+    DWORD assigned_bar0;
+    DWORD assigned_bar2;
+};
+
+typedef CONFIGRET (WINAPI *atimm_cm_locate_fn)(PDEVINST, DEVINSTID_A, ULONG);
+typedef CONFIGRET (WINAPI *atimm_cm_first_fn)(PLOG_CONF, DEVINST, ULONG);
+typedef CONFIGRET (WINAPI *atimm_cm_next_fn)(PRES_DES, RES_DES, RESOURCEID,
+                                             PRESOURCEID, ULONG);
+typedef CONFIGRET (WINAPI *atimm_cm_free_res_fn)(RES_DES);
+typedef CONFIGRET (WINAPI *atimm_cm_size_fn)(PULONG, RES_DES, ULONG);
+typedef CONFIGRET (WINAPI *atimm_cm_data_fn)(RES_DES, PVOID, ULONG, ULONG);
+typedef CONFIGRET (WINAPI *atimm_cm_free_log_fn)(LOG_CONF);
 
 struct atimm_result {
     DWORD magic;
@@ -46,6 +82,29 @@ static const char *atimm_names[ATIMM_REG_COUNT] = {
     "GUI_STAT", "TEX_SIZE_PITCH", "TEX_CNTL", "GUI_CNTL", "SETUP_CNTL"
 };
 
+static int atimm_starts_with_ci(const char *text, const char *prefix)
+{
+    while (*prefix != '\0') {
+        char left = *text++;
+        char right = *prefix++;
+        if (left >= 'a' && left <= 'z') left = (char)(left - 32);
+        if (right >= 'a' && right <= 'z') right = (char)(right - 32);
+        if (left != right) return 0;
+    }
+    return 1;
+}
+
+static void atimm_copy(char *destination, const char *source, DWORD capacity)
+{
+    DWORD index = 0u;
+    if (capacity == 0u) return;
+    while (index + 1u < capacity && source[index] != '\0') {
+        destination[index] = source[index];
+        ++index;
+    }
+    destination[index] = '\0';
+}
+
 static void atimm_hex(char *text, DWORD value)
 {
     static const char digits[] = "0123456789ABCDEF";
@@ -81,6 +140,141 @@ static void atimm_append_text(char *destination, const char *source,
         ++index;
     }
     if (used + index < capacity) destination[used + index] = '\0';
+}
+
+static DWORD atimm_read_u32(const BYTE *data)
+{
+    return (DWORD)data[0] | ((DWORD)data[1] << 8) |
+           ((DWORD)data[2] << 16) | ((DWORD)data[3] << 24);
+}
+
+static LONG atimm_find_device(char *device_id, DWORD capacity)
+{
+    HKEY pci_key;
+    HKEY adapter_key;
+    DWORD adapter_index = 0u;
+    char adapter[160];
+    DWORD adapter_length;
+    LONG status;
+
+    status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Enum\\PCI", 0, KEY_READ,
+                           &pci_key);
+    if (status != ERROR_SUCCESS) return status;
+    for (;;) {
+        adapter_length = sizeof(adapter);
+        status = RegEnumKeyExA(pci_key, adapter_index++, adapter,
+                               &adapter_length, 0, 0, 0, 0);
+        if (status == ERROR_NO_MORE_ITEMS) break;
+        if (status != ERROR_SUCCESS ||
+            !atimm_starts_with_ci(adapter, "VEN_1002&DEV_4C4D")) continue;
+        if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) ==
+            ERROR_SUCCESS) {
+            char instance[160];
+            DWORD instance_length = sizeof(instance);
+            status = RegEnumKeyExA(adapter_key, 0, instance, &instance_length,
+                                   0, 0, 0, 0);
+            RegCloseKey(adapter_key);
+            if (status == ERROR_SUCCESS) {
+                atimm_copy(device_id, "PCI\\", capacity);
+                atimm_append_text(device_id, adapter, capacity);
+                atimm_append_text(device_id, "\\", capacity);
+                atimm_append_text(device_id, instance, capacity);
+                RegCloseKey(pci_key);
+                return ERROR_SUCCESS;
+            }
+        }
+    }
+    RegCloseKey(pci_key);
+    return ERROR_FILE_NOT_FOUND;
+}
+
+static CONFIGRET atimm_assigned_bars(struct atimm_request *request)
+{
+    char device_id[MAX_DEVICE_ID_LEN];
+    DEVINST device;
+    LOG_CONF logical_config;
+    RES_DES current;
+    RES_DES next;
+    CONFIGRET status;
+    HMODULE module;
+    atimm_cm_locate_fn cm_locate;
+    atimm_cm_first_fn cm_first;
+    atimm_cm_next_fn cm_next;
+    atimm_cm_free_res_fn cm_free_res;
+    atimm_cm_size_fn cm_size;
+    atimm_cm_data_fn cm_data;
+    atimm_cm_free_log_fn cm_free_log;
+
+    request->assigned_bar0 = 0u;
+    request->assigned_bar2 = 0u;
+    module = LoadLibraryA("CFGMGR32.DLL");
+    if (module == 0) return CR_FAILURE;
+    cm_locate = (atimm_cm_locate_fn)GetProcAddress(module, "CM_Locate_DevNodeA");
+    cm_first = (atimm_cm_first_fn)GetProcAddress(module, "CM_Get_First_Log_Conf");
+    cm_next = (atimm_cm_next_fn)GetProcAddress(module, "CM_Get_Next_Res_Des");
+    cm_free_res = (atimm_cm_free_res_fn)GetProcAddress(module, "CM_Free_Res_Des_Handle");
+    cm_size = (atimm_cm_size_fn)GetProcAddress(module, "CM_Get_Res_Des_Data_Size");
+    cm_data = (atimm_cm_data_fn)GetProcAddress(module, "CM_Get_Res_Des_Data");
+    cm_free_log = (atimm_cm_free_log_fn)GetProcAddress(module, "CM_Free_Log_Conf_Handle");
+    if (cm_locate == 0 || cm_first == 0 || cm_next == 0 ||
+        cm_free_res == 0 || cm_size == 0 || cm_data == 0 || cm_free_log == 0) {
+        FreeLibrary(module);
+        return CR_FAILURE;
+    }
+    if (atimm_find_device(device_id, sizeof(device_id)) != ERROR_SUCCESS)
+        status = CR_NO_SUCH_DEVNODE;
+    else
+        status = cm_locate(&device, device_id, CM_LOCATE_DEVNODE_NORMAL);
+    if (status != CR_SUCCESS) {
+        FreeLibrary(module);
+        return status;
+    }
+    status = cm_first(&logical_config, device, ALLOC_LOG_CONF);
+    if (status != CR_SUCCESS) {
+        FreeLibrary(module);
+        return status;
+    }
+    current = (RES_DES)logical_config;
+    for (;;) {
+        BYTE data[256];
+        ULONG size = 0u;
+        DWORD base_low;
+        DWORD base_high;
+        DWORD end_low;
+        DWORD end_high;
+        DWORD bytes;
+
+        status = cm_next(&next, current, ResType_Mem, 0, 0);
+        if (current != (RES_DES)logical_config) cm_free_res(current);
+        if (status == CR_NO_MORE_RES_DES) {
+            status = CR_SUCCESS;
+            break;
+        }
+        if (status != CR_SUCCESS) break;
+        current = next;
+        if (cm_size(&size, current, 0) != CR_SUCCESS ||
+            size < 32u || size > sizeof(data) ||
+            cm_data(current, data, size, 0) != CR_SUCCESS) {
+            status = CR_FAILURE;
+            break;
+        }
+        base_low = atimm_read_u32(data + 8);
+        base_high = atimm_read_u32(data + 12);
+        end_low = atimm_read_u32(data + 16);
+        end_high = atimm_read_u32(data + 20);
+        bytes = (base_high == 0u && end_high == 0u && end_low >= base_low)
+            ? end_low - base_low + 1u : 0u;
+        if (bytes == 0x01000000ul) request->assigned_bar0 = base_low;
+        if (bytes == 0x00001000ul || bytes == 0x00004000ul)
+            request->assigned_bar2 = base_low;
+    }
+    if (current != (RES_DES)logical_config) cm_free_res(current);
+    cm_free_log(logical_config);
+    if (status == CR_SUCCESS &&
+        (request->assigned_bar0 == 0u || request->assigned_bar2 == 0u))
+        status = CR_FAILURE;
+    FreeLibrary(module);
+    return status;
 }
 
 static void atimm_write(HANDLE file, const char *key, const char *value)
@@ -131,6 +325,7 @@ static DWORD atimm_decode_vram(DWORD mem_cntl)
 void WINAPI V9xAtiMmioFingerprintEntry(void)
 {
     struct atimm_result result;
+    struct atimm_request request;
     HANDLE device;
     HANDLE output;
     DWORD returned = 0u;
@@ -152,10 +347,13 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
     char header[] = "[AtiMobilityFingerprint]\r\n";
     char key[64];
 
+    if (atimm_assigned_bars(&request) != CR_SUCCESS) ExitProcess(5u);
+
     device = CreateFileA("\\\\.\\ATIMM.VXD", 0, 0, 0, CREATE_NEW,
                          FILE_FLAG_DELETE_ON_CLOSE, 0);
     if (device == INVALID_HANDLE_VALUE) ExitProcess(2u);
-    if (!DeviceIoControl(device, 1u, 0, 0, &result, sizeof(result),
+    if (!DeviceIoControl(device, 1u, &request, sizeof(request),
+                         &result, sizeof(result),
                          &returned, 0) || returned != sizeof(result) ||
         result.magic != ATIMM_MAGIC) {
         CloseHandle(device);
@@ -197,9 +395,19 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
     atimm_write_hex(output, "PciBar0Raw", result.bar0);
     atimm_write_hex(output, "PciBar1Raw", result.bar1);
     atimm_write_hex(output, "PciBar2Raw", result.bar2);
+    atimm_write_hex(output, "AssignedBar0", request.assigned_bar0);
+    atimm_write_hex(output, "AssignedBar2", request.assigned_bar2);
+    atimm_write(output, "MmioProvenance",
+                (result.status & 0x04u) == 0u
+                    ? "unvalidated-candidate"
+                    : (result.status & 0x20u) != 0u
+                    ? "ConfigManager-BAR0-in-aperture"
+                    : "ConfigManager-allocated-BAR2");
     atimm_write_hex(output, "PciSubsystem", result.subsystem);
     atimm_write_hex(output, "PciInterruptInfo", result.interrupt_info);
-    atimm_write_hex(output, "MmioPhysicalBase", result.mmio_base);
+    atimm_write_hex(output, "MmioCandidateBase", result.mmio_base);
+    atimm_write_hex(output, "MmioPhysicalBase",
+                    (result.status & 0x04u) != 0u ? result.mmio_base : 0u);
     atimm_write_decimal(output, "DesktopWidth", desktop_width);
     atimm_write_decimal(output, "DesktopHeight", desktop_height);
     atimm_write_decimal(output, "DesktopBpp", desktop_bpp);
@@ -244,7 +452,7 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
     atimm_write_hex(output, "UnexpectedDeltaMask", unexpected_delta_mask);
     atimm_write(output, "ExpectedLiveRegisters", "FIFO_STAT,GUI_STAT");
 
-    pass = result.status == ATIMM_REQUIRED_STATUS &&
+    pass = (result.status & ATIMM_REQUIRED_STATUS) == ATIMM_REQUIRED_STATUS &&
            (result.command_status & 3u) == 3u &&
            (result.revision_class & 0xffu) == 0x64u &&
            (result.first[6] & 0xffffu) == 0x4c4du &&

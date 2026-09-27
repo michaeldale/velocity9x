@@ -28,7 +28,7 @@ if ($missing.Count -ne 0) {
     throw "Required Windows 98 DDK inputs are missing: $($missing -join ', ')"
 }
 
-$toolchain = Get-V9xDiagToolchain -Target Win32 -LibraryNames @('kernel32.lib', 'gdi32.lib', 'user32.lib')
+$toolchain = Get-V9xDiagToolchain -Target Win32 -LibraryNames @('kernel32.lib', 'gdi32.lib', 'user32.lib', 'advapi32.lib')
 $env:WATCOM = $toolchain.WatcomRoot
 $env:Path = "$(Join-Path $toolchain.WatcomRoot 'binnt64');$(Join-Path $toolchain.WatcomRoot 'binnt');$env:Path"
 $env:INCLUDE = "$(Join-Path $toolchain.WatcomRoot 'h');$(Join-Path $toolchain.WatcomRoot 'h\nt')"
@@ -73,7 +73,7 @@ $linkFile = Join-Path $outputDir 'atimm-exe.lnk'
 $includeDir = Join-Path $repoRoot 'include'
 $build = Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir `
     -Source $source -Executable $executable -Object $object -MapFile $map `
-    -LinkFile $linkFile -LibraryNames @('kernel32.lib', 'gdi32.lib', 'user32.lib') `
+    -LinkFile $linkFile -LibraryNames @('kernel32.lib', 'gdi32.lib', 'user32.lib', 'advapi32.lib') `
     -CompileArguments @('-bt=nt', '-zq', '-wx', '-zl', '-s',
         "-i=$includeDir", "-dV9X_BUILD_ID=`"$BuildId`"", "-fo=$object", $source) `
     -LinkOptions @("option start='_V9xAtiMmioFingerprintEntry@0'", 'option stack=65536') `
@@ -93,7 +93,9 @@ if (-not $vxdText.Contains('ATIMM_DDB')) {
 
 foreach ($import in @('CloseHandle', 'CreateDirectoryA', 'CreateFileA',
                        'DeviceIoControl', 'ExitProcess', 'GetDC',
-                       'GetDeviceCaps', 'ReleaseDC', 'WriteFile')) {
+                       'GetDeviceCaps', 'ReleaseDC', 'WriteFile',
+                       'LoadLibraryA', 'GetProcAddress', 'FreeLibrary',
+                       'RegOpenKeyExA', 'RegEnumKeyExA', 'RegCloseKey')) {
     if ($build.DumpText -notmatch "(?m)\s$([regex]::Escape($import))\s*$") {
         throw "ATIMM.EXE is missing import $import."
     }
@@ -101,7 +103,9 @@ foreach ($import in @('CloseHandle', 'CreateDirectoryA', 'CreateFileA',
 $dllNames = [regex]::Matches($build.DumpText, 'DLL name = <([^>]+)>') |
     ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
     Sort-Object -Unique
-$unexpected = @($dllNames | Where-Object { $_ -notin @('KERNEL32.DLL', 'GDI32.DLL', 'USER32.DLL') })
+$unexpected = @($dllNames | Where-Object {
+    $_ -notin @('KERNEL32.DLL', 'GDI32.DLL', 'USER32.DLL', 'ADVAPI32.DLL')
+})
 if ($unexpected.Count -ne 0 -or $build.DumpText -match 'GetCommandLineW|__CHK') {
     throw 'ATIMM.EXE contains an incompatible runtime import.'
 }
