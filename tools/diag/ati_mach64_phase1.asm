@@ -1436,14 +1436,14 @@ AtiE4_Reset_Then_Restore:
 AtiE4_Restore_State:
  mov esi,AtiE4MmioLinear
  test esi,esi
- jz short AtiE4_Restore_Vram
+ jz AtiE4_Restore_Vram
  mov ecx,ATIE4_STATE_COUNT
  call AtiE2_WaitFifo
  jnc short AtiE4_Restore_Fifo_Ok
  mov dword ptr AtiE4Result[116],6
  cmp dword ptr AtiE4Result[112],0
  je AtiE4_Reset_Then_Restore
- jmp short AtiE4_Restore_Vram
+ jmp AtiE4_Restore_Vram
 AtiE4_Restore_Fifo_Ok:
  mov ebx,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4StateSaved
@@ -1465,6 +1465,34 @@ AtiE4_Restore_State_Loop:
  mov eax,AtiE4TestSaved
  mov [esi+ATIE1_GEN_TEST_CNTL],eax
 AtiE4_Restore_No_Reset_State:
+ call AtiE2_WaitIdle
+ jnc short AtiE4_Restore_Idle_Ok
+ mov dword ptr AtiE4Result[116],7
+ jmp short AtiE4_Restore_Vram
+AtiE4_Restore_Idle_Ok:
+ mov ebx,OFFSET32 AtiE4StateOffsets
+ mov edi,OFFSET32 AtiE4StateSaved
+ mov ecx,ATIE4_STATE_COUNT
+ xor eax,eax
+AtiE4_Verify_State_Restore:
+ mov edx,[ebx]
+ mov ebp,[esi+edx]
+ cmp ebp,[edi]
+ je short AtiE4_Verify_State_Next
+ inc eax
+AtiE4_Verify_State_Next:
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Verify_State_Restore
+ mov edx,[esi+ATIE2_MEM_BUF_CNTL]
+ cmp edx,AtiE4Result[40]
+ je short AtiE4_Verify_State_Done
+ inc eax
+AtiE4_Verify_State_Done:
+ mov AtiE4Result[76],eax
+ test eax,eax
+ jnz short AtiE4_Restore_Vram
  or AtiE4Result[4],8000h
 
 AtiE4_Restore_Vram:
@@ -1478,7 +1506,7 @@ AtiE4_Restore_Vram:
  mov esi,OFFSET32 AtiE4Backup
  mov edi,AtiE4FbLinear
  mov ecx,1024
- xor eax,eax
+ mov eax,AtiE4Result[76]
 AtiE4_Check_Restore:
  mov edx,[esi]
  cmp edx,[edi]
