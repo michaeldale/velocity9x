@@ -25,6 +25,7 @@ ATIE1_GUI_STAT equ 0738h
 ATIE1_PATTERN equ 55555555h
 ATIE2_MAGIC equ 32495441h
 ATIE2_DIOC_FILL equ 2
+ATIE3_DIOC_COPY equ 3
 ATIE2_RESULT_DWORDS equ 20
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -44,6 +45,11 @@ ATIE2_DP_MIX equ 06d4h
 ATIE2_DP_SRC equ 06d8h
 ATIE2_CLR_CMP_CNTL equ 0708h
 ATIE2_MEM_BUF_CNTL equ 042ch
+ATIE3_MAGIC equ 33495441h
+ATIE3_RESULT_DWORDS equ 16
+ATIE3_SRC_OFF_PITCH equ 0580h
+ATIE3_SRC_Y_X equ 058ch
+ATIE3_SRC_WIDTH1 equ 0590h
 VxD_LOCKED_DATA_SEG
 AtiE1Result label dword
  dd ATIE1_MAGIC
@@ -57,6 +63,22 @@ AtiE2StateSaved dd 10 dup (0)
 AtiE2MmioLinear dd 0
 AtiE2FbLinear dd 0
 AtiE2Backup db 4096 dup (0)
+AtiE3Result label dword
+ dd ATIE3_MAGIC
+ dd 15 dup (0)
+AtiE3StateOffsets dd 06c8h,06d0h,0580h,0500h,06d8h
+                  dd 06d4h,0708h,0530h,06a8h,06b4h
+AtiE3StateSaved dd 10 dup (0)
+AtiE3Cases dd 20,16,16,12,3
+             dd 16,16,20,12,2
+             dd 20,12,16,16,1
+             dd 16,12,20,16,0
+AtiE3SourceX dd 0
+AtiE3SourceY dd 0
+AtiE3DestinationX dd 0
+AtiE3DestinationY dd 0
+AtiE3Direction dd 0
+AtiE3Expected db 4096 dup (0)
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -456,15 +478,349 @@ AtiE2_Done:
  popad
  ret
 EndProc AtiE2_Run
+
+; Seed the mapped scratch page and the CPU reference with a unique word per
+; pixel. Both buffers are exactly 64x32 RGB565 pixels at a 128-byte pitch.
+BeginProc AtiE3_Seed
+ pushad
+ mov esi,AtiE2FbLinear
+ mov edi,OFFSET32 AtiE3Expected
+ mov ecx,2048
+ mov ax,1000h
+ cld
+AtiE3_Seed_Loop:
+ mov [esi],ax
+ mov [edi],ax
+ add esi,2
+ add edi,2
+ inc ax
+ dec ecx
+ jnz short AtiE3_Seed_Loop
+ popad
+ ret
+EndProc AtiE3_Seed
+
+; Apply the current 16x8 case to the CPU reference with memmove ordering.
+BeginProc AtiE3_ReferenceCopy
+ pushad
+ mov esi,OFFSET32 AtiE3Expected
+ mov edi,esi
+ mov eax,AtiE3SourceY
+ shl eax,7
+ add esi,eax
+ mov eax,AtiE3SourceX
+ shl eax,1
+ add esi,eax
+ mov eax,AtiE3DestinationY
+ shl eax,7
+ add edi,eax
+ mov eax,AtiE3DestinationX
+ shl eax,1
+ add edi,eax
+ mov edx,AtiE3Direction
+ test edx,2
+ jnz short AtiE3_Reference_Y_Ready
+ add esi,7*128
+ add edi,7*128
+AtiE3_Reference_Y_Ready:
+ test edx,1
+ jnz short AtiE3_Reference_X_Ready
+ add esi,30
+ add edi,30
+ std
+AtiE3_Reference_X_Ready:
+ mov ebx,8
+AtiE3_Reference_Row:
+ mov ecx,16
+ rep movsw
+ test edx,1
+ jz short AtiE3_Reference_X_Negative
+ test edx,2
+ jz short AtiE3_Reference_X_Pos_Y_Neg
+ add esi,96
+ add edi,96
+ jmp short AtiE3_Reference_Next_Row
+AtiE3_Reference_X_Pos_Y_Neg:
+ sub esi,160
+ sub edi,160
+ jmp short AtiE3_Reference_Next_Row
+AtiE3_Reference_X_Negative:
+ test edx,2
+ jz short AtiE3_Reference_X_Neg_Y_Neg
+ add esi,160
+ add edi,160
+ jmp short AtiE3_Reference_Next_Row
+AtiE3_Reference_X_Neg_Y_Neg:
+ sub esi,96
+ sub edi,96
+AtiE3_Reference_Next_Row:
+ dec ebx
+ jnz short AtiE3_Reference_Row
+ cld
+ popad
+ ret
+EndProc AtiE3_ReferenceCopy
+
+BeginProc AtiE3_Run
+ pushad
+ mov AtiE3Result[4],0
+ mov edi,OFFSET32 AtiE3Result+8
+ mov ecx,ATIE3_RESULT_DWORDS-2
+ xor eax,eax
+ cld
+ rep stosd
+ mov AtiE2MmioLinear,0
+ mov AtiE2FbLinear,0
+
+ mov ebx,80000000h
+AtiE3_Pci_Next:
+ mov eax,ebx
+ call AtiE1_Pci_Read
+ cmp eax,4c4d1002h
+ je short AtiE3_Pci_Found
+ add ebx,0800h
+ cmp ebx,81000000h
+ jb short AtiE3_Pci_Next
+ jmp AtiE3_Done
+AtiE3_Pci_Found:
+ or AtiE3Result[4],1
+ mov eax,ebx
+ or eax,04h
+ call AtiE1_Pci_Read
+ mov AtiE3Result[8],eax
+ test eax,3
+ jz AtiE3_Done
+ or AtiE3Result[4],2
+ mov eax,ebx
+ or eax,08h
+ call AtiE1_Pci_Read
+ mov AtiE3Result[12],eax
+ cmp al,64h
+ jne AtiE3_Done
+ mov eax,ebx
+ or eax,10h
+ call AtiE1_Pci_Read
+ and eax,0fffffff0h
+ mov AtiE3Result[16],eax
+ cmp eax,0f5000000h
+ jne AtiE3_Done
+ mov eax,ebx
+ or eax,18h
+ call AtiE1_Pci_Read
+ and eax,0fffffff0h
+ mov AtiE3Result[20],eax
+ cmp eax,0f4100000h
+ jne AtiE3_Done
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE3_Done
+ test eax,eax
+ jz AtiE3_Done
+ mov AtiE2MmioLinear,eax
+ mov esi,eax
+ or AtiE3Result[4],4
+ mov eax,[esi+ATIE1_CONFIG_CHIP_ID]
+ mov AtiE3Result[24],eax
+ cmp eax,64004c4dh
+ jne AtiE3_Done
+ or AtiE3Result[4],8
+ mov eax,[esi+ATIE1_CONFIG_STAT0]
+ mov AtiE3Result[28],eax
+ and eax,7
+ cmp eax,6
+ jne AtiE3_Done
+ mov eax,[esi+ATIE1_GUI_STAT]
+ mov AtiE3Result[32],eax
+ test eax,1
+ jnz AtiE3_Done
+ or AtiE3Result[4],10h
+
+ mov eax,AtiE3Result[16]
+ add eax,ATIE2_TARGET_OFFSET
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE3_Done
+ test eax,eax
+ jz AtiE3_Done
+ mov AtiE2FbLinear,eax
+ or AtiE3Result[4],20h
+ mov esi,AtiE2MmioLinear
+ call AtiE2_WaitIdle
+ jc AtiE3_Done
+
+ mov ebx,OFFSET32 AtiE3StateOffsets
+ mov edi,OFFSET32 AtiE3StateSaved
+ mov ecx,10
+AtiE3_Save_State:
+ mov edx,[ebx]
+ mov eax,[esi+edx]
+ mov [edi],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE3_Save_State
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ mov AtiE3Result[36],eax
+ mov esi,AtiE2FbLinear
+ mov edi,OFFSET32 AtiE2Backup
+ mov ecx,1024
+ cld
+ rep movsd
+ or AtiE3Result[4],40h
+
+ mov ebp,OFFSET32 AtiE3Cases
+ xor ebx,ebx
+AtiE3_Case_Loop:
+ mov eax,[ebp]
+ mov AtiE3SourceX,eax
+ mov eax,[ebp+4]
+ mov AtiE3SourceY,eax
+ mov eax,[ebp+8]
+ mov AtiE3DestinationX,eax
+ mov eax,[ebp+12]
+ mov AtiE3DestinationY,eax
+ mov eax,[ebp+16]
+ mov AtiE3Direction,eax
+ call AtiE3_Seed
+ call AtiE3_ReferenceCopy
+
+ mov esi,AtiE2MmioLinear
+ mov ecx,14
+ call AtiE2_WaitFifo
+ jc AtiE3_Restore_State
+ mov dword ptr [esi+ATIE2_DP_WRITE_MASK],0ffffffffh
+ mov dword ptr [esi+ATIE2_DP_PIX_WIDTH],00040404h
+ mov dword ptr [esi+ATIE3_SRC_OFF_PITCH],02040000h
+ mov dword ptr [esi+ATIE2_DST_OFF_PITCH],02040000h
+ mov dword ptr [esi+ATIE2_DP_SRC],00000300h
+ mov dword ptr [esi+ATIE2_DP_MIX],00070000h
+ mov dword ptr [esi+ATIE2_CLR_CMP_CNTL],0
+ mov eax,AtiE3Direction
+ mov [esi+ATIE2_DST_CNTL],eax
+ mov dword ptr [esi+ATIE2_SC_LEFT_RIGHT],003f0000h
+ mov dword ptr [esi+ATIE2_SC_TOP_BOTTOM],001f0000h
+ mov eax,AtiE3SourceX
+ mov edx,AtiE3DestinationX
+ test dword ptr AtiE3Direction,1
+ jnz short AtiE3_X_Coords_Ready
+ add eax,15
+ add edx,15
+AtiE3_X_Coords_Ready:
+ shl eax,16
+ shl edx,16
+ mov ecx,AtiE3SourceY
+ mov edi,AtiE3DestinationY
+ test dword ptr AtiE3Direction,2
+ jnz short AtiE3_Y_Coords_Ready
+ add ecx,7
+ add edi,7
+AtiE3_Y_Coords_Ready:
+ or eax,ecx
+ or edx,edi
+ mov [esi+ATIE3_SRC_Y_X],eax
+ mov dword ptr [esi+ATIE3_SRC_WIDTH1],16
+ mov [esi+ATIE2_DST_Y_X],edx
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00100008h
+ inc dword ptr AtiE3Result[60]
+ call AtiE2_WaitIdle
+ jc AtiE3_Restore_State
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ or eax,00800000h
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+
+ mov esi,AtiE2FbLinear
+ mov edi,OFFSET32 AtiE3Expected
+ mov ecx,1024
+ xor eax,eax
+ cld
+AtiE3_Compare_Loop:
+ mov edx,[esi]
+ cmp edx,[edi]
+ je short AtiE3_Compare_Next
+ inc eax
+AtiE3_Compare_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE3_Compare_Loop
+ add AtiE3Result[40+ebx*4],eax
+ test eax,eax
+ jnz short AtiE3_Restore_State
+ mov eax,100h
+ mov ecx,ebx
+ shl eax,cl
+ or AtiE3Result[4],eax
+ add ebp,20
+ inc ebx
+ cmp ebx,4
+ jb AtiE3_Case_Loop
+ cmp dword ptr AtiE3Result[60],1000
+ jae short AtiE3_Restore_State
+ mov ebp,OFFSET32 AtiE3Cases
+ xor ebx,ebx
+ jmp AtiE3_Case_Loop
+
+AtiE3_Restore_State:
+ mov esi,AtiE2MmioLinear
+ mov ecx,10
+ call AtiE2_WaitFifo
+ jc short AtiE3_Restore_Vram
+ mov ebx,OFFSET32 AtiE3StateOffsets
+ mov edi,OFFSET32 AtiE3StateSaved
+ mov ecx,10
+AtiE3_Restore_State_Loop:
+ mov edx,[ebx]
+ mov eax,[edi]
+ mov [esi+edx],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE3_Restore_State_Loop
+ mov eax,AtiE3Result[36]
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+ or AtiE3Result[4],1000h
+AtiE3_Restore_Vram:
+ mov esi,OFFSET32 AtiE2Backup
+ mov edi,AtiE2FbLinear
+ test edi,edi
+ jz short AtiE3_Done
+ mov ecx,1024
+ cld
+ rep movsd
+ mov esi,OFFSET32 AtiE2Backup
+ mov edi,AtiE2FbLinear
+ mov ecx,1024
+ xor eax,eax
+AtiE3_Check_Restore:
+ mov edx,[esi]
+ cmp edx,[edi]
+ je short AtiE3_Check_Restore_Next
+ inc eax
+AtiE3_Check_Restore_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE3_Check_Restore
+ mov AtiE3Result[56],eax
+ test eax,eax
+ jnz short AtiE3_Done
+ or AtiE3Result[4],2000h
+AtiE3_Done:
+ popad
+ ret
+EndProc AtiE3_Run
+
 BeginProc AtiE1_W32_DeviceIoControl
  cmp ecx,DIOC_OPEN
- je short AtiE1_Dioc_Ok
+ je AtiE1_Dioc_Ok
  cmp ecx,DIOC_CLOSEHANDLE
- je short AtiE1_Dioc_Ok
+ je AtiE1_Dioc_Ok
  cmp ecx,ATIE1_DIOC_RUN
  je short AtiE1_Dioc_Run1
  cmp ecx,ATIE2_DIOC_FILL
  je AtiE1_Dioc_Run2
+ cmp ecx,ATIE3_DIOC_COPY
+ je AtiE1_Dioc_Run3
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -472,9 +828,9 @@ AtiE1_Dioc_Run1:
  call AtiE1_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE1_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE1Result
  mov ecx,ATIE1_RESULT_DWORDS
  cld
@@ -504,6 +860,26 @@ AtiE1_Dioc_Run2:
  jz short AtiE2_Dioc_Copy_Done
  mov dword ptr [eax],ATIE2_RESULT_DWORDS*4
 AtiE2_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run3:
+ pushad
+ mov ebp,esi
+ call AtiE3_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE3_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE3Result
+ mov ecx,ATIE3_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE3_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE3_RESULT_DWORDS*4
+AtiE3_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

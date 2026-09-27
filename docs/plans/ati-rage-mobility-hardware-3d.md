@@ -105,8 +105,24 @@ alternating RGB565 magenta and green with an exact two-slot reservation before
 each colour/trigger pair. It completed in the guest with zero target, guard,
 or restoration mismatches (`CRC32 5954CD4E`), leaving the display and remote
 agent stable. This closes the single-boot solid-fill stress check; the second
-cold-boot repetition and the remaining Phase 2 copy/clear/coherence operations
-are still outstanding.
+cold-boot repetition and the remaining Phase 2 clear/coherence operations are
+still outstanding.
+
+The shared core now also generates a complete 14-write RGB565 screen-copy
+stream, including source/destination offset-pitch, scissors, copy datapath,
+overlap direction, and the final trigger. Host tests cover all four direction
+encodings and both coordinate/VRAM bounds. Physical build
+`ati-p2-copy-20260927-a` matched a CPU memmove reference for four overlapping
+16x8 copies, one in each X/Y direction combination, with zero whole-page or
+restoration mismatches. Build `ati-p2-copy-20260927-b` then cycled those cases
+for 1,000 copies with a mandatory full-idle wait after every trigger. It
+completed in 689 ms with all mismatch counters at zero (`CRC32 8A544F11`) and
+left the display and remote agent stable. Evidence is in
+[`../probe/ati-rage-mobility-m-phase2-copy-2026-09-27/`](../probe/ati-rage-mobility-m-phase2-copy-2026-09-27/).
+
+The ATI manifest still publishes engine type `NONE`; neither proven primitive
+is public while the rest of the Phase 2 gate and cold-boot repetition remain
+open.
 
 ## Goal
 

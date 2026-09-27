@@ -190,6 +190,60 @@ static void test_fill_builder(void)
           V9X_STATUS_INSUFFICIENT_MEMORY);
 }
 
+static void test_copy_builder(void)
+{
+    struct v9x_m64_copy copy;
+    v9x_u32 offsets[V9X_M64_COPY_DWORDS];
+    v9x_u32 values[V9X_M64_COPY_DWORDS];
+    v9x_u32 written;
+    memset(&copy, 0, sizeof(copy));
+    copy.vram_bytes = 4ul * 1024ul * 1024ul;
+    copy.source_offset = copy.destination_offset = 0x00200000ul;
+    copy.source_pitch_bytes = copy.destination_pitch_bytes = 128ul;
+    copy.source_width = copy.destination_width = 64ul;
+    copy.source_height = copy.destination_height = 32ul;
+    copy.width = 16ul; copy.height = 8ul;
+
+    copy.source_left = 16ul; copy.source_top = 12ul;
+    copy.destination_left = 12ul; copy.destination_top = 8ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values,
+                             V9X_M64_COPY_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 14ul && values[7] == 3ul);
+    CHECK(values[10] == 0x0010000cul && values[12] == 0x000c0008ul);
+    CHECK(values[8] == 0x003f0000ul && values[9] == 0x001f0000ul);
+    CHECK(offsets[2] == V9X_M64_SRC_OFF_PITCH &&
+          values[2] == 0x02040000ul);
+    CHECK(values[1] == 0x00040404ul && values[4] == 0x00000300ul);
+
+    copy.destination_left = 20ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values, 14ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(values[7] == 2ul);
+    CHECK(values[10] == 0x001f000cul && values[12] == 0x00230008ul);
+
+    copy.destination_left = 12ul; copy.destination_top = 16ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values, 14ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(values[7] == 1ul);
+    CHECK(values[10] == 0x00100013ul && values[12] == 0x000c0017ul);
+
+    copy.destination_left = 20ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values, 14ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(values[7] == 0ul);
+    CHECK(values[10] == 0x001f0013ul && values[12] == 0x00230017ul);
+
+    copy.destination_left = 60ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values, 14ul, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    copy.destination_left = 20ul;
+    copy.destination_offset = 0x003ffff8ul;
+    CHECK(v9x_m64_build_copy(&copy, offsets, values, 14ul, &written) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
@@ -197,5 +251,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_bounds_and_timeout();
     test_barrier_and_reset_order();
     test_fill_builder();
+    test_copy_builder();
     return failures;
 }

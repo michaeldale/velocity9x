@@ -277,3 +277,116 @@ v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
     *written = V9X_M64_FILL_DWORDS;
     return V9X_STATUS_OK;
 }
+
+static v9x_status v9x_m64_validate_copy_surface(v9x_u32 vram_bytes,
+                                                v9x_u32 offset,
+                                                v9x_u32 pitch_bytes,
+                                                v9x_u32 surface_width,
+                                                v9x_u32 surface_height,
+                                                v9x_u32 left,
+                                                v9x_u32 top,
+                                                v9x_u32 width,
+                                                v9x_u32 height)
+{
+    v9x_u32 pitch_pixels;
+    v9x_u32 right;
+    v9x_u32 bottom;
+    v9x_u32 end;
+    if (vram_bytes == 0ul || (offset & 7ul) != 0ul ||
+        pitch_bytes == 0ul || (pitch_bytes & 15ul) != 0ul ||
+        surface_width == 0ul || surface_height == 0ul ||
+        width == 0ul || height == 0ul || left > 4095ul || top > 16383ul ||
+        width > 4096ul || height > 16384ul ||
+        left > 4096ul - width || top > 16384ul - height) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    right = left + width;
+    bottom = top + height;
+    pitch_pixels = pitch_bytes >> 1;
+    if ((pitch_pixels & 7ul) != 0ul || (pitch_pixels >> 3) > 1023ul ||
+        surface_width > pitch_pixels || right > surface_width ||
+        bottom > surface_height) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (bottom - 1ul > (0xfffffffful - offset) / pitch_bytes) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end = offset + (bottom - 1ul) * pitch_bytes;
+    if (right > (0xfffffffful - end) / 2ul) {
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    end += right * 2ul;
+    return end > vram_bytes ? V9X_STATUS_INSUFFICIENT_MEMORY : V9X_STATUS_OK;
+}
+
+v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 source_x;
+    v9x_u32 source_y;
+    v9x_u32 destination_x;
+    v9x_u32 destination_y;
+    v9x_u32 direction = V9X_M64_DST_X_DIR | V9X_M64_DST_Y_DIR;
+    v9x_status status;
+    if (written != 0) *written = 0ul;
+    if (copy == 0 || offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_COPY_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_m64_validate_copy_surface(
+        copy->vram_bytes, copy->source_offset, copy->source_pitch_bytes,
+        copy->source_width, copy->source_height, copy->source_left,
+        copy->source_top, copy->width, copy->height);
+    if (status != V9X_STATUS_OK) return status;
+    status = v9x_m64_validate_copy_surface(
+        copy->vram_bytes, copy->destination_offset,
+        copy->destination_pitch_bytes, copy->destination_width,
+        copy->destination_height, copy->destination_left,
+        copy->destination_top, copy->width, copy->height);
+    if (status != V9X_STATUS_OK) return status;
+
+    source_x = copy->source_left;
+    source_y = copy->source_top;
+    destination_x = copy->destination_left;
+    destination_y = copy->destination_top;
+    if (copy->source_offset == copy->destination_offset &&
+        copy->source_pitch_bytes == copy->destination_pitch_bytes) {
+        if (destination_x > source_x && destination_x < source_x + copy->width) {
+            direction &= ~V9X_M64_DST_X_DIR;
+            source_x += copy->width - 1ul;
+            destination_x += copy->width - 1ul;
+        }
+        if (destination_y > source_y && destination_y < source_y + copy->height) {
+            direction &= ~V9X_M64_DST_Y_DIR;
+            source_y += copy->height - 1ul;
+            destination_y += copy->height - 1ul;
+        }
+    }
+
+    offsets[0] = V9X_M64_DP_WRITE_MASK; values[0] = 0xfffffffful;
+    offsets[1] = V9X_M64_DP_PIX_WIDTH; values[1] = 0x00040404ul;
+    offsets[2] = V9X_M64_SRC_OFF_PITCH;
+    values[2] = (((copy->source_pitch_bytes >> 1) >> 3) << 22) |
+                (copy->source_offset >> 3);
+    offsets[3] = V9X_M64_DST_OFF_PITCH;
+    values[3] = (((copy->destination_pitch_bytes >> 1) >> 3) << 22) |
+                (copy->destination_offset >> 3);
+    offsets[4] = V9X_M64_DP_SRC; values[4] = 0x00000300ul;
+    offsets[5] = V9X_M64_DP_MIX; values[5] = 0x00070000ul;
+    offsets[6] = V9X_M64_CLR_CMP_CNTL; values[6] = 0ul;
+    offsets[7] = V9X_M64_DST_CNTL; values[7] = direction;
+    offsets[8] = V9X_M64_SC_LEFT_RIGHT;
+    values[8] = (copy->destination_width - 1ul) << 16;
+    offsets[9] = V9X_M64_SC_TOP_BOTTOM;
+    values[9] = (copy->destination_height - 1ul) << 16;
+    offsets[10] = V9X_M64_SRC_Y_X;
+    values[10] = (source_x << 16) | source_y;
+    offsets[11] = V9X_M64_SRC_WIDTH1; values[11] = copy->width;
+    offsets[12] = V9X_M64_DST_Y_X;
+    values[12] = (destination_x << 16) | destination_y;
+    offsets[13] = V9X_M64_DST_HEIGHT_WIDTH;
+    values[13] = (copy->width << 16) | copy->height;
+    *written = V9X_M64_COPY_DWORDS;
+    return V9X_STATUS_OK;
+}

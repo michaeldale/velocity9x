@@ -49,6 +49,24 @@ struct v9x_m64_fill {
     v9x_u32 color;
 };
 
+struct v9x_m64_copy {
+    v9x_u32 vram_bytes;
+    v9x_u32 source_offset;
+    v9x_u32 source_pitch_bytes;
+    v9x_u32 source_width;
+    v9x_u32 source_height;
+    v9x_u32 destination_offset;
+    v9x_u32 destination_pitch_bytes;
+    v9x_u32 destination_width;
+    v9x_u32 destination_height;
+    v9x_u32 source_left;
+    v9x_u32 source_top;
+    v9x_u32 destination_left;
+    v9x_u32 destination_top;
+    v9x_u32 width;
+    v9x_u32 height;
+};
+
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model);
@@ -66,6 +84,9 @@ v9x_status v9x_m64_cpu_read_barrier(struct v9x_m64_engine *engine,
 v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
                                 v9x_u32 spin_limit);
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 

@@ -24,3 +24,8 @@ $fillSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase2_fill_win32.c';$fil
 $fillBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $fillSource -Executable $fillExe -Object $fillObj -MapFile $fillMap -LinkFile $fillLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$fillObj",$fillSource) -LinkOptions @("option start='_V9xAtiMach64Phase2Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($fillBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI2D0.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 2 fill publisher: $fillExe"
+
+$copySource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase2_copy_win32.c';$copyExe=Join-Path $outputDir 'ATI2CPY.EXE';$copyObj=Join-Path $outputDir 'ati2cpy.obj';$copyMap=Join-Path $outputDir 'ati2cpy.map';$copyLnk=Join-Path $outputDir 'ati2cpy.lnk'
+$copyBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $copySource -Executable $copyExe -Object $copyObj -MapFile $copyMap -LinkFile $copyLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$copyObj",$copySource) -LinkOptions @("option start='_V9xAtiMach64Phase2CopyEntry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($copyBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI2CPY.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 2 copy publisher: $copyExe"
