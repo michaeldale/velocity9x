@@ -79,6 +79,9 @@ $sources = @(
     "src\display32\engines\eng_s3_trio.c",
     # The Gen3 blitter: DirectDraw fills and copies through the ring.
     "src\display32\engines\eng_i9xx.c",
+    # Phase 1 Mach64 status/wait/recovery wrapper; manifests still publish NONE.
+    "src\display32\engines\eng_mach64.c",
+    "src\chipsets\ati\mach64_engine.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",

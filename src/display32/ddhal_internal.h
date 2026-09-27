@@ -391,6 +391,7 @@ typedef struct v9x_engine32_ops {
 extern const V9X_ENGINE32_OPS v9x_engine32_virge;
 extern const V9X_ENGINE32_OPS v9x_engine32_trio;
 extern const V9X_ENGINE32_OPS v9x_engine32_i9xx;
+extern const V9X_ENGINE32_OPS v9x_engine32_mach64;
 
 /* Selects one of them from engine.engine_type, or null. In ddhal_core.c. */
 const V9X_ENGINE32_OPS *v9x_engine32(void);

@@ -441,6 +441,10 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
     atimm_write_decimal(output, "PanelWidth", (horz_panel + 1u) * 8u);
     atimm_write_decimal(output, "PanelHeight", vert_panel + 1u);
     atimm_write_decimal(output, "MemoryType", result.first[7] & 7u);
+    atimm_write(output, "MemoryTypeName",
+                (result.first[7] & 7u) == 6u
+                    ? "SGRAM-2to1-32bit"
+                    : "unexpected-for-this-board");
     atimm_write_decimal(output, "VramBytes", vram_bytes);
     atimm_write_decimal(output, "ActivePitchPixels", pitch_pixels);
     atimm_write_decimal(output, "ActiveOffsetBytes", target_offset);
@@ -457,7 +461,7 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
            (result.revision_class & 0xffu) == 0x64u &&
            (result.first[6] & 0xffffu) == 0x4c4du &&
            vram_bytes == 4u * 1024u * 1024u &&
-           (result.first[7] & 7u) == 4u &&
+           (result.first[7] & 7u) == 6u &&
            horz_panel == 127u && vert_panel == 767u &&
            result.lcd_horz_first == result.lcd_horz_second &&
            result.lcd_vert_first == result.lcd_vert_second &&
@@ -477,7 +481,7 @@ void WINAPI V9xAtiMmioFingerprintEntry(void)
             atimm_append_text(key, "chip-id;", sizeof(key));
         if (vram_bytes != 4u * 1024u * 1024u)
             atimm_append_text(key, "vram;", sizeof(key));
-        if ((result.first[7] & 7u) != 4u)
+        if ((result.first[7] & 7u) != 6u)
             atimm_append_text(key, "memory-type;", sizeof(key));
         if (horz_panel != 127u || vert_panel != 767u)
             atimm_append_text(key, "panel-size;", sizeof(key));

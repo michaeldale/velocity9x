@@ -1,0 +1,113 @@
+/* ATI Mach64 engine wrapper for the flat DirectDraw HAL.
+ *
+ * Phase 1 only: status validation, bounded idle, recovery and CPU-coherence
+ * plumbing. Fill and copy deliberately decline until their physical Phase 2
+ * scenes pass, and no ATI manifest publishes this engine type yet.
+ */
+#include "ddhal_internal.h"
+#include "velocity9x/ati_mach64_engine.h"
+
+#define V9X_M64_WAIT_SPINS 0x00200000ul
+
+static struct v9x_m64_engine v9x_m64;
+static DWORD v9x_m64_base = 0ul;
+
+static int v9x_m64_ready(void)
+{
+    return v9x_hal != 0 &&
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
+        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 &&
+        v9x_hal->engine.control_linear_base != 0ul &&
+        v9x_hal->engine.mapped_aperture_bytes >= 0x1000ul;
+}
+
+static v9x_u32 v9x_m64_hal_read(void *context, v9x_u32 offset)
+{
+    volatile DWORD *reg;
+    (void)context;
+    reg = (volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
+    return (v9x_u32)*reg;
+}
+
+static void v9x_m64_hal_write(void *context, v9x_u32 offset, v9x_u32 value)
+{
+    volatile DWORD *reg;
+    (void)context;
+    reg = (volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
+    *reg = (DWORD)value;
+}
+
+static int v9x_m64_bind_core(void)
+{
+    struct v9x_m64_io io;
+    if (!v9x_m64_ready()) return 0;
+    if (v9x_m64_base == v9x_hal->engine.control_linear_base) return 1;
+    io.context = 0;
+    io.read = v9x_m64_hal_read;
+    io.write = v9x_m64_hal_write;
+    if (v9x_m64_engine_init(&v9x_m64, &io, V9X_M64_FIFO_VTB_PLUS) !=
+        V9X_STATUS_OK) return 0;
+    v9x_m64_base = v9x_hal->engine.control_linear_base;
+    return 1;
+}
+
+static int v9x_m64_validate(void)
+{
+    DWORD chip;
+    if (!v9x_m64_bind_core()) return 0;
+    if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul)
+        return 1;
+    chip = (DWORD)v9x_m64_hal_read(0, V9X_M64_CONFIG_CHIP_ID);
+    if ((chip & 0xfffful) != 0x4c4dul) return 0;
+    v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
+    return 1;
+}
+
+static int v9x_m64_validated(void)
+{
+    return v9x_m64_ready() &&
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul;
+}
+
+static int v9x_m64_wait(int wait)
+{
+    v9x_status status;
+    if (!v9x_m64_validate()) return 0;
+    status = v9x_m64_wait_idle(&v9x_m64, wait ? V9X_M64_WAIT_SPINS : 0ul);
+    if (status == V9X_STATUS_OK) return 1;
+    if (!wait || status != V9X_STATUS_TIMEOUT) return 0;
+    return v9x_m64_reset_replay(&v9x_m64, V9X_M64_WAIT_SPINS) ==
+        V9X_STATUS_OK;
+}
+
+static int v9x_m64_can_blt(void)
+{
+    return v9x_m64_wait(0);
+}
+
+static int v9x_m64_no_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
+                           DWORD bytes_per_pixel, int wait)
+{
+    (void)data; (void)offset; (void)bytes_per_pixel; (void)wait;
+    return V9X_BLT_DECLINED;
+}
+
+static int v9x_m64_no_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
+                           DWORD destination_offset,
+                           DWORD bytes_per_pixel, int wait)
+{
+    (void)data; (void)source_offset; (void)destination_offset;
+    (void)bytes_per_pixel; (void)wait;
+    return V9X_BLT_DECLINED;
+}
+
+const V9X_ENGINE32_OPS v9x_engine32_mach64 = {
+    v9x_m64_ready,
+    v9x_m64_validate,
+    v9x_m64_validated,
+    v9x_m64_can_blt,
+    v9x_m64_wait,
+    v9x_m64_no_fill,
+    v9x_m64_no_copy
+};

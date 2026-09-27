@@ -33,6 +33,8 @@ function Get-V9xHostSourceNames {
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
+        # Shared Mach64 FIFO, wait, reset/replay and coherence policy.
+        'src\chipsets\ati\mach64_engine.c',
         'tests\host\test_pe_export.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
@@ -118,6 +120,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_blt.c',
         'tests\host\test_i9xx_arm.c',
         'tests\host\test_i9xx_3d.c',
+        'tests\host\test_mach64_engine.c',
         'tests\host\test_main.c'
     )
 

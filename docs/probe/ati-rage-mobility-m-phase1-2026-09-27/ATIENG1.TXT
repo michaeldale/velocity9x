@@ -1,0 +1,15 @@
+[AtiMach64Phase1]
+Build=ati-p1-20260927-a
+Operation=SCRATCH_REG0-write-read-restore
+Status=0x000000FF
+PciConfigAddress=0x80010000
+PciCommandStatus=0x02900087
+PciRevisionClass=0x03000064
+PciBar2=0xF4100000
+ConfigChipId=0x64004C4D
+ConfigStat0=0x00C00096
+GuiStatBefore=0x00800000
+ScratchBefore=0x04100400
+PatternRead=0x55555555
+ScratchAfter=0x04100400
+Result=PASS

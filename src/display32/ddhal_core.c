@@ -1457,6 +1457,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_trio;
     case V9X_DD_ENGINE_TYPE_INTEL_GEN3:
         return &v9x_engine32_i9xx;
+    case V9X_DD_ENGINE_TYPE_ATI_MACH64:
+        return &v9x_engine32_mach64;
     default:
         break;
     }

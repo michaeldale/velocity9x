@@ -2,10 +2,10 @@
 
 Date: 2026-09-27
 
-Status: stopped at the Phase 0 kill gate — the read-only fingerprint is
-register-valid, but the physical board reports memory-type code 6 rather than
-the audited code 4. No engine-write phase may start until that contradiction is
-resolved.
+Status: in progress — Phase 0 is register-valid. The measured memory-type code
+6 is accepted as authoritative for this Gateway board by explicit operator
+direction; Phase 1 may proceed using the SGRAM decode while keeping block write
+disabled until separately tested.
 
 ## Progress — 2026-09-27
 
@@ -44,10 +44,47 @@ byte-identical reports (`CRC32 448C104B`) with:
 
 The 264xT decode table identifies code 6 as 32-bit SGRAM at 2:1. That conflicts
 with the generic `ATI MACH64 SDRAM BIOS 4.216` string used to infer code 4.
-Per this plan's kill rule, the probe remains `REVIEW` and work stops before any
-engine, framebuffer, scratch, or PCI configuration write. The durable capture
-and run notes are in
+The initial probe correctly returned `REVIEW`. On explicit operator direction,
+the physical measurement now supersedes the BIOS-string inference for this
+subsystem and revision: the Phase 0 validator expects code 6. Engine work may
+continue, while block write remains disabled until it has its own bounded test.
+The durable initial capture and run notes are in
 [`../probe/ati-rage-mobility-m-phase0-2026-09-27/`](../probe/ati-rage-mobility-m-phase0-2026-09-27/).
+
+After the measured code 6 was accepted for this exact board, probe build
+`ati-p0-20260927-f` was deployed. The laptop's power-managed display first had
+to be woken; while asleep, PCI command/BAR reads returned their disabled
+values. In the active desktop state the probe returned `PASS` with BAR2
+`F4100000`, the same identity/panel/VRAM values, and
+`MemoryTypeName=SGRAM-2to1-32bit` (`CRC32 DC624323`).
+
+Phase 1 has started with a project-owned register subset and a host-testable
+shared engine core in `ati_mach64_engine.h` / `mach64_engine.c`. It currently
+provides:
+
+- pre-VTB `FIFO_STAT` population-count and VTB+ `GUI_STAT[25:16]` free-count
+  decoding;
+- a cached exact-batch reservation path with no status read between the
+  reserved writes;
+- bounded FIFO and idle waits with timeout/quarantine accounting;
+- the host-error mask/ack, bus flush, active-low GUI reset, full shadow replay,
+  and post-replay idle sequence;
+- the engine-to-CPU drain plus `INVALIDATE_RB_CACHE` boundary.
+
+Fake-MMIO host tests cover both FIFO models, batch accounting, timeout bounds,
+the no-inner-read transcript, reset ordering, replay, and cache invalidation.
+The code is not yet selected by the shipping HAL and publishes no capability.
+
+The Phase 1 core is compiled into `V9XHAL.DLL` behind the new
+`V9X_DD_ENGINE_TYPE_ATI_MACH64` selector. The ATI manifest still publishes
+`NONE`, and the fill/copy entries deliberately decline, so this adds no public
+acceleration yet.
+
+The first physical write diagnostic, `ati-p1-20260927-a`, then performed a
+strictly gated `SCRATCH_REG0` write/read/restore transaction. It ran twice with
+byte-identical `PASS` reports (`CRC32 6CF18CD0`): original `04100400`, pattern
+readback `55555555`, restored `04100400`. The durable report is in
+[`../probe/ati-rage-mobility-m-phase1-2026-09-27/`](../probe/ati-rage-mobility-m-phase1-2026-09-27/).
 
 ## Goal
 
@@ -230,11 +267,12 @@ verdict.
 surface agrees with the VBE mode; reads are neither all-zero nor all-ones; no
 register changes between the two quiet snapshots except identified live
 status; and the audit's three pre-flight values hold: `HORZ_PANEL_SIZE = 127`,
-`VERT_PANEL_SIZE = 767` and `CFG_MEM_TYPE_T = 4` (SDRAM).
+`VERT_PANEL_SIZE = 767` and `CFG_MEM_TYPE_T = 6` (32-bit SGRAM at 2:1 on the
+measured Gateway subsystem/revision).
 
-**Kill:** chip ID mismatch, an unexplained register-window alias, a memory
-decode contradicting the measured 4 MiB aperture, or a pre-flight value that
-disagrees with the audit.
+**Kill:** chip ID mismatch, an unexplained register-window alias, or a memory
+decode contradicting the measured 4 MiB aperture. The original BIOS-derived
+memory-type expectation was superseded by the repeatable live register value.
 
 The audit's `SCRATCH_REG0` write/read probe is deliberately not part of this
 phase, which writes nothing.

@@ -15,6 +15,8 @@ $required = @(
     "include\velocity9x\backend.h",
     "include\velocity9x\build.h",
     "include\velocity9x\engine_abi.h",
+    "include\velocity9x\ati_mach64_regs.h",
+    "include\velocity9x\ati_mach64_engine.h",
     "include\velocity9x\hw16.h",
     "include\velocity9x\vbe_cache.h",
     "include\velocity9x\mtrr.h",
@@ -70,6 +72,7 @@ $required = @(
     "scripts\build-dos-serial-smoke.ps1",
     "scripts\build-win32-serial-smoke.ps1",
     "scripts\build-vxd-loader-probe.ps1",
+    "scripts\build-ati-mach64-phase1.ps1",
     "scripts\capture-serial-pipe.ps1",
     "scripts\prepare-vm-probe.ps1",
     "src\common\backend_registry_table.inc",
@@ -81,6 +84,7 @@ $required = @(
     "src\chipsets\generic\vbe\vbe_backend.c",
     "src\chipsets\generic\vbe\vbe_hw16.c",
     "src\chipsets\ati\ati_backend.c",
+    "src\chipsets\ati\mach64_engine.c",
     "src\chipsets\ati\ati_hw16.c",
     "src\chipsets\ati\vt2\vt2_hw16.c",
     "src\chipsets\ati\mobility\mobility_hw16.c",
@@ -111,6 +115,7 @@ $required = @(
     "src\display32\engines\eng_s3_virge.c",
     "src\display32\engines\eng_s3_trio.c",
     "src\display32\engines\eng_i9xx.c",
+    "src\display32\engines\eng_mach64.c",
     "src\display32\d3d\d3d_internal.h",
     "src\display32\d3d\d3d_core.c",
     "src\display32\d3d\d3d_virge.c",
@@ -132,6 +137,7 @@ $required = @(
     "tests\host\test_i9xx_blt.c",
     "src\chipsets\intel\i9xx_arm.c",
     "tests\host\test_i9xx_arm.c",
+    "tests\host\test_mach64_engine.c",
     "src\display16\intel_ring16.c",
     "src\display16\intel_exec16.c",
     "src\display16\intel_boot16.c",
@@ -148,7 +154,9 @@ $required = @(
     "tools\diag\settings_propsheet.rc",
     "tools\diag\gdi_smoke_win32.c",
     "tools\diag\power_cycle_win32.c",
-    "tools\diag\palette_smoke_win32.c"
+    "tools\diag\palette_smoke_win32.c",
+    "tools\diag\ati_mach64_phase1.asm",
+    "tools\diag\ati_mach64_phase1_win32.c"
 )
 
 $missing = @($required | Where-Object {

@@ -127,6 +127,10 @@ unsigned int v9x_run_i9xx_arm_tests(void);
  * golden stream and decoder. */
 unsigned int v9x_run_i9xx_3d_tests(void);
 
+/* tests\host\test_mach64_engine.c: exact FIFO batches, bounded waits,
+ * reset/replay ordering and the CPU-read cache boundary. */
+unsigned int v9x_run_mach64_engine_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -1121,6 +1125,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_blt_tests();
     failures += v9x_run_i9xx_arm_tests();
     failures += v9x_run_i9xx_3d_tests();
+    failures += v9x_run_mach64_engine_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

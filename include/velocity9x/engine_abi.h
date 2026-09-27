@@ -30,6 +30,9 @@
  * rather than the plumbing around it.
  */
 #define V9X_DD_ENGINE_TYPE_INTEL_GEN3   3ul
+/* ATI Mach64 VTB+ engine. Declared for Phase 1 plumbing; ATI manifests remain
+ * NONE until the physical 2D/3D gates publish a measured capability set. */
+#define V9X_DD_ENGINE_TYPE_ATI_MACH64   4ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
