@@ -33,4 +33,13 @@ At 640x480x16, the same full-surface clear reproducibly left logical pixel
 `(0,0)` at sentinel `A55A`; all other target pixels, guards, and the restored
 page matched. `ATI2D0-640-ORIGIN-REVIEW.TXT` is retained as negative evidence.
 Changing the clear to right-to-left did not move or remove the mismatch, so no
-workaround is enabled and acceleration remains unpublished.
+direction-only workaround was enabled.
+
+Build `ati-p2-origin-repair-20260927-a` proved a bounded address-alias repair:
+after the main origin clear drains, a 1x1 fill addresses the same physical word
+from an aligned base 16 bytes earlier at logical `x=8`. The combined 1,002
+operation test then passed at 640x480x16, 800x600x16, and 1024x768x16 with zero
+target, guard, or restoration mismatches. The three reports were byte-identical
+(`CRC32 1D9A5A5C`); `ATI2D0-ORIGIN-REPAIR.TXT` retains that result. The shared
+builder emits the repair only for `(0,0)` fills with at least 16 bytes of
+leading VRAM and a scissor width that includes `x=8`; other cases are declined.

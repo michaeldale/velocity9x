@@ -278,6 +278,48 @@ v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_fill_origin_repair(
+                              const struct v9x_m64_fill *fill,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 check_offsets[V9X_M64_FILL_DWORDS];
+    v9x_u32 check_values[V9X_M64_FILL_DWORDS];
+    v9x_u32 checked = 0ul;
+    v9x_u32 pitch_pixels;
+    v9x_status status;
+    if (written != 0) *written = 0ul;
+    if (fill == 0 || offsets == 0 || values == 0 || written == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_m64_build_fill(fill, check_offsets, check_values,
+                                V9X_M64_FILL_DWORDS, &checked);
+    if (status != V9X_STATUS_OK) return status;
+    if (fill->left != 0ul || fill->top != 0ul) return V9X_STATUS_OK;
+    if (capacity < V9X_M64_FILL_REPAIR_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /*
+     * The physical LM leaves the first destination word unchanged when a
+     * solid fill begins at logical (0,0). Re-address that exact word from an
+     * aligned base 16 bytes earlier and x=8. The main fill's scissor includes
+     * x=8 only on surfaces at least nine pixels wide; otherwise decline.
+     */
+    if (fill->target_offset < 16ul || fill->target_width <= 8ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    pitch_pixels = fill->target_pitch_bytes >> 1;
+    offsets[0] = V9X_M64_DST_OFF_PITCH;
+    values[0] = ((pitch_pixels >> 3) << 22) |
+                ((fill->target_offset - 16ul) >> 3);
+    offsets[1] = V9X_M64_DST_Y_X;
+    values[1] = 0x00080000ul;
+    offsets[2] = V9X_M64_DST_HEIGHT_WIDTH;
+    values[2] = 0x00010001ul;
+    *written = V9X_M64_FILL_REPAIR_DWORDS;
+    return V9X_STATUS_OK;
+}
+
 static v9x_status v9x_m64_validate_copy_surface(v9x_u32 vram_bytes,
                                                 v9x_u32 offset,
                                                 v9x_u32 pitch_bytes,

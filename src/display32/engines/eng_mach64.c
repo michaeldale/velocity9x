@@ -92,7 +92,10 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     struct v9x_m64_fill fill;
     v9x_u32 offsets[V9X_M64_FILL_DWORDS];
     v9x_u32 values[V9X_M64_FILL_DWORDS];
+    v9x_u32 repair_offsets[V9X_M64_FILL_REPAIR_DWORDS];
+    v9x_u32 repair_values[V9X_M64_FILL_REPAIR_DWORDS];
     v9x_u32 written = 0ul;
+    v9x_u32 repair_written = 0ul;
     v9x_status status;
     if (!v9x_m64_validate() || data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 || bytes_per_pixel != 2ul ||
@@ -115,11 +118,25 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                             V9X_M64_FILL_DWORDS, &written) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
+    if (v9x_m64_build_fill_origin_repair(
+            &fill, repair_offsets, repair_values,
+            V9X_M64_FILL_REPAIR_DWORDS, &repair_written) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
     status = v9x_m64_emit_batch(&v9x_m64, offsets, values, written,
                                 wait ? V9X_M64_WAIT_SPINS : 0ul);
     if (status == V9X_STATUS_TIMEOUT) return V9X_BLT_BUSY;
     if (status != V9X_STATUS_OK) return V9X_BLT_DECLINED;
     v9x_present_note_submission();
+    if (repair_written != 0ul) {
+        status = v9x_m64_wait_idle(&v9x_m64, V9X_M64_WAIT_SPINS);
+        if (status != V9X_STATUS_OK) return V9X_BLT_DONE;
+        status = v9x_m64_emit_batch(&v9x_m64, repair_offsets, repair_values,
+                                    repair_written, V9X_M64_WAIT_SPINS);
+        if (status != V9X_STATUS_OK) return V9X_BLT_DONE;
+        status = v9x_m64_wait_idle(&v9x_m64, V9X_M64_WAIT_SPINS);
+        if (status != V9X_STATUS_OK) return V9X_BLT_DONE;
+    }
     return V9X_BLT_DONE;
 }
 

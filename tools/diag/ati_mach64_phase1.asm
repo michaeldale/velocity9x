@@ -448,9 +448,10 @@ AtiE2_Clear_Next:
  rep stosw
  mov ax,[edi-2]
  mov esi,AtiE2MmioLinear
- mov ecx,5
+ mov ecx,6
  call AtiE2_WaitFifo
  jc AtiE2_Restore_State
+ mov dword ptr [esi+ATIE2_DST_OFF_PITCH],02040000h
  mov dword ptr [esi+ATIE2_SC_LEFT_RIGHT],001f0000h
  mov dword ptr [esi+ATIE2_SC_TOP_BOTTOM],000f0000h
  cmp ebp,2
@@ -465,6 +466,17 @@ AtiE2_Clear_Color_Ready:
  mov dword ptr [esi+ATIE2_DST_Y_X],0
  mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00200010h
  inc dword ptr AtiE2Result[76]
+ call AtiE2_WaitIdle
+ jc AtiE2_Restore_State
+ ; Mobility-M leaves physical word zero untouched when a fill starts at
+ ; logical (0,0). Address that same word through an aligned base 16 bytes
+ ; earlier and x=8, then drain before verification.
+ mov ecx,3
+ call AtiE2_WaitFifo
+ jc AtiE2_Restore_State
+ mov dword ptr [esi+ATIE2_DST_OFF_PITCH],0203fffeh
+ mov dword ptr [esi+ATIE2_DST_Y_X],00080000h
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00010001h
  call AtiE2_WaitIdle
  jc AtiE2_Restore_State
  mov eax,[esi+ATIE2_MEM_BUF_CNTL]

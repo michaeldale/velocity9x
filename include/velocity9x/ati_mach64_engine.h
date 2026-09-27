@@ -86,6 +86,10 @@ v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_fill_origin_repair(
+                              const struct v9x_m64_fill *fill,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);

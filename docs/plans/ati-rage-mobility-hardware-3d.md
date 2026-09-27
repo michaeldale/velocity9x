@@ -159,6 +159,17 @@ offscreen `(8,8)` fill and all copy cases still pass. Acceleration therefore
 remains unpublished until the origin behavior has a proven workaround rather
 than being hidden by the otherwise successful mode matrix.
 
+Build `ati-p2-origin-repair-20260927-a` subsequently proved that workaround.
+After draining the main clear, a three-write 1x1 repair aliases physical pixel
+zero from an aligned base 16 bytes earlier at logical `x=8`. The complete
+1,002-operation fill/color-clear/Z16-clear diagnostic passed with zero target,
+guard, or restoration mismatches at 640x480x16, 800x600x16, and 1024x768x16;
+the three reports were byte-identical (`CRC32 1D9A5A5C`). The shared builder
+now generates this repair only when the surface has sufficient leading VRAM
+and a scissor width that contains `x=8`; unsupported origin surfaces decline
+to the CPU path. Phase 2's single-boot mode matrix is therefore complete.
+Cold-boot repetition remains the only Phase 2 publication gate.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

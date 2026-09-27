@@ -158,6 +158,8 @@ static void test_fill_builder(void)
     v9x_u32 offsets[V9X_M64_FILL_DWORDS];
     v9x_u32 values[V9X_M64_FILL_DWORDS];
     v9x_u32 written = 99ul;
+    v9x_u32 repair_offsets[V9X_M64_FILL_REPAIR_DWORDS];
+    v9x_u32 repair_values[V9X_M64_FILL_REPAIR_DWORDS];
     fill.vram_bytes = 4ul * 1024ul * 1024ul;
     fill.target_offset = 0x00200000ul;
     fill.target_pitch_bytes = 128ul;
@@ -188,6 +190,31 @@ static void test_fill_builder(void)
     fill.vram_bytes = 0x00200010ul;
     CHECK(v9x_m64_build_fill(&fill, offsets, values, 12ul, &written) ==
           V9X_STATUS_INSUFFICIENT_MEMORY);
+
+    fill.vram_bytes = 4ul * 1024ul * 1024ul;
+    fill.left = 0ul; fill.top = 0ul;
+    fill.right = 32ul; fill.bottom = 16ul;
+    CHECK(v9x_m64_build_fill_origin_repair(
+              &fill, repair_offsets, repair_values,
+              V9X_M64_FILL_REPAIR_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_FILL_REPAIR_DWORDS);
+    CHECK(repair_offsets[0] == V9X_M64_DST_OFF_PITCH &&
+          repair_values[0] == 0x0203fffeul);
+    CHECK(repair_offsets[1] == V9X_M64_DST_Y_X &&
+          repair_values[1] == 0x00080000ul);
+    CHECK(repair_offsets[2] == V9X_M64_DST_HEIGHT_WIDTH &&
+          repair_values[2] == 0x00010001ul);
+
+    fill.left = 1ul;
+    CHECK(v9x_m64_build_fill_origin_repair(
+              &fill, repair_offsets, repair_values,
+              V9X_M64_FILL_REPAIR_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == 0ul);
+    fill.left = 0ul; fill.target_offset = 8ul;
+    CHECK(v9x_m64_build_fill_origin_repair(
+              &fill, repair_offsets, repair_values,
+              V9X_M64_FILL_REPAIR_DWORDS, &written) ==
+          V9X_STATUS_UNSUPPORTED);
 }
 
 static void test_copy_builder(void)
