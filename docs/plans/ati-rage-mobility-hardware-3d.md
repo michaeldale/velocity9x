@@ -170,6 +170,22 @@ and a scissor width that contains `x=8`; unsupported origin surfaces decline
 to the CPU path. Phase 2's single-boot mode matrix is therefore complete.
 Cold-boot repetition remains the only Phase 2 publication gate.
 
+## Progress — 2026-09-28
+
+Phase 3 preparation now has project-owned, host-tested builders for the exact
+17-write RGB565 flat-triangle state and 19-write setup packet. The setup
+builder packs X/Y in the Rage 14.2 representation, emits S/T/W, Z, ARGB and
+the final `ONE_OVER_AREA` trigger, preserves its winding sign, and refuses a
+degenerate triangle. Trigger writes are excluded from reset shadow replay.
+
+Private diagnostic build `ATI3D0` is prepared but has not yet been run on the
+Gateway. It backs up and guards a 64x28 off-screen target, emits complete
+no-texture/no-depth/no-alpha/no-fog/no-dither state, draws one triangle,
+drains and invalidates before CPU inspection, records interior/exterior and
+physical guard assertions plus the complete intended write transcript and a
+BMP, then restores all persistent state and the full 4 KiB VRAM page. Public
+ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

@@ -29,3 +29,8 @@ $copySource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase2_copy_win32.c';$cop
 $copyBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $copySource -Executable $copyExe -Object $copyObj -MapFile $copyMap -LinkFile $copyLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$copyObj",$copySource) -LinkOptions @("option start='_V9xAtiMach64Phase2CopyEntry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($copyBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI2CPY.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 2 copy publisher: $copyExe"
+
+$triangleSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase3_triangle_win32.c';$triangleExe=Join-Path $outputDir 'ATI3D0.EXE';$triangleObj=Join-Path $outputDir 'ati3d0.obj';$triangleMap=Join-Path $outputDir 'ati3d0.map';$triangleLnk=Join-Path $outputDir 'ati3d0.lnk'
+$triangleBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $triangleExe -Object $triangleObj -MapFile $triangleMap -LinkFile $triangleLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$triangleObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($triangleBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI3D0.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 3 triangle publisher: $triangleExe"

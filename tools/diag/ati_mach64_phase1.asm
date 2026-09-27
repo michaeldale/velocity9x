@@ -21,11 +21,14 @@ ATIE1_STAT_RESTORED equ 00000080h
 ATIE1_SCRATCH_REG0 equ 0480h
 ATIE1_CONFIG_CHIP_ID equ 04e0h
 ATIE1_CONFIG_STAT0 equ 04e4h
+ATIE1_BUS_CNTL equ 04a0h
+ATIE1_GEN_TEST_CNTL equ 04d0h
 ATIE1_GUI_STAT equ 0738h
 ATIE1_PATTERN equ 55555555h
 ATIE2_MAGIC equ 32495441h
 ATIE2_DIOC_FILL equ 2
 ATIE3_DIOC_COPY equ 3
+ATIE4_DIOC_TRIANGLE equ 4
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -51,6 +54,15 @@ ATIE3_SRC_OFF_PITCH equ 0580h
 ATIE3_SRC_Y_X equ 058ch
 ATIE3_SRC_WIDTH1 equ 0590h
 ATIE3_CRTC_OFF_PITCH equ 0414h
+ATIE4_MAGIC equ 34495441h
+ATIE4_RESULT_DWORDS equ 1000
+ATIE4_TARGET_OFFSET equ 00200100h
+ATIE4_TARGET_PAGE equ 00200000h
+ATIE4_TARGET_COLOR equ 0ffff00ffh
+ATIE4_EXPECTED_565 equ 0f81fh
+ATIE4_SENTINEL equ 0a55ah
+ATIE4_STATE_COUNT equ 17
+ATIE4_SETUP_COUNT equ 19
 VxD_LOCKED_DATA_SEG
 AtiE1Result label dword
  dd ATIE1_MAGIC
@@ -84,6 +96,28 @@ AtiE3FrontLinear dd 0
 AtiE3FrontOffPitch dd 0
 AtiE3FrontPitchPixels dd 0
 AtiE3FrontBackup db 4096 dup (0)
+AtiE4Result label dword
+ dd ATIE4_MAGIC
+ dd 999 dup (0)
+AtiE4StateOffsets dd 06d4h,06d8h,0708h,0730h,06a8h,06b4h
+                   dd 0500h,0548h,054ch,0550h,05fch,06c4h
+                   dd 06c8h,06d0h,0304h,0770h,0774h
+AtiE4StateValues dd 00070007h,00000505h,0,3,003f0000h,001b0000h
+                  dd 02040020h,02040020h,0,0,000100c1h,0
+                  dd 0ffffffffh,40040444h,00000018h,0,0
+AtiE4SetupOffsets dd 0240h,0244h,0248h,0250h,0254h,0258h
+                   dd 0260h,0264h,0268h,0270h,0274h,0278h
+                   dd 0280h,0284h,0288h,0290h,0294h,0298h,029ch
+AtiE4SetupValues dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200018h
+                  dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00a00018h
+                  dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200058h
+                  dd 03b000000h
+AtiE4StateSaved dd ATIE4_STATE_COUNT dup (0)
+AtiE4MmioLinear dd 0
+AtiE4FbLinear dd 0
+AtiE4BusSaved dd 0
+AtiE4TestSaved dd 0
+AtiE4Backup db 4096 dup (0)
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1048,6 +1082,422 @@ AtiE3_Done:
  ret
 EndProc AtiE3_Run
 
+; One guarded, off-screen, opaque RGB565 triangle.  Every persistent state
+; register is saved and restored; ONE_OVER_AREA is the only draw trigger.
+BeginProc AtiE4_Run
+ pushad
+ mov AtiE4Result[4],0
+ mov edi,OFFSET32 AtiE4Result+8
+ mov ecx,ATIE4_RESULT_DWORDS-2
+ xor eax,eax
+ cld
+ rep stosd
+ mov AtiE4MmioLinear,0
+ mov AtiE4FbLinear,0
+ mov dword ptr AtiE4Result[48],ATIE4_TARGET_OFFSET
+ mov dword ptr AtiE4Result[52],02040020h
+ mov dword ptr AtiE4Result[56],ATIE4_TARGET_COLOR
+ mov dword ptr AtiE4Result[60],03b000000h
+ mov dword ptr AtiE4Result[84],0ffffffffh
+ mov dword ptr AtiE4Result[88],0ffffffffh
+ mov dword ptr AtiE4Result[104],ATIE4_STATE_COUNT
+ mov dword ptr AtiE4Result[108],ATIE4_SETUP_COUNT
+
+ ; Publish the intended transcript before the first engine write.
+ mov esi,OFFSET32 AtiE4StateOffsets
+ mov edi,OFFSET32 AtiE4Result+128
+ mov ecx,ATIE4_STATE_COUNT
+ rep movsd
+ mov esi,OFFSET32 AtiE4SetupOffsets
+ mov ecx,ATIE4_SETUP_COUNT
+ rep movsd
+ mov esi,OFFSET32 AtiE4StateValues
+ mov edi,OFFSET32 AtiE4Result+272
+ mov ecx,ATIE4_STATE_COUNT
+ rep movsd
+ mov esi,OFFSET32 AtiE4SetupValues
+ mov ecx,ATIE4_SETUP_COUNT
+ rep movsd
+
+ mov ebx,80000000h
+AtiE4_Pci_Next:
+ mov eax,ebx
+ call AtiE1_Pci_Read
+ cmp eax,4c4d1002h
+ je short AtiE4_Pci_Found
+ add ebx,0800h
+ cmp ebx,81000000h
+ jb short AtiE4_Pci_Next
+ jmp AtiE4_Done
+AtiE4_Pci_Found:
+ or AtiE4Result[4],1
+ mov eax,ebx
+ or eax,04h
+ call AtiE1_Pci_Read
+ mov AtiE4Result[8],eax
+ test eax,3
+ jz AtiE4_Done
+ or AtiE4Result[4],2
+ mov eax,ebx
+ or eax,08h
+ call AtiE1_Pci_Read
+ mov AtiE4Result[12],eax
+ cmp al,64h
+ jne AtiE4_Done
+ mov eax,ebx
+ or eax,10h
+ call AtiE1_Pci_Read
+ and eax,0fffffff0h
+ mov AtiE4Result[16],eax
+ cmp eax,0f5000000h
+ jne AtiE4_Done
+ mov eax,ebx
+ or eax,18h
+ call AtiE1_Pci_Read
+ and eax,0fffffff0h
+ mov AtiE4Result[20],eax
+ cmp eax,0f4100000h
+ jne AtiE4_Done
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE4_Done
+ test eax,eax
+ jz AtiE4_Done
+ mov AtiE4MmioLinear,eax
+ mov esi,eax
+ or AtiE4Result[4],4
+ mov eax,[esi+ATIE1_CONFIG_CHIP_ID]
+ mov AtiE4Result[24],eax
+ cmp eax,64004c4dh
+ jne AtiE4_Done
+ or AtiE4Result[4],8
+ mov eax,[esi+ATIE1_CONFIG_STAT0]
+ mov AtiE4Result[28],eax
+ and eax,7
+ cmp eax,6
+ jne AtiE4_Done
+ mov eax,[esi+ATIE1_GUI_STAT]
+ mov AtiE4Result[32],eax
+ mov AtiE4Result[100],eax
+ test eax,1
+ jnz AtiE4_Done
+ or AtiE4Result[4],10h
+
+ mov eax,AtiE4Result[16]
+ add eax,ATIE4_TARGET_PAGE
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE4_Done
+ test eax,eax
+ jz AtiE4_Done
+ mov AtiE4FbLinear,eax
+ or AtiE4Result[4],20h
+ mov esi,AtiE4MmioLinear
+ call AtiE2_WaitIdle
+ jc AtiE4_Done
+
+ mov ebx,OFFSET32 AtiE4StateOffsets
+ mov edi,OFFSET32 AtiE4StateSaved
+ mov ecx,ATIE4_STATE_COUNT
+AtiE4_Save_State:
+ mov edx,[ebx]
+ mov eax,[esi+edx]
+ mov [edi],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Save_State
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ mov AtiE4Result[40],eax
+ mov eax,[esi+ATIE1_BUS_CNTL]
+ mov AtiE4BusSaved,eax
+ mov eax,[esi+ATIE1_GEN_TEST_CNTL]
+ mov AtiE4TestSaved,eax
+ or AtiE4Result[4],80h
+
+ mov esi,AtiE4FbLinear
+ mov edi,OFFSET32 AtiE4Backup
+ mov ecx,1024
+ cld
+ rep movsd
+ mov edi,AtiE4FbLinear
+ mov ax,ATIE4_SENTINEL
+ mov ecx,2048
+ rep stosw
+ mov ax,[edi-2]
+ or AtiE4Result[4],40h
+
+ ; Emit all complete state in one reserved, status-read-free batch.
+ mov esi,AtiE4MmioLinear
+ mov ecx,ATIE4_STATE_COUNT
+ call AtiE2_WaitFifo
+ jnc short AtiE4_State_Fifo_Ok
+ mov dword ptr AtiE4Result[116],1
+ jmp AtiE4_Reset_Then_Restore
+AtiE4_State_Fifo_Ok:
+ mov ebx,OFFSET32 AtiE4StateOffsets
+ mov edi,OFFSET32 AtiE4StateValues
+ mov ecx,ATIE4_STATE_COUNT
+AtiE4_Emit_State:
+ mov edx,[ebx]
+ mov eax,[edi]
+ mov [esi+edx],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Emit_State
+ or AtiE4Result[4],100h
+
+ ; Three exact setup batches: vertices 1, 2, then vertex 3 plus trigger.
+ mov ebx,OFFSET32 AtiE4SetupOffsets
+ mov edi,OFFSET32 AtiE4SetupValues
+ mov ebp,2
+AtiE4_Emit_Vertex_Batch:
+ mov ecx,6
+ call AtiE2_WaitFifo
+ jnc short AtiE4_Vertex_Fifo_Ok
+ mov eax,3
+ sub eax,ebp
+ mov AtiE4Result[116],eax
+ jmp AtiE4_Reset_Then_Restore
+AtiE4_Vertex_Fifo_Ok:
+ mov ecx,6
+AtiE4_Emit_Vertex:
+ mov edx,[ebx]
+ mov eax,[edi]
+ mov [esi+edx],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Emit_Vertex
+ dec ebp
+ jnz short AtiE4_Emit_Vertex_Batch
+ mov ecx,7
+ call AtiE2_WaitFifo
+ jnc short AtiE4_Final_Fifo_Ok
+ mov dword ptr AtiE4Result[116],4
+ jmp AtiE4_Reset_Then_Restore
+AtiE4_Final_Fifo_Ok:
+ mov ecx,7
+AtiE4_Emit_Final:
+ mov edx,[ebx]
+ mov eax,[edi]
+ mov [esi+edx],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Emit_Final
+ or AtiE4Result[4],200h
+ call AtiE2_WaitIdle
+ jnc short AtiE4_Idle_Ok
+ mov dword ptr AtiE4Result[116],5
+ jmp AtiE4_Reset_Then_Restore
+AtiE4_Idle_Ok:
+ mov eax,[esi+ATIE1_GUI_STAT]
+ mov AtiE4Result[36],eax
+ or AtiE4Result[4],400h
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ or eax,00800000h
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ mov AtiE4Result[44],eax
+ or AtiE4Result[4],800h
+
+ ; Interior samples are deliberately far from all three edges.
+ mov esi,AtiE4FbLinear
+ add esi,100h
+ mov ax,[esi+0518h]
+ cmp ax,ATIE4_EXPECTED_565
+ je short AtiE4_Interior_2
+ inc dword ptr AtiE4Result[64]
+ movzx eax,ax
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],ATIE4_EXPECTED_565
+AtiE4_Interior_2:
+ mov ax,[esi+0520h]
+ cmp ax,ATIE4_EXPECTED_565
+ je short AtiE4_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE4_Interior_3:
+ mov ax,[esi+0718h]
+ cmp ax,ATIE4_EXPECTED_565
+ je short AtiE4_Interior_Done
+ inc dword ptr AtiE4Result[64]
+AtiE4_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne short AtiE4_Exterior
+ or AtiE4Result[4],1000h
+
+AtiE4_Exterior:
+ mov ax,[esi+0560h]
+ cmp ax,ATIE4_SENTINEL
+ je short AtiE4_Exterior_2
+ inc dword ptr AtiE4Result[68]
+AtiE4_Exterior_2:
+ mov ax,[esi+0960h]
+ cmp ax,ATIE4_SENTINEL
+ je short AtiE4_Exterior_3
+ inc dword ptr AtiE4Result[68]
+AtiE4_Exterior_3:
+ mov ax,[esi+0208h]
+ cmp ax,ATIE4_SENTINEL
+ je short AtiE4_Exterior_Done
+ inc dword ptr AtiE4Result[68]
+AtiE4_Exterior_Done:
+ cmp dword ptr AtiE4Result[68],0
+ jne short AtiE4_Guards
+ or AtiE4Result[4],2000h
+
+ ; The first and last 256 bytes surround the target surface physically.
+AtiE4_Guards:
+ mov esi,AtiE4FbLinear
+ mov ecx,128
+AtiE4_Guard_Before:
+ cmp word ptr [esi],ATIE4_SENTINEL
+ je short AtiE4_Guard_Before_Next
+ inc dword ptr AtiE4Result[72]
+AtiE4_Guard_Before_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE4_Guard_Before
+ mov esi,AtiE4FbLinear
+ add esi,0f00h
+ mov ecx,128
+AtiE4_Guard_After:
+ cmp word ptr [esi],ATIE4_SENTINEL
+ je short AtiE4_Guard_After_Next
+ inc dword ptr AtiE4Result[72]
+AtiE4_Guard_After_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE4_Guard_After
+ cmp dword ptr AtiE4Result[72],0
+ jne short AtiE4_Count_Changed
+ or AtiE4Result[4],4000h
+
+ ; Record changed-pixel count and its bounding box without assuming edges.
+AtiE4_Count_Changed:
+ mov esi,AtiE4FbLinear
+ add esi,100h
+ xor edx,edx
+AtiE4_Changed_Row:
+ xor ecx,ecx
+AtiE4_Changed_Col:
+ cmp word ptr [esi],ATIE4_SENTINEL
+ je short AtiE4_Changed_Next
+ inc dword ptr AtiE4Result[80]
+ cmp ecx,AtiE4Result[84]
+ jae short AtiE4_Min_X_Done
+ mov AtiE4Result[84],ecx
+AtiE4_Min_X_Done:
+ cmp edx,AtiE4Result[88]
+ jae short AtiE4_Min_Y_Done
+ mov AtiE4Result[88],edx
+AtiE4_Min_Y_Done:
+ cmp ecx,AtiE4Result[92]
+ jbe short AtiE4_Max_X_Done
+ mov AtiE4Result[92],ecx
+AtiE4_Max_X_Done:
+ cmp edx,AtiE4Result[96]
+ jbe short AtiE4_Changed_Next
+ mov AtiE4Result[96],edx
+AtiE4_Changed_Next:
+ add esi,2
+ inc ecx
+ cmp ecx,64
+ jb short AtiE4_Changed_Col
+ inc edx
+ cmp edx,28
+ jb short AtiE4_Changed_Row
+
+ ; Preserve the 64x28 target image in the returned result before restoration.
+ mov esi,AtiE4FbLinear
+ add esi,100h
+ mov edi,OFFSET32 AtiE4Result+416
+ mov ecx,896
+ cld
+ rep movsd
+
+AtiE4_Reset_Then_Restore:
+ cmp dword ptr AtiE4Result[112],0
+ jne AtiE4_Restore_Vram
+ mov esi,AtiE4MmioLinear
+ mov eax,AtiE4BusSaved
+ and eax,0ffbfffffh
+ or eax,00800004h
+ mov [esi+ATIE1_BUS_CNTL],eax
+ mov eax,AtiE4TestSaved
+ and eax,0fffffeffh
+ mov [esi+ATIE1_GEN_TEST_CNTL],eax
+ or eax,00000100h
+ mov [esi+ATIE1_GEN_TEST_CNTL],eax
+ inc dword ptr AtiE4Result[112]
+
+AtiE4_Restore_State:
+ mov esi,AtiE4MmioLinear
+ test esi,esi
+ jz short AtiE4_Restore_Vram
+ mov ecx,ATIE4_STATE_COUNT
+ call AtiE2_WaitFifo
+ jnc short AtiE4_Restore_Fifo_Ok
+ mov dword ptr AtiE4Result[116],6
+ cmp dword ptr AtiE4Result[112],0
+ je AtiE4_Reset_Then_Restore
+ jmp short AtiE4_Restore_Vram
+AtiE4_Restore_Fifo_Ok:
+ mov ebx,OFFSET32 AtiE4StateOffsets
+ mov edi,OFFSET32 AtiE4StateSaved
+ mov ecx,ATIE4_STATE_COUNT
+AtiE4_Restore_State_Loop:
+ mov edx,[ebx]
+ mov eax,[edi]
+ mov [esi+edx],eax
+ add ebx,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Restore_State_Loop
+ mov eax,AtiE4Result[40]
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+ cmp dword ptr AtiE4Result[112],0
+ je short AtiE4_Restore_No_Reset_State
+ mov eax,AtiE4BusSaved
+ mov [esi+ATIE1_BUS_CNTL],eax
+ mov eax,AtiE4TestSaved
+ mov [esi+ATIE1_GEN_TEST_CNTL],eax
+AtiE4_Restore_No_Reset_State:
+ or AtiE4Result[4],8000h
+
+AtiE4_Restore_Vram:
+ mov edi,AtiE4FbLinear
+ test edi,edi
+ jz short AtiE4_Done
+ mov esi,OFFSET32 AtiE4Backup
+ mov ecx,1024
+ cld
+ rep movsd
+ mov esi,OFFSET32 AtiE4Backup
+ mov edi,AtiE4FbLinear
+ mov ecx,1024
+ xor eax,eax
+AtiE4_Check_Restore:
+ mov edx,[esi]
+ cmp edx,[edi]
+ je short AtiE4_Check_Restore_Next
+ inc eax
+AtiE4_Check_Restore_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE4_Check_Restore
+ mov AtiE4Result[76],eax
+ test eax,eax
+ jnz short AtiE4_Done
+ or AtiE4Result[4],10000h
+AtiE4_Done:
+ popad
+ ret
+EndProc AtiE4_Run
+
 BeginProc AtiE1_W32_DeviceIoControl
  cmp ecx,DIOC_OPEN
  je AtiE1_Dioc_Ok
@@ -1059,6 +1509,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run2
  cmp ecx,ATIE3_DIOC_COPY
  je AtiE1_Dioc_Run3
+ cmp ecx,ATIE4_DIOC_TRIANGLE
+ je AtiE1_Dioc_Run4
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -1079,16 +1531,16 @@ AtiE1_Dioc_Run1:
  mov dword ptr [eax],ATIE1_RESULT_DWORDS*4
 AtiE1_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run2:
  pushad
  mov ebp,esi
  call AtiE2_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE2_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE2Result
  mov ecx,ATIE2_RESULT_DWORDS
  cld
@@ -1118,6 +1570,26 @@ AtiE1_Dioc_Run3:
  jz short AtiE3_Dioc_Copy_Done
  mov dword ptr [eax],ATIE3_RESULT_DWORDS*4
 AtiE3_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run4:
+ pushad
+ mov ebp,esi
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE4_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE4_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

@@ -356,7 +356,7 @@ static void test_flat_state_builder(void)
     CHECK(offsets[8] == V9X_M64_Z_CNTL && values[8] == 0ul);
     CHECK(offsets[9] == V9X_M64_ALPHA_TST_CNTL && values[9] == 0ul);
     CHECK(offsets[10] == V9X_M64_SCALE_3D_CNTL &&
-          values[10] == 0x000100c0ul);
+          values[10] == 0x000100c1ul);
     CHECK(offsets[13] == V9X_M64_DP_PIX_WIDTH &&
           values[13] == 0x40040444ul);
     CHECK(offsets[14] == V9X_M64_SETUP_CNTL && values[14] == 0x18ul);
@@ -375,6 +375,46 @@ static void test_flat_state_builder(void)
               &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
 }
 
+static void test_phase3_triangle_golden(void)
+{
+    struct v9x_m64_flat_state state;
+    struct v9x_m64_flat_triangle triangle;
+    v9x_u32 state_offsets[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 state_values[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 setup_offsets[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 setup_values[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 written;
+    state.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.target_offset = 0x00200100ul;
+    state.target_pitch_bytes = 128ul;
+    state.target_width = 64ul;
+    state.target_height = 28ul;
+    state.scissor_left = 0ul; state.scissor_top = 0ul;
+    state.scissor_right = 64ul; state.scissor_bottom = 28ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, state_offsets, state_values,
+              V9X_M64_FLAT_STATE_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == 17ul);
+    CHECK(state_values[4] == 0x003f0000ul);
+    CHECK(state_values[5] == 0x001b0000ul);
+    CHECK(state_values[6] == 0x02040020ul);
+    CHECK(state_values[7] == 0x02040020ul);
+
+    triangle.vertex[0].x = 8ul; triangle.vertex[0].y = 6ul;
+    triangle.vertex[1].x = 40ul; triangle.vertex[1].y = 6ul;
+    triangle.vertex[2].x = 8ul; triangle.vertex[2].y = 22ul;
+    triangle.color = 0xffff00fful;
+    CHECK(v9x_m64_build_flat_triangle(
+              &triangle, setup_offsets, setup_values,
+              V9X_M64_FLAT_TRIANGLE_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+    CHECK(setup_values[5] == 0x00200018ul);
+    CHECK(setup_values[11] == 0x00a00018ul);
+    CHECK(setup_values[17] == 0x00200058ul);
+    CHECK(setup_offsets[18] == 0x0000029cul);
+    CHECK(setup_values[18] == 0x3b000000ul);
+}
+
 unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
@@ -385,5 +425,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_copy_builder();
     test_flat_triangle_builder();
     test_flat_state_builder();
+    test_phase3_triangle_golden();
     return failures;
 }

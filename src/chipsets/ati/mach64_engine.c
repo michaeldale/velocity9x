@@ -573,7 +573,7 @@ v9x_status v9x_m64_build_flat_state(
     offsets[8] = V9X_M64_Z_CNTL; values[8] = 0ul;
     offsets[9] = V9X_M64_ALPHA_TST_CNTL; values[9] = 0ul;
     /* Shade, source factor ONE, destination factor ZERO; all extras off. */
-    offsets[10] = V9X_M64_SCALE_3D_CNTL; values[10] = 0x000100c0ul;
+    offsets[10] = V9X_M64_SCALE_3D_CNTL; values[10] = 0x000100c1ul;
     offsets[11] = V9X_M64_DP_FRGD_CLR; values[11] = 0ul;
     offsets[12] = V9X_M64_DP_WRITE_MASK; values[12] = 0xfffffffful;
     /* RGB565 in destination, composite, source, host and scale fields. */
