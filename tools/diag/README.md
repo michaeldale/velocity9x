@@ -17,6 +17,13 @@ if the question comes back.
 | `surface_step_win32.c` | same |
 | `trio_ctx_probe.c` | [2026-08-27 GDI accel corrupts display on physical Trio64](../../docs/issues/2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md) |
 
+`ati_mmio_fingerprint.asm` and `ati_mmio_fingerprint_win32.c` form the
+standalone Phase 0 Rage Mobility-M fingerprint. Build them with
+`scripts/build-ati-mmio-fingerprint.ps1`; run `ATIMM.EXE` beside `ATIMM.VXD`.
+It publishes `C:\V9XDIAG\ATIMM.TXT` and performs no engine or PCI writes. The
+LCD index selector is the sole MMIO write and is restored around each indexed
+panel read.
+
 Removed on 2026-09-12, recoverable from git history: `dos_box_test_win32.c`,
 `io_trace_win32.c`, `matrox_mmio_query.asm` and their six build scripts. No
 document referenced them.

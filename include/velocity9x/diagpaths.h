@@ -76,6 +76,7 @@
 #define V9X_DIAG_DOSBOX_INI  V9X_DIAG_PATH("V9XDOSBX.INI")  /* dos_box_test_win32.c */
 #define V9X_DIAG_MGA_INI     V9X_DIAG_PATH("V9XMGA.INI")    /* matrox_inventory / mmio_query */
 #define V9X_DIAG_MGAMM_INI   V9X_DIAG_PATH("V9XMGAMM.INI")  /* matrox_mmio_query_win32.c */
+#define V9X_DIAG_ATIMM_TXT   V9X_DIAG_PATH("ATIMM.TXT")     /* ati_mmio_fingerprint_win32.c */
 #define V9X_DIAG_GDI_INI     V9X_DIAG_PATH("V9XGDI.INI")    /* gdi_smoke_win32.c */
 #define V9X_DIAG_TEXT_INI    V9X_DIAG_PATH("V9XTEXT.INI")   /* gdi_smoke_win32.c /textdump */
 #define V9X_DIAG_IOTR_INI    V9X_DIAG_PATH("V9XIOTR.INI")   /* io_trace_win32.c */
