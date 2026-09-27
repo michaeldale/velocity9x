@@ -67,6 +67,16 @@ struct v9x_m64_copy {
     v9x_u32 height;
 };
 
+struct v9x_m64_point {
+    v9x_u32 x;
+    v9x_u32 y;
+};
+
+struct v9x_m64_flat_triangle {
+    struct v9x_m64_point vertex[3];
+    v9x_u32 color;
+};
+
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model);
@@ -91,6 +101,10 @@ v9x_status v9x_m64_build_fill_origin_repair(
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_flat_triangle(
+                              const struct v9x_m64_flat_triangle *triangle,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 

@@ -26,6 +26,27 @@
 #define V9X_M64_BUS_CNTL              0x000004a0ul
 #define V9X_M64_GEN_TEST_CNTL         0x000004d0ul
 #define V9X_M64_CONFIG_CHIP_ID        0x000004e0ul
+/* BAR2-relative block-1 setup registers occupy the lower 1 KiB. */
+#define V9X_M64_VERTEX_1_S            0x00000240ul
+#define V9X_M64_VERTEX_1_T            0x00000244ul
+#define V9X_M64_VERTEX_1_W            0x00000248ul
+#define V9X_M64_VERTEX_1_Z            0x00000250ul
+#define V9X_M64_VERTEX_1_ARGB         0x00000254ul
+#define V9X_M64_VERTEX_1_X_Y          0x00000258ul
+#define V9X_M64_ONE_OVER_AREA         0x0000029cul
+#define V9X_M64_VERTEX_2_S            0x00000260ul
+#define V9X_M64_VERTEX_2_T            0x00000264ul
+#define V9X_M64_VERTEX_2_W            0x00000268ul
+#define V9X_M64_VERTEX_2_Z            0x00000270ul
+#define V9X_M64_VERTEX_2_ARGB         0x00000274ul
+#define V9X_M64_VERTEX_2_X_Y          0x00000278ul
+#define V9X_M64_VERTEX_3_S            0x00000280ul
+#define V9X_M64_VERTEX_3_T            0x00000284ul
+#define V9X_M64_VERTEX_3_W            0x00000288ul
+#define V9X_M64_VERTEX_3_Z            0x00000290ul
+#define V9X_M64_VERTEX_3_ARGB         0x00000294ul
+#define V9X_M64_VERTEX_3_X_Y          0x00000298ul
+#define V9X_M64_SETUP_CNTL            0x00000304ul
 
 #define V9X_M64_FIFO_ERR              0x80000000ul
 #define V9X_M64_GUI_ACTIVE            0x00000001ul
@@ -43,6 +64,7 @@
 #define V9X_M64_FILL_DWORDS           12ul
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
 #define V9X_M64_COPY_DWORDS           14ul
+#define V9X_M64_FLAT_TRIANGLE_DWORDS  19ul
 
 #define V9X_M64_DST_X_DIR             0x00000001ul
 #define V9X_M64_DST_Y_DIR             0x00000002ul

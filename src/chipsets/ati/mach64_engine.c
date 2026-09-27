@@ -93,7 +93,8 @@ static void v9x_m64_shadow(struct v9x_m64_engine *engine,
 {
     v9x_u32 index;
     /* Replaying a trigger would execute the old operation again. */
-    if (offset == V9X_M64_DST_HEIGHT_WIDTH) return;
+    if (offset == V9X_M64_DST_HEIGHT_WIDTH ||
+        offset == V9X_M64_ONE_OVER_AREA) return;
     for (index = 0ul; index < engine->shadow_count; ++index) {
         if (engine->shadow[index].offset == offset) {
             engine->shadow[index].value = value;
@@ -430,5 +431,86 @@ v9x_status v9x_m64_build_copy(const struct v9x_m64_copy *copy,
     offsets[13] = V9X_M64_DST_HEIGHT_WIDTH;
     values[13] = (copy->width << 16) | copy->height;
     *written = V9X_M64_COPY_DWORDS;
+    return V9X_STATUS_OK;
+}
+
+static v9x_u32 v9x_m64_float_bits(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } converted;
+    converted.value = value;
+    return converted.bits;
+}
+
+static void v9x_m64_encode_flat_vertex(
+                              const struct v9x_m64_point *vertex,
+                              v9x_u32 color, const v9x_u32 *registers,
+                              v9x_u32 *offsets, v9x_u32 *values)
+{
+    offsets[0] = registers[0]; values[0] = 0ul;
+    offsets[1] = registers[1]; values[1] = 0ul;
+    offsets[2] = registers[2]; values[2] = 0x3f800000ul;
+    offsets[3] = registers[3]; values[3] = 0x7fff8000ul;
+    offsets[4] = registers[4]; values[4] = color;
+    offsets[5] = registers[5];
+    values[5] = ((vertex->x * 4ul) << 16) | (vertex->y * 4ul);
+}
+
+v9x_status v9x_m64_build_flat_triangle(
+                              const struct v9x_m64_flat_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    static const v9x_u32 vertex_registers[3][6] = {
+        { V9X_M64_VERTEX_1_S, V9X_M64_VERTEX_1_T,
+          V9X_M64_VERTEX_1_W, V9X_M64_VERTEX_1_Z,
+          V9X_M64_VERTEX_1_ARGB, V9X_M64_VERTEX_1_X_Y },
+        { V9X_M64_VERTEX_2_S, V9X_M64_VERTEX_2_T,
+          V9X_M64_VERTEX_2_W, V9X_M64_VERTEX_2_Z,
+          V9X_M64_VERTEX_2_ARGB, V9X_M64_VERTEX_2_X_Y },
+        { V9X_M64_VERTEX_3_S, V9X_M64_VERTEX_3_T,
+          V9X_M64_VERTEX_3_W, V9X_M64_VERTEX_3_Z,
+          V9X_M64_VERTEX_3_ARGB, V9X_M64_VERTEX_3_X_Y }
+    };
+    v9x_s32 dx1;
+    v9x_s32 dy1;
+    v9x_s32 dx2;
+    v9x_s32 dy2;
+    v9x_s32 area;
+    v9x_u32 index;
+    float one_over_area;
+    if (written != 0) *written = 0ul;
+    if (triangle == 0 || offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_FLAT_TRIANGLE_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (index = 0ul; index < 3ul; ++index) {
+        if (triangle->vertex[index].x > 16383ul ||
+            triangle->vertex[index].y > 16383ul) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    dx1 = (v9x_s32)triangle->vertex[1].x -
+          (v9x_s32)triangle->vertex[0].x;
+    dy1 = (v9x_s32)triangle->vertex[1].y -
+          (v9x_s32)triangle->vertex[0].y;
+    dx2 = (v9x_s32)triangle->vertex[2].x -
+          (v9x_s32)triangle->vertex[0].x;
+    dy2 = (v9x_s32)triangle->vertex[2].y -
+          (v9x_s32)triangle->vertex[0].y;
+    area = dx1 * dy2 - dy1 * dx2;
+    if (area == 0l) return V9X_STATUS_INVALID_ARGUMENT;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_m64_encode_flat_vertex(&triangle->vertex[index],
+            triangle->color, vertex_registers[index],
+            offsets + index * 6ul, values + index * 6ul);
+    }
+    one_over_area = 1.0f / (float)area;
+    offsets[18] = V9X_M64_ONE_OVER_AREA;
+    values[18] = v9x_m64_float_bits(one_over_area);
+    *written = V9X_M64_FLAT_TRIANGLE_DWORDS;
     return V9X_STATUS_OK;
 }

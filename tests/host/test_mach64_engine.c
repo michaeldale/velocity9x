@@ -88,6 +88,10 @@ static void test_exact_batch_has_no_inner_read(void)
     CHECK(v9x_m64_emit_batch(&engine, offsets, values, 1ul, 0ul) ==
           V9X_STATUS_OK);
     CHECK(engine.shadow_count == 4ul);
+    offsets[0] = V9X_M64_ONE_OVER_AREA;
+    CHECK(v9x_m64_emit_batch(&engine, offsets, values, 1ul, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(engine.shadow_count == 4ul);
 }
 
 static void test_bounds_and_timeout(void)
@@ -271,6 +275,55 @@ static void test_copy_builder(void)
           V9X_STATUS_INSUFFICIENT_MEMORY);
 }
 
+static void test_flat_triangle_builder(void)
+{
+    struct v9x_m64_flat_triangle triangle;
+    v9x_u32 offsets[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 values[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 written = 99ul;
+    triangle.vertex[0].x = 8ul; triangle.vertex[0].y = 8ul;
+    triangle.vertex[1].x = 24ul; triangle.vertex[1].y = 8ul;
+    triangle.vertex[2].x = 8ul; triangle.vertex[2].y = 24ul;
+    triangle.color = 0xffff00fful;
+    CHECK(v9x_m64_build_flat_triangle(
+              &triangle, offsets, values, V9X_M64_FLAT_TRIANGLE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_FLAT_TRIANGLE_DWORDS);
+    CHECK(offsets[0] == V9X_M64_VERTEX_1_S && values[0] == 0ul);
+    CHECK(offsets[1] == V9X_M64_VERTEX_1_T && values[1] == 0ul);
+    CHECK(offsets[2] == V9X_M64_VERTEX_1_W &&
+          values[2] == 0x3f800000ul);
+    CHECK(offsets[3] == V9X_M64_VERTEX_1_Z &&
+          values[3] == 0x7fff8000ul);
+    CHECK(offsets[4] == V9X_M64_VERTEX_1_ARGB &&
+          values[4] == triangle.color);
+    CHECK(offsets[5] == V9X_M64_VERTEX_1_X_Y &&
+          values[5] == 0x00200020ul);
+    CHECK(offsets[11] == V9X_M64_VERTEX_2_X_Y &&
+          values[11] == 0x00600020ul);
+    CHECK(offsets[17] == V9X_M64_VERTEX_3_X_Y &&
+          values[17] == 0x00200060ul);
+    CHECK(offsets[18] == V9X_M64_ONE_OVER_AREA &&
+          values[18] == 0x3b800000ul);
+
+    triangle.vertex[1].x = 8ul; triangle.vertex[1].y = 24ul;
+    triangle.vertex[2].x = 24ul; triangle.vertex[2].y = 8ul;
+    CHECK(v9x_m64_build_flat_triangle(
+              &triangle, offsets, values, V9X_M64_FLAT_TRIANGLE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[18] == 0xbb800000ul);
+
+    triangle.vertex[2].x = 8ul; triangle.vertex[2].y = 40ul;
+    CHECK(v9x_m64_build_flat_triangle(
+              &triangle, offsets, values, V9X_M64_FLAT_TRIANGLE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    triangle.vertex[2].x = 16384ul;
+    CHECK(v9x_m64_build_flat_triangle(
+              &triangle, offsets, values, V9X_M64_FLAT_TRIANGLE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
@@ -279,5 +332,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_barrier_and_reset_order();
     test_fill_builder();
     test_copy_builder();
+    test_flat_triangle_builder();
     return failures;
 }
