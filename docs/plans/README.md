@@ -28,6 +28,7 @@
 - [Finding the erratum 12 workaround in Intel's XP miniport](intel-xp-miniport-disassembly.md) - Open; desk work that decides the Phase 4 gate.
 - [Intel Phase 4: the first write, designed to make one boot answer everything](intel-phase4-first-write-design.md) - Design for approval; nothing coded.
 - [Intel Gen3: DirectDraw blits through the ring](intel-gen3-directdraw-blits.md) - Open; needs its own errata decision before the first armed boot.
+- [Ironlake: a free tier-0 desktop, and why the engine does not come with it](intel-gen5-ironlake.md) - Proposed; nothing coded, blocked on whether Windows 98 runs on a Clarkdale board at all.
 - [OpenGL 1.1 ICD on a render core shared with Direct3D](opengl-1.1-icd.md) - Design for approval; nothing coded.
 - [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
 - [Optional update checker, guarded auto-updater, and installed-file audit](optional-update-checker-and-auto-updater.md) - Proposed; nothing implemented.
