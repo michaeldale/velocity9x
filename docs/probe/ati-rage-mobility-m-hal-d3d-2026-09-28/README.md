@@ -120,6 +120,12 @@ two minutes of the desktop. Boot 19 also started from a power-off, and
 its first run passed. So "first run after power-on" is a hypothesis, not
 a finding.
 
+Boots 22-25 were warm reboots through the agent. Each boot ran one
+default run, started 7-12 s after the desktop came up. All four runs
+completed and passed. The totals are now 14 runs over seven boots, with
+the single boot 20 lock. A warm reboot does not reproduce it. Whether a
+power-off does was not tested again.
+
 A HAL snapshot was attempted. `V9XTRACE.EXE` exited `-1`, and the
 `V9XSNAP.INI` it left dates from an earlier boot, so there are no
 counter readings for boot 21.
