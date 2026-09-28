@@ -1038,6 +1038,36 @@ DECALALPHA; nearest and bilinear; wrap and clamp. The texture size is
 the remaining limit. The extended caps publish 8 as the maximum, and
 every larger texture refuses.
 
+Larger textures (2026-09-29, boots 28-29). The policy and the engine
+limits now take square powers of two from 8 to 256. The probe's halves
+scene gained 16 and 32, so every size has a scene of its own.
+
+- With the limit alone (boot 28), 8 to 128 passed, each at pitch
+  `max*2`, and 256 read blue on both halves.
+- A new scene tested magnified against minified draws at 64 and 256.
+  Magnified read green at both sizes and minified read blue at both.
+  So any minified draw selected a smaller level and read a
+  `TEX_n_OFF` register nobody wrote. Only the 256 halves scene happened
+  to minify.
+- xf86-video-mach64 sets `MACH64_MIP_MAP_DISABLE`, `SCALE_3D_CNTL` bit
+  24, on every texture (`atimach64render.c`), and the builder never did.
+  With the bit (boot 29), every size from 8 to 256 passes the halves
+  test, and all four magnify/minify draws read green. The probe reports
+  121 passes against 95 before. `M64TextureDraws` is 211 per run, with
+  zero timeouts and zero resets (`V9XSNA7-TEX256-MIPDISABLE.INI`).
+- Still failing, every one explained:
+  - mipmapped cells (mipmap filters and mip chains), refused by policy;
+  - specular, refused;
+  - `AlphaCurveF*`, the ViRGE-only alpha-force state, refused;
+  - `Tex4444PixelOk`, which inherits the trilinear scene's mip filter
+    and is refused;
+  - `Mixed*` and `D3DZP*`, opt-in sections not run;
+  - `FlipPixelOk`, which failed before this work and is unexamined.
+
+The Phase 4 scenes' `SCALE_3D_CNTL` words are unchanged. The HAL's
+textured word now differs from them by bit 24. That is measured on this
+path, not in the diagnostic VxD.
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register

@@ -964,7 +964,16 @@ v9x_status v9x_m64_build_texture_state(
     width_log2 = v9x_m64_log2(state->texture_width);
     height_log2 = v9x_m64_log2(state->texture_height);
     max_log2 = width_log2 > height_log2 ? width_log2 : height_log2;
+    /*
+     * MIP_MAP_DISABLE: only TEX_<max_log2>_OFF is written below, and without
+     * the bit a minified draw selects a smaller level and reads a register
+     * nobody wrote. The Phase 4 scenes only magnified; the Gateway's 64 and
+     * 256 minified HAL scenes read the wrong texels while the same textures
+     * magnified read right (2026-09-29). X.Org sets it on every texture
+     * (xf86-video-mach64 atimach64render.c).
+     */
     values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul |
+                 V9X_M64_MIP_MAP_DISABLE |
                  (state->bilinear_min != 0ul
                     ? V9X_M64_TEX_BLEND_FCN_LINEAR : 0ul) |
                  (state->bilinear_mag != 0ul

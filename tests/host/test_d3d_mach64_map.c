@@ -218,7 +218,7 @@ static void test_state_end_to_end(void)
                                    &written) == V9X_STATUS_OK);
     CHECK(written == 19ul);
     /* 0x0A010081 (item 6) + AEN + ALPHA_DECAL; wrap clears both clamps. */
-    CHECK(values[10] == 0x4a810081ul);
+    CHECK(values[10] == 0x4b810081ul);
     CHECK(values[16] == 0x40800000ul);
 }
 

@@ -54,8 +54,9 @@ static v9x_u32 v9x_d3d_mach64_setup_counts[V9X_D3D_MACH64_MAX_TRIANGLES];
  * What the hardware can take, from the builders' own limits and the
  * measured boundary: DST_OFF_PITCH's pitch is eight-pixel units up to 1023
  * of them, so pitches are 16-byte aligned; 1024 is the widest mode the
- * Gateway's panel was driven at; and the only texture sampled on hardware
- * is 8x8, bound at the 4 KiB granularity that did not wedge the fetcher.
+ * Gateway's panel was driven at; and textures are the square powers of two
+ * from 8 to 256 the policy accepts, bound at the 4 KiB granularity that did
+ * not wedge the fetcher.
  * The core clips, so the setup engine sees only on-target coordinates.
  */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
@@ -64,7 +65,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
     16ul,           /* target_pitch_align */
     1024ul,         /* target_dimension_max */
     8ul,            /* texture_size_min */
-    8ul,            /* texture_size_max */
+    256ul,          /* texture_size_max */
     2048.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel */
     4096ul,         /* texture_align */
@@ -516,7 +517,7 @@ static DWORD v9x_d3d_mach64_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
-    if (width != height ||
+    if (width != height || (width & (width - 1ul)) != 0ul ||
         width < v9x_d3d_mach64_limits.texture_size_min ||
         width > v9x_d3d_mach64_limits.texture_size_max ||
         !v9x_d3d_mach64_texture_format(surface, &format)) {

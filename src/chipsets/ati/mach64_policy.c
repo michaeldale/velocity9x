@@ -39,10 +39,14 @@
 #define M64_TEXOP_DECALALPHA 3ul
 #define M64_TEXOP_COPY       7ul
 
-/* The only texture the physical scenes bound was 8x8, square.  The size and
- * pitch encoding is a log2 field, but no other value has been drawn; raise
- * this only with a scene that samples the larger texture. */
-#define M64_TEXTURE_EDGE_MEASURED 8ul
+/* Square power-of-two textures from 8 to 256 texels.  The Phase 4 scenes
+ * bound only 8x8; the HAL probe's halves scene samples every size in the
+ * range through the HAL (docs/probe/ati-rage-mobility-m-hal-d3d-*).  The
+ * size and pitch encoding is a log2 field and the builder takes up to 1024,
+ * but nothing above 256 has been drawn; raise the maximum only with a scene
+ * that samples the larger texture.  Non-square textures are unmeasured. */
+#define M64_TEXTURE_EDGE_MIN 8ul
+#define M64_TEXTURE_EDGE_MAX 256ul
 
 /*
  * Item 9 proved all 36 pairs of these.  Destination-alpha factors and
@@ -95,8 +99,10 @@ static v9x_u32 v9x_m64_policy_texture(
         !v9x_m64_policy_format_has_alpha(request->texture_format)) {
         return V9X_M64_REFUSE_TEXTURE_FORMAT;
     }
-    if (request->texture_width != M64_TEXTURE_EDGE_MEASURED ||
-        request->texture_height != M64_TEXTURE_EDGE_MEASURED) {
+    if (request->texture_width != request->texture_height ||
+        request->texture_width < M64_TEXTURE_EDGE_MIN ||
+        request->texture_width > M64_TEXTURE_EDGE_MAX ||
+        (request->texture_width & (request->texture_width - 1ul)) != 0ul) {
         return V9X_M64_REFUSE_TEXTURE_SHAPE;
     }
     if (request->texture_levels != 1ul) {

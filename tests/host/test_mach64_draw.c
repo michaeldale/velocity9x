@@ -209,7 +209,7 @@ static void test_texture_matches_texture_builder(void)
         CHECK(offsets[index] == ref_offsets[index]);
         CHECK(values[index] == ref_values[index]);
     }
-    CHECK(values[10] == 0x00010081ul && values[16] == 0x40860000ul);
+    CHECK(values[10] == 0x01010081ul && values[16] == 0x40860000ul);
 
     /* Item 10's words: TEX_MAP_AEN and TEX_LIGHT_FCN around the proven
      * unblended and SRCALPHA/INVSRCALPHA values. */
@@ -219,7 +219,7 @@ static void test_texture_matches_texture_builder(void)
     decision.texture_alpha = V9X_M64_TEX_MAP_AEN;
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_OK);
-    CHECK(values[10] == 0x40410081ul);
+    CHECK(values[10] == 0x41410081ul);
     CHECK(values[13] == 0xf0040444ul);
     state.blend_enable = 1ul;
     state.src_blend = 5ul;
@@ -227,7 +227,7 @@ static void test_texture_matches_texture_builder(void)
     decision.light_fcn = V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL;
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_OK);
-    CHECK(values[10] == 0x40ac0881ul);
+    CHECK(values[10] == 0x41ac0881ul);
 
     /* Item 7's alpha-test word on ARGB1555: GREATER, reference 127. */
     base_state(&state);
@@ -240,7 +240,7 @@ static void test_texture_matches_texture_builder(void)
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_OK);
     CHECK(values[9] == 0x007f0051ul);
-    CHECK(values[10] == 0x40010081ul);
+    CHECK(values[10] == 0x41010081ul);
     CHECK(values[13] == 0x30040444ul);
 
     /* Depth and texture together: both builders' words. */

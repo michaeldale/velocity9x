@@ -2322,6 +2322,15 @@ static const V9X_PROBE_TEX8 v9x_probe_tex8_1555 = {
  * sampled texel the same across the triangle, so one pixel is the whole
  * answer. Returns the draw's HRESULT, or the first failure before it.
  */
+static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
+                                  struct v9x_d3d_device2 *device,
+                                  struct v9x_dds *target,
+                                  V9X_D3DTLVERTEX *triangle,
+                                  const V9X_PROBE_TEX8 *format, DWORD edge,
+                                  DWORD blend, DWORD filter, DWORD address,
+                                  DWORD color, float u, float v, float span,
+                                  WORD *raw_out);
+
 static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
                                    struct v9x_d3d_device2 *device,
                                    struct v9x_dds *target,
@@ -2330,6 +2339,27 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
                                    DWORD blend, DWORD filter, DWORD address,
                                    DWORD color, float u, float v,
                                    WORD *raw_out)
+{
+    return v9x_probe_tex_draw(ddraw, device, target, triangle, format, 8ul,
+                              blend, filter, address, color, u, v, 0.0f,
+                              raw_out);
+}
+
+/*
+ * The general form: an edge x edge texture, and a triangle whose texture
+ * coordinates run from (u, v) at vertex 0 to u + span at vertex 1 and
+ * v + span at vertex 2. A zero span is a constant coordinate. The target
+ * triangle is about 47 pixels on a side, so span * edge above 47 texels
+ * minifies and below it magnifies.
+ */
+static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
+                                  struct v9x_d3d_device2 *device,
+                                  struct v9x_dds *target,
+                                  V9X_D3DTLVERTEX *triangle,
+                                  const V9X_PROBE_TEX8 *format, DWORD edge,
+                                  DWORD blend, DWORD filter, DWORD address,
+                                  DWORD color, float u, float v, float span,
+                                  WORD *raw_out)
 {
     V9X_DDSURFACEDESC desc;
     struct v9x_dds *surface = 0;
@@ -2344,8 +2374,8 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
     desc.dwSize = sizeof(desc);
     desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT |
                    V9X_DDSD_PIXELFORMAT;
-    desc.dwWidth = 8ul;
-    desc.dwHeight = 8ul;
+    desc.dwWidth = edge;
+    desc.dwHeight = edge;
     desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
     desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
     desc.ddpfPixelFormat.dwFlags = format->flags;
@@ -2389,6 +2419,8 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
             triangle[corner].tu = u;
             triangle[corner].tv = v;
         }
+        triangle[1].tu = u + span;
+        triangle[2].tv = v + span;
         v9x_fill_surface(target, 0ul);
         hr = device->vtbl->BeginScene(device);
         if (hr == 0) {
@@ -4293,64 +4325,71 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * raw values say what.
                  *
                  * 8 is first, and smaller than every other texture in this
-                 * probe: it is the only size the Mach64 engine accepts
-                 * (mach64_policy.c), so on the Rage Mobility-M these two
-                 * draws are the probe's only hardware-textured ones and
-                 * V9XTRACE's M64TextureDraws should read exactly 2.
+                 * probe: it was the only size the Mach64 engine accepted
+                 * until 2026-09-29, when the policy took square powers of
+                 * two up to 256.
                  *
-                 * The last two entries are 8x8 again, in the Mach64's other
+                 * Entries five and six are 8x8 again, in the Mach64's other
                  * two texture formats, RGB565 and ARGB4444, with everything
                  * else the same. Opaque green and blue in each, so all
-                 * three formats have to read the same halves; with them
-                 * M64TextureDraws should read exactly 6.
+                 * three formats have to read the same halves. The last two
+                 * are 16 and 32, so every size the Mach64 policy accepts
+                 * has a scene of its own.
                  */
                 {
-                    static const DWORD big_sizes[6] = {
-                        8ul, 64ul, 128ul, 256ul, 8ul, 8ul };
-                    static const char *big_left[6] = {
+                    static const DWORD big_sizes[8] = {
+                        8ul, 64ul, 128ul, 256ul, 8ul, 8ul, 16ul, 32ul };
+                    static const char *big_left[8] = {
                         "Tex8LeftRaw", "Tex64LeftRaw", "Tex128LeftRaw",
                         "Tex256LeftRaw", "Tex8R565LeftRaw",
-                        "Tex8A4444LeftRaw" };
-                    static const char *big_right[6] = {
+                        "Tex8A4444LeftRaw", "Tex16LeftRaw", "Tex32LeftRaw" };
+                    static const char *big_right[8] = {
                         "Tex8RightRaw", "Tex64RightRaw", "Tex128RightRaw",
                         "Tex256RightRaw", "Tex8R565RightRaw",
-                        "Tex8A4444RightRaw" };
-                    static const char *big_ok[6] = {
+                        "Tex8A4444RightRaw", "Tex16RightRaw",
+                        "Tex32RightRaw" };
+                    static const char *big_ok[8] = {
                         "Tex8HalvesOk", "Tex64HalvesOk", "Tex128HalvesOk",
                         "Tex256HalvesOk", "Tex8R565HalvesOk",
-                        "Tex8A4444HalvesOk" };
-                    static const char *big_hr[6] = {
+                        "Tex8A4444HalvesOk", "Tex16HalvesOk",
+                        "Tex32HalvesOk" };
+                    static const char *big_hr[8] = {
                         "Tex8SurfaceHr", "Tex64SurfaceHr", "Tex128SurfaceHr",
                         "Tex256SurfaceHr", "Tex8R565SurfaceHr",
-                        "Tex8A4444SurfaceHr" };
+                        "Tex8A4444SurfaceHr", "Tex16SurfaceHr",
+                        "Tex32SurfaceHr" };
                     /* The pitch DirectDraw gave the surface. The Mach64
                      * builder takes only max(w,h)*2 bytes, and whether
                      * DirectDraw hands out that pitch was never measured. */
-                    static const char *big_pitch[6] = {
+                    static const char *big_pitch[8] = {
                         "Tex8Pitch", "Tex64Pitch", "Tex128Pitch",
-                        "Tex256Pitch", "Tex8R565Pitch", "Tex8A4444Pitch" };
+                        "Tex256Pitch", "Tex8R565Pitch", "Tex8A4444Pitch",
+                        "Tex16Pitch", "Tex32Pitch" };
                     /* Pixel format per entry: ARGB1555 unless listed. */
-                    static const DWORD big_flags[6] = {
-                        0x41ul, 0x41ul, 0x41ul, 0x41ul, 0x40ul, 0x41ul };
-                    static const DWORD big_rmask[6] = {
+                    static const DWORD big_flags[8] = {
+                        0x41ul, 0x41ul, 0x41ul, 0x41ul, 0x40ul, 0x41ul,
+                        0x41ul, 0x41ul };
+                    static const DWORD big_rmask[8] = {
                         0x7c00ul, 0x7c00ul, 0x7c00ul, 0x7c00ul,
-                        0xf800ul, 0x0f00ul };
-                    static const DWORD big_gmask[6] = {
+                        0xf800ul, 0x0f00ul, 0x7c00ul, 0x7c00ul };
+                    static const DWORD big_gmask[8] = {
                         0x03e0ul, 0x03e0ul, 0x03e0ul, 0x03e0ul,
-                        0x07e0ul, 0x00f0ul };
-                    static const DWORD big_bmask[6] = {
+                        0x07e0ul, 0x00f0ul, 0x03e0ul, 0x03e0ul };
+                    static const DWORD big_bmask[8] = {
                         0x001ful, 0x001ful, 0x001ful, 0x001ful,
-                        0x001ful, 0x000ful };
-                    static const DWORD big_amask[6] = {
+                        0x001ful, 0x000ful, 0x001ful, 0x001ful };
+                    static const DWORD big_amask[8] = {
                         0x8000ul, 0x8000ul, 0x8000ul, 0x8000ul,
-                        0x0000ul, 0xf000ul };
-                    static const WORD big_green[6] = {
-                        0x83e0u, 0x83e0u, 0x83e0u, 0x83e0u, 0x07e0u, 0xf0f0u };
-                    static const WORD big_blue[6] = {
-                        0x801fu, 0x801fu, 0x801fu, 0x801fu, 0x001fu, 0xf00fu };
+                        0x0000ul, 0xf000ul, 0x8000ul, 0x8000ul };
+                    static const WORD big_green[8] = {
+                        0x83e0u, 0x83e0u, 0x83e0u, 0x83e0u, 0x07e0u, 0xf0f0u,
+                        0x83e0u, 0x83e0u };
+                    static const WORD big_blue[8] = {
+                        0x801fu, 0x801fu, 0x801fu, 0x801fu, 0x001fu, 0xf00fu,
+                        0x801fu, 0x801fu };
                     DWORD big_index;
 
-                    for (big_index = 0ul; big_index < 6ul; ++big_index) {
+                    for (big_index = 0ul; big_index < 8ul; ++big_index) {
                         struct v9x_dds *big = 0;
                         struct v9x_d3d_texture2 *big_texture = 0;
                         DWORD big_handle = 0ul;
@@ -4492,9 +4531,6 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * channels between 64 and 192 is the pass. An engine with
                  * no half-texel offset reads nearer one side and fails it,
                  * and the raw value records by how much.
-                 *
-                 * Four hardware-textured draws on the Mach64, so with the
-                 * halves test M64TextureDraws should rise by 10 per run.
                  */
                 v9x_probe_reset_state(d3d_device, triangle);
                 {
@@ -4575,9 +4611,6 @@ void __stdcall V9xDdrawProbeEntry(void)
                  *
                  * Clamp at u = 1.25 must read the right edge, blue. Wrap
                  * at the same u, the control, reads u = 0.25, green.
-                 *
-                 * Five more hardware-textured draws: M64TextureDraws should
-                 * rise by 15 per run.
                  */
                 v9x_probe_reset_state(d3d_device, triangle);
                 {
@@ -4664,6 +4697,64 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_layout_green(&target_layout, wrap_raw) >= 197ul &&
                         v9x_layout_blue(&target_layout, wrap_raw) <= 33ul
                         ? 1ul : 0ul);
+                }
+
+                /*
+                 * Magnified against minified, at 64 and 256.
+                 *
+                 * The Mach64's 256x256 halves test read blue on both halves
+                 * (2026-09-29) while 8 to 128 passed. Its triangle covers
+                 * about 77 texels in 47 pixels, the only minified one of the
+                 * sizes. The hypothesis: minifying selects a smaller level
+                 * even with mipmapping off, and reads a TEX_n_OFF register
+                 * this driver never wrote. Each draw here samples u of about
+                 * 0.1 to 0.16, green in every case. Magnified, the span is a
+                 * few texels; minified, it is the whole texture. Magnified
+                 * green and minified wrong, at both sizes, supports the
+                 * hypothesis. 256 failing both ways rules it out.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const DWORD lod_edge[2] = { 64ul, 256ul };
+                    static const char *lod_mag_key[2] = {
+                        "TexLod64MagRaw", "TexLod256MagRaw" };
+                    static const char *lod_min_key[2] = {
+                        "TexLod64MinRaw", "TexLod256MinRaw" };
+                    static const char *lod_mag_ok[2] = {
+                        "TexLod64MagOk", "TexLod256MagOk" };
+                    static const char *lod_min_ok[2] = {
+                        "TexLod64MinOk", "TexLod256MinOk" };
+                    DWORD lod_index;
+
+                    for (lod_index = 0ul; lod_index < 2ul; ++lod_index) {
+                        WORD mag_raw = 0u;
+                        WORD min_raw = 0u;
+                        HRESULT mag_hr;
+                        HRESULT min_hr;
+
+                        mag_hr = v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555,
+                            lod_edge[lod_index], V9X_D3DTBLEND_COPY,
+                            V9X_D3DFILTER_NEAREST, V9X_D3DTADDRESS_WRAP_R,
+                            0xfffffffful, 0.1f, 0.1f, 0.02f, &mag_raw);
+                        min_hr = v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555,
+                            lod_edge[lod_index], V9X_D3DTBLEND_COPY,
+                            V9X_D3DFILTER_NEAREST, V9X_D3DTADDRESS_WRAP_R,
+                            0xfffffffful, 0.0f, 0.0f, 1.0f, &min_raw);
+                        v9x_write_uint(lod_mag_key[lod_index], mag_raw);
+                        v9x_write_uint(lod_min_key[lod_index], min_raw);
+                        v9x_write_uint(lod_mag_ok[lod_index],
+                            mag_hr == 0 && target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout, mag_raw) >= 197ul &&
+                            v9x_layout_blue(&target_layout, mag_raw) <= 33ul
+                            ? 1ul : 0ul);
+                        v9x_write_uint(lod_min_ok[lod_index],
+                            min_hr == 0 && target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout, min_raw) >= 197ul &&
+                            v9x_layout_blue(&target_layout, min_raw) <= 33ul
+                            ? 1ul : 0ul);
+                    }
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);

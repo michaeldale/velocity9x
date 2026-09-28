@@ -681,7 +681,7 @@ static void test_texture_builders(void)
               &written) == V9X_STATUS_OK);
     CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS);
     CHECK(offsets[10] == V9X_M64_SCALE_3D_CNTL &&
-          values[10] == 0x00010081ul);
+          values[10] == 0x01010081ul);
     CHECK(values[13] == 0x40040444ul);
     CHECK(offsets[14] == V9X_M64_SETUP_CNTL && values[14] == 0ul);
     CHECK(offsets[15] == V9X_M64_TEX_SIZE_PITCH &&
@@ -691,6 +691,11 @@ static void test_texture_builders(void)
     CHECK(offsets[17] == V9X_M64_SECONDARY_TEX_OFF && values[17] == 0ul);
     CHECK(offsets[18] == V9X_M64_TEX_0_OFF + 12ul &&
           values[18] == 0x00204000ul);
+    /* Only TEX_<max_log2>_OFF is written, so a minified draw that picked a
+     * smaller level read an unwritten register: the Gateway's 64 and 256
+     * minified scenes read the wrong half (2026-09-29). X.Org sets
+     * MACH64_MIP_MAP_DISABLE on every texture (atimach64render.c). */
+    CHECK((values[10] & V9X_M64_MIP_MAP_DISABLE) != 0ul);
 
     state.wrap_s = 1ul;
     state.wrap_t = 1ul;
@@ -699,7 +704,7 @@ static void test_texture_builders(void)
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_OK);
-    CHECK(values[10] == 0x0a010081ul);
+    CHECK(values[10] == 0x0b010081ul);
     CHECK(values[16] == 0x40800000ul);
     state.wrap_s = 0ul;
     state.wrap_t = 0ul;
@@ -710,13 +715,13 @@ static void test_texture_builders(void)
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_OK);
-    CHECK(values[10] == 0x40010081ul);
+    CHECK(values[10] == 0x41010081ul);
     CHECK(values[13] == 0x30040444ul);
     state.texture_format = V9X_M64_TEXTURE_FORMAT_ARGB4444;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_OK);
-    CHECK(values[10] == 0x40010081ul);
+    CHECK(values[10] == 0x41010081ul);
     CHECK(values[13] == 0xf0040444ul);
     state.texture_format = V9X_M64_TEXTURE_FORMAT_RGB565;
 

@@ -130,6 +130,9 @@
  * DP_FOG_CLR by specular alpha (Phase 4 item 12). */
 #define V9X_M64_ALPHA_FOG_EN_FOG      0x00001000ul
 #define V9X_M64_BILINEAR_TEX_EN       0x02000000ul
+/* SCALE_3D_CNTL bit 24 (xf86-video-mach64 atiregs.h MACH64_MIP_MAP_DISABLE):
+ * without it a minified draw selects a smaller level's TEX_n_OFF. */
+#define V9X_M64_MIP_MAP_DISABLE       0x01000000ul
 #define V9X_M64_TEX_BLEND_FCN_LINEAR  0x08000000ul
 #define V9X_M64_TEXTURE_CLAMP_S       0x00020000ul
 #define V9X_M64_TEXTURE_CLAMP_T       0x00040000ul

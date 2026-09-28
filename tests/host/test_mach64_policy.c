@@ -228,6 +228,7 @@ static void test_texture_shape_and_sampling(void)
 {
     struct v9x_m64_draw_request request;
     v9x_u32 format;
+    v9x_u32 edge;
 
     for (format = 0ul; format < 3ul; ++format) {
         textured(&request, format);
@@ -236,15 +237,24 @@ static void test_texture_shape_and_sampling(void)
     textured(&request, 3ul);
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
 
-    /* Only 8x8 has been sampled on hardware. */
+    /* Square powers of two from 8 to 256, the sizes the HAL probe samples. */
     textured(&request, 0ul);
-    request.texture_width = 16ul;
-    request.texture_height = 16ul;
-    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
-    request.texture_width = 8ul;
+    for (edge = 8ul; edge <= 256ul; edge <<= 1) {
+        request.texture_width = edge;
+        request.texture_height = edge;
+        CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    }
+    request.texture_width = 512ul;
+    request.texture_height = 512ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
     request.texture_width = 4ul;
     request.texture_height = 4ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    request.texture_width = 24ul;
+    request.texture_height = 24ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    request.texture_width = 16ul;
+    request.texture_height = 8ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
 
     textured(&request, 0ul);
