@@ -465,6 +465,43 @@ safety counters zero. Evidence is in
 Refusal before the first engine write belongs to the Phase 5 `accepts`
 contract and its host tests; it is not a diagnostic scene.
 
+That policy now exists as `v9x_m64_check_draw` in
+`src/chipsets/ati/mach64_policy.c`. It is pure, host-tested, and built into
+`V9XHAL.DLL`, but nothing calls it yet. It takes a request in the D3D/R3D
+numbering and returns `V9X_M64_REFUSE_NONE` or the first refusal reason.
+For an accepted textured draw it also returns the measured texture light
+function and texture-alpha enable, so the emitter cannot disagree with it.
+It accepts only states with a passing Phase 4 scene, and it refuses the
+following because they were never measured:
+
+- XRGB1555 targets;
+- textures other than square 8x8;
+- partial write masks;
+- alpha test on vertex alpha;
+- textured fog;
+- specular, colour key and forced alpha.
+
+It also refuses these, because of measured semantics or shared hardware:
+
+- MODULATEALPHA, DECALMASK, MODULATEMASK and ADD (no native mode);
+- destination-alpha factors and SRCALPHASAT;
+- mirror, border, cylindrical-wrap and mip sampling;
+- fog with blending.
+
+DECALALPHA on an RGB565 texture maps to REPLACE. `tests/host/
+test_mach64_policy.c` covers every boundary and all 36 blend pairs. A
+deliberate mutation mapping MODULATEALPHA to MODULATE failed three
+checks, so the suite does run and does detect a wrong rule. Phase 4's
+remaining gate is Phase 2's cold-boot repetition.
+
+Phase 5 obligations from this: `d3d_mach64.c`'s `accepts` is a
+translation of `V9X_R3D_DRAW` into this request plus one call. Its
+`draw` must make the same call before reserving any FIFO slot, and it
+must emit `decision.light_fcn` and `decision.texture_alpha` rather than
+deciding again. Its `describe_caps` must publish exactly this boundary.
+Widening the boundary means adding a scene and changing the policy and
+its test together.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

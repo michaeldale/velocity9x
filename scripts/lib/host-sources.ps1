@@ -35,6 +35,8 @@ function Get-V9xHostSourceNames {
         'src\common\pe_export.c',
         # Shared Mach64 FIFO, wait, reset/replay and coherence policy.
         'src\chipsets\ati\mach64_engine.c',
+        # Mach64 draw acceptance: the measured Phase 4 boundary.
+        'src\chipsets\ati\mach64_policy.c',
         'tests\host\test_pe_export.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
@@ -121,6 +123,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_arm.c',
         'tests\host\test_i9xx_3d.c',
         'tests\host\test_mach64_engine.c',
+        'tests\host\test_mach64_policy.c',
         'tests\host\test_main.c'
     )
 

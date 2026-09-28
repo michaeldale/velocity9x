@@ -131,6 +131,10 @@ unsigned int v9x_run_i9xx_3d_tests(void);
  * reset/replay ordering and the CPU-read cache boundary. */
 unsigned int v9x_run_mach64_engine_tests(void);
 
+/* tests\host\test_mach64_policy.c: every accept and refuse boundary of
+ * the Mach64 draw policy, and the texture light function it selects. */
+unsigned int v9x_run_mach64_policy_tests(void);
+
 static unsigned int failures = 0u;
 
 #define CHECK(expression) do { \
@@ -1126,6 +1130,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_arm_tests();
     failures += v9x_run_i9xx_3d_tests();
     failures += v9x_run_mach64_engine_tests();
+    failures += v9x_run_mach64_policy_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

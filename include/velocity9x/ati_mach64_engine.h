@@ -207,4 +207,85 @@ v9x_status v9x_m64_build_blend_control(v9x_u32 source_factor,
                                        v9x_u32 destination_factor,
                                        v9x_u32 *value);
 
+/*
+ * The draw-acceptance policy: what the Mobility-M 3D path may emit, decided
+ * before any FIFO reservation or register write.  Numbering is Direct3D's,
+ * which the neutral V9X_R3D_* constants share: compare 1-8, D3DBLEND_*,
+ * D3DTBLEND_*, D3DTADDRESS_*, D3DFILTER_*, shade 1 flat / 2 Gouraud, target
+ * 1 RGB565 / 2 XRGB1555.  texture_format is V9X_M64_TEXTURE_FORMAT_* and is
+ * read only when `textured` is non-zero.  The scissor is half-open.
+ */
+struct v9x_m64_draw_request {
+    v9x_u32 target_format;
+    v9x_u32 target_width;
+    v9x_u32 target_height;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+    v9x_u32 write_mask;
+    v9x_u32 shade_mode;
+    v9x_u32 depth_enable;
+    v9x_u32 depth_bits;
+    v9x_u32 depth_func;
+    v9x_u32 depth_write;
+    v9x_u32 textured;
+    v9x_u32 texture_format;
+    v9x_u32 texture_width;
+    v9x_u32 texture_height;
+    v9x_u32 texture_levels;
+    v9x_u32 texture_min_filter;
+    v9x_u32 texture_mag_filter;
+    v9x_u32 texture_address;
+    v9x_u32 texture_wrap_u;
+    v9x_u32 texture_wrap_v;
+    v9x_u32 texture_op;
+    v9x_u32 blend_enable;
+    v9x_u32 src_blend;
+    v9x_u32 dst_blend;
+    v9x_u32 alpha_test_enable;
+    v9x_u32 alpha_func;
+    v9x_u32 alpha_ref;
+    v9x_u32 fog_enable;
+    v9x_u32 specular_enable;
+    v9x_u32 color_key_enable;
+    v9x_u32 alpha_force;
+};
+
+/* What an accepted draw emits for the texture stage, so the draw path
+ * cannot reach a different conclusion from the policy.  light_fcn is a
+ * V9X_M64_TEX_LIGHT_FCN_* field and texture_alpha is V9X_M64_TEX_MAP_AEN or
+ * zero.  Both are zero for an untextured or refused draw. */
+struct v9x_m64_draw_decision {
+    v9x_u32 light_fcn;
+    v9x_u32 texture_alpha;
+};
+
+#define V9X_M64_REFUSE_NONE             0ul
+#define V9X_M64_REFUSE_ARGUMENT         1ul
+#define V9X_M64_REFUSE_TARGET_FORMAT    2ul
+#define V9X_M64_REFUSE_SCISSOR          3ul
+#define V9X_M64_REFUSE_WRITE_MASK       4ul
+#define V9X_M64_REFUSE_SHADE            5ul
+#define V9X_M64_REFUSE_DEPTH            6ul
+#define V9X_M64_REFUSE_TEXTURE_FORMAT   7ul
+#define V9X_M64_REFUSE_TEXTURE_SHAPE    8ul
+#define V9X_M64_REFUSE_TEXTURE_MIP      9ul
+#define V9X_M64_REFUSE_TEXTURE_FILTER   10ul
+#define V9X_M64_REFUSE_TEXTURE_ADDRESS  11ul
+#define V9X_M64_REFUSE_TEXTURE_OP       12ul
+#define V9X_M64_REFUSE_BLEND_FACTOR     13ul
+#define V9X_M64_REFUSE_ALPHA_TEST       14ul
+#define V9X_M64_REFUSE_FOG_WITH_BLEND   15ul
+#define V9X_M64_REFUSE_FOG_WITH_TEXTURE 16ul
+#define V9X_M64_REFUSE_SPECULAR         17ul
+#define V9X_M64_REFUSE_COLOR_KEY        18ul
+#define V9X_M64_REFUSE_ALPHA_FORCE      19ul
+
+/* Returns V9X_M64_REFUSE_NONE and fills `decision` when the draw is inside
+ * the measured boundary, otherwise the first refusal reason.  Passive: it
+ * counts nothing and touches no hardware. */
+v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
+                           struct v9x_m64_draw_decision *decision);
+
 #endif

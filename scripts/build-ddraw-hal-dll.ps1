@@ -82,6 +82,7 @@ $sources = @(
     # Phase 1 Mach64 status/wait/recovery wrapper; manifests still publish NONE.
     "src\display32\engines\eng_mach64.c",
     "src\chipsets\ati\mach64_engine.c",
+    "src\chipsets\ati\mach64_policy.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
