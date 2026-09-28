@@ -332,6 +332,21 @@ CRC32 `F3A0455A`, BMP CRC32 `B26C4257`). Evidence is retained in
 ARGB1555 and ARGB4444 texture alpha are next; public ATI acceleration remains
 disabled.
 
+Phase 4 item 7 is closed. Build `ati-phase4-alpha-textures-20260928-b`
+enabled texture alpha and used one `GREATER`-than-127 comparison solely to
+observe transparent red versus opaque green texels. ARGB1555 and ARGB4444
+each passed twice byte-identically on boot 11: transparent probes retained
+the `0xA55A` sentinel, the opaque probe rendered RGB565 `0x07E0`, exactly 64
+pixels changed within `(24,6)` through `(38,13)`, and all guards and restored
+state matched with no timeout/reset. Their output BMPs were byte-identical
+(CRC32 `7781336E`); the format-specific reports were ARGB1555 CRC32
+`1E5FEE39` and ARGB4444 CRC32 `FB2A12D8`. The initial safe REVIEW, where the
+diagnostic placed the alpha word in `Z_CNTL` and left `ALPHA_TST_CNTL` zero,
+is retained with the accepted evidence in
+[`../probe/ati-rage-mobility-m-phase4-alpha-textures-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-alpha-textures-2026-09-28/).
+The complete alpha-test comparison table remains Phase 4 item 8; public ATI
+acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
