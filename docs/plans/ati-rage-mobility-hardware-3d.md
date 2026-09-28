@@ -992,8 +992,18 @@ Result on the Gateway, boot 27, one default run (`V9XSNA3-TEX8-HARDWARE.INI`,
 - zero FIFO or idle timeouts and zero resets, and no lock.
 
 Hardware texturing through the HAL is now shown for ARGB1555, COPY and
-nearest filtering. RGB565, ARGB4444, MODULATE and bilinear are accepted
-by the policy but not yet drawn through the HAL.
+nearest filtering.
+
+RGB565 and ARGB4444 followed on the same boot (probe
+`ddp-texfmt-20260929-a`, `V9XSNA4-TEX8-FORMATS.INI`,
+`V9XDDT-TEX8-FORMATS.TXT`). Each is 8x8, green left and blue right,
+COPY, nearest, pitch 0x10. All three formats read `07E0`/`001F`, and
+all three `HalvesOk` are 1. Across the run, `M64TextureDraws` rose by 6,
+`M64Draws` by 46 (40 + 6) and `M64Refused` by 364, the non-8x8 total.
+There were zero timeouts and zero resets.
+
+MODULATE and bilinear are accepted by the policy but not yet drawn
+through the HAL.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

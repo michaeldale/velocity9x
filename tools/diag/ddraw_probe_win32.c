@@ -4170,31 +4170,60 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * (mach64_policy.c), so on the Rage Mobility-M these two
                  * draws are the probe's only hardware-textured ones and
                  * V9XTRACE's M64TextureDraws should read exactly 2.
+                 *
+                 * The last two entries are 8x8 again, in the Mach64's other
+                 * two texture formats, RGB565 and ARGB4444, with everything
+                 * else the same. Opaque green and blue in each, so all
+                 * three formats have to read the same halves; with them
+                 * M64TextureDraws should read exactly 6.
                  */
                 {
-                    static const DWORD big_sizes[4] = {
-                        8ul, 64ul, 128ul, 256ul };
-                    static const char *big_left[4] = {
+                    static const DWORD big_sizes[6] = {
+                        8ul, 64ul, 128ul, 256ul, 8ul, 8ul };
+                    static const char *big_left[6] = {
                         "Tex8LeftRaw", "Tex64LeftRaw", "Tex128LeftRaw",
-                        "Tex256LeftRaw" };
-                    static const char *big_right[4] = {
+                        "Tex256LeftRaw", "Tex8R565LeftRaw",
+                        "Tex8A4444LeftRaw" };
+                    static const char *big_right[6] = {
                         "Tex8RightRaw", "Tex64RightRaw", "Tex128RightRaw",
-                        "Tex256RightRaw" };
-                    static const char *big_ok[4] = {
+                        "Tex256RightRaw", "Tex8R565RightRaw",
+                        "Tex8A4444RightRaw" };
+                    static const char *big_ok[6] = {
                         "Tex8HalvesOk", "Tex64HalvesOk", "Tex128HalvesOk",
-                        "Tex256HalvesOk" };
-                    static const char *big_hr[4] = {
+                        "Tex256HalvesOk", "Tex8R565HalvesOk",
+                        "Tex8A4444HalvesOk" };
+                    static const char *big_hr[6] = {
                         "Tex8SurfaceHr", "Tex64SurfaceHr", "Tex128SurfaceHr",
-                        "Tex256SurfaceHr" };
+                        "Tex256SurfaceHr", "Tex8R565SurfaceHr",
+                        "Tex8A4444SurfaceHr" };
                     /* The pitch DirectDraw gave the surface. The Mach64
                      * builder takes only max(w,h)*2 bytes, and whether
                      * DirectDraw hands out that pitch was never measured. */
-                    static const char *big_pitch[4] = {
+                    static const char *big_pitch[6] = {
                         "Tex8Pitch", "Tex64Pitch", "Tex128Pitch",
-                        "Tex256Pitch" };
+                        "Tex256Pitch", "Tex8R565Pitch", "Tex8A4444Pitch" };
+                    /* Pixel format per entry: ARGB1555 unless listed. */
+                    static const DWORD big_flags[6] = {
+                        0x41ul, 0x41ul, 0x41ul, 0x41ul, 0x40ul, 0x41ul };
+                    static const DWORD big_rmask[6] = {
+                        0x7c00ul, 0x7c00ul, 0x7c00ul, 0x7c00ul,
+                        0xf800ul, 0x0f00ul };
+                    static const DWORD big_gmask[6] = {
+                        0x03e0ul, 0x03e0ul, 0x03e0ul, 0x03e0ul,
+                        0x07e0ul, 0x00f0ul };
+                    static const DWORD big_bmask[6] = {
+                        0x001ful, 0x001ful, 0x001ful, 0x001ful,
+                        0x001ful, 0x000ful };
+                    static const DWORD big_amask[6] = {
+                        0x8000ul, 0x8000ul, 0x8000ul, 0x8000ul,
+                        0x0000ul, 0xf000ul };
+                    static const WORD big_green[6] = {
+                        0x83e0u, 0x83e0u, 0x83e0u, 0x83e0u, 0x07e0u, 0xf0f0u };
+                    static const WORD big_blue[6] = {
+                        0x801fu, 0x801fu, 0x801fu, 0x801fu, 0x001fu, 0xf00fu };
                     DWORD big_index;
 
-                    for (big_index = 0ul; big_index < 4ul; ++big_index) {
+                    for (big_index = 0ul; big_index < 6ul; ++big_index) {
                         struct v9x_dds *big = 0;
                         struct v9x_d3d_texture2 *big_texture = 0;
                         DWORD big_handle = 0ul;
@@ -4213,12 +4242,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                         desc.dwHeight = big_sizes[big_index];
                         desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
                         desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
-                        desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+                        desc.ddpfPixelFormat.dwFlags = big_flags[big_index];
                         desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
-                        desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
-                        desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
-                        desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
-                        desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+                        desc.ddpfPixelFormat.dwRBitMask = big_rmask[big_index];
+                        desc.ddpfPixelFormat.dwGBitMask = big_gmask[big_index];
+                        desc.ddpfPixelFormat.dwBBitMask = big_bmask[big_index];
+                        desc.ddpfPixelFormat.dwRGBAlphaBitMask =
+                            big_amask[big_index];
                         big_hr_value = ddraw->vtbl->CreateSurface(
                             ddraw, &desc, &big, 0);
                         v9x_write_hresult(big_hr[big_index], big_hr_value);
@@ -4229,7 +4259,8 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 v9x_write_uint(big_pitch[big_index],
                                                (DWORD)desc.lPitch);
                             }
-                            v9x_fill_surface_halves(big, 0x83e0u, 0x801fu);
+                            v9x_fill_surface_halves(big, big_green[big_index],
+                                                    big_blue[big_index]);
                             big_hr_value = big->vtbl->QueryInterface(
                                 big, &v9x_iid_d3d_texture2,
                                 (void **)&big_texture);
