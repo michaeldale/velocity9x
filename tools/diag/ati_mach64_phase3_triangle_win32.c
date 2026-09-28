@@ -5,7 +5,19 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_ALPHA_NEVER)
+#if defined(V9X_BLEND_ONE_ONE)
+#define ATI3D_MAGIC 0x48495441ul
+#define ATI3D_DIOC 24u
+#define ATI3D_HEADING "[AtiMach64Phase4BlendOneOne]\r\n"
+#define ATI3D_OPERATION "guarded-rgb565-add-one-one"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4B1.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4B1.BMP"
+#define ATI3D_GUARD_KEY "GuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 17ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_NEVER)
 #define ATI3D_MAGIC 0x40495441ul
 #define ATI3D_DIOC 16u
 #define ATI3D_HEADING "[AtiMach64Phase4AlphaNever]\r\n"

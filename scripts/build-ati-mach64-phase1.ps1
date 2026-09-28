@@ -109,3 +109,8 @@ foreach($alphaComparison in $alphaComparisons){
     foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($alphaBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "$($alphaComparison.Exe) is missing import $name."}}
     Write-Output "Built ATI Phase 4 alpha $($alphaComparison.Name) publisher: $alphaExe"
 }
+
+$blendExe=Join-Path $outputDir 'ATI4B1.EXE';$blendObj=Join-Path $outputDir 'ati4b1.obj';$blendMap=Join-Path $outputDir 'ati4b1.map';$blendLnk=Join-Path $outputDir 'ati4b1.lnk'
+$blendBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $blendExe -Object $blendObj -MapFile $blendMap -LinkFile $blendLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_BLEND_ONE_ONE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$blendObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($blendBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4B1.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 ONE/ONE additive blend publisher: $blendExe"
