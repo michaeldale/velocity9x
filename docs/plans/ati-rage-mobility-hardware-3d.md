@@ -1019,8 +1019,24 @@ MODULATE and bilinear followed (probe `ddp-texop-20260929-a`,
   `M64Draws` by 50 and `M64Refused` by 364. There were zero timeouts
   and zero resets.
 
-Still not drawn through the HAL, though the policy accepts them: DECAL,
-DECALALPHA (ALPHA_DECAL on the alpha formats), and clamp addressing.
+DECAL, DECALALPHA and clamp followed (probe `ddp-texdecal-20260929-a`,
+`V9XSNA6-TEX8-DECAL-CLAMP.INI`, `V9XDDT-TEX8-DECAL-CLAMP.TXT`):
+
+- DECAL, half-grey vertex: `07E0`, the full texel.
+- DECALALPHA on ARGB4444, green at alpha 8/15 over a red vertex:
+  `7440`, red 14/31 and green 34/63. The expected values are 119 and
+  136 of 255; the measured are 115 and 138.
+- DECALALPHA on RGB565, emitted as REPLACE: `07E0`.
+- Clamp at u = 1.25: `001F`, the right edge. The wrap control read
+  `07E0`.
+- `M64TextureDraws` rose by 15 over the run, `M64Draws` by 55 and
+  `M64Refused` by 364. There were zero timeouts and zero resets.
+
+Every texture state `v9x_m64_check_draw` accepts has now been drawn
+through the HAL, at 8x8: three formats; COPY, DECAL, MODULATE and
+DECALALPHA; nearest and bilinear; wrap and clamp. The texture size is
+the remaining limit. The extended caps publish 8 as the maximum, and
+every larger texture refuses.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

@@ -347,6 +347,9 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DFILTER_LINEARMIPLINEAR         6ul
 #define V9X_D3DTBLEND_COPY                    7ul
 #define V9X_D3DTBLEND_MODULATE                2ul
+#define V9X_D3DTBLEND_DECAL                   1ul
+#define V9X_D3DTBLEND_DECALALPHA              3ul
+#define V9X_D3DTADDRESS_CLAMP_R               3ul
 /*
  * Velocity9x's private render state for forcing the S3D command word's alpha
  * encoding - an instrument, described at V9X_D3DRENDERSTATE_V9X_ALPHAFORCE in
@@ -2291,22 +2294,42 @@ static int v9x_z_step(struct v9x_d3d_device2 *device,
 }
 
 /*
- * One draw from an 8x8 ARGB1555 texture, opaque green on the left half and
- * opaque blue on the right, with the blend, filter, vertex colour and a
- * constant texture coordinate given; the target pixel at (16,16) comes back.
+ * An 8x8 texture for v9x_probe_tex8_draw: its pixel format and the texel
+ * values of its left and right halves.
+ */
+typedef struct v9x_probe_tex8 {
+    DWORD flags;
+    DWORD red_mask;
+    DWORD green_mask;
+    DWORD blue_mask;
+    DWORD alpha_mask;
+    WORD left;
+    WORD right;
+} V9X_PROBE_TEX8;
+
+/* ARGB1555, opaque green left and opaque blue right. */
+static const V9X_PROBE_TEX8 v9x_probe_tex8_1555 = {
+    0x41ul, 0x7c00ul, 0x03e0ul, 0x001ful, 0x8000ul, 0x83e0u, 0x801fu };
+
+/*
+ * One draw from an 8x8 texture, with the blend, filter, address mode,
+ * vertex colour and a constant texture coordinate given; the target pixel
+ * at (16,16) comes back.
  *
- * For the Mach64's MODULATE and bilinear scenes, which differ from the
- * halves test in exactly one state each. 8x8 is the only size that engine
- * samples, so each draw here is one M64TextureDraws. A constant coordinate
- * keeps the sampled texel the same across the triangle, so one pixel is the
- * whole answer. Returns the draw's HRESULT, or the first failure before it.
+ * For the Mach64's single-state scenes, which each differ from the halves
+ * test in one state. 8x8 is the only size that engine samples, so each
+ * draw here is one M64TextureDraws. A constant coordinate keeps the
+ * sampled texel the same across the triangle, so one pixel is the whole
+ * answer. Returns the draw's HRESULT, or the first failure before it.
  */
 static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
                                    struct v9x_d3d_device2 *device,
                                    struct v9x_dds *target,
                                    V9X_D3DTLVERTEX *triangle,
-                                   DWORD blend, DWORD filter, DWORD color,
-                                   float u, float v, WORD *raw_out)
+                                   const V9X_PROBE_TEX8 *format,
+                                   DWORD blend, DWORD filter, DWORD address,
+                                   DWORD color, float u, float v,
+                                   WORD *raw_out)
 {
     V9X_DDSURFACEDESC desc;
     struct v9x_dds *surface = 0;
@@ -2325,15 +2348,15 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
     desc.dwHeight = 8ul;
     desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
     desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
-    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+    desc.ddpfPixelFormat.dwFlags = format->flags;
     desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
-    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
-    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
-    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
-    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+    desc.ddpfPixelFormat.dwRBitMask = format->red_mask;
+    desc.ddpfPixelFormat.dwGBitMask = format->green_mask;
+    desc.ddpfPixelFormat.dwBBitMask = format->blue_mask;
+    desc.ddpfPixelFormat.dwRGBAlphaBitMask = format->alpha_mask;
     hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &surface, 0);
     if (hr == 0 && surface != 0) {
-        v9x_fill_surface_halves(surface, 0x83e0u, 0x801fu);
+        v9x_fill_surface_halves(surface, format->left, format->right);
         hr = surface->vtbl->QueryInterface(surface, &v9x_iid_d3d_texture2,
                                            (void **)&texture);
     }
@@ -2355,6 +2378,10 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
     if (hr == 0) {
         hr = device->vtbl->SetRenderState(
             device, V9X_D3DRENDERSTATE_TEXTUREMAG, filter);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREADDRESS, address);
     }
     if (hr == 0) {
         for (corner = 0ul; corner < 3ul; ++corner) {
@@ -2379,6 +2406,8 @@ static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
     }
     (void)device->vtbl->SetRenderState(
         device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREADDRESS, V9X_D3DTADDRESS_WRAP_R);
     if (texture != 0) {
         texture->vtbl->Release(texture);
     }
@@ -4481,12 +4510,14 @@ void __stdcall V9xDdrawProbeEntry(void)
                     DWORD lin_blue;
 
                     mod_left_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
-                        d3d_target, triangle, V9X_D3DTBLEND_MODULATE,
-                        V9X_D3DFILTER_NEAREST, 0xff808080ul, 0.25f, 0.25f,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_MODULATE, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xff808080ul, 0.25f, 0.25f,
                         &mod_left);
                     mod_right_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
-                        d3d_target, triangle, V9X_D3DTBLEND_MODULATE,
-                        V9X_D3DFILTER_NEAREST, 0xff808080ul, 0.75f, 0.25f,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_MODULATE, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xff808080ul, 0.75f, 0.25f,
                         &mod_right);
                     v9x_write_hresult("Tex8ModLeftHr", mod_left_hr);
                     v9x_write_hresult("Tex8ModRightHr", mod_right_hr);
@@ -4506,12 +4537,14 @@ void __stdcall V9xDdrawProbeEntry(void)
                         ? 1ul : 0ul);
 
                     near_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
-                        d3d_target, triangle, V9X_D3DTBLEND_COPY,
-                        V9X_D3DFILTER_NEAREST, 0xfffffffful, 0.5f, 0.25f,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful, 0.5f, 0.25f,
                         &near_raw);
                     lin_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
-                        d3d_target, triangle, V9X_D3DTBLEND_COPY,
-                        V9X_D3DFILTER_LINEAR, 0xfffffffful, 0.5f, 0.25f,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_LINEAR,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful, 0.5f, 0.25f,
                         &lin_raw);
                     v9x_write_hresult("Tex8LinNearestHr", near_hr);
                     v9x_write_hresult("Tex8LinearHr", lin_hr);
@@ -4525,6 +4558,112 @@ void __stdcall V9xDdrawProbeEntry(void)
                         lin_hr == 0 && target_layout.valid != 0ul &&
                         lin_green >= 64ul && lin_green <= 192ul &&
                         lin_blue >= 64ul && lin_blue <= 192ul ? 1ul : 0ul);
+                }
+
+                /*
+                 * DECAL, DECALALPHA and clamp addressing, the rest of what
+                 * the Mach64 policy accepts, each one state away again.
+                 *
+                 * DECAL with the half-grey vertex that halved MODULATE's
+                 * colour must give the full texel: green 07E0.
+                 *
+                 * DECALALPHA over a red vertex: on ARGB4444 with green texels
+                 * at alpha 8/15 the colour is red*(1-At) + green*At, so both
+                 * channels near half. On RGB565, which has no alpha, the
+                 * policy emits REPLACE (ALPHA_DECAL there weights by vertex
+                 * alpha, Phase 4 item 10), so it must be pure green.
+                 *
+                 * Clamp at u = 1.25 must read the right edge, blue. Wrap
+                 * at the same u, the control, reads u = 0.25, green.
+                 *
+                 * Five more hardware-textured draws: M64TextureDraws should
+                 * rise by 15 per run.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const V9X_PROBE_TEX8 tex_4444_half = {
+                        0x41ul, 0x0f00ul, 0x00f0ul, 0x000ful, 0xf000ul,
+                        0x80f0u, 0x800fu };
+                    static const V9X_PROBE_TEX8 tex_565 = {
+                        0x40ul, 0xf800ul, 0x07e0ul, 0x001ful, 0x0000ul,
+                        0x07e0u, 0x001fu };
+                    WORD decal_raw = 0u;
+                    WORD da4444_raw = 0u;
+                    WORD da565_raw = 0u;
+                    WORD clamp_raw = 0u;
+                    WORD wrap_raw = 0u;
+                    HRESULT decal_hr;
+                    HRESULT da4444_hr;
+                    HRESULT da565_hr;
+                    HRESULT clamp_hr;
+                    HRESULT wrap_hr;
+                    int layout_ok = target_layout.valid != 0ul;
+
+                    decal_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_DECAL, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xff808080ul, 0.25f, 0.25f,
+                        &decal_raw);
+                    v9x_write_hresult("Tex8DecalHr", decal_hr);
+                    v9x_write_uint("Tex8DecalRaw", decal_raw);
+                    v9x_write_uint("Tex8DecalOk",
+                        decal_hr == 0 && layout_ok &&
+                        v9x_layout_green(&target_layout, decal_raw) >= 197ul &&
+                        v9x_layout_red(&target_layout, decal_raw) <= 33ul &&
+                        v9x_layout_blue(&target_layout, decal_raw) <= 33ul
+                        ? 1ul : 0ul);
+
+                    da4444_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &tex_4444_half,
+                        V9X_D3DTBLEND_DECALALPHA, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xffff0000ul, 0.25f, 0.25f,
+                        &da4444_raw);
+                    v9x_write_hresult("Tex8DecalAlpha4444Hr", da4444_hr);
+                    v9x_write_uint("Tex8DecalAlpha4444Raw", da4444_raw);
+                    v9x_write_uint("Tex8DecalAlpha4444Ok",
+                        da4444_hr == 0 && layout_ok &&
+                        v9x_layout_red(&target_layout, da4444_raw) >= 80ul &&
+                        v9x_layout_red(&target_layout, da4444_raw) <= 176ul &&
+                        v9x_layout_green(&target_layout, da4444_raw) >= 80ul &&
+                        v9x_layout_green(&target_layout, da4444_raw) <= 176ul &&
+                        v9x_layout_blue(&target_layout, da4444_raw) <= 33ul
+                        ? 1ul : 0ul);
+
+                    da565_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &tex_565,
+                        V9X_D3DTBLEND_DECALALPHA, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xffff0000ul, 0.25f, 0.25f,
+                        &da565_raw);
+                    v9x_write_hresult("Tex8DecalAlpha565Hr", da565_hr);
+                    v9x_write_uint("Tex8DecalAlpha565Raw", da565_raw);
+                    v9x_write_uint("Tex8DecalAlpha565Ok",
+                        da565_hr == 0 && layout_ok &&
+                        v9x_layout_green(&target_layout, da565_raw) >= 197ul &&
+                        v9x_layout_red(&target_layout, da565_raw) <= 33ul &&
+                        v9x_layout_blue(&target_layout, da565_raw) <= 33ul
+                        ? 1ul : 0ul);
+
+                    clamp_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_CLAMP_R, 0xfffffffful, 1.25f, 0.25f,
+                        &clamp_raw);
+                    wrap_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful, 1.25f, 0.25f,
+                        &wrap_raw);
+                    v9x_write_hresult("Tex8ClampHr", clamp_hr);
+                    v9x_write_hresult("Tex8ClampWrapHr", wrap_hr);
+                    v9x_write_uint("Tex8ClampRaw", clamp_raw);
+                    v9x_write_uint("Tex8ClampWrapRaw", wrap_raw);
+                    v9x_write_uint("Tex8ClampOk",
+                        clamp_hr == 0 && wrap_hr == 0 && layout_ok &&
+                        v9x_layout_blue(&target_layout, clamp_raw) >= 197ul &&
+                        v9x_layout_green(&target_layout, clamp_raw) <= 33ul &&
+                        v9x_layout_green(&target_layout, wrap_raw) >= 197ul &&
+                        v9x_layout_blue(&target_layout, wrap_raw) <= 33ul
+                        ? 1ul : 0ul);
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);
