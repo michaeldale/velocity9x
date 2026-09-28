@@ -49,6 +49,7 @@ ATIE21_DIOC_ALPHA_NOTEQUAL equ 21
 ATIE22_DIOC_ALPHA_GEQUAL equ 22
 ATIE23_DIOC_ALPHA_ALWAYS equ 23
 ATIE24_DIOC_BLEND_ONE_ONE equ 24
+ATIE25_DIOC_BLEND_SRCALPHA_INV equ 25
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -95,6 +96,7 @@ ATIE21_MAGIC equ 45495441h
 ATIE22_MAGIC equ 46495441h
 ATIE23_MAGIC equ 47495441h
 ATIE24_MAGIC equ 48495441h
+ATIE25_MAGIC equ 49495441h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -1214,6 +1216,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Argb4444
  cmp AtiE4SceneMode,20
  je AtiE4_Select_Blend_One_One
+ cmp AtiE4SceneMode,21
+ je AtiE4_Select_Blend_SrcAlpha_Inv
  cmp AtiE4SceneMode,12
  jb AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1289,6 +1293,13 @@ AtiE4_Select_Blend_One_One:
  mov dword ptr AtiE4SetupValues[16],0ffff0000h
  mov dword ptr AtiE4SetupValues[40],0ffff0000h
  mov dword ptr AtiE4SetupValues[64],0ffff0000h
+ jmp AtiE4_Selected_Scene
+AtiE4_Select_Blend_SrcAlpha_Inv:
+ mov dword ptr AtiE4Result[0],ATIE25_MAGIC
+ mov dword ptr AtiE4StateValues[40],002c08c1h
+ mov dword ptr AtiE4SetupValues[16],080ff0000h
+ mov dword ptr AtiE4SetupValues[40],080ff0000h
+ mov dword ptr AtiE4SetupValues[64],080ff0000h
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
@@ -1659,6 +1670,8 @@ AtiE4_Inspect_Render:
  add esi,100h
  cmp AtiE4SceneMode,20
  je AtiE24_Blend_Interior
+ cmp AtiE4SceneMode,21
+ je AtiE25_Blend_Interior
  cmp AtiE4SceneMode,5
  jae AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
@@ -1855,6 +1868,30 @@ AtiE24_Blend_Interior_3:
  je short AtiE24_Blend_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE24_Blend_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+AtiE25_Blend_Interior:
+ mov ax,[esi+0414h]
+ cmp ax,0d2adh
+ je short AtiE25_Blend_Interior_2
+ inc dword ptr AtiE4Result[64]
+ movzx eax,ax
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],0000d2adh
+AtiE25_Blend_Interior_2:
+ mov ax,[esi+0444h]
+ cmp ax,0d2adh
+ je short AtiE25_Blend_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE25_Blend_Interior_3:
+ mov ax,[esi+0914h]
+ cmp ax,0d2adh
+ je short AtiE25_Blend_Interior_Done
+ inc dword ptr AtiE4Result[64]
+AtiE25_Blend_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
  jne AtiE4_Exterior
  or AtiE4Result[4],1000h
@@ -2499,6 +2536,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run23
  cmp ecx,ATIE24_DIOC_BLEND_ONE_ONE
  je AtiE1_Dioc_Run24
+ cmp ecx,ATIE25_DIOC_BLEND_SRCALPHA_INV
+ je AtiE1_Dioc_Run25
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2838,6 +2877,9 @@ AtiE1_Dioc_Run23:
  jmp short AtiE1_Dioc_Run_Alpha_Table
 AtiE1_Dioc_Run24:
  mov eax,20
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run25:
+ mov eax,21
 AtiE1_Dioc_Run_Alpha_Table:
  pushad
  mov ebp,esi
