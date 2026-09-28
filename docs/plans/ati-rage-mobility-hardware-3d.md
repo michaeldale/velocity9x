@@ -952,6 +952,28 @@ hardware textured draw. Every texture it uses is larger than the 8x8
 the policy accepts. The D3D gates need an 8x8 texture scene before
 texturing counts as proven through the HAL.
 
+The probe now draws one (`Tex8*`: ARGB1555, green left and blue right,
+COPY, nearest). On boot 26 both draws were refused, and nothing was
+drawn:
+
+- `Tex8LeftRaw` and `Tex8RightRaw` read `0000`;
+- `M64TextureDraws` stayed at 0;
+- `M64Refused` rose by exactly the scene's two draws.
+
+The cause is measured: `Tex8Pitch=0x1000`, and every size gets the same.
+DirectDraw rounds a texture's pitch to `vmiData.dwTextureAlign`, which
+this engine publishes as 4096 for the 4 KiB base. The texture builder
+takes only `max(w,h)*2`, 16 bytes here. So the pitch point in the
+unmeasured list above is now settled, against the builder: no texture
+reaches the engine through the HAL.
+
+Gen3 met the same pitch and places its own textures, at a page-aligned
+base and the natural pitch (`v9x_d3d_i9xx_create_texture`). The
+alternative is a smaller texture alignment. It is cheaper, but it binds
+bases the hardware has never been shown to sample: only 4 KiB bases
+were measured. The 256-byte wedge was a harness bug, so it neither
+supports nor rules out smaller bases.
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register

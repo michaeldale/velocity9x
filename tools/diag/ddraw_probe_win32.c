@@ -4164,20 +4164,37 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * texture correctly reads green then blue; one that has the
                  * stride, size or level wrong reads something else, and the
                  * raw values say what.
+                 *
+                 * 8 is first, and smaller than every other texture in this
+                 * probe: it is the only size the Mach64 engine accepts
+                 * (mach64_policy.c), so on the Rage Mobility-M these two
+                 * draws are the probe's only hardware-textured ones and
+                 * V9XTRACE's M64TextureDraws should read exactly 2.
                  */
                 {
-                    static const DWORD big_sizes[3] = { 64ul, 128ul, 256ul };
-                    static const char *big_left[3] = {
-                        "Tex64LeftRaw", "Tex128LeftRaw", "Tex256LeftRaw" };
-                    static const char *big_right[3] = {
-                        "Tex64RightRaw", "Tex128RightRaw", "Tex256RightRaw" };
-                    static const char *big_ok[3] = {
-                        "Tex64HalvesOk", "Tex128HalvesOk", "Tex256HalvesOk" };
-                    static const char *big_hr[3] = {
-                        "Tex64SurfaceHr", "Tex128SurfaceHr", "Tex256SurfaceHr" };
+                    static const DWORD big_sizes[4] = {
+                        8ul, 64ul, 128ul, 256ul };
+                    static const char *big_left[4] = {
+                        "Tex8LeftRaw", "Tex64LeftRaw", "Tex128LeftRaw",
+                        "Tex256LeftRaw" };
+                    static const char *big_right[4] = {
+                        "Tex8RightRaw", "Tex64RightRaw", "Tex128RightRaw",
+                        "Tex256RightRaw" };
+                    static const char *big_ok[4] = {
+                        "Tex8HalvesOk", "Tex64HalvesOk", "Tex128HalvesOk",
+                        "Tex256HalvesOk" };
+                    static const char *big_hr[4] = {
+                        "Tex8SurfaceHr", "Tex64SurfaceHr", "Tex128SurfaceHr",
+                        "Tex256SurfaceHr" };
+                    /* The pitch DirectDraw gave the surface. The Mach64
+                     * builder takes only max(w,h)*2 bytes, and whether
+                     * DirectDraw hands out that pitch was never measured. */
+                    static const char *big_pitch[4] = {
+                        "Tex8Pitch", "Tex64Pitch", "Tex128Pitch",
+                        "Tex256Pitch" };
                     DWORD big_index;
 
-                    for (big_index = 0ul; big_index < 3ul; ++big_index) {
+                    for (big_index = 0ul; big_index < 4ul; ++big_index) {
                         struct v9x_dds *big = 0;
                         struct v9x_d3d_texture2 *big_texture = 0;
                         DWORD big_handle = 0ul;
@@ -4187,6 +4204,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                         HRESULT left_hr = 0x80004005ul;
                         HRESULT right_hr = 0x80004005ul;
 
+                        v9x_step("tex", "create", big_sizes[big_index]);
                         v9x_zero(&desc, sizeof(desc));
                         desc.dwSize = sizeof(desc);
                         desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
@@ -4205,6 +4223,12 @@ void __stdcall V9xDdrawProbeEntry(void)
                             ddraw, &desc, &big, 0);
                         v9x_write_hresult(big_hr[big_index], big_hr_value);
                         if (big_hr_value == 0 && big != 0) {
+                            v9x_zero(&desc, sizeof(desc));
+                            desc.dwSize = sizeof(desc);
+                            if (big->vtbl->GetSurfaceDesc(big, &desc) == 0) {
+                                v9x_write_uint(big_pitch[big_index],
+                                               (DWORD)desc.lPitch);
+                            }
                             v9x_fill_surface_halves(big, 0x83e0u, 0x801fu);
                             big_hr_value = big->vtbl->QueryInterface(
                                 big, &v9x_iid_d3d_texture2,
@@ -4233,12 +4257,15 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 ? d3d_device->vtbl->BeginScene(d3d_device)
                                 : big_hr_value;
                             if (begin_hr == 0) {
+                                v9x_step("tex", "draw-left",
+                                         big_sizes[big_index]);
                                 left_hr = d3d_device->vtbl->DrawPrimitive(
                                     d3d_device, V9X_D3DPT_TRIANGLELIST,
                                     V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
                                 end_hr = d3d_device->vtbl->EndScene(d3d_device);
                                 if (end_hr != 0) left_hr = end_hr;
                             }
+                            v9x_step("tex", "read-left", (DWORD)left_hr);
                             left_raw = v9x_surface_pixel16(d3d_target,
                                                            16ul, 16ul);
                             /* Right half: every coordinate inside u > 0.5. */
@@ -4250,12 +4277,15 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 ? d3d_device->vtbl->BeginScene(d3d_device)
                                 : big_hr_value;
                             if (begin_hr == 0) {
+                                v9x_step("tex", "draw-right",
+                                         big_sizes[big_index]);
                                 right_hr = d3d_device->vtbl->DrawPrimitive(
                                     d3d_device, V9X_D3DPT_TRIANGLELIST,
                                     V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
                                 end_hr = d3d_device->vtbl->EndScene(d3d_device);
                                 if (end_hr != 0) right_hr = end_hr;
                             }
+                            v9x_step("tex", "read-right", (DWORD)right_hr);
                             right_raw = v9x_surface_pixel16(d3d_target,
                                                             16ul, 16ul);
                             v9x_write_uint(big_left[big_index], left_raw);
