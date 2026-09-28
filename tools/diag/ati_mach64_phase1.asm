@@ -1274,14 +1274,14 @@ AtiE4_Select_Not_Wrap:
 AtiE4_Select_Not_Bilinear:
  cmp AtiE4SceneMode,10
  jne short AtiE4_Select_Not_Argb1555
- mov dword ptr AtiE4StateValues[32],007f0051h
+ mov dword ptr AtiE4StateValues[36],007f0051h
  mov dword ptr AtiE4StateValues[40],40010081h
  mov dword ptr AtiE4StateValues[52],30040444h
  jmp short AtiE4_Selected_Scene
 AtiE4_Select_Not_Argb1555:
  cmp AtiE4SceneMode,11
  jne short AtiE4_Selected_Scene
- mov dword ptr AtiE4StateValues[32],007f0051h
+ mov dword ptr AtiE4StateValues[36],007f0051h
  mov dword ptr AtiE4StateValues[40],40010081h
  mov dword ptr AtiE4StateValues[52],0f0040444h
 AtiE4_Selected_Scene:
