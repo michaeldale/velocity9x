@@ -264,10 +264,20 @@ base alignment as the unsupported outlier: the original driver binds local
 textures at its texture-heap granularity. The shared builder now requires a
 4 KiB-aligned base, and replacement build `ati-phase4-texture-20260928-b`
 binds the same texture at `0x204000`; all control words, coordinates, target,
-and probes are otherwise unchanged. Host tests, the diagnostic build and the
-tree check pass. This correction is not physical evidence until the Gateway
-is power-cycled and the replacement build runs once; item 4 remains open and
-public ATI acceleration remains disabled.
+and probes are otherwise unchanged. That build crashed the freshly booted
+machine in the same way, falsifying alignment as the crash cause.
+
+Source inspection then located the failure before the first texture-state
+write: texture scenes correctly left the depth page unmapped, but the shared
+initializer seeded depth for every scene number greater than or equal to two,
+therefore writing through the texture scene's null `AtiE6DepthLinear`. Both
+crashes are diagnostic-harness failures, not texture-engine evidence. The
+initializer is now bounded explicitly to depth scene modes 2 through 4. A
+new state-only executable, `ATI4TS.EXE`, emits the guarded texture upload and
+19 state writes but no setup vertices or draw trigger; it is the next
+physical gate after a power cycle. Host tests, both diagnostic builds and the
+tree check pass. Item 4 remains open and public ATI acceleration remains
+disabled.
 
 ## Goal
 

@@ -59,3 +59,8 @@ $textureExe=Join-Path $outputDir 'ATI4TX.EXE';$textureObj=Join-Path $outputDir '
 $textureBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $textureExe -Object $textureObj -MapFile $textureMap -LinkFile $textureLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_TEXTURE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$textureObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($textureBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TX.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 RGB565 texture publisher: $textureExe"
+
+$textureStateExe=Join-Path $outputDir 'ATI4TS.EXE';$textureStateObj=Join-Path $outputDir 'ati4ts.obj';$textureStateMap=Join-Path $outputDir 'ati4ts.map';$textureStateLnk=Join-Path $outputDir 'ati4ts.lnk'
+$textureStateBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $textureStateExe -Object $textureStateObj -MapFile $textureStateMap -LinkFile $textureStateLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_TEXTURE_STATE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$textureStateObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($textureStateBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TS.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 texture state-only publisher: $textureStateExe"

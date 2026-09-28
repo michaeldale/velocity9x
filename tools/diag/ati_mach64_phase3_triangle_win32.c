@@ -5,7 +5,19 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_TEXTURE)
+#if defined(V9X_TEXTURE_STATE)
+#define ATI3D_MAGIC 0x3a495441ul
+#define ATI3D_DIOC 10u
+#define ATI3D_HEADING "[AtiMach64Phase4TextureStateOnly]\r\n"
+#define ATI3D_OPERATION "guarded-rgb565-texture-state-without-trigger"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4TS.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4TS.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fdfful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 0ul
+#define ATI3D_EXPECT_CHANGED 0ul
+#elif defined(V9X_TEXTURE)
 #define ATI3D_MAGIC 0x39495441ul
 #define ATI3D_DIOC 9u
 #define ATI3D_HEADING "[AtiMach64Phase4Texture]\r\n"
@@ -13,6 +25,10 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4TX.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4TX.BMP"
 #define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
 #elif defined(V9X_ZCLEAR)
 #define ATI3D_MAGIC 0x38495441ul
 #define ATI3D_DIOC 8u
@@ -21,6 +37,10 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4ZC.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4ZC.BMP"
 #define ATI3D_GUARD_KEY "DepthOrClearOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 17ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
 #elif defined(V9X_ZWRITE)
 #define ATI3D_MAGIC 0x37495441ul
 #define ATI3D_DIOC 7u
@@ -29,6 +49,10 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4ZW.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4ZW.BMP"
 #define ATI3D_GUARD_KEY "DepthOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 17ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
 #elif defined(V9X_ZTEST)
 #define ATI3D_MAGIC 0x36495441ul
 #define ATI3D_DIOC 6u
@@ -37,6 +61,10 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4Z0.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4Z0.BMP"
 #define ATI3D_GUARD_KEY "DepthOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 17ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
 #elif defined(V9X_GOURAUD)
 #define ATI3D_MAGIC 0x35495441ul
 #define ATI3D_DIOC 5u
@@ -45,6 +73,10 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4G0.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4G0.BMP"
 #define ATI3D_GUARD_KEY "GuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 17ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
 #else
 #define ATI3D_MAGIC 0x34495441ul
 #define ATI3D_DIOC 4u
@@ -53,14 +85,11 @@
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI3D0.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI3D0.BMP"
 #define ATI3D_GUARD_KEY "GuardMismatches"
-#endif
 #define ATI3D_PASS_STATUS 0x0001fffful
-#if defined(V9X_TEXTURE)
-#define ATI3D_STATE_COUNT 19ul
-#else
 #define ATI3D_STATE_COUNT 17ul
-#endif
 #define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#endif
 #define ATI3D_TRANSCRIPT_COUNT 38ul
 #define ATI3D_WIDTH 64ul
 #define ATI3D_HEIGHT 28ul
@@ -279,7 +308,9 @@ void WINAPI V9xAtiMach64Phase3Entry(void)
            result.exterior_mismatch == 0ul &&
            result.guard_mismatch == 0ul &&
            result.restore_mismatch == 0ul &&
-           result.changed_pixels != 0ul && result.reserved == 0ul &&
+           ((ATI3D_EXPECT_CHANGED != 0ul && result.changed_pixels != 0ul) ||
+            (ATI3D_EXPECT_CHANGED == 0ul && result.changed_pixels == 0ul)) &&
+           result.reserved == 0ul &&
            result.timeout_stage == 0ul;
     line(file, "Result", pass ? "PASS" : "REVIEW");
     CloseHandle(file);
