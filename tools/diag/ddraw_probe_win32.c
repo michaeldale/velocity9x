@@ -2291,6 +2291,104 @@ static int v9x_z_step(struct v9x_d3d_device2 *device,
 }
 
 /*
+ * One draw from an 8x8 ARGB1555 texture, opaque green on the left half and
+ * opaque blue on the right, with the blend, filter, vertex colour and a
+ * constant texture coordinate given; the target pixel at (16,16) comes back.
+ *
+ * For the Mach64's MODULATE and bilinear scenes, which differ from the
+ * halves test in exactly one state each. 8x8 is the only size that engine
+ * samples, so each draw here is one M64TextureDraws. A constant coordinate
+ * keeps the sampled texel the same across the triangle, so one pixel is the
+ * whole answer. Returns the draw's HRESULT, or the first failure before it.
+ */
+static HRESULT v9x_probe_tex8_draw(struct v9x_dd *ddraw,
+                                   struct v9x_d3d_device2 *device,
+                                   struct v9x_dds *target,
+                                   V9X_D3DTLVERTEX *triangle,
+                                   DWORD blend, DWORD filter, DWORD color,
+                                   float u, float v, WORD *raw_out)
+{
+    V9X_DDSURFACEDESC desc;
+    struct v9x_dds *surface = 0;
+    struct v9x_d3d_texture2 *texture = 0;
+    DWORD handle = 0ul;
+    HRESULT hr;
+    HRESULT end_hr;
+    DWORD corner;
+
+    *raw_out = 0u;
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT |
+                   V9X_DDSD_PIXELFORMAT;
+    desc.dwWidth = 8ul;
+    desc.dwHeight = 8ul;
+    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+    hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &surface, 0);
+    if (hr == 0 && surface != 0) {
+        v9x_fill_surface_halves(surface, 0x83e0u, 0x801fu);
+        hr = surface->vtbl->QueryInterface(surface, &v9x_iid_d3d_texture2,
+                                           (void **)&texture);
+    }
+    if (hr == 0 && texture != 0) {
+        hr = texture->vtbl->GetHandle(texture, device, &handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, blend);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMIN, filter);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAG, filter);
+    }
+    if (hr == 0) {
+        for (corner = 0ul; corner < 3ul; ++corner) {
+            triangle[corner].color = color;
+            triangle[corner].tu = u;
+            triangle[corner].tv = v;
+        }
+        v9x_fill_surface(target, 0ul);
+        hr = device->vtbl->BeginScene(device);
+        if (hr == 0) {
+            v9x_step("tex8", "draw", blend);
+            hr = device->vtbl->DrawPrimitive(
+                device, V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
+                triangle, 3ul, 0ul);
+            end_hr = device->vtbl->EndScene(device);
+            if (hr == 0) {
+                hr = end_hr;
+            }
+        }
+        v9x_step("tex8", "read", (DWORD)hr);
+        *raw_out = v9x_surface_pixel16(target, 16ul, 16ul);
+    }
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    if (texture != 0) {
+        texture->vtbl->Release(texture);
+    }
+    if (surface != 0) {
+        surface->vtbl->Release(surface);
+    }
+    return hr;
+}
+
+/*
  * Which device did CreateDevice actually return.
  *
  * S_OK from CreateDevice for IID_IDirect3DHALDevice was taken as proof that
@@ -4347,6 +4445,86 @@ void __stdcall V9xDdrawProbeEntry(void)
                     triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
                     triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
                     triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+                }
+
+                /*
+                 * MODULATE and bilinear on an 8x8 texture, each one state
+                 * away from the passing halves test above.
+                 *
+                 * MODULATE with a half-grey vertex (0x80 per channel) must
+                 * halve each half's colour. COPY would leave it full, so
+                 * a full-strength pixel means the blend was not applied.
+                 *
+                 * Bilinear samples u = 0.5, exactly between texel 3 (green)
+                 * and texel 4 (blue) under Direct3D's texel-centre rule, so
+                 * it must mix the two. Nearest at the same coordinate is
+                 * drawn as the control: it gives one pure colour, and which
+                 * one says where the sampler puts texel centres. Both
+                 * channels between 64 and 192 is the pass. An engine with
+                 * no half-texel offset reads nearer one side and fails it,
+                 * and the raw value records by how much.
+                 *
+                 * Four hardware-textured draws on the Mach64, so with the
+                 * halves test M64TextureDraws should rise by 10 per run.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    WORD mod_left = 0u;
+                    WORD mod_right = 0u;
+                    WORD lin_raw = 0u;
+                    WORD near_raw = 0u;
+                    HRESULT mod_left_hr;
+                    HRESULT mod_right_hr;
+                    HRESULT lin_hr;
+                    HRESULT near_hr;
+                    DWORD lin_green;
+                    DWORD lin_blue;
+
+                    mod_left_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, V9X_D3DTBLEND_MODULATE,
+                        V9X_D3DFILTER_NEAREST, 0xff808080ul, 0.25f, 0.25f,
+                        &mod_left);
+                    mod_right_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, V9X_D3DTBLEND_MODULATE,
+                        V9X_D3DFILTER_NEAREST, 0xff808080ul, 0.75f, 0.25f,
+                        &mod_right);
+                    v9x_write_hresult("Tex8ModLeftHr", mod_left_hr);
+                    v9x_write_hresult("Tex8ModRightHr", mod_right_hr);
+                    v9x_write_uint("Tex8ModLeftRaw", mod_left);
+                    v9x_write_uint("Tex8ModRightRaw", mod_right);
+                    v9x_write_uint("Tex8ModulateOk",
+                        mod_left_hr == 0 && mod_right_hr == 0 &&
+                        target_layout.valid != 0ul &&
+                        v9x_layout_green(&target_layout, mod_left) >= 100ul &&
+                        v9x_layout_green(&target_layout, mod_left) <= 156ul &&
+                        v9x_layout_red(&target_layout, mod_left) <= 33ul &&
+                        v9x_layout_blue(&target_layout, mod_left) <= 33ul &&
+                        v9x_layout_blue(&target_layout, mod_right) >= 100ul &&
+                        v9x_layout_blue(&target_layout, mod_right) <= 156ul &&
+                        v9x_layout_red(&target_layout, mod_right) <= 33ul &&
+                        v9x_layout_green(&target_layout, mod_right) <= 33ul
+                        ? 1ul : 0ul);
+
+                    near_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, V9X_D3DTBLEND_COPY,
+                        V9X_D3DFILTER_NEAREST, 0xfffffffful, 0.5f, 0.25f,
+                        &near_raw);
+                    lin_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, V9X_D3DTBLEND_COPY,
+                        V9X_D3DFILTER_LINEAR, 0xfffffffful, 0.5f, 0.25f,
+                        &lin_raw);
+                    v9x_write_hresult("Tex8LinNearestHr", near_hr);
+                    v9x_write_hresult("Tex8LinearHr", lin_hr);
+                    v9x_write_uint("Tex8LinNearestRaw", near_raw);
+                    v9x_write_uint("Tex8LinearRaw", lin_raw);
+                    lin_green = target_layout.valid != 0ul
+                        ? v9x_layout_green(&target_layout, lin_raw) : 0ul;
+                    lin_blue = target_layout.valid != 0ul
+                        ? v9x_layout_blue(&target_layout, lin_raw) : 0ul;
+                    v9x_write_uint("Tex8BilinearOk",
+                        lin_hr == 0 && target_layout.valid != 0ul &&
+                        lin_green >= 64ul && lin_green <= 192ul &&
+                        lin_blue >= 64ul && lin_blue <= 192ul ? 1ul : 0ul);
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);

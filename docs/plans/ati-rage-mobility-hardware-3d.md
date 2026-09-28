@@ -1002,8 +1002,25 @@ all three `HalvesOk` are 1. Across the run, `M64TextureDraws` rose by 6,
 `M64Draws` by 46 (40 + 6) and `M64Refused` by 364, the non-8x8 total.
 There were zero timeouts and zero resets.
 
-MODULATE and bilinear are accepted by the policy but not yet drawn
-through the HAL.
+MODULATE and bilinear followed (probe `ddp-texop-20260929-a`,
+`V9XSNA5-TEX8-MOD-LINEAR.INI`, `V9XDDT-TEX8-MOD-LINEAR.TXT`). Both use an
+8x8 ARGB1555 texture, one state away from the halves test.
+
+- MODULATE, half-grey vertex: left `0400` (green 0x20 of 0x3F), right
+  `0010` (blue 0x10 of 0x1F). That is exactly half of each, so
+  `Tex8ModulateOk=1`.
+- Bilinear, at u = 0.5 on the green/blue boundary: `046E`, green
+  35/63 and blue 14/31, about 56:45. So `Tex8BilinearOk=1`. The
+  nearest control at the same coordinate read pure green `07E0`: at
+  an exact texel boundary the sampler picks the left texel, and the
+  bilinear weight leans slightly the same way. How far this is from
+  Direct3D's texel-centre rule is recorded, not yet characterised.
+- `M64TextureDraws` rose by 10 (the halves test's 6 plus these 4),
+  `M64Draws` by 50 and `M64Refused` by 364. There were zero timeouts
+  and zero resets.
+
+Every texture state the policy accepts has now been drawn through the
+HAL, at 8x8.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
