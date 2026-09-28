@@ -5,13 +5,22 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#ifdef V9X_GOURAUD
+#if defined(V9X_ZTEST)
+#define ATI3D_MAGIC 0x36495441ul
+#define ATI3D_DIOC 6u
+#define ATI3D_HEADING "[AtiMach64Phase4ZTest]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-z16-less-no-write"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4Z0.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4Z0.BMP"
+#define ATI3D_GUARD_KEY "DepthOrGuardMismatches"
+#elif defined(V9X_GOURAUD)
 #define ATI3D_MAGIC 0x35495441ul
 #define ATI3D_DIOC 5u
 #define ATI3D_HEADING "[AtiMach64Phase4Gouraud]\r\n"
 #define ATI3D_OPERATION "guarded-offscreen-rgb565-gouraud-triangle"
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4G0.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4G0.BMP"
+#define ATI3D_GUARD_KEY "GuardMismatches"
 #else
 #define ATI3D_MAGIC 0x34495441ul
 #define ATI3D_DIOC 4u
@@ -19,6 +28,7 @@
 #define ATI3D_OPERATION "guarded-offscreen-rgb565-flat-triangle"
 #define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI3D0.TXT"
 #define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI3D0.BMP"
+#define ATI3D_GUARD_KEY "GuardMismatches"
 #endif
 #define ATI3D_PASS_STATUS 0x0001fffful
 #define ATI3D_STATE_COUNT 17ul
@@ -218,7 +228,7 @@ void WINAPI V9xAtiMach64Phase3Entry(void)
     hx(file, "OneOverArea", result.one_over_area);
     dn(file, "InteriorMismatches", result.interior_mismatch);
     dn(file, "ExteriorMismatches", result.exterior_mismatch);
-    dn(file, "GuardMismatches", result.guard_mismatch);
+    dn(file, ATI3D_GUARD_KEY, result.guard_mismatch);
     dn(file, "RestoreMismatches", result.restore_mismatch);
     dn(file, "ChangedPixels", result.changed_pixels);
     dn(file, "ChangedMinX", result.min_x);
