@@ -2249,6 +2249,9 @@ static int v9x_z_step(struct v9x_d3d_device2 *device,
     triangle[1].color = color;
     triangle[2].color = color;
 
+    /* The Gateway locked inside the ladder once (boot 20) with no key
+     * between device creation and D3DZStateHr; these name the call. */
+    v9x_step("z", "state", color);
     state_hr = device->vtbl->SetRenderState(
         device, V9X_D3DRENDERSTATE_ZENABLE, 1ul);
     if (state_hr == 0) {
@@ -2259,17 +2262,22 @@ static int v9x_z_step(struct v9x_d3d_device2 *device,
         state_hr = device->vtbl->SetRenderState(
             device, V9X_D3DRENDERSTATE_ZWRITEENABLE, write_enable);
     }
+    v9x_step("z", "begin", (DWORD)state_hr);
     begin_hr = state_hr == 0 ? device->vtbl->BeginScene(device) : state_hr;
     if (begin_hr == 0) {
+        v9x_step("z", "draw", 0ul);
         draw_hr = device->vtbl->DrawPrimitive(
             device, V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
             triangle, 3ul, 0ul);
+        v9x_step("z", "end", (DWORD)draw_hr);
         end_hr = device->vtbl->EndScene(device);
     } else {
         draw_hr = begin_hr;
         end_hr = begin_hr;
     }
+    v9x_step("z", "read", (DWORD)end_hr);
     *raw_out = v9x_surface_pixel16(target, 16ul, 16ul);
+    v9x_step("z", "done", *raw_out);
     /* Reported, not just folded into the result. A rung that renders nothing
      * because a state call was refused and one that renders nothing because
      * the depth test rejected it look identical in the pixel alone. */
@@ -6438,6 +6446,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 mixed_depth_encoding_ok ? 1ul : 0ul);
                         }
 
+                        v9x_step("z", "clear-target", 0ul);
                         v9x_fill_surface(d3d_target, 0ul);
 
                         /*

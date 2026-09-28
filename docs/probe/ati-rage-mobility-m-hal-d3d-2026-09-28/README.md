@@ -90,5 +90,36 @@ trails by hundreds of keys.
   - `/zprivate` (`V9XDDT-ZPRIVATE.TXT`): `D3DZPCompareOk=1` and
     `D3DZPWriteMaskOk=1` on a hardware device (`D3DZPIsHardware=1`,
     16-bit render and Z depth).
-- Three clean runs on one boot, after two locks in two earlier runs. The
-  runs have not been repeated across a cold boot.
+- Three clean runs on one boot, after two locks in two earlier runs.
+
+## Cold boot: one more lock, in the Z ladder
+
+Boot 20 was a cold boot, with the same HAL (`ati-d3d-mach64-20260929-d`,
+hash-checked against the boot 19 copy). The first default run
+hard-locked. Ping and the agent's TCP port still answered, but the agent
+did not reply. The step log (`V9XDDT-BOOT20-LOCK-IN-Z-LADDER.TXT`) got
+past the depth fill (`ZDepthFillOk=1`) and ends at `D3DZDeviceHr
+00000000`. The lock is therefore somewhere in the first Z ladder:
+
+- the target clear by CPU `Lock`;
+- then four rungs, each a Z-state set, a Z-tested draw and a CPU pixel
+  read.
+
+The ladder had no step points of its own.
+
+The probe (`ddp-zsteps-20260929-a`) now logs `z state`, `begin`, `draw`,
+`end`, `read` and `done` for every rung, plus `z clear-target`. Boot 21
+ran six default runs back to back, all complete, all passing the
+triangle, depth-fill, Z-compare and Z-write-mask checks
+(`V9XDDT-BOOT21-ZSTEPS.TXT` is the sixth). No lock has yet happened with
+the rung steps in place, so which call locks is not established.
+
+The totals since the 2D-mode fix: ten runs over three boots, and one
+lock. That lock came in the first run after a cold boot, within about
+two minutes of the desktop. Boot 19 also started from a power-off, and
+its first run passed. So "first run after power-on" is a hypothesis, not
+a finding.
+
+A HAL snapshot was attempted. `V9XTRACE.EXE` exited `-1`, and the
+`V9XSNAP.INI` it left dates from an earlier boot, so there are no
+counter readings for boot 21.

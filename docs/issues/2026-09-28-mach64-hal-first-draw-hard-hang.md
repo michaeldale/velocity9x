@@ -1,8 +1,9 @@
 # Mach64 HAL's first physical draw hard-hung the Gateway
 
-Status: three causes identified and fixed. Causes 1 and 2 were confirmed
-on hardware at boot 15; cause 3 has one clean run, at boot 19.
-Machine: Gateway Solo 2150, Velocity9x bound, boots 13-19, 2026-09-28/29.
+Status: open. Three causes are identified and fixed. An intermittent
+lock remains: one in the ten runs since the third fix, inside the first
+Z ladder (boot 20).
+Machine: Gateway Solo 2150, Velocity9x bound, boots 13-21, 2026-09-28/29.
 
 ## What happened
 
@@ -79,8 +80,12 @@ engine.
 ## Not established
 
 - Which of causes 1 and 2 hung the first run, or whether both contributed.
-- Whether cause 3's fix holds across a cold boot. It holds for three
-  runs on boot 19: the default run, `/mixed` and `/zprivate`.
+- A fourth, intermittent lock remains. Since the 2D-mode fix there has
+  been one lock in ten runs: the first run after the boot 20 cold boot.
+  It came after the depth fill passed, inside the first Z ladder (four
+  Z-tested draws, each with a CPU pixel read). The probe now logs every
+  rung. Six runs on boot 21 passed, and none has locked with those step
+  points in place. The next lock's step log names the call.
 - Whether anything else a bare VBE boot leaves unset is also needed. The
   stock driver's initialisation is otherwise unknown.
 - The next physical run should first confirm `BUS_CNTL` bit 27 is set with
