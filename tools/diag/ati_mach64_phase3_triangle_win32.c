@@ -5,7 +5,15 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_ZCLEAR)
+#if defined(V9X_TEXTURE)
+#define ATI3D_MAGIC 0x39495441ul
+#define ATI3D_DIOC 9u
+#define ATI3D_HEADING "[AtiMach64Phase4Texture]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-rgb565-nearest-clamp-texture"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4TX.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4TX.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#elif defined(V9X_ZCLEAR)
 #define ATI3D_MAGIC 0x38495441ul
 #define ATI3D_DIOC 8u
 #define ATI3D_HEADING "[AtiMach64Phase4ZClear]\r\n"
@@ -47,8 +55,13 @@
 #define ATI3D_GUARD_KEY "GuardMismatches"
 #endif
 #define ATI3D_PASS_STATUS 0x0001fffful
+#if defined(V9X_TEXTURE)
+#define ATI3D_STATE_COUNT 19ul
+#else
 #define ATI3D_STATE_COUNT 17ul
+#endif
 #define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_TRANSCRIPT_COUNT 38ul
 #define ATI3D_WIDTH 64ul
 #define ATI3D_HEIGHT 28ul
 
@@ -85,13 +98,13 @@ struct ati3d_result {
     DWORD timeout_stage;
     DWORD first_actual;
     DWORD first_expected;
-    DWORD write_offsets[36];
-    DWORD write_values[36];
+    DWORD write_offsets[ATI3D_TRANSCRIPT_COUNT];
+    DWORD write_values[ATI3D_TRANSCRIPT_COUNT];
     WORD pixels[ATI3D_WIDTH * ATI3D_HEIGHT];
 };
 
-typedef char ati3d_result_size_is_4000[
-    sizeof(struct ati3d_result) == 4000 ? 1 : -1];
+typedef char ati3d_result_size_is_4016[
+    sizeof(struct ati3d_result) == 4016 ? 1 : -1];
 
 static void hex(char *text, DWORD value)
 {
@@ -148,7 +161,7 @@ static void transcript(HANDLE file, const struct ati3d_result *result)
     DWORD index;
     char offset_key[] = "WriteOffset00";
     char value_key[] = "WriteValue00";
-    for (index = 0ul; index < 36ul; ++index) {
+    for (index = 0ul; index < ATI3D_TRANSCRIPT_COUNT; ++index) {
         offset_key[11] = (char)('0' + index / 10ul);
         offset_key[12] = (char)('0' + index % 10ul);
         value_key[10] = (char)('0' + index / 10ul);

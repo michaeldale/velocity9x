@@ -33,6 +33,7 @@ ATIE5_DIOC_GOURAUD equ 5
 ATIE6_DIOC_ZTEST equ 6
 ATIE7_DIOC_ZWRITE equ 7
 ATIE8_DIOC_ZCLEAR equ 8
+ATIE9_DIOC_TEXTURE equ 9
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -63,7 +64,8 @@ ATIE5_MAGIC equ 35495441h
 ATIE6_MAGIC equ 36495441h
 ATIE7_MAGIC equ 37495441h
 ATIE8_MAGIC equ 38495441h
-ATIE4_RESULT_DWORDS equ 1000
+ATIE9_MAGIC equ 39495441h
+ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
 ATIE4_TARGET_COLOR equ 0ffff00ffh
@@ -74,6 +76,9 @@ ATIE6_DEPTH_OFFSET equ 00202100h
 ATIE6_DEPTH_GUARD equ 05aa5h
 ATIE6_DEPTH_STORED equ 08000h
 ATIE6_DEPTH_INCOMING equ 040000000h
+ATIE9_TEXTURE_PAGE equ 00204000h
+ATIE9_TEXTURE_OFFSET equ 00204100h
+ATIE9_TEXTURE_GUARD equ 05aa5h
 ATIE4_STATE_COUNT equ 17
 ATIE4_SETUP_COUNT equ 19
 VxD_LOCKED_DATA_SEG
@@ -111,13 +116,13 @@ AtiE3FrontPitchPixels dd 0
 AtiE3FrontBackup db 4096 dup (0)
 AtiE4Result label dword
  dd ATIE4_MAGIC
- dd 999 dup (0)
+ dd 1003 dup (0)
 AtiE4StateOffsets dd 06d4h,06d8h,0708h,0730h,06a8h,06b4h
                    dd 0500h,0548h,054ch,0550h,05fch,06c4h
-                   dd 06c8h,06d0h,0304h,0770h,0774h
+                   dd 06c8h,06d0h,0304h,0770h,0774h,0778h,05cch
 AtiE4StateValues dd 00070007h,00000505h,0,3,003f0000h,001b0000h
                   dd 02040020h,02040020h,0,0,000100c1h,0
-                  dd 0ffffffffh,40040444h,00000018h,0,0
+                  dd 0ffffffffh,40040444h,00000018h,0,0,0,0
 AtiE4SetupOffsets dd 0240h,0244h,0248h,0250h,0254h,0258h
                    dd 0260h,0264h,0268h,0270h,0274h,0278h
                    dd 0280h,0284h,0288h,0290h,0294h,0298h,029ch
@@ -125,16 +130,27 @@ AtiE4SetupValues dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200018h
                   dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00a00018h
                   dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200058h
                   dd 03b000000h
-AtiE4StateSaved dd ATIE4_STATE_COUNT dup (0)
+AtiE4StateSaved dd 19 dup (0)
 AtiE4SceneMode dd 0
+AtiE4StateCount dd ATIE4_STATE_COUNT
 AtiE4MmioLinear dd 0
 AtiE4FbLinear dd 0
 AtiE6DepthLinear dd 0
+AtiE9TextureLinear dd 0
 AtiE4BusSaved dd 0
 AtiE4TestSaved dd 0
 AtiE8DstYXSaved dd 0
 AtiE4Backup db 4096 dup (0)
 AtiE6DepthBackup db 4096 dup (0)
+AtiE9TextureBackup db 4096 dup (0)
+AtiE9TextureData dd 0f800f800h,0f800f800h,007e007e0h,007e007e0h
+                 dd 0f800f800h,0f800f800h,007e007e0h,007e007e0h
+                 dd 0f800f800h,0f800f800h,007e007e0h,007e007e0h
+                 dd 0f800f800h,0f800f800h,007e007e0h,007e007e0h
+                 dd 001f001fh,001f001fh,0ffffffffh,0ffffffffh
+                 dd 001f001fh,001f001fh,0ffffffffh,0ffffffffh
+                 dd 001f001fh,001f001fh,0ffffffffh,0ffffffffh
+                 dd 001f001fh,001f001fh,0ffffffffh,0ffffffffh
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1107,7 +1123,22 @@ BeginProc AtiE4_Run
  mov dword ptr AtiE4Result[0],ATIE4_MAGIC
  mov dword ptr AtiE4StateValues[28],02040020h
  mov dword ptr AtiE4StateValues[32],0
+ mov dword ptr AtiE4StateValues[40],000100c1h
  mov dword ptr AtiE4StateValues[56],00000018h
+ mov dword ptr AtiE4StateValues[60],0
+ mov dword ptr AtiE4StateValues[64],0
+ mov dword ptr AtiE4StateValues[68],0
+ mov dword ptr AtiE4StateValues[72],0
+ mov dword ptr AtiE4StateCount,ATIE4_STATE_COUNT
+ mov dword ptr AtiE4SetupValues[0],0
+ mov dword ptr AtiE4SetupValues[4],0
+ mov dword ptr AtiE4SetupValues[8],03f800000h
+ mov dword ptr AtiE4SetupValues[24],0
+ mov dword ptr AtiE4SetupValues[28],0
+ mov dword ptr AtiE4SetupValues[32],03f800000h
+ mov dword ptr AtiE4SetupValues[48],0
+ mov dword ptr AtiE4SetupValues[52],0
+ mov dword ptr AtiE4SetupValues[56],03f800000h
  mov dword ptr AtiE4SetupValues[12],07fff8000h
  mov dword ptr AtiE4SetupValues[36],07fff8000h
  mov dword ptr AtiE4SetupValues[60],07fff8000h
@@ -1122,6 +1153,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_ZWrite
  cmp AtiE4SceneMode,4
  je AtiE4_Select_ZClear
+ cmp AtiE4SceneMode,5
+ je AtiE4_Select_Texture
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
@@ -1137,7 +1170,7 @@ AtiE4_Select_ZTest:
  mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
- jmp short AtiE4_Selected_Scene
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_ZWrite:
  mov dword ptr AtiE4Result[0],ATIE7_MAGIC
  mov dword ptr AtiE4StateValues[28],02040420h
@@ -1145,7 +1178,7 @@ AtiE4_Select_ZWrite:
  mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
- jmp short AtiE4_Selected_Scene
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_ZClear:
  mov dword ptr AtiE4Result[0],ATIE8_MAGIC
  mov dword ptr AtiE4StateValues[28],02040420h
@@ -1153,6 +1186,22 @@ AtiE4_Select_ZClear:
  mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
+ jmp AtiE4_Selected_Scene
+AtiE4_Select_Texture:
+ mov dword ptr AtiE4Result[0],ATIE9_MAGIC
+ mov dword ptr AtiE4StateCount,19
+ mov dword ptr AtiE4StateValues[40],00010081h
+ mov dword ptr AtiE4StateValues[56],0
+ mov dword ptr AtiE4StateValues[60],00000333h
+ mov dword ptr AtiE4StateValues[64],40860000h
+ mov dword ptr AtiE4StateValues[68],0
+ mov dword ptr AtiE4StateValues[72],ATIE9_TEXTURE_OFFSET
+ mov dword ptr AtiE4SetupValues[0],0be800000h
+ mov dword ptr AtiE4SetupValues[4],0be800000h
+ mov dword ptr AtiE4SetupValues[24],03fa00000h
+ mov dword ptr AtiE4SetupValues[28],0be800000h
+ mov dword ptr AtiE4SetupValues[48],0be800000h
+ mov dword ptr AtiE4SetupValues[52],03fa00000h
 AtiE4_Selected_Scene:
  mov AtiE4Result[4],0
  mov edi,OFFSET32 AtiE4Result+8
@@ -1163,6 +1212,7 @@ AtiE4_Selected_Scene:
  mov AtiE4MmioLinear,0
  mov AtiE4FbLinear,0
  mov AtiE6DepthLinear,0
+ mov AtiE9TextureLinear,0
  mov dword ptr AtiE4Result[48],ATIE4_TARGET_OFFSET
  mov dword ptr AtiE4Result[52],02040020h
  mov eax,AtiE4SetupValues[16]
@@ -1170,20 +1220,21 @@ AtiE4_Selected_Scene:
  mov dword ptr AtiE4Result[60],03b000000h
  mov dword ptr AtiE4Result[84],0ffffffffh
  mov dword ptr AtiE4Result[88],0ffffffffh
- mov dword ptr AtiE4Result[104],ATIE4_STATE_COUNT
+ mov eax,AtiE4StateCount
+ mov AtiE4Result[104],eax
  mov dword ptr AtiE4Result[108],ATIE4_SETUP_COUNT
 
  ; Publish the intended transcript before the first engine write.
  mov esi,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4Result+128
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
  rep movsd
  mov esi,OFFSET32 AtiE4SetupOffsets
  mov ecx,ATIE4_SETUP_COUNT
  rep movsd
  mov esi,OFFSET32 AtiE4StateValues
- mov edi,OFFSET32 AtiE4Result+272
- mov ecx,ATIE4_STATE_COUNT
+ mov edi,OFFSET32 AtiE4Result+280
+ mov ecx,AtiE4StateCount
  rep movsd
  mov esi,OFFSET32 AtiE4SetupValues
  mov ecx,ATIE4_SETUP_COUNT
@@ -1264,6 +1315,8 @@ AtiE4_Pci_Found:
  or AtiE4Result[4],20h
  cmp AtiE4SceneMode,2
  jb short AtiE4_Depth_Map_Done
+ cmp AtiE4SceneMode,5
+ je short AtiE4_Texture_Map
  mov eax,AtiE4Result[16]
  add eax,ATIE6_DEPTH_PAGE
  VMMcall _MapPhysToLinear,<eax,1000h,0>
@@ -1272,6 +1325,16 @@ AtiE4_Pci_Found:
  test eax,eax
  jz AtiE4_Done
  mov AtiE6DepthLinear,eax
+ jmp short AtiE4_Depth_Map_Done
+AtiE4_Texture_Map:
+ mov eax,AtiE4Result[16]
+ add eax,ATIE9_TEXTURE_PAGE
+ VMMcall _MapPhysToLinear,<eax,1000h,0>
+ cmp eax,0ffffffffh
+ je AtiE4_Done
+ test eax,eax
+ jz AtiE4_Done
+ mov AtiE9TextureLinear,eax
 AtiE4_Depth_Map_Done:
  mov esi,AtiE4MmioLinear
  call AtiE2_WaitIdle
@@ -1279,7 +1342,7 @@ AtiE4_Depth_Map_Done:
 
  mov ebx,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4StateSaved
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
 AtiE4_Save_State:
  mov edx,[ebx]
  mov eax,[esi+edx]
@@ -1333,9 +1396,28 @@ AtiE4_Save_Extra_Done:
  rep stosw
 AtiE4_Depth_Init_Done:
 
+ ; A local-VRAM 8x8 RGB565 texture, with the rest of its page guarded.
+ cmp AtiE4SceneMode,5
+ jne short AtiE4_Texture_Init_Done
+ mov esi,AtiE9TextureLinear
+ mov edi,OFFSET32 AtiE9TextureBackup
+ mov ecx,1024
+ cld
+ rep movsd
+ mov edi,AtiE9TextureLinear
+ mov ax,ATIE9_TEXTURE_GUARD
+ mov ecx,2048
+ rep stosw
+ mov esi,OFFSET32 AtiE9TextureData
+ mov edi,AtiE9TextureLinear
+ add edi,100h
+ mov ecx,32
+ rep movsd
+AtiE4_Texture_Init_Done:
+
  ; Emit all complete state in one reserved, status-read-free batch.
  mov esi,AtiE4MmioLinear
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
  call AtiE2_WaitFifo
  jnc short AtiE4_State_Fifo_Ok
  mov dword ptr AtiE4Result[116],1
@@ -1343,7 +1425,7 @@ AtiE4_Depth_Init_Done:
 AtiE4_State_Fifo_Ok:
  mov ebx,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4StateValues
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
 AtiE4_Emit_State:
  mov edx,[ebx]
  mov eax,[edi]
@@ -1412,6 +1494,8 @@ AtiE4_Idle_Ok:
  ; Interior samples are deliberately far from all three edges.
  mov esi,AtiE4FbLinear
  add esi,100h
+ cmp AtiE4SceneMode,5
+ je AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
  je AtiE4_Gouraud_Interior
  mov ax,[esi+0518h]
@@ -1432,6 +1516,30 @@ AtiE4_Interior_3:
  je short AtiE4_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE4_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+AtiE9_Texture_Interior:
+ mov ax,[esi+0414h] ; (10,8), S/T below zero clamp to top-left red
+ cmp ax,0f800h
+ je short AtiE9_Texture_Interior_2
+ inc dword ptr AtiE4Result[64]
+ movzx eax,ax
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],0000f800h
+AtiE9_Texture_Interior_2:
+ mov ax,[esi+0444h] ; (34,8), top-right green
+ cmp ax,007e0h
+ je short AtiE9_Texture_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE9_Texture_Interior_3:
+ mov ax,[esi+0914h] ; (10,18), bottom-left blue
+ cmp ax,001fh
+ je short AtiE9_Texture_Interior_Done
+ inc dword ptr AtiE4Result[64]
+AtiE9_Texture_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
  jne AtiE4_Exterior
  or AtiE4Result[4],1000h
@@ -1540,10 +1648,12 @@ AtiE4_Exterior_Done:
 
  ; The first and last 256 bytes surround the target surface physically.
 AtiE4_Guards:
+ cmp AtiE4SceneMode,5
+ je AtiE9_Texture_Guards
  cmp AtiE4SceneMode,2
  jb AtiE4_Color_Guards
  cmp AtiE4SceneMode,3
- jae short AtiE7_Depth_Target
+ jae AtiE7_Depth_Target
  mov esi,AtiE6DepthLinear
  add esi,100h
  mov ecx,1792
@@ -1555,7 +1665,45 @@ AtiE6_Depth_Target_Next:
  add esi,2
  dec ecx
  jnz short AtiE6_Depth_Target
- jmp short AtiE6_Depth_Guards
+ jmp AtiE6_Depth_Guards
+
+AtiE9_Texture_Guards:
+ mov esi,AtiE9TextureLinear
+ mov ecx,128
+AtiE9_Texture_Guard_Before:
+ cmp word ptr [esi],ATIE9_TEXTURE_GUARD
+ je short AtiE9_Texture_Guard_Before_Next
+ inc dword ptr AtiE4Result[72]
+AtiE9_Texture_Guard_Before_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE9_Texture_Guard_Before
+ mov esi,AtiE9TextureLinear
+ add esi,180h
+ mov ecx,1856
+AtiE9_Texture_Guard_After:
+ cmp word ptr [esi],ATIE9_TEXTURE_GUARD
+ je short AtiE9_Texture_Guard_After_Next
+ inc dword ptr AtiE4Result[72]
+AtiE9_Texture_Guard_After_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE9_Texture_Guard_After
+ mov esi,AtiE9TextureLinear
+ add esi,100h
+ mov edi,OFFSET32 AtiE9TextureData
+ mov ecx,32
+AtiE9_Texture_Data_Check:
+ mov eax,[esi]
+ cmp eax,[edi]
+ je short AtiE9_Texture_Data_Next
+ inc dword ptr AtiE4Result[72]
+AtiE9_Texture_Data_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE9_Texture_Data_Check
+ jmp AtiE4_Color_Guards
 
  ; With writes enabled, every rasterized color pixel must have the submitted
  ; Z value and every untouched color pixel must retain the seeded depth.
@@ -1680,7 +1828,7 @@ AtiE4_Changed_Next:
  ; Preserve the 64x28 target image in the returned result before restoration.
  mov esi,AtiE4FbLinear
  add esi,100h
- mov edi,OFFSET32 AtiE4Result+416
+ mov edi,OFFSET32 AtiE4Result+432
  mov ecx,896
  cld
  rep movsd
@@ -1785,7 +1933,7 @@ AtiE8_Clear_Guard_After_Next:
  ; cleared depth; any retained 0x8000/0x4000 region is directly visible.
  mov esi,AtiE6DepthLinear
  add esi,100h
- mov edi,OFFSET32 AtiE4Result+416
+ mov edi,OFFSET32 AtiE4Result+432
  mov ecx,896
  cld
  rep movsd
@@ -1810,7 +1958,7 @@ AtiE4_Restore_State:
  mov esi,AtiE4MmioLinear
  test esi,esi
  jz AtiE4_Restore_Vram
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
  cmp AtiE4SceneMode,4
  jne short AtiE4_Restore_Fifo_Count_Ready
  inc ecx
@@ -1824,7 +1972,7 @@ AtiE4_Restore_Fifo_Count_Ready:
 AtiE4_Restore_Fifo_Ok:
  mov ebx,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4StateSaved
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
 AtiE4_Restore_State_Loop:
  mov edx,[ebx]
  mov eax,[edi]
@@ -1854,7 +2002,7 @@ AtiE4_Restore_No_Reset_State:
 AtiE4_Restore_Idle_Ok:
  mov ebx,OFFSET32 AtiE4StateOffsets
  mov edi,OFFSET32 AtiE4StateSaved
- mov ecx,ATIE4_STATE_COUNT
+ mov ecx,AtiE4StateCount
  xor eax,eax
 AtiE4_Verify_State_Restore:
  mov edx,[ebx]
@@ -1911,7 +2059,7 @@ AtiE4_Check_Restore_Next:
 AtiE4_Restore_Depth:
  mov edi,AtiE6DepthLinear
  test edi,edi
- jz short AtiE4_Restore_All_Done
+ jz short AtiE4_Restore_Texture
  mov esi,OFFSET32 AtiE6DepthBackup
  mov ecx,1024
  cld
@@ -1930,6 +2078,30 @@ AtiE6_Check_Restore_Next:
  add edi,4
  dec ecx
  jnz short AtiE6_Check_Restore
+ mov AtiE4Result[76],eax
+
+AtiE4_Restore_Texture:
+ mov edi,AtiE9TextureLinear
+ test edi,edi
+ jz short AtiE4_Restore_All_Done
+ mov esi,OFFSET32 AtiE9TextureBackup
+ mov ecx,1024
+ cld
+ rep movsd
+ mov esi,OFFSET32 AtiE9TextureBackup
+ mov edi,AtiE9TextureLinear
+ mov ecx,1024
+ mov eax,AtiE4Result[76]
+AtiE9_Check_Restore:
+ mov edx,[esi]
+ cmp edx,[edi]
+ je short AtiE9_Check_Restore_Next
+ inc eax
+AtiE9_Check_Restore_Next:
+ add esi,4
+ add edi,4
+ dec ecx
+ jnz short AtiE9_Check_Restore
  mov AtiE4Result[76],eax
 
 AtiE4_Restore_All_Done:
@@ -1962,6 +2134,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run7
  cmp ecx,ATIE8_DIOC_ZCLEAR
  je AtiE1_Dioc_Run8
+ cmp ecx,ATIE9_DIOC_TEXTURE
+ je AtiE1_Dioc_Run9
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2085,7 +2259,7 @@ AtiE1_Dioc_Run6:
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE6_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run7:
  pushad
  mov ebp,esi
@@ -2093,9 +2267,9 @@ AtiE1_Dioc_Run7:
  call AtiE4_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE4Result
  mov ecx,ATIE4_RESULT_DWORDS
  cld
@@ -2126,6 +2300,27 @@ AtiE1_Dioc_Run8:
  jz short AtiE8_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE8_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run9:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,5
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE9_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE9_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

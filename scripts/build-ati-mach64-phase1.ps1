@@ -54,3 +54,8 @@ $zclearExe=Join-Path $outputDir 'ATI4ZC.EXE';$zclearObj=Join-Path $outputDir 'at
 $zclearBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $zclearExe -Object $zclearObj -MapFile $zclearMap -LinkFile $zclearLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ZCLEAR=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$zclearObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($zclearBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4ZC.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 Z-clear publisher: $zclearExe"
+
+$textureExe=Join-Path $outputDir 'ATI4TX.EXE';$textureObj=Join-Path $outputDir 'ati4tx.obj';$textureMap=Join-Path $outputDir 'ati4tx.map';$textureLnk=Join-Path $outputDir 'ati4tx.lnk'
+$textureBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $textureExe -Object $textureObj -MapFile $textureMap -LinkFile $textureLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_TEXTURE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$textureObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($textureBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TX.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 RGB565 texture publisher: $textureExe"
