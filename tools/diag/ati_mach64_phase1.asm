@@ -52,6 +52,7 @@ ATIE24_DIOC_BLEND_ONE_ONE equ 24
 ATIE25_DIOC_BLEND_SRCALPHA_INV equ 25
 ATIE26_DIOC_BLEND_TABLE equ 26
 ATIE27_DIOC_TEXENV_TABLE equ 27
+ATIE28_DIOC_SCISSOR_TABLE equ 28
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -111,6 +112,10 @@ ATIE27_MAGIC equ 4b495441h
 ATIE27_SCALE_VARIABLE equ 40c00000h
 ATIE27_SCALE_UNBLENDED equ 00010081h
 ATIE27_SCALE_BLENDED equ 002c0881h
+ATIE28_MAGIC equ 4c495441h
+; Scissor requests must stay inside the 64x28 guarded target.
+ATIE28_MAX_X equ 63
+ATIE28_MAX_Y equ 27
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -217,6 +222,8 @@ AtiE27Scale dd 0
 AtiE27TexFormat dd 0
 AtiE27Argb dd 0
 AtiE27TextureData dd 32 dup (0)
+AtiE28LeftRight dd 0
+AtiE28TopBottom dd 0
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1243,6 +1250,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Blend_Table
  cmp AtiE4SceneMode,23
  je AtiE4_Select_Texenv_Table
+ cmp AtiE4SceneMode,24
+ je AtiE4_Select_Scissor_Table
  cmp AtiE4SceneMode,12
  jb AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1347,6 +1356,13 @@ AtiE4_Select_Blend_Table:
  mov AtiE4SetupValues[16],eax
  mov AtiE4SetupValues[40],eax
  mov AtiE4SetupValues[64],eax
+ jmp AtiE4_Selected_Scene
+AtiE4_Select_Scissor_Table:
+ mov dword ptr AtiE4Result[0],ATIE28_MAGIC
+ mov eax,AtiE28LeftRight
+ mov AtiE4StateValues[16],eax
+ mov eax,AtiE28TopBottom
+ mov AtiE4StateValues[20],eax
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Texenv_Table:
  mov dword ptr AtiE4Result[0],ATIE27_MAGIC
@@ -1734,6 +1750,8 @@ AtiE4_Inspect_Render:
  je AtiE26_Blend_Interior
  cmp AtiE4SceneMode,23
  je AtiE26_Blend_Interior
+ cmp AtiE4SceneMode,24
+ je AtiE28_Scissor_Interior
  cmp AtiE4SceneMode,5
  jae AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
@@ -1981,6 +1999,11 @@ AtiE26_Blend_Interior_2:
 AtiE26_Blend_Interior_3:
  cmp edx,AtiE26Expected
  jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+ ; A scissor may exclude any fixed probe; the caller checks every pixel.
+AtiE28_Scissor_Interior:
  or AtiE4Result[4],1000h
  jmp AtiE4_Exterior
 
@@ -2631,6 +2654,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run26
  cmp ecx,ATIE27_DIOC_TEXENV_TABLE
  je AtiE1_Dioc_Run27
+ cmp ecx,ATIE28_DIOC_SCISSOR_TABLE
+ je AtiE1_Dioc_Run28
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -3078,6 +3103,36 @@ AtiE1_Dioc_Run27_Format_Ok:
  movzx eax,word ptr [edx+16]
  mov AtiE26Expected,eax
  mov eax,23
+ jmp AtiE1_Dioc_Run_Alpha_Table
+ ; Input: SC_LEFT_RIGHT, SC_TOP_BOTTOM, both inclusive.  An inverted or
+ ; out-of-target rectangle fails before MMIO is mapped or written.
+AtiE1_Dioc_Run28:
+ mov edx,[esi.lpvInBuffer]
+ test edx,edx
+ jz AtiE1_Dioc_Fail
+ cmp [esi.cbInBuffer],8
+ jb AtiE1_Dioc_Fail
+ mov eax,[edx]
+ mov ecx,eax
+ shr ecx,16
+ cmp ecx,ATIE28_MAX_X
+ ja AtiE1_Dioc_Fail
+ and eax,0ffffh
+ cmp eax,ecx
+ ja AtiE1_Dioc_Fail
+ mov eax,[edx+4]
+ mov ecx,eax
+ shr ecx,16
+ cmp ecx,ATIE28_MAX_Y
+ ja AtiE1_Dioc_Fail
+ and eax,0ffffh
+ cmp eax,ecx
+ ja AtiE1_Dioc_Fail
+ mov eax,[edx]
+ mov AtiE28LeftRight,eax
+ mov eax,[edx+4]
+ mov AtiE28TopBottom,eax
+ mov eax,24
  jmp AtiE1_Dioc_Run_Alpha_Table
 EndProc AtiE1_W32_DeviceIoControl
 BeginProc AtiE1_Dynamic_Init

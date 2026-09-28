@@ -129,3 +129,8 @@ $texenvSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_texenv_table_win
 $texenvBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $texenvSource -Executable $texenvExe -Object $texenvObj -MapFile $texenvMap -LinkFile $texenvLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$texenvObj",$texenvSource) -LinkOptions @("option start='_V9xAtiMach64TexenvTableEntry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($texenvBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TE.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 texture environment table publisher: $texenvExe"
+
+$scissorSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_scissor_table_win32.c';$scissorExe=Join-Path $outputDir 'ATI4SC.EXE';$scissorObj=Join-Path $outputDir 'ati4sc.obj';$scissorMap=Join-Path $outputDir 'ati4sc.map';$scissorLnk=Join-Path $outputDir 'ati4sc.lnk'
+$scissorBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $scissorSource -Executable $scissorExe -Object $scissorObj -MapFile $scissorMap -LinkFile $scissorLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$scissorObj",$scissorSource) -LinkOptions @("option start='_V9xAtiMach64ScissorTableEntry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($scissorBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4SC.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 scissor table publisher: $scissorExe"

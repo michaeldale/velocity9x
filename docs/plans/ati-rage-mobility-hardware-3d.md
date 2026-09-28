@@ -421,6 +421,20 @@ Evidence is in
 Hardware scissor (item 11) is next; public ATI acceleration remains
 disabled.
 
+Phase 4 item 11 is closed. Build `ati-phase4-scissor-20260928-a` drew the
+Phase 3 flat triangle under ten `SC_LEFT_RIGHT`/`SC_TOP_BOTTOM` rectangles,
+encoded as the shared flat-state builder encodes them (half-open API
+rectangle, inclusive registers). The rectangles were the full target,
+complementary splits at x=20 and y=12, an interior box, a one-pixel column
+and row, a vertex corner, and a rectangle that misses the triangle. Every
+pixel of every dump matched the unscissored reference intersected with the
+rectangle. Two boot-11 runs were byte-identical, with all safety counters
+zero, and the reference is byte-identical to the committed Phase 3
+captures. Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-scissor-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-scissor-2026-09-28/).
+Fog without blending (item 12) is next; public ATI acceleration remains
+disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
