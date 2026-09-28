@@ -555,9 +555,12 @@ v9x_status v9x_m64_build_depth_triangle(
     status = v9x_m64_build_flat_triangle(&flat, offsets, values, capacity,
                                          written);
     if (status != V9X_STATUS_OK) return status;
-    values[3] = (v9x_u32)triangle->depth[0] << 15;
-    values[9] = (v9x_u32)triangle->depth[1] << 15;
-    values[15] = (v9x_u32)triangle->depth[2] << 15;
+    /* Mobility-M writes setup Z[31:16] directly to a Z16 surface.  The
+     * historical Mesa <<15 convention produced exactly half the requested
+     * stored value on the measured 1002:4c4d revision 64 part. */
+    values[3] = (v9x_u32)triangle->depth[0] << 16;
+    values[9] = (v9x_u32)triangle->depth[1] << 16;
+    values[15] = (v9x_u32)triangle->depth[2] << 16;
     return V9X_STATUS_OK;
 }
 

@@ -548,8 +548,8 @@ static void test_depth_builders(void)
               V9X_M64_FLAT_TRIANGLE_DWORDS, &written) == V9X_STATUS_OK);
     CHECK(written == V9X_M64_FLAT_TRIANGLE_DWORDS);
     CHECK(setup_values[3] == 0ul);
-    CHECK(setup_values[9] == 0x40000000ul);
-    CHECK(setup_values[15] == 0x7fff8000ul);
+    CHECK(setup_values[9] == 0x80000000ul);
+    CHECK(setup_values[15] == 0xffff0000ul);
 }
 
 static void test_phase3_triangle_golden(void)
