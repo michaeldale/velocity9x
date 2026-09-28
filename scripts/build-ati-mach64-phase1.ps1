@@ -89,3 +89,23 @@ $argb4444Exe=Join-Path $outputDir 'ATI4A4.EXE';$argb4444Obj=Join-Path $outputDir
 $argb4444Build=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $argb4444Exe -Object $argb4444Obj -MapFile $argb4444Map -LinkFile $argb4444Lnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ARGB4444=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$argb4444Obj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($argb4444Build.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4A4.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 ARGB4444 alpha publisher: $argb4444Exe"
+
+$alphaComparisons=@(
+    @{Name='NEVER'; Define='V9X_ALPHA_NEVER'; Stem='ati4an'; Exe='ATI4AN.EXE'},
+    @{Name='LESS'; Define='V9X_ALPHA_LESS'; Stem='ati4al'; Exe='ATI4AL.EXE'},
+    @{Name='EQUAL'; Define='V9X_ALPHA_EQUAL'; Stem='ati4ae'; Exe='ATI4AE.EXE'},
+    @{Name='LEQUAL'; Define='V9X_ALPHA_LEQUAL'; Stem='ati4aq'; Exe='ATI4AQ.EXE'},
+    @{Name='GREATER'; Define='V9X_ALPHA_GREATER'; Stem='ati4ag'; Exe='ATI4AG.EXE'},
+    @{Name='NOTEQUAL'; Define='V9X_ALPHA_NOTEQUAL'; Stem='ati4ax'; Exe='ATI4AX.EXE'},
+    @{Name='GEQUAL'; Define='V9X_ALPHA_GEQUAL'; Stem='ati4az'; Exe='ATI4AZ.EXE'},
+    @{Name='ALWAYS'; Define='V9X_ALPHA_ALWAYS'; Stem='ati4aa'; Exe='ATI4AA.EXE'}
+)
+foreach($alphaComparison in $alphaComparisons){
+    $alphaExe=Join-Path $outputDir $alphaComparison.Exe
+    $alphaObj=Join-Path $outputDir ($alphaComparison.Stem+'.obj')
+    $alphaMap=Join-Path $outputDir ($alphaComparison.Stem+'.map')
+    $alphaLnk=Join-Path $outputDir ($alphaComparison.Stem+'.lnk')
+    $alphaBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $alphaExe -Object $alphaObj -MapFile $alphaMap -LinkFile $alphaLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',("-d"+$alphaComparison.Define+'=1'),"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$alphaObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+    foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($alphaBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "$($alphaComparison.Exe) is missing import $name."}}
+    Write-Output "Built ATI Phase 4 alpha $($alphaComparison.Name) publisher: $alphaExe"
+}

@@ -5,7 +5,103 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_ARGB1555)
+#if defined(V9X_ALPHA_NEVER)
+#define ATI3D_MAGIC 0x40495441ul
+#define ATI3D_DIOC 16u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaNever]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-never-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AN.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AN.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 0ul
+#elif defined(V9X_ALPHA_LESS)
+#define ATI3D_MAGIC 0x41495441ul
+#define ATI3D_DIOC 17u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaLess]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-less-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AL.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AL.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_EQUAL)
+#define ATI3D_MAGIC 0x42495441ul
+#define ATI3D_DIOC 18u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaEqual]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-equal-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AE.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AE.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 0ul
+#elif defined(V9X_ALPHA_LEQUAL)
+#define ATI3D_MAGIC 0x43495441ul
+#define ATI3D_DIOC 19u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaLessEqual]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-lequal-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AQ.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AQ.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_GREATER)
+#define ATI3D_MAGIC 0x44495441ul
+#define ATI3D_DIOC 20u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaGreater]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-greater-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AG.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AG.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_NOTEQUAL)
+#define ATI3D_MAGIC 0x45495441ul
+#define ATI3D_DIOC 21u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaNotEqual]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-notequal-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AX.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AX.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_GEQUAL)
+#define ATI3D_MAGIC 0x46495441ul
+#define ATI3D_DIOC 22u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaGreaterEqual]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-gequal-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AZ.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AZ.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ALPHA_ALWAYS)
+#define ATI3D_MAGIC 0x47495441ul
+#define ATI3D_DIOC 23u
+#define ATI3D_HEADING "[AtiMach64Phase4AlphaAlways]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-alpha-always-ref127"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4AA.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4AA.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ARGB1555)
 #define ATI3D_MAGIC 0x3e495441ul
 #define ATI3D_DIOC 14u
 #define ATI3D_HEADING "[AtiMach64Phase4Argb1555]\r\n"

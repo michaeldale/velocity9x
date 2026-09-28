@@ -40,6 +40,14 @@ ATIE12_DIOC_WRAP equ 12
 ATIE13_DIOC_BILINEAR equ 13
 ATIE14_DIOC_ARGB1555 equ 14
 ATIE15_DIOC_ARGB4444 equ 15
+ATIE16_DIOC_ALPHA_NEVER equ 16
+ATIE17_DIOC_ALPHA_LESS equ 17
+ATIE18_DIOC_ALPHA_EQUAL equ 18
+ATIE19_DIOC_ALPHA_LEQUAL equ 19
+ATIE20_DIOC_ALPHA_GREATER equ 20
+ATIE21_DIOC_ALPHA_NOTEQUAL equ 21
+ATIE22_DIOC_ALPHA_GEQUAL equ 22
+ATIE23_DIOC_ALPHA_ALWAYS equ 23
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -77,6 +85,14 @@ ATIE12_MAGIC equ 3c495441h
 ATIE13_MAGIC equ 3d495441h
 ATIE14_MAGIC equ 3e495441h
 ATIE15_MAGIC equ 3f495441h
+ATIE16_MAGIC equ 40495441h
+ATIE17_MAGIC equ 41495441h
+ATIE18_MAGIC equ 42495441h
+ATIE19_MAGIC equ 43495441h
+ATIE20_MAGIC equ 44495441h
+ATIE21_MAGIC equ 45495441h
+ATIE22_MAGIC equ 46495441h
+ATIE23_MAGIC equ 47495441h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -168,6 +184,14 @@ AtiE9TextureData dd 0f800f800h,0f800f800h,007e007e0h,007e007e0h
 AtiE13ProbeOffsets dd 0414h,0444h,0914h
 AtiE14TextureData dd 8 dup (07c007c00h,07c007c00h,083e083e0h,083e083e0h)
 AtiE15TextureData dd 8 dup (00f000f00h,00f000f00h,0f0f0f0f0h,0f0f0f0f0h)
+AtiE16MagicTable dd ATIE16_MAGIC,ATIE17_MAGIC,ATIE18_MAGIC,ATIE19_MAGIC
+                  dd ATIE20_MAGIC,ATIE21_MAGIC,ATIE22_MAGIC,ATIE23_MAGIC
+AtiE16AlphaControl dd 007f0001h,007f0011h,007f0031h,007f0021h
+                    dd 007f0051h,007f0061h,007f0041h,007f0071h
+AtiE16ExpectLeft dd 0,1,0,1,0,1,0,1
+AtiE16ExpectRight dd 0,0,0,0,1,1,1,1
+AtiE16ExpectedLeft dd 0
+AtiE16ExpectedRight dd 0
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1186,6 +1210,10 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Argb1555
  cmp AtiE4SceneMode,11
  je AtiE4_Select_Argb4444
+ cmp AtiE4SceneMode,12
+ jb AtiE4_Selected_Scene
+ cmp AtiE4SceneMode,19
+ jbe AtiE4_Select_Alpha_Table
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
@@ -1220,29 +1248,36 @@ AtiE4_Select_ZClear:
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Texture:
  mov dword ptr AtiE4Result[0],ATIE9_MAGIC
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Texture_State:
  mov dword ptr AtiE4Result[0],ATIE10_MAGIC
  mov dword ptr AtiE4SetupCount,0
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Perspective:
  mov dword ptr AtiE4Result[0],ATIE11_MAGIC
  mov dword ptr AtiE4SetupValues[32],03e800000h
  mov dword ptr AtiE4SetupValues[56],03e800000h
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Wrap:
  mov dword ptr AtiE4Result[0],ATIE12_MAGIC
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Bilinear:
  mov dword ptr AtiE4Result[0],ATIE13_MAGIC
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Argb1555:
  mov dword ptr AtiE4Result[0],ATIE14_MAGIC
  mov dword ptr AtiE9TextureSource,OFFSET32 AtiE14TextureData
- jmp short AtiE4_Select_Texture_Common
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Argb4444:
  mov dword ptr AtiE4Result[0],ATIE15_MAGIC
  mov dword ptr AtiE9TextureSource,OFFSET32 AtiE15TextureData
+ jmp AtiE4_Select_Texture_Common
+AtiE4_Select_Alpha_Table:
+ mov eax,AtiE4SceneMode
+ sub eax,12
+ mov edx,AtiE16MagicTable[eax*4]
+ mov AtiE4Result[0],edx
+ mov dword ptr AtiE9TextureSource,OFFSET32 AtiE14TextureData
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
  mov dword ptr AtiE4StateValues[40],00010081h
@@ -1270,7 +1305,7 @@ AtiE4_Select_Not_Wrap:
  mov dword ptr AtiE4SetupValues[28],03f000000h
  mov dword ptr AtiE4SetupValues[48],03f000000h
  mov dword ptr AtiE4SetupValues[52],03f000000h
- jmp short AtiE4_Selected_Scene
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_Not_Bilinear:
  cmp AtiE4SceneMode,10
  jne short AtiE4_Select_Not_Argb1555
@@ -1280,10 +1315,26 @@ AtiE4_Select_Not_Bilinear:
  jmp short AtiE4_Selected_Scene
 AtiE4_Select_Not_Argb1555:
  cmp AtiE4SceneMode,11
- jne short AtiE4_Selected_Scene
+ jne short AtiE4_Select_Not_Argb4444
  mov dword ptr AtiE4StateValues[36],007f0051h
  mov dword ptr AtiE4StateValues[40],40010081h
  mov dword ptr AtiE4StateValues[52],0f0040444h
+ jmp short AtiE4_Selected_Scene
+AtiE4_Select_Not_Argb4444:
+ cmp AtiE4SceneMode,12
+ jb short AtiE4_Selected_Scene
+ cmp AtiE4SceneMode,19
+ ja short AtiE4_Selected_Scene
+ mov eax,AtiE4SceneMode
+ sub eax,12
+ mov edx,AtiE16AlphaControl[eax*4]
+ mov AtiE4StateValues[36],edx
+ mov dword ptr AtiE4StateValues[40],40010081h
+ mov dword ptr AtiE4StateValues[52],30040444h
+ mov edx,AtiE16ExpectLeft[eax*4]
+ mov AtiE16ExpectedLeft,edx
+ mov edx,AtiE16ExpectRight[eax*4]
+ mov AtiE16ExpectedRight,edx
 AtiE4_Selected_Scene:
  mov AtiE4Result[4],0
  mov edi,OFFSET32 AtiE4Result+8
@@ -1624,6 +1675,11 @@ AtiE9_Texture_Interior:
  je AtiE14_Alpha_Texture_Interior
  cmp AtiE4SceneMode,11
  je AtiE14_Alpha_Texture_Interior
+ cmp AtiE4SceneMode,12
+ jb short AtiE9_Texture_Default_Interior
+ cmp AtiE4SceneMode,19
+ jbe AtiE16_Alpha_Table_Interior
+AtiE9_Texture_Default_Interior:
  mov ax,[esi+0414h] ; (10,8), S/T below zero clamp to top-left red
  cmp ax,0f800h
  je short AtiE9_Texture_Interior_2
@@ -1720,6 +1776,41 @@ AtiE14_Alpha_Texture_Interior_3:
  je short AtiE14_Alpha_Texture_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE14_Alpha_Texture_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+AtiE16_Alpha_Table_Interior:
+ mov bx,ATIE4_SENTINEL
+ cmp dword ptr AtiE16ExpectedLeft,0
+ je short AtiE16_Alpha_Left_Expected
+ mov bx,0f800h
+AtiE16_Alpha_Left_Expected:
+ mov ax,[esi+0414h] ; (10,8), alpha 0 versus reference 127
+ cmp ax,bx
+ je short AtiE16_Alpha_Table_Interior_2
+ inc dword ptr AtiE4Result[64]
+ movzx eax,ax
+ mov AtiE4Result[120],eax
+ movzx eax,bx
+ mov AtiE4Result[124],eax
+AtiE16_Alpha_Table_Interior_2:
+ mov ax,[esi+0914h] ; (10,18), second alpha-0 sample
+ cmp ax,bx
+ je short AtiE16_Alpha_Table_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE16_Alpha_Table_Interior_3:
+ mov bx,ATIE4_SENTINEL
+ cmp dword ptr AtiE16ExpectedRight,0
+ je short AtiE16_Alpha_Right_Expected
+ mov bx,007e0h
+AtiE16_Alpha_Right_Expected:
+ mov ax,[esi+0444h] ; (34,8), alpha 255 versus reference 127
+ cmp ax,bx
+ je short AtiE16_Alpha_Table_Interior_Done
+ inc dword ptr AtiE4Result[64]
+AtiE16_Alpha_Table_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
  jne AtiE4_Exterior
  or AtiE4Result[4],1000h
@@ -2341,6 +2432,22 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run14
  cmp ecx,ATIE15_DIOC_ARGB4444
  je AtiE1_Dioc_Run15
+ cmp ecx,ATIE16_DIOC_ALPHA_NEVER
+ je AtiE1_Dioc_Run16
+ cmp ecx,ATIE17_DIOC_ALPHA_LESS
+ je AtiE1_Dioc_Run17
+ cmp ecx,ATIE18_DIOC_ALPHA_EQUAL
+ je AtiE1_Dioc_Run18
+ cmp ecx,ATIE19_DIOC_ALPHA_LEQUAL
+ je AtiE1_Dioc_Run19
+ cmp ecx,ATIE20_DIOC_ALPHA_GREATER
+ je AtiE1_Dioc_Run20
+ cmp ecx,ATIE21_DIOC_ALPHA_NOTEQUAL
+ je AtiE1_Dioc_Run21
+ cmp ecx,ATIE22_DIOC_ALPHA_GEQUAL
+ je AtiE1_Dioc_Run22
+ cmp ecx,ATIE23_DIOC_ALPHA_ALWAYS
+ je AtiE1_Dioc_Run23
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2652,6 +2759,50 @@ AtiE1_Dioc_Run15:
  jz short AtiE15_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE15_Dioc_Copy_Done:
+ popad
+ jmp AtiE1_Dioc_Ok
+AtiE1_Dioc_Run16:
+ mov eax,12
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run17:
+ mov eax,13
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run18:
+ mov eax,14
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run19:
+ mov eax,15
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run20:
+ mov eax,16
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run21:
+ mov eax,17
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run22:
+ mov eax,18
+ jmp short AtiE1_Dioc_Run_Alpha_Table
+AtiE1_Dioc_Run23:
+ mov eax,19
+AtiE1_Dioc_Run_Alpha_Table:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,eax
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE16_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE16_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax
