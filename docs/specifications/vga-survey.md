@@ -159,8 +159,8 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 | `[VideoBios]` | the ROM at `C000`: size, checksum, `PCIR` structure, `$PnP` header, extracted strings, and a `Rom.` blob |
 | `[OptionRom.N]`, `[OptionRomScan]` | secondary adapter ROMs found between `C000` and `E000` |
 | `[VBE]` | `4F00h` controller info with the `VBE2` request, OEM strings, current mode, `4F0Ah`/`4F10h`/`4F11h` capability queries |
-| `[VBEModes]` | the complete mode list walked from `VideoModePtr`, one CSV line per mode, with a `Fields` key and a `Truncated` flag |
-| `[EDID]` | DDC level, then `Block0.`/`Block1.` blobs |
+| `[VBEModes]` | the complete mode list walked from `VideoModePtr`, one CSV line per mode, with a `Fields` key, a `Truncated` flag, and the described/undescribed/query-failed tally |
+| `[EDID]` | DDC level, then `Block0.`/`Block1.` blobs and `Block1Status` |
 | `[VGARegisters]` | MISC, feature control, DAC state, and `Seq.`/`Crtc.`/`Gdc.`/`Atc.` register banks, plus `Trust` |
 | `[Tier1]` | marks the end of the always-safe capture |
 | `[Tier2]` | `Requested`, `Decision` |
@@ -210,6 +210,31 @@ non-ROM provider is a promise made by software, not a property of the card. On
 that machine the ROM offered VBE 1.02 with bit 7 clear on all 18 modes, and the
 TSR offered VBE 2.00 with bit 7 set and a `PhysBasePtr` that disagreed with the
 card's own CR59/CR5A. `parse-vga-survey.ps1` derives and prints this.
+
+### A listed mode is not a usable one
+
+`[VBEModes] Count` is how many mode numbers `VideoModePtr` held, which is not
+how many the card will give you. A BIOS answers `4F01h` with `0x004F` and a
+zeroed block - attribute bit 0 clear, geometry zero, `PhysBasePtr` zero - to
+say a mode exists in the table but is not available in the present hardware
+configuration. Pineview does it to 30 of its 36 modes
+(`docs\decisions\2026-08-28-pineview-vbe-mode-list.md`) and the Ironlake IGP
+to 15 of 27.
+
+The rows are written either way, because a row of zeros is the measurement.
+`DescribedCount`, `UndescribedCount` and `QueryFailedCount` close over the
+list so a reader does not have to count: the first two plus `QueryFailedCount`
+equal `Count`, and only `DescribedCount` is a number of modes anything can
+set.
+
+### `Block1Status` on `[EDID]`
+
+An extension block is fetched only when block 0's extension count says one
+exists, and the two are then compared. `duplicate-of-block0` means the BIOS
+answered `DX=1` with block 0 again - the Ironlake BIOS does, in 2 ms against
+130 ms on a card that goes to the wire. The bytes are still reported under
+`Block1.`, and without the status a consumer parses a base EDID header as a
+CTA extension and believes whatever falls out.
 
 ### `Int10Vector` on `[BiosData]`
 

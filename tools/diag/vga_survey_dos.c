@@ -1479,6 +1479,9 @@ static void survey_vbe(void)
     {
         unsigned count = vbe_mode_count;
         unsigned index;
+        unsigned described = 0u;
+        unsigned undescribed = 0u;
+        unsigned query_failed = 0u;
 
         wr_status("ok");
         wr_x32("ModeListPointer", mode_pointer);
@@ -1497,7 +1500,20 @@ static void survey_vbe(void)
             if (status != 0x004fu) {
                 fprintf(report, "Mode.%02u=%04X,ERROR%04X\n", index, mode,
                         status);
+                ++query_failed;
                 continue;
+            }
+            /* Attribute bit 0 clear is the VBE-sanctioned way to say a mode is
+             * in the table but not available in the present hardware
+             * configuration; the BIOS returns success and leaves the block
+             * zeroed. Pineview does it to 30 of its 36 modes
+             * (docs\decisions\2026-08-28-pineview-vbe-mode-list.md). The row
+             * is still written, because a row of zeros is the measurement -
+             * but a reader should not have to count them to notice. */
+            if ((v9x_u16(mode_info) & 0x0001u) != 0u) {
+                ++described;
+            } else {
+                ++undescribed;
             }
             fprintf(report,
                     "Mode.%02u=%04X,%04X,%u,%u,%u,%u,%u,%u,%08lX,%u,"
@@ -1509,6 +1525,10 @@ static void survey_vbe(void)
                     mode_info[31], mode_info[32], mode_info[33], mode_info[34],
                     mode_info[35], mode_info[36]);
         }
+
+        wr_u("DescribedCount", (unsigned long)described);
+        wr_u("UndescribedCount", (unsigned long)undescribed);
+        wr_u("QueryFailedCount", (unsigned long)query_failed);
     }
 }
 
@@ -1553,13 +1573,25 @@ static void survey_edid(void)
     wr_u("BlockCount", 1ul + (unsigned long)edid_block[126]);
     wr_hex_block("Block0", edid_block, 128u);
 
-    /* Only fetch an extension block if block 0 says one exists. */
+    /* Only fetch an extension block if block 0 says one exists. The second
+     * half of the buffer receives it, so block 0 survives to be compared
+     * against: an Ironlake BIOS answers DX=1 with block 0 again, and a
+     * consumer that trusts the key name then parses a base EDID header as a
+     * CTA extension. Reporting the duplicate is cheaper than every consumer
+     * rediscovering it. */
     if (edid_block[126] != 0u) {
-        memset(edid_block, 0, sizeof(edid_block));
-        status = vbe_call(0x4f15u, 0x0001u, 0u, 0x0001u, edid_block);
-        if (status == 0x004fu) {
-            wr_hex_block("Block1", edid_block, 128u);
+        memset(edid_block + 128, 0, 128u);
+        status = vbe_call(0x4f15u, 0x0001u, 0u, 0x0001u, edid_block + 128);
+        if (status != 0x004fu) {
+            fprintf(report, "Block1Status=vbe-4f15-read-returned-%04X\n",
+                    status);
+            return;
         }
+
+        wr_str("Block1Status",
+               memcmp(edid_block, edid_block + 128, 128u) == 0
+                   ? "duplicate-of-block0" : "ok");
+        wr_hex_block("Block1", edid_block + 128, 128u);
     }
 }
 

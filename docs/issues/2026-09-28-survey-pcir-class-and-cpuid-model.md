@@ -98,17 +98,27 @@ both at a glance: `PcirClassCode=030000` on a display card, and a
 
 ## Not fixed here
 
-Three further observations from the same two reports, left alone:
+Three further observations came from the same two reports. Two are now
+reported by the tool, in the commit after this one:
 
 - The Ironlake BIOS returns block 0 again when asked for EDID block 1. The
   tool passes DX=1 correctly, so this is the BIOS; `DdcBlockTransferMs=2`
-  against 130 on the NVIDIA box suggests it never went to the wire. A
-  consumer that assumes `Block1` is a CTA extension will parse a base EDID
-  header as one. A `Block1Status=duplicate-of-block0` would say so.
+  against 130 on the NVIDIA box suggests it never went to the wire. The
+  extension block now lands in the second half of the buffer and is compared
+  against block 0, so the report says `Block1Status=duplicate-of-block0`
+  rather than leaving every consumer to rediscover it.
 - Fifteen of the Intel box's 27 VBE modes are listed with `Attributes=0000`
-  and zero geometry, because 4F01h failed for them. They are rows of zeros
-  rather than a status.
+  and zero geometry. `4F01h` did not fail for them - it returned `0x004F`
+  and left the block zeroed, which is the VBE-sanctioned way to say a mode is
+  in the table but unavailable in the present configuration. The rows still
+  say so byte for byte, and `DescribedCount`, `UndescribedCount` and
+  `QueryFailedCount` now close over the list.
+
+One is still open:
+
 - `ChecksumStatus=mismatch` on that Intel VBIOS: the 55AA header says 52224
   bytes, its own PCIR says the image is 65536. Checksumming the shorter length
   over a longer image cannot sum to zero, so the mismatch may be the tool's
-  choice of length rather than a bad ROM.
+  choice of length rather than a bad ROM. Deciding that needs a full-image
+  dump from the machine, which these reports - `DumpScope=header-only` - do
+  not carry.
