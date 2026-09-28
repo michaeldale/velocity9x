@@ -200,5 +200,11 @@ v9x_status v9x_m64_build_alpha_control(v9x_u32 compare,
                                        v9x_u32 reference,
                                        v9x_u32 source_vertex,
                                        v9x_u32 *value);
+/* Factors use the Direct3D D3DBLEND_* numbering.  The returned field enables
+ * ADD blending and is ORed into a SCALE_3D_CNTL value after clearing the
+ * source, destination, alpha-enable and saturate fields. */
+v9x_status v9x_m64_build_blend_control(v9x_u32 source_factor,
+                                       v9x_u32 destination_factor,
+                                       v9x_u32 *value);
 
 #endif

@@ -540,6 +540,59 @@ static void test_alpha_control_truth_table(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_blend_control_table(void)
+{
+    static const struct { v9x_u32 factor; v9x_u32 encoded; } sources[] = {
+        { 1ul, 0x00000000ul }, { 2ul, 0x00010000ul },
+        { 5ul, 0x00040000ul }, { 6ul, 0x00050000ul },
+        { 7ul, 0x00060000ul }, { 8ul, 0x00070000ul },
+        { 9ul, 0x00020000ul }, { 10ul, 0x00030000ul },
+        { 11ul, 0x00042000ul }
+    };
+    static const struct { v9x_u32 factor; v9x_u32 encoded; } destinations[] = {
+        { 1ul, 0x00000000ul }, { 2ul, 0x00080000ul },
+        { 3ul, 0x00100000ul }, { 4ul, 0x00180000ul },
+        { 5ul, 0x00200000ul }, { 6ul, 0x00280000ul },
+        { 7ul, 0x00300000ul }, { 8ul, 0x00380000ul }
+    };
+    v9x_u32 value = 99ul;
+    v9x_u32 source;
+    v9x_u32 destination;
+    for (source = 0ul;
+         source < sizeof(sources) / sizeof(sources[0]); ++source) {
+        for (destination = 0ul;
+             destination < sizeof(destinations) / sizeof(destinations[0]);
+             ++destination) {
+            CHECK(v9x_m64_build_blend_control(
+                      sources[source].factor, destinations[destination].factor,
+                      &value) == V9X_STATUS_OK);
+            CHECK(value == (0x00000800ul | sources[source].encoded |
+                            destinations[destination].encoded));
+        }
+    }
+    CHECK(v9x_m64_build_blend_control(3ul, 1ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    value = 99ul;
+    CHECK(v9x_m64_build_blend_control(4ul, 1ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    CHECK(v9x_m64_build_blend_control(2ul, 9ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(2ul, 10ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(2ul, 11ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(0ul, 1ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(12ul, 1ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(2ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_blend_control(2ul, 2ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_depth_builders(void)
 {
     struct v9x_m64_depth_state state;
@@ -799,6 +852,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_gouraud_builders();
     test_z_control_truth_table();
     test_alpha_control_truth_table();
+    test_blend_control_table();
     test_depth_builders();
     test_texture_builders();
     test_phase3_triangle_golden();

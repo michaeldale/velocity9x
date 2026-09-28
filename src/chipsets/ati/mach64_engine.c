@@ -740,6 +740,44 @@ v9x_status v9x_m64_build_alpha_control(v9x_u32 compare,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_blend_control(v9x_u32 source_factor,
+                                       v9x_u32 destination_factor,
+                                       v9x_u32 *value)
+{
+    v9x_u32 source;
+    v9x_u32 destination;
+    if (value != 0) *value = 0ul;
+    if (value == 0) return V9X_STATUS_INVALID_ARGUMENT;
+    switch (source_factor) {
+    case 1ul: source = V9X_M64_ALPHA_BLEND_SOURCE_ZERO; break;
+    case 2ul: source = V9X_M64_ALPHA_BLEND_SOURCE_ONE; break;
+    case 5ul: source = V9X_M64_ALPHA_BLEND_SOURCE_SRC_ALPHA; break;
+    case 6ul: source = V9X_M64_ALPHA_BLEND_SOURCE_INV_SRC_ALPHA; break;
+    case 7ul: source = V9X_M64_ALPHA_BLEND_SOURCE_DST_ALPHA; break;
+    case 8ul: source = V9X_M64_ALPHA_BLEND_SOURCE_INV_DST_ALPHA; break;
+    case 9ul: source = V9X_M64_ALPHA_BLEND_SOURCE_DST_COLOR; break;
+    case 10ul: source = V9X_M64_ALPHA_BLEND_SOURCE_INV_DST_COLOR; break;
+    case 11ul:
+        source = V9X_M64_ALPHA_BLEND_SOURCE_SRC_ALPHA |
+                 V9X_M64_ALPHA_BLEND_SATURATE;
+        break;
+    default: return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    switch (destination_factor) {
+    case 1ul: destination = V9X_M64_ALPHA_BLEND_DEST_ZERO; break;
+    case 2ul: destination = V9X_M64_ALPHA_BLEND_DEST_ONE; break;
+    case 3ul: destination = V9X_M64_ALPHA_BLEND_DEST_SRC_COLOR; break;
+    case 4ul: destination = V9X_M64_ALPHA_BLEND_DEST_INV_SRC_COLOR; break;
+    case 5ul: destination = V9X_M64_ALPHA_BLEND_DEST_SRC_ALPHA; break;
+    case 6ul: destination = V9X_M64_ALPHA_BLEND_DEST_INV_SRC_ALPHA; break;
+    case 7ul: destination = V9X_M64_ALPHA_BLEND_DEST_DST_ALPHA; break;
+    case 8ul: destination = V9X_M64_ALPHA_BLEND_DEST_INV_DST_ALPHA; break;
+    default: return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *value = V9X_M64_ALPHA_BLEND_ENABLE | source | destination;
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_depth_state(
                               const struct v9x_m64_depth_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
