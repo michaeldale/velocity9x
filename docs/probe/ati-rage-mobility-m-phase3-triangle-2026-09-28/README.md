@@ -26,5 +26,12 @@ unnecessary reset. `ATI3D0-REVIEW-A.*` preserves that harness failure. Build B
 adds an explicit branch to normal restoration; it does not change the state or
 setup write set.
 
-This is one cold-boot sample. Phase 3's plan gate remains open until the same
-reviewed scene passes after a second real power-off/power-on cycle.
+After a user-confirmed physical power cycle, the unchanged Build B payload ran
+again as job `ati-phase3-cold2-20260928-a`. It exited 0 in 27 ms and produced
+`ATI3D0-COLD2.TXT` and `ATI3D0-COLD2.BMP`, byte-identical to both accepted
+same-boot captures above. The agent reported 377,756 ms uptime immediately
+before this run, consistent with the fresh power-on. Its persistent
+`BootCounter` remained `9`, so the evidence records the counter discrepancy
+instead of presenting it as independent reboot proof. A final health check
+found the desktop ready and the agent responsive. Phase 3's two-cold-boot
+scene gate is complete.

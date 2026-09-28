@@ -188,8 +188,14 @@ bounded by `(8,6)` through `(38,21)`, zero interior/exterior/guard/restore
 mismatches, no timeout, and no recovery reset (`ATI3D0.TXT` CRC32
 `E28B783F`, BMP CRC32 `BD518408`). The first otherwise-correct image exposed
 and led to removal of a diagnostic-only fall-through into recovery; it is
-retained as negative harness evidence. Phase 3 still requires a matching pass
-after a second real cold boot. Public ATI acceleration remains disabled.
+retained as negative harness evidence. A user-confirmed physical power cycle
+then produced a third byte-identical report and bitmap from the immutable build
+in 27 ms. The agent reported only 377,756 ms uptime before that run, consistent
+with the fresh power-on, although its persistent `BootCounter` unexpectedly
+remained `9`; that discrepancy is retained with the evidence rather than
+silently treated as counter proof. Phase 3's two-cold-boot scene gate is now
+complete. Public ATI acceleration remains disabled pending the Phase 4 feature
+and publication gates.
 
 ## Goal
 
