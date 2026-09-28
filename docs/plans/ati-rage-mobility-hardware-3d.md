@@ -236,8 +236,19 @@ and both restored pages matched, and no timeout or reset occurred
 (`ATI4ZW.TXT` CRC32 `7A32B39B`, BMP CRC32 `BD518408`). The two safe REVIEW
 captures and the accepted evidence are retained in
 [`../probe/ati-rage-mobility-m-phase4-zwrite-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-zwrite-2026-09-28/).
-A combined 3D-write/2D-depth-clear ordering diagnostic remains before Phase 4
-item 3 is closed. Public ATI acceleration remains disabled.
+The combined 3D-write/2D-depth-clear ordering diagnostic is now complete and
+established another required boundary. Clearing immediately after the 3D draw
+left the exact 256-pixel dirty Z triangle at `0x4000`, plus the known physical
+origin word. Disabling `Z_CNTL` and waiting idle before the 2D clear retired
+that dirty Z state; the existing aligned-base origin repair then produced
+`0xFFFF` in every one of the 1,792 depth words. Build
+`ati-phase4-zclear-20260928-c` passed twice byte-identically with zero depth,
+clear, guard, state, or restoration mismatches and no timeout/reset
+(`ATI4ZC.TXT` CRC32 `DAF3CFB8`, depth BMP CRC32 `D1E15135`). Negative and
+accepted captures are in
+[`../probe/ati-rage-mobility-m-phase4-zclear-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-zclear-2026-09-28/).
+Phase 4 item 3 is closed. Public ATI acceleration remains disabled while the
+remaining Phase 4 features are open.
 
 ## Goal
 
