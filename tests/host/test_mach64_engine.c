@@ -428,6 +428,130 @@ static void test_gouraud_builders(void)
     CHECK(written == 0ul);
 }
 
+static int z_compare_cpu(v9x_u32 compare, v9x_u16 incoming,
+                         v9x_u16 stored)
+{
+    switch (compare) {
+    case 1ul: return 0;
+    case 2ul: return incoming < stored;
+    case 3ul: return incoming == stored;
+    case 4ul: return incoming <= stored;
+    case 5ul: return incoming > stored;
+    case 6ul: return incoming != stored;
+    case 7ul: return incoming >= stored;
+    case 8ul: return 1;
+    default: return -1;
+    }
+}
+
+static void test_z_control_truth_table(void)
+{
+    static const struct {
+        v9x_u32 compare;
+        v9x_u32 encoded;
+        int low;
+        int equal;
+        int high;
+    } cases[] = {
+        { 1ul, 0x01ul, 0, 0, 0 },
+        { 2ul, 0x11ul, 1, 0, 0 },
+        { 3ul, 0x31ul, 0, 1, 0 },
+        { 4ul, 0x21ul, 1, 1, 0 },
+        { 5ul, 0x51ul, 0, 0, 1 },
+        { 6ul, 0x61ul, 1, 0, 1 },
+        { 7ul, 0x41ul, 0, 1, 1 },
+        { 8ul, 0x71ul, 1, 1, 1 }
+    };
+    v9x_u32 value = 99ul;
+    v9x_u32 index;
+    for (index = 0ul; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        CHECK(v9x_m64_build_z_control(cases[index].compare, 0ul,
+                                     &value) == V9X_STATUS_OK);
+        CHECK(value == cases[index].encoded);
+        CHECK(z_compare_cpu(cases[index].compare, 99u, 100u) ==
+              cases[index].low);
+        CHECK(z_compare_cpu(cases[index].compare, 100u, 100u) ==
+              cases[index].equal);
+        CHECK(z_compare_cpu(cases[index].compare, 101u, 100u) ==
+              cases[index].high);
+        CHECK(v9x_m64_build_z_control(cases[index].compare, 1ul,
+                                     &value) == V9X_STATUS_OK);
+        CHECK(value == (cases[index].encoded | 0x100ul));
+    }
+    CHECK(v9x_m64_build_z_control(0ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    value = 99ul;
+    CHECK(v9x_m64_build_z_control(9ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    CHECK(v9x_m64_build_z_control(2ul, 2ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_z_control(2ul, 0ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_depth_builders(void)
+{
+    struct v9x_m64_depth_state state;
+    struct v9x_m64_depth_triangle triangle;
+    v9x_u32 offsets[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_FLAT_STATE_DWORDS];
+    v9x_u32 setup_offsets[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 setup_values[V9X_M64_FLAT_TRIANGLE_DWORDS];
+    v9x_u32 written = 99ul;
+    state.color.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.color.target_offset = 0x00200100ul;
+    state.color.target_pitch_bytes = 128ul;
+    state.color.target_width = 64ul;
+    state.color.target_height = 28ul;
+    state.color.scissor_left = 0ul; state.color.scissor_top = 0ul;
+    state.color.scissor_right = 64ul; state.color.scissor_bottom = 28ul;
+    state.depth_offset = 0x00202100ul;
+    state.depth_pitch_bytes = 128ul;
+    state.depth_width = 64ul;
+    state.depth_height = 28ul;
+    state.compare = 4ul;
+    state.write_enable = 0ul;
+    CHECK(v9x_m64_build_depth_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_FLAT_STATE_DWORDS);
+    CHECK(offsets[7] == V9X_M64_Z_OFF_PITCH);
+    CHECK(values[7] == 0x02040420ul);
+    CHECK(offsets[8] == V9X_M64_Z_CNTL && values[8] == 0x21ul);
+
+    state.write_enable = 1ul;
+    CHECK(v9x_m64_build_depth_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[8] == 0x121ul);
+    state.depth_offset = state.color.target_offset;
+    CHECK(v9x_m64_build_depth_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    state.depth_offset = 0x003ffff8ul;
+    CHECK(v9x_m64_build_depth_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+
+    triangle.vertex[0].x = 8ul; triangle.vertex[0].y = 6ul;
+    triangle.vertex[1].x = 40ul; triangle.vertex[1].y = 6ul;
+    triangle.vertex[2].x = 8ul; triangle.vertex[2].y = 22ul;
+    triangle.color = 0xffff00fful;
+    triangle.depth[0] = 0u;
+    triangle.depth[1] = 0x8000u;
+    triangle.depth[2] = 0xffffu;
+    CHECK(v9x_m64_build_depth_triangle(
+              &triangle, setup_offsets, setup_values,
+              V9X_M64_FLAT_TRIANGLE_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_FLAT_TRIANGLE_DWORDS);
+    CHECK(setup_values[3] == 0ul);
+    CHECK(setup_values[9] == 0x40000000ul);
+    CHECK(setup_values[15] == 0x7fff8000ul);
+}
+
 static void test_phase3_triangle_golden(void)
 {
     struct v9x_m64_flat_state state;
@@ -479,6 +603,8 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_flat_triangle_builder();
     test_flat_state_builder();
     test_gouraud_builders();
+    test_z_control_truth_table();
+    test_depth_builders();
     test_phase3_triangle_golden();
     return failures;
 }

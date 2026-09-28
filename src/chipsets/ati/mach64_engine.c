@@ -538,6 +538,29 @@ v9x_status v9x_m64_build_gouraud_triangle(
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_depth_triangle(
+                              const struct v9x_m64_depth_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_m64_flat_triangle flat;
+    v9x_status status;
+    v9x_u32 index;
+    if (written != 0) *written = 0ul;
+    if (triangle == 0) return V9X_STATUS_INVALID_ARGUMENT;
+    for (index = 0ul; index < 3ul; ++index) {
+        flat.vertex[index] = triangle->vertex[index];
+    }
+    flat.color = triangle->color;
+    status = v9x_m64_build_flat_triangle(&flat, offsets, values, capacity,
+                                         written);
+    if (status != V9X_STATUS_OK) return status;
+    values[3] = (v9x_u32)triangle->depth[0] << 15;
+    values[9] = (v9x_u32)triangle->depth[1] << 15;
+    values[15] = (v9x_u32)triangle->depth[2] << 15;
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_flat_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
@@ -619,5 +642,96 @@ v9x_status v9x_m64_build_gouraud_state(
         state, offsets, values, capacity, written);
     if (status != V9X_STATUS_OK) return status;
     values[14] = V9X_M64_SETUP_GOURAUD;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_m64_build_z_control(v9x_u32 compare,
+                                   v9x_u32 write_enable,
+                                   v9x_u32 *value)
+{
+    v9x_u32 test;
+    if (value != 0) *value = 0ul;
+    if (value == 0 || write_enable > 1ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    switch (compare) {
+    case 1ul: test = V9X_M64_Z_TEST_NEVER; break;
+    case 2ul: test = V9X_M64_Z_TEST_LESS; break;
+    case 3ul: test = V9X_M64_Z_TEST_EQUAL; break;
+    case 4ul: test = V9X_M64_Z_TEST_LESSEQUAL; break;
+    case 5ul: test = V9X_M64_Z_TEST_GREATER; break;
+    case 6ul: test = V9X_M64_Z_TEST_NOTEQUAL; break;
+    case 7ul: test = V9X_M64_Z_TEST_GREATEREQUAL; break;
+    case 8ul: test = V9X_M64_Z_TEST_ALWAYS; break;
+    default: return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *value = V9X_M64_Z_ENABLE | test;
+    if (write_enable != 0ul) *value |= V9X_M64_Z_WRITE_ENABLE;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_m64_build_depth_state(
+                              const struct v9x_m64_depth_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 color_end;
+    v9x_u32 depth_end;
+    v9x_u32 pitch_pixels;
+    v9x_u32 z_control;
+    v9x_status status;
+    if (written != 0) *written = 0ul;
+    if (state == 0) return V9X_STATUS_INVALID_ARGUMENT;
+    status = v9x_m64_build_flat_state(&state->color, offsets, values,
+                                      capacity, written);
+    if (status != V9X_STATUS_OK) return status;
+    if (state->depth_width != state->color.target_width ||
+        state->depth_height != state->color.target_height ||
+        state->depth_offset & 7ul || state->depth_pitch_bytes == 0ul ||
+        state->depth_pitch_bytes & 15ul) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    pitch_pixels = state->depth_pitch_bytes >> 1;
+    if ((pitch_pixels & 7ul) != 0ul || (pitch_pixels >> 3) > 1023ul ||
+        state->depth_width > pitch_pixels) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (state->depth_height - 1ul >
+        (0xfffffffful - state->depth_offset) /
+        state->depth_pitch_bytes) {
+        *written = 0ul;
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    depth_end = state->depth_offset +
+                (state->depth_height - 1ul) * state->depth_pitch_bytes;
+    if (state->depth_width > (0xfffffffful - depth_end) / 2ul) {
+        *written = 0ul;
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    depth_end += state->depth_width * 2ul;
+    if (depth_end > state->color.vram_bytes) {
+        *written = 0ul;
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    color_end = state->color.target_offset +
+                (state->color.target_height - 1ul) *
+                state->color.target_pitch_bytes +
+                state->color.target_width * 2ul;
+    if (state->depth_offset < color_end &&
+        state->color.target_offset < depth_end) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_m64_build_z_control(state->compare, state->write_enable,
+                                     &z_control);
+    if (status != V9X_STATUS_OK) {
+        *written = 0ul;
+        return status;
+    }
+    values[7] = ((pitch_pixels >> 3) << 22) |
+                (state->depth_offset >> 3);
+    values[8] = z_control;
     return V9X_STATUS_OK;
 }

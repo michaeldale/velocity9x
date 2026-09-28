@@ -82,6 +82,12 @@ struct v9x_m64_gouraud_triangle {
     v9x_u32 color[3];
 };
 
+struct v9x_m64_depth_triangle {
+    struct v9x_m64_point vertex[3];
+    v9x_u32 color;
+    v9x_u16 depth[3];
+};
+
 struct v9x_m64_flat_state {
     v9x_u32 vram_bytes;
     v9x_u32 target_offset;
@@ -92,6 +98,16 @@ struct v9x_m64_flat_state {
     v9x_u32 scissor_top;
     v9x_u32 scissor_right;
     v9x_u32 scissor_bottom;
+};
+
+struct v9x_m64_depth_state {
+    struct v9x_m64_flat_state color;
+    v9x_u32 depth_offset;
+    v9x_u32 depth_pitch_bytes;
+    v9x_u32 depth_width;
+    v9x_u32 depth_height;
+    v9x_u32 compare;
+    v9x_u32 write_enable;
 };
 
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
@@ -128,6 +144,10 @@ v9x_status v9x_m64_build_gouraud_triangle(
                               const struct v9x_m64_gouraud_triangle *triangle,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_depth_triangle(
+                              const struct v9x_m64_depth_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_flat_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
@@ -136,5 +156,13 @@ v9x_status v9x_m64_build_gouraud_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_depth_state(
+                              const struct v9x_m64_depth_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+/* `compare` uses the Direct3D D3DCMP_* numbering, 1 through 8. */
+v9x_status v9x_m64_build_z_control(v9x_u32 compare,
+                                   v9x_u32 write_enable,
+                                   v9x_u32 *value);
 
 #endif

@@ -57,6 +57,17 @@
 #define V9X_M64_SETUP_GOURAUD         0x00000000ul
 #define V9X_M64_SETUP_FLAT_VERTEX_3   0x00000018ul
 
+#define V9X_M64_Z_ENABLE              0x00000001ul
+#define V9X_M64_Z_TEST_NEVER          0x00000000ul
+#define V9X_M64_Z_TEST_LESS           0x00000010ul
+#define V9X_M64_Z_TEST_LESSEQUAL      0x00000020ul
+#define V9X_M64_Z_TEST_EQUAL          0x00000030ul
+#define V9X_M64_Z_TEST_GREATEREQUAL   0x00000040ul
+#define V9X_M64_Z_TEST_GREATER        0x00000050ul
+#define V9X_M64_Z_TEST_NOTEQUAL       0x00000060ul
+#define V9X_M64_Z_TEST_ALWAYS         0x00000070ul
+#define V9X_M64_Z_WRITE_ENABLE        0x00000100ul
+
 #define V9X_M64_FIFO_ERR              0x80000000ul
 #define V9X_M64_GUI_ACTIVE            0x00000001ul
 #define V9X_M64_GUI_FIFO_MASK         0x03ff0000ul
