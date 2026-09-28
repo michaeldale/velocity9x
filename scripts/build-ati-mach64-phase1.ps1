@@ -124,3 +124,8 @@ $blendTableSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_blend_table_
 $blendTableBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $blendTableSource -Executable $blendTableExe -Object $blendTableObj -MapFile $blendTableMap -LinkFile $blendTableLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$blendTableObj",$blendTableSource) -LinkOptions @("option start='_V9xAtiMach64BlendTableEntry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($blendTableBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4BT.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 blend factor table publisher: $blendTableExe"
+
+$texenvSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_texenv_table_win32.c';$texenvExe=Join-Path $outputDir 'ATI4TE.EXE';$texenvObj=Join-Path $outputDir 'ati4te.obj';$texenvMap=Join-Path $outputDir 'ati4te.map';$texenvLnk=Join-Path $outputDir 'ati4te.lnk'
+$texenvBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $texenvSource -Executable $texenvExe -Object $texenvObj -MapFile $texenvMap -LinkFile $texenvLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$texenvObj",$texenvSource) -LinkOptions @("option start='_V9xAtiMach64TexenvTableEntry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($texenvBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TE.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 texture environment table publisher: $texenvExe"

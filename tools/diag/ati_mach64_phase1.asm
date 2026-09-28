@@ -51,6 +51,7 @@ ATIE23_DIOC_ALPHA_ALWAYS equ 23
 ATIE24_DIOC_BLEND_ONE_ONE equ 24
 ATIE25_DIOC_BLEND_SRCALPHA_INV equ 25
 ATIE26_DIOC_BLEND_TABLE equ 26
+ATIE27_DIOC_TEXENV_TABLE equ 27
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -103,6 +104,13 @@ ATIE26_MAGIC equ 4a495441h
 ; blend table; every other bit must equal the proven ADD-enabled value.
 ATIE26_BLEND_FIXED_MASK equ 0ffc0ffffh
 ATIE26_BLEND_FIXED_VALUE equ 000008c1h
+ATIE27_MAGIC equ 4b495441h
+; The texture-environment table may vary only TEX_MAP_AEN and
+; TEX_LIGHT_FCN (replace 0, modulate 1, alpha decal 2) around one of two
+; proven SCALE_3D_CNTL words: unblended, or SRCALPHA/INVSRCALPHA ADD.
+ATIE27_SCALE_VARIABLE equ 40c00000h
+ATIE27_SCALE_UNBLENDED equ 00010081h
+ATIE27_SCALE_BLENDED equ 002c0881h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -205,6 +213,10 @@ AtiE16ExpectedRight dd 0
 AtiE26Scale dd 0
 AtiE26Argb dd 0
 AtiE26Expected dd 0
+AtiE27Scale dd 0
+AtiE27TexFormat dd 0
+AtiE27Argb dd 0
+AtiE27TextureData dd 32 dup (0)
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1229,6 +1241,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Blend_SrcAlpha_Inv
  cmp AtiE4SceneMode,22
  je AtiE4_Select_Blend_Table
+ cmp AtiE4SceneMode,23
+ je AtiE4_Select_Texenv_Table
  cmp AtiE4SceneMode,12
  jb AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1312,6 +1326,19 @@ AtiE4_Select_Blend_SrcAlpha_Inv:
  mov dword ptr AtiE4SetupValues[40],080ff0000h
  mov dword ptr AtiE4SetupValues[64],080ff0000h
  jmp AtiE4_Selected_Scene
+ ; ALPHA_TST_CNTL is cleared explicitly: the table issues many requests
+ ; within one load of the VxD, and no earlier scene's value may persist.
+AtiE27_Select_Apply:
+ mov dword ptr AtiE4StateValues[36],0
+ mov eax,AtiE27Scale
+ mov AtiE4StateValues[40],eax
+ mov eax,AtiE27TexFormat
+ mov AtiE4StateValues[52],eax
+ mov eax,AtiE27Argb
+ mov AtiE4SetupValues[16],eax
+ mov AtiE4SetupValues[40],eax
+ mov AtiE4SetupValues[64],eax
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_Blend_Table:
  mov dword ptr AtiE4Result[0],ATIE26_MAGIC
  mov eax,AtiE26Scale
@@ -1321,6 +1348,10 @@ AtiE4_Select_Blend_Table:
  mov AtiE4SetupValues[40],eax
  mov AtiE4SetupValues[64],eax
  jmp AtiE4_Selected_Scene
+AtiE4_Select_Texenv_Table:
+ mov dword ptr AtiE4Result[0],ATIE27_MAGIC
+ mov dword ptr AtiE9TextureSource,OFFSET32 AtiE27TextureData
+ jmp AtiE4_Select_Texture_Common
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
  mov dword ptr AtiE4StateValues[40],00010081h
@@ -1355,7 +1386,7 @@ AtiE4_Select_Not_Bilinear:
  mov dword ptr AtiE4StateValues[36],007f0051h
  mov dword ptr AtiE4StateValues[40],40010081h
  mov dword ptr AtiE4StateValues[52],30040444h
- jmp short AtiE4_Selected_Scene
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_Not_Argb1555:
  cmp AtiE4SceneMode,11
  jne short AtiE4_Select_Not_Argb4444
@@ -1364,6 +1395,8 @@ AtiE4_Select_Not_Argb1555:
  mov dword ptr AtiE4StateValues[52],0f0040444h
  jmp short AtiE4_Selected_Scene
 AtiE4_Select_Not_Argb4444:
+ cmp AtiE4SceneMode,23
+ je AtiE27_Select_Apply
  cmp AtiE4SceneMode,12
  jb short AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1491,11 +1524,13 @@ AtiE4_Pci_Found:
  mov AtiE4FbLinear,eax
  or AtiE4Result[4],20h
  cmp AtiE4SceneMode,2
- jb short AtiE4_Depth_Map_Done
+ jb AtiE4_Depth_Map_Done
  cmp AtiE4SceneMode,5
  jb short AtiE4_Map_Depth
  cmp AtiE4SceneMode,19
  jbe short AtiE4_Texture_Map
+ cmp AtiE4SceneMode,23
+ je short AtiE4_Texture_Map
  jmp short AtiE4_Depth_Map_Done
 AtiE4_Map_Depth:
  mov eax,AtiE4Result[16]
@@ -1583,7 +1618,10 @@ AtiE4_Depth_Init_Done:
  cmp AtiE4SceneMode,5
  jb short AtiE4_Texture_Init_Done
  cmp AtiE4SceneMode,19
- ja short AtiE4_Texture_Init_Done
+ jbe short AtiE4_Texture_Init_Go
+ cmp AtiE4SceneMode,23
+ jne short AtiE4_Texture_Init_Done
+AtiE4_Texture_Init_Go:
  mov esi,AtiE9TextureLinear
  mov edi,OFFSET32 AtiE9TextureBackup
  mov ecx,1024
@@ -1693,6 +1731,8 @@ AtiE4_Inspect_Render:
  cmp AtiE4SceneMode,21
  je AtiE25_Blend_Interior
  cmp AtiE4SceneMode,22
+ je AtiE26_Blend_Interior
+ cmp AtiE4SceneMode,23
  je AtiE26_Blend_Interior
  cmp AtiE4SceneMode,5
  jae AtiE9_Texture_Interior
@@ -2071,6 +2111,8 @@ AtiE4_Exterior_Done:
 
  ; The first and last 256 bytes surround the target surface physically.
 AtiE4_Guards:
+ cmp AtiE4SceneMode,23
+ je AtiE9_Texture_Guards
  cmp AtiE4SceneMode,5
  jb short AtiE4_Guards_Not_Texture
  cmp AtiE4SceneMode,19
@@ -2587,6 +2629,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run25
  cmp ecx,ATIE26_DIOC_BLEND_TABLE
  je AtiE1_Dioc_Run26
+ cmp ecx,ATIE27_DIOC_TEXENV_TABLE
+ je AtiE1_Dioc_Run27
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2987,6 +3031,53 @@ AtiE1_Dioc_Run26:
  movzx eax,word ptr [edx+8]
  mov AtiE26Expected,eax
  mov eax,22
+ jmp AtiE1_Dioc_Run_Alpha_Table
+ ; Input: SCALE_3D_CNTL, TEX_SIZE_PITCH, texel, vertex ARGB, expected RGB565.
+ ; Any word outside the proven set fails before MMIO is mapped or written.
+AtiE1_Dioc_Run27:
+ mov edx,[esi.lpvInBuffer]
+ test edx,edx
+ jz AtiE1_Dioc_Fail
+ cmp [esi.cbInBuffer],20
+ jb AtiE1_Dioc_Fail
+ mov eax,[edx]
+ mov ecx,eax
+ shr ecx,22
+ and ecx,3
+ cmp ecx,3
+ je AtiE1_Dioc_Fail
+ mov ecx,eax
+ and ecx,NOT ATIE27_SCALE_VARIABLE
+ cmp ecx,ATIE27_SCALE_UNBLENDED
+ je short AtiE1_Dioc_Run27_Scale_Ok
+ cmp ecx,ATIE27_SCALE_BLENDED
+ jne AtiE1_Dioc_Fail
+AtiE1_Dioc_Run27_Scale_Ok:
+ mov ecx,[edx+4]
+ cmp ecx,40040444h
+ je short AtiE1_Dioc_Run27_Format_Ok
+ cmp ecx,30040444h
+ je short AtiE1_Dioc_Run27_Format_Ok
+ cmp ecx,0f0040444h
+ jne AtiE1_Dioc_Fail
+AtiE1_Dioc_Run27_Format_Ok:
+ mov AtiE27Scale,eax
+ mov AtiE27TexFormat,ecx
+ movzx eax,word ptr [edx+8]
+ mov ecx,eax
+ shl ecx,16
+ or eax,ecx
+ push edi
+ mov edi,OFFSET32 AtiE27TextureData
+ mov ecx,32
+ cld
+ rep stosd
+ pop edi
+ mov eax,[edx+12]
+ mov AtiE27Argb,eax
+ movzx eax,word ptr [edx+16]
+ mov AtiE26Expected,eax
+ mov eax,23
  jmp AtiE1_Dioc_Run_Alpha_Table
 EndProc AtiE1_W32_DeviceIoControl
 BeginProc AtiE1_Dynamic_Init

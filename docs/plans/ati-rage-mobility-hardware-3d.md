@@ -402,6 +402,25 @@ the rounding rule is narrowed but not settled; that matters for Phase 6's
 fallback eligibility, not for publication. Texture environments (item 10)
 are next; public ATI acceleration remains disabled.
 
+Phase 4 item 10 is closed, with a semantic finding. Build
+`ati-phase4-texenv-20260928-a` drew replace, modulate and alpha decal over
+RGB565, ARGB1555 (alpha set and clear) and ARGB4444 uniform textures, each
+unblended and through the proven SRCALPHA/INVSRCALPHA pair: 24 safe scenes
+in total. Its safe REVIEW showed that MODULATE outputs texel alpha, not
+At x Af. ALPHA_DECAL outputs vertex alpha. On an RGB565 texture, which has
+no alpha, both the output alpha and the decal weight come from the vertex.
+Build `ati-phase4-texenv-20260928-b` changed only the assertions to those
+semantics, with a one-565-unit rounding tolerance that every rejected
+semantic exceeds by 9 to 27 units. It passed twice byte-identically on boot
+11: 21 of 24 scenes exact, all safety counters zero, and a pixel dump
+identical to build a's (`ATI4TE.TXT` CRC32 `3D214DAA`). So Direct3D
+MODULATEALPHA must refuse, DECALALPHA on RGB565 must emit REPLACE, and
+OpenGL `GL_MODULATE` on RGBA is exact only without blending or alpha test.
+Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-texenv-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-texenv-2026-09-28/).
+Hardware scissor (item 11) is next; public ATI acceleration remains
+disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
