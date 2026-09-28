@@ -49,3 +49,8 @@ $zwriteExe=Join-Path $outputDir 'ATI4ZW.EXE';$zwriteObj=Join-Path $outputDir 'at
 $zwriteBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $zwriteExe -Object $zwriteObj -MapFile $zwriteMap -LinkFile $zwriteLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ZWRITE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$zwriteObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($zwriteBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4ZW.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 Z-write publisher: $zwriteExe"
+
+$zclearExe=Join-Path $outputDir 'ATI4ZC.EXE';$zclearObj=Join-Path $outputDir 'ati4zc.obj';$zclearMap=Join-Path $outputDir 'ati4zc.map';$zclearLnk=Join-Path $outputDir 'ati4zc.lnk'
+$zclearBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $zclearExe -Object $zclearObj -MapFile $zclearMap -LinkFile $zclearLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ZCLEAR=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$zclearObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($zclearBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4ZC.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 Z-clear publisher: $zclearExe"

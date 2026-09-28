@@ -5,7 +5,15 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_ZWRITE)
+#if defined(V9X_ZCLEAR)
+#define ATI3D_MAGIC 0x38495441ul
+#define ATI3D_DIOC 8u
+#define ATI3D_HEADING "[AtiMach64Phase4ZClear]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-z16-write-then-2d-clear"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4ZC.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4ZC.BMP"
+#define ATI3D_GUARD_KEY "DepthOrClearOrGuardMismatches"
+#elif defined(V9X_ZWRITE)
 #define ATI3D_MAGIC 0x37495441ul
 #define ATI3D_DIOC 7u
 #define ATI3D_HEADING "[AtiMach64Phase4ZWrite]\r\n"

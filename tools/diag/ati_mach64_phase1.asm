@@ -32,6 +32,7 @@ ATIE4_DIOC_TRIANGLE equ 4
 ATIE5_DIOC_GOURAUD equ 5
 ATIE6_DIOC_ZTEST equ 6
 ATIE7_DIOC_ZWRITE equ 7
+ATIE8_DIOC_ZCLEAR equ 8
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -61,6 +62,7 @@ ATIE4_MAGIC equ 34495441h
 ATIE5_MAGIC equ 35495441h
 ATIE6_MAGIC equ 36495441h
 ATIE7_MAGIC equ 37495441h
+ATIE8_MAGIC equ 38495441h
 ATIE4_RESULT_DWORDS equ 1000
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -130,6 +132,7 @@ AtiE4FbLinear dd 0
 AtiE6DepthLinear dd 0
 AtiE4BusSaved dd 0
 AtiE4TestSaved dd 0
+AtiE8DstYXSaved dd 0
 AtiE4Backup db 4096 dup (0)
 AtiE6DepthBackup db 4096 dup (0)
 VxD_LOCKED_DATA_ENDS
@@ -1116,7 +1119,9 @@ BeginProc AtiE4_Run
  cmp AtiE4SceneMode,2
  je short AtiE4_Select_ZTest
  cmp AtiE4SceneMode,3
- je short AtiE4_Select_ZWrite
+ je AtiE4_Select_ZWrite
+ cmp AtiE4SceneMode,4
+ je AtiE4_Select_ZClear
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
@@ -1124,7 +1129,7 @@ AtiE4_Select_Gouraud:
  mov dword ptr AtiE4SetupValues[16],0ffff0000h
  mov dword ptr AtiE4SetupValues[40],0ff00ff00h
  mov dword ptr AtiE4SetupValues[64],0ff0000ffh
- jmp short AtiE4_Selected_Scene
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_ZTest:
  mov dword ptr AtiE4Result[0],ATIE6_MAGIC
  mov dword ptr AtiE4StateValues[28],02040420h
@@ -1135,6 +1140,14 @@ AtiE4_Select_ZTest:
  jmp short AtiE4_Selected_Scene
 AtiE4_Select_ZWrite:
  mov dword ptr AtiE4Result[0],ATIE7_MAGIC
+ mov dword ptr AtiE4StateValues[28],02040420h
+ mov dword ptr AtiE4StateValues[32],00000111h
+ mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
+ mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
+ mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
+ jmp short AtiE4_Selected_Scene
+AtiE4_Select_ZClear:
+ mov dword ptr AtiE4Result[0],ATIE8_MAGIC
  mov dword ptr AtiE4StateValues[28],02040420h
  mov dword ptr AtiE4StateValues[32],00000111h
  mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
@@ -1281,6 +1294,11 @@ AtiE4_Save_State:
  mov AtiE4BusSaved,eax
  mov eax,[esi+ATIE1_GEN_TEST_CNTL]
  mov AtiE4TestSaved,eax
+ cmp AtiE4SceneMode,4
+ jne short AtiE4_Save_Extra_Done
+ mov eax,[esi+ATIE2_DST_Y_X]
+ mov AtiE8DstYXSaved,eax
+AtiE4_Save_Extra_Done:
  or AtiE4Result[4],80h
 
  mov esi,AtiE4FbLinear
@@ -1525,7 +1543,7 @@ AtiE4_Guards:
  cmp AtiE4SceneMode,2
  jb AtiE4_Color_Guards
  cmp AtiE4SceneMode,3
- je short AtiE7_Depth_Target
+ jae short AtiE7_Depth_Target
  mov esi,AtiE6DepthLinear
  add esi,100h
  mov ecx,1792
@@ -1666,6 +1684,84 @@ AtiE4_Changed_Next:
  mov ecx,896
  cld
  rep movsd
+ cmp AtiE4SceneMode,4
+ jne AtiE4_Restore_State
+
+ ; Order the proven 2D fill behind the completed 3D Z write, clear the exact
+ ; same Z16 surface to FFFF, repair the Mobility origin word, then observe it.
+ mov esi,AtiE4MmioLinear
+ mov ecx,12
+ call AtiE2_WaitFifo
+ jnc short AtiE8_Clear_Fifo_Ok
+ mov dword ptr AtiE4Result[116],8
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Clear_Fifo_Ok:
+ mov dword ptr [esi+ATIE2_DST_OFF_PITCH],02040420h
+ mov dword ptr [esi+ATIE2_DST_CNTL],00000003h
+ mov dword ptr [esi+ATIE2_SC_LEFT_RIGHT],003f0000h
+ mov dword ptr [esi+ATIE2_SC_TOP_BOTTOM],001b0000h
+ mov dword ptr [esi+ATIE2_DP_FRGD_CLR],0000ffffh
+ mov dword ptr [esi+ATIE2_DP_WRITE_MASK],0ffffffffh
+ mov dword ptr [esi+ATIE2_DP_PIX_WIDTH],00040004h
+ mov dword ptr [esi+ATIE2_DP_MIX],00070003h
+ mov dword ptr [esi+ATIE2_DP_SRC],00000100h
+ mov dword ptr [esi+ATIE2_CLR_CMP_CNTL],0
+ mov dword ptr [esi+ATIE2_DST_Y_X],0
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],0040001ch
+ call AtiE2_WaitIdle
+ jnc short AtiE8_Clear_Idle_Ok
+ mov dword ptr AtiE4Result[116],9
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Clear_Idle_Ok:
+ mov ecx,3
+ call AtiE2_WaitFifo
+ jnc short AtiE8_Repair_Fifo_Ok
+ mov dword ptr AtiE4Result[116],10
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Repair_Fifo_Ok:
+ mov dword ptr [esi+ATIE2_DST_OFF_PITCH],0204041eh
+ mov dword ptr [esi+ATIE2_DST_Y_X],00080000h
+ mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00010001h
+ call AtiE2_WaitIdle
+ jnc short AtiE8_Repair_Idle_Ok
+ mov dword ptr AtiE4Result[116],11
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Repair_Idle_Ok:
+ mov eax,[esi+ATIE2_MEM_BUF_CNTL]
+ or eax,00800000h
+ mov [esi+ATIE2_MEM_BUF_CNTL],eax
+ mov esi,AtiE6DepthLinear
+ add esi,100h
+ mov ecx,1792
+AtiE8_Clear_Verify:
+ cmp word ptr [esi],0ffffh
+ je short AtiE8_Clear_Verify_Next
+ inc dword ptr AtiE4Result[72]
+AtiE8_Clear_Verify_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE8_Clear_Verify
+ mov esi,AtiE6DepthLinear
+ mov ecx,128
+AtiE8_Clear_Guard_Before:
+ cmp word ptr [esi],ATIE6_DEPTH_GUARD
+ je short AtiE8_Clear_Guard_Before_Next
+ inc dword ptr AtiE4Result[72]
+AtiE8_Clear_Guard_Before_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE8_Clear_Guard_Before
+ mov esi,AtiE6DepthLinear
+ add esi,0f00h
+ mov ecx,128
+AtiE8_Clear_Guard_After:
+ cmp word ptr [esi],ATIE6_DEPTH_GUARD
+ je short AtiE8_Clear_Guard_After_Next
+ inc dword ptr AtiE4Result[72]
+AtiE8_Clear_Guard_After_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE8_Clear_Guard_After
  jmp AtiE4_Restore_State
 
 AtiE4_Reset_Then_Restore:
@@ -1688,6 +1784,10 @@ AtiE4_Restore_State:
  test esi,esi
  jz AtiE4_Restore_Vram
  mov ecx,ATIE4_STATE_COUNT
+ cmp AtiE4SceneMode,4
+ jne short AtiE4_Restore_Fifo_Count_Ready
+ inc ecx
+AtiE4_Restore_Fifo_Count_Ready:
  call AtiE2_WaitFifo
  jnc short AtiE4_Restore_Fifo_Ok
  mov dword ptr AtiE4Result[116],6
@@ -1706,6 +1806,11 @@ AtiE4_Restore_State_Loop:
  add edi,4
  dec ecx
  jnz short AtiE4_Restore_State_Loop
+ cmp AtiE4SceneMode,4
+ jne short AtiE4_Restore_Extra_Done
+ mov eax,AtiE8DstYXSaved
+ mov [esi+ATIE2_DST_Y_X],eax
+AtiE4_Restore_Extra_Done:
  mov eax,AtiE4Result[40]
  mov [esi+ATIE2_MEM_BUF_CNTL],eax
  cmp dword ptr AtiE4Result[112],0
@@ -1740,6 +1845,13 @@ AtiE4_Verify_State_Next:
  je short AtiE4_Verify_State_Done
  inc eax
 AtiE4_Verify_State_Done:
+ cmp AtiE4SceneMode,4
+ jne short AtiE4_Verify_Extra_Done
+ mov edx,[esi+ATIE2_DST_Y_X]
+ cmp edx,AtiE8DstYXSaved
+ je short AtiE4_Verify_Extra_Done
+ inc eax
+AtiE4_Verify_Extra_Done:
  mov AtiE4Result[76],eax
  test eax,eax
  jnz short AtiE4_Restore_Vram
@@ -1821,6 +1933,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run6
  cmp ecx,ATIE7_DIOC_ZWRITE
  je AtiE1_Dioc_Run7
+ cmp ecx,ATIE8_DIOC_ZCLEAR
+ je AtiE1_Dioc_Run8
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -1923,7 +2037,7 @@ AtiE1_Dioc_Run5:
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE5_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run6:
  pushad
  mov ebp,esi
@@ -1931,9 +2045,9 @@ AtiE1_Dioc_Run6:
  call AtiE4_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE4Result
  mov ecx,ATIE4_RESULT_DWORDS
  cld
@@ -1964,6 +2078,27 @@ AtiE1_Dioc_Run7:
  jz short AtiE7_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE7_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run8:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,4
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE8_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE8_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax
