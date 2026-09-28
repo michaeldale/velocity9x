@@ -361,6 +361,21 @@ are retained in
 Blend ADD factor-pair validation is next; public ATI acceleration remains
 disabled.
 
+Phase 4 item 9 has begun with a side-aware shared blend encoder and the first
+physical factor-pair gate. The encoder covers every source and destination
+factor that has a direct Mach64 field and rejects invalid operand-side uses.
+Build `ati-phase4-blend-one-one-20260928-b` then enabled ADD with ONE/ONE and
+drew opaque red over RGB565 `0xA55A`. Three separated probes returned the
+exact saturated sum `0xFD5A`; exactly 256 pixels changed in the established
+triangle bounds, all guards and restored state matched, and no timeout/reset
+occurred. Two same-boot runs were byte-identical (`ATI4B1.TXT` CRC32
+`0E104B04`, BMP CRC32 `ABA09C71`). An initial safe REVIEW had the identical
+correct BMP but a diagnostic range bug incorrectly ran the unmapped depth
+verifier for scene 20; it is retained with the accepted evidence in
+[`../probe/ati-rage-mobility-m-phase4-blend-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-blend-2026-09-28/).
+Item 9 remains open for the other factor pairs selected for publication;
+public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
