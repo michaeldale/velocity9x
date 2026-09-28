@@ -88,6 +88,14 @@ struct v9x_m64_depth_triangle {
     v9x_u16 depth[3];
 };
 
+struct v9x_m64_textured_triangle {
+    struct v9x_m64_point vertex[3];
+    float s[3];
+    float t[3];
+    float w[3];
+    v9x_u32 color;
+};
+
 struct v9x_m64_flat_state {
     v9x_u32 vram_bytes;
     v9x_u32 target_offset;
@@ -108,6 +116,14 @@ struct v9x_m64_depth_state {
     v9x_u32 depth_height;
     v9x_u32 compare;
     v9x_u32 write_enable;
+};
+
+struct v9x_m64_texture_state {
+    struct v9x_m64_flat_state color;
+    v9x_u32 texture_offset;
+    v9x_u32 texture_pitch_bytes;
+    v9x_u32 texture_width;
+    v9x_u32 texture_height;
 };
 
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
@@ -148,6 +164,10 @@ v9x_status v9x_m64_build_depth_triangle(
                               const struct v9x_m64_depth_triangle *triangle,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_textured_triangle(
+                              const struct v9x_m64_textured_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_flat_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
@@ -158,6 +178,10 @@ v9x_status v9x_m64_build_gouraud_state(
                               v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_depth_state(
                               const struct v9x_m64_depth_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_texture_state(
+                              const struct v9x_m64_texture_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 /* `compare` uses the Direct3D D3DCMP_* numbering, 1 through 8. */

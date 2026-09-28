@@ -444,6 +444,11 @@ static v9x_u32 v9x_m64_float_bits(float value)
     return converted.bits;
 }
 
+static int v9x_m64_finite_float(float value)
+{
+    return (v9x_m64_float_bits(value) & 0x7f800000ul) != 0x7f800000ul;
+}
+
 static void v9x_m64_encode_flat_vertex(
                               const struct v9x_m64_point *vertex,
                               v9x_u32 color, const v9x_u32 *registers,
@@ -561,6 +566,39 @@ v9x_status v9x_m64_build_depth_triangle(
     values[3] = (v9x_u32)triangle->depth[0] << 16;
     values[9] = (v9x_u32)triangle->depth[1] << 16;
     values[15] = (v9x_u32)triangle->depth[2] << 16;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_m64_build_textured_triangle(
+                              const struct v9x_m64_textured_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_m64_flat_triangle flat;
+    v9x_status status;
+    v9x_u32 index;
+    if (written != 0) *written = 0ul;
+    if (triangle == 0) return V9X_STATUS_INVALID_ARGUMENT;
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_u32 w_bits = v9x_m64_float_bits(triangle->w[index]);
+        if (!v9x_m64_finite_float(triangle->s[index]) ||
+            !v9x_m64_finite_float(triangle->t[index]) ||
+            !v9x_m64_finite_float(triangle->w[index]) ||
+            (w_bits & 0x80000000ul) != 0ul ||
+            (w_bits & 0x7ffffffful) == 0ul) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        flat.vertex[index] = triangle->vertex[index];
+    }
+    flat.color = triangle->color;
+    status = v9x_m64_build_flat_triangle(&flat, offsets, values, capacity,
+                                         written);
+    if (status != V9X_STATUS_OK) return status;
+    for (index = 0ul; index < 3ul; ++index) {
+        values[index * 6ul] = v9x_m64_float_bits(triangle->s[index]);
+        values[index * 6ul + 1ul] = v9x_m64_float_bits(triangle->t[index]);
+        values[index * 6ul + 2ul] = v9x_m64_float_bits(triangle->w[index]);
+    }
     return V9X_STATUS_OK;
 }
 
@@ -736,5 +774,93 @@ v9x_status v9x_m64_build_depth_state(
     values[7] = ((pitch_pixels >> 3) << 22) |
                 (state->depth_offset >> 3);
     values[8] = z_control;
+    return V9X_STATUS_OK;
+}
+
+static int v9x_m64_power_of_two(v9x_u32 value)
+{
+    return value != 0ul && (value & (value - 1ul)) == 0ul;
+}
+
+static v9x_u32 v9x_m64_log2(v9x_u32 value)
+{
+    v9x_u32 result = 0ul;
+    while (value > 1ul) {
+        value >>= 1;
+        ++result;
+    }
+    return result;
+}
+
+v9x_status v9x_m64_build_texture_state(
+                              const struct v9x_m64_texture_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 width_log2;
+    v9x_u32 height_log2;
+    v9x_u32 max_log2;
+    v9x_u32 expected_pitch;
+    v9x_u32 texture_bytes;
+    v9x_u32 texture_end;
+    v9x_u32 color_end;
+    v9x_status status;
+    if (written != 0) *written = 0ul;
+    if (state == 0 || offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_TEXTURED_STATE_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_m64_build_flat_state(&state->color, offsets, values,
+                                      capacity, written);
+    if (status != V9X_STATUS_OK) return status;
+    if ((state->texture_offset & 7ul) != 0ul ||
+        !v9x_m64_power_of_two(state->texture_width) ||
+        !v9x_m64_power_of_two(state->texture_height) ||
+        state->texture_width < 8ul || state->texture_width > 1024ul ||
+        state->texture_height < 8ul || state->texture_height > 1024ul) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    expected_pitch = state->texture_width > state->texture_height
+        ? state->texture_width * 2ul : state->texture_height * 2ul;
+    if (state->texture_pitch_bytes != expected_pitch) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    texture_bytes = expected_pitch * state->texture_height;
+    if (state->texture_offset > 0xfffffffful - texture_bytes) {
+        *written = 0ul;
+        return V9X_STATUS_INTEGER_OVERFLOW;
+    }
+    texture_end = state->texture_offset + texture_bytes;
+    if (texture_end > state->color.vram_bytes) {
+        *written = 0ul;
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    color_end = state->color.target_offset +
+                (state->color.target_height - 1ul) *
+                state->color.target_pitch_bytes +
+                state->color.target_width * 2ul;
+    if (state->texture_offset < color_end &&
+        state->color.target_offset < texture_end) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    width_log2 = v9x_m64_log2(state->texture_width);
+    height_log2 = v9x_m64_log2(state->texture_height);
+    max_log2 = width_log2 > height_log2 ? width_log2 : height_log2;
+    values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul;
+    values[13] = (values[13] & 0x0ffffffful) |
+                 V9X_M64_SCALE_3D_TEXTURE_RGB565;
+    values[14] = V9X_M64_SETUP_GOURAUD;
+    values[15] = width_log2 | (max_log2 << 4) | (height_log2 << 8);
+    values[16] = V9X_M64_TEXTURE_CLAMP_S | V9X_M64_TEXTURE_CLAMP_T |
+                 V9X_M64_TEX_CACHE_FLUSH | V9X_M64_TEX_CACHE_SIZE_4K;
+    offsets[17] = V9X_M64_SECONDARY_TEX_OFF;
+    values[17] = 0ul;
+    offsets[18] = V9X_M64_TEX_0_OFF + max_log2 * 4ul;
+    values[18] = state->texture_offset;
+    *written = V9X_M64_TEXTURED_STATE_DWORDS;
     return V9X_STATUS_OK;
 }

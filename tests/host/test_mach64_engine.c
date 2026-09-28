@@ -552,6 +552,99 @@ static void test_depth_builders(void)
     CHECK(setup_values[15] == 0xffff0000ul);
 }
 
+static void test_texture_builders(void)
+{
+    struct v9x_m64_texture_state state;
+    struct v9x_m64_textured_triangle triangle;
+    v9x_u32 offsets[V9X_M64_TEXTURED_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_TEXTURED_STATE_DWORDS];
+    v9x_u32 setup_offsets[V9X_M64_TEXTURED_TRIANGLE_DWORDS];
+    v9x_u32 setup_values[V9X_M64_TEXTURED_TRIANGLE_DWORDS];
+    v9x_u32 written = 99ul;
+    v9x_u32 index;
+    memset(&state, 0, sizeof(state));
+    state.color.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.color.target_offset = 0x00200100ul;
+    state.color.target_pitch_bytes = 128ul;
+    state.color.target_width = 64ul;
+    state.color.target_height = 28ul;
+    state.color.scissor_right = 64ul;
+    state.color.scissor_bottom = 28ul;
+    state.texture_offset = 0x00204000ul;
+    state.texture_pitch_bytes = 16ul;
+    state.texture_width = 8ul;
+    state.texture_height = 8ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS);
+    CHECK(offsets[10] == V9X_M64_SCALE_3D_CNTL &&
+          values[10] == 0x00010081ul);
+    CHECK(values[13] == 0x40040444ul);
+    CHECK(offsets[14] == V9X_M64_SETUP_CNTL && values[14] == 0ul);
+    CHECK(offsets[15] == V9X_M64_TEX_SIZE_PITCH &&
+          values[15] == 0x00000333ul);
+    CHECK(offsets[16] == V9X_M64_TEX_CNTL &&
+          values[16] == 0x40860000ul);
+    CHECK(offsets[17] == V9X_M64_SECONDARY_TEX_OFF && values[17] == 0ul);
+    CHECK(offsets[18] == V9X_M64_TEX_0_OFF + 12ul &&
+          values[18] == 0x00204000ul);
+
+    state.texture_width = 16ul;
+    state.texture_pitch_bytes = 32ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[15] == 0x00000344ul);
+    CHECK(offsets[18] == V9X_M64_TEX_0_OFF + 16ul);
+    state.texture_width = 12ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    state.texture_width = 8ul;
+    state.texture_pitch_bytes = 15ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.texture_pitch_bytes = 16ul;
+    state.texture_offset = state.color.target_offset;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.texture_offset = 0x003ffff8ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+
+    memset(&triangle, 0, sizeof(triangle));
+    triangle.vertex[0].x = 8ul; triangle.vertex[0].y = 6ul;
+    triangle.vertex[1].x = 40ul; triangle.vertex[1].y = 6ul;
+    triangle.vertex[2].x = 8ul; triangle.vertex[2].y = 22ul;
+    triangle.s[0] = 0.0f; triangle.t[0] = 0.0f;
+    triangle.s[1] = 1.0f; triangle.t[1] = 0.0f;
+    triangle.s[2] = 0.0f; triangle.t[2] = 1.0f;
+    triangle.color = 0xfffffffful;
+    for (index = 0ul; index < 3ul; ++index) triangle.w[index] = 1.0f;
+    CHECK(v9x_m64_build_textured_triangle(
+              &triangle, setup_offsets, setup_values,
+              V9X_M64_TEXTURED_TRIANGLE_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_TEXTURED_TRIANGLE_DWORDS);
+    CHECK(setup_values[0] == 0ul && setup_values[1] == 0ul &&
+          setup_values[2] == 0x3f800000ul);
+    CHECK(setup_values[6] == 0x3f800000ul && setup_values[7] == 0ul &&
+          setup_values[8] == 0x3f800000ul);
+    CHECK(setup_values[12] == 0ul &&
+          setup_values[13] == 0x3f800000ul &&
+          setup_values[14] == 0x3f800000ul);
+    triangle.w[2] = 0.0f;
+    CHECK(v9x_m64_build_textured_triangle(
+              &triangle, setup_offsets, setup_values,
+              V9X_M64_TEXTURED_TRIANGLE_DWORDS, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+}
+
 static void test_phase3_triangle_golden(void)
 {
     struct v9x_m64_flat_state state;
@@ -605,6 +698,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_gouraud_builders();
     test_z_control_truth_table();
     test_depth_builders();
+    test_texture_builders();
     test_phase3_triangle_golden();
     return failures;
 }
