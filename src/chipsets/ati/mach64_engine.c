@@ -711,6 +711,35 @@ v9x_status v9x_m64_build_z_control(v9x_u32 compare,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_alpha_control(v9x_u32 compare,
+                                       v9x_u32 reference,
+                                       v9x_u32 source_vertex,
+                                       v9x_u32 *value)
+{
+    v9x_u32 test;
+    if (value != 0) *value = 0ul;
+    if (value == 0 || reference > 255ul || source_vertex > 1ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    switch (compare) {
+    case 1ul: test = V9X_M64_ALPHA_TEST_NEVER; break;
+    case 2ul: test = V9X_M64_ALPHA_TEST_LESS; break;
+    case 3ul: test = V9X_M64_ALPHA_TEST_EQUAL; break;
+    case 4ul: test = V9X_M64_ALPHA_TEST_LESSEQUAL; break;
+    case 5ul: test = V9X_M64_ALPHA_TEST_GREATER; break;
+    case 6ul: test = V9X_M64_ALPHA_TEST_NOTEQUAL; break;
+    case 7ul: test = V9X_M64_ALPHA_TEST_GREATEREQUAL; break;
+    case 8ul: test = V9X_M64_ALPHA_TEST_ALWAYS; break;
+    default: return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *value = V9X_M64_ALPHA_TEST_ENABLE | test |
+             (reference << V9X_M64_ALPHA_REFERENCE_SHIFT);
+    if (source_vertex != 0ul) {
+        *value |= V9X_M64_ALPHA_TEST_SOURCE_VERTEX;
+    }
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_depth_state(
                               const struct v9x_m64_depth_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,

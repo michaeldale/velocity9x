@@ -195,5 +195,10 @@ v9x_status v9x_m64_build_texture_state(
 v9x_status v9x_m64_build_z_control(v9x_u32 compare,
                                    v9x_u32 write_enable,
                                    v9x_u32 *value);
+/* `compare` uses D3DCMP_* numbering; source_vertex is zero for texel alpha. */
+v9x_status v9x_m64_build_alpha_control(v9x_u32 compare,
+                                       v9x_u32 reference,
+                                       v9x_u32 source_vertex,
+                                       v9x_u32 *value);
 
 #endif

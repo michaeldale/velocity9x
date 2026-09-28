@@ -491,6 +491,55 @@ static void test_z_control_truth_table(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_alpha_control_truth_table(void)
+{
+    static const struct {
+        v9x_u32 compare;
+        v9x_u32 encoded;
+        int low;
+        int equal;
+        int high;
+    } cases[] = {
+        { 1ul, 0x01ul, 0, 0, 0 },
+        { 2ul, 0x11ul, 1, 0, 0 },
+        { 3ul, 0x31ul, 0, 1, 0 },
+        { 4ul, 0x21ul, 1, 1, 0 },
+        { 5ul, 0x51ul, 0, 0, 1 },
+        { 6ul, 0x61ul, 1, 0, 1 },
+        { 7ul, 0x41ul, 0, 1, 1 },
+        { 8ul, 0x71ul, 1, 1, 1 }
+    };
+    v9x_u32 value = 99ul;
+    v9x_u32 index;
+    for (index = 0ul; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        CHECK(v9x_m64_build_alpha_control(cases[index].compare, 127ul, 0ul,
+                                         &value) == V9X_STATUS_OK);
+        CHECK(value == (0x007f0000ul | cases[index].encoded));
+        CHECK(z_compare_cpu(cases[index].compare, 126u, 127u) ==
+              cases[index].low);
+        CHECK(z_compare_cpu(cases[index].compare, 127u, 127u) ==
+              cases[index].equal);
+        CHECK(z_compare_cpu(cases[index].compare, 128u, 127u) ==
+              cases[index].high);
+        CHECK(v9x_m64_build_alpha_control(cases[index].compare, 255ul, 1ul,
+                                         &value) == V9X_STATUS_OK);
+        CHECK(value == (0x00ff1000ul | cases[index].encoded));
+    }
+    CHECK(v9x_m64_build_alpha_control(0ul, 0ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    value = 99ul;
+    CHECK(v9x_m64_build_alpha_control(9ul, 0ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(value == 0ul);
+    CHECK(v9x_m64_build_alpha_control(2ul, 256ul, 0ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_alpha_control(2ul, 0ul, 2ul, &value) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_m64_build_alpha_control(2ul, 0ul, 0ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_depth_builders(void)
 {
     struct v9x_m64_depth_state state;
@@ -749,6 +798,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_flat_state_builder();
     test_gouraud_builders();
     test_z_control_truth_table();
+    test_alpha_control_truth_table();
     test_depth_builders();
     test_texture_builders();
     test_phase3_triangle_golden();
