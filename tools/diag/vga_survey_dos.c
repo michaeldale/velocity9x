@@ -1177,6 +1177,7 @@ static void survey_rom_image(const char *section, unsigned segment,
         (const unsigned char far *)MK_FP(segment, 0u);
     unsigned long size;
     unsigned long pcir_offset;
+    unsigned long image_length;
     unsigned long checksum = 0ul;
     unsigned long offset;
     char text[32];
@@ -1198,6 +1199,11 @@ static void survey_rom_image(const char *section, unsigned segment,
         checksum += rom[offset];
     }
     wr_str("ChecksumStatus", (checksum & 0xfful) == 0ul ? "ok" : "mismatch");
+    /* The residue, not just the verdict. A mismatch says nothing about how
+     * far off it is, and the difference between a byte or two and an
+     * arbitrary value is the difference between a patched ROM and the wrong
+     * length being summed. */
+    wr_x8("ChecksumResidue", (unsigned char)(checksum & 0xfful));
 
     /* The PCI Data Structure is reached through the pointer at offset 18h and
      * repeats the device identity independently of configuration space, which
@@ -1218,9 +1224,33 @@ static void survey_rom_image(const char *section, unsigned segment,
         fprintf(report, "PcirClassCode=%02X%02X%02X\n",
                 rom[pcir_offset + 0x0ful], rom[pcir_offset + 0x0eul],
                 rom[pcir_offset + 0x0dul]);
-        wr_u("PcirImageLength",
-             (unsigned long)v9x_u16_far(&rom[pcir_offset + 0x10ul]) * 512ul);
+        image_length =
+            (unsigned long)v9x_u16_far(&rom[pcir_offset + 0x10ul]) * 512ul;
+        wr_u("PcirImageLength", image_length);
         wr_x16("PcirCodeRevision", v9x_u16_far(&rom[pcir_offset + 0x12ul]));
+
+        /* The two lengths disagreeing is ordinary: a video BIOS that shrinks
+         * itself during init rewrites the header length byte at offset 2 and
+         * leaves PCIR describing the image it was shipped as. Which of them
+         * the checksum covers then decides the verdict, and the Ironlake IGP
+         * measured 2026-09-28 reports 52224 against 65536 and a mismatch.
+         * Summing the longer image as well is what separates a ROM that is
+         * actually corrupt from one that is merely being measured over the
+         * wrong length. Only the sum is reported - nothing here decides which
+         * length is the right one. 64 KB is the segment, so a longer image
+         * cannot be read without wrapping and is skipped. */
+        if (image_length != size && image_length > 0ul &&
+            image_length <= 65536ul) {
+            unsigned long pcir_checksum = 0ul;
+
+            for (offset = 0ul; offset < image_length; ++offset) {
+                pcir_checksum += rom[offset];
+            }
+            wr_str("PcirImageChecksumStatus",
+                   (pcir_checksum & 0xfful) == 0ul ? "ok" : "mismatch");
+            wr_x8("PcirImageChecksumResidue",
+                  (unsigned char)(pcir_checksum & 0xfful));
+        }
     } else {
         wr_str("PcirStatus", "unavailable");
     }

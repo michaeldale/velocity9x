@@ -211,6 +211,27 @@ that machine the ROM offered VBE 1.02 with bit 7 clear on all 18 modes, and the
 TSR offered VBE 2.00 with bit 7 set and a `PhysBasePtr` that disagreed with the
 card's own CR59/CR5A. `parse-vga-survey.ps1` derives and prints this.
 
+### Two ROM lengths, and which one the checksum covers
+
+`SizeBytes` is `rom[2] * 512`, the length the 55AA header itself declares and
+the one the system BIOS sums before executing the image, so `ChecksumStatus`
+covers that. `PcirImageLength` is what the PCI Data Structure says the image
+is, and the two disagreeing is ordinary rather than alarming: a video BIOS that
+shrinks itself during init rewrites the header byte and leaves PCIR describing
+what it shipped as. The Ironlake IGP measured 2026-09-28 reports 52224 against
+65536.
+
+When they differ and the longer image fits the segment, the sum is computed
+over that length too, as `PcirImageChecksumStatus`. Neither sum decides which
+length is correct; between them they say whether a mismatch is a corrupt ROM
+or the wrong length being measured. `ChecksumResidue` and
+`PcirImageChecksumResidue` carry the low byte, because a residue of one or two
+is a patched image and an arbitrary one is not the same finding.
+
+This cannot be redone host-side from a report. `/rom` dumps `SizeBytes`, so on
+a card whose PCIR length is longer the bytes past the header length never reach
+the file.
+
 ### A listed mode is not a usable one
 
 `[VBEModes] Count` is how many mode numbers `VideoModePtr` held, which is not

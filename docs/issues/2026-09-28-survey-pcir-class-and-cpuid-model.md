@@ -114,11 +114,23 @@ reported by the tool, in the commit after this one:
   say so byte for byte, and `DescribedCount`, `UndescribedCount` and
   `QueryFailedCount` now close over the list.
 
-One is still open:
+Two commits later, the third is measured as far as these reports allow:
 
 - `ChecksumStatus=mismatch` on that Intel VBIOS: the 55AA header says 52224
-  bytes, its own PCIR says the image is 65536. Checksumming the shorter length
-  over a longer image cannot sum to zero, so the mismatch may be the tool's
-  choice of length rather than a bad ROM. Deciding that needs a full-image
-  dump from the machine, which these reports - `DumpScope=header-only` - do
-  not carry.
+  bytes, its own PCIR says the image is 65536. The tool sums the header's own
+  length, which is the length the system BIOS validates, so that verdict is
+  the right one to report - but it does not say whether the ROM is corrupt or
+  whether the shorter length is simply the wrong thing to sum. A video BIOS
+  that shrinks itself during init produces exactly this.
+
+  The survey now also sums the longer image when the two lengths differ and it
+  fits the segment (`PcirImageChecksumStatus`), and reports the residue of
+  both. Recomputing the sums host-side from the three archived full-image
+  dumps - the 86Box S3, the ViRGE/DX and the VLB Trio64 - gives residue 00 on
+  all three, agreeing with the `ChecksumStatus=ok` each of them reported. The
+  Ironlake case cannot be settled that way: its dump is `header-only`, and
+  `/rom` would not help either, because `/rom` dumps `SizeBytes` and the bytes
+  in dispute are the ones past it. That is why the second sum is computed in
+  the tool rather than derived from the report.
+
+  Still open until a run on that machine says which sum is clean.
