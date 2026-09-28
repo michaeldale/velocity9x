@@ -31,6 +31,7 @@ ATIE3_DIOC_COPY equ 3
 ATIE4_DIOC_TRIANGLE equ 4
 ATIE5_DIOC_GOURAUD equ 5
 ATIE6_DIOC_ZTEST equ 6
+ATIE7_DIOC_ZWRITE equ 7
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -59,6 +60,7 @@ ATIE3_CRTC_OFF_PITCH equ 0414h
 ATIE4_MAGIC equ 34495441h
 ATIE5_MAGIC equ 35495441h
 ATIE6_MAGIC equ 36495441h
+ATIE7_MAGIC equ 37495441h
 ATIE4_RESULT_DWORDS equ 1000
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -1113,7 +1115,9 @@ BeginProc AtiE4_Run
  je short AtiE4_Select_Gouraud
  cmp AtiE4SceneMode,2
  je short AtiE4_Select_ZTest
- jmp short AtiE4_Selected_Scene
+ cmp AtiE4SceneMode,3
+ je short AtiE4_Select_ZWrite
+ jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
  mov dword ptr AtiE4StateValues[56],0
@@ -1125,6 +1129,14 @@ AtiE4_Select_ZTest:
  mov dword ptr AtiE4Result[0],ATIE6_MAGIC
  mov dword ptr AtiE4StateValues[28],02040420h
  mov dword ptr AtiE4StateValues[32],00000011h
+ mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
+ mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
+ mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
+ jmp short AtiE4_Selected_Scene
+AtiE4_Select_ZWrite:
+ mov dword ptr AtiE4Result[0],ATIE7_MAGIC
+ mov dword ptr AtiE4StateValues[28],02040420h
+ mov dword ptr AtiE4StateValues[32],00000111h
  mov dword ptr AtiE4SetupValues[12],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[36],ATIE6_DEPTH_INCOMING
  mov dword ptr AtiE4SetupValues[60],ATIE6_DEPTH_INCOMING
@@ -1238,7 +1250,7 @@ AtiE4_Pci_Found:
  mov AtiE4FbLinear,eax
  or AtiE4Result[4],20h
  cmp AtiE4SceneMode,2
- jne short AtiE4_Depth_Map_Done
+ jb short AtiE4_Depth_Map_Done
  mov eax,AtiE4Result[16]
  add eax,ATIE6_DEPTH_PAGE
  VMMcall _MapPhysToLinear,<eax,1000h,0>
@@ -1286,7 +1298,7 @@ AtiE4_Save_State:
  ; The Z test owns a different 4K page.  Preserve it, surround the 64x28
  ; Z16 surface with guards, and seed every stored depth to 0x8000.
  cmp AtiE4SceneMode,2
- jne short AtiE4_Depth_Init_Done
+ jb short AtiE4_Depth_Init_Done
  mov esi,AtiE6DepthLinear
  mov edi,OFFSET32 AtiE6DepthBackup
  mov ecx,1024
@@ -1511,17 +1523,9 @@ AtiE4_Exterior_Done:
  ; The first and last 256 bytes surround the target surface physically.
 AtiE4_Guards:
  cmp AtiE4SceneMode,2
- jne AtiE4_Color_Guards
- mov esi,AtiE6DepthLinear
- mov ecx,128
-AtiE6_Depth_Guard_Before:
- cmp word ptr [esi],ATIE6_DEPTH_GUARD
- je short AtiE6_Depth_Guard_Before_Next
- inc dword ptr AtiE4Result[72]
-AtiE6_Depth_Guard_Before_Next:
- add esi,2
- dec ecx
- jnz short AtiE6_Depth_Guard_Before
+ jb AtiE4_Color_Guards
+ cmp AtiE4SceneMode,3
+ je short AtiE7_Depth_Target
  mov esi,AtiE6DepthLinear
  add esi,100h
  mov ecx,1792
@@ -1533,6 +1537,45 @@ AtiE6_Depth_Target_Next:
  add esi,2
  dec ecx
  jnz short AtiE6_Depth_Target
+ jmp short AtiE6_Depth_Guards
+
+ ; With writes enabled, every rasterized color pixel must have the submitted
+ ; Z value and every untouched color pixel must retain the seeded depth.
+AtiE7_Depth_Target:
+ mov esi,AtiE4FbLinear
+ add esi,100h
+ mov edi,AtiE6DepthLinear
+ add edi,100h
+ mov ecx,1792
+AtiE7_Depth_Target_Loop:
+ mov ax,[esi]
+ cmp ax,ATIE4_SENTINEL
+ jne short AtiE7_Depth_Changed
+ cmp word ptr [edi],ATIE6_DEPTH_STORED
+ je short AtiE7_Depth_Target_Next
+ inc dword ptr AtiE4Result[72]
+ jmp short AtiE7_Depth_Target_Next
+AtiE7_Depth_Changed:
+ cmp word ptr [edi],04000h
+ je short AtiE7_Depth_Target_Next
+ inc dword ptr AtiE4Result[72]
+AtiE7_Depth_Target_Next:
+ add esi,2
+ add edi,2
+ dec ecx
+ jnz short AtiE7_Depth_Target_Loop
+
+AtiE6_Depth_Guards:
+ mov esi,AtiE6DepthLinear
+ mov ecx,128
+AtiE6_Depth_Guard_Before:
+ cmp word ptr [esi],ATIE6_DEPTH_GUARD
+ je short AtiE6_Depth_Guard_Before_Next
+ inc dword ptr AtiE4Result[72]
+AtiE6_Depth_Guard_Before_Next:
+ add esi,2
+ dec ecx
+ jnz short AtiE6_Depth_Guard_Before
  mov esi,AtiE6DepthLinear
  add esi,0f00h
  mov ecx,128
@@ -1766,6 +1809,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run5
  cmp ecx,ATIE6_DIOC_ZTEST
  je AtiE1_Dioc_Run6
+ cmp ecx,ATIE7_DIOC_ZWRITE
+ je AtiE1_Dioc_Run7
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -1847,7 +1892,7 @@ AtiE1_Dioc_Run4:
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE4_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run5:
  pushad
  mov ebp,esi
@@ -1855,9 +1900,9 @@ AtiE1_Dioc_Run5:
  call AtiE4_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE4Result
  mov ecx,ATIE4_RESULT_DWORDS
  cld
@@ -1888,6 +1933,27 @@ AtiE1_Dioc_Run6:
  jz short AtiE6_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE6_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run7:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,3
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE7_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE7_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

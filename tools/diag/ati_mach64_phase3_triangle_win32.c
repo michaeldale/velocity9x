@@ -5,7 +5,15 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_ZTEST)
+#if defined(V9X_ZWRITE)
+#define ATI3D_MAGIC 0x37495441ul
+#define ATI3D_DIOC 7u
+#define ATI3D_HEADING "[AtiMach64Phase4ZWrite]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-z16-less-write"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4ZW.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4ZW.BMP"
+#define ATI3D_GUARD_KEY "DepthOrGuardMismatches"
+#elif defined(V9X_ZTEST)
 #define ATI3D_MAGIC 0x36495441ul
 #define ATI3D_DIOC 6u
 #define ATI3D_HEADING "[AtiMach64Phase4ZTest]\r\n"
