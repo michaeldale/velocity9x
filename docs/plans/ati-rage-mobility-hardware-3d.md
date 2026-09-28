@@ -178,13 +178,18 @@ builder packs X/Y in the Rage 14.2 representation, emits S/T/W, Z, ARGB and
 the final `ONE_OVER_AREA` trigger, preserves its winding sign, and refuses a
 degenerate triangle. Trigger writes are excluded from reset shadow replay.
 
-Private diagnostic build `ATI3D0` is prepared but has not yet been run on the
-Gateway. It backs up and guards a 64x28 off-screen target, emits complete
-no-texture/no-depth/no-alpha/no-fog/no-dither state, draws one triangle,
-drains and invalidates before CPU inspection, records interior/exterior and
-physical guard assertions plus the complete intended write transcript and a
-BMP, then restores all persistent state and the full 4 KiB VRAM page. Public
-ATI acceleration remains disabled.
+Private diagnostic `ATI3D0` now passes on the Gateway at 1024x768x16. It backs
+up and guards a 64x28 off-screen target, emits complete no-texture/no-depth/
+no-alpha/no-fog/no-dither state, draws one triangle, drains and invalidates
+before CPU inspection, records the complete intended write transcript and a
+BMP, then verifies restoration of all persistent state and the full 4 KiB
+VRAM page. Two same-boot repetitions were byte-identical: 256 changed pixels
+bounded by `(8,6)` through `(38,21)`, zero interior/exterior/guard/restore
+mismatches, no timeout, and no recovery reset (`ATI3D0.TXT` CRC32
+`E28B783F`, BMP CRC32 `BD518408`). The first otherwise-correct image exposed
+and led to removal of a diagnostic-only fall-through into recovery; it is
+retained as negative harness evidence. Phase 3 still requires a matching pass
+after a second real cold boot. Public ATI acceleration remains disabled.
 
 ## Goal
 

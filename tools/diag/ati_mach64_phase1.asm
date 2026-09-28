@@ -1417,6 +1417,7 @@ AtiE4_Changed_Next:
  mov ecx,896
  cld
  rep movsd
+ jmp AtiE4_Restore_State
 
 AtiE4_Reset_Then_Restore:
  cmp dword ptr AtiE4Result[112],0
