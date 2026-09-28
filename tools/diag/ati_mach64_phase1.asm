@@ -1551,14 +1551,24 @@ AtiE7_Depth_Target_Loop:
  mov ax,[esi]
  cmp ax,ATIE4_SENTINEL
  jne short AtiE7_Depth_Changed
- cmp word ptr [edi],ATIE6_DEPTH_STORED
+ movzx eax,word ptr [edi]
+ cmp ax,ATIE6_DEPTH_STORED
  je short AtiE7_Depth_Target_Next
  inc dword ptr AtiE4Result[72]
+ cmp dword ptr AtiE4Result[124],0
+ jne short AtiE7_Depth_Target_Next
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],ATIE6_DEPTH_STORED
  jmp short AtiE7_Depth_Target_Next
 AtiE7_Depth_Changed:
- cmp word ptr [edi],04000h
+ movzx eax,word ptr [edi]
+ cmp ax,04000h
  je short AtiE7_Depth_Target_Next
  inc dword ptr AtiE4Result[72]
+ cmp dword ptr AtiE4Result[124],0
+ jne short AtiE7_Depth_Target_Next
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],04000h
 AtiE7_Depth_Target_Next:
  add esi,2
  add edi,2
