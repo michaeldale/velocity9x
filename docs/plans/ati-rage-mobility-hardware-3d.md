@@ -250,6 +250,25 @@ accepted captures are in
 Phase 4 item 3 is closed. Public ATI acceleration remains disabled while the
 remaining Phase 4 features are open.
 
+Phase 4 item 4 has begun with a host-tested single-unit RGB565 contract:
+nearest filtering, clamp S/T, replace, normalized IEEE-754 S/T, W=1, local
+uncompressed storage, `TEX_CACHE_FLUSH`, and the mip-offset register selected
+from `TEX_SIZE_PITCH`. The first physical build
+`ati-phase4-texture-20260928-a` used an 8x8 texture at byte offset `0x204100`.
+Its one bounded submission made the desktop and remote agent unresponsive;
+no report or BMP became retrievable, so this is wedge evidence only and not a
+rendering result. No retry or GDI capture was attempted on the wedged machine.
+
+Review against the historical Mach64 texture heap left the 256-byte texture
+base alignment as the unsupported outlier: the original driver binds local
+textures at its texture-heap granularity. The shared builder now requires a
+4 KiB-aligned base, and replacement build `ati-phase4-texture-20260928-b`
+binds the same texture at `0x204000`; all control words, coordinates, target,
+and probes are otherwise unchanged. Host tests, the diagnostic build and the
+tree check pass. This correction is not physical evidence until the Gateway
+is power-cycled and the replacement build runs once; item 4 remains open and
+public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

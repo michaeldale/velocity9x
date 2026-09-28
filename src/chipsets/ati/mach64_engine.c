@@ -813,7 +813,9 @@ v9x_status v9x_m64_build_texture_state(
     status = v9x_m64_build_flat_state(&state->color, offsets, values,
                                       capacity, written);
     if (status != V9X_STATUS_OK) return status;
-    if ((state->texture_offset & 7ul) != 0ul ||
+    /* The historical local texture heap binds at its 4 KiB granularity.
+     * Smaller alignment reached the fetcher on Mobility-M but wedged it. */
+    if ((state->texture_offset & 4095ul) != 0ul ||
         !v9x_m64_power_of_two(state->texture_width) ||
         !v9x_m64_power_of_two(state->texture_height) ||
         state->texture_width < 8ul || state->texture_width > 1024ul ||

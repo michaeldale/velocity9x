@@ -77,7 +77,7 @@ ATIE6_DEPTH_GUARD equ 05aa5h
 ATIE6_DEPTH_STORED equ 08000h
 ATIE6_DEPTH_INCOMING equ 040000000h
 ATIE9_TEXTURE_PAGE equ 00204000h
-ATIE9_TEXTURE_OFFSET equ 00204100h
+ATIE9_TEXTURE_OFFSET equ ATIE9_TEXTURE_PAGE
 ATIE9_TEXTURE_GUARD equ 05aa5h
 ATIE4_STATE_COUNT equ 17
 ATIE4_SETUP_COUNT equ 19
@@ -1410,7 +1410,6 @@ AtiE4_Depth_Init_Done:
  rep stosw
  mov esi,OFFSET32 AtiE9TextureData
  mov edi,AtiE9TextureLinear
- add edi,100h
  mov ecx,32
  rep movsd
 AtiE4_Texture_Init_Done:
@@ -1669,18 +1668,8 @@ AtiE6_Depth_Target_Next:
 
 AtiE9_Texture_Guards:
  mov esi,AtiE9TextureLinear
- mov ecx,128
-AtiE9_Texture_Guard_Before:
- cmp word ptr [esi],ATIE9_TEXTURE_GUARD
- je short AtiE9_Texture_Guard_Before_Next
- inc dword ptr AtiE4Result[72]
-AtiE9_Texture_Guard_Before_Next:
- add esi,2
- dec ecx
- jnz short AtiE9_Texture_Guard_Before
- mov esi,AtiE9TextureLinear
- add esi,180h
- mov ecx,1856
+ add esi,80h
+ mov ecx,1984
 AtiE9_Texture_Guard_After:
  cmp word ptr [esi],ATIE9_TEXTURE_GUARD
  je short AtiE9_Texture_Guard_After_Next
@@ -1690,7 +1679,6 @@ AtiE9_Texture_Guard_After_Next:
  dec ecx
  jnz short AtiE9_Texture_Guard_After
  mov esi,AtiE9TextureLinear
- add esi,100h
  mov edi,OFFSET32 AtiE9TextureData
  mov ecx,32
 AtiE9_Texture_Data_Check:

@@ -608,11 +608,15 @@ static void test_texture_builders(void)
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     state.texture_pitch_bytes = 16ul;
+    state.texture_offset = 0x00204100ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
     state.texture_offset = state.color.target_offset;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
-    state.texture_offset = 0x003ffff8ul;
+    state.texture_offset = 0x00400000ul;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
