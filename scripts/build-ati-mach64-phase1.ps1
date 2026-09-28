@@ -79,3 +79,13 @@ $bilinearExe=Join-Path $outputDir 'ATI4BL.EXE';$bilinearObj=Join-Path $outputDir
 $bilinearBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $bilinearExe -Object $bilinearObj -MapFile $bilinearMap -LinkFile $bilinearLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_BILINEAR=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$bilinearObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($bilinearBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4BL.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 bilinear half-texel publisher: $bilinearExe"
+
+$argb1555Exe=Join-Path $outputDir 'ATI4A1.EXE';$argb1555Obj=Join-Path $outputDir 'ati4a1.obj';$argb1555Map=Join-Path $outputDir 'ati4a1.map';$argb1555Lnk=Join-Path $outputDir 'ati4a1.lnk'
+$argb1555Build=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $argb1555Exe -Object $argb1555Obj -MapFile $argb1555Map -LinkFile $argb1555Lnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ARGB1555=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$argb1555Obj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($argb1555Build.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4A1.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 ARGB1555 alpha publisher: $argb1555Exe"
+
+$argb4444Exe=Join-Path $outputDir 'ATI4A4.EXE';$argb4444Obj=Join-Path $outputDir 'ati4a4.obj';$argb4444Map=Join-Path $outputDir 'ati4a4.map';$argb4444Lnk=Join-Path $outputDir 'ati4a4.lnk'
+$argb4444Build=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $argb4444Exe -Object $argb4444Obj -MapFile $argb4444Map -LinkFile $argb4444Lnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_ARGB4444=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$argb4444Obj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($argb4444Build.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4A4.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 ARGB4444 alpha publisher: $argb4444Exe"

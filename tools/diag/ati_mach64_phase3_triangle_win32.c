@@ -5,7 +5,31 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_BILINEAR)
+#if defined(V9X_ARGB1555)
+#define ATI3D_MAGIC 0x3e495441ul
+#define ATI3D_DIOC 14u
+#define ATI3D_HEADING "[AtiMach64Phase4Argb1555]\r\n"
+#define ATI3D_OPERATION "guarded-argb1555-texture-alpha-observation"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4A1.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4A1.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_ARGB4444)
+#define ATI3D_MAGIC 0x3f495441ul
+#define ATI3D_DIOC 15u
+#define ATI3D_HEADING "[AtiMach64Phase4Argb4444]\r\n"
+#define ATI3D_OPERATION "guarded-argb4444-texture-alpha-observation"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4A4.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4A4.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_BILINEAR)
 #define ATI3D_MAGIC 0x3d495441ul
 #define ATI3D_DIOC 13u
 #define ATI3D_HEADING "[AtiMach64Phase4Bilinear]\r\n"
