@@ -139,3 +139,8 @@ $fogSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_fog_table_win32.c';
 $fogBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $fogSource -Executable $fogExe -Object $fogObj -MapFile $fogMap -LinkFile $fogLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$fogObj",$fogSource) -LinkOptions @("option start='_V9xAtiMach64FogTableEntry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($fogBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4FG.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 fog table publisher: $fogExe"
+
+$mutationSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_texture_mutation_win32.c';$mutationExe=Join-Path $outputDir 'ATI4TM.EXE';$mutationObj=Join-Path $outputDir 'ati4tm.obj';$mutationMap=Join-Path $outputDir 'ati4tm.map';$mutationLnk=Join-Path $outputDir 'ati4tm.lnk'
+$mutationBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $mutationSource -Executable $mutationExe -Object $mutationObj -MapFile $mutationMap -LinkFile $mutationLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$mutationObj",$mutationSource) -LinkOptions @("option start='_V9xAtiMach64TextureMutationEntry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($mutationBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4TM.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 texture mutation publisher: $mutationExe"

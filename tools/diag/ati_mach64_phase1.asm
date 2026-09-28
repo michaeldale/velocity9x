@@ -54,6 +54,7 @@ ATIE26_DIOC_BLEND_TABLE equ 26
 ATIE27_DIOC_TEXENV_TABLE equ 27
 ATIE28_DIOC_SCISSOR_TABLE equ 28
 ATIE29_DIOC_FOG_TABLE equ 29
+ATIE30_DIOC_TEXTURE_MUTATION equ 30
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -126,6 +127,10 @@ ATIE29_SCALE_FOG_ON equ 002c10c1h
 ATIE29_VERTEX1_SPEC_ARGB equ 024ch
 ATIE29_VERTEX2_SPEC_ARGB equ 026ch
 ATIE29_VERTEX3_SPEC_ARGB equ 028ch
+; TEX_CNTL with and without TEX_CACHE_FLUSH; everything else is the
+; proven item 4 clamp/4K-cache word.
+ATIE30_TEX_CNTL_FLUSH equ 40860000h
+ATIE30_TEX_CNTL_NO_FLUSH equ 40060000h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -231,6 +236,7 @@ AtiE26Expected dd 0
 AtiE27Scale dd 0
 AtiE27TexFormat dd 0
 AtiE27Argb dd 0
+AtiE27TexCntl dd ATIE30_TEX_CNTL_FLUSH
 AtiE27TextureData dd 32 dup (0)
 AtiE28LeftRight dd 0
 AtiE28TopBottom dd 0
@@ -1363,6 +1369,8 @@ AtiE27_Select_Apply:
  mov AtiE4SetupValues[16],eax
  mov AtiE4SetupValues[40],eax
  mov AtiE4SetupValues[64],eax
+ mov eax,AtiE27TexCntl
+ mov AtiE4StateValues[64],eax
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Blend_Table:
  mov dword ptr AtiE4Result[0],ATIE26_MAGIC
@@ -2706,6 +2714,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run28
  cmp ecx,ATIE29_DIOC_FOG_TABLE
  je AtiE1_Dioc_Run29
+ cmp ecx,ATIE30_DIOC_TEXTURE_MUTATION
+ je AtiE1_Dioc_Run30
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -3110,6 +3120,8 @@ AtiE1_Dioc_Run26:
  ; Input: SCALE_3D_CNTL, TEX_SIZE_PITCH, texel, vertex ARGB, expected RGB565.
  ; Any word outside the proven set fails before MMIO is mapped or written.
 AtiE1_Dioc_Run27:
+ mov AtiE27TexCntl,ATIE30_TEX_CNTL_FLUSH
+AtiE1_Dioc_Run27_Body:
  mov edx,[esi.lpvInBuffer]
  test edx,edx
  jz AtiE1_Dioc_Fail
@@ -3210,6 +3222,23 @@ AtiE1_Dioc_Run29_Scale_Ok:
  mov AtiE26Expected,eax
  mov eax,25
  jmp AtiE1_Dioc_Run_Alpha_Table
+ ; Input: the five DIOC 27 words, then TEX_CNTL with or without
+ ; TEX_CACHE_FLUSH.  Omitting the flush is the sensitivity control for the
+ ; cache-visibility gate; no other TEX_CNTL is accepted.
+AtiE1_Dioc_Run30:
+ mov edx,[esi.lpvInBuffer]
+ test edx,edx
+ jz AtiE1_Dioc_Fail
+ cmp [esi.cbInBuffer],24
+ jb AtiE1_Dioc_Fail
+ mov eax,[edx+20]
+ cmp eax,ATIE30_TEX_CNTL_FLUSH
+ je short AtiE1_Dioc_Run30_Ok
+ cmp eax,ATIE30_TEX_CNTL_NO_FLUSH
+ jne AtiE1_Dioc_Fail
+AtiE1_Dioc_Run30_Ok:
+ mov AtiE27TexCntl,eax
+ jmp AtiE1_Dioc_Run27_Body
 EndProc AtiE1_W32_DeviceIoControl
 BeginProc AtiE1_Dynamic_Init
  clc

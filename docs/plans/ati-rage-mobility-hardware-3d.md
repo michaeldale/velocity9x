@@ -452,6 +452,19 @@ Remaining Phase 4 gates: repeated texture mutation at unchanged state for
 cache-flush visibility, and refusal of unsupported combinations before the
 first engine write. Public ATI acceleration remains disabled.
 
+The texture-mutation gate passes. Build `ati-phase4-texmut-20260928-a`
+rewrote a uniform RGB565 texel between draws at identical state and
+address, alternating red and green. With `TEX_CACHE_FLUSH`, 16 of 16 draws
+sampled the texel just written. The control without the flush returned
+the last flushed texel (green) on all 16 draws, across CPU rewrites and
+idle waits. So the flush is necessary and sufficient, and the test is
+sensitive to its absence. The engine must flush on the first draw after
+any upload or rebind. Two boot-11 runs were byte-identical with all
+safety counters zero. Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-texture-mutation-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-texture-mutation-2026-09-28/).
+Refusal before the first engine write belongs to the Phase 5 `accepts`
+contract and its host tests; it is not a diagnostic scene.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
