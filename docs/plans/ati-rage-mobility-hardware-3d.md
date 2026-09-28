@@ -225,6 +225,20 @@ same-boot runs were byte-identical (`ATI4Z0.TXT` CRC32 `00CA55E6`, BMP CRC32
 Z16 writes and clear remain the next Phase 4 depth gate; public ATI
 acceleration is still disabled.
 
+The Z16 write half of that gate now passes and corrected an important encoding
+assumption. Enabling `Z_MASK_EN` with the historical Mesa-style `depth << 15`
+setup value produced the correct color triangle but stored `0x2000` where the
+API-facing value was `0x4000`, across exactly all 256 covered pixels. The
+shared builder now places Z16 in setup bits `[31:16]`. Physical build
+`ati-phase4-zwrite-20260928-c` then passed twice byte-identically: every
+covered Z word became `0x4000`, all uncovered words remained `0x8000`, guards
+and both restored pages matched, and no timeout or reset occurred
+(`ATI4ZW.TXT` CRC32 `7A32B39B`, BMP CRC32 `BD518408`). The two safe REVIEW
+captures and the accepted evidence are retained in
+[`../probe/ati-rage-mobility-m-phase4-zwrite-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-zwrite-2026-09-28/).
+A combined 3D-write/2D-depth-clear ordering diagnostic remains before Phase 4
+item 3 is closed. Public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
