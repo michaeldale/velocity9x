@@ -5,7 +5,19 @@
 #define V9X_BUILD_ID "local"
 #endif
 
-#if defined(V9X_TEXTURE_STATE)
+#if defined(V9X_PERSPECTIVE)
+#define ATI3D_MAGIC 0x3b495441ul
+#define ATI3D_DIOC 11u
+#define ATI3D_HEADING "[AtiMach64Phase4Perspective]\r\n"
+#define ATI3D_OPERATION "guarded-rgb565-texture-unequal-w-perspective"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4PW.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4PW.BMP"
+#define ATI3D_GUARD_KEY "TextureOrGuardMismatches"
+#define ATI3D_PASS_STATUS 0x0001fffful
+#define ATI3D_STATE_COUNT 19ul
+#define ATI3D_SETUP_COUNT 19ul
+#define ATI3D_EXPECT_CHANGED 1ul
+#elif defined(V9X_TEXTURE_STATE)
 #define ATI3D_MAGIC 0x3a495441ul
 #define ATI3D_DIOC 10u
 #define ATI3D_HEADING "[AtiMach64Phase4TextureStateOnly]\r\n"

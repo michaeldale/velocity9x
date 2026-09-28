@@ -35,6 +35,7 @@ ATIE7_DIOC_ZWRITE equ 7
 ATIE8_DIOC_ZCLEAR equ 8
 ATIE9_DIOC_TEXTURE equ 9
 ATIE10_DIOC_TEXTURE_STATE equ 10
+ATIE11_DIOC_PERSPECTIVE equ 11
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -67,6 +68,7 @@ ATIE7_MAGIC equ 37495441h
 ATIE8_MAGIC equ 38495441h
 ATIE9_MAGIC equ 39495441h
 ATIE10_MAGIC equ 3a495441h
+ATIE11_MAGIC equ 3b495441h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -1161,6 +1163,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Texture
  cmp AtiE4SceneMode,6
  je AtiE4_Select_Texture_State
+ cmp AtiE4SceneMode,7
+ je AtiE4_Select_Perspective
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
@@ -1199,6 +1203,11 @@ AtiE4_Select_Texture:
 AtiE4_Select_Texture_State:
  mov dword ptr AtiE4Result[0],ATIE10_MAGIC
  mov dword ptr AtiE4SetupCount,0
+ jmp short AtiE4_Select_Texture_Common
+AtiE4_Select_Perspective:
+ mov dword ptr AtiE4Result[0],ATIE11_MAGIC
+ mov dword ptr AtiE4SetupValues[32],03e800000h
+ mov dword ptr AtiE4SetupValues[56],03e800000h
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
  mov dword ptr AtiE4StateValues[40],00010081h
@@ -1518,7 +1527,7 @@ AtiE4_Inspect_Render:
  mov esi,AtiE4FbLinear
  add esi,100h
  cmp AtiE4SceneMode,5
- je AtiE9_Texture_Interior
+ jae AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
  je AtiE4_Gouraud_Interior
  mov ax,[esi+0518h]
@@ -1559,6 +1568,13 @@ AtiE9_Texture_Interior_2:
  inc dword ptr AtiE4Result[64]
 AtiE9_Texture_Interior_3:
  mov ax,[esi+0914h] ; (10,18), bottom-left blue
+ cmp AtiE4SceneMode,7
+ jne short AtiE9_Texture_Expect_Blue
+ cmp ax,0f800h       ; perspective pulls T below the quadrant boundary
+ je short AtiE9_Texture_Interior_Done
+ inc dword ptr AtiE4Result[64]
+ jmp short AtiE9_Texture_Interior_Done
+AtiE9_Texture_Expect_Blue:
  cmp ax,001fh
  je short AtiE9_Texture_Interior_Done
  inc dword ptr AtiE4Result[64]
@@ -2150,6 +2166,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run9
  cmp ecx,ATIE10_DIOC_TEXTURE_STATE
  je AtiE1_Dioc_Run10
+ cmp ecx,ATIE11_DIOC_PERSPECTIVE
+ je AtiE1_Dioc_Run11
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2315,7 +2333,7 @@ AtiE1_Dioc_Run8:
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE8_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run9:
  pushad
  mov ebp,esi
@@ -2323,9 +2341,9 @@ AtiE1_Dioc_Run9:
  call AtiE4_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE4Result
  mov ecx,ATIE4_RESULT_DWORDS
  cld
@@ -2356,6 +2374,27 @@ AtiE1_Dioc_Run10:
  jz short AtiE10_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE10_Dioc_Copy_Done:
+ popad
+ jmp AtiE1_Dioc_Ok
+AtiE1_Dioc_Run11:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,7
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE11_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE11_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

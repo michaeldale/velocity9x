@@ -641,6 +641,14 @@ static void test_texture_builders(void)
     CHECK(setup_values[12] == 0ul &&
           setup_values[13] == 0x3f800000ul &&
           setup_values[14] == 0x3f800000ul);
+    triangle.w[1] = 0.25f;
+    triangle.w[2] = 0.25f;
+    CHECK(v9x_m64_build_textured_triangle(
+              &triangle, setup_offsets, setup_values,
+              V9X_M64_TEXTURED_TRIANGLE_DWORDS, &written) == V9X_STATUS_OK);
+    CHECK(setup_values[2] == 0x3f800000ul);
+    CHECK(setup_values[8] == 0x3e800000ul);
+    CHECK(setup_values[14] == 0x3e800000ul);
     triangle.w[2] = 0.0f;
     CHECK(v9x_m64_build_textured_triangle(
               &triangle, setup_offsets, setup_values,
