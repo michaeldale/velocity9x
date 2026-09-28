@@ -5,7 +5,21 @@
 #define V9X_BUILD_ID "local"
 #endif
 
+#ifdef V9X_GOURAUD
+#define ATI3D_MAGIC 0x35495441ul
+#define ATI3D_DIOC 5u
+#define ATI3D_HEADING "[AtiMach64Phase4Gouraud]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-rgb565-gouraud-triangle"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI4G0.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI4G0.BMP"
+#else
 #define ATI3D_MAGIC 0x34495441ul
+#define ATI3D_DIOC 4u
+#define ATI3D_HEADING "[AtiMach64Phase3Triangle]\r\n"
+#define ATI3D_OPERATION "guarded-offscreen-rgb565-flat-triangle"
+#define ATI3D_TEXT_PATH "C:\\V9XDIAG\\ATI3D0.TXT"
+#define ATI3D_BMP_PATH "C:\\V9XDIAG\\ATI3D0.BMP"
+#endif
 #define ATI3D_PASS_STATUS 0x0001fffful
 #define ATI3D_STATE_COUNT 17ul
 #define ATI3D_SETUP_COUNT 19ul
@@ -126,7 +140,7 @@ static int write_bmp(const struct ati3d_result *result)
     DWORD written;
     DWORD row;
     DWORD masks[3];
-    file = CreateFileA("C:\\V9XDIAG\\ATI3D0.BMP", GENERIC_WRITE,
+    file = CreateFileA(ATI3D_BMP_PATH, GENERIC_WRITE,
                        FILE_SHARE_READ, 0, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) return 0;
@@ -168,11 +182,11 @@ void WINAPI V9xAtiMach64Phase3Entry(void)
     HANDLE file;
     DWORD bytes = 0ul;
     DWORD pass;
-    char heading[] = "[AtiMach64Phase3Triangle]\r\n";
+    char heading[] = ATI3D_HEADING;
     device = CreateFileA("\\\\.\\ATIEN.VXD", 0, 0, 0, CREATE_NEW,
                          FILE_FLAG_DELETE_ON_CLOSE, 0);
     if (device == INVALID_HANDLE_VALUE) ExitProcess(2u);
-    if (!DeviceIoControl(device, 4u, 0, 0, &result, sizeof(result),
+    if (!DeviceIoControl(device, ATI3D_DIOC, 0, 0, &result, sizeof(result),
                          &bytes, 0) || bytes != sizeof(result) ||
         result.magic != ATI3D_MAGIC) {
         CloseHandle(device);
@@ -180,13 +194,13 @@ void WINAPI V9xAtiMach64Phase3Entry(void)
     }
     CloseHandle(device);
     CreateDirectoryA("C:\\V9XDIAG", 0);
-    file = CreateFileA("C:\\V9XDIAG\\ATI3D0.TXT", GENERIC_WRITE,
+    file = CreateFileA(ATI3D_TEXT_PATH, GENERIC_WRITE,
                        FILE_SHARE_READ, 0, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) ExitProcess(4u);
     WriteFile(file, heading, (DWORD)lstrlenA(heading), &bytes, 0);
     line(file, "Build", V9X_BUILD_ID);
-    line(file, "Operation", "guarded-offscreen-rgb565-flat-triangle");
+    line(file, "Operation", ATI3D_OPERATION);
     hx(file, "Status", result.status);
     hx(file, "PciCommandStatus", result.command_status);
     hx(file, "PciRevisionClass", result.revision_class);

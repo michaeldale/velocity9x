@@ -34,3 +34,8 @@ $triangleSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase3_triangle_win32
 $triangleBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $triangleExe -Object $triangleObj -MapFile $triangleMap -LinkFile $triangleLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$triangleObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($triangleBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI3D0.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 3 triangle publisher: $triangleExe"
+
+$gouraudExe=Join-Path $outputDir 'ATI4G0.EXE';$gouraudObj=Join-Path $outputDir 'ati4g0.obj';$gouraudMap=Join-Path $outputDir 'ati4g0.map';$gouraudLnk=Join-Path $outputDir 'ati4g0.lnk'
+$gouraudBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $gouraudExe -Object $gouraudObj -MapFile $gouraudMap -LinkFile $gouraudLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_GOURAUD=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$gouraudObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($gouraudBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4G0.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 Gouraud publisher: $gouraudExe"

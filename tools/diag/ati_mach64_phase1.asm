@@ -29,6 +29,7 @@ ATIE2_MAGIC equ 32495441h
 ATIE2_DIOC_FILL equ 2
 ATIE3_DIOC_COPY equ 3
 ATIE4_DIOC_TRIANGLE equ 4
+ATIE5_DIOC_GOURAUD equ 5
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -55,6 +56,7 @@ ATIE3_SRC_Y_X equ 058ch
 ATIE3_SRC_WIDTH1 equ 0590h
 ATIE3_CRTC_OFF_PITCH equ 0414h
 ATIE4_MAGIC equ 34495441h
+ATIE5_MAGIC equ 35495441h
 ATIE4_RESULT_DWORDS equ 1000
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -113,6 +115,7 @@ AtiE4SetupValues dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200018h
                   dd 0,0,03f800000h,07fff8000h,ATIE4_TARGET_COLOR,00200058h
                   dd 03b000000h
 AtiE4StateSaved dd ATIE4_STATE_COUNT dup (0)
+AtiE4GouraudMode dd 0
 AtiE4MmioLinear dd 0
 AtiE4FbLinear dd 0
 AtiE4BusSaved dd 0
@@ -1086,6 +1089,21 @@ EndProc AtiE3_Run
 ; register is saved and restored; ONE_OVER_AREA is the only draw trigger.
 BeginProc AtiE4_Run
  pushad
+ cmp AtiE4GouraudMode,0
+ jne short AtiE4_Select_Gouraud
+ mov dword ptr AtiE4Result[0],ATIE4_MAGIC
+ mov dword ptr AtiE4StateValues[56],00000018h
+ mov dword ptr AtiE4SetupValues[16],ATIE4_TARGET_COLOR
+ mov dword ptr AtiE4SetupValues[40],ATIE4_TARGET_COLOR
+ mov dword ptr AtiE4SetupValues[64],ATIE4_TARGET_COLOR
+ jmp short AtiE4_Selected_Scene
+AtiE4_Select_Gouraud:
+ mov dword ptr AtiE4Result[0],ATIE5_MAGIC
+ mov dword ptr AtiE4StateValues[56],0
+ mov dword ptr AtiE4SetupValues[16],0ffff0000h
+ mov dword ptr AtiE4SetupValues[40],0ff00ff00h
+ mov dword ptr AtiE4SetupValues[64],0ff0000ffh
+AtiE4_Selected_Scene:
  mov AtiE4Result[4],0
  mov edi,OFFSET32 AtiE4Result+8
  mov ecx,ATIE4_RESULT_DWORDS-2
@@ -1096,7 +1114,8 @@ BeginProc AtiE4_Run
  mov AtiE4FbLinear,0
  mov dword ptr AtiE4Result[48],ATIE4_TARGET_OFFSET
  mov dword ptr AtiE4Result[52],02040020h
- mov dword ptr AtiE4Result[56],ATIE4_TARGET_COLOR
+ mov eax,AtiE4SetupValues[16]
+ mov AtiE4Result[56],eax
  mov dword ptr AtiE4Result[60],03b000000h
  mov dword ptr AtiE4Result[84],0ffffffffh
  mov dword ptr AtiE4Result[88],0ffffffffh
@@ -1306,6 +1325,8 @@ AtiE4_Idle_Ok:
  ; Interior samples are deliberately far from all three edges.
  mov esi,AtiE4FbLinear
  add esi,100h
+ cmp AtiE4GouraudMode,0
+ jne AtiE4_Gouraud_Interior
  mov ax,[esi+0518h]
  cmp ax,ATIE4_EXPECTED_565
  je short AtiE4_Interior_2
@@ -1324,6 +1345,88 @@ AtiE4_Interior_3:
  je short AtiE4_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE4_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+ ; Four samples prove red, green and blue dominance plus a mixed interior.
+ ; Component thresholds tolerate the setup engine's subpixel rounding while
+ ; still rejecting flat colour, a missing channel or an untouched sentinel.
+AtiE4_Gouraud_Interior:
+ movzx ebx,word ptr [esi+0414h] ; (10,8), red-dominant
+ mov eax,ebx
+ and eax,31
+ mov ecx,ebx
+ shr ecx,5
+ and ecx,63
+ mov edx,ebx
+ shr edx,11
+ cmp edx,16
+ jb short AtiE4_Gouraud_Red_Fail
+ cmp edx,ecx
+ jbe short AtiE4_Gouraud_Red_Fail
+ cmp edx,eax
+ ja short AtiE4_Gouraud_Green
+AtiE4_Gouraud_Red_Fail:
+ inc dword ptr AtiE4Result[64]
+ mov AtiE4Result[120],ebx
+ mov dword ptr AtiE4Result[124],00100000h
+
+AtiE4_Gouraud_Green:
+ movzx ebx,word ptr [esi+0444h] ; (34,8), green-dominant
+ mov eax,ebx
+ and eax,31
+ mov ecx,ebx
+ shr ecx,5
+ and ecx,63
+ mov edx,ebx
+ shr edx,11
+ cmp ecx,32
+ jb short AtiE4_Gouraud_Green_Fail
+ cmp ecx,edx
+ jbe short AtiE4_Gouraud_Green_Fail
+ cmp ecx,eax
+ ja short AtiE4_Gouraud_Blue
+AtiE4_Gouraud_Green_Fail:
+ inc dword ptr AtiE4Result[64]
+
+AtiE4_Gouraud_Blue:
+ movzx ebx,word ptr [esi+0914h] ; (10,18), blue-dominant
+ mov eax,ebx
+ and eax,31
+ mov ecx,ebx
+ shr ecx,5
+ and ecx,63
+ mov edx,ebx
+ shr edx,11
+ cmp eax,16
+ jb short AtiE4_Gouraud_Blue_Fail
+ cmp eax,edx
+ jbe short AtiE4_Gouraud_Blue_Fail
+ cmp eax,ecx
+ ja short AtiE4_Gouraud_Mixed
+AtiE4_Gouraud_Blue_Fail:
+ inc dword ptr AtiE4Result[64]
+
+AtiE4_Gouraud_Mixed:
+ movzx ebx,word ptr [esi+0620h] ; (16,12), mixed interior
+ mov eax,ebx
+ and eax,31
+ mov ecx,ebx
+ shr ecx,5
+ and ecx,63
+ mov edx,ebx
+ shr edx,11
+ cmp eax,4
+ jb short AtiE4_Gouraud_Mixed_Fail
+ cmp ecx,4
+ jb short AtiE4_Gouraud_Mixed_Fail
+ cmp edx,4
+ jae short AtiE4_Gouraud_Interior_Done
+AtiE4_Gouraud_Mixed_Fail:
+ inc dword ptr AtiE4Result[64]
+AtiE4_Gouraud_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
  jne short AtiE4_Exterior
  or AtiE4Result[4],1000h
@@ -1540,6 +1643,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run3
  cmp ecx,ATIE4_DIOC_TRIANGLE
  je AtiE1_Dioc_Run4
+ cmp ecx,ATIE5_DIOC_GOURAUD
+ je AtiE1_Dioc_Run5
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -1580,16 +1685,16 @@ AtiE1_Dioc_Run2:
  mov dword ptr [eax],ATIE2_RESULT_DWORDS*4
 AtiE2_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run3:
  pushad
  mov ebp,esi
  call AtiE3_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
- jz short AtiE1_Dioc_Copy_Fail
+ jz AtiE1_Dioc_Copy_Fail
  cmp [ebp.cbOutBuffer],ATIE3_RESULT_DWORDS*4
- jb short AtiE1_Dioc_Copy_Fail
+ jb AtiE1_Dioc_Copy_Fail
  mov esi,OFFSET32 AtiE3Result
  mov ecx,ATIE3_RESULT_DWORDS
  cld
@@ -1604,6 +1709,7 @@ AtiE3_Dioc_Copy_Done:
 AtiE1_Dioc_Run4:
  pushad
  mov ebp,esi
+ mov AtiE4GouraudMode,0
  call AtiE4_Run
  mov edi,[ebp.lpvOutBuffer]
  test edi,edi
@@ -1619,6 +1725,27 @@ AtiE1_Dioc_Run4:
  jz short AtiE4_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE4_Dioc_Copy_Done:
+ popad
+ jmp short AtiE1_Dioc_Ok
+AtiE1_Dioc_Run5:
+ pushad
+ mov ebp,esi
+ mov AtiE4GouraudMode,1
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz short AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb short AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE5_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE5_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax
