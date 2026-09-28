@@ -1,9 +1,16 @@
-# Ironlake: a free tier-0 desktop, and why the engine does not come with it
+# Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it
 
 Status: **proposed; nothing coded, nothing measured on a Windows guest.** The
-only Ironlake evidence in the tree is two DOS surveys
-(`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`). No
-machine in the fleet runs Windows 98 on one.
+evidence is four DOS surveys - two of an Ironlake board
+(`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and the
+X61's GM965 (`thinkpad-x61-vgasurv-2026-09-05.ini`). No machine in the fleet
+runs Windows 98 on either chip.
+
+This started as an Ironlake plan and is not one any more: Gen4 and Gen5 turn
+out to be one architecture, and Gen4 is the half that is documented and that
+the fleet already owns. See *Gen4 and Gen5 are one architecture* below.
+Ironlake is still where the surveys came from and still what Phases 0 and 1
+are written against; it is no longer where the work should start.
 
 ## What arrived
 
@@ -131,45 +138,99 @@ not a given.
 is a coherent stopping point, and the one worth aiming at if Phase 1's probes
 come back clean.
 
-## Phase 2: Gen5 3D is a different project
+## Phase 2: Gen5 3D is a different project - but Gen4 is not a different one from Gen5
 
 The 3D stack in this tree is Gen3 fixed-function:
 `_3DSTATE_LOAD_STATE_IMM1`, `_3DSTATE_PIXEL_SHADER`, `_3DSTATE_MAP_STATE`,
 `_3DPRIMITIVE` inline - see
 [`intel_gen3_3d.h`](../../include/velocity9x/intel_gen3_3d.h). Gen4 deleted
-that command set and Gen5 is Gen4's architecture. A Gen5 draw needs URB
-allocation, binding tables, `SURFACE_STATE`, and VS/SF/WM kernels as
-assembled Gen5 ISA. There is no fixed-function pixel pipeline to configure,
-so `i9xx_fragprog.c` has no counterpart at all.
+that command set. A Gen4 or Gen5 draw needs URB allocation, binding tables,
+`SURFACE_STATE`, and VS/SF/WM kernels as assembled ISA. There is no
+fixed-function pixel pipeline to configure, so `i9xx_fragprog.c` has no
+counterpart at all.
 
 `i9xx_3d.c`, `i9xx_fragprog.c`, `i9xx_vertex.c`, `i9xx_texture.c`,
 `i9xx_scene.c`, `i9xx_3d_stream.c` and `i9xx_3d_decode.c` would all be new
 files, and the Phase 4/5/6 arm-and-verify ladder would run again from the
-first write. That is most of the Intel work of the last month, redone against
-a documentation set the project does not yet have -
-`docs\plans\intel-3dmark99-missing-textures.md` records which Intel volumes
-are findable, and the Gen5 ones are not among the ones already used.
+first write. That is most of the Intel work of the last month, redone.
 
 **This plan does not propose that work.** It records why it is not an
-extension of the Gen3 engine.
+extension of the Gen3 engine - and, below, why Ironlake is the wrong place
+to start it.
+
+### Gen4 and Gen5 are one architecture
+
+Measured, from two surveys already in the tree. A GM965 - Gen4, the X61's
+`8086:2A02` - presents the same resource topology as the Ironlake part, and
+both differ from Gen3 in the same way:
+
+| | X61 / GM965 (Gen4) | chinaboard / Ironlake (Gen5) | 945GSE (Gen3) |
+|---|---|---|---|
+| BAR0 | `F8000004`, 64-bit MMIO | `FBC00004`, 64-bit MMIO | MMIO |
+| BAR2 | `E000000C`, 64-bit prefetchable | `D000000C`, 64-bit prefetchable | GMADR, `v9x_i9xx_gmadr_bar2` |
+| BAR3 | absent, consumed by BAR2 | absent | **GTTADR**, `v9x_i9xx_gtt_bar3` |
+| BAR4 | `00001801`, I/O | `0000DC01`, I/O | - |
+
+Every Phase 1 unknown above - where the GTT went, what the stolen-size
+encoding is, what the PTE attributes mean - is therefore one question asked
+of two chips, not two questions.
+
+The 3D pipeline is the same story, though this part is **desk knowledge and
+not measured**: Gen4 introduced the URB-based unified-shader pipeline -
+`STATE_BASE_ADDRESS`, binding tables, `SURFACE_STATE`/`SAMPLER_STATE`, the
+VS/GS/CLIP/SF/WM/CC state objects, `3DSTATE_VERTEX_BUFFERS`/`ELEMENTS`, a new
+`3DPRIMITIVE` - and Gen5 keeps all of it. The deltas are the kind handled
+with gen-conditionals rather than a second back end: URB allocation sizing,
+some EU `send` message descriptors, sampler message layouts, control-flow
+encoding. Mesa carried gen4 through gen11 in one driver on that basis. The
+next real break is **Gen6**, Sandy Bridge, not Gen5. Verifiable against the
+965 and G45 PRMs and Mesa's `i965` before anything is written.
+
+### Which means Ironlake is the wrong chip to start on
+
+The documentation runs the other way from the hardware.
+`docs\plans\intel-3dmark99-missing-textures.md` settled by Wayback index what
+Intel ever published on `intellinuxgraphics.org`: **965/G35 (`VOL_1` to
+`VOL_4`), G45, Sandy Bridge, Ivy Bridge**. There is no Ironlake PRM in that
+list, and the x.org mirror holds the 965 set. Gen5 is the one generation in
+this neighbourhood documented nowhere; Gen4 either side of it is documented
+fully and reachably.
+
+The hardware runs the same way. The X61 is in the fleet and already
+surveyed; the Ironlake board is a bare Clarkdale with no Windows on it, and
+a 2007 Core 2 ThinkPad is a far more plausible Windows 98 host than a 2010
+Clarkdale.
+
+**So if Intel 3D beyond Gen3 is ever attempted, the target is Gen4 on the
+X61, with Ironlake as a later delta.** The Win98 gate at the top of this plan
+applies to both, and is more likely to be passable on the X61.
+
+That does not change Phases 0 and 1 for Ironlake, which stand on their own:
+tier-0 costs nothing and the Phase 1 probes are worth running on whichever
+machine gets a Windows install first, because their answers now cover both
+chips.
 
 ## Test hardware
 
 | Machine | State |
 |---|---|
-| chinaboard (Clarkdale) | The only board where an Ironlake IGP is the primary display. No Windows install. |
-| P7H55-M | Has a Clarkdale IGP at 00:02.0, but class `038000` with `Command=0000` and every BAR unassigned - enabled in the BIOS as a secondary, given no resources. A second test bed only if the firmware can be made to assign them. |
+| X61 (GM965, Gen4) | Surveyed 2026-09-05, in the fleet. Same architecture as Ironlake and the only documented one of the two. No Windows install tried, but a 2007 Core 2 ThinkPad is the most plausible Win98 host of the three. |
+| chinaboard (Clarkdale, Gen5) | The only board where an Ironlake IGP is the primary display. No Windows install. |
+| P7H55-M (Clarkdale, Gen5) | Has an Ironlake IGP at 00:02.0, but class `038000` with `Command=0000` and every BAR unassigned - enabled in the BIOS as a secondary and given no resources. A test bed only if the firmware can be made to assign them. |
 
-Neither is a machine anyone is relying on, which is the right shape for this.
+None is a machine anyone is relying on, which is the right shape for this.
 
 ## Order
 
-1. Windows 98 SE on a Clarkdale board. Everything is blocked here.
-2. Install the `vbe` family; confirm the desktop and the 12 described modes.
-   No code. If this is all that ever happens, it is still the answer for most
-   users of the chip.
-3. A `/rom` survey plus an Ironlake-specific probe: BAR0 size, GTT offset
-   within it, GGC and BSM location, the stolen-size encoding. One decision
-   doc, with the INIs.
+1. **Windows 98 SE on any of the three.** Everything is blocked here, and
+   nothing in this plan can answer it. Try the X61 first.
+2. Install the `vbe` family on whichever boots; confirm the desktop and the
+   modes the survey described. No code. If this is all that ever happens, it
+   is still the answer for most users of either chip.
+3. A `/rom` survey plus a Gen4/Gen5 probe: BAR0 size, GTT offset within it,
+   GGC and BSM location, the stolen-size encoding. One decision doc, with the
+   INIs. The answers cover both chips, so it is worth running wherever a
+   Windows install lands first.
 4. Identity, GTT, ring, blits - only if (3) comes back clean.
-5. Gen5 3D as its own project, if ever.
+5. Gen4 3D as its own project, if ever, on the X61 and against the 965 and
+   G45 PRMs. Ironlake follows as a delta; it does not lead.
