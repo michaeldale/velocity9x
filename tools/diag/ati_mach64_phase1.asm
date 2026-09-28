@@ -36,6 +36,7 @@ ATIE8_DIOC_ZCLEAR equ 8
 ATIE9_DIOC_TEXTURE equ 9
 ATIE10_DIOC_TEXTURE_STATE equ 10
 ATIE11_DIOC_PERSPECTIVE equ 11
+ATIE12_DIOC_WRAP equ 12
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -69,6 +70,7 @@ ATIE8_MAGIC equ 38495441h
 ATIE9_MAGIC equ 39495441h
 ATIE10_MAGIC equ 3a495441h
 ATIE11_MAGIC equ 3b495441h
+ATIE12_MAGIC equ 3c495441h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -1154,7 +1156,7 @@ BeginProc AtiE4_Run
  cmp AtiE4SceneMode,1
  je short AtiE4_Select_Gouraud
  cmp AtiE4SceneMode,2
- je short AtiE4_Select_ZTest
+ je AtiE4_Select_ZTest
  cmp AtiE4SceneMode,3
  je AtiE4_Select_ZWrite
  cmp AtiE4SceneMode,4
@@ -1165,6 +1167,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Texture_State
  cmp AtiE4SceneMode,7
  je AtiE4_Select_Perspective
+ cmp AtiE4SceneMode,8
+ je AtiE4_Select_Wrap
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Gouraud:
  mov dword ptr AtiE4Result[0],ATIE5_MAGIC
@@ -1208,6 +1212,9 @@ AtiE4_Select_Perspective:
  mov dword ptr AtiE4Result[0],ATIE11_MAGIC
  mov dword ptr AtiE4SetupValues[32],03e800000h
  mov dword ptr AtiE4SetupValues[56],03e800000h
+ jmp short AtiE4_Select_Texture_Common
+AtiE4_Select_Wrap:
+ mov dword ptr AtiE4Result[0],ATIE12_MAGIC
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
  mov dword ptr AtiE4StateValues[40],00010081h
@@ -1222,6 +1229,9 @@ AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4SetupValues[28],0be800000h
  mov dword ptr AtiE4SetupValues[48],0be800000h
  mov dword ptr AtiE4SetupValues[52],03fa00000h
+ cmp AtiE4SceneMode,8
+ jne short AtiE4_Selected_Scene
+ mov dword ptr AtiE4StateValues[64],40800000h
 AtiE4_Selected_Scene:
  mov AtiE4Result[4],0
  mov edi,OFFSET32 AtiE4Result+8
@@ -1554,6 +1564,8 @@ AtiE4_Interior_Done:
  jmp AtiE4_Exterior
 
 AtiE9_Texture_Interior:
+ cmp AtiE4SceneMode,8
+ je AtiE12_Wrap_Interior
  mov ax,[esi+0414h] ; (10,8), S/T below zero clamp to top-left red
  cmp ax,0f800h
  je short AtiE9_Texture_Interior_2
@@ -1586,6 +1598,30 @@ AtiE9_Texture_Probe_3_Result:
  je short AtiE9_Texture_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE9_Texture_Interior_Done:
+ cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+AtiE12_Wrap_Interior:
+ mov ax,[esi+0414h] ; (10,8), negative S/T repeat into bottom-right white
+ cmp ax,0ffffh
+ je short AtiE12_Wrap_Interior_2
+ inc dword ptr AtiE4Result[64]
+ movzx eax,ax
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],0000ffffh
+AtiE12_Wrap_Interior_2:
+ mov ax,[esi+0444h] ; (34,8), negative T repeats into bottom-right white
+ cmp ax,0ffffh
+ je short AtiE12_Wrap_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE12_Wrap_Interior_3:
+ mov ax,[esi+0914h] ; (10,18), negative S repeats into bottom-right white
+ cmp ax,0ffffh
+ je short AtiE12_Wrap_Interior_Done
+ inc dword ptr AtiE4Result[64]
+AtiE12_Wrap_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
  jne AtiE4_Exterior
  or AtiE4Result[4],1000h
@@ -2175,6 +2211,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run10
  cmp ecx,ATIE11_DIOC_PERSPECTIVE
  je AtiE1_Dioc_Run11
+ cmp ecx,ATIE12_DIOC_WRAP
+ je AtiE1_Dioc_Run12
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2361,7 +2399,7 @@ AtiE1_Dioc_Run9:
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE9_Dioc_Copy_Done:
  popad
- jmp short AtiE1_Dioc_Ok
+ jmp AtiE1_Dioc_Ok
 AtiE1_Dioc_Run10:
  pushad
  mov ebp,esi
@@ -2402,6 +2440,27 @@ AtiE1_Dioc_Run11:
  jz short AtiE11_Dioc_Copy_Done
  mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
 AtiE11_Dioc_Copy_Done:
+ popad
+ jmp AtiE1_Dioc_Ok
+AtiE1_Dioc_Run12:
+ pushad
+ mov ebp,esi
+ mov AtiE4SceneMode,8
+ call AtiE4_Run
+ mov edi,[ebp.lpvOutBuffer]
+ test edi,edi
+ jz AtiE1_Dioc_Copy_Fail
+ cmp [ebp.cbOutBuffer],ATIE4_RESULT_DWORDS*4
+ jb AtiE1_Dioc_Copy_Fail
+ mov esi,OFFSET32 AtiE4Result
+ mov ecx,ATIE4_RESULT_DWORDS
+ cld
+ rep movsd
+ mov eax,[ebp.lpcbBytesReturned]
+ test eax,eax
+ jz short AtiE12_Dioc_Copy_Done
+ mov dword ptr [eax],ATIE4_RESULT_DWORDS*4
+AtiE12_Dioc_Copy_Done:
  popad
 AtiE1_Dioc_Ok:
  xor eax,eax

@@ -819,7 +819,9 @@ v9x_status v9x_m64_build_texture_state(
         !v9x_m64_power_of_two(state->texture_width) ||
         !v9x_m64_power_of_two(state->texture_height) ||
         state->texture_width < 8ul || state->texture_width > 1024ul ||
-        state->texture_height < 8ul || state->texture_height > 1024ul) {
+        state->texture_height < 8ul || state->texture_height > 1024ul ||
+        state->wrap_s > 1ul || state->wrap_t > 1ul ||
+        state->bilinear_min > 1ul || state->bilinear_mag > 1ul) {
         *written = 0ul;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -852,12 +854,17 @@ v9x_status v9x_m64_build_texture_state(
     width_log2 = v9x_m64_log2(state->texture_width);
     height_log2 = v9x_m64_log2(state->texture_height);
     max_log2 = width_log2 > height_log2 ? width_log2 : height_log2;
-    values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul;
+    values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul |
+                 (state->bilinear_min != 0ul
+                    ? V9X_M64_TEX_BLEND_FCN_LINEAR : 0ul) |
+                 (state->bilinear_mag != 0ul
+                    ? V9X_M64_BILINEAR_TEX_EN : 0ul);
     values[13] = (values[13] & 0x0ffffffful) |
                  V9X_M64_SCALE_3D_TEXTURE_RGB565;
     values[14] = V9X_M64_SETUP_GOURAUD;
     values[15] = width_log2 | (max_log2 << 4) | (height_log2 << 8);
-    values[16] = V9X_M64_TEXTURE_CLAMP_S | V9X_M64_TEXTURE_CLAMP_T |
+    values[16] = (state->wrap_s == 0ul ? V9X_M64_TEXTURE_CLAMP_S : 0ul) |
+                 (state->wrap_t == 0ul ? V9X_M64_TEXTURE_CLAMP_T : 0ul) |
                  V9X_M64_TEX_CACHE_FLUSH | V9X_M64_TEX_CACHE_SIZE_4K;
     offsets[17] = V9X_M64_SECONDARY_TEX_OFF;
     values[17] = 0ul;

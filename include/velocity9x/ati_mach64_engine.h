@@ -124,6 +124,11 @@ struct v9x_m64_texture_state {
     v9x_u32 texture_pitch_bytes;
     v9x_u32 texture_width;
     v9x_u32 texture_height;
+    /* Zero preserves the first physical gate: clamp and nearest. */
+    v9x_u32 wrap_s;
+    v9x_u32 wrap_t;
+    v9x_u32 bilinear_min;
+    v9x_u32 bilinear_mag;
 };
 
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,

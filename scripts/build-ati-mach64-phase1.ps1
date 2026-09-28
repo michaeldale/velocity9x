@@ -69,3 +69,8 @@ $perspectiveExe=Join-Path $outputDir 'ATI4PW.EXE';$perspectiveObj=Join-Path $out
 $perspectiveBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $perspectiveExe -Object $perspectiveObj -MapFile $perspectiveMap -LinkFile $perspectiveLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_PERSPECTIVE=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$perspectiveObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($perspectiveBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4PW.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 unequal-W perspective publisher: $perspectiveExe"
+
+$wrapExe=Join-Path $outputDir 'ATI4WR.EXE';$wrapObj=Join-Path $outputDir 'ati4wr.obj';$wrapMap=Join-Path $outputDir 'ati4wr.map';$wrapLnk=Join-Path $outputDir 'ati4wr.lnk'
+$wrapBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $wrapExe -Object $wrapObj -MapFile $wrapMap -LinkFile $wrapLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_WRAP=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$wrapObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($wrapBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4WR.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 nearest wrap S/T publisher: $wrapExe"
