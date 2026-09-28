@@ -279,6 +279,20 @@ physical gate after a power cycle. Host tests, both diagnostic builds and the
 tree check pass. Item 4 remains open and public ATI acceleration remains
 disabled.
 
+After the harness correction, build `ati-phase4-texture-20260928-c` passed
+that state-only gate: 19 state writes, zero setup writes, zero changed pixels,
+and exact texture, guard, engine-state and two-page VRAM restoration. The
+matching draw then passed twice byte-identically. Its normalized coordinates
+spanned `-0.25` through `1.25` at W=1 over an 8x8 three-quadrant RGB565
+texture; exact red, green and blue probes established nearest sampling and
+clamp, while all exterior and texture guards remained intact. Both runs
+changed the established 256-pixel triangle bounded by `(8,6)` through
+`(38,21)`, with no timeout or recovery reset (`ATI4TX.TXT` CRC32 `7C0905D2`,
+BMP CRC32 `A4D8EAD8`). Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-texture-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-texture-2026-09-28/).
+Phase 4 item 4 is closed. Perspective correction with unequal W remains the
+next feature; public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
