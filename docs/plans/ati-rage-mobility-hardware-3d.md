@@ -197,6 +197,20 @@ silently treated as counter proof. Phase 3's two-cold-boot scene gate is now
 complete. Public ATI acceleration remains disabled pending the Phase 4 feature
 and publication gates.
 
+Phase 4's first isolated feature, Gouraud color interpolation, now passes on
+the same Gateway. The immutable diagnostic changed only `SETUP_CNTL` from
+flat vertex-3 shading (`0x18`) to interpolation (`0x00`) and supplied red,
+green and blue vertex colors. Two same-boot runs were byte-identical: the
+four gradient probes passed, 256 pixels changed inside the established
+`(8,6)` through `(38,21)` bounds, all guards and restored state matched, and
+there was no timeout or recovery reset (`ATI4G0.TXT` CRC32 `BBA3A850`, BMP
+CRC32 `C1C5460C`). A preceding invocation safely refused before MMIO or VRAM
+writes when the PCI command register showed display-idle decode state `0x80`;
+waking the desktop restored `0x87`, after which the unchanged build passed.
+That refusal is retained as environmental evidence. Public ATI acceleration
+remains disabled while the remaining Phase 4 features and publication gates
+are open.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
