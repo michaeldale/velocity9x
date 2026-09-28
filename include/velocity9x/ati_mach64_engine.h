@@ -77,6 +77,11 @@ struct v9x_m64_flat_triangle {
     v9x_u32 color;
 };
 
+struct v9x_m64_gouraud_triangle {
+    struct v9x_m64_point vertex[3];
+    v9x_u32 color[3];
+};
+
 struct v9x_m64_flat_state {
     v9x_u32 vram_bytes;
     v9x_u32 target_offset;
@@ -119,7 +124,15 @@ v9x_status v9x_m64_build_flat_triangle(
                               const struct v9x_m64_flat_triangle *triangle,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_gouraud_triangle(
+                              const struct v9x_m64_gouraud_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_flat_state(
+                              const struct v9x_m64_flat_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+v9x_status v9x_m64_build_gouraud_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);

@@ -515,6 +515,29 @@ v9x_status v9x_m64_build_flat_triangle(
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_gouraud_triangle(
+                              const struct v9x_m64_gouraud_triangle *triangle,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_m64_flat_triangle flat;
+    v9x_status status;
+    v9x_u32 index;
+    if (written != 0) *written = 0ul;
+    if (triangle == 0) return V9X_STATUS_INVALID_ARGUMENT;
+    for (index = 0ul; index < 3ul; ++index) {
+        flat.vertex[index] = triangle->vertex[index];
+    }
+    flat.color = triangle->color[0];
+    status = v9x_m64_build_flat_triangle(&flat, offsets, values, capacity,
+                                         written);
+    if (status != V9X_STATUS_OK) return status;
+    values[4] = triangle->color[0];
+    values[10] = triangle->color[1];
+    values[16] = triangle->color[2];
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_flat_state(
                               const struct v9x_m64_flat_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
@@ -579,9 +602,22 @@ v9x_status v9x_m64_build_flat_state(
     /* RGB565 in destination, composite, source, host and scale fields. */
     offsets[13] = V9X_M64_DP_PIX_WIDTH; values[13] = 0x40040444ul;
     /* Vertex 3 is the flat-shading provoking vertex. */
-    offsets[14] = V9X_M64_SETUP_CNTL; values[14] = 0x00000018ul;
+    offsets[14] = V9X_M64_SETUP_CNTL;
+    values[14] = V9X_M64_SETUP_FLAT_VERTEX_3;
     offsets[15] = V9X_M64_TEX_SIZE_PITCH; values[15] = 0ul;
     offsets[16] = V9X_M64_TEX_CNTL; values[16] = 0ul;
     *written = V9X_M64_FLAT_STATE_DWORDS;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_m64_build_gouraud_state(
+                              const struct v9x_m64_flat_state *state,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_status status = v9x_m64_build_flat_state(
+        state, offsets, values, capacity, written);
+    if (status != V9X_STATUS_OK) return status;
+    values[14] = V9X_M64_SETUP_GOURAUD;
     return V9X_STATUS_OK;
 }
