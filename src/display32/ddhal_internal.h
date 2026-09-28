@@ -393,6 +393,11 @@ extern const V9X_ENGINE32_OPS v9x_engine32_trio;
 extern const V9X_ENGINE32_OPS v9x_engine32_i9xx;
 extern const V9X_ENGINE32_OPS v9x_engine32_mach64;
 
+/* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
+ * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */
+struct v9x_m64_engine;
+struct v9x_m64_engine *v9x_m64_shared_core(void);
+
 /* Selects one of them from engine.engine_type, or null. In ddhal_core.c. */
 const V9X_ENGINE32_OPS *v9x_engine32(void);
 

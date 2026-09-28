@@ -83,6 +83,7 @@ $sources = @(
     "src\display32\engines\eng_mach64.c",
     "src\chipsets\ati\mach64_engine.c",
     "src\chipsets\ati\mach64_policy.c",
+    "src\chipsets\ati\mach64_draw.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -98,6 +99,8 @@ $sources = @(
     # host-tested in tests\host\test_d3d_state.c.
     "src\display32\d3d\d3d_state.c",
     "src\display32\d3d\d3d_select.c",
+    "src\display32\d3d\d3d_mach64_map.c",
+    "src\display32\d3d\d3d_mach64.c",
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",

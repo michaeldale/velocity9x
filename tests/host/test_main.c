@@ -99,6 +99,10 @@ unsigned int v9x_run_d3d_state_tests(void);
  * every engine type, validity and the software override. */
 unsigned int v9x_run_d3d_select_tests(void);
 
+/* tests\host\test_d3d_mach64_map.c: V9X_R3D_DRAW to the Mach64 policy
+ * request and draw state, through to the measured register words. */
+unsigned int v9x_run_d3d_mach64_map_tests(void);
+
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
 unsigned int v9x_run_donewait_tests(void);
@@ -138,6 +142,10 @@ unsigned int v9x_run_mach64_engine_tests(void);
 /* tests\host\test_mach64_policy.c: every accept and refuse boundary of
  * the Mach64 draw policy, and the texture light function it selects. */
 unsigned int v9x_run_mach64_policy_tests(void);
+
+/* tests\host\test_mach64_draw.c: the combined draw state against the
+ * proven single-feature builders, and the setup packet. */
+unsigned int v9x_run_mach64_draw_tests(void);
 
 static unsigned int failures = 0u;
 
@@ -1123,6 +1131,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_varray_tests();
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_d3d_select_tests();
+    failures += v9x_run_d3d_mach64_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
     failures += v9x_run_i9xx_cover_tests();
@@ -1136,6 +1145,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_3d_tests();
     failures += v9x_run_mach64_engine_tests();
     failures += v9x_run_mach64_policy_tests();
+    failures += v9x_run_mach64_draw_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

@@ -27,8 +27,10 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN3, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_GEN3 },
-        /* No Mach64 Direct3D engine exists yet: never another chip's. */
+        /* Mach64 selects its own engine, never another chip's. */
         { 1, V9X_DD_ENGINE_TYPE_ATI_MACH64, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_MACH64 },
+        { 0, V9X_DD_ENGINE_TYPE_ATI_MACH64, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, 5ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },

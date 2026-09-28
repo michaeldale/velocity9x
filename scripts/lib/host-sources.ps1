@@ -37,6 +37,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\mach64_engine.c',
         # Mach64 draw acceptance: the measured Phase 4 boundary.
         'src\chipsets\ati\mach64_policy.c',
+        # Mach64 draw state and setup packets built on the proven builders.
+        'src\chipsets\ati\mach64_draw.c',
         'tests\host\test_pe_export.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
@@ -88,6 +90,9 @@ function Get-V9xHostSourceNames {
         # Which D3D engine serves the chip, at publish time and every call.
         'src\display32\d3d\d3d_select.c',
         'tests\host\test_d3d_select.c',
+        # The neutral draw to the Mach64 policy request and draw state.
+        'src\display32\d3d\d3d_mach64_map.c',
+        'tests\host\test_d3d_mach64_map.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',
@@ -127,6 +132,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_3d.c',
         'tests\host\test_mach64_engine.c',
         'tests\host\test_mach64_policy.c',
+        'tests\host\test_mach64_draw.c',
         'tests\host\test_main.c'
     )
 

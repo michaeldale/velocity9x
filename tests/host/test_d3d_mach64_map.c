@@ -1,0 +1,233 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "../../src/display32/d3d/d3d_mach64_map.h"
+
+static unsigned int failures = 0u;
+#define CHECK(e) do { if (!(e)) { \
+    printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #e); \
+    ++failures; } } while (0)
+
+static int surface_token;
+
+/* A Direct3D draw into the diagnostics' 64x28 RGB565 target. */
+static void d3d_draw(V9X_R3D_DRAW *draw)
+{
+    memset(draw, 0, sizeof(*draw));
+    draw->target.offset = 0x00200100ul;
+    draw->target.pitch = 128ul;
+    draw->target.width = 64ul;
+    draw->target.height = 28ul;
+    draw->target.format = V9X_R3D_FORMAT_RGB565;
+    draw->shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw->depth_func = V9X_R3D_CMP_LESSEQUAL;
+    draw->src_blend = V9X_R3D_BLEND_ONE;
+    draw->dst_blend = V9X_R3D_BLEND_ZERO;
+}
+
+static void texture_8x8(V9X_D3D_MACH64_TEXTURE *texture, v9x_u32 format)
+{
+    texture->format = format;
+    texture->width = 8ul;
+    texture->height = 8ul;
+    texture->levels = 1ul;
+    texture->offset = 0x00204000ul;
+    texture->pitch_bytes = 16ul;
+}
+
+static v9x_u32 accept(const struct v9x_m64_draw_request *request)
+{
+    struct v9x_m64_draw_decision decision;
+    return v9x_m64_check_draw(request, &decision);
+}
+
+static void test_direct3d_defaults(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_m64_draw_request request;
+
+    d3d_draw(&draw);
+    /* The explicit fields are not read for a Direct3D draw. */
+    draw.scissor_right = 3ul;
+    draw.write_mask = 1ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.scissor_left == 0ul && request.scissor_top == 0ul);
+    CHECK(request.scissor_right == 64ul && request.scissor_bottom == 28ul);
+    CHECK(request.write_mask == 7ul);
+    CHECK(request.textured == 0ul && request.depth_enable == 0ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+
+    /* The render interface states both. */
+    draw.explicit_state = 1ul;
+    draw.scissor_left = 8ul;
+    draw.scissor_top = 4ul;
+    draw.scissor_right = 20ul;
+    draw.scissor_bottom = 12ul;
+    draw.write_mask = 7ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.scissor_left == 8ul && request.scissor_right == 20ul);
+    CHECK(request.scissor_top == 4ul && request.scissor_bottom == 12ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    draw.write_mask = 5ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_WRITE_MASK);
+
+    d3d_draw(&draw);
+    draw.target.format = V9X_R3D_FORMAT_XRGB1555;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_TARGET_FORMAT);
+}
+
+static void test_depth_needs_a_bound_surface(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_m64_draw_request request;
+
+    d3d_draw(&draw);
+    draw.depth_enable = 1ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.depth_enable == 0ul);
+    draw.depth.object = &surface_token;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.depth_enable == 0ul);
+    draw.depth.pitch = 128ul;
+    draw.depth_write = 1ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.depth_enable == 1ul && request.depth_bits == 16ul);
+    CHECK(request.depth_func == V9X_R3D_CMP_LESSEQUAL);
+    CHECK(request.depth_write == 1ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+}
+
+static void test_texture_mapping(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+
+    d3d_draw(&draw);
+    draw.texture.object = &surface_token;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    texture_8x8(&texture, V9X_M64_TEXTURE_FORMAT_ARGB4444);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.textured == 1ul);
+    CHECK(request.texture_format == V9X_M64_TEXTURE_FORMAT_ARGB4444);
+    CHECK(request.texture_width == 8ul && request.texture_levels == 1ul);
+    CHECK(request.texture_op == V9X_R3D_TEXOP_MODULATE);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+
+    /* The folded WRAPU/WRAPV state reaches both axes and refuses. */
+    draw.texture.wrap_either = 1ul;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.texture_wrap_u == 1ul && request.texture_wrap_v == 1ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_ADDRESS);
+
+    /* A format the engine could not name is refused by the policy. */
+    draw.texture.wrap_either = 0ul;
+    texture.format = V9X_D3D_MACH64_TEXTURE_UNKNOWN;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
+
+    /* CPU-resident levels have no VRAM copy yet. */
+    d3d_draw(&draw);
+    draw.texture.level_count = 1ul;
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    texture_8x8(&texture, V9X_M64_TEXTURE_FORMAT_RGB565);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.textured == 1ul);
+    CHECK(request.texture_format == V9X_D3D_MACH64_TEXTURE_UNKNOWN);
+    CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
+}
+
+static void test_specular_needs_colour(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_R3D_VERTEX vertices[3];
+    struct v9x_m64_draw_request request;
+
+    memset(vertices, 0, sizeof(vertices));
+    vertices[1].specular = 0x80000000ul;
+    CHECK(v9x_d3d_mach64_specular_rgb(vertices, 3ul) == 0ul);
+    vertices[2].specular = 0x00000100ul;
+    CHECK(v9x_d3d_mach64_specular_rgb(vertices, 3ul) == 1ul);
+    CHECK(v9x_d3d_mach64_specular_rgb(vertices, 2ul) == 0ul);
+    CHECK(v9x_d3d_mach64_specular_rgb(0, 3ul) == 0ul);
+
+    d3d_draw(&draw);
+    draw.specular_enable = 1ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(request.specular_enable == 0ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_request(&draw, 0, 1ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_SPECULAR);
+}
+
+static void test_state_end_to_end(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_draw_state state;
+    v9x_u32 offsets[32], values[32], written;
+
+    /* Item 9's SRCALPHA/INVSRCALPHA pair over an untextured draw. */
+    d3d_draw(&draw);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, 0, 0x00400000ul, &state);
+    CHECK(state.color.target_offset == 0x00200100ul);
+    CHECK(state.color.scissor_right == 64ul);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, 32ul,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 17ul && values[10] == 0x002c08c1ul);
+
+    /* Item 12's fog word, colour carried through. */
+    d3d_draw(&draw);
+    draw.fog_enable = 1ul;
+    draw.fog_color = 0x0020d0e0ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, 0, 0x00400000ul, &state);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, 32ul,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[10] == 0x002c10c1ul && values[11] == 0x0020d0e0ul);
+
+    /* Item 6's wrap and bilinear on ARGB1555 with DECALALPHA. */
+    d3d_draw(&draw);
+    draw.texture.object = &surface_token;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.texture.op = V9X_R3D_TEXOP_DECALALPHA;
+    texture_8x8(&texture, V9X_M64_TEXTURE_FORMAT_ARGB1555);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.wrap_s == 1ul && state.wrap_t == 1ul);
+    CHECK(state.bilinear_min == 1ul && state.bilinear_mag == 1ul);
+    CHECK(state.texture_offset == 0x00204000ul);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, 32ul,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+    /* 0x0A010081 (item 6) + AEN + ALPHA_DECAL; wrap clears both clamps. */
+    CHECK(values[10] == 0x4a810081ul);
+    CHECK(values[16] == 0x40800000ul);
+}
+
+unsigned int v9x_run_d3d_mach64_map_tests(void)
+{
+    test_direct3d_defaults();
+    test_depth_needs_a_bound_surface();
+    test_texture_mapping();
+    test_specular_needs_colour();
+    test_state_end_to_end();
+    return failures;
+}

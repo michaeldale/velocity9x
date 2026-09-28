@@ -64,6 +64,20 @@ static int v9x_m64_validate(void)
     return 1;
 }
 
+/*
+ * The validated core, for the Direct3D engine. One instance serves 2D and
+ * 3D so both reserve against the same cached FIFO count, share one
+ * quarantine, and replay one shadow after a reset; two cores would each
+ * believe the FIFO slots the other had used were free.
+ */
+struct v9x_m64_engine *v9x_m64_shared_core(void)
+{
+    if (!v9x_m64_validate()) {
+        return 0;
+    }
+    return &v9x_m64;
+}
+
 static int v9x_m64_validated(void)
 {
     return v9x_m64_ready() &&

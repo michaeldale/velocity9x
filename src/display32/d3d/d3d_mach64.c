@@ -1,0 +1,490 @@
+/*
+ * ATI Rage Mobility-M (Mach64LM) Direct3D engine.
+ *
+ * Phase 5 of docs\plans\ati-rage-mobility-hardware-3d.md. Everything this
+ * engine accepts or emits was decided elsewhere and measured there: the
+ * boundary is v9x_m64_check_draw (mach64_policy.c), the state and setup
+ * words are v9x_m64_build_draw_state and v9x_m64_build_setup
+ * (mach64_draw.c), the translation from the neutral draw is
+ * d3d_mach64_map.c, and all four are host-tested. This file resolves
+ * DirectDraw surfaces, converts floats, and emits.
+ *
+ * DORMANT. No ATI chip has an engine descriptor, so the early stamp never
+ * names V9X_DD_ENGINE_TYPE_ATI_MACH64, the selector never reaches this
+ * table, and the ATI manifest publishes EngineType NONE. The draw path has
+ * not run on the Gateway; its first physical run is the Phase 5 D3D gate.
+ *
+ * Emission order is the refusal contract: the policy, the state stream and
+ * every triangle's setup packet are built and validated first, and only
+ * then is the first FIFO slot reserved. A refused batch writes nothing. A
+ * hardware timeout during emission is the one way a batch can end part-way.
+ */
+#include "d3d_internal.h"
+#include "d3d_mach64_map.h"
+#include "velocity9x/ati_mach64_engine.h"
+
+/* Bounded waits, matching eng_mach64.c's. */
+#define V9X_D3D_MACH64_SPINS 0x00200000ul
+
+/* The core hands no batch over V9X_D3D_INDEXED_BATCH triangles. */
+#define V9X_D3D_MACH64_MAX_TRIANGLES 64ul
+
+#define V9X_D3D_MACH64_REFUSE_NOT_READY  1ul
+#define V9X_D3D_MACH64_REFUSE_ARGUMENTS  2ul
+#define V9X_D3D_MACH64_REFUSE_POLICY     3ul
+#define V9X_D3D_MACH64_REFUSE_TEXTURE    4ul
+#define V9X_D3D_MACH64_REFUSE_STATE      5ul
+#define V9X_D3D_MACH64_REFUSE_VERTEX     6ul
+#define V9X_D3D_MACH64_REFUSE_EMIT       7ul
+
+/* Pixel coordinates are 14.2; depth is Z16. */
+#define V9X_D3D_MACH64_FIXED_SCALE 4.0f
+#define V9X_D3D_MACH64_Z_SCALE     65535.0f
+#define V9X_D3D_MACH64_Z_MAX       65535l
+
+/*
+ * Local until the shared diagnostics block grows a Mach64 section, which is
+ * an ABI version step of its own. They are read with a debugger today, not
+ * by the probe.
+ */
+static DWORD v9x_d3d_mach64_draws;
+static DWORD v9x_d3d_mach64_triangles;
+static DWORD v9x_d3d_mach64_degenerate;
+static DWORD v9x_d3d_mach64_refused;
+static DWORD v9x_d3d_mach64_refuse_last;
+static DWORD v9x_d3d_mach64_policy_last;
+
+static v9x_u32 v9x_d3d_mach64_state_offsets[V9X_M64_DRAW_STATE_DWORDS];
+static v9x_u32 v9x_d3d_mach64_state_values[V9X_M64_DRAW_STATE_DWORDS];
+static v9x_u32 v9x_d3d_mach64_setup_offsets[V9X_D3D_MACH64_MAX_TRIANGLES]
+                                           [V9X_M64_SETUP_DWORDS];
+static v9x_u32 v9x_d3d_mach64_setup_values[V9X_D3D_MACH64_MAX_TRIANGLES]
+                                          [V9X_M64_SETUP_DWORDS];
+static v9x_u32 v9x_d3d_mach64_setup_counts[V9X_D3D_MACH64_MAX_TRIANGLES];
+
+/*
+ * What the hardware can take, from the builders' own limits and the
+ * measured boundary: DST_OFF_PITCH's pitch is eight-pixel units up to 1023
+ * of them, so pitches are 16-byte aligned; 1024 is the widest mode the
+ * Gateway's panel was driven at; and the only texture sampled on hardware
+ * is 8x8, bound at the 4 KiB granularity that did not wedge the fetcher.
+ * The core clips, so the setup engine sees only on-target coordinates.
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
+    16ul,           /* target_bits_per_pixel */
+    16368ul,        /* target_pitch_max */
+    16ul,           /* target_pitch_align */
+    1024ul,         /* target_dimension_max */
+    8ul,            /* texture_size_min */
+    8ul,            /* texture_size_max */
+    2048.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel */
+    4096ul,         /* texture_align */
+    1ul,            /* clip_in_core */
+    0ul             /* depth_pitch_own */
+};
+
+static int v9x_d3d_mach64_refuse(DWORD reason)
+{
+    ++v9x_d3d_mach64_refused;
+    v9x_d3d_mach64_refuse_last = reason;
+    return 0;
+}
+
+static int v9x_d3d_mach64_texture_format(const V9X_DD_SURFACE_LCL *surface,
+                                         DWORD *format_out)
+{
+    const V9X_DDPIXELFORMAT *format;
+
+    if (format_out != 0) {
+        *format_out = 0ul;
+    }
+    if (surface == 0 || surface->lpGbl == 0 || format_out == 0) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        format = &surface->lpGbl->ddpfSurface;
+    } else {
+        format = &v9x_hal->info.vmiData.ddpfDisplay;
+    }
+    if ((format->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        format->dwRGBBitCount != 16ul) {
+        return 0;
+    }
+    if ((format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x0000f800ul &&
+        format->dwGBitMask == 0x000007e0ul &&
+        format->dwBBitMask == 0x0000001ful) {
+        *format_out = V9X_M64_TEXTURE_FORMAT_RGB565;
+        return 1;
+    }
+    if ((format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul) {
+        return 0;
+    }
+    if (format->dwRBitMask == 0x00007c00ul &&
+        format->dwGBitMask == 0x000003e0ul &&
+        format->dwBBitMask == 0x0000001ful &&
+        format->dwRGBAlphaBitMask == 0x00008000ul) {
+        *format_out = V9X_M64_TEXTURE_FORMAT_ARGB1555;
+        return 1;
+    }
+    if (format->dwRBitMask == 0x00000f00ul &&
+        format->dwGBitMask == 0x000000f0ul &&
+        format->dwBBitMask == 0x0000000ful &&
+        format->dwRGBAlphaBitMask == 0x0000f000ul) {
+        *format_out = V9X_M64_TEXTURE_FORMAT_ARGB4444;
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * Exactly the measured boundary (mach64_policy.c). Direct3D cannot say
+ * "alpha test only with texel alpha" or "fog only untextured", so those two
+ * are published and the rest refused per draw, which is Direct3D's
+ * established skip-and-count. SUBPIXEL is not claimed: every physical scene
+ * used whole-pixel vertices.
+ */
+static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
+{
+    V9X_D3DPRIMCAPS *tri;
+    DWORD index;
+
+    if (shared == 0) {
+        return;
+    }
+    shared->d3d_global.dwSize = sizeof(V9X_D3DHAL_GLOBALDRIVERDATA);
+    shared->d3d_global.hwCaps.dwSize = sizeof(V9X_D3DDEVICEDESC_V1);
+    shared->d3d_global.hwCaps.dwFlags =
+        V9X_D3DDD_COLORMODEL | V9X_D3DDD_DEVCAPS |
+        V9X_D3DDD_TRICAPS | V9X_D3DDD_DEVICERENDERBITDEPTH |
+        V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
+    shared->d3d_global.hwCaps.dcmColorModel = V9X_D3DCOLOR_RGB;
+    shared->d3d_global.hwCaps.dwDevCaps =
+        V9X_D3DDEVCAPS_FLOATTLVERTEX |
+        V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY |
+        V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;
+    shared->d3d_global.hwCaps.dtcTransformCaps.dwSize =
+        sizeof(V9X_D3DTRANSFORMCAPS);
+    shared->d3d_global.hwCaps.dlcLightingCaps.dwSize =
+        sizeof(V9X_D3DLIGHTINGCAPS);
+    shared->d3d_global.hwCaps.dpcLineCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
+
+    tri = &shared->d3d_global.hwCaps.dpcTriCaps;
+    tri->dwSize = sizeof(V9X_D3DPRIMCAPS);
+    tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
+                      V9X_D3DPMISCCAPS_CULLCCW;
+    tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX;
+    tri->dwZCmpCaps =
+        V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
+        V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
+        V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
+        V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
+    tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
+    tri->dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
+    tri->dwDestBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA;
+    tri->dwShadeCaps =
+        V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
+    tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
+                         V9X_D3DPTEXTURECAPS_POW2 |
+                         V9X_D3DPTEXTURECAPS_SQUAREONLY |
+                         V9X_D3DPTEXTURECAPS_ALPHA;
+    tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
+                               V9X_D3DPTFILTERCAPS_LINEAR;
+    tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
+                              V9X_D3DPTBLENDCAPS_MODULATE |
+                              V9X_D3DPTBLENDCAPS_DECALALPHA |
+                              V9X_D3DPTBLENDCAPS_COPY;
+    tri->dwTextureAddressCaps = V9X_D3DPTADDRESSCAPS_WRAP |
+                                V9X_D3DPTADDRESSCAPS_CLAMP;
+
+    shared->d3d_extended_caps.dwSize = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+    shared->d3d_extended_caps.dwMinTextureWidth =
+        v9x_d3d_mach64_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureWidth =
+        v9x_d3d_mach64_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinTextureHeight =
+        v9x_d3d_mach64_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureHeight =
+        v9x_d3d_mach64_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+
+    /* RGB565, ARGB1555 and ARGB4444: the three item 4 and 7 sampled. */
+    for (index = 0ul; index < 3ul; ++index) {
+        shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
+        shared->texture_formats[index].dwFlags =
+            V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+        shared->texture_formats[index].ddpfPixelFormat.dwSize =
+            sizeof(V9X_DDPIXELFORMAT);
+        shared->texture_formats[index].ddpfPixelFormat.dwRGBBitCount = 16ul;
+        shared->texture_formats[index].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    }
+    shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
+    shared->d3d_global.dwNumTextureFormats = 3ul;
+    shared->d3d_global.dwNumVertices = 0ul;
+    shared->d3d_global.dwNumClipVertices = 0ul;
+}
+
+/* The same conditions eng_mach64.c's 2D engine requires. */
+static int v9x_d3d_mach64_ready(void)
+{
+    return v9x_hal != 0 &&
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
+        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 &&
+        v9x_hal->engine.control_linear_base != 0ul &&
+        v9x_hal->engine.mapped_aperture_bytes >= 0x1000ul;
+}
+
+/*
+ * The bound texture's format, shape and placement, from its surface. A
+ * surface that cannot be sampled comes back with an unknown format, which
+ * the policy refuses; this reads memory the runtime owns and writes none.
+ */
+static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_DRAW *draw,
+                                           V9X_D3D_MACH64_TEXTURE *texture)
+{
+    V9X_DD_SURFACE_LCL *surface;
+    DWORD format = 0ul;
+    DWORD offset;
+
+    texture->format = V9X_D3D_MACH64_TEXTURE_UNKNOWN;
+    texture->width = 0ul;
+    texture->height = 0ul;
+    texture->levels = 1ul;
+    texture->offset = 0ul;
+    texture->pitch_bytes = 0ul;
+
+    surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
+    if (surface == 0 || surface->lpGbl == 0) {
+        return;
+    }
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful || surface->lpGbl->lPitch <= 0l ||
+        !v9x_d3d_mach64_texture_format(surface, &format)) {
+        return;
+    }
+    texture->format = format;
+    texture->width = (DWORD)surface->lpGbl->wWidth;
+    texture->height = (DWORD)surface->lpGbl->wHeight;
+    texture->offset = offset;
+    texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
+}
+
+/* Passive, as the contract requires: no counter, no hardware access. The
+ * batch's specular colour is unknown here, so draw() checks again. */
+static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
+{
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+
+    if (draw == 0) {
+        return 0;
+    }
+    v9x_d3d_mach64_resolve_texture(draw, &texture);
+    v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
+    return v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE;
+}
+
+/*
+ * One vertex to the setup engine's integers. Flat shading takes the first
+ * vertex's colour and fog factor, as Direct3D defines it, and the engine is
+ * always in the measured Gouraud setup. The core clipped to the target, so
+ * a coordinate outside it is refused rather than wrapped.
+ */
+static int v9x_d3d_mach64_vertex(const V9X_R3D_VERTEX *vertex,
+                                 const V9X_R3D_VERTEX *provoking,
+                                 int flat,
+                                 struct v9x_m64_setup_vertex *out)
+{
+    LONG x;
+    LONG y;
+    LONG z;
+
+    x = v9x_float_to_long(vertex->sx * V9X_D3D_MACH64_FIXED_SCALE);
+    y = v9x_float_to_long(vertex->sy * V9X_D3D_MACH64_FIXED_SCALE);
+    if (x < 0l || y < 0l ||
+        (DWORD)x > V9X_M64_SETUP_COORD_MAX_FIXED ||
+        (DWORD)y > V9X_M64_SETUP_COORD_MAX_FIXED) {
+        return 0;
+    }
+    z = v9x_float_to_long(vertex->sz * V9X_D3D_MACH64_Z_SCALE);
+    if (z < 0l) {
+        z = 0l;
+    }
+    if (z > V9X_D3D_MACH64_Z_MAX) {
+        z = V9X_D3D_MACH64_Z_MAX;
+    }
+    out->x_fixed = (v9x_u32)x;
+    out->y_fixed = (v9x_u32)y;
+    out->z16 = (v9x_u32)z;
+    out->rhw = vertex->rhw;
+    out->s = vertex->tu;
+    out->t = vertex->tv;
+    out->argb = flat ? provoking->color : vertex->color;
+    out->specular = flat ? provoking->specular : vertex->specular;
+    return 1;
+}
+
+static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
+                               const V9X_R3D_VERTEX *vertices,
+                               DWORD triangle_count)
+{
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_setup_vertex setup[3];
+    struct v9x_m64_engine *core;
+    const V9X_R3D_VERTEX *triangle;
+    v9x_u32 state_written = 0ul;
+    v9x_u32 reason;
+    v9x_status status;
+    DWORD index;
+    DWORD corner;
+    DWORD packets = 0ul;
+    int flat;
+
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
+        triangle_count > V9X_D3D_MACH64_MAX_TRIANGLES) {
+        return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_ARGUMENTS);
+    }
+    if (!v9x_d3d_mach64_ready()) {
+        return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_NOT_READY);
+    }
+
+    /* The policy first: nothing below runs for a draw it refuses. */
+    v9x_d3d_mach64_resolve_texture(draw, &texture);
+    v9x_d3d_mach64_map_request(draw, &texture,
+        v9x_d3d_mach64_specular_rgb(vertices, triangle_count * 3ul),
+        &request);
+    reason = v9x_m64_check_draw(&request, &decision);
+    if (reason != V9X_M64_REFUSE_NONE) {
+        v9x_d3d_mach64_policy_last = reason;
+        return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_POLICY);
+    }
+
+    v9x_d3d_mach64_map_state(draw, &request, &texture,
+                             v9x_hal->fb.vram_bytes, &state);
+    status = v9x_m64_build_draw_state(&state, &decision,
+                                      v9x_d3d_mach64_state_offsets,
+                                      v9x_d3d_mach64_state_values,
+                                      V9X_M64_DRAW_STATE_DWORDS,
+                                      &state_written);
+    if (status != V9X_STATUS_OK) {
+        return v9x_d3d_mach64_refuse(request.textured != 0ul
+            ? V9X_D3D_MACH64_REFUSE_TEXTURE : V9X_D3D_MACH64_REFUSE_STATE);
+    }
+
+    /* Every packet before any write, so a bad vertex refuses the batch. */
+    flat = request.shade_mode == V9X_R3D_SHADE_FLAT;
+    for (index = 0ul; index < triangle_count; ++index) {
+        triangle = vertices + index * 3ul;
+        for (corner = 0ul; corner < 3ul; ++corner) {
+            if (!v9x_d3d_mach64_vertex(&triangle[corner], &triangle[0],
+                                       flat, &setup[corner])) {
+                return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
+            }
+        }
+        status = v9x_m64_build_setup(setup, request.textured,
+                                     request.fog_enable,
+                                     v9x_d3d_mach64_setup_offsets[packets],
+                                     v9x_d3d_mach64_setup_values[packets],
+                                     V9X_M64_SETUP_DWORDS,
+                                     &v9x_d3d_mach64_setup_counts[packets]);
+        if (status == V9X_STATUS_UNSUPPORTED) {
+            ++v9x_d3d_mach64_degenerate;       /* zero area: no pixels */
+            continue;
+        }
+        if (status != V9X_STATUS_OK) {
+            return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
+        }
+        ++packets;
+    }
+
+    core = v9x_m64_shared_core();
+    if (core == 0 || core->quarantined) {
+        return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_NOT_READY);
+    }
+    if (packets == 0ul) {
+        ++v9x_d3d_mach64_draws;
+        return 1;
+    }
+
+    /*
+     * The full state every batch: no redundant-state skipping until this
+     * path has run, and TEX_CACHE_FLUSH in every textured state is what the
+     * texture-mutation gate proved a CPU upload needs.
+     */
+    if (v9x_m64_emit_batch(core, v9x_d3d_mach64_state_offsets,
+                           v9x_d3d_mach64_state_values, state_written,
+                           V9X_D3D_MACH64_SPINS) != V9X_STATUS_OK) {
+        return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_EMIT);
+    }
+    v9x_present_note_submission();
+    for (index = 0ul; index < packets; ++index) {
+        if (v9x_m64_emit_batch(core, v9x_d3d_mach64_setup_offsets[index],
+                               v9x_d3d_mach64_setup_values[index],
+                               v9x_d3d_mach64_setup_counts[index],
+                               V9X_D3D_MACH64_SPINS) != V9X_STATUS_OK) {
+            return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_EMIT);
+        }
+    }
+    ++v9x_d3d_mach64_draws;
+    v9x_d3d_mach64_triangles += packets;
+    return 1;
+}
+
+/* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mach64 = {
+    &v9x_d3d_mach64_limits,
+    v9x_d3d_mach64_texture_format,
+    v9x_d3d_mach64_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_mach64_ready,
+    0,                                  /* create_surface: DDraw's heap */
+    0,                                  /* destroy_surface */
+    v9x_d3d_mach64_draw,
+    v9x_d3d_mach64_accepts
+};

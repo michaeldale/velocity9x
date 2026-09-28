@@ -906,6 +906,38 @@ What remains:
 - The ATI package caps audit. With no ATI branch, the ATI family now
   publishes no Direct3D caps at all, rather than the ViRGE's.
 
+Status 2026-09-28, later: `d3d_mach64.c` exists and is dormant. No ATI chip
+has an engine descriptor, so the type is never stamped. It has four
+layers, and the three pure ones are host-tested:
+
+- **`v9x_m64_check_draw`** is the boundary.
+- **`v9x_m64_build_draw_state`** (`mach64_draw.c`) reuses the proven
+  Gouraud, texture and depth builders. It sets the SCALE_3D_CNTL,
+  ALPHA_TST_CNTL and DP_FOG_CLR words the Phase 4 scenes measured, and a
+  test holds every single-feature draw to those builders and words.
+- **`v9x_m64_build_setup`** encodes 14.2 coordinates, Z16 in [31:16], and
+  specular alpha ahead of the vertices for fog.
+- **`d3d_mach64_map.c`** translates `V9X_R3D_DRAW` into the request and
+  the state.
+
+The engine file resolves surfaces, converts floats with the HAL's inline
+fistp, and emits. It builds and validates the policy, the state and every
+triangle's setup packet before the first FIFO reservation. 2D and 3D share
+one core through `v9x_m64_shared_core()`. The caps are exactly the policy
+boundary: textures are 8x8 only, and SUBPIXEL is not claimed.
+
+The following are unmeasured, and the Phase 5 D3D gates must settle them:
+
+- S/T premultiplied by rhw, following Mesa;
+- sub-pixel vertex positions;
+- flat shading as Gouraud with three equal colours;
+- whether DirectDraw's texture pitch matches the builder's `max(w,h)*2`
+  rule;
+- the CPU-read cache invalidate on `Lock` after 3D.
+
+The engine's counters are static until the diagnostics ABI gains a Mach64
+section.
+
 ### D3D gates
 
 - Extend the Direct3D probe with untextured, Z, textured, alpha-test and blend

@@ -19,6 +19,12 @@
 #define V9X_M64_SC_LEFT_RIGHT         0x000006a8ul
 #define V9X_M64_SC_TOP_BOTTOM         0x000006b4ul
 #define V9X_M64_DP_FRGD_CLR           0x000006c4ul
+/* The same register: the 3D engine's fog colour (Mesa mach64_reg.h). */
+#define V9X_M64_DP_FOG_CLR            V9X_M64_DP_FRGD_CLR
+/* Specular ARGB; its alpha is the fog factor (Phase 4 item 12). */
+#define V9X_M64_VERTEX_1_SPEC_ARGB    0x0000024cul
+#define V9X_M64_VERTEX_2_SPEC_ARGB    0x0000026cul
+#define V9X_M64_VERTEX_3_SPEC_ARGB    0x0000028cul
 #define V9X_M64_DP_WRITE_MASK         0x000006c8ul
 #define V9X_M64_DP_PIX_WIDTH          0x000006d0ul
 #define V9X_M64_DP_MIX                0x000006d4ul
@@ -92,6 +98,12 @@
 #define V9X_M64_GOURAUD_STATE_DWORDS  V9X_M64_FLAT_STATE_DWORDS
 #define V9X_M64_TEXTURED_STATE_DWORDS 19ul
 #define V9X_M64_TEXTURED_TRIANGLE_DWORDS V9X_M64_FLAT_TRIANGLE_DWORDS
+/* A draw's state is the textured state's slots at most; a setup packet is
+ * a triangle plus the three specular words fog needs ahead of it. */
+#define V9X_M64_DRAW_STATE_DWORDS     V9X_M64_TEXTURED_STATE_DWORDS
+#define V9X_M64_SPECULAR_DWORDS       3ul
+#define V9X_M64_SETUP_DWORDS \
+    (V9X_M64_FLAT_TRIANGLE_DWORDS + V9X_M64_SPECULAR_DWORDS)
 
 #define V9X_M64_SCALE_3D_FCN_TEXTURE  0x00000080ul
 #define V9X_M64_SCALE_3D_TEXTURE_RGB565 0x40000000ul

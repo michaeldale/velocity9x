@@ -288,4 +288,75 @@ struct v9x_m64_draw_decision {
 v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
                            struct v9x_m64_draw_decision *decision);
 
+/*
+ * One accepted draw's complete engine state, for v9x_m64_build_draw_state.
+ * `color` is the target and scissor, as for the flat state.  The depth and
+ * texture fields are read only when enabled; compares and factors use the
+ * D3D numbering; fog_color is RGB in its low 24 bits.  The request must
+ * already have passed v9x_m64_check_draw, whose decision is passed beside it.
+ */
+struct v9x_m64_draw_state {
+    struct v9x_m64_flat_state color;
+    v9x_u32 depth_enable;
+    v9x_u32 depth_offset;
+    v9x_u32 depth_pitch_bytes;
+    v9x_u32 depth_compare;
+    v9x_u32 depth_write;
+    v9x_u32 textured;
+    v9x_u32 texture_offset;
+    v9x_u32 texture_pitch_bytes;
+    v9x_u32 texture_width;
+    v9x_u32 texture_height;
+    v9x_u32 texture_format;
+    v9x_u32 wrap_s;
+    v9x_u32 wrap_t;
+    v9x_u32 bilinear_min;
+    v9x_u32 bilinear_mag;
+    v9x_u32 blend_enable;
+    v9x_u32 src_blend;
+    v9x_u32 dst_blend;
+    v9x_u32 alpha_test_enable;
+    v9x_u32 alpha_compare;
+    v9x_u32 alpha_reference;
+    v9x_u32 fog_enable;
+    v9x_u32 fog_color;
+};
+
+/*
+ * One screen-space vertex.  x and y are 14.2 fixed point, the setup
+ * engine's own form, and z is 0..65535.  They arrive as integers because
+ * this file is also built by the MSVC host pass, and Open Watcom lowers a
+ * float-to-int cast to a runtime helper the nodefaultlibs HAL cannot link;
+ * the engine converts with the HAL's inline fistp.  rhw is D3D's 1/w, s and
+ * t are texture coordinates before perspective division, and the specular
+ * alpha is the fog factor.
+ */
+struct v9x_m64_setup_vertex {
+    v9x_u32 x_fixed;
+    v9x_u32 y_fixed;
+    v9x_u32 z16;
+    float rhw;
+    float s;
+    float t;
+    v9x_u32 argb;
+    v9x_u32 specular;
+};
+
+/* The largest pixel coordinate a setup packet takes: the flat state's
+ * 4096-pixel target limit, which also keeps the 14.2 cross product inside
+ * a signed 32-bit integer. */
+#define V9X_M64_SETUP_COORD_MAX_FIXED (4096ul * 4ul)
+
+v9x_status v9x_m64_build_draw_state(
+                              const struct v9x_m64_draw_state *state,
+                              const struct v9x_m64_draw_decision *decision,
+                              v9x_u32 *offsets, v9x_u32 *values,
+                              v9x_u32 capacity, v9x_u32 *written);
+/* V9X_STATUS_UNSUPPORTED with nothing written is a zero-area triangle,
+ * which draws no pixel; every other failure is a caller error. */
+v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
+                               v9x_u32 textured, v9x_u32 fog,
+                               v9x_u32 *offsets, v9x_u32 *values,
+                               v9x_u32 capacity, v9x_u32 *written);
+
 #endif
