@@ -77,7 +77,14 @@ function Test-V9xSurveySafety {
         # The survey reads. A store through the flat segment is how a read-only
         # probe becomes a write to an address nobody has proved is video memory.
         @{ Pattern = '"[^"]*\bmov\s+fs:\[';
-           Why = "a write through the unreal-mode flat segment" }
+           Why = "a write through the unreal-mode flat segment" },
+        # int86 leaves ES as the caller's - DS in the small model - and a
+        # zeroed register block leaves DI at 0, so a bare int86 to INT 10h
+        # hands the video BIOS DS:0000. 4F11h on three ThinkPads answered it
+        # by writing its flat panel table over the start of DGROUP. Every
+        # INT 10h call goes through int10_call, which resolves ES:DI.
+        @{ Pattern = 'int86\s*\(\s*0x10';
+           Why = "a bare int86 to INT 10h, which hands the BIOS DS:0000" }
     )
     foreach ($rule in $banned) {
         if ($lower -match $rule.Pattern) {
@@ -194,10 +201,11 @@ if ($GateSelfTest) {
         @{ Name = "flat-segment write";  Add = 'static void bad(void); #pragma aux bad = "mov fs:[esi],eax";' },
         @{ Name = "port write in asm";   Add = 'static void bad(void); #pragma aux bad = "out dx,al";' },
         @{ Name = "inline INT 10h";      Add = 'static void bad(void); #pragma aux bad = "int 10h";' },
+        @{ Name = "bare int86 INT 10h";  Add = 'static void bad(void) { int86(0x10, 0, 0); }' },
         # The required rules fail by omission, so their mutations delete rather
         # than add. Each one is a way the null-buffer fix could be undone.
         @{ Name = "no-buffer scratch removed";
-           Remove = 'static unsigned char vbe_no_buffer_scratch[256];' },
+           Remove = 'static unsigned char vbe_no_buffer_scratch[512];' },
         @{ Name = "null buffer left unsubstituted";
            Remove = 'destination = (void far *)vbe_no_buffer_scratch;' },
         @{ Name = "ES left as the caller's";

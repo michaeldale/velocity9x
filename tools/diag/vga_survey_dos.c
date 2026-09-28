@@ -853,6 +853,55 @@ static void survey_platform(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* INT 10h                                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Where ES:DI points on the calls that carry no buffer of their own.
+ *
+ * It must never be DS:0000, and used to be. segread hands back the caller's
+ * ES - which in the small model is DS - and the register block is zeroed, so
+ * a null buffer aimed the BIOS squarely at the null pointer zone. 4F03h,
+ * 4F10h and 4F15h/BL=00h are documented to answer in registers and touch
+ * nothing, but documentation is not what runs: on an Acer NAV50 the survey
+ * exited with the Open Watcom runtime's "*** NULL assignment detected" and
+ * then froze, which is that check finding DS:0 rewritten.
+ *
+ * 4F11h/BL=00h is not even documented to be harmless - VBE/FP returns the
+ * flat panel information table at ES:DI - and three ThinkPads measured
+ * 2026-09-05 (B490, E460, X61) prove what that costs: the BIOS wrote its
+ * table over the start of DGROUP, destroying the format string literals every
+ * keyed report line is written through, and the report lost every section
+ * header and every named key from that call onwards while the indexed rows
+ * either side of them kept landing.
+ *
+ * 512 bytes is twice the largest table any of these functions is specified to
+ * deposit; the rest is margin. See
+ * docs\issues\2026-08-28-survey-null-assignment.md.
+ */
+static unsigned char vbe_no_buffer_scratch[512];
+
+/*
+ * The one door to INT 10h. Everything - BIOS data, VBE, DDC - goes through
+ * here so that resolving ES:DI is a property of the tool rather than a habit
+ * five call sites have to remember. A caller with a buffer names it; a caller
+ * without one gets the scratch, never DS:0000.
+ */
+static void int10_call(union REGS *input, union REGS *output, void far *buffer)
+{
+    struct SREGS segments;
+    void far *destination = buffer;
+
+    segread(&segments);
+    if (destination == 0) {
+        destination = (void far *)vbe_no_buffer_scratch;
+    }
+    segments.es = FP_SEG(destination);
+    input->x.di = FP_OFF(destination);
+    int86x(0x10, input, output, &segments);
+}
+
+/* ------------------------------------------------------------------ */
 /* [BiosData]                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -861,7 +910,6 @@ static void survey_bios_data(void)
     const unsigned char far *bda = (const unsigned char far *)MK_FP(0x0040u, 0u);
     union REGS input;
     union REGS output;
-    struct SREGS segments;
 
     wr_section("BiosData");
     wr_status("ok");
@@ -897,7 +945,7 @@ static void survey_bios_data(void)
     /* INT 10h AH=1Ah, display combination code. Query subfunction only. */
     memset(&input, 0, sizeof(input));
     input.x.ax = 0x1a00u;
-    int86(0x10, &input, &output);
+    int10_call(&input, &output, 0);
     if (output.h.al == 0x1au) {
         wr_str("DisplayCombinationStatus", "ok");
         wr_x8("ActiveDisplayCode", output.h.bl);
@@ -911,12 +959,9 @@ static void survey_bios_data(void)
      * host-side. */
     memset(&input, 0, sizeof(input));
     memset(functionality, 0, sizeof(functionality));
-    segread(&segments);
     input.x.ax = 0x1b00u;
     input.x.bx = 0x0000u;
-    segments.es = FP_SEG((void far *)functionality);
-    input.x.di = FP_OFF((void far *)functionality);
-    int86x(0x10, &input, &output, &segments);
+    int10_call(&input, &output, functionality);
     if (output.h.al == 0x1bu) {
         wr_str("FunctionalityStatus", "ok");
         wr_hex_block("Functionality", functionality, sizeof(functionality));
@@ -1325,44 +1370,33 @@ static void survey_secondary_roms(void)
 /* ------------------------------------------------------------------ */
 
 /*
- * Where ES:DI points on the calls that carry no buffer of their own.
- *
- * It must never be DS:0000, and used to be. segread hands back the caller's
- * ES - which in the small model is DS - and the register block is zeroed, so
- * a null buffer aimed the BIOS squarely at the null pointer zone. 4F03h and
- * 4F15h/BL=00h are documented to answer in registers and touch nothing, but
- * documentation is not what runs: on an Acer NAV50 the survey exited with the
- * Open Watcom runtime's "*** NULL assignment detected" and then froze, which
- * is that check finding DS:0 rewritten.
- *
- * 128 bytes is an EDID block, which is the largest thing any of these
- * functions could plausibly deposit if it deposits anything at all; the rest
- * is margin. See docs\issues\2026-08-28-survey-null-assignment.md.
+ * A VBE call whose answer is in registers other than AX, which is why it
+ * exists: the sites that need BX or CX back used to make their own int86
+ * call rather than going through the buffer resolution, and that is exactly
+ * where 4F11h found DS:0000. See int10_call above.
  */
-static unsigned char vbe_no_buffer_scratch[256];
+static void vbe_call_regs(unsigned short function, unsigned short bx,
+                          unsigned short cx, unsigned short dx,
+                          void far *buffer, union REGS *output)
+{
+    union REGS input;
+
+    memset(&input, 0, sizeof(input));
+    memset(output, 0, sizeof(*output));
+    input.x.ax = function;
+    input.x.bx = bx;
+    input.x.cx = cx;
+    input.x.dx = dx;
+    int10_call(&input, output, buffer);
+}
 
 static unsigned short vbe_call(unsigned short function, unsigned short bx,
                                unsigned short cx, unsigned short dx,
                                void far *buffer)
 {
-    union REGS input;
     union REGS output;
-    struct SREGS segments;
-    void far *destination = buffer;
 
-    memset(&input, 0, sizeof(input));
-    memset(&output, 0, sizeof(output));
-    segread(&segments);
-    input.x.ax = function;
-    input.x.bx = bx;
-    input.x.cx = cx;
-    input.x.dx = dx;
-    if (destination == 0) {
-        destination = (void far *)vbe_no_buffer_scratch;
-    }
-    segments.es = FP_SEG(destination);
-    input.x.di = FP_OFF(destination);
-    int86x(0x10, &input, &output, &segments);
+    vbe_call_regs(function, bx, cx, dx, buffer, &output);
     return output.x.ax;
 }
 
@@ -1433,31 +1467,23 @@ static void survey_vbe(void)
         wr_str("OemProductRev", text);
     }
 
-    status = vbe_call(0x4f03u, 0u, 0u, 0u, 0);
-    if (status == 0x004fu) {
-        union REGS input;
+    {
         union REGS output;
 
-        memset(&input, 0, sizeof(input));
-        input.x.ax = 0x4f03u;
-        int86(0x10, &input, &output);
-        wr_x16("CurrentMode", output.x.bx);
-    } else {
-        wr_str("CurrentModeStatus", "unavailable");
+        vbe_call_regs(0x4f03u, 0u, 0u, 0u, 0, &output);
+        if (output.x.ax == 0x004fu) {
+            wr_x16("CurrentMode", output.x.bx);
+        } else {
+            wr_str("CurrentModeStatus", "unavailable");
+        }
     }
 
     /* Protected-mode interface presence. Query only - the returned table is
      * not called, only counted. */
     {
-        union REGS input;
         union REGS output;
-        struct SREGS segments;
 
-        memset(&input, 0, sizeof(input));
-        segread(&segments);
-        input.x.ax = 0x4f0au;
-        input.x.bx = 0x0000u;
-        int86x(0x10, &input, &output, &segments);
+        vbe_call_regs(0x4f0au, 0x0000u, 0u, 0u, 0, &output);
         if (output.x.ax == 0x004fu) {
             wr_str("PmInterfaceStatus", "ok");
             wr_u("PmInterfaceBytes", output.x.cx);
@@ -1468,15 +1494,12 @@ static void survey_vbe(void)
 
     /* DPMS capabilities, and the flat-panel query that a handful of BIOSes
      * mishandle - both are guarded separately so one bad call cannot take the
-     * section with it. */
+     * section with it. 4F11h is the one that deposits a table at ES:DI, so
+     * it is also the one that made going through vbe_call_regs mandatory. */
     {
-        union REGS input;
         union REGS output;
 
-        memset(&input, 0, sizeof(input));
-        input.x.ax = 0x4f10u;
-        input.x.bx = 0x0000u;
-        int86(0x10, &input, &output);
+        vbe_call_regs(0x4f10u, 0x0000u, 0u, 0u, 0, &output);
         if (output.x.ax == 0x004fu) {
             wr_str("DpmsStatus", "ok");
             wr_x16("DpmsCapabilities", output.x.bx);
@@ -1484,10 +1507,7 @@ static void survey_vbe(void)
             wr_str("DpmsStatus", "unsupported");
         }
 
-        memset(&input, 0, sizeof(input));
-        input.x.ax = 0x4f11u;
-        input.x.bx = 0x0000u;
-        int86(0x10, &input, &output);
+        vbe_call_regs(0x4f11u, 0x0000u, 0u, 0u, 0, &output);
         if (output.x.ax == 0x004fu) {
             wr_str("FlatPanelStatus", "ok");
             wr_x16("FlatPanelInfo", output.x.bx);
@@ -1571,22 +1591,18 @@ static void survey_edid(void)
     unsigned short status;
 
     wr_section("EDID");
-    status = vbe_call(0x4f15u, 0x0000u, 0u, 0u, 0);
-    if (status != 0x004fu) {
-        wr_status("unsupported");
-        fprintf(report, "Reason=vbe-4f15-capabilities-returned-%04X\n", status);
-        return;
-    }
-
     {
-        union REGS input;
         union REGS output;
 
-        memset(&input, 0, sizeof(input));
-        input.x.ax = 0x4f15u;
-        input.x.bx = 0x0000u;
-        input.x.cx = 0x0000u;
-        int86(0x10, &input, &output);
+        vbe_call_regs(0x4f15u, 0x0000u, 0x0000u, 0u, 0, &output);
+        status = output.x.ax;
+        if (status != 0x004fu) {
+            wr_status("unsupported");
+            fprintf(report, "Reason=vbe-4f15-capabilities-returned-%04X\n",
+                    status);
+            return;
+        }
+
         wr_x8("DdcLevel", output.h.bh);
         wr_u("DdcBlockTransferMs", output.h.bl);
     }

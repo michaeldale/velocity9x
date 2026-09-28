@@ -78,3 +78,16 @@ dropping writes on this machine and the next question is what those particular
 Worth checking either way: whether `parse-vga-survey.ps1` should read the
 `Mode.NN` rows on their own rather than requiring `[VBEModes] Count`, so a
 damaged report still yields its mode table.
+
+## 2026-09-28: explained and fixed
+
+Not a separate defect. `4F11h`/BL=00h was writing its flat panel table to
+DS:0000 and destroying the six format string literals that every keyed report
+line - every section header, every `Key=value` - is written through, while the
+indexed rows either side of them kept landing. Three ThinkPads measured
+2026-09-05 (B490, E460, X61) show the cut at exactly that call, and the one
+machine of the four whose BIOS refused `4F11h` produced a complete report.
+
+`docs\issues\2026-09-28-survey-4f11-writes-to-ds-zero.md` has the evidence and
+the fix. This stays open until a report from one of those machines, on a
+binary with the fix, comes back carrying `[Result] Complete=yes`.

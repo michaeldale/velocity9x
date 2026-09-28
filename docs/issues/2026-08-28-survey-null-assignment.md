@@ -140,3 +140,26 @@ survives.
 Next step is a host-side reproduction rather than another field run - the tool
 is buildable and runnable on the host, and the message is a runtime check, not
 a hardware behaviour.
+
+## 2026-09-28: the remaining writer was 4F11h, at five sites this fix missed
+
+Four ThinkPad reports on build `b44c35f` found it. `vbe_call` was given the
+scratch buffer; five call sites that need BX or CX back were making their own
+bare `int86` calls and never went through it - `4F03h`, `4F0Ah`, `4F10h`,
+`4F11h` and `4F15h`/BL=00h. `4F11h`/BL=00h is the one that deposits a flat
+panel table at ES:DI, and on three of the four machines it wrote that table
+over DS:0000, destroying the format string literals every keyed report line is
+written through. Those reports lose every section header and named key from
+that call onwards while the indexed rows keep landing.
+
+That is what the "*** NULL assignment detected" message on the NAV50 was still
+finding after this fix: a writer that was still there, just not writing enough
+on that BIOS to take the report with it. The section loss filed as
+`docs\issues\2026-08-28-survey-report-sections-missing.md` is the same defect
+seen from the other end.
+
+Every INT 10h call now goes through one `int10_call` that resolves ES:DI, and
+the gate bans a bare `int86` to INT 10h so the omission cannot recur. Full
+write-up: `docs\issues\2026-09-28-survey-4f11-writes-to-ds-zero.md`. Neither
+issue closes until a report from a machine that showed it comes back without
+the message.
