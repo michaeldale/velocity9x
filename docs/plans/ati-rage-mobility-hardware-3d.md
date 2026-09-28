@@ -938,6 +938,18 @@ The following are unmeasured, and the Phase 5 D3D gates must settle them:
 The engine's counters are static until the diagnostics ABI gains a Mach64
 section.
 
+Status 2026-09-29: bound on the Gateway. Engine fills, the first
+hardware triangles, and depth fill and Z compare all pass. On the way,
+the HAL hard-locked three times. Two causes were in the HAL's register
+offsets and block 1. The third was a 2D fill running with the previous
+3D draw's Z, alpha-test and SCALE_3D state; every fill now zeroes these
+first (`v9x_m64_build_2d_mode`). Details and evidence are in
+[`../issues/2026-09-28-mach64-hal-first-draw-hard-hang.md`](../issues/2026-09-28-mach64-hal-first-draw-hard-hang.md).
+
+Of the unmeasured points above, sub-pixel positions pass the probe's
+sub-pixel check. The others remain open. The probe's private-Z and
+mixed-ordering sections have not run on this HAL.
+
 ### D3D gates
 
 - Extend the Direct3D probe with untextured, Z, textured, alpha-test and blend

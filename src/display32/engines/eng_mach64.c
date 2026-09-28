@@ -125,6 +125,9 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     v9x_u32 values[V9X_M64_FILL_DWORDS];
     v9x_u32 repair_offsets[V9X_M64_FILL_REPAIR_DWORDS];
     v9x_u32 repair_values[V9X_M64_FILL_REPAIR_DWORDS];
+    v9x_u32 mode_offsets[V9X_M64_2D_MODE_DWORDS];
+    v9x_u32 mode_values[V9X_M64_2D_MODE_DWORDS];
+    v9x_u32 mode_written = 0ul;
     v9x_u32 written = 0ul;
     v9x_u32 repair_written = 0ul;
     v9x_status status;
@@ -154,9 +157,20 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
             V9X_M64_FILL_REPAIR_DWORDS, &repair_written) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
-    status = v9x_m64_emit_batch(&v9x_m64, offsets, values, written,
+    /* 2D mode first: a Direct3D draw may have left Z, alpha test and the
+     * 3D pixel pipe enabled (v9x_m64_build_2d_mode). */
+    if (v9x_m64_build_2d_mode(mode_offsets, mode_values,
+                              V9X_M64_2D_MODE_DWORDS,
+                              &mode_written) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
+    status = v9x_m64_emit_batch(&v9x_m64, mode_offsets, mode_values,
+                                mode_written,
                                 wait ? V9X_M64_WAIT_SPINS : 0ul);
     if (status == V9X_STATUS_TIMEOUT) return V9X_BLT_BUSY;
+    if (status != V9X_STATUS_OK) return V9X_BLT_DECLINED;
+    status = v9x_m64_emit_batch(&v9x_m64, offsets, values, written,
+                                V9X_M64_WAIT_SPINS);
     if (status != V9X_STATUS_OK) return V9X_BLT_DECLINED;
     v9x_present_note_submission();
     if (repair_written != 0ul) {

@@ -221,6 +221,34 @@ v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
     return status;
 }
 
+/*
+ * A 2D fill after a 3D draw otherwise runs with that draw's Z test, alpha
+ * test and pixel-pipe mode still live. The Phase 2 fills never met that:
+ * each diagnostic scene restored every register, and the stock driver had
+ * left them 2D. The HAL's first depth fill after a Z-enabled Direct3D draw
+ * hard-locked the Gateway (2026-09-29, docs\issues\
+ * 2026-09-28-mach64-hal-first-draw-hard-hang.md). X.Org writes
+ * ALPHA_TST_CNTL and Z_CNTL to zero and restores SCALE_3D_CNTL when it
+ * returns from 3D (atimach64accel.c ATIMach64Sync), and zeroes
+ * SCALE_3D_CNTL after composite (atimach64render.c Mach64DoneComposite).
+ */
+v9x_status v9x_m64_build_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
+                                 v9x_u32 capacity, v9x_u32 *written)
+{
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_2D_MODE_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    offsets[0] = V9X_M64_ALPHA_TST_CNTL; values[0] = 0ul;
+    offsets[1] = V9X_M64_Z_CNTL;         values[1] = 0ul;
+    offsets[2] = V9X_M64_SCALE_3D_CNTL;  values[2] = 0ul;
+    *written = V9X_M64_2D_MODE_DWORDS;
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written)

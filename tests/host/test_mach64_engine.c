@@ -815,6 +815,23 @@ typedef char v9x_m64_fifo_stat_is_block0[
 typedef char v9x_m64_gui_traj_is_block0[
     V9X_M64_GUI_TRAJ_CNTL == 0x730ul ? 1 : -1];
 
+static void test_2d_mode_builder(void)
+{
+    v9x_u32 offsets[4];
+    v9x_u32 values[4];
+    v9x_u32 written = 7ul;
+
+    CHECK(v9x_m64_build_2d_mode(offsets, values, 2ul, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    CHECK(v9x_m64_build_2d_mode(offsets, values, 4ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == 3ul);
+    CHECK(offsets[0] == 0x550ul && values[0] == 0ul);   /* ALPHA_TST_CNTL */
+    CHECK(offsets[1] == 0x54cul && values[1] == 0ul);   /* Z_CNTL */
+    CHECK(offsets[2] == 0x5fcul && values[2] == 0ul);   /* SCALE_3D_CNTL */
+}
+
 static void test_offsets_match_diagnostic(void)
 {
     static const v9x_u32 proven[19] = {
@@ -906,5 +923,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_texture_builders();
     test_phase3_triangle_golden();
     test_offsets_match_diagnostic();
+    test_2d_mode_builder();
     return failures;
 }

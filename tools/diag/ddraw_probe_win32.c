@@ -778,10 +778,53 @@ static void v9x_write_text(const char *key, const char *value)
     v9x_result_bytes += cost;
 }
 
+/*
+ * A write-through step log, C:\V9XDIAG\V9XDDT.TXT, for a machine that hard
+ * locks: WritePrivateProfileString caches, so V9XDD.INI can trail a lock by
+ * many keys, while each line here is on disk before the step it names runs.
+ * Only the texture matrix uses it; it names the cell and the operation.
+ */
+static HANDLE v9x_step_file = INVALID_HANDLE_VALUE;
+
+static void v9x_step(const char *cell, const char *what, DWORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char line[160];
+    int at = 0;
+    int index;
+    DWORD written;
+
+    if (v9x_step_file == INVALID_HANDLE_VALUE) {
+        v9x_step_file = CreateFileA("C:\\V9XDIAG\\V9XDDT.TXT", GENERIC_WRITE,
+                                    FILE_SHARE_READ, 0, CREATE_ALWAYS,
+                                    FILE_ATTRIBUTE_NORMAL |
+                                    FILE_FLAG_WRITE_THROUGH, 0);
+        if (v9x_step_file == INVALID_HANDLE_VALUE) {
+            return;
+        }
+    }
+    while (*cell != '\0' && at < 100) {
+        line[at++] = *cell++;
+    }
+    line[at++] = ' ';
+    while (*what != '\0' && at < 140) {
+        line[at++] = *what++;
+    }
+    line[at++] = ' ';
+    for (index = 0; index < 8; ++index) {
+        line[at++] = digits[(value >> ((7 - index) * 4)) & 15u];
+    }
+    line[at++] = '\r';
+    line[at++] = '\n';
+    WriteFile(v9x_step_file, line, (DWORD)at, &written, 0);
+    FlushFileBuffers(v9x_step_file);
+}
+
 static void v9x_write_uint(const char *key, DWORD value)
 {
     char text[12];
 
+    v9x_step("key", key, value);
     v9x_uint_text(text, value);
     v9x_write_text(key, text);
 }
@@ -790,6 +833,7 @@ static void v9x_write_hresult(const char *key, HRESULT value)
 {
     char text[11];
 
+    v9x_step("key", key, (DWORD)value);
     v9x_hex_text(text, (DWORD)value);
     v9x_write_text(key, text);
 }
@@ -5538,7 +5582,9 @@ void __stdcall V9xDdrawProbeEntry(void)
                             desc.ddpfPixelFormat.dwBBitMask = 0x0000000ful;
                             desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x0000f000ul;
                         }
+                        v9x_step(m_prefix, "create-top", m_sizes[si]);
                         m_hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &m_top, 0);
+                        v9x_step(m_prefix, "create-top-hr", (DWORD)m_hr);
 
                         /* Level 1: from the chain, or built by hand across a
                          * filler so it cannot be where the engine expects. */
@@ -5570,6 +5616,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                         }
                         if (m_hr == 0 && m_top != 0) {
+                            v9x_step(m_prefix, "fill-top", 0ul);
                             v9x_fill_surface_halves(m_top, left0, right0);
                             v9x_zero(&m_desc, sizeof(m_desc));
                             m_desc.dwSize = sizeof(m_desc);
@@ -5579,6 +5626,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                         }
                         if (m_hr == 0 && m_level != 0) {
+                            v9x_step(m_prefix, "fill-level", 0ul);
                             v9x_fill_surface_halves(m_level, left1, right1);
                             v9x_zero(&m_desc, sizeof(m_desc));
                             m_desc.dwSize = sizeof(m_desc);
@@ -5596,7 +5644,9 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 m_top, &v9x_iid_d3d_texture2, (void **)&m_tex);
                         }
                         if (m_hr == 0 && m_tex != 0) {
+                            v9x_step(m_prefix, "gethandle", 0ul);
                             m_hr = m_tex->vtbl->GetHandle(m_tex, d3d_device, &m_handle);
+                            v9x_step(m_prefix, "gethandle-hr", (DWORD)m_hr);
                         }
                         m_key[0] = 0;
                         v9x_probe_cat(m_key, m_prefix);
@@ -5616,10 +5666,13 @@ void __stdcall V9xDdrawProbeEntry(void)
                             if (ti == 6ul && fi == 0ul) {
                                 continue;   /* one alpha bit: no half */
                             }
+                            v9x_step(m_prefix, "cell-reset-state", ti);
                             v9x_probe_reset_state(d3d_device, triangle);
                             if (m_counts_ok) {
+                                v9x_step(m_prefix, "cell-counts", ti);
                                 v9x_probe_counts(&m_before);
                             }
+                            v9x_step(m_prefix, "cell-refill", ti);
                             if (ti == 4ul) {
                                 /* Right half alpha 0, then blended. */
                                 v9x_fill_surface_halves(m_top, left0, right0_alpha);
@@ -5629,6 +5682,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                             } else if (ti == 0ul || ti == 5ul) {
                                 v9x_fill_surface_halves(m_top, left0, right0);
                             }
+                            v9x_step(m_prefix, "cell-states", ti);
                             c_hr = d3d_device->vtbl->SetRenderState(
                                 d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, m_handle);
                             if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
@@ -5646,6 +5700,7 @@ void __stdcall V9xDdrawProbeEntry(void)
                                 if (c_hr == 0) c_hr = d3d_device->vtbl->SetRenderState(
                                     d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
                             }
+                            v9x_step(m_prefix, "cell-clear-left", ti);
                             v9x_fill_surface(d3d_target, 0ul);
                             triangle[0].tu = 0.10f; triangle[0].tv = 0.10f;
                             triangle[1].tu = 0.40f; triangle[1].tv = 0.10f;
@@ -5656,13 +5711,17 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                             begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
                             if (begin_hr == 0) {
+                                v9x_step(m_prefix, "cell-draw-left", ti);
                                 l_hr = d3d_device->vtbl->DrawPrimitive(
                                     d3d_device, V9X_D3DPT_TRIANGLELIST,
                                     V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                                v9x_step(m_prefix, "cell-endscene-left", (DWORD)l_hr);
                                 end_hr = d3d_device->vtbl->EndScene(d3d_device);
                                 if (end_hr != 0) l_hr = end_hr;
                             }
+                            v9x_step(m_prefix, "cell-read-left", ti);
                             l_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            v9x_step(m_prefix, "cell-clear-right", l_raw);
                             v9x_fill_surface(d3d_target, 0ul);
                             triangle[0].tu = 0.60f; triangle[0].tv = 0.10f;
                             triangle[1].tu = 0.90f; triangle[1].tv = 0.10f;
@@ -5673,13 +5732,16 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                             begin_hr = c_hr == 0 ? d3d_device->vtbl->BeginScene(d3d_device) : c_hr;
                             if (begin_hr == 0) {
+                                v9x_step(m_prefix, "cell-draw-right", ti);
                                 r_hr = d3d_device->vtbl->DrawPrimitive(
                                     d3d_device, V9X_D3DPT_TRIANGLELIST,
                                     V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
                                 end_hr = d3d_device->vtbl->EndScene(d3d_device);
                                 if (end_hr != 0) r_hr = end_hr;
                             }
+                            v9x_step(m_prefix, "cell-read-right", ti);
                             r_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                            v9x_step(m_prefix, "cell-done", r_raw);
                             l_hue = v9x_probe_hue(&target_layout, l_raw);
                             r_hue = v9x_probe_hue(&target_layout, r_raw);
                             /* LINEARMIPLINEAR may blend the two levels'

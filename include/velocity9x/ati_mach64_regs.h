@@ -100,6 +100,7 @@
 #define V9X_M64_VT_FIFO_ENTRIES       16ul
 #define V9X_M64_SHADOW_ENTRIES        32ul
 #define V9X_M64_FILL_DWORDS           12ul
+#define V9X_M64_2D_MODE_DWORDS        3ul
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
 #define V9X_M64_COPY_DWORDS           14ul
 #define V9X_M64_FLAT_TRIANGLE_DWORDS  19ul

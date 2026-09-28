@@ -1,0 +1,17 @@
+[V9xDdFillStage]Build=ddf-20260929-b
+Stage=1-directdrawcreate
+DirectDrawCreateHr=0x00000000
+Stage=2-cooperative-normal
+CooperativeHr=0x00000000
+Stage=z1-create-primary
+PrimaryHr=0x00000000
+PrimaryLockHr=0x00000000
+PrimaryAddress=0xCF294000
+Stage=z2-create-zbuffer
+ZCreateHr=0x00000000
+ZLockHr=0x00000000
+ZAddress=0xCF414000
+ZPitch=0x00000080
+ZOffset=0x00180000
+ZEndOffset=0x00182000
+Result=ZADDR

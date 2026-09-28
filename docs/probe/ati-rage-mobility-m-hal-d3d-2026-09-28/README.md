@@ -44,3 +44,41 @@ restarted (boot 16), and the report stops at
 `TexM_256_1555_gapped_mipnear` with `Result=INCOMPLETE`
 (`V9XDD-INCOMPLETE.INI`). What restarted it, and why the matrix stalled,
 are not established.
+
+## Hard lock at the first depth fill, and the 2D-mode fix
+
+Boots 17-19, 2026-09-29. `V9XDDP.EXE` gained a write-through step log,
+`C:\V9XDIAG\V9XDDT.TXT`: every report key, plus 18 texture-matrix step
+points, is on disk before the next step runs. `V9XDD.INI` is not
+evidence of where a lock happened; Win98 caches profile writes, and it
+trails by hundreds of keys.
+
+- The next two runs hard-locked (physical power cycle). The step log
+  shows the texture matrix complete, and ends at `ZDepthFillHr 00000000`:
+  the lock came during or right after the first DirectDraw depth fill
+  following Z-enabled Direct3D draws (`V9XDDT-LOCK-AT-ZFILL.TXT`).
+- Hypotheses the evidence killed:
+  - DirectDraw-only surface traffic. `V9XTXM.EXE`, the texture matrix's
+    create/lock/fill/release sequence without Direct3D, ran four passes
+    to `result-pass` (`V9XTXM.TXT`).
+  - Z buffer at the top of VRAM. `V9XDDF.EXE /zaddr` puts it at offset
+    `0x180000`-`0x182000` of 8 MiB (`V9XDDF-ZADDR.TXT`).
+- The remaining difference from every passing Phase 2 fill: the HAL's
+  2D fill ran with the previous 3D draw's `Z_CNTL`, `ALPHA_TST_CNTL` and
+  `SCALE_3D_CNTL` still live. The diagnostic scenes restored all state;
+  the HAL did not. X.Org zeroes these before 2D (`ATIMach64Sync`,
+  `Mach64DoneComposite`). The HAL now emits that 3-register batch ahead of
+  every engine fill.
+- With the fix (HAL build `ati-d3d-mach64-20260929-d`), boot 19 ran the
+  probe to `RestoreHr` and `Result=COMPLETE` without a lock
+  (`V9XDDT-2D-MODE.TXT`, `V9XDD-2D-MODE.INI`). `ZDepthFillOk=1` (raw
+  `ABCD`, corner `ABCD`), `D3DZCompareOk=1`, `D3DZWriteMaskOk=1`, the four
+  overlap blits pass, and the earlier triangle passes hold.
+- Still failing, by the policy boundary: every texture larger than 8x8,
+  specular, `Tgt_*` (320/640 targets carry textures). The private-Z and
+  mixed-ordering sections did not run (placeholder `0x88760231`); why
+  the probe skips them on this HAL is not established. The final
+  `V9XDD.INI` still shows the Z keys at their `0` placeholders; the step
+  log's later values are the measurement.
+- One fixed run. Whether a single run is enough to call the hang closed
+  is not established; the fix has one boot of evidence.

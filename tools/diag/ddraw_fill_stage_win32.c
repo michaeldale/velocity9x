@@ -30,6 +30,9 @@
 #define DDSD_CAPS 0x00000001ul
 #define DDSD_HEIGHT 0x00000002ul
 #define DDSD_WIDTH 0x00000004ul
+#define DDSD_ZBUFFERBITDEPTH 0x00000040ul
+#define DDSCAPS_PRIMARYSURFACE 0x00000200ul
+#define DDSCAPS_ZBUFFER 0x00020000ul
 #define DDSCAPS_OFFSCREENPLAIN 0x00000040ul
 #define DDSCAPS_VIDEOMEMORY 0x00004000ul
 #define DDSCL_NORMAL 0x00000008ul
@@ -204,6 +207,76 @@ void WINAPI V9xDdFillStageEntry(void)
     hr = ((ddf_coop_fn)ddraw->vtbl[DD_SET_COOPERATIVE_LEVEL])(
         ddraw, GetDesktopWindow(), DDSCL_NORMAL);
     ddf_hx("CooperativeHr", (DWORD)hr);
+
+    /*
+     * /zaddr: where DirectDraw places a 64x64 Z buffer, relative to the
+     * primary. Lock returns a pointer and reads nothing, so this touches no
+     * video memory: it answers whether the Z surface sits at the top of the
+     * 4 MiB heap before anything reads it (the Gateway hard-locked reading a
+     * Z buffer back, 2026-09-29).
+     */
+    if (ddf_has_switch("/zaddr")) {
+        DDF_OBJECT *primary = 0;
+        DDF_OBJECT *zbuffer = 0;
+        DWORD primary_address = 0ul;
+
+        ddf_line("Stage", "z1-create-primary");
+        ddf_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = DDSD_CAPS;
+        desc.ddsCaps = DDSCAPS_PRIMARYSURFACE;
+        hr = ((ddf_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+            ddraw, &desc, &primary, 0);
+        ddf_hx("PrimaryHr", (DWORD)hr);
+        if (hr == 0 && primary != 0) {
+            ddf_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            hr = ((ddf_lock_fn)primary->vtbl[DDS_LOCK])(primary, 0, &desc,
+                                                        DDLOCK_WAIT, 0);
+            ddf_hx("PrimaryLockHr", (DWORD)hr);
+            if (hr == 0) {
+                primary_address = (DWORD)desc.lpSurface;
+                ((ddf_unlock_fn)primary->vtbl[DDS_UNLOCK])(primary,
+                                                           desc.lpSurface);
+            }
+            ddf_hx("PrimaryAddress", primary_address);
+        }
+
+        ddf_line("Stage", "z2-create-zbuffer");
+        ddf_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT |
+                       DDSD_ZBUFFERBITDEPTH;
+        desc.dwWidth = 64ul;
+        desc.dwHeight = 64ul;
+        desc.dwMipMapCount = 16ul;          /* dwZBufferBitDepth */
+        desc.ddsCaps = DDSCAPS_ZBUFFER | DDSCAPS_VIDEOMEMORY;
+        hr = ((ddf_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+            ddraw, &desc, &zbuffer, 0);
+        ddf_hx("ZCreateHr", (DWORD)hr);
+        if (hr == 0 && zbuffer != 0) {
+            ddf_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            hr = ((ddf_lock_fn)zbuffer->vtbl[DDS_LOCK])(zbuffer, 0, &desc,
+                                                        DDLOCK_WAIT, 0);
+            ddf_hx("ZLockHr", (DWORD)hr);
+            if (hr == 0) {
+                ddf_hx("ZAddress", (DWORD)desc.lpSurface);
+                ddf_hx("ZPitch", (DWORD)desc.lPitch);
+                ddf_hx("ZOffset", (DWORD)desc.lpSurface - primary_address);
+                ddf_hx("ZEndOffset", (DWORD)desc.lpSurface - primary_address +
+                                     (DWORD)desc.lPitch * 64ul);
+                ((ddf_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer,
+                                                           desc.lpSurface);
+            }
+            ((ddf_release_fn)zbuffer->vtbl[DD_RELEASE])(zbuffer);
+        }
+        if (primary != 0) {
+            ((ddf_release_fn)primary->vtbl[DD_RELEASE])(primary);
+        }
+        ((ddf_release_fn)ddraw->vtbl[DD_RELEASE])(ddraw);
+        ddf_finish("ZADDR", 0u);
+    }
 
     ddf_line("Stage", "3-create-offscreen");
     ddf_zero(&desc, sizeof(desc));

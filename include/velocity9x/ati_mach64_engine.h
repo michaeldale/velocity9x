@@ -149,6 +149,11 @@ v9x_status v9x_m64_cpu_read_barrier(struct v9x_m64_engine *engine,
                                     v9x_u32 spin_limit);
 v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
                                 v9x_u32 spin_limit);
+/* The 3D pixel pipe out of a 2D operation's way: alpha test, Z and
+ * SCALE_3D_CNTL to zero, as X.Org's return from 3D does. Emitted ahead of
+ * every engine fill; a 3D draw writes its full state itself. */
+v9x_status v9x_m64_build_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
+                                 v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
