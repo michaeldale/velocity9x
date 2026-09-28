@@ -118,6 +118,17 @@ V9xMtrrDefType  dd 0
 V9xMtrrBase     dd V9X_MTRR_RANGE_MAX dup (0)
 V9xMtrrMask     dd V9X_MTRR_RANGE_MAX dup (0)
 
+IFDEF V9X_ATI_MOBILITY_MMIO
+; ATI Rage Mobility-M: the 4 KiB MMIO register BAR, mapped once for the
+; Direct3D engine. CONFIG_CHIP_ID is block 0 +0E0h, and the low word names
+; the part (docs\decisions\2026-08-16-ati-mach64-hardware-audit.md).
+V9X_ATI_MMIO_BYTES      equ 00001000h
+V9X_ATI_CONFIG_CHIP_ID  equ 000004e0h
+V9X_ATI_MOBILITY_ID     equ 00004c4dh
+V9xAtiMmioBase   dd 0
+V9xAtiMmioLinear dd 0
+ENDIF
+
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2189,6 +2200,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingOpen
     cmp     ax, V9XMINI_FN_I9XX_RING_SUBMIT
     je      V9xMini_Api_I9xxRingSubmit
+    cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
+    je      V9xMini_Api_AtiMmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2413,6 +2426,49 @@ V9xMini_Api_I9xxEngineMap_Missing:
     ; one window and half believing it has an engine.
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR2 physical. See V9XMINI_FN_ATI_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_AtiMmioMap:
+IFDEF V9X_ATI_MOBILITY_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_AtiMmioMap_Refused
+    cmp     eax, 0fffff000h
+    ja      short V9xMini_Api_AtiMmioMap_Refused
+    test    eax, V9X_ATI_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_AtiMmioMap_Refused
+
+    cmp     V9xAtiMmioLinear, 0
+    je      short V9xMini_Api_AtiMmioMap_Map
+    cmp     eax, V9xAtiMmioBase
+    jne     short V9xMini_Api_AtiMmioMap_Refused
+    jmp     short V9xMini_Api_AtiMmioMap_Check
+
+V9xMini_Api_AtiMmioMap_Map:
+    mov     V9xAtiMmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_ATI_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_AtiMmioMap_Failed
+    mov     V9xAtiMmioLinear, eax
+
+    ; A decoding-disabled or wrong function reads zeros or ones here; either
+    ; fails the identity check and the window is withheld.
+V9xMini_Api_AtiMmioMap_Check:
+    mov     edx, V9xAtiMmioLinear
+    mov     eax, [edx+V9X_ATI_CONFIG_CHIP_ID]
+    and     eax, 0000ffffh
+    cmp     eax, V9X_ATI_MOBILITY_ID
+    jne     short V9xMini_Api_AtiMmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_AtiMmioMap_Failed:
+    mov     V9xAtiMmioBase, 0
+V9xMini_Api_AtiMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

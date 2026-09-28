@@ -92,10 +92,13 @@
             Adapter = 'ATI Rage Mobility-M AGP'
             ClockDetector = 'ati-mach64-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            Acceleration = 'none'
-            Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            # The Mach64 engine behind BAR2: Direct3D (d3d_mach64.c), and the
+            # Phase 2 fill for DirectDraw colour and depth fills, which the
+            # HAL routes by engine type. Screen copy still declines.
+            Acceleration = 'directdraw-fill'
+            Direct3D = 'hardware-mach64'
+            EngineType = 'ATI_MACH64'
+            EngineCaps = @('D3D')
             VideoMemoryBytes = 4194304
 
             # Every row confirmed present with a linear framebuffer in this
@@ -182,7 +185,8 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        # runtime.asm's BAR2 read and mini-VDD map for the Mobility engine.
+        RuntimeDefines = @('V9X_ATI_FAMILY')
         SkeletonOutput = 'build\win16-ddi-ati'
         PackageOutput = 'build\win98se-ati'
         VmStageDirectory = 'build\vm-probe\ATI'

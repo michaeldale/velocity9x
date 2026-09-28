@@ -88,7 +88,14 @@ static int v9x_m64_wait(int wait)
 {
     v9x_status status;
     if (!v9x_m64_validate()) return 0;
-    status = v9x_m64_wait_idle(&v9x_m64, wait ? V9X_M64_WAIT_SPINS : 0ul);
+    /*
+     * This is the drain every CPU access to engine-written VRAM passes
+     * (Lock, the CPU fallback, the render drain), so it is the read-cache
+     * boundary too: without INVALIDATE_RB_CACHE the CPU can read pixels
+     * the engine has since overwritten (Phase 1 CPU coherence).
+     */
+    status = v9x_m64_cpu_read_barrier(&v9x_m64,
+                                      wait ? V9X_M64_WAIT_SPINS : 0ul);
     if (status == V9X_STATUS_OK) return 1;
     if (!wait || status != V9X_STATUS_TIMEOUT) return 0;
     return v9x_m64_reset_replay(&v9x_m64, V9X_M64_WAIT_SPINS) ==

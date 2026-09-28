@@ -2293,6 +2293,98 @@ V9xPciReadBar0Done:
     retf    6
 V9XPCIREADBAR ENDP
 
+IFDEF V9X_ATI_FAMILY
+; WORD FAR PASCAL V9xPciReadAtiMmioBar(DWORD FAR *base)
+; The Rage Mobility-M's BAR2, its 4 KiB MMIO register window. The generic
+; helper above refuses anything below 16 MiB alignment, which is right for a
+; framebuffer and wrong here. A read-only config access; a refusal changes
+; no stage code, because a missing engine must not fail Enable.
+PUBLIC V9XPCIREADATIMMIOBAR
+V9XPCIREADATIMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadAtiMmioBarFailed
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadAtiMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadAtiMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadAtiMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadAtiMmioBarFailed
+    cmp     eax, 0fffff000h
+    ja      short V9xPciReadAtiMmioBarFailed
+    test    eax, 00000fffh
+    jnz     short V9xPciReadAtiMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadAtiMmioBarDone
+V9xPciReadAtiMmioBarFailed:
+    xor     ax, ax
+V9xPciReadAtiMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADATIMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniAtiMmioMap(DWORD bar2, DWORD FAR *linear)
+; V9XMINI_FN_ATI_MMIO_MAP: the mini-VDD maps BAR2, checks the chip identity
+; through it, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMINIATIMMIOMAP
+V9XMINIATIMMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniAtiMmioMapFailed
+    ; PASCAL pushes left to right: bar2 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_ATI_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniAtiMmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniAtiMmioMapDone
+V9xMiniAtiMmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniAtiMmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINIATIMMIOMAP ENDP
+ENDIF
+
 IFDEF V9X_INTEL_GMA_FAMILY
 ; WORD FAR PASCAL V9xPciReadIntelMmioBar(DWORD FAR *base)
 ; Fresh BAR0 config read for each Phase-1 capture. Unlike the framebuffer BAR

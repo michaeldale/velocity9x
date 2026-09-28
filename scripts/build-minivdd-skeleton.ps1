@@ -114,6 +114,8 @@ $vxdPath = Join-Path $outputDir "v9xmini.vxd"
 $mapPath = Join-Path $outputDir "v9xmini.map"
 $s3Dpms = ($Family -eq 's3') -and (-not $NoDpms)
 $intelMmio = ($Family -eq 'intel-gma')
+# The Rage Mobility-M's register BAR map for its Direct3D engine.
+$atiMmio = ($Family -eq 'ati')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -401,6 +403,9 @@ if ($intelMmio) {
     # and the unarmed rehearsal boot has to exercise the same binary the
     # armed boot will run, which a manual switch would have prevented.
     $assemblerArguments = @("-DV9X_I9XX_PHASE5_SUBMIT") + $assemblerArguments
+}
+if ($atiMmio) {
+    $assemblerArguments = @("-DV9X_ATI_MOBILITY_MMIO") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments
