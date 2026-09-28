@@ -604,6 +604,20 @@ static void test_texture_builders(void)
     state.bilinear_min = 0ul;
     state.bilinear_mag = 0ul;
 
+    state.texture_format = V9X_M64_TEXTURE_FORMAT_ARGB1555;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[10] == 0x40010081ul);
+    CHECK(values[13] == 0x30040444ul);
+    state.texture_format = V9X_M64_TEXTURE_FORMAT_ARGB4444;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[10] == 0x40010081ul);
+    CHECK(values[13] == 0xf0040444ul);
+    state.texture_format = V9X_M64_TEXTURE_FORMAT_RGB565;
+
     state.texture_width = 16ul;
     state.texture_pitch_bytes = 32ul;
     CHECK(v9x_m64_build_texture_state(
@@ -641,6 +655,11 @@ static void test_texture_builders(void)
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);
     state.wrap_s = 0ul;
+    state.texture_format = 3ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
 
     memset(&triangle, 0, sizeof(triangle));
     triangle.vertex[0].x = 8ul; triangle.vertex[0].y = 6ul;

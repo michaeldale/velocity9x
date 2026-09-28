@@ -129,6 +129,8 @@ struct v9x_m64_texture_state {
     v9x_u32 wrap_t;
     v9x_u32 bilinear_min;
     v9x_u32 bilinear_mag;
+    /* V9X_M64_TEXTURE_FORMAT_*; zero remains RGB565. */
+    v9x_u32 texture_format;
 };
 
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
