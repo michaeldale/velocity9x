@@ -1,8 +1,8 @@
 # The survey misreported the PCIR class code and every CPUID model
 
 Date: 2026-09-28
-Status: **both fixed in source; verified by replaying the recorded bytes from
-five archived reports, not by a fresh run on any machine**
+Status: **both fixed, and confirmed on both machines by a re-run on build
+19d7a18 - see the 2026-09-28 addendum at the end**
 
 Two reports arrived from machines that have not been surveyed before - an Asus
 P7H55-M with an NVIDIA NV43 (Quadro FX 550), and a board whose DOS hostname is
@@ -134,3 +134,42 @@ Two commits later, the third is measured as far as these reports allow:
   the tool rather than derived from the report.
 
   Still open until a run on that machine says which sum is clean.
+
+## 2026-09-28, later: confirmed on both machines, and the checksum question is answered
+
+Both machines were re-run on build `19d7a18-dirty`
+(`docs\probe\references\*-vgasurv-2026-09-28-b19d7a18.ini`). Every value the
+host-side replay predicted came back:
+
+| | P7H55-M / NV43 | chinaboard / Ironlake |
+|---|---|---|
+| `PcirClassCode` | `030000` (was `000000`) | `030000` (was `000000`) |
+| `CpuIdModel` | 37 (was 5) | 37 (was 5) |
+| `DescribedCount` / `UndescribedCount` | 27 / 0 | 12 / 15 |
+| `Block1Status` | `ok` | `duplicate-of-block0` |
+| `ChecksumResidue` | `00`, status ok | `03`, status mismatch |
+
+**The Intel VBIOS does not sum clean over either length.** The chinaboard run
+reports `PcirImageChecksumStatus=mismatch` with `PcirImageChecksumResidue=03`
+against `ChecksumResidue=03` over the header length - the same residue from
+both. So the mismatch is not the tool measuring the wrong length: the image at
+C000 is genuinely not a zero-summing ROM, and the residue being 3 rather than
+an arbitrary value fits a shadow copy patched after init and never re-summed.
+That the two residues agree also says the 13312 bytes between 52224 and 65536
+sum to zero mod 256, which is what a constant fill over a whole number of
+256-byte pages does.
+
+The same run makes the byte at ROM offset 0x14 read `64` where the earlier run
+read `8E`, which is independent evidence that this image is written to after
+init. The earlier open item is closed on the strength of both.
+
+The `PcirImageChecksum*` keys are absent from the NV43 report, where the two
+lengths agree. That is the intended behaviour.
+
+Two environmental differences, neither a regression: the chinaboard run had
+HIMEM loaded this time (`XmsPresent=yes`, and the INT 15h extended-memory
+answers correspondingly zero), and the P7H55-M now has its Clarkdale IGP
+enabled as a second, resource-less display device at 00:02.0 class `038000`,
+so the report carries two `[PciDevice.N]` sections and
+`DisplayDeviceCount=2`. Mode rows and EDID blocks are byte-identical across
+the two builds on both machines.

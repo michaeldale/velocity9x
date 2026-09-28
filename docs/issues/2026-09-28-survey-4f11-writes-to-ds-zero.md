@@ -143,3 +143,16 @@ which this defect explains.
   768x480 and leave the rest of the Intel OEM block undescribed.
 - None of the four has an EDID extension block, so `Block1Status` does not
   appear on any of them.
+
+## 2026-09-28, later: not exercised by the two machines that re-ran
+
+The P7H55-M and the chinaboard Ironlake were re-run on build `19d7a18` and
+both report `FlatPanelStatus=unsupported` - their BIOSes refuse `4F11h`, the
+same as the P14s did. So both reports are complete, both were complete before
+the fix, and **neither run touches the defect this issue is about**. The other
+four changes in that build are confirmed by those runs
+(`docs\issues\2026-09-28-survey-pcir-class-and-cpuid-model.md`); this one is
+not.
+
+The test is still a B490, an E460 or an X61 - the three machines whose BIOSes
+answered `4F11h` with `0x004F`. Nothing else seen so far does.
