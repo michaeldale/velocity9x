@@ -74,3 +74,8 @@ $wrapExe=Join-Path $outputDir 'ATI4WR.EXE';$wrapObj=Join-Path $outputDir 'ati4wr
 $wrapBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $wrapExe -Object $wrapObj -MapFile $wrapMap -LinkFile $wrapLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_WRAP=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$wrapObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($wrapBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4WR.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 nearest wrap S/T publisher: $wrapExe"
+
+$bilinearExe=Join-Path $outputDir 'ATI4BL.EXE';$bilinearObj=Join-Path $outputDir 'ati4bl.obj';$bilinearMap=Join-Path $outputDir 'ati4bl.map';$bilinearLnk=Join-Path $outputDir 'ati4bl.lnk'
+$bilinearBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $triangleSource -Executable $bilinearExe -Object $bilinearObj -MapFile $bilinearMap -LinkFile $bilinearLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s','-dV9X_BILINEAR=1',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$bilinearObj",$triangleSource) -LinkOptions @("option start='_V9xAtiMach64Phase3Entry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($bilinearBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4BL.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 bilinear half-texel publisher: $bilinearExe"
