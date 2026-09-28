@@ -79,7 +79,8 @@ engine.
 ## Not established
 
 - Which of causes 1 and 2 hung the first run, or whether both contributed.
-- Whether cause 3's fix holds beyond one run.
+- Whether cause 3's fix holds across a cold boot. It holds for three
+  runs on boot 19: the default run, `/mixed` and `/zprivate`.
 - Whether anything else a bare VBE boot leaves unset is also needed. The
   stock driver's initialisation is otherwise unknown.
 - The next physical run should first confirm `BUS_CNTL` bit 27 is set with

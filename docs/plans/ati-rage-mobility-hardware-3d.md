@@ -947,8 +947,11 @@ first (`v9x_m64_build_2d_mode`). Details and evidence are in
 [`../issues/2026-09-28-mach64-hal-first-draw-hard-hang.md`](../issues/2026-09-28-mach64-hal-first-draw-hard-hang.md).
 
 Of the unmeasured points above, sub-pixel positions pass the probe's
-sub-pixel check. The others remain open. The probe's private-Z and
-mixed-ordering sections have not run on this HAL.
+sub-pixel check. The mixed-engine section (`/mixed`) settles the CPU
+read after 3D: the HAL's pixel and depth, the CPU's store over them, and
+a second HAL draw against that store all agree. The private-Z device
+(`/zprivate`) passes compare and write mask on a hardware device. The
+other points above remain open.
 
 ### D3D gates
 

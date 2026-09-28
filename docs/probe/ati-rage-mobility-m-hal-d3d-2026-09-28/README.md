@@ -75,10 +75,20 @@ trails by hundreds of keys.
   `ABCD`, corner `ABCD`), `D3DZCompareOk=1`, `D3DZWriteMaskOk=1`, the four
   overlap blits pass, and the earlier triangle passes hold.
 - Still failing, by the policy boundary: every texture larger than 8x8,
-  specular, `Tgt_*` (320/640 targets carry textures). The private-Z and
-  mixed-ordering sections did not run (placeholder `0x88760231`); why
-  the probe skips them on this HAL is not established. The final
-  `V9XDD.INI` still shows the Z keys at their `0` placeholders; the step
-  log's later values are the measurement.
-- One fixed run. Whether a single run is enough to call the hang closed
-  is not established; the fix has one boot of evidence.
+  and specular. `Tgt_*` fails too; that it is the same boundary is not
+  checked. The final `V9XDD.INI` still shows the Z keys at their `0`
+  placeholders, and the step log's later values are the measurement.
+- The private-Z and mixed-ordering sections are opt-in (`/zprivate`,
+  `/mixed`), which is why the default run left their placeholders. Two
+  more runs followed on the same boot 19, both complete, and neither
+  locked:
+  - `/mixed` (`V9XDDT-MIXED.TXT`): `MixedOk=1`, with ordering and
+    colour and depth encoding all passing. The HAL's draw was `F800` at
+    depth `8000`, the CPU store was `07E0`/`4000`, and the HAL reject
+    and accept draws left `07E0`/`4000` and `001F`/`6000`. HAL, CPU
+    and HAL agree on colour, depth and order.
+  - `/zprivate` (`V9XDDT-ZPRIVATE.TXT`): `D3DZPCompareOk=1` and
+    `D3DZPWriteMaskOk=1` on a hardware device (`D3DZPIsHardware=1`,
+    16-bit render and Z depth).
+- Three clean runs on one boot, after two locks in two earlier runs. The
+  runs have not been repeated across a cold boot.
