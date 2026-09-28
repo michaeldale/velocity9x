@@ -42,18 +42,6 @@
 #define V9X_D3D_MACH64_Z_SCALE     65535.0f
 #define V9X_D3D_MACH64_Z_MAX       65535l
 
-/*
- * Local until the shared diagnostics block grows a Mach64 section, which is
- * an ABI version step of its own. They are read with a debugger today, not
- * by the probe.
- */
-static DWORD v9x_d3d_mach64_draws;
-static DWORD v9x_d3d_mach64_triangles;
-static DWORD v9x_d3d_mach64_degenerate;
-static DWORD v9x_d3d_mach64_refused;
-static DWORD v9x_d3d_mach64_refuse_last;
-static DWORD v9x_d3d_mach64_policy_last;
-
 static v9x_u32 v9x_d3d_mach64_state_offsets[V9X_M64_DRAW_STATE_DWORDS];
 static v9x_u32 v9x_d3d_mach64_state_values[V9X_M64_DRAW_STATE_DWORDS];
 static v9x_u32 v9x_d3d_mach64_setup_offsets[V9X_D3D_MACH64_MAX_TRIANGLES]
@@ -84,10 +72,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
     0ul             /* depth_pitch_own */
 };
 
+/* The counters live in the shared diagnostics block (m64_*), where
+ * V9XTRACE.EXE and the fault trace read them. */
 static int v9x_d3d_mach64_refuse(DWORD reason)
 {
-    ++v9x_d3d_mach64_refused;
-    v9x_d3d_mach64_refuse_last = reason;
+    ++v9x_hal->d3d_diagnostics.m64_refused;
+    v9x_hal->d3d_diagnostics.m64_refuse_last = reason;
     return 0;
 }
 
@@ -401,7 +391,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         &request);
     reason = v9x_m64_check_draw(&request, &decision);
     if (reason != V9X_M64_REFUSE_NONE) {
-        v9x_d3d_mach64_policy_last = reason;
+        v9x_hal->d3d_diagnostics.m64_policy_last = reason;
         return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_POLICY);
     }
 
@@ -434,7 +424,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                      V9X_M64_SETUP_DWORDS,
                                      &v9x_d3d_mach64_setup_counts[packets]);
         if (status == V9X_STATUS_UNSUPPORTED) {
-            ++v9x_d3d_mach64_degenerate;       /* zero area: no pixels */
+            ++v9x_hal->d3d_diagnostics.m64_degenerate; /* zero area */
             continue;
         }
         if (status != V9X_STATUS_OK) {
@@ -448,7 +438,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_NOT_READY);
     }
     if (packets == 0ul) {
-        ++v9x_d3d_mach64_draws;
+        ++v9x_hal->d3d_diagnostics.m64_draws;
         return 1;
     }
 
@@ -471,8 +461,20 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_EMIT);
         }
     }
-    ++v9x_d3d_mach64_draws;
-    v9x_d3d_mach64_triangles += packets;
+    ++v9x_hal->d3d_diagnostics.m64_draws;
+    v9x_hal->d3d_diagnostics.m64_triangles += packets;
+    if (request.textured != 0ul) {
+        ++v9x_hal->d3d_diagnostics.m64_texture_draws;
+    }
+    if (request.depth_enable != 0ul) {
+        ++v9x_hal->d3d_diagnostics.m64_depth_draws;
+    }
+    if (request.blend_enable != 0ul) {
+        ++v9x_hal->d3d_diagnostics.m64_blend_draws;
+    }
+    if (request.fog_enable != 0ul) {
+        ++v9x_hal->d3d_diagnostics.m64_fog_draws;
+    }
     return 1;
 }
 

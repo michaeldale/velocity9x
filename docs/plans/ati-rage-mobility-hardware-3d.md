@@ -935,8 +935,22 @@ The following are unmeasured, and the Phase 5 D3D gates must settle them:
   rule;
 - the CPU-read cache invalidate on `Lock` after 3D.
 
-The engine's counters are static until the diagnostics ABI gains a Mach64
-section.
+Since 2026-09-29 (ABI `2026092901`), the engine's counters are in the
+shared diagnostics block as `m64_*`. `V9XTRACE.EXE` reports them as
+`M64*`, and the fault trace carries the draw and refusal keys. Boot 26,
+after one default `V9XDDP` run (`V9XSNA1-M64-COUNTERS.INI` in the
+Mobility HAL evidence folder):
+
+- 40 batches reached the FIFO, carrying 41 triangles;
+- 364 draws were refused, the last by policy, for texture shape;
+- depth 8, blend 13, fog 1;
+- textured **0**;
+- zero FIFO or idle timeouts and zero resets.
+
+So the probe has shown hardware depth, blend and fog, but never a
+hardware textured draw. Every texture it uses is larger than the 8x8
+the policy accepts. The D3D gates need an 8x8 texture scene before
+texturing counts as proven through the HAL.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

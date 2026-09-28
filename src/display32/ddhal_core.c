@@ -250,6 +250,16 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
                       v9x_hal->d3d_diagnostics.i9xx_depth_draws);
     V9X_WRITE_HEX_KEY("I9xxDepthSkipped",
                       v9x_hal->d3d_diagnostics.i9xx_depth_skipped);
+    /* The Mach64 engine's draw and refusal accounting, for the same reason:
+     * the Gateway's hard locks leave only a power-cycled machine. */
+    V9X_WRITE_HEX_KEY("M64Draws", v9x_hal->d3d_diagnostics.m64_draws);
+    V9X_WRITE_HEX_KEY("M64Triangles",
+                      v9x_hal->d3d_diagnostics.m64_triangles);
+    V9X_WRITE_HEX_KEY("M64Refused", v9x_hal->d3d_diagnostics.m64_refused);
+    V9X_WRITE_HEX_KEY("M64RefuseLast",
+                      v9x_hal->d3d_diagnostics.m64_refuse_last);
+    V9X_WRITE_HEX_KEY("M64PolicyLast",
+                      v9x_hal->d3d_diagnostics.m64_policy_last);
     V9X_WRITE_HEX_KEY("TextureRefusedFormat",
                       v9x_hal->d3d_diagnostics.texture_refused_format);
     V9X_WRITE_HEX_KEY("TextureRefusedShape",

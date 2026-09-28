@@ -1517,6 +1517,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092901: V9X_D3D_DIAGNOSTICS gains the Mach64 draw and refusal
+ * counters. An append.
+ */
 /* 2026092603: V9X_D3D_DIAGNOSTICS gains the clipped-blit counters, and
  * V9X_DDHAL_BLTDATA gains the DDK's clipped-blit tail, which the runtime
  * owns and the HAL only reads. An append.
@@ -1597,7 +1600,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092603ul
+#define V9X_DD_SHARED_ABI   2026092901ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3027,6 +3030,30 @@ typedef struct v9x_d3d_diagnostics {
     DWORD blt_clipped_rects_max;
     DWORD blt_clipped_rects_last;
     DWORD blt_clipped_last_dest;
+    /*
+     * The Mach64 Direct3D engine's accounting (2026-09-29), until now
+     * statics in d3d_mach64.c that no tool could read. The plan's gate is
+     * that hardware counters rise before any application result counts,
+     * and the Gateway probe runs passed on pixels alone.
+     *
+     * m64_draws counts batches that reached the FIFO, or had only
+     * zero-area triangles; m64_triangles the setup packets emitted. The
+     * feature counts are over emitted batches, so a feature the caps
+     * advertise can be shown to have run on the engine. m64_refuse_last
+     * is a V9X_D3D_MACH64_REFUSE_* reason; m64_policy_last is the
+     * V9X_M64_REFUSE_* reason of the last policy refusal, which names
+     * the check.
+     */
+    DWORD m64_draws;
+    DWORD m64_triangles;
+    DWORD m64_degenerate;
+    DWORD m64_refused;
+    DWORD m64_refuse_last;
+    DWORD m64_policy_last;
+    DWORD m64_texture_draws;
+    DWORD m64_depth_draws;
+    DWORD m64_blend_draws;
+    DWORD m64_fog_draws;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
