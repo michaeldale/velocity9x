@@ -320,6 +320,18 @@ mismatches and no timeout/reset (`ATI4WR.TXT` CRC32 `BF999F33`, BMP CRC32
 [`../probe/ati-rage-mobility-m-phase4-wrap-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-wrap-2026-09-28/).
 Item 6 remains open for the isolated bilinear half-texel scene.
 
+The bilinear half-texel gate also passes, closing Phase 4 item 6. Build
+`ati-phase4-bilinear-20260928-a` retained clamp and set both historical
+linear-filter controls (`SCALE_3D_CNTL=0x0A010081`). Constant S=T=0.5 at all
+three W=1 vertices sampled the intersection of the texture's four quadrants;
+three separated probes all returned mixed RGB565 `0x838E` rather than any
+source texel or the sentinel. Two same-boot runs were byte-identical, with the
+same 256-pixel bounds, zero mismatches and no timeout/reset (`ATI4BL.TXT`
+CRC32 `F3A0455A`, BMP CRC32 `B26C4257`). Evidence is retained in
+[`../probe/ati-rage-mobility-m-phase4-bilinear-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-bilinear-2026-09-28/).
+ARGB1555 and ARGB4444 texture alpha are next; public ATI acceleration remains
+disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
