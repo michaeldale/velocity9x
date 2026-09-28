@@ -1,0 +1,10 @@
+[V9xDdFillStage]Build=ddf-20260928-a
+Stage=1-directdrawcreate
+DirectDrawCreateHr=0x00000000
+Stage=2-cooperative-normal
+CooperativeHr=0x00000000
+Stage=3-create-offscreen
+CreateSurfaceHr=0x00000000
+Stage=4-getbltstatus-canblt
+CanBltHr=0x00000000
+Result=STATUS-ONLY
