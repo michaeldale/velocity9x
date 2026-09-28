@@ -211,6 +211,20 @@ That refusal is retained as environmental evidence. Public ATI acceleration
 remains disabled while the remaining Phase 4 features and publication gates
 are open.
 
+Phase 4's Z16 test-without-writes gate now also passes. The shared host core
+encodes all eight Mach64 comparisons and its table-driven truth tests cover
+incoming depth below, equal to, and above stored Z. Physical build
+`ati-phase4-ztest-20260928-a` isolated LESS: it initialized a separately
+guarded Z16 surface to `0x8000`, submitted `0x4000` at all three vertices with
+`Z_MASK_EN` clear, and produced the established 256-pixel magenta triangle.
+Every depth and guard word remained unchanged, all persistent engine state and
+both 4 KiB VRAM pages restored exactly, and there was no timeout or reset. Two
+same-boot runs were byte-identical (`ATI4Z0.TXT` CRC32 `00CA55E6`, BMP CRC32
+`BD518408`) and the desktop/agent remained responsive. Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-ztest-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-ztest-2026-09-28/).
+Z16 writes and clear remain the next Phase 4 depth gate; public ATI
+acceleration is still disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
