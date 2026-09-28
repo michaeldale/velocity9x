@@ -309,6 +309,17 @@ setup writes, and zero mismatches (`ATI4PW.TXT` CRC32 `4A42453B`, BMP CRC32
 Wrap S/T and bilinear filtering are next; public ATI acceleration remains
 disabled.
 
+The wrap half of Phase 4 item 6 now passes. Historical Mesa maps repeat by
+clearing `TEXTURE_CLAMP_S/T`; build `ati-phase4-wrap-20260928-a` did exactly
+that while retaining nearest filtering and the accepted W=1 scene. Its
+-0.25-through-1.25 coordinates gave separate exact negative-S, negative-T,
+and combined seam probes in the bottom-right white quadrant. Two same-boot
+runs passed byte-identically with the established 256-pixel bounds, zero
+mismatches and no timeout/reset (`ATI4WR.TXT` CRC32 `BF999F33`, BMP CRC32
+`1FA18AC5`). Evidence is retained in
+[`../probe/ati-rage-mobility-m-phase4-wrap-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-wrap-2026-09-28/).
+Item 6 remains open for the isolated bilinear half-texel scene.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
