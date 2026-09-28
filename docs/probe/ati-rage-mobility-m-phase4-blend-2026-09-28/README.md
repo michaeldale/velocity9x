@@ -27,6 +27,17 @@ mapping. Commit `32b5eac` bounded depth verification to scene modes 2 through
 4; build B changed no blend state, geometry, target data, or pixel
 expectation, and its BMP is byte-identical to build A.
 
-This proves the ONE/ONE factor pair, but does not close item 9. Each other
-factor pair selected for publication still requires an isolated physical
-scene. Public ATI acceleration remains disabled.
+Build `ati-phase4-blend-alpha-20260928-a` independently tested the common
+SRCALPHA/INVSRCALPHA pair. A red source with alpha 128 was blended over the
+same `0xA55A` destination using `SCALE_3D_CNTL=0x002C08C1`. All three probes
+returned the CPU-predicted RGB565 mix `0xD2AD`, which retains source red and
+destination green/blue. It passed twice byte-identically on boot 11 with the
+same 256-pixel bounds and all mismatch, timeout and reset counters zero. The
+TXT has CRC32 `04B6E341` and SHA-256
+`0278A247F3C66694F94170D6FCBAD64EF11D2821B79856D136788415A0AB6577`;
+the BMP has CRC32 `F954B178` and SHA-256
+`B569301DA34DBE722E127BB4E1DF81B5F2A630F7A46551C7E267BCB6BA40309B`.
+
+This proves ONE/ONE and SRCALPHA/INVSRCALPHA, but does not close item 9. Each
+other factor pair selected for publication still requires an isolated
+physical scene. Public ATI acceleration remains disabled.

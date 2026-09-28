@@ -376,6 +376,16 @@ verifier for scene 20; it is retained with the accepted evidence in
 Item 9 remains open for the other factor pairs selected for publication;
 public ATI acceleration remains disabled.
 
+The second item 9 gate also passes. Build
+`ati-phase4-blend-alpha-20260928-a` used source alpha 128 with
+SRCALPHA/INVSRCALPHA over the same destination. Its three probes returned the
+CPU-predicted mixed RGB565 value `0xD2AD`; both source red and destination
+green/blue remained observable. Two boot-11 runs were byte-identical, with
+256 changed pixels in the established bounds, zero mismatches and no
+timeout/reset (`ATI4BA.TXT` CRC32 `04B6E341`, BMP CRC32 `F954B178`). The
+captures and hashes are in the item 9 evidence directory linked above. Item
+9 remains open; public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
