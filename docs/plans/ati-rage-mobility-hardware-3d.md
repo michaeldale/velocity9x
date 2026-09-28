@@ -347,6 +347,20 @@ is retained with the accepted evidence in
 The complete alpha-test comparison table remains Phase 4 item 8; public ATI
 acceleration remains disabled.
 
+Phase 4 item 8 is now closed. Build `ati-phase4-alpha-table-20260928-a`
+tested all eight hardware alpha comparisons independently with the proven
+ARGB1555 texture, alpha populations 0 and 255, and reference 127. The exact
+observed masks matched the truth table: NEVER and EQUAL changed 0 pixels;
+LESS and LEQUAL changed the 192-pixel alpha-0 region; GREATER and GEQUAL
+changed the 64-pixel alpha-255 region; NOTEQUAL and ALWAYS changed all 256
+covered pixels. Every scene passed twice byte-identically on boot 11 with
+zero interior, exterior, texture/guard and restoration mismatches and no
+timeout/reset. The reports, BMPs, comparison words, CRCs and SHA-256 hashes
+are retained in
+[`../probe/ati-rage-mobility-m-phase4-alpha-test-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-alpha-test-2026-09-28/).
+Blend ADD factor-pair validation is next; public ATI acceleration remains
+disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
