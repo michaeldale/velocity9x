@@ -672,9 +672,31 @@ static void platform_cpu(void)
     cpuid_leaf(1u, leaf);
     wr_x32("CpuIdSignature", v9x_u32(leaf));
     wr_x32("CpuIdFeatures", v9x_u32(leaf + 12));
-    wr_u("CpuIdFamily", (unsigned long)(leaf[1] & 0x0fu));
-    wr_u("CpuIdModel", (unsigned long)((leaf[0] >> 4) & 0x0fu));
-    wr_u("CpuIdStepping", (unsigned long)(leaf[0] & 0x0fu));
+    {
+        unsigned base_family = (unsigned)(leaf[1] & 0x0fu);
+        unsigned base_model = (unsigned)((leaf[0] >> 4) & 0x0fu);
+        unsigned family = base_family;
+        unsigned model = base_model;
+
+        /* The base fields alone stopped identifying anything once the
+         * extended encoding arrived: a Westmere reports signature 00020652,
+         * whose base model is 5 - a Pentium - while the real model is 25h.
+         * The extended model is added for base family 6 and Fh, the extended
+         * family only for Fh, which is what both vendors' manuals specify.
+         * Anything older leaves the extended bits zero, so the arithmetic is
+         * unconditional below the two family tests. */
+        if (base_family == 0x06u || base_family == 0x0fu) {
+            model |= (unsigned)(leaf[2] & 0x0fu) << 4;
+        }
+        if (base_family == 0x0fu) {
+            family += (unsigned)(((leaf[2] >> 4) & 0x0fu) |
+                                 ((leaf[3] & 0x0fu) << 4));
+        }
+
+        wr_u("CpuIdFamily", (unsigned long)family);
+        wr_u("CpuIdModel", (unsigned long)model);
+        wr_u("CpuIdStepping", (unsigned long)(leaf[0] & 0x0fu));
+    }
 }
 
 static void platform_memory(void)
@@ -1188,9 +1210,14 @@ static void survey_rom_image(const char *section, unsigned segment,
         wr_x16("PcirOffset", (unsigned short)pcir_offset);
         wr_x16("PcirVendorId", v9x_u16_far(&rom[pcir_offset + 4ul]));
         wr_x16("PcirDeviceId", v9x_u16_far(&rom[pcir_offset + 6ul]));
+        /* The class code is three bytes at PCIR+0Dh, stored low byte first,
+         * so a display ROM reads 00 00 03 and is reported 030000 to match the
+         * ClassCode of the configuration header. Reading it two bytes early
+         * picks up the structure length and revision instead, which are zero
+         * on every ROM seen so far and so read as a plausible 000000. */
         fprintf(report, "PcirClassCode=%02X%02X%02X\n",
-                rom[pcir_offset + 0x0dul], rom[pcir_offset + 0x0cul],
-                rom[pcir_offset + 0x0bul]);
+                rom[pcir_offset + 0x0ful], rom[pcir_offset + 0x0eul],
+                rom[pcir_offset + 0x0dul]);
         wr_u("PcirImageLength",
              (unsigned long)v9x_u16_far(&rom[pcir_offset + 0x10ul]) * 512ul);
         wr_x16("PcirCodeRevision", v9x_u16_far(&rom[pcir_offset + 0x12ul]));
