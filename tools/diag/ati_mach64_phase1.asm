@@ -1994,6 +1994,8 @@ AtiE4_Guards:
 AtiE4_Guards_Not_Texture:
  cmp AtiE4SceneMode,2
  jb AtiE4_Color_Guards
+ cmp AtiE4SceneMode,4
+ ja AtiE4_Color_Guards
  cmp AtiE4SceneMode,3
  jae AtiE7_Depth_Target
  mov esi,AtiE6DepthLinear
