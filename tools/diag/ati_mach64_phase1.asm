@@ -1689,11 +1689,25 @@ AtiE4_Changed_Next:
 
  ; Order the proven 2D fill behind the completed 3D Z write, clear the exact
  ; same Z16 surface to FFFF, repair the Mobility origin word, then observe it.
+ ; Disabling Z before the clear forces its dirty cache to retire before the
+ ; 2D engine overwrites the same allocation.
  mov esi,AtiE4MmioLinear
+ mov ecx,1
+ call AtiE2_WaitFifo
+ jnc short AtiE8_Disable_Z_Fifo_Ok
+ mov dword ptr AtiE4Result[116],8
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Disable_Z_Fifo_Ok:
+ mov dword ptr [esi+054ch],0
+ call AtiE2_WaitIdle
+ jnc short AtiE8_Disable_Z_Idle_Ok
+ mov dword ptr AtiE4Result[116],9
+ jmp AtiE4_Reset_Then_Restore
+AtiE8_Disable_Z_Idle_Ok:
  mov ecx,12
  call AtiE2_WaitFifo
  jnc short AtiE8_Clear_Fifo_Ok
- mov dword ptr AtiE4Result[116],8
+ mov dword ptr AtiE4Result[116],10
  jmp AtiE4_Reset_Then_Restore
 AtiE8_Clear_Fifo_Ok:
  mov dword ptr [esi+ATIE2_DST_OFF_PITCH],02040420h
@@ -1710,13 +1724,13 @@ AtiE8_Clear_Fifo_Ok:
  mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],0040001ch
  call AtiE2_WaitIdle
  jnc short AtiE8_Clear_Idle_Ok
- mov dword ptr AtiE4Result[116],9
+ mov dword ptr AtiE4Result[116],11
  jmp AtiE4_Reset_Then_Restore
 AtiE8_Clear_Idle_Ok:
  mov ecx,3
  call AtiE2_WaitFifo
  jnc short AtiE8_Repair_Fifo_Ok
- mov dword ptr AtiE4Result[116],10
+ mov dword ptr AtiE4Result[116],12
  jmp AtiE4_Reset_Then_Restore
 AtiE8_Repair_Fifo_Ok:
  mov dword ptr [esi+ATIE2_DST_OFF_PITCH],0204041eh
@@ -1724,7 +1738,7 @@ AtiE8_Repair_Fifo_Ok:
  mov dword ptr [esi+ATIE2_DST_HEIGHT_WIDTH],00010001h
  call AtiE2_WaitIdle
  jnc short AtiE8_Repair_Idle_Ok
- mov dword ptr AtiE4Result[116],11
+ mov dword ptr AtiE4Result[116],13
  jmp AtiE4_Reset_Then_Restore
 AtiE8_Repair_Idle_Ok:
  mov eax,[esi+ATIE2_MEM_BUF_CNTL]
