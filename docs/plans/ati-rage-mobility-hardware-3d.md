@@ -1019,8 +1019,8 @@ MODULATE and bilinear followed (probe `ddp-texop-20260929-a`,
   `M64Draws` by 50 and `M64Refused` by 364. There were zero timeouts
   and zero resets.
 
-Every texture state the policy accepts has now been drawn through the
-HAL, at 8x8.
+Still not drawn through the HAL, though the policy accepts them: DECAL,
+DECALALPHA (ALPHA_DECAL on the alpha formats), and clamp addressing.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
