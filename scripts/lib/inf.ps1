@@ -164,13 +164,18 @@ function New-V9xInfText {
 
     # One model line per chip. Single-chip families get one install section
     # named Velocity9x.Install, which is the name the old rewrite produced;
-    # multi-chip families suffix it with the chip id.
+    # multi-chip families suffix it with the chip id, under the short V9x
+    # prefix. Windows 98's Have Disk silently ignores an INF whose section
+    # names are too long: on the Gateway (2026-09-28) the 34- and 35-character
+    # rage-mobility-m sections made it report "does not contain information
+    # about your hardware" even with Show all hardware, and the same INF with
+    # 20-character names was read at once. Assert-V9xInf bounds the length.
     $installSections = @{}
     foreach ($chip in $chips) {
         $section = if ($chips.Count -eq 1) {
             'Velocity9x.Install'
         } else {
-            'Velocity9x.Install.{0}' -f $chip.Id
+            'V9x.Install.{0}' -f $chip.Id
         }
         $installSections[$chip.Id] = $section
         # Windows 98's Have Disk matches model lines against the devnode's
@@ -219,7 +224,7 @@ function New-V9xInfText {
         $addReg = if (-not $perChipRegistry) {
             'AddReg=Velocity9x.Registry'
         } else {
-            'AddReg=Velocity9x.Registry,Velocity9x.Registry.{0}' -f $chip.Id
+            'AddReg=Velocity9x.Registry,V9x.Registry.{0}' -f $chip.Id
         }
         $lines += @(
             ''
@@ -296,7 +301,16 @@ function New-V9xInfText {
         'HKR,DEFAULT,minivdd,,v9xmini.vxd'
     }) + @(
         'HKR,DEFAULT,RefreshRate,,0'
+    ) + @(if ($Family.Build.MiniVddVbeCollect -eq $false) {
+        # PCIRebalance tells Windows the driver copes with its resources
+        # being moved. Only a family that reads its aperture from the PCI BAR
+        # (the read_aperture hook, which is what MiniVddVbeCollect = $false
+        # requires) does. A family that trusts VBE 4F01h does not: on the
+        # Gateway (2026-09-28) Windows moved BAR0 from F5000000 to 0B000000
+        # at the first Velocity9x boot, the BIOS still reported F5000000, and
+        # the driver mapped an aperture the card no longer decoded.
         'HKR,DEFAULT,PCIRebalance,,1'
+    }) + @(
         'HKR,DEFAULT,ExtModeSwitch,,0'
         # The 4-bpp fallback hands the mode back to the stock VGA driver.
         'HKR,"MODES\4\640,480",drv,,vga.drv'
@@ -361,7 +375,7 @@ function New-V9xInfText {
         foreach ($chip in $chips) {
             $lines += @(
                 ''
-                ('[Velocity9x.Registry.{0}]' -f $chip.Id)
+                ('[V9x.Registry.{0}]' -f $chip.Id)
             )
             # Where the mini-VDD lands when the manual model must not have one.
             # A PCI model reaches this section and gets it; the manual model
@@ -483,8 +497,21 @@ function Assert-V9xInf {
                   "CLSID\$script:V9xSettingsPageClsid\InProcServer32",
                   "DEFAULT,Mode,,`"$DefaultMode`"",
                   'DEFAULT,vdd,,"*vdd,*vflatd"',
-                  'DEFAULT,RefreshRate,,0',
-                  'DEFAULT,PCIRebalance,,1')
+                  'DEFAULT,RefreshRate,,0')
+    if ($Family.Build.MiniVddVbeCollect -eq $false) {
+        $required += 'DEFAULT,PCIRebalance,,1'
+    } elseif ($text.IndexOf('PCIRebalance', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw ("The generated INF for $($Family.Id) sets PCIRebalance, but the " +
+               "family takes its aperture from VBE and cannot follow a moved BAR.")
+    }
+    # The longest section name Have Disk is known to read (29 characters,
+    # Velocity9x.Install.mach64-vt2 on the VT2 guest); 34 is known to fail.
+    foreach ($match in [regex]::Matches($text, '(?m)^\[([^\]]+)\]')) {
+        if ($match.Groups[1].Value.Length -gt 29) {
+            throw ("The generated INF's section [$($match.Groups[1].Value)] is " +
+                   "longer than 29 characters, which Windows 98 Have Disk ignores.")
+        }
+    }
     foreach ($chip in @($Family.Chips)) {
         foreach ($mode in @($chip.Modes)) {
             $required += 'MODES\{0}\{1},{2}' -f $mode.BitsPerPixel, $mode.Width,
@@ -608,10 +635,10 @@ function Assert-V9xInf {
         }
         foreach ($chip in @($Family.Chips)) {
             $body = @(Get-V9xInfSectionBody -Lines $Lines `
-                -Section ('Velocity9x.Registry.{0}' -f $chip.Id))
+                -Section ('V9x.Registry.{0}' -f $chip.Id))
             if ('HKR,DEFAULT,minivdd,,v9xmini.vxd' -notin $body) {
                 throw ("Family $($Family.Id) moved DEFAULT,minivdd out of the " +
-                       "shared section, so [Velocity9x.Registry.$($chip.Id)] " +
+                       "shared section, so [V9x.Registry.$($chip.Id)] " +
                        "must set it; otherwise that chip's own model loses it too.")
             }
         }

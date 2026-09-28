@@ -1,0 +1,143 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display]
+@="Display adapters"
+"Installer"="SetupX.Dll, Display_ClassInstaller"
+"Icon"="-1"
+"EnumDriverStack"="enumfile.dll,EnumDisplayDriverStack"
+"Link"="{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000]
+"InfPath"="ATITEC~1.INF"
+"InfSection"="MACXW4_AGP_2CRTC_ENU"
+"ProviderName"="ATI Tech. - Enhanced"
+"DriverDesc"="RAGE MOBILITY-M AGP (English)"
+"MatchingDeviceId"="PCI\\VEN_1002&DEV_4C4D&SUBSYS_01541014"
+"Ver"="4.00"
+"DevLoader"="*vdd"
+"ReleaseVersion"="M6.12.12-T01"
+"EnumPropPages"="ati9diab.dll,EnumPropPages"
+"DriverDate"=" 5- 9-2001"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\DEFAULT]
+"Mode"="8,640,480"
+"drv"="ati2drab.drv"
+"drv2"="ati2drab.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="ati2vxab.vxd"
+"minivdd2"="ati2vxab.vxd"
+"RefreshRate"="-1"
+"DDC"="1"
+"CHIPID"=hex:64,00,00,00,00,00
+"ErrorCode"=dword:000000ff
+"ErrorMessage"=" No description is available for this error number.Selected screen mode is 640 X 480 / 8 bpp.Selected desktop size is 640 X 480."
+"CRTXSize"="1024"
+"CRTYSize"="768"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\640,480]
+@="60,72,75,85,90,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\800,600]
+@="60,70,72,75,85,90,100,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1024,768]
+@="60,70,72,75,85,90,100,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1280,1024]
+@="60,70,72,75,85,90,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1600,1200]
+@="60,70,72,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\24\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\INFO]
+"ChipType"="Mach64:  Rage Mobility"
+"Revision"=""
+"DACType"="Internal"
+"MMIO"=hex:01
+"Linear"=hex:01
+"HWCursor"=hex:00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex\PropertySheetHandlers\ATIPagesEx]
+@="{700B1221-CAFF-11d1-B9DE-000000001B1B}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI WDM Configurations]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI WDM Configurations\TVOut Configuration]
+"TVOut Information"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI WDM Configurations\Frequency Table]
+"Reference Clock"="B86"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI WDM Configurations\Multimedia Table]
+"Multimedia Table Length"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI WDM Configurations\Hardware Info]
+"Hardware Table Length"=dword:00000004
+"Hardware Table Revision"=dword:00000001
+"Hardware Table Data"=hex:0f,00,02,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\ATI Multimedia Hardware]
+"I2C Expander"="0xFF"
+"Tuner ID"="0"
+"Decoder ID"="0"
+"Audio ID"="FF"
+

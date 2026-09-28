@@ -33,9 +33,14 @@
 #define V9X_M64_TEX_SIZE_PITCH        0x00000770ul
 #define V9X_M64_TEX_CNTL              0x00000774ul
 #define V9X_M64_SECONDARY_TEX_OFF     0x00000778ul
-#define V9X_M64_FIFO_STAT             0x00000310ul
-#define V9X_M64_GUI_TRAJ_CNTL         0x00000330ul
-#define V9X_M64_GUI_STAT              0x00000338ul
+/* Block 0 like their neighbours: X.Org indices C4h, CCh and CEh, so
+ * 0x400 + 4 * index. Until 2026-09-28 these three lacked the 0x400 and
+ * named block 1 locations instead; the diagnostic VxD always used 0738h
+ * and 0730h, so only the HAL's first physical draw read the wrong status
+ * word, over-reserved the FIFO, and hung the Gateway. */
+#define V9X_M64_FIFO_STAT             0x00000710ul
+#define V9X_M64_GUI_TRAJ_CNTL         0x00000730ul
+#define V9X_M64_GUI_STAT              0x00000738ul
 #define V9X_M64_MEM_BUF_CNTL          0x0000042cul
 #define V9X_M64_BUS_CNTL              0x000004a0ul
 #define V9X_M64_GEN_TEST_CNTL         0x000004d0ul
@@ -83,6 +88,11 @@
 
 #define V9X_M64_INVALIDATE_RB_CACHE   0x00800000ul
 #define V9X_M64_BUS_FLUSH_BUF         0x00000004ul
+/* Enables register block 1, which holds the setup engine (VERTEX_*,
+ * ONE_OVER_AREA, SETUP_CNTL). X.Org sets it for every chip from 264VT
+ * (atilock.c, atimach64.c); ATI's driver ran with it set, and a bare VBE
+ * boot leaves it clear (BUS_CNTL 7B33A001 vs 7333A001 on the Gateway). */
+#define V9X_M64_BUS_EXT_REG_EN        0x08000000ul
 #define V9X_M64_BUS_HOST_ERR_INT_EN   0x00400000ul
 #define V9X_M64_BUS_HOST_ERR_INT      0x00800000ul
 #define V9X_M64_GEN_GUI_RESETB        0x00000100ul

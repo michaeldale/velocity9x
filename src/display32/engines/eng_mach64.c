@@ -55,11 +55,21 @@ static int v9x_m64_bind_core(void)
 static int v9x_m64_validate(void)
 {
     DWORD chip;
+    DWORD bus;
     if (!v9x_m64_bind_core()) return 0;
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul)
         return 1;
     chip = (DWORD)v9x_m64_hal_read(0, V9X_M64_CONFIG_CHIP_ID);
     if ((chip & 0xfffful) != 0x4c4dul) return 0;
+    /*
+     * Block 1 on, once, after the identity is proven. Without it every
+     * setup-engine write lands in a disabled block. The Phase 1-4 scenes
+     * never needed this only because ATI's driver had already set it.
+     */
+    bus = (DWORD)v9x_m64_hal_read(0, V9X_M64_BUS_CNTL);
+    if ((bus & V9X_M64_BUS_EXT_REG_EN) == 0ul) {
+        v9x_m64_hal_write(0, V9X_M64_BUS_CNTL, bus | V9X_M64_BUS_EXT_REG_EN);
+    }
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
     return 1;
 }

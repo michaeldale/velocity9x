@@ -88,6 +88,9 @@
             Name = 'ATI Rage Mobility-M AGP'
             VendorId = '1002'
             DeviceId = '4C4D'
+            # The Gateway Solo 2150's HardwareID leads with SUBSYS_2150107B;
+            # Have Disk matched it with the qualified id first (2026-09-28).
+            SubsystemId = '2150107B'
             DeviceDesc = 'Velocity9x ATI Rage Mobility-M'
             Adapter = 'ATI Rage Mobility-M AGP'
             ClockDetector = 'ati-mach64-unavailable-v1'

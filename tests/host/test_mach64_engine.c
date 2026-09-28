@@ -799,6 +799,55 @@ static void test_texture_builders(void)
     CHECK(written == 0ul);
 }
 
+/*
+ * The register offsets the diagnostic VxD wrote on the Gateway, in order:
+ * AtiE4StateOffsets and ATIE1_GUI_STAT in tools\diag\ati_mach64_phase1.asm,
+ * which drew every Phase 3 and 4 scene. The C header once had GUI_STAT,
+ * FIFO_STAT and GUI_TRAJ_CNTL without block 0's 0x400, which no host test
+ * could see because the builders and the fake MMIO shared the wrong names;
+ * this pins them to the physically proven table instead.
+ */
+/* The FIFO wait's status words, block 0 like the diagnostic's. */
+typedef char v9x_m64_gui_stat_is_block0[
+    V9X_M64_GUI_STAT == 0x738ul ? 1 : -1];
+typedef char v9x_m64_fifo_stat_is_block0[
+    V9X_M64_FIFO_STAT == 0x710ul ? 1 : -1];
+typedef char v9x_m64_gui_traj_is_block0[
+    V9X_M64_GUI_TRAJ_CNTL == 0x730ul ? 1 : -1];
+
+static void test_offsets_match_diagnostic(void)
+{
+    static const v9x_u32 proven[19] = {
+        0x6d4ul, 0x6d8ul, 0x708ul, 0x730ul, 0x6a8ul, 0x6b4ul,
+        0x500ul, 0x548ul, 0x54cul, 0x550ul, 0x5fcul, 0x6c4ul,
+        0x6c8ul, 0x6d0ul, 0x304ul, 0x770ul, 0x774ul, 0x778ul, 0x5ccul
+    };
+    struct v9x_m64_texture_state texture;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    unsigned int index;
+
+    memset(&texture, 0, sizeof(texture));
+    texture.color.vram_bytes = 0x00400000ul;
+    texture.color.target_offset = 0x00200100ul;
+    texture.color.target_pitch_bytes = 128ul;
+    texture.color.target_width = 64ul;
+    texture.color.target_height = 28ul;
+    texture.color.scissor_right = 64ul;
+    texture.color.scissor_bottom = 28ul;
+    texture.texture_offset = 0x00204000ul;
+    texture.texture_pitch_bytes = 16ul;
+    texture.texture_width = 8ul;
+    texture.texture_height = 8ul;
+    CHECK(v9x_m64_build_texture_state(&texture, offsets, values, 32ul,
+                                      &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+    for (index = 0u; index < 19u; ++index) {
+        CHECK(offsets[index] == proven[index]);
+    }
+}
+
 static void test_phase3_triangle_golden(void)
 {
     struct v9x_m64_flat_state state;
@@ -856,5 +905,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_depth_builders();
     test_texture_builders();
     test_phase3_triangle_golden();
+    test_offsets_match_diagnostic();
     return failures;
 }
