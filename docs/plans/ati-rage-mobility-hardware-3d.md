@@ -293,6 +293,22 @@ BMP CRC32 `A4D8EAD8`). Evidence is in
 Phase 4 item 4 is closed. Perspective correction with unequal W remains the
 next feature; public ATI acceleration remains disabled.
 
+Phase 4 item 5 is closed. Build `ati-phase4-perspective-20260928-a` retained
+the item 4 texture state and coordinates but submitted W values
+`(1.0, 0.25, 0.25)`. Its first bounded run was safe and changed the same 256
+pixels with zero exterior, texture/guard or restoration mismatches and no
+timeout/reset, but two affine-era probes beside the shifted texture quadrant
+boundaries reported REVIEW. Direct comparison with the W=1 BMP established
+stable perspective displacement: `(30,8)` moved from green to red and
+`(10,16)` from blue to red, while `(10,8)` remained red. Build
+`ati-phase4-perspective-20260928-b` changed only those assertions and passed
+twice byte-identically on boot 11 with `Status=0x0001FFFF`, 19 state and 19
+setup writes, and zero mismatches (`ATI4PW.TXT` CRC32 `4A42453B`, BMP CRC32
+`4AA1ED66`). The accepted and initial REVIEW captures are retained in
+[`../probe/ati-rage-mobility-m-phase4-perspective-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-perspective-2026-09-28/).
+Wrap S/T and bilinear filtering are next; public ATI acceleration remains
+disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage
