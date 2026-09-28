@@ -100,6 +100,8 @@ $sources = @(
     "src\display32\d3d\d3d_state.c",
     "src\display32\d3d\d3d_select.c",
     "src\display32\d3d\d3d_mach64_map.c",
+    # Engine-placed surface blocks, shared by the Mach64 and Gen3.
+    "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.

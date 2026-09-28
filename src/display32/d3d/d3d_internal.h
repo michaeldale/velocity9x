@@ -441,6 +441,24 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void);
  */
 DWORD v9x_d3d_depth_bytes_per_pixel(void);
 
+/*
+ * Engine-placed surfaces, in d3d_place.c, for an engine's create_surface and
+ * destroy_surface. v9x_d3d_place_block gives every surface of the list its
+ * memory from one DirectDraw heap block aligned to `align`, at `pitch`, and
+ * returns zero or a reason below having placed nothing;
+ * v9x_d3d_place_release frees such a block when its first surface goes and
+ * ignores any other surface. The reason values are the ones Gen3 has always
+ * counted in mip_tree_declined_last.
+ */
+#define V9X_D3D_PLACE_EXPORT 3ul    /* DDRAW.DLL lacks the exports */
+#define V9X_D3D_PLACE_ALLOC  4ul    /* the heap had no room        */
+#define V9X_D3D_PLACE_BOUNDS 5ul    /* the block is outside VRAM   */
+
+DWORD v9x_d3d_place_block(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
+                          DWORD pitch, DWORD rows, const v9x_u32 *offsets,
+                          DWORD *base_out);
+int v9x_d3d_place_release(V9X_DDHAL_DESTROYSURFACEDATA *data, DWORD align);
+
 /* The ViRGE S3D engine, in d3d_virge.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge;
 

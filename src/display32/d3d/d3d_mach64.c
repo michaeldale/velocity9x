@@ -478,6 +478,68 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/*
+ * A texture the engine can sample, placed at the pitch the sampler reads.
+ *
+ * DirectDraw rounds a texture's pitch to vmiData.dwTextureAlign, which is
+ * this engine's 4 KiB base alignment, so its heap gave the Gateway's 8x8
+ * texture a 4096-byte pitch (Tex8Pitch=0x1000, 2026-09-29) and the builder,
+ * which takes only max(w,h)*2, refused every textured draw. So a lone
+ * video-memory texture of a format and size the policy accepts is placed in
+ * a block of its own, 4 KiB aligned - the only base the Phase 4 scenes
+ * sampled - at 2 bytes a texel. Anything else is left to DirectDraw, and is
+ * refused at draw time exactly as before. Placements count in the generic
+ * texture_placed and texture_placed_bytes.
+ */
+static DWORD v9x_d3d_mach64_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list;
+    V9X_DD_SURFACE_LCL *surface;
+    v9x_u32 offsets[1];
+    DWORD format;
+    DWORD width;
+    DWORD height;
+    DWORD pitch;
+    DWORD base;
+
+    if (v9x_hal == 0 || data == 0 || data->dwSCnt != 1ul ||
+        data->lplpSList == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    surface = list[0];
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & (V9X_DDSCAPS_SYSTEMMEMORY |
+                             V9X_DDSCAPS_ZBUFFER)) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    width = (DWORD)surface->lpGbl->wWidth;
+    height = (DWORD)surface->lpGbl->wHeight;
+    if (width != height ||
+        width < v9x_d3d_mach64_limits.texture_size_min ||
+        width > v9x_d3d_mach64_limits.texture_size_max ||
+        !v9x_d3d_mach64_texture_format(surface, &format)) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+
+    pitch = width * 2ul;
+    offsets[0] = 0ul;
+    if (v9x_d3d_place_block(data, v9x_d3d_mach64_limits.texture_align,
+                            pitch, height, offsets, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    ++v9x_hal->d3d_diagnostics.texture_placed;
+    v9x_hal->d3d_diagnostics.texture_placed_bytes += pitch * height;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+static void v9x_d3d_mach64_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
+{
+    (void)v9x_d3d_place_release(data, v9x_d3d_mach64_limits.texture_align);
+}
+
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mach64 = {
     &v9x_d3d_mach64_limits,
@@ -485,8 +547,8 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mach64 = {
     v9x_d3d_mach64_describe_caps,
     0,                                  /* draw_triangles: draw serves */
     v9x_d3d_mach64_ready,
-    0,                                  /* create_surface: DDraw's heap */
-    0,                                  /* destroy_surface */
+    v9x_d3d_mach64_create_surface,
+    v9x_d3d_mach64_destroy_surface,
     v9x_d3d_mach64_draw,
     v9x_d3d_mach64_accepts
 };

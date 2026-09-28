@@ -942,57 +942,18 @@ static void v9x_d3d_i9xx_filter(DWORD filter, DWORD *linear_out,
  * (src\display\mini\s3v\S3_DD32.C:3046-3116, built with /DMIP), with the
  * ViRGE's end-to-end layout replaced by Gen3's.
  *
- * Three choices, each for a reason:
- *
- *  - The exports are looked up at run time, not linked. A DDRAW.DLL without
- *    them - or a process where it is not loaded - declines to the heap as
- *    before, and a link-time import would instead fail to load the HAL.
- *  - The block is PAGE aligned by over-asking a page and rounding up, because
- *    MAP_STATE's address is page aligned (texture_align above) and the heap
- *    call takes no alignment. The block's own start is kept in the top
- *    level's dwReserved1, the field DDRAWI.H reserves for the display
- *    driver, because that is what has to be freed.
- *  - Every level's lpVidMemHeap is left NULL, which is what tells DirectDraw
- *    the memory is not its to free; DestroySurface frees the block when the
- *    top level goes. The DDK sample's single-heap case leaves it NULL too.
+ * The block itself comes from v9x_d3d_place_block (d3d_place.c, where the
+ * reasons for its choices are), PAGE aligned because MAP_STATE's address is
+ * page aligned (texture_align above).
  *
  * Declines are counted with a reason, so a capture says why a chain was left
  * to the heap. UNMEASURED on this part until the probe's mip ladder runs.
  */
 #define V9X_D3D_I9XX_MIPTREE_SHAPE   1ul  /* not a halving square chain  */
 #define V9X_D3D_I9XX_MIPTREE_FORMAT  2ul  /* not 16 bits per texel       */
-#define V9X_D3D_I9XX_MIPTREE_EXPORT  3ul  /* DDRAW.DLL lacks the exports */
-#define V9X_D3D_I9XX_MIPTREE_ALLOC   4ul  /* the heap had no room        */
-#define V9X_D3D_I9XX_MIPTREE_BOUNDS  5ul  /* the block is outside VRAM   */
-
-/* DDRAWI.H's LPDDHAL_VIDMEMALLOC / _VIDMEMFREE shapes, 32-bit. */
-typedef DWORD (WINAPI *V9X_D3D_I9XX_VIDMEMALLOC)(DWORD lpDD, int heap,
-                                                 DWORD width, DWORD height);
-typedef void (WINAPI *V9X_D3D_I9XX_VIDMEMFREE)(DWORD lpDD, int heap,
-                                               DWORD memory);
-
-/* Per process, as the DLL's data is; resolved on first use. */
-static V9X_D3D_I9XX_VIDMEMALLOC v9x_d3d_i9xx_vidmem_alloc;
-static V9X_D3D_I9XX_VIDMEMFREE v9x_d3d_i9xx_vidmem_free;
-
-static int v9x_d3d_i9xx_vidmem_resolve(void)
-{
-    HMODULE ddraw;
-
-    if (v9x_d3d_i9xx_vidmem_alloc != 0 && v9x_d3d_i9xx_vidmem_free != 0) {
-        return 1;
-    }
-    ddraw = GetModuleHandleA("DDRAW.DLL");
-    if (ddraw == 0) {
-        return 0;
-    }
-    v9x_d3d_i9xx_vidmem_alloc = (V9X_D3D_I9XX_VIDMEMALLOC)GetProcAddress(
-        ddraw, "DDHAL32_VidMemAlloc");
-    v9x_d3d_i9xx_vidmem_free = (V9X_D3D_I9XX_VIDMEMFREE)GetProcAddress(
-        ddraw, "DDHAL32_VidMemFree");
-    return (v9x_d3d_i9xx_vidmem_alloc != 0 &&
-            v9x_d3d_i9xx_vidmem_free != 0) ? 1 : 0;
-}
+#define V9X_D3D_I9XX_MIPTREE_EXPORT  V9X_D3D_PLACE_EXPORT
+#define V9X_D3D_I9XX_MIPTREE_ALLOC   V9X_D3D_PLACE_ALLOC
+#define V9X_D3D_I9XX_MIPTREE_BOUNDS  V9X_D3D_PLACE_BOUNDS
 
 static DWORD v9x_d3d_i9xx_miptree_decline(DWORD reason)
 {
@@ -1001,78 +962,15 @@ static DWORD v9x_d3d_i9xx_miptree_decline(DWORD reason)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
-/*
- * One block of pitch * rows from DirectDraw's heap, page aligned, with
- * surface n of the list pointed at base + offsets[n] at that pitch.
- *
- * Shared by the mip trees and the padded Z buffer. The block's own start is
- * kept in the first surface's dwReserved1 and every surface's lpVidMemHeap
- * left NULL, which is the signature destroy_surface frees by. Returns zero
- * and the block's graphics offset, or a V9X_D3D_I9XX_MIPTREE_* reason having
- * placed nothing.
- */
+/* Gen3's placements are page aligned: MAP_STATE's address is. */
 static DWORD v9x_d3d_i9xx_place_block(V9X_DDHAL_CREATESURFACEDATA *data,
                                       DWORD pitch, DWORD rows,
                                       const v9x_u32 *offsets,
                                       DWORD *base_out)
 {
-    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
-    DWORD index;
-    DWORD block;
-    DWORD base;
-    DWORD footprint;
-    DWORD vram;
-
-    *base_out = 0ul;
-    if (!v9x_d3d_i9xx_vidmem_resolve()) {
-        return V9X_D3D_I9XX_MIPTREE_EXPORT;
-    }
-    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        (v9x_hal->fb.linear_base & (V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul)) !=
-            0ul) {
-        return V9X_D3D_I9XX_MIPTREE_BOUNDS;
-    }
-
-    /*
-     * The block plus a page of rows, so it can be rounded up to a page and
-     * still hold everything. Heap 0 is the one heap this driver publishes
-     * (vmiData.dwNumHeaps); width is bytes, as the DDK sample passes lPitch.
-     */
-    block = v9x_d3d_i9xx_vidmem_alloc(
-        data->lpDD, 0, pitch,
-        rows + (V9X_I9XX_SANDBOX_PAGE_BYTES + pitch - 1ul) / pitch);
-    if (block == 0ul) {
-        return V9X_D3D_I9XX_MIPTREE_ALLOC;
-    }
-    vram = v9x_hal->fb.vram_bytes;
-    footprint = pitch * rows;
-    base = 0xfffffffful;
-    if (block >= v9x_hal->fb.linear_base &&
-        block - v9x_hal->fb.linear_base < vram) {
-        base = (block - v9x_hal->fb.linear_base +
-                V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul) &
-               ~(V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul);
-    }
-    if (base == 0xfffffffful || base > vram || footprint > vram - base) {
-        v9x_d3d_i9xx_vidmem_free(data->lpDD, 0, block);
-        return V9X_D3D_I9XX_MIPTREE_BOUNDS;
-    }
-
-    for (index = 0ul; index < data->dwSCnt; ++index) {
-        V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
-
-        surface->fpVidMem = v9x_hal->fb.linear_base + base + offsets[index];
-        surface->lPitch = (LONG)pitch;
-        /* lpVidMemHeap, in the union DDRAWI.H shares with dwBlockSizeX:
-         * NULL is "not DirectDraw's to free". */
-        surface->dwBlockSizeX = 0ul;
-        surface->dwReserved1 = 0ul;
-    }
-    list[0]->lpGbl->dwReserved1 = block;
-    *base_out = base;
-    return 0ul;
+    return v9x_d3d_place_block(data, V9X_I9XX_SANDBOX_PAGE_BYTES, pitch, rows,
+                               offsets, base_out);
 }
-
 /*
  * The Z buffer, padded where its row would be a power of two.
  *
@@ -1281,29 +1179,9 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
  */
 static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
-    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)data->lpDDSurface;
-    V9X_DD_SURFACE_GBL *global;
-    DWORD block;
-
-    if (v9x_hal == 0 || surface == 0 || surface->lpGbl == 0) {
-        return;
+    if (v9x_d3d_place_release(data, V9X_I9XX_SANDBOX_PAGE_BYTES)) {
+        ++v9x_hal->d3d_diagnostics.mip_tree_frees;
     }
-    global = surface->lpGbl;
-    block = global->dwReserved1;
-    if ((surface->ddsCaps & (V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_ZBUFFER |
-                             V9X_DDSCAPS_TEXTURE)) == 0ul ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-        block == 0ul || global->dwBlockSizeX != 0ul ||
-        global->fpVidMem < block ||
-        global->fpVidMem - block >= V9X_I9XX_SANDBOX_PAGE_BYTES) {
-        return;
-    }
-    if (!v9x_d3d_i9xx_vidmem_resolve()) {
-        return;
-    }
-    v9x_d3d_i9xx_vidmem_free(data->lpDD, 0, block);
-    global->dwReserved1 = 0ul;
-    ++v9x_hal->d3d_diagnostics.mip_tree_frees;
 }
 
 /*

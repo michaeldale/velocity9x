@@ -974,6 +974,27 @@ bases the hardware has never been shown to sample: only 4 KiB bases
 were measured. The 256-byte wedge was a harness bug, so it neither
 supports nor rules out smaller bases.
 
+Fixed the Gen3 way (2026-09-29). Gen3's block placer moved into
+`d3d_place.c` with the alignment as a parameter, and Gen3's behaviour
+is unchanged. The Mach64 now has its own `create_surface` and
+`destroy_surface`. A lone video-memory texture of an accepted format and
+size is placed 4 KiB aligned, at 2 bytes a texel.
+
+Result on the Gateway, boot 27, one default run (`V9XSNA3-TEX8-HARDWARE.INI`,
+`V9XDDT-TEX8-HARDWARE.TXT`):
+
+- `Tex8Pitch=0x10`;
+- `Tex8LeftRaw=07E0` (green) and `Tex8RightRaw=001F` (blue),
+  `Tex8HalvesOk=1`;
+- `TexturePlaced=1`, 128 bytes;
+- `M64TextureDraws=2`, the scene's two draws exactly. `M64Draws` is 42
+  against 40 without them, and `M64Refused` is back to 364;
+- zero FIFO or idle timeouts and zero resets, and no lock.
+
+Hardware texturing through the HAL is now shown for ARGB1555, COPY and
+nearest filtering. RGB565, ARGB4444, MODULATE and bilinear are accepted
+by the policy but not yet drawn through the HAL.
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register
