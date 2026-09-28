@@ -435,6 +435,23 @@ captures. Evidence is in
 Fog without blending (item 12) is next; public ATI acceleration remains
 disabled.
 
+Phase 4 item 12 is closed for untextured draws. Build
+`ati-phase4-fog-20260928-a` enabled `ALPHA_FOG_EN=2` with the
+SRCALPHA/INVSRCALPHA fields and wrote the per-vertex specular alpha in one
+reserved batch before the vertex batches. The 19-write setup packet does
+not carry specular. All seven scenes matched `(Cv*f + Cfog*(255-f))/255`
+exactly: fog off, factors 255, 0, 128, 64 and 192, and a second
+`DP_FOG_CLR`. Two boot-11 runs were byte-identical with all safety
+counters zero (`ATI4FG.TXT` CRC32 `D18F4F3A`). Taking the factor from
+vertex alpha, inverting it, or ignoring fog each misses by at least 26
+units. Only the /255 truncating rule of the four item 9 candidates fits
+this data too. Textured fog, which must clear `TEX_MAP_AEN`, is not yet
+measured and must refuse until it is. Evidence is in
+[`../probe/ati-rage-mobility-m-phase4-fog-2026-09-28/`](../probe/ati-rage-mobility-m-phase4-fog-2026-09-28/).
+Remaining Phase 4 gates: repeated texture mutation at unchanged state for
+cache-flush visibility, and refusal of unsupported combinations before the
+first engine write. Public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

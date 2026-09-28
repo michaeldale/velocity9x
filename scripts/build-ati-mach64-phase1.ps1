@@ -134,3 +134,8 @@ $scissorSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_scissor_table_w
 $scissorBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $scissorSource -Executable $scissorExe -Object $scissorObj -MapFile $scissorMap -LinkFile $scissorLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$scissorObj",$scissorSource) -LinkOptions @("option start='_V9xAtiMach64ScissorTableEntry@0'",'option stack=65536')
 foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($scissorBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4SC.EXE is missing import $name."}}
 Write-Output "Built ATI Phase 4 scissor table publisher: $scissorExe"
+
+$fogSource=Join-Path $repoRoot 'tools\diag\ati_mach64_phase4_fog_table_win32.c';$fogExe=Join-Path $outputDir 'ATI4FG.EXE';$fogObj=Join-Path $outputDir 'ati4fg.obj';$fogMap=Join-Path $outputDir 'ati4fg.map';$fogLnk=Join-Path $outputDir 'ati4fg.lnk'
+$fogBuild=Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir -Source $fogSource -Executable $fogExe -Object $fogObj -MapFile $fogMap -LinkFile $fogLnk -LibraryNames @('kernel32.lib') -CompileArguments @('-bt=nt','-zq','-wx','-zl','-s',"-dV9X_BUILD_ID=`"$BuildId`"","-fo=$fogObj",$fogSource) -LinkOptions @("option start='_V9xAtiMach64FogTableEntry@0'",'option stack=65536')
+foreach($name in @('CreateFileA','DeviceIoControl','WriteFile','ExitProcess')){if($fogBuild.DumpText-notmatch "(?m)\s$([regex]::Escape($name))\s*$"){throw "ATI4FG.EXE is missing import $name."}}
+Write-Output "Built ATI Phase 4 fog table publisher: $fogExe"

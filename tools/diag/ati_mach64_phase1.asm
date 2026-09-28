@@ -53,6 +53,7 @@ ATIE25_DIOC_BLEND_SRCALPHA_INV equ 25
 ATIE26_DIOC_BLEND_TABLE equ 26
 ATIE27_DIOC_TEXENV_TABLE equ 27
 ATIE28_DIOC_SCISSOR_TABLE equ 28
+ATIE29_DIOC_FOG_TABLE equ 29
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -116,6 +117,15 @@ ATIE28_MAGIC equ 4c495441h
 ; Scissor requests must stay inside the 64x28 guarded target.
 ATIE28_MAX_X equ 63
 ATIE28_MAX_Y equ 27
+ATIE29_MAGIC equ 4d495441h
+; Fog is tested only on the untextured flat scene and only with blending
+; off.  ALPHA_FOG_EN=2 routes the SRCALPHA/INVSRCALPHA blend fields to
+; DP_FOG_CLR with specular alpha as the factor (Mesa mach64_state.c).
+ATIE29_SCALE_FOG_OFF equ 000100c1h
+ATIE29_SCALE_FOG_ON equ 002c10c1h
+ATIE29_VERTEX1_SPEC_ARGB equ 024ch
+ATIE29_VERTEX2_SPEC_ARGB equ 026ch
+ATIE29_VERTEX3_SPEC_ARGB equ 028ch
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -224,6 +234,10 @@ AtiE27Argb dd 0
 AtiE27TextureData dd 32 dup (0)
 AtiE28LeftRight dd 0
 AtiE28TopBottom dd 0
+AtiE29Scale dd 0
+AtiE29FogColor dd 0
+AtiE29Argb dd 0
+AtiE29Spec dd 0
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1252,6 +1266,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Texenv_Table
  cmp AtiE4SceneMode,24
  je AtiE4_Select_Scissor_Table
+ cmp AtiE4SceneMode,25
+ je AtiE4_Select_Fog_Table
  cmp AtiE4SceneMode,12
  jb AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1353,6 +1369,18 @@ AtiE4_Select_Blend_Table:
  mov eax,AtiE26Scale
  mov AtiE4StateValues[40],eax
  mov eax,AtiE26Argb
+ mov AtiE4SetupValues[16],eax
+ mov AtiE4SetupValues[40],eax
+ mov AtiE4SetupValues[64],eax
+ jmp AtiE4_Selected_Scene
+ ; DP_FOG_CLR is state slot 11 in every scene; only this one sets it.
+AtiE4_Select_Fog_Table:
+ mov dword ptr AtiE4Result[0],ATIE29_MAGIC
+ mov eax,AtiE29Scale
+ mov AtiE4StateValues[40],eax
+ mov eax,AtiE29FogColor
+ mov AtiE4StateValues[44],eax
+ mov eax,AtiE29Argb
  mov AtiE4SetupValues[16],eax
  mov AtiE4SetupValues[40],eax
  mov AtiE4SetupValues[64],eax
@@ -1677,6 +1705,24 @@ AtiE4_Emit_State:
  cmp AtiE4SceneMode,6
  je AtiE4_After_Setup
 
+ ; The fog factor is specular alpha, which the 19-write setup packet does
+ ; not carry.  The vertex registers only latch until the ONE_OVER_AREA
+ ; trigger, so one reserved batch of the three specular words before the
+ ; vertex batches is equivalent to interleaving them.
+ cmp AtiE4SceneMode,25
+ jne short AtiE29_Spec_Done
+ mov ecx,3
+ call AtiE2_WaitFifo
+ jnc short AtiE29_Spec_Fifo_Ok
+ mov dword ptr AtiE4Result[116],14
+ jmp AtiE4_Reset_Then_Restore
+AtiE29_Spec_Fifo_Ok:
+ mov eax,AtiE29Spec
+ mov [esi+ATIE29_VERTEX1_SPEC_ARGB],eax
+ mov [esi+ATIE29_VERTEX2_SPEC_ARGB],eax
+ mov [esi+ATIE29_VERTEX3_SPEC_ARGB],eax
+AtiE29_Spec_Done:
+
  ; Three exact setup batches: vertices 1, 2, then vertex 3 plus trigger.
  mov ebx,OFFSET32 AtiE4SetupOffsets
  mov edi,OFFSET32 AtiE4SetupValues
@@ -1752,6 +1798,8 @@ AtiE4_Inspect_Render:
  je AtiE26_Blend_Interior
  cmp AtiE4SceneMode,24
  je AtiE28_Scissor_Interior
+ cmp AtiE4SceneMode,25
+ je AtiE26_Blend_Interior
  cmp AtiE4SceneMode,5
  jae AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
@@ -2656,6 +2704,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run27
  cmp ecx,ATIE28_DIOC_SCISSOR_TABLE
  je AtiE1_Dioc_Run28
+ cmp ecx,ATIE29_DIOC_FOG_TABLE
+ je AtiE1_Dioc_Run29
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -3133,6 +3183,32 @@ AtiE1_Dioc_Run28:
  mov eax,[edx+4]
  mov AtiE28TopBottom,eax
  mov eax,24
+ jmp AtiE1_Dioc_Run_Alpha_Table
+ ; Input: SCALE_3D_CNTL, DP_FOG_CLR, vertex ARGB, specular ARGB, expected
+ ; RGB565.  Only the two proven-shape SCALE_3D_CNTL words are accepted;
+ ; anything else, including fog with blending, fails before MMIO is mapped.
+AtiE1_Dioc_Run29:
+ mov edx,[esi.lpvInBuffer]
+ test edx,edx
+ jz AtiE1_Dioc_Fail
+ cmp [esi.cbInBuffer],20
+ jb AtiE1_Dioc_Fail
+ mov eax,[edx]
+ cmp eax,ATIE29_SCALE_FOG_OFF
+ je short AtiE1_Dioc_Run29_Scale_Ok
+ cmp eax,ATIE29_SCALE_FOG_ON
+ jne AtiE1_Dioc_Fail
+AtiE1_Dioc_Run29_Scale_Ok:
+ mov AtiE29Scale,eax
+ mov eax,[edx+4]
+ mov AtiE29FogColor,eax
+ mov eax,[edx+8]
+ mov AtiE29Argb,eax
+ mov eax,[edx+12]
+ mov AtiE29Spec,eax
+ movzx eax,word ptr [edx+16]
+ mov AtiE26Expected,eax
+ mov eax,25
  jmp AtiE1_Dioc_Run_Alpha_Table
 EndProc AtiE1_W32_DeviceIoControl
 BeginProc AtiE1_Dynamic_Init
