@@ -41,3 +41,47 @@ the BMP has CRC32 `F954B178` and SHA-256
 This proves ONE/ONE and SRCALPHA/INVSRCALPHA, but does not close item 9. Each
 other factor pair selected for publication still requires an isolated
 physical scene. Public ATI acceleration remains disabled.
+
+## Factor table
+
+The advertised set is six source factors (ZERO, ONE, SRCALPHA, INVSRCALPHA,
+DESTCOLOR, INVDESTCOLOR) crossed with six destination factors (ZERO, ONE,
+SRCCOLOR, INVSRCCOLOR, SRCALPHA, INVSRCALPHA). Direct3D publishes source
+and destination caps independently, so every one of the 36 pairs is tested.
+BOTHSRCALPHA and BOTHINVSRCALPHA are aliases of two of them. DESTALPHA,
+INVDESTALPHA and SRCALPHASAT are excluded: RGB565 and XRGB1555 targets store
+no alpha, and what the hardware reads in its place is unmeasured.
+
+Build `ati-phase4-blend-table-20260928-a` (`ATI4BT.EXE`, VxD DIOC 26) drew
+each pair as its own guarded scene: backup, `0xA55A` seed, one flat triangle
+with source ARGB `0xD4B16100`, drain, invalidate, inspect, restore. The VxD
+accepts only a `SCALE_3D_CNTL` whose non-factor bits equal the proven ADD
+word `0x000008C1` and whose factors are not destination alpha; anything else
+fails the DIOC before MMIO is mapped. The VxD judged three-probe uniformity;
+the publisher compared the observed pixel with ten candidate CPU rounding
+rules, each of which reproduces both earlier results. `0xD4B16100` was
+chosen so that, under every candidate rule, changing either factor field of
+any pair to another listed factor changes the pixel.
+
+Both boot-11 runs were byte-identical and returned PASS. All 36 pairs had
+status `0x0001FFFF`, uniform probes, zero exterior, guard and restoration
+mismatches, no reset and no timeout. The 34 pairs whose result differs from
+the destination changed exactly 256 pixels within `(8,6)` through `(38,21)`;
+DESTCOLOR/INVSRCCOLOR and ZERO/ONE reproduce `0xA55A` and changed none.
+
+Three rules predicted all 36 pixels: factor/255 with 255-minus inverse,
+truncated at blend and at 565 packing (rule 0); factor/256 with 255-minus
+inverse, rounded at blend; and factor/256 with 256-minus inverse,
+truncated. The other seven each missed one to three pairs. The table
+therefore fixes factor selection for every pair but does not yet single out
+the rounding rule; a software fallback that must match hardware blends
+needs a scene that separates those three.
+
+| File | CRC32 | SHA-256 |
+|---|---|---|
+| `ATI4BT.TXT`, `ATI4BT-PASS2.TXT` | `A0FB4E04` | `4A389C251B17327E566817284DD288B23527B3E858CE64B296C4E3BE9B07CFCA` |
+| `ATI4BT.BIN`, `ATI4BT-PASS2.BIN` | `9076CD43` | `958E29BEE308E813EADD047AD0960B148D8FE9E7E555FBB43FE6D4D407D8E25D` |
+
+`ATI4BT.BIN` holds the 64x28 RGB565 target for each pair in table order,
+3,584 bytes apiece, top row first. Phase 4 item 9 is closed; public ATI
+acceleration remains disabled.

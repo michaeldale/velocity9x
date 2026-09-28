@@ -386,6 +386,22 @@ timeout/reset (`ATI4BA.TXT` CRC32 `04B6E341`, BMP CRC32 `F954B178`). The
 captures and hashes are in the item 9 evidence directory linked above. Item
 9 remains open; public ATI acceleration remains disabled.
 
+Phase 4 item 9 is closed. The advertised ADD set is sources ZERO, ONE,
+SRCALPHA, INVSRCALPHA, DESTCOLOR and INVDESTCOLOR against destinations ZERO,
+ONE, SRCCOLOR, INVSRCCOLOR, SRCALPHA and INVSRCALPHA, with BOTHSRCALPHA and
+BOTHINVSRCALPHA as aliases. Destination-alpha factors and SRCALPHASAT are
+not advertised because RGB565/XRGB1555 targets carry no alpha. Because
+Direct3D publishes source and destination caps independently, build
+`ati-phase4-blend-table-20260928-a` drew all 36 pairs as separate guarded
+scenes with source ARGB `0xD4B16100` over `0xA55A`. Both boot-11 runs were
+byte-identical PASS: every pair had zero exterior, guard, restoration,
+timeout and reset counts, uniform probes and the expected changed region,
+and every observed pixel matched one CPU rule (factor/255, truncating;
+`ATI4BT.TXT` CRC32 `A0FB4E04`). Two other rounding rules also fit all 36, so
+the rounding rule is narrowed but not settled; that matters for Phase 6's
+fallback eligibility, not for publication. Texture environments (item 10)
+are next; public ATI acceleration remains disabled.
+
 ## Goal
 
 Add hardware Direct3D and OpenGL rendering for the physical ATI Rage

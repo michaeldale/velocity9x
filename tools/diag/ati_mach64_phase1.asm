@@ -50,6 +50,7 @@ ATIE22_DIOC_ALPHA_GEQUAL equ 22
 ATIE23_DIOC_ALPHA_ALWAYS equ 23
 ATIE24_DIOC_BLEND_ONE_ONE equ 24
 ATIE25_DIOC_BLEND_SRCALPHA_INV equ 25
+ATIE26_DIOC_BLEND_TABLE equ 26
 ATIE2_RESULT_DWORDS equ 23
 ATIE2_TARGET_OFFSET equ 00200000h
 ATIE2_TARGET_PITCH equ 128
@@ -97,6 +98,11 @@ ATIE22_MAGIC equ 46495441h
 ATIE23_MAGIC equ 47495441h
 ATIE24_MAGIC equ 48495441h
 ATIE25_MAGIC equ 49495441h
+ATIE26_MAGIC equ 4a495441h
+; Only the SCALE_3D_CNTL source/destination factor fields may vary in the
+; blend table; every other bit must equal the proven ADD-enabled value.
+ATIE26_BLEND_FIXED_MASK equ 0ffc0ffffh
+ATIE26_BLEND_FIXED_VALUE equ 000008c1h
 ATIE4_RESULT_DWORDS equ 1004
 ATIE4_TARGET_OFFSET equ 00200100h
 ATIE4_TARGET_PAGE equ 00200000h
@@ -196,6 +202,9 @@ AtiE16ExpectLeft dd 0,1,0,1,0,1,0,1
 AtiE16ExpectRight dd 0,0,0,0,1,1,1,1
 AtiE16ExpectedLeft dd 0
 AtiE16ExpectedRight dd 0
+AtiE26Scale dd 0
+AtiE26Argb dd 0
+AtiE26Expected dd 0
 VxD_LOCKED_DATA_ENDS
 VxD_LOCKED_CODE_SEG
 BeginProc AtiE1_Pci_Read
@@ -1218,6 +1227,8 @@ BeginProc AtiE4_Run
  je AtiE4_Select_Blend_One_One
  cmp AtiE4SceneMode,21
  je AtiE4_Select_Blend_SrcAlpha_Inv
+ cmp AtiE4SceneMode,22
+ je AtiE4_Select_Blend_Table
  cmp AtiE4SceneMode,12
  jb AtiE4_Selected_Scene
  cmp AtiE4SceneMode,19
@@ -1300,6 +1311,15 @@ AtiE4_Select_Blend_SrcAlpha_Inv:
  mov dword ptr AtiE4SetupValues[16],080ff0000h
  mov dword ptr AtiE4SetupValues[40],080ff0000h
  mov dword ptr AtiE4SetupValues[64],080ff0000h
+ jmp AtiE4_Selected_Scene
+AtiE4_Select_Blend_Table:
+ mov dword ptr AtiE4Result[0],ATIE26_MAGIC
+ mov eax,AtiE26Scale
+ mov AtiE4StateValues[40],eax
+ mov eax,AtiE26Argb
+ mov AtiE4SetupValues[16],eax
+ mov AtiE4SetupValues[40],eax
+ mov AtiE4SetupValues[64],eax
  jmp AtiE4_Selected_Scene
 AtiE4_Select_Texture_Common:
  mov dword ptr AtiE4StateCount,19
@@ -1672,6 +1692,8 @@ AtiE4_Inspect_Render:
  je AtiE24_Blend_Interior
  cmp AtiE4SceneMode,21
  je AtiE25_Blend_Interior
+ cmp AtiE4SceneMode,22
+ je AtiE26_Blend_Interior
  cmp AtiE4SceneMode,5
  jae AtiE9_Texture_Interior
  cmp AtiE4SceneMode,1
@@ -1893,6 +1915,31 @@ AtiE25_Blend_Interior_3:
  inc dword ptr AtiE4Result[64]
 AtiE25_Blend_Interior_Done:
  cmp dword ptr AtiE4Result[64],0
+ jne AtiE4_Exterior
+ or AtiE4Result[4],1000h
+ jmp AtiE4_Exterior
+
+ ; The rounding rule is not yet measured, so the VxD judges only uniformity:
+ ; the two other probes must equal the first.  The first probe is always
+ ; recorded; the caller compares it with every candidate CPU model, and the
+ ; 1000h bit reports only whether it matched the caller's first model.
+AtiE26_Blend_Interior:
+ mov ax,[esi+0414h]
+ movzx edx,ax
+ mov AtiE4Result[120],edx
+ mov eax,AtiE26Expected
+ mov AtiE4Result[124],eax
+ mov ax,[esi+0444h]
+ cmp ax,dx
+ je short AtiE26_Blend_Interior_2
+ inc dword ptr AtiE4Result[64]
+AtiE26_Blend_Interior_2:
+ mov ax,[esi+0914h]
+ cmp ax,dx
+ je short AtiE26_Blend_Interior_3
+ inc dword ptr AtiE4Result[64]
+AtiE26_Blend_Interior_3:
+ cmp edx,AtiE26Expected
  jne AtiE4_Exterior
  or AtiE4Result[4],1000h
  jmp AtiE4_Exterior
@@ -2538,6 +2585,8 @@ BeginProc AtiE1_W32_DeviceIoControl
  je AtiE1_Dioc_Run24
  cmp ecx,ATIE25_DIOC_BLEND_SRCALPHA_INV
  je AtiE1_Dioc_Run25
+ cmp ecx,ATIE26_DIOC_BLEND_TABLE
+ je AtiE1_Dioc_Run26
  jmp AtiE1_Dioc_Fail
 AtiE1_Dioc_Run1:
  pushad
@@ -2908,6 +2957,37 @@ AtiE1_Dioc_Copy_Fail:
 AtiE1_Dioc_Fail:
  mov eax,1
  ret
+ ; Input: SCALE_3D_CNTL, vertex ARGB, expected RGB565.  A request outside
+ ; the fixed ADD word, or naming a destination-alpha factor that an RGB565
+ ; target cannot supply, fails here before any MMIO is mapped or written.
+AtiE1_Dioc_Run26:
+ mov edx,[esi.lpvInBuffer]
+ test edx,edx
+ jz AtiE1_Dioc_Fail
+ cmp [esi.cbInBuffer],12
+ jb AtiE1_Dioc_Fail
+ mov eax,[edx]
+ mov ecx,eax
+ and ecx,ATIE26_BLEND_FIXED_MASK
+ cmp ecx,ATIE26_BLEND_FIXED_VALUE
+ jne AtiE1_Dioc_Fail
+ mov ecx,eax
+ shr ecx,16
+ and ecx,7
+ cmp ecx,6
+ jae AtiE1_Dioc_Fail
+ mov ecx,eax
+ shr ecx,19
+ and ecx,7
+ cmp ecx,6
+ jae AtiE1_Dioc_Fail
+ mov AtiE26Scale,eax
+ mov eax,[edx+4]
+ mov AtiE26Argb,eax
+ movzx eax,word ptr [edx+8]
+ mov AtiE26Expected,eax
+ mov eax,22
+ jmp AtiE1_Dioc_Run_Alpha_Table
 EndProc AtiE1_W32_DeviceIoControl
 BeginProc AtiE1_Dynamic_Init
  clc
