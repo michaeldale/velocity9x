@@ -2449,6 +2449,164 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
     return hr;
 }
 
+/* Top half one texel value, bottom half another: a pattern a wrong row
+ * stride reads differently, where left/right halves read the same. */
+static void v9x_fill_surface_top_bottom(struct v9x_dds *surface, WORD top,
+                                  WORD bottom)
+{
+    V9X_DDSURFACEDESC desc;
+    BYTE FAR *row;
+    DWORD y;
+    DWORD x;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0) != 0) {
+        return;
+    }
+    row = (BYTE FAR *)desc.lpSurface;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        WORD FAR *texel = (WORD FAR *)row;
+
+        for (x = 0ul; x < desc.dwWidth; ++x) {
+            texel[x] = y < desc.dwHeight / 2ul ? top : bottom;
+        }
+        row += desc.lPitch;
+    }
+    surface->vtbl->Unlock(surface, 0);
+}
+
+/*
+ * One MIPNEAREST draw from an ARGB1555 chain of `levels` levels, `edge` on
+ * top, created in one CreateSurface. Level 0 is red, level 1 green (or, with
+ * rows set, green on its top half and blue on its bottom), level 2 blue and
+ * every smaller level magenta. The triangle's u and v run 0 to `span`, over
+ * the probe's 47.5-pixel triangle, so the ratio is span * edge / 47.5.
+ * Returns the draw's HRESULT; the pixel at (16,16) comes back.
+ */
+static HRESULT v9x_probe_chain_draw(struct v9x_dd *ddraw,
+                                    struct v9x_d3d_device2 *device,
+                                    struct v9x_dds *target,
+                                    V9X_D3DTLVERTEX *triangle,
+                                    DWORD edge, DWORD levels, int rows,
+                                    DWORD mag, float span, WORD *raw_out)
+{
+    static const WORD fill[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xfc1fu };
+    V9X_DDSURFACEDESC desc;
+    V9X_DDSCAPS caps;
+    struct v9x_dds *top = 0;
+    struct v9x_dds *level = 0;
+    struct v9x_d3d_texture2 *texture = 0;
+    DWORD handle = 0ul;
+    DWORD index;
+    HRESULT hr;
+    HRESULT end_hr;
+
+    *raw_out = 0u;
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT |
+                   V9X_DDSD_PIXELFORMAT | V9X_DDSD_MIPMAPCOUNT;
+    desc.dwWidth = edge;
+    desc.dwHeight = edge;
+    desc.dwMipMapCount = levels;
+    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_COMPLEX |
+                          V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_VIDEOMEMORY;
+    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+    desc.ddpfPixelFormat.dwFlags = 0x00000041ul;
+    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+    desc.ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    desc.ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    desc.ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x00008000ul;
+    hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &top, 0);
+    if (hr != 0 || top == 0) {
+        return hr != 0 ? hr : (HRESULT)V9X_DDERR_UNSUPPORTED;
+    }
+
+    /* Down the chain, filling each level; each GetAttachedSurface adds a
+     * reference, released once the next level is in hand. */
+    level = top;
+    level->vtbl->AddRef(level);
+    for (index = 0ul; index < levels && level != 0; ++index) {
+        struct v9x_dds *next = 0;
+
+        if (index == 1ul && rows) {
+            v9x_fill_surface_top_bottom(level, 0x83e0u, 0x801fu);
+        } else {
+            DWORD value = fill[index < 3ul ? index : 3ul];
+
+            v9x_fill_surface(level, value | (value << 16));
+        }
+        caps.dwCaps = V9X_DDSCAPS_MIPMAP;
+        if (index + 1ul < levels &&
+            level->vtbl->GetAttachedSurface(level, &caps, &next) != 0) {
+            next = 0;
+        }
+        level->vtbl->Release(level);
+        level = next;
+    }
+    if (level != 0) {
+        level->vtbl->Release(level);
+    }
+
+    hr = top->vtbl->QueryInterface(top, &v9x_iid_d3d_texture2,
+                                   (void **)&texture);
+    if (hr == 0 && texture != 0) {
+        hr = texture->vtbl->GetHandle(texture, device, &handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, V9X_D3DTBLEND_COPY);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMIN, V9X_D3DFILTER_MIPNEAREST);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAG, mag);
+    }
+    if (hr == 0) {
+        for (index = 0ul; index < 3ul; ++index) {
+            triangle[index].color = 0xfffffffful;
+            triangle[index].tu = 0.0f;
+            triangle[index].tv = 0.0f;
+        }
+        triangle[1].tu = span;
+        triangle[2].tv = span;
+        v9x_fill_surface(target, 0ul);
+        hr = device->vtbl->BeginScene(device);
+        if (hr == 0) {
+            v9x_step("chain", "draw", edge * 256ul + levels);
+            hr = device->vtbl->DrawPrimitive(
+                device, V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
+                triangle, 3ul, 0ul);
+            end_hr = device->vtbl->EndScene(device);
+            if (hr == 0) {
+                hr = end_hr;
+            }
+        }
+        /* With rows, (12,22): v of about 0.36 of level 1, row 11.6 of 32
+         * at the right stride and row 23, the blue half, at twice it. */
+        *raw_out = rows ? v9x_surface_pixel16(target, 12ul, 22ul)
+                        : v9x_surface_pixel16(target, 16ul, 16ul);
+    }
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREMIN, V9X_D3DFILTER_NEAREST);
+    if (texture != 0) {
+        texture->vtbl->Release(texture);
+    }
+    top->vtbl->Release(top);
+    return hr;
+}
+
 /*
  * Which device did CreateDevice actually return.
  *
@@ -4754,6 +4912,98 @@ void __stdcall V9xDdrawProbeEntry(void)
                             v9x_layout_green(&target_layout, min_raw) >= 197ul &&
                             v9x_layout_blue(&target_layout, min_raw) <= 33ul
                             ? 1ul : 0ul);
+                    }
+                }
+
+                /*
+                 * Mip level selection, one factor at a time (2026-09-29).
+                 *
+                 * The Mach64 selected every MipLadder level (a four-level
+                 * 128 chain at ratios 1.1 to 8.8) but D3DMipmapLevelSelect,
+                 * a two-level 64 chain at ratio 2.7, read level 0. These
+                 * vary the chain length, the top size and the ratio, with
+                 * level 1 green in every case:
+                 *   ChainA: 64, 2 levels, ratio 2.7 - the repro
+                 *   ChainB: 64, 7 levels, ratio 2.7 - a full chain
+                 *   ChainC: 128, 4 levels, ratio 2.7 - the ladder's chain
+                 *   ChainD: 64, 2 levels, ratio 4.4 - further into level 1
+                 * ChainRows is ChainB with level 1 green above and blue
+                 * below. The sample at (16,16) is in its top half, so a
+                 * sampler reading level 1 at the top level's row stride
+                 * reads blue. That tests the per-level pitch the HAL's
+                 * placement assumes. ChainE is ChainA drawn mag-linear, the
+                 * state D3DMipmapLevelSelect inherits.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const DWORD chain_edge[6] = {
+                        64ul, 64ul, 128ul, 64ul, 64ul, 64ul };
+                    static const DWORD chain_levels[6] = {
+                        2ul, 7ul, 4ul, 2ul, 7ul, 2ul };
+                    /* ChainRows at ratio 1.7: level 1 under any threshold
+                     * the first run allowed (1 at 2.2, 2 at 2.7). */
+                    static const float chain_span[6] = {
+                        2.0f, 2.0f, 1.0f, 3.265625f, 1.26171875f, 2.0f };
+                    static const char *chain_raw_key[6] = {
+                        "ChainARaw", "ChainBRaw", "ChainCRaw", "ChainDRaw",
+                        "ChainRowsRaw", "ChainERaw" };
+                    static const char *chain_ok_key[6] = {
+                        "ChainAOk", "ChainBOk", "ChainCOk", "ChainDOk",
+                        "ChainRowsOk", "ChainEOk" };
+                    DWORD chain_index;
+
+                    for (chain_index = 0ul; chain_index < 6ul; ++chain_index) {
+                        WORD chain_raw = 0u;
+                        HRESULT chain_hr;
+
+                        chain_hr = v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, chain_edge[chain_index],
+                            chain_levels[chain_index], chain_index == 4ul,
+                            chain_index == 5ul ? V9X_D3DFILTER_LINEAR
+                                               : V9X_D3DFILTER_NEAREST,
+                            chain_span[chain_index], &chain_raw);
+                        v9x_write_uint(chain_raw_key[chain_index], chain_raw);
+                        v9x_write_uint(chain_ok_key[chain_index],
+                            chain_hr == 0 && target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout,
+                                             chain_raw) >= 197ul &&
+                            v9x_layout_red(&target_layout, chain_raw) <= 33ul &&
+                            v9x_layout_blue(&target_layout, chain_raw) <= 33ul
+                            ? 1ul : 0ul);
+                    }
+                }
+
+                /*
+                 * Where the Mach64 puts each level boundary: a full 64 chain
+                 * at twelve ratios, level 0 red, 1 green, 2 blue, 3 and
+                 * below magenta. ChainB and ChainC read level 2 at ratio 2.7
+                 * where Direct3D's nearest level is 1; MipLadder read level
+                 * 1 at 2.2. Raw values only: the reading is the record.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float sweep_ratio[12] = {
+                        1.4f, 1.7f, 2.0f, 2.3f, 2.5f, 2.7f,
+                        3.0f, 3.5f, 4.0f, 5.0f, 6.0f, 7.0f };
+                    static const char *sweep_key[12] = {
+                        "ChainSweep14Raw", "ChainSweep17Raw",
+                        "ChainSweep20Raw", "ChainSweep23Raw",
+                        "ChainSweep25Raw", "ChainSweep27Raw",
+                        "ChainSweep30Raw", "ChainSweep35Raw",
+                        "ChainSweep40Raw", "ChainSweep50Raw",
+                        "ChainSweep60Raw", "ChainSweep70Raw" };
+                    DWORD sweep_index;
+
+                    for (sweep_index = 0ul; sweep_index < 12ul;
+                         ++sweep_index) {
+                        WORD sweep_raw = 0u;
+
+                        (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, 64ul, 7ul, 0,
+                            V9X_D3DFILTER_NEAREST,
+                            sweep_ratio[sweep_index] * 47.5f / 64.0f,
+                            &sweep_raw);
+                        v9x_write_uint(sweep_key[sweep_index], sweep_raw);
                     }
                 }
 

@@ -18,7 +18,9 @@
 #define V9X_D3D_MACH64_TEXTURE_UNKNOWN 0xfffffffful
 
 /* The bound texture as the engine resolved it. format is
- * V9X_M64_TEXTURE_FORMAT_* or V9X_D3D_MACH64_TEXTURE_UNKNOWN. */
+ * V9X_M64_TEXTURE_FORMAT_* or V9X_D3D_MACH64_TEXTURE_UNKNOWN. levels is the
+ * usable chain length, and level_offsets[n] level n's VRAM offset for the
+ * first `levels` of them (level_offsets[0] is offset). */
 typedef struct v9x_d3d_mach64_texture {
     v9x_u32 format;
     v9x_u32 width;
@@ -26,6 +28,7 @@ typedef struct v9x_d3d_mach64_texture {
     v9x_u32 levels;
     v9x_u32 offset;
     v9x_u32 pitch_bytes;
+    v9x_u32 level_offsets[V9X_M64_TEXTURE_LEVELS_MAX];
 } V9X_D3D_MACH64_TEXTURE;
 
 /*

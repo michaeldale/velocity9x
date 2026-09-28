@@ -142,6 +142,73 @@ static void test_texture_mapping(void)
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
 }
 
+/*
+ * A mip filter on a texture of one level is its base filter (Direct3D's
+ * rule, and what the probe's plain_mipnear cells draw). A chain keeps the
+ * filter and carries its levels into the state; a chain drawn with a
+ * filter that selects no level samples level 0 alone.
+ */
+static void test_mip_mapping(void)
+{
+    static const v9x_u32 folded[4][2] = {
+        { V9X_R3D_FILTER_MIPNEAREST, V9X_R3D_FILTER_NEAREST },
+        { V9X_R3D_FILTER_MIPLINEAR, V9X_R3D_FILTER_NEAREST },
+        { V9X_R3D_FILTER_LINEARMIPNEAREST, V9X_R3D_FILTER_LINEAR },
+        { V9X_R3D_FILTER_LINEARMIPLINEAR, V9X_R3D_FILTER_LINEAR }
+    };
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_state state;
+    v9x_u32 index;
+
+    d3d_draw(&draw);
+    draw.texture.object = &surface_token;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.texture.op = V9X_R3D_TEXOP_COPY;
+    texture_8x8(&texture, V9X_M64_TEXTURE_FORMAT_ARGB1555);
+    for (index = 0ul; index < 4ul; ++index) {
+        draw.texture.min_filter = folded[index][0];
+        v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+        CHECK(request.texture_min_filter == folded[index][1]);
+        CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    }
+
+    /* 8, 4, 2, 1. */
+    texture.levels = 4ul;
+    for (index = 0ul; index < 4ul; ++index) {
+        texture.level_offsets[index] = 0x00204000ul + index * 0x1000ul;
+    }
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.texture_min_filter == V9X_R3D_FILTER_LINEARMIPNEAREST);
+    CHECK(request.texture_levels == 4ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.level_count == 4ul && state.bilinear_min == 1ul);
+    CHECK(state.level_offsets[0] == 0x00204000ul);
+    CHECK(state.level_offsets[3] == 0x00207000ul);
+
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.level_count == 4ul && state.bilinear_min == 0ul);
+
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.level_count == 1ul && state.bilinear_min == 1ul);
+
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
+}
+
 static void test_specular_needs_colour(void)
 {
     V9X_R3D_DRAW draw;
@@ -227,6 +294,7 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_direct3d_defaults();
     test_depth_needs_a_bound_surface();
     test_texture_mapping();
+    test_mip_mapping();
     test_specular_needs_colour();
     test_state_end_to_end();
     return failures;

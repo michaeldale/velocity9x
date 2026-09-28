@@ -131,6 +131,66 @@ DWORD v9x_d3d_place_block(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 }
 
 /*
+ * One block of `bytes` from DirectDraw's heap, aligned to `align`, with
+ * surface n of the list at base + offsets[n] and a pitch of pitches[n].
+ *
+ * For a chain whose levels each have their own pitch; otherwise as
+ * v9x_d3d_place_block, whose signature it leaves for the release. The heap
+ * is asked for rows of `align` bytes, one more than the rounding can cost.
+ */
+DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
+                          DWORD bytes, const v9x_u32 *offsets,
+                          const v9x_u32 *pitches, DWORD *base_out)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    DWORD index;
+    DWORD block;
+    DWORD base;
+    DWORD vram;
+
+    *base_out = 0ul;
+    if (align == 0ul || (align & (align - 1ul)) != 0ul || bytes == 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+    if (!v9x_d3d_place_vidmem_resolve()) {
+        return V9X_D3D_PLACE_EXPORT;
+    }
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        (v9x_hal->fb.linear_base & (align - 1ul)) != 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+
+    block = v9x_d3d_place_vidmem_alloc(data->lpDD, 0, align,
+                                       (bytes + align - 1ul) / align + 1ul);
+    if (block == 0ul) {
+        return V9X_D3D_PLACE_ALLOC;
+    }
+    vram = v9x_hal->fb.vram_bytes;
+    base = 0xfffffffful;
+    if (block >= v9x_hal->fb.linear_base &&
+        block - v9x_hal->fb.linear_base < vram) {
+        base = (block - v9x_hal->fb.linear_base + align - 1ul) &
+               ~(align - 1ul);
+    }
+    if (base == 0xfffffffful || base > vram || bytes > vram - base) {
+        v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
+
+        surface->fpVidMem = v9x_hal->fb.linear_base + base + offsets[index];
+        surface->lPitch = (LONG)pitches[index];
+        surface->dwBlockSizeX = 0ul;
+        surface->dwReserved1 = 0ul;
+    }
+    list[0]->lpGbl->dwReserved1 = block;
+    *base_out = base;
+    return 0ul;
+}
+
+/*
  * The first surface of a list v9x_d3d_place_block placed is going; free the
  * block. Returns 1 when it freed one.
  *

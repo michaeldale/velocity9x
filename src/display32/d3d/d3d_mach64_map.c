@@ -5,6 +5,28 @@
 #define M64_MAP_WRITE_RGB    7ul
 #define M64_MAP_SPECULAR_RGB 0x00fffffful
 
+/* The filter within a level: MIPNEAREST and MIPLINEAR sample nearest,
+ * LINEARMIPNEAREST and LINEARMIPLINEAR bilinear. */
+static v9x_u32 v9x_d3d_mach64_base_filter(v9x_u32 filter)
+{
+    switch (filter) {
+    case V9X_R3D_FILTER_MIPNEAREST:
+    case V9X_R3D_FILTER_MIPLINEAR:
+        return V9X_R3D_FILTER_NEAREST;
+    case V9X_R3D_FILTER_LINEARMIPNEAREST:
+    case V9X_R3D_FILTER_LINEARMIPLINEAR:
+        return V9X_R3D_FILTER_LINEAR;
+    default:
+        return filter;
+    }
+}
+
+static int v9x_d3d_mach64_selects_level(v9x_u32 filter)
+{
+    return filter == V9X_R3D_FILTER_MIPNEAREST ||
+           filter == V9X_R3D_FILTER_LINEARMIPNEAREST;
+}
+
 void v9x_d3d_mach64_map_request(const V9X_R3D_DRAW *draw,
                                 const V9X_D3D_MACH64_TEXTURE *texture,
                                 v9x_u32 specular_rgb,
@@ -59,6 +81,11 @@ void v9x_d3d_mach64_map_request(const V9X_R3D_DRAW *draw,
         }
         request->texture_min_filter = draw->texture.min_filter;
         request->texture_mag_filter = draw->texture.mag_filter;
+        /* A mip filter on one level is its base filter (Direct3D). */
+        if (request->texture_levels <= 1ul) {
+            request->texture_min_filter =
+                v9x_d3d_mach64_base_filter(request->texture_min_filter);
+        }
         request->texture_address = draw->texture.address;
         request->texture_wrap_u = draw->texture.wrap_u |
                                   draw->texture.wrap_either;
@@ -122,9 +149,23 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
             ? 1ul : 0ul;
         state->wrap_t = state->wrap_s;
         state->bilinear_min =
-            request->texture_min_filter == V9X_R3D_FILTER_LINEAR ? 1ul : 0ul;
+            v9x_d3d_mach64_base_filter(request->texture_min_filter) ==
+                V9X_R3D_FILTER_LINEAR ? 1ul : 0ul;
         state->bilinear_mag =
             request->texture_mag_filter == V9X_R3D_FILTER_LINEAR ? 1ul : 0ul;
+        /* A chain drawn with a filter that selects no level samples level
+         * 0 alone, with MIP_MAP_DISABLE. */
+        state->level_count = 1ul;
+        if (request->texture_levels > 1ul &&
+            v9x_d3d_mach64_selects_level(request->texture_min_filter)) {
+            v9x_u32 level;
+
+            state->level_count = request->texture_levels;
+            for (level = 0ul; level < state->level_count &&
+                              level < V9X_M64_TEXTURE_LEVELS_MAX; ++level) {
+                state->level_offsets[level] = texture->level_offsets[level];
+            }
+        }
     }
 
     if (request->blend_enable != 0ul) {

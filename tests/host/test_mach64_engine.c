@@ -820,6 +820,98 @@ typedef char v9x_m64_fifo_stat_is_block0[
 typedef char v9x_m64_gui_traj_is_block0[
     V9X_M64_GUI_TRAJ_CNTL == 0x730ul ? 1 : -1];
 
+/*
+ * A mip chain writes TEX_n_OFF for every level size from the top down to
+ * 1x1, padding a short chain with its smallest level, and clears
+ * MIP_MAP_DISABLE; a single level keeps the one register and the bit.
+ */
+static void test_mip_texture_state(void)
+{
+    struct v9x_m64_texture_state state;
+    v9x_u32 offsets[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 written = 99ul;
+    v9x_u32 level;
+
+    memset(&state, 0, sizeof(state));
+    state.color.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.color.target_offset = 0x00200100ul;
+    state.color.target_pitch_bytes = 128ul;
+    state.color.target_width = 64ul;
+    state.color.target_height = 28ul;
+    state.color.scissor_right = 64ul;
+    state.color.scissor_bottom = 28ul;
+    state.texture_offset = 0x00210000ul;
+    state.texture_pitch_bytes = 128ul;
+    state.texture_width = 64ul;
+    state.texture_height = 64ul;
+
+    /* 64 down to 1: seven levels, one 8 KiB block apart. */
+    state.level_count = 7ul;
+    for (level = 0ul; level < 7ul; ++level) {
+        state.level_offsets[level] = 0x00210000ul + level * 0x2000ul;
+    }
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS + 6ul);
+    CHECK((values[10] & V9X_M64_MIP_MAP_DISABLE) == 0ul);
+    for (level = 0ul; level < 7ul; ++level) {
+        CHECK(offsets[18ul + level] ==
+              V9X_M64_TEX_0_OFF + (6ul - level) * 4ul);
+        CHECK(values[18ul + level] == 0x00210000ul + level * 0x2000ul);
+    }
+
+    /* Three levels of seven: TEX_3_OFF..TEX_0_OFF take the smallest. */
+    state.level_count = 3ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS + 6ul);
+    for (level = 3ul; level < 7ul; ++level) {
+        CHECK(offsets[18ul + level] ==
+              V9X_M64_TEX_0_OFF + (6ul - level) * 4ul);
+        CHECK(values[18ul + level] == 0x00214000ul);
+    }
+
+    /* A chain needs room for every register. */
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+
+    /* More levels than the edge has, a level off its 4 KiB, a first level
+     * that is not the texture, and a level past VRAM all refuse. */
+    state.level_count = 8ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.level_count = 3ul;
+    state.level_offsets[1] = 0x00212100ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.level_offsets[1] = 0x00212000ul;
+    state.level_offsets[0] = 0x00220000ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.level_offsets[0] = 0x00210000ul;
+    state.level_offsets[2] = 0x00400000ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+    CHECK(written == 0ul);
+
+    /* One level is the single-texture state, bit and all. */
+    state.level_count = 1ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS);
+    CHECK((values[10] & V9X_M64_MIP_MAP_DISABLE) != 0ul);
+}
+
 static void test_2d_mode_builder(void)
 {
     v9x_u32 offsets[4];
@@ -929,5 +1021,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_phase3_triangle_golden();
     test_offsets_match_diagnostic();
     test_2d_mode_builder();
+    test_mip_texture_state();
     return failures;
 }

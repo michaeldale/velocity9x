@@ -131,6 +131,15 @@ struct v9x_m64_texture_state {
     v9x_u32 bilinear_mag;
     /* V9X_M64_TEXTURE_FORMAT_*; zero remains RGB565. */
     v9x_u32 texture_format;
+    /*
+     * A mip chain: level_count levels, level 0 the texture above and
+     * level_offsets[0] equal to texture_offset.  Zero or one is a single
+     * level, sampled with MIP_MAP_DISABLE.  Level n is square, edge >> n,
+     * at edge*2 bytes a row and a 4 KiB-aligned offset of its own; that
+     * pitch rule is the hypothesis the HAL probe's mip scenes measure.
+     */
+    v9x_u32 level_count;
+    v9x_u32 level_offsets[V9X_M64_TEXTURE_LEVELS_MAX];
 };
 
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
@@ -317,6 +326,9 @@ struct v9x_m64_draw_state {
     v9x_u32 wrap_t;
     v9x_u32 bilinear_min;
     v9x_u32 bilinear_mag;
+    /* As in struct v9x_m64_texture_state. */
+    v9x_u32 level_count;
+    v9x_u32 level_offsets[V9X_M64_TEXTURE_LEVELS_MAX];
     v9x_u32 blend_enable;
     v9x_u32 src_blend;
     v9x_u32 dst_blend;

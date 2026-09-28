@@ -29,8 +29,10 @@
 #define M64_BLEND_DESTCOLOR    9ul
 #define M64_BLEND_INVDESTCOLOR 10ul
 
-#define M64_FILTER_NEAREST 1ul
-#define M64_FILTER_LINEAR  2ul
+#define M64_FILTER_NEAREST          1ul
+#define M64_FILTER_LINEAR           2ul
+#define M64_FILTER_MIPNEAREST       3ul
+#define M64_FILTER_LINEARMIPNEAREST 5ul
 #define M64_ADDRESS_WRAP   1ul
 #define M64_ADDRESS_CLAMP  3ul
 
@@ -83,6 +85,17 @@ static int v9x_m64_policy_dest_factor(v9x_u32 factor)
     }
 }
 
+static v9x_u32 v9x_m64_policy_log2(v9x_u32 value)
+{
+    v9x_u32 result = 0ul;
+
+    while (value > 1ul) {
+        value >>= 1;
+        ++result;
+    }
+    return result;
+}
+
 static int v9x_m64_policy_format_has_alpha(v9x_u32 format)
 {
     return format == V9X_M64_TEXTURE_FORMAT_ARGB1555 ||
@@ -105,15 +118,29 @@ static v9x_u32 v9x_m64_policy_texture(
         (request->texture_width & (request->texture_width - 1ul)) != 0ul) {
         return V9X_M64_REFUSE_TEXTURE_SHAPE;
     }
-    if (request->texture_levels != 1ul) {
+    /* One level per halving at most: an 8x8 chain is 8, 4, 2, 1. */
+    if (request->texture_levels == 0ul ||
+        request->texture_levels > v9x_m64_policy_log2(request->texture_width)
+                                  + 1ul) {
         return V9X_M64_REFUSE_TEXTURE_MIP;
     }
 
-    /* Mip filters are refused as filters: no mipmapped scene exists. */
-    if ((request->texture_min_filter != M64_FILTER_NEAREST &&
-         request->texture_min_filter != M64_FILTER_LINEAR) ||
-        (request->texture_mag_filter != M64_FILTER_NEAREST &&
-         request->texture_mag_filter != M64_FILTER_LINEAR)) {
+    /*
+     * A chain may select a level, nearest or bilinear within it. Blending
+     * two levels is unmeasured: the Mach64's TRILINEAR function is what
+     * Mesa's driver used to blend two textures, not two levels of one.
+     * A single level takes no mip filter; the HAL folds one to its base
+     * filter first, as Direct3D defines it.
+     */
+    if (request->texture_mag_filter != M64_FILTER_NEAREST &&
+        request->texture_mag_filter != M64_FILTER_LINEAR) {
+        return V9X_M64_REFUSE_TEXTURE_FILTER;
+    }
+    if (request->texture_min_filter != M64_FILTER_NEAREST &&
+        request->texture_min_filter != M64_FILTER_LINEAR &&
+        (request->texture_levels == 1ul ||
+         (request->texture_min_filter != M64_FILTER_MIPNEAREST &&
+          request->texture_min_filter != M64_FILTER_LINEARMIPNEAREST))) {
         return V9X_M64_REFUSE_TEXTURE_FILTER;
     }
 

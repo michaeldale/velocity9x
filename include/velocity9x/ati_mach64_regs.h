@@ -109,9 +109,16 @@
 #define V9X_M64_GOURAUD_STATE_DWORDS  V9X_M64_FLAT_STATE_DWORDS
 #define V9X_M64_TEXTURED_STATE_DWORDS 19ul
 #define V9X_M64_TEXTURED_TRIANGLE_DWORDS V9X_M64_FLAT_TRIANGLE_DWORDS
-/* A draw's state is the textured state's slots at most; a setup packet is
- * a triangle plus the three specular words fog needs ahead of it. */
-#define V9X_M64_DRAW_STATE_DWORDS     V9X_M64_TEXTURED_STATE_DWORDS
+/* TEX_0_OFF..TEX_10_OFF: one offset register per level size, 1 to 1024. A
+ * mip chain writes every register below the top one's after the textured
+ * state's 19 words. */
+#define V9X_M64_TEXTURE_LEVELS_MAX    11ul
+#define V9X_M64_TEXTURE_MIP_DWORDS    (V9X_M64_TEXTURE_LEVELS_MAX - 1ul)
+/* A draw's state is the textured state's slots and the mip registers at
+ * most; a setup packet is a triangle plus the three specular words fog
+ * needs ahead of it. */
+#define V9X_M64_DRAW_STATE_DWORDS \
+    (V9X_M64_TEXTURED_STATE_DWORDS + V9X_M64_TEXTURE_MIP_DWORDS)
 #define V9X_M64_SPECULAR_DWORDS       3ul
 #define V9X_M64_SETUP_DWORDS \
     (V9X_M64_FLAT_TRIANGLE_DWORDS + V9X_M64_SPECULAR_DWORDS)

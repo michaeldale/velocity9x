@@ -83,6 +83,7 @@ static v9x_status v9x_m64_draw_base(const struct v9x_m64_draw_state *state,
                                     v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_m64_texture_state texture;
+    v9x_u32 level;
 
     /*
      * Gouraud setup always: a flat Direct3D draw arrives with three equal
@@ -103,6 +104,10 @@ static v9x_status v9x_m64_draw_base(const struct v9x_m64_draw_state *state,
     texture.bilinear_min = state->bilinear_min;
     texture.bilinear_mag = state->bilinear_mag;
     texture.texture_format = state->texture_format;
+    texture.level_count = state->level_count;
+    for (level = 0ul; level < V9X_M64_TEXTURE_LEVELS_MAX; ++level) {
+        texture.level_offsets[level] = state->level_offsets[level];
+    }
     return v9x_m64_build_texture_state(&texture, offsets, values, capacity,
                                        written);
 }

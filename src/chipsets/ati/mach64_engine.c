@@ -900,6 +900,10 @@ v9x_status v9x_m64_build_texture_state(
     v9x_u32 texture_end;
     v9x_u32 color_end;
     v9x_u32 texture_pix_width;
+    v9x_u32 levels;
+    v9x_u32 level;
+    v9x_u32 level_edge;
+    v9x_u32 level_bytes;
     v9x_status status;
     if (written != 0) *written = 0ul;
     if (state == 0 || offsets == 0 || values == 0 || written == 0 ||
@@ -964,6 +968,39 @@ v9x_status v9x_m64_build_texture_state(
     width_log2 = v9x_m64_log2(state->texture_width);
     height_log2 = v9x_m64_log2(state->texture_height);
     max_log2 = width_log2 > height_log2 ? width_log2 : height_log2;
+
+    /*
+     * A mip chain: square, at most one level per halving, level 0 the
+     * texture above, and every other level 4 KiB aligned inside VRAM at
+     * edge*2 bytes a row. Each TEX_n_OFF names the level whose edge is
+     * 2^n, so the chain takes every register from TEX_<max_log2>_OFF down
+     * to TEX_0_OFF, and a chain that stops early lends its smallest level
+     * to the sizes below it.
+     */
+    levels = state->level_count > 1ul ? state->level_count : 1ul;
+    if (levels > 1ul) {
+        if (state->texture_width != state->texture_height ||
+            levels > max_log2 + 1ul ||
+            capacity < V9X_M64_TEXTURED_STATE_DWORDS + max_log2 ||
+            state->level_offsets[0] != state->texture_offset) {
+            *written = 0ul;
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        for (level = 1ul; level < levels; ++level) {
+            level_edge = state->texture_width >> level;
+            level_bytes = level_edge * 2ul * level_edge;
+            if ((state->level_offsets[level] & 4095ul) != 0ul) {
+                *written = 0ul;
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+            if (state->level_offsets[level] > state->color.vram_bytes ||
+                level_bytes >
+                    state->color.vram_bytes - state->level_offsets[level]) {
+                *written = 0ul;
+                return V9X_STATUS_INSUFFICIENT_MEMORY;
+            }
+        }
+    }
     /*
      * MIP_MAP_DISABLE: only TEX_<max_log2>_OFF is written below, and without
      * the bit a minified draw selects a smaller level and reads a register
@@ -973,7 +1010,7 @@ v9x_status v9x_m64_build_texture_state(
      * (xf86-video-mach64 atimach64render.c).
      */
     values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul |
-                 V9X_M64_MIP_MAP_DISABLE |
+                 (levels == 1ul ? V9X_M64_MIP_MAP_DISABLE : 0ul) |
                  (state->bilinear_min != 0ul
                     ? V9X_M64_TEX_BLEND_FCN_LINEAR : 0ul) |
                  (state->bilinear_mag != 0ul
@@ -992,5 +1029,14 @@ v9x_status v9x_m64_build_texture_state(
     offsets[18] = V9X_M64_TEX_0_OFF + max_log2 * 4ul;
     values[18] = state->texture_offset;
     *written = V9X_M64_TEXTURED_STATE_DWORDS;
+    if (levels == 1ul) {
+        return V9X_STATUS_OK;
+    }
+    for (level = 1ul; level <= max_log2; ++level) {
+        offsets[*written] = V9X_M64_TEX_0_OFF + (max_log2 - level) * 4ul;
+        values[*written] = state->level_offsets[
+            level < levels ? level : levels - 1ul];
+        ++*written;
+    }
     return V9X_STATUS_OK;
 }

@@ -1068,6 +1068,43 @@ The Phase 4 scenes' `SCALE_3D_CNTL` words are unchanged. The HAL's
 textured word now differs from them by bit 24. That is measured on this
 path, not in the diagnostic VxD.
 
+Mipmaps (2026-09-29, boot 30).
+
+- Implementation:
+  - The HAL places a mip chain created in one CreateSurface as one
+    block, each level at `edge >> n`, `edge*2` bytes a row, on its own
+    4 KiB boundary (`v9x_d3d_place_chain`).
+  - The draw walks the chain, writes `TEX_n_OFF` for every level size
+    down to 1x1 (a short chain lends its smallest level below), and
+    clears `MIP_MAP_DISABLE`.
+  - The policy accepts MIPNEAREST and LINEARMIPNEAREST on a chain, and
+    only those are published.
+  - A mip filter on a single-level texture is its base filter.
+  - Blending levels (MIPLINEAR, LINEARMIPLINEAR) refuses: the Mach64's
+    TRILINEAR function is what Mesa used to blend two textures, and
+    nothing measured it for levels.
+- Measured (`V9XDDT-MIP-CHAINS.TXT`, `V9XSNA7-MIP.INI`):
+  - `MipLadderOk=1`: all four levels of a 128 chain, at ratios 1.1,
+    2.2, 4.4 and 8.8.
+  - Every texture-matrix chain and gapped cell passes except trilinear.
+  - `ChainRowsOk=1`: level 1 filled top/bottom, sampled where twice the
+    row stride reads the other half. So the per-level `edge*2` pitch
+    is right.
+  - The probe reports 179 passes (121 before); `M64TextureDraws` is 321
+    and `M64Refused` 66 per run, with zero timeouts and zero resets.
+- The level boundaries sit lower than Direct3D's nearest rule. A full 64
+  chain swept from ratio 1.4 to 7.0 read level 1 from 1.4 to 2.0,
+  level 2 from 2.3 to 4.0, and level 3 from 5.0. The boundaries fall
+  near 1.1-1.4, 2.0-2.3 and 4.0-5.0, against Direct3D's 1.41, 2.83 and
+  5.66. The hardware selects about a third of a level smaller, a
+  slightly blurrier picture. `ChainB` and `ChainC` fail on this.
+  `TEX_CNTL` LOD_BIAS [3:0] is the unmeasured candidate for
+  correcting it.
+- Open: `D3DMipmapLevelSelect` reads level 0 on a two-level 64 chain
+  at ratio 2.7, where `ChainA`, the same shape and ratio, reads the
+  padded level. It is the probe's first mip draw, on a chain drawn
+  without mipmapping just before. Not explained.
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register

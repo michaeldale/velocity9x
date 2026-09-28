@@ -26,6 +26,8 @@ static unsigned int failures = 0u;
 #define T_FILTER_NEAREST 1ul
 #define T_FILTER_LINEAR 2ul
 #define T_FILTER_MIPNEAREST 3ul
+#define T_FILTER_MIPLINEAR 4ul
+#define T_FILTER_LINEARMIPNEAREST 5ul
 #define T_FILTER_LINEARMIPLINEAR 6ul
 #define T_ADDRESS_WRAP 1ul
 #define T_ADDRESS_MIRROR 2ul
@@ -257,8 +259,22 @@ static void test_texture_shape_and_sampling(void)
     request.texture_height = 8ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
 
+    /* A chain: up to one level per halving, with a filter that selects a
+     * level. Blending between levels is unmeasured and refuses. */
     textured(&request, 0ul);
-    request.texture_levels = 2ul;
+    request.texture_levels = 4ul;
+    request.texture_min_filter = T_FILTER_MIPNEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_min_filter = T_FILTER_LINEARMIPNEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_min_filter = T_FILTER_NEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_min_filter = T_FILTER_MIPLINEAR;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
+    request.texture_min_filter = T_FILTER_LINEARMIPLINEAR;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
+    request.texture_min_filter = T_FILTER_MIPNEAREST;
+    request.texture_levels = 5ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_MIP);
     request.texture_levels = 0ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_MIP);
