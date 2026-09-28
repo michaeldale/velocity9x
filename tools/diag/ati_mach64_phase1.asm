@@ -1737,6 +1737,11 @@ AtiE8_Clear_Verify:
  cmp word ptr [esi],0ffffh
  je short AtiE8_Clear_Verify_Next
  inc dword ptr AtiE4Result[72]
+ cmp dword ptr AtiE4Result[124],0
+ jne short AtiE8_Clear_Verify_Next
+ movzx eax,word ptr [esi]
+ mov AtiE4Result[120],eax
+ mov dword ptr AtiE4Result[124],0ffffh
 AtiE8_Clear_Verify_Next:
  add esi,2
  dec ecx
@@ -1762,6 +1767,14 @@ AtiE8_Clear_Guard_After_Next:
  add esi,2
  dec ecx
  jnz short AtiE8_Clear_Guard_After
+ ; For this diagnostic the BMP is a literal post-clear Z16 dump.  White is
+ ; cleared depth; any retained 0x8000/0x4000 region is directly visible.
+ mov esi,AtiE6DepthLinear
+ add esi,100h
+ mov edi,OFFSET32 AtiE4Result+416
+ mov ecx,896
+ cld
+ rep movsd
  jmp AtiE4_Restore_State
 
 AtiE4_Reset_Then_Restore:
