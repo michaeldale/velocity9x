@@ -889,6 +889,23 @@ Before ATI exposes `V9X_DD_ENGINE_CAP_D3D`:
 - prove the ATI package's texture formats and caps contain no ViRGE-only
   promises.
 
+Status 2026-09-28: three of these are done. Both functions now use
+`v9x_d3d_select_engine` (`src/display32/d3d/d3d_select.c`). It fails closed
+for unknown and engine-less types, `ATI_MACH64` included. Host tests cover
+every engine type, validity, the software override and mismatched
+caps/type. The stale comments are corrected. The ViRGE guest still
+publishes its caps under the fail-closed selector (`D3DHalFound=1`,
+`TexFormatCount=2`, unchanged). See
+[`../decisions/2026-09-28-d3d-engine-selection-fails-closed.md`](../decisions/2026-09-28-d3d-engine-selection-fails-closed.md).
+
+What remains:
+
+- The Mobility's `fill_engine_descriptor`.
+- The Mach64 branch. It needs `d3d_mach64.c` to exist, and
+  `v9x_m64_check_draw` is its `accepts`.
+- The ATI package caps audit. With no ATI branch, the ATI family now
+  publishes no Direct3D caps at all, rather than the ViRGE's.
+
 ### D3D gates
 
 - Extend the Direct3D probe with untextured, Z, textured, alpha-test and blend

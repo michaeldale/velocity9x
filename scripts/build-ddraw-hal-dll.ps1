@@ -97,6 +97,7 @@ $sources = @(
     # Direct3D render state to the neutral draw description; pure and
     # host-tested in tests\host\test_d3d_state.c.
     "src\display32\d3d\d3d_state.c",
+    "src\display32\d3d\d3d_select.c",
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",

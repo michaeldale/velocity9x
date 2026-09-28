@@ -85,6 +85,9 @@ function Get-V9xHostSourceNames {
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
+        # Which D3D engine serves the chip, at publish time and every call.
+        'src\display32\d3d\d3d_select.c',
+        'tests\host\test_d3d_select.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',

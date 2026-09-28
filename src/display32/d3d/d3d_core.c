@@ -30,6 +30,7 @@
 #include "r3d/r3d_validate.h"
 #include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
+#include "d3d_select.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -128,6 +129,20 @@ void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface)
 }
 static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
 
+static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
+{
+    switch (selection) {
+    case V9X_D3D_SELECT_SOFTWARE:
+        return &v9x_d3d_engine_soft;
+    case V9X_D3D_SELECT_VIRGE:
+        return &v9x_d3d_engine_virge;
+    case V9X_D3D_SELECT_GEN3:
+        return &v9x_d3d_engine_i9xx;
+    default:
+        return 0;
+    }
+}
+
 /*
  * Which engine draws for this chip.
  *
@@ -144,36 +159,13 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void)
         return 0;
     }
     /*
-     * Mode first, chip second.
-     *
-     * The software engine is selected by capability, not by engine_type,
-     * because the whole point of it is to serve a chip whose engine_type is
-     * NONE. Testing it before the chip means a card with an S3D unit can also
-     * be asked for the rasterizer - which is what "Software" in the settings
-     * page means on a ViRGE, and is how a game that misbehaves through the
-     * narrow S3D path gets a second option.
+     * The software rasterizer by capability, then the chip by engine_type;
+     * d3d_select.c holds the rule and its test. Gen3 resolves and then
+     * reports itself not ready until its submission path is trusted.
      */
-    if ((v9x_hal->engine.engine_caps &
-         V9X_DD_ENGINE_CAP_D3D_SOFTWARE) != 0ul) {
-        return &v9x_d3d_engine_soft;
-    }
-    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
-        return &v9x_d3d_engine_virge;
-    }
-    /*
-     * Gen3 resolves, and then reports itself NOT READY.
-     *
-     * The arm exists so the selector is exercised rather than added later
-     * beside an engine that also has to be right. Nothing selects it today:
-     * the intel-gma manifest declares EngineType NONE, so the descriptor never
-     * carries this value. When it does, the engine still refuses every draw
-     * until it has a 32-bit submission path and a risk decision covering
-     * sustained 3D work.
-     */
-    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
-        return &v9x_d3d_engine_i9xx;
-    }
-    return 0;
+    return v9x_d3d_selected_ops(
+        v9x_d3d_select_engine(1, v9x_hal->engine.engine_type,
+                              v9x_hal->engine.engine_caps));
 }
 
 /*
@@ -2700,61 +2692,26 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
 /*
  * The engine whose caps this binary publishes at DriverInit.
  *
- * NOT v9x_d3d_engine(). DriverInit runs before the 16-bit side fills the
- * engine descriptor - dd16.c says so about the framebuffer descriptor at the
- * same point, and the engine is filled in that same later step - so at publish
- * time engine_type is 0 and engine.flags carries no V9X_DD_ENGINE_VALID.
- * Selecting on it here published nothing at all, and DDRAW then enumerated no
- * hardware Direct3D device. Measured on the ViRGE guest: D3DHalFound went 1 to
- * 0. See the D3D core/engine split decision record of 2026-08-29.
- *
- * So caps publication cannot be chip-selected today, and this returns the one
- * D3D engine the binary carries. That is exactly the pre-split behaviour: the
- * tables were always filled, and the 16-bit side is and remains the capability
- * authority that hides them from a chip whose engine_caps lack D3D.
- *
- * A second D3D engine has to fix this properly, and the fix is on the 16-bit
- * side rather than here: stamp the chip's engine_type into the shared block
- * before DriverInit is called, then select on it. That is a change to the
- * enable ordering and needs its own evidence, which is why it is not being
- * guessed at now.
+ * The same selector as v9x_d3d_engine(), without its validity pre-check:
+ * the software capability must be honoured on a chip whose descriptor names
+ * no engine. Until 2026-09-28 this defaulted to the ViRGE, because
+ * engine_type was unreadable at DriverInit (the 2026-08-29 core/engine
+ * split record measured D3DHalFound 1 -> 0 when it selected on the unset
+ * field). dd16.c's v9x_dd_stamp_engine_caps now stamps engine_type and
+ * V9X_DD_ENGINE_VALID on the DDGET32BITDRIVERNAME escape, before
+ * DriverInit, for every chip with an engine descriptor, so the choice is
+ * the chip's own. A chip with no D3D engine in this binary publishes no
+ * caps rather than the ViRGE's.
  */
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void)
 {
-    /*
-     * This can now select, and the comment above is the record of why it could
-     * not before. The 16-bit side stamps engine_caps in v9x_dd_block(), which
-     * runs on the DDGET32BITDRIVERNAME escape and therefore strictly before
-     * DriverInit - so the software capability is readable here where
-     * engine_type still is not.
-     *
-     * Only the software bit is tested. Selecting the chip's engine on
-     * engine_type remains impossible at this point and remains the reason this
-     * function exists separately from v9x_d3d_engine(): the descriptor's
-     * control window and type are filled by the later framebuffer refresh.
-     * The fallback is the binary's one hardware engine, which is exactly the
-     * pre-split behaviour and is clamped out by the 16-bit side for a family
-     * that does not claim D3D.
-     */
-    if (v9x_hal != 0 &&
-        (v9x_hal->engine.engine_caps &
-         V9X_DD_ENGINE_CAP_D3D_SOFTWARE) != 0ul) {
-        return &v9x_d3d_engine_soft;
+    if (v9x_hal == 0) {
+        return 0;
     }
-    /*
-     * Gen3, when the 16-bit side has already stamped the type.
-     *
-     * engine_type is normally unreadable here - that is why this function is
-     * separate - but a family that fills it before DriverInit would otherwise
-     * fall through to the ViRGE, and publishing the ViRGE's caps on an Intel
-     * part is the failure this whole function exists to prevent. Tested
-     * rather than assumed absent.
-     */
-    if (v9x_hal != 0 &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
-        return &v9x_d3d_engine_i9xx;
-    }
-    return &v9x_d3d_engine_virge;
+    return v9x_d3d_selected_ops(
+        v9x_d3d_select_engine(
+            (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul,
+            v9x_hal->engine.engine_type, v9x_hal->engine.engine_caps));
 }
 
 /*
@@ -2772,7 +2729,11 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
 
-    ops->describe_caps(shared);
+    /* No engine, no caps. The callbacks below are still wired: each one
+     * declines when v9x_d3d_engine() resolves nothing at call time. */
+    if (ops != 0) {
+        ops->describe_caps(shared);
+    }
 
     /*
      * THE TEXTURE ALIGNMENT DirectDraw will honour, corrected here to the
@@ -2791,7 +2752,7 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
      * states no requirement, so a chip that samples nothing keeps the
      * core's answer.
      */
-    if (ops->limits != 0 && ops->limits->texture_align != 0ul) {
+    if (ops != 0 && ops->limits != 0 && ops->limits->texture_align != 0ul) {
         shared->info.vmiData.dwTextureAlign = ops->limits->texture_align;
     }
 
