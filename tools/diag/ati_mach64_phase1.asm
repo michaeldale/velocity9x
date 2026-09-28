@@ -1562,20 +1562,27 @@ AtiE9_Texture_Interior:
  mov AtiE4Result[120],eax
  mov dword ptr AtiE4Result[124],0000f800h
 AtiE9_Texture_Interior_2:
+ cmp AtiE4SceneMode,7
+ jne short AtiE9_Texture_Affine_Probe_2
+ mov ax,[esi+043ch] ; (30,8), perspective-correct red
+ cmp ax,0f800h
+ jmp short AtiE9_Texture_Probe_2_Result
+AtiE9_Texture_Affine_Probe_2:
  mov ax,[esi+0444h] ; (34,8), top-right green
  cmp ax,007e0h
+AtiE9_Texture_Probe_2_Result:
  je short AtiE9_Texture_Interior_3
  inc dword ptr AtiE4Result[64]
 AtiE9_Texture_Interior_3:
- mov ax,[esi+0914h] ; (10,18), bottom-left blue
  cmp AtiE4SceneMode,7
- jne short AtiE9_Texture_Expect_Blue
- cmp ax,0f800h       ; perspective pulls T below the quadrant boundary
- je short AtiE9_Texture_Interior_Done
- inc dword ptr AtiE4Result[64]
- jmp short AtiE9_Texture_Interior_Done
-AtiE9_Texture_Expect_Blue:
+ jne short AtiE9_Texture_Affine_Probe_3
+ mov ax,[esi+0814h] ; (10,16), perspective-correct red
+ cmp ax,0f800h
+ jmp short AtiE9_Texture_Probe_3_Result
+AtiE9_Texture_Affine_Probe_3:
+ mov ax,[esi+0914h] ; (10,18), bottom-left blue
  cmp ax,001fh
+AtiE9_Texture_Probe_3_Result:
  je short AtiE9_Texture_Interior_Done
  inc dword ptr AtiE4Result[64]
 AtiE9_Texture_Interior_Done:
