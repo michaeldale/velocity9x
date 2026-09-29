@@ -45,6 +45,9 @@ v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
         engine->shadow[index].offset = 0ul;
         engine->shadow[index].value = 0ul;
     }
+    for (index = 0ul; index < V9X_M64_REGISTER_SLOTS; ++index) {
+        engine->shadow_slot[index] = 0u;
+    }
     return V9X_STATUS_OK;
 }
 
@@ -95,6 +98,23 @@ static void v9x_m64_shadow(struct v9x_m64_engine *engine,
     /* Replaying a trigger would execute the old operation again. */
     if (offset == V9X_M64_DST_HEIGHT_WIDTH ||
         offset == V9X_M64_ONE_OVER_AREA) return;
+    /* A mapped register by its slot; anything else by search. */
+    if ((offset & 3ul) == 0ul &&
+        (offset >> 2) < V9X_M64_REGISTER_SLOTS) {
+        v9x_u8 slot = engine->shadow_slot[offset >> 2];
+
+        if (slot != 0u) {
+            engine->shadow[slot - 1u].value = value;
+            return;
+        }
+        if (engine->shadow_count < V9X_M64_SHADOW_ENTRIES) {
+            engine->shadow[engine->shadow_count].offset = offset;
+            engine->shadow[engine->shadow_count].value = value;
+            ++engine->shadow_count;
+            engine->shadow_slot[offset >> 2] = (v9x_u8)engine->shadow_count;
+        }
+        return;
+    }
     for (index = 0ul; index < engine->shadow_count; ++index) {
         if (engine->shadow[index].offset == offset) {
             engine->shadow[index].value = value;
@@ -913,9 +933,11 @@ v9x_status v9x_m64_build_texture_state(
     status = v9x_m64_build_flat_state(&state->color, offsets, values,
                                       capacity, written);
     if (status != V9X_STATUS_OK) return status;
-    /* The historical local texture heap binds at its 4 KiB granularity.
-     * Smaller alignment reached the fetcher on Mobility-M but wedged it. */
-    if ((state->texture_offset & 4095ul) != 0ul ||
+    /* V9X_M64_TEXTURE_BASE_ALIGN: the heap bound at 4 KiB until
+     * 2026-09-29. The one smaller base tried, 256 bytes, wedged the engine
+     * through a harness bug, not the base; xf86-video-mach64 samples EXA
+     * pixmaps as textures at 64-byte offsets (atimach64exa.c). */
+    if ((state->texture_offset & (V9X_M64_TEXTURE_BASE_ALIGN - 1ul)) != 0ul ||
         !v9x_m64_power_of_two(state->texture_width) ||
         !v9x_m64_power_of_two(state->texture_height) ||
         state->texture_width < 8ul || state->texture_width > 1024ul ||
@@ -971,7 +993,7 @@ v9x_status v9x_m64_build_texture_state(
 
     /*
      * A mip chain: square, at most one level per halving, level 0 the
-     * texture above, and every other level 4 KiB aligned inside VRAM at
+     * texture above, and every other level on the base alignment inside VRAM at
      * edge*2 bytes a row. Each TEX_n_OFF names the level whose edge is
      * 2^n, so the chain takes every register from TEX_<max_log2>_OFF down
      * to TEX_0_OFF, and a chain that stops early lends its smallest level
@@ -989,7 +1011,8 @@ v9x_status v9x_m64_build_texture_state(
         for (level = 1ul; level < levels; ++level) {
             level_edge = state->texture_width >> level;
             level_bytes = level_edge * 2ul * level_edge;
-            if ((state->level_offsets[level] & 4095ul) != 0ul) {
+            if ((state->level_offsets[level] &
+                 (V9X_M64_TEXTURE_BASE_ALIGN - 1ul)) != 0ul) {
                 *written = 0ul;
                 return V9X_STATUS_INVALID_ARGUMENT;
             }

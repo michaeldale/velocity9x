@@ -504,6 +504,56 @@ static void test_retarget_to_1555(void)
            d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
 }
 
+/*
+ * A square-only sampler of at least side_min (the Mach64: 8 to 256) takes
+ * a square copy. A wrapped image repeats across it, so with s and t scaled
+ * by width/side and height/side it samples the same texels, repeats
+ * included; a clamped one keeps its last row and column out to the edge.
+ */
+static void test_square_copy(void)
+{
+    static const v9x_u16 image[2][4] = {
+        { 0x0001u, 0x0002u, 0x0003u, 0x0004u },
+        { 0x0011u, 0x0012u, 0x0013u, 0x0014u } };
+    v9x_u16 square[8 * 8];
+    v9x_u32 x;
+    v9x_u32 y;
+    int wrap_ok = 1;
+    int clamp_ok = 1;
+
+    TCHECK(v9x_gl_tex_square_side(4ul, 2ul, 1ul, 256ul) == 4ul);
+    TCHECK(v9x_gl_tex_square_side(64ul, 32ul, 8ul, 256ul) == 64ul);
+    TCHECK(v9x_gl_tex_square_side(2ul, 4ul, 8ul, 256ul) == 8ul);
+    TCHECK(v9x_gl_tex_square_side(1ul, 1ul, 8ul, 256ul) == 8ul);
+    TCHECK(v9x_gl_tex_square_side(512ul, 16ul, 8ul, 256ul) == 0ul);
+
+    v9x_gl_tex_square_fill(&image[0][0], 8ul, 4ul, 2ul, square, 4ul, 0);
+    for (y = 0ul; y < 4ul; ++y) {
+        for (x = 0ul; x < 4ul; ++x) {
+            if (square[y * 4ul + x] != image[y % 2ul][x]) {
+                wrap_ok = 0;
+            }
+        }
+    }
+    TCHECK(wrap_ok);
+
+    v9x_gl_tex_square_fill(&image[0][0], 8ul, 4ul, 2ul, square, 8ul, 1);
+    for (y = 0ul; y < 8ul; ++y) {
+        for (x = 0ul; x < 8ul; ++x) {
+            if (square[y * 8ul + x] !=
+                image[y < 2ul ? y : 1ul][x < 4ul ? x : 3ul]) {
+                clamp_ok = 0;
+            }
+        }
+    }
+    TCHECK(clamp_ok);
+
+    /* A 1x1 level (the chain's end) fills the whole square. */
+    v9x_gl_tex_square_fill(&image[0][0], 8ul, 1ul, 1ul, square, 2ul, 0);
+    TCHECK(square[0] == 0x0001u && square[1] == 0x0001u &&
+           square[2] == 0x0001u && square[3] == 0x0001u);
+}
+
 unsigned int v9x_run_gl_texture_tests(void)
 {
     gl_texture_failures = 0u;
@@ -514,6 +564,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_environment_table();
     test_hardware_copy_bookkeeping();
     test_retarget_to_1555();
+    test_square_copy();
     if (gl_texture_failures == 0u) {
         printf("PASS: OpenGL texture objects and images\n");
     }

@@ -94,6 +94,46 @@ static void test_exact_batch_has_no_inner_read(void)
     CHECK(engine.shadow_count == 4ul);
 }
 
+/*
+ * The replay shadow keeps the first V9X_M64_SHADOW_ENTRIES registers in the
+ * order first written and the latest value of each. A 3D batch writes more
+ * than that, so the lookup is by register, not a search of the table.
+ */
+static void test_shadow_keeps_order_and_latest(void)
+{
+    struct v9x_m64_engine engine;
+    struct fake_io fake;
+    v9x_u32 offsets[40];
+    v9x_u32 values[40];
+    v9x_u32 index;
+
+    setup(&engine, &fake, V9X_M64_FIFO_VTB_PLUS);
+    fake.status[0] = 0x00400000ul;   /* 64 free */
+    fake.status_count = 1ul;
+    for (index = 0ul; index < 40ul; ++index) {
+        offsets[index] = 0x400ul + index * 4ul;
+        values[index] = index;
+    }
+    CHECK(v9x_m64_emit_batch(&engine, offsets, values, 40ul, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(engine.shadow_count == V9X_M64_SHADOW_ENTRIES);
+    CHECK(engine.shadow[0].offset == 0x400ul &&
+          engine.shadow[31].offset == 0x47cul);
+
+    /* A rewrite updates its entry in place; one past the table is not
+     * kept. */
+    offsets[0] = 0x414ul;
+    values[0] = 0xabcdul;
+    offsets[1] = 0x4f0ul;
+    values[1] = 0x1234ul;
+    CHECK(v9x_m64_emit_batch(&engine, offsets, values, 2ul, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(engine.shadow_count == V9X_M64_SHADOW_ENTRIES);
+    CHECK(engine.shadow[5].offset == 0x414ul &&
+          engine.shadow[5].value == 0xabcdul);
+    CHECK(engine.shadow[31].value == 31ul);
+}
+
 static void test_bounds_and_timeout(void)
 {
     struct v9x_m64_engine engine;
@@ -743,7 +783,13 @@ static void test_texture_builders(void)
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     state.texture_pitch_bytes = 16ul;
-    state.texture_offset = 0x00204100ul;
+    /* A base on V9X_M64_TEXTURE_BASE_ALIGN (64) binds, and one off it
+     * does not. */
+    state.texture_offset = 0x00204040ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    state.texture_offset = 0x00204020ul;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
@@ -880,14 +926,14 @@ static void test_mip_texture_state(void)
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);
 
-    /* More levels than the edge has, a level off its 4 KiB, a first level
-     * that is not the texture, and a level past VRAM all refuse. */
+    /* More levels than the edge has, a level off its 64 bytes, a first
+     * level that is not the texture, and a level past VRAM all refuse. */
     state.level_count = 8ul;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     state.level_count = 3ul;
-    state.level_offsets[1] = 0x00212100ul;
+    state.level_offsets[1] = 0x00212010ul;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
@@ -1020,6 +1066,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
 {
     test_fifo_decode();
     test_exact_batch_has_no_inner_read();
+    test_shadow_keeps_order_and_latest();
     test_bounds_and_timeout();
     test_barrier_and_reset_order();
     test_fill_builder();

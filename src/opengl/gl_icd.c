@@ -113,12 +113,54 @@ static DWORD v9x_gl_hw_creates;
 static DWORD v9x_gl_hw_create_failures;
 static DWORD v9x_gl_hw_uploads;
 static DWORD v9x_gl_hw_upload_kb;
+/* Draws that sampled a square copy of a non-square or too-small image. */
+static DWORD v9x_gl_hw_squared_draws;
+/* Batches sent without an alpha test that could discard nothing. */
+static DWORD v9x_gl_alpha_tests_dropped;
 static DWORD v9x_gl_stub_total;
+/* A squared copy's draw: the batch with s and t scaled to the square. */
+static V9X_R3D_ABI_VERTEX v9x_gl_scaled_vertices[3u * V9X_R3D_ABI_BATCH_MAX];
 #define V9X_GL_RESULT_SLOTS 10u
 static DWORD v9x_gl_draw_failures[V9X_GL_RESULT_SLOTS];
 static DWORD v9x_gl_failures_dumped;
 static DWORD v9x_gl_report_last;
 #define V9X_GL_REPORT_MS 10000ul
+
+/*
+ * Where a frame's time goes, per report interval: swaps (frames), and the
+ * performance-counter ticks spent presenting, in the interface's draw and
+ * in texture uploads. Only the low 32 bits of the counter are used; a
+ * difference between two reads is right across one wrap, an hour at the
+ * 1.19 MHz a Win98 PC counts at.
+ */
+static DWORD v9x_gl_swaps;
+static DWORD v9x_gl_present_ticks;
+static DWORD v9x_gl_draw_ticks;
+static DWORD v9x_gl_upload_ticks;
+
+static DWORD v9x_gl_ticks(void)
+{
+    LARGE_INTEGER now;
+
+    if (!QueryPerformanceCounter(&now)) {
+        return 0ul;
+    }
+    return now.LowPart;
+}
+
+/* Ticks as milliseconds without 64-bit arithmetic. */
+static DWORD v9x_gl_ticks_ms(DWORD ticks)
+{
+    LARGE_INTEGER frequency;
+    DWORD per_ms;
+
+    if (!QueryPerformanceFrequency(&frequency) || frequency.HighPart != 0 ||
+        frequency.LowPart < 1000ul) {
+        return 0ul;
+    }
+    per_ms = frequency.LowPart / 1000ul;
+    return ticks / per_ms;
+}
 #define V9X_GL_FAILURES_DUMPED_MAX 6ul
 
 static int v9x_gl_overrides_installed;
@@ -856,6 +898,10 @@ typedef struct v9x_gl_hwtex {
     v9x_u32 last_used;
     v9x_u32 retry_at;
     unsigned int slot;
+    /* A square copy (gl_texture.h v9x_gl_tex_square_fill) of an image that
+     * is not one: its padding follows the address mode it was built for. */
+    int squared;
+    int clamp;
 } V9X_GL_HWTEX;
 
 #define V9X_GL_HWTEX_MAX      2048u
@@ -958,32 +1004,109 @@ static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
 }
 
 /*
+ * The square copy's levels, built from the image's: level n is side >> n
+ * square from the image's level n, or its last once the image's chain is
+ * shorter (a copy grown to the sampler's minimum has more levels). Heap
+ * storage the caller frees; zero when it cannot be had.
+ */
+static v9x_u16 *v9x_gl_hwtex_square(const V9X_R3D_ABI_TEXTURE *texture,
+                                    v9x_u32 side, v9x_u32 levels, int clamp,
+                                    V9X_R3D_ABI_LEVEL *out)
+{
+    v9x_u32 bytes = 0ul;
+    v9x_u32 level;
+    v9x_u16 *storage;
+    v9x_u16 *at;
+
+    for (level = 0ul; level < levels; ++level) {
+        bytes += (side >> level) * (side >> level) * 2ul;
+    }
+    storage = (v9x_u16 *)HeapAlloc(GetProcessHeap(), 0, bytes);
+    if (storage == 0) {
+        return 0;
+    }
+    at = storage;
+    for (level = 0ul; level < levels; ++level) {
+        const V9X_R3D_ABI_LEVEL *source = &texture->levels[
+            level < texture->level_count ? level : texture->level_count - 1ul];
+        v9x_u32 edge = side >> level;
+
+        v9x_gl_tex_square_fill((const v9x_u16 *)source->pixels,
+                               source->pitch, source->width, source->height,
+                               at, edge, clamp);
+        out[level].pixels = at;
+        out[level].width = edge;
+        out[level].height = edge;
+        out[level].pitch = edge * 2ul;
+        out[level].bytes = edge * edge * 2ul;
+        at += edge * edge;
+    }
+    return storage;
+}
+
+/*
  * Replace a CPU description with the object's surface when the engine
- * samples surfaces and the object fits what describe allows. Non-zero when
- * `texture` now names a surface. Runs under the ICD's critical section.
+ * samples surfaces and the object fits what describe allows, squaring it
+ * for an engine that samples only squares (or a minimum edge). Non-zero
+ * when `texture` now names a surface; then *scale_s and *scale_t are what
+ * the draw's s and t must be multiplied by, 1 unless the copy is squared.
+ * Runs under the ICD's critical section.
  */
 static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
-                             int alpha_used, V9X_R3D_ABI_TEXTURE *texture)
+                             int alpha_used, V9X_R3D_ABI_TEXTURE *texture,
+                             float *scale_s, float *scale_t)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_R3D_ABI_LEVEL squared_levels[V9X_GL_TEXTURE_LEVELS];
+    const V9X_R3D_ABI_LEVEL *upload_levels;
     V9X_GL_TEXOBJ *object;
     V9X_GL_HWTEX *hw;
+    v9x_u16 *squared_storage = 0;
     v9x_u32 hw_format;
     int to_1555;
+    int squared;
+    int clamp;
     v9x_u32 level;
     v9x_u32 width;
     v9x_u32 height;
+    v9x_u32 side;
+    v9x_u32 levels;
+    DWORD upload_start;
+    int uploaded;
 
+    *scale_s = 1.0f;
+    *scale_t = 1.0f;
     if (texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
         description->hw_texture_size_max == 0ul) {
         return 0;
     }
     width = texture->levels[0].width;
     height = texture->levels[0].height;
-    if (width > description->hw_texture_size_max ||
-        height > description->hw_texture_size_max ||
-        ((description->hw_texture_shape & V9X_R3D_ABI_HWTEX_SQUARE) != 0ul &&
-         height != width)) {
+    clamp = texture->address == V9X_R3D_ABI_ADDRESS_CLAMP;
+    squared = (description->hw_texture_shape &
+               V9X_R3D_ABI_HWTEX_SQUARE) != 0ul && height != width;
+    if (width < description->hw_texture_size_min ||
+        height < description->hw_texture_size_min) {
+        squared = 1;
+    }
+    side = width;
+    levels = texture->level_count;
+    if (squared) {
+        side = v9x_gl_tex_square_side(width, height,
+                                      description->hw_texture_size_min,
+                                      description->hw_texture_size_max);
+        if (side == 0ul) {
+            return 0;
+        }
+        /* A chain runs to 1x1, so the square one has log2(side) + 1. */
+        if (levels > 1ul) {
+            levels = 1ul;
+            while ((side >> (levels - 1ul)) > 1ul) {
+                ++levels;
+            }
+        }
+    } else if (width > description->hw_texture_size_max ||
+               height > description->hw_texture_size_max) {
         return 0;
     }
     /* The layout the engine samples: the image's own, or for an RGB image
@@ -1007,9 +1130,11 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         return 0;
     }
     hw = (V9X_GL_HWTEX *)object->hw;
-    if (hw != 0 && (hw->width != width || hw->height != height ||
-                    hw->levels != texture->level_count ||
-                    hw->format != hw_format)) {
+    if (hw != 0 && (hw->width != side || hw->height != (squared ? side
+                                                                : height) ||
+                    hw->levels != levels || hw->format != hw_format ||
+                    hw->squared != squared ||
+                    (squared && hw->clamp != clamp))) {
         v9x_gl_hwtex_free(hw);
         object->hw = 0;
         hw = 0;
@@ -1024,10 +1149,12 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
             HeapFree(GetProcessHeap(), 0, hw);
             return 0;
         }
-        hw->width = width;
-        hw->height = height;
-        hw->levels = texture->level_count;
+        hw->width = side;
+        hw->height = squared ? side : height;
+        hw->levels = levels;
         hw->format = hw_format;
+        hw->squared = squared;
+        hw->clamp = clamp;
         hw->slot = v9x_gl_hwtex_count;
         v9x_gl_hwtex_live[v9x_gl_hwtex_count++] = hw;
         object->hw = hw;
@@ -1043,8 +1170,23 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     }
     hw->last_used = v9x_gl_hwtex_clock;
     if (!hw->filled || hw->revision != object->revision) {
-        if (!v9x_gl_hwtex_upload(hw->surface, texture->level_count,
-                                 texture->levels, to_1555)) {
+        upload_levels = texture->levels;
+        if (squared) {
+            squared_storage = v9x_gl_hwtex_square(texture, side, levels,
+                                                  clamp, squared_levels);
+            if (squared_storage == 0) {
+                return 0;
+            }
+            upload_levels = squared_levels;
+        }
+        upload_start = v9x_gl_ticks();
+        uploaded = v9x_gl_hwtex_upload(hw->surface, levels, upload_levels,
+                                       to_1555);
+        v9x_gl_upload_ticks += v9x_gl_ticks() - upload_start;
+        if (!uploaded) {
+            if (squared_storage != 0) {
+                HeapFree(GetProcessHeap(), 0, squared_storage);
+            }
             v9x_gl_hwtex_release(hw->surface);
             hw->surface = 0;
             hw->unusable = 1;
@@ -1053,9 +1195,17 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         hw->revision = object->revision;
         hw->filled = 1;
         ++v9x_gl_hw_uploads;
-        for (level = 0ul; level < texture->level_count; ++level) {
-            v9x_gl_hw_upload_kb += texture->levels[level].bytes / 1024ul;
+        for (level = 0ul; level < levels; ++level) {
+            v9x_gl_hw_upload_kb += upload_levels[level].bytes / 1024ul;
         }
+        if (squared_storage != 0) {
+            HeapFree(GetProcessHeap(), 0, squared_storage);
+        }
+    }
+    if (squared) {
+        ++v9x_gl_hw_squared_draws;
+        *scale_s = (float)(v9x_s32)width / (float)(v9x_s32)side;
+        *scale_t = (float)(v9x_s32)height / (float)(v9x_s32)side;
     }
 
     if (to_1555) {
@@ -1179,16 +1329,19 @@ static void v9x_gl_path_log(void);
 
 static void v9x_gl_counters_log(void)
 {
-    char text[240];
+    /* Thirteen counters of up to ten digits past a 180-character format. */
+    char text[400];
 
     v9x_gl_path_log();
     wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
               "evictions=%lu uploads=%lu "
-              "upload-kb=%lu stubs=%lu failed r4=%lu r7=%lu r8=%lu "
-              "other=%lu",
+              "upload-kb=%lu squared=%lu alpha-dropped=%lu stubs=%lu "
+              "failed r4=%lu r7=%lu r8=%lu other=%lu",
               (DWORD)v9x_gl_hwtex_count, v9x_gl_hw_creates,
               v9x_gl_hw_create_failures, v9x_gl_hw_evictions,
-              v9x_gl_hw_uploads, v9x_gl_hw_upload_kb, v9x_gl_stub_total,
+              v9x_gl_hw_uploads, v9x_gl_hw_upload_kb,
+              v9x_gl_hw_squared_draws, v9x_gl_alpha_tests_dropped,
+              v9x_gl_stub_total,
               v9x_gl_draw_failures[4], v9x_gl_draw_failures[7],
               v9x_gl_draw_failures[8],
               v9x_gl_draw_failures[0] + v9x_gl_draw_failures[1] +
@@ -1205,6 +1358,19 @@ static void v9x_gl_counters_tick(void)
     DWORD now = GetTickCount();
 
     if (now - v9x_gl_report_last >= V9X_GL_REPORT_MS) {
+        char text[160];
+
+        wsprintfA(text, "time interval-ms=%lu swaps=%lu present-ms=%lu "
+                  "draw-ms=%lu upload-ms=%lu",
+                  now - v9x_gl_report_last, v9x_gl_swaps,
+                  v9x_gl_ticks_ms(v9x_gl_present_ticks),
+                  v9x_gl_ticks_ms(v9x_gl_draw_ticks),
+                  v9x_gl_ticks_ms(v9x_gl_upload_ticks));
+        v9x_gl_log(text);
+        v9x_gl_swaps = 0ul;
+        v9x_gl_present_ticks = 0ul;
+        v9x_gl_draw_ticks = 0ul;
+        v9x_gl_upload_ticks = 0ul;
         v9x_gl_report_last = now;
         v9x_gl_counters_log();
     }
@@ -1288,6 +1454,9 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     unsigned int i;
     unsigned int path;
     int hardware;
+    float scale_s;
+    float scale_t;
+    DWORD draw_start;
 
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
     if (drawable == 0) {
@@ -1315,18 +1484,45 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
             ? V9X_GL_PATH_CPU_NONSQUARE : V9X_GL_PATH_CPU_TEXTURE;
     }
     hardware = v9x_gl_hw_texture(context, pending->texture_name,
-                                 pending->alpha_used, &draw.texture);
+                                 pending->alpha_used, &draw.texture,
+                                 &scale_s, &scale_t);
     if (hardware) {
         path = V9X_GL_PATH_HW_TEXTURE;
+        if (scale_s != 1.0f || scale_t != 1.0f) {
+            for (i = 0u; i < pending->triangles * 3ul; ++i) {
+                v9x_gl_scaled_vertices[i] = pending->vertices[i];
+                v9x_gl_scaled_vertices[i].tu *= scale_s;
+                v9x_gl_scaled_vertices[i].tv *= scale_t;
+            }
+            draw.vertices = v9x_gl_scaled_vertices;
+        }
     }
+    /* An alpha test that can discard nothing is not sent (gl_prim.h). */
+    if (v9x_gl_prim_alpha_test_passes(&draw.state, &draw.texture,
+                                      draw.vertices,
+                                      pending->triangles * 3ul)) {
+        draw.state.alpha_test_enable = 0ul;
+        ++v9x_gl_alpha_tests_dropped;
+        /* The texture's alpha op was chosen with the test reading the
+         * fragment's alpha; without it, and with no alpha blend factor,
+         * nothing does, so it takes the form every engine has. */
+        if (!v9x_gl_prim_blend_reads_alpha(&draw.state)) {
+            v9x_gl_tex_fragment_alpha_unused(&draw.texture);
+        }
+    }
+    draw_start = v9x_gl_ticks();
     result = iface->draw(&draw, outcome);
+    v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
     if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
         /* Refused before anything was emitted: the same batch with the CPU
-         * copy, which the software fallback draws. */
+         * copy, which the software fallback draws, at its own s and t. */
         path = V9X_GL_PATH_HW_REFUSED;
         v9x_gl_note_refused(context, &draw);
         draw.texture = pending->texture;
+        draw.vertices = pending->vertices;
+        draw_start = v9x_gl_ticks();
         result = iface->draw(&draw, outcome);
+        v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
     }
     v9x_gl_path_note(path, pending->triangles);
     if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
@@ -1342,7 +1538,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
             return V9X_R3D_RESULT_NO_MEMORY;
         }
         draw.texture = pending->texture;
+        draw.vertices = pending->vertices;
+        draw_start = v9x_gl_ticks();
         result = iface->draw(&draw, outcome);
+        v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
     }
     if (result == V9X_R3D_RESULT_OK && which == V9X_GL_DRAW_FRONT) {
         v9x_gl_drawable_show_front(drawable);
@@ -2213,7 +2412,11 @@ BOOL __stdcall DrvSwapBuffers(HDC hdc)
     if (drawable != 0) {
         /* OPENGL32 has already called glFinish (Phase 0.9), so everything
          * drawn is complete before the Blt reads it. */
+        DWORD present_start = v9x_gl_ticks();
+
         ok = v9x_gl_drawable_present(drawable) ? TRUE : FALSE;
+        v9x_gl_present_ticks += v9x_gl_ticks() - present_start;
+        ++v9x_gl_swaps;
     }
     LeaveCriticalSection(&v9x_gl_lock);
     if (!ok) {

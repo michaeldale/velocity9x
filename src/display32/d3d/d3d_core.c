@@ -3278,6 +3278,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_i9xx) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN3;
         name = "Velocity9x GMA 950";
+    } else if (ops == &v9x_d3d_engine_mach64) {
+        out->engine = V9X_R3D_ABI_ENGINE_MACH64;
+        name = "Velocity9x Mach64";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -3300,10 +3303,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
      * (v9x_d3d_i9xx_texture_shape); the ViRGE's takes a square power of
      * two, 4 to 512, in ARGB1555 or ARGB4444 only - the S3D samples no
      * 565, so its formats say so and the ICD stores RGB images as 1555
-     * with alpha one (v9x_d3d_virge_texture_bindable). The software
-     * engine reads CPU levels. */
+     * with alpha one (v9x_d3d_virge_texture_bindable). The Mach64 takes
+     * what its policy accepts: square powers of two, 8 to 256, in all
+     * three formats, placed by the HAL (v9x_d3d_mach64_create_surface);
+     * the ICD squares anything else. The software engine reads CPU
+     * levels. */
     out->hw_texture_size_max = 0ul;
     out->hw_texture_shape = 0ul;
+    out->hw_texture_size_min = 1ul;
     if (ops == &v9x_d3d_engine_i9xx) {
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
@@ -3311,6 +3318,11 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_ARGB1555) |
                                (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
         out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
+                                V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_mach64) {
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
                                 V9X_R3D_ABI_HWTEX_POW2;
     }

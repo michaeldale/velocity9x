@@ -871,6 +871,36 @@ v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel)
     return (v9x_u16)(0x8000u | (red << 10) | (green << 5) | blue);
 }
 
+v9x_u32 v9x_gl_tex_square_side(v9x_u32 width, v9x_u32 height,
+                               v9x_u32 side_min, v9x_u32 side_max)
+{
+    v9x_u32 side = width > height ? width : height;
+
+    if (side < side_min) {
+        side = side_min;
+    }
+    return side > side_max ? 0ul : side;
+}
+
+void v9x_gl_tex_square_fill(const v9x_u16 *source, v9x_u32 source_pitch,
+                            v9x_u32 width, v9x_u32 height, v9x_u16 *square,
+                            v9x_u32 side, int clamp)
+{
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < side; ++y) {
+        v9x_u32 row = clamp ? (y < height ? y : height - 1ul) : y % height;
+        const v9x_u16 *line = (const v9x_u16 *)((const v9x_u8 *)source +
+                                                row * source_pitch);
+
+        for (x = 0ul; x < side; ++x) {
+            square[y * side + x] =
+                line[clamp ? (x < width ? x : width - 1ul) : x % width];
+        }
+    }
+}
+
 void v9x_gl_tex_as_1555(V9X_R3D_ABI_TEXTURE *texture, int alpha_used)
 {
     texture->format = V9X_R3D_ABI_FORMAT_ARGB1555;

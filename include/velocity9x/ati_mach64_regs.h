@@ -99,6 +99,8 @@
 
 #define V9X_M64_VT_FIFO_ENTRIES       16ul
 #define V9X_M64_SHADOW_ENTRIES        32ul
+/* Registers 0x000 to 0x7FC, blocks 1 and 0: one slot each. */
+#define V9X_M64_REGISTER_SLOTS        512ul
 #define V9X_M64_FILL_DWORDS           12ul
 #define V9X_M64_2D_MODE_DWORDS        3ul
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
@@ -113,6 +115,10 @@
  * mip chain writes every register below the top one's after the textured
  * state's 19 words. */
 #define V9X_M64_TEXTURE_LEVELS_MAX    11ul
+/* Every texture base and mip level offset is a multiple of this: the heap
+ * bound at 4 KiB until 2026-09-29; xf86-video-mach64 samples EXA pixmaps
+ * as textures at 64-byte offsets (atimach64exa.c pixmapOffsetAlign). */
+#define V9X_M64_TEXTURE_BASE_ALIGN    64ul
 #define V9X_M64_TEXTURE_MIP_DWORDS    (V9X_M64_TEXTURE_LEVELS_MAX - 1ul)
 /* A draw's state is the textured state's slots and the mip registers at
  * most; a setup packet is a triangle plus the three specular words fog

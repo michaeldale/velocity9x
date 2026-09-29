@@ -5,15 +5,19 @@
 #define M64_MAP_WRITE_RGB    7ul
 #define M64_MAP_SPECULAR_RGB 0x00fffffful
 
-/* The filter within a level: MIPNEAREST and MIPLINEAR sample nearest,
- * LINEARMIPNEAREST and LINEARMIPLINEAR bilinear. */
+/* The filter within a level. "LINEAR" after "MIP" is bilinear within the
+ * level and "LINEAR" before it the blend between two; the Windows 98 DDK's
+ * ViRGE HAL settles the reading (d3d_i9xx.c v9x_d3d_i9xx_filter). Until
+ * 2026-09-29 this read it the other way, which drew LINEARMIPNEAREST
+ * bilinear and refused MIPLINEAR - OpenGL's LINEAR_MIPMAP_NEAREST, Quake
+ * 2's default. */
 static v9x_u32 v9x_d3d_mach64_base_filter(v9x_u32 filter)
 {
     switch (filter) {
     case V9X_R3D_FILTER_MIPNEAREST:
-    case V9X_R3D_FILTER_MIPLINEAR:
-        return V9X_R3D_FILTER_NEAREST;
     case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        return V9X_R3D_FILTER_NEAREST;
+    case V9X_R3D_FILTER_MIPLINEAR:
     case V9X_R3D_FILTER_LINEARMIPLINEAR:
         return V9X_R3D_FILTER_LINEAR;
     default:
@@ -24,7 +28,7 @@ static v9x_u32 v9x_d3d_mach64_base_filter(v9x_u32 filter)
 static int v9x_d3d_mach64_selects_level(v9x_u32 filter)
 {
     return filter == V9X_R3D_FILTER_MIPNEAREST ||
-           filter == V9X_R3D_FILTER_LINEARMIPNEAREST ||
+           filter == V9X_R3D_FILTER_MIPLINEAR ||
            filter == V9X_R3D_FILTER_LINEARMIPLINEAR;
 }
 

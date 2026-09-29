@@ -37,6 +37,19 @@ marked below.
   zero is skipped alone, not its batch
   ([record](docs/probe/ati-rage-mobility-m-3dmark99-2026-09-29/README.md)).
 
+- **OpenGL on the Mach64:** Quake 2 runs with hardware textures on the
+  Rage Mobility-M, at about 8 fps at 640x480 fullscreen (the stock ATI
+  driver: 22). Textures pack on 64 bytes; DirectDraw Blt uses the engine's
+  screen copy; MIPLINEAR and LINEARMIPNEAREST are read the DDK's way.
+
+### OpenGL (all engines)
+
+- Render interface ABI 3: describe states the smallest surface texture,
+  and names the Mach64. The ICD squares textures for an engine that
+  samples only squares, drops alpha tests that cannot discard, takes
+  unclipped fan triangles without re-clipping, and logs frames and time
+  per report.
+
 ### Packaging
 
 - **Version resources:** every shipped DLL, EXE and display driver

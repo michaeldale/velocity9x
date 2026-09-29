@@ -151,9 +151,11 @@ static void test_texture_mapping(void)
 static void test_mip_mapping(void)
 {
     static const v9x_u32 folded[4][2] = {
+        /* "LINEAR" after "MIP" is the filter within a level (the DDK's
+         * ViRGE HAL, as d3d_i9xx.c records). */
         { V9X_R3D_FILTER_MIPNEAREST, V9X_R3D_FILTER_NEAREST },
-        { V9X_R3D_FILTER_MIPLINEAR, V9X_R3D_FILTER_NEAREST },
-        { V9X_R3D_FILTER_LINEARMIPNEAREST, V9X_R3D_FILTER_LINEAR },
+        { V9X_R3D_FILTER_MIPLINEAR, V9X_R3D_FILTER_LINEAR },
+        { V9X_R3D_FILTER_LINEARMIPNEAREST, V9X_R3D_FILTER_NEAREST },
         { V9X_R3D_FILTER_LINEARMIPLINEAR, V9X_R3D_FILTER_LINEAR }
     };
     V9X_R3D_DRAW draw;
@@ -180,9 +182,9 @@ static void test_mip_mapping(void)
     for (index = 0ul; index < 4ul; ++index) {
         texture.level_offsets[index] = 0x00204000ul + index * 0x1000ul;
     }
-    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
     v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
-    CHECK(request.texture_min_filter == V9X_R3D_FILTER_LINEARMIPNEAREST);
+    CHECK(request.texture_min_filter == V9X_R3D_FILTER_MIPLINEAR);
     CHECK(request.texture_levels == 4ul);
     CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
     v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
@@ -212,7 +214,8 @@ static void test_mip_mapping(void)
                              &state);
     CHECK(state.level_count == 4ul && state.bilinear_min == 2ul);
 
-    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
+    /* Nearest in each of two levels, blended: no engine function. */
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
     v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
 }

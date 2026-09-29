@@ -34,6 +34,10 @@ struct v9x_m64_engine {
     v9x_u32 reset_count;
     v9x_u32 shadow_count;
     struct v9x_m64_shadow_entry shadow[V9X_M64_SHADOW_ENTRIES];
+    /* Per register, its shadow entry's index plus one, or zero: every
+     * write updates the shadow, and a search of it cost a 3D batch more
+     * than its FIFO writes (2026-09-29). */
+    v9x_u8 shadow_slot[V9X_M64_REGISTER_SLOTS];
 };
 
 struct v9x_m64_fill {
@@ -135,7 +139,8 @@ struct v9x_m64_texture_state {
      * A mip chain: level_count levels, level 0 the texture above and
      * level_offsets[0] equal to texture_offset.  Zero or one is a single
      * level, sampled with MIP_MAP_DISABLE.  Level n is square, edge >> n,
-     * at edge*2 bytes a row and a 4 KiB-aligned offset of its own; that
+     * at edge*2 bytes a row and an offset of its own on
+     * V9X_M64_TEXTURE_BASE_ALIGN; that
      * pitch rule is the hypothesis the HAL probe's mip scenes measure.
      */
     v9x_u32 level_count;

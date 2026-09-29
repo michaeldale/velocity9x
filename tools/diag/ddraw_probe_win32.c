@@ -2489,6 +2489,9 @@ static void v9x_fill_surface_top_bottom(struct v9x_dds *surface, WORD top,
     surface->vtbl->Unlock(surface, 0);
 }
 
+/* The chain draws' TEXTUREMIN; one scene sets MIPLINEAR and puts it back. */
+static DWORD v9x_probe_chain_min = V9X_D3DFILTER_MIPNEAREST;
+
 /*
  * One MIPNEAREST draw from an ARGB1555 chain of `levels` levels, `edge` on
  * top, created in one CreateSurface. Level 0 is red, level 1 green (or, with
@@ -2578,7 +2581,7 @@ static HRESULT v9x_probe_chain_draw(struct v9x_dd *ddraw,
     }
     if (hr == 0) {
         hr = device->vtbl->SetRenderState(
-            device, V9X_D3DRENDERSTATE_TEXTUREMIN, V9X_D3DFILTER_MIPNEAREST);
+            device, V9X_D3DRENDERSTATE_TEXTUREMIN, v9x_probe_chain_min);
     }
     if (hr == 0) {
         hr = device->vtbl->SetRenderState(
@@ -5131,6 +5134,49 @@ void __stdcall V9xDdrawProbeEntry(void)
                             &sweep_raw);
                         v9x_write_uint(sweep_key[sweep_index], sweep_raw);
                     }
+                }
+
+                /*
+                 * The sweep again under MIPLINEAR, bilinear within the
+                 * selected level (the DDK's reading; OpenGL's
+                 * LINEAR_MIPMAP_NEAREST). Each level is one colour, so the
+                 * filter cannot change a reading: the cell passes when the
+                 * level choice matches the MIPNEAREST sweep's at the same
+                 * rate, which says the bilinear sampler and the level
+                 * selection work together.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float lin_ratio[5] = {
+                        1.4f, 2.0f, 2.7f, 4.0f, 5.0f };
+                    static const char *lin_key[5] = {
+                        "ChainLin14Raw", "ChainLin20Raw", "ChainLin27Raw",
+                        "ChainLin40Raw", "ChainLin50Raw" };
+                    WORD lin_raw[5];
+                    WORD near_raw[5];
+                    DWORD lin_index;
+                    DWORD lin_same = 1ul;
+
+                    for (lin_index = 0ul; lin_index < 5ul; ++lin_index) {
+                        (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, 64ul, 7ul, 0,
+                            V9X_D3DFILTER_NEAREST,
+                            lin_ratio[lin_index] * 47.5f / 64.0f,
+                            &near_raw[lin_index]);
+                        v9x_probe_chain_min = V9X_D3DFILTER_MIPLINEAR;
+                        (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, 64ul, 7ul, 0,
+                            V9X_D3DFILTER_NEAREST,
+                            lin_ratio[lin_index] * 47.5f / 64.0f,
+                            &lin_raw[lin_index]);
+                        v9x_probe_chain_min = V9X_D3DFILTER_MIPNEAREST;
+                        v9x_write_uint(lin_key[lin_index], lin_raw[lin_index]);
+                        if (lin_raw[lin_index] != near_raw[lin_index] ||
+                            lin_raw[lin_index] == 0u) {
+                            lin_same = 0ul;
+                        }
+                    }
+                    v9x_write_uint("ChainLinOk", lin_same);
                 }
 
                 /*

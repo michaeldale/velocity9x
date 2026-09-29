@@ -32,7 +32,9 @@ $objects = @()
 foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim', 'gl_texture', 'gl_get', 'gl_pixels', 'gl_varray')) {
     $source = Join-Path $repoRoot "src\opengl\$name.c"
     $object = Join-Path $output "$name.obj"
-    & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' `
+    # -ox: the vertex pipeline runs per GL vertex, and unoptimised it cost
+    # about 2,000 cycles one on the Gateway's PIII (2026-09-29).
+    & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
         "-i=$(Join-Path $repoRoot 'include')" "-i=$output" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }

@@ -55,6 +55,17 @@ typedef struct v9x_gl_vertex {
     GLfloat clip[4];
     GLfloat color[4];
     GLfloat tex[4];
+    /*
+     * Set when the vertex is inside all ten clip planes, with its window
+     * position (x, y, z, rhw) and the interface vertex it emits. A triangle
+     * of three such vertices clips to itself, so it takes these as they
+     * are instead of clipping, windowing and emitting each corner again:
+     * Quake 2's polygons are fans, where every vertex was done up to three
+     * times (2026-09-29, 4,000 cycles a vertex on the Gateway's PIII).
+     */
+    int inside;
+    GLfloat window[4];
+    V9X_R3D_ABI_VERTEX abi;
 } V9X_GL_VERTEX;
 
 /* Where a full batch goes, and the state the batch was made with. The sink
@@ -84,6 +95,11 @@ typedef struct v9x_gl_pipeline {
     v9x_u32 count;
     V9X_GL_VERTEX first;
     V9X_GL_VERTEX previous[3];
+    /* The draw rectangle's clip planes for this primitive (the viewport
+     * and scissor cannot change inside Begin/End), and whether it has any
+     * area; set at Begin. */
+    GLfloat clip_edge[4];
+    int clip_ready;
     /* The batch. */
     V9X_R3D_ABI_VERTEX batch[3u * V9X_R3D_ABI_BATCH_MAX];
     v9x_u32 batch_triangles;
@@ -155,6 +171,23 @@ int v9x_gl_prim_same_draw(const V9X_R3D_ABI_TEXTURE *texture_a,
  * plane, so destination-alpha factors read one whatever the source. */
 int v9x_gl_prim_fragment_alpha_used(const V9X_GL_STATE *state,
                                     const V9X_GL_PIPELINE *pipeline);
+
+/*
+ * Non-zero when the batch's alpha test is on and can discard nothing: the
+ * alpha it tests is the vertices' (no texture, or a 565 one that passes the
+ * fragment's through) or one (a 565 REPLACE), and every vertex passes with
+ * a step to spare, so no interpolated or rounded value between them fails.
+ * EQUAL and NOTEQUAL count only for one alpha across the batch. The ICD
+ * then sends it without the test, which an engine that tests only texel
+ * alpha (the Mach64) would otherwise refuse.
+ */
+/* Non-zero when the ABI state blends with a factor that reads alpha. */
+int v9x_gl_prim_blend_reads_alpha(const V9X_R3D_ABI_STATE *state);
+
+int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
+                                  const V9X_R3D_ABI_TEXTURE *texture,
+                                  const V9X_R3D_ABI_VERTEX *vertices,
+                                  v9x_u32 vertex_count);
 
 /* The fragment state as the render interface takes it, from the GL state
  * and the pipeline's functions. */

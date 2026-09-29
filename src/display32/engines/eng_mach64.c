@@ -1,8 +1,7 @@
 /* ATI Mach64 engine wrapper for the flat DirectDraw HAL.
  *
- * Phase 1 only: status validation, bounded idle, recovery and CPU-coherence
- * plumbing. Fill and copy deliberately decline until their physical Phase 2
- * scenes pass, and no ATI manifest publishes this engine type yet.
+ * Status validation, bounded idle, recovery and CPU-coherence plumbing, and
+ * the fill and screen copy the Phase 2 scenes measured on the Gateway.
  */
 #include "ddhal_internal.h"
 #include "velocity9x/ati_mach64_engine.h"
@@ -185,13 +184,74 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     return V9X_BLT_DONE;
 }
 
-static int v9x_m64_no_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
-                           DWORD destination_offset,
-                           DWORD bytes_per_pixel, int wait)
+/*
+ * A screen-to-screen copy on the engine: the Phase 2 stream
+ * (v9x_m64_build_copy), which matched a CPU memmove for all four overlap
+ * directions and presented 1,001 back-to-front copies across live mode
+ * switches on the Gateway (docs/probe/ati-rage-mobility-m-phase2-copy-
+ * 2026-09-27). Until 2026-09-29 this declined and every Blt was a CPU copy:
+ * 88 ms a 640x480 frame for the OpenGL ICD's SwapBuffers, reading the back
+ * buffer across the bus. The idle wait after it is the plan's workaround for
+ * the documented Mobility screen-copy commit race, kept until a capture
+ * shows it can go.
+ */
+static int v9x_m64_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
+                        DWORD destination_offset,
+                        DWORD bytes_per_pixel, int wait)
 {
-    (void)data; (void)source_offset; (void)destination_offset;
-    (void)bytes_per_pixel; (void)wait;
-    return V9X_BLT_DECLINED;
+    struct v9x_m64_copy copy;
+    v9x_u32 offsets[V9X_M64_COPY_DWORDS];
+    v9x_u32 values[V9X_M64_COPY_DWORDS];
+    v9x_u32 mode_offsets[V9X_M64_2D_MODE_DWORDS];
+    v9x_u32 mode_values[V9X_M64_2D_MODE_DWORDS];
+    v9x_u32 mode_written = 0ul;
+    v9x_u32 written = 0ul;
+    v9x_status status;
+
+    if (!v9x_m64_validate() || data == 0 || bytes_per_pixel != 2ul ||
+        data->lpDDSrcSurface == 0 || data->lpDDSrcSurface->lpGbl == 0 ||
+        data->lpDDDestSurface == 0 || data->lpDDDestSurface->lpGbl == 0 ||
+        data->lpDDSrcSurface->lpGbl->lPitch <= 0l ||
+        data->lpDDDestSurface->lpGbl->lPitch <= 0l) {
+        return V9X_BLT_DECLINED;
+    }
+    copy.vram_bytes = v9x_hal->fb.vram_bytes;
+    copy.source_offset = source_offset;
+    copy.source_pitch_bytes = (DWORD)data->lpDDSrcSurface->lpGbl->lPitch;
+    copy.source_width = copy.source_pitch_bytes >> 1;
+    copy.source_height = (DWORD)data->lpDDSrcSurface->lpGbl->wHeight;
+    copy.destination_offset = destination_offset;
+    copy.destination_pitch_bytes =
+        (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
+    copy.destination_width = copy.destination_pitch_bytes >> 1;
+    copy.destination_height = (DWORD)data->lpDDDestSurface->lpGbl->wHeight;
+    copy.source_left = (DWORD)data->rSrc[0];
+    copy.source_top = (DWORD)data->rSrc[1];
+    copy.destination_left = (DWORD)data->rDest[0];
+    copy.destination_top = (DWORD)data->rDest[1];
+    copy.width = (DWORD)(data->rSrc[2] - data->rSrc[0]);
+    copy.height = (DWORD)(data->rSrc[3] - data->rSrc[1]);
+    if (v9x_m64_build_copy(&copy, offsets, values, V9X_M64_COPY_DWORDS,
+                           &written) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
+    /* 2D mode first, as for a fill (v9x_m64_build_2d_mode). */
+    if (v9x_m64_build_2d_mode(mode_offsets, mode_values,
+                              V9X_M64_2D_MODE_DWORDS,
+                              &mode_written) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
+    status = v9x_m64_emit_batch(&v9x_m64, mode_offsets, mode_values,
+                                mode_written,
+                                wait ? V9X_M64_WAIT_SPINS : 0ul);
+    if (status == V9X_STATUS_TIMEOUT) return V9X_BLT_BUSY;
+    if (status != V9X_STATUS_OK) return V9X_BLT_DECLINED;
+    status = v9x_m64_emit_batch(&v9x_m64, offsets, values, written,
+                                V9X_M64_WAIT_SPINS);
+    if (status != V9X_STATUS_OK) return V9X_BLT_DECLINED;
+    v9x_present_note_submission();
+    (void)v9x_m64_wait_idle(&v9x_m64, V9X_M64_WAIT_SPINS);
+    return V9X_BLT_DONE;
 }
 
 const V9X_ENGINE32_OPS v9x_engine32_mach64 = {
@@ -201,5 +261,5 @@ const V9X_ENGINE32_OPS v9x_engine32_mach64 = {
     v9x_m64_can_blt,
     v9x_m64_wait,
     v9x_m64_fill,
-    v9x_m64_no_copy
+    v9x_m64_copy
 };

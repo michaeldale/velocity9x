@@ -151,7 +151,14 @@ foreach ($relative in $sources) {
     }
     $objectNames[$name] = $relative
     $object = Join-Path $outputDir "$name.obj"
-    & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" `
+    # The Mach64's per-triangle path (its builders, map and engine) is
+    # optimised; it runs per register write under Quake 2 (2026-09-29).
+    # Everything else keeps the code generation its hardware measured.
+    $optimise = @()
+    if ($name -match 'mach64') {
+        $optimise = @('-ox')
+    }
+    & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" @optimise `
         "-i=$includeDir" "-i=$privateIncludeDir" `
         "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) {

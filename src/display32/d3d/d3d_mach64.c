@@ -55,8 +55,8 @@ static v9x_u32 v9x_d3d_mach64_setup_counts[V9X_D3D_MACH64_MAX_TRIANGLES];
  * measured boundary: DST_OFF_PITCH's pitch is eight-pixel units up to 1023
  * of them, so pitches are 16-byte aligned; 1024 is the widest mode the
  * Gateway's panel was driven at; and textures are the square powers of two
- * from 8 to 256 the policy accepts, bound at the 4 KiB granularity that did
- * not wedge the fetcher.
+ * from 8 to 256 the policy accepts, bound on V9X_M64_TEXTURE_BASE_ALIGN,
+ * each mip level packed after the one before.
  * The core clips, so the setup engine sees only on-target coordinates.
  */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
@@ -68,7 +68,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
     256ul,          /* texture_size_max */
     2048.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel */
-    4096ul,         /* texture_align */
+    V9X_M64_TEXTURE_BASE_ALIGN, /* texture_align */
     1ul,            /* clip_in_core */
     0ul             /* depth_pitch_own */
 };
@@ -196,14 +196,14 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_SQUAREONLY |
                          V9X_D3DPTEXTURECAPS_ALPHA;
-    /* Level selection, nearest or bilinear within the level, and trilinear
-     * (LINEARMIPLINEAR, measured by the probe's MipTri and TexM trilinear
-     * scenes, 2026-09-29). MIPLINEAR has no engine function and refuses
-     * (mach64_policy.c). */
+    /* Level selection, nearest (MIPNEAREST) or bilinear (MIPLINEAR) within
+     * the level, and trilinear (LINEARMIPLINEAR, measured by the probe's
+     * MipTri and TexM trilinear scenes, 2026-09-29). LINEARMIPNEAREST has
+     * no engine function and refuses (mach64_policy.c). */
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR |
                                V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
@@ -286,7 +286,7 @@ static int v9x_d3d_mach64_ready(void)
  * Down the attachments, as the Gen3 and ViRGE walks take them: the next
  * level is the attached surface that is itself a mip level. A level counts
  * only where the layout the builder assumes holds - edge halved, edge*2
- * bytes a row, 4 KiB aligned - which a chain create_surface placed meets by
+ * bytes a row, on the base alignment - which a chain create_surface placed meets by
  * construction and one the heap placed does not. The first level that
  * fails ends the chain; a chain of one is sampled as a plain texture.
  */
@@ -299,7 +299,7 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
 
     /* Counted in the shared mip-chain fields, which V9XTRACE reports: a
      * check per walk, a shape gap for a level whose size or pitch is not
-     * the layout's, a chain gap for one off its 4 KiB, and the pitch and
+     * the layout's, a chain gap for one off its alignment, and the pitch and
      * width of the last level that ended a walk in mip_chain_delta. */
     ++v9x_hal->d3d_diagnostics.mip_chain_checks;
     if ((DWORD)top->lpGbl->lPitch != width * 2ul) {
@@ -629,19 +629,20 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
 /*
  * A texture the engine can sample, placed at the pitch the sampler reads.
  *
- * DirectDraw rounds a texture's pitch to vmiData.dwTextureAlign, which is
+ * DirectDraw rounds a texture's pitch to vmiData.dwTextureAlign, which was
  * this engine's 4 KiB base alignment, so its heap gave the Gateway's 8x8
  * texture a 4096-byte pitch (Tex8Pitch=0x1000, 2026-09-29) and the builder,
  * which takes only max(w,h)*2, refused every textured draw. So a lone
  * video-memory texture of a format and size the policy accepts is placed in
- * a block of its own, 4 KiB aligned - the only base the Phase 4 scenes
- * sampled - at 2 bytes a texel. Anything else is left to DirectDraw, and is
+ * a block of its own, on V9X_M64_TEXTURE_BASE_ALIGN (4 KiB until
+ * 2026-09-29, the only base the Phase 4 scenes sampled), at 2 bytes a texel. Anything else is left to DirectDraw, and is
  * refused at draw time exactly as before. Placements count in the generic
  * texture_placed and texture_placed_bytes.
  *
  * A mip chain created in one call - DirectDraw's list, top first - is
  * placed in one block: level n at edge >> n, edge*2 bytes a row, each level
- * on a 4 KiB boundary of its own. Each level has its own TEX_n_OFF, so the
+ * packed after the one before on the same alignment: at 4 KiB a level each,
+ * Quake 2's textures did not fit the Gateway's 4 MB. Each level has its own TEX_n_OFF, so the
  * levels need not touch; the per-level pitch is the hypothesis the probe's
  * mip scenes measure (struct v9x_m64_texture_state).
  */

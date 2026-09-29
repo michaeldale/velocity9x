@@ -31,8 +31,9 @@
 
 #include "velocity9x/types.h"
 
-/* 2: describe states the hardware sampler's texture limits (2026-09-26). */
-#define V9X_R3D_ABI_VERSION 2ul
+/* 2: describe states the hardware sampler's texture limits (2026-09-26).
+ * 3: and its smallest edge, and names the Mach64 (2026-09-29). */
+#define V9X_R3D_ABI_VERSION 3ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -207,6 +208,7 @@ typedef struct v9x_r3d_abi_state {
 #define V9X_R3D_ABI_ENGINE_SOFTWARE 1ul
 #define V9X_R3D_ABI_ENGINE_VIRGE    2ul
 #define V9X_R3D_ABI_ENGINE_GEN3     3ul
+#define V9X_R3D_ABI_ENGINE_MACH64   4ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;
@@ -223,6 +225,7 @@ typedef struct v9x_r3d_abi_describe {
      * the shape rules below. A texture outside them is refused at draw. */
     v9x_u32 hw_texture_size_max;
     v9x_u32 hw_texture_shape;   /* V9X_R3D_ABI_HWTEX_* */
+    v9x_u32 hw_texture_size_min; /* the smallest edge, 1 when any */
 } V9X_R3D_ABI_DESCRIBE;
 
 #define V9X_R3D_ABI_HWTEX_SQUARE     1ul    /* width equal to height */
@@ -303,7 +306,7 @@ typedef char v9x_r3d_abi_assert_vertex[sizeof(V9X_R3D_ABI_VERTEX) == 32 ? 1 : -1
 typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 72 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 76 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 136 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 28 ? 1 : -1];

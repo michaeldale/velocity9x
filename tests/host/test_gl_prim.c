@@ -596,9 +596,89 @@ static void test_fragment_alpha_used(void)
     PCHECK(v9x_gl_prim_fragment_alpha_used(&s, &p));
 }
 
+/*
+ * Quake 2 leaves GL_ALPHA_TEST on (GREATER 0.666) for opaque 565 walls and
+ * untextured fills. There the alpha tested is the vertex alpha, or one for
+ * REPLACE, and a test every vertex passes by a margin discards nothing - so
+ * the batch may be sent without it to an engine whose alpha test reads only
+ * texel alpha (the Mach64).
+ */
+static void test_alpha_test_that_cannot_fail(void)
+{
+    V9X_R3D_ABI_STATE state;
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_VERTEX v[3];
+    unsigned int i;
+
+    for (i = 0u; i < sizeof(state); ++i) {
+        ((unsigned char *)&state)[i] = 0u;
+    }
+    for (i = 0u; i < sizeof(texture); ++i) {
+        ((unsigned char *)&texture)[i] = 0u;
+    }
+    for (i = 0u; i < sizeof(v); ++i) {
+        ((unsigned char *)v)[i] = 0u;
+    }
+    state.alpha_test_enable = 1ul;
+    state.alpha_func = 5ul;             /* GREATER */
+    state.alpha_ref = 170ul;            /* 0.666 */
+    texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    v[0].color = v[1].color = v[2].color = 0xFFFFFFFFul;
+    PCHECK(v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+
+    /* One vertex at or below the reference can fail inside the triangle. */
+    v[2].color = 0xAAFFFFFFul;
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    v[2].color = 0xABFFFFFFul;          /* 171: one above, no margin */
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    v[2].color = 0xC0FFFFFFul;
+    PCHECK(v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+
+    /* A 565 texture: REPLACE's alpha is one whatever the vertices. */
+    texture.storage = V9X_R3D_ABI_TEXTURE_HW;
+    texture.format = V9X_R3D_ABI_FORMAT_RGB565;
+    texture.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    texture.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    v[0].color = v[1].color = v[2].color = 0x00FFFFFFul;
+    PCHECK(v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    texture.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+
+    /* Texel alpha is not the ICD's to predict. */
+    texture.format = V9X_R3D_ABI_FORMAT_ARGB4444;
+    texture.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+
+    /* EQUAL holds only for one constant alpha. */
+    texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    state.alpha_func = 3ul;
+    state.alpha_ref = 255ul;
+    v[0].color = v[1].color = v[2].color = 0xFFFFFFFFul;
+    PCHECK(v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    v[1].color = 0xFEFFFFFFul;
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    state.alpha_func = 1ul;             /* NEVER */
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+    state.alpha_test_enable = 0ul;
+    PCHECK(!v9x_gl_prim_alpha_test_passes(&state, &texture, v, 3ul));
+
+    /* With the test gone, a blend may still read the source alpha. */
+    PCHECK(!v9x_gl_prim_blend_reads_alpha(&state));
+    state.blend_enable = 1ul;
+    state.src_blend = 1ul;              /* ZERO */
+    state.dst_blend = 3ul;              /* SRCCOLOR: Quake 2's lightmaps */
+    PCHECK(!v9x_gl_prim_blend_reads_alpha(&state));
+    state.src_blend = 5ul;              /* SRCALPHA */
+    state.dst_blend = 6ul;
+    PCHECK(v9x_gl_prim_blend_reads_alpha(&state));
+    state.blend_enable = 0ul;
+    PCHECK(!v9x_gl_prim_blend_reads_alpha(&state));
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
+    test_alpha_test_that_cannot_fail();
     test_triangle_to_surface();
     test_provoking_vertex_and_quads();
     test_strips_winding_and_culling();

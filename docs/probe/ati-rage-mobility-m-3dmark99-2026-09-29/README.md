@@ -220,3 +220,10 @@ resets (`RUN7-V9XSNA-*.INI`). The bilinear mipmapped tunnel
 (`RUN7-TUNNEL-CENTRED.png`) shows a checkerboard on every wall to the
 vanishing point; in runs 2 and 3 some walls were radial streaks. It is
 still a GDI capture; the panel was not looked at.
+
+Run 8 (boot 57, after the Quake 2 work: 64-byte texture packing, the
+MIPLINEAR / LINEARMIPNEAREST reading swapped, engine screen copies for
+Blt): all 26 tests, 643 3DMarks, 6572 CPU (`RUN8-SCORE-643.png`,
+recorded and not compared). No refusals from 3DMark, no timeouts or
+resets, 208,344 batches and 7,741,138 triangles, and no triangle skipped
+as unrenderable (`RUN8-V9XSNA-*.INI`).

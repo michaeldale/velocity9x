@@ -1154,6 +1154,46 @@ evidence in `../probe/ati-rage-mobility-m-3dmark99-2026-09-29/`):
   coarser to matching Direct3D at 28 of the 34 points inside it, one
   level off at the other 6. Clamped textures keep the error.
 
+Later on 2026-09-29: Quake 2 through the ICD (boots 49-56; the demo in
+`C:\Q2Demo`, `+set timedemo 1 +demomap demo1`, 640x480 fullscreen).
+Measured against Michael's photo of the stock ATI driver: 22 to 24 fps.
+
+- **First run: the world did not draw.** Describe offered the Mach64 no
+  surface textures, so every textured GL draw was refused and, with no
+  fallback on this engine, dropped. Render interface ABI 3 adds
+  `hw_texture_size_min` and names the engine; the ICD squares a texture
+  the sampler cannot take (non-square, or under 8) by repeating it for
+  wrap or its edge for clamp, and scales s and t to match.
+- **The Mach64 read the D3D filter names backwards**, as Gen3 did until
+  2026-09-25: MIPLINEAR is bilinear within the nearest level, which the
+  engine does and Quake 2's LINEAR_MIPMAP_NEAREST asks for, and
+  LINEARMIPNEAREST (nearest in each of two levels, blended) is what it
+  cannot. Swapped in the map, policy and caps; `ChainLinOk` shows the
+  level choice under MIPLINEAR matches MIPNEAREST's at five rates.
+- **Alpha tests that cannot fail** (Quake 2 leaves GREATER 0.666 on for
+  opaque 565 walls and fills) are dropped by the ICD, since the Mach64
+  tests only texel alpha.
+- **4 KiB per texture and per mip level did not fit Quake 2** in the
+  2 MB left at 640x480: 26,204 creates, 13,088 failed, 580 MB uploaded in
+  one run. Textures and levels now pack on 64 bytes (the base
+  xf86-video-mach64 samples EXA pixmaps at); the probe's texture scenes
+  all pass with it, and the run made 62 creates.
+- **Present was a CPU copy**: 88 ms a frame. The Phase 2 screen copy
+  now serves DirectDraw Blt: 4 ms.
+- **CPU**: the ICD windowed and emitted each fan vertex up to three
+  times; a triangle of inside vertices now takes them as computed. The
+  Mach64 register shadow searched 32 entries on every write; it is
+  indexed. Both the ICD and the Mach64 sources build with `-ox`.
+
+Fullscreen, frames per 10 s: 41 (packed textures, CPU present), 63 (engine copy),
+74 (fan fast path), 84 (shadow and `-ox`). About 8.4 fps against 22.
+HAL buckets over one run: register writes 3,500 cycles a triangle,
+about 320 ns a write for some 20 writes; setup build 730. What remains
+is the write count (vertex-register reuse across a fan, or bus-master
+command DMA), the ICD's non-vertex call overhead, and particles
+(MODULATE on an alpha texture multiplies alphas, which the engine
+cannot).
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register

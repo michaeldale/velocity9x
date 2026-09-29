@@ -165,6 +165,26 @@ void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture);
  * bits, green drops its lowest. For an engine that samples no 565 (the
  * ViRGE's S3D takes 1555 and 4444). */
 v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel);
+
+/*
+ * The square copy for a sampler that takes only squares of side_min to
+ * side_max (the Mach64's 8 to 256): side max(width, height, side_min), or 0
+ * when that is over side_max. Level n of the copy is side >> n square,
+ * filled from the image's level n (or its last, 1x1, once the image's chain
+ * is shorter) by v9x_gl_tex_square_fill; s and t are then drawn scaled by
+ * width / side and height / side.
+ *
+ * Wrap repeats the image across the square: the scaled coordinates reach
+ * the same texel at every repeat, and a filter's neighbours across a repeat
+ * are the image's own. Clamp repeats its last row and column instead, which
+ * is what the clamped image gives past its edge. Both are exact at level 0;
+ * a padded clamp level below it can average the edge a little wider.
+ */
+v9x_u32 v9x_gl_tex_square_side(v9x_u32 width, v9x_u32 height,
+                               v9x_u32 side_min, v9x_u32 side_max);
+void v9x_gl_tex_square_fill(const v9x_u16 *source, v9x_u32 source_pitch,
+                            v9x_u32 width, v9x_u32 height, v9x_u16 *square,
+                            v9x_u32 side, int clamp);
 /*
  * A description of an RGB565 texture retargeted to the same images stored
  * as ARGB1555 with alpha one. The colour op is unchanged; the alpha op

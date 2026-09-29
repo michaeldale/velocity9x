@@ -244,6 +244,9 @@ void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
     pipeline->batch_triangles = 0ul;
 }
 
+static int v9x_gl_prim_clip_edges(const V9X_GL_STATE *state,
+                                  GLfloat *edge);
+
 void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                        GLenum mode)
 {
@@ -258,6 +261,7 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     state->in_begin = 1;
     pipeline->mode = mode;
     pipeline->count = 0ul;
+    pipeline->clip_ready = v9x_gl_prim_clip_edges(state, pipeline->clip_edge);
 }
 
 void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline)
@@ -357,28 +361,38 @@ static void v9x_gl_prim_lerp(V9X_GL_VERTEX *out, const V9X_GL_VERTEX *a,
  * interpolate linearly (2.11: the clipped attributes are the linear blend
  * of the edge's). Returns the vertex count, 0 when nothing is left.
  */
+/* The draw rectangle's sides in normalised device coordinates, for planes
+ * 6 to 9. Zero when the rectangle or the viewport has no area. */
+static int v9x_gl_prim_clip_edges(const V9X_GL_STATE *state, GLfloat *edge)
+{
+    GLfloat rect[4];
+    GLfloat vx = (GLfloat)state->viewport[0];
+    GLfloat vy = (GLfloat)state->viewport[1];
+    GLfloat vw = (GLfloat)state->viewport[2];
+    GLfloat vh = (GLfloat)state->viewport[3];
+
+    if (!v9x_gl_prim_draw_rect(state, rect) || !(vw > 0.0f) ||
+        !(vh > 0.0f)) {
+        return 0;
+    }
+    edge[0] = 2.0f * (rect[0] - vx) / vw - 1.0f;
+    edge[1] = 2.0f * (rect[1] - vy) / vh - 1.0f;
+    edge[2] = 2.0f * (rect[2] - vx) / vw - 1.0f;
+    edge[3] = 2.0f * (rect[3] - vy) / vh - 1.0f;
+    return 1;
+}
+
 static unsigned int v9x_gl_prim_clip(const V9X_GL_STATE *state,
                                      V9X_GL_VERTEX *polygon,
                                      unsigned int count)
 {
     V9X_GL_VERTEX scratch[V9X_GL_PRIM_CLIP_MAX];
-    GLfloat rect[4];
     GLfloat edge[4];
-    GLfloat vx = (GLfloat)state->viewport[0];
-    GLfloat vy = (GLfloat)state->viewport[1];
-    GLfloat vw = (GLfloat)state->viewport[2];
-    GLfloat vh = (GLfloat)state->viewport[3];
     unsigned int plane;
 
-    if (!v9x_gl_prim_draw_rect(state, rect) || !(vw > 0.0f) ||
-        !(vh > 0.0f)) {
+    if (!v9x_gl_prim_clip_edges(state, edge)) {
         return 0u;
     }
-    /* The rectangle's sides in normalised device coordinates. */
-    edge[0] = 2.0f * (rect[0] - vx) / vw - 1.0f;
-    edge[1] = 2.0f * (rect[1] - vy) / vh - 1.0f;
-    edge[2] = 2.0f * (rect[2] - vx) / vw - 1.0f;
-    edge[3] = 2.0f * (rect[3] - vy) / vh - 1.0f;
 
     for (plane = 0u; plane < V9X_GL_PRIM_CLIP_PLANES && count != 0u;
          ++plane) {
@@ -493,6 +507,21 @@ static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
     out->tv = v->tex[1] / q;
 }
 
+/* Culled by its signed window area, positive counter-clockwise (2.13.1). */
+static int v9x_gl_prim_culled(const V9X_GL_STATE *state,
+                              const V9X_GL_PIPELINE *pipeline, GLfloat area)
+{
+    int front;
+
+    if (!v9x_gl_state_cap(state, V9X_GL_CULL_FACE)) {
+        return 0;
+    }
+    front = pipeline->front_face == V9X_GL_CCW ? area > 0.0f : area < 0.0f;
+    return pipeline->cull_face == V9X_GL_FRONT_AND_BACK ||
+           (pipeline->cull_face == V9X_GL_FRONT && front) ||
+           (pipeline->cull_face == V9X_GL_BACK && !front);
+}
+
 static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                                  V9X_GL_PIPELINE *pipeline,
                                  const V9X_GL_VERTEX *a,
@@ -505,6 +534,41 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
     unsigned int count;
     unsigned int i;
     GLfloat area = 0.0f;
+
+    /* All three inside every plane: Sutherland-Hodgman would return them
+     * as they are, in order, so the result below is the same without it. */
+    if (a->inside && b->inside && c->inside) {
+        const V9X_GL_VERTEX *corner[3];
+        V9X_R3D_ABI_VERTEX *out;
+
+        corner[0] = a;
+        corner[1] = b;
+        corner[2] = c;
+        for (i = 0u; i < 3u; ++i) {
+            unsigned int j = i + 1u == 3u ? 0u : i + 1u;
+
+            area += corner[i]->window[0] * corner[j]->window[1] -
+                    corner[j]->window[0] * corner[i]->window[1];
+        }
+        if (v9x_gl_prim_culled(state, pipeline, area)) {
+            return;
+        }
+        if (pipeline->batch_triangles >= V9X_R3D_ABI_BATCH_MAX) {
+            v9x_gl_prim_flush(pipeline);
+        }
+        out = &pipeline->batch[pipeline->batch_triangles * 3ul];
+        for (i = 0u; i < 3u; ++i) {
+            out[i] = corner[i]->abi;
+            if (pipeline->shade_model == V9X_GL_FLAT) {
+                out[i].color = v9x_gl_prim_argb(provoking->color);
+            }
+        }
+        ++pipeline->batch_triangles;
+        if (pipeline->batch_triangles >= V9X_R3D_ABI_BATCH_MAX) {
+            v9x_gl_prim_flush(pipeline);
+        }
+        return;
+    }
 
     polygon[0] = *a;
     polygon[1] = *b;
@@ -532,15 +596,8 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
 
         area += window[i].x * window[j].y - window[j].x * window[i].y;
     }
-    if (v9x_gl_state_cap(state, V9X_GL_CULL_FACE)) {
-        int front = pipeline->front_face == V9X_GL_CCW ? area > 0.0f
-                                                        : area < 0.0f;
-
-        if (pipeline->cull_face == V9X_GL_FRONT_AND_BACK ||
-            (pipeline->cull_face == V9X_GL_FRONT && front) ||
-            (pipeline->cull_face == V9X_GL_BACK && !front)) {
-            return;
-        }
+    if (v9x_gl_prim_culled(state, pipeline, area)) {
+        return;
     }
     for (i = 1u; i + 1u < count; ++i) {
         V9X_R3D_ABI_VERTEX *out;
@@ -595,6 +652,25 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                       projection->m[12u + row] * eye[3];
         v.color[row] = pipeline->color[row];
         v.tex[row] = pipeline->tex[row];
+    }
+    /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
+     * then its window position and emitted vertex are what any triangle
+     * it is a corner of would compute (V9X_GL_VERTEX.inside). */
+    v.inside = pipeline->clip_ready;
+    for (row = 0u; row < V9X_GL_PRIM_CLIP_PLANES && v.inside; ++row) {
+        if (!(v9x_gl_prim_plane(&v, row, pipeline->clip_edge) >= 0.0f)) {
+            v.inside = 0;
+        }
+    }
+    if (v.inside) {
+        V9X_GL_WINDOW w;
+
+        v9x_gl_prim_window(state, pipeline, &v, &w);
+        v.window[0] = w.x;
+        v.window[1] = w.y;
+        v.window[2] = w.z;
+        v.window[3] = w.rhw;
+        v9x_gl_prim_emit(state, &v.abi, &v, &w);
     }
 
     n = pipeline->count++;
@@ -755,4 +831,93 @@ int v9x_gl_prim_same_draw(const V9X_R3D_ABI_TEXTURE *texture_a,
            texture_a->color_op == texture_b->color_op &&
            texture_a->alpha_op == texture_b->alpha_op &&
            texture_a->env_color == texture_b->env_color;
+}
+
+/* The interface's numbering (D3D's): SRCALPHA 5, INVSRCALPHA 6 and
+ * SRCALPHASAT 11 read the source alpha. The destination ones read the
+ * absent alpha plane, one, whatever the source. */
+static int v9x_gl_prim_abi_factor_reads_alpha(v9x_u32 factor)
+{
+    return factor == 5ul || factor == 6ul || factor == 11ul;
+}
+
+int v9x_gl_prim_blend_reads_alpha(const V9X_R3D_ABI_STATE *state)
+{
+    return state->blend_enable != 0ul &&
+           (v9x_gl_prim_abi_factor_reads_alpha(state->src_blend) ||
+            v9x_gl_prim_abi_factor_reads_alpha(state->dst_blend));
+}
+
+/* The alpha test's comparison, GL's order and the interface's (1 NEVER
+ * to 8 ALWAYS). */
+static int v9x_gl_prim_alpha_compare(v9x_u32 func, v9x_u32 alpha,
+                                     v9x_u32 reference)
+{
+    switch (func) {
+    case 2ul:
+        return alpha < reference;
+    case 3ul:
+        return alpha == reference;
+    case 4ul:
+        return alpha <= reference;
+    case 5ul:
+        return alpha > reference;
+    case 6ul:
+        return alpha != reference;
+    case 7ul:
+        return alpha >= reference;
+    case 8ul:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
+                                  const V9X_R3D_ABI_TEXTURE *texture,
+                                  const V9X_R3D_ABI_VERTEX *vertices,
+                                  v9x_u32 vertex_count)
+{
+    v9x_u32 low = 255ul;
+    v9x_u32 high = 0ul;
+    v9x_u32 i;
+
+    if (state->alpha_test_enable == 0ul || vertex_count == 0ul) {
+        return 0;
+    }
+    if (texture->storage != V9X_R3D_ABI_TEXTURE_NONE) {
+        if (texture->format != V9X_R3D_ABI_FORMAT_RGB565) {
+            return 0;
+        }
+        /* No texel alpha: REPLACE gives one, the rest the fragment's. */
+        if (texture->alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE) {
+            return v9x_gl_prim_alpha_compare(state->alpha_func, 255ul,
+                                             state->alpha_ref);
+        }
+    }
+    for (i = 0ul; i < vertex_count; ++i) {
+        v9x_u32 alpha = vertices[i].color >> 24;
+
+        if (alpha < low) {
+            low = alpha;
+        }
+        if (alpha > high) {
+            high = alpha;
+        }
+    }
+    if (low == high) {
+        return v9x_gl_prim_alpha_compare(state->alpha_func, low,
+                                         state->alpha_ref);
+    }
+    if (state->alpha_func == 3ul || state->alpha_func == 6ul) {
+        return 0;
+    }
+    /* The ordered tests hold between two alphas that pass, and a step
+     * either side covers the interpolator's rounding. */
+    return v9x_gl_prim_alpha_compare(state->alpha_func,
+                                     low > 0ul ? low - 1ul : low,
+                                     state->alpha_ref) &&
+           v9x_gl_prim_alpha_compare(state->alpha_func,
+                                     high < 255ul ? high + 1ul : high,
+                                     state->alpha_ref);
 }
