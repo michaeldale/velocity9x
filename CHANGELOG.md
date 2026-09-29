@@ -4,11 +4,12 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.9.1 - unreleased
+## 0.9.1 - 2026-09-29
 
-Hardware Direct3D on the ATI Rage Mobility-M (Mach64LM), measured on the
-Gateway Solo 2150. Other families carry only the shared-core changes
-marked below.
+The Rage Mobility release: hardware Direct3D and OpenGL on the ATI Rage
+Mobility-M (Mach64LM), measured on one Gateway Solo 2150 laptop. Other
+families carry only the shared-core and ICD changes marked below, which
+have not been re-measured on their hardware.
 
 ### ATI Mach64 (Rage Mobility-M)
 
@@ -20,8 +21,9 @@ marked below.
   scissor, texture environments and TEX_CACHE_FLUSH.
 - **Textures** from 8 to 256 texels, square, in RGB565, ARGB1555 and
   ARGB4444: DECAL, DECALALPHA, MODULATE, wrap and clamp, nearest and
-  bilinear; mip chains with level selection and trilinear
-  (LINEARMIPLINEAR); specular; fog over a texture. The HAL places
+  bilinear; mip chains with level selection, nearest or bilinear within
+  the level (MIPNEAREST, MIPLINEAR), and trilinear (LINEARMIPLINEAR);
+  specular; fog over a texture. The HAL places
   textures itself, because DirectDraw's pitch for them is 4096 bytes.
 - **Perspective:** the engine multiplies S and T by W itself under
   `TEX_ST_MULT_W`; wrapped coordinates are rebased per triangle, because
@@ -36,11 +38,14 @@ marked below.
   refusals from 3DMark; a triangle with NaN coordinates or a W not above
   zero is skipped alone, not its batch
   ([record](docs/probe/ati-rage-mobility-m-3dmark99-2026-09-29/README.md)).
-
 - **OpenGL on the Mach64:** Quake 2 runs with hardware textures on the
   Rage Mobility-M, at about 8 fps at 640x480 fullscreen (the stock ATI
   driver: 22). Textures pack on 64 bytes; DirectDraw Blt uses the engine's
   screen copy; MIPLINEAR and LINEARMIPNEAREST are read the DDK's way.
+- **Vertex registers are reused within a batch**: a fan's next triangle
+  writes only its new vertex. Pixel-exact on the Gateway, and no faster:
+  the register writes were not the limit
+  ([record](docs/decisions/2026-09-29-mach64-vertex-register-reuse-physical.md)).
 
 ### OpenGL (all engines)
 
@@ -48,7 +53,8 @@ marked below.
   and names the Mach64. The ICD squares textures for an engine that
   samples only squares, drops alpha tests that cannot discard, takes
   unclipped fan triangles without re-clipping, and logs frames and time
-  per report.
+  per report. Measured on the Gateway only; on the ViRGE the square copies
+  now apply to its non-square textures, untested there.
 
 ### Packaging
 
@@ -66,7 +72,9 @@ marked below.
 
 Still open on the Mach64: mip level boundaries a third of a level
 coarser than Direct3D's (the engine's own, with no working bias), an
-occasional lock after a cold boot, MIPLINEAR, and fog with blend.
+occasional lock after a cold boot, LINEARMIPNEAREST, fog with blend, no
+CPU fallback for refused draws (Quake 2's particles), and Quake 2 at a
+third of the stock driver's frame rate.
 
 ## 0.9.0 - 2026-09-27
 

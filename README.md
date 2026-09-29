@@ -4,9 +4,9 @@ A from-scratch display driver for Windows 98 with **hardware Direct3D and
 OpenGL**. Its flagship target is the **Intel GMA 950**, where one driver
 package gives the chip DirectDraw on its blitter, a Direct3D HAL on its
 Gen3 3D engine, and an OpenGL 1.1 driver drawing through the same engine.
-It also drives the S3 ViRGE/DX and Trio3D/2X with hardware Direct3D and
-OpenGL, the S3 Trio32/64 with 2D acceleration, and ATI Mach64/Rage and
-generic VESA cards through their video BIOS.
+It also drives the S3 ViRGE/DX and Trio3D/2X and the ATI Rage Mobility-M
+with hardware Direct3D and OpenGL, the S3 Trio32/64 with 2D acceleration,
+and other ATI Mach64/Rage and generic VESA cards through their video BIOS.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
 Direct3D HAL and OpenGL ICD contracts, rather than derived from anyone's
@@ -18,9 +18,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.9.0, the OpenGL release** — see the
+**Current version: 0.9.1, the Rage Mobility release** — see the
 [changelog](CHANGELOG.md). Download it from
-[releases/0.9.0](releases/0.9.0/README.md).
+[releases/0.9.1](releases/0.9.1/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
@@ -85,12 +85,42 @@ and Serious Sam's textures outgrow the part's free video memory, so copies
 are evicted and uploaded again. The records behind each number are linked
 from the [changelog](CHANGELOG.md).
 
+## ATI Rage Mobility-M
+
+New in 0.9.1. The `ati` package drives the **Rage Mobility-M**
+(`1002:4C4D`) with its Mach64 3D engine, measured on one physical machine,
+a Gateway Solo 2150 laptop (4 MB, 1024x768 panel, Pentium III):
+
+- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures from 8 to 256
+  texels, square, with mip chains, bilinear and trilinear filtering,
+  modulate, decal and decal-alpha, wrap and clamp, perspective
+  correction, Gouraud and flat shading, a 16-bit Z buffer with every
+  comparison, the blend factors the engine measured exact, alpha test on
+  texel alpha, specular and fog. Anything the engine cannot draw exactly
+  is refused before it reaches the chip.
+- **DirectDraw** fills and copies on the engine.
+- **OpenGL 1.1** through `V9XGL.DLL`, with the engine sampling the
+  textures; textures that are not square, or under 8 texels, are given a
+  square copy that samples the same texels.
+
+| Application | API | Result |
+|---|---|---|
+| 3DMark 99 Max | Direct3D | All 26 tests at 640x480x16; 643 3DMarks |
+| Quake 2 demo | OpenGL | Draws the world with hardware textures; about 8 fps at 640x480 fullscreen, against 22 to 24 with ATI's own driver |
+
+What is open: the engine's mip level boundaries sit a third of a level
+coarser than Direct3D's; there is no CPU fallback, so a draw the engine
+refuses is not drawn (Quake 2's particles among them); and Quake 2's frame
+rate ([plan](docs/plans/ati-rage-mobility-hardware-3d.md)). The other ATI
+id, `1002:5654`, remains tier-0.
+
 ## Direct3D
 
 Velocity9x publishes a Direct3D HAL through DirectDraw, so DirectX games
-see a hardware device. Three engines sit behind it:
+see a hardware device. Four engines sit behind it:
 
 - **Intel Gen3** on the GMA 950 — above.
+- **Mach64** on the Rage Mobility-M — above.
 - **S3D** on the ViRGE/DX and Trio3D/2X — a deliberately narrow but real
   hardware path: textured, Gouraud-shaded, perspective-correct triangles
   with mipmapping, trilinear filtering (bilinear on the Trio3D/2X), alpha
@@ -125,6 +155,8 @@ Direct3D:
 
 - **GMA 950**: the GPU samples the textures; the CPU draws what the GPU
   cannot, into the same frame. Quake 2 and Serious Sam run.
+- **Rage Mobility-M**: the engine samples the textures, square copies
+  where it takes only squares; no CPU fallback. Quake 2 runs.
 - **ViRGE**: square textures in the S3D's own formats, and nothing it
   cannot draw exactly. Non-square textures and blends other than source
   alpha over its inverse are refused rather than drawn wrong, so the
@@ -151,15 +183,15 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 |---|---|---|---|---|---|
 | PCI ID | `8086:27AE` (945GSE) exactly | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-intel-gma` | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
-| Status | Hardware Direct3D and OpenGL, verified on one physical netbook | Primary S3 target, hardware Direct3D and OpenGL | Conservative baseline, verified on 2 physical machines | Tier-0 bring-up | Tier-0 fallback, verified on a physical GMA 950 and an S3 Trio3D |
+| Status | Hardware Direct3D and OpenGL, verified on one physical netbook | Primary S3 target, hardware Direct3D and OpenGL | Conservative baseline, verified on 2 physical machines | `4C4D`: hardware Direct3D and OpenGL, verified on one physical laptop; `5654`: tier-0 | Tier-0 fallback, verified on a physical GMA 950 and an S3 Trio3D |
 | Display modes | 640x480 and native 1024x576 at 8 and 16 bpp, set by the video BIOS | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
-| Direct3D | Yes (Gen3 3D engine) | Yes (narrow S3D path) | Software rasterizer, opt-in | same as Trio | Software rasterizer, **on by default** at 16 bpp |
-| OpenGL (`V9XGL.DLL`) | Yes, GPU textures plus CPU fallback, at 16 bpp | Yes, S3D-expressible draws, 555 desktop | Software rasterizer at 16 bpp | Software rasterizer at 16 bpp | Software rasterizer at 16 bpp |
+| Direct3D | Yes (Gen3 3D engine) | Yes (narrow S3D path) | Software rasterizer, opt-in | `4C4D`: yes (Mach64 3D engine); `5654`: same as Trio | Software rasterizer, **on by default** at 16 bpp |
+| OpenGL (`V9XGL.DLL`) | Yes, GPU textures plus CPU fallback, at 16 bpp | Yes, S3D-expressible draws, 555 desktop | Software rasterizer at 16 bpp | `4C4D`: engine textures, no CPU fallback, 565 desktop; `5654`: software rasterizer at 16 bpp | Software rasterizer at 16 bpp |
 | Direct3D mode selector | Hardware / Software / Disabled | Hardware / Software / Disabled | Software / Disabled | same as Trio | same as Trio |
 | DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes | Yes |
 | Hardware primary page flip | Yes (through the ring) | Yes | Yes | No; HAL declines | No; HAL declines |
-| Hardware colour fill | DirectDraw only (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
-| Hardware BitBLT | DirectDraw only, non-overlapping (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | **No** — CPU | **No** — CPU |
+| Hardware colour fill | DirectDraw only (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
+| Hardware BitBLT | DirectDraw only, non-overlapping (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
 | GDI acceleration by default | Software; the blitter is not yet used for GDI | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
 | Live resolution change | Yes, as games switch 1024x576 to 640x480 | Yes | Yes | Yes | Yes |
 | Live colour-depth change | Not recorded | Yes | Yes | Yes | Yes |
@@ -261,7 +293,10 @@ blitter gets 18.
 
 **Known issue:** 16 bpp modes display incorrectly on the Mach64 — 8 bpp is
 correct at every resolution
-([D5](docs/issues/2026-08-16-tier0-defects-deferred.md)).
+([D5](docs/issues/2026-08-16-tier0-defects-deferred.md)). That was
+recorded on the emulated Mach64; the Rage Mobility-M runs its 1024x768
+panel at 16 bpp correctly, and whether D5 still applies elsewhere is not
+re-checked.
 
 ## Have an unsupported card?
 
@@ -357,7 +392,8 @@ no packed 24-bpp modes.
 **Can I run this on real hardware, or only in an emulator?**
 Both. Physical evidence covers the GMA 950 (one netbook), the ViRGE/DX and
 Trio3D/2X, and the Trio64 on PCI and VLB. Matrox has historical physical
-software-GDI evidence with its stock mini-VDD; ATI remains emulator-only.
+software-GDI evidence with its stock mini-VDD; ATI has one physical
+machine, a Gateway Solo 2150 with a Rage Mobility-M.
 Development and regression testing use [86Box](https://86box.net/) and QEMU.
 Read [docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
 
