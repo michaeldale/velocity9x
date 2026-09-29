@@ -315,6 +315,42 @@ static void test_state_end_to_end(void)
     CHECK(values[16] == 0x40800000ul);
 }
 
+static int close_to(float a, float b)
+{
+    float d = a - b;
+
+    return d < 0.001f && d > -0.001f;
+}
+
+/* The perspective-correct centroid the wrap rebase rounds to. */
+static void test_wrap_reference(void)
+{
+    struct v9x_m64_setup_vertex v[3];
+    float s = 9.0f;
+    float t = 9.0f;
+
+    memset(v, 0, sizeof(v));
+    /* The 3DMark tunnel wall's pass 1 (M64TRI-TUNNEL.TXT). */
+    v[0].rhw = 0.25971f; v[0].s = 0.98f; v[0].t = 0.02f;
+    v[1].rhw = 0.00500f; v[1].s = 0.00f; v[1].t = 1.00f;
+    v[2].rhw = 0.25395f; v[2].s = 0.98f; v[2].t = 1.00f;
+    CHECK(v9x_d3d_mach64_wrap_reference(v, &s, &t) == 1);
+    CHECK(close_to(s, 0.9706f));
+    CHECK(close_to(t, 0.5093f));
+
+    /* Equal W: the plain mean. */
+    v[0].rhw = v[1].rhw = v[2].rhw = 2.0f;
+    v[0].s = 1.0f; v[1].s = 2.0f; v[2].s = 6.0f;
+    CHECK(v9x_d3d_mach64_wrap_reference(v, &s, &t) == 1);
+    CHECK(close_to(s, 3.0f));
+
+    /* No positive W: no reference, and the outputs are left alone. */
+    v[0].rhw = v[1].rhw = v[2].rhw = 0.0f;
+    s = 9.0f;
+    CHECK(v9x_d3d_mach64_wrap_reference(v, &s, &t) == 0);
+    CHECK(s == 9.0f);
+}
+
 unsigned int v9x_run_d3d_mach64_map_tests(void)
 {
     test_direct3d_defaults();
@@ -323,5 +359,6 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_mip_mapping();
     test_specular_needs_colour();
     test_state_end_to_end();
+    test_wrap_reference();
     return failures;
 }

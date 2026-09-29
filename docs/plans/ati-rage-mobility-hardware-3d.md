@@ -1144,6 +1144,15 @@ evidence in `../probe/ati-rage-mobility-m-3dmark99-2026-09-29/`):
   Setup now tests area first and skips an unrenderable textured
   triangle alone (`M64Unrenderable`). Run 6: no 3DMark refusals, 1,944
   triangles skipped. The texture-format refusal was the probe's own.
+- **Mip level choice, explained.** Affine, the engine takes the largest
+  single rate and switches near 1.1, 2.2 and 4.4, a third of a level
+  coarser than Direct3D, for every texture size; nothing found moves
+  that. Under perspective it divides the gradient of S*W by the pixel's W,
+  dropping the -s dW term, so the error is s. The wrap rebase now
+  centres s and t on the perspective-correct centroid instead of starting
+  them at their minimum; the tunnel wall went from 1 to 1.5 levels
+  coarser to matching Direct3D at 28 of the 34 points inside it, one
+  level off at the other 6. Clamped textures keep the error.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

@@ -5134,6 +5134,169 @@ void __stdcall V9xDdrawProbeEntry(void)
                 }
 
                 /*
+                 * Which rate the Mach64 turns into a level (2026-09-29).
+                 * The sweep above stretches u and v alike and reads about a
+                 * third of a level coarser than Direct3D; the tunnel's
+                 * walls read 1 to 1.5 levels coarser. A formula that sums
+                 * the u and v rates, or the x and y ones, would explain
+                 * both. The same 64 chain, one factor each:
+                 *   LodX: u runs `ratio` texels a pixel in x, v 1 in y;
+                 *   LodY: the transpose;
+                 *   LodR: the square sweep turned 45 degrees in texture
+                 *         space, each axis moving u and v by ratio/sqrt 2,
+                 *         so each axis's rate is still `ratio`.
+                 * Direct3D's nearest level is round(log2 ratio) for all
+                 * three. Raw values only: the reading is the record.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float lod_ratio[5] = {
+                        1.4f, 2.0f, 2.8f, 4.0f, 5.6f };
+                    static const char *lod_key[3][5] = {
+                        { "LodX14Raw", "LodX20Raw", "LodX28Raw",
+                          "LodX40Raw", "LodX56Raw" },
+                        { "LodY14Raw", "LodY20Raw", "LodY28Raw",
+                          "LodY40Raw", "LodY56Raw" },
+                        { "LodR14Raw", "LodR20Raw", "LodR28Raw",
+                          "LodR40Raw", "LodR56Raw" } };
+                    /* Texture units per 47.5-pixel edge for one texel a
+                     * pixel on the 64 top level. */
+                    const float unit = 47.5f / 64.0f;
+                    DWORD lod_shape;
+                    DWORD lod_index;
+                    DWORD corner;
+
+                    for (lod_shape = 0ul; lod_shape < 3ul; ++lod_shape) {
+                        for (lod_index = 0ul; lod_index < 5ul; ++lod_index) {
+                            float along = lod_ratio[lod_index] * unit;
+                            float diagonal = along * 0.70710678f;
+                            WORD lod_raw = 0u;
+
+                            for (corner = 0ul; corner < 3ul; ++corner) {
+                                triangle[corner].color = 0xfffffffful;
+                                triangle[corner].tu = 0.0f;
+                                triangle[corner].tv = 0.0f;
+                            }
+                            /* Vertex 1 is along x, vertex 2 along y. */
+                            if (lod_shape == 0ul) {
+                                triangle[1].tu = along;
+                                triangle[2].tv = unit;
+                            } else if (lod_shape == 1ul) {
+                                triangle[1].tu = unit;
+                                triangle[2].tv = along;
+                            } else {
+                                triangle[1].tu = diagonal;
+                                triangle[1].tv = diagonal;
+                                triangle[2].tu = -diagonal;
+                                triangle[2].tv = diagonal;
+                            }
+                            (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                                d3d_target, triangle, 64ul, 7ul, 0,
+                                V9X_D3DFILTER_NEAREST, -1.0f, &lod_raw);
+                            v9x_write_uint(lod_key[lod_shape][lod_index],
+                                           lod_raw);
+                        }
+                    }
+                }
+
+                /*
+                 * The same square sweep over the top level's size and the
+                 * chain's length. The 64 and 128 chains place the Mach64's
+                 * boundaries near 1.125 * 2^(n-1) texels a pixel; the
+                 * tunnel's 256 chain of 6 levels switched at about half
+                 * those rates. LodE<edge>L<levels>_<n>, rate lod_rate[n].
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const DWORD size_edge[4] = {
+                        32ul, 128ul, 256ul, 256ul };
+                    static const DWORD size_levels[4] = {
+                        6ul, 8ul, 9ul, 6ul };
+                    static const char *size_prefix[4] = {
+                        "LodE32L6_", "LodE128L8_", "LodE256L9_",
+                        "LodE256L6_" };
+                    static const float lod_rate[9] = {
+                        0.8f, 1.0f, 1.2f, 1.6f, 2.0f, 2.4f, 3.2f, 4.0f,
+                        4.8f };
+                    static const char *rate_suffix[9] = {
+                        "08Raw", "10Raw", "12Raw", "16Raw", "20Raw", "24Raw",
+                        "32Raw", "40Raw", "48Raw" };
+                    char size_key[24];
+                    DWORD size_index;
+                    DWORD rate_index;
+
+                    for (size_index = 0ul; size_index < 4ul; ++size_index) {
+                        for (rate_index = 0ul; rate_index < 9ul;
+                             ++rate_index) {
+                            WORD size_raw = 0u;
+
+                            (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                                d3d_target, triangle, size_edge[size_index],
+                                size_levels[size_index], 0,
+                                V9X_D3DFILTER_NEAREST,
+                                lod_rate[rate_index] * 47.5f /
+                                    (float)size_edge[size_index],
+                                &size_raw);
+                            size_key[0] = 0;
+                            v9x_probe_cat(size_key, size_prefix[size_index]);
+                            v9x_probe_cat(size_key, rate_suffix[rate_index]);
+                            v9x_write_uint(size_key, size_raw);
+                        }
+                    }
+                }
+
+                /*
+                 * Levels under perspective. The sweeps above are affine;
+                 * on the tunnel the Mach64 switched at about half their
+                 * rates. The 64 chain with rhw 1 at vertices 0 and 2 and
+                 * 0.25 at vertex 1, u across x from 0 to 2 (PLodA) or 2 to
+                 * 0 (PLodB), v one texel a pixel in y; the row y 10 is read
+                 * at x 10 to 54. Both have the same rate at every pixel, so
+                 * a difference between them is the engine's estimate
+                 * depending on u itself.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const char *plod_prefix[2] = { "PLodA_", "PLodB_" };
+                    char plod_key[16];
+                    DWORD plod_variant;
+                    DWORD plod_column;
+                    DWORD corner;
+                    WORD plod_raw = 0u;
+
+                    for (plod_variant = 0ul; plod_variant < 2ul;
+                         ++plod_variant) {
+                        for (corner = 0ul; corner < 3ul; ++corner) {
+                            triangle[corner].color = 0xfffffffful;
+                            triangle[corner].tv = 0.0f;
+                            triangle[corner].rhw = 1.0f;
+                        }
+                        triangle[1].rhw = 0.25f;
+                        triangle[0].tu = plod_variant == 0ul ? 0.0f : 2.0f;
+                        triangle[1].tu = plod_variant == 0ul ? 2.0f : 0.0f;
+                        triangle[2].tu = triangle[0].tu;
+                        triangle[2].tv = 47.5f / 64.0f;
+                        (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, 64ul, 7ul, 0,
+                            V9X_D3DFILTER_NEAREST, -1.0f, &plod_raw);
+                        for (plod_column = 0ul; plod_column < 12ul;
+                             ++plod_column) {
+                            plod_key[0] = 0;
+                            v9x_probe_cat(plod_key, plod_prefix[plod_variant]);
+                            plod_key[6] = (char)('A' + plod_column);
+                            plod_key[7] = 0;
+                            v9x_write_uint(plod_key,
+                                v9x_surface_pixel16(d3d_target,
+                                                    10ul + plod_column * 4ul,
+                                                    10ul));
+                        }
+                    }
+                    for (corner = 0ul; corner < 3ul; ++corner) {
+                        triangle[corner].rhw = 1.0f;
+                    }
+                }
+
+                /*
                  * Perspective (2026-09-29). Every scene above draws rhw 1 at
                  * every vertex; 3DMark's texture tunnel, all perspective,
                  * drew flat averaged colours on the Mach64 while a face-on

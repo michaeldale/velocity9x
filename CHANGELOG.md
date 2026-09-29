@@ -25,7 +25,10 @@ marked below.
   textures itself, because DirectDraw's pitch for them is 4096 bytes.
 - **Perspective:** the engine multiplies S and T by W itself under
   `TEX_ST_MULT_W`; wrapped coordinates are rebased per triangle, because
-  its range ends between u of 1000 and 10000.
+  its range ends between u of 1000 and 10000. The rebase centres each
+  triangle's coordinates, because the engine's mip level under
+  perspective errs by the coordinate itself; the tunnel's walls were 1
+  to 1.5 levels too coarse.
 - **Every engine fill clears the 3D state first**; a fill carrying the
   previous draw's Z and alpha-test state hard-locked the Gateway
   ([issue](docs/issues/2026-09-28-mach64-hal-first-draw-hard-hang.md)).
@@ -41,7 +44,8 @@ marked below.
 - The ROM is summed over both lengths when the header and PCIR disagree,
   and the PCIR class code and CPUID model are read where they are.
 
-Still open on the Mach64: mip levels coarser than Direct3D's, an
+Still open on the Mach64: mip level boundaries a third of a level
+coarser than Direct3D's (the engine's own, with no working bias), an
 occasional lock after a cold boot, MIPLINEAR, and fog with blend.
 
 ## 0.9.0 - 2026-09-27

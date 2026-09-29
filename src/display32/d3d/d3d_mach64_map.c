@@ -206,3 +206,27 @@ v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,
     }
     return 0ul;
 }
+
+int v9x_d3d_mach64_wrap_reference(const struct v9x_m64_setup_vertex *setup,
+                                  float *s_out, float *t_out)
+{
+    float weight = 0.0f;
+    float s = 0.0f;
+    float t = 0.0f;
+    v9x_u32 corner;
+
+    if (setup == 0 || s_out == 0 || t_out == 0) {
+        return 0;
+    }
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        weight += setup[corner].rhw;
+        s += setup[corner].s * setup[corner].rhw;
+        t += setup[corner].t * setup[corner].rhw;
+    }
+    if (!(weight > 0.0f)) {
+        return 0;
+    }
+    *s_out = s / weight;
+    *t_out = t / weight;
+    return 1;
+}

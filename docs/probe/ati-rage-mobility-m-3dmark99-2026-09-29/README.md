@@ -157,3 +157,57 @@ Run 6 (boot 45, 359 3DMarks, 6575 CPU, `RUN6-SCORE-359.png`, counters
 1,944 triangles were skipped as unrenderable, and 72,782 as zero-area
 against 65,161 in run 5. Zero timeouts and resets. The probe's failing keys
 are a subset of the earlier committed log's.
+
+## How the engine picks a mip level
+
+New probe scenes, all on MIPNEAREST chains, level 0 red, 1 green, 2 blue,
+3 and below magenta. `V9XDDT-LOD-FLOOR-REBASE.TXT` was taken with the old
+rebase, `V9XDDT-LOD-CENTRED-REBASE.TXT` with the new one (boot 47).
+
+Affine (uniform rhw):
+
+| Rate (texels a pixel) | 1.4 | 2.0 | 2.8 | 4.0 | 5.6 |
+|---|---|---|---|---|---|
+| Direct3D nearest | 0 | 1 | 1 | 2 | 2 |
+| `LodX`, `LodY`: one axis stretched | 1 | 1 | 2 | 2 | 3 |
+| `LodR`: turned 45 degrees in texture space | 0 | 1 | 1 | 2 | 2 |
+
+- The engine takes the largest single rate, u or v in x or y, not the
+  gradient's length or a sum: at 45 degrees each rate is ratio/sqrt 2.
+- Its boundaries are near 1.1, 2.2 and 4.4 texels a pixel, against
+  Direct3D's 1.41, 2.83 and 5.66. `LodE*` swept 32, 128 and 256 chains
+  of full and 6-level length: all read `001112223` at rates 0.8 to 4.8.
+  About a third of a level coarser, whatever the size; `TEX_CNTL`
+  LOD_BIAS had no effect, so this part stays.
+
+Perspective:
+
+- `PLodA` (u 0 to 2 towards the rhw 0.25 corner) read `11111111222`,
+  `PLodB` (u 2 to 0) `22222233333`: the same rate at every pixel, a level
+  apart. The engine's estimate depends on u.
+- Fitted: the rate is the per-triangle gradient of S*W (and T*W) divided
+  by the pixel's W. The true derivative is (d(sW) - s dW) / W; the engine
+  drops the s dW term, so its error at a pixel is that pixel's s times
+  dW/W. The model reproduces both rows and the 60-point tunnel grid
+  (`TunL_*`) to within a cell or two.
+- The HAL chooses s's origin for wrapped textures, one whole number a
+  triangle. It used the integer below the minimum, which makes every
+  error the same sign. It now uses the integer nearest the
+  perspective-correct centroid, sum(s rhw) / sum(rhw).
+
+After the change (boot 47): `PLodB` reads `11111111222`, like `PLodA`. The
+tunnel's wall, against Direct3D:
+
+| Row | Direct3D | Before | After |
+|---|---|---|---|
+| y 50 | `000` | `011` | `000` |
+| y 150 | `00000000` | `01111112` | `00000001` |
+| y 240 | `000000001123` | `011111222333` | `000000111223` |
+| y 330 | `00000000` | `11111122` | `00000011` |
+| y 430 | `000` | `111` | `000` |
+
+The tunnel replay's texture pattern (`Tun_*`, `TunP_*`) is identical at
+all 60 points to the earlier run, so the shift moved the level choice
+and nothing sampled; every wrap cell of the texture matrix passes with
+the centred, now partly negative, coordinates. Clamped textures cannot
+be shifted and keep the error.

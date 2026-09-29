@@ -448,10 +448,16 @@ static int v9x_d3d_mach64_vertex(const V9X_R3D_VERTEX *vertex,
  * coordinate, and the engine's coordinate range is finite: on the Gateway
  * a 64-texel texture sampled right at u of 1000.1 and wrong at 10000.1
  * (2026-09-29), between 64,000 and 640,000 texels. So each triangle's
- * coordinates are moved to start from the integer at or below its
- * smallest s and t. It keeps a long wall of a tunnel, which tiles its
- * texture far along its length, inside the range. Clamped coordinates
- * mean what they say and are left alone.
+ * coordinates are moved by a whole number. It keeps a long wall of a
+ * tunnel, which tiles its texture far along its length, inside the range.
+ *
+ * Which whole number is not free: the engine's mip level reads the
+ * gradient of S*W over the pixel's W, whose error under perspective is the
+ * pixel's s itself. Moving s and t to start at their minimum made every
+ * error one-signed, and the tunnel's walls 1 to 1.5 levels coarser than
+ * Direct3D's; the integer nearest the perspective-correct centroid
+ * (v9x_d3d_mach64_wrap_reference) centres them on zero. Clamped
+ * coordinates mean what they say and are left alone, error and all.
  */
 static float v9x_d3d_mach64_floor(float value)
 {
@@ -465,27 +471,23 @@ static float v9x_d3d_mach64_floor(float value)
 
 static void v9x_d3d_mach64_wrap_origin(struct v9x_m64_setup_vertex *setup)
 {
-    float min_s = setup[0].s;
-    float min_t = setup[0].t;
+    float centre_s;
+    float centre_t;
     float base_s;
     float base_t;
     DWORD corner;
 
-    for (corner = 1ul; corner < 3ul; ++corner) {
-        if (setup[corner].s < min_s) {
-            min_s = setup[corner].s;
-        }
-        if (setup[corner].t < min_t) {
-            min_t = setup[corner].t;
-        }
-    }
-    /* Past the long range the whole part is not representable anyway. */
-    if (min_s < -1.0e9f || min_s > 1.0e9f ||
-        min_t < -1.0e9f || min_t > 1.0e9f) {
+    /* No positive W draws nothing; setup skips the triangle. */
+    if (!v9x_d3d_mach64_wrap_reference(setup, &centre_s, &centre_t)) {
         return;
     }
-    base_s = v9x_d3d_mach64_floor(min_s);
-    base_t = v9x_d3d_mach64_floor(min_t);
+    /* Past the long range the whole part is not representable anyway. */
+    if (centre_s < -1.0e9f || centre_s > 1.0e9f ||
+        centre_t < -1.0e9f || centre_t > 1.0e9f) {
+        return;
+    }
+    base_s = v9x_d3d_mach64_floor(centre_s + 0.5f);
+    base_t = v9x_d3d_mach64_floor(centre_t + 0.5f);
     for (corner = 0ul; corner < 3ul; ++corner) {
         setup[corner].s -= base_s;
         setup[corner].t -= base_t;

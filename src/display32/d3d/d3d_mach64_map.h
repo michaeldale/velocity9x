@@ -49,6 +49,18 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
                               v9x_u32 vram_bytes,
                               struct v9x_m64_draw_state *state);
 
+/*
+ * Where a wrapped triangle's whole-number rebase should centre it: s and t
+ * at the triangle's centroid, perspective-correct, sum(s * rhw) / sum(rhw).
+ * The Mach64 picks its mip level from the gradient of S*W divided by the
+ * pixel's W, which drops the true derivative's -s*dW term; the error is s
+ * itself at each pixel, so it is least when s is near zero across the
+ * triangle (2026-09-29, docs/probe/ati-rage-mobility-m-3dmark99-2026-09-29).
+ * Returns 0, writing nothing, when the rhw sum is not positive.
+ */
+int v9x_d3d_mach64_wrap_reference(const struct v9x_m64_setup_vertex *setup,
+                                  float *s_out, float *t_out);
+
 /* Non-zero when any of the vertices has specular red, green or blue. */
 v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,
                                     v9x_u32 vertex_count);
