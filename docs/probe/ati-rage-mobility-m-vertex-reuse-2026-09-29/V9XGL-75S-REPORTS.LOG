@@ -1,0 +1,329 @@
+46 pid=FFFD31ED paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/2
+47 pid=FFFD31ED counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 stubs=0 failed r4=1 r7=0 r8=0 other=0
+70 pid=FFFD31ED paths batches/triangles untextured=39/78 hw=631/39586 cpu=0/0 cpu-nonsquare=0/0 hw-refused=41/122
+71 pid=FFFD31ED counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 stubs=0 failed r4=80 r7=0 r8=0 other=0
+74 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=1397/87696 cpu=0/0 cpu-nonsquare=0/0 hw-refused=90/293
+75 pid=FFFD31ED counters hwtex live=3 creates=3 create-failed=0 evictions=0 uploads=3 upload-kb=170 squared=0 stubs=0 failed r4=178 r7=0 r8=0 other=0
+1146 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=1997/110072 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1321/41645
+1147 pid=FFFD31ED counters hwtex live=49 creates=1996 create-failed=993 evictions=993 uploads=1037 upload-kb=43814 squared=440 stubs=0 failed r4=1409 r7=0 r8=0 other=0
+1870 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=2404/125642 cpu=0/0 cpu-nonsquare=0/0 hw-refused=2430/86257
+1871 pid=FFFD31ED counters hwtex live=55 creates=3426 create-failed=1710 evictions=1710 uploads=1775 upload-kb=74896 squared=896 stubs=0 failed r4=2518 r7=0 r8=0 other=0
+2616 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=2785/141717 cpu=0/0 cpu-nonsquare=0/0 hw-refused=3462/113142
+2617 pid=FFFD31ED counters hwtex live=61 creates=4916 create-failed=2448 evictions=2448 uploads=2530 upload-kb=104564 squared=1240 stubs=0 failed r4=3550 r7=0 r8=0 other=0
+3611 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=3386/163574 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4765/160338
+3612 pid=FFFD31ED counters hwtex live=62 creates=6897 create-failed=3440 evictions=3440 uploads=3567 upload-kb=144498 squared=1797 stubs=0 failed r4=4853 r7=0 r8=0 other=0
+3880 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=3828/183460 cpu=0/0 cpu-nonsquare=0/0 hw-refused=5798/185406
+3881 pid=FFFD31ED counters hwtex live=67 creates=7432 create-failed=3706 evictions=3706 uploads=3869 upload-kb=153552 squared=2015 stubs=0 failed r4=5886 r7=0 r8=0 other=0
+3892 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=4970/245945 cpu=0/0 cpu-nonsquare=0/0 hw-refused=6597/201098
+3893 pid=FFFD31ED counters hwtex live=67 creates=7451 create-failed=3716 evictions=3716 uploads=3878 upload-kb=153954 squared=2180 stubs=0 failed r4=6685 r7=0 r8=0 other=0
+3942 pid=FFFD31ED paths batches/triangles untextured=88/176 hw=5986/301175 cpu=0/0 cpu-nonsquare=0/0 hw-refused=7274/215096
+3943 pid=FFFD31ED counters hwtex live=67 creates=7536 create-failed=3764 evictions=3764 uploads=3917 upload-kb=155454 squared=2332 stubs=0 failed r4=7362 r7=0 r8=0 other=0
+4756 pid=FFFD31ED paths batches/triangles untextured=103/206 hw=6563/317951 cpu=0/0 cpu-nonsquare=0/0 hw-refused=8094/243967
+4757 pid=FFFD31ED counters hwtex live=73 creates=9160 create-failed=4576 evictions=4576 uploads=4763 upload-kb=194822 squared=2739 stubs=0 failed r4=8197 r7=0 r8=0 other=0
+5320 pid=FFFD31ED paths batches/triangles untextured=113/226 hw=6957/328859 cpu=0/0 cpu-nonsquare=0/0 hw-refused=8655/263745
+5321 pid=FFFD31ED counters hwtex live=0 creates=10285 create-failed=5137 evictions=5137 uploads=5349 upload-kb=221696 squared=3023 stubs=0 failed r4=8768 r7=0 r8=0 other=0
+46 pid=FFFD5D65 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/2
+47 pid=FFFD5D65 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=1 r7=0 r8=0 other=0
+70 pid=FFFD5D65 paths batches/triangles untextured=38/76 hw=616/38646 cpu=0/0 cpu-nonsquare=0/0 hw-refused=40/119
+71 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=78 stubs=0 failed r4=40 r7=0 r8=0 other=0
+72 pid=FFFD5D65 paths batches/triangles untextured=86/172 hw=1367/85816 cpu=0/0 cpu-nonsquare=0/0 hw-refused=88/263
+73 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=174 stubs=0 failed r4=88 r7=0 r8=0 other=0
+1025 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=3064/145099 cpu=0/0 cpu-nonsquare=0/0 hw-refused=89/266
+1026 pid=FFFD5D65 counters hwtex live=46 creates=1826 create-failed=907 evictions=907 uploads=949 upload-kb=40066 squared=390 alpha-dropped=177 stubs=0 failed r4=89 r7=0 r8=0 other=0
+1661 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=4313/192149 cpu=0/0 cpu-nonsquare=0/0 hw-refused=235/9185
+1662 pid=FFFD5D65 counters hwtex live=54 creates=3107 create-failed=1539 evictions=1539 uploads=1621 upload-kb=67960 squared=809 alpha-dropped=177 stubs=0 failed r4=235 r7=0 r8=0 other=0
+2338 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=5627/232027 cpu=0/0 cpu-nonsquare=0/0 hw-refused=237/9191
+2339 pid=FFFD5D65 counters hwtex live=61 creates=4447 create-failed=2214 evictions=2214 uploads=2292 upload-kb=94850 squared=1135 alpha-dropped=179 stubs=0 failed r4=237 r7=0 r8=0 other=0
+3260 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=7410/297983 cpu=0/0 cpu-nonsquare=0/0 hw-refused=237/9191
+3261 pid=FFFD5D65 counters hwtex live=61 creates=6284 create-failed=3134 evictions=3134 uploads=3246 upload-kb=132072 squared=1718 alpha-dropped=179 stubs=0 failed r4=237 r7=0 r8=0 other=0
+3704 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=8901/346358 cpu=0/0 cpu-nonsquare=0/0 hw-refused=237/9191
+3705 pid=FFFD5D65 counters hwtex live=67 creates=7171 create-failed=3576 evictions=3576 uploads=3735 upload-kb=148276 squared=2016 alpha-dropped=179 stubs=0 failed r4=237 r7=0 r8=0 other=0
+3721 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=10465/405722 cpu=0/0 cpu-nonsquare=0/0 hw-refused=267/9281
+3722 pid=FFFD5D65 counters hwtex live=67 creates=7201 create-failed=3591 evictions=3591 uploads=3750 upload-kb=148952 squared=2154 alpha-dropped=209 stubs=0 failed r4=267 r7=0 r8=0 other=0
+3723 pid=FFFD5D65 paths batches/triangles untextured=88/176 hw=12040/472097 cpu=0/0 cpu-nonsquare=0/0 hw-refused=312/9416
+3724 pid=FFFD5D65 counters hwtex live=67 creates=7201 create-failed=3591 evictions=3591 uploads=3750 upload-kb=148952 squared=2289 alpha-dropped=254 stubs=0 failed r4=312 r7=0 r8=0 other=0
+4336 pid=FFFD5D65 paths batches/triangles untextured=98/196 hw=13431/521159 cpu=0/0 cpu-nonsquare=0/0 hw-refused=323/9449
+4337 pid=FFFD5D65 counters hwtex live=73 creates=8415 create-failed=4202 evictions=4202 uploads=4379 upload-kb=177868 squared=2618 alpha-dropped=275 stubs=0 failed r4=323 r7=0 r8=0 other=0
+5004 pid=FFFD5D65 paths batches/triangles untextured=111/222 hw=14562/557403 cpu=0/0 cpu-nonsquare=0/0 hw-refused=323/9449
+5005 pid=FFFD5D65 counters hwtex live=0 creates=9746 create-failed=4867 evictions=4867 uploads=5071 upload-kb=209858 squared=2956 alpha-dropped=288 stubs=0 failed r4=323 r7=0 r8=0 other=0
+46 pid=FFFD5D65 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+47 pid=FFFD5D65 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=1 r7=0 r8=0 other=0
+70 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=1781/112122 cpu=0/0 cpu-nonsquare=0/0 hw-refused=54/110
+71 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=55 stubs=0 failed r4=54 r7=0 r8=0 other=0
+72 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=3643/229346 cpu=0/0 cpu-nonsquare=0/0 hw-refused=108/218
+73 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=109 stubs=0 failed r4=108 r7=0 r8=0 other=0
+74 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=5487/345382 cpu=0/0 cpu-nonsquare=0/0 hw-refused=163/328
+75 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=164 stubs=0 failed r4=163 r7=0 r8=0 other=0
+76 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=7345/462350 cpu=0/0 cpu-nonsquare=0/0 hw-refused=217/436
+77 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=218 stubs=0 failed r4=217 r7=0 r8=0 other=0
+78 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=9193/578642 cpu=0/0 cpu-nonsquare=0/0 hw-refused=272/546
+79 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=273 stubs=0 failed r4=272 r7=0 r8=0 other=0
+80 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=11053/695738 cpu=0/0 cpu-nonsquare=0/0 hw-refused=326/654
+81 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=327 stubs=0 failed r4=326 r7=0 r8=0 other=0
+82 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=12899/811902 cpu=0/0 cpu-nonsquare=0/0 hw-refused=381/764
+83 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=382 stubs=0 failed r4=381 r7=0 r8=0 other=0
+84 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=14755/928742 cpu=0/0 cpu-nonsquare=0/0 hw-refused=435/872
+85 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=436 stubs=0 failed r4=435 r7=0 r8=0 other=0
+86 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=16605/1045162 cpu=0/0 cpu-nonsquare=0/0 hw-refused=490/982
+87 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=491 stubs=0 failed r4=490 r7=0 r8=0 other=0
+88 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=18471/1162642 cpu=0/0 cpu-nonsquare=0/0 hw-refused=544/1090
+89 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=545 stubs=0 failed r4=544 r7=0 r8=0 other=0
+90 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=20311/1278422 cpu=0/0 cpu-nonsquare=0/0 hw-refused=599/1200
+91 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=600 stubs=0 failed r4=599 r7=0 r8=0 other=0
+92 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=22172/1395582 cpu=0/0 cpu-nonsquare=0/0 hw-refused=653/1308
+93 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=654 stubs=0 failed r4=653 r7=0 r8=0 other=0
+94 pid=FFFD5D65 paths batches/triangles untextured=1/2 hw=24017/1511682 cpu=0/0 cpu-nonsquare=0/0 hw-refused=708/1418
+95 pid=FFFD5D65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=709 stubs=0 failed r4=708 r7=0 r8=0 other=0
+99 pid=FFFD5D65 paths batches/triangles untextured=92/184 hw=25589/1605318 cpu=0/0 cpu-nonsquare=0/0 hw-refused=765/1564
+100 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=61 alpha-dropped=857 stubs=0 failed r4=765 r7=0 r8=0 other=0
+101 pid=FFFD5D65 paths batches/triangles untextured=275/550 hw=26870/1675346 cpu=0/0 cpu-nonsquare=0/0 hw-refused=826/1747
+102 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=183 alpha-dropped=1101 stubs=0 failed r4=826 r7=0 r8=0 other=0
+103 pid=FFFD5D65 paths batches/triangles untextured=467/934 hw=28214/1748818 cpu=0/0 cpu-nonsquare=0/0 hw-refused=890/1939
+104 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=311 alpha-dropped=1357 stubs=0 failed r4=890 r7=0 r8=0 other=0
+105 pid=FFFD5D65 paths batches/triangles untextured=659/1318 hw=29558/1822290 cpu=0/0 cpu-nonsquare=0/0 hw-refused=954/2131
+106 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=439 alpha-dropped=1613 stubs=0 failed r4=954 r7=0 r8=0 other=0
+107 pid=FFFD5D65 paths batches/triangles untextured=851/1702 hw=30902/1895762 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1018/2323
+108 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=567 alpha-dropped=1869 stubs=0 failed r4=1018 r7=0 r8=0 other=0
+109 pid=FFFD5D65 paths batches/triangles untextured=1043/2086 hw=32246/1969234 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1082/2515
+110 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=695 alpha-dropped=2125 stubs=0 failed r4=1082 r7=0 r8=0 other=0
+111 pid=FFFD5D65 paths batches/triangles untextured=1235/2470 hw=33590/2042706 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1146/2707
+112 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=823 alpha-dropped=2381 stubs=0 failed r4=1146 r7=0 r8=0 other=0
+113 pid=FFFD5D65 paths batches/triangles untextured=1427/2854 hw=34934/2116178 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1210/2899
+114 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=951 alpha-dropped=2637 stubs=0 failed r4=1210 r7=0 r8=0 other=0
+115 pid=FFFD5D65 paths batches/triangles untextured=1619/3238 hw=36278/2189650 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1274/3091
+116 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1079 alpha-dropped=2893 stubs=0 failed r4=1274 r7=0 r8=0 other=0
+117 pid=FFFD5D65 paths batches/triangles untextured=1811/3622 hw=37622/2263122 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1338/3283
+118 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1207 alpha-dropped=3149 stubs=0 failed r4=1338 r7=0 r8=0 other=0
+119 pid=FFFD5D65 paths batches/triangles untextured=2003/4006 hw=38966/2336594 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1402/3475
+120 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1335 alpha-dropped=3405 stubs=0 failed r4=1402 r7=0 r8=0 other=0
+121 pid=FFFD5D65 paths batches/triangles untextured=2195/4390 hw=40310/2410066 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1466/3667
+122 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1463 alpha-dropped=3661 stubs=0 failed r4=1466 r7=0 r8=0 other=0
+123 pid=FFFD5D65 paths batches/triangles untextured=2387/4774 hw=41654/2483538 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1530/3859
+124 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1591 alpha-dropped=3917 stubs=0 failed r4=1530 r7=0 r8=0 other=0
+125 pid=FFFD5D65 paths batches/triangles untextured=2579/5158 hw=42998/2557010 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1594/4051
+126 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1719 alpha-dropped=4173 stubs=0 failed r4=1594 r7=0 r8=0 other=0
+127 pid=FFFD5D65 paths batches/triangles untextured=2771/5542 hw=44342/2630482 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1658/4243
+128 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1847 alpha-dropped=4429 stubs=0 failed r4=1658 r7=0 r8=0 other=0
+129 pid=FFFD5D65 paths batches/triangles untextured=2960/5920 hw=45665/2702806 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1721/4432
+130 pid=FFFD5D65 counters hwtex live=4 creates=4 create-failed=0 evictions=0 uploads=4 upload-kb=320 squared=1973 alpha-dropped=4681 stubs=0 failed r4=1721 r7=0 r8=0 other=0
+41 pid=FFFD5A43 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+42 pid=FFFD5A43 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+45 pid=FFFD5A43 paths batches/triangles untextured=38/76 hw=658/38864 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+46 pid=FFFD5A43 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=78 stubs=0 failed r4=0 r7=0 r8=0 other=0
+94 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=1594/90659 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFD5A43 counters hwtex live=43 creates=49 create-failed=6 evictions=6 uploads=46 upload-kb=1796 squared=20 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+1024 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=3304/150979 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4/256
+1025 pid=FFFD5A43 counters hwtex live=49 creates=1865 create-failed=913 evictions=913 uploads=987 upload-kb=42258 squared=428 alpha-dropped=177 stubs=0 failed r4=4 r7=0 r8=0 other=0
+1904 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=5079/214403 cpu=0/0 cpu-nonsquare=0/0 hw-refused=150/9071
+1905 pid=FFFD5A43 counters hwtex live=54 creates=3588 create-failed=1783 evictions=1783 uploads=1872 upload-kb=80576 squared=974 alpha-dropped=177 stubs=0 failed r4=150 r7=0 r8=0 other=0
+2825 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=6795/274722 cpu=0/0 cpu-nonsquare=0/0 hw-refused=162/9381
+2826 pid=FFFD5A43 counters hwtex live=54 creates=5431 create-failed=2702 evictions=2702 uploads=2824 upload-kb=121050 squared=1386 alpha-dropped=177 stubs=0 failed r4=162 r7=0 r8=0 other=0
+3737 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=8518/334811 cpu=0/0 cpu-nonsquare=0/0 hw-refused=174/9811
+3738 pid=FFFD5A43 counters hwtex live=54 creates=7262 create-failed=3612 evictions=3612 uploads=3775 upload-kb=161182 squared=1804 alpha-dropped=177 stubs=0 failed r4=174 r7=0 r8=0 other=0
+4650 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=10239/394786 cpu=0/0 cpu-nonsquare=0/0 hw-refused=185/10124
+4651 pid=FFFD5A43 counters hwtex live=54 creates=9079 create-failed=4523 evictions=4523 uploads=4713 upload-kb=201696 squared=2223 alpha-dropped=177 stubs=0 failed r4=185 r7=0 r8=0 other=0
+5571 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=11967/455372 cpu=0/0 cpu-nonsquare=0/0 hw-refused=192/10313
+5572 pid=FFFD5A43 counters hwtex live=54 creates=10913 create-failed=5442 evictions=5442 uploads=5655 upload-kb=242374 squared=2641 alpha-dropped=177 stubs=0 failed r4=192 r7=0 r8=0 other=0
+6510 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=13761/516244 cpu=0/0 cpu-nonsquare=0/0 hw-refused=208/10916
+6511 pid=FFFD5A43 counters hwtex live=54 creates=12782 create-failed=6379 evictions=6379 uploads=6619 upload-kb=283358 squared=3065 alpha-dropped=177 stubs=0 failed r4=208 r7=0 r8=0 other=0
+7431 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=15540/577197 cpu=0/0 cpu-nonsquare=0/0 hw-refused=217/11176
+7432 pid=FFFD5A43 counters hwtex live=54 creates=14627 create-failed=7298 evictions=7298 uploads=7578 upload-kb=324406 squared=3483 alpha-dropped=177 stubs=0 failed r4=217 r7=0 r8=0 other=0
+8365 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=17284/638091 cpu=0/0 cpu-nonsquare=0/0 hw-refused=232/11616
+8366 pid=FFFD5A43 counters hwtex live=54 creates=16490 create-failed=8230 evictions=8230 uploads=8539 upload-kb=365326 squared=3905 alpha-dropped=177 stubs=0 failed r4=232 r7=0 r8=0 other=0
+9299 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=19090/698885 cpu=0/0 cpu-nonsquare=0/0 hw-refused=248/12051
+9300 pid=FFFD5A43 counters hwtex live=54 creates=18353 create-failed=9162 evictions=9162 uploads=9501 upload-kb=406268 squared=4329 alpha-dropped=177 stubs=0 failed r4=248 r7=0 r8=0 other=0
+10229 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=20794/759117 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+10230 pid=FFFD5A43 counters hwtex live=54 creates=20200 create-failed=10090 evictions=10090 uploads=10448 upload-kb=446742 squared=4739 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+11140 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=22522/819120 cpu=0/0 cpu-nonsquare=0/0 hw-refused=271/12666
+11141 pid=FFFD5A43 counters hwtex live=54 creates=22035 create-failed=10999 evictions=10999 uploads=11406 upload-kb=486970 squared=5157 alpha-dropped=177 stubs=0 failed r4=271 r7=0 r8=0 other=0
+12053 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=24248/879152 cpu=0/0 cpu-nonsquare=0/0 hw-refused=285/13072
+12054 pid=FFFD5A43 counters hwtex live=54 creates=23853 create-failed=11910 evictions=11910 uploads=12341 upload-kb=527292 squared=5578 alpha-dropped=177 stubs=0 failed r4=285 r7=0 r8=0 other=0
+12975 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=25980/939775 cpu=0/0 cpu-nonsquare=0/0 hw-refused=291/13293
+12976 pid=FFFD5A43 counters hwtex live=54 creates=25688 create-failed=12830 evictions=12830 uploads=13286 upload-kb=568098 squared=5998 alpha-dropped=177 stubs=0 failed r4=291 r7=0 r8=0 other=0
+13236 pid=FFFD5A43 paths batches/triangles untextured=88/176 hw=26524/960605 cpu=0/0 cpu-nonsquare=0/0 hw-refused=298/13550
+13237 pid=FFFD5A43 counters hwtex live=0 creates=26204 create-failed=13088 evictions=13088 uploads=13554 upload-kb=579504 squared=6114 alpha-dropped=179 stubs=0 failed r4=298 r7=0 r8=0 other=0
+41 pid=FFFD7E6B paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+42 pid=FFFD7E6B counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+45 pid=FFFD7E6B paths batches/triangles untextured=38/76 hw=658/38864 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+46 pid=FFFD7E6B counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=78 stubs=0 failed r4=0 r7=0 r8=0 other=0
+89 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=1596/90734 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+90 pid=FFFD7E6B counters hwtex live=44 creates=44 create-failed=0 evictions=0 uploads=47 upload-kb=1966 squared=22 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+120 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=4763/205693 cpu=0/0 cpu-nonsquare=0/0 hw-refused=146/8943
+121 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=150 upload-kb=5406 squared=910 alpha-dropped=177 stubs=0 failed r4=146 r7=0 r8=0 other=0
+122 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=8081/319679 cpu=0/0 cpu-nonsquare=0/0 hw-refused=169/9656
+123 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=262 upload-kb=8990 squared=1704 alpha-dropped=177 stubs=0 failed r4=169 r7=0 r8=0 other=0
+124 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=11388/436046 cpu=0/0 cpu-nonsquare=0/0 hw-refused=190/10249
+125 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=369 upload-kb=12414 squared=2508 alpha-dropped=177 stubs=0 failed r4=190 r7=0 r8=0 other=0
+126 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=14815/551956 cpu=0/0 cpu-nonsquare=0/0 hw-refused=210/10980
+127 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=489 upload-kb=16254 squared=3308 alpha-dropped=177 stubs=0 failed r4=210 r7=0 r8=0 other=0
+128 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=18125/665720 cpu=0/0 cpu-nonsquare=0/0 hw-refused=241/11867
+129 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=605 upload-kb=19966 squared=4101 alpha-dropped=177 stubs=0 failed r4=241 r7=0 r8=0 other=0
+130 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=21447/782017 cpu=0/0 cpu-nonsquare=0/0 hw-refused=261/12422
+131 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=717 upload-kb=23550 squared=4907 alpha-dropped=177 stubs=0 failed r4=261 r7=0 r8=0 other=0
+132 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=24781/898218 cpu=0/0 cpu-nonsquare=0/0 hw-refused=287/13105
+133 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=826 upload-kb=27038 squared=5711 alpha-dropped=177 stubs=0 failed r4=287 r7=0 r8=0 other=0
+134 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=28114/1014352 cpu=0/0 cpu-nonsquare=0/0 hw-refused=311/13970
+135 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=943 upload-kb=30782 squared=6513 alpha-dropped=177 stubs=0 failed r4=311 r7=0 r8=0 other=0
+136 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=31428/1128024 cpu=0/0 cpu-nonsquare=0/0 hw-refused=336/14666
+137 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=1053 upload-kb=34302 squared=7302 alpha-dropped=177 stubs=0 failed r4=336 r7=0 r8=0 other=0
+138 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=34808/1244065 cpu=0/0 cpu-nonsquare=0/0 hw-refused=358/15491
+139 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=1170 upload-kb=38046 squared=8106 alpha-dropped=177 stubs=0 failed r4=358 r7=0 r8=0 other=0
+140 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=38092/1359817 cpu=0/0 cpu-nonsquare=0/0 hw-refused=373/16028
+141 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=1264 upload-kb=41054 squared=8898 alpha-dropped=177 stubs=0 failed r4=373 r7=0 r8=0 other=0
+148 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=39059/1398909 cpu=0/0 cpu-nonsquare=0/0 hw-refused=373/16028
+149 pid=FFFD7E6B counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=1290 upload-kb=41982 squared=9102 alpha-dropped=182 stubs=0 failed r4=373 r7=0 r8=0 other=0
+41 pid=FFFD7E6B time interval-ms=427875 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFD7E6B paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFD7E6B counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFD7E6B time interval-ms=10125 swaps=54 present-ms=4779 draw-ms=702 upload-ms=4
+47 pid=FFFD7E6B paths batches/triangles untextured=53/106 hw=899/53071 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+48 pid=FFFD7E6B counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=108 stubs=0 failed r4=0 r7=0 r8=0 other=0
+93 pid=FFFD7E6B time interval-ms=10065 swaps=49 present-ms=4344 draw-ms=1043 upload-ms=251
+94 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=2628/126820 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFD7E6B counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=77 upload-kb=3032 squared=269 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+123 pid=FFFD7E6B time interval-ms=10000 swaps=38 present-ms=3370 draw-ms=1755 upload-ms=322
+124 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=5866/242051 cpu=0/0 cpu-nonsquare=0/0 hw-refused=156/9230
+125 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=193 upload-kb=6782 squared=1167 alpha-dropped=177 stubs=0 failed r4=156 r7=0 r8=0 other=0
+126 pid=FFFD7E6B time interval-ms=10072 swaps=42 present-ms=3718 draw-ms=1733 upload-ms=301
+127 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=9128/355688 cpu=0/0 cpu-nonsquare=0/0 hw-refused=182/10035
+128 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=302 upload-kb=10270 squared=1953 alpha-dropped=177 stubs=0 failed r4=182 r7=0 r8=0 other=0
+129 pid=FFFD7E6B time interval-ms=10003 swaps=41 present-ms=3629 draw-ms=1753 upload-ms=299
+130 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=12474/470961 cpu=0/0 cpu-nonsquare=0/0 hw-refused=197/10530
+131 pid=FFFD7E6B counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=410 upload-kb=13726 squared=2741 alpha-dropped=177 stubs=0 failed r4=197 r7=0 r8=0 other=0
+136 pid=FFFD7E6B time interval-ms=10220 swaps=41 present-ms=3639 draw-ms=1690 upload-ms=338
+137 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=15715/582716 cpu=0/0 cpu-nonsquare=0/0 hw-refused=219/11243
+138 pid=FFFD7E6B counters hwtex live=54 creates=60 create-failed=5 evictions=5 uploads=528 upload-kb=17598 squared=3525 alpha-dropped=178 stubs=0 failed r4=219 r7=0 r8=0 other=0
+140 pid=FFFD7E6B paths batches/triangles untextured=88/176 hw=15784/586978 cpu=0/0 cpu-nonsquare=0/0 hw-refused=219/11243
+141 pid=FFFD7E6B counters hwtex live=0 creates=60 create-failed=5 evictions=5 uploads=528 upload-kb=17598 squared=3525 alpha-dropped=179 stubs=0 failed r4=219 r7=0 r8=0 other=0
+41 pid=FFFD5D53 time interval-ms=127982 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFD5D53 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFD5D53 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFD5D53 time interval-ms=10006 swaps=74 present-ms=303 draw-ms=1021 upload-ms=2
+47 pid=FFFD5D53 paths batches/triangles untextured=73/146 hw=1239/73255 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+48 pid=FFFD5D53 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=148 stubs=0 failed r4=0 r7=0 r8=0 other=0
+120 pid=FFFD5D53 time interval-ms=10001 swaps=57 present-ms=229 draw-ms=2187 upload-ms=503
+121 pid=FFFD5D53 paths batches/triangles untextured=88/176 hw=5066/213818 cpu=0/0 cpu-nonsquare=0/0 hw-refused=149/9039
+122 pid=FFFD5D53 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=165 upload-kb=5886 squared=963 alpha-dropped=177 stubs=0 failed r4=149 r7=0 r8=0 other=0
+123 pid=FFFD5D53 time interval-ms=10000 swaps=63 present-ms=253 draw-ms=2775 upload-ms=442
+124 pid=FFFD5D53 paths batches/triangles untextured=88/176 hw=10048/388610 cpu=0/0 cpu-nonsquare=0/0 hw-refused=182/10035
+125 pid=FFFD5D53 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=326 upload-kb=11038 squared=2176 alpha-dropped=177 stubs=0 failed r4=182 r7=0 r8=0 other=0
+126 pid=FFFD5D53 time interval-ms=10001 swaps=63 present-ms=253 draw-ms=2732 upload-ms=485
+127 pid=FFFD5D53 paths batches/triangles untextured=88/176 hw=15123/562334 cpu=0/0 cpu-nonsquare=0/0 hw-refused=214/11108
+128 pid=FFFD5D53 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=497 upload-kb=16510 squared=3372 alpha-dropped=177 stubs=0 failed r4=214 r7=0 r8=0 other=0
+129 pid=FFFD5D53 time interval-ms=10001 swaps=62 present-ms=249 draw-ms=2711 upload-ms=488
+130 pid=FFFD5D53 paths batches/triangles untextured=88/176 hw=20111/734753 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+131 pid=FFFD5D53 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=674 upload-kb=22174 squared=4579 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+138 pid=FFFD5D53 paths batches/triangles untextured=88/176 hw=24189/879665 cpu=0/0 cpu-nonsquare=0/0 hw-refused=283/13012
+139 pid=FFFD5D53 counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=810 upload-kb=26622 squared=5540 alpha-dropped=180 stubs=0 failed r4=283 r7=0 r8=0 other=0
+41 pid=FFFEA92F time interval-ms=308309 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFEA92F paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFEA92F counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+90 pid=FFFEA92F time interval-ms=10000 swaps=93 present-ms=373 draw-ms=1443 upload-ms=215
+92 pid=FFFEA92F paths batches/triangles untextured=88/176 hw=1920/101267 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+93 pid=FFFEA92F counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=62 upload-kb=2552 squared=87 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+121 pid=FFFEA92F time interval-ms=10001 swaps=59 present-ms=236 draw-ms=2687 upload-ms=431
+123 pid=FFFEA92F paths batches/triangles untextured=88/176 hw=6682/270618 cpu=0/0 cpu-nonsquare=0/0 hw-refused=162/9381
+124 pid=FFFEA92F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=216 upload-kb=7518 squared=1362 alpha-dropped=177 stubs=0 failed r4=162 r7=0 r8=0 other=0
+125 pid=FFFEA92F time interval-ms=10011 swaps=63 present-ms=259 draw-ms=2736 upload-ms=437
+127 pid=FFFEA92F paths batches/triangles untextured=88/176 hw=11620/444347 cpu=0/0 cpu-nonsquare=0/0 hw-refused=190/10249
+128 pid=FFFEA92F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=375 upload-kb=12606 squared=2565 alpha-dropped=177 stubs=0 failed r4=190 r7=0 r8=0 other=0
+129 pid=FFFEA92F time interval-ms=10000 swaps=62 present-ms=249 draw-ms=2725 upload-ms=478
+131 pid=FFFEA92F paths batches/triangles untextured=88/176 hw=16679/617199 cpu=0/0 cpu-nonsquare=0/0 hw-refused=224/11366
+132 pid=FFFEA92F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=548 upload-kb=18142 squared=3756 alpha-dropped=177 stubs=0 failed r4=224 r7=0 r8=0 other=0
+139 pid=FFFEA92F paths batches/triangles untextured=88/176 hw=19367/710804 cpu=0/0 cpu-nonsquare=0/0 hw-refused=250/12111
+140 pid=FFFEA92F counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=652 upload-kb=21566 squared=4371 alpha-dropped=180 stubs=0 failed r4=250 r7=0 r8=0 other=0
+41 pid=FFFCBB2F time interval-ms=551404 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFCBB2F paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFCBB2F counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+90 pid=FFFCBB2F time interval-ms=10002 swaps=100 present-ms=400 draw-ms=1796 upload-ms=232
+92 pid=FFFCBB2F paths batches/triangles untextured=88/176 hw=2424/119364 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+93 pid=FFFCBB2F counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=64 upload-kb=2616 squared=214 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+121 pid=FFFCBB2F time interval-ms=10000 swaps=71 present-ms=285 draw-ms=3328 upload-ms=555
+123 pid=FFFCBB2F paths batches/triangles untextured=88/176 hw=8183/322885 cpu=0/0 cpu-nonsquare=0/0 hw-refused=170/9700
+124 pid=FFFCBB2F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=263 upload-kb=9022 squared=1726 alpha-dropped=177 stubs=0 failed r4=170 r7=0 r8=0 other=0
+125 pid=FFFCBB2F time interval-ms=10001 swaps=74 present-ms=303 draw-ms=3377 upload-ms=545
+127 pid=FFFCBB2F paths batches/triangles untextured=88/176 hw=14113/528765 cpu=0/0 cpu-nonsquare=0/0 hw-refused=208/10916
+128 pid=FFFCBB2F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=456 upload-kb=15198 squared=3144 alpha-dropped=177 stubs=0 failed r4=208 r7=0 r8=0 other=0
+129 pid=FFFCBB2F time interval-ms=10002 swaps=74 present-ms=298 draw-ms=3360 upload-ms=582
+131 pid=FFFCBB2F paths batches/triangles untextured=88/176 hw=20079/733567 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+132 pid=FFFCBB2F counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=664 upload-kb=21854 squared=4564 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+139 pid=FFFCBB2F paths batches/triangles untextured=88/176 hw=23187/845841 cpu=0/0 cpu-nonsquare=0/0 hw-refused=274/12762
+140 pid=FFFCBB2F counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=764 upload-kb=25150 squared=5287 alpha-dropped=181 stubs=0 failed r4=274 r7=0 r8=0 other=0
+41 pid=FFFCB853 time interval-ms=691980 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFCB853 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFCB853 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+90 pid=FFFCB853 time interval-ms=10001 swaps=100 present-ms=400 draw-ms=1824 upload-ms=231
+92 pid=FFFCB853 paths batches/triangles untextured=88/176 hw=2454/120364 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+93 pid=FFFCB853 counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=67 upload-kb=2712 squared=215 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+121 pid=FFFCB853 time interval-ms=10000 swaps=71 present-ms=285 draw-ms=3331 upload-ms=552
+123 pid=FFFCB853 paths batches/triangles untextured=88/176 hw=8226/324416 cpu=0/0 cpu-nonsquare=0/0 hw-refused=170/9700
+124 pid=FFFCB853 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=263 upload-kb=9022 squared=1730 alpha-dropped=177 stubs=0 failed r4=170 r7=0 r8=0 other=0
+125 pid=FFFCB853 time interval-ms=10014 swaps=75 present-ms=301 draw-ms=3388 upload-ms=554
+127 pid=FFFCB853 paths batches/triangles untextured=88/176 hw=14148/530079 cpu=0/0 cpu-nonsquare=0/0 hw-refused=208/10916
+128 pid=FFFCB853 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=459 upload-kb=15294 squared=3160 alpha-dropped=177 stubs=0 failed r4=208 r7=0 r8=0 other=0
+129 pid=FFFCB853 time interval-ms=10000 swaps=74 present-ms=303 draw-ms=3372 upload-ms=581
+131 pid=FFFCB853 paths batches/triangles untextured=88/176 hw=20135/735464 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+132 pid=FFFCB853 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=667 upload-kb=21950 squared=4582 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+139 pid=FFFCB853 paths batches/triangles untextured=88/176 hw=23265/848612 cpu=0/0 cpu-nonsquare=0/0 hw-refused=275/12794
+140 pid=FFFCB853 counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=767 upload-kb=25246 squared=5306 alpha-dropped=181 stubs=0 failed r4=275 r7=0 r8=0 other=0
+41 pid=FFFD7FD1 time interval-ms=119237 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFD7FD1 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFD7FD1 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFD7FD1 time interval-ms=10059 swaps=86 present-ms=351 draw-ms=538 upload-ms=5
+48 pid=FFFD7FD1 paths batches/triangles untextured=85/170 hw=1441/85229 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFD7FD1 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=172 stubs=0 failed r4=0 r7=0 r8=0 other=0
+121 pid=FFFD7FD1 time interval-ms=10000 swaps=76 present-ms=305 draw-ms=2289 upload-ms=700
+123 pid=FFFD7FD1 paths batches/triangles untextured=88/176 hw=7434/297680 cpu=0/0 cpu-nonsquare=0/0 hw-refused=162/9381
+124 pid=FFFD7FD1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=237 upload-kb=8190 squared=1550 alpha-dropped=177 stubs=0 failed r4=162 r7=0 r8=0 other=0
+125 pid=FFFD7FD1 time interval-ms=10000 swaps=83 present-ms=346 draw-ms=2543 upload-ms=655
+127 pid=FFFD7FD1 paths batches/triangles untextured=88/176 hw=14138/529561 cpu=0/0 cpu-nonsquare=0/0 hw-refused=208/10916
+128 pid=FFFD7FD1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=466 upload-kb=15518 squared=3152 alpha-dropped=177 stubs=0 failed r4=208 r7=0 r8=0 other=0
+129 pid=FFFD7FD1 time interval-ms=10001 swaps=84 present-ms=346 draw-ms=2544 upload-ms=623
+131 pid=FFFD7FD1 paths batches/triangles untextured=88/176 hw=20843/760859 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+132 pid=FFFD7FD1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=689 upload-kb=22654 squared=4754 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+139 pid=FFFD7FD1 paths batches/triangles untextured=88/176 hw=22967/839670 cpu=0/0 cpu-nonsquare=0/0 hw-refused=271/12666
+140 pid=FFFD7FD1 counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=760 upload-kb=25022 squared=5230 alpha-dropped=182 stubs=0 failed r4=271 r7=0 r8=0 other=0
+41 pid=FFFD0F65 time interval-ms=136217 swaps=0 present-ms=0 draw-ms=0 upload-ms=10
+42 pid=FFFD0F65 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFD0F65 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFD0F65 time interval-ms=10069 swaps=86 present-ms=344 draw-ms=541 upload-ms=5
+48 pid=FFFD0F65 paths batches/triangles untextured=85/170 hw=1441/85229 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFD0F65 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=172 stubs=0 failed r4=0 r7=0 r8=0 other=0
+121 pid=FFFD0F65 time interval-ms=10008 swaps=76 present-ms=311 draw-ms=2300 upload-ms=715
+123 pid=FFFD0F65 paths batches/triangles untextured=88/176 hw=7430/297560 cpu=0/0 cpu-nonsquare=0/0 hw-refused=162/9381
+124 pid=FFFD0F65 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=237 upload-kb=8190 squared=1550 alpha-dropped=177 stubs=0 failed r4=162 r7=0 r8=0 other=0
+125 pid=FFFD0F65 time interval-ms=10001 swaps=83 present-ms=339 draw-ms=2569 upload-ms=645
+127 pid=FFFD0F65 paths batches/triangles untextured=88/176 hw=14114/528765 cpu=0/0 cpu-nonsquare=0/0 hw-refused=208/10916
+128 pid=FFFD0F65 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=463 upload-kb=15422 squared=3144 alpha-dropped=177 stubs=0 failed r4=208 r7=0 r8=0 other=0
+129 pid=FFFD0F65 time interval-ms=10015 swaps=84 present-ms=344 draw-ms=2562 upload-ms=633
+131 pid=FFFD0F65 paths batches/triangles untextured=88/176 hw=20809/759828 cpu=0/0 cpu-nonsquare=0/0 hw-refused=255/12239
+132 pid=FFFD0F65 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=689 upload-kb=22654 squared=4751 alpha-dropped=177 stubs=0 failed r4=255 r7=0 r8=0 other=0
+139 pid=FFFD0F65 paths batches/triangles untextured=88/176 hw=22813/834130 cpu=0/0 cpu-nonsquare=0/0 hw-refused=271/12666
+140 pid=FFFD0F65 counters hwtex live=0 creates=62 create-failed=6 evictions=6 uploads=757 upload-kb=24926 squared=5192 alpha-dropped=182 stubs=0 failed r4=271 r7=0 r8=0 other=0
+41 pid=FFFC2075 time interval-ms=230777 swaps=0 present-ms=0 draw-ms=0 upload-ms=11
+42 pid=FFFC2075 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFC2075 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFC2075 time interval-ms=10083 swaps=85 present-ms=339 draw-ms=750 upload-ms=2
+47 pid=FFFC2075 paths batches/triangles untextured=84/168 hw=1425/84272 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+48 pid=FFFC2075 counters hwtex live=2 creates=2 create-failed=0 evictions=0 uploads=2 upload-kb=160 squared=0 alpha-dropped=170 stubs=0 failed r4=0 r7=0 r8=0 other=0
+41 pid=FFFC28A1 time interval-ms=318176 swaps=0 present-ms=0 draw-ms=0 upload-ms=11
+42 pid=FFFC28A1 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFC28A1 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+90 pid=FFFC28A1 time interval-ms=10001 swaps=105 present-ms=421 draw-ms=1328 upload-ms=271
+91 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=2827/133925 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFC28A1 counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=80 upload-kb=3128 squared=310 alpha-dropped=177 stubs=0 failed r4=0 r7=0 r8=0 other=0
+120 pid=FFFC28A1 time interval-ms=10002 swaps=78 present-ms=312 draw-ms=2635 upload-ms=637
+121 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=9165/356794 cpu=0/0 cpu-nonsquare=0/0 hw-refused=182/10035
+122 pid=FFFC28A1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=302 upload-kb=10270 squared=1956 alpha-dropped=177 stubs=0 failed r4=182 r7=0 r8=0 other=0
+123 pid=FFFC28A1 time interval-ms=10001 swaps=81 present-ms=326 draw-ms=2693 upload-ms=641
+124 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=15703/582220 cpu=0/0 cpu-nonsquare=0/0 hw-refused=218/11208
+125 pid=FFFC28A1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=527 upload-kb=17470 squared=3517 alpha-dropped=177 stubs=0 failed r4=218 r7=0 r8=0 other=0
+126 pid=FFFC28A1 time interval-ms=10001 swaps=82 present-ms=335 draw-ms=2678 upload-ms=608
+127 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=22198/807608 cpu=0/0 cpu-nonsquare=0/0 hw-refused=268/12614
+128 pid=FFFC28A1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=740 upload-kb=24286 squared=5080 alpha-dropped=177 stubs=0 failed r4=268 r7=0 r8=0 other=0
+129 pid=FFFC28A1 time interval-ms=10022 swaps=82 present-ms=327 draw-ms=2700 upload-ms=616
+130 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=28661/1033991 cpu=0/0 cpu-nonsquare=0/0 hw-refused=313/13998
+131 pid=FFFC28A1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=955 upload-kb=31166 squared=6650 alpha-dropped=177 stubs=0 failed r4=313 r7=0 r8=0 other=0
+132 pid=FFFC28A1 time interval-ms=10001 swaps=81 present-ms=325 draw-ms=2665 upload-ms=639
+133 pid=FFFC28A1 paths batches/triangles untextured=88/176 hw=35235/1259195 cpu=0/0 cpu-nonsquare=0/0 hw-refused=361/15564
+134 pid=FFFC28A1 counters hwtex live=54 creates=55 create-failed=1 evictions=1 uploads=1179 upload-kb=38334 squared=8208 alpha-dropped=177 stubs=0 failed r4=361 r7=0 r8=0 other=0

@@ -14,13 +14,18 @@ all four installed driver files byte-for-byte with the staged package after the
 reboot.  The machine returned at 1024x768x16 as boot 58.
 
 `V9XDDP.EXE` then completed in 40.227 seconds.  Its report says
-`Build=fa99461-dirty`, `Result=COMPLETE`, spans two files, and contains 125
-`*_Ok=1` observations and no `*_Ok=0` observation.  The retrieved files are:
+`Build=fa99461-dirty`, `Result=COMPLETE` and spans two files: 200 `*Ok=1`
+keys and 16 `*Ok=0` (15 and 1). The 16 are the probe's known failures on
+this board, the same set as the builds before (`ChainBOk`, `ChainCOk`,
+`AlphaCurveF1Ok` to `F4Ok`, `FlipPixelOk`, the opt-in `Mixed*` and
+`D3DZP*` sections among them). Corrected 2026-09-29: an earlier version of
+this record said 125 and none. The files, copied from
+`build/driver-results/mach64-vertex-reuse-physical/probe/` (git-ignored):
 
-- `build/driver-results/mach64-vertex-reuse-physical/probe/V9XDD.INI`, CRC32
-  `3FBB54E0`;
-- `build/driver-results/mach64-vertex-reuse-physical/probe/V9XDD2.INI`, CRC32
-  `EB32C299`.
+- `../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/BROAD-V9XDD.INI`,
+  CRC32 `3FBB54E0`;
+- `../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/BROAD-V9XDD2.INI`,
+  CRC32 `EB32C299`.
 
 This is physical evidence that the enabled reuse path survives the existing
 Direct3D scene matrix.  The cache is local to one batch; state batches, fills
@@ -45,8 +50,10 @@ Probe build `mach64-slot-permutation-20260929-a` added two bounded tests to
 The probe exited zero in 19.032 seconds and retained `Result=COMPLETE`.
 Retrieved evidence:
 
-- `build/driver-results/mach64-slot-permutation/V9XDD.INI`, CRC32 `7462C3A8`;
-- `build/driver-results/mach64-slot-permutation/V9XDD2.INI`, CRC32 `FE86869E`;
+- `../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/SLOT-V9XDD.INI`,
+  CRC32 `7462C3A8`;
+- `../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/SLOT-V9XDD2.INI`,
+  CRC32 `FE86869E`;
 - uploaded `V9XDDP.EXE`, CRC32 `71C76CA6`.
 
 This closes the plan's two central hardware questions: the vertex registers
@@ -78,9 +85,11 @@ agent remained responsive on boot 58.
 
 The ICD log is
 `build/driver-results/mach64-vertex-reuse-physical/V9XGL-75S.LOG`, CRC32
-`C377B47C`.  A post-run `V9XTRACE` invocation recorded zero engine FIFO
+`C377B47C` (git-ignored); its report lines are in
+`../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/V9XGL-75S-REPORTS.LOG`.
+A post-run `V9XTRACE` invocation recorded zero engine FIFO
 timeouts, zero idle timeouts and zero engine resets in
-`build/driver-results/mach64-vertex-reuse-physical/V9XSNAP-AFTER.INI`, CRC32
+`../probe/ati-rage-mobility-m-vertex-reuse-2026-09-29/V9XSNAP-AFTER.INI`, CRC32
 `F19CC983`.  That snapshot loads DirectDraw in a new process and is useful for
 the shared engine health, not as a lifetime total for the terminated Quake 2
 process.
@@ -93,3 +102,12 @@ completes, Quake 2 sustains more than a million triangles, the machine returns
 to the desktop, and no shared-engine timeout or reset is reported.  The
 performance hypothesis is rejected.  Do not claim a speedup, and do not
 generalise register retention beyond a draw batch or this Mobility-M.
+
+What it disputes: the plan read the 3,500 cycles a triangle in
+`v9x_m64_emit_batch` as the cost of about 20 bus writes. Writing about 7
+instead left draw time where it was, so the writes were not the limit.
+The emit bucket also contains `v9x_m64_reserve`'s wait for FIFO space,
+which is where an engine still rasterizing the previous triangles would
+show up. That the engine's fill rate is the limit is the next hypothesis,
+not a measurement: counting reserve's status reads and spins per batch
+would settle it.

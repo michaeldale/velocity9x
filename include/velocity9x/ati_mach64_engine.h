@@ -399,8 +399,10 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
                                v9x_u32 capacity, v9x_u32 *written);
 /* Build one setup packet while retaining equal vertices already resident in
  * the three hardware slots.  The area follows the resulting slot order.
- * This pure builder does not establish that the hardware retains the slots;
- * callers must not use it in the draw path until that has been measured. */
+ * The Gateway retains the slots within one draw batch (docs/decisions/
+ * 2026-09-29-mach64-vertex-register-reuse-physical.md); nothing measured
+ * retention across another engine operation, so a caller starts each batch
+ * with every slot unknown. */
 v9x_status v9x_m64_build_reused_setup(
                                const struct v9x_m64_setup_vertex *vertex,
                                v9x_u32 textured, v9x_u32 fog,

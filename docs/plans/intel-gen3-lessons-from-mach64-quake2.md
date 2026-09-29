@@ -50,7 +50,10 @@ Gen3 emits every batch as `PRIM3D_TRILIST`, 7 dwords per textured vertex and
 indexed vertices, sends each vertex once. That is the Gen3 form of the
 Mach64's register-reuse idea (`docs/plans/mach64-vertex-register-reuse.md`).
 Gen3 feeds a DMA ring, not MMIO, so the saving is ring bytes and CPU copy
-time, not bus stalls, and may be small. The HAL's Gen3 timing buckets
+time, not bus stalls, and may be small. On the Mach64 itself register reuse
+cut the writes about 2.7 times and changed nothing measurable
+(`../decisions/2026-09-29-mach64-vertex-register-reuse-physical.md`), so
+measure before building it here. The HAL's Gen3 timing buckets
 (`TimeRingWrite*` in V9XTRACE) will say how much time is in writing the ring
 before anyone restructures emission. The render interface would also need to
 carry fan structure, which it does not today: the ICD sends triangles.
