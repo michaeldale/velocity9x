@@ -52,7 +52,32 @@ IF "%1"=="OFF" GOTO WANTOFF
 IF "%1"=="off" GOTO WANTOFF
 IF "%1"=="FLIP" GOTO WANTFLIP
 IF "%1"=="flip" GOTO WANTFLIP
+IF "%1"=="ASYNC" GOTO WANTASYNC
+IF "%1"=="async" GOTO WANTASYNC
 GOTO USAGE
+
+:WANTASYNC
+REM Experimental A/B switch: runtime 3D, ring flip and asynchronous ring
+REM submission all on. Unlike FLIP, this is never the absent-key default.
+REM The 2026-09-29 physical gate produced severe 3DMark frame corruption.
+REM Keep this verb only for controlled diagnosis; FLIP is the safe setting.
+IF NOT EXIST %V9XARMFILE% GOTO WRITEASYNC
+FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
+IF NOT ERRORLEVEL 1 GOTO INFLIGHT
+FIND "IntelIncomplete=0" %V9XARMFILE% >NUL
+IF ERRORLEVEL 1 GOTO UNRESOLVED
+:WRITEASYNC
+ECHO [Velocity9x]>%V9XARMFILE%
+ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
+ECHO IntelIncomplete=0>>%V9XARMFILE%
+ECHO IntelRuntime3D=1>>%V9XARMFILE%
+ECHO IntelFlip=1>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=1>>%V9XARMFILE%
+IF NOT EXIST %V9XARMFILE% GOTO FAILED
+ECHO WARNING: ASYNC CORRUPTED 3DMARK ON THE GMA 950 PHYSICAL GATE.
+ECHO It is PERMITTED for controlled diagnosis only from the next boot.
+ECHO V9X3D FLIP returns to the safe synchronous mode.
+GOTO DONE
 
 :WANTFLIP
 REM ON, plus permission for the HAL to move the scanout itself: write the
@@ -72,6 +97,7 @@ ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
 ECHO IntelFlip=1>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
 ECHO Runtime Direct3D AND the Intel flip are PERMITTED from the next boot,
 ECHO which is also what a fresh install does.
@@ -101,6 +127,7 @@ ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
 ECHO IntelFlip=0>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
 ECHO Runtime Direct3D is PERMITTED (the default) and the Intel flip is
 ECHO REFUSED on the next and every later boot.
@@ -120,6 +147,7 @@ ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=0>>%V9XARMFILE%
 ECHO IntelFlip=0>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
 ECHO Runtime Direct3D and the Intel flip are now REFUSED. The driver will
 ECHO map the engine's windows, write no ring register, claim no Direct3D
@@ -132,6 +160,7 @@ GOTO DONE
 :USAGE
 ECHO Usage:  V9X3D ON     runtime Direct3D on, the Intel flip off
 ECHO         V9X3D FLIP   both on (the default for a fresh install)
+ECHO         V9X3D ASYNC  Direct3D, flip and experimental async on
 ECHO         V9X3D OFF    both off, and recover a machine that hung
 ECHO.
 ECHO Nothing was written.

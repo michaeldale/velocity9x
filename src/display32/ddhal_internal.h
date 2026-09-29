@@ -241,8 +241,9 @@ extern V9X_DD_SHARED *v9x_hal;
  * any interval under 2^32 cycles - seconds on this part, and every bucket
  * below is a single call.
  *
- * Nested buckets overlap by design: ENGINE_DRAW contains DECODE, RING_WRITE,
- * HEAD_WAIT and CRUMB_WAIT, and D3D_CALLS contains ENGINE_DRAW. The
+ * Nested buckets overlap by design: ENGINE_DRAW contains DECODE, RING_WRITE
+ * and any RING_SPACE_WAIT, while D3D_CALLS contains ENGINE_DRAW. A render
+ * drain is charged to the callback containing it. The
  * remainders are the reader's arithmetic, not a bucket.
  */
 static DWORD v9x_rdtsc_low(void);
@@ -256,8 +257,8 @@ static void v9x_rdtsc_pair(DWORD *pair);
 #define V9X_TIME_ENGINE_DRAW   1u   /* Gen3 draw_triangles, whole       */
 #define V9X_TIME_DECODE        2u   /* the allowlist over one stream    */
 #define V9X_TIME_RING_WRITE    3u   /* stream into the ring, and TAIL   */
-#define V9X_TIME_HEAD_WAIT     4u   /* until HEAD reaches the tail      */
-#define V9X_TIME_CRUMB_WAIT    5u   /* until the breadcrumb lands       */
+#define V9X_TIME_RING_SPACE_WAIT 4u /* until HEAD leaves enough room    */
+#define V9X_TIME_RENDER_DRAIN    5u /* explicit breadcrumb drain        */
 #define V9X_TIME_FLIP          6u   /* V9xHalFlip                       */
 #define V9X_TIME_LOCK          7u   /* V9xHalLock                       */
 #define V9X_TIME_BLT_COPY      8u   /* V9xHalBlt with a source          */

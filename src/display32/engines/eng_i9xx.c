@@ -48,19 +48,21 @@ static int v9x_i9xx_engine_wait_idle(int wait)
 
 static int v9x_i9xx_engine_can_blt(void)
 {
-    return v9x_d3d_i9xx_render_drain(0) == V9X_RENDER_DRAIN_DONE;
+    /* A blit queues on the same in-order ring. Outstanding rendering is a
+     * reason to append it, not to force a CPU fallback; completion is still
+     * reported by the newest breadcrumb. */
+    return v9x_i9xx_engine_ready();
 }
 
 /*
- * Submit a built packet. The submit waits, bounded, for the head and then
- * for the breadcrumb, whatever `wait` says - the same as every draw - so
- * a blit that returns DONE has been parsed, and one whose breadcrumb timed
- * out is left outstanding for the next drain.
+ * Submit a built packet. In synchronous mode it keeps the old head and
+ * breadcrumb waits. In asynchronous mode DONE means accepted by the ring;
+ * the newest breadcrumb remains owed to GetBltStatus, Flip, Lock or a CPU
+ * fallback.
  *
- * Any refusal is DECLINED, never BUSY: the submit refuses a ring that is
- * full rather than waiting for room, and the ring is empty between
- * submissions because each one waits for its head. The core then drains and
- * completes the blit on the CPU with correct pixels, as on the S3 engines.
+ * Any refusal is DECLINED, never BUSY. A full ring is polled with the submit's
+ * fixed bound before TAIL moves; timeout can therefore fall back to the CPU
+ * without duplicating an accepted command.
  */
 static int v9x_i9xx_engine_submit(DWORD *stream, DWORD written,
                                   DWORD bytes_per_pixel)

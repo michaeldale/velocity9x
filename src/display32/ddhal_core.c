@@ -1833,7 +1833,9 @@ static DWORD v9x_published_mode_count(const V9X_DD_SHARED *shared)
 DWORD __stdcall DriverInit(DWORD context)
 {
     V9X_DD_SHARED *shared = (V9X_DD_SHARED *)context;
+    V9X_DD_SHARED *previous = v9x_hal;
     DWORD mode_count;
+    int drained;
 
     if (shared == 0 || shared->dwSize != sizeof(V9X_DD_SHARED) ||
         shared->abi != V9X_DD_SHARED_ABI) {
@@ -1846,6 +1848,17 @@ DWORD __stdcall DriverInit(DWORD context)
     mode_count = v9x_published_mode_count(shared);
     if (mode_count == 0ul) {
         return 0ul;
+    }
+    /* Do not erase an asynchronous completion just because a mode change
+     * delivered a new shared block. The old mapping is still the active
+     * v9x_hal here; drain it before publishing the replacement and resetting
+     * this process's completion state. */
+    if (previous != 0 &&
+        previous->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        drained = v9x_d3d_i9xx_render_drain(1);
+        while (drained == V9X_RENDER_DRAIN_BUSY) {
+            drained = v9x_d3d_i9xx_render_drain(1);
+        }
     }
     v9x_hal = shared;
     SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);

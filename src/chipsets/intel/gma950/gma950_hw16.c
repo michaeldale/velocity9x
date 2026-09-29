@@ -34,6 +34,7 @@ extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
  */
 extern unsigned short v9x_intel_runtime3d_allowed;
 extern unsigned short v9x_intel_flip_allowed;
+extern unsigned short v9x_intel_async_submit_allowed;
 
 /*
  * Why the last descriptor call did or did not claim Direct3D.
@@ -198,6 +199,9 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      */
     if (v9x_intel_runtime3d_allowed != 0u && *ring_linear_base != 0ul) {
         *engine_caps = V9X_DD_ENGINE_CAP_D3D;
+        if (v9x_intel_async_submit_allowed != 0u) {
+            *engine_caps |= V9X_DD_ENGINE_CAP_ASYNC_SUBMIT;
+        }
     }
     /*
      * FLIP, from 2026-09-17, unless this boot's IntelFlip reads 0 (on by

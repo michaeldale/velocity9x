@@ -769,15 +769,19 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("BreadcrumbAbandoned", snapshot.d3d.breadcrumb_abandoned);
     v9x_write_uint("RenderDrainWaits", snapshot.d3d.render_drain_waits);
     v9x_write_uint("RenderDrainStalls", snapshot.d3d.render_drain_stalls);
-    v9x_write_hex("ActhdAtHeadLast", snapshot.d3d.acthd_at_head_last);
-    v9x_write_hex("ActhdAfterLast", snapshot.d3d.acthd_after_last);
-    v9x_write_uint("ActhdMoved", snapshot.d3d.acthd_moved);
-    v9x_write_uint("ActhdStill", snapshot.d3d.acthd_still);
-    v9x_write_uint("ActhdChangesMax", snapshot.d3d.acthd_changes_max);
-    v9x_write_hex("ActhdRawMin", snapshot.d3d.acthd_raw_min);
-    v9x_write_hex("ActhdRawMax", snapshot.d3d.acthd_raw_max);
-    v9x_write_hex("InstdoneAtHeadLast", snapshot.d3d.instdone_at_head_last);
-    v9x_write_hex("InstdoneAfterLast", snapshot.d3d.instdone_after_last);
+    v9x_write_uint("AsyncEnabled", snapshot.d3d.async_enabled);
+    v9x_write_uint("AsyncSubmits", snapshot.d3d.async_submits);
+    v9x_write_uint("RingSpaceWaits", snapshot.d3d.ring_space_waits);
+    v9x_write_uint("RingSpacePollsTotal",
+                   snapshot.d3d.ring_space_polls_total);
+    v9x_write_uint("RingSpacePollsMax",
+                   snapshot.d3d.ring_space_polls_max);
+    v9x_write_uint("RingSpaceTimeouts", snapshot.d3d.ring_space_timeouts);
+    v9x_write_uint("SyncSubmits", snapshot.d3d.sync_submits);
+    v9x_write_hex("BreadcrumbObservedLast",
+                  snapshot.d3d.breadcrumb_observed_last);
+    v9x_write_hex("BreadcrumbIssuedLast",
+                  snapshot.d3d.breadcrumb_issued_last);
     v9x_write_hex("TailLast", snapshot.d3d.tail_last);
     v9x_write_hex("ScanSampleOffset", snapshot.d3d.scan_sample_offset);
     v9x_write_uint("ScanSampleFrame", snapshot.d3d.scan_sample_frame);
@@ -1040,8 +1044,8 @@ void __stdcall V9xTraceDumpEntry(void)
      * clock rate. Names match V9X_TIME_* in ddhal_internal.h. */
     {
         static const char *time_names[12] = {
-            "D3dCalls", "EngineDraw", "Decode", "RingWrite", "HeadWait",
-            "CrumbWait", "Flip", "Lock", "BltCopy", "BltFill",
+            "D3dCalls", "EngineDraw", "Decode", "RingWrite", "RingWait",
+            "RenderDrain", "Flip", "Lock", "BltCopy", "BltFill",
             "CreateSurface", "LockHeld" };
         char key[48];
         DWORD bucket;

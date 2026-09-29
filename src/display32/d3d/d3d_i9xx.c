@@ -338,21 +338,40 @@ static int v9x_d3d_i9xx_ring_base(DWORD *linear_out, DWORD *bytes_out)
 #define V9X_I9XX_HWS_READY   1ul
 #define V9X_I9XX_HWS_FAILED  2ul
 
+/* CPU-owned words beside the GPU-written breadcrumb in the shared status
+ * page. Every HAL process maps the same page. DirectDraw serializes its HAL
+ * callbacks with the Win16 mutex (measured 2026-09-26), and the render
+ * interface takes that mutex itself, so the allocator has one producer at a
+ * time even when separate DLL data instances submit to the one hardware ring.
+ */
+#define V9X_I9XX_HWS_ALLOCATOR_DWORD 2ul
+#define V9X_I9XX_HWS_MAGIC_DWORD     3ul
+#define V9X_I9XX_HWS_MAGIC_INV_DWORD 4ul
+#define V9X_I9XX_HWS_MAGIC           0x56394153ul /* "V9AS" */
+
 static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
-static DWORD v9x_d3d_i9xx_breadcrumb_sequence = 0ul;
 /* The latest sequence issued and not yet seen in the page; 0 when none.
  * A completion the driver still owes to Flip, Lock and Blt (review R1). */
 static DWORD v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
 static DWORD v9x_d3d_i9xx_drain_polls_spent = 0ul;
 static DWORD v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
 
+static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
+                                         int force_sync);
+
+static int v9x_d3d_i9xx_async_enabled(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps &
+            V9X_DD_ENGINE_CAP_ASYNC_SUBMIT) != 0ul;
+}
 static void v9x_d3d_i9xx_note_outstanding(DWORD sequence)
 {
-    v9x_d3d_i9xx_breadcrumb_outstanding = sequence;
-    v9x_hal->d3d_diagnostics.breadcrumb_outstanding = sequence;
-    if (sequence == 0ul) {
+    if (sequence != v9x_d3d_i9xx_breadcrumb_outstanding) {
         v9x_d3d_i9xx_drain_polls_spent = 0ul;
     }
+    v9x_d3d_i9xx_breadcrumb_outstanding = sequence;
+    v9x_hal->d3d_diagnostics.breadcrumb_outstanding = sequence;
 }
 
 /* The breadcrumb dword as the CPU reads it: the status page is the page
@@ -364,6 +383,16 @@ static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
     return (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
                               V9X_I9XX_RING_BYTES +
                               V9X_I9XX_HWS_BREADCRUMB_BYTE);
+}
+
+static DWORD v9x_d3d_i9xx_allocate_sequence(void)
+{
+    volatile DWORD *allocator = v9x_d3d_i9xx_breadcrumb_linear() +
+                                V9X_I9XX_HWS_ALLOCATOR_DWORD;
+    DWORD sequence = v9x_i9xx_sequence_next(*allocator);
+
+    *allocator = sequence;
+    return *allocator == sequence ? sequence : 0ul;
 }
 
 /* The fill's destination: the graphics address of the status page's
@@ -422,6 +451,9 @@ static int v9x_d3d_i9xx_hws_open(void)
     DWORD written = 0ul;
     volatile DWORD *crumb;
     volatile DWORD *probe;
+    volatile DWORD *allocator;
+    volatile DWORD *magic;
+    volatile DWORD *magic_inverse;
 
     if (v9x_d3d_i9xx_hws_state == V9X_I9XX_HWS_READY) {
         return 1;
@@ -444,6 +476,17 @@ static int v9x_d3d_i9xx_hws_open(void)
     physical = entry & 0xfffff000ul;
 
     crumb = v9x_d3d_i9xx_breadcrumb_linear();
+    allocator = crumb + V9X_I9XX_HWS_ALLOCATOR_DWORD;
+    magic = crumb + V9X_I9XX_HWS_MAGIC_DWORD;
+    magic_inverse = crumb + V9X_I9XX_HWS_MAGIC_INV_DWORD;
+    /* Another process may already have proved and initialized this physical
+     * page. Do not zero its live completion or sequence allocator. */
+    if (*magic == V9X_I9XX_HWS_MAGIC &&
+        *magic_inverse == ~V9X_I9XX_HWS_MAGIC) {
+        v9x_hal->d3d_diagnostics.hws_selftest = 1ul;
+        v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_READY;
+        return 1;
+    }
     probe = crumb + 1;
     *probe = 0x5a5aa5a5ul;
     v9x_hal->d3d_diagnostics.hws_cpu_probe =
@@ -480,7 +523,7 @@ static int v9x_d3d_i9xx_hws_open(void)
         return v9x_d3d_i9xx_hws_failed();
     }
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
-    if (!v9x_d3d_i9xx_ring_submit(stream, written)) {
+    if (!v9x_d3d_i9xx_ring_submit_mode(stream, written, 1)) {
         return v9x_d3d_i9xx_hws_failed();
     }
     {
@@ -488,6 +531,19 @@ static int v9x_d3d_i9xx_hws_open(void)
 
         for (polls = 0ul; polls < V9X_I9XX_SELFTEST_POLLS; ++polls) {
             if (*crumb == 0x600d0001ul) {
+                /* The sentinel is outside the serial sequence and would look
+                 * newer than sequence one. Replace it while the self-test is
+                 * complete and the ring is idle, then publish the allocator
+                 * and its two-word initialization marker. */
+                *crumb = 0ul;
+                *allocator = 0ul;
+                *magic_inverse = ~V9X_I9XX_HWS_MAGIC;
+                *magic = V9X_I9XX_HWS_MAGIC;
+                if (*crumb != 0ul || *allocator != 0ul ||
+                    *magic != V9X_I9XX_HWS_MAGIC ||
+                    *magic_inverse != ~V9X_I9XX_HWS_MAGIC) {
+                    return v9x_d3d_i9xx_hws_failed();
+                }
                 v9x_hal->d3d_diagnostics.hws_selftest_polls = polls;
                 v9x_hal->d3d_diagnostics.hws_selftest = 1ul;
                 v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_READY;
@@ -517,12 +573,17 @@ int v9x_d3d_i9xx_render_drain(int wait)
 {
     volatile DWORD *crumb;
     DWORD polls;
+    DWORD observed;
+    DWORD phase_started;
 
     if (v9x_d3d_i9xx_breadcrumb_outstanding == 0ul) {
         return V9X_RENDER_DRAIN_DONE;
     }
     crumb = v9x_d3d_i9xx_breadcrumb_linear();
-    if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
+    observed = *crumb;
+    v9x_hal->d3d_diagnostics.breadcrumb_observed_last = observed;
+    if (v9x_i9xx_sequence_reached(
+            observed, v9x_d3d_i9xx_breadcrumb_outstanding) != V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.breadcrumb_late;
         v9x_d3d_i9xx_note_outstanding(0ul);
         return V9X_RENDER_DRAIN_DONE;
@@ -532,13 +593,20 @@ int v9x_d3d_i9xx_render_drain(int wait)
         ++v9x_hal->d3d_diagnostics.render_drain_stalls;
         return V9X_RENDER_DRAIN_BUSY;
     }
+    phase_started = V9X_TIME_BEGIN();
     for (polls = 0ul; polls < V9X_I9XX_BREADCRUMB_POLLS; ++polls) {
-        if (*crumb == v9x_d3d_i9xx_breadcrumb_outstanding) {
+        observed = *crumb;
+        if (v9x_i9xx_sequence_reached(
+                observed, v9x_d3d_i9xx_breadcrumb_outstanding) !=
+                V9X_FALSE) {
+            v9x_hal->d3d_diagnostics.breadcrumb_observed_last = observed;
             ++v9x_hal->d3d_diagnostics.breadcrumb_late;
             v9x_d3d_i9xx_note_outstanding(0ul);
+            V9X_TIME_END(V9X_TIME_RENDER_DRAIN, phase_started);
             return V9X_RENDER_DRAIN_DONE;
         }
     }
+    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, phase_started);
     v9x_d3d_i9xx_drain_polls_spent += polls;
     if (v9x_d3d_i9xx_drain_polls_spent >= V9X_I9XX_DRAIN_ABANDON_POLLS) {
         ++v9x_hal->d3d_diagnostics.breadcrumb_abandoned;
@@ -551,14 +619,19 @@ int v9x_d3d_i9xx_render_drain(int wait)
     return V9X_RENDER_DRAIN_BUSY;
 }
 
-/* A new session: the page is untried again and nothing is owed. The
- * sequence counter runs on so a stale value cannot match a fresh one. */
+/* A new session: this process proves or joins the shared status page again
+ * and owes no work from the drained old session. The page allocator itself
+ * persists, so a stale completion cannot match a newly issued sequence. */
 void v9x_d3d_i9xx_reset(void)
 {
     v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
     v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
     v9x_d3d_i9xx_drain_polls_spent = 0ul;
+    if (v9x_hal != 0) {
+        v9x_hal->d3d_diagnostics.async_enabled =
+            v9x_d3d_i9xx_async_enabled() ? 1ul : 0ul;
+    }
 }
 
 /*
@@ -570,7 +643,14 @@ static DWORD v9x_d3d_i9xx_last_head_cycles;
 
 int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
 {
+    return v9x_d3d_i9xx_ring_submit_mode(stream, dwords, 0);
+}
+
+static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
+                                         int force_sync)
+{
     struct v9x_i9xx_ring_plan plan;
+    v9x_status plan_status;
     DWORD ring_linear = 0ul;
     DWORD ring_bytes = 0ul;
     DWORD head;
@@ -581,11 +661,12 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
     volatile DWORD *ring;
 
     v9x_d3d_i9xx_last_head_cycles = 0ul;
-    if (v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0) {
+    if (stream == 0 || dwords == 0ul || (dwords & 1ul) != 0ul ||
+        dwords > 0x3ffffffful ||
+        v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0 ||
+        dwords * 4ul > ring_bytes - V9X_I9XX_RING_GUARD_BYTES) {
         return 0;
     }
-    head = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD) &
-           V9X_I9XX_RING_HEAD_MASK;
     tail = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) &
            V9X_I9XX_RING_HEAD_MASK;
 
@@ -595,12 +676,33 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
      * refuses an odd dword count so the tail stays qword aligned, and counts
      * the pad against the free space. None of that is restated here.
      */
-    if (v9x_i9xx_ring_plan(head, tail, ring_bytes, dwords, &plan) !=
-            V9X_STATUS_OK) {
-        /* A full ring is not an error the caller can fix by retrying inside
-         * this call - that would be an unbounded wait wearing a different
-         * name - so the batch is refused and the core sees a failed draw. */
-        return 0;
+    polls = 0ul;
+    phase_started = V9X_TIME_BEGIN();
+    for (;;) {
+        head = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_HEAD) &
+               V9X_I9XX_RING_HEAD_MASK;
+        plan_status = v9x_i9xx_ring_plan(head, tail, ring_bytes, dwords,
+                                         &plan);
+        if (plan_status == V9X_STATUS_OK) {
+            break;
+        }
+        if (plan_status != V9X_STATUS_INSUFFICIENT_MEMORY) {
+            return 0;
+        }
+        if (polls >= V9X_I9XX_SUBMIT_POLLS) {
+            ++v9x_hal->d3d_diagnostics.ring_space_timeouts;
+            V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, phase_started);
+            return 0;
+        }
+        ++polls;
+    }
+    if (polls != 0ul) {
+        ++v9x_hal->d3d_diagnostics.ring_space_waits;
+        v9x_hal->d3d_diagnostics.ring_space_polls_total += polls;
+        if (polls > v9x_hal->d3d_diagnostics.ring_space_polls_max) {
+            v9x_hal->d3d_diagnostics.ring_space_polls_max = polls;
+        }
+        V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, phase_started);
     }
 
     ring = (volatile DWORD *)ring_linear;
@@ -620,6 +722,19 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
      */
     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) = plan.next_tail;
     V9X_TIME_END(V9X_TIME_RING_WRITE, phase_started);
+    v9x_hal->d3d_diagnostics.tail_last = plan.next_tail;
+    v9x_hal->d3d_diagnostics.breadcrumb_issued_last =
+        v9x_d3d_i9xx_breadcrumb_expected;
+
+    if (!force_sync && v9x_d3d_i9xx_async_enabled() &&
+        v9x_d3d_i9xx_breadcrumb_expected != 0ul) {
+        v9x_d3d_i9xx_note_outstanding(
+            v9x_d3d_i9xx_breadcrumb_expected);
+        ++v9x_hal->d3d_diagnostics.async_submits;
+        ++v9x_hal->d3d_diagnostics.breadcrumb_submits;
+        return 1;
+    }
+    ++v9x_hal->d3d_diagnostics.sync_submits;
 
     phase_started = V9X_TIME_BEGIN();
     for (polls = 0ul; polls < V9X_I9XX_SUBMIT_POLLS; ++polls) {
@@ -632,7 +747,7 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
                 v9x_d3d_i9xx_last_head_cycles =
                     v9x_rdtsc_low() - phase_started;
             }
-            V9X_TIME_END(V9X_TIME_HEAD_WAIT, phase_started);
+            V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, phase_started);
             phase_started = V9X_TIME_BEGIN();
 
             /*
@@ -643,35 +758,26 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords)
              * form is not validated on this part, and a value that moves
              * after the parser is done is the one fact that needs none.
              */
-            {
-                /* Two raw reads and nothing more: intel85 watched these for
-                 * 2,000 polls a batch, saw ACTHD never move and INSTDONE
-                 * never change in 82,249 submits, and paid for it with the
-                 * frame rate (89 flips). Kept as a sample of the last
-                 * submit only. */
-                V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
-
-                d->acthd_at_head_last = *v9x_d3d_i9xx_reg(V9X_I9XX_REG_ACTHD);
-                d->instdone_at_head_last =
-                    *v9x_d3d_i9xx_reg(V9X_I9XX_REG_INSTDONE);
-                d->tail_last = plan.next_tail;
-            }
-
             if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
                 return 1;
             }
             /* The head is at the tail. Now the pixels: the store behind
              * the flush arrives when the drawing ahead of it is done. */
             for (lag = 0ul; lag < V9X_I9XX_BREADCRUMB_POLLS; ++lag) {
-                if (*v9x_d3d_i9xx_breadcrumb_linear() ==
-                    v9x_d3d_i9xx_breadcrumb_expected) {
+                DWORD observed = *v9x_d3d_i9xx_breadcrumb_linear();
+
+                if (v9x_i9xx_sequence_reached(
+                        observed, v9x_d3d_i9xx_breadcrumb_expected) !=
+                        V9X_FALSE) {
+                    v9x_hal->d3d_diagnostics.breadcrumb_observed_last =
+                        observed;
                     ++v9x_hal->d3d_diagnostics.breadcrumb_submits;
                     v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_total += lag;
                     if (lag > v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max) {
                         v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max = lag;
                     }
                     v9x_d3d_i9xx_note_outstanding(0ul);
-                    V9X_TIME_END(V9X_TIME_CRUMB_WAIT, phase_started);
+                    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, phase_started);
                     return 1;
                 }
             }
@@ -727,10 +833,10 @@ int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
         /* As the draw path: a landed predecessor is resolved without
          * waiting, because one engine runs its commands in order. */
         (void)v9x_d3d_i9xx_render_drain(0);
-        v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+        v9x_d3d_i9xx_breadcrumb_expected =
+            v9x_d3d_i9xx_allocate_sequence();
         if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
-            v9x_d3d_i9xx_breadcrumb_expected =
-                ++v9x_d3d_i9xx_breadcrumb_sequence;
+            return 0;
         }
         if (v9x_i9xx_build_breadcrumb_stream(
                 v9x_d3d_i9xx_breadcrumb_offset(),
@@ -2283,10 +2389,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
          * without waiting: drawing behind unfinished drawing is in order on
          * one engine. Only the CPU and the flip have to wait. */
         (void)v9x_d3d_i9xx_render_drain(0);
-        v9x_d3d_i9xx_breadcrumb_expected = ++v9x_d3d_i9xx_breadcrumb_sequence;
+        v9x_d3d_i9xx_breadcrumb_expected =
+            v9x_d3d_i9xx_allocate_sequence();
         if (v9x_d3d_i9xx_breadcrumb_expected == 0ul) {
-            v9x_d3d_i9xx_breadcrumb_expected =
-                ++v9x_d3d_i9xx_breadcrumb_sequence;
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
         }
         {
             DWORD produced_crumb = 0ul;

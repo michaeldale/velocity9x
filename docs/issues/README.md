@@ -15,6 +15,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-09-25 Intel back-face culling is done in the core's software, not by the hardware](2026-09-25-intel-culling-is-done-in-software.md)
 - [2026-09-25 The Direct3D NaN checks are four static copies, three of them untested](2026-09-25-nan-checks-are-duplicated-and-untested.md)
 - [2026-09-25 Gen3: mip trees are declined for want of room, and the heap may be fragmenting](2026-09-25-gen3-video-memory-heap-may-fragment.md)
+- [2026-09-29 Gen3 asynchronous submission corrupts sustained 3DMark 99 frames](2026-09-29-intel-gen3-async-corrupts-3dmark99.md)
 - [2026-08-27 The vbe QEMU guest will not boot into Windows: registry/configuration error](2026-08-27-vbe-qemu-guest-registry-error.md)
 - [2026-08-28 A full-screen DOS box destroys the picture, on the Mini 110 and in 86Box](2026-08-28-dos-box-entry-hang-gma950.md)
 - [2026-08-28 A full-screen DOS box comes back with a corrupt band across the top](2026-08-28-fullscreen-dos-scanout.md)

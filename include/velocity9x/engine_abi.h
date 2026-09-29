@@ -123,5 +123,10 @@
  * docs\plans\intel-gen3-ring-flip.md.
  */
 #define V9X_DD_ENGINE_CAP_FLIP_RING     0x00000200ul
+/* Gen3 runtime streams may return after publishing RING_TAIL. This policy
+ * bit is set only by the retained IntelAsyncSubmit switch while experimental.
+ * The descriptor's existing caps word carries it without growing the shared
+ * block. */
+#define V9X_DD_ENGINE_CAP_ASYNC_SUBMIT  0x00000400ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

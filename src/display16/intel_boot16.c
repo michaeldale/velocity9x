@@ -49,6 +49,9 @@ WORD v9x_intel_runtime3d_allowed;
  * permission, for the same reason.
  */
 WORD v9x_intel_flip_allowed;
+/* Experimental runtime submission policy. Unlike the two mature switches
+ * above, absent stays OFF until the physical A/B gate accepts it. */
+WORD v9x_intel_async_submit_allowed;
 /*
  * Which phase the consumed token claims, from IntelArmPhase.
  *
@@ -203,6 +206,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     v9x_intel_boot_arm_latch = 0u;
     v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_flip_allowed = 0u;
+    v9x_intel_async_submit_allowed = 0u;
     v9x_intel_boot_arm_phase = 0u;
     v9x_intel_boot_arm_crc = 0ul;
     v9x_intel_boot_arm_token[0] = '\0';
@@ -244,6 +248,13 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
                             sizeof(runtime_text)) &&
         v9x_intel_str_equal(runtime_text, "0") != 0u) {
         v9x_intel_flip_allowed = 0u;
+    }
+    /* Exact opt-in while experimental. A malformed or absent key is the
+     * synchronous control, so a new package cannot arm async accidentally. */
+    if (v9x_intel_boot_read("IntelAsyncSubmit", runtime_text,
+                            sizeof(runtime_text)) &&
+        v9x_intel_str_equal(runtime_text, "1") != 0u) {
+        v9x_intel_async_submit_allowed = 1u;
     }
 
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||
@@ -367,6 +378,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         /* The armed boot owns the ring; see the declaration. */
         v9x_intel_runtime3d_allowed = 0u;
         v9x_intel_flip_allowed = 0u;
+        v9x_intel_async_submit_allowed = 0u;
         v9x_intel_boot_state = "ARMED-REPEAT";
         return;
     }
@@ -391,6 +403,7 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
     /* The armed boot owns the ring; see the declaration. */
     v9x_intel_runtime3d_allowed = 0u;
     v9x_intel_flip_allowed = 0u;
+    v9x_intel_async_submit_allowed = 0u;
     v9x_intel_boot_state = "ARMED";
 #endif
 }

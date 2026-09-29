@@ -286,9 +286,29 @@ static void test_ring_submission_complete(void)
     CHECK(v9x_i9xx_ring_submission_complete(0x00400000ul, 0ul) == V9X_TRUE);
 }
 
+static void test_breadcrumb_sequence_order(void)
+{
+    CHECK(v9x_i9xx_sequence_next(0ul) == 1ul);
+    CHECK(v9x_i9xx_sequence_next(41ul) == 42ul);
+    CHECK(v9x_i9xx_sequence_next(0xfffffffful) == 1ul);
+
+    CHECK(v9x_i9xx_sequence_reached(0ul, 0ul) == V9X_TRUE);
+    CHECK(v9x_i9xx_sequence_reached(0ul, 1ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_sequence_reached(4ul, 5ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_sequence_reached(5ul, 5ul) == V9X_TRUE);
+    CHECK(v9x_i9xx_sequence_reached(6ul, 5ul) == V9X_TRUE);
+    /* A later producer may overwrite the exact value before the earlier
+     * producer drains; its value still proves the older work completed. */
+    CHECK(v9x_i9xx_sequence_reached(9ul, 7ul) == V9X_TRUE);
+    /* Wrap skips zero, and one is later than the final pre-wrap values. */
+    CHECK(v9x_i9xx_sequence_reached(1ul, 0xfffffffful) == V9X_TRUE);
+    CHECK(v9x_i9xx_sequence_reached(0xfffffffful, 1ul) == V9X_FALSE);
+}
+
 unsigned int v9x_run_i9xx_ring_tests(void)
 {
     test_ring_submission_complete();
+    test_breadcrumb_sequence_order();
     test_sandbox_layout();
     test_ring_space_and_wrap();
     test_packet_builders_and_decoder();

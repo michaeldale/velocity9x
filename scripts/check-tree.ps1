@@ -1904,6 +1904,11 @@ foreach ($value in @('IntelRuntime3D=1', 'IntelRuntime3D=0')) {
         throw "V9X3D.BAT must write $value."
     }
 }
+foreach ($value in @('IntelAsyncSubmit=1', 'IntelAsyncSubmit=0')) {
+    if ($switchText -notmatch ('(?m)^ECHO ' + [regex]::Escape($value) + '>>')) {
+        throw "V9X3D.BAT must write $value."
+    }
+}
 # COMMAND.COM has no IF /I, and a syntax error there does not halt a batch -
 # the next line simply runs, which is how a guard becomes its own opposite.
 if ($switchText -match '(?m)^\s*IF\s+/I\b') {
@@ -1914,6 +1919,9 @@ if ($switchText -match '(?m)^\s*IF\s+/I\b') {
 if ($switchText -notmatch '(?s):WANTOFF.*?ECHO IntelRuntime3D=0>>') {
     throw ('V9X3D.BAT must write the OFF value without an intervening ' +
            'refusal. Disabling the runtime path is the recovery path.')
+}
+if ($switchText -notmatch '(?s):WANTOFF.*?ECHO IntelAsyncSubmit=0>>') {
+    throw 'V9X3D.BAT OFF must disable asynchronous submission.'
 }
 
 # And the reset must write the flag, or a freshly reset file reads as legacy.

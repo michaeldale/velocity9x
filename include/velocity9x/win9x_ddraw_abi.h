@@ -1658,7 +1658,6 @@ typedef struct v9x_dd_framebuffer {
  * v9x_trio_engine_ready() true on a ViRGE and would have routed its blits
  * through the Trio64 port-I/O command sequence. */
 #define V9X_DD_ENGINE_STATUS_VALIDATED 0x00000008ul
-
 /*
  * Engine identity and capability, as data rather than as flag bits.
  *
@@ -2266,35 +2265,22 @@ typedef struct v9x_d3d_diagnostics {
     DWORD render_drain_waits;
     DWORD render_drain_stalls;
     /*
-     * ACTHD and INSTDONE, RAW, around the moment RING_HEAD reaches the
-     * tail (intel84: the status-page round trip failed too, so no GPU
-     * write reaches this side and the engine has to be read). Nothing
-     * here interprets ACTHD as an address or as completion - its Gen3
-     * address form and idle meaning are not established on this part
-     * (review of 2347f59). What is recorded is whether the register kept
-     * CHANGING after the parser was done, which needs no interpretation:
-     *   acthd_at_head_last / acthd_after_last  the value at head == tail
-     *                     and after a fixed number of polls, last submit.
-     *   acthd_moved       submits in which ACTHD changed during those
-     *                     polls; acthd_still the submits in which it did
-     *                     not; acthd_changes_max the most distinct values
-     *                     seen in one submit's polls.
-     *   acthd_raw_min / acthd_raw_max  the range of every raw value read.
-     *   instdone_at_head_last / instdone_after_last  the same two moments.
-     *   tail_last         the ring tail of that submit, for the record.
-     * A register that keeps moving after the head is at the tail is an
-     * engine still working; whether that is rendering, and when it ends,
-     * is for a later instrument that has validated the register.
+     * Gen3 asynchronous submission. These ten DWORDs replace the retired
+     * ACTHD/INSTDONE experiment in place, so the shared block does not grow.
+     * async_enabled is the descriptor switch seen by the HAL. An async
+     * submit returns after its tail write; a sync submit retains the old
+     * head/breadcrumb waits. Ring-space counters cover only the bounded wait
+     * before a tail write, when failure can still refuse the batch safely.
      */
-    DWORD acthd_at_head_last;
-    DWORD acthd_after_last;
-    DWORD acthd_moved;
-    DWORD acthd_still;
-    DWORD acthd_changes_max;
-    DWORD acthd_raw_min;
-    DWORD acthd_raw_max;
-    DWORD instdone_at_head_last;
-    DWORD instdone_after_last;
+    DWORD async_enabled;
+    DWORD async_submits;
+    DWORD ring_space_waits;
+    DWORD ring_space_polls_total;
+    DWORD ring_space_polls_max;
+    DWORD ring_space_timeouts;
+    DWORD sync_submits;
+    DWORD breadcrumb_observed_last;
+    DWORD breadcrumb_issued_last;
     DWORD tail_last;
     /*
      * The display layout as read at an APPLICATION flip during the game

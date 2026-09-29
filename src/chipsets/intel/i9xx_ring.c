@@ -135,6 +135,29 @@ v9x_status v9x_i9xx_ring_free_space(
     return V9X_STATUS_OK;
 }
 
+v9x_u32 v9x_i9xx_sequence_next(v9x_u32 current)
+{
+    ++current;
+    if (current == 0ul) {
+        current = 1ul;
+    }
+    return current;
+}
+
+v9x_u16 v9x_i9xx_sequence_reached(v9x_u32 observed, v9x_u32 expected)
+{
+    if (expected == 0ul) {
+        return V9X_TRUE;
+    }
+    if (observed == 0ul) {
+        return V9X_FALSE;
+    }
+
+    /* At most a 64 KiB ring of sequences can be in flight, so the usual
+     * half-range serial-number comparison is unambiguous here. */
+    return (v9x_s32)(observed - expected) >= 0 ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_status v9x_i9xx_ring_plan(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 command_dwords, struct v9x_i9xx_ring_plan *plan)

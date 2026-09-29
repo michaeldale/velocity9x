@@ -874,6 +874,12 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
 v9x_u16 v9x_i9xx_ring_submission_complete(
     v9x_u32 head_register, v9x_u32 tail_after);
 
+/* Breadcrumb sequence arithmetic. Zero is reserved for "nothing owed".
+ * reached uses serial-number order, so observing a later store also completes
+ * an earlier process's wait, including across the 0xffffffff -> 1 wrap. */
+v9x_u32 v9x_i9xx_sequence_next(v9x_u32 current);
+v9x_u16 v9x_i9xx_sequence_reached(v9x_u32 observed, v9x_u32 expected);
+
 v9x_status v9x_i9xx_ring_free_space(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 *free_bytes);
