@@ -4,6 +4,46 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.9.1 - unreleased
+
+Hardware Direct3D on the ATI Rage Mobility-M (Mach64LM), measured on the
+Gateway Solo 2150. Other families carry only the shared-core changes
+marked below.
+
+### ATI Mach64 (Rage Mobility-M)
+
+- **A Direct3D engine** for the Mach64 3D unit, behind a draw-acceptance
+  policy that refuses every state without a passing hardware scene
+  ([plan](docs/plans/ati-rage-mobility-hardware-3d.md)). Each state and
+  setup word was measured on the Gateway first: fills, Gouraud triangles,
+  Z16 test and write, the 36 blend factor pairs, alpha test, fog,
+  scissor, texture environments and TEX_CACHE_FLUSH.
+- **Textures** from 8 to 256 texels, square, in RGB565, ARGB1555 and
+  ARGB4444: DECAL, DECALALPHA, MODULATE, wrap and clamp, nearest and
+  bilinear; mip chains with level selection and trilinear
+  (LINEARMIPLINEAR); specular; fog over a texture. The HAL places
+  textures itself, because DirectDraw's pitch for them is 4096 bytes.
+- **Perspective:** the engine multiplies S and T by W itself under
+  `TEX_ST_MULT_W`; wrapped coordinates are rebased per triangle, because
+  its range ends between u of 1000 and 10000.
+- **Every engine fill clears the 3D state first**; a fill carrying the
+  previous draw's Z and alpha-test state hard-locked the Gateway
+  ([issue](docs/issues/2026-09-28-mach64-hal-first-draw-hard-hang.md)).
+- **3DMark 99 Max** completes all 26 tests at 640x480x16 with no
+  refusals from 3DMark; a triangle with NaN coordinates or a W not above
+  zero is skipped alone, not its batch
+  ([record](docs/probe/ati-rage-mobility-m-3dmark99-2026-09-29/README.md)).
+
+### Survey and BIOS
+
+- Every INT 10h call goes through one routine; VBE 4F11h had been writing
+  to DS:0000.
+- The ROM is summed over both lengths when the header and PCIR disagree,
+  and the PCIR class code and CPUID model are read where they are.
+
+Still open on the Mach64: mip levels coarser than Direct3D's, an
+occasional lock after a cold boot, MIPLINEAR, and fog with blend.
+
 ## 0.9.0 - 2026-09-27
 
 The OpenGL release. Velocity9x now has an OpenGL 1.1 installable client
