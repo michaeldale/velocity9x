@@ -240,14 +240,11 @@ static v9x_u32 v9x_m64_policy_check(
     }
 
     /* Fog is the blend unit mixing with DP_FOG_CLR, so it cannot also
-     * blend with the framebuffer.  Item 12 measured it untextured only. */
-    if (request->fog_enable != 0ul) {
-        if (request->blend_enable != 0ul) {
-            return V9X_M64_REFUSE_FOG_WITH_BLEND;
-        }
-        if (request->textured != 0ul) {
-            return V9X_M64_REFUSE_FOG_WITH_TEXTURE;
-        }
+     * blend with the framebuffer.  Item 12 measured it untextured; over a
+     * texture, as Mesa's driver fogs, the HAL probe's D3DFogTex scene
+     * (2026-09-29). */
+    if (request->fog_enable != 0ul && request->blend_enable != 0ul) {
+        return V9X_M64_REFUSE_FOG_WITH_BLEND;
     }
 
     /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular words'

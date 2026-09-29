@@ -4002,6 +4002,58 @@ void __stdcall V9xDdrawProbeEntry(void)
                         V9X_D3DTBLEND_MODULATE, V9X_D3DFILTER_NEAREST,
                         V9X_D3DTADDRESS_WRAP_R, 0xfffffffful, 0.25f, 0.25f,
                         &spec_raw);
+                    /*
+                     * Fog over a texture (2026-09-29): the same green texel,
+                     * COPY, fog colour blue, the vertex fog factor in the
+                     * specular alpha. 255 is no fog (green), 128 about
+                     * half, 0 all fog (blue). Keys D3DFogTex<a>Raw, and
+                     * D3DFogTexOk when all three hold.
+                     */
+                    {
+                        static const DWORD fog_alpha[3] = {
+                            0xff000000ul, 0x80000000ul, 0x00000000ul };
+                        static const char *fog_key[3] = {
+                            "D3DFogTex255Raw", "D3DFogTex128Raw",
+                            "D3DFogTex0Raw" };
+                        WORD fog_raw[3];
+                        HRESULT fog_hr = 0;
+                        DWORD fi;
+                        int fog_ok;
+
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_SPECULARENABLE, 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGCOLOR, 0x000000fful);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGENABLE, 1ul);
+                        for (fi = 0ul; fi < 3ul; ++fi) {
+                            for (sc = 0ul; sc < 3ul; ++sc) {
+                                triangle[sc].specular = fog_alpha[fi];
+                            }
+                            fog_raw[fi] = 0u;
+                            if (v9x_probe_tex8_draw(ddraw, d3d_device,
+                                    d3d_target, triangle,
+                                    &v9x_probe_tex8_1555, V9X_D3DTBLEND_COPY,
+                                    V9X_D3DFILTER_NEAREST,
+                                    V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                                    0.25f, 0.25f, &fog_raw[fi]) != 0) {
+                                fog_hr = 1;
+                            }
+                            v9x_write_uint(fog_key[fi], fog_raw[fi]);
+                        }
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
+                        fog_ok = fog_hr == 0 && target_layout.valid != 0ul &&
+                            v9x_layout_green(&target_layout, fog_raw[0]) >= 197ul &&
+                            v9x_layout_blue(&target_layout, fog_raw[0]) <= 33ul &&
+                            v9x_layout_green(&target_layout, fog_raw[1]) >= 96ul &&
+                            v9x_layout_green(&target_layout, fog_raw[1]) <= 160ul &&
+                            v9x_layout_blue(&target_layout, fog_raw[1]) >= 96ul &&
+                            v9x_layout_blue(&target_layout, fog_raw[1]) <= 160ul &&
+                            v9x_layout_blue(&target_layout, fog_raw[2]) >= 197ul &&
+                            v9x_layout_green(&target_layout, fog_raw[2]) <= 33ul;
+                        v9x_write_uint("D3DFogTexOk", fog_ok ? 1ul : 0ul);
+                    }
                     v9x_write_uint("D3DSpecularTexRaw", spec_raw);
                     v9x_write_uint("D3DSpecularTexOk",
                         spec_hr == 0 && target_layout.valid != 0ul &&

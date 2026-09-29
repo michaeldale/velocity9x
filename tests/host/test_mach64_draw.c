@@ -127,18 +127,25 @@ static void test_fog_matches_item12(void)
     CHECK(offsets[11] == V9X_M64_DP_FOG_CLR);
     CHECK(values[11] == 0x0020d0e0ul);
 
-    /* Fog with blending or texture never reaches the builder. */
+    /* Fog with blending never reaches the builder: fog is the blend unit. */
     state.blend_enable = 1ul;
     state.src_blend = 2ul;
     state.dst_blend = 1ul;
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);
+
+    /* Fog over a texture: the texture state with item 12's fog word and
+     * colour, as Mesa's driver fogs textured draws. */
     base_state(&state);
     state.fog_enable = 1ul;
+    state.fog_color = 0xff20d0e0ul;
     texture_fields(&state, 0ul);
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
-                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+                                   &written) == V9X_STATUS_OK);
+    CHECK((values[10] & 0x0000ff80ul) == 0x00001080ul);
+    CHECK((values[10] & 0x003f0000ul) == 0x002c0000ul);
+    CHECK(offsets[11] == V9X_M64_DP_FOG_CLR && values[11] == 0x0020d0e0ul);
 }
 
 static void test_depth_words_match_depth_builder(void)

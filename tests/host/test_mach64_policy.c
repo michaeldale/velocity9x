@@ -426,9 +426,10 @@ static void test_fog_and_unmeasured_knobs(void)
     request.dst_blend = T_BLEND_ZERO;
     CHECK(check(&request) == V9X_M64_REFUSE_FOG_WITH_BLEND);
 
+    /* Fog over a texture, as Mesa's driver does it (probe D3DFogTex). */
     textured(&request, 0ul);
     request.fog_enable = 1ul;
-    CHECK(check(&request) == V9X_M64_REFUSE_FOG_WITH_TEXTURE);
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
 
     /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular
      * words; with fog those words carry both, which is unmeasured. */

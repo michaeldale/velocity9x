@@ -133,10 +133,10 @@ v9x_status v9x_m64_build_draw_state(
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    /* Fog is the blend unit mixing with DP_FOG_CLR and was measured only
-     * untextured; the policy refuses both, so reaching here is a bug. */
-    if (state->fog_enable != 0ul &&
-        (state->blend_enable != 0ul || state->textured != 0ul)) {
+    /* Fog is the blend unit mixing with DP_FOG_CLR, so it cannot blend as
+     * well; the policy refuses that, and reaching here is a bug. Over a
+     * texture it mixes the textured colour, as Mesa's driver fogs. */
+    if (state->fog_enable != 0ul && state->blend_enable != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
