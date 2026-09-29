@@ -192,12 +192,15 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_SQUAREONLY |
                          V9X_D3DPTEXTURECAPS_ALPHA;
-    /* Level selection, nearest or bilinear within the level; blending two
-     * levels (MIPLINEAR, LINEARMIPLINEAR) is refused (mach64_policy.c). */
+    /* Level selection, nearest or bilinear within the level, and trilinear
+     * (LINEARMIPLINEAR, measured by the probe's MipTri and TexM trilinear
+     * scenes, 2026-09-29). MIPLINEAR has no engine function and refuses
+     * (mach64_policy.c). */
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST;
+                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_DECALALPHA |
@@ -290,7 +293,15 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
     DWORD width = (DWORD)top->lpGbl->wWidth;
     DWORD count = 1ul;
 
+    /* Counted in the shared mip-chain fields, which V9XTRACE reports: a
+     * check per walk, a shape gap for a level whose size or pitch is not
+     * the layout's, a chain gap for one off its 4 KiB, and the pitch and
+     * width of the last level that ended a walk in mip_chain_delta. */
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
     if ((DWORD)top->lpGbl->lPitch != width * 2ul) {
+        ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+        v9x_hal->d3d_diagnostics.mip_chain_delta =
+            ((DWORD)top->lpGbl->lPitch << 16) | width;
         return 1ul;
     }
     while (count < V9X_M64_TEXTURE_LEVELS_MAX) {
@@ -308,20 +319,29 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
             }
             node = node->next;
         }
-        if (next == 0 || next->lpGbl == 0 || edge == 0ul ||
-            (DWORD)next->lpGbl->wWidth != edge ||
+        if (next == 0 || next->lpGbl == 0 || edge == 0ul) {
+            break;
+        }
+        if ((DWORD)next->lpGbl->wWidth != edge ||
             (DWORD)next->lpGbl->wHeight != edge ||
             (DWORD)next->lpGbl->lPitch != edge * 2ul) {
+            ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            v9x_hal->d3d_diagnostics.mip_chain_delta =
+                ((DWORD)next->lpGbl->lPitch << 16) |
+                (DWORD)next->lpGbl->wWidth;
             break;
         }
         offset = v9x_surface_offset(next);
         if (offset == 0xfffffffful ||
             (offset & (v9x_d3d_mach64_limits.texture_align - 1ul)) != 0ul) {
+            ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+            v9x_hal->d3d_diagnostics.mip_chain_delta = offset;
             break;
         }
         texture->level_offsets[count++] = offset;
         level = next;
     }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = count;
     return count;
 }
 

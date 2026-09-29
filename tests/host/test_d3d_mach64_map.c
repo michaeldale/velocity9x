@@ -204,7 +204,15 @@ static void test_mip_mapping(void)
                              &state);
     CHECK(state.level_count == 1ul && state.bilinear_min == 1ul);
 
+    /* Trilinear on the chain: bilinear_min 2 and every level. */
     draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.level_count == 4ul && state.bilinear_min == 2ul);
+
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
     v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
 }

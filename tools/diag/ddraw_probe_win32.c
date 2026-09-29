@@ -3333,6 +3333,29 @@ void __stdcall V9xDdrawProbeEntry(void)
                         }
                         v9x_fill_surface(texture_mip_level, 0x801f801ful);
                     }
+                    /* Where the two levels are, by Lock (GetSurfaceDesc
+                     * leaves lpSurface 0): the Mach64 samples level 1 only
+                     * at a 4 KiB boundary. 2026-09-29. */
+                    if (texture2_hr == 0 && texture_mip_level != 0) {
+                        v9x_zero(&mip_desc, sizeof(mip_desc));
+                        mip_desc.dwSize = sizeof(mip_desc);
+                        if (texture_surface2->vtbl->Lock(texture_surface2, 0,
+                                &mip_desc, V9X_DDLOCK_WAIT, 0) == 0) {
+                            v9x_write_uint("TexMipTopLock",
+                                           (DWORD)mip_desc.lpSurface);
+                            texture_surface2->vtbl->Unlock(texture_surface2,
+                                                           0);
+                        }
+                        v9x_zero(&mip_desc, sizeof(mip_desc));
+                        mip_desc.dwSize = sizeof(mip_desc);
+                        if (texture_mip_level->vtbl->Lock(texture_mip_level,
+                                0, &mip_desc, V9X_DDLOCK_WAIT, 0) == 0) {
+                            v9x_write_uint("TexMipLevelLock",
+                                           (DWORD)mip_desc.lpSurface);
+                            texture_mip_level->vtbl->Unlock(texture_mip_level,
+                                                            0);
+                        }
+                    }
                 }
 
                 if (texture_hr == 0 && texture_surface != 0) {
@@ -4180,20 +4203,25 @@ void __stdcall V9xDdrawProbeEntry(void)
 
                 v9x_fill_surface(d3d_target, 0ul);
                 /*
-                 * The TWO-LEVEL texture, texture_handle2, and not the plain
-                 * one. Until 2026-09-03 this bound texture_handle - the 64x64
-                 * texture with no mip chain - and then asked for MIPNEAREST
-                 * and expected the colour of a level that texture does not
-                 * have. The emulated ViRGE happened to return that colour,
-                 * which read as a pass, and a physical Trio3D/2X returned
-                 * black, which read as a chip that could not select a level.
-                 * Neither reading was about mip selection. The trilinear rung
-                 * below inherits this binding and was wrong the same way.
+                 * The TWO-LEVEL texture. After SwapTextureHandles above,
+                 * that is texture_handle: Direct3D exchanges the two
+                 * handles' textures, and texture_handle2 now names the plain
+                 * 64x64 green texture with no chain.
+                 *
+                 * History: until 2026-09-03 this bound texture_handle; it was
+                 * then moved to texture_handle2 on the reading that
+                 * texture_handle had no chain. At that time the core's
+                 * TextureSwap moved the surface but left the resolved local
+                 * half behind, so each handle still sampled its original
+                 * memory. With the swap fixed, texture_handle2 read level 0
+                 * of the plain texture on the Mach64 (green), which is the
+                 * right answer for it (2026-09-29). The trilinear rung below
+                 * inherits this binding.
                  * See docs\issues\2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md.
                  */
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
-                    texture_handle2);
+                    texture_handle);
                 if (state_hr == 0) {
                     state_hr = d3d_device->vtbl->SetRenderState(
                         d3d_device, V9X_D3DRENDERSTATE_TEXTUREMIN,
@@ -5255,6 +5283,42 @@ void __stdcall V9xDdrawProbeEntry(void)
                     triangle[0].rhw = 1.0f;
                     triangle[1].rhw = 1.0f;
                     triangle[2].rhw = 1.0f;
+                }
+
+                /*
+                 * D3DMipmapLevelSelect again, late (2026-09-29), on
+                 * texture_handle2: after the swap that is the plain texture,
+                 * so level 0 (green) is right here. Kept as the control for
+                 * the rung above, which binds the chain.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    HRESULT late_hr;
+
+                    v9x_fill_surface(d3d_target, 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_TEXTUREHANDLE, texture_handle2);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                        V9X_D3DTBLEND_COPY);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_TEXTUREMIN,
+                        V9X_D3DFILTER_MIPNEAREST);
+                    triangle[0].tu = 0.0f; triangle[0].tv = 0.0f;
+                    triangle[1].tu = 2.0f; triangle[1].tv = 0.0f;
+                    triangle[2].tu = 0.0f; triangle[2].tv = 2.0f;
+                    late_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                    if (late_hr == 0) {
+                        late_hr = d3d_device->vtbl->DrawPrimitive(d3d_device,
+                            V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
+                            triangle, 3ul, 0ul);
+                        (void)d3d_device->vtbl->EndScene(d3d_device);
+                    }
+                    v9x_write_hresult("MipSelectLateHr", late_hr);
+                    v9x_write_uint("MipSelectLateRaw",
+                        v9x_surface_pixel16(d3d_target, 16ul, 16ul));
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);

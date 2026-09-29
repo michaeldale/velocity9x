@@ -921,7 +921,7 @@ v9x_status v9x_m64_build_texture_state(
         state->texture_width < 8ul || state->texture_width > 1024ul ||
         state->texture_height < 8ul || state->texture_height > 1024ul ||
         state->wrap_s > 1ul || state->wrap_t > 1ul ||
-        state->bilinear_min > 1ul || state->bilinear_mag > 1ul) {
+        state->bilinear_min > 2ul || state->bilinear_mag > 1ul) {
         *written = 0ul;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -1001,6 +1001,11 @@ v9x_status v9x_m64_build_texture_state(
             }
         }
     }
+    /* Trilinear blends two levels, so it needs a chain. */
+    if (state->bilinear_min == 2ul && levels == 1ul) {
+        *written = 0ul;
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     /*
      * MIP_MAP_DISABLE: only TEX_<max_log2>_OFF is written below, and without
      * the bit a minified draw selects a smaller level and reads a register
@@ -1011,7 +1016,9 @@ v9x_status v9x_m64_build_texture_state(
      */
     values[10] = V9X_M64_SCALE_3D_FCN_TEXTURE | 0x00010001ul |
                  (levels == 1ul ? V9X_M64_MIP_MAP_DISABLE : 0ul) |
-                 (state->bilinear_min != 0ul
+                 (state->bilinear_min == 2ul
+                    ? V9X_M64_TEX_BLEND_FCN_TRILINEAR :
+                  state->bilinear_min == 1ul
                     ? V9X_M64_TEX_BLEND_FCN_LINEAR : 0ul) |
                  (state->bilinear_mag != 0ul
                     ? V9X_M64_BILINEAR_TEX_EN : 0ul) |

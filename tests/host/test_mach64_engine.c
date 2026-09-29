@@ -903,6 +903,20 @@ static void test_mip_texture_state(void)
               &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
     CHECK(written == 0ul);
 
+    /* Trilinear, bilinear_min 2, is TEX_BLEND_FCN 3 on a chain and
+     * refuses on a single level. */
+    state.level_offsets[2] = 0x00214000ul;
+    state.bilinear_min = 2ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK((values[10] & 0x0c000000ul) == V9X_M64_TEX_BLEND_FCN_TRILINEAR);
+    state.level_count = 1ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    state.bilinear_min = 0ul;
+
     /* One level is the single-texture state, bit and all. */
     state.level_count = 1ul;
     CHECK(v9x_m64_build_texture_state(

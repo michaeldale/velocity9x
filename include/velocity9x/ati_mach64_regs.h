@@ -141,6 +141,10 @@
  * without it a minified draw selects a smaller level's TEX_n_OFF. */
 #define V9X_M64_MIP_MAP_DISABLE       0x01000000ul
 #define V9X_M64_TEX_BLEND_FCN_LINEAR  0x08000000ul
+/* TEX_BLEND_FCN 3 (atiregs.h MACH64_TEX_BLEND_FCN_TRILINEAR). Mesa used it
+ * only for two textures with TEX_CACHE_SPLIT; this driver uses it for the
+ * levels of one chain, which the HAL probe's trilinear scenes measure. */
+#define V9X_M64_TEX_BLEND_FCN_TRILINEAR 0x0c000000ul
 #define V9X_M64_TEXTURE_CLAMP_S       0x00020000ul
 #define V9X_M64_TEXTURE_CLAMP_T       0x00040000ul
 #define V9X_M64_TEX_CACHE_FLUSH       0x00800000ul

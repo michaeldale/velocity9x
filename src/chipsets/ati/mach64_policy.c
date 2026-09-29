@@ -33,6 +33,7 @@
 #define M64_FILTER_LINEAR           2ul
 #define M64_FILTER_MIPNEAREST       3ul
 #define M64_FILTER_LINEARMIPNEAREST 5ul
+#define M64_FILTER_LINEARMIPLINEAR  6ul
 #define M64_ADDRESS_WRAP   1ul
 #define M64_ADDRESS_CLAMP  3ul
 
@@ -126,11 +127,12 @@ static v9x_u32 v9x_m64_policy_texture(
     }
 
     /*
-     * A chain may select a level, nearest or bilinear within it. Blending
-     * two levels is unmeasured: the Mach64's TRILINEAR function is what
-     * Mesa's driver used to blend two textures, not two levels of one.
-     * A single level takes no mip filter; the HAL folds one to its base
-     * filter first, as Direct3D defines it.
+     * A chain may select a level, nearest or bilinear within it, or blend
+     * two levels bilinearly (LINEARMIPLINEAR, the engine's TRILINEAR
+     * function, which Mesa's driver used only to blend two textures).
+     * MIPLINEAR, nearest within levels blended between them, has no engine
+     * function. A single level takes no mip filter; the HAL folds one to
+     * its base filter first, as Direct3D defines it.
      */
     if (request->texture_mag_filter != M64_FILTER_NEAREST &&
         request->texture_mag_filter != M64_FILTER_LINEAR) {
@@ -140,7 +142,8 @@ static v9x_u32 v9x_m64_policy_texture(
         request->texture_min_filter != M64_FILTER_LINEAR &&
         (request->texture_levels == 1ul ||
          (request->texture_min_filter != M64_FILTER_MIPNEAREST &&
-          request->texture_min_filter != M64_FILTER_LINEARMIPNEAREST))) {
+          request->texture_min_filter != M64_FILTER_LINEARMIPNEAREST &&
+          request->texture_min_filter != M64_FILTER_LINEARMIPLINEAR))) {
         return V9X_M64_REFUSE_TEXTURE_FILTER;
     }
 

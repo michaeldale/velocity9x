@@ -269,10 +269,12 @@ static void test_texture_shape_and_sampling(void)
     CHECK(check(&request) == V9X_M64_REFUSE_NONE);
     request.texture_min_filter = T_FILTER_NEAREST;
     CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    /* Trilinear on a chain; MIPLINEAR, nearest within the levels, has no
+     * engine function and refuses. */
     request.texture_min_filter = T_FILTER_MIPLINEAR;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
     request.texture_min_filter = T_FILTER_LINEARMIPLINEAR;
-    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
     request.texture_min_filter = T_FILTER_MIPNEAREST;
     request.texture_levels = 5ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_MIP);

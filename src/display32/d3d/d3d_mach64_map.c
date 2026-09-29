@@ -24,7 +24,8 @@ static v9x_u32 v9x_d3d_mach64_base_filter(v9x_u32 filter)
 static int v9x_d3d_mach64_selects_level(v9x_u32 filter)
 {
     return filter == V9X_R3D_FILTER_MIPNEAREST ||
-           filter == V9X_R3D_FILTER_LINEARMIPNEAREST;
+           filter == V9X_R3D_FILTER_LINEARMIPNEAREST ||
+           filter == V9X_R3D_FILTER_LINEARMIPLINEAR;
 }
 
 void v9x_d3d_mach64_map_request(const V9X_R3D_DRAW *draw,
@@ -164,6 +165,11 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
             for (level = 0ul; level < state->level_count &&
                               level < V9X_M64_TEXTURE_LEVELS_MAX; ++level) {
                 state->level_offsets[level] = texture->level_offsets[level];
+            }
+            /* Bilinear within two levels and blended between: trilinear. */
+            if (request->texture_min_filter ==
+                    V9X_R3D_FILTER_LINEARMIPLINEAR) {
+                state->bilinear_min = 2ul;
             }
         }
     }
