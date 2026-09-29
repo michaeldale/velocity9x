@@ -1105,6 +1105,36 @@ Mipmaps (2026-09-29, boot 30).
   padded level. It is the probe's first mip draw, on a chain drawn
   without mipmapping just before. Not explained.
 
+Later on 2026-09-29, after the first 3DMark 99 runs (boots 31-41;
+evidence in `../probe/ati-rage-mobility-m-3dmark99-2026-09-29/`):
+
+- **The D3DMipmapLevelSelect cell is explained.** It was a probe
+  fault. The probe calls SwapTextureHandles, after which
+  `texture_handle2` names the plain texture. The level-select and
+  trilinear rungs now bind `texture_handle`, the chain, and pass.
+- **Perspective.** The builder had premultiplied S and T by W under
+  `TEX_ST_MULT_W`, so W was applied twice. It now sends plain S and T.
+  Wrapped coordinates are also moved down by an integer per triangle,
+  because the engine's range ends between u of 1000 and 10000 on a
+  64-texel texture.
+- **Trilinear.** LINEARMIPLINEAR on a chain uses
+  `TEX_BLEND_FCN_TRILINEAR`. MipTri, D3DTrilinearBlend and all 12
+  trilinear matrix cells pass. MIPLINEAR still refuses.
+- **Specular.** `ALPHA_TST_CNTL` SPECULAR_LIGHT_EN over the specular
+  words' RGB: untextured and over a texture both pass. Specular with
+  fog still refuses.
+- **The 3DMark tunnel.** Every tunnel triangle, and both of its passes,
+  replays exactly in the probe. The streaked walls appear only in GDI
+  captures of a triple-buffered frame, and the panel has not been
+  looked at.
+- **Level boundaries.** They are coarser than Direct3D's: 1 to 1.5
+  levels on the tunnel's walls. `TEX_CNTL` LOD_BIAS 0 to F changed
+  nothing.
+- **FlipPixel** cannot pass under a real flip, because GDI reads the
+  fixed page (the probe's own note). It needs the panel or `/hold`.
+- **Fog with a texture** is the largest remaining refusal in 3DMark's
+  games, and is next.
+
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,
 the HAL hard-locked three times. Two causes were in the HAL's register
