@@ -141,6 +141,10 @@
  * without it a minified draw selects a smaller level's TEX_n_OFF. */
 #define V9X_M64_MIP_MAP_DISABLE       0x01000000ul
 #define V9X_M64_TEX_BLEND_FCN_LINEAR  0x08000000ul
+/* ALPHA_TST_CNTL bit 31 (Mesa mach64_reg.h MACH64_SPECULAR_LIGHT_EN): add the
+ * interpolated VERTEX_n_SPEC_ARGB colour; Mesa sets it for separate
+ * specular. */
+#define V9X_M64_SPECULAR_LIGHT_EN     0x80000000ul
 /* TEX_BLEND_FCN 3 (atiregs.h MACH64_TEX_BLEND_FCN_TRILINEAR). Mesa used it
  * only for two textures with TEX_CACHE_SPLIT; this driver uses it for the
  * levels of one chain, which the HAL probe's trilinear scenes measure. */

@@ -337,6 +337,8 @@ struct v9x_m64_draw_state {
     v9x_u32 alpha_reference;
     v9x_u32 fog_enable;
     v9x_u32 fog_color;
+    /* Add the vertex specular colour (ALPHA_TST_CNTL SPECULAR_LIGHT_EN). */
+    v9x_u32 specular_enable;
 };
 
 /*
@@ -370,7 +372,11 @@ v9x_status v9x_m64_build_draw_state(
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 /* V9X_STATUS_UNSUPPORTED with nothing written is a zero-area triangle,
- * which draws no pixel; every other failure is a caller error. */
+ * which draws no pixel; every other failure is a caller error. `fog` is a
+ * set of V9X_M64_SETUP_* flags: either sends the three specular words
+ * first, FOG with the vertex specular alpha and SPECULAR with its RGB. */
+#define V9X_M64_SETUP_FOG      1ul
+#define V9X_M64_SETUP_SPECULAR 2ul
 v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
                                v9x_u32 textured, v9x_u32 fog,
                                v9x_u32 *offsets, v9x_u32 *values,

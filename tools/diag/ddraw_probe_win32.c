@@ -3984,6 +3984,36 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
                                                expect_green) ? 1ul : 0ul);
 
+                /*
+                 * Specular over a texture (2026-09-29): an 8x8 green texel,
+                 * MODULATE with white, plus red specular. The add after the
+                 * texture gives yellow; no add gives green.
+                 */
+                {
+                    WORD spec_raw = 0u;
+                    HRESULT spec_hr;
+                    DWORD sc;
+
+                    for (sc = 0ul; sc < 3ul; ++sc) {
+                        triangle[sc].specular = 0xffff0000ul;
+                    }
+                    spec_hr = v9x_probe_tex8_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555,
+                        V9X_D3DTBLEND_MODULATE, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful, 0.25f, 0.25f,
+                        &spec_raw);
+                    v9x_write_uint("D3DSpecularTexRaw", spec_raw);
+                    v9x_write_uint("D3DSpecularTexOk",
+                        spec_hr == 0 && target_layout.valid != 0ul &&
+                        v9x_layout_red(&target_layout, spec_raw) >= 197ul &&
+                        v9x_layout_green(&target_layout, spec_raw) >= 197ul &&
+                        v9x_layout_blue(&target_layout, spec_raw) <= 33ul
+                        ? 1ul : 0ul);
+                    for (sc = 0ul; sc < 3ul; ++sc) {
+                        triangle[sc].specular = 0ul;
+                    }
+                }
+
                 v9x_fill_surface(d3d_target, 0ul);
                 state_hr = d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_SPECULARENABLE, 0ul);

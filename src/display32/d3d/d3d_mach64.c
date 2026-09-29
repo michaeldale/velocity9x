@@ -187,7 +187,11 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
-        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD |
+        /* ALPHA_TST_CNTL SPECULAR_LIGHT_EN: D3DSpecularGouraud and, over
+         * a texture, D3DSpecularTex (2026-09-29). */
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_SQUAREONLY |
@@ -553,7 +557,10 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             v9x_d3d_mach64_wrap_origin(setup);
         }
         status = v9x_m64_build_setup(setup, request.textured,
-                                     request.fog_enable,
+                                     (request.fog_enable != 0ul
+                                        ? V9X_M64_SETUP_FOG : 0ul) |
+                                     (request.specular_enable != 0ul
+                                        ? V9X_M64_SETUP_SPECULAR : 0ul),
                                      v9x_d3d_mach64_setup_offsets[packets],
                                      v9x_d3d_mach64_setup_values[packets],
                                      V9X_M64_SETUP_DWORDS,

@@ -360,6 +360,18 @@ static void test_setup_subpixel_texture_fog(void)
     CHECK(offsets[21] == V9X_M64_ONE_OVER_AREA);
     CHECK(v9x_m64_build_setup(v, 0ul, 1ul, offsets, values, 21ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Specular: the same three words, RGB only; with fog as well, all of
+     * ARGB (Mesa's mach64_tris.c sends the whole word). */
+    CHECK(v9x_m64_build_setup(v, 0ul, V9X_M64_SETUP_SPECULAR, offsets,
+                              values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 22ul);
+    CHECK(values[0] == 0x00123456ul && values[1] == 0x00fffffful);
+    CHECK(v9x_m64_build_setup(v, 0ul,
+                              V9X_M64_SETUP_FOG | V9X_M64_SETUP_SPECULAR,
+                              offsets, values, CAP, &written) ==
+          V9X_STATUS_OK);
+    CHECK(values[0] == 0x80123456ul && values[1] == 0x40fffffful);
 }
 
 static void test_setup_refusals(void)

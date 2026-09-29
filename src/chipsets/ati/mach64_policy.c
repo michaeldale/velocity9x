@@ -250,9 +250,11 @@ static v9x_u32 v9x_m64_policy_check(
         }
     }
 
-    /* The specular registers carry the fog factor; a specular colour add
-     * was never measured.  Colour key and forced alpha have no scene. */
-    if (request->specular_enable != 0ul) {
+    /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular words'
+     * RGB (Mesa's driver); with fog the same words also carry the fog
+     * factor, a combination not measured.  Colour key and forced alpha
+     * have no scene. */
+    if (request->specular_enable != 0ul && request->fog_enable != 0ul) {
         return V9X_M64_REFUSE_SPECULAR;
     }
     if (request->color_key_enable != 0ul) {

@@ -29,6 +29,7 @@
 
 #define M64_FOG_COLOR_RGB     0x00fffffful
 #define M64_SPECULAR_ALPHA    0xff000000ul
+#define M64_SPECULAR_RGB      0x00fffffful
 #define M64_FLOAT_ONE_BITS    0x3f800000ul
 /* 14.2 coordinates: the pixel cross product is the fixed one over 16. */
 #define M64_FIXED_AREA_SCALE  16.0f
@@ -165,6 +166,9 @@ v9x_status v9x_m64_build_draw_state(
         }
         values[M64_SLOT_ALPHA_TST] = word;
     }
+    if (state->specular_enable != 0ul) {
+        values[M64_SLOT_ALPHA_TST] |= V9X_M64_SPECULAR_LIGHT_EN;
+    }
 
     scale = values[M64_SLOT_SCALE_3D] & ~M64_SCALE_DRAW_FIELDS;
     if (state->textured != 0ul) {
@@ -255,11 +259,16 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
         return V9X_STATUS_UNSUPPORTED;
     }
 
-    /* Item 12's order: the three specular words, then the vertices. */
+    /* Item 12's order: the three specular words, then the vertices. Fog
+     * reads their alpha, specular their RGB (ALPHA_TST_CNTL
+     * SPECULAR_LIGHT_EN); a part that is not asked for is sent as zero. */
     if (fog != 0ul) {
         for (index = 0ul; index < 3ul; ++index) {
             offsets[at] = specular_registers[index];
-            values[at] = vertex[index].specular & M64_SPECULAR_ALPHA;
+            values[at] = vertex[index].specular &
+                (((fog & V9X_M64_SETUP_FOG) != 0ul ? M64_SPECULAR_ALPHA : 0ul) |
+                 ((fog & V9X_M64_SETUP_SPECULAR) != 0ul
+                    ? M64_SPECULAR_RGB : 0ul));
             ++at;
         }
     }

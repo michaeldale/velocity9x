@@ -237,6 +237,24 @@ static void test_specular_needs_colour(void)
     CHECK(request.specular_enable == 0ul);
     CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
     v9x_d3d_mach64_map_request(&draw, 0, 1ul, &request);
+    CHECK(request.specular_enable == 1ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
+    {
+        struct v9x_m64_draw_decision decision;
+        struct v9x_m64_draw_state state;
+        v9x_u32 offsets[32], values[32], written;
+
+        CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+        v9x_d3d_mach64_map_state(&draw, &request, 0, 0x00400000ul, &state);
+        CHECK(state.specular_enable == 1ul);
+        CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values,
+                                       32ul, &written) == V9X_STATUS_OK);
+        /* ALPHA_TST_CNTL SPECULAR_LIGHT_EN (bit 31). */
+        CHECK(offsets[9] == V9X_M64_ALPHA_TST_CNTL &&
+              (values[9] & V9X_M64_SPECULAR_LIGHT_EN) != 0ul);
+    }
+    draw.fog_enable = 1ul;
+    v9x_d3d_mach64_map_request(&draw, 0, 1ul, &request);
     CHECK(accept(&request) == V9X_M64_REFUSE_SPECULAR);
 }
 

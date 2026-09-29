@@ -188,6 +188,7 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
         state->fog_enable = 1ul;
         state->fog_color = draw->fog_color;
     }
+    state->specular_enable = request->specular_enable != 0ul ? 1ul : 0ul;
 }
 
 v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,

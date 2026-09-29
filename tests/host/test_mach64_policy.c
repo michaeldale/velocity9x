@@ -430,8 +430,12 @@ static void test_fog_and_unmeasured_knobs(void)
     request.fog_enable = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_FOG_WITH_TEXTURE);
 
+    /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular
+     * words; with fog those words carry both, which is unmeasured. */
     base(&request);
     request.specular_enable = 1ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.fog_enable = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_SPECULAR);
     base(&request);
     request.color_key_enable = 1ul;
