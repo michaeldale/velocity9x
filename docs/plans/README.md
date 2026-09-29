@@ -28,6 +28,7 @@
 - [Finding the erratum 12 workaround in Intel's XP miniport](intel-xp-miniport-disassembly.md) - Open; desk work that decides the Phase 4 gate.
 - [Intel Phase 4: the first write, designed to make one boot answer everything](intel-phase4-first-write-design.md) - Design for approval; nothing coded.
 - [Intel Gen3: DirectDraw blits through the ring](intel-gen3-directdraw-blits.md) - Open; needs its own errata decision before the first armed boot.
+- [Merge surviving triangles within one draw call](r3d-in-call-batch-merging.md) - Open; nothing coded, Phase 0 measures whether culling is what splits the batches.
 - [Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it](intel-gen4-gen5-bringup.md) - Proposed; nothing coded, blocked on whether Windows 98 runs on any Gen4 or Gen5 machine at all.
 - [OpenGL 1.1 ICD on a render core shared with Direct3D](opengl-1.1-icd.md) - Design for approval; nothing coded.
 - [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
