@@ -38,7 +38,62 @@ black. What is black on the panel is not established.
 
 ## Open
 
-- The texture tunnel's wrong texturing.
+- The texture tunnel's wrong texturing. (Addressed below.)
 - The two game tests finished within about 25 seconds each. Whether
   refused or wrongly drawn batches shortened them is not established.
 - Which draws the 11,479 refusals were.
+
+## The tunnel, and runs 2 and 3
+
+The probe had drawn every triangle with rhw 1, so perspective had never
+been tested. New scenes (`V9XDDT-PERSPECTIVE-FIXED.TXT` is after the fix)
+found two defects.
+
+- **W squared.** `TEX_CNTL` bit 19 clear is `TEX_ST_MULT_W`
+  (xf86-video-mach64 `atiregs.h`): the engine multiplies S and T by W
+  itself. The builder premultiplied as well, which is Mesa's convention,
+  but Mesa uses it with `TEX_ST_DIRECT`. Symptoms:
+  - a uniform rhw k scaled every coordinate by k and moved the mip level
+    by log2 k;
+  - on a perspective row, u never passed 0.25.
+
+  The builder now sends plain S and T. Afterwards the uniform-W scenes
+  are invariant, and the row's green/blue boundary falls between x 42
+  and 46, against 44.8 computed.
+- **Coordinate range.** A 64-texel texture sampled right at u 1000.1 and
+  wrong at 10000.1. For WRAP, the HAL now moves each triangle's s and t
+  down by the integer below their minimum.
+
+Ruled out by measurement:
+- W ratios to 10,000:1;
+- a far-vertex u of about 860,000;
+- all eight depth comparisons at equal depth.
+
+Run 2 (431 3DMarks, 6575 CPU) and run 3 (404, 6517; wrap rebase added) completed
+with no lock, zero timeouts and zero resets. Game 1, Game 2 and the texture
+grids draw correctly (`RUN2-*.png`). The tunnel frames
+(`RUN2-TUNNEL-POINT-MIP.png`, `RUN3-TUNNEL-TRILINEAR.png`) still show some
+walls as checkerboards and some as radial streaks.
+
+A bounded HAL dump of the tunnel's triangles (`M64TRI-TUNNEL.TXT`, since
+removed) shows each wall drawn twice at the same positions:
+
+| Pass | Coordinates | Blend | Depth |
+|---|---|---|---|
+| 1 | u, v up to 1 | none | LESSEQUAL, write |
+| 2 | u, v up to 21 | DESTCOLOR x ZERO | LESSEQUAL, no write |
+
+The streaky walls are pass 1 without pass 2 on top. No draw was refused
+during the test. Both passes of one of these triangles, replayed at full
+size in the probe's 640x480 target (`V9XDDT-TUNNEL-REPLAY.TXT`), give the
+exact perspective pattern at all 60 grid points (`TunP_*` against `Tun_*`).
+
+The screenshots are GDI captures, which under triple buffering can read a
+frame still being drawn. Whether the panel shows the streaks is not
+established; it has not been looked at.
+
+Two further findings:
+- The engine chooses mip levels 1 to 1.5 coarser than Direct3D across a
+  tunnel wall (`TunL_*`).
+- `TEX_CNTL` LOD_BIAS values 0, 1, 2, 4, 8, C and F changed no level
+  choice in the chain sweep or on the wall.

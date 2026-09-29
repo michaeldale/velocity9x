@@ -338,8 +338,10 @@ static void test_setup_subpixel_texture_fog(void)
     v[1].t = -0.25f;
     CHECK(v9x_m64_build_setup(v, 1ul, 0ul, offsets, values, CAP, &written) ==
           V9X_STATUS_OK);
-    CHECK(values[6] == bits(1.25f * 0.25f));
-    CHECK(values[7] == bits(-0.25f * 0.25f));
+    /* Plain S and T with TEX_ST_MULT_W: the engine multiplies by W itself.
+     * Premultiplying as well squared W (the Gateway, 2026-09-29). */
+    CHECK(values[6] == bits(1.25f));
+    CHECK(values[7] == bits(-0.25f));
     CHECK(values[8] == bits(0.25f));
     CHECK(values[2] == bits(1.0f));
 

@@ -265,20 +265,23 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
     }
 
     /*
-     * S, T and W follow the historical Mesa driver: the engine interpolates
-     * s/w, t/w and 1/w, so S and T are the coordinates times D3D's rhw. The
-     * physical scenes used W=1 (and the item 5 unequal-W scene held S and T
-     * fixed), so this premultiplication is not yet measured; the Phase 5
-     * perspective probe must confirm it.
+     * S and T are the plain coordinates and W is D3D's rhw. TEX_CNTL leaves
+     * bit 19 clear, TEX_ST_MULT_W (xf86-video-mach64 atiregs.h): the engine
+     * multiplies S and T by W itself before it interpolates. That is the
+     * mode Phase 4 item 5 measured with plain S and T and unequal W. Mesa's
+     * driver premultiplied instead, but under TEX_ST_DIRECT. This builder
+     * premultiplied under ST_MULT_W until 2026-09-29, which squared W: on
+     * the Gateway a uniform rhw k scaled every coordinate by k and shifted
+     * the mip level by log2 k, and 3DMark's tunnel drew smeared.
      */
     for (index = 0ul; index < 3ul; ++index) {
         v = &vertex[index];
         offsets[at] = registers[index][0];
         values[at++] = textured != 0ul
-            ? v9x_m64_draw_float_bits(v->s * v->rhw) : 0ul;
+            ? v9x_m64_draw_float_bits(v->s) : 0ul;
         offsets[at] = registers[index][1];
         values[at++] = textured != 0ul
-            ? v9x_m64_draw_float_bits(v->t * v->rhw) : 0ul;
+            ? v9x_m64_draw_float_bits(v->t) : 0ul;
         offsets[at] = registers[index][2];
         values[at++] = textured != 0ul
             ? v9x_m64_draw_float_bits(v->rhw) : M64_FLOAT_ONE_BITS;

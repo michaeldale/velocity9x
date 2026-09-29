@@ -419,6 +419,55 @@ static int v9x_d3d_mach64_vertex(const V9X_R3D_VERTEX *vertex,
     return 1;
 }
 
+/*
+ * A wrapped texture looks the same with a whole number taken off every
+ * coordinate, and the engine's coordinate range is finite: on the Gateway
+ * a 64-texel texture sampled right at u of 1000.1 and wrong at 10000.1
+ * (2026-09-29), between 64,000 and 640,000 texels. So each triangle's
+ * coordinates are moved to start from the integer at or below its
+ * smallest s and t. It keeps a long wall of a tunnel, which tiles its
+ * texture far along its length, inside the range. Clamped coordinates
+ * mean what they say and are left alone.
+ */
+static float v9x_d3d_mach64_floor(float value)
+{
+    float whole = (float)v9x_float_to_long(value);
+
+    if (whole > value) {
+        whole -= 1.0f;
+    }
+    return whole;
+}
+
+static void v9x_d3d_mach64_wrap_origin(struct v9x_m64_setup_vertex *setup)
+{
+    float min_s = setup[0].s;
+    float min_t = setup[0].t;
+    float base_s;
+    float base_t;
+    DWORD corner;
+
+    for (corner = 1ul; corner < 3ul; ++corner) {
+        if (setup[corner].s < min_s) {
+            min_s = setup[corner].s;
+        }
+        if (setup[corner].t < min_t) {
+            min_t = setup[corner].t;
+        }
+    }
+    /* Past the long range the whole part is not representable anyway. */
+    if (min_s < -1.0e9f || min_s > 1.0e9f ||
+        min_t < -1.0e9f || min_t > 1.0e9f) {
+        return;
+    }
+    base_s = v9x_d3d_mach64_floor(min_s);
+    base_t = v9x_d3d_mach64_floor(min_t);
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        setup[corner].s -= base_s;
+        setup[corner].t -= base_t;
+    }
+}
+
 static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                const V9X_R3D_VERTEX *vertices,
                                DWORD triangle_count)
@@ -478,6 +527,10 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                        flat, &setup[corner])) {
                 return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
             }
+        }
+        if (request.textured != 0ul &&
+            request.texture_address == V9X_R3D_ADDRESS_WRAP) {
+            v9x_d3d_mach64_wrap_origin(setup);
         }
         status = v9x_m64_build_setup(setup, request.textured,
                                      request.fog_enable,

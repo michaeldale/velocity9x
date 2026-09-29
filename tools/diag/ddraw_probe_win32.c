@@ -2322,6 +2322,12 @@ static const V9X_PROBE_TEX8 v9x_probe_tex8_1555 = {
  * sampled texel the same across the triangle, so one pixel is the whole
  * answer. Returns the draw's HRESULT, or the first failure before it.
  */
+/* Where v9x_probe_tex_draw reads its pixel: (16,16) unless a scene moves
+ * it, and puts it back. */
+static DWORD v9x_probe_sample_x = 16ul;
+static DWORD v9x_probe_sample_y = 16ul;
+static int v9x_probe_keep_target = 0;
+
 static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
                                   struct v9x_d3d_device2 *device,
                                   struct v9x_dds *target,
@@ -2414,14 +2420,20 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
             device, V9X_D3DRENDERSTATE_TEXTUREADDRESS, address);
     }
     if (hr == 0) {
-        for (corner = 0ul; corner < 3ul; ++corner) {
-            triangle[corner].color = color;
-            triangle[corner].tu = u;
-            triangle[corner].tv = v;
+        /* A negative span keeps the caller's coordinates and colours, and
+         * v9x_probe_keep_target the target's contents: a second pass. */
+        if (span >= 0.0f) {
+            for (corner = 0ul; corner < 3ul; ++corner) {
+                triangle[corner].color = color;
+                triangle[corner].tu = u;
+                triangle[corner].tv = v;
+            }
+            triangle[1].tu = u + span;
+            triangle[2].tv = v + span;
         }
-        triangle[1].tu = u + span;
-        triangle[2].tv = v + span;
-        v9x_fill_surface(target, 0ul);
+        if (!v9x_probe_keep_target) {
+            v9x_fill_surface(target, 0ul);
+        }
         hr = device->vtbl->BeginScene(device);
         if (hr == 0) {
             v9x_step("tex8", "draw", blend);
@@ -2434,7 +2446,8 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
             }
         }
         v9x_step("tex8", "read", (DWORD)hr);
-        *raw_out = v9x_surface_pixel16(target, 16ul, 16ul);
+        *raw_out = v9x_surface_pixel16(target, v9x_probe_sample_x,
+                                       v9x_probe_sample_y);
     }
     (void)device->vtbl->SetRenderState(
         device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
@@ -2572,13 +2585,16 @@ static HRESULT v9x_probe_chain_draw(struct v9x_dd *ddraw,
             device, V9X_D3DRENDERSTATE_TEXTUREMAG, mag);
     }
     if (hr == 0) {
-        for (index = 0ul; index < 3ul; ++index) {
-            triangle[index].color = 0xfffffffful;
-            triangle[index].tu = 0.0f;
-            triangle[index].tv = 0.0f;
+        /* A negative span keeps the caller's coordinates and colours. */
+        if (span >= 0.0f) {
+            for (index = 0ul; index < 3ul; ++index) {
+                triangle[index].color = 0xfffffffful;
+                triangle[index].tu = 0.0f;
+                triangle[index].tv = 0.0f;
+            }
+            triangle[1].tu = span;
+            triangle[2].tv = span;
         }
-        triangle[1].tu = span;
-        triangle[2].tv = span;
         v9x_fill_surface(target, 0ul);
         hr = device->vtbl->BeginScene(device);
         if (hr == 0) {
@@ -5007,6 +5023,240 @@ void __stdcall V9xDdrawProbeEntry(void)
                     }
                 }
 
+                /*
+                 * Perspective (2026-09-29). Every scene above draws rhw 1 at
+                 * every vertex; 3DMark's texture tunnel, all perspective,
+                 * drew flat averaged colours on the Mach64 while a face-on
+                 * scene drew right.
+                 *
+                 * W range: the same chain at ratio 1.7 (level 1, green) and
+                 * the same magnified halves (green) with every rhw 0.05 and
+                 * then 8. A uniform rhw divides out of S/W and T/W, so any
+                 * change of colour is the engine mishandling W's range.
+                 *
+                 * Perspective: 64x64 halves, u 0 to 1 along the top edge
+                 * with rhw 1 at vertex 0 and 0.25 at vertex 1. Correct
+                 * interpolation reaches u = 0.5 at 80% of the edge; affine
+                 * at 50%. At (39,10), 65% along, correct reads green and
+                 * affine blue. At (52,10), 92%, both read blue.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float w_scale[6] = {
+                        0.05f, 0.5f, 1.5f, 2.0f, 4.0f, 8.0f };
+                    static const char *w_chain_key[6] = {
+                        "PerspWChain005Raw", "PerspWChain05Raw",
+                        "PerspWChain15Raw", "PerspWChain2Raw",
+                        "PerspWChain4Raw", "PerspWChain8Raw" };
+                    static const char *w_mag_key[6] = {
+                        "PerspWMag005Raw", "PerspWMag05Raw",
+                        "PerspWMag15Raw", "PerspWMag2Raw",
+                        "PerspWMag4Raw", "PerspWMag8Raw" };
+                    static const char *persp_row_key[12] = {
+                        "PerspRow10Raw", "PerspRow14Raw", "PerspRow18Raw",
+                        "PerspRow22Raw", "PerspRow26Raw", "PerspRow30Raw",
+                        "PerspRow34Raw", "PerspRow38Raw", "PerspRow42Raw",
+                        "PerspRow46Raw", "PerspRow50Raw", "PerspRow54Raw" };
+                    WORD w_raw = 0u;
+                    WORD persp_mid = 0u;
+                    WORD persp_far = 0u;
+                    HRESULT persp_hr;
+                    DWORD w_index;
+                    DWORD corner;
+
+                    for (w_index = 0ul; w_index < 6ul; ++w_index) {
+                        for (corner = 0ul; corner < 3ul; ++corner) {
+                            triangle[corner].rhw = w_scale[w_index];
+                        }
+                        (void)v9x_probe_chain_draw(ddraw, d3d_device,
+                            d3d_target, triangle, 64ul, 7ul, 0,
+                            V9X_D3DFILTER_NEAREST, 1.7f * 47.5f / 64.0f,
+                            &w_raw);
+                        v9x_write_uint(w_chain_key[w_index], w_raw);
+                        (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                            V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                            V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                            0.1f, 0.1f, 0.02f, &w_raw);
+                        v9x_write_uint(w_mag_key[w_index], w_raw);
+                    }
+
+                    triangle[0].rhw = 1.0f;
+                    triangle[1].rhw = 0.25f;
+                    triangle[2].rhw = 1.0f;
+                    v9x_probe_sample_x = 39ul;
+                    v9x_probe_sample_y = 10ul;
+                    persp_hr = v9x_probe_tex_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                        0.0f, 0.0f, 1.0f, &persp_mid);
+                    v9x_probe_sample_x = 52ul;
+                    (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                        0.0f, 0.0f, 1.0f, &persp_far);
+                    /* The whole row y = 10 of that draw: correct turns blue
+                     * near x 45, affine near 32. */
+                    for (corner = 0ul; corner < 12ul; ++corner) {
+                        v9x_write_uint(persp_row_key[corner],
+                            v9x_surface_pixel16(d3d_target,
+                                                10ul + corner * 4ul, 10ul));
+                    }
+                    v9x_probe_sample_x = 16ul;
+                    v9x_probe_sample_y = 16ul;
+                    v9x_write_uint("PerspMidRaw", persp_mid);
+                    v9x_write_uint("PerspFarRaw", persp_far);
+                    v9x_write_uint("PerspOk",
+                        persp_hr == 0 && target_layout.valid != 0ul &&
+                        v9x_layout_green(&target_layout, persp_mid) >= 197ul &&
+                        v9x_layout_blue(&target_layout, persp_mid) <= 33ul &&
+                        v9x_layout_blue(&target_layout, persp_far) >= 197ul
+                        ? 1ul : 0ul);
+                    for (corner = 0ul; corner < 3ul; ++corner) {
+                        triangle[corner].rhw = 1.0f;
+                    }
+                }
+
+                /*
+                 * Coordinate range (2026-09-29). After the S/T fix, 3DMark's
+                 * "Point Sampling With Mip-Mapping" tunnel drew one wall
+                 * right and two as radial streaks, near the camera as much
+                 * as far, so not a mip level. Its walls tile their texture
+                 * many times. The same magnified 64-texel halves as
+                 * PerspWMag, sampled at u of about 0.103 (green) past an
+                 * integer offset of 10, 100 or 1000, and then at an offset
+                 * of 10000. A range limit in S reads blue or garbage past it.
+                 * Tiled: u 0 to 8 across the triangle, sampled where the
+                 * colour is the same whether pixel centres sit at the
+                 * integer or the half: x = 10 (u 0.30 or 0.38, green), 12
+                 * (0.63 or 0.72, blue), 16 (1.31 or 1.39, green) and 24
+                 * (2.65 or 2.74, blue), all on row 16.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float range_offset[4] = {
+                        10.0f, 100.0f, 1000.0f, 10000.0f };
+                    static const char *range_key[4] = {
+                        "RangeU10Raw", "RangeU100Raw", "RangeU1000Raw",
+                        "RangeU10000Raw" };
+                    WORD range_raw = 0u;
+                    DWORD range_index;
+
+                    for (range_index = 0ul; range_index < 4ul;
+                         ++range_index) {
+                        (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                            V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                            V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                            range_offset[range_index] + 0.1f, 0.1f, 0.02f,
+                            &range_raw);
+                        v9x_write_uint(range_key[range_index], range_raw);
+                    }
+                    (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                        d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                        V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                        0.0f, 0.0f, 8.0f, &range_raw);
+                    v9x_write_uint("RangeTiled16Raw", range_raw);
+                    v9x_write_uint("RangeTiled10Raw",
+                        v9x_surface_pixel16(d3d_target, 10ul, 16ul));
+                    v9x_write_uint("RangeTiled12Raw",
+                        v9x_surface_pixel16(d3d_target, 12ul, 16ul));
+                    v9x_write_uint("RangeTiled24Raw",
+                        v9x_surface_pixel16(d3d_target, 24ul, 16ul));
+                }
+
+                /*
+                 * W dynamic range (2026-09-29). The tunnel's streaked walls
+                 * have colour constant along every ray from the vanishing
+                 * point, which is what perspective interpolation gives when
+                 * the far vertex's W counts as zero. Vertex 1 here has rhw r
+                 * and u = span; the others rhw 1 and u = 0. span is chosen
+                 * per r so that correct interpolation reads u = 0.75 (blue) at
+                 * (52,10) and about 0.12 (green) at (39,10). A far W lost to
+                 * precision reads green at both.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float ratio_w[4] = {
+                        0.1f, 0.01f, 0.001f, 0.0001f };
+                    static const char *ratio_far_key[4] = {
+                        "WRatio10FarRaw", "WRatio100FarRaw",
+                        "WRatio1000FarRaw", "WRatio10000FarRaw" };
+                    static const char *ratio_mid_key[4] = {
+                        "WRatio10MidRaw", "WRatio100MidRaw",
+                        "WRatio1000MidRaw", "WRatio10000MidRaw" };
+                    WORD ratio_raw = 0u;
+                    DWORD ratio_index;
+
+                    for (ratio_index = 0ul; ratio_index < 4ul;
+                         ++ratio_index) {
+                        float r = ratio_w[ratio_index];
+                        float span = 0.75f * (0.079f + 0.921f * r) /
+                                     (0.921f * r);
+
+                        triangle[0].rhw = 1.0f;
+                        triangle[1].rhw = r;
+                        triangle[2].rhw = 1.0f;
+                        v9x_probe_sample_x = 52ul;
+                        v9x_probe_sample_y = 10ul;
+                        (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                            V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                            V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                            0.0f, 0.0f, span, &ratio_raw);
+                        v9x_write_uint(ratio_far_key[ratio_index], ratio_raw);
+                        v9x_write_uint(ratio_mid_key[ratio_index],
+                            v9x_surface_pixel16(d3d_target, 39ul, 10ul));
+                    }
+                    v9x_probe_sample_x = 16ul;
+                    v9x_probe_sample_y = 16ul;
+                    triangle[0].rhw = 1.0f;
+                    triangle[1].rhw = 1.0f;
+                    triangle[2].rhw = 1.0f;
+                }
+
+                /*
+                 * A huge coordinate at a far vertex: rhw 0.0001 there, and a
+                 * span that puts u = 100.75 and then 1000.75 (blue) at
+                 * (52,10). The vertex's u is then about 86,000 and 860,000,
+                 * past the range RangeU10000 found, while u times rhw stays
+                 * under 100. A tunnel wall is this triangle.
+                 */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    static const float huge_target[2] = { 100.75f, 1000.75f };
+                    static const char *huge_key[2] = {
+                        "WHuge100Raw", "WHuge1000Raw" };
+                    WORD huge_raw = 0u;
+                    DWORD huge_index;
+
+                    for (huge_index = 0ul; huge_index < 2ul; ++huge_index) {
+                        float r = 0.0001f;
+                        float span = huge_target[huge_index] *
+                                     (0.079f + 0.921f * r) / (0.921f * r);
+
+                        triangle[0].rhw = 1.0f;
+                        triangle[1].rhw = r;
+                        triangle[2].rhw = 1.0f;
+                        v9x_probe_sample_x = 52ul;
+                        v9x_probe_sample_y = 10ul;
+                        (void)v9x_probe_tex_draw(ddraw, d3d_device,
+                            d3d_target, triangle, &v9x_probe_tex8_1555, 64ul,
+                            V9X_D3DTBLEND_COPY, V9X_D3DFILTER_NEAREST,
+                            V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                            0.0f, 0.0f, span, &huge_raw);
+                        v9x_write_uint(huge_key[huge_index], huge_raw);
+                    }
+                    v9x_probe_sample_x = 16ul;
+                    v9x_probe_sample_y = 16ul;
+                    triangle[0].rhw = 1.0f;
+                    triangle[1].rhw = 1.0f;
+                    triangle[2].rhw = 1.0f;
+                }
+
                 v9x_probe_reset_state(d3d_device, triangle);
                 /*
                  * Texel alpha, per format, under a MODULATE blend.
@@ -6785,6 +7035,175 @@ void __stdcall V9xDdrawProbeEntry(void)
                             }
                             t_count += 3ul;
                             t_ok += ok_tex + ok_rej + ok_acc;
+
+                            /*
+                             * 3DMark 99's filtering tunnel, one wall
+                             * triangle as the Mach64 HAL received it
+                             * (M64TRI.TXT line 4, 2026-09-29), at 640x480
+                             * with the 64-texel halves: green for
+                             * frac(u) < 0.5, blue above. Z off. A 5x12 grid
+                             * is read back for comparison with the exact
+                             * perspective colour, computed on the host.
+                             */
+                            if (ti2 == 1ul) {
+                                static const float tun[3][5] = {
+                                    { 73.98f, 0.00f, 0.25971f, 0.980f, 0.020f },
+                                    { 314.69f, 244.23f, 0.00500f, 0.000f, 1.000f },
+                                    { 75.28f, 479.50f, 0.25395f, 0.980f, 1.000f } };
+                                static const DWORD tun_y[5] = {
+                                    50ul, 150ul, 240ul, 330ul, 430ul };
+                                char g_key[40];
+                                DWORD gy;
+                                DWORD gx;
+                                DWORD gc;
+
+                                (void)t_device->vtbl->SetRenderState(t_device,
+                                    V9X_D3DRENDERSTATE_ZENABLE, 0ul);
+                                v9x_fill_surface(t_target, 0ul);
+                                for (gc = 0ul; gc < 3ul; ++gc) {
+                                    t_tri[gc].sx = tun[gc][0];
+                                    t_tri[gc].sy = tun[gc][1];
+                                    t_tri[gc].sz = 0.5f;
+                                    t_tri[gc].rhw = tun[gc][2];
+                                    t_tri[gc].tu = tun[gc][3];
+                                    t_tri[gc].tv = tun[gc][4];
+                                    t_tri[gc].color = 0xfffffffful;
+                                    t_tri[gc].specular = 0ul;
+                                }
+                                if (t_device->vtbl->BeginScene(t_device) == 0) {
+                                    (void)t_device->vtbl->DrawPrimitive(
+                                        t_device, V9X_D3DPT_TRIANGLELIST,
+                                        V9X_D3DVT_TLVERTEX, t_tri, 3ul, 0ul);
+                                    (void)t_device->vtbl->EndScene(t_device);
+                                }
+                                for (gy = 0ul; gy < 5ul; ++gy) {
+                                    for (gx = 0ul; gx < 12ul; ++gx) {
+                                        g_key[0] = 0;
+                                        v9x_probe_cat(g_key, "Tun_");
+                                        g_key[4] = (char)('0' + gy);
+                                        g_key[5] = '_';
+                                        g_key[6] = (char)('A' + gx);
+                                        g_key[7] = 0;
+                                        v9x_write_uint(g_key,
+                                            v9x_surface_pixel16(t_target,
+                                                80ul + gx * 20ul, tun_y[gy]));
+                                    }
+                                }
+
+                                /* The same triangle on the tunnel's own
+                                 * chain shape, 256 down to 8 (six levels),
+                                 * MIPNEAREST, one colour per level: which
+                                 * level the engine takes across the wall. */
+                                {
+                                    WORD l_raw;
+
+                                    (void)v9x_probe_chain_draw(ddraw, t_device,
+                                        t_target, t_tri, 256ul, 6ul, 0,
+                                        V9X_D3DFILTER_NEAREST, -1.0f, &l_raw);
+                                    for (gy = 0ul; gy < 5ul; ++gy) {
+                                        for (gx = 0ul; gx < 12ul; ++gx) {
+                                            g_key[0] = 0;
+                                            v9x_probe_cat(g_key, "TunL_");
+                                            g_key[5] = (char)('0' + gy);
+                                            g_key[6] = '_';
+                                            g_key[7] = (char)('A' + gx);
+                                            g_key[8] = 0;
+                                            v9x_write_uint(g_key,
+                                                v9x_surface_pixel16(t_target,
+                                                    80ul + gx * 20ul,
+                                                    tun_y[gy]));
+                                        }
+                                    }
+                                }
+
+                                /*
+                                 * Both of the tunnel's passes, as 3DMark
+                                 * draws them: first opaque, depth LESSEQUAL
+                                 * with write; then DESTCOLOR x ZERO, the
+                                 * multiply, LESSEQUAL without write, at the
+                                 * same depth. First pass white, second the
+                                 * halves, so a second pass that lands leaves
+                                 * the Tun_ grid's pattern and one that does
+                                 * not leaves white. Key TunP_<row>_<col>.
+                                 */
+                                {
+                                    static const V9X_PROBE_TEX8 tex_white = {
+                                        0x41ul, 0x7c00ul, 0x03e0ul, 0x001ful,
+                                        0x8000ul, 0xffffu, 0xffffu };
+                                    WORD p_raw;
+
+                                    for (gc = 0ul; gc < 3ul; ++gc) {
+                                        t_tri[gc].sx = tun[gc][0];
+                                        t_tri[gc].sy = tun[gc][1];
+                                        t_tri[gc].sz = 0.5f;
+                                        t_tri[gc].rhw = tun[gc][2];
+                                        t_tri[gc].tu = tun[gc][3];
+                                        t_tri[gc].tv = tun[gc][4];
+                                        t_tri[gc].color = 0xfffffffful;
+                                        t_tri[gc].specular = 0ul;
+                                    }
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device, V9X_D3DRENDERSTATE_ZENABLE,
+                                        1ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device, V9X_D3DRENDERSTATE_ZFUNC,
+                                        V9X_D3DCMP_ALWAYS);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device,
+                                        V9X_D3DRENDERSTATE_ZWRITEENABLE, 1ul);
+                                    (void)v9x_probe_tex_draw(ddraw, t_device,
+                                        t_target, t_tri, &tex_white, 64ul,
+                                        V9X_D3DTBLEND_DECAL,
+                                        V9X_D3DFILTER_NEAREST,
+                                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                                        0.0f, 0.0f, -1.0f, &p_raw);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device, V9X_D3DRENDERSTATE_ZFUNC,
+                                        4ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device,
+                                        V9X_D3DRENDERSTATE_ZWRITEENABLE, 0ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                        9ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device,
+                                        V9X_D3DRENDERSTATE_DESTBLEND, 1ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device,
+                                        V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
+                                        1ul);
+                                    v9x_probe_keep_target = 1;
+                                    (void)v9x_probe_tex_draw(ddraw, t_device,
+                                        t_target, t_tri, &v9x_probe_tex8_1555,
+                                        64ul, V9X_D3DTBLEND_DECAL,
+                                        V9X_D3DFILTER_NEAREST,
+                                        V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                                        0.0f, 0.0f, -1.0f, &p_raw);
+                                    v9x_probe_keep_target = 0;
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device,
+                                        V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
+                                        0ul);
+                                    (void)t_device->vtbl->SetRenderState(
+                                        t_device, V9X_D3DRENDERSTATE_ZENABLE,
+                                        0ul);
+                                    for (gy = 0ul; gy < 5ul; ++gy) {
+                                        for (gx = 0ul; gx < 12ul; ++gx) {
+                                            g_key[0] = 0;
+                                            v9x_probe_cat(g_key, "TunP_");
+                                            g_key[5] = (char)('0' + gy);
+                                            g_key[6] = '_';
+                                            g_key[7] = (char)('A' + gx);
+                                            g_key[8] = 0;
+                                            v9x_write_uint(g_key,
+                                                v9x_surface_pixel16(t_target,
+                                                    80ul + gx * 20ul,
+                                                    tun_y[gy]));
+                                        }
+                                    }
+                                }
+                            }
                         }
                         if (t_tex != 0) t_tex->vtbl->Release(t_tex);
                         if (t_texs != 0) t_texs->vtbl->Release(t_texs);
@@ -7243,6 +7662,38 @@ void __stdcall V9xDdrawProbeEntry(void)
                         v9x_write_uint("D3DZMaskRaw", mask_raw);
                         v9x_write_uint("D3DZWriteMaskOk",
                                        mask_ok ? 1ul : 0ul);
+
+                        /*
+                         * Every comparison at EQUAL depth (2026-09-29).
+                         * 3DMark's tunnel draws each wall twice at the same
+                         * depth, the second pass under LESSEQUAL; the
+                         * ladders above only ever compare unequal depths
+                         * under LESS and ALWAYS. For each D3D comparison 1
+                         * (NEVER) to 8 (ALWAYS): lay red at 0.5 with ALWAYS
+                         * and write, then blue at 0.5 with the comparison
+                         * and no write. Blue is expected for EQUAL,
+                         * LESSEQUAL, GREATEREQUAL and ALWAYS; red for the
+                         * rest. Key ZEqual<n>Raw.
+                         */
+                        {
+                            static const char *eq_key[8] = {
+                                "ZEqual1Raw", "ZEqual2Raw", "ZEqual3Raw",
+                                "ZEqual4Raw", "ZEqual5Raw", "ZEqual6Raw",
+                                "ZEqual7Raw", "ZEqual8Raw" };
+                            DWORD eq_raw = 0ul;
+                            DWORD eq_func;
+
+                            for (eq_func = 1ul; eq_func <= 8ul; ++eq_func) {
+                                (void)v9x_z_step(d3d_device, triangle, 0.5f,
+                                                 0xffff0000ul,
+                                                 V9X_D3DCMP_ALWAYS, 1ul,
+                                                 d3d_target, &eq_raw, 0, 0);
+                                (void)v9x_z_step(d3d_device, triangle, 0.5f,
+                                                 0xff0000fful, eq_func, 0ul,
+                                                 d3d_target, &eq_raw, 0, 0);
+                                v9x_write_uint(eq_key[eq_func - 1ul], eq_raw);
+                            }
+                        }
 
                         /*
                          * THE SPRITE RUNG.
