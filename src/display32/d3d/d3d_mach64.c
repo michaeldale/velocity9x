@@ -4,7 +4,7 @@
  * Phase 5 of docs\plans\ati-rage-mobility-hardware-3d.md. Everything this
  * engine accepts or emits was decided elsewhere and measured there: the
  * boundary is v9x_m64_check_draw (mach64_policy.c), the state and setup
- * words are v9x_m64_build_draw_state and v9x_m64_build_setup
+ * words are v9x_m64_build_draw_state and v9x_m64_build_reused_setup
  * (mach64_draw.c), the translation from the neutral draw is
  * d3d_mach64_map.c, and all four are host-tested. This file resolves
  * DirectDraw surfaces, converts floats, and emits.
@@ -503,6 +503,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     struct v9x_m64_draw_decision decision;
     struct v9x_m64_draw_state state;
     struct v9x_m64_setup_vertex setup[3];
+    struct v9x_m64_setup_slot setup_slot[3];
     struct v9x_m64_engine *core;
     const V9X_R3D_VERTEX *triangle;
     v9x_u32 state_written = 0ul;
@@ -546,6 +547,9 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
 
     /* Every packet before any write, so a bad vertex refuses the batch. */
     flat = request.shade_mode == V9X_R3D_SHADE_FLAT;
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        setup_slot[corner].known = 0ul;
+    }
     for (index = 0ul; index < triangle_count; ++index) {
         triangle = vertices + index * 3ul;
         for (corner = 0ul; corner < 3ul; ++corner) {
@@ -558,15 +562,16 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             request.texture_address == V9X_R3D_ADDRESS_WRAP) {
             v9x_d3d_mach64_wrap_origin(setup);
         }
-        status = v9x_m64_build_setup(setup, request.textured,
-                                     (request.fog_enable != 0ul
-                                        ? V9X_M64_SETUP_FOG : 0ul) |
-                                     (request.specular_enable != 0ul
-                                        ? V9X_M64_SETUP_SPECULAR : 0ul),
-                                     v9x_d3d_mach64_setup_offsets[packets],
-                                     v9x_d3d_mach64_setup_values[packets],
-                                     V9X_M64_SETUP_DWORDS,
-                                     &v9x_d3d_mach64_setup_counts[packets]);
+        status = v9x_m64_build_reused_setup(setup, request.textured,
+                                  (request.fog_enable != 0ul
+                                     ? V9X_M64_SETUP_FOG : 0ul) |
+                                  (request.specular_enable != 0ul
+                                     ? V9X_M64_SETUP_SPECULAR : 0ul),
+                                  setup_slot,
+                                  v9x_d3d_mach64_setup_offsets[packets],
+                                  v9x_d3d_mach64_setup_values[packets],
+                                  V9X_M64_SETUP_DWORDS,
+                                  &v9x_d3d_mach64_setup_counts[packets]);
         if (status == V9X_STATUS_UNSUPPORTED) {
             ++v9x_hal->d3d_diagnostics.m64_degenerate; /* zero area */
             continue;

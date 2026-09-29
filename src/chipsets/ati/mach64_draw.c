@@ -320,3 +320,149 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
     *written = at;
     return V9X_STATUS_OK;
 }
+
+static v9x_u32 v9x_m64_setup_slot_equal(
+                              const struct v9x_m64_setup_slot *slot,
+                              const struct v9x_m64_setup_slot *candidate,
+                              v9x_u32 fog)
+{
+    v9x_u32 index;
+
+    if (slot->known == 0ul) {
+        return V9X_FALSE;
+    }
+    for (index = 0ul; index < 6ul; ++index) {
+        if (slot->word[index] != candidate->word[index]) {
+            return V9X_FALSE;
+        }
+    }
+    if (fog != 0ul && slot->specular != candidate->specular) {
+        return V9X_FALSE;
+    }
+    return V9X_TRUE;
+}
+
+v9x_status v9x_m64_build_reused_setup(
+                               const struct v9x_m64_setup_vertex *vertex,
+                               v9x_u32 textured, v9x_u32 fog,
+                               struct v9x_m64_setup_slot *slot,
+                               v9x_u32 *offsets, v9x_u32 *values,
+                               v9x_u32 capacity, v9x_u32 *written)
+{
+    static const v9x_u32 registers[3][6] = {
+        { V9X_M64_VERTEX_1_S, V9X_M64_VERTEX_1_T,
+          V9X_M64_VERTEX_1_W, V9X_M64_VERTEX_1_Z,
+          V9X_M64_VERTEX_1_ARGB, V9X_M64_VERTEX_1_X_Y },
+        { V9X_M64_VERTEX_2_S, V9X_M64_VERTEX_2_T,
+          V9X_M64_VERTEX_2_W, V9X_M64_VERTEX_2_Z,
+          V9X_M64_VERTEX_2_ARGB, V9X_M64_VERTEX_2_X_Y },
+        { V9X_M64_VERTEX_3_S, V9X_M64_VERTEX_3_T,
+          V9X_M64_VERTEX_3_W, V9X_M64_VERTEX_3_Z,
+          V9X_M64_VERTEX_3_ARGB, V9X_M64_VERTEX_3_X_Y }
+    };
+    static const v9x_u32 specular_registers[3] = {
+        V9X_M64_VERTEX_1_SPEC_ARGB, V9X_M64_VERTEX_2_SPEC_ARGB,
+        V9X_M64_VERTEX_3_SPEC_ARGB
+    };
+    static const v9x_u8 permutations[6][3] = {
+        { 0u, 1u, 2u }, { 0u, 2u, 1u }, { 1u, 0u, 2u },
+        { 1u, 2u, 0u }, { 2u, 0u, 1u }, { 2u, 1u, 0u }
+    };
+    struct v9x_m64_setup_slot candidate[3];
+    v9x_u32 full_offsets[V9X_M64_SETUP_DWORDS];
+    v9x_u32 full_values[V9X_M64_SETUP_DWORDS];
+    v9x_u32 full_written;
+    v9x_u32 base;
+    v9x_u32 best = 0ul;
+    v9x_u32 best_matches = 0ul;
+    v9x_u32 matches;
+    v9x_u32 permutation;
+    v9x_u32 index;
+    v9x_u32 word;
+    v9x_u32 needed = 1ul;
+    v9x_u32 at = 0ul;
+    v9x_s32 dx1;
+    v9x_s32 dy1;
+    v9x_s32 dx2;
+    v9x_s32 dy2;
+    v9x_s32 cross;
+    v9x_status status;
+
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (vertex == 0 || slot == 0 || offsets == 0 || values == 0 ||
+        written == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_m64_build_setup(vertex, textured, fog, full_offsets,
+                                 full_values, V9X_M64_SETUP_DWORDS,
+                                 &full_written);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    base = fog != 0ul ? 3ul : 0ul;
+    for (index = 0ul; index < 3ul; ++index) {
+        for (word = 0ul; word < 6ul; ++word) {
+            candidate[index].word[word] = full_values[base + index * 6ul + word];
+        }
+        candidate[index].specular = fog != 0ul ? full_values[index] : 0ul;
+        candidate[index].known = V9X_TRUE;
+    }
+
+    for (permutation = 0ul; permutation < 6ul; ++permutation) {
+        matches = 0ul;
+        for (index = 0ul; index < 3ul; ++index) {
+            if (v9x_m64_setup_slot_equal(&slot[index],
+                    &candidate[permutations[permutation][index]], fog)) {
+                ++matches;
+            }
+        }
+        if (matches > best_matches) {
+            best_matches = matches;
+            best = permutation;
+        }
+    }
+
+    for (index = 0ul; index < 3ul; ++index) {
+        if (!v9x_m64_setup_slot_equal(&slot[index],
+                &candidate[permutations[best][index]], fog)) {
+            needed += 6ul + (fog != 0ul ? 1ul : 0ul);
+        }
+    }
+    if (capacity < needed) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    for (index = 0ul; index < 3ul; ++index) {
+        const struct v9x_m64_setup_slot *source =
+            &candidate[permutations[best][index]];
+        if (!v9x_m64_setup_slot_equal(&slot[index], source, fog)) {
+            if (fog != 0ul) {
+                offsets[at] = specular_registers[index];
+                values[at++] = source->specular;
+            }
+            for (word = 0ul; word < 6ul; ++word) {
+                offsets[at] = registers[index][word];
+                values[at++] = source->word[word];
+            }
+            slot[index] = *source;
+        }
+    }
+
+    dx1 = (v9x_s32)slot[1].word[5] / 0x10000l -
+          (v9x_s32)slot[0].word[5] / 0x10000l;
+    dy1 = (v9x_s32)(slot[1].word[5] & 0xfffful) -
+          (v9x_s32)(slot[0].word[5] & 0xfffful);
+    dx2 = (v9x_s32)slot[2].word[5] / 0x10000l -
+          (v9x_s32)slot[0].word[5] / 0x10000l;
+    dy2 = (v9x_s32)(slot[2].word[5] & 0xfffful) -
+          (v9x_s32)(slot[0].word[5] & 0xfffful);
+    cross = dx1 * dy2 - dy1 * dx2;
+    offsets[at] = V9X_M64_ONE_OVER_AREA;
+    values[at++] = v9x_m64_draw_float_bits(M64_FIXED_AREA_SCALE /
+                                           (float)cross);
+    *written = at;
+    return V9X_STATUS_OK;
+}

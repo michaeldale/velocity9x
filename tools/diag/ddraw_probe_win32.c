@@ -2221,6 +2221,66 @@ static WORD v9x_surface_pixel16(struct v9x_dds *surface, DWORD x, DWORD y)
     return value;
 }
 
+static WORD v9x_m64_permutation_reference[64u * 64u];
+
+static DWORD v9x_surface_capture16(struct v9x_dds *surface, WORD *pixels)
+{
+    V9X_DDSURFACEDESC desc;
+    BYTE FAR *row;
+    DWORD x;
+    DWORD y;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0) != 0) {
+        return 0ul;
+    }
+    if (desc.lpSurface == 0 || desc.ddpfPixelFormat.dwRGBBitCount != 16ul ||
+        desc.dwWidth < 64ul || desc.dwHeight < 64ul) {
+        surface->vtbl->Unlock(surface, 0);
+        return 0ul;
+    }
+    for (y = 0ul; y < 64ul; ++y) {
+        row = (BYTE FAR *)desc.lpSurface + y * (DWORD)desc.lPitch;
+        for (x = 0ul; x < 64ul; ++x) {
+            pixels[y * 64ul + x] = ((WORD FAR *)row)[x];
+        }
+    }
+    surface->vtbl->Unlock(surface, 0);
+    return 1ul;
+}
+
+static DWORD v9x_surface_compare16(struct v9x_dds *surface,
+                                   const WORD *pixels)
+{
+    V9X_DDSURFACEDESC desc;
+    BYTE FAR *row;
+    DWORD mismatches = 0ul;
+    DWORD x;
+    DWORD y;
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (surface->vtbl->Lock(surface, 0, &desc, V9X_DDLOCK_WAIT, 0) != 0) {
+        return 0xfffffffful;
+    }
+    if (desc.lpSurface == 0 || desc.ddpfPixelFormat.dwRGBBitCount != 16ul ||
+        desc.dwWidth < 64ul || desc.dwHeight < 64ul) {
+        surface->vtbl->Unlock(surface, 0);
+        return 0xfffffffful;
+    }
+    for (y = 0ul; y < 64ul; ++y) {
+        row = (BYTE FAR *)desc.lpSurface + y * (DWORD)desc.lPitch;
+        for (x = 0ul; x < 64ul; ++x) {
+            if (((WORD FAR *)row)[x] != pixels[y * 64ul + x]) {
+                ++mismatches;
+            }
+        }
+    }
+    surface->vtbl->Unlock(surface, 0);
+    return mismatches;
+}
+
 /*
  * One rung of a depth ladder: set the comparison and write mask, draw the
  * triangle at a given depth and colour, and read back the pixel.
@@ -3500,6 +3560,111 @@ void __stdcall V9xDdrawProbeEntry(void)
                         d3d_device, V9X_D3DRENDERSTATE_CULLMODE,
                         V9X_D3DCULL_NONE);
                     v9x_write_hresult("D3DCullNoneHr", cull_hr);
+
+                    {
+                        static const BYTE permutation[6][3] = {
+                            { 0u, 1u, 2u }, { 0u, 2u, 1u },
+                            { 1u, 0u, 2u }, { 1u, 2u, 0u },
+                            { 2u, 0u, 1u }, { 2u, 1u, 0u }
+                        };
+                        V9X_D3DTLVERTEX permuted[3];
+                        DWORD permutation_ok = cull_hr == 0 ? 1ul : 0ul;
+                        DWORD mismatch;
+                        DWORD p;
+                        DWORD v;
+                        char mismatch_key[] = "D3DSlotPerm0Mismatch";
+
+                        for (p = 0ul; p < 6ul; ++p) {
+                            v9x_fill_surface(d3d_target, 0ul);
+                            for (v = 0ul; v < 3ul; ++v) {
+                                permuted[v] = triangle[permutation[p][v]];
+                            }
+                            begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                            if (begin_hr == 0) {
+                                draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, permuted, 3ul, 0ul);
+                                end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                            } else {
+                                draw_hr = begin_hr;
+                                end_hr = begin_hr;
+                            }
+                            if (p == 0ul) {
+                                mismatch = v9x_surface_capture16(
+                                    d3d_target,
+                                    v9x_m64_permutation_reference) != 0ul
+                                    ? 0ul : 0xfffffffful;
+                            } else {
+                                mismatch = v9x_surface_compare16(
+                                    d3d_target,
+                                    v9x_m64_permutation_reference);
+                            }
+                            mismatch_key[11] = (char)('0' + p);
+                            v9x_write_uint(mismatch_key, mismatch);
+                            if (begin_hr != 0 || draw_hr != 0 || end_hr != 0 ||
+                                mismatch != 0ul) {
+                                permutation_ok = 0ul;
+                            }
+                        }
+                        v9x_write_uint("D3DSlotPermutationsOk", permutation_ok);
+                    }
+
+                    {
+                        V9X_D3DTLVERTEX fan[6];
+                        DWORD partial_ok = 1ul;
+                        DWORD mismatch;
+
+                        fan[0] = triangle[0];
+                        fan[1] = triangle[1];
+                        fan[2] = triangle[2];
+                        fan[3] = triangle[0];
+                        fan[4] = triangle[2];
+                        fan[5] = triangle[1];
+                        fan[5].sx = 55.75f;
+                        fan[5].sy = 55.75f;
+
+                        v9x_fill_surface(d3d_target, 0ul);
+                        begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, fan, 3ul, 0ul);
+                            if (draw_hr == 0) {
+                                draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                    d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                    V9X_D3DVT_TLVERTEX, fan + 3, 3ul, 0ul);
+                            }
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        } else {
+                            draw_hr = begin_hr;
+                            end_hr = begin_hr;
+                        }
+                        if (begin_hr != 0 || draw_hr != 0 || end_hr != 0 ||
+                            v9x_surface_capture16(d3d_target,
+                                v9x_m64_permutation_reference) == 0ul) {
+                            partial_ok = 0ul;
+                        }
+
+                        v9x_fill_surface(d3d_target, 0ul);
+                        begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, fan, 6ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        } else {
+                            draw_hr = begin_hr;
+                            end_hr = begin_hr;
+                        }
+                        mismatch = v9x_surface_compare16(
+                            d3d_target, v9x_m64_permutation_reference);
+                        v9x_write_uint("D3DSlotPartialMismatch", mismatch);
+                        if (begin_hr != 0 || draw_hr != 0 || end_hr != 0 ||
+                            mismatch != 0ul) {
+                            partial_ok = 0ul;
+                        }
+                        v9x_write_uint("D3DSlotPartialOk", partial_ok);
+                    }
 
                     v9x_fill_surface(d3d_target, 0ul);
                     wound[0] = triangle[0];

@@ -366,6 +366,15 @@ struct v9x_m64_setup_vertex {
     v9x_u32 specular;
 };
 
+/* A candidate cache of the setup engine's three vertex slots.  It is
+ * caller-owned and deliberately starts invalid; only
+ * v9x_m64_build_reused_setup makes a slot known. */
+struct v9x_m64_setup_slot {
+    v9x_u32 word[6];
+    v9x_u32 specular;
+    v9x_u32 known;
+};
+
 /* The largest pixel coordinate a setup packet takes: the flat state's
  * 4096-pixel target limit, which also keeps the 14.2 cross product inside
  * a signed 32-bit integer. */
@@ -386,6 +395,16 @@ v9x_status v9x_m64_build_draw_state(
 #define V9X_M64_SETUP_SPECULAR 2ul
 v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
                                v9x_u32 textured, v9x_u32 fog,
+                               v9x_u32 *offsets, v9x_u32 *values,
+                               v9x_u32 capacity, v9x_u32 *written);
+/* Build one setup packet while retaining equal vertices already resident in
+ * the three hardware slots.  The area follows the resulting slot order.
+ * This pure builder does not establish that the hardware retains the slots;
+ * callers must not use it in the draw path until that has been measured. */
+v9x_status v9x_m64_build_reused_setup(
+                               const struct v9x_m64_setup_vertex *vertex,
+                               v9x_u32 textured, v9x_u32 fog,
+                               struct v9x_m64_setup_slot *slot,
                                v9x_u32 *offsets, v9x_u32 *values,
                                v9x_u32 capacity, v9x_u32 *written);
 

@@ -1,6 +1,9 @@
 # Mach64: reuse vertex registers across a fan or strip
 
-Status: proposed, 2026-09-29. Nothing here has run on hardware.
+Status: implemented and physically validated on the Gateway, 2026-09-29.  The
+six permutations and full-versus-partial packet comparison are pixel-exact;
+the existing probe and Quake 2 are stable, but no measurable speedup was found. See
+`../decisions/2026-09-29-mach64-vertex-register-reuse-physical.md`.
 
 ## Why
 

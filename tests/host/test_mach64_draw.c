@@ -439,6 +439,68 @@ static void test_setup_refusals(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_setup_register_reuse(void)
+{
+    struct v9x_m64_setup_vertex fan[7];
+    struct v9x_m64_setup_vertex triangle[3];
+    struct v9x_m64_setup_slot slot[3];
+    v9x_u32 offsets[CAP], values[CAP], written;
+    v9x_u32 index;
+
+    memset(fan, 0, sizeof(fan));
+    memset(slot, 0, sizeof(slot));
+    for (index = 0ul; index < 7ul; ++index) {
+        fan[index].x_fixed = 160ul + index * 16ul;
+        fan[index].y_fixed = (index & 1ul) != 0ul ? 96ul : 32ul;
+        fan[index].z16 = 0x4000ul;
+        fan[index].rhw = 1.0f;
+        fan[index].argb = 0xff00ff00ul;
+    }
+    fan[0].x_fixed = 96ul;
+    fan[0].y_fixed = 64ul;
+
+    for (index = 0ul; index < 5ul; ++index) {
+        triangle[0] = fan[0];
+        triangle[1] = fan[index + 1ul];
+        triangle[2] = fan[index + 2ul];
+        CHECK(v9x_m64_build_reused_setup(triangle, 0ul, 0ul, slot,
+              offsets, values, CAP, &written) == V9X_STATUS_OK);
+        CHECK(written == (index == 0ul ? 19ul : 7ul));
+    }
+
+    /* The second triangle retains fan[0] in slot 0 and fan[2] in slot 2,
+     * forcing the new vertex into slot 1.  Check that the area's sign
+     * follows that slot order rather than the incoming triangle. */
+    memset(slot, 0, sizeof(slot));
+    triangle[0] = fan[0];
+    triangle[1] = fan[1];
+    triangle[2] = fan[2];
+    CHECK(v9x_m64_build_reused_setup(triangle, 0ul, 0ul, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    triangle[0] = fan[0];
+    triangle[1] = fan[2];
+    triangle[2] = fan[3];
+    CHECK(v9x_m64_build_reused_setup(triangle, 0ul, 0ul, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 7ul);
+    CHECK(values[written - 1ul] == bits(-16.0f / 6656.0f));
+
+    /* No common value means all three slots, then the trigger. */
+    triangle[0] = fan[4];
+    triangle[1] = fan[5];
+    triangle[2] = fan[6];
+    CHECK(v9x_m64_build_reused_setup(triangle, 0ul, 0ul, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+
+    /* Flat shading maps the provoking colour onto every built vertex.  A
+     * changed ARGB therefore makes even equal positions unequal slots. */
+    triangle[0].argb = triangle[1].argb = triangle[2].argb = 0xffff0000ul;
+    CHECK(v9x_m64_build_reused_setup(triangle, 0ul, 0ul, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+}
+
 unsigned int v9x_run_mach64_draw_tests(void)
 {
     test_untextured_matches_gouraud_builder();
@@ -450,5 +512,6 @@ unsigned int v9x_run_mach64_draw_tests(void)
     test_setup_matches_phase3();
     test_setup_subpixel_texture_fog();
     test_setup_refusals();
+    test_setup_register_reuse();
     return failures;
 }
