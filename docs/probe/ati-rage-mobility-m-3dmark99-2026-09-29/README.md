@@ -225,5 +225,5 @@ Run 8 (boot 57, after the Quake 2 work: 64-byte texture packing, the
 MIPLINEAR / LINEARMIPNEAREST reading swapped, engine screen copies for
 Blt): all 26 tests, 643 3DMarks, 6572 CPU (`RUN8-SCORE-643.png`,
 recorded and not compared). No refusals from 3DMark, no timeouts or
-resets, 208,344 batches and 7,741,138 triangles, and no triangle skipped
+resets, 208,344 batches and 7,741,137 triangles, and no triangle skipped
 as unrenderable (`RUN8-V9XSNA-*.INI`).
