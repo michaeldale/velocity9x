@@ -1132,8 +1132,13 @@ evidence in `../probe/ati-rage-mobility-m-3dmark99-2026-09-29/`):
   nothing.
 - **FlipPixel** cannot pass under a real flip, because GDI reads the
   fixed page (the probe's own note). It needs the panel or `/hold`.
-- **Fog with a texture** is the largest remaining refusal in 3DMark's
-  games, and is next.
+- **Fog with a texture** was the largest remaining refusal in 3DMark's
+  games. It draws with ALPHA_FOG_EN over the texture and passes
+  D3DFogTex. Fog with blend still refuses.
+- **Run 4** (boot 43, HAL `4225265`) completed all 26 tests with 193
+  refused draws of 161,189 submitted, against 11,479 in run 1. The last
+  refusals were vertex (engine reason 6) and texture format (policy
+  reason 7). Zero timeouts, resets or mip chain gaps.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

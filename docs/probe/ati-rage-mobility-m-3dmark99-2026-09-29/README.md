@@ -97,3 +97,26 @@ Two further findings:
   tunnel wall (`TunL_*`).
 - `TEX_CNTL` LOD_BIAS values 0, 1, 2, 4, 8, C and F changed no level
   choice in the chain sweep or on the wall.
+
+## Run 4: trilinear, specular, fog over textures
+
+HAL from `4225265`, boot 43, same settings. The probe passed first,
+including `D3DFogTex` and the specular scene. The run completed with all 26
+tests and no lock.
+
+- Score: 363 3DMarks, 6582 CPU 3DMarks (`RUN4-SCORE-363.png`). Recorded,
+  not compared.
+- Counters across the run (`RUN4-V9XSNA-BEFORE.INI`, `-AFTER.INI`):
+  - 160,996 batches, 6,055,322 triangles (64,593 zero-area);
+  - 147,378 textured, 150,915 depth-tested, 24,331 blended and 9,587
+    fogged;
+  - 193 draws refused, about 0.1% of those submitted, against 11,479 in
+    run 1. The last was a vertex refusal (engine reason 6); the last
+    policy refusal was a texture format (policy reason 7);
+  - zero FIFO, idle or flip-wait timeouts, zero resets, zero mip chain
+    gaps.
+- `RUN4-GAME1-RACE.png`: Game 1 with a fogged, mipmapped road.
+
+Which of the three changes removed most of the refusals was not isolated;
+fog over a texture (policy reason 16, the last refusal in run 1) is the
+likely one.
