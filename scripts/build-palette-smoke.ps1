@@ -38,6 +38,8 @@ $lines = @("format windows nt", "runtime windows=4.0", "option quiet",
 Set-Content -LiteralPath $link -Encoding Ascii -Value $lines
 & $linker "@$link"
 if ($LASTEXITCODE -ne 0) { throw "Palette test link failed." }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
+    -BuildId $BuildId -FileDescription "Velocity9x palette test" -Kind app
 $dump = (@(& $dumper -e $executable 2>&1)) -join "`n"
 foreach ($api in @("AnimatePalette", "GetPaletteEntries", "GetPixel",
                     "WritePrivateProfileStringA")) {

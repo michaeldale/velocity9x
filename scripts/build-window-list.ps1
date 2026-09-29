@@ -71,6 +71,8 @@ Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to link the window-list tool."
 }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
+    -BuildId $BuildId -FileDescription "Velocity9x window inventory" -Kind app
 
 $dumpText = (@(& $dumper -e $executable 2>&1)) -join "`n"
 if ($LASTEXITCODE -ne 0) {

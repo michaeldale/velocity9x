@@ -70,6 +70,8 @@ Set-Content -LiteralPath $linkFile -Encoding Ascii -Value @(
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to link the driver-stage test."
 }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
+    -BuildId $BuildId -FileDescription "Velocity9x preflight check" -Kind app
 
 $bytes = [System.IO.File]::ReadAllBytes($executable)
 $newHeaderOffset = if ($bytes.Length -ge 64) {

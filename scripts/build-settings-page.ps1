@@ -98,6 +98,11 @@ try {
 
 $resourceText = Get-Content -LiteralPath $resourceSource -Raw
 $resourceText += "`r`n101 BITMAP `"{0}`"`r`n" -f $logoBitmap.Replace('\', '\\')
+# wrc replaces an image's resources wholesale, so the version resource goes
+# in this script rather than through Add-V9xVersionResource.
+$resourceText += Get-V9xVersionResourceText -RepoRoot $repoRoot -BuildId $BuildId `
+    -FileDescription 'Velocity9x Display Properties page' `
+    -OriginalFilename 'V9XSETP.DLL' -Kind dll
 Set-Content -LiteralPath $resourceFile -Encoding Ascii -Value $resourceText
 
 $modeDefines = @()
@@ -186,6 +191,7 @@ if ($LASTEXITCODE -ne 0 -or
     $resourceDump -notmatch '(?m)^00000005\s+000007D0') {
     throw "The settings page is missing its dialog or logo resource."
 }
+Assert-V9xVersionResource -WatcomRoot $watcomRoot -Image $library
 $dllNames = [regex]::Matches($dumpText, "DLL name = <([^>]+)>") |
     ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
     Sort-Object -Unique

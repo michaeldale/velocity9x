@@ -81,8 +81,13 @@ try {
         $bitmap.Save($logoBitmap, [Drawing.Imaging.ImageFormat]::Bmp)
     } finally { $bitmap.Dispose() }
 } finally { $sourceImage.Dispose() }
+# The version resource rides in this script: wrc replaces an image's
+# resources wholesale, so a second pass would drop the logo.
 Set-Content -LiteralPath $resourceFile -Encoding Ascii -Value (
-    '101 BITMAP "{0}"' -f $logoBitmap.Replace('\', '\\'))
+    ('101 BITMAP "{0}"' -f $logoBitmap.Replace('\', '\\')) + "`r`n" +
+    (Get-V9xVersionResourceText -RepoRoot $repoRoot -BuildId $BuildId `
+        -FileDescription 'Velocity9x settings and status' `
+        -OriginalFilename 'V9XSET.EXE' -Kind app))
 
 $modeDefines = @()
 if ($ModesSummary) {
@@ -126,6 +131,7 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to embed the Velocity9x logo resource."
 }
+Assert-V9xVersionResource -WatcomRoot $watcomRoot -Image $executable
 
 $bytes = [System.IO.File]::ReadAllBytes($executable)
 $newHeaderOffset = if ($bytes.Length -ge 64) {

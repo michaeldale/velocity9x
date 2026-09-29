@@ -66,7 +66,11 @@ function Invoke-V9xDiagToolBuild {
         [string]$LinkFile,
         [string[]]$LinkOptions = @(),
         [string]$ToolDescription = "diagnostic tool",
-        [switch]$AllowBinntFallback
+        [switch]$AllowBinntFallback,
+        # A shipped Win32 tool passes both, and gets a VERSIONINFO
+        # (Add-V9xVersionResource, scripts\common.ps1).
+        [string]$VersionDescription,
+        [string]$BuildId
     )
 
     $toolchain = Get-V9xDiagToolchain -Target $Target -LibraryNames $LibraryNames `
@@ -112,6 +116,11 @@ function Invoke-V9xDiagToolBuild {
     & $toolchain.Linker "@$LinkFile"
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom failed to link the $ToolDescription."
+    }
+    if ($VersionDescription) {
+        Add-V9xVersionResource -RepoRoot (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) `
+            -WatcomRoot $toolchain.WatcomRoot -Image $Executable -BuildId $BuildId `
+            -FileDescription $VersionDescription -Kind app
     }
     $dumpText = (@(& $toolchain.Dumper -e $Executable 2>&1)) -join "`n"
     if ($LASTEXITCODE -ne 0) {

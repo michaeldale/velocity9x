@@ -238,6 +238,10 @@ Set-Content -LiteralPath $linkFile -Value $linkLines -Encoding Ascii
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to link the Win16 DDI skeleton."
 }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot `
+    -Image $driverPath -BuildId $BuildId `
+    -FileDescription "Velocity9x display driver ($($familyManifest.DisplayName))" `
+    -Kind display -Win16
 
 # All post-link auditing lives in audit-family-binary.ps1: the chip-agnostic
 # checks stay script logic there, and the chip signature checks are driven by

@@ -29,7 +29,8 @@ $result = Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir `
         "-i=$(Join-Path $repoRoot 'include')",
         "-dV9X_BUILD_ID=`"$BuildId`"", "-fo=$object", $source) `
     -LinkOptions @("option start='_V9xTraceDumpEntry@0'", "option stack=65536") `
-    -ToolDescription "trace dump tool"
+    -ToolDescription "trace dump tool" `
+    -VersionDescription "Velocity9x HAL trace snapshot" -BuildId $BuildId
 
 # The per-tool contract: a Windows 98 guest tool may import only these three
 # DLLs and none of the Watcom runtime entry points.

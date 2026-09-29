@@ -211,3 +211,12 @@ all 60 points to the earlier run, so the shift moved the level choice
 and nothing sampled; every wrap cell of the texture matrix passes with
 the centred, now partly negative, coordinates. Clamped textures cannot
 be shifted and keep the error.
+
+Run 7 (boot 48, HAL built from the tree of `54a78b7` before it was
+committed, so its build id is the earlier one): 363 3DMarks, 6576 CPU
+(`RUN7-SCORE-363.png`, recorded and not compared). No refusals from
+3DMark, 1,950 triangles skipped as unrenderable, zero timeouts and
+resets (`RUN7-V9XSNA-*.INI`). The bilinear mipmapped tunnel
+(`RUN7-TUNNEL-CENTRED.png`) shows a checkerboard on every wall to the
+vanishing point; in runs 2 and 3 some walls were radial streaks. It is
+still a GDI capture; the panel was not looked at.

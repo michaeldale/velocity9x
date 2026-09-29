@@ -37,6 +37,13 @@ marked below.
   zero is skipped alone, not its batch
   ([record](docs/probe/ati-rage-mobility-m-3dmark99-2026-09-29/README.md)).
 
+### Packaging
+
+- **Version resources:** every shipped DLL, EXE and display driver
+  carries a VERSIONINFO (Explorer's Properties > Version), its numbers from
+  `build.h` and the build id in FileVersion. The two VxDs do not yet: the
+  DDK's ADRC2VXD is a 16-bit tool.
+
 ### Survey and BIOS
 
 - Every INT 10h call goes through one routine; VBE 4F11h had been writing

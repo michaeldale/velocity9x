@@ -64,6 +64,9 @@ try {
 finally {
     Pop-Location
 }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
+    -BuildId $BuildId -FileDescription "Velocity9x Win16 display driver loader" `
+    -Kind app -Win16
 
 $bytes = [System.IO.File]::ReadAllBytes($executable)
 $newHeaderOffset = if ($bytes.Length -ge 64) {

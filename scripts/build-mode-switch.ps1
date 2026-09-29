@@ -29,7 +29,8 @@ $result = Invoke-V9xDiagToolBuild -Target Win32 -OutputDir $outputDir `
         "-i=$(Join-Path $repoRoot 'include')",
         "-dV9X_BUILD_ID=`"$BuildId`"", "-fo=$object", $source) `
     -LinkOptions @("option start='_V9xModeSwitchEntry@0'", "option stack=65536") `
-    -ToolDescription "mode-switch exerciser"
+    -ToolDescription "mode-switch exerciser" `
+    -VersionDescription "Velocity9x mode-switch test" -BuildId $BuildId
 
 # The per-tool contract: a Windows 98 guest tool may import only these three
 # DLLs and none of the Watcom runtime entry points.

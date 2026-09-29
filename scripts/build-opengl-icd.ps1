@@ -76,6 +76,9 @@ $lines += @(
 Set-Content -LiteralPath $linkFile -Value $lines -Encoding Ascii
 & $linker "@$linkFile"
 if ($LASTEXITCODE -ne 0) { throw 'OpenGL ICD link failed.' }
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $dll `
+    -BuildId $BuildId -FileDescription 'Velocity9x OpenGL 1.1 installable client driver' `
+    -Kind dll
 
 $dump = (@(& $dumper -e $dll 2>&1)) -join "`n"
 if ($LASTEXITCODE -ne 0) { throw 'OpenGL ICD import audit failed.' }

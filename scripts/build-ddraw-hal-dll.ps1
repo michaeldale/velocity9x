@@ -183,6 +183,10 @@ Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to link the DirectDraw HAL DLL."
 }
+# Before the section pass below, which then marks .rsrc shared with the rest.
+Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $dll `
+    -BuildId $BuildId -FileDescription 'Velocity9x DirectDraw and Direct3D HAL' `
+    -Kind dll
 
 $bytes = [System.IO.File]::ReadAllBytes($dll)
 if ($bytes.Length -lt 0x100 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
