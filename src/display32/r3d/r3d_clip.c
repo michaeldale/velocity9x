@@ -280,6 +280,38 @@ int v9x_r3d_triangle_on_target(const V9X_R3D_VERTEX *triangle,
  * is why the clip_in_core test is inside the loop rather than a shortcut
  * around it.
  */
+static int v9x_r3d_list_batch(const V9X_R3D_LIST *list,
+                              const V9X_R3D_VERTEX *vertices,
+                              v9x_u32 triangle_count)
+{
+    if (list->stats != 0) {
+        ++list->stats->sink_batches;
+    }
+    return list->batch(list->user, vertices, triangle_count);
+}
+
+static void v9x_r3d_list_copy_triangle(V9X_R3D_VERTEX *destination,
+                                       const V9X_R3D_VERTEX *source)
+{
+    destination[0] = source[0];
+    destination[1] = source[1];
+    destination[2] = source[2];
+}
+
+static void v9x_r3d_list_append(const V9X_R3D_LIST *list,
+                                const V9X_R3D_VERTEX *triangle,
+                                v9x_u32 *staged, int *ok)
+{
+    if (*staged == list->staging_triangles) {
+        if (!v9x_r3d_list_batch(list, list->staging, *staged)) {
+            *ok = 0;
+        }
+        *staged = 0ul;
+    }
+    v9x_r3d_list_copy_triangle(&list->staging[*staged * 3ul], triangle);
+    ++*staged;
+}
+
 int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
                       const V9X_R3D_VERTEX *vertices,
                       v9x_u32 triangle_count)
@@ -287,8 +319,17 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
     V9X_R3D_VERTEX clipped[V9X_R3D_CLIP_MAX_VERTICES];
     V9X_R3D_VERTEX fan_list[V9X_R3D_MAX_FAN_TRIANGLES * 3u];
     v9x_u32 run_start = 0ul;
+    v9x_u32 staged = 0ul;
     v9x_u32 index;
+    int staging_used = 0;
     int ok = 1;
+
+    if (list->stats != 0) {
+        list->stats->triangles_in = triangle_count;
+        list->stats->triangles_culled = 0ul;
+        list->stats->triangles_clipped = 0ul;
+        list->stats->sink_batches = 0ul;
+    }
 
     for (index = 0ul; index < triangle_count; ++index) {
         const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
@@ -300,11 +341,29 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
         if (!culled && (list->clip_in_core == 0ul ||
                         v9x_r3d_triangle_on_target(triangle, list->width,
                                                    list->height))) {
+            if (staging_used) {
+                v9x_r3d_list_append(list, triangle, &staged, &ok);
+            }
             continue;
         }
-        if (index > run_start &&
-            !list->batch(list->user, &vertices[run_start * 3ul],
-                         index - run_start)) {
+        if (culled && list->stats != 0) {
+            ++list->stats->triangles_culled;
+        } else if (!culled && list->stats != 0) {
+            ++list->stats->triangles_clipped;
+        }
+        if (list->staging != 0 && list->staging_triangles != 0ul) {
+            if (!staging_used) {
+                v9x_u32 pending;
+
+                staging_used = 1;
+                for (pending = run_start; pending < index; ++pending) {
+                    v9x_r3d_list_append(list, &vertices[pending * 3ul],
+                                        &staged, &ok);
+                }
+            }
+        } else if (index > run_start &&
+                   !v9x_r3d_list_batch(list, &vertices[run_start * 3ul],
+                                       index - run_start)) {
             ok = 0;
         }
         run_start = index + 1ul;
@@ -325,14 +384,26 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
             fan_list[fan_triangles * 3ul + 2ul] = clipped[fan + 1];
             ++fan_triangles;
         }
-        if (fan_triangles != 0ul &&
-            !list->batch(list->user, fan_list, fan_triangles)) {
+        if (staging_used) {
+            v9x_u32 fan_index;
+
+            for (fan_index = 0ul; fan_index < fan_triangles; ++fan_index) {
+                v9x_r3d_list_append(list, &fan_list[fan_index * 3ul],
+                                    &staged, &ok);
+            }
+        } else if (fan_triangles != 0ul &&
+                   !v9x_r3d_list_batch(list, fan_list, fan_triangles)) {
             ok = 0;
         }
     }
-    if (run_start < triangle_count &&
-        !list->batch(list->user, &vertices[run_start * 3ul],
-                     triangle_count - run_start)) {
+    if (staging_used) {
+        if (staged != 0ul &&
+            !v9x_r3d_list_batch(list, list->staging, staged)) {
+            ok = 0;
+        }
+    } else if (run_start < triangle_count &&
+               !v9x_r3d_list_batch(list, &vertices[run_start * 3ul],
+                                   triangle_count - run_start)) {
         ok = 0;
     }
     return ok;

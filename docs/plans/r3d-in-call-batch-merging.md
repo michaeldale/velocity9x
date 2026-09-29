@@ -1,6 +1,31 @@
 # Merge surviving triangles within one draw call
 
-Date: 2026-09-30. Status: open; nothing coded.
+Date: 2026-09-30. Status: phases 1-2 implemented and repository gates pass;
+physical phases pending because both designated machines were offline.
+
+Implementation review on 2026-09-30 corrected two assumptions in the draft:
+the shared block is now capped at 8,192 bytes, not 4,096, and the 6,144-byte
+staging frame is nested below an existing 6,144-byte indexed/fan gather frame.
+Open Watcom emits `sub esp,1848h` for the list wrapper and `188ch`/`1894h` for
+the large callers, so peak nested use is about 12.5 KiB. The storage remains
+per-call and bounded; physical testing is still the gate for accepting it.
+
+Implemented in the working tree:
+
+- diagnostics ABI `2026093001` appends all five list counters and the trace
+  snapshot writer publishes them;
+- the neutral builder merges only after its first break, retains the no-copy
+  window for an unbroken list, and preserves zero-capacity behaviour;
+- all DX5 list callers use a 64-triangle caller-owned staging array; the
+  render interface remains at zero capacity;
+- the six required host behaviours are covered, including continued drawing
+  after a refused merged batch;
+- `check-tree.ps1`, `build-host.ps1`, and the complete `run-checks.ps1` pass.
+
+The physical attempt on 2026-09-30 could not start: MICHAEL-NETBOOK at
+`10.0.1.248:9869` and the Gateway at `10.0.1.22:9869` both timed out. No
+hardware result or performance claim is inferred from that absence. The
+Half-Life demo also remains to be recorded by an operator in the game.
 
 ## Goal
 
@@ -107,7 +132,7 @@ survivors. Phase 4 decides whether that is worth doing.
 ### Phase 0: measure the split and record the demo
 
 - Add counters to `d3d_diagnostics`: list calls, triangles in, culled,
-  clipped, and sink batches. The shared block is capped at 4096 bytes, so
+  clipped, and sink batches. The shared block is capped at 8192 bytes, so
   check room first and bump the shared ABI. `check-tree.ps1` and the snapshot
   writer change with them.
 - On the netbook, record a Half-Life demo (`record v9xbench`, a fixed route,

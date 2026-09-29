@@ -597,6 +597,8 @@ DWORD __stdcall V9xD3dRenderPrimitive(
  */
 typedef char v9x_d3d_assert_r3d_vertex[
     sizeof(V9X_R3D_VERTEX) == sizeof(V9X_D3DTLVERTEX) ? 1 : -1];
+typedef char v9x_d3d_assert_r3d_list_staging[
+    V9X_D3D_INDEXED_BATCH * 3u * sizeof(V9X_R3D_VERTEX) == 6144u ? 1 : -1];
 typedef char v9x_d3d_assert_r3d_vertex_offsets[
     (offsetof(V9X_R3D_VERTEX, sx) == offsetof(V9X_D3DTLVERTEX, sx) &&
      offsetof(V9X_R3D_VERTEX, rhw) == offsetof(V9X_D3DTLVERTEX, rhw) &&
@@ -685,6 +687,9 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
 {
     V9X_D3D_LIST_SINK sink;
     V9X_R3D_LIST list;
+    V9X_R3D_LIST_STATS stats;
+    V9X_R3D_VERTEX staging[V9X_D3D_INDEXED_BATCH * 3u];
+    int ok;
 
     sink.ops = ops;
     sink.context = context;
@@ -695,8 +700,23 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     list.batch = v9x_d3d_list_batch;
     list.culled = v9x_d3d_list_culled;
     list.user = &sink;
-    return v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,
-                             triangle_count);
+    list.staging = staging;
+    list.staging_triangles = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+    list.stats = &stats;
+    ok = v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,
+                           triangle_count);
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.r3d_list_calls;
+        v9x_hal->d3d_diagnostics.r3d_list_triangles_in +=
+            stats.triangles_in;
+        v9x_hal->d3d_diagnostics.r3d_list_culled +=
+            stats.triangles_culled;
+        v9x_hal->d3d_diagnostics.r3d_list_clipped +=
+            stats.triangles_clipped;
+        v9x_hal->d3d_diagnostics.r3d_list_sink_batches +=
+            stats.sink_batches;
+    }
+    return ok;
 }
 
 /*
@@ -3167,6 +3187,9 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
     list.batch = v9x_r3d_sink_batch;
     list.culled = v9x_r3d_sink_culled;
     list.user = &sink;
+    list.staging = 0;
+    list.staging_triangles = 0ul;
+    list.stats = 0;
     if (v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)request->vertices,
                           request->triangle_count)) {
         outcome->submitted = sink.submitted;

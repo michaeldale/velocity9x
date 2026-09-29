@@ -250,6 +250,13 @@ typedef int (*V9X_R3D_BATCH_FN)(void *user,
 typedef int (*V9X_R3D_CULLED_FN)(void *user,
                                  const V9X_R3D_VERTEX *triangle);
 
+typedef struct v9x_r3d_list_stats {
+    v9x_u32 triangles_in;
+    v9x_u32 triangles_culled;
+    v9x_u32 triangles_clipped;
+    v9x_u32 sink_batches;
+} V9X_R3D_LIST_STATS;
+
 typedef struct v9x_r3d_list {
     float guard_limit;
     float width;
@@ -260,15 +267,22 @@ typedef struct v9x_r3d_list {
     V9X_R3D_BATCH_FN batch;
     V9X_R3D_CULLED_FN culled;
     void *user;
+    /* Optional caller-owned storage. A zero capacity preserves the split-run
+     * behaviour for callers that have not opted into in-call merging. */
+    V9X_R3D_VERTEX *staging;
+    v9x_u32 staging_triangles;
+    /* Optional per-call accounting, overwritten by v9x_r3d_draw_list. */
+    V9X_R3D_LIST_STATS *stats;
 } V9X_R3D_LIST;
 
 /*
- * A triangle list, drawn through the sink in runs: triangles already on the
- * target go through as windows on the caller's array, a triangle that
- * crosses an edge is cut and its fan sent on its own, a culled triangle ends
- * the run and is not sent. Returns non-zero when every triangle was drawn;
- * a refused one (past the guard band, or declined by the sink) makes it zero
- * and the rest of the list is still drawn.
+ * A triangle list, drawn through the sink in order. With caller-owned staging,
+ * the first cull or clip moves the pending window into that storage and later
+ * survivors and clipped fans share capacity-sized batches. An unbroken list
+ * remains one window on the caller's array. With zero staging capacity, clips
+ * and culls retain the historical split-run behaviour. Returns non-zero when
+ * every triangle was drawn; a refused one (past the guard band, or declined
+ * by the sink) makes it zero and the rest of the list is still drawn.
  */
 int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
                       const V9X_R3D_VERTEX *vertices,

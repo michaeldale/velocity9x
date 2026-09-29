@@ -1015,6 +1015,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("M64BlendDraws", snapshot.d3d.m64_blend_draws);
     v9x_write_uint("M64FogDraws", snapshot.d3d.m64_fog_draws);
     v9x_write_uint("M64Unrenderable", snapshot.d3d.m64_unrenderable);
+    v9x_write_uint("R3dListCalls", snapshot.d3d.r3d_list_calls);
+    v9x_write_uint("R3dListTrianglesIn",
+                   snapshot.d3d.r3d_list_triangles_in);
+    v9x_write_uint("R3dListCulled", snapshot.d3d.r3d_list_culled);
+    v9x_write_uint("R3dListClipped", snapshot.d3d.r3d_list_clipped);
+    v9x_write_uint("R3dListSinkBatches",
+                   snapshot.d3d.r3d_list_sink_batches);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

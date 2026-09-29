@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026093001: V9X_D3D_DIAGNOSTICS gains the in-call R3D list accounting.
+ * An append. */
 /* 2026092902: V9X_D3D_DIAGNOSTICS gains m64_unrenderable. An append. */
 /* 2026092901: V9X_D3D_DIAGNOSTICS gains the Mach64 draw and refusal
  * counters. An append.
@@ -1601,7 +1603,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092902ul
+#define V9X_DD_SHARED_ABI   2026093001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3043,6 +3045,14 @@ typedef struct v9x_d3d_diagnostics {
     DWORD m64_blend_draws;
     DWORD m64_fog_draws;
     DWORD m64_unrenderable;
+    /* Triangle-list builder accounting (2026-09-30). These count one
+     * Direct3D list invocation, its source triangles, the two reasons a
+     * source triangle broke the no-copy window, and actual sink calls. */
+    DWORD r3d_list_calls;
+    DWORD r3d_list_triangles_in;
+    DWORD r3d_list_culled;
+    DWORD r3d_list_clipped;
+    DWORD r3d_list_sink_batches;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

@@ -242,17 +242,27 @@ typedef struct clip_sink {
     unsigned int refuse_index;   /* batch number to decline, or 999 */
     unsigned long cull_mask;     /* bit n: triangle n is "culled" */
     const V9X_R3D_VERTEX *base;
+    V9X_R3D_VERTEX captured[48];
+    unsigned long captured_triangles;
 } CLIP_SINK;
 
 static int clip_batch(void *user, const V9X_R3D_VERTEX *vertices,
                       v9x_u32 triangle_count)
 {
     CLIP_SINK *sink = (CLIP_SINK *)user;
+    v9x_u32 vertex;
 
     if (sink->count < 16u) {
         sink->batches[sink->count].vertices = vertices;
         sink->batches[sink->count].triangles = triangle_count;
     }
+    for (vertex = 0ul; vertex < triangle_count * 3ul &&
+                           sink->captured_triangles * 3ul + vertex < 48ul;
+         ++vertex) {
+        sink->captured[sink->captured_triangles * 3ul + vertex] =
+            vertices[vertex];
+    }
+    sink->captured_triangles += triangle_count;
     ++sink->count;
     return sink->count - 1u != sink->refuse_index;
 }
@@ -278,6 +288,7 @@ static void clip_list_setup(V9X_R3D_LIST *list, CLIP_SINK *sink,
     sink->refuse_index = 999u;
     sink->cull_mask = 0ul;
     sink->base = base;
+    sink->captured_triangles = 0ul;
     list->guard_limit = CLIP_GUARD;
     list->width = CLIP_WIDTH;
     list->height = CLIP_HEIGHT;
@@ -285,6 +296,25 @@ static void clip_list_setup(V9X_R3D_LIST *list, CLIP_SINK *sink,
     list->batch = clip_batch;
     list->culled = clip_culled;
     list->user = sink;
+    list->staging = 0;
+    list->staging_triangles = 0ul;
+    list->stats = 0;
+}
+
+static void clip_fill_inside(V9X_R3D_VERTEX *v, unsigned int triangles)
+{
+    unsigned int triangle;
+
+    for (triangle = 0u; triangle < triangles; ++triangle) {
+        float x = 10.0f + (float)triangle * 20.0f;
+        unsigned long color = 0xff000000ul | (unsigned long)triangle;
+
+        v[triangle * 3u] = clip_vertex(x, 10.0f, 1.0f, color, 0.0f, 0.0f);
+        v[triangle * 3u + 1u] =
+            clip_vertex(x + 10.0f, 10.0f, 1.0f, color, 1.0f, 0.0f);
+        v[triangle * 3u + 2u] =
+            clip_vertex(x, 20.0f, 1.0f, color, 0.0f, 1.0f);
+    }
 }
 
 /* Four triangles: inside, crossing the right edge, inside, inside. */
@@ -377,6 +407,100 @@ static void test_list_refusals(void)
     CLCHECK(sink.count == 0u);
 }
 
+static void test_list_merge_alternating_culls(void)
+{
+    V9X_R3D_VERTEX v[18];
+    V9X_R3D_VERTEX staging[18];
+    V9X_R3D_LIST list;
+    V9X_R3D_LIST_STATS stats;
+    CLIP_SINK sink;
+
+    clip_fill_inside(v, 6u);
+    clip_list_setup(&list, &sink, v, 0ul);
+    list.staging = staging;
+    list.staging_triangles = 6ul;
+    list.stats = &stats;
+    sink.cull_mask = (1ul << 0) | (1ul << 2) | (1ul << 4);
+    CLCHECK(v9x_r3d_draw_list(&list, v, 6ul) == 1);
+    CLCHECK(sink.count == 1u && sink.batches[0].triangles == 3ul);
+    CLCHECK(sink.captured[0].color == 0xff000001ul);
+    CLCHECK(sink.captured[3].color == 0xff000003ul);
+    CLCHECK(sink.captured[6].color == 0xff000005ul);
+    CLCHECK(stats.triangles_in == 6ul &&
+            stats.triangles_culled == 3ul &&
+            stats.triangles_clipped == 0ul && stats.sink_batches == 1ul);
+}
+
+static void test_list_merge_clipped_middle_order(void)
+{
+    V9X_R3D_VERTEX v[9];
+    V9X_R3D_VERTEX staging[12];
+    V9X_R3D_LIST list;
+    V9X_R3D_LIST_STATS stats;
+    CLIP_SINK sink;
+
+    clip_fill_inside(v, 3u);
+    v[3] = clip_vertex(600.0f, 100.0f, 1.0f, 0xff000011ul, 0.0f, 0.0f);
+    v[4] = clip_vertex(680.0f, 100.0f, 1.0f, 0xff000011ul, 1.0f, 0.0f);
+    v[5] = clip_vertex(600.0f, 180.0f, 1.0f, 0xff000011ul, 0.0f, 1.0f);
+    clip_list_setup(&list, &sink, v, 1ul);
+    list.staging = staging;
+    list.staging_triangles = 4ul;
+    list.stats = &stats;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 3ul) == 1);
+    CLCHECK(sink.count == 1u && sink.batches[0].triangles == 4ul);
+    CLCHECK(sink.captured[0].color == 0xff000000ul);
+    CLCHECK(sink.captured[3].color == 0xff000011ul);
+    CLCHECK(sink.captured[6].color == 0xff000011ul);
+    CLCHECK(sink.captured[9].color == 0xff000002ul);
+    CLCHECK(stats.triangles_clipped == 1ul && stats.sink_batches == 1ul);
+}
+
+static void test_list_merge_capacity_and_refusal(void)
+{
+    V9X_R3D_VERTEX v[18];
+    V9X_R3D_VERTEX staging[6];
+    V9X_R3D_LIST list;
+    CLIP_SINK sink;
+
+    clip_fill_inside(v, 6u);
+    clip_list_setup(&list, &sink, v, 0ul);
+    list.staging = staging;
+    list.staging_triangles = 2ul;
+    sink.cull_mask = 1ul;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 6ul) == 1);
+    CLCHECK(sink.count == 3u);
+    CLCHECK(sink.batches[0].triangles == 2ul &&
+            sink.batches[1].triangles == 2ul &&
+            sink.batches[2].triangles == 1ul);
+    CLCHECK(sink.captured[0].color == 0xff000001ul &&
+            sink.captured[12].color == 0xff000005ul);
+
+    clip_list_setup(&list, &sink, v, 0ul);
+    list.staging = staging;
+    list.staging_triangles = 2ul;
+    sink.cull_mask = 1ul;
+    sink.refuse_index = 1u;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 6ul) == 0);
+    CLCHECK(sink.count == 3u && sink.captured_triangles == 5ul);
+}
+
+static void test_list_merge_unbroken_is_window(void)
+{
+    V9X_R3D_VERTEX v[9];
+    V9X_R3D_VERTEX staging[9];
+    V9X_R3D_LIST list;
+    CLIP_SINK sink;
+
+    clip_fill_inside(v, 3u);
+    clip_list_setup(&list, &sink, v, 0ul);
+    list.staging = staging;
+    list.staging_triangles = 3ul;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 3ul) == 1);
+    CLCHECK(sink.count == 1u && sink.batches[0].vertices == v &&
+            sink.batches[0].triangles == 3ul);
+}
+
 unsigned int v9x_run_r3d_clip_tests(void)
 {
     clip_failures = 0u;
@@ -391,6 +515,10 @@ unsigned int v9x_run_r3d_clip_tests(void)
     test_list_runs_and_fans();
     test_list_culled_ends_run_and_is_not_sent();
     test_list_refusals();
+    test_list_merge_alternating_culls();
+    test_list_merge_clipped_middle_order();
+    test_list_merge_capacity_and_refusal();
+    test_list_merge_unbroken_is_window();
     if (clip_failures == 0u) {
         puts("PASS: neutral core clipper and list builder");
     }
