@@ -569,6 +569,10 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             ++v9x_hal->d3d_diagnostics.m64_degenerate; /* zero area */
             continue;
         }
+        if (status == V9X_STATUS_INVALID_STATE) {
+            ++v9x_hal->d3d_diagnostics.m64_unrenderable; /* NaN, W <= 0 */
+            continue;
+        }
         if (status != V9X_STATUS_OK) {
             return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
         }

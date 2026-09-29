@@ -1010,6 +1010,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("M64DepthDraws", snapshot.d3d.m64_depth_draws);
     v9x_write_uint("M64BlendDraws", snapshot.d3d.m64_blend_draws);
     v9x_write_uint("M64FogDraws", snapshot.d3d.m64_fog_draws);
+    v9x_write_uint("M64Unrenderable", snapshot.d3d.m64_unrenderable);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

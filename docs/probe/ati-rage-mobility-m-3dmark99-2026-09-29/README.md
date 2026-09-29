@@ -120,3 +120,40 @@ tests and no lock.
 Which of the three changes removed most of the refusals was not isolated;
 fog over a texture (policy reason 16, the last refusal in run 1) is the
 likely one.
+
+## Runs 5 and 6: the last refusals were whole batches lost to one triangle
+
+Run 5 (boot 44, 366 3DMarks, 6582 CPU, `RUN5-SCORE-366.png`) carried a
+temporary, uncommitted HAL log of the first 96 refusals (`RUN5-M64REF.TXT`).
+Each line is `R` and hex words: the refusal (`62` a setup refusal, `3`
+policy), the policy reason, then the request's texture, filter, blend, fog,
+specular, alpha-test and target fields, then each corner's sx, sy, sz, rhw,
+tu and tv as IEEE float bits.
+
+- The first 38 are the probe's deliberate refusals: 36 forced alpha, one
+  colour key, and one policy reason 7 whose texture did not resolve
+  (format all-ones, 0x0). That last one is the "texture format" of run 4's
+  counters; it is the probe's, not 3DMark's.
+- The other 58 were 3DMark's, and every one was the setup builder refusing
+  a vertex, on a mipmapped 128x128 LINEARMIPLINEAR texture. Two shapes:
+  - zero-area triangles whose unused corners are all zero, rhw 0
+    included; the rhw check ran before the area test;
+  - a real triangle with NaN tu and tv on one corner.
+
+  A refused batch fails the whole render primitive in the core
+  (`d3d_core.c`, `PRIMREJECT`), so one such triangle cost every triangle
+  after it.
+
+Where the NaN coordinates and the zero corners come from, 3DMark or the
+core's primitive expansion, was not established.
+
+The fix: the setup builder tests area first, and returns
+`V9X_STATUS_INVALID_STATE` for a textured triangle whose W, S or T is not
+finite or whose W is not positive. The HAL skips that triangle alone and
+counts it in `M64Unrenderable` (ABI `2026092902`).
+
+Run 6 (boot 45, 359 3DMarks, 6575 CPU, `RUN6-SCORE-359.png`, counters
+`RUN6-V9XSNA-*.INI`): 3DMark caused no refusals; the 38 are the probe's.
+1,944 triangles were skipped as unrenderable, and 72,782 as zero-area
+against 65,161 in run 5. Zero timeouts and resets. The probe's failing keys
+are a subset of the earlier committed log's.

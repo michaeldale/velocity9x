@@ -1139,6 +1139,11 @@ evidence in `../probe/ati-rage-mobility-m-3dmark99-2026-09-29/`):
   refused draws of 161,189 submitted, against 11,479 in run 1. The last
   refusals were vertex (engine reason 6) and texture format (policy
   reason 7). Zero timeouts, resets or mip chain gaps.
+- **The last refusals** were single triangles failing a whole batch:
+  zero-area triangles with rhw 0 corners, and NaN tu/tv on a real one.
+  Setup now tests area first and skips an unrenderable textured
+  triangle alone (`M64Unrenderable`). Run 6: no 3DMark refusals, 1,944
+  triangles skipped. The texture-format refusal was the probe's own.
 
 Status 2026-09-29: bound on the Gateway. Engine fills, the first
 hardware triangles, and depth fill and Z compare all pass. On the way,

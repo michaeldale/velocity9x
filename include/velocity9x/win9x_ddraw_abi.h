@@ -1517,6 +1517,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026092902: V9X_D3D_DIAGNOSTICS gains m64_unrenderable. An append. */
 /* 2026092901: V9X_D3D_DIAGNOSTICS gains the Mach64 draw and refusal
  * counters. An append.
  */
@@ -1600,7 +1601,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026092901ul
+#define V9X_DD_SHARED_ABI   2026092902ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3042,7 +3043,8 @@ typedef struct v9x_d3d_diagnostics {
      * advertise can be shown to have run on the engine. m64_refuse_last
      * is a V9X_D3D_MACH64_REFUSE_* reason; m64_policy_last is the
      * V9X_M64_REFUSE_* reason of the last policy refusal, which names
-     * the check.
+     * the check. m64_unrenderable counts textured triangles skipped
+     * alone for a non-finite W, S or T, or a W not above zero.
      */
     DWORD m64_draws;
     DWORD m64_triangles;
@@ -3054,6 +3056,7 @@ typedef struct v9x_d3d_diagnostics {
     DWORD m64_depth_draws;
     DWORD m64_blend_draws;
     DWORD m64_fog_draws;
+    DWORD m64_unrenderable;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

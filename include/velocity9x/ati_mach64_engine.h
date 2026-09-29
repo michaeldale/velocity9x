@@ -372,7 +372,9 @@ v9x_status v9x_m64_build_draw_state(
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
 /* V9X_STATUS_UNSUPPORTED with nothing written is a zero-area triangle,
- * which draws no pixel; every other failure is a caller error. `fog` is a
+ * which draws no pixel; V9X_STATUS_INVALID_STATE is a textured triangle
+ * whose W, S or T is non-finite or W not positive, which cannot be drawn.
+ * Either is skipped alone; every other failure is a caller error. `fog` is a
  * set of V9X_M64_SETUP_* flags: either sends the three specular words
  * first, FOG with the vertex specular alpha and SPECULAR with its RGB. */
 #define V9X_M64_SETUP_FOG      1ul

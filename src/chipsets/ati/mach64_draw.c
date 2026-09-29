@@ -242,14 +242,12 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
             v->z16 > 0xfffful) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
-        if (textured != 0ul &&
-            (!v9x_m64_draw_finite(v->rhw) || !(v->rhw > 0.0f) ||
-             !v9x_m64_draw_finite(v->s) || !v9x_m64_draw_finite(v->t))) {
-            return V9X_STATUS_INVALID_ARGUMENT;
-        }
     }
 
-    /* Bounded by the coordinate limit: |cross| < 2 * 16384^2. */
+    /* Bounded by the coordinate limit: |cross| < 2 * 16384^2. Area comes
+     * before the texture values: 3DMark 99 sends zero-area triangles
+     * whose unused corners carry rhw 0 (2026-09-29), and those draw
+     * nothing whatever their coordinates. */
     dx1 = (v9x_s32)vertex[1].x_fixed - (v9x_s32)vertex[0].x_fixed;
     dy1 = (v9x_s32)vertex[1].y_fixed - (v9x_s32)vertex[0].y_fixed;
     dx2 = (v9x_s32)vertex[2].x_fixed - (v9x_s32)vertex[0].x_fixed;
@@ -257,6 +255,20 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
     cross = dx1 * dy2 - dy1 * dx2;
     if (cross == 0l) {
         return V9X_STATUS_UNSUPPORTED;
+    }
+
+    /* A non-finite or non-positive W, S or T names no texel. 3DMark 99
+     * also sends NaN S and T on real triangles. Such a triangle cannot be
+     * drawn, so it gets a status of its own: the caller skips it rather
+     * than refusing the batch, which drops every other triangle too. */
+    if (textured != 0ul) {
+        for (index = 0ul; index < 3ul; ++index) {
+            v = &vertex[index];
+            if (!v9x_m64_draw_finite(v->rhw) || !(v->rhw > 0.0f) ||
+                !v9x_m64_draw_finite(v->s) || !v9x_m64_draw_finite(v->t)) {
+                return V9X_STATUS_INVALID_STATE;
+            }
+        }
     }
 
     /* Item 12's order: the three specular words, then the vertices. Fog

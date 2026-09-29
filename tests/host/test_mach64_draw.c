@@ -20,6 +20,17 @@ static v9x_u32 bits(float value)
     return converted.bits;
 }
 
+/* A quiet NaN built from its bits, as 3DMark 99 sent it on 2026-09-29. */
+static float test_mach64_draw_nan(void)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } converted;
+    converted.bits = 0x7fc00000ul;
+    return converted.value;
+}
+
 /* The Phase 3/4 diagnostic target: 64x28 RGB565 at 0x200100, pitch 128. */
 static void base_state(struct v9x_m64_draw_state *state)
 {
@@ -402,13 +413,28 @@ static void test_setup_refusals(void)
     v[1].z16 = 0x10000ul;
     CHECK(v9x_m64_build_setup(v, 0ul, 0ul, offsets, values, CAP, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
+    /* A texture value the engine cannot take is this triangle's problem,
+     * not the batch's: INVALID_STATE, so the caller can skip it. */
     setup_triangle(v);
     v[2].rhw = 0.0f;
     CHECK(v9x_m64_build_setup(v, 1ul, 0ul, offsets, values, CAP, &written) ==
-          V9X_STATUS_INVALID_ARGUMENT);
+          V9X_STATUS_INVALID_STATE);
+    CHECK(written == 0ul);
     /* rhw is not read for an untextured triangle. */
     CHECK(v9x_m64_build_setup(v, 0ul, 0ul, offsets, values, CAP, &written) ==
           V9X_STATUS_OK);
+    setup_triangle(v);
+    v[1].s = test_mach64_draw_nan();
+    CHECK(v9x_m64_build_setup(v, 1ul, 0ul, offsets, values, CAP, &written) ==
+          V9X_STATUS_INVALID_STATE);
+
+    /* 3DMark's: two corners at the origin with rhw 0. Zero area first. */
+    setup_triangle(v);
+    v[1] = v[0];
+    v[1].rhw = 0.0f;
+    v[1].s = test_mach64_draw_nan();
+    CHECK(v9x_m64_build_setup(v, 1ul, 0ul, offsets, values, CAP, &written) ==
+          V9X_STATUS_UNSUPPORTED);
     CHECK(v9x_m64_build_setup(0, 0ul, 0ul, offsets, values, CAP, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }
