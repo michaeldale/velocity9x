@@ -191,6 +191,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-30 In-call batch merging on the netbook: no regression, and 3DMark 99 never exercises it](2026-09-30-r3d-batch-merge-netbook-boot54.md)
 - [2026-09-30 Half-Life's small batches are small DrawPrimitives records, not culled runs](2026-09-30-halflife-batches-are-small-records-not-culling.md)
 - [2026-09-30 Merging state-free DrawPrimitives records would cut Half-Life's batches by about a quarter](2026-09-30-halflife-record-runs.md)
+- [2026-09-30 Nine in ten of Half-Life's record state changes change nothing](2026-09-30-halflife-redundant-state.md)
 
 ## NVIDIA and other surveyed cards
 

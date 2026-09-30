@@ -42,8 +42,14 @@ find a Half-Life gain in it. The in-call lever that remains is merging
 consecutive state-free records of one `DrawPrimitives` buffer. Boot 57
 counted it (`../decisions/2026-09-30-halflife-record-runs.md`): 269,953
 records would become 196,675 batches, 1.37 records a run, and 72% of runs
-are started by a record carrying state pairs. Whether those pairs are
-redundant is the next count. Phase 3's clip-in-core check is still owed.
+are started by a record carrying state pairs. Boot 58 counted those pairs
+(`../decisions/2026-09-30-halflife-redundant-state.md`): 90% of state-carrying
+records leave the context unchanged, and every record that does change it
+changes the texture handle. Letting unchanged records join a run cuts record
+batches by 76% (4.17 records, 8.07 triangles a batch), 73% of all sink
+batches. That argues for lifting this plan's "no state comparison" exclusion
+for record merging within one `DrawPrimitives` call; it needs its own plan
+revision. Phase 3's clip-in-core check is still owed.
 
 ## Goal
 
