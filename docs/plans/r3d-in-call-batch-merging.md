@@ -28,9 +28,20 @@ resolutions and a Quake 2 timedemo with no regression
 (`../decisions/2026-09-30-r3d-batch-merge-netbook-boot54.md`). 3DMark culls
 and clips nothing in the list builder, so merging never ran there. Quake 2
 goes through the zero-capacity render interface; a control build of
-`010b2d6` on boots 55-56 put both builds at 17.1-17.3 fps. Phase 0's Half-Life
-measurement and Phase 3's clip-in-core check are still owed. The Half-Life
-demo also remains to be recorded by an operator in the game.
+`010b2d6` on boots 55-56 put both builds at 17.1-17.3 fps.
+
+**Phase 0 answered on boot 56: the hypothesis is dead.** At the Half-Life
+`c1a1` spawn point, 0.83% of list triangles were culled and list calls made
+0.995 sink batches each. The small batches are small `DrawPrimitives`
+records, about two triangles each and one list call per record. The Evidence
+section below misread boot 31: 199,457 `DrawPrimitives` calls sat beside the
+indexed calls, so the engine made 2.85 batches a call, not 7.3 an indexed
+call (`../decisions/2026-09-30-halflife-batches-are-small-records-not-culling.md`).
+The built change stays, because it regresses nothing, but Phase 4 will not
+find a Half-Life gain in it. The in-call lever that remains is merging
+consecutive state-free records of one `DrawPrimitives` buffer; measure how
+long those runs are before building it. Phase 3's clip-in-core check is
+still owed.
 
 ## Goal
 
