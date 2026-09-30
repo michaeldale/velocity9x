@@ -28,8 +28,9 @@ if (-not $watcomRoot) {
 $compiler = Join-Path $watcomRoot "binnt64\wcc386.exe"
 $linker = Join-Path $watcomRoot "binnt64\wlink.exe"
 $dumper = Join-Path $watcomRoot "binnt64\wdump.exe"
+$disassembler = Join-Path $watcomRoot "binnt64\wdis.exe"
 $kernel32 = Join-Path $watcomRoot "lib386\nt\kernel32.lib"
-$missingInputs = @(@($compiler, $linker, $dumper, $kernel32) |
+$missingInputs = @(@($compiler, $linker, $dumper, $disassembler, $kernel32) |
     Where-Object { -not (Test-Path -LiteralPath $_) })
 if ($missingInputs.Count -ne 0) {
     throw "Required DirectDraw HAL inputs are missing: $($missingInputs -join ', ')"
@@ -166,6 +167,52 @@ foreach ($relative in $sources) {
         throw "Open Watcom failed to compile $relative."
     }
     $objects += $object
+}
+
+# No HAL function may reserve a large stack frame. The HAL runs on the
+# calling application's thread, and a callback that makes the first touch of
+# a new stack page can kill the process instead of growing the stack:
+# Final Reality died that way on a 6 KB frame that nothing flagged
+# (docs\issues\2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md).
+# Frames are read from each object's prologue, `sub esp,<n>`; large buffers
+# belong in file-scope storage, as d3d_core.c explains beside
+# v9x_d3d_list_staging. An exemption names the function and why no HAL
+# callback reaches it.
+$frameLimit = 2048
+$frameExempt = @{
+    # Phase 5 scene capture: called by the 16-bit driver only
+    # (intel_3d16.c, intel_exec16.c); nothing in src\display32 calls it.
+    "v9x_i9xx_scene_combined_crc_" = 2372
+}
+$frameViolations = @()
+foreach ($object in $objects) {
+    $function = ""
+    foreach ($line in @(& $disassembler $object)) {
+        if ($line -match '^\S+\s+(\w+):$') {
+            $function = $Matches[1]
+            continue
+        }
+        if ($line -notmatch 'sub\s+esp,0x([0-9A-Fa-f]+)') {
+            continue
+        }
+        $frame = [Convert]::ToInt32($Matches[1], 16)
+        if ($frame -le $frameLimit) {
+            continue
+        }
+        if ($frameExempt.ContainsKey($function) -and
+            $frame -le $frameExempt[$function]) {
+            continue
+        }
+        $frameViolations += ("{0} in {1}: {2} bytes" -f `
+            $function, [IO.Path]::GetFileName($object), $frame)
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Open Watcom could not disassemble $object."
+    }
+}
+if ($frameViolations.Count -ne 0) {
+    throw ("DirectDraw HAL stack frames over $frameLimit bytes:`n  " +
+           ($frameViolations -join "`n  "))
 }
 
 $linkLines = @(

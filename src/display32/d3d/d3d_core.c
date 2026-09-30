@@ -79,6 +79,19 @@ static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
  */
 static V9X_R3D_VERTEX v9x_d3d_list_staging[V9X_D3D_INDEXED_BATCH * 3u];
 
+/*
+ * The triangles a draw callback gathers before handing them to
+ * v9x_d3d_draw_list: DrawPrimitives' record run, and DrawOneIndexedPrimitive's
+ * copy out of the vertex pool. Off the stack for the reason above; as stack
+ * arrays they made 6,868- and 6,292-byte frames, touched at the bottom on
+ * entry.
+ *
+ * One buffer for both, because neither body calls the other and the Win16
+ * mutex serializes the callbacks. It must stay distinct from the staging:
+ * v9x_d3d_draw_list reads this as its input while it writes survivors there.
+ */
+static V9X_D3DTLVERTEX v9x_d3d_gather[V9X_D3D_INDEXED_BATCH * 3u];
+
 /* Source colour keys by surface; see ddhal_internal.h. */
 static V9X_D3D_COLOR_KEY v9x_d3d_color_keys[V9X_D3D_COLOR_KEY_COUNT];
 
@@ -2263,7 +2276,6 @@ static DWORD v9x_d3d_draw_primitives_body(
     V9X_D3D_CONTEXT *context;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
     V9X_D3DHAL_DRAWPRIMCOUNTS *counts;
-    V9X_D3DTLVERTEX fan_batch[V9X_D3D_INDEXED_BATCH * 3u];
     BYTE *cursor;
     DWORD record;
     V9X_R3D_RECORDS run;
@@ -2285,7 +2297,7 @@ static DWORD v9x_d3d_draw_primitives_body(
         cursor = (BYTE *)data->lpvData;
         sink.ops = ops;
         sink.context = context;
-        run.vertices = (V9X_R3D_VERTEX *)fan_batch;
+        run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
         run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
         run.pending = 0ul;
         run.record_count = 0ul;
@@ -2529,7 +2541,7 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
     V9X_FPU_AREA fpu;
     V9X_D3D_CONTEXT *context;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
-    V9X_D3DTLVERTEX batch[V9X_D3D_INDEXED_BATCH * 3u];
+    V9X_D3DTLVERTEX *batch = v9x_d3d_gather;
     const V9X_D3DTLVERTEX *pool;
     DWORD triangles = 0ul;
     DWORD index;

@@ -209,9 +209,18 @@ Not done:
   fix holds on the Mach64. Boot 78 left no `V9XTRACE.INI`; its agent log
   ends at a screenshot request 25 s into that run. Whether the screenshot
   caused that lock is not established.
-- **What remains on the stack:** the DrawPrimitives body's 6 KB run buffer
-  (6,868-byte frame) and DrawOneIndexedPrimitive's 6 KB gather (6,292) are
-  still stack frames, the same depth as before `08b4239`, which Final
-  Reality survived on 2026-09-20. An application whose thread calls in with
-  less committed headroom than about 7 KB would hit the same failure.
+- **What remained on the stack (resolved 2026-10-01):** the DrawPrimitives
+  body's 6 KB run buffer (6,868-byte frame) and DrawOneIndexedPrimitive's
+  6 KB gather (6,292) now share one file-scope buffer, `v9x_d3d_gather`;
+  the frames are 724 bytes and under 512. The HAL build now fails on any
+  function frame over 2,048 bytes, read from each object's `sub esp`
+  prologue; on the `22a34b7` source it names exactly those two functions.
+  One exemption: `v9x_i9xx_scene_combined_crc` (2,372), which only the
+  16-bit driver calls. Robots with this HAL, no agent traffic during the
+  Gateway run: netbook boot 78, 705,657 records in 386,715 Gen3 batches,
+  none refused (`netbook-boot78-gather-post-V9XSNA7.INI`); Gateway boot
+  80, 648,905 records in 355,908 Mach64 draws, `M64Refused=0`, no
+  timeouts or resets (`gateway-boot80-gather-post-V9XSNA7.INI`). Both
+  completed and Final Reality exited cleanly. That no application needed
+  this change is untested: it removes a margin, not a measured fault.
 - Final Reality's other tests, and a score, were not run.
