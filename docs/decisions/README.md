@@ -192,6 +192,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-30 Half-Life's small batches are small DrawPrimitives records, not culled runs](2026-09-30-halflife-batches-are-small-records-not-culling.md)
 - [2026-09-30 Merging state-free DrawPrimitives records would cut Half-Life's batches by about a quarter](2026-09-30-halflife-record-runs.md)
 - [2026-09-30 Nine in ten of Half-Life's record state changes change nothing](2026-09-30-halflife-redundant-state.md)
+- [2026-10-01 Final Reality 1.01, full default run, on the netbook and the Gateway: both complete, no engine faults](2026-10-01-final-reality-full-runs-netbook-and-gateway.md)
 
 ## NVIDIA and other surveyed cards
 
