@@ -91,6 +91,7 @@ $sources = @(
     # The neutral render core (Phase 1a of the OpenGL plan): the clipper,
     # list builder and cull decision the D3D core hands its triangles to.
     "src\display32\r3d\r3d_clip.c",
+    "src\display32\r3d\r3d_records.c",
     "src\display32\r3d\r3d_cull.c",
     "src\display32\r3d\r3d_line.c",
     "src\display32\r3d\r3d_clear.c",

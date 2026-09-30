@@ -1,0 +1,24 @@
+Clock calibration from: build\driver-results\dp-record-merge\candidate\post-3dmark640.ini (must be the same machine and clock)
+TSC 1,662,249 cycles/ms (1,662 MHz) over 2,532,466 ms of flips; snapshot interval 303,952 ms
+bucket                calls         ms      us/call   % wall
+D3dCalls          1,332,997    227,638        170.8     74.9
+EngineDraw        5,802,566    203,719         35.1     67.0
+Decode            5,802,561     15,646          2.7      5.1
+RingWrite         5,820,546     29,358          5.0      9.7
+RingWait          5,820,546    125,991         21.6     41.5
+RenderDrain       5,820,546      1,382          0.2      0.5
+Flip                      0          0          0.0      0.0
+Lock                    484          1          1.6      0.0
+BltCopy              11,885      6,780        570.5      2.2
+BltFill               6,100      1,845        302.5      0.6
+CreateSurface            24          1         25.1      0.0
+LockHeld                484         81        166.7      0.0
+
+Head wait per batch, us (batches), rows = triangles, columns = pixels
+tris                 <1K           1K-10K          10K-50K         50K-200K          200K-1M              1M+
+1            9 (442,428)      43 (82,039)      181 (9,249)        751 (408)                -                -
+2-3        8 (4,715,503)     50 (201,408)     245 (62,265)     722 (12,127)    1,729 (6,484)                -
+4-7          13 (50,535)      55 (58,669)     215 (12,907)        776 (392)                -                -
+8-15         14 (24,047)      67 (40,352)     215 (10,970)      734 (1,448)                -                -
+16-31         15 (6,385)      80 (28,790)     277 (12,699)      738 (3,076)                -                -
+32+           18 (3,498)      101 (8,006)      263 (7,584)      844 (1,292)                -                -

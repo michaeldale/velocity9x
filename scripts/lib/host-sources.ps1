@@ -73,6 +73,7 @@ function Get-V9xHostSourceNames {
         # The neutral render core: screen-space clipping, the list builder
         # and the cull decision, shared by the D3D core and the OpenGL ICD.
         'src\display32\r3d\r3d_clip.c',
+        'src\display32\r3d\r3d_records.c',
         'src\display32\r3d\r3d_cull.c',
         'src\display32\r3d\r3d_line.c',
         'src\display32\r3d\r3d_clear.c',
@@ -112,6 +113,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_r3d_line.c',
         'tests\host\test_r3d_clear.c',
         'tests\host\test_r3d_runs.c',
+        'tests\host\test_r3d_records.c',
         'tests\host\test_r3d_validate.c',
         'tests\host\test_gl_state.c',
         'tests\host\test_gl_matrix.c',

@@ -1,6 +1,6 @@
 # Merge DrawPrimitives records that share one state
 
-Date: 2026-09-30. Status: approved; nothing coded. It revises
+Date: 2026-09-30. Status: implemented and retained after physical comparison; qualification limits remain. It revises
 `r3d-in-call-batch-merging.md`, lifting that plan's "no comparing state
 between batches" exclusion for one case only: records inside one
 `DrawPrimitives` call.
@@ -16,8 +16,31 @@ Michael Dale made both on 2026-09-30:
   `src/display32/r3d/r3d_records.c`, with its header**, and is host-tested.
   The external symbols it adds are agreed. See "Where the logic lives".
 
-Implementation is to be done in a separate session. This document is the
-hand-over.
+Implementation completed in the follow-up session on 2026-09-30. The host
+tests first failed to link against the missing module, then passed with the
+implementation. `check-tree.ps1`, `build-host.ps1`, and `run-checks.ps1`
+passed, including all five family packages. The module reuses the fan buffer;
+the core restores the prior context for pending-run flushes on state changes
+and flushes on every record-loop exit. An oversized fan retains the previous
+behaviour of ending its record on a refused chunk; subsequent records still
+draw. Physical probes, benchmarks and fresh-boot timing are now recorded
+below; the decision retains the implementation with explicit validation limits.
+
+Hardware continuation, 2026-09-30: broad candidate probes matched controls
+on the GMA950 netbook and Mach64 Gateway. The netbook completed 3DMark at
+1024x576 and 640x480; the Gateway completed 640x480. Fresh-boot Half-Life
+repeat series on Wi-Fi averaged 99.174 fps on candidate boot 61 and 87.103
+fps on control boot 62. The implementation is retained, with the initial
+Gateway lock unexplained. The subsequent
+[gameplay demo comparison](../decisions/2026-09-30-halflife-gameplay-record-merging.md)
+averages 48.823 fps versus 41.436 fps (17.8% faster), with matching sampled
+geometry but an unresolved reason-6 refusal-count difference. It completes
+the owed comparison without establishing a clean correctness pass. The
+[targeted physical clipped-fan check](../decisions/2026-09-30-mach64-clipped-fan-ordering.md)
+now passes on the Mach64, including redundant state and capacity splits. See the
+[qualified decision](../decisions/2026-09-30-drawprimitives-record-merging-physical.md)
+and [physical evidence](../probe/d3d-record-merge-2026-09-30/README.md).
+Local deployment artifacts are in build/driver-results/dp-record-merge/.
 
 ## Evidence
 
@@ -164,9 +187,12 @@ and on `5da6648` (counters, no merge), each on a fresh boot. Report fps,
 `TimeD3dCalls`, engine-draw, ring-write and head-wait time, and batches per
 frame. Keep the change if it is correct and not slower. Claim a gain only
 outside the spin-to-spin spread (boot 58: 104.0-104.1 fps). A gameplay
-demo remains owed: this install has no `hldemo1.dem`, and recording
-`v9xbench` needs an operator in the game. Each netbook build swap currently
-needs an operator hard reset, because the machine hangs at shutdown.
+demo comparison is now recorded in the
+[gameplay decision](../decisions/2026-09-30-halflife-gameplay-record-merging.md).
+Chained movement scripts recorded `v9xbench` without operator input; both
+swap reboots reconnected within the 180-second allowance. The performance
+comparison is complete, but the reason-6 refusal difference still requires
+isolating the rejected draw before a clean correctness sign-off.
 
 ## Not in scope
 

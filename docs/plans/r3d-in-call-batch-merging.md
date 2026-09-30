@@ -1,7 +1,11 @@
 # Merge surviving triangles within one draw call
 
-Date: 2026-09-30. Status: phases 1-2 implemented and repository gates pass;
-physical phases pending because both designated machines were offline.
+Date: 2026-09-30. Status: implemented; repository and physical correctness
+gates pass. Half-Life's batch-size hypothesis was rejected below.
+
+The later record-merging plan's [gameplay comparison](../decisions/2026-09-30-halflife-gameplay-record-merging.md)
+now records and replays `v9xbench` on both builds. It measures a 17.8% gain
+for record merging, with the vertex-builder refusal difference still open.
 
 Implementation review on 2026-09-30 corrected two assumptions in the draft:
 the shared block is now capped at 8,192 bytes, not 4,096, and the 6,144-byte
@@ -49,7 +53,11 @@ changes the texture handle. Letting unchanged records join a run cuts record
 batches by 76% (4.17 records, 8.07 triangles a batch), 73% of all sink
 batches. That argues for lifting this plan's "no state comparison" exclusion
 for record merging within one `DrawPrimitives` call; it needs its own plan
-revision. Phase 3's clip-in-core check is still owed.
+revision. Phase 3's clip-in-core ordering check now passes on the Gateway:
+the [targeted clipped-fan probe](../decisions/2026-09-30-mach64-clipped-fan-ordering.md)
+clips three input triangles per case, matches all pixels against separate
+original-order calls, and crosses the 64-triangle staging boundary without
+a new refusal, timeout or reset. Reversing the records changes 1657 pixels.
 
 ## Goal
 

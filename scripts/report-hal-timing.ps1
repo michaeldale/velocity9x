@@ -1,4 +1,4 @@
-param([string]$Before, [string]$After)
+param([string]$Before, [string]$After, [string]$CalibrationSnapshot)
 # Per-bucket HAL time between two V9XTRACE snapshots, in milliseconds,
 # using the TSC/tick calibration the HAL records at each flip.
 function Read-Ini([string]$Path) {
@@ -19,14 +19,18 @@ function Pair([hashtable]$h, [string]$lo, [string]$hi) {
 }
 $a = Read-Ini $Before
 $b = Read-Ini $After
-$tscSpan = (Pair $b 'TimeTscLastLo' 'TimeTscLastHi') - (Pair $b 'TimeTscFirstLo' 'TimeTscFirstHi')
-$tickSpan = (Num $b 'TimeTickLast') - (Num $b 'TimeTickFirst')
+$calibration = if ($CalibrationSnapshot) { Read-Ini $CalibrationSnapshot } else { $b }
+$tscSpan = (Pair $calibration 'TimeTscLastLo' 'TimeTscLastHi') - (Pair $calibration 'TimeTscFirstLo' 'TimeTscFirstHi')
+$tickSpan = (Num $calibration 'TimeTickLast') - (Num $calibration 'TimeTickFirst')
 if ($tickSpan -le 0) { throw 'no calibration span' }
 $perMs = $tscSpan / $tickSpan
+if ($perMs -le 0) { throw 'no TSC calibration span' }
 $wallMs = (Num $b 'DumpUptimeMs') - (Num $a 'DumpUptimeMs')
+if ($wallMs -le 0) { throw 'snapshots must be in increasing uptime order on one boot' }
+if ($CalibrationSnapshot) { "Clock calibration from: $CalibrationSnapshot (must be the same machine and clock)" }
 'TSC {0:N0} cycles/ms ({1:N0} MHz) over {2:N0} ms of flips; snapshot interval {3:N0} ms' -f $perMs, ($perMs / 1000), $tickSpan, $wallMs
 '{0,-14} {1,12} {2,10} {3,12} {4,8}' -f 'bucket', 'calls', 'ms', 'us/call', '% wall'
-$names = 'D3dCalls','EngineDraw','Decode','RingWrite','HeadWait','CrumbWait','Flip','Lock','BltCopy','BltFill','CreateSurface','LockHeld'
+$names = 'D3dCalls','EngineDraw','Decode','RingWrite','RingWait','RenderDrain','Flip','Lock','BltCopy','BltFill','CreateSurface','LockHeld'
 foreach ($n in $names) {
     $cyc = (Pair $b "Time${n}CyclesLo" "Time${n}CyclesHi") - (Pair $a "Time${n}CyclesLo" "Time${n}CyclesHi")
     $calls = (Num $b "Time${n}Calls") - (Num $a "Time${n}Calls")

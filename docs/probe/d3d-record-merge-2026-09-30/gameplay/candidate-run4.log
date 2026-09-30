@@ -1,0 +1,40 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+]imedemo v9xbench
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1531 frames 33.209 seconds 46.102 fps
+No demos listed with startdemos
+]echo V9X_CANDIDATE_RUN_1
+V9X_CANDIDATE_RUN_1 
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.370 seconds 48.773 fps
+]echo V9X_CANDIDATE_RUN_2
+V9X_CANDIDATE_RUN_2 
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.351 seconds 48.803 fps
+]echo V9X_CANDIDATE_RUN_3
+V9X_CANDIDATE_RUN_3 
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.353 seconds 48.799 fps
+]echo V9X_CANDIDATE_RUN_4
+]timedemo v9xbench
+V9X_CANDIDATE_RUN_4 
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.277 seconds 48.918 fps

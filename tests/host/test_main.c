@@ -77,6 +77,7 @@ unsigned int v9x_run_r3d_clear_tests(void);
 /* tests\host\test_r3d_runs.c: the batches a merge of consecutive
  * DrawPrimitives records would build. */
 unsigned int v9x_run_r3d_runs_tests(void);
+unsigned int v9x_run_r3d_records_tests(void);
 /* tests\host\test_r3d_validate.c: the render interface's validators. */
 unsigned int v9x_run_r3d_validate_tests(void);
 /* tests\host\test_gl_state.c: the ICD's OpenGL context state. */
@@ -1125,6 +1126,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r3d_line_tests();
     failures += v9x_run_r3d_clear_tests();
     failures += v9x_run_r3d_runs_tests();
+    failures += v9x_run_r3d_records_tests();
     failures += v9x_run_r3d_validate_tests();
     failures += v9x_run_gl_state_tests();
     failures += v9x_run_gl_matrix_tests();

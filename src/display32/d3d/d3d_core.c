@@ -28,6 +28,7 @@
 #include "r3d/r3d.h"
 #include "r3d/r3d_cull.h"
 #include "r3d/r3d_runs.h"
+#include "r3d/r3d_records.h"
 #include "r3d/r3d_validate.h"
 #include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
@@ -2159,6 +2160,21 @@ static DWORD v9x_d3d_draw_one_primitive_body(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/* Count refusal once per submitted record run and keep parsing records. */
+static int v9x_d3d_records_batch(void *user,
+                                 const V9X_R3D_VERTEX *vertices,
+                                 v9x_u32 triangles)
+{
+    V9X_D3D_LIST_SINK *sink = (V9X_D3D_LIST_SINK *)user;
+    int accepted = v9x_d3d_draw_list(sink->ops, sink->context,
+                                    (const V9X_D3DTLVERTEX *)vertices,
+                                    triangles);
+    if (!accepted && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+    }
+    return accepted;
+}
+
 static DWORD v9x_d3d_draw_primitives_body(
     V9X_D3DHAL_DRAWPRIMITIVESDATA *data);
 
@@ -2215,7 +2231,8 @@ static DWORD v9x_d3d_draw_primitives_body(
     V9X_D3DTLVERTEX fan_batch[V9X_D3D_INDEXED_BATCH * 3u];
     BYTE *cursor;
     DWORD record;
-    DWORD fan_triangles;
+    V9X_R3D_RECORDS run;
+    V9X_D3D_LIST_SINK sink;
     v9x_u32 record_run = 0ul;
     v9x_u32 record_run_noop = 0ul;
     v9x_u32 record_triangles;
@@ -2231,6 +2248,13 @@ static DWORD v9x_d3d_draw_primitives_body(
     if (ops != 0 && context != 0 && ops->ready() &&
         data->lpvData != 0) {
         cursor = (BYTE *)data->lpvData;
+        sink.ops = ops;
+        sink.context = context;
+        run.vertices = (V9X_R3D_VERTEX *)fan_batch;
+        run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+        run.pending = 0ul;
+        run.batch = v9x_d3d_records_batch;
+        run.user = &sink;
         ok = 1;
         for (record = 0ul; record < 64ul; ++record) {
             counts = (V9X_D3DHAL_DRAWPRIMCOUNTS *)cursor;
@@ -2294,6 +2318,14 @@ static DWORD v9x_d3d_draw_primitives_body(
                     record_texture_changed =
                         state_before.texture_handle !=
                         context->texture_handle;
+                    if (!record_state_noop && run.pending != 0ul) {
+                        V9X_D3D_CONTEXT state_after = *context;
+                        /* The sink reads the live context. Draw the old run
+                         * before exposing the new record's state to it. */
+                        *context = state_before;
+                        (void)v9x_r3d_records_flush(&run);
+                        *context = state_after;
+                    }
                 }
             }
             cursor += (DWORD)counts->wNumStateChanges * 2ul * sizeof(DWORD);
@@ -2334,12 +2366,10 @@ static DWORD v9x_d3d_draw_primitives_body(
                 break;
             }
             /*
-             * Count what a merge of consecutive state-free records would
-             * build, before any such merge exists: Half-Life's world
-             * arrives here as records of about two triangles, one list call
-             * each, and whether those records come in state-free runs is
-             * the question that decides the next change. Nothing below
-             * changes because of it.
+             * Keep the original state-free and unchanged-context run
+             * predictions for comparison with actual list calls. Half-Life
+             * arrives as records of about two triangles; these counters
+             * measure the opportunity independently of the accumulator.
              */
             record_triangles = counts->wPrimitiveType ==
                                        V9X_D3DPT_TRIANGLEFAN
@@ -2383,65 +2413,21 @@ static DWORD v9x_d3d_draw_primitives_body(
                     ++v9x_hal->d3d_diagnostics.dp_record_runs_noop_joined;
                 }
             }
-            /*
-             * A LIST is already one batch. A FAN is not: its N vertices are
-             * N-2 triangles all sharing vertex 0, so they are gathered the
-             * way the indexed path gathers its pool.
-             *
-             * This type was refused until 2026-09-20, and the ViRGE guest
-             * measured what that meant: 192,259 records turned away, every
-             * one a fan, which is every test Final Reality runs past its
-             * intro. The benchmark stopped aborting once a refused batch
-             * reported DD_OK, and then drew a black screen, because none of
-             * its geometry was a shape this path would take.
-             */
+            /* Accumulate only inside this call and under one context. */
             if (counts->wPrimitiveType == V9X_D3DPT_TRIANGLEFAN) {
-                const V9X_D3DTLVERTEX *fan =
-                    (const V9X_D3DTLVERTEX *)cursor;
-                DWORD apex;
-
-                fan_triangles = 0ul;
-                for (apex = 1ul;
-                     apex + 1ul < (DWORD)counts->wNumVertices; ++apex) {
-                    fan_batch[fan_triangles * 3ul] = fan[0];
-                    fan_batch[fan_triangles * 3ul + 1ul] = fan[apex];
-                    fan_batch[fan_triangles * 3ul + 2ul] = fan[apex + 1ul];
-                    ++fan_triangles;
-                    if (fan_triangles == (DWORD)V9X_D3D_INDEXED_BATCH) {
-                        if (!v9x_d3d_draw_list(ops, context, fan_batch,
-                                               fan_triangles)) {
-                            ok = 0;
-                            break;
-                        }
-                        fan_triangles = 0ul;
-                    }
-                }
-                if (ok && fan_triangles != 0ul &&
-                    !v9x_d3d_draw_list(ops, context, fan_batch,
-                                       fan_triangles)) {
-                    ok = 0;
-                }
-                if (!ok && v9x_hal != 0) {
-                    ++v9x_hal->d3d_diagnostics.batches_engine_refused;
-                    ok = 1;
-                }
-            } else if (!v9x_d3d_draw_list(ops, context,
-                                    (const V9X_D3DTLVERTEX *)cursor,
-                                    (DWORD)counts->wNumVertices / 3ul)) {
-                /* The engine refused this record. Counted and carried on to
-                 * the next one: see batches_engine_refused. Aborting the
-                 * rest of a buffer over one refused record is the mistake
-                 * the ViRGE's per-triangle loop was making. */
-                if (v9x_hal != 0) {
-                    ++v9x_hal->d3d_diagnostics.batches_engine_refused;
-                }
-            }
-            if (!ok) {
-                break;
+                (void)v9x_r3d_records_append_fan(
+                    &run, (const V9X_R3D_VERTEX *)cursor,
+                    (v9x_u32)counts->wNumVertices);
+            } else {
+                (void)v9x_r3d_records_append_list(
+                    &run, (const V9X_R3D_VERTEX *)cursor, record_triangles);
             }
             cursor += (DWORD)counts->wNumVertices *
                       sizeof(V9X_D3DTLVERTEX);
         }
+        /* Terminator, bound, clamped state count, and refused shape all
+         * leave through here with the pending run drawn. */
+        (void)v9x_r3d_records_flush(&run);
         if (record == 64ul) {
             ok = 0;
         }

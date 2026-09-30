@@ -1,0 +1,88 @@
+{
+  "candidate_boot": 64,
+  "control_boot": 65,
+  "demo_sha256": "5ead72cb593b810d2859746d8ca5f5057fc5278eb5b5ba85dec056823eded936",
+  "candidate_fps": [
+    48.773,
+    48.803,
+    48.799,
+    48.918
+  ],
+  "control_fps": [
+    41.478,
+    41.406,
+    41.444,
+    41.415
+  ],
+  "snapshot_wait_frames": [
+    180,
+    540,
+    1020,
+    1440
+  ],
+  "files": {
+    "candidate-bounded-post.ini": "acfefe7e486ee992462f0b0ce6cdef9e7747518bc025c50326880aeeea553e3a",
+    "candidate-bounded-pre.ini": "a4763d14d5629947827e28e5aab8f346efa6d18e9237c13ae33bbc27fe4ff478",
+    "candidate-bounded.log": "3b364bb456e9c0ce9d2ea6ff3f7c309fd6a3c9345f44e7c24f71cafe43d3d4a8",
+    "candidate-frame0.png": "13a60945e9a676a9194003b034fbde1a4bf96c1adbcd0c12ad805f5162ca37dd",
+    "candidate-frame1.png": "57c8745b68c027d229dc1e6c7b9e5facdd21160ba6a471088f1da5b2967a635f",
+    "candidate-frame2.png": "89aaa790d6a1a1b515a94fdb6885e76da13ee480c71d17fff7d3a67d9a423d94",
+    "candidate-frame3.png": "03be40fe18035bb6482778eed889d62a7055c693e6e7d576efe7b8342466a49d",
+    "candidate-return-warmup.log": "3c3a051a438955e8ede50d99923e0a98c6207fc1fc740c7e6001c2256096c6bd",
+    "candidate-run4.log": "bde96df5d474b5457c7430779baf4d3e47fc6e14c966ed1a22f10895e585a587",
+    "candidate-series-post.ini": "6b8a90c299a3a98357eaed80a5c61c3b8861c4b1b89646ffd8d82e66bad0f548",
+    "candidate-series-pre.ini": "f5a8a098f1326675c07d43062e11c09542dfd23ada1c80b59ea568fb2a8727a5",
+    "candidate-timing.txt": "27d9ab9cc620e42e54b55ce6a45bb08bb6307a739a2043f52bd97deadc5d21e5",
+    "candidate-visual.log": "680f5007c123c59e325a8fc7734720afda9149cf1cf878d9f79cb73349e127fc",
+    "control-bounded-post.ini": "638611bd43f6077d07b2a0e209f2c9b770a8f1a64cc772006cdb0b62784b566a",
+    "control-bounded-pre.ini": "7b418661e42cd813d6c559e642ddf0ca01f2818472c6d6cc54afd923bf4e2d60",
+    "control-bounded.log": "e0c7e167aa2ba19a029c9cf23f51fbaed9048738f441178be7d7393c9c32011d",
+    "control-frame0.png": "13a60945e9a676a9194003b034fbde1a4bf96c1adbcd0c12ad805f5162ca37dd",
+    "control-frame1.png": "57c8745b68c027d229dc1e6c7b9e5facdd21160ba6a471088f1da5b2967a635f",
+    "control-frame2.png": "89aaa790d6a1a1b515a94fdb6885e76da13ee480c71d17fff7d3a67d9a423d94",
+    "control-frame3.png": "45950ea42bdbeb957e7893c3cb990c0b5c551af80844ae2c17980374ceeb2680",
+    "control-run4.log": "62ab867912e79e0aa20e573fbdd8ba4a21a02a3e1557e955027774059333db4e",
+    "control-series-post.ini": "6a637d7ce9d571b118fb521f71acfbba475d34762ebc607a1950f42c08256607",
+    "control-series-pre.ini": "a74ec683c48c0a859637f4654e419c3e995b740710121875368ad8087ac626b4",
+    "control-timing.txt": "91b0331ab7b6507d6117334be879b01569fc56734166b547b8f31c0ea17d6f72",
+    "control-visual.log": "f964454b3454826e937c360373a66e265edde677f63fe09912b3e21c4d650ae6",
+    "frame3-diff.png": "5a988afc7393300d8170ff64771bdc6fbb5d6dd5683b163af0636536977aadb1",
+    "original-config.cfg": "83f2713a20fe6c2885bb2810a3b3bd725888fa78d80f497c8753485f4b7feb52",
+    "original-v9xbench.cfg": "4e98b639d291818316acfa7f85fa6da85772af03143c75c5b27b561d90d7e25d",
+    "restored-config.cfg": "83f2713a20fe6c2885bb2810a3b3bd725888fa78d80f497c8753485f4b7feb52",
+    "v9xbench.dem": "5ead72cb593b810d2859746d8ca5f5057fc5278eb5b5ba85dec056823eded936",
+    "v9xrc0.cfg": "a9fbf1ce071fa94f56bbaa84ffdbd66bfe299af96123f7336ad4b96862984b40",
+    "v9xrc1.cfg": "6229451679ba98a10ea828047b6d3fde9c41a8a1683d09a95f7e62e8843d859d",
+    "v9xrc2.cfg": "837b9405d829917d5b5eca0c759b2800fa042edfedac97147450d684ca8a6913",
+    "v9xrc3.cfg": "766dc6ca7ab441482ef7d43d8d882b9be761d7daa25bf1043dfee07bdc570d81",
+    "v9xrc4.cfg": "6a938ead0ce1097f62bfa224158ee38db4e2fe8d9fc29196ca695cf69b7dc0d6",
+    "v9xrc5.cfg": "95e38d17725e599fa358b32d64b784c6bd87beabfca4156251532d69db163f79",
+    "v9xrc6.cfg": "017ec85b1a5353e1cb146d0168244729834ed2989efa053f880c3ca82fe8ab6f",
+    "v9xrc7.cfg": "b08d95358a97bd247ceac4c97f8319bfb693f92cc0b23ea98d93b79dedef84fe",
+    "v9xrc8.cfg": "01bd8b975b4ccc62d8bac59a3161161f5f0d6a200ad9696a74e46dfcd981c55b",
+    "v9xrc9.cfg": "a7b6aa94dd673561a361116d7af558992e88ca7e223dacc1c8df78596b409853",
+    "v9xrec.cfg": "45e3f3c274afcc1966b9e0b3f9be452abd52cdafaf6bcc5f52cec794b63863eb",
+    "v9xvis.cfg": "edd0f666f17d87f98b45da4cbbe144dc6748346062208c305465247668883d56",
+    "v9xvs0.cfg": "27eb326d354fd245e821da07019e4884819972287dab3b6d5839c96e939690a2",
+    "v9xvs1.cfg": "f64ed37c68a086e6624b45b160e9d6a6d8cdaf69771c76acaae140bdc2333ba1",
+    "v9xvs2.cfg": "3625b67d3e69032c47bc0881a998330a5389e22b7147aa9ba0647372ea49245e",
+    "v9xvs3.cfg": "a5481d30957cf900d49ae90f091492847b6b9228d900975bf03f89b04d50198d"
+  },
+  "candidate_return_boot": 66,
+  "candidate_installed_sha256": "709392B7183DF79DB74A9BA24C6819930DC990D0F168E05B3BBAC78C5AFAFCAA",
+  "control_installed_sha256": "9AEE1EC1874469FE4FFF99CCFDB6C46FF14B787CEF9BB2B2A03D64A436897CF3",
+  "series_refusal_deltas": {
+    "candidate": 7,
+    "control": 5
+  },
+  "bounded_refusal_deltas": {
+    "candidate": 1,
+    "control": 0
+  },
+  "frame_mismatch_pixels": [
+    0,
+    0,
+    0,
+    84
+  ]
+}
