@@ -184,9 +184,20 @@ Gates: `check-tree.ps1`, `build-host.ps1`, `run-checks.ps1` pass.
 
 Not done:
 
-- **Rage Mobility (Mach64):** reported crashing the same way. It shares
-  `v9x_d3d_draw_list` and the DrawPrimitives body, so the same cause is
-  likely, but the fix has not been run there.
+- **Rage Mobility (Mach64), Gateway SOLO2150 at 10.0.1.22:** the pre-fix
+  HAL (the `dp-record-merge-ati` job's, ABI 2026093003) reproduced on boot
+  77 with the netbook's signature: five DrawPrimitives calls, one fan
+  record (`DpPrimTypeSeen=0x40`), `M64Draws=0`, the fifth call entered
+  and never exited, then DirectDraw's cleanup
+  (`gateway-boot77-prefix-crash-V9XSNA7.INI`). The fixed HAL (`22a34b7`
+  build, hash-verified after the rename) was installed for boot 78 and
+  Robots started. About 25 s in, the agent stopped answering; within two
+  minutes its port refused connections while the machine still answered
+  ping, and it stayed that way for over six minutes. No snapshot or screen
+  was obtained, so whether Robots ran, the HAL locked, or this is the
+  Gateway's open intermittent lock
+  (`2026-09-30-gateway-intermittent-black-screen-probe-lock.md`) is not
+  known. The fix is unverified on the Mach64.
 - **What remains on the stack:** the DrawPrimitives body's 6 KB run buffer
   (6,868-byte frame) and DrawOneIndexedPrimitive's 6 KB gather (6,292) are
   still stack frames, the same depth as before `08b4239`, which Final
