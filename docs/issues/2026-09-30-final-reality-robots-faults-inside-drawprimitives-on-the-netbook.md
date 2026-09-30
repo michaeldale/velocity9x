@@ -197,7 +197,18 @@ Not done:
   was obtained, so whether Robots ran, the HAL locked, or this is the
   Gateway's open intermittent lock
   (`2026-09-30-gateway-intermittent-black-screen-probe-lock.md`) is not
-  known. The fix is unverified on the Mach64.
+  known.
+
+  **Boot 79 (after a manual power cycle), same fixed HAL:** Robots run
+  again, with no agent traffic during the run. It completed, Final Reality
+  returned to its options dialog and exited cleanly. Counters
+  (`gateway-boot79-fixed-post-V9XSNA7.INI`): `D3dRenderPrimitiveCalls=80014`,
+  `DpRecords=649829` in `DpRecordRuns=356509` = `M64Draws`,
+  `M64Triangles=679252`, `M64Refused=0`, `BatchesEngineRefused=0`, and zero
+  FIFO, idle, flip-wait, breadcrumb and ring-space timeouts and resets. The
+  fix holds on the Mach64. Boot 78 left no `V9XTRACE.INI`; its agent log
+  ends at a screenshot request 25 s into that run. Whether the screenshot
+  caused that lock is not established.
 - **What remains on the stack:** the DrawPrimitives body's 6 KB run buffer
   (6,868-byte frame) and DrawOneIndexedPrimitive's 6 KB gather (6,292) are
   still stack frames, the same depth as before `08b4239`, which Final
