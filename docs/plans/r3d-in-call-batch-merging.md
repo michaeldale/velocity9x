@@ -39,9 +39,11 @@ indexed calls, so the engine made 2.85 batches a call, not 7.3 an indexed
 call (`../decisions/2026-09-30-halflife-batches-are-small-records-not-culling.md`).
 The built change stays, because it regresses nothing, but Phase 4 will not
 find a Half-Life gain in it. The in-call lever that remains is merging
-consecutive state-free records of one `DrawPrimitives` buffer; measure how
-long those runs are before building it. Phase 3's clip-in-core check is
-still owed.
+consecutive state-free records of one `DrawPrimitives` buffer. Boot 57
+counted it (`../decisions/2026-09-30-halflife-record-runs.md`): 269,953
+records would become 196,675 batches, 1.37 records a run, and 72% of runs
+are started by a record carrying state pairs. Whether those pairs are
+redundant is the next count. Phase 3's clip-in-core check is still owed.
 
 ## Goal
 
