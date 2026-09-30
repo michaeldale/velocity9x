@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include "r3d/r3d.h"
 #include "r3d/r3d_cull.h"
+#include "r3d/r3d_runs.h"
 #include "r3d/r3d_validate.h"
 #include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
@@ -2186,6 +2187,8 @@ static DWORD v9x_d3d_draw_primitives_body(
     BYTE *cursor;
     DWORD record;
     DWORD fan_triangles;
+    v9x_u32 record_run = 0ul;
+    v9x_u32 record_triangles;
     int ok = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWPRIMS,
@@ -2284,6 +2287,36 @@ static DWORD v9x_d3d_draw_primitives_body(
                 }
                 ok = 0;
                 break;
+            }
+            /*
+             * Count what a merge of consecutive state-free records would
+             * build, before any such merge exists: Half-Life's world
+             * arrives here as records of about two triangles, one list call
+             * each, and whether those records come in state-free runs is
+             * the question that decides the next change. Nothing below
+             * changes because of it.
+             */
+            record_triangles = counts->wPrimitiveType ==
+                                       V9X_D3DPT_TRIANGLEFAN
+                                   ? (v9x_u32)counts->wNumVertices - 2ul
+                                   : (v9x_u32)counts->wNumVertices / 3ul;
+            if (v9x_hal != 0) {
+                v9x_u32 previous_run = record_run;
+
+                ++v9x_hal->d3d_diagnostics.dp_records;
+                v9x_hal->d3d_diagnostics.dp_record_triangles +=
+                    record_triangles;
+                if (v9x_r3d_record_run_step(
+                        &record_run,
+                        (v9x_u32)counts->wNumStateChanges,
+                        record_triangles,
+                        (v9x_u32)V9X_D3D_INDEXED_BATCH)) {
+                    ++v9x_hal->d3d_diagnostics.dp_record_runs;
+                    if (previous_run != 0ul &&
+                        counts->wNumStateChanges != 0u) {
+                        ++v9x_hal->d3d_diagnostics.dp_record_state_breaks;
+                    }
+                }
             }
             /*
              * A LIST is already one batch. A FAN is not: its N vertices are

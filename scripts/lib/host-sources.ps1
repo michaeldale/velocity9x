@@ -111,6 +111,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_r3d_cull.c',
         'tests\host\test_r3d_line.c',
         'tests\host\test_r3d_clear.c',
+        'tests\host\test_r3d_runs.c',
         'tests\host\test_r3d_validate.c',
         'tests\host\test_gl_state.c',
         'tests\host\test_gl_matrix.c',

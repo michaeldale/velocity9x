@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026093002: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives record-run
+ * accounting. An append. */
 /* 2026093001: V9X_D3D_DIAGNOSTICS gains the in-call R3D list accounting.
  * An append. */
 /* 2026092902: V9X_D3D_DIAGNOSTICS gains m64_unrenderable. An append. */
@@ -1603,7 +1605,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026093001ul
+#define V9X_DD_SHARED_ABI   2026093002ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3053,6 +3055,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD r3d_list_culled;
     DWORD r3d_list_clipped;
     DWORD r3d_list_sink_batches;
+    /* DrawPrimitives record runs (2026-09-30): records drawn, their
+     * triangles, the batches a merge of consecutive state-free records
+     * would build (r3d_runs.h), and how many of those batches a state
+     * change started rather than the capacity bound. Counted only; nothing
+     * is merged. */
+    DWORD dp_records;
+    DWORD dp_record_triangles;
+    DWORD dp_record_runs;
+    DWORD dp_record_state_breaks;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
