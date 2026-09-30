@@ -13,6 +13,7 @@ typedef struct capture {
     v9x_u32 used;
     V9X_R3D_VERTEX vertices[600];
     int refuse;
+    int retry_invalid;
 } CAPTURE;
 
 static int sink(void *user, const V9X_R3D_VERTEX *vertices,
@@ -23,6 +24,11 @@ static int sink(void *user, const V9X_R3D_VERTEX *vertices,
     c->sizes[c->calls++] = triangles;
     for (i = 0ul; i < triangles * 3ul; ++i) {
         c->vertices[c->used++] = vertices[i];
+    }
+    if (c->retry_invalid) {
+        for (i = 0ul; i < triangles * 3ul; ++i) {
+            if (vertices[i].color == 0xbadul) { return -1; }
+        }
     }
     return c->calls != (v9x_u32)c->refuse;
 }
@@ -46,8 +52,31 @@ unsigned int v9x_run_r3d_records_tests(void)
         input[i].tv = 0.0f;
     }
     run.vertices = storage; run.capacity = 64ul; run.pending = 0ul;
+    run.record_count = 0ul;
     run.batch = sink; run.user = &c;
     CHECK(v9x_r3d_records_flush(&run)); CHECK(c.calls == 0ul);
+    /* An atomic pre-submit refusal may request original-record replay. The
+     * whole bad record stays refused, including its otherwise valid second
+     * triangle; records on both sides survive in order. */
+    memset(&c, 0, sizeof(c)); c.retry_invalid = 1;
+    input[6].color = 0xbadul;
+    CHECK(v9x_r3d_records_append_list(&run, input, 2ul));
+    CHECK(v9x_r3d_records_append_list(&run, input + 6, 2ul));
+    CHECK(v9x_r3d_records_append_list(&run, input + 12, 1ul));
+    CHECK(!v9x_r3d_records_flush(&run));
+    CHECK(c.calls == 4ul);
+    CHECK(c.sizes[0] == 5ul && c.sizes[1] == 2ul &&
+          c.sizes[2] == 2ul && c.sizes[3] == 1ul);
+    CHECK(c.vertices[15].color == 0ul && c.vertices[27].color == 12ul);
+    input[6].color = 6ul;
+    memset(&c, 0, sizeof(c));
+    /* Ordinary failure can have emitted a prefix: never replay it. */
+    c.refuse = 1;
+    CHECK(v9x_r3d_records_append_list(&run, input, 2ul));
+    CHECK(v9x_r3d_records_append_list(&run, input + 6, 2ul));
+    CHECK(!v9x_r3d_records_flush(&run));
+    CHECK(c.calls == 1ul && c.sizes[0] == 4ul);
+    memset(&c, 0, sizeof(c));
     CHECK(v9x_r3d_records_append_list(&run, input, 1ul));
     CHECK(v9x_r3d_records_append_list(&run, input + 3, 1ul));
     CHECK(v9x_r3d_records_append_fan(&run, input + 6, 4ul));

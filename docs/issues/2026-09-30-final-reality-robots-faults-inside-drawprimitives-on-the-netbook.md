@@ -1,0 +1,127 @@
+# Final Reality's Robots test kills the process inside DrawPrimitives on the netbook
+
+Priority: high. A shipping-path benchmark that ran on this machine on
+2026-09-20 now takes its process down on the fifth DrawPrimitives call,
+twice out of two attempts, on the build the record-merging work is about to
+commit.
+
+Date: 2026-09-30. Machine: MICHAEL-NETBOOK, 945GSE / GMA 950 `8086:27AE`
+revision 03, Windows 98 SE, boot 71, 1024x576x16 desktop. Installed HAL:
+`C:\V9XREMOTE\JOBS\DPMERGE\HALNEW.DLL` (161,280 bytes), the working tree at
+`b182f94` plus the uncommitted record-replay change in `d3d_core.c`,
+`r3d_records.c` and `r3d_records.h`. V9XHW.INI: `Direct3D=hardware-gen3`,
+`EngineStatusEnable=d3d-claimed`. Evidence:
+[`../probe/final-reality-robots-2026-09-30/`](../probe/final-reality-robots-2026-09-30/).
+
+## Reproduction
+
+Final Reality 1.01, `C:\Program Files\Final Reality\FR.exe`, Advanced
+options, rendering platform "Direct3D On-board Accelerator", Robots test.
+Both runs were driven at the keyboard by the operator; the second FR
+instance was launched through the agent, which showed only that the
+executable starts and reaches its licence dialog.
+
+- Run one, about 21:27: the process died. By the time it was looked at the
+  crash dialog had been dismissed; Dr Watson was not running and left
+  nothing.
+- Run two, about 21:36: same. `V9XTRACE.EXE` was run straight after, before
+  anything else touched Direct3D, and its ring holds the fatal call.
+
+## What the driver recorded
+
+Snapshot two (`netbook-boot71-after-second-crash-V9XSNA7.INI`), the tail of
+the event ring for the second instance, PID `0xFFE3BD1B`:
+
+```
+874 D3dTargetLayout enter 0x05001002      640x480 target, pitch 1280
+875 D3dContextCreate exit 0
+876-877 Blt                               ok
+878-879 D3dDrawPrimitives                 enter, exit ok
+880-887 Blt x4                            ok
+888-889 D3dDrawPrimitives                 enter, exit ok
+890-895 CanCreateSurface, CreateSurface, D3dTextureCreate   ok
+896-899 Lock, Unlock                      ok  (texture upload)
+900-901 D3dDrawPrimitives                 enter, exit ok
+902-903 D3dDrawOnePrimitive               enter, exit ok (fan declined, as designed)
+904 D3dDrawPrimitives enter 0x94C00E80    NO EXIT
+905-912 DestroySurface x3, FlipToGDISurface
+913-914 D3dContextDestroyAll              DirectDraw tearing down the dead process
+```
+
+Every other enter in the boot has its exit. Event 904 does not, and the next
+events are DirectDraw's cleanup after the process was gone. The fault is on
+the CPU side, inside the HAL's DrawPrimitives handler or something it calls.
+
+Counters, both snapshots, whole boot:
+
+| Counter | after run one | after run two |
+|---|---|---|
+| D3dContextCreates / Destroys / DestroyAlls | 6 / 5 / 1 | 10 / 8 / 2 |
+| D3dRenderPrimitiveCalls | 5 | 10 |
+| DpRecords / DpRecordTriangles / DpRecordRuns | 1 / 2 / 1 | 2 / 4 / 2 |
+| DpRecordRunsNoopJoined | 1 | 2 |
+| D3dTextureCreates / TexturePlaced | 1 / 1 | 2 / 2 |
+| Dp*Refused*, BatchesEngineRefused, i9xx refusals, engine timeouts, resets, breadcrumb abandons | 0 | 0 |
+| OnePrimRefusedPrimType | 1 | 2 |
+| Win16D3dDrawPrimsDepthMax, Win16LockDepthMax | 2, 2 | 2, 2 |
+
+The two runs are identical in every delta: five DrawPrimitives calls, one
+counted record of two triangles, one texture, one DestroyAll. It reproduces.
+
+Two things the counters say that the ring cannot:
+
+- **No engine refusal of any kind was counted.** `i9xx_draws_refused` is
+  zero, so the new reason-6 replay path in `v9x_d3d_records_batch` was never
+  entered. Whatever faults is upstream of, or independent of, the replay.
+- **One record was counted across five calls.** `dp_records` increments
+  after a record's state pairs are applied and its shape accepted, before
+  the append. Either four of the five calls carried only state records or
+  the terminator, or the fatal call faulted before its first record was
+  counted. The snapshot cannot tell these apart; a per-call record count
+  would.
+
+## Review of the uncommitted change (2026-09-30, no fault found)
+
+Read against the fault, not for style:
+
+- `record_ends[64]` is bounded by construction: every entry consumes at
+  least one of the 64 triangles of capacity, and every path that could
+  reach `pending == capacity` flushes first, which resets `record_count`.
+  A 63-record run followed by a one-triangle fan writes entry 63 and no
+  further; the next append of any size flushes.
+- Replay is not recursive: `flush` calls the sink directly for each record,
+  and the sink's `-1` from a replayed record is discarded.
+- The state-change flush saves and restores the whole `V9X_D3D_CONTEXT`
+  around the old run. No engine writes to the context (grep of
+  `d3d_i9xx.c` for context stores finds none), so the restore cannot
+  clobber engine state advanced by the flush.
+- The regression window is wider than the diff. Final Reality last ran on
+  this machine on 2026-09-20 (intel94/95). Since then the whole
+  record-merging series landed: `5f1ab1c`, `5da6648`, `c3c07d7`,
+  `a6f89cb`, `c52281d`, `b182f94`, plus the working tree. Half-Life and
+  3DMark 99 were the validation workloads for all of it. Final Reality is
+  the first workload since then whose records carry real per-record state
+  changes with a run pending, which is the path at `d3d_core.c` around the
+  `state_before` copy and the flush under the saved context. That is a
+  hypothesis from reading, not a measurement.
+
+The host gates (`build-host.ps1`) pass on this tree per the other session's
+record; they do not exercise a live context or the Gen3 sink.
+
+## What would settle it
+
+1. **Control.** Swap `HALOLD.DLL` (working tree at `b182f94`, 160,768 bytes)
+   into `C:\WINDOWS\SYSTEM\V9XHAL.DLL` with FR closed, run Robots once. If
+   it survives, the fault is in the uncommitted diff; if not, bisect the
+   six commits above. The netbook is shared with the record-merging
+   session, so this is theirs to schedule.
+2. **A per-call record count and a "last record shape" pair** in the
+   diagnostics block, so the next snapshot says whether the fatal call
+   counted anything and what its first record looked like.
+3. **The crash dialog's Details.** The operator can read module and offset
+   from the "illegal operation" box before dismissing it; `V9XHAL.DLL` plus
+   an offset against the map file names the function.
+
+Until 1 is done, the record-merging HAL should not ship: Final Reality is in
+the 0.7.0 hardware Direct3D acceptance set (STATUS.md) and it does not
+survive its first test on the Gen3 path.

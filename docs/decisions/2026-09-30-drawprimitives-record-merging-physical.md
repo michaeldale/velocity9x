@@ -11,7 +11,10 @@ qualified workload evidence, not complete hardware sign-off: the initial
 Gateway hard lock remains unexplained. The subsequent targeted clipped-fan
 check now passes. The [gameplay comparison](2026-09-30-halflife-gameplay-record-merging.md)
 is complete and measures a 17.8% gain, but its reason-6 refusal-count
-difference prevents a clean gameplay correctness pass.
+difference prevented a clean gameplay correctness pass for that build.
+The [subsequent fix](2026-09-30-record-refusal-neighbours.md) preserves valid
+records around a rejected Gen3 vertex and passes netbook validation, with
+48.622 fps versus 40.659 fps. Its updated Mach64 clipped-fan retest passes on boot 71; the broad probe hard-locked on boot 70 and remains unresolved.
 
 ## Half-Life comparison
 
@@ -89,3 +92,8 @@ clipped three input triangles per case and compared every pixel against
 separate original-order calls. It passed ordinary, redundant-state and
 capacity-boundary cases on the candidate and control, with no new failures.
 This closes the outstanding clipped-fan ordering gate.
+
+Gateway follow-up: three broad reruns completed on boots 71-73, including
+two fresh boots and the unmodified probe. All checks match baseline (202/14),
+with zero timeouts/resets. The boot-70 intermittent lock remains open; see
+[retained investigation](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).

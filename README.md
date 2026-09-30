@@ -42,6 +42,7 @@ is open.
 | Get it onto a machine with no network | [Transfer disk](#transfer-disk) |
 | Recover a machine that will not boot | [packaging/win98se/RECOVER.TXT](packaging/win98se/RECOVER.TXT) |
 | Build it from source | [docs/BUILDING.md](docs/BUILDING.md) |
+| Run the standard Half-Life 1 benchmark | [HL1 benchmark](tests/benchmarks/hl1/README.md) |
 | Help add support for your chip | [Helping add native support](#helping-add-native-support) |
 | Understand the design | [docs/specifications/win9x-driver-boundaries.md](docs/specifications/win9x-driver-boundaries.md) |
 | See what changed | [CHANGELOG.md](CHANGELOG.md) |

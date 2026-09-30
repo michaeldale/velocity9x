@@ -69,3 +69,17 @@ animated sparks. Refusal counts remain a qualification issue, documented
 with the original logs and diagnostic windows. The netbook returned to the
 verified candidate on boot 66 and its original game configuration was restored.
 The Gateway also has the candidate installed.
+
+The later [vertex-refusal investigation](../../decisions/2026-09-30-record-refusal-neighbours.md)
+is retained in `vertex-refusal/`. It captures a tiny negative Half-Life Z on
+the no-merge control and proves that an invalid record could discard valid
+neighbours in a merged batch. The fixed driver passes all three physical
+refusal cases with exact pixel matches and matches all broad netbook checks.
+Its four gameplay repeats average 48.622 fps versus 40.659 fps and add no
+refusals, timeouts or resets. The fix remains installed on netbook boot 70;
+the original game configuration is restored. The Gateway fixed HAL passes the clipped-fan retest on boot 71. Its broad probe hard-locked on boot 70; see [follow-up evidence](gateway-refusal-fix/README.md).
+
+Continued [Gateway investigation](gateway-refusal-fix/README.md) completed
+three broad reruns on boots 71-73, including two fresh boots and the original
+probe. All match baseline (202 passing / 14 existing failures), with zero
+timeouts/resets. The confirmed boot-70 lock remains an open intermittent incident.

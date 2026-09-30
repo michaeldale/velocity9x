@@ -2166,11 +2166,25 @@ static int v9x_d3d_records_batch(void *user,
                                  v9x_u32 triangles)
 {
     V9X_D3D_LIST_SINK *sink = (V9X_D3D_LIST_SINK *)user;
+    DWORD submitted_before = v9x_hal != 0 ?
+        v9x_hal->d3d_diagnostics.i9xx_draws_submitted : 0ul;
+    DWORD refused_before = v9x_hal != 0 ?
+        v9x_hal->d3d_diagnostics.i9xx_draws_refused : 0ul;
     int accepted = v9x_d3d_draw_list(sink->ops, sink->context,
                                     (const V9X_D3DTLVERTEX *)vertices,
                                     triangles);
     if (!accepted && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.batches_engine_refused;
+        /* Gen3 reason 6 rejects the CPU vertex stream before ring submission.
+         * With no submitted prefix it is safe to replay original records;
+         * an invalid record must not take its valid neighbours with it.
+         * Never retry submission/timeout failures or another engine's refusal. */
+        if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 &&
+            v9x_hal->d3d_diagnostics.i9xx_draws_refused != refused_before &&
+            v9x_hal->d3d_diagnostics.i9xx_refuse_last == 6ul &&
+            v9x_hal->d3d_diagnostics.i9xx_draws_submitted == submitted_before) {
+            return -1;
+        }
     }
     return accepted;
 }
@@ -2253,6 +2267,7 @@ static DWORD v9x_d3d_draw_primitives_body(
         run.vertices = (V9X_R3D_VERTEX *)fan_batch;
         run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
         run.pending = 0ul;
+        run.record_count = 0ul;
         run.batch = v9x_d3d_records_batch;
         run.user = &sink;
         ok = 1;

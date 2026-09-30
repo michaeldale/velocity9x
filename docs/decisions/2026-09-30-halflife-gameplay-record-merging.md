@@ -2,6 +2,11 @@
 
 Date: 2026-09-30. Evidence: [demo, logs, snapshots and provenance](../probe/d3d-record-merge-2026-09-30/gameplay/).
 
+Follow-up: the [refusal investigation](2026-09-30-record-refusal-neighbours.md)
+captures invalid depth on control and fixes a proven loss of valid neighbouring
+records. The fixed build passes netbook validation and retains its speed gain.
+Results below describe the preceding build; the updated Mach64 clipped-fan retest passes on boot 71; the broad probe hard-locked on boot 70 and remains unresolved.
+
 The recorded `v9xbench` route completes on both builds. The candidate averages
 48.823 fps against 41.436 fps for the original `5da6648-dirty` control, a
 17.8% gain outside the repeat spread. This completes the owed demo comparison,
@@ -66,3 +71,8 @@ neighbouring records. The earlier Gateway hard lock also remains unexplained.
 The candidate was restored and its installed SHA256 verified on netbook boot
 66. Half-Life was closed and its original `config.cfg` restored with verified
 readback. No driver implementation changed during this comparison.
+
+Gateway follow-up: three broad reruns completed on boots 71-73, including
+two fresh boots and the unmodified probe. All checks match baseline (202/14),
+with zero timeouts/resets. The boot-70 intermittent lock remains open; see
+[retained investigation](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).

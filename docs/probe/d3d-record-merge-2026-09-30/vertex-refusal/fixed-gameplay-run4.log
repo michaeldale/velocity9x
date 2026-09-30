@@ -1,0 +1,31 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1531 frames 33.138 seconds 46.201 fps
+No demos listed with startdemos
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.541 seconds 48.509 fps
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.393 seconds 48.736 fps
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.466 seconds 48.623 fps
+]timedemo v9xbench
+Playing demo from C:\SIERRA\HALF-LIFE/valve/v9xbench.dem.
+Couldn't open file overviews/c1a1.txt. Using default values for overiew mode.
+notarget ON
+1530 frames 31.470 seconds 48.618 fps

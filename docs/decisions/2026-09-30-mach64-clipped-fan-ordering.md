@@ -82,5 +82,19 @@ packages), and whitespace checks passed.
 
 This test establishes order and pixel equivalence for deliberately clipped,
 opaque, untextured geometry, including redundant state and capacity splits.
-It does not replace the separate textured benchmark checks or the still-owed
-operator-recorded gameplay demo.
+Separate textured benchmark and recorded gameplay checks are documented in the physical and gameplay decisions.
+
+## Final refusal-fix retest
+
+The final fixed HAL passed this same targeted validation on Gateway boot 71:
+all three cases have zero pixel differences and no new engine failures;
+all six images match the earlier control exactly. See the retained
+[follow-up evidence](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).
+The broad probe hard-locked on boot 70; that cause remains unresolved.
+The separately recorded gameplay comparison has since completed, including
+the final netbook refusal-fix validation.
+
+Gateway follow-up: three broad reruns completed on boots 71-73, including
+two fresh boots and the unmodified probe. All checks match baseline (202/14),
+with zero timeouts/resets. The boot-70 intermittent lock remains open; see
+[retained investigation](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).

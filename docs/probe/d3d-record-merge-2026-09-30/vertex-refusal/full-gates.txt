@@ -1,0 +1,7 @@
+Copyright (C) Microsoft Corp 1981-1995.  All rights reserved.
+
+Built family vbe: C:\everything\velocity9x\build\win98se-vbe (24 files)
+Assembled floppy disks, one per family: build\floppy\<family>
+Wrote package index: C:\everything\velocity9x\build\packages.json
+
+run-checks passed: check-tree -> vga survey safety gate -> Intel MMIO capture validator -> Intel GTT capture validator -> Intel event capture validator -> Intel ring plan validator -> Intel Phase 4 arm script -> Intel armer guard -> Intel 3D capture validator -> Intel Phase 5 arm script -> host tests -> Intel 3D stream generator -> family packages

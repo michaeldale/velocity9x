@@ -6,6 +6,9 @@ gates pass. Half-Life's batch-size hypothesis was rejected below.
 The later record-merging plan's [gameplay comparison](../decisions/2026-09-30-halflife-gameplay-record-merging.md)
 now records and replays `v9xbench` on both builds. It measures a 17.8% gain
 for record merging, with the vertex-builder refusal difference still open.
+The later [refusal fix](../decisions/2026-09-30-record-refusal-neighbours.md)
+preserves original records after an atomic Gen3 vertex rejection and passes
+netbook validation. The updated Mach64 clipped-fan retest passes on boot 71; the broad probe hard-locked on boot 70 and remains unresolved.
 
 Implementation review on 2026-09-30 corrected two assumptions in the draft:
 the shared block is now capped at 8,192 bytes, not 4,096, and the 6,144-byte
@@ -161,6 +164,10 @@ survivors. Phase 4 decides whether that is worth doing.
 
 ## Phases
 
+For future HL1 runs, use the supplied [mwd5 benchmark](../../tests/benchmarks/hl1/README.md):
+Half-Life 1.1.1.0, `timedemo mwd5`, best FPS of three runs. The `v9xbench`
+instructions and results below describe the earlier investigation.
+
 ### Phase 0: measure the split and record the demo
 
 - Add counters to `d3d_diagnostics`: list calls, triangles in, culled,
@@ -239,3 +246,8 @@ mostly the small, fixed-cost kind.
 - Comparing state between batches.
 - Gen3 stream changes: TRIFAN/TRISTRIP emission, trimming flushes, or
   per-pixel cost.
+
+Gateway follow-up: three broad reruns completed on boots 71-73, including
+two fresh boots and the unmodified probe. All checks match baseline (202/14),
+with zero timeouts/resets. The boot-70 intermittent lock remains open; see
+[retained investigation](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).

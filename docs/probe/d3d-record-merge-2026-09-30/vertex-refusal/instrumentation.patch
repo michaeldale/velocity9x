@@ -1,0 +1,152 @@
+diff --git a/include/velocity9x/win9x_ddraw_abi.h b/include/velocity9x/win9x_ddraw_abi.h
+index 3151f06..673644d 100644
+--- a/include/velocity9x/win9x_ddraw_abi.h
++++ b/include/velocity9x/win9x_ddraw_abi.h
+@@ -3077,6 +3077,28 @@ typedef struct v9x_d3d_diagnostics {
+     DWORD dp_record_runs_noop_joined;
+ } V9X_D3D_DIAGNOSTICS;
+ 
++/* Temporary Gen3 instrumentation overlays its unused S3 census entries.
++ * Shared layout and ABI stay unchanged; remove after refusal diagnosis. */
++typedef struct v9x_i9xx_vertex_failure {
++    DWORD magic; /* 0x56394636: V9F6 */
++    /* Last rejected runtime vertex, captured only on reason 6. Check bits:
++     * 1=x, 2=y, 4=z, 8=rhw, 16=u, 32=v. Valid triangles counts neighbours
++     * rejected along with the bad triangle; callback identifies the source.
++     * No pointers survive in this payload. */
++    DWORD i9xx_vertex_failures;
++    DWORD i9xx_vertex_fail_callback;
++    DWORD i9xx_vertex_fail_tick;
++    DWORD i9xx_vertex_fail_triangles;
++    DWORD i9xx_vertex_fail_valid_triangles;
++    DWORD i9xx_vertex_fail_index;
++    DWORD i9xx_vertex_fail_checks;
++    DWORD i9xx_vertex_fail_width;
++    DWORD i9xx_vertex_fail_height;
++    DWORD i9xx_vertex_fail_texture;
++    DWORD i9xx_vertex_fail_records;
++    DWORD i9xx_vertex_fail_bits[8];
++} V9X_I9XX_VERTEX_FAILURE;
++
+ /*
+  * Bounded HAL callback trace (Hellbender plan H1). Both sides append
+  * fixed-size records to a ring inside the shared block, so the last
+diff --git a/src/display32/d3d/d3d_i9xx.c b/src/display32/d3d/d3d_i9xx.c
+index 00da69d..83a1fd4 100644
+--- a/src/display32/d3d/d3d_i9xx.c
++++ b/src/display32/d3d/d3d_i9xx.c
+@@ -1789,7 +1789,8 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
+      * The hardware culls nothing: the runtime state block programs NONE and
+      * the decoder holds it there. CW and CCW are done by the core, which
+      * drops back faces before this engine sees them and does so only because
+-     * these two bits are set (r3d3d_cull.h, v9x_r3d_cull_honoured).
++     * these two bits are set (r3d
++3d_cull.h, v9x_r3d_cull_honoured).
+      *
+      * CULLNONE alone was honest and cost everything: 3D WinBench 98 renders
+      * every scene with CCW culling and refused all 41 quality tests before
+@@ -2022,6 +2023,59 @@ static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
+ static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
+ static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
+ 
++/* Failure-only census using the builder's exact float predicates. Capturing
++ * bit patterns keeps signed zero and sub-pixel edge overshoot observable. */
++static void v9x_d3d_i9xx_vertex_failure(const V9X_R3D_DRAW *draw,
++    const V9X_D3DTLVERTEX *vertices, DWORD triangles, int textured,
++    DWORD texture_offset)
++{
++    V9X_I9XX_VERTEX_FAILURE *diag =
++        (V9X_I9XX_VERTEX_FAILURE *)v9x_hal->census.entries;
++    DWORD width = 0ul, height = 0ul, one = 0ul;
++    DWORD vertex, checks, triangle_bad = 0ul;
++    DWORD found = 0ul;
++    (void)v9x_i9xx_float_from_int(draw->target.width, &width);
++    (void)v9x_i9xx_float_from_int(draw->target.height, &height);
++    (void)v9x_i9xx_float_from_int(1ul, &one);
++    diag->magic = 0x56394636ul;
++    ++diag->i9xx_vertex_failures;
++    diag->i9xx_vertex_fail_callback = v9x_hal->trace.last_enter_id;
++    diag->i9xx_vertex_fail_tick = GetTickCount();
++    diag->i9xx_vertex_fail_triangles = triangles;
++    diag->i9xx_vertex_fail_valid_triangles = 0ul;
++    diag->i9xx_vertex_fail_checks = 0ul;
++    diag->i9xx_vertex_fail_width = draw->target.width;
++    diag->i9xx_vertex_fail_height = draw->target.height;
++    diag->i9xx_vertex_fail_texture = texture_offset;
++    diag->i9xx_vertex_fail_records = v9x_hal->d3d_diagnostics.dp_records;
++    for (vertex = 0ul; vertex < triangles * 3ul; ++vertex) {
++        const DWORD *bits = (const DWORD *)&vertices[vertex].sx;
++        checks = 0ul;
++        if (!v9x_i9xx_float_in_range(bits[0], width)) { checks |= 1ul; }
++        if (!v9x_i9xx_float_in_range(bits[1], height)) { checks |= 2ul; }
++        if (!v9x_i9xx_float_in_range(bits[2], one)) { checks |= 4ul; }
++        if (!v9x_i9xx_float_positive_finite(bits[3])) { checks |= 8ul; }
++        if (textured && !v9x_i9xx_float_finite(bits[6])) { checks |= 16ul; }
++        if (textured && !v9x_i9xx_float_finite(bits[7])) { checks |= 32ul; }
++        if (checks != 0ul) {
++            triangle_bad = 1ul;
++            if (!found) {
++                DWORD word;
++                found = 1ul;
++                diag->i9xx_vertex_fail_index = vertex;
++                diag->i9xx_vertex_fail_checks = checks;
++                for (word = 0ul; word < 8ul; ++word) {
++                    diag->i9xx_vertex_fail_bits[word] = bits[word];
++                }
++            }
++        }
++        if (vertex % 3ul == 2ul) {
++            if (!triangle_bad) { ++diag->i9xx_vertex_fail_valid_triangles; }
++            triangle_bad = 0ul;
++        }
++    }
++}
++
+ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
+                                             const V9X_D3DTLVERTEX *vertices,
+                                             DWORD triangle_count);
+@@ -2356,6 +2410,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
+                   draw->target.width, draw->target.height, stream + at,
+                   V9X_I9XX_SUBMIT_DWORDS - at, &produced))
+             != V9X_STATUS_OK) {
++        v9x_d3d_i9xx_vertex_failure(draw, vertices, triangle_count, textured,
++                                    textured ? map.offset : 0ul);
+         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+     }
+     at += produced;
+diff --git a/tools/diag/d3d_trace_dump_win32.c b/tools/diag/d3d_trace_dump_win32.c
+index e62b381..203664f 100644
+--- a/tools/diag/d3d_trace_dump_win32.c
++++ b/tools/diag/d3d_trace_dump_win32.c
+@@ -693,6 +693,31 @@ void __stdcall V9xTraceDumpEntry(void)
+     v9x_write_uint("I9xxDrawsSubmitted", snapshot.d3d.i9xx_draws_submitted);
+     v9x_write_uint("I9xxDrawsRefused", snapshot.d3d.i9xx_draws_refused);
+     v9x_write_uint("I9xxRefuseLast", snapshot.d3d.i9xx_refuse_last);
++    {
++        const V9X_I9XX_VERTEX_FAILURE *failure =
++            (const V9X_I9XX_VERTEX_FAILURE *)snapshot.census.entries;
++        if (failure->magic == 0x56394636ul) {
++    v9x_write_uint("I9xxVertexFailures", failure->i9xx_vertex_failures);
++    v9x_write_uint("I9xxVertexFailCallback", failure->i9xx_vertex_fail_callback);
++    v9x_write_uint("I9xxVertexFailTick", failure->i9xx_vertex_fail_tick);
++    v9x_write_uint("I9xxVertexFailTriangles", failure->i9xx_vertex_fail_triangles);
++    v9x_write_uint("I9xxVertexFailValidTriangles", failure->i9xx_vertex_fail_valid_triangles);
++    v9x_write_uint("I9xxVertexFailIndex", failure->i9xx_vertex_fail_index);
++    v9x_write_hex("I9xxVertexFailChecks", failure->i9xx_vertex_fail_checks);
++    v9x_write_uint("I9xxVertexFailWidth", failure->i9xx_vertex_fail_width);
++    v9x_write_uint("I9xxVertexFailHeight", failure->i9xx_vertex_fail_height);
++    v9x_write_hex("I9xxVertexFailTexture", failure->i9xx_vertex_fail_texture);
++    v9x_write_uint("I9xxVertexFailRecords", failure->i9xx_vertex_fail_records);
++    v9x_write_hex("I9xxVertexFailX", failure->i9xx_vertex_fail_bits[0]);
++    v9x_write_hex("I9xxVertexFailY", failure->i9xx_vertex_fail_bits[1]);
++    v9x_write_hex("I9xxVertexFailZ", failure->i9xx_vertex_fail_bits[2]);
++    v9x_write_hex("I9xxVertexFailRhw", failure->i9xx_vertex_fail_bits[3]);
++    v9x_write_hex("I9xxVertexFailColor", failure->i9xx_vertex_fail_bits[4]);
++    v9x_write_hex("I9xxVertexFailSpecular", failure->i9xx_vertex_fail_bits[5]);
++    v9x_write_hex("I9xxVertexFailU", failure->i9xx_vertex_fail_bits[6]);
++    v9x_write_hex("I9xxVertexFailV", failure->i9xx_vertex_fail_bits[7]);
++        }
++    }
+     v9x_write_uint("I9xxTextureDraws", snapshot.d3d.i9xx_texture_draws);
+     v9x_write_uint("I9xxDepthDraws", snapshot.d3d.i9xx_depth_draws);
+     v9x_write_uint("I9xxDepthSkipped", snapshot.d3d.i9xx_depth_skipped);

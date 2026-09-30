@@ -35,7 +35,12 @@ Gateway lock unexplained. The subsequent
 [gameplay demo comparison](../decisions/2026-09-30-halflife-gameplay-record-merging.md)
 averages 48.823 fps versus 41.436 fps (17.8% faster), with matching sampled
 geometry but an unresolved reason-6 refusal-count difference. It completes
-the owed comparison without establishing a clean correctness pass. The
+the owed comparison without establishing a clean correctness pass for that
+build. The [refusal follow-up](../decisions/2026-09-30-record-refusal-neighbours.md)
+captures invalid depth on control and fixes a demonstrated loss of valid
+neighbouring records. Netbook validation passes and the new four-run series
+averages 48.622 fps versus 40.659 fps; the updated Mach64 clipped-fan retest passes; the broad probe hard-locked.
+The
 [targeted physical clipped-fan check](../decisions/2026-09-30-mach64-clipped-fan-ordering.md)
 now passes on the Mach64, including redundant state and capacity splits. See the
 [qualified decision](../decisions/2026-09-30-drawprimitives-record-merging-physical.md)
@@ -83,9 +88,12 @@ Phase 4 measures it. Other applications are uncounted: 3DMark 99 sends up to
    every list path uses. A record that alone exceeds it (a list of up to
    192 vertices is exactly 64; a fan can reach 190 triangles) flushes the
    run and is drawn as today.
-5. **Refusal semantics widen, as before.** A refused merged batch counts
-   once in `batches_engine_refused` and can lose more triangles than one
-   record did. Refusals must not rise on any gate run.
+5. **Preserve original records after an atomic Gen3 vertex rejection.**
+   A reason-6 rejection with no submitted prefix requests replay at the
+   original record boundaries. The invalid record stays refused, while valid
+   neighbouring records draw in order. Counters include the failed merged
+   attempt and any refused replay. Other failures retain the existing policy;
+   replay after a partial submission would duplicate geometry.
 6. **No INI key.** It becomes the behaviour of the next build, per the
    project's no-gated-defaults rule. The comparison run uses the previous
    build.
@@ -109,8 +117,10 @@ Predicting the change from the pairs would duplicate
 
 The run buffer is the existing `fan_batch` array (64 x 3 TL vertices,
 6,144 bytes), which the fan path already uses as a gather. So the stack
-frame does not grow, and the nesting under `v9x_d3d_draw_list`'s own
-staging stays at the ~12.5 KiB the in-call plan recorded.
+frame initially did not grow. The refusal follow-up adds 64 DWORD record
+ends and their count, 260 bytes, so nesting under `v9x_d3d_draw_list`'s own
+staging is now about 12.8 KiB. Watcom allocates `1ad4h` bytes for the
+DrawPrimitives body and `1848h` for the list wrapper, before deeper callees.
 
 ### Where the logic lives
 
@@ -153,6 +163,9 @@ In `tests/host/test_r3d_records.c`, before the module exists:
 - a record over capacity flushes the run and is drawn alone;
 - a flush with nothing pending draws nothing;
 - a sink refusal is reported and later runs still draw.
+- an explicitly atomic refusal replays whole original records, preserving
+  their order and keeping a valid triangle inside a bad record refused too;
+- an ordinary refusal never requests replay, and replay cannot recurse.
 
 Watch them fail, then implement. Gates: `check-tree.ps1`, `build-host.ps1`.
 
@@ -191,8 +204,14 @@ demo comparison is now recorded in the
 [gameplay decision](../decisions/2026-09-30-halflife-gameplay-record-merging.md).
 Chained movement scripts recorded `v9xbench` without operator input; both
 swap reboots reconnected within the 180-second allowance. The performance
-comparison is complete, but the reason-6 refusal difference still requires
-isolating the rejected draw before a clean correctness sign-off.
+comparison is complete. The subsequent
+[refusal investigation and fix](../decisions/2026-09-30-record-refusal-neighbours.md)
+is verified on the netbook and passes the Gateway clipped-fan retest on boot 71. The Gateway broad probe hard-locked on boot 70; both lock causes remain unexplained.
+
+Future HL1 performance comparisons use the supplied
+[mwd5 benchmark](../../tests/benchmarks/hl1/README.md), with Half-Life 1.1.1.0
+and the best FPS of three `timedemo mwd5` runs. Earlier results above retain
+their original demos and methodology.
 
 ## Not in scope
 
@@ -202,3 +221,8 @@ isolating the rejected draw before a clean correctness sign-off.
 - Filtering redundant pairs before they are applied. The context compare
   already makes them free for merging, and skipping them would change what
   the diagnostics see.
+
+Gateway follow-up: three broad reruns completed on boots 71-73, including
+two fresh boots and the unmodified probe. All checks match baseline (202/14),
+with zero timeouts/resets. The boot-70 intermittent lock remains open; see
+[retained investigation](../probe/d3d-record-merge-2026-09-30/gateway-refusal-fix/README.md).

@@ -1,0 +1,18 @@
+warning: unable to access 'C:\Users\michael/.config/git/ignore': Permission denied
+warning: unable to access 'C:\Users\michael/.config/git/ignore': Permission denied
+PASS: PE32 export-by-ordinal walk
+PASS: generated OpenGL dispatch table
+PASS: Direct3D back-face culling decision
+PASS: neutral core clipper and list builder
+PASS: DrawPrimitives record-run accounting
+PASS: DrawPrimitives record merging
+PASS: render interface validators
+PASS: OpenGL context state and clear plan
+PASS: OpenGL matrix stacks
+PASS: OpenGL vertex pipeline
+PASS: OpenGL texture objects and images
+PASS: OpenGL state queries
+PASS: OpenGL pixel reads
+PASS: OpenGL vertex arrays
+PASS: Direct3D state to neutral draw
+Velocity9x host tests passed

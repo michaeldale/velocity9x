@@ -1,0 +1,21 @@
+warning: unable to access 'C:\Users\michael/.config/git/ignore': Permission denied
+warning: unable to access 'C:\Users\michael/.config/git/ignore': Permission denied
+PASS: PE32 export-by-ordinal walk
+PASS: generated OpenGL dispatch table
+PASS: Direct3D back-face culling decision
+PASS: neutral core clipper and list builder
+PASS: DrawPrimitives record-run accounting
+FAIL C:\everything\velocity9x\tests\host\test_r3d_records.c:65: !v9x_r3d_records_flush(&run)
+FAIL C:\everything\velocity9x\tests\host\test_r3d_records.c:66: c.calls == 4ul
+FAIL C:\everything\velocity9x\tests\host\test_r3d_records.c:68: c.sizes[0] == 5ul && c.sizes[1] == 2ul && c.sizes[2] == 2ul && c.sizes[3] == 1ul
+FAIL C:\everything\velocity9x\tests\host\test_r3d_records.c:69: c.vertices[15].color == 0ul && c.vertices[27].color == 12ul
+PASS: render interface validators
+PASS: OpenGL context state and clear plan
+PASS: OpenGL matrix stacks
+PASS: OpenGL vertex pipeline
+PASS: OpenGL texture objects and images
+PASS: OpenGL state queries
+PASS: OpenGL pixel reads
+PASS: OpenGL vertex arrays
+PASS: Direct3D state to neutral draw
+4 host test(s) failed

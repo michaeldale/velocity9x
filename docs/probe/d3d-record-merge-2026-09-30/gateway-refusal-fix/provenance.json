@@ -1,0 +1,346 @@
+{
+  "date": "2026-09-30",
+  "host": "10.0.1.22",
+  "broadBoot": 70,
+  "clippedBoot": 71,
+  "halSha256": "622DD5424FFC923450D06A84B36D2F7044758EA5BE8E63A18C4E93DDB9C89EA8",
+  "probeSha256": "E60FFADAABD04756AB43AF833A104D3EF2CBB7D2F2D22D0E69567E63CE1E46B0",
+  "files": [
+    {
+      "name": "boot70-pre-probe.ini",
+      "bytes": 17740,
+      "sha256": "E99E93EEC101C8EAE8FFF598CFE67C5D3DC1830EFCB15FC5550861A4A44948D7"
+    },
+    {
+      "name": "boot71-warm.ini",
+      "bytes": 18614,
+      "sha256": "16FF5810EB09219F2433B535C4E6D7A6FCACF75E5AE059F3EFA92FD6811E1FAD"
+    },
+    {
+      "name": "boot72-post.ini",
+      "bytes": 19107,
+      "sha256": "83E72FE1FD2DB1F0E195119E22350AD9711C4C3CF4E07365E44231A87D003C9C"
+    },
+    {
+      "name": "boot72-pre.ini",
+      "bytes": 17738,
+      "sha256": "C119A98CC95A89EAC588702D552A0BBB372DCFFA6E432D3F447767D60BF480B4"
+    },
+    {
+      "name": "boot72-V9XDD.INI",
+      "bytes": 23857,
+      "sha256": "7B9AB42639D57EBC5ECC4C76FB0176D1AF0CC7D1A83953A10436225F0995508C"
+    },
+    {
+      "name": "boot72-V9XDD2.INI",
+      "bytes": 15310,
+      "sha256": "DA488A4D1C37E2453615797B40B1FD0EC20B26EC5C51329F753385A47327E234"
+    },
+    {
+      "name": "boot73-check-comparison.json",
+      "bytes": 76,
+      "sha256": "9DF9A1511E2192AD19D84F33EEDE77DB8BBF760DFE19EBC7B32383958352DC84"
+    },
+    {
+      "name": "boot73-post.ini",
+      "bytes": 19106,
+      "sha256": "0FC64A3168C0E0BE78857E49220F838D33E992BBCBEF2FD8F4BF4B6AF859E9B7"
+    },
+    {
+      "name": "boot73-pre.ini",
+      "bytes": 17738,
+      "sha256": "02936F1FB46BACBC610E2BA1FD385739042A5D4EC5ED8D01CE9C1A53B8F91CCC"
+    },
+    {
+      "name": "boot73-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "1258487078DA9791F45337288119ADE87D7E22205128EEDA91BD6FE3E3FE2D39"
+    },
+    {
+      "name": "boot73-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "23D4D559AC7C59FB249C75F57144B2D20588C08C720F1C0B5E515EB1BB3243EA"
+    },
+    {
+      "name": "checkpoint-post.ini",
+      "bytes": 19140,
+      "sha256": "90D3316A12B4A4AC6A7C0B5121D23A6C16E071543997BF9DDC7F25988F1464C9"
+    },
+    {
+      "name": "checkpoint-V9XDD.INI",
+      "bytes": 23857,
+      "sha256": "81CB898B04A6540D0DFF96F82ED03CF17516C5C77CAE77C3EEBF46E720B583AE"
+    },
+    {
+      "name": "checkpoint-V9XDD2.INI",
+      "bytes": 15309,
+      "sha256": "826677F28ADD83FD1412DC08A1FB6BAFD85275EF10EF97BA32E9E87E69E5984C"
+    },
+    {
+      "name": "clipped.ini",
+      "bytes": 383,
+      "sha256": "B95DF0C03E0C691E4D04A454240607D51CE815B557E00D9F3E1956BD9456B0AB"
+    },
+    {
+      "name": "locked-V9XDD.INI",
+      "bytes": 7484,
+      "sha256": "3FCDEEFDC9D8CAD772A47DF58A4F4A98F8A9848B9D91FA16BCFA88106380EA45"
+    },
+    {
+      "name": "locked-V9XDD2.INI",
+      "bytes": 15273,
+      "sha256": "FAF68E737BEEA8C6616E7DF2DF66D7586F2F2B76178C030624F2C8AB4E29CD92"
+    },
+    {
+      "name": "modeonly-boot71.ini",
+      "bytes": 7604,
+      "sha256": "16725A18E6F5E4475A1C88BAD82A95FBBC817B553D8DC3A7328F905D3EB576CF"
+    },
+    {
+      "name": "post-clipped.ini",
+      "bytes": 18755,
+      "sha256": "7E13D968ADC623CCCEC0A6EF9223A67EE81500BC9064EC50A56A835B4743AA07"
+    },
+    {
+      "name": "RCP0REF.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "RCP0RUN.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "RCP1REF.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "RCP1RUN.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "RCP2REF.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "RCP2RUN.PPM",
+      "bytes": 12301,
+      "sha256": "1B2B26E73E1AC787D1AA3AD3F670A5DA9773E3D2EDE73AD5BF6E1C62C56AC2AA"
+    },
+    {
+      "name": "README.md",
+      "bytes": 6829,
+      "sha256": "FD5B0258252761259D393D939DC186DD6CED04110ECC351EB2456D01F8545C0E"
+    },
+    {
+      "name": "stress-control/post.ini",
+      "bytes": 19108,
+      "sha256": "61FBBA85FA5F924C96191A76C22BF63795A527F5D400C1C9D34A7FE74B6B7199"
+    },
+    {
+      "name": "stress-control/pre.ini",
+      "bytes": 17738,
+      "sha256": "7CE679D74F99601D2C02795BA5784AE92CA307BB77EA90278F7F8273134A05D5"
+    },
+    {
+      "name": "stress-control/run1-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "850A1DD625DBF8F49BD01B23ED79B0DD16709CF77C818173C44C41B2F64DF074"
+    },
+    {
+      "name": "stress-control/run1-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "B29D038328B829CE56E5A0521B72EAE868990A00231DDE20C6F3EA2CDCFBB7FC"
+    },
+    {
+      "name": "stress-control/run2-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "98CF5F20C0E62713015AAD838C3225EBF8FF5EC6DB6E3B15BECF6AFD445C11A0"
+    },
+    {
+      "name": "stress-control/run2-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "C3052EC970A73A88D2A0EA03A4C4A425B2F69BED0C5EE5BA6EFE74AAB5D25780"
+    },
+    {
+      "name": "stress-control/run3-late-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "98CF5F20C0E62713015AAD838C3225EBF8FF5EC6DB6E3B15BECF6AFD445C11A0"
+    },
+    {
+      "name": "stress-control/run3-late-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "EE78A42D81D2CEAA1F1EABFF0DAEEB2E38F807DED41BD396B2E2A1F1755368E2"
+    },
+    {
+      "name": "stress-control/run3-late-windows.ini",
+      "bytes": 2092,
+      "sha256": "73D973B445E56C79A8E275616758D2350CFC06AE4FF364260860357031990804"
+    },
+    {
+      "name": "stress-control/run3-post.ini",
+      "bytes": 19149,
+      "sha256": "A3E4CCF6A5ED3044BA4F204FBBB9B78C7E330244EDAAEE5083A81382FA6681A8"
+    },
+    {
+      "name": "stress-control/run3-screen.png",
+      "bytes": 17495,
+      "sha256": "026FE5E02F3FA55331717ACFD67D83E2EDA8F64A866A2EF38196D3DAF7AF90C9"
+    },
+    {
+      "name": "stress-control/run3-V9XDD.INI",
+      "bytes": 23869,
+      "sha256": "97F97D9C96F14C5D501FA64C45F5AB98B94A9B53E6C3A7F7CAFF9F7A47EB84B2"
+    },
+    {
+      "name": "stress-control/run3-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "C3052EC970A73A88D2A0EA03A4C4A425B2F69BED0C5EE5BA6EFE74AAB5D25780"
+    },
+    {
+      "name": "stress-control/run3-windows.ini",
+      "bytes": 2092,
+      "sha256": "73D973B445E56C79A8E275616758D2350CFC06AE4FF364260860357031990804"
+    },
+    {
+      "name": "stress-control/run4-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "98CF5F20C0E62713015AAD838C3225EBF8FF5EC6DB6E3B15BECF6AFD445C11A0"
+    },
+    {
+      "name": "stress-control/run4-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "70DF8FB99B88FF4BAD65A6C84E8C038AE871071F4C9DADDBFB57B73A9C42F81A"
+    },
+    {
+      "name": "stress-control/run5-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "1EAA875D7E8DD5557BB234133A51602BCDF8F8B55E06326E21EF8F6991570756"
+    },
+    {
+      "name": "stress-control/run5-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "244B06DC8C07F13E06F4A9B98F17A5A08A25B089AEBCA3B4340AAE2D9CC89916"
+    },
+    {
+      "name": "stress-control/WININIT.INI",
+      "bytes": 89,
+      "sha256": "8A95C84FBA03D44FA79E094BED9835F9F18D274E3EDA15616F360701972E2D8F"
+    },
+    {
+      "name": "stress-fixed/boot76-modestress-final.ini",
+      "bytes": 7616,
+      "sha256": "28216786F87C64D4B9EF611BAD5BB6E06D0F0C707E11540AC42ECDEF352341AC"
+    },
+    {
+      "name": "stress-fixed/boot76-modestress-post.ini",
+      "bytes": 18723,
+      "sha256": "2D3CABFADB633D4CDB4D7A060655B1C4F426E8B3CFD693609A97771846665A64"
+    },
+    {
+      "name": "stress-fixed/boot76-modestress.ini",
+      "bytes": 7620,
+      "sha256": "3BBB10F14BB3C9A1BE45F679E3BCBEB435E813CF42BC8BE67A70347BCB7F54C4"
+    },
+    {
+      "name": "stress-fixed/modestress-final-post.ini",
+      "bytes": 19364,
+      "sha256": "5B75ABE07233E57CC0470137FD34AFD4E7BA4854678540A8FD60746D628785B7"
+    },
+    {
+      "name": "stress-fixed/modestress-final.ini",
+      "bytes": 7616,
+      "sha256": "E83F4E9E24DD880476DE4280A99FA1464971BE0091191F5C2CCA9A4877B34C6E"
+    },
+    {
+      "name": "stress-fixed/modestress-post.ini",
+      "bytes": 19281,
+      "sha256": "C134EF10DE1267208EAF29F0A7C74BB5D7DD809824F37A21B3220CC7CDD14C7B"
+    },
+    {
+      "name": "stress-fixed/modestress.ini",
+      "bytes": 7624,
+      "sha256": "E7086030DDBC12E0D8F644E07AFD7E9D0E26982ADF9263E47A594C6865C62B8E"
+    },
+    {
+      "name": "stress-fixed/post.ini",
+      "bytes": 19109,
+      "sha256": "59AAA4875E91A8CFF82CAB31EFE669941C4E11F9BB7F8066A7E2F710A249F630"
+    },
+    {
+      "name": "stress-fixed/pre.ini",
+      "bytes": 17740,
+      "sha256": "DC496B53653138174608BF975C35F9864F32B7F7A1BC5FC69B7D559D7431B20B"
+    },
+    {
+      "name": "stress-fixed/run1-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "78970871F67089BB288726B83BA3F76360E078461CAFDE5045559EFEB30FE934"
+    },
+    {
+      "name": "stress-fixed/run1-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "8A4470D91F7BEDE50A5F2AEC23FE741EB756BD7B43DE0B32AD5C5213D99B042D"
+    },
+    {
+      "name": "stress-fixed/run2-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "EDDABC6E3102A30C2496BFE3A184A1CAD6365EB9C248BEABFB8E0169B46AD383"
+    },
+    {
+      "name": "stress-fixed/run2-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "B0F87B9B59066CA746F1E89A1C2E84D049FE6CD7D51959C3445CA4E6434A25BE"
+    },
+    {
+      "name": "stress-fixed/run3-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "EDDABC6E3102A30C2496BFE3A184A1CAD6365EB9C248BEABFB8E0169B46AD383"
+    },
+    {
+      "name": "stress-fixed/run3-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "0374348E5F4AFF1F53EF15C637EAF82E9341BABFB62E1D06756A517B9A3733B4"
+    },
+    {
+      "name": "stress-fixed/run4-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "EDDABC6E3102A30C2496BFE3A184A1CAD6365EB9C248BEABFB8E0169B46AD383"
+    },
+    {
+      "name": "stress-fixed/run4-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "81229F4FC7DBE53933DC1124F87CF2258CF21AE2B17CDD1CA43E9E106E83858C"
+    },
+    {
+      "name": "stress-fixed/run5-V9XDD.INI",
+      "bytes": 23882,
+      "sha256": "C3C44EBB3E01AE2C8B19FDD9FD4A2DF65A9F77C5C2AEFE1C97CB182A205E6C08"
+    },
+    {
+      "name": "stress-fixed/run5-V9XDD2.INI",
+      "bytes": 15274,
+      "sha256": "B3A965130C33326BC22A9BA083FC92A0E2C84CC92DF2EC617C8C76789ED17F05"
+    },
+    {
+      "name": "stress-fixed/WININIT.INI",
+      "bytes": 89,
+      "sha256": "8A95C84FBA03D44FA79E094BED9835F9F18D274E3EDA15616F360701972E2D8F"
+    }
+  ],
+  "completedBroadBoots": [
+    71,
+    72,
+    73
+  ],
+  "modeProbeSha256": "7C8578A414A2CAD67E9C75BDB3B559A07FA76939FBD0C5D736DE160F025F6ADA",
+  "originalProbeSha256": "51C9C94D44BC06F3B7B040C4CA5D95C92E32EC94C39870BDA5933BF615ED0D32",
+  "stressControlBoot": 74,
+  "stressFixedBoot": 75,
+  "coldModeStressBoot": 76,
+  "modeStressProbeSha256": "F08637590187252F0BE10B4D3A18FD45E2B37B4EA95793346FD5285F0B285966"
+}

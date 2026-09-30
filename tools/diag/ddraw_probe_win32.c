@@ -3129,12 +3129,61 @@ void __stdcall V9xDdrawProbeEntry(void)
         ExitProcess(0u);
     }
 
+    /* Persist the boundary before a mode switch: a hard lock must not make
+     * a later operation look like the last successfully completed step. */
+    if (v9x_has_switch("/modestress")) {
+        v9x_write_uint("ModeCycle", 1ul);
+    }
+    v9x_write_result("BEFORE-SETMODE");
+    v9x_flush_results();
     hr = ddraw->vtbl->SetDisplayMode(ddraw, 640ul, 480ul, 16ul);
     v9x_write_hresult("SetModeHr", hr);
+    v9x_write_result("AFTER-SETMODE");
+    v9x_flush_results();
     v9x_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     if (ddraw->vtbl->GetDisplayMode(ddraw, &desc) == 0) {
         v9x_write_mode("AfterMode", &desc);
+    }
+
+    if (v9x_has_switch("/modeonly") || v9x_has_switch("/modestress")) {
+        HRESULT first_mode_hr = hr;
+        v9x_write_result("BEFORE-RESTOREMODE");
+        v9x_flush_results();
+        hr = ddraw->vtbl->RestoreDisplayMode(ddraw);
+        v9x_write_hresult("RestoreModeHr", hr);
+        v9x_write_result("AFTER-RESTOREMODE");
+        v9x_flush_results();
+        if (first_mode_hr != 0) { hr = first_mode_hr; }
+        if (v9x_has_switch("/modestress") && hr == 0) {
+            /* Repeated transitions without any 3D draws isolate mode
+             * lifecycle failures from record submission. Include the first
+             * switch above in the total of 32 complete round trips. */
+            for (index = 1ul; index < 32ul; ++index) {
+                v9x_write_stage("ModeCycle", index + 1ul);
+                v9x_write_result("BEFORE-SETMODE");
+                v9x_flush_results();
+                hr = ddraw->vtbl->SetDisplayMode(ddraw, 640ul, 480ul, 16ul);
+                v9x_write_hresult("SetModeHr", hr);
+                v9x_write_result("AFTER-SETMODE");
+                v9x_flush_results();
+                if (hr != 0) { break; }
+                v9x_write_result("BEFORE-RESTOREMODE");
+                v9x_flush_results();
+                hr = ddraw->vtbl->RestoreDisplayMode(ddraw);
+                v9x_write_hresult("RestoreModeHr", hr);
+                v9x_write_result("AFTER-RESTOREMODE");
+                v9x_flush_results();
+                if (hr != 0) { break; }
+            }
+        }
+        ddraw->vtbl->SetCooperativeLevel(ddraw, window, V9X_DDSCL_NORMAL);
+        ddraw->vtbl->Release(ddraw);
+        DestroyWindow(window);
+        v9x_write_result(hr != 0 ? "FAIL-MODE" :
+            (v9x_has_switch("/modestress") ? "MODESTRESS" : "MODEONLY"));
+        v9x_flush_results();
+        ExitProcess(hr != 0 ? 1u : 0u);
     }
 
     /*

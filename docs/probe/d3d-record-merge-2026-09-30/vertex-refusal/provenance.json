@@ -1,0 +1,97 @@
+{
+  "base_revision": "b182f94",
+  "control_core_revision": "c52281d",
+  "control_boot": 69,
+  "fixed_boot": 70,
+  "candidate_failure_boot": 68,
+  "gameplay_source_record_counter": 5033866,
+  "gameplay_bad_vertex": {
+    "callback": 37,
+    "triangle_count": 1,
+    "vertex_index": 2,
+    "check_mask": 4,
+    "z_bits": "B280002C",
+    "z_float": -1.490123935354859e-08
+  },
+  "control_fps": [
+    40.551,
+    40.921,
+    40.337,
+    40.825
+  ],
+  "fixed_fps": [
+    48.509,
+    48.736,
+    48.623,
+    48.618
+  ],
+  "gameplay_refusal_deltas": {
+    "control": 5,
+    "fixed": 0
+  },
+  "frame_mismatch_pixels": [
+    0,
+    0,
+    0,
+    126
+  ],
+  "gateway_updated_retest": "pending; host unreachable; user requested netbook first",
+  "hal_sha256": {
+    "diagnostic-candidate.dll": "b949b736bb0c3b445426aa82bb0eb20295899fbca3e88ab8a3c3b592edf6f638",
+    "candidate-repro-boot68.dll": "11c8d83ae76f9df6aa8d2344ecdba8a4a9ac6087279611915e5ffa5ee349b4e7",
+    "diagnostic-control-nomerge.dll": "abbd33542cb86e12ed4f4a9ba2885483badfc4409e0d400f675ef977a28259c7",
+    "fixed-candidate.dll": "622dd5424ffc923450d06a84b36d2f7044758ea5be8e63a18c4e93ddb9c89ea8"
+  },
+  "source_sha256": {
+    "src/display32/d3d/d3d_core.c": "d24592ec8c2980c8544b8c119c8a4891c15776799686219d902951b05f30d0ca",
+    "src/display32/r3d/r3d_records.c": "1e066580bd6d7c71e8471a4bf8ec6451f3e05bc5fb036bcdd6d460099a793c24",
+    "src/display32/r3d/r3d_records.h": "413a5aec0cf94ed4d2cad9dfd7351e251fde8b9f5366fad725a5fa5a06dcd374",
+    "tests/host/test_r3d_records.c": "b3ad4ad4e7ab1b461cfb70ec78853c603f197bd7ad02812b7ac95945d01465c5",
+    "tools/diag/record_clip_probe_win32.c": "5f63e4879da7371220d9970108aae72a39202181d97ec683a90efb020f5d512f"
+  },
+  "files": {
+    "candidate-3dmark-inflight.ini": "ecb91a6201d78db96bfc394a0eda43e96ca687ac356b736dcb42b56bdc24141a",
+    "candidate-neighbour-diagnostics.ini": "d3bd1ddaae7d79be3be62ce0e50b91ad7033d9a4222a21ab8941622cf45af30e",
+    "candidate-neighbour-fixture.ini": "989b3d78a1683a11760aa41f639fcc66b3ba76fec518114440177629bb0a4387",
+    "control-boundary0-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-boundary0-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-boundary1-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-boundary1-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-boundary2-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-boundary2-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "control-frame0.png": "13a60945e9a676a9194003b034fbde1a4bf96c1adbcd0c12ad805f5162ca37dd",
+    "control-frame1.png": "57c8745b68c027d229dc1e6c7b9e5facdd21160ba6a471088f1da5b2967a635f",
+    "control-frame2.png": "89aaa790d6a1a1b515a94fdb6885e76da13ee480c71d17fff7d3a67d9a423d94",
+    "control-frame3.png": "ced477a1788fe80249f05f779b831da72e23c896efe25557bf0fcf2bbb9e012b",
+    "control-gameplay-post.ini": "46af42603be9c225465477c3e0c057f7f2b151fafc6d182b83cc258775a76a67",
+    "control-gameplay-pre.ini": "98070cb9fa8554034138b2d4d9e51db6475f1f44e702d54e20c329d1b05e9647",
+    "control-gameplay-run4.log": "784cff88f3f10451e6046fa56d02dba71bfe0d3f493fb2bb87a56f18cd20d23a",
+    "control-gameplay-timing.txt": "64c932821271a8ba2c10c7bfccca9289a731bd3e1b4cec03498a892a1737d5cc",
+    "control-gameplay-visual.log": "2845fb188daf648a8ce8645e8d7288feade7e0d9ce171a89bb7fcd3fff0ff97b",
+    "control-neighbour-boundaries.ini": "85fb772dec036d6ed78e51d7d31b7bb11259b1b24f51b56378c8784dbe6cda5e",
+    "fixed-boundary0-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-boundary0-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-boundary1-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-boundary1-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-boundary2-REF.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-boundary2-RUN.ppm": "1d809e75a7bb8faeb056cf728824f4747e6465866e2ead1b5ef214ce6067361a",
+    "fixed-broad.ini": "049a187d159a8b6b88d9186675d43af759b00fae649a28d841dab3bf9a371fc7",
+    "fixed-broad2.ini": "d6236acc889dc3feaeeb9cde846079680fe721a80d712c37473687436dad532d",
+    "fixed-frame0.png": "13a60945e9a676a9194003b034fbde1a4bf96c1adbcd0c12ad805f5162ca37dd",
+    "fixed-frame1.png": "57c8745b68c027d229dc1e6c7b9e5facdd21160ba6a471088f1da5b2967a635f",
+    "fixed-frame2.png": "89aaa790d6a1a1b515a94fdb6885e76da13ee480c71d17fff7d3a67d9a423d94",
+    "fixed-frame3.png": "5e0bbb45493071675a72252ba25d32da6d9281e04e5911036a73791410481fb5",
+    "fixed-gameplay-post.ini": "aee09dd235980a501ea98c682c2fc7296378c1523cada06465d7d3fc9801e28f",
+    "fixed-gameplay-pre.ini": "a76b542415e04d5dbcbc324f0b91d5dba5ee7800a64fcc92b297fa7eecc0b02d",
+    "fixed-gameplay-run4.log": "1814a56efaf05242c3db19e28d492df0697f0a5598b33e1624fa9bd92c7e353e",
+    "fixed-gameplay-timing.txt": "0b4982e0aaa8651f8c8762c6baf5d1a0c7ed0baeb9788c94473893e8c0f5bd21",
+    "fixed-gameplay-visual.log": "f41d2f42cee96f864affbf8cb56c69c7086f3797ff24ebbc8734a07637eda76d",
+    "fixed-neighbour-boundaries.ini": "92c2391895a93346615743da0119359176bc9b6d4cd395857c41c7275ef11a70",
+    "fixed-post-broad.ini": "3f140ff1a68d3ab47ed9c2da58088e286a01f836a821533c21813cf4ae9c2eef",
+    "frame3-diff.png": "f370b2452800ec87dda995f0d1e408a0a04022b82378c437ad468f6ebc6e722a",
+    "full-gates.txt": "3847767d7401382793f81d71fc3797a3d503e0eeecabae1ba07d633dbf9f3f7f",
+    "host-after-fix.log": "a933e2b8fe38430878c2317697966765253768649bfe88b972e5c7eab54f7523",
+    "host-before-fix.log": "1346b60e04a5d7786cb0b6ae229573df5092d6732a13ee7d16b71f620793daca",
+    "instrumentation.patch": "ae5302acd4fa34eeeb39efab1f0587ecab1f1e9585318c6b2da7ab3ef2a93bc0"
+  }
+}

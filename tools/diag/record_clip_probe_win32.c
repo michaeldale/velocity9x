@@ -24,6 +24,7 @@ typedef DWORD (WINAPI *V9X_RCP_CONTEXT)(V9X_D3DHAL_CONTEXTCREATEDATA *);
 typedef DWORD (WINAPI *V9X_RCP_DESTROY)(V9X_D3DHAL_CONTEXTDESTROYDATA *);
 typedef DWORD (WINAPI *V9X_RCP_INFO)(V9X_DDHAL_GETDRIVERINFODATA *);
 typedef DWORD (WINAPI *V9X_RCP_DRAW)(V9X_D3DHAL_DRAWPRIMITIVESDATA *);
+static int v9x_rcp_refusal;
 static V9X_RCP_LEVEL v9x_rcp_enter, v9x_rcp_leave;
 static void *v9x_rcp_lock;
 static WORD v9x_rcp_reference[V9X_RCP_PIXELS];
@@ -88,6 +89,25 @@ static DWORD v9x_rcp_geometry(DWORD record, DWORD repeated)
             v9x_rcp_vertex(&v9x_rcp_vertices[i*3ul+2ul], 8.0f, 56.0f, 0xffff0000ul);
         }
         return repeated * 3ul;
+    }
+    if (v9x_rcp_refusal && (record == 1ul || record == 2ul)) {
+        v9x_rcp_vertex(&v9x_rcp_vertices[0], 4.0f, 4.0f, 0xff00ff00ul);
+        v9x_rcp_vertex(&v9x_rcp_vertices[1], 48.0f, 4.0f, 0xff00ff00ul);
+        v9x_rcp_vertex(&v9x_rcp_vertices[2], 16.0f, 60.0f, 0xff00ff00ul);
+        if (record == 1ul) {
+            for (i = 0ul; i < 3ul; ++i) {
+                ((DWORD *)&v9x_rcp_vertices[i].sz)[0] = 0x3f800001ul;
+            }
+            /* This valid triangle belongs to the refused record too. A
+             * triangle-wise retry would incorrectly make it visible. */
+            v9x_rcp_vertex(&v9x_rcp_vertices[3], 52.0f, 2.0f, 0xff00fffful);
+            v9x_rcp_vertex(&v9x_rcp_vertices[4], 62.0f, 2.0f, 0xff00fffful);
+            v9x_rcp_vertex(&v9x_rcp_vertices[5], 62.0f, 10.0f, 0xff00fffful);
+            return 6ul;
+        }
+        v9x_rcp_vertex(&v9x_rcp_vertices[3], 4.0f, 60.0f, 0xff0000fful);
+        for (i = 0ul; i < 3ul; ++i) { v9x_rcp_vertices[i].color = 0xff0000fful; }
+        return 4ul;
     }
     if (record == 1ul) {
         v9x_rcp_vertex(&v9x_rcp_vertices[0], -16.0f, 4.0f, 0xff00ff00ul);
@@ -235,6 +255,26 @@ void __stdcall V9xRecordClipProbeEntry(void)
     DWORD green_mask;
     char key[48], name[16];
     int result, ok = 1;
+    {
+        const char *arg = GetCommandLineA();
+        if (*arg == '"') {
+            ++arg;
+            while (*arg && *arg != '"') { ++arg; }
+            if (*arg) { ++arg; }
+        } else {
+            while (*arg && *arg != ' ' && *arg != '\t') { ++arg; }
+        }
+        while (*arg) {
+            while (*arg == ' ' || *arg == '\t') { ++arg; }
+            if (arg[0] == '-' && arg[1] == 'r' && arg[2] == 'e' &&
+                arg[3] == 'f' && arg[4] == 'u' && arg[5] == 's' &&
+                arg[6] == 'a' && arg[7] == 'l' &&
+                (arg[8] == 0 || arg[8] == ' ' || arg[8] == '\t')) {
+                v9x_rcp_refusal = 1; break;
+            }
+            while (*arg && *arg != ' ' && *arg != '\t') { ++arg; }
+        }
+    }
     CreateDirectoryA("C:\\V9XDIAG", 0);
     DeleteFileA(V9X_RCP_PATH);
     v9x_rcp_text("Build", V9X_BUILD_ID); v9x_rcp_text("Result", "RUNNING");
@@ -249,7 +289,8 @@ void __stdcall V9xRecordClipProbeEntry(void)
     shared = (V9X_DD_SHARED *)driver.dwContext;
     if (result <= 0 || shared == 0 || IsBadReadPtr(shared, sizeof(*shared)) ||
         shared->dwSize != sizeof(*shared) || shared->abi != V9X_DD_SHARED_ABI ||
-        shared->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_MACH64) {
+        shared->engine.engine_type != (v9x_rcp_refusal ?
+            V9X_DD_ENGINE_TYPE_INTEL_GEN3 : V9X_DD_ENGINE_TYPE_ATI_MACH64)) {
         v9x_rcp_text("Result", "FAIL-SHARED-OR-ENGINE"); ExitProcess(1u);
     }
     getlock = (V9X_RCP_GETLOCK)v9x_rcp_ordinal(93ul);
@@ -279,6 +320,7 @@ void __stdcall V9xRecordClipProbeEntry(void)
     v9x_rcp_zero(&context, sizeof(context)); context.lpDDS = target; context.dwPID = GetCurrentProcessId();
     v9x_rcp_enter(v9x_rcp_lock); context_create(&context); v9x_rcp_leave(v9x_rcp_lock);
     if (context.ddrval != 0ul || context.dwhContext == 0ul) { v9x_rcp_text("Result", "FAIL-CONTEXT"); ExitProcess(1u); }
+    v9x_rcp_uint("RefusalMode", (DWORD)v9x_rcp_refusal);
     baseline_refused = shared->d3d_diagnostics.batches_engine_refused;
     baseline_fifo = shared->engine.fifo_timeouts; baseline_idle = shared->engine.idle_timeouts;
     baseline_resets = shared->engine.reset_count;
@@ -301,9 +343,9 @@ void __stdcall V9xRecordClipProbeEntry(void)
         wsprintfA(key, "Case%luSinkBatches", test); v9x_rcp_uint(key, shared->d3d_diagnostics.r3d_list_sink_batches-before_batches);
         wsprintfA(name, "RCP%luRUN", test);
         if (!v9x_rcp_image(name, v9x_rcp_pixels, green_mask) || mismatch != 0ul ||
-            shared->d3d_diagnostics.r3d_list_clipped == before_clips) { ok = 0; }
+            (!v9x_rcp_refusal && shared->d3d_diagnostics.r3d_list_clipped == before_clips)) { ok = 0; }
         /* Prove the comparator detects order, rather than matching blank targets. */
-        if (test == 0ul) {
+        if (test == 0ul && !v9x_rcp_refusal) {
             if (!v9x_rcp_clear(target) || !v9x_rcp_submit(draw, context.dwhContext, 1ul, 0, 1, 1) ||
                 !v9x_rcp_capture(target, v9x_rcp_pixels)) { ok = 0; break; }
             mismatch = v9x_rcp_mismatch(); v9x_rcp_uint("ReversedOrderMismatch", mismatch);
@@ -314,7 +356,11 @@ void __stdcall V9xRecordClipProbeEntry(void)
     v9x_rcp_uint("NewFifoTimeouts", shared->engine.fifo_timeouts-baseline_fifo);
     v9x_rcp_uint("NewIdleTimeouts", shared->engine.idle_timeouts-baseline_idle);
     v9x_rcp_uint("NewResets", shared->engine.reset_count-baseline_resets);
-    if (shared->d3d_diagnostics.batches_engine_refused != baseline_refused ||
+    if ((!v9x_rcp_refusal &&
+         shared->d3d_diagnostics.batches_engine_refused != baseline_refused) ||
+        (v9x_rcp_refusal &&
+         shared->d3d_diagnostics.batches_engine_refused-baseline_refused != 6ul &&
+         shared->d3d_diagnostics.batches_engine_refused-baseline_refused != 9ul) ||
         shared->engine.fifo_timeouts != baseline_fifo || shared->engine.idle_timeouts != baseline_idle ||
         shared->engine.reset_count != baseline_resets) { ok = 0; }
     destroy.dwhContext = context.dwhContext; destroy.ddrval = 0xfffffffful;
