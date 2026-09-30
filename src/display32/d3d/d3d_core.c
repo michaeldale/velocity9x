@@ -2162,6 +2162,35 @@ static DWORD v9x_d3d_draw_one_primitive_body(
 static DWORD v9x_d3d_draw_primitives_body(
     V9X_D3DHAL_DRAWPRIMITIVESDATA *data);
 
+/*
+ * Whether two copies of a context are identical, DWORD by DWORD. The
+ * context holds only DWORDs and 32-bit pointers, so there is no padding to
+ * compare. There is no C library in the HAL, hence no memcmp.
+ *
+ * Used to ask whether a DrawPrimitives record's state pairs changed
+ * anything: v9x_d3d_apply_state writes nothing but the context and
+ * diagnostic counters, so an unchanged context means the pairs were
+ * redundant, and a merge could have carried the record in the previous run.
+ */
+typedef char v9x_d3d_assert_context_dwords[
+    sizeof(V9X_D3D_CONTEXT) % sizeof(DWORD) == 0u ? 1 : -1];
+
+static int v9x_d3d_context_same(const V9X_D3D_CONTEXT *a,
+                                const V9X_D3D_CONTEXT *b)
+{
+    const DWORD *left = (const DWORD *)a;
+    const DWORD *right = (const DWORD *)b;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(V9X_D3D_CONTEXT) / sizeof(DWORD);
+         ++index) {
+        if (left[index] != right[index]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
 DWORD __stdcall V9xD3dDrawPrimitives(
     V9X_D3DHAL_DRAWPRIMITIVESDATA *data)
@@ -2188,7 +2217,11 @@ static DWORD v9x_d3d_draw_primitives_body(
     DWORD record;
     DWORD fan_triangles;
     v9x_u32 record_run = 0ul;
+    v9x_u32 record_run_noop = 0ul;
     v9x_u32 record_triangles;
+    V9X_D3D_CONTEXT state_before;
+    int record_state_noop;
+    int record_texture_changed;
     int ok = 0;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWPRIMS,
@@ -2245,10 +2278,22 @@ static DWORD v9x_d3d_draw_primitives_body(
                     v9x_hal->d3d_diagnostics.state_max_count =
                         (DWORD)counts->wNumStateChanges;
                 }
+                if (counts->wNumStateChanges != 0u) {
+                    state_before = *context;
+                }
                 for (change = 0ul;
                      change < (DWORD)counts->wNumStateChanges; ++change) {
                     v9x_d3d_apply_state(context, pairs[change * 2ul],
                                         pairs[change * 2ul + 1ul]);
+                }
+                record_state_noop = 0;
+                record_texture_changed = 0;
+                if (counts->wNumStateChanges != 0u) {
+                    record_state_noop =
+                        v9x_d3d_context_same(&state_before, context);
+                    record_texture_changed =
+                        state_before.texture_handle !=
+                        context->texture_handle;
                 }
             }
             cursor += (DWORD)counts->wNumStateChanges * 2ul * sizeof(DWORD);
@@ -2316,6 +2361,26 @@ static DWORD v9x_d3d_draw_primitives_body(
                         counts->wNumStateChanges != 0u) {
                         ++v9x_hal->d3d_diagnostics.dp_record_state_breaks;
                     }
+                }
+                /* The same merge if pairs that changed nothing did not
+                 * break a run: what comparing state would add. */
+                if (counts->wNumStateChanges != 0u) {
+                    ++v9x_hal->d3d_diagnostics.dp_state_records;
+                    if (record_state_noop) {
+                        ++v9x_hal->d3d_diagnostics.dp_state_records_noop;
+                    }
+                    if (record_texture_changed) {
+                        ++v9x_hal->d3d_diagnostics.dp_state_records_texture;
+                    }
+                }
+                if (v9x_r3d_record_run_step(
+                        &record_run_noop,
+                        record_state_noop
+                            ? 0ul
+                            : (v9x_u32)counts->wNumStateChanges,
+                        record_triangles,
+                        (v9x_u32)V9X_D3D_INDEXED_BATCH)) {
+                    ++v9x_hal->d3d_diagnostics.dp_record_runs_noop_joined;
                 }
             }
             /*

@@ -1027,6 +1027,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("DpRecordRuns", snapshot.d3d.dp_record_runs);
     v9x_write_uint("DpRecordStateBreaks",
                    snapshot.d3d.dp_record_state_breaks);
+    v9x_write_uint("DpStateRecords", snapshot.d3d.dp_state_records);
+    v9x_write_uint("DpStateRecordsNoop", snapshot.d3d.dp_state_records_noop);
+    v9x_write_uint("DpStateRecordsTexture",
+                   snapshot.d3d.dp_state_records_texture);
+    v9x_write_uint("DpRecordRunsNoopJoined",
+                   snapshot.d3d.dp_record_runs_noop_joined);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

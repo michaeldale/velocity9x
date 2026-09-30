@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026093003: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives redundant-state
+ * accounting. An append. */
 /* 2026093002: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives record-run
  * accounting. An append. */
 /* 2026093001: V9X_D3D_DIAGNOSTICS gains the in-call R3D list accounting.
@@ -1605,7 +1607,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026093002ul
+#define V9X_DD_SHARED_ABI   2026093003ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3064,6 +3066,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD dp_record_triangles;
     DWORD dp_record_runs;
     DWORD dp_record_state_breaks;
+    /* DrawPrimitives redundant state (2026-09-30): drawn records carrying
+     * state pairs, those whose pairs left the context unchanged, those
+     * that changed the texture handle, and the runs the merge above would
+     * leave if unchanged-context records did not break a run. Counted
+     * only; nothing is merged. */
+    DWORD dp_state_records;
+    DWORD dp_state_records_noop;
+    DWORD dp_state_records_texture;
+    DWORD dp_record_runs_noop_joined;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
