@@ -81,10 +81,38 @@ The ICD reaches the list builder through the render interface
 the builder's unchanged path, not merging. The five list counters are
 updated only by the Direct3D wrapper (`v9x_d3d_draw_list`), which explains
 why they did not move; they do not cover the ICD. There is no earlier
-measurement of this timedemo in the repository, so 17.2 fps is a baseline
-for later builds, not a comparison. The operator remembered about 17 fps
-from an earlier run of the same timedemo, but not which build ran it. The 28.4 fps recorded on 2026-09-26 is
+measurement of this timedemo in the repository. The operator remembered
+about 17 fps from an earlier run of the same timedemo, but not which build
+ran it, so a control run followed.
+
+### Control run
+
+The control is a clean build of `010b2d6`: the tree just before the merge
+change, whose code matches `dd9d22b`. DRV, VXD, HAL and settings page were
+built from it and swapped in together with WININIT renames, along with a
+V9XTRACE from the same build, because the change bumped the shared ABI. The
+installed ICD was left as it was for every run. Boot 55 ran the control on a
+fresh boot. Boot 56 restored the boot 54 binaries, hash-checked against the
+files taken off the machine beforehand, and repeated the run on a fresh
+boot, so both builds have a run with no earlier 3DMark in the same boot.
+
+| Boot | Build | Seconds per pass | fps |
+|---|---|---|---|
+| 54 (after 3DMark) | merge | 36.8, 36.6, 36.6 | 17.2, 17.3, 17.2 |
+| 55 (fresh) | control | 36.9, 36.8, 36.7 | 17.1, 17.2, 17.2 |
+| 56 (fresh) | merge | 36.7, 36.5, 36.4 | 17.2, 17.3, 17.3 |
+
+On the two fresh boots the merge build is 0.2-0.3 s faster per pass, which
+is about 1%. The spread within each boot's three passes is 0.2-0.3 s, so
+this is not claimed as a gain. The finding is that the change costs Quake 2
+nothing measurable. That is expected: the ICD's list calls take the
+zero-capacity path, which the change was meant to keep identical.
+`R3dListCalls` stayed at 0 through the boot 56 run, which confirms that
+Quake 2 makes no Direct3D list calls. No run set a timeout, abandonment or
+refusal counter. `config.cfg` was restored after each run. The 28.4 fps recorded on 2026-09-26 is
 `timerefresh` at the `demo1` spawn point, which is a different measurement.
 
-Evidence: `boot54-quake2-timedemo-qconsole.log` and the pre/post Quake 2
-snapshots in the probe folder.
+Evidence, in the probe folder: `boot54-quake2-timedemo-qconsole.log`,
+`boot55-control-quake2-timedemo-qconsole.log`,
+`boot56-quake2-timedemo-qconsole.log`, and each boot's pre/post Quake 2
+snapshots.

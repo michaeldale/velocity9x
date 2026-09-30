@@ -27,7 +27,8 @@ machines timed out. Netbook boot 54 then ran the probe, 3DMark 99 at both
 resolutions and a Quake 2 timedemo with no regression
 (`../decisions/2026-09-30-r3d-batch-merge-netbook-boot54.md`). 3DMark culls
 and clips nothing in the list builder, so merging never ran there. Quake 2
-goes through the zero-capacity render interface. Phase 0's Half-Life
+goes through the zero-capacity render interface; a control build of
+`010b2d6` on boots 55-56 put both builds at 17.1-17.3 fps. Phase 0's Half-Life
 measurement and Phase 3's clip-in-core check are still owed. The Half-Life
 demo also remains to be recorded by an operator in the game.
 
