@@ -22,10 +22,14 @@ Implemented in the working tree:
   after a refused merged batch;
 - `check-tree.ps1`, `build-host.ps1`, and the complete `run-checks.ps1` pass.
 
-The physical attempt on 2026-09-30 could not start: MICHAEL-NETBOOK at
-`10.0.1.248:9869` and the Gateway at `10.0.1.22:9869` both timed out. No
-hardware result or performance claim is inferred from that absence. The
-Half-Life demo also remains to be recorded by an operator in the game.
+The first physical attempt on 2026-09-30 could not start, because both
+machines timed out. Netbook boot 54 then ran the probe, 3DMark 99 at both
+resolutions and a Quake 2 timedemo with no regression
+(`../decisions/2026-09-30-r3d-batch-merge-netbook-boot54.md`). 3DMark culls
+and clips nothing in the list builder, so merging never ran there. Quake 2
+goes through the zero-capacity render interface. Phase 0's Half-Life
+measurement and Phase 3's clip-in-core check are still owed. The Half-Life
+demo also remains to be recorded by an operator in the game.
 
 ## Goal
 

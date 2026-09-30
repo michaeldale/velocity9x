@@ -188,6 +188,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-18 Gen3 page flip audit against i915 v4.4: the flip-pending bits are 11 and 10, not 2 and 6, and a plane-base write is a pending flip too](2026-09-18-intel-gen3-page-flip-audit.md)
 - [2026-09-29 Intel Gen3 asynchronous-submission errata gate](2026-09-29-intel-gen3-async-errata-gate.md)
 - [2026-09-29 Gen3 asynchronous submission fails the physical correctness gate](2026-09-29-intel-gen3-async-submission-physical.md)
+- [2026-09-30 In-call batch merging on the netbook: no regression, and 3DMark 99 never exercises it](2026-09-30-r3d-batch-merge-netbook-boot54.md)
 
 ## NVIDIA and other surveyed cards
 
