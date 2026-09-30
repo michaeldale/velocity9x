@@ -1,9 +1,23 @@
 # Merge DrawPrimitives records that share one state
 
-Date: 2026-09-30. Status: design for approval; nothing coded. It revises
+Date: 2026-09-30. Status: approved; nothing coded. It revises
 `r3d-in-call-batch-merging.md`, lifting that plan's "no comparing state
 between batches" exclusion for one case only: records inside one
 `DrawPrimitives` call.
+
+## Decisions
+
+Michael Dale made both on 2026-09-30:
+
+- **The no-state-comparison rule is lifted** for records inside one
+  `DrawPrimitives` call. Merging across calls, and merging indexed calls,
+  stay excluded.
+- **Run accumulation lives in a new leaf module,
+  `src/display32/r3d/r3d_records.c`, with its header**, and is host-tested.
+  The external symbols it adds are agreed. See "Where the logic lives".
+
+Implementation is to be done in a separate session. This document is the
+hand-over.
 
 ## Evidence
 
@@ -79,17 +93,26 @@ staging stays at the ~12.5 KiB the in-call plan recorded.
 
 Run accumulation (append, split at capacity, flush in order, flush on exit)
 is pure, and is where ordering bugs would hide. It belongs in host-tested
-code, not in `d3d_core.c`, which the host build does not compile. The
-proposal is a leaf module `src/display32/r3d/r3d_records.c` with a small
-header: a run struct over a caller-owned vertex array, `append_list`,
-`append_fan`, `flush`, and a sink callback. The state comparison and the
-restore dance stay in `d3d_core.c`, which owns the context.
+code, not in `d3d_core.c`, which the host build does not compile. It is
+therefore a leaf module, the same shape as `r3d_cull.c` and `r3d_clip.c`:
 
-**This adds external symbols, a design change needing agreement.** The
-alternative is header-only statics in the style of `r3d_runs.h`. That avoids
-external symbols but puts about 100 lines of logic in a header. The
-recommendation is the leaf module, the same shape as `r3d_cull.c` and
-`r3d_clip.c`.
+- `src/display32/r3d/r3d_records.c` and `r3d_records.h`, including only
+  `velocity9x/types.h` and `r3d.h`, never the DDHAL side;
+- a run struct over a caller-owned `V9X_R3D_VERTEX` array and its triangle
+  capacity, plus a sink callback and user pointer, as `V9X_R3D_LIST` does;
+- `v9x_r3d_records_append_list`, `v9x_r3d_records_append_fan` and
+  `v9x_r3d_records_flush`, following the project's
+  `v9x_<area>_<verb>` naming, each returning whether the sink accepted
+  everything it was given;
+- added to `build-ddraw-hal-dll.ps1`'s source list and to
+  `scripts/lib/host-sources.ps1` with `tests/host/test_r3d_records.c`,
+  registered in `test_main.c`.
+
+The state comparison, the restore-and-flush on a real change, and the
+counters stay in `d3d_core.c`, which owns the context.
+`v9x_d3d_context_same` is already there from `5da6648`. The rejected
+alternative was header-only statics in the style of `r3d_runs.h`, which
+avoids external symbols but puts about 100 lines of logic in a header.
 
 The four record-run counters stay. After the change, list calls from the
 `DrawPrimitives` path should fall to about `DpRecordRunsNoopJoined`, which
