@@ -57,6 +57,28 @@ static const BYTE v9x_guid_d3d_extended_caps[16] = {
 static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
 
+/*
+ * The list builder's staging for v9x_d3d_draw_list, which is 6 KB and is
+ * NOT on the stack on purpose.
+ *
+ * On the stack it was a 6,216-byte frame under a 6,868-byte DrawPrimitives
+ * frame, and Final Reality's render thread had committed only 16 KB of its
+ * 1 MB stack when it called in. The draw path's first push into the page
+ * below the committed limit killed the process, with no fault dialog and no
+ * V9XTRACE.INI, instead of growing the stack
+ * (docs\issues\2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md).
+ * The obvious alternative, probing the stack a page at a time, assumes that
+ * a first touch of that page from inside a HAL callback grows the stack,
+ * which is exactly what did not happen.
+ *
+ * One buffer serves every caller: DirectDraw holds the Win16 mutex around
+ * every HAL callback (measured,
+ * docs\decisions\2026-09-26-98se-directdraw-holds-the-win16-mutex-around-every-hal-callback-measured.md),
+ * nothing in the HAL waits or yields inside one, and v9x_d3d_draw_list is
+ * never re-entered: its sink goes to an engine, not back through here.
+ */
+static V9X_R3D_VERTEX v9x_d3d_list_staging[V9X_D3D_INDEXED_BATCH * 3u];
+
 /* Source colour keys by surface; see ddhal_internal.h. */
 static V9X_D3D_COLOR_KEY v9x_d3d_color_keys[V9X_D3D_COLOR_KEY_COUNT];
 
@@ -690,7 +712,6 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     V9X_D3D_LIST_SINK sink;
     V9X_R3D_LIST list;
     V9X_R3D_LIST_STATS stats;
-    V9X_R3D_VERTEX staging[V9X_D3D_INDEXED_BATCH * 3u];
     int ok;
 
     sink.ops = ops;
@@ -702,7 +723,7 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     list.batch = v9x_d3d_list_batch;
     list.culled = v9x_d3d_list_culled;
     list.user = &sink;
-    list.staging = staging;
+    list.staging = v9x_d3d_list_staging;
     list.staging_triangles = (v9x_u32)V9X_D3D_INDEXED_BATCH;
     list.stats = &stats;
     ok = v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,

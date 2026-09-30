@@ -125,3 +125,71 @@ record; they do not exercise a live context or the Gen3 sink.
 Until 1 is done, the record-merging HAL should not ship: Final Reality is in
 the 0.7.0 hardware Direct3D acceptance set (STATUS.md) and it does not
 survive its first test on the Gen3 path.
+
+## Cause: the list builder's 6 KB staging on an application stack with 16 KB committed (2026-09-30, fixed)
+
+Measured on the netbook over wifi (10.0.1.254), boots 72-77, each HAL
+installed by a WININIT rename and confirmed by hash, Robots only, one pass,
+driven through the agent's `input` verb. The fault is not in the
+record-replay diff and not in Gen3: it is stack depth, introduced by
+`08b4239` (in-call batch merging), which gave `v9x_d3d_draw_list` a
+6,144-byte `staging` array on the stack.
+
+- **Boot 72, HEAD (`a9a0fef`) unmodified:** same death as boot 71, five
+  DrawPrimitives calls, one record. No fault dialog appeared, and
+  `C:\V9XDIAG\V9XTRACE.INI` was not written, so the HAL's unhandled
+  exception filter never ran. `DpPrimTypeSeen=0x40`: every record is a fan.
+- **Boots 73-74, breadcrumbs pushed into the trace ring** (temporary, not
+  committed). The fatal call is record 0 = a 4-vertex fan (appended, 2
+  triangles pending), record 1 = the terminator carrying one pair,
+  `TEXTUREHANDLE = 0`. That state change flushes the pending run
+  (`0x71000002` pushed), and the process dies before `v9x_d3d_draw_list`
+  pushes its first breadcrumb. It is the first geometry Final Reality ever
+  sends through DrawPrimitives; the four earlier calls carry terminators
+  only.
+- **Disassembly:** `v9x_d3d_draw_list` is `sub esp,0x1848` (6,216 bytes)
+  and first touches the bottom of that frame at the breadcrumb call that
+  never landed; `v9x_d3d_draw_primitives_body` is `sub esp,0x1ad4` (6,868).
+- **Boot 75, `fs:[4]`/`fs:[8]` and a local's address in
+  `v9x_d3d_records_batch`:** stack base `0x00750000`, committed limit
+  `0x0074C000`, ESP about `0x0074D734`. `draw_list`'s frame therefore bottoms
+  at about `0x0074BEC0`, in the first page below the committed limit.
+- **Boot 76, `VirtualQuery` of that page:** allocation base `0x00640000`
+  (a normal ~1 MB reservation), `MEM_RESERVE`, `PAGE_NOACCESS`, one page.
+  The stack was not exhausted. Its first touch of a new stack page, from
+  inside the HAL callback, killed the process instead of growing the stack.
+
+Why growth failed is not established. The absent dialog and absent
+`V9XTRACE.INI` fit the Direct3D runtime catching the exception around the
+HAL call before any stack growth happens, but nothing here measured that.
+It is also why stack probing was not taken as the fix: a probe is only a
+first touch of the same page.
+
+**Fix:** `v9x_d3d_draw_list`'s staging is file-scope storage
+(`v9x_d3d_list_staging`), shared by its three callers under the Win16 mutex
+DirectDraw holds around every HAL callback
+(`../decisions/2026-09-26-98se-directdraw-holds-the-win16-mutex-around-every-hal-callback-measured.md`);
+the function is never re-entered. Its frame is now 72 bytes.
+
+**Boot 77, fixed HAL:** Robots ran to completion and Final Reality returned
+to its options dialog; the frame rendered correctly
+(`netbook-boot77-fixed-robots-frame.png`). After the run:
+`D3dRenderPrimitiveCalls=87007`, `DpRecords=707040`,
+`DpRecordTriangles=749923`, `DpRecordRuns=387573` = `I9xxDrawsSubmitted`,
+`I9xxDrawsRefused=0`, `BatchesEngineRefused=0`. So on this workload the
+record-merging code itself is sound: 707,040 records went out in 387,573
+batches.
+
+Gates: `check-tree.ps1`, `build-host.ps1`, `run-checks.ps1` pass.
+
+Not done:
+
+- **Rage Mobility (Mach64):** reported crashing the same way. It shares
+  `v9x_d3d_draw_list` and the DrawPrimitives body, so the same cause is
+  likely, but the fix has not been run there.
+- **What remains on the stack:** the DrawPrimitives body's 6 KB run buffer
+  (6,868-byte frame) and DrawOneIndexedPrimitive's 6 KB gather (6,292) are
+  still stack frames, the same depth as before `08b4239`, which Final
+  Reality survived on 2026-09-20. An application whose thread calls in with
+  less committed headroom than about 7 KB would hit the same failure.
+- Final Reality's other tests, and a score, were not run.
