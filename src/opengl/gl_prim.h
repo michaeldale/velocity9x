@@ -94,7 +94,12 @@ typedef struct v9x_gl_pipeline {
     GLenum mode;
     v9x_u32 count;
     V9X_GL_VERTEX first;
-    V9X_GL_VERTEX previous[3];
+    /* The last three vertices and the one being added, as a ring: the
+     * former previous[k], k = 0..2 oldest first, is ring[(ring_head + k)
+     * & 3], and the vertex being added is built in the fourth slot
+     * (v9x_gl_prim_vertex). */
+    V9X_GL_VERTEX ring[4];
+    unsigned int ring_head;
     /* The draw rectangle's clip planes for this primitive (the viewport
      * and scissor cannot change inside Begin/End), and whether it has any
      * area; set at Begin. */

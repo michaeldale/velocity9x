@@ -60,6 +60,12 @@ changes untested.
   hint, and per-primitive viewport and colour caches. Half-Life OpenGL on
   the netbook 10.75 to 14.75 fps
   ([record](docs/decisions/2026-10-01-hl1-opengl-icd-cpu-costs.md)).
+- **A cheaper vertex path**, with output held byte-identical by a hashed
+  host test: the clipper skips planes a polygon is wholly inside and keeps
+  each plane's distances, the inside test is written out, and the vertex
+  history is a ring instead of copies. Quake 2's `glVertex*` 2.47 to 1.86
+  us a vertex on the netbook
+  ([record](docs/decisions/2026-10-01-gl-vertex-path-profile-quake2-netbook.md)).
 
 ### Diagnostics
 

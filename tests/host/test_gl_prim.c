@@ -675,6 +675,115 @@ static void test_alpha_test_that_cannot_fail(void)
     PCHECK(!v9x_gl_prim_blend_reads_alpha(&state));
 }
 
+/*
+ * Every emitted byte, against the pipeline as it was before the 2026-10-01
+ * vertex-path work (outcode-limited clipping, the inline inside test, the
+ * vertex ring), which was to change no output. A fixed pseudo-random
+ * stream of perspective vertices - many off screen, some behind the eye -
+ * through every assembled mode, smooth and flat, culled and not, scissored
+ * and not, with projective texture coordinates, hashed FNV-1a over each
+ * sunk vertex. The golden values were taken from 1366659's pipeline.
+ */
+static v9x_u32 golden_hash;
+static v9x_u32 golden_vertices;
+static v9x_u32 golden_seed;
+static v9x_u32 golden_counts[V9X_GL_PRIM_PROF_DWORDS];
+
+static int golden_sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                       v9x_u32 triangle_count)
+{
+    const unsigned char *bytes = (const unsigned char *)vertices;
+    v9x_u32 count = triangle_count * 3ul * (v9x_u32)sizeof(*vertices);
+    v9x_u32 i;
+
+    (void)user;
+    for (i = 0ul; i < count; ++i) {
+        golden_hash = (golden_hash ^ bytes[i]) * 16777619ul;
+    }
+    golden_vertices += triangle_count * 3ul;
+    return 1;
+}
+
+/* -range..range from a 32-bit LCG. */
+static float golden_random(float range)
+{
+    golden_seed = golden_seed * 1664525ul + 1013904223ul;
+    return ((float)(golden_seed >> 8) / 8388608.0f - 1.0f) * range;
+}
+
+static void test_pipeline_output_unchanged(void)
+{
+    static const GLenum modes[6] = {
+        V9X_GL_TRIANGLES, V9X_GL_TRIANGLE_STRIP, V9X_GL_TRIANGLE_FAN,
+        V9X_GL_QUADS, V9X_GL_QUAD_STRIP, V9X_GL_POLYGON
+    };
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    unsigned int pass;
+    unsigned int prim;
+    unsigned int k;
+
+    golden_hash = 2166136261ul;
+    golden_vertices = 0ul;
+    golden_seed = 12345ul;
+    for (k = 0u; k < V9X_GL_PRIM_PROF_DWORDS; ++k) {
+        golden_counts[k] = 0ul;
+    }
+    for (pass = 0u; pass < 8u; ++pass) {
+        v9x_gl_state_init(&s);
+        v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_RGB565, 1);
+        v9x_gl_pipeline_init(&p);
+        v9x_gl_pipeline_sink(&p, golden_sink, 0);
+        p.profile = golden_counts;
+        v9x_gl_state_matrix_mode(&s, V9X_GL_PROJECTION);
+        v9x_gl_state_frustum(&s, -1.0, 1.0, -0.625, 0.625, 1.0, 400.0);
+        v9x_gl_state_matrix_mode(&s, V9X_GL_MODELVIEW);
+        v9x_gl_state_translate(&s, 0.0f, 0.0f, -60.0f);
+        v9x_gl_state_rotate(&s, 17.0f + 11.0f * (GLfloat)pass, 0.3f, 1.0f,
+                            0.2f);
+        if ((pass & 1u) != 0u) {
+            v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+        }
+        if ((pass & 2u) != 0u) {
+            v9x_gl_prim_shade_model(&s, &p, V9X_GL_FLAT);
+        }
+        if ((pass & 4u) != 0u) {
+            v9x_gl_state_enable(&s, V9X_GL_SCISSOR_TEST_CAP, 1);
+            v9x_gl_state_scissor(&s, 40, 30, 200, 120);
+        }
+        for (prim = 0u; prim < 60u; ++prim) {
+            unsigned int count = 3u + (unsigned int)(golden_seed % 7u);
+            /* Alternately on screen and spread past every plane. */
+            float spread = (prim & 1u) != 0u ? 1.0f : 0.15f;
+
+            v9x_gl_prim_begin(&s, &p, modes[prim % 6u]);
+            for (k = 0u; k < count; ++k) {
+                v9x_gl_prim_color(&p, 0.5f + golden_random(0.5f),
+                                  0.5f + golden_random(0.5f),
+                                  0.5f + golden_random(0.5f), 1.0f);
+                v9x_gl_prim_texcoord(&p, golden_random(4.0f),
+                                     golden_random(4.0f), 0.0f,
+                                     (k & 3u) == 3u ? 2.0f : 1.0f);
+                v9x_gl_prim_vertex(&s, &p, golden_random(90.0f * spread),
+                                   golden_random(60.0f * spread),
+                                   golden_random(80.0f * spread), 1.0f);
+            }
+            v9x_gl_prim_end(&s, &p);
+        }
+        v9x_gl_prim_flush(&p);
+    }
+    printf("golden pipeline hash 0x%08lx over %lu vertices; fast %lu "
+           "clipped %lu culled %lu\n", golden_hash, golden_vertices,
+           golden_counts[V9X_GL_PRIM_PROF_FAST],
+           golden_counts[V9X_GL_PRIM_PROF_CLIPPED],
+           golden_counts[V9X_GL_PRIM_PROF_CULLED]);
+    PCHECK(golden_hash == 0x0ed372e9ul && golden_vertices == 5763ul);
+    /* The stream reaches every path it is meant to hold steady. */
+    PCHECK(golden_counts[V9X_GL_PRIM_PROF_FAST] > 100ul);
+    PCHECK(golden_counts[V9X_GL_PRIM_PROF_CLIPPED] > 100ul);
+    PCHECK(golden_counts[V9X_GL_PRIM_PROF_CULLED] > 100ul);
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
@@ -689,6 +798,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_clipped_vertices_stay_inside();
     test_same_draw();
     test_scissor_clips_geometry();
+    test_pipeline_output_unchanged();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
     }

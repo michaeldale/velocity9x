@@ -81,6 +81,43 @@ remove most clipping outright, but the Gen3 stream allowlist refuses a
 vertex outside the surface, and what each engine clips to has not been
 measured.
 
+## The first three, done (same evening, same boot)
+
+Exact by construction and by test: `test_pipeline_output_unchanged` hashes
+every byte the pipeline emits for a fixed pseudo-random stream - every
+assembled mode, smooth and flat, culled and not, scissored and not,
+projective texture coordinates, 609 triangles taken whole, 798 clipped,
+188 culled - and holds it to the value taken from `1366659`'s pipeline,
+`0x0ed372e9` over 5,763 vertices. It passed after each change.
+
+- **Clipping:** each plane's distances once per vertex, kept as floats
+  (`v9x_gl_prim_plane` rounds its result to float on return - `fstp` and
+  `fld` in the object - so keeping them changes nothing); a plane every
+  vertex of the current polygon is inside is skipped; passes alternate
+  between two buffers.
+- **Inside test:** `v9x_gl_prim_inside`, the ten distances written out,
+  each stored as a float before its comparison.
+- **History:** a four-slot vertex ring in the pipeline replaces the
+  `previous[3]` copies; `first` is still copied once a primitive.
+
+Quake 2 demo2, ICD alone replaced again (hash-checked), last session's
+twelve demo intervals (`glstages.py`):
+
+| | before (`q2prof`) | after (`q2fast`) |
+|---|---|---|
+| timedemo, timers on | 18.4-19.1 fps | **20.7-21.0 fps** |
+| `glVertex*`, per vertex | 2,472 ns | **1,862 ns** |
+| - transform | 288 | 280 |
+| - inside test | 461 | **255** |
+| - window and emit | 378 | 381 |
+| - assembly | 975 | **708** |
+| - history | 227 | **53** |
+| `glVertex*`, of wall | 37.2% | 31.1% |
+| `glBegin`/`glEnd`, of wall | 16.4% | 17.5% |
+
+Both columns carry the stage timers' own cost; the unprofiled ICD before
+the change ran 19.6-19.8 fps.
+
 ## Not established
 
 - Per clipped triangle cost, which the stages do not separate.

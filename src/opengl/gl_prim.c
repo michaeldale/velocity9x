@@ -99,6 +99,7 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->depth_far = 1.0;
     pipeline->mode = V9X_GL_TRIANGLES;
     pipeline->count = 0ul;
+    pipeline->ring_head = 0u;
     pipeline->batch_triangles = 0ul;
     pipeline->argb_valid = 0;
     pipeline->sink = 0;
@@ -433,13 +434,35 @@ static int v9x_gl_prim_clip_edges(const V9X_GL_STATE *state, GLfloat *edge)
     return 1;
 }
 
+/*
+ * Sutherland-Hodgman over the ten planes, with the same arithmetic as the
+ * plain form and less copying (2026-10-01, when clipping a quarter of
+ * Quake 2's triangles cost more than transforming every vertex):
+ *
+ * - each plane's distances are taken once per vertex and kept. They are
+ *   v9x_gl_prim_plane's values, which it rounds to float on return, so
+ *   keeping them as floats changes nothing; the plain form took each twice.
+ * - a plane every vertex of the current polygon is inside is skipped: the
+ *   pass would return the polygon unchanged and in order. "Inside" is the
+ *   same >= 0 test the pass makes, so a NaN still runs it.
+ * - passes alternate between the caller's array and the scratch rather
+ *   than copying the scratch back after each; one copy at the end if the
+ *   result is in the scratch.
+ *
+ * test_pipeline_output_unchanged holds every emitted byte to the plain
+ * form's.
+ */
 static unsigned int v9x_gl_prim_clip(const V9X_GL_STATE *state,
                                      V9X_GL_VERTEX *polygon,
                                      unsigned int count)
 {
     V9X_GL_VERTEX scratch[V9X_GL_PRIM_CLIP_MAX];
+    GLfloat distance[V9X_GL_PRIM_CLIP_MAX];
     GLfloat edge[4];
+    V9X_GL_VERTEX *in = polygon;
+    V9X_GL_VERTEX *out = scratch;
     unsigned int plane;
+    unsigned int i;
 
     if (!v9x_gl_prim_clip_edges(state, edge)) {
         return 0u;
@@ -447,31 +470,76 @@ static unsigned int v9x_gl_prim_clip(const V9X_GL_STATE *state,
 
     for (plane = 0u; plane < V9X_GL_PRIM_CLIP_PLANES && count != 0u;
          ++plane) {
-        unsigned int out = 0u;
-        unsigned int i;
+        V9X_GL_VERTEX *swap;
+        unsigned int written = 0u;
+        int all_inside = 1;
 
         for (i = 0u; i < count; ++i) {
-            const V9X_GL_VERTEX *current = &polygon[i];
-            const V9X_GL_VERTEX *previous = &polygon[i == 0u ? count - 1u
-                                                             : i - 1u];
-            GLfloat dc = v9x_gl_prim_plane(current, plane, edge);
-            GLfloat dp = v9x_gl_prim_plane(previous, plane, edge);
+            distance[i] = v9x_gl_prim_plane(&in[i], plane, edge);
+            if (!(distance[i] >= 0.0f)) {
+                all_inside = 0;
+            }
+        }
+        if (all_inside) {
+            continue;
+        }
+
+        for (i = 0u; i < count; ++i) {
+            unsigned int before = i == 0u ? count - 1u : i - 1u;
+            GLfloat dc = distance[i];
+            GLfloat dp = distance[before];
 
             if ((dc >= 0.0f) != (dp >= 0.0f) &&
-                out < V9X_GL_PRIM_CLIP_MAX) {
-                v9x_gl_prim_lerp(&scratch[out++], previous, current,
+                written < V9X_GL_PRIM_CLIP_MAX) {
+                v9x_gl_prim_lerp(&out[written++], &in[before], &in[i],
                                  dp / (dp - dc));
             }
-            if (dc >= 0.0f && out < V9X_GL_PRIM_CLIP_MAX) {
-                scratch[out++] = *current;
+            if (dc >= 0.0f && written < V9X_GL_PRIM_CLIP_MAX) {
+                out[written++] = in[i];
             }
         }
-        for (i = 0u; i < out; ++i) {
-            polygon[i] = scratch[i];
+        swap = in;
+        in = out;
+        out = swap;
+        count = written;
+    }
+    if (in != polygon) {
+        for (i = 0u; i < count; ++i) {
+            polygon[i] = in[i];
         }
-        count = out;
     }
     return count;
+}
+
+/*
+ * Whether a vertex is inside all ten planes - v9x_gl_prim_clip's test -
+ * with the ten distances written out rather than ten calls through the
+ * plane switch. The expressions are v9x_gl_prim_plane's, operand for
+ * operand, and each is stored as a float before it is compared, as that
+ * function's return rounds it.
+ */
+static int v9x_gl_prim_inside(const V9X_GL_VERTEX *v, const GLfloat *edge)
+{
+    GLfloat distance[V9X_GL_PRIM_CLIP_PLANES];
+    GLfloat w = v->clip[3];
+    unsigned int plane;
+
+    distance[0] = w + v->clip[0];
+    distance[1] = w - v->clip[0];
+    distance[2] = w + v->clip[1];
+    distance[3] = w - v->clip[1];
+    distance[4] = w + v->clip[2];
+    distance[5] = w - v->clip[2];
+    distance[6] = v->clip[0] - edge[0] * w;
+    distance[7] = edge[2] * w - v->clip[0];
+    distance[8] = v->clip[1] - edge[1] * w;
+    distance[9] = edge[3] * w - v->clip[1];
+    for (plane = 0u; plane < V9X_GL_PRIM_CLIP_PLANES; ++plane) {
+        if (!(distance[plane] >= 0.0f)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 /* A clipped vertex in window coordinates (y up), as floats. */
@@ -709,7 +777,10 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
 {
     const V9X_GL_MATRIX *modelview;
     const V9X_GL_MATRIX *projection;
-    V9X_GL_VERTEX v;
+    V9X_GL_VERTEX *p0;
+    V9X_GL_VERTEX *p1;
+    V9X_GL_VERTEX *p2;
+    V9X_GL_VERTEX *vp;
     GLfloat eye[4];
     GLfloat object[4];
     unsigned int row;
@@ -719,6 +790,16 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     if (!state->in_begin) {
         return;
     }
+    /*
+     * The last three vertices and this one live in a four-slot ring
+     * (V9X_GL_PIPELINE.ring): previous[k] is slot head + k and this vertex
+     * is built in slot head + 3, which the shift below makes previous[2].
+     * The plain form copied three ~100-byte vertices per call to do that.
+     */
+    p0 = &pipeline->ring[pipeline->ring_head & 3u];
+    p1 = &pipeline->ring[(pipeline->ring_head + 1u) & 3u];
+    p2 = &pipeline->ring[(pipeline->ring_head + 2u) & 3u];
+    vp = &pipeline->ring[(pipeline->ring_head + 3u) & 3u];
     if (pipeline->profile != 0) {
         mark = v9x_gl_prim_rdtsc_low();
     }
@@ -735,33 +816,29 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                    modelview->m[12u + row] * object[3];
     }
     for (row = 0u; row < 4u; ++row) {
-        v.clip[row] = projection->m[row] * eye[0] +
+        vp->clip[row] = projection->m[row] * eye[0] +
                       projection->m[4u + row] * eye[1] +
                       projection->m[8u + row] * eye[2] +
                       projection->m[12u + row] * eye[3];
-        v.color[row] = pipeline->color[row];
-        v.tex[row] = pipeline->tex[row];
+        vp->color[row] = pipeline->color[row];
+        vp->tex[row] = pipeline->tex[row];
     }
     /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
      * then its window position and emitted vertex are what any triangle
      * it is a corner of would compute (V9X_GL_VERTEX.inside). */
     v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_TRANSFORM, &mark);
-    v.inside = pipeline->clip_ready;
-    for (row = 0u; row < V9X_GL_PRIM_CLIP_PLANES && v.inside; ++row) {
-        if (!(v9x_gl_prim_plane(&v, row, pipeline->clip_edge) >= 0.0f)) {
-            v.inside = 0;
-        }
-    }
+    vp->inside = pipeline->clip_ready &&
+                 v9x_gl_prim_inside(vp, pipeline->clip_edge);
     v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_INSIDE, &mark);
-    if (v.inside) {
+    if (vp->inside) {
         V9X_GL_WINDOW w;
 
-        v9x_gl_prim_window(state, pipeline, &v, &w);
-        v.window[0] = w.x;
-        v.window[1] = w.y;
-        v.window[2] = w.z;
-        v.window[3] = w.rhw;
-        v9x_gl_prim_emit(state, pipeline, &v.abi, &v, &w);
+        v9x_gl_prim_window(state, pipeline, vp, &w);
+        vp->window[0] = w.x;
+        vp->window[1] = w.y;
+        vp->window[2] = w.z;
+        vp->window[3] = w.rhw;
+        v9x_gl_prim_emit(state, pipeline, &vp->abi, vp, &w);
     }
     v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_WINDOW, &mark);
 
@@ -769,8 +846,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     switch (pipeline->mode) {
     case V9X_GL_TRIANGLES:
         if (n % 3ul == 2ul) {
-            v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[1],
-                                 &pipeline->previous[2], &v, &v);
+            v9x_gl_prim_triangle(state, pipeline, p1, p2, vp, vp);
         }
         break;
     case V9X_GL_TRIANGLE_STRIP:
@@ -778,45 +854,38 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
          * i, so every triangle of the strip faces the same way (2.6.1). */
         if (n >= 2ul) {
             if ((n & 1ul) == 0ul) {
-                v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[1],
-                                     &pipeline->previous[2], &v, &v);
+                v9x_gl_prim_triangle(state, pipeline, p1, p2, vp, vp);
             } else {
-                v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[2],
-                                     &pipeline->previous[1], &v, &v);
+                v9x_gl_prim_triangle(state, pipeline, p2, p1, vp, vp);
             }
         }
         break;
     case V9X_GL_TRIANGLE_FAN:
         if (n >= 2ul) {
             v9x_gl_prim_triangle(state, pipeline, &pipeline->first,
-                                 &pipeline->previous[2], &v, &v);
+                                 p2, vp, vp);
         }
         break;
     case V9X_GL_QUADS:
         /* (v0, v1, v2, v3) as (v0, v1, v2) and (v0, v2, v3), flat-shaded
          * from v3. */
         if (n % 4ul == 3ul) {
-            v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[0],
-                                 &pipeline->previous[1],
-                                 &pipeline->previous[2], &v);
-            v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[0],
-                                 &pipeline->previous[2], &v, &v);
+            v9x_gl_prim_triangle(state, pipeline, p0, p1, p2, vp);
+            v9x_gl_prim_triangle(state, pipeline, p0, p2, vp, vp);
         }
         break;
     case V9X_GL_QUAD_STRIP:
         /* Quad i is (v2i, v2i+1, v2i+3, v2i+2), flat-shaded from v2i+3. */
         if (n >= 3ul && (n & 1ul) == 1ul) {
-            v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[1],
-                                 &pipeline->previous[2], &v, &v);
-            v9x_gl_prim_triangle(state, pipeline, &pipeline->previous[1],
-                                 &v, &pipeline->previous[2], &v);
+            v9x_gl_prim_triangle(state, pipeline, p1, p2, vp, vp);
+            v9x_gl_prim_triangle(state, pipeline, p1, vp, p2, vp);
         }
         break;
     case V9X_GL_POLYGON:
         /* A fan from the first vertex, flat-shaded from the first. */
         if (n >= 2ul) {
             v9x_gl_prim_triangle(state, pipeline, &pipeline->first,
-                                 &pipeline->previous[2], &v,
+                                 p2, vp,
                                  &pipeline->first);
         }
         break;
@@ -828,11 +897,9 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_ASSEMBLE, &mark);
 
     if (n == 0ul) {
-        pipeline->first = v;
+        pipeline->first = *vp;
     }
-    pipeline->previous[0] = pipeline->previous[1];
-    pipeline->previous[1] = pipeline->previous[2];
-    pipeline->previous[2] = v;
+    pipeline->ring_head = (pipeline->ring_head + 1u) & 3u;
     v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_HISTORY, &mark);
 }
 
