@@ -1,0 +1,6 @@
+[Velocity9x]
+IntelEnableThisBoot=0
+IntelIncomplete=0
+IntelRuntime3D=1
+IntelFlip=1
+IntelAsyncSubmit=1

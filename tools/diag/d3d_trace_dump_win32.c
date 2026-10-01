@@ -1072,6 +1072,12 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("AddressSeen", snapshot.d3d.address_seen[0]);
     v9x_write_hex("AddressSeenU", snapshot.d3d.address_seen[1]);
     v9x_write_hex("AddressSeenV", snapshot.d3d.address_seen[2]);
+    v9x_write_uint("RingPlanInvalid", snapshot.d3d.ring_plan_invalid);
+    v9x_write_hex("RingPlanInvalidHead",
+                  snapshot.d3d.ring_plan_invalid_head);
+    v9x_write_hex("RingPlanInvalidTail",
+                  snapshot.d3d.ring_plan_invalid_tail);
+    v9x_write_hex("RingOccupiedMax", snapshot.d3d.ring_occupied_max);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

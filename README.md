@@ -80,9 +80,8 @@ Measured on the netbook:
 ![Serious Sam: The First Encounter on the Intel GMA 950 through
 Velocity9x's OpenGL driver](docs/images/serious-sam-gma950-opengl-2026-09-26.png)
 
-What is open on the GMA 950: GDI drawing still uses the CPU, the CPU waits
-for the GPU after every batch ([plan](docs/plans/intel-gen3-async-submission.md)),
-and Serious Sam's textures outgrow the part's free video memory, so copies
+What is open on the GMA 950: GDI drawing still uses the CPU, and Serious
+Sam's textures outgrow the part's free video memory, so copies
 are evicted and uploaded again. The records behind each number are linked
 from the [changelog](CHANGELOG.md).
 

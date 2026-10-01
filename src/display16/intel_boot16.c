@@ -249,12 +249,17 @@ void V9X_I9XX_FAR v9x_intel_boot_arm_prepare(void)
         v9x_intel_str_equal(runtime_text, "0") != 0u) {
         v9x_intel_flip_allowed = 0u;
     }
-    /* Exact opt-in while experimental. A malformed or absent key is the
-     * synchronous control, so a new package cannot arm async accidentally. */
+    /* Asynchronous submission, on the same terms from 2026-10-01: on unless
+     * the key reads 0. Its 2026-09-29 corruption was draws refused on a busy
+     * ring's dword head (v9x_i9xx_ring_free_space); with that fixed, Half-
+     * Life and 3DMark 99 were correct on the netbook and Half-Life's
+     * timedemo went from 29 to 42 fps. docs\decisions\2026-10-01-intel-
+     * async-corruption-was-the-dword-head.md. */
+    v9x_intel_async_submit_allowed = 1u;
     if (v9x_intel_boot_read("IntelAsyncSubmit", runtime_text,
                             sizeof(runtime_text)) &&
-        v9x_intel_str_equal(runtime_text, "1") != 0u) {
-        v9x_intel_async_submit_allowed = 1u;
+        v9x_intel_str_equal(runtime_text, "0") != 0u) {
+        v9x_intel_async_submit_allowed = 0u;
     }
 
     if (!v9x_intel_boot_set("IntelEnableThisBoot", "0") ||

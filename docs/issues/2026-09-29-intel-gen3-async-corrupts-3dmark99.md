@@ -55,3 +55,14 @@ isolated reproducer with an instrumented in-flight depth.
 The planned Half-Life timedemo comparison was not performed: the installed
 GOTY copy reports `ERROR: couldn't open ...\valve\hldemo1.dem`. Inventing an
 interactive FPS comparison would not satisfy the paired-timedemo gate.
+
+## Resolved 2026-10-01
+
+The corruption was refused draws, not memory reuse. A busy ring's head
+stops on any dword; `v9x_i9xx_ring_free_space` refused one that was not
+qword aligned, so the submit failed and the core dropped the batch. With
+the new counters, Half-Life on the unfixed code refused 39,080 ring plans
+and dropped 38,897 draws (last head 0xF424); with the fix, none, and the
+operator saw Half-Life and 3DMark 99 at 1024x576 correct. Asynchronous
+submission is now the default. See
+[the record](../decisions/2026-10-01-intel-async-corruption-was-the-dword-head.md).

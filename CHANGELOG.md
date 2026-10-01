@@ -36,7 +36,12 @@ changes untested.
   Reality's fill rate 8.18 to 16.68 Mpixels/s and its 3D score 2.19 to
   2.71 on the netbook. The fill test had been waiting for the display,
   not drawing ([record](docs/decisions/2026-10-01-intel-flip-completes-at-one-tick.md)).
-  Asynchronous submission stays off.
+- **The CPU no longer waits for the GPU after every batch.** Asynchronous
+  submission is the default. Its 2026-09-29 corruption was draws refused
+  whenever a busy ring's head sat on a dword rather than a qword; with that
+  fixed, Half-Life's Direct3D timedemo went from 29.06 to 42.42 fps on the
+  netbook, and Half-Life and 3DMark 99 were correct. `V9X3D SYNC` turns it
+  off ([record](docs/decisions/2026-10-01-intel-async-corruption-was-the-dword-head.md)).
 
 ### ATI Mach64 (Rage Mobility-M)
 
@@ -60,13 +65,13 @@ changes untested.
 
 - V9XTRACE gains flip-wait and frame-interval timers, Mach64 refusals by
   reason, the Gen3 submission's make-up and repeated state, the render
-  interface's draw time, and the texture-address values applications set
-  (shared ABI 2026100105; DRV, VXD, HAL, SETP, ICD and V9XTRACE deploy
+  interface's draw time, the texture-address values applications set, and
+  the Gen3 ring plans refused as invalid (shared ABI 2026100106; DRV, VXD, HAL, SETP, ICD and V9XTRACE deploy
   together). The first use is a profile of the netbook's draw submission:
   about two thirds of it waits for the GPU
   ([record](docs/decisions/2026-10-01-hal-submission-profile-on-the-netbook.md)).
 
-Still open: the Gen3 waits for the GPU after every submission; refused
+Still open: refused
 Direct3D batches on the Mach64 are dropped rather than drawn on the CPU;
 Half-Life OpenGL on the netbook measured 13.34 fps on the latest build
 against 14.75 earlier, unexplained.

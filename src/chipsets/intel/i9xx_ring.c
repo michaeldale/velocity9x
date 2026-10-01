@@ -120,18 +120,38 @@ v9x_status v9x_i9xx_ring_free_space(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 *free_bytes)
 {
+    v9x_u32 distance;
+
     if (free_bytes == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     *free_bytes = 0ul;
+    /*
+     * The tail is ours and qword aligned. The head is the parser's and,
+     * while the GPU is busy, stops on any dword (2026-10-01): until a
+     * submission went without waiting, it was only ever read at rest on
+     * the tail, and a dword head was refused - which refused the draw.
+     */
     if (ring_bytes < V9X_I9XX_SANDBOX_PAGE_BYTES ||
         v9x_i9xx_is_power_of_two(ring_bytes) == V9X_FALSE ||
         head >= ring_bytes || tail >= ring_bytes ||
-        (head & 7ul) != 0ul || (tail & 7ul) != 0ul) {
+        (head & 3ul) != 0ul || (tail & 7ul) != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    *free_bytes = (head - tail - V9X_I9XX_RING_GUARD_BYTES) &
-                  (ring_bytes - 1ul);
+    /*
+     * Empty only when the head is exactly on the tail. Otherwise the free
+     * bytes run from the tail up to the guard before the head, rounded down
+     * to a qword so the next tail stays aligned. The subtraction is not
+     * folded into one masked expression: a head a dword past the tail is a
+     * ring one dword from full, and (head - tail - guard) & mask would call
+     * it nearly empty.
+     */
+    distance = (head - tail) & (ring_bytes - 1ul);
+    if (distance == 0ul) {
+        *free_bytes = ring_bytes - V9X_I9XX_RING_GUARD_BYTES;
+    } else if (distance > V9X_I9XX_RING_GUARD_BYTES) {
+        *free_bytes = (distance - V9X_I9XX_RING_GUARD_BYTES) & ~7ul;
+    }
     return V9X_STATUS_OK;
 }
 

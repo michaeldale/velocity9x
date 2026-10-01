@@ -90,6 +90,39 @@ static void test_ring_space_and_wrap(void)
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_i9xx_ring_free_space(1ul, 0ul, 0x10000ul, &free_bytes) ==
           V9X_STATUS_INVALID_ARGUMENT);
+
+    /*
+     * A busy GPU's head sits on any dword, not only a qword (2026-10-01):
+     * the parser stops wherever a command ends. A submission without
+     * waiting reads it mid-ring and must neither refuse the draw nor take
+     * a head just past the tail - a ring one dword from full - as empty.
+     */
+    CHECK(v9x_i9xx_ring_free_space(4ul, 0ul, 0x10000ul, &free_bytes) ==
+          V9X_STATUS_OK);
+    CHECK(free_bytes == 0ul);
+    CHECK(v9x_i9xx_ring_free_space(0x10cul, 0x100ul, 0x10000ul,
+                                    &free_bytes) == V9X_STATUS_OK);
+    CHECK(free_bytes == 0ul);
+    CHECK(v9x_i9xx_ring_free_space(0x114ul, 0x100ul, 0x10000ul,
+                                    &free_bytes) == V9X_STATUS_OK);
+    CHECK(free_bytes == 8ul);
+    CHECK(v9x_i9xx_ring_free_space(0x104ul, 0xfff8ul, 0x10000ul,
+                                    &free_bytes) == V9X_STATUS_OK);
+    CHECK(free_bytes == 0x100ul);
+    CHECK(v9x_i9xx_ring_free_space(0xfffcul, 0x100ul, 0x10000ul,
+                                    &free_bytes) == V9X_STATUS_OK);
+    CHECK(free_bytes == 0xfef0ul);
+    CHECK(v9x_i9xx_ring_plan(0x14ul, 0ul, 0x10000ul, 2ul, &plan) ==
+          V9X_STATUS_OK);
+    CHECK(plan.command_tail == 0ul && plan.next_tail == 8ul);
+    CHECK(v9x_i9xx_ring_plan(0x0cul, 0ul, 0x10000ul, 2ul, &plan) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+    CHECK(v9x_i9xx_ring_plan(4ul, 0ul, 0x10000ul, 2ul, &plan) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+    CHECK(v9x_i9xx_ring_free_space(0x102ul, 0ul, 0x10000ul, &free_bytes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_ring_free_space(0ul, 4ul, 0x10000ul, &free_bytes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_i9xx_ring_free_space(0ul, 0ul, 0x18000ul, &free_bytes) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }

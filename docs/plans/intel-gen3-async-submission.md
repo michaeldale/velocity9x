@@ -1,6 +1,11 @@
 # Intel Gen3: submit without waiting for the ring head
 
-Date: 2026-09-29. Status: phases 0-3 implemented and all local gates pass;
+Date: 2026-09-29. Status (2026-10-01): phase 4 passed on its second
+attempt and asynchronous submission is the default. The first attempt's
+corruption was draws refused on a busy ring's dword head
+(`../decisions/2026-10-01-intel-async-corruption-was-the-dword-head.md`);
+Half-Life's timedemo went from 29.06 to 42.42 fps. The rest of this status
+is the 2026-09-29 one: phases 0-3 implemented and all local gates pass;
 phase 4 failed on physical hardware. The synchronous control was correct, but
 the first sustained asynchronous 3DMark 99 run produced severe stale-band,
 displaced-geometry and blank-rectangle corruption. It was aborted and boot 52

@@ -684,9 +684,17 @@ static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
         plan_status = v9x_i9xx_ring_plan(head, tail, ring_bytes, dwords,
                                          &plan);
         if (plan_status == V9X_STATUS_OK) {
+            DWORD occupied = (tail - (head & ~7ul)) & (ring_bytes - 1ul);
+
+            if (occupied > v9x_hal->d3d_diagnostics.ring_occupied_max) {
+                v9x_hal->d3d_diagnostics.ring_occupied_max = occupied;
+            }
             break;
         }
         if (plan_status != V9X_STATUS_INSUFFICIENT_MEMORY) {
+            ++v9x_hal->d3d_diagnostics.ring_plan_invalid;
+            v9x_hal->d3d_diagnostics.ring_plan_invalid_head = head;
+            v9x_hal->d3d_diagnostics.ring_plan_invalid_tail = tail;
             return 0;
         }
         if (polls >= V9X_I9XX_SUBMIT_POLLS) {

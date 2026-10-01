@@ -52,31 +52,30 @@ IF "%1"=="OFF" GOTO WANTOFF
 IF "%1"=="off" GOTO WANTOFF
 IF "%1"=="FLIP" GOTO WANTFLIP
 IF "%1"=="flip" GOTO WANTFLIP
-IF "%1"=="ASYNC" GOTO WANTASYNC
-IF "%1"=="async" GOTO WANTASYNC
+IF "%1"=="SYNC" GOTO WANTSYNC
+IF "%1"=="sync" GOTO WANTSYNC
 GOTO USAGE
 
-:WANTASYNC
-REM Experimental A/B switch: runtime 3D, ring flip and asynchronous ring
-REM submission all on. Unlike FLIP, this is never the absent-key default.
-REM The 2026-09-29 physical gate produced severe 3DMark frame corruption.
-REM Keep this verb only for controlled diagnosis; FLIP is the safe setting.
-IF NOT EXIST %V9XARMFILE% GOTO WRITEASYNC
+:WANTSYNC
+REM FLIP without asynchronous submission: the CPU waits for the GPU after
+REM every batch, as every build did before 2026-10-01. The A/B control, and
+REM the setting to try if a Direct3D picture is wrong only with async on.
+IF NOT EXIST %V9XARMFILE% GOTO WRITESYNC
 FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
 FIND "IntelIncomplete=0" %V9XARMFILE% >NUL
 IF ERRORLEVEL 1 GOTO UNRESOLVED
-:WRITEASYNC
+:WRITESYNC
 ECHO [Velocity9x]>%V9XARMFILE%
 ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
 ECHO IntelFlip=1>>%V9XARMFILE%
-ECHO IntelAsyncSubmit=1>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO WARNING: ASYNC CORRUPTED 3DMARK ON THE GMA 950 PHYSICAL GATE.
-ECHO It is PERMITTED for controlled diagnosis only from the next boot.
-ECHO V9X3D FLIP returns to the safe synchronous mode.
+ECHO Runtime Direct3D and the Intel flip are PERMITTED and asynchronous
+ECHO submission is REFUSED from the next boot: the CPU waits for the GPU
+ECHO after every batch. V9X3D FLIP returns to the default.
 GOTO DONE
 
 :WANTFLIP
@@ -85,7 +84,8 @@ REM live pipe's plane base register on Flip and read the pipe's display line
 REM for the retrace, instead of declining every Flip and letting DirectDraw
 REM copy each frame with the CPU. Both were measured on this machine in
 REM intel61 through intel66 and are the default; this verb restores them
-REM after an ON or OFF. Same refusal as ON for an unresolved armed record.
+REM after an ON or OFF, with asynchronous submission, the default from
+REM 2026-10-01. Same refusal as ON for an unresolved armed record.
 IF NOT EXIST %V9XARMFILE% GOTO WRITEFLIP
 FIND "IntelIncomplete=1" %V9XARMFILE% >NUL
 IF NOT ERRORLEVEL 1 GOTO INFLIGHT
@@ -97,10 +97,10 @@ ECHO IntelEnableThisBoot=0>>%V9XARMFILE%
 ECHO IntelIncomplete=0>>%V9XARMFILE%
 ECHO IntelRuntime3D=1>>%V9XARMFILE%
 ECHO IntelFlip=1>>%V9XARMFILE%
-ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
+ECHO IntelAsyncSubmit=1>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
-ECHO Runtime Direct3D AND the Intel flip are PERMITTED from the next boot,
-ECHO which is also what a fresh install does.
+ECHO Runtime Direct3D, the Intel flip and asynchronous submission are
+ECHO PERMITTED from the next boot, which is also what a fresh install does.
 ECHO.
 ECHO If the machine hangs or the display is lost: power off, boot to real
 ECHO DOS, run V9X3D ON (keeps Direct3D, drops the flip) or V9X3D OFF, and
@@ -159,8 +159,8 @@ GOTO DONE
 
 :USAGE
 ECHO Usage:  V9X3D ON     runtime Direct3D on, the Intel flip off
-ECHO         V9X3D FLIP   both on (the default for a fresh install)
-ECHO         V9X3D ASYNC  Direct3D, flip and experimental async on
+ECHO         V9X3D FLIP   both on, with async (the default for a fresh install)
+ECHO         V9X3D SYNC   both on, the CPU waiting for the GPU (no async)
 ECHO         V9X3D OFF    both off, and recover a machine that hung
 ECHO.
 ECHO Nothing was written.

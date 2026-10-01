@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100106: V9X_D3D_DIAGNOSTICS gains the Gen3 ring plans refused as
+ * invalid and the ring's occupancy high-water. An append. */
 /* 2026100105: V9X_D3D_DIAGNOSTICS gains the texture-address values
  * applications set. An append. */
 /* 2026100104: V9X_D3D_DIAGNOSTICS gains what the Mach64's address and
@@ -1617,7 +1619,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100105ul
+#define V9X_DD_SHARED_ABI   2026100106ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3134,6 +3136,15 @@ typedef struct v9x_d3d_diagnostics {
      * and ADDRESSV, in that order (2026-10-01); a value over 30 sets
      * bit 31. Like filter_min_seen. */
     DWORD address_seen[3];
+    /* Gen3 submissions whose ring plan was refused as invalid rather
+     * than full (2026-10-01) - the draw is then refused and dropped -
+     * with the last such head and tail as read; and the most bytes
+     * found occupied between tail and head at any plan. A synchronous
+     * submit always finds the ring empty. */
+    DWORD ring_plan_invalid;
+    DWORD ring_plan_invalid_head;
+    DWORD ring_plan_invalid_tail;
+    DWORD ring_occupied_max;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
