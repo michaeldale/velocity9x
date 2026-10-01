@@ -115,6 +115,39 @@ Regression checks on the same boot after these runs: Half-Life Direct3D
 lacked the `hwno` counters). Neither difference is separated from the
 boot's history or the ICD's extra counters.
 
+## Eviction: no rule fixes it, the trace says (`ss6`)
+
+A build of the ICD (`icd-use-trace.patch`, not committed) recorded from
+the first failed create the next 32,768 hardware-copy uses - texture,
+copy bytes, frame, and whether the copy had a surface - into
+`ss6-V9XGLUSE.BIN`. `evictsim.py` replays the order through a byte cache
+under several rules, the capacity calibrated so LRU, the rule the trace
+ran under, reproduces the observed hit rate.
+
+| | |
+|---|---|
+| uses / textures / frames | 32,768 / 521 / 20 (about 2,000 uses a frame) |
+| all copies resident | 14.1 MiB |
+| observed hit rate (LRU) | 0.474 |
+| calibrated capacity | 3.25 MiB |
+
+| hit rate | 3.25 MiB | 4.88 | 6.50 | 13.0 |
+|---|---|---|---|---|
+| LRU | 0.474 | 0.481 | 0.491 | 0.984 |
+| MRU | 0.499 | 0.588 | 0.658 | 0.980 |
+| LRU sparing this frame's copies | 0.474 | 0.481 | 0.491 | 0.984 |
+| largest of the older half | 0.486 | 0.538 | 0.707 | 0.984 |
+| LRU-2 | 0.450 | 0.496 | 0.579 | 0.983 |
+| **Belady (furthest next use, the bound)** | **0.556** | 0.669 | 0.790 | 0.984 |
+
+At the capacity the netbook has, the best possible rule hits 0.556
+against LRU's 0.474: no eviction rule recovers much, and MRU's 0.499 in
+the model was a loss on the machine (`ss5`), the heap's fragmentation
+unmodelled. LRU stays. What moves the hit rate is memory: about 13 MiB
+holds the working set. A smaller copy does too - every copy of 170 KB or
+more held at a quarter (its top level dropped) gives LRU 0.721 at 3.25
+MiB in the same replay - at the cost of those textures' sharpness.
+
 ## Not established
 
 - What the scenes look like; nobody watched.

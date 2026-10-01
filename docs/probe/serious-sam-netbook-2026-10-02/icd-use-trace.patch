@@ -1,0 +1,86 @@
+diff --git a/src/opengl/gl_icd.c b/src/opengl/gl_icd.c
+index 0874612..86076bf 100644
+--- a/src/opengl/gl_icd.c
++++ b/src/opengl/gl_icd.c
+@@ -1167,6 +1167,64 @@ typedef struct v9x_gl_hwtex {
+ 
+ #define V9X_GL_HWTEX_MAX      2048u
+ 
++/*
++ * A one-shot record of the hardware copies' use order (2026-10-02, to choose
++ * an eviction rule from Serious Sam's own sequence rather than a model of
++ * it): from the first failed create, each use's texture name, its copy's
++ * bytes, the frame (swap count) and whether it had a surface, until the
++ * buffer fills; then written once to C:\V9XDIAG\V9XGLUSE.BIN as little-
++ * endian DWORD quads. Measurement only.
++ */
++#define V9X_GL_USE_TRACE_MAX 32768u
++static DWORD v9x_gl_use_trace[V9X_GL_USE_TRACE_MAX * 4u];
++static unsigned int v9x_gl_use_trace_count;
++static int v9x_gl_use_trace_armed;
++static int v9x_gl_use_trace_written;
++
++static void v9x_gl_use_trace_note(DWORD name, DWORD bytes, DWORD resident)
++{
++    HANDLE file;
++    DWORD wrote;
++    DWORD *entry;
++
++    if (!v9x_gl_use_trace_armed || v9x_gl_use_trace_written) {
++        return;
++    }
++    entry = &v9x_gl_use_trace[v9x_gl_use_trace_count * 4u];
++    entry[0] = name;
++    entry[1] = bytes;
++    entry[2] = v9x_gl_swaps;
++    entry[3] = resident;
++    if (++v9x_gl_use_trace_count < V9X_GL_USE_TRACE_MAX) {
++        return;
++    }
++    v9x_gl_use_trace_written = 1;
++    file = CreateFileA("C:\\V9XDIAG\\V9XGLUSE.BIN", GENERIC_WRITE, 0, 0,
++                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
++    if (file == INVALID_HANDLE_VALUE) {
++        return;
++    }
++    (void)WriteFile(file, v9x_gl_use_trace, sizeof(v9x_gl_use_trace),
++                    &wrote, 0);
++    CloseHandle(file);
++}
++
++/* A copy's bytes: every level of its chain at two bytes a texel. */
++static DWORD v9x_gl_hwtex_bytes(const V9X_GL_HWTEX *hw)
++{
++    DWORD bytes = 0ul;
++    DWORD width = hw->width;
++    DWORD height = hw->height;
++    DWORD level;
++
++    for (level = 0ul; level < hw->levels; ++level) {
++        bytes += width * height * 2ul;
++        width = width > 1ul ? width / 2ul : 1ul;
++        height = height > 1ul ? height / 2ul : 1ul;
++    }
++    return bytes;
++}
++
+ static int v9x_gl_hw_no(unsigned int reason)
+ {
+     ++v9x_gl_hwno[reason];
+@@ -1230,6 +1288,7 @@ static int v9x_gl_hwtex_make(V9X_GL_HWTEX *hw)
+             return 1;
+         }
+         ++v9x_gl_hw_create_failures;
++        v9x_gl_use_trace_armed = 1;
+         victim = evicted < V9X_GL_HWTEX_EVICT_MAX ? v9x_gl_hwtex_oldest(hw)
+                                                   : 0;
+         if (victim == 0) {
+@@ -1427,6 +1486,8 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
+         object->hw = hw;
+     }
+     ++v9x_gl_hwtex_clock;
++    v9x_gl_use_trace_note((DWORD)name, v9x_gl_hwtex_bytes(hw),
++                          hw->surface != 0 ? 1ul : 0ul);
+     if (hw->unusable) {
+         return v9x_gl_hw_no(V9X_GL_HWNO_UNUSABLE);
+     }
