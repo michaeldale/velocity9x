@@ -73,6 +73,33 @@ The comparison is the point of this record: one constant changed between
 them. Over the run, 7,673,881 Gen3 batches, none refused; no FIFO, idle,
 flip-wait or ring-space timeouts and no resets.
 
+## Half-Life, `timedemo mwd5` (tests/benchmarks/hl1), both packages
+
+Half-Life 1.1.1.0 (`hw build 2056`), launched `-console -condebug`, three
+`timedemo mwd5` runs typed into one session's console, best of three. B on
+boot 80, then A on boot 81 after a swap, all files hash-verified. The game's
+`config.cfg` has `fps_max 72`.
+
+| Run | A: 2 ticks | B: 1 tick |
+|---|---|---|
+| 1 | 25.412 fps | 25.104 fps |
+| 2 | 28.488 fps | 28.607 fps |
+| 3 | 28.797 fps | 28.757 fps |
+| **Best** | **28.797** | **28.757** |
+
+393 frames each. No difference: Half-Life presents by Blt, and both windows
+read `FlipHandled=0`, `FlipWaitCalls=0`, `DrawsFlipWaited=0`, so the changed
+constant is never reached. No refusals, timeouts or resets on either. The
+snapshot windows include menu and console time and are not per-demo totals.
+
+This is the first `mwd5` result recorded for this machine; there is no
+earlier one to compare against.
+
+The swap reboot to A took over 20 minutes to return (normally about four),
+with both netbook addresses unreachable from the router meanwhile. It
+returned on boot 81; whether it was reset by hand is not recorded here, and
+the cause is not known.
+
 ## Not established
 
 - **Whether the panel flickers more, less or the same.** Nobody watched
