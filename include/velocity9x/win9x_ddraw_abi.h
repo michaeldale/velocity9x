@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100102: V9X_D3D_DIAGNOSTICS gains the Mach64 policy refusal counts
+ * by reason and the refused texture ops. An append. */
 /* 2026100101: V9X_D3D_DIAGNOSTICS gains the flip-wait and flip-interval
  * timers. An append. */
 /* 2026093003: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives redundant-state
@@ -1609,7 +1611,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100101ul
+#define V9X_DD_SHARED_ABI   2026100102ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3089,6 +3091,12 @@ typedef struct v9x_d3d_diagnostics {
     DWORD flip_interval_cycles[2];
     DWORD flip_interval_count;
     DWORD flip_interval_max;
+    /* Mach64 policy refusals by V9X_M64_REFUSE_* reason (2026-10-01):
+     * m64_policy_last names only the last, which hid a Half-Life run's
+     * mix. And the texture ops a TEXTURE_OP refusal named, one bit per
+     * Direct3D TEXTUREMAPBLEND value. */
+    DWORD m64_policy_counts[20];
+    DWORD m64_texop_refused_mask;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

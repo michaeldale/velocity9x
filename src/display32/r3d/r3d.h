@@ -237,6 +237,10 @@ typedef struct v9x_r3d_draw {
     v9x_u32 scissor_right;
     v9x_u32 scissor_bottom;
     v9x_u32 write_mask;
+    /* Non-zero when the caller has seen every vertex of the draw with
+     * alpha 255; zero when unknown. An engine's accepts() has no vertices,
+     * so this is how one that must know (the Mach64's MODULATEALPHA) can. */
+    v9x_u32 vertex_alpha_opaque;
 } V9X_R3D_DRAW;
 
 /*

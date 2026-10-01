@@ -338,8 +338,10 @@ static void test_texture_ops(void)
           V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL, V9X_M64_TEX_MAP_AEN },
         { T_TEXOP_DECALALPHA, 2ul, V9X_M64_REFUSE_NONE,
           V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL, V9X_M64_TEX_MAP_AEN },
-        /* No mode produces A = At*Af. */
-        { T_TEXOP_MODULATEALPHA, 2ul, V9X_M64_REFUSE_TEXTURE_OP, 0ul, 0ul },
+        /* No mode produces A = At*Af, but nothing here reads the alpha,
+         * so MODULATE's A = At draws the same pixels. */
+        { T_TEXOP_MODULATEALPHA, 2ul, V9X_M64_REFUSE_NONE,
+          V9X_M64_TEX_LIGHT_FCN_MODULATE, V9X_M64_TEX_MAP_AEN },
         { T_TEXOP_DECALMASK, 1ul, V9X_M64_REFUSE_TEXTURE_OP, 0ul, 0ul },
         { T_TEXOP_MODULATEMASK, 1ul, V9X_M64_REFUSE_TEXTURE_OP, 0ul, 0ul },
         { T_TEXOP_ADD, 0ul, V9X_M64_REFUSE_TEXTURE_OP, 0ul, 0ul },
@@ -367,6 +369,54 @@ static void test_texture_ops(void)
     CHECK(v9x_m64_check_draw(&request, &decision) ==
           V9X_M64_REFUSE_BLEND_FACTOR);
     CHECK(decision.light_fcn == 0ul && decision.texture_alpha == 0ul);
+}
+
+/*
+ * MODULATEALPHA is MODULATE in colour and A = At*Af; the engine's MODULATE
+ * gives A = At. The two draw the same pixels when nothing reads the
+ * fragment's alpha (no alpha test, no source-alpha blend factor) or when
+ * every vertex's alpha is 255, so Af = 1. Otherwise it stays refused.
+ */
+static void test_modulatealpha_equivalence(void)
+{
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+
+    /* Blending on the destination colour reads no source alpha. */
+    textured(&request, 0ul);
+    request.texture_op = T_TEXOP_MODULATEALPHA;
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_DESTCOLOR;
+    request.dst_blend = T_BLEND_ZERO;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_MODULATE);
+
+    /* Source-alpha blending with a translucent vertex: refused. */
+    textured(&request, 2ul);
+    request.texture_op = T_TEXOP_MODULATEALPHA;
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_SRCALPHA;
+    request.dst_blend = T_BLEND_INVSRCALPHA;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_OP);
+    /* ...and the destination factor alone reads it too. */
+    request.src_blend = T_BLEND_ONE;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_OP);
+    /* The same blend with every vertex opaque: Af = 1, so accepted. */
+    request.src_blend = T_BLEND_SRCALPHA;
+    request.vertex_alpha_opaque = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_MODULATE);
+    CHECK(decision.texture_alpha == V9X_M64_TEX_MAP_AEN);
+
+    /* An alpha test reads it: refused unless the vertices are opaque. */
+    textured(&request, 2ul);
+    request.texture_op = T_TEXOP_MODULATEALPHA;
+    request.alpha_test_enable = 1ul;
+    request.alpha_func = 5ul;
+    request.alpha_ref = 128ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_OP);
+    request.vertex_alpha_opaque = 1ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
 }
 
 static void test_alpha_test(void)
@@ -494,6 +544,7 @@ unsigned int v9x_run_mach64_policy_tests(void)
     test_blend_pairs();
     test_texture_shape_and_sampling();
     test_texture_ops();
+    test_modulatealpha_equivalence();
     test_alpha_test();
     test_fog_and_unmeasured_knobs();
     test_measured_scenes_accept();

@@ -65,4 +65,9 @@ int v9x_d3d_mach64_wrap_reference(const struct v9x_m64_setup_vertex *setup,
 v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,
                                     v9x_u32 vertex_count);
 
+/* Non-zero when there are vertices and every one has alpha 255: the
+ * request's vertex_alpha_opaque. */
+v9x_u32 v9x_d3d_mach64_vertices_opaque(const V9X_R3D_VERTEX *vertices,
+                                       v9x_u32 vertex_count);
+
 #endif

@@ -400,6 +400,7 @@ static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
     }
     v9x_d3d_mach64_resolve_texture(draw, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
+    request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
     return v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE;
 }
 
@@ -527,9 +528,19 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     v9x_d3d_mach64_map_request(draw, &texture,
         v9x_d3d_mach64_specular_rgb(vertices, triangle_count * 3ul),
         &request);
+    request.vertex_alpha_opaque =
+        v9x_d3d_mach64_vertices_opaque(vertices, triangle_count * 3ul);
     reason = v9x_m64_check_draw(&request, &decision);
     if (reason != V9X_M64_REFUSE_NONE) {
         v9x_hal->d3d_diagnostics.m64_policy_last = reason;
+        if (reason < 20ul) {
+            ++v9x_hal->d3d_diagnostics.m64_policy_counts[reason];
+        }
+        if (reason == V9X_M64_REFUSE_TEXTURE_OP &&
+            request.texture_op < 32ul) {
+            v9x_hal->d3d_diagnostics.m64_texop_refused_mask |=
+                1ul << request.texture_op;
+        }
         return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_POLICY);
     }
 

@@ -1042,6 +1042,16 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.flip_interval_cycles[1]);
     v9x_write_uint("FlipIntervalCount", snapshot.d3d.flip_interval_count);
     v9x_write_uint("FlipIntervalMax", snapshot.d3d.flip_interval_max);
+    {
+        char key[24];
+        DWORD reason;
+
+        for (reason = 0ul; reason < 20ul; ++reason) {
+            wsprintf(key, "M64Policy%02lu", reason);
+            v9x_write_uint(key, snapshot.d3d.m64_policy_counts[reason]);
+        }
+    }
+    v9x_write_hex("M64TexOpRefused", snapshot.d3d.m64_texop_refused_mask);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

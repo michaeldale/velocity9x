@@ -220,6 +220,21 @@ static void test_mip_mapping(void)
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FILTER);
 }
 
+/* Opaque only when every vertex's alpha byte is 0xFF; nothing is opaque. */
+static void test_vertex_alpha_opaque(void)
+{
+    V9X_R3D_VERTEX vertices[3];
+
+    memset(vertices, 0, sizeof(vertices));
+    vertices[0].color = 0xFF102030ul;
+    vertices[1].color = 0xFFFFFFFFul;
+    vertices[2].color = 0xFE000000ul;
+    CHECK(v9x_d3d_mach64_vertices_opaque(vertices, 3ul) == 0ul);
+    CHECK(v9x_d3d_mach64_vertices_opaque(vertices, 2ul) == 1ul);
+    CHECK(v9x_d3d_mach64_vertices_opaque(vertices, 0ul) == 0ul);
+    CHECK(v9x_d3d_mach64_vertices_opaque(0, 3ul) == 0ul);
+}
+
 static void test_specular_needs_colour(void)
 {
     V9X_R3D_DRAW draw;
@@ -360,6 +375,7 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_depth_needs_a_bound_surface();
     test_texture_mapping();
     test_mip_mapping();
+    test_vertex_alpha_opaque();
     test_specular_needs_colour();
     test_state_end_to_end();
     test_wrap_reference();

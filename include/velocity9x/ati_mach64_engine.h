@@ -269,6 +269,9 @@ struct v9x_m64_draw_request {
     v9x_u32 specular_enable;
     v9x_u32 color_key_enable;
     v9x_u32 alpha_force;
+    /* Non-zero when every vertex of the batch has alpha 255, so a factor
+     * of the vertex alpha is one. Zero when unknown. */
+    v9x_u32 vertex_alpha_opaque;
 };
 
 /* What an accepted draw emits for the texture stage, so the draw path

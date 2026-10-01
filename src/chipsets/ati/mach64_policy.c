@@ -40,7 +40,9 @@
 #define M64_TEXOP_DECAL      1ul
 #define M64_TEXOP_MODULATE   2ul
 #define M64_TEXOP_DECALALPHA 3ul
+#define M64_TEXOP_MODULATEALPHA 4ul
 #define M64_TEXOP_COPY       7ul
+#define M64_BLEND_SRCALPHASAT 11ul
 
 /* Square power-of-two textures from 8 to 256 texels.  The Phase 4 scenes
  * bound only 8x8; the HAL probe's halves scene samples every size in the
@@ -95,6 +97,25 @@ static v9x_u32 v9x_m64_policy_log2(v9x_u32 value)
         ++result;
     }
     return result;
+}
+
+static int v9x_m64_policy_factor_reads_alpha(v9x_u32 factor)
+{
+    return factor == M64_BLEND_SRCALPHA || factor == M64_BLEND_INVSRCALPHA ||
+           factor == M64_BLEND_SRCALPHASAT;
+}
+
+/* Whether anything after the texture stage reads the fragment's alpha:
+ * the alpha test, or a blend factor of the source alpha. */
+static int v9x_m64_policy_fragment_alpha_read(
+                              const struct v9x_m64_draw_request *request)
+{
+    if (request->alpha_test_enable != 0ul) {
+        return 1;
+    }
+    return request->blend_enable != 0ul &&
+           (v9x_m64_policy_factor_reads_alpha(request->src_blend) ||
+            v9x_m64_policy_factor_reads_alpha(request->dst_blend));
 }
 
 static int v9x_m64_policy_format_has_alpha(v9x_u32 format)
@@ -160,7 +181,11 @@ static v9x_u32 v9x_m64_policy_texture(
      * Item 10 measured REPLACE (C=Ct, A=At), MODULATE (C=CtCf, A=At, which
      * is D3D's MODULATE and not MODULATEALPHA) and ALPHA_DECAL.  ALPHA_DECAL
      * on RGB565 weights by vertex alpha instead of giving Ct, so DECALALPHA
-     * there is REPLACE.  No mode yields A=AtAf, so MODULATEALPHA refuses.
+     * there is REPLACE.  No mode yields A=AtAf, so MODULATEALPHA is MODULATE
+     * only where the difference cannot be seen: nothing reads the alpha, or
+     * every vertex alpha is 255 and AtAf is At.  Half-Life's Direct3D
+     * renderer draws its world this way; refusing it left three quarters of
+     * its batches undrawn on the Gateway (2026-10-01).
      */
     has_alpha = v9x_m64_policy_format_has_alpha(request->texture_format);
     switch (request->texture_op) {
@@ -169,6 +194,13 @@ static v9x_u32 v9x_m64_policy_texture(
         decision->light_fcn = V9X_M64_TEX_LIGHT_FCN_REPLACE;
         break;
     case M64_TEXOP_MODULATE:
+        decision->light_fcn = V9X_M64_TEX_LIGHT_FCN_MODULATE;
+        break;
+    case M64_TEXOP_MODULATEALPHA:
+        if (v9x_m64_policy_fragment_alpha_read(request) &&
+            request->vertex_alpha_opaque == 0ul) {
+            return V9X_M64_REFUSE_TEXTURE_OP;
+        }
         decision->light_fcn = V9X_M64_TEX_LIGHT_FCN_MODULATE;
         break;
     case M64_TEXOP_DECALALPHA:

@@ -3250,6 +3250,24 @@ static int v9x_r3d_sink_culled(void *user, const V9X_R3D_VERTEX *triangle)
 
 static DWORD v9x_r3d_drain(void);
 
+/* Every vertex of a request with alpha 255: V9X_R3D_DRAW.vertex_alpha_opaque.
+ * The vertices were proven readable by the caller. */
+static v9x_u32 v9x_r3d_vertices_opaque(const V9X_R3D_ABI_VERTEX *vertices,
+                                       v9x_u32 triangle_count)
+{
+    v9x_u32 index;
+
+    if (vertices == 0 || triangle_count == 0ul) {
+        return 0ul;
+    }
+    for (index = 0ul; index < triangle_count * 3ul; ++index) {
+        if ((vertices[index].color & 0xFF000000ul) != 0xFF000000ul) {
+            return 0ul;
+        }
+    }
+    return 1ul;
+}
+
 static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
                                V9X_R3D_ABI_OUTCOME *outcome)
 {
@@ -3285,6 +3303,8 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
     if (result != V9X_R3D_RESULT_OK) {
         return result;
     }
+    draw.vertex_alpha_opaque =
+        v9x_r3d_vertices_opaque(request->vertices, request->triangle_count);
     if (ops->accepts == 0 || !ops->accepts(&draw)) {
         /* Refused before anything was emitted, so the fallback draws the
          * whole request or nothing. The drain comes first: the CPU must
