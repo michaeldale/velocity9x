@@ -1499,6 +1499,12 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
     case V9X_D3DRENDERSTATE_TEXTUREADDRESSU:
     case V9X_D3DRENDERSTATE_TEXTUREADDRESSV:
         context->texture_address = argument;
+        if (v9x_hal != 0) {
+            v9x_hal->d3d_diagnostics.address_seen[
+                type == V9X_D3DRENDERSTATE_TEXTUREADDRESS ? 0 :
+                type == V9X_D3DRENDERSTATE_TEXTUREADDRESSU ? 1 : 2] |=
+                argument < 31ul ? (1ul << argument) : 0x80000000ul;
+        }
         break;
     case V9X_D3DRENDERSTATE_BORDERCOLOR:
         context->texture_border = argument;

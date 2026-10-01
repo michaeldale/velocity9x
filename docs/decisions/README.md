@@ -200,6 +200,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-01 The Mach64 draws MODULATEALPHA where the alpha difference cannot show: Half-Life's refusals 74% to 1.7%](2026-10-01-mach64-modulatealpha-where-it-cannot-show.md)
 - [2026-10-01 The Mach64 samples rectangular textures at a row pitch of their width: measured exact, and Half-Life's squared copies gone](2026-10-01-mach64-rectangular-textures.md)
 - [2026-10-01 Where a Gen3 draw submission's time goes: two thirds waiting for the GPU, and the state it reloads is three quarters repeats](2026-10-01-hal-submission-profile-on-the-netbook.md)
+- [2026-10-01 Half-Life's Direct3D sky on the Mach64 was texture address 0, refused and drawn by nobody](2026-10-01-hl1-d3d-sky-was-texture-address-zero.md)
 
 ## NVIDIA and other surveyed cards
 

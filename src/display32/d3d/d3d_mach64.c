@@ -550,6 +550,22 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             v9x_hal->d3d_diagnostics.m64_texop_refused_mask |=
                 1ul << request.texture_op;
         }
+        if (reason == V9X_M64_REFUSE_TEXTURE_ADDRESS) {
+            v9x_hal->d3d_diagnostics.m64_address_refused_mask |=
+                (draw->texture.address < 8ul
+                     ? 1ul << draw->texture.address : 0ul) |
+                (draw->texture.wrap_u != 0ul ? 0x100ul : 0ul) |
+                (draw->texture.wrap_v != 0ul ? 0x200ul : 0ul) |
+                (draw->texture.wrap_either != 0ul ? 0x400ul : 0ul);
+            v9x_hal->d3d_diagnostics.m64_address_refused_last_size =
+                (request.texture_width & 0xfffful) |
+                (request.texture_height << 16);
+        }
+        if (reason == V9X_M64_REFUSE_TEXTURE_SHAPE) {
+            v9x_hal->d3d_diagnostics.m64_shape_refused_last_size =
+                (request.texture_width & 0xfffful) |
+                (request.texture_height << 16);
+        }
         return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_POLICY);
     }
 

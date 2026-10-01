@@ -72,7 +72,7 @@ static void test_every_field_routes(void)
     raw.z_enable = 101ul; raw.z_write = 102ul; raw.z_func = 103ul;
     raw.alpha_blend_enable = 104ul; raw.src_blend = 105ul; raw.dest_blend = 106ul;
     raw.texture_min = 107ul; raw.texture_mag = 108ul; raw.texture_blend = 109ul;
-    raw.texture_address = 110ul; raw.texture_border = 111ul; raw.texture_wrap = 112ul;
+    raw.texture_address = V9X_R3D_ADDRESS_MIRROR; raw.texture_border = 111ul; raw.texture_wrap = 112ul;
     raw.wrap_u = 113ul; raw.wrap_v = 114ul; raw.shade_mode = 115ul;
     raw.specular_enable = 116ul; raw.fog_enable = 117ul; raw.fog_color = 118ul;
     raw.alpha_test_enable = 119ul; raw.alpha_func = 120ul; raw.alpha_ref = 121ul;
@@ -87,7 +87,7 @@ static void test_every_field_routes(void)
     SCHECK(draw.texture.min_filter == 107ul);
     SCHECK(draw.texture.mag_filter == 108ul);
     SCHECK(draw.texture.op == 109ul);
-    SCHECK(draw.texture.address == 110ul);
+    SCHECK(draw.texture.address == V9X_R3D_ADDRESS_MIRROR);
     SCHECK(draw.texture.border == 111ul);
     SCHECK(draw.texture.wrap_either == 112ul);
     SCHECK(draw.texture.wrap_u == 113ul);
@@ -107,6 +107,34 @@ static void test_every_field_routes(void)
     SCHECK(draw.texture.object == (void *)0xAAAAAAAAul);
 }
 
+/*
+ * Half-Life's Direct3D renderer sets TEXTUREADDRESSU/V to 0 on the Gateway's
+ * Mach64 for its 256x256 sky (2026-10-01), a value d3dtypes.h does not
+ * define. Every engine refused it and the core drops a refused batch, so the
+ * sky was never drawn. An undefined value is taken as CLAMP, what the same
+ * game's OpenGL renderer asks for its sky; the four defined ones pass.
+ */
+static void test_undefined_address_is_clamp(void)
+{
+    static const unsigned long undefined[] = { 0ul, 5ul, 110ul, 0xfffffffful };
+    V9X_D3D_STATE_RAW raw;
+    V9X_R3D_DRAW draw;
+    unsigned int index;
+    unsigned long value;
+
+    memset(&raw, 0, sizeof(raw));
+    for (index = 0u; index < sizeof(undefined) / sizeof(undefined[0]); ++index) {
+        raw.texture_address = undefined[index];
+        v9x_d3d_state_fill(&raw, &draw);
+        SCHECK(draw.texture.address == V9X_R3D_ADDRESS_CLAMP);
+    }
+    for (value = V9X_R3D_ADDRESS_WRAP; value <= V9X_R3D_ADDRESS_BORDER; ++value) {
+        raw.texture_address = value;
+        v9x_d3d_state_fill(&raw, &draw);
+        SCHECK(draw.texture.address == value);
+    }
+}
+
 static void test_depth_active_needs_all_three(void)
 {
     SCHECK(v9x_d3d_state_depth_active(1ul, 1ul, 1280ul) == 1ul);
@@ -122,6 +150,7 @@ unsigned int v9x_run_d3d_state_tests(void)
     state_failures = 0u;
     test_values_match_d3dtypes();
     test_every_field_routes();
+    test_undefined_address_is_clamp();
     test_depth_active_needs_all_three();
     if (state_failures == 0u) {
         puts("PASS: Direct3D state to neutral draw");

@@ -49,7 +49,17 @@ void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw)
     draw->texture.min_filter = raw->texture_min;
     draw->texture.mag_filter = raw->texture_mag;
     draw->texture.op = raw->texture_blend;
-    draw->texture.address = raw->texture_address;
+    /*
+     * A value d3dtypes.h does not define is taken as CLAMP. Half-Life's
+     * Direct3D renderer sets TEXTUREADDRESSU/V to 0 for its sky on the
+     * Gateway's Mach64 (AddressSeenU/V, 2026-10-01); every engine refused 0
+     * and a refused batch is drawn by nobody, so the sky showed old frames.
+     * CLAMP is what the same game's OpenGL renderer asks for its sky.
+     */
+    draw->texture.address =
+        raw->texture_address >= V9X_R3D_ADDRESS_WRAP &&
+        raw->texture_address <= V9X_R3D_ADDRESS_BORDER
+            ? raw->texture_address : V9X_R3D_ADDRESS_CLAMP;
     draw->texture.border = raw->texture_border;
     draw->texture.wrap_u = raw->wrap_u;
     draw->texture.wrap_v = raw->wrap_v;

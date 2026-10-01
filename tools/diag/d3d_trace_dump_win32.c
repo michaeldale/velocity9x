@@ -1063,6 +1063,15 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("R3dDrawCyclesLo", snapshot.d3d.r3d_draw_cycles[0]);
     v9x_write_uint("R3dDrawCyclesHi", snapshot.d3d.r3d_draw_cycles[1]);
     v9x_write_uint("R3dDrawCalls", snapshot.d3d.r3d_draw_calls);
+    v9x_write_hex("M64AddressRefused",
+                  snapshot.d3d.m64_address_refused_mask);
+    v9x_write_hex("M64AddressRefusedSize",
+                  snapshot.d3d.m64_address_refused_last_size);
+    v9x_write_hex("M64ShapeRefusedSize",
+                  snapshot.d3d.m64_shape_refused_last_size);
+    v9x_write_hex("AddressSeen", snapshot.d3d.address_seen[0]);
+    v9x_write_hex("AddressSeenU", snapshot.d3d.address_seen[1]);
+    v9x_write_hex("AddressSeenV", snapshot.d3d.address_seen[2]);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

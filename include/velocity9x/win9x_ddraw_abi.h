@@ -1517,6 +1517,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100105: V9X_D3D_DIAGNOSTICS gains the texture-address values
+ * applications set. An append. */
+/* 2026100104: V9X_D3D_DIAGNOSTICS gains what the Mach64's address and
+ * shape refusals were asked for. An append. */
 /* 2026100103: V9X_D3D_DIAGNOSTICS gains the Gen3 submission make-up and
  * the render interface's draw entry timer. An append. */
 /* 2026100102: V9X_D3D_DIAGNOSTICS gains the Mach64 policy refusal counts
@@ -1613,7 +1617,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100103ul
+#define V9X_DD_SHARED_ABI   2026100105ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3117,6 +3121,19 @@ typedef struct v9x_d3d_diagnostics {
      * does not see. */
     DWORD r3d_draw_cycles[2];
     DWORD r3d_draw_calls;
+    /* What the Mach64's TEXTURE_ADDRESS and TEXTURE_SHAPE refusals were
+     * asked for (2026-10-01), because a refused Direct3D batch is drawn
+     * by nobody. The address mask ORs 1 << D3DTADDRESS_* (bits 0-7)
+     * with WRAPU (bit 8), WRAPV (bit 9) and the ViRGE-shaped either
+     * bit (bit 10) as the draw carried them; the last address and
+     * shape refusals' texture sizes are width | height << 16. */
+    DWORD m64_address_refused_mask;
+    DWORD m64_address_refused_last_size;
+    DWORD m64_shape_refused_last_size;
+    /* One bit per value set for D3DRENDERSTATE_TEXTUREADDRESS, ADDRESSU
+     * and ADDRESSV, in that order (2026-10-01); a value over 30 sets
+     * bit 31. Like filter_min_seen. */
+    DWORD address_seen[3];
 } V9X_D3D_DIAGNOSTICS;
 
 /*
