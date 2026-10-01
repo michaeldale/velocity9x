@@ -4,6 +4,73 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.9.2 - unreleased
+
+Not yet released; the published downloads are still 0.9.1. Fixes found
+running Final Reality and Half-Life on the netbook (Intel GMA 950) and the
+Gateway (Rage Mobility-M), and the instruments that found them. Each item
+names the machine it was measured on; other families carry the shared-core
+changes untested.
+
+### Shared core (all engines)
+
+- **Final Reality no longer dies on its first draws.** Three 6 KB draw
+  buffers lived on the calling application's stack; Final Reality's render
+  thread arrives with 16 KB committed and was killed silently on the first
+  push past it. The buffers are file-scope, and the HAL build now fails on
+  any function frame over 2 KB. Full Final Reality runs complete on both
+  machines ([issue](docs/issues/2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md),
+  [record](docs/decisions/2026-10-01-final-reality-full-runs-netbook-and-gateway.md)).
+- **An undefined texture address is taken as CLAMP.** Half-Life's
+  Direct3D renderer sets TEXTUREADDRESSU/V to 0 for its sky on the
+  Mach64; every engine refused it and a refused batch is not drawn, so the
+  sky showed old frames. Fixed on the Gateway
+  ([record](docs/decisions/2026-10-01-hl1-d3d-sky-was-texture-address-zero.md)).
+- **List calls merge the batches culling and clipping split**, within one
+  call. Measured to change nothing in Quake 2 or Half-Life on the netbook,
+  whose batches are small DrawPrimitives records instead.
+
+### Intel GMA 950
+
+- **A flip completes at the first frame tick**, not the second: Final
+  Reality's fill rate 8.18 to 16.68 Mpixels/s and its 3D score 2.19 to
+  2.71 on the netbook. The fill test had been waiting for the display,
+  not drawing ([record](docs/decisions/2026-10-01-intel-flip-completes-at-one-tick.md)).
+  Asynchronous submission stays off.
+
+### ATI Mach64 (Rage Mobility-M)
+
+- **MODULATEALPHA** is drawn as MODULATE wherever the alpha it would
+  differ in is not read: Half-Life's refusals 74% to 1.7%
+  ([record](docs/decisions/2026-10-01-mach64-modulatealpha-where-it-cannot-show.md)).
+- **Rectangular textures**, each edge a power of two from 8 to 256, with
+  mip chains; the row pitch is the width, measured exact by a new probe
+  (V9XTSHP). Half-Life's OpenGL texture churn on the 4 MB card halved; the
+  frame rate did not move ([record](docs/decisions/2026-10-01-mach64-rectangular-textures.md)).
+
+### OpenGL (all engines)
+
+- **Lower per-call CPU cost in the ICD:** RDTSC instead of
+  QueryPerformanceCounter (the PIT) around each draw, a texture lookup
+  hint, and per-primitive viewport and colour caches. Half-Life OpenGL on
+  the netbook 10.75 to 14.75 fps
+  ([record](docs/decisions/2026-10-01-hl1-opengl-icd-cpu-costs.md)).
+
+### Diagnostics
+
+- V9XTRACE gains flip-wait and frame-interval timers, Mach64 refusals by
+  reason, the Gen3 submission's make-up and repeated state, the render
+  interface's draw time, and the texture-address values applications set
+  (shared ABI 2026100105; DRV, VXD, HAL, SETP, ICD and V9XTRACE deploy
+  together). The first use is a profile of the netbook's draw submission:
+  about two thirds of it waits for the GPU
+  ([record](docs/decisions/2026-10-01-hal-submission-profile-on-the-netbook.md)).
+
+Still open: the Gen3 waits for the GPU after every submission; refused
+Direct3D batches on the Mach64 are dropped rather than drawn on the CPU;
+Half-Life OpenGL on the netbook measured 13.34 fps on the latest build
+against 14.75 earlier, unexplained.
+
 ## 0.9.1 - 2026-09-29
 
 The Rage Mobility release: hardware Direct3D and OpenGL on the ATI Rage
