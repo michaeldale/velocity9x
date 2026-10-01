@@ -87,8 +87,9 @@ those textures' sharpness and was not built.
   Direct3D best 12.03 fps (12.09 on boot 86), no address refusals;
   OpenGL best 7.40 fps (7.05 before the ICD's vertex and sink changes).
   The first Direct3D attempt, on boot 88, stopped answering about 80 s
-  into its first timedemo and the machine came back as boot 89 three
-  minutes later; no fault dump was written. Since `871ebdc` the Mach64
+  into its first timedemo: a hard lock, which the operator power-cycled
+  into boot 89; no fault dump was written. The operator judges it a
+  random driver issue, not worth chasing now; parked. Since `871ebdc` the Mach64
   Direct3D path differs only by the shared block's appended counters, so
   this is taken as the Gateway's open intermittent lock, not established
   as such. The retry ran clean
