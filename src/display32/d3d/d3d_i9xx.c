@@ -2027,6 +2027,54 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                             DWORD triangle_count);
 
 /*
+ * The previous submission's state, to count how much of each reload
+ * repeats it (i9xx_state_*). A block longer than this is counted but not
+ * compared. Measurement only: nothing is skipped on its account.
+ */
+#define V9X_D3D_I9XX_STATE_COMPARE_DWORDS 256ul
+static DWORD v9x_d3d_i9xx_state_previous[V9X_D3D_I9XX_STATE_COMPARE_DWORDS];
+static DWORD v9x_d3d_i9xx_state_previous_dwords = 0ul;
+
+static void v9x_d3d_i9xx_pair_add(DWORD *pair, DWORD delta)
+{
+    pair[0] += delta;
+    if (pair[0] < delta) {
+        ++pair[1];
+    }
+}
+
+static void v9x_d3d_i9xx_note_make_up(const DWORD *state, DWORD state_dwords,
+                                      DWORD prim_dwords)
+{
+    V9X_D3D_DIAGNOSTICS *diag = &v9x_hal->d3d_diagnostics;
+    DWORD index;
+    DWORD changed = 0ul;
+
+    v9x_d3d_i9xx_pair_add(diag->i9xx_state_dwords, state_dwords);
+    v9x_d3d_i9xx_pair_add(diag->i9xx_prim_dwords, prim_dwords);
+    if (state_dwords > V9X_D3D_I9XX_STATE_COMPARE_DWORDS) {
+        v9x_d3d_i9xx_state_previous_dwords = 0ul;
+        return;
+    }
+    if (state_dwords == v9x_d3d_i9xx_state_previous_dwords) {
+        for (index = 0ul; index < state_dwords; ++index) {
+            if (state[index] != v9x_d3d_i9xx_state_previous[index]) {
+                ++changed;
+            }
+        }
+        ++diag->i9xx_state_compared;
+        diag->i9xx_state_changed_dwords += changed;
+        if (changed == 0ul) {
+            ++diag->i9xx_state_repeats;
+        }
+    }
+    for (index = 0ul; index < state_dwords; ++index) {
+        v9x_d3d_i9xx_state_previous[index] = state[index];
+    }
+    v9x_d3d_i9xx_state_previous_dwords = state_dwords;
+}
+
+/*
  * One submitted batch's head wait, filed by the batch's shape.
  *
  * The question is whether the GPU's time per batch is a fixed cost - the
@@ -2130,6 +2178,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD cylinder = 0ul;
     DWORD map_bytes = 0ul;
     DWORD alpha_test = 0ul;
+    DWORD state_begin;
+    DWORD state_end;
+    DWORD prim_dwords;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -2316,6 +2367,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     if (at >= V9X_I9XX_SUBMIT_DWORDS) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
+    state_begin = at;
     stream[at++] = V9X_I9XX_MI_FLUSH_READ;
 
     if (v9x_i9xx_build_runtime_state(draw->target.offset, draw->target.pitch,
@@ -2346,6 +2398,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
     }
     at += produced;
+    state_end = at;
     if ((textured != 0
             ? v9x_i9xx_build_textured_runtime_run(
                   xyzw, colors, uv, triangle_count,
@@ -2359,6 +2412,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
     }
     at += produced;
+    prim_dwords = produced;
     /*
      * An MI_FLUSH after the draw, so the wait below means "drawn" and not
      * only "parsed".
@@ -2477,6 +2531,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         }
     }
 
+    v9x_d3d_i9xx_note_make_up(stream + state_begin, state_end - state_begin,
+                              prim_dwords);
     v9x_present_note_submission();
     if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
         v9x_d3d_i9xx_breadcrumb_expected = 0ul;

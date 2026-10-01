@@ -1052,6 +1052,17 @@ void __stdcall V9xTraceDumpEntry(void)
         }
     }
     v9x_write_hex("M64TexOpRefused", snapshot.d3d.m64_texop_refused_mask);
+    v9x_write_uint("I9xxStateDwordsLo", snapshot.d3d.i9xx_state_dwords[0]);
+    v9x_write_uint("I9xxStateDwordsHi", snapshot.d3d.i9xx_state_dwords[1]);
+    v9x_write_uint("I9xxPrimDwordsLo", snapshot.d3d.i9xx_prim_dwords[0]);
+    v9x_write_uint("I9xxPrimDwordsHi", snapshot.d3d.i9xx_prim_dwords[1]);
+    v9x_write_uint("I9xxStateCompared", snapshot.d3d.i9xx_state_compared);
+    v9x_write_uint("I9xxStateRepeats", snapshot.d3d.i9xx_state_repeats);
+    v9x_write_uint("I9xxStateChangedDwords",
+                   snapshot.d3d.i9xx_state_changed_dwords);
+    v9x_write_uint("R3dDrawCyclesLo", snapshot.d3d.r3d_draw_cycles[0]);
+    v9x_write_uint("R3dDrawCyclesHi", snapshot.d3d.r3d_draw_cycles[1]);
+    v9x_write_uint("R3dDrawCalls", snapshot.d3d.r3d_draw_calls);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

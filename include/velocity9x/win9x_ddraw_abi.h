@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100103: V9X_D3D_DIAGNOSTICS gains the Gen3 submission make-up and
+ * the render interface's draw entry timer. An append. */
 /* 2026100102: V9X_D3D_DIAGNOSTICS gains the Mach64 policy refusal counts
  * by reason and the refused texture ops. An append. */
 /* 2026100101: V9X_D3D_DIAGNOSTICS gains the flip-wait and flip-interval
@@ -1611,7 +1613,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100102ul
+#define V9X_DD_SHARED_ABI   2026100103ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3097,6 +3099,24 @@ typedef struct v9x_d3d_diagnostics {
      * Direct3D TEXTUREMAPBLEND value. */
     DWORD m64_policy_counts[20];
     DWORD m64_texop_refused_mask;
+    /* What a Gen3 draw submission is made of (2026-10-01): dwords of
+     * state (the read flush, the state block and the fragment program)
+     * and of primitive, as lo/hi pairs; how many state blocks were
+     * compared with the previous submission's, how many were identical,
+     * and how many dwords differed in total among those of equal length.
+     * Every submission reloads its whole state; these say how much of
+     * that reload repeats the one before. */
+    DWORD i9xx_state_dwords[2];
+    DWORD i9xx_prim_dwords[2];
+    DWORD i9xx_state_compared;
+    DWORD i9xx_state_repeats;
+    DWORD i9xx_state_changed_dwords;
+    /* The render interface's draw entry, whole - Win16 mutex, validation
+     * and the engine draw - in TSC cycles, Gen3 only like the
+     * V9X_TIME_* buckets. The ICD's draws, which TIME_D3D_CALLS
+     * does not see. */
+    DWORD r3d_draw_cycles[2];
+    DWORD r3d_draw_calls;
 } V9X_D3D_DIAGNOSTICS;
 
 /*

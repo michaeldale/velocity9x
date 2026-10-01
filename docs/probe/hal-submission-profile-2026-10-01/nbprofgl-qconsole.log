@@ -1,0 +1,20 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+]echo V9X_nbprofgl_WARM
+V9X_nbprofgl_WARM 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 28.426 seconds 13.825 fps
+No demos listed with startdemos
+]echo V9X_nbprofgl_RUN
+V9X_nbprofgl_RUN 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+]uit
+393 frames 29.464 seconds 13.338 fps

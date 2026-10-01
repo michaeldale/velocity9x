@@ -3543,6 +3543,7 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
                                                V9X_R3D_ABI_OUTCOME *outcome)
 {
     DWORD result;
+    DWORD started = V9X_TIME_BEGIN();
 
     if (outcome == 0 || IsBadWritePtr(outcome, sizeof(*outcome))) {
         return V9X_R3D_RESULT_INVALID;
@@ -3563,6 +3564,16 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
     }
     result = v9x_r3d_draw_body(draw, outcome);
     v9x_win16_leave();
+    if (V9X_TIME_ENABLED()) {
+        DWORD delta = v9x_rdtsc_low() - started;
+        DWORD *pair = v9x_hal->d3d_diagnostics.r3d_draw_cycles;
+
+        pair[0] += delta;
+        if (pair[0] < delta) {
+            ++pair[1];
+        }
+        ++v9x_hal->d3d_diagnostics.r3d_draw_calls;
+    }
     outcome->result = result;
     return result;
 }
