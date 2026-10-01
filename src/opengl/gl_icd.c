@@ -211,6 +211,9 @@ static long v9x_gl_tsc_to_long(double value);
 static DWORD v9x_gl_count_sinks;
 static DWORD v9x_gl_tsc_state;  /* 0 unknown, 1 usable, 2 absent */
 static DWORD v9x_gl_tsc[V9X_GL_TSC_BUCKETS * 2u];
+/* The vertex pipeline's stage profile (V9X_GL_PIPELINE.profile), shared by
+ * every context of the process and reported and cleared with the tsc line. */
+static v9x_u32 v9x_gl_prim_profile[V9X_GL_PRIM_PROF_DWORDS];
 static DWORD v9x_gl_tsc_wall_last;
 static DWORD v9x_gl_tsc_wall_valid;
 static DWORD v9x_gl_in_vertex;
@@ -280,6 +283,20 @@ static DWORD v9x_gl_tsc_ms(unsigned int bucket, double wall,
     return (DWORD)v9x_gl_tsc_to_long(cycles * (double)interval_ms / wall);
 }
 
+/* The same, for a vertex pipeline stage. */
+static DWORD v9x_gl_prim_profile_ms(unsigned int stage, double wall,
+                                    DWORD interval_ms)
+{
+    double cycles =
+        (double)v9x_gl_prim_profile[stage * 2u + 1u] * 4294967296.0 +
+        (double)v9x_gl_prim_profile[stage * 2u];
+
+    if (wall <= 0.0) {
+        return 0ul;
+    }
+    return (DWORD)v9x_gl_tsc_to_long(cycles * (double)interval_ms / wall);
+}
+
 static double v9x_gl_tsc_wall_cycles(void)
 {
     v9x_gl_tsc_wall();
@@ -324,6 +341,26 @@ static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
               v9x_gl_tsc_ms(V9X_GL_TSC_SINK_PREP, wall, interval_ms),
               v9x_gl_count_sinks);
     v9x_gl_log(text);
+    wsprintfA(text, "prim transform-ms=%lu inside-ms=%lu window-ms=%lu "
+              "assemble-ms=%lu history-ms=%lu fast=%lu clipped=%lu "
+              "culled=%lu",
+              v9x_gl_prim_profile_ms(V9X_GL_PRIM_PROF_TRANSFORM, wall,
+                                     interval_ms),
+              v9x_gl_prim_profile_ms(V9X_GL_PRIM_PROF_INSIDE, wall,
+                                     interval_ms),
+              v9x_gl_prim_profile_ms(V9X_GL_PRIM_PROF_WINDOW, wall,
+                                     interval_ms),
+              v9x_gl_prim_profile_ms(V9X_GL_PRIM_PROF_ASSEMBLE, wall,
+                                     interval_ms),
+              v9x_gl_prim_profile_ms(V9X_GL_PRIM_PROF_HISTORY, wall,
+                                     interval_ms),
+              v9x_gl_prim_profile[V9X_GL_PRIM_PROF_FAST],
+              v9x_gl_prim_profile[V9X_GL_PRIM_PROF_CLIPPED],
+              v9x_gl_prim_profile[V9X_GL_PRIM_PROF_CULLED]);
+    v9x_gl_log(text);
+    for (i = 0u; i < V9X_GL_PRIM_PROF_DWORDS; ++i) {
+        v9x_gl_prim_profile[i] = 0ul;
+    }
     for (i = 0u; i < V9X_GL_TSC_BUCKETS * 2u; ++i) {
         v9x_gl_tsc[i] = 0ul;
     }
@@ -2452,6 +2489,9 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 context->textures.hw_release = v9x_gl_hwtex_free;
                 v9x_gl_pipeline_sink(&context->pipeline, v9x_gl_draw_batch,
                                      context);
+                if (v9x_gl_tsc_usable()) {
+                    context->pipeline.profile = v9x_gl_prim_profile;
+                }
                 v9x_gl_windows[index] = WindowFromDC(hdc);
                 handle = (V9X_DHGLRC)(index + 1u);
                 break;

@@ -20,6 +20,47 @@ static long v9x_gl_prim_to_long(double value)
 }
 #endif
 
+/* The TSC for the stage profile, read only when the front end asked for
+ * one (V9X_GL_PIPELINE.profile), which the host tests never do. */
+#ifdef __WATCOMC__
+static v9x_u32 v9x_gl_prim_rdtsc_low(void);
+#pragma aux v9x_gl_prim_rdtsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
+#else
+static v9x_u32 v9x_gl_prim_rdtsc_low(void)
+{
+    return 0ul;
+}
+#endif
+
+/* Charge the cycles since *mark to a stage and move the mark to now. */
+static void v9x_gl_prim_prof_mark(V9X_GL_PIPELINE *pipeline,
+                                  unsigned int stage, v9x_u32 *mark)
+{
+    v9x_u32 now;
+    v9x_u32 delta;
+    v9x_u32 *pair;
+
+    if (pipeline->profile == 0) {
+        return;
+    }
+    now = v9x_gl_prim_rdtsc_low();
+    delta = now - *mark;
+    pair = &pipeline->profile[stage * 2u];
+    pair[0] += delta;
+    if (pair[0] < delta) {
+        ++pair[1];
+    }
+    *mark = now;
+}
+
+static void v9x_gl_prim_prof_count(V9X_GL_PIPELINE *pipeline,
+                                   unsigned int index)
+{
+    if (pipeline->profile != 0) {
+        ++pipeline->profile[index];
+    }
+}
+
 /* A 0..1 channel as a byte, clamped and rounded to nearest. */
 static v9x_u32 v9x_gl_prim_byte(GLfloat value)
 {
@@ -63,6 +104,7 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->sink = 0;
     pipeline->sink_user = 0;
     pipeline->sink_failures = 0ul;
+    pipeline->profile = 0;
 }
 
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
@@ -588,8 +630,10 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                     corner[j]->window[0] * corner[i]->window[1];
         }
         if (v9x_gl_prim_culled(state, pipeline, area)) {
+            v9x_gl_prim_prof_count(pipeline, V9X_GL_PRIM_PROF_CULLED);
             return;
         }
+        v9x_gl_prim_prof_count(pipeline, V9X_GL_PRIM_PROF_FAST);
         if (pipeline->batch_triangles >= V9X_R3D_ABI_BATCH_MAX) {
             v9x_gl_prim_flush(pipeline);
         }
@@ -607,6 +651,7 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
         return;
     }
 
+    v9x_gl_prim_prof_count(pipeline, V9X_GL_PRIM_PROF_CLIPPED);
     polygon[0] = *a;
     polygon[1] = *b;
     polygon[2] = *c;
@@ -669,9 +714,13 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     GLfloat object[4];
     unsigned int row;
     v9x_u32 n;
+    v9x_u32 mark = 0ul;
 
     if (!state->in_begin) {
         return;
+    }
+    if (pipeline->profile != 0) {
+        mark = v9x_gl_prim_rdtsc_low();
     }
     modelview = v9x_gl_matrix_top(&state->matrices, V9X_GL_MODELVIEW);
     projection = v9x_gl_matrix_top(&state->matrices, V9X_GL_PROJECTION);
@@ -696,12 +745,14 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
      * then its window position and emitted vertex are what any triangle
      * it is a corner of would compute (V9X_GL_VERTEX.inside). */
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_TRANSFORM, &mark);
     v.inside = pipeline->clip_ready;
     for (row = 0u; row < V9X_GL_PRIM_CLIP_PLANES && v.inside; ++row) {
         if (!(v9x_gl_prim_plane(&v, row, pipeline->clip_edge) >= 0.0f)) {
             v.inside = 0;
         }
     }
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_INSIDE, &mark);
     if (v.inside) {
         V9X_GL_WINDOW w;
 
@@ -712,6 +763,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         v.window[3] = w.rhw;
         v9x_gl_prim_emit(state, pipeline, &v.abi, &v, &w);
     }
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_WINDOW, &mark);
 
     n = pipeline->count++;
     switch (pipeline->mode) {
@@ -773,6 +825,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
          * (r3d_line.c's coverage comes with the plan's Phase 4 lines). */
         break;
     }
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_ASSEMBLE, &mark);
 
     if (n == 0ul) {
         pipeline->first = v;
@@ -780,6 +833,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->previous[0] = pipeline->previous[1];
     pipeline->previous[1] = pipeline->previous[2];
     pipeline->previous[2] = v;
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_HISTORY, &mark);
 }
 
 void v9x_gl_prim_abi_state(V9X_GL_STATE *state,

@@ -124,7 +124,27 @@ typedef struct v9x_gl_pipeline {
     void *sink_user;
     /* Batches the sink refused; the triangles in them are lost. */
     v9x_u32 sink_failures;
+    /*
+     * Where a vertex's time goes (2026-10-01), when the front end supplies
+     * the array - null, the initial value, measures nothing: TSC cycles as
+     * lo/hi pairs per V9X_GL_PRIM_PROF_* stage, then the triangle counts
+     * at V9X_GL_PRIM_PROF_COUNTS. Measurement only.
+     */
+    v9x_u32 *profile;
 } V9X_GL_PIPELINE;
+
+#define V9X_GL_PRIM_PROF_TRANSFORM 0u  /* both matrices, colour, texcoord */
+#define V9X_GL_PRIM_PROF_INSIDE    1u  /* the six-plane inside test      */
+#define V9X_GL_PRIM_PROF_WINDOW    2u  /* window mapping and emit        */
+#define V9X_GL_PRIM_PROF_ASSEMBLE  3u  /* triangles, clip, cull, batch   */
+#define V9X_GL_PRIM_PROF_HISTORY   4u  /* first/previous vertex copies   */
+#define V9X_GL_PRIM_PROF_STAGES    5u
+/* Triangle counts follow the pairs: inside fast path, clipped, culled. */
+#define V9X_GL_PRIM_PROF_COUNTS    (V9X_GL_PRIM_PROF_STAGES * 2u)
+#define V9X_GL_PRIM_PROF_FAST      (V9X_GL_PRIM_PROF_COUNTS + 0u)
+#define V9X_GL_PRIM_PROF_CLIPPED   (V9X_GL_PRIM_PROF_COUNTS + 1u)
+#define V9X_GL_PRIM_PROF_CULLED    (V9X_GL_PRIM_PROF_COUNTS + 2u)
+#define V9X_GL_PRIM_PROF_DWORDS    (V9X_GL_PRIM_PROF_COUNTS + 3u)
 
 /* The initial values of the pipeline's state (colour 1,1,1,1, texture
  * coordinate 0,0,0,1, normal 0,0,1, SMOOTH, BACK, CCW, LESS, ONE/ZERO, ALWAYS/0, depth
