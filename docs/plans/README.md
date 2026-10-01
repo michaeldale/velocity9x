@@ -35,3 +35,4 @@
 - [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
 - [Optional update checker, guarded auto-updater, and installed-file audit](optional-update-checker-and-auto-updater.md) - Proposed; nothing implemented.
 - [Write-combining the aperture, Stage B: write one MTRR, on two machines](write-combining-stage-b.md) - Proposed; nothing coded. The netbook's readout accepts (r=0) but Stage A's 4 MiB window misses its 7.7 MiB; two decisions owed (kill switch, scope).
+- [Intel Gen3: textures in system memory through the GTT (DVMT)](intel-gen3-system-memory-textures.md) - Proposed; nothing coded. Serious Sam runs 3.46 fps on the netbook's ~5 MiB of free stolen memory; a 32 MiB pool of locked RAM in the unused GTT entries, texture-only DirectDraw heap. Three decisions and an errata gate owed.
