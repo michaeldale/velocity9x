@@ -42,6 +42,11 @@ changes untested.
   fixed, Half-Life's Direct3D timedemo went from 29.06 to 42.42 fps on the
   netbook, and Half-Life and 3DMark 99 were correct. `V9X3D SYNC` turns it
   off ([record](docs/decisions/2026-10-01-intel-async-corruption-was-the-dword-head.md)).
+- **Textures to 1024 texels**, from 256: every size from 256 to 1024 and
+  full 512 and 1024 chains read back exactly by the V9XTSHP probe. Serious
+  Sam's 512 textures had all been drawn by the CPU; its demo on the
+  netbook 1.81 to 2.73 fps
+  ([record](docs/decisions/2026-10-02-serious-sam-netbook-profile.md)).
 
 ### ATI Mach64 (Rage Mobility-M)
 
