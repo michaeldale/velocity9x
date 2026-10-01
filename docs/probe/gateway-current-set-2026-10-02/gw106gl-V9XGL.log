@@ -1,0 +1,1846 @@
+1 pid=FFFCA00B attach instance=09ED0000 tls=23 build-marker=1
+2 pid=FFFCA00B DrvValidateVersion version=1
+3 pid=FFFCA00B DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFCA00B describe result=0 engine=4 formats=00000002
+5 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFCA00B DrvSetPixelFormat hdc=00000E62 index=1
+33 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFCA00B DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFCA00B DrvCreateLayerContext hdc=00000E62 layer=0 -> 1
+38 pid=FFFCA00B drawable window=000002C4 640x480
+39 pid=FFFCA00B DrvSetContext hdc=00000E62 context=1 -> 1
+40 pid=FFFCA00B state tex=2 size=01000080 tex=01010100 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+41 pid=FFFCA00B time interval-ms=230428 swaps=0 present-ms=0 draw-ms=8758943 upload-ms=5
+42 pid=FFFCA00B tsc frames=0 wall-ms=230428 vertex-ms=63954 flush-in-vertex-ms=0 flush-other-ms=6405945 bind-ms=10966 iface-ms=79295 beginend-ms=10632631 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=10626445 sink-prep-ms=10622399 sinks=1
+43 pid=FFFCA00B paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+44 pid=FFFCA00B counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=64 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+45 pid=FFFCA00B state tex=3 size=01000080 tex=01040202 blend=00050601 depth=00020101 colour=FFFFB233 mask=7 scissor=0,0,640,480 fog=0
+46 pid=FFFCA00B state tex=64 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+47 pid=FFFCA00B state tex=67 size=01000080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+48 pid=FFFCA00B state tex=5802 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+49 pid=FFFCA00B state tex=5803 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+50 pid=FFFCA00B state tex=5805 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+51 pid=FFFCA00B stub first-call slot=319 glPolygonOffset
+52 pid=FFFCA00B state tex=80 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+53 pid=FFFCA00B state tex=516 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+54 pid=FFFCA00B state tex=517 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+55 pid=FFFCA00B state tex=518 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+56 pid=FFFCA00B state tex=519 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFCA00B state tex=80 size=00800080 tex=01010200 blend=00090300 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFCA00B state tex=523 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFCA00B state tex=584 size=00200080 tex=01010200 blend=00090300 depth=01040101 colour=005D4A13 mask=7 scissor=0,0,640,480 fog=0
+60 pid=FFFCA00B state tex=587 size=00200040 tex=01010200 blend=00090300 depth=01040101 colour=0093BCBC mask=7 scissor=0,0,640,480 fog=0
+61 pid=FFFCA00B state tex=590 size=00400040 tex=01010200 blend=00090300 depth=01040101 colour=009EC9C9 mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFCA00B state tex=591 size=00800040 tex=01010200 blend=00090300 depth=01040101 colour=00C7FEFE mask=7 scissor=0,0,640,480 fog=0
+63 pid=FFFCA00B state tex=592 size=00400040 tex=01010200 blend=00090300 depth=01040101 colour=009CC7C7 mask=7 scissor=0,0,640,480 fog=0
+64 pid=FFFCA00B state tex=593 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=009AC4C4 mask=7 scissor=0,0,640,480 fog=0
+65 pid=FFFCA00B state tex=595 size=00080040 tex=01010200 blend=00090300 depth=01040101 colour=009EC9C9 mask=7 scissor=0,0,640,480 fog=0
+66 pid=FFFCA00B state tex=596 size=00200040 tex=01010200 blend=00090300 depth=01040101 colour=00C5FBFB mask=7 scissor=0,0,640,480 fog=0
+67 pid=FFFCA00B state tex=597 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=009ECACA mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFCA00B state tex=598 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=0081A4A4 mask=7 scissor=0,0,640,480 fog=0
+69 pid=FFFCA00B state tex=80 size=00800080 tex=01010101 blend=00090300 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+70 pid=FFFCA00B state tex=524 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFCA00B state tex=453 size=00200020 tex=01010200 blend=01020201 depth=00040002 colour=FF1F1502 mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFCA00B state tex=47 size=01000080 tex=01010200 blend=01020201 depth=00040001 colour=FF643E00 mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFCA00B state tex=47 size=00000000 tex=00000000 blend=01050201 depth=00040100 colour=64FFA000 mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFCA00B state tex=2 size=01000080 tex=01010100 blend=00020201 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFCA00B state tex=3 size=01000080 tex=01040202 blend=00020201 depth=00040101 colour=FFFF9B32 mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFCA00B state tex=249 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFCA00B state tex=250 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFCA00B state tex=251 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFCA00B state tex=252 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFCA00B state tex=253 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFCA00B state tex=254 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFCA00B state tex=255 size=00800010 tex=01010200 blend=00050600 depth=01040101 colour=FF191E12 mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFCA00B state tex=256 size=00100020 tex=01010200 blend=00050600 depth=01040101 colour=FF191E12 mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFCA00B state tex=257 size=00200040 tex=01010200 blend=00050600 depth=01040101 colour=FF1B2113 mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFCA00B state tex=258 size=00100020 tex=01010200 blend=00050600 depth=01040101 colour=FF191D11 mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFCA00B state tex=259 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFCA00B state tex=260 size=00800040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+88 pid=FFFCA00B state tex=261 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF161A0F mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFCA00B state tex=262 size=00200010 tex=01010200 blend=00050600 depth=01040101 colour=FF161A0F mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFCA00B state tex=263 size=00400010 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFCA00B state tex=265 size=00400010 tex=01010200 blend=00050600 depth=01040101 colour=FF1C2214 mask=7 scissor=0,0,640,480 fog=0
+92 pid=FFFCA00B state tex=267 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+93 pid=FFFCA00B time interval-ms=10001 swaps=18 present-ms=72 draw-ms=366 upload-ms=108
+94 pid=FFFCA00B tsc frames=18 wall-ms=10001 vertex-ms=209 flush-in-vertex-ms=0 flush-other-ms=511 bind-ms=8 iface-ms=366 beginend-ms=220 swap-ms=73 vertices=44795 flushes=2604 draws=2604 sink-ms=197 sink-prep-ms=30 sinks=5960
+95 pid=FFFCA00B paths batches/triangles untextured=9/18 hw=2596/15201 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+96 pid=FFFCA00B counters hwtex live=45 creates=45 create-failed=0 evictions=0 uploads=47 upload-kb=1151 squared=0 alpha-dropped=114 stubs=9 failed r4=0 r7=0 r8=0 other=0
+97 pid=FFFCA00B time interval-ms=10009 swaps=87 present-ms=356 draw-ms=2630 upload-ms=193
+98 pid=FFFCA00B tsc frames=87 wall-ms=10009 vertex-ms=2209 flush-in-vertex-ms=1 flush-other-ms=2939 bind-ms=72 iface-ms=2630 beginend-ms=1727 swap-ms=357 vertices=479501 flushes=6431 draws=6431 sink-ms=1512 sink-prep-ms=234 sinks=46294
+99 pid=FFFCA00B paths batches/triangles untextured=96/192 hw=8940/140679 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFCA00B counters hwtex live=141 creates=141 create-failed=0 evictions=0 uploads=173 upload-kb=2921 squared=0 alpha-dropped=1133 stubs=70 failed r4=0 r7=0 r8=0 other=0
+101 pid=FFFCA00B time interval-ms=10000 swaps=82 present-ms=330 draw-ms=2697 upload-ms=96
+102 pid=FFFCA00B tsc frames=82 wall-ms=10000 vertex-ms=2266 flush-in-vertex-ms=12 flush-other-ms=2887 bind-ms=60 iface-ms=2697 beginend-ms=1562 swap-ms=331 vertices=613693 flushes=7022 draws=7022 sink-ms=1308 sink-prep-ms=271 sinks=53633
+103 pid=FFFCA00B paths batches/triangles untextured=178/356 hw=15880/284430 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+104 pid=FFFCA00B counters hwtex live=166 creates=166 create-failed=0 evictions=0 uploads=226 upload-kb=4015 squared=0 alpha-dropped=2141 stubs=94 failed r4=0 r7=0 r8=0 other=0
+105 pid=FFFCA00B hwtex create 00200080 levels=1 hr=8876017C
+106 pid=FFFCA00B time interval-ms=10001 swaps=68 present-ms=271 draw-ms=2927 upload-ms=43
+107 pid=FFFCA00B tsc frames=68 wall-ms=10001 vertex-ms=2479 flush-in-vertex-ms=43 flush-other-ms=3064 bind-ms=78 iface-ms=2927 beginend-ms=1863 swap-ms=272 vertices=669497 flushes=9357 draws=9357 sink-ms=1617 sink-prep-ms=352 sinks=70012
+108 pid=FFFCA00B paths batches/triangles untextured=246/492 hw=25169/472493 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFCA00B counters hwtex live=192 creates=193 create-failed=1 evictions=1 uploads=262 upload-kb=4485 squared=37 alpha-dropped=3033 stubs=96 failed r4=0 r7=0 r8=0 other=0
+110 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+111 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+112 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+113 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+114 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+115 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+116 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+117 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+118 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+119 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+120 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+121 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+122 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+123 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+124 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+125 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+126 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+127 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+128 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+129 pid=FFFCA00B time interval-ms=10005 swaps=56 present-ms=225 draw-ms=2977 upload-ms=58
+130 pid=FFFCA00B tsc frames=56 wall-ms=10005 vertex-ms=2641 flush-in-vertex-ms=119 flush-other-ms=3063 bind-ms=75 iface-ms=2977 beginend-ms=1871 swap-ms=225 vertices=701391 flushes=10418 draws=10418 sink-ms=1690 sink-prep-ms=386 sinks=77228
+131 pid=FFFCA00B paths batches/triangles untextured=302/604 hw=35531/686008 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+132 pid=FFFCA00B counters hwtex live=205 creates=225 create-failed=20 evictions=20 uploads=289 upload-kb=5138 squared=89 alpha-dropped=3850 stubs=96 failed r4=0 r7=0 r8=0 other=0
+133 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+134 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+135 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+136 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+137 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+138 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+139 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+140 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+141 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+142 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+143 pid=FFFCA00B hwtex create 00200020 levels=1 hr=8876017C
+144 pid=FFFCA00B hwtex create 00200020 levels=1 hr=8876017C
+145 pid=FFFCA00B hwtex create 00200020 levels=1 hr=8876017C
+146 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+147 pid=FFFCA00B hwtex create 00200020 levels=1 hr=8876017C
+148 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+149 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+150 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+151 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+152 pid=FFFCA00B hwtex create 00200020 levels=1 hr=8876017C
+153 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+154 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+155 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+156 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+157 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+158 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+159 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+160 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+161 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+162 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+163 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+164 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+165 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+166 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+167 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+168 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+169 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+170 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+171 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+172 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+173 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+174 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+175 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+176 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+177 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+178 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+179 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+180 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+181 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+182 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+183 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+184 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+185 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+186 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+187 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+188 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+189 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+190 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+191 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+192 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+193 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+194 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+195 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+196 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+197 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+198 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+199 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+200 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+201 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+202 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+203 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+204 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+205 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+206 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+207 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+208 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+209 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+210 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+211 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+212 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+213 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+214 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+215 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+216 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+217 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+218 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+219 pid=FFFCA00B   v0 sx=42644E0F sy=00000000 sz=3F7FECA9 rhw=39506817 tu=3F766903 tv=3D67D665
+220 pid=FFFCA00B   v1 sx=362E75A4 sy=4211C5C8 sz=3F7FE289 rhw=3978DBB2 tu=3F61D5F1 tv=3E389F32
+221 pid=FFFCA00B   v2 sx=36AD6380 sy=00000000 sz=3F7FE296 rhw=3978AADA tu=3F60FFF2 tv=3E0378AE
+222 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+223 pid=FFFCA00B   v0 sx=36D4A9F4 sy=4376C980 sz=3F7FD58B rhw=399667C4 tu=3F2F3690 tv=3EF50290
+224 pid=FFFCA00B   v1 sx=36FC7826 sy=00000000 sz=3F7FD6F8 rhw=39938D79 tu=3F2ABDDF tv=3E3BF20C
+225 pid=FFFCA00B   v2 sx=4326D03E sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F64E109 tv=3B000000
+226 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+227 pid=FFFCA00B   v0 sx=378DD20C sy=43C61C95 sz=3F7FD00F rhw=39A16021 tu=3F1407BD tv=3F24A19F
+228 pid=FFFCA00B   v1 sx=37263998 sy=38000000 sz=3F7FD35F rhw=399AC108 tu=3F0DA693 tv=3E4B0677
+229 pid=FFFCA00B   v2 sx=43575E58 sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F553766 tv=3B000000
+230 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+231 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+232 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+233 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+234 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+235 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+236 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+237 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+238 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+239 pid=FFFCA00B time interval-ms=10004 swaps=55 present-ms=221 draw-ms=2777 upload-ms=183
+240 pid=FFFCA00B tsc frames=55 wall-ms=10004 vertex-ms=2562 flush-in-vertex-ms=91 flush-other-ms=3050 bind-ms=65 iface-ms=2776 beginend-ms=2069 swap-ms=222 vertices=651940 flushes=9811 draws=9811 sink-ms=1875 sink-prep-ms=364 sinks=72447
+241 pid=FFFCA00B paths batches/triangles untextured=357/714 hw=45284/884008 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+242 pid=FFFCA00B counters hwtex live=214 creates=394 create-failed=114 evictions=113 uploads=412 upload-kb=7152 squared=119 alpha-dropped=4542 stubs=136 failed r4=3 r7=0 r8=0 other=0
+243 pid=FFFCA00B time interval-ms=10000 swaps=100 present-ms=409 draw-ms=2470 upload-ms=143
+244 pid=FFFCA00B tsc frames=100 wall-ms=10000 vertex-ms=1494 flush-in-vertex-ms=22 flush-other-ms=2863 bind-ms=143 iface-ms=2470 beginend-ms=1331 swap-ms=409 vertices=366849 flushes=24196 draws=24196 sink-ms=1173 sink-prep-ms=238 sinks=48141
+245 pid=FFFCA00B paths batches/triangles untextured=412/824 hw=69425/1005928 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+246 pid=FFFCA00B counters hwtex live=214 creates=397 create-failed=114 evictions=113 uploads=448 upload-kb=8629 squared=119 alpha-dropped=5259 stubs=190 failed r4=3 r7=0 r8=0 other=0
+247 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+248 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+249 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+250 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+251 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+252 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+253 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+254 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+255 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+256 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+257 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+258 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+259 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+260 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+261 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+262 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+263 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+264 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+265 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+266 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+267 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+268 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+269 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+270 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+271 pid=FFFCA00B time interval-ms=10026 swaps=86 present-ms=346 draw-ms=2691 upload-ms=194
+272 pid=FFFCA00B tsc frames=86 wall-ms=10026 vertex-ms=2316 flush-in-vertex-ms=11 flush-other-ms=2969 bind-ms=43 iface-ms=2691 beginend-ms=1751 swap-ms=346 vertices=524101 flushes=6925 draws=6925 sink-ms=1528 sink-prep-ms=253 sinks=50531
+273 pid=FFFCA00B paths batches/triangles untextured=498/996 hw=76264/1142958 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+274 pid=FFFCA00B counters hwtex live=214 creates=427 create-failed=138 evictions=137 uploads=505 upload-kb=10597 squared=119 alpha-dropped=6296 stubs=250 failed r4=3 r7=0 r8=0 other=0
+275 pid=FFFCA00B time interval-ms=10000 swaps=84 present-ms=337 draw-ms=2840 upload-ms=48
+276 pid=FFFCA00B tsc frames=84 wall-ms=10000 vertex-ms=2326 flush-in-vertex-ms=1 flush-other-ms=2980 bind-ms=47 iface-ms=2840 beginend-ms=1623 swap-ms=337 vertices=631584 flushes=7140 draws=7140 sink-ms=1348 sink-prep-ms=295 sinks=55382
+277 pid=FFFCA00B paths batches/triangles untextured=582/1164 hw=83320/1289679 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+278 pid=FFFCA00B counters hwtex live=214 creates=449 create-failed=138 evictions=137 uploads=538 upload-kb=11135 squared=119 alpha-dropped=7303 stubs=262 failed r4=3 r7=0 r8=0 other=0
+279 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+280 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+281 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+282 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+283 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+284 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+285 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+286 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+287 pid=FFFCA00B time interval-ms=10000 swaps=65 present-ms=261 draw-ms=2975 upload-ms=43
+288 pid=FFFCA00B tsc frames=65 wall-ms=10000 vertex-ms=2572 flush-in-vertex-ms=75 flush-other-ms=3065 bind-ms=58 iface-ms=2975 beginend-ms=1972 swap-ms=262 vertices=691054 flushes=9817 draws=9817 sink-ms=1752 sink-prep-ms=387 sinks=73121
+289 pid=FFFCA00B paths batches/triangles untextured=647/1294 hw=93072/1489136 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+290 pid=FFFCA00B counters hwtex live=214 creates=482 create-failed=146 evictions=145 uploads=573 upload-kb=11603 squared=170 alpha-dropped=8196 stubs=262 failed r4=3 r7=0 r8=0 other=0
+291 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+292 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+293 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+294 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+295 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+296 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+297 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+298 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+299 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+300 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+301 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+302 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+303 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+304 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+305 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+306 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+307 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+308 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+309 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+310 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+311 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+312 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+313 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+314 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+315 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+316 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+317 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+318 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+319 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+320 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+321 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+322 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+323 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+324 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+325 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+326 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+327 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+328 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+329 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+330 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+331 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+332 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+333 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+334 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+335 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+336 pid=FFFCA00B time interval-ms=10005 swaps=54 present-ms=218 draw-ms=3068 upload-ms=76
+337 pid=FFFCA00B tsc frames=54 wall-ms=10005 vertex-ms=2679 flush-in-vertex-ms=138 flush-other-ms=3138 bind-ms=44 iface-ms=3068 beginend-ms=1934 swap-ms=219 vertices=718197 flushes=11060 draws=11060 sink-ms=1763 sink-prep-ms=417 sinks=81308
+338 pid=FFFCA00B paths batches/triangles untextured=701/1402 hw=104078/1714508 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+339 pid=FFFCA00B counters hwtex live=214 creates=568 create-failed=191 evictions=190 uploads=632 upload-kb=12455 squared=219 alpha-dropped=8978 stubs=264 failed r4=3 r7=0 r8=0 other=0
+340 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+341 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+342 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+343 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+344 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+345 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+346 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+347 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+348 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+349 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+350 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+351 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+352 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+353 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+354 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+355 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+356 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+357 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+358 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+359 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+360 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+361 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+362 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+363 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+364 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+365 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+366 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+367 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+368 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+369 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+370 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+371 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+372 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+373 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+374 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+375 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+376 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+377 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+378 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+379 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+380 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+381 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+382 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+383 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+384 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+385 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+386 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+387 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+388 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+389 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+390 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+391 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+392 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+393 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+394 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+395 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+396 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+397 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+398 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+399 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+400 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+401 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+402 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+403 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+404 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+405 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+406 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+407 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+408 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+409 pid=FFFCA00B   v0 sx=42644E0F sy=00000000 sz=3F7FECA9 rhw=39506817 tu=3F766903 tv=3D67D665
+410 pid=FFFCA00B   v1 sx=362E75A4 sy=4211C5C8 sz=3F7FE289 rhw=3978DBB2 tu=3F61D5F1 tv=3E389F32
+411 pid=FFFCA00B   v2 sx=36AD6380 sy=00000000 sz=3F7FE296 rhw=3978AADA tu=3F60FFF2 tv=3E0378AE
+412 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+413 pid=FFFCA00B   v0 sx=36D4A9F4 sy=4376C980 sz=3F7FD58B rhw=399667C4 tu=3F2F3690 tv=3EF50290
+414 pid=FFFCA00B   v1 sx=36FC7826 sy=00000000 sz=3F7FD6F8 rhw=39938D79 tu=3F2ABDDF tv=3E3BF20C
+415 pid=FFFCA00B   v2 sx=4326D03E sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F64E109 tv=3B000000
+416 pid=FFFCA00B draw result=4 triangles=5 submitted=0
+417 pid=FFFCA00B   v0 sx=378DD20C sy=43C61C95 sz=3F7FD00F rhw=39A16021 tu=3F1407BD tv=3F24A19F
+418 pid=FFFCA00B   v1 sx=37263998 sy=38000000 sz=3F7FD35F rhw=399AC108 tu=3F0DA693 tv=3E4B0677
+419 pid=FFFCA00B   v2 sx=43575E58 sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F553766 tv=3B000000
+420 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+421 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+422 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+423 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+424 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+425 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+426 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+427 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+428 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+429 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+430 pid=FFFCA00B time interval-ms=10000 swaps=67 present-ms=269 draw-ms=2639 upload-ms=223
+431 pid=FFFCA00B tsc frames=67 wall-ms=10000 vertex-ms=2494 flush-in-vertex-ms=58 flush-other-ms=2960 bind-ms=46 iface-ms=2639 beginend-ms=2073 swap-ms=269 vertices=625357 flushes=8822 draws=8822 sink-ms=1856 sink-prep-ms=328 sinks=65402
+432 pid=FFFCA00B paths batches/triangles untextured=768/1536 hw=112830/1893780 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+433 pid=FFFCA00B counters hwtex live=214 creates=702 create-failed=269 evictions=267 uploads=752 upload-kb=14925 squared=238 alpha-dropped=9798 stubs=325 failed r4=6 r7=0 r8=0 other=0
+434 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+435 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+436 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+437 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+438 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+439 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+440 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+441 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+442 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+443 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+444 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+445 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+446 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+447 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+448 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+449 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+450 pid=FFFCA00B hwtex create 01000080 levels=1 hr=8876017C
+451 pid=FFFCA00B time interval-ms=10006 swaps=185 present-ms=742 draw-ms=4693 upload-ms=11
+452 pid=FFFCA00B tsc frames=185 wall-ms=10006 vertex-ms=1562 flush-in-vertex-ms=4 flush-other-ms=5531 bind-ms=288 iface-ms=4693 beginend-ms=1098 swap-ms=742 vertices=448279 flushes=101895 draws=101895 sink-ms=799 sink-prep-ms=523 sinks=105343
+453 pid=FFFCA00B paths batches/triangles untextured=776/1552 hw=214717/2108506 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+454 pid=FFFCA00B counters hwtex live=214 creates=721 create-failed=286 evictions=284 uploads=754 upload-kb=15053 squared=238 alpha-dropped=10072 stubs=332 failed r4=6 r7=0 r8=0 other=0
+455 pid=FFFCA00B time interval-ms=10003 swaps=191 present-ms=766 draw-ms=4896 upload-ms=0
+456 pid=FFFCA00B tsc frames=191 wall-ms=10003 vertex-ms=1494 flush-in-vertex-ms=0 flush-other-ms=5794 bind-ms=330 iface-ms=4896 beginend-ms=1009 swap-ms=767 vertices=439012 flushes=109753 draws=109753 sink-ms=698 sink-prep-ms=527 sinks=109753
+457 pid=FFFCA00B paths batches/triangles untextured=776/1552 hw=324470/2328203 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+458 pid=FFFCA00B counters hwtex live=214 creates=721 create-failed=286 evictions=284 uploads=754 upload-kb=15053 squared=238 alpha-dropped=10263 stubs=332 failed r4=6 r7=0 r8=0 other=0
+459 pid=FFFCA00B time interval-ms=10001 swaps=132 present-ms=531 draw-ms=3514 upload-ms=67
+460 pid=FFFCA00B tsc frames=132 wall-ms=10001 vertex-ms=1226 flush-in-vertex-ms=0 flush-other-ms=4198 bind-ms=240 iface-ms=3513 beginend-ms=915 swap-ms=531 vertices=336066 flushes=71754 draws=71754 sink-ms=693 sink-prep-ms=374 sinks=76481
+461 pid=FFFCA00B paths batches/triangles untextured=788/1576 hw=396212/2485926 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+462 pid=FFFCA00B counters hwtex live=214 creates=721 create-failed=286 evictions=284 uploads=765 upload-kb=15693 squared=238 alpha-dropped=10524 stubs=345 failed r4=6 r7=0 r8=0 other=0
+463 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+464 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+465 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+466 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+467 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+468 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+469 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+470 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+471 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+472 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+473 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+474 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+475 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+476 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+477 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+478 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+479 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+480 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+481 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+482 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+483 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+484 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+485 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+486 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+487 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+488 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+489 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+490 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+491 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+492 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+493 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+494 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+495 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+496 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+497 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+498 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+499 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+500 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+501 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+502 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+503 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+504 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+505 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+506 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+507 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+508 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+509 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+510 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+511 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+512 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+513 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+514 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+515 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+516 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+517 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+518 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+519 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+520 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+521 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+522 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+523 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+524 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+525 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+526 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+527 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+528 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+529 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+530 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+531 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+532 pid=FFFCA00B time interval-ms=10009 swaps=88 present-ms=354 draw-ms=2734 upload-ms=159
+533 pid=FFFCA00B tsc frames=88 wall-ms=10009 vertex-ms=2321 flush-in-vertex-ms=4 flush-other-ms=3057 bind-ms=69 iface-ms=2734 beginend-ms=1800 swap-ms=354 vertices=513309 flushes=6860 draws=6860 sink-ms=1573 sink-prep-ms=255 sinks=50427
+534 pid=FFFCA00B paths batches/triangles untextured=876/1752 hw=402984/2622131 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+535 pid=FFFCA00B counters hwtex live=214 creates=852 create-failed=355 evictions=353 uploads=860 upload-kb=17420 squared=238 alpha-dropped=11564 stubs=406 failed r4=6 r7=0 r8=0 other=0
+536 pid=FFFCA00B time interval-ms=10026 swaps=84 present-ms=339 draw-ms=2750 upload-ms=87
+537 pid=FFFCA00B tsc frames=84 wall-ms=10026 vertex-ms=2304 flush-in-vertex-ms=8 flush-other-ms=2918 bind-ms=43 iface-ms=2750 beginend-ms=1593 swap-ms=339 vertices=625350 flushes=7260 draws=7260 sink-ms=1327 sink-prep-ms=278 sinks=55034
+538 pid=FFFCA00B paths batches/triangles untextured=960/1920 hw=410160/2769425 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+539 pid=FFFCA00B counters hwtex live=214 creates=874 create-failed=355 evictions=353 uploads=907 upload-kb=18406 squared=238 alpha-dropped=12590 stubs=428 failed r4=6 r7=0 r8=0 other=0
+540 pid=FFFCA00B hwtex create 00800020 levels=1 hr=8876017C
+541 pid=FFFCA00B time interval-ms=10010 swaps=69 present-ms=277 draw-ms=2995 upload-ms=43
+542 pid=FFFCA00B tsc frames=69 wall-ms=10010 vertex-ms=2475 flush-in-vertex-ms=48 flush-other-ms=3110 bind-ms=62 iface-ms=2995 beginend-ms=1930 swap-ms=278 vertices=670083 flushes=9381 draws=9381 sink-ms=1691 sink-prep-ms=356 sinks=69594
+543 pid=FFFCA00B paths batches/triangles untextured=1029/2058 hw=419472/2957398 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+544 pid=FFFCA00B counters hwtex live=214 creates=900 create-failed=356 evictions=354 uploads=942 upload-kb=18876 squared=282 alpha-dropped=13514 stubs=428 failed r4=6 r7=0 r8=0 other=0
+545 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+546 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+547 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+548 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+549 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+550 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+551 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+552 pid=FFFCA00B hwtex create 00400080 levels=8 hr=8876017C
+553 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+554 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+555 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+556 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+557 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+558 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+559 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+560 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+561 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+562 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+563 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+564 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+565 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+566 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+567 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+568 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+569 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+570 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+571 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+572 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+573 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+574 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+575 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+576 pid=FFFCA00B hwtex create 00400040 levels=7 hr=8876017C
+577 pid=FFFCA00B time interval-ms=10015 swaps=55 present-ms=221 draw-ms=3052 upload-ms=64
+578 pid=FFFCA00B tsc frames=55 wall-ms=10015 vertex-ms=2736 flush-in-vertex-ms=146 flush-other-ms=3109 bind-ms=60 iface-ms=3052 beginend-ms=1928 swap-ms=222 vertices=726257 flushes=10836 draws=10836 sink-ms=1764 sink-prep-ms=413 sinks=80877
+579 pid=FFFCA00B paths batches/triangles untextured=1084/2168 hw=430253/3182088 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+580 pid=FFFCA00B counters hwtex live=214 creates=946 create-failed=388 evictions=386 uploads=972 upload-kb=19593 squared=333 alpha-dropped=14311 stubs=428 failed r4=6 r7=0 r8=0 other=0
+581 pid=FFFCA00B hwtex create 00200080 levels=8 hr=8876017C
+582 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+583 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+584 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+585 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+586 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+587 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+588 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+589 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+590 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+591 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+592 pid=FFFCA00B hwtex create 00400020 levels=1 hr=8876017C
+593 pid=FFFCA00B hwtex create 00200040 levels=1 hr=8876017C
+594 pid=FFFCA00B hwtex create 00800080 levels=8 hr=8876017C
+595 pid=FFFCA00B hwtex create 00400040 levels=1 hr=8876017C
+596 pid=FFFCA00B hwtex create 00080040 levels=1 hr=8876017C
+597 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+598 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+599 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+600 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+601 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+602 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+603 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+604 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+605 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+606 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+607 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+608 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+609 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+610 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+611 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+612 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+613 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+614 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+615 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+616 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+617 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+618 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+619 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+620 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+621 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+622 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+623 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+624 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+625 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+626 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+627 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+628 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+629 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+630 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+631 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+632 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+633 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+634 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+635 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+636 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+637 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+638 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+639 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+640 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+641 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+642 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+643 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+644 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+645 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+646 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+647 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+648 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+649 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+650 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+651 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+652 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+653 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+654 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+655 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+656 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+657 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+658 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+659 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+660 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+661 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+662 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+663 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+664 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+665 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+666 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+667 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+668 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+669 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+670 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+671 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+672 pid=FFFCA00B hwtex create 01000100 levels=1 hr=8876017C
+673 pid=FFFCA00B time interval-ms=10005 swaps=61 present-ms=245 draw-ms=2700 upload-ms=230
+674 pid=FFFCA00B tsc frames=61 wall-ms=10005 vertex-ms=2530 flush-in-vertex-ms=76 flush-other-ms=3023 bind-ms=59 iface-ms=2700 beginend-ms=2059 swap-ms=245 vertices=637615 flushes=9296 draws=9296 sink-ms=1856 sink-prep-ms=346 sinks=68796
+675 pid=FFFCA00B paths batches/triangles untextured=1145/2290 hw=439485/3370493 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+676 pid=FFFCA00B counters hwtex live=214 creates=1122 create-failed=480 evictions=477 uploads=1121 upload-kb=22166 squared=357 alpha-dropped=15073 stubs=479 failed r4=9 r7=0 r8=0 other=0
+677 pid=FFFCA00B time interval-ms=10000 swaps=140 present-ms=562 draw-ms=4455 upload-ms=23
+678 pid=FFFCA00B tsc frames=140 wall-ms=10000 vertex-ms=1697 flush-in-vertex-ms=10 flush-other-ms=5250 bind-ms=282 iface-ms=4455 beginend-ms=1261 swap-ms=563 vertices=482711 flushes=94448 draws=94448 sink-ms=964 sink-prep-ms=498 sinks=103221
+679 pid=FFFCA00B paths batches/triangles untextured=1164/2328 hw=533914/3586762 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+680 pid=FFFCA00B counters hwtex live=214 creates=1124 create-failed=480 evictions=477 uploads=1126 upload-kb=22390 squared=357 alpha-dropped=15423 stubs=498 failed r4=9 r7=0 r8=0 other=0
+681 pid=FFFCA00B time interval-ms=10004 swaps=149 present-ms=599 draw-ms=4913 upload-ms=0
+682 pid=FFFCA00B tsc frames=149 wall-ms=10004 vertex-ms=1568 flush-in-vertex-ms=0 flush-other-ms=5837 bind-ms=332 iface-ms=4913 beginend-ms=1066 swap-ms=599 vertices=459312 flushes=114828 draws=114828 sink-ms=741 sink-prep-ms=556 sinks=114828
+683 pid=FFFCA00B paths batches/triangles untextured=1164/2328 hw=648742/3816567 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+684 pid=FFFCA00B counters hwtex live=214 creates=1124 create-failed=480 evictions=477 uploads=1126 upload-kb=22390 squared=357 alpha-dropped=15572 stubs=498 failed r4=9 r7=0 r8=0 other=0
+685 pid=FFFCA00B DrvReleaseContext context=1 -> 1
+686 pid=FFFCA00B paths batches/triangles untextured=1164/2328 hw=719523/3958221 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+687 pid=FFFCA00B counters hwtex live=0 creates=1124 create-failed=480 evictions=477 uploads=1126 upload-kb=22390 squared=357 alpha-dropped=15664 stubs=498 failed r4=9 r7=0 r8=0 other=0
+688 pid=FFFCA00B DrvDeleteContext context=1 -> 1
+689 pid=FFFCA00B detach slots-called=1 stub-calls=498
+1 pid=FFFE8873 attach instance=0A2D0000 tls=25 build-marker=1
+2 pid=FFFE8873 DrvValidateVersion version=1
+3 pid=FFFE8873 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE8873 describe result=0 engine=4 formats=00000002
+5 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFE8873 DrvSetPixelFormat hdc=00000CB2 index=1
+33 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFE8873 DrvCreateLayerContext hdc=00000CB2 layer=0 -> 1
+38 pid=FFFE8873 drawable window=00000464 640x480
+39 pid=FFFE8873 DrvSetContext hdc=00000CB2 context=1 -> 1
+40 pid=FFFE8873 state tex=2 size=01000080 tex=01010100 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+41 pid=FFFE8873 time interval-ms=2465643 swaps=0 present-ms=0 draw-ms=113571264 upload-ms=5
+42 pid=FFFE8873 tsc frames=0 wall-ms=2465643 vertex-ms=666090 flush-in-vertex-ms=0 flush-other-ms=63950642 bind-ms=106929 iface-ms=883977 beginend-ms=867077 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=803647 sink-prep-ms=765588 sinks=1
+43 pid=FFFE8873 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+44 pid=FFFE8873 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=64 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+45 pid=FFFE8873 state tex=3 size=01000080 tex=01040202 blend=00050601 depth=00020101 colour=FFFFB233 mask=7 scissor=0,0,640,480 fog=0
+46 pid=FFFE8873 state tex=543 size=00800080 tex=01040202 blend=01050601 depth=00020001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+47 pid=FFFE8873 time interval-ms=10501 swaps=30 present-ms=120 draw-ms=302 upload-ms=12
+48 pid=FFFE8873 tsc frames=30 wall-ms=10501 vertex-ms=69 flush-in-vertex-ms=0 flush-other-ms=351 bind-ms=13 iface-ms=302 beginend-ms=46 swap-ms=121 vertices=19980 flushes=4995 draws=4995 sink-ms=32 sink-prep-ms=24 sinks=4995
+49 pid=FFFE8873 paths batches/triangles untextured=0/0 hw=4996/10022 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+50 pid=FFFE8873 counters hwtex live=3 creates=3 create-failed=0 evictions=0 uploads=3 upload-kb=160 squared=0 alpha-dropped=30 stubs=0 failed r4=0 r7=0 r8=0 other=0
+51 pid=FFFE8873 state tex=54 size=00100010 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+52 pid=FFFE8873 state tex=70 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+53 pid=FFFE8873 state tex=75 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+54 pid=FFFE8873 state tex=84 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+55 pid=FFFE8873 state tex=80 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+56 pid=FFFE8873 state tex=76 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFE8873 state tex=81 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFE8873 state tex=71 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFE8873 state tex=77 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+60 pid=FFFE8873 state tex=82 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+61 pid=FFFE8873 state tex=72 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFE8873 state tex=86 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+63 pid=FFFE8873 state tex=98 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+64 pid=FFFE8873 state tex=99 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+65 pid=FFFE8873 state tex=102 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+66 pid=FFFE8873 state tex=104 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+67 pid=FFFE8873 state tex=105 size=01000080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFE8873 state tex=115 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+69 pid=FFFE8873 state tex=117 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+70 pid=FFFE8873 state tex=130 size=00100040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFE8873 state tex=133 size=01000080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFE8873 state tex=135 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFE8873 state tex=138 size=00100040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFE8873 state tex=143 size=00400100 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFE8873 state tex=144 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFE8873 state tex=5802 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFE8873 state tex=5803 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFE8873 state tex=5804 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFE8873 state tex=151 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFE8873 state tex=162 size=00400010 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFE8873 state tex=553 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFE8873 state tex=554 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFE8873 state tex=555 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFE8873 state tex=556 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFE8873 state tex=557 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFE8873 state tex=558 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFE8873 state tex=117 size=00400040 tex=01010200 blend=00090300 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+88 pid=FFFE8873 state tex=562 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFE8873 state tex=665 size=01000080 tex=01010200 blend=00090300 depth=01040101 colour=00D5D0BA mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFE8873 state tex=666 size=00400040 tex=01010200 blend=00090300 depth=01040101 colour=002C2B26 mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFE8873 state tex=667 size=00400020 tex=01010200 blend=00090300 depth=01040101 colour=00D5D0BA mask=7 scissor=0,0,640,480 fog=0
+92 pid=FFFE8873 state tex=668 size=00400020 tex=01010200 blend=00090300 depth=01040101 colour=00A8A492 mask=7 scissor=0,0,640,480 fog=0
+93 pid=FFFE8873 state tex=669 size=00400020 tex=01010200 blend=00090300 depth=01040101 colour=00D2CDB7 mask=7 scissor=0,0,640,480 fog=0
+94 pid=FFFE8873 state tex=670 size=00400010 tex=01010200 blend=00090300 depth=01040101 colour=00797669 mask=7 scissor=0,0,640,480 fog=0
+95 pid=FFFE8873 state tex=671 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=00BCB7A4 mask=7 scissor=0,0,640,480 fog=0
+96 pid=FFFE8873 hwtex create 00800100 levels=1 hr=8876017C
+97 pid=FFFE8873 stub first-call slot=319 glPolygonOffset
+98 pid=FFFE8873 hwtex create 00400040 levels=7 hr=8876017C
+99 pid=FFFE8873 time interval-ms=10035 swaps=76 present-ms=308 draw-ms=2514 upload-ms=210
+100 pid=FFFE8873 tsc frames=76 wall-ms=10035 vertex-ms=2142 flush-in-vertex-ms=0 flush-other-ms=2916 bind-ms=95 iface-ms=2514 beginend-ms=1483 swap-ms=308 vertices=500301 flushes=10723 draws=10723 sink-ms=1223 sink-prep-ms=334 sinks=64484
+101 pid=FFFE8873 paths batches/triangles untextured=150/300 hw=15569/177898 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+102 pid=FFFE8873 counters hwtex live=114 creates=116 create-failed=2 evictions=2 uploads=114 upload-kb=2336 squared=263 alpha-dropped=1519 stubs=13 failed r4=0 r7=0 r8=0 other=0
+103 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+104 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+105 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+106 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+107 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+108 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+109 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+110 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+111 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+112 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+113 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+114 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+115 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+116 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+117 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+118 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+119 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+120 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+121 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+122 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+123 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+124 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+125 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+126 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+127 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+128 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+129 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+130 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+131 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+132 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+133 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+134 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+135 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+136 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+137 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+138 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+139 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+140 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+141 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+142 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+143 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+144 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+145 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+146 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+147 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+148 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+149 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+150 pid=FFFE8873 hwtex create 00800040 levels=8 hr=8876017C
+151 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+152 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+153 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+154 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+155 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+156 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+157 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+158 pid=FFFE8873 hwtex create 00800080 levels=8 hr=8876017C
+159 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+160 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+161 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+162 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+163 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+164 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+165 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+166 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+167 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+168 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+169 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+170 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+171 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+172 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+173 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+174 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+175 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+176 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+177 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+178 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+179 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+180 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+181 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+182 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+183 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+184 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+185 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+186 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+187 pid=FFFE8873 hwtex create 01000100 levels=1 hr=8876017C
+188 pid=FFFE8873 hwtex create 00800080 levels=1 hr=8876017C
+189 pid=FFFE8873 DrvReleaseContext context=1 -> 1
+190 pid=FFFE8873 paths batches/triangles untextured=316/632 hw=23154/301609 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+191 pid=FFFE8873 counters hwtex live=0 creates=275 create-failed=88 evictions=88 uploads=193 upload-kb=4053 squared=705 alpha-dropped=2730 stubs=37 failed r4=0 r7=0 r8=0 other=0
+192 pid=FFFE8873 DrvDeleteContext context=1 -> 1
+193 pid=FFFE8873 detach slots-called=1 stub-calls=37
+1 pid=FFFE8873 attach instance=01CF0000 tls=11 build-marker=1
+2 pid=FFFE8873 DrvValidateVersion version=1
+3 pid=FFFE8873 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE8873 describe result=0 engine=4 formats=00000002
+5 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFE8873 DrvSetPixelFormat hdc=0000077E index=1
+33 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFE8873 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFE8873 DrvCreateLayerContext hdc=0000077E layer=0 -> 1
+38 pid=FFFE8873 drawable window=000009D8 640x480
+39 pid=FFFE8873 DrvSetContext hdc=0000077E context=1 -> 1
+40 pid=FFFE8873 state tex=1158 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+41 pid=FFFE8873 time interval-ms=2693376 swaps=0 present-ms=0 draw-ms=179958832 upload-ms=1
+42 pid=FFFE8873 tsc frames=0 wall-ms=2693376 vertex-ms=1625472 flush-in-vertex-ms=0 flush-other-ms=25246196 bind-ms=192914 iface-ms=2143577 beginend-ms=2301301 swap-ms=0 vertices=18 flushes=1 draws=1 sink-ms=2085337 sink-prep-ms=1981548 sinks=4
+43 pid=FFFE8873 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+44 pid=FFFE8873 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=10 squared=0 alpha-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+45 pid=FFFE8873 state tex=1162 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+46 pid=FFFE8873 state tex=1163 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+47 pid=FFFE8873 state tex=1168 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+48 pid=FFFE8873 state tex=1172 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+49 pid=FFFE8873 state tex=1180 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+50 pid=FFFE8873 state tex=1184 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+51 pid=FFFE8873 state tex=1185 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+52 pid=FFFE8873 state tex=1188 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+53 pid=FFFE8873 state tex=1191 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+54 pid=FFFE8873 state tex=1206 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+55 pid=FFFE8873 state tex=1210 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+56 pid=FFFE8873 state tex=1214 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFE8873 state tex=1216 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFE8873 state tex=1218 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFE8873 state tex=1225 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+60 pid=FFFE8873 state tex=1226 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+61 pid=FFFE8873 state tex=1264 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFE8873 state tex=1269 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+63 pid=FFFE8873 state tex=1273 size=00200080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+64 pid=FFFE8873 state tex=1278 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+65 pid=FFFE8873 state tex=1281 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+66 pid=FFFE8873 state tex=1282 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+67 pid=FFFE8873 state tex=1025 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFE8873 state tex=1026 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+69 pid=FFFE8873 state tex=1027 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+70 pid=FFFE8873 state tex=1030 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFE8873 state tex=1376 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF94774B mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFE8873 state tex=1380 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF463827 mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFE8873 state tex=1382 size=00800020 tex=01040201 blend=00050600 depth=01040102 colour=FF6F562E mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFE8873 state tex=1384 size=00800020 tex=01010200 blend=00050600 depth=01040102 colour=FF4D4231 mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFE8873 state tex=1389 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF5F5343 mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFE8873 state tex=1390 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF7F6F57 mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFE8873 state tex=1391 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FF968569 mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFE8873 state tex=1393 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FFFFFFE8 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFE8873 state tex=1396 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF9C8964 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFE8873 state tex=1401 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFFFFFED mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFE8873 state tex=1409 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF4D4137 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFE8873 state tex=1152 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFE8873 state tex=1267 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFE8873 state tex=1268 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFE8873 state tex=1266 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFE8873 state tex=1024 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFE8873 state tex=1381 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFA99A54 mask=7 scissor=0,0,640,480 fog=0
+88 pid=FFFE8873 state tex=1342 size=00800040 tex=01010200 blend=01050600 depth=01040002 colour=AA6D6153 mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFE8873 state tex=1153 size=00080008 tex=01040202 blend=01050600 depth=01040002 colour=FF470000 mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFE8873 refused tex=1153 size=00080008 tex=02040202 blend=01050600 depth=01040002 colour=CD470000 mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+92 pid=FFFE8873   v0 sx=43A464F5 sy=437E1A7A sz=3F78EEFA rhw=3BE9E80B tu=3D800000 tv=3D800000
+93 pid=FFFE8873   v1 sx=43A464FE sy=4378C1CF sz=3F78EEFA rhw=3BE9E819 tu=3F880000 tv=3D800000
+94 pid=FFFE8873   v2 sx=43A71156 sy=437E1A7B sz=3F78EEFA rhw=3BE9E819 tu=3D800000 tv=3F880000
+95 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+96 pid=FFFE8873   v0 sx=43BAC730 sy=437F52FE sz=3F7A47DC rhw=3BBED6BF tu=3D800000 tv=3D800000
+97 pid=FFFE8873   v1 sx=43BAC731 sy=437A9BD2 sz=3F7A47DC rhw=3BBED6C8 tu=3F880000 tv=3D800000
+98 pid=FFFE8873   v2 sx=43BD22C6 sy=437F52FD sz=3F7A47DD rhw=3BBED6B6 tu=3D800000 tv=3F880000
+99 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+100 pid=FFFE8873   v0 sx=43BFCA2C sy=436D7FB0 sz=3F7D5DE0 rhw=3B385E0B tu=3D800000 tv=3D800000
+101 pid=FFFE8873   v1 sx=43BFCA2A sy=436A3A7C sz=3F7D5DE0 rhw=3B385E0F tu=3F880000 tv=3D800000
+102 pid=FFFE8873   v2 sx=43C16CC4 sy=436D7FB0 sz=3F7D5DE0 rhw=3B385E0B tu=3D800000 tv=3F880000
+103 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+104 pid=FFFE8873   v0 sx=43A28602 sy=4387EAE2 sz=3F797619 rhw=3BD90891 tu=3D800000 tv=3D800000
+105 pid=FFFE8873   v1 sx=43A28602 sy=43855E30 sz=3F797619 rhw=3BD9089D tu=3F880000 tv=3D800000
+106 pid=FFFE8873   v2 sx=43A512AC sy=4387EAE2 sz=3F79761A rhw=3BD90886 tu=3D800000 tv=3F880000
+107 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+108 pid=FFFE8873   v0 sx=43C73B03 sy=437281A1 sz=3F7A2095 rhw=3BC3BE6C tu=3D800000 tv=3D800000
+109 pid=FFFE8873   v1 sx=43C73AFC sy=436DB810 sz=3F7A2095 rhw=3BC3BE6C tu=3F880000 tv=3D800000
+110 pid=FFFE8873   v2 sx=43C99FC2 sy=437281A1 sz=3F7A2095 rhw=3BC3BE6C tu=3D800000 tv=3F880000
+111 pid=FFFE8873 draw result=4 triangles=64 submitted=0
+112 pid=FFFE8873   v0 sx=43A977AC sy=43881928 sz=3F793A2A rhw=3BE084A5 tu=3D800000 tv=3D800000
+113 pid=FFFE8873   v1 sx=43A97799 sy=43857E6B sz=3F793A2A rhw=3BE08498 tu=3F880000 tv=3D800000
+114 pid=FFFE8873   v2 sx=43AC1259 sy=43881928 sz=3F793A2A rhw=3BE084A5 tu=3D800000 tv=3F880000
+115 pid=FFFE8873 state tex=1343 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+116 pid=FFFE8873 state tex=1429 size=00800020 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+117 pid=FFFE8873 DrvReleaseContext context=1 -> 1
+118 pid=FFFE8873 paths batches/triangles untextured=17/34 hw=3698/137053 cpu=0/0 cpu-nonsquare=0/0 hw-refused=154/9310
+119 pid=FFFE8873 counters hwtex live=0 creates=57 create-failed=0 evictions=0 uploads=62 upload-kb=1787 squared=0 alpha-dropped=21 stubs=0 failed r4=154 r7=0 r8=0 other=0
+120 pid=FFFE8873 DrvDeleteContext context=1 -> 1
+121 pid=FFFE8873 detach slots-called=0 stub-calls=0
+1 pid=FFFC8FBD attach instance=09ED0000 tls=22 build-marker=1
+2 pid=FFFC8FBD DrvValidateVersion version=1
+3 pid=FFFC8FBD DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFC8FBD describe result=0 engine=4 formats=00000002
+5 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFC8FBD DrvSetPixelFormat hdc=00000E1E index=1
+33 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFC8FBD DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFC8FBD DrvCreateLayerContext hdc=00000E1E layer=0 -> 1
+38 pid=FFFC8FBD drawable window=00000390 640x480
+39 pid=FFFC8FBD DrvSetContext hdc=00000E1E context=1 -> 1
+40 pid=FFFC8FBD state tex=2 size=01000080 tex=01010100 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+41 pid=FFFC8FBD time interval-ms=559298 swaps=0 present-ms=0 draw-ms=22017257 upload-ms=5
+42 pid=FFFC8FBD tsc frames=0 wall-ms=559298 vertex-ms=76869 flush-in-vertex-ms=0 flush-other-ms=14263969 bind-ms=22099 iface-ms=207604 beginend-ms=486636 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=318653 sink-prep-ms=309676 sinks=1
+43 pid=FFFC8FBD sink begin-ms=311439 flush-ms=0 copy-ms=4473 prep-texture-ms=306140 prep-state-ms=2902 prep-same-ms=281
+44 pid=FFFC8FBD hwno hwtex-ms=13195774 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+45 pid=FFFC8FBD prim transform-ms=5118 inside-ms=5809 window-ms=7432 assemble-ms=52295 history-ms=1675 fast=0 clipped=2 culled=0
+46 pid=FFFC8FBD paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFC8FBD counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=64 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+48 pid=FFFC8FBD state tex=3 size=01000080 tex=01040202 blend=00050601 depth=00020101 colour=FFFFB233 mask=7 scissor=0,0,640,480 fog=0
+49 pid=FFFC8FBD state tex=64 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+50 pid=FFFC8FBD state tex=67 size=01000080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+51 pid=FFFC8FBD state tex=5802 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+52 pid=FFFC8FBD state tex=5803 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+53 pid=FFFC8FBD state tex=5805 size=01000100 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+54 pid=FFFC8FBD stub first-call slot=319 glPolygonOffset
+55 pid=FFFC8FBD state tex=80 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+56 pid=FFFC8FBD state tex=516 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFC8FBD state tex=517 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFC8FBD state tex=518 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFC8FBD state tex=519 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+60 pid=FFFC8FBD state tex=80 size=00800080 tex=01010200 blend=00090300 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+61 pid=FFFC8FBD state tex=523 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFC8FBD state tex=584 size=00200080 tex=01010200 blend=00090300 depth=01040101 colour=005D4A13 mask=7 scissor=0,0,640,480 fog=0
+63 pid=FFFC8FBD state tex=587 size=00200040 tex=01010200 blend=00090300 depth=01040101 colour=0093BCBC mask=7 scissor=0,0,640,480 fog=0
+64 pid=FFFC8FBD state tex=590 size=00400040 tex=01010200 blend=00090300 depth=01040101 colour=009EC9C9 mask=7 scissor=0,0,640,480 fog=0
+65 pid=FFFC8FBD state tex=591 size=00800040 tex=01010200 blend=00090300 depth=01040101 colour=00C7FEFE mask=7 scissor=0,0,640,480 fog=0
+66 pid=FFFC8FBD state tex=592 size=00400040 tex=01010200 blend=00090300 depth=01040101 colour=009CC7C7 mask=7 scissor=0,0,640,480 fog=0
+67 pid=FFFC8FBD state tex=593 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=009AC4C4 mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFC8FBD state tex=595 size=00080040 tex=01010200 blend=00090300 depth=01040101 colour=009EC9C9 mask=7 scissor=0,0,640,480 fog=0
+69 pid=FFFC8FBD state tex=596 size=00200040 tex=01010200 blend=00090300 depth=01040101 colour=00C5FBFB mask=7 scissor=0,0,640,480 fog=0
+70 pid=FFFC8FBD state tex=597 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=009ECACA mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFC8FBD state tex=598 size=00200020 tex=01010200 blend=00090300 depth=01040101 colour=0081A4A4 mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFC8FBD state tex=80 size=00800080 tex=01010101 blend=00090300 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFC8FBD state tex=524 size=00800080 tex=01010200 blend=01090300 depth=01040001 colour=FFAAAAAA mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFC8FBD state tex=453 size=00200020 tex=01010200 blend=01020201 depth=00040002 colour=FF1F1502 mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFC8FBD state tex=47 size=01000080 tex=01010200 blend=01020201 depth=00040001 colour=FF643E00 mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFC8FBD state tex=47 size=00000000 tex=00000000 blend=01050201 depth=00040100 colour=64FFA000 mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFC8FBD state tex=2 size=01000080 tex=01010100 blend=00020201 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFC8FBD state tex=3 size=01000080 tex=01040202 blend=00020201 depth=00040101 colour=FFFF9B32 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFC8FBD state tex=249 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFC8FBD state tex=250 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFC8FBD state tex=251 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFC8FBD state tex=252 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFC8FBD state tex=253 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFC8FBD state tex=254 size=00200020 tex=01010200 blend=00050600 depth=01040101 colour=FF1D2214 mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFC8FBD state tex=255 size=00800010 tex=01010200 blend=00050600 depth=01040101 colour=FF191E12 mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFC8FBD state tex=256 size=00100020 tex=01010200 blend=00050600 depth=01040101 colour=FF191E12 mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFC8FBD state tex=257 size=00200040 tex=01010200 blend=00050600 depth=01040101 colour=FF1B2113 mask=7 scissor=0,0,640,480 fog=0
+88 pid=FFFC8FBD state tex=258 size=00100020 tex=01010200 blend=00050600 depth=01040101 colour=FF191D11 mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFC8FBD state tex=259 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFC8FBD state tex=260 size=00800040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFC8FBD state tex=261 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF161A0F mask=7 scissor=0,0,640,480 fog=0
+92 pid=FFFC8FBD state tex=262 size=00200010 tex=01010200 blend=00050600 depth=01040101 colour=FF161A0F mask=7 scissor=0,0,640,480 fog=0
+93 pid=FFFC8FBD state tex=263 size=00400010 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+94 pid=FFFC8FBD state tex=265 size=00400010 tex=01010200 blend=00050600 depth=01040101 colour=FF1C2214 mask=7 scissor=0,0,640,480 fog=0
+95 pid=FFFC8FBD state tex=267 size=00400040 tex=01010200 blend=00050600 depth=01040101 colour=FF171C10 mask=7 scissor=0,0,640,480 fog=0
+96 pid=FFFC8FBD time interval-ms=10000 swaps=54 present-ms=217 draw-ms=1558 upload-ms=141
+97 pid=FFFC8FBD tsc frames=54 wall-ms=10000 vertex-ms=723 flush-in-vertex-ms=0 flush-other-ms=1785 bind-ms=38 iface-ms=1558 beginend-ms=935 swap-ms=218 vertices=208180 flushes=5505 draws=5505 sink-ms=876 sink-prep-ms=87 sinks=23145
+98 pid=FFFC8FBD sink begin-ms=49 flush-ms=755 copy-ms=20 prep-texture-ms=46 prep-state-ms=20 prep-same-ms=17
+99 pid=FFFC8FBD hwno hwtex-ms=154 iface-cpu-ms=0 not-cpu=45 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+100 pid=FFFC8FBD prim transform-ms=95 inside-ms=68 window-ms=100 assemble-ms=344 history-ms=34 fast=46767 clipped=61257 culled=18290
+101 pid=FFFC8FBD paths batches/triangles untextured=45/90 hw=5461/63510 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+102 pid=FFFC8FBD counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=55 upload-kb=1503 squared=0 alpha-dropped=547 stubs=46 failed r4=0 r7=0 r8=0 other=0
+103 pid=FFFC8FBD time interval-ms=10000 swaps=94 present-ms=378 draw-ms=2845 upload-ms=219
+104 pid=FFFC8FBD tsc frames=94 wall-ms=10000 vertex-ms=1770 flush-in-vertex-ms=13 flush-other-ms=3151 bind-ms=46 iface-ms=2845 beginend-ms=1344 swap-ms=378 vertices=539339 flushes=6804 draws=6804 sink-ms=1219 sink-prep-ms=173 sinks=47258
+105 pid=FFFC8FBD sink begin-ms=120 flush-ms=978 copy-ms=39 prep-texture-ms=90 prep-state-ms=38 prep-same-ms=37
+106 pid=FFFC8FBD hwno hwtex-ms=239 iface-cpu-ms=0 not-cpu=94 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+107 pid=FFFC8FBD prim transform-ms=254 inside-ms=176 window-ms=222 assemble-ms=823 history-ms=86 fast=99585 clipped=193468 culled=39034
+108 pid=FFFC8FBD paths batches/triangles untextured=139/278 hw=12171/191574 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFC8FBD counters hwtex live=144 creates=144 create-failed=0 evictions=0 uploads=196 upload-kb=3568 squared=0 alpha-dropped=1651 stubs=89 failed r4=0 r7=0 r8=0 other=0
+110 pid=FFFC8FBD time interval-ms=10000 swaps=72 present-ms=290 draw-ms=3048 upload-ms=60
+111 pid=FFFC8FBD tsc frames=72 wall-ms=10000 vertex-ms=2272 flush-in-vertex-ms=43 flush-other-ms=3199 bind-ms=72 iface-ms=3048 beginend-ms=1864 swap-ms=290 vertices=733489 flushes=9035 draws=9035 sink-ms=1719 sink-prep-ms=276 sinks=72964
+112 pid=FFFC8FBD sink begin-ms=162 flush-ms=1341 copy-ms=57 prep-texture-ms=137 prep-state-ms=59 prep-same-ms=66
+113 pid=FFFC8FBD hwno hwtex-ms=80 iface-cpu-ms=0 not-cpu=72 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+114 pid=FFFC8FBD prim transform-ms=332 inside-ms=234 window-ms=347 assemble-ms=948 history-ms=117 fast=169582 clipped=211944 culled=70011
+115 pid=FFFC8FBD paths batches/triangles untextured=211/422 hw=21134/386928 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+116 pid=FFFC8FBD counters hwtex live=175 creates=175 create-failed=0 evictions=0 uploads=241 upload-kb=4219 squared=2 alpha-dropped=2559 stubs=96 failed r4=0 r7=0 r8=0 other=0
+117 pid=FFFC8FBD hwtex create 00200080 levels=1 hr=8876017C
+118 pid=FFFC8FBD time interval-ms=10025 swaps=69 present-ms=277 draw-ms=3135 upload-ms=47
+119 pid=FFFC8FBD tsc frames=69 wall-ms=10025 vertex-ms=2264 flush-in-vertex-ms=50 flush-other-ms=3287 bind-ms=88 iface-ms=3135 beginend-ms=1796 swap-ms=278 vertices=726030 flushes=10261 draws=10261 sink-ms=1664 sink-prep-ms=280 sinks=76506
+120 pid=FFFC8FBD sink begin-ms=155 flush-ms=1277 copy-ms=61 prep-texture-ms=143 prep-state-ms=62 prep-same-ms=61
+121 pid=FFFC8FBD hwno hwtex-ms=69 iface-cpu-ms=0 not-cpu=69 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+122 pid=FFFC8FBD prim transform-ms=339 inside-ms=236 window-ms=363 assemble-ms=917 history-ms=116 fast=179720 clipped=185637 culled=75413
+123 pid=FFFC8FBD paths batches/triangles untextured=280/560 hw=31326/592144 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+124 pid=FFFC8FBD counters hwtex live=192 creates=193 create-failed=1 evictions=1 uploads=270 upload-kb=4741 squared=69 alpha-dropped=3517 stubs=96 failed r4=0 r7=0 r8=0 other=0
+125 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+126 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+127 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+128 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+129 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+130 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+131 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+132 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+133 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+134 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+135 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+136 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+137 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+138 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+139 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+140 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+141 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+142 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+143 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+144 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+145 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+146 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+147 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+148 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+149 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+150 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+151 pid=FFFC8FBD hwtex create 00400020 levels=1 hr=8876017C
+152 pid=FFFC8FBD hwtex create 00400020 levels=1 hr=8876017C
+153 pid=FFFC8FBD hwtex create 00400020 levels=1 hr=8876017C
+154 pid=FFFC8FBD hwtex create 00200020 levels=1 hr=8876017C
+155 pid=FFFC8FBD hwtex create 00200020 levels=1 hr=8876017C
+156 pid=FFFC8FBD hwtex create 00200020 levels=1 hr=8876017C
+157 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+158 pid=FFFC8FBD hwtex create 00200020 levels=1 hr=8876017C
+159 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+160 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+161 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+162 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+163 pid=FFFC8FBD hwtex create 00200020 levels=1 hr=8876017C
+164 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+165 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+166 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+167 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+168 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+169 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+170 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+171 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+172 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+173 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+174 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+175 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+176 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+177 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+178 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+179 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+180 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+181 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+182 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+183 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+184 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+185 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+186 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+187 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+188 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+189 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+190 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+191 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+192 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+193 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+194 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+195 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+196 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+197 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+198 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+199 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+200 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+201 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+202 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+203 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+204 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+205 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+206 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+207 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+208 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+209 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+210 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+211 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+212 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+213 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+214 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+215 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+216 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+217 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+218 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+219 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+220 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+221 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+222 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+223 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+224 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+225 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+226 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+227 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+228 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+229 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+230 pid=FFFC8FBD   v0 sx=42644E0F sy=00000000 sz=3F7FECA9 rhw=39506817 tu=3F766903 tv=3D67D665
+231 pid=FFFC8FBD   v1 sx=362E75A4 sy=4211C5C8 sz=3F7FE289 rhw=3978DBB2 tu=3F61D5F1 tv=3E389F32
+232 pid=FFFC8FBD   v2 sx=36AD6380 sy=00000000 sz=3F7FE296 rhw=3978AADA tu=3F60FFF2 tv=3E0378AE
+233 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+234 pid=FFFC8FBD   v0 sx=36D4A9F4 sy=4376C980 sz=3F7FD58B rhw=399667C4 tu=3F2F3690 tv=3EF50290
+235 pid=FFFC8FBD   v1 sx=36FC7826 sy=00000000 sz=3F7FD6F8 rhw=39938D79 tu=3F2ABDDF tv=3E3BF20C
+236 pid=FFFC8FBD   v2 sx=4326D03E sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F64E109 tv=3B000000
+237 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+238 pid=FFFC8FBD   v0 sx=378DD20C sy=43C61C95 sz=3F7FD00F rhw=39A16021 tu=3F1407BD tv=3F24A19F
+239 pid=FFFC8FBD   v1 sx=37263998 sy=38000000 sz=3F7FD35F rhw=399AC108 tu=3F0DA693 tv=3E4B0677
+240 pid=FFFC8FBD   v2 sx=43575E58 sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F553766 tv=3B000000
+241 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+242 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+243 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+244 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+245 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+246 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+247 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+248 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+249 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+250 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+251 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+252 pid=FFFC8FBD time interval-ms=10031 swaps=58 present-ms=234 draw-ms=3254 upload-ms=121
+253 pid=FFFC8FBD tsc frames=58 wall-ms=10031 vertex-ms=2361 flush-in-vertex-ms=148 flush-other-ms=3460 bind-ms=90 iface-ms=3254 beginend-ms=1920 swap-ms=234 vertices=732629 flushes=11721 draws=11721 sink-ms=1875 sink-prep-ms=312 sinks=83230
+254 pid=FFFC8FBD sink begin-ms=167 flush-ms=1444 copy-ms=68 prep-texture-ms=158 prep-state-ms=68 prep-same-ms=72
+255 pid=FFFC8FBD hwno hwtex-ms=207 iface-cpu-ms=0 not-cpu=58 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=2 make-failed=1 square-alloc=0 upload=0
+256 pid=FFFC8FBD prim transform-ms=334 inside-ms=247 window-ms=415 assemble-ms=964 history-ms=116 fast=206834 clipped=144441 culled=94200
+257 pid=FFFC8FBD paths batches/triangles untextured=338/676 hw=42986/824309 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+258 pid=FFFC8FBD counters hwtex live=214 creates=363 create-failed=116 evictions=115 uploads=350 upload-kb=6089 squared=119 alpha-dropped=4318 stubs=116 failed r4=3 r7=0 r8=0 other=0
+259 pid=FFFC8FBD time interval-ms=10002 swaps=143 present-ms=574 draw-ms=3538 upload-ms=175
+260 pid=FFFC8FBD tsc frames=143 wall-ms=10002 vertex-ms=1752 flush-in-vertex-ms=34 flush-other-ms=4067 bind-ms=140 iface-ms=3538 beginend-ms=1595 swap-ms=574 vertices=555896 flushes=42515 draws=42515 sink-ms=1449 sink-prep-ms=290 sinks=77408
+261 pid=FFFC8FBD sink begin-ms=149 flush-ms=1035 copy-ms=71 prep-texture-ms=169 prep-state-ms=71 prep-same-ms=36
+262 pid=FFFC8FBD hwno hwtex-ms=235 iface-cpu-ms=0 not-cpu=50 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+263 pid=FFFC8FBD prim transform-ms=256 inside-ms=192 window-ms=294 assemble-ms=694 history-ms=92 fast=169354 clipped=116388 culled=36772
+264 pid=FFFC8FBD paths batches/triangles untextured=388/776 hw=85451/1010464 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+265 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=437 upload-kb=7989 squared=119 alpha-dropped=5024 stubs=166 failed r4=3 r7=0 r8=0 other=0
+266 pid=FFFC8FBD time interval-ms=10002 swaps=261 present-ms=1046 draw-ms=5003 upload-ms=0
+267 pid=FFFC8FBD tsc frames=261 wall-ms=10002 vertex-ms=1262 flush-in-vertex-ms=0 flush-other-ms=5893 bind-ms=289 iface-ms=5003 beginend-ms=784 swap-ms=1046 vertices=413836 flushes=103459 draws=103459 sink-ms=574 sink-prep-ms=381 sinks=103459
+268 pid=FFFC8FBD sink begin-ms=164 flush-ms=0 copy-ms=114 prep-texture-ms=239 prep-state-ms=110 prep-same-ms=13
+269 pid=FFFC8FBD hwno hwtex-ms=128 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+270 pid=FFFC8FBD prim transform-ms=199 inside-ms=167 window-ms=283 assemble-ms=361 history-ms=73 fast=206396 clipped=522 culled=0
+271 pid=FFFC8FBD paths batches/triangles untextured=388/776 hw=188910/1217643 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+272 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=437 upload-kb=7989 squared=119 alpha-dropped=5285 stubs=166 failed r4=3 r7=0 r8=0 other=0
+273 pid=FFFC8FBD time interval-ms=10001 swaps=261 present-ms=1048 draw-ms=5012 upload-ms=0
+274 pid=FFFC8FBD tsc frames=261 wall-ms=10001 vertex-ms=1273 flush-in-vertex-ms=0 flush-other-ms=5887 bind-ms=282 iface-ms=5012 beginend-ms=784 swap-ms=1048 vertices=414012 flushes=103503 draws=103503 sink-ms=576 sink-prep-ms=380 sinks=103503
+275 pid=FFFC8FBD sink begin-ms=162 flush-ms=0 copy-ms=116 prep-texture-ms=240 prep-state-ms=108 prep-same-ms=13
+276 pid=FFFC8FBD hwno hwtex-ms=129 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+277 pid=FFFC8FBD prim transform-ms=198 inside-ms=168 window-ms=286 assemble-ms=363 history-ms=72 fast=206484 clipped=522 culled=0
+278 pid=FFFC8FBD paths batches/triangles untextured=388/776 hw=292413/1424910 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+279 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=437 upload-kb=7989 squared=119 alpha-dropped=5546 stubs=166 failed r4=3 r7=0 r8=0 other=0
+280 pid=FFFC8FBD time interval-ms=10007 swaps=261 present-ms=1053 draw-ms=4988 upload-ms=0
+281 pid=FFFC8FBD tsc frames=261 wall-ms=10007 vertex-ms=1280 flush-in-vertex-ms=0 flush-other-ms=5882 bind-ms=295 iface-ms=4988 beginend-ms=780 swap-ms=1054 vertices=414432 flushes=103608 draws=103608 sink-ms=571 sink-prep-ms=383 sinks=103608
+282 pid=FFFC8FBD sink begin-ms=163 flush-ms=0 copy-ms=108 prep-texture-ms=242 prep-state-ms=108 prep-same-ms=13
+283 pid=FFFC8FBD hwno hwtex-ms=130 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+284 pid=FFFC8FBD prim transform-ms=197 inside-ms=171 window-ms=285 assemble-ms=375 history-ms=72 fast=206694 clipped=522 culled=0
+285 pid=FFFC8FBD paths batches/triangles untextured=388/776 hw=396021/1632387 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+286 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=437 upload-kb=7989 squared=119 alpha-dropped=5807 stubs=166 failed r4=3 r7=0 r8=0 other=0
+287 pid=FFFC8FBD time interval-ms=10002 swaps=260 present-ms=1049 draw-ms=5007 upload-ms=0
+288 pid=FFFC8FBD tsc frames=260 wall-ms=10002 vertex-ms=1301 flush-in-vertex-ms=0 flush-other-ms=5888 bind-ms=296 iface-ms=5007 beginend-ms=773 swap-ms=1049 vertices=413736 flushes=103434 draws=103434 sink-ms=563 sink-prep-ms=376 sinks=103434
+289 pid=FFFC8FBD sink begin-ms=164 flush-ms=0 copy-ms=107 prep-texture-ms=238 prep-state-ms=107 prep-same-ms=13
+290 pid=FFFC8FBD hwno hwtex-ms=129 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+291 pid=FFFC8FBD prim transform-ms=206 inside-ms=167 window-ms=293 assemble-ms=383 history-ms=71 fast=206348 clipped=520 culled=0
+292 pid=FFFC8FBD paths batches/triangles untextured=388/776 hw=499455/1839515 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+293 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=437 upload-kb=7989 squared=119 alpha-dropped=6067 stubs=166 failed r4=3 r7=0 r8=0 other=0
+294 pid=FFFC8FBD time interval-ms=10005 swaps=192 present-ms=769 draw-ms=3805 upload-ms=65
+295 pid=FFFC8FBD tsc frames=192 wall-ms=10005 vertex-ms=986 flush-in-vertex-ms=0 flush-other-ms=4575 bind-ms=255 iface-ms=3805 beginend-ms=633 swap-ms=770 vertices=319144 flushes=77771 draws=77771 sink-ms=475 sink-prep-ms=289 sinks=78567
+296 pid=FFFC8FBD sink begin-ms=124 flush-ms=45 copy-ms=81 prep-texture-ms=183 prep-state-ms=81 prep-same-ms=11
+297 pid=FFFC8FBD hwno hwtex-ms=163 iface-cpu-ms=0 not-cpu=2 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+298 pid=FFFC8FBD prim transform-ms=154 inside-ms=128 window-ms=220 assemble-ms=285 history-ms=56 fast=156682 clipped=3083 culled=679
+299 pid=FFFC8FBD paths batches/triangles untextured=390/780 hw=577224/1997631 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+300 pid=FFFC8FBD counters hwtex live=214 creates=399 create-failed=116 evictions=115 uploads=447 upload-kb=8597 squared=119 alpha-dropped=6278 stubs=169 failed r4=3 r7=0 r8=0 other=0
+301 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+302 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+303 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+304 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+305 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+306 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+307 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+308 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+309 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+310 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+311 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+312 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+313 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+314 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+315 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+316 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+317 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+318 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+319 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+320 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+321 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+322 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+323 pid=FFFC8FBD time interval-ms=10006 swaps=95 present-ms=383 draw-ms=3088 upload-ms=154
+324 pid=FFFC8FBD tsc frames=95 wall-ms=10006 vertex-ms=1780 flush-in-vertex-ms=2 flush-other-ms=3351 bind-ms=51 iface-ms=3088 beginend-ms=1873 swap-ms=383 vertices=532769 flushes=7746 draws=7746 sink-ms=1735 sink-prep-ms=196 sinks=52737
+325 pid=FFFC8FBD sink begin-ms=121 flush-ms=1454 copy-ms=43 prep-texture-ms=102 prep-state-ms=43 prep-same-ms=41
+326 pid=FFFC8FBD hwno hwtex-ms=178 iface-cpu-ms=0 not-cpu=95 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+327 pid=FFFC8FBD prim transform-ms=243 inside-ms=181 window-ms=235 assemble-ms=819 history-ms=86 fast=108443 clipped=174620 culled=42486
+328 pid=FFFC8FBD paths batches/triangles untextured=485/970 hw=584875/2140331 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+329 pid=FFFC8FBD counters hwtex live=214 creates=427 create-failed=138 evictions=137 uploads=489 upload-kb=10085 squared=119 alpha-dropped=7396 stubs=238 failed r4=3 r7=0 r8=0 other=0
+330 pid=FFFC8FBD time interval-ms=10004 swaps=87 present-ms=357 draw-ms=2937 upload-ms=87
+331 pid=FFFC8FBD tsc frames=87 wall-ms=10004 vertex-ms=2038 flush-in-vertex-ms=17 flush-other-ms=3108 bind-ms=48 iface-ms=2937 beginend-ms=1478 swap-ms=357 vertices=652586 flushes=7657 draws=7657 sink-ms=1330 sink-prep-ms=214 sinks=58055
+332 pid=FFFC8FBD sink begin-ms=143 flush-ms=1033 copy-ms=47 prep-texture-ms=110 prep-state-ms=47 prep-same-ms=46
+333 pid=FFFC8FBD hwno hwtex-ms=104 iface-cpu-ms=0 not-cpu=87 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+334 pid=FFFC8FBD prim transform-ms=297 inside-ms=201 window-ms=279 assemble-ms=905 history-ms=105 fast=129797 clipped=220923 culled=53108
+335 pid=FFFC8FBD paths batches/triangles untextured=572/1144 hw=592445/2295701 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+336 pid=FFFC8FBD counters hwtex live=214 creates=449 create-failed=138 evictions=137 uploads=536 upload-kb=11071 squared=119 alpha-dropped=8464 stubs=262 failed r4=3 r7=0 r8=0 other=0
+337 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+338 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+339 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+340 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+341 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+342 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+343 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+344 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+345 pid=FFFC8FBD time interval-ms=10000 swaps=71 present-ms=286 draw-ms=3173 upload-ms=52
+346 pid=FFFC8FBD tsc frames=71 wall-ms=10000 vertex-ms=2208 flush-in-vertex-ms=54 flush-other-ms=3318 bind-ms=66 iface-ms=3173 beginend-ms=1828 swap-ms=286 vertices=706498 flushes=10076 draws=10076 sink-ms=1704 sink-prep-ms=273 sinks=73548
+347 pid=FFFC8FBD sink begin-ms=152 flush-ms=1327 copy-ms=60 prep-texture-ms=141 prep-state-ms=61 prep-same-ms=58
+348 pid=FFFC8FBD hwno hwtex-ms=78 iface-cpu-ms=0 not-cpu=71 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+349 pid=FFFC8FBD prim transform-ms=320 inside-ms=229 window-ms=351 assemble-ms=913 history-ms=121 fast=173153 clipped=185068 culled=71953
+350 pid=FFFC8FBD paths batches/triangles untextured=643/1286 hw=602450/2494554 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+351 pid=FFFC8FBD counters hwtex live=214 creates=482 create-failed=146 evictions=145 uploads=573 upload-kb=11603 squared=166 alpha-dropped=9419 stubs=262 failed r4=3 r7=0 r8=0 other=0
+352 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+353 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+354 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+355 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+356 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+357 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+358 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+359 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+360 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+361 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+362 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+363 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+364 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+365 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+366 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+367 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+368 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+369 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+370 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+371 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+372 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+373 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+374 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+375 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+376 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+377 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+378 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+379 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+380 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+381 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+382 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+383 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+384 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+385 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+386 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+387 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+388 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+389 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+390 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+391 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+392 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+393 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+394 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+395 pid=FFFC8FBD hwtex create 00200040 levels=1 hr=8876017C
+396 pid=FFFC8FBD hwtex create 00400020 levels=1 hr=8876017C
+397 pid=FFFC8FBD time interval-ms=10000 swaps=57 present-ms=228 draw-ms=3285 upload-ms=74
+398 pid=FFFC8FBD tsc frames=57 wall-ms=10000 vertex-ms=2439 flush-in-vertex-ms=156 flush-other-ms=3366 bind-ms=68 iface-ms=3285 beginend-ms=1834 swap-ms=229 vertices=757799 flushes=11626 draws=11626 sink-ms=1797 sink-prep-ms=313 sinks=85476
+399 pid=FFFC8FBD sink begin-ms=167 flush-ms=1360 copy-ms=70 prep-texture-ms=161 prep-state-ms=69 prep-same-ms=67
+400 pid=FFFC8FBD hwno hwtex-ms=118 iface-cpu-ms=0 not-cpu=57 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+401 pid=FFFC8FBD prim transform-ms=346 inside-ms=268 window-ms=425 assemble-ms=978 history-ms=120 fast=213093 clipped=151790 culled=95304
+402 pid=FFFC8FBD paths batches/triangles untextured=700/1400 hw=614019/2732094 cpu=3/15 cpu-nonsquare=0/0 hw-refused=0/0
+403 pid=FFFC8FBD counters hwtex live=214 creates=568 create-failed=191 evictions=190 uploads=631 upload-kb=12423 squared=218 alpha-dropped=10245 stubs=264 failed r4=3 r7=0 r8=0 other=0
+404 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+405 pid=FFFC8FBD hwtex create 00800040 levels=1 hr=8876017C
+406 pid=FFFC8FBD hwtex create 00800040 levels=1 hr=8876017C
+407 pid=FFFC8FBD hwtex create 00800040 levels=1 hr=8876017C
+408 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+409 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+410 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+411 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+412 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+413 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+414 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+415 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+416 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+417 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+418 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+419 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+420 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+421 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+422 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+423 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+424 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+425 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+426 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+427 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+428 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+429 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+430 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+431 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+432 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+433 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+434 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+435 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+436 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+437 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+438 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+439 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+440 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+441 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+442 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+443 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+444 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+445 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+446 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+447 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+448 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+449 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+450 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+451 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+452 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+453 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+454 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+455 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+456 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+457 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+458 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+459 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+460 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+461 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+462 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+463 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+464 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+465 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+466 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+467 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+468 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+469 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+470 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+471 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+472 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+473 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+474 pid=FFFC8FBD   v0 sx=42644E0F sy=00000000 sz=3F7FECA9 rhw=39506817 tu=3F766903 tv=3D67D665
+475 pid=FFFC8FBD   v1 sx=362E75A4 sy=4211C5C8 sz=3F7FE289 rhw=3978DBB2 tu=3F61D5F1 tv=3E389F32
+476 pid=FFFC8FBD   v2 sx=36AD6380 sy=00000000 sz=3F7FE296 rhw=3978AADA tu=3F60FFF2 tv=3E0378AE
+477 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+478 pid=FFFC8FBD   v0 sx=36D4A9F4 sy=4376C980 sz=3F7FD58B rhw=399667C4 tu=3F2F3690 tv=3EF50290
+479 pid=FFFC8FBD   v1 sx=36FC7826 sy=00000000 sz=3F7FD6F8 rhw=39938D79 tu=3F2ABDDF tv=3E3BF20C
+480 pid=FFFC8FBD   v2 sx=4326D03E sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F64E109 tv=3B000000
+481 pid=FFFC8FBD draw result=4 triangles=5 submitted=0
+482 pid=FFFC8FBD   v0 sx=378DD20C sy=43C61C95 sz=3F7FD00F rhw=39A16021 tu=3F1407BD tv=3F24A19F
+483 pid=FFFC8FBD   v1 sx=37263998 sy=38000000 sz=3F7FD35F rhw=399AC108 tu=3F0DA693 tv=3E4B0677
+484 pid=FFFC8FBD   v2 sx=43575E58 sy=00000000 sz=3F7FF1E2 rhw=393B829A tu=3F553766 tv=3B000000
+485 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+486 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+487 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+488 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+489 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+490 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+491 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+492 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+493 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+494 pid=FFFC8FBD time interval-ms=10000 swaps=72 present-ms=289 draw-ms=2847 upload-ms=224
+495 pid=FFFC8FBD tsc frames=72 wall-ms=10000 vertex-ms=2100 flush-in-vertex-ms=63 flush-other-ms=3186 bind-ms=66 iface-ms=2846 beginend-ms=2053 swap-ms=290 vertices=658684 flushes=9421 draws=9421 sink-ms=1946 sink-prep-ms=274 sinks=68781
+496 pid=FFFC8FBD sink begin-ms=147 flush-ms=1568 copy-ms=63 prep-texture-ms=143 prep-state-ms=63 prep-same-ms=56
+497 pid=FFFC8FBD hwno hwtex-ms=290 iface-cpu-ms=0 not-cpu=72 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=2 make-failed=1 square-alloc=0 upload=0
+498 pid=FFFC8FBD prim transform-ms=298 inside-ms=215 window-ms=335 assemble-ms=888 history-ms=106 fast=162961 clipped=170651 culled=68206
+499 pid=FFFC8FBD paths batches/triangles untextured=772/1544 hw=623365/2921406 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+500 pid=FFFC8FBD counters hwtex live=214 creates=702 create-failed=269 evictions=267 uploads=752 upload-kb=14925 squared=238 alpha-dropped=11128 stubs=328 failed r4=6 r7=0 r8=0 other=0
+501 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+502 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+503 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+504 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+505 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+506 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+507 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+508 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+509 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+510 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+511 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+512 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+513 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+514 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+515 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+516 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+517 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+518 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+519 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+520 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+521 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+522 pid=FFFC8FBD hwtex create 01000080 levels=1 hr=8876017C
+523 pid=FFFC8FBD time interval-ms=10000 swaps=185 present-ms=742 draw-ms=4951 upload-ms=11
+524 pid=FFFC8FBD tsc frames=185 wall-ms=10000 vertex-ms=1406 flush-in-vertex-ms=2 flush-other-ms=5891 bind-ms=310 iface-ms=4951 beginend-ms=880 swap-ms=743 vertices=455555 flushes=108459 draws=108459 sink-ms=658 sink-prep-ms=402 sinks=110251
+525 pid=FFFC8FBD sink begin-ms=175 flush-ms=58 copy-ms=114 prep-texture-ms=254 prep-state-ms=113 prep-same-ms=15
+526 pid=FFFC8FBD hwno hwtex-ms=156 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+527 pid=FFFC8FBD prim transform-ms=219 inside-ms=183 window-ms=307 assemble-ms=406 history-ms=82 fast=221239 clipped=6717 culled=2477
+528 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=731820/3144086 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+529 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=11358 stubs=332 failed r4=6 r7=0 r8=0 other=0
+530 pid=FFFC8FBD time interval-ms=10000 swaps=189 present-ms=761 draw-ms=5049 upload-ms=0
+531 pid=FFFC8FBD tsc frames=189 wall-ms=10000 vertex-ms=1371 flush-in-vertex-ms=0 flush-other-ms=6003 bind-ms=314 iface-ms=5048 beginend-ms=861 swap-ms=761 vertices=450452 flushes=112613 draws=112613 sink-ms=625 sink-prep-ms=421 sinks=112613
+532 pid=FFFC8FBD sink begin-ms=186 flush-ms=0 copy-ms=117 prep-texture-ms=261 prep-state-ms=117 prep-same-ms=23
+533 pid=FFFC8FBD hwno hwtex-ms=139 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+534 pid=FFFC8FBD prim transform-ms=216 inside-ms=180 window-ms=307 assemble-ms=390 history-ms=79 fast=224848 clipped=378 culled=0
+535 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=844433/3369501 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+536 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=11547 stubs=332 failed r4=6 r7=0 r8=0 other=0
+537 pid=FFFC8FBD time interval-ms=10000 swaps=189 present-ms=758 draw-ms=5046 upload-ms=0
+538 pid=FFFC8FBD tsc frames=189 wall-ms=10000 vertex-ms=1365 flush-in-vertex-ms=0 flush-other-ms=6014 bind-ms=328 iface-ms=5046 beginend-ms=861 swap-ms=758 vertices=450232 flushes=112558 draws=112558 sink-ms=632 sink-prep-ms=429 sinks=112558
+539 pid=FFFC8FBD sink begin-ms=178 flush-ms=0 copy-ms=117 prep-texture-ms=279 prep-state-ms=116 prep-same-ms=14
+540 pid=FFFC8FBD hwno hwtex-ms=139 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+541 pid=FFFC8FBD prim transform-ms=217 inside-ms=181 window-ms=308 assemble-ms=389 history-ms=79 fast=224738 clipped=378 culled=0
+542 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=956991/3594806 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+543 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=11736 stubs=332 failed r4=6 r7=0 r8=0 other=0
+544 pid=FFFC8FBD time interval-ms=10000 swaps=188 present-ms=754 draw-ms=5039 upload-ms=0
+545 pid=FFFC8FBD tsc frames=188 wall-ms=10000 vertex-ms=1368 flush-in-vertex-ms=0 flush-other-ms=6021 bind-ms=351 iface-ms=5039 beginend-ms=839 swap-ms=755 vertices=449812 flushes=112453 draws=112453 sink-ms=613 sink-prep-ms=410 sinks=112453
+546 pid=FFFC8FBD sink begin-ms=176 flush-ms=0 copy-ms=117 prep-texture-ms=260 prep-state-ms=117 prep-same-ms=14
+547 pid=FFFC8FBD hwno hwtex-ms=140 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+548 pid=FFFC8FBD prim transform-ms=216 inside-ms=185 window-ms=306 assemble-ms=391 history-ms=79 fast=224530 clipped=376 culled=0
+549 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=1069444/3819900 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+550 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=11924 stubs=332 failed r4=6 r7=0 r8=0 other=0
+551 pid=FFFC8FBD time interval-ms=10000 swaps=189 present-ms=758 draw-ms=5058 upload-ms=0
+552 pid=FFFC8FBD tsc frames=189 wall-ms=10000 vertex-ms=1372 flush-in-vertex-ms=0 flush-other-ms=6022 bind-ms=331 iface-ms=5058 beginend-ms=849 swap-ms=758 vertices=450180 flushes=112545 draws=112545 sink-ms=615 sink-prep-ms=413 sinks=112545
+553 pid=FFFC8FBD sink begin-ms=177 flush-ms=0 copy-ms=117 prep-texture-ms=261 prep-state-ms=117 prep-same-ms=14
+554 pid=FFFC8FBD hwno hwtex-ms=140 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+555 pid=FFFC8FBD prim transform-ms=216 inside-ms=189 window-ms=307 assemble-ms=390 history-ms=78 fast=224712 clipped=378 culled=0
+556 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=1181989/4045179 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+557 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=12113 stubs=332 failed r4=6 r7=0 r8=0 other=0
+558 pid=FFFC8FBD time interval-ms=10000 swaps=189 present-ms=758 draw-ms=5062 upload-ms=0
+559 pid=FFFC8FBD tsc frames=189 wall-ms=10000 vertex-ms=1380 flush-in-vertex-ms=0 flush-other-ms=6009 bind-ms=304 iface-ms=5062 beginend-ms=845 swap-ms=759 vertices=450536 flushes=112634 draws=112634 sink-ms=614 sink-prep-ms=411 sinks=112634
+560 pid=FFFC8FBD sink begin-ms=180 flush-ms=0 copy-ms=116 prep-texture-ms=260 prep-state-ms=117 prep-same-ms=14
+561 pid=FFFC8FBD hwno hwtex-ms=140 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+562 pid=FFFC8FBD prim transform-ms=216 inside-ms=182 window-ms=320 assemble-ms=390 history-ms=79 fast=224890 clipped=378 culled=0
+563 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=1294623/4270636 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+564 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=12302 stubs=332 failed r4=6 r7=0 r8=0 other=0
+565 pid=FFFC8FBD time interval-ms=10356 swaps=154 present-ms=618 draw-ms=4124 upload-ms=0
+566 pid=FFFC8FBD tsc frames=154 wall-ms=10356 vertex-ms=1131 flush-in-vertex-ms=0 flush-other-ms=4921 bind-ms=273 iface-ms=4124 beginend-ms=690 swap-ms=618 vertices=368060 flushes=92015 draws=92015 sink-ms=504 sink-prep-ms=337 sinks=92015
+567 pid=FFFC8FBD sink begin-ms=145 flush-ms=0 copy-ms=96 prep-texture-ms=213 prep-state-ms=96 prep-same-ms=12
+568 pid=FFFC8FBD hwno hwtex-ms=114 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+569 pid=FFFC8FBD prim transform-ms=177 inside-ms=155 window-ms=254 assemble-ms=324 history-ms=64 fast=183722 clipped=308 culled=0
+570 pid=FFFC8FBD paths batches/triangles untextured=776/1552 hw=1386638/4454820 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+571 pid=FFFC8FBD counters hwtex live=214 creates=726 create-failed=291 evictions=289 uploads=754 upload-kb=15053 squared=238 alpha-dropped=12456 stubs=332 failed r4=6 r7=0 r8=0 other=0
+572 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+573 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+574 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+575 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+576 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+577 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+578 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+579 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+580 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+581 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+582 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+583 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+584 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+585 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+586 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+587 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+588 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+589 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+590 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+591 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+592 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+593 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+594 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+595 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+596 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+597 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+598 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+599 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+600 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+601 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+602 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+603 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+604 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+605 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+606 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+607 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+608 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+609 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+610 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+611 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+612 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+613 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+614 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+615 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+616 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+617 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+618 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+619 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+620 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+621 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+622 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+623 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+624 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+625 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+626 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+627 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+628 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+629 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+630 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+631 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+632 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+633 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+634 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+635 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+636 pid=FFFC8FBD time interval-ms=10005 swaps=98 present-ms=394 draw-ms=3110 upload-ms=195
+637 pid=FFFC8FBD tsc frames=98 wall-ms=10005 vertex-ms=1690 flush-in-vertex-ms=0 flush-other-ms=3516 bind-ms=95 iface-ms=3110 beginend-ms=1813 swap-ms=395 vertices=506881 flushes=11235 draws=11235 sink-ms=1674 sink-prep-ms=193 sinks=51902
+638 pid=FFFC8FBD sink begin-ms=119 flush-ms=1405 copy-ms=43 prep-texture-ms=102 prep-state-ms=44 prep-same-ms=38
+639 pid=FFFC8FBD hwno hwtex-ms=260 iface-cpu-ms=0 not-cpu=94 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+640 pid=FFFC8FBD prim transform-ms=233 inside-ms=165 window-ms=224 assemble-ms=790 history-ms=81 fast=104751 clipped=165038 culled=38144
+641 pid=FFFC8FBD paths batches/triangles untextured=870/1740 hw=1397779/4592955 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+642 pid=FFFC8FBD counters hwtex live=214 creates=825 create-failed=355 evictions=353 uploads=825 upload-kb=17060 squared=238 alpha-dropped=13558 stubs=400 failed r4=6 r7=0 r8=0 other=0
+643 pid=FFFC8FBD time interval-ms=10009 swaps=85 present-ms=342 draw-ms=2906 upload-ms=120
+644 pid=FFFC8FBD tsc frames=85 wall-ms=10009 vertex-ms=2017 flush-in-vertex-ms=12 flush-other-ms=3135 bind-ms=66 iface-ms=2906 beginend-ms=1531 swap-ms=343 vertices=653722 flushes=7589 draws=7589 sink-ms=1379 sink-prep-ms=217 sinks=58179
+645 pid=FFFC8FBD sink begin-ms=142 flush-ms=1073 copy-ms=47 prep-texture-ms=112 prep-state-ms=48 prep-same-ms=47
+646 pid=FFFC8FBD hwno hwtex-ms=139 iface-cpu-ms=0 not-cpu=85 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+647 pid=FFFC8FBD prim transform-ms=297 inside-ms=202 window-ms=277 assemble-ms=882 history-ms=105 fast=130243 clipped=221673 culled=52364
+648 pid=FFFC8FBD paths batches/triangles untextured=955/1910 hw=1405283/4748700 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+649 pid=FFFC8FBD counters hwtex live=214 creates=874 create-failed=355 evictions=353 uploads=907 upload-kb=18406 squared=238 alpha-dropped=14605 stubs=427 failed r4=6 r7=0 r8=0 other=0
+650 pid=FFFC8FBD hwtex create 00200080 levels=1 hr=8876017C
+651 pid=FFFC8FBD time interval-ms=10000 swaps=72 present-ms=289 draw-ms=3194 upload-ms=44
+652 pid=FFFC8FBD tsc frames=72 wall-ms=10000 vertex-ms=2186 flush-in-vertex-ms=44 flush-other-ms=3312 bind-ms=51 iface-ms=3194 beginend-ms=1814 swap-ms=290 vertices=703308 flushes=9861 draws=9861 sink-ms=1673 sink-prep-ms=271 sinks=73598
+653 pid=FFFC8FBD sink begin-ms=159 flush-ms=1298 copy-ms=59 prep-texture-ms=139 prep-state-ms=60 prep-same-ms=58
+654 pid=FFFC8FBD hwno hwtex-ms=66 iface-cpu-ms=0 not-cpu=72 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+655 pid=FFFC8FBD prim transform-ms=319 inside-ms=230 window-ms=348 assemble-ms=903 history-ms=113 fast=171883 clipped=185470 culled=71553
+656 pid=FFFC8FBD paths batches/triangles untextured=1027/2054 hw=1415072/4946607 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+657 pid=FFFC8FBD counters hwtex live=214 creates=900 create-failed=356 evictions=354 uploads=942 upload-kb=18876 squared=280 alpha-dropped=15563 stubs=428 failed r4=6 r7=0 r8=0 other=0
+658 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+659 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+660 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+661 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+662 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+663 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+664 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+665 pid=FFFC8FBD hwtex create 00400080 levels=8 hr=8876017C
+666 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+667 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+668 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+669 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+670 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+671 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+672 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+673 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+674 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+675 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+676 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+677 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+678 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+679 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+680 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+681 pid=FFFC8FBD hwtex create 00400040 levels=7 hr=8876017C
+682 pid=FFFC8FBD time interval-ms=10001 swaps=58 present-ms=233 draw-ms=3283 upload-ms=63
+683 pid=FFFC8FBD tsc frames=58 wall-ms=10001 vertex-ms=2457 flush-in-vertex-ms=153 flush-other-ms=3327 bind-ms=44 iface-ms=3283 beginend-ms=1826 swap-ms=234 vertices=759621 flushes=11370 draws=11370 sink-ms=1783 sink-prep-ms=312 sinks=84831
+684 pid=FFFC8FBD sink begin-ms=161 flush-ms=1349 copy-ms=69 prep-texture-ms=159 prep-state-ms=69 prep-same-ms=67
+685 pid=FFFC8FBD hwno hwtex-ms=98 iface-cpu-ms=0 not-cpu=58 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+686 pid=FFFC8FBD prim transform-ms=352 inside-ms=254 window-ms=420 assemble-ms=1006 history-ms=121 fast=210952 clipped=156771 culled=93288
+687 pid=FFFC8FBD paths batches/triangles untextured=1085/2170 hw=1426384/5182542 cpu=6/30 cpu-nonsquare=0/0 hw-refused=0/0
+688 pid=FFFC8FBD counters hwtex live=214 creates=938 create-failed=380 evictions=378 uploads=972 upload-kb=19593 squared=334 alpha-dropped=16402 stubs=428 failed r4=6 r7=0 r8=0 other=0
+689 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+690 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+691 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+692 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+693 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+694 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+695 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+696 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+697 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+698 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+699 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+700 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+701 pid=FFFC8FBD hwtex create 00200080 levels=8 hr=8876017C
+702 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+703 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+704 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+705 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+706 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+707 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+708 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+709 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+710 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+711 pid=FFFC8FBD hwtex create 00800080 levels=8 hr=8876017C
+712 pid=FFFC8FBD hwtex create 00400040 levels=1 hr=8876017C
+713 pid=FFFC8FBD hwtex create 00080040 levels=1 hr=8876017C
+714 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+715 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+716 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+717 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+718 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+719 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+720 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+721 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+722 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+723 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+724 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+725 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+726 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+727 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+728 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+729 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+730 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+731 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+732 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+733 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+734 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+735 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+736 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+737 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+738 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+739 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+740 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+741 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+742 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+743 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+744 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+745 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+746 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+747 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+748 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+749 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+750 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+751 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+752 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+753 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+754 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+755 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+756 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+757 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+758 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+759 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+760 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+761 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+762 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+763 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+764 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+765 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+766 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+767 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+768 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+769 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+770 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+771 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+772 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+773 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+774 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+775 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+776 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+777 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+778 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+779 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+780 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+781 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+782 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+783 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+784 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+785 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+786 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+787 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+788 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+789 pid=FFFC8FBD hwtex create 01000100 levels=1 hr=8876017C
+790 pid=FFFC8FBD time interval-ms=10009 swaps=68 present-ms=273 draw-ms=2880 upload-ms=240
+791 pid=FFFC8FBD tsc frames=68 wall-ms=10009 vertex-ms=2158 flush-in-vertex-ms=83 flush-other-ms=3210 bind-ms=52 iface-ms=2880 beginend-ms=1996 swap-ms=274 vertices=666805 flushes=9676 draws=9676 sink-ms=1907 sink-prep-ms=267 sinks=70771
+792 pid=FFFC8FBD sink begin-ms=148 flush-ms=1540 copy-ms=58 prep-texture-ms=141 prep-state-ms=64 prep-same-ms=56
+793 pid=FFFC8FBD hwno hwtex-ms=316 iface-cpu-ms=0 not-cpu=68 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=2 make-failed=1 square-alloc=0 upload=0
+794 pid=FFFC8FBD prim transform-ms=311 inside-ms=221 window-ms=349 assemble-ms=911 history-ms=108 fast=168725 clipped=166588 culled=71286
+795 pid=FFFC8FBD paths batches/triangles untextured=1153/2306 hw=1435989/5377217 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+796 pid=FFFC8FBD counters hwtex live=214 creates=1124 create-failed=481 evictions=478 uploads=1125 upload-kb=22270 squared=357 alpha-dropped=17245 stubs=487 failed r4=9 r7=0 r8=0 other=0
+797 pid=FFFC8FBD time interval-ms=10000 swaps=143 present-ms=575 draw-ms=4836 upload-ms=15
+798 pid=FFFC8FBD tsc frames=143 wall-ms=10000 vertex-ms=1494 flush-in-vertex-ms=6 flush-other-ms=5761 bind-ms=317 iface-ms=4836 beginend-ms=1007 swap-ms=575 vertices=485534 flushes=106251 draws=106251 sink-ms=784 sink-prep-ms=406 sinks=111292
+799 pid=FFFC8FBD sink begin-ms=180 flush-ms=179 copy-ms=115 prep-texture-ms=254 prep-state-ms=114 prep-same-ms=18
+800 pid=FFFC8FBD hwno hwtex-ms=150 iface-cpu-ms=0 not-cpu=11 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+801 pid=FFFC8FBD prim transform-ms=232 inside-ms=193 window-ms=323 assemble-ms=458 history-ms=83 fast=225302 clipped=18003 culled=6817
+802 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=1542229/5605525 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+803 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=17510 stubs=498 failed r4=9 r7=0 r8=0 other=0
+804 pid=FFFC8FBD time interval-ms=10000 swaps=148 present-ms=593 draw-ms=5079 upload-ms=0
+805 pid=FFFC8FBD tsc frames=148 wall-ms=10000 vertex-ms=1438 flush-in-vertex-ms=0 flush-other-ms=6088 bind-ms=349 iface-ms=5079 beginend-ms=893 swap-ms=593 vertices=470196 flushes=117549 draws=117549 sink-ms=656 sink-prep-ms=444 sinks=117549
+806 pid=FFFC8FBD sink begin-ms=184 flush-ms=0 copy-ms=121 prep-texture-ms=286 prep-state-ms=131 prep-same-ms=15
+807 pid=FFFC8FBD hwno hwtex-ms=146 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+808 pid=FFFC8FBD prim transform-ms=226 inside-ms=189 window-ms=323 assemble-ms=417 history-ms=85 fast=234802 clipped=296 culled=0
+809 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=1659778/5840771 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+810 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=17658 stubs=498 failed r4=9 r7=0 r8=0 other=0
+811 pid=FFFC8FBD time interval-ms=10000 swaps=148 present-ms=591 draw-ms=5086 upload-ms=0
+812 pid=FFFC8FBD tsc frames=148 wall-ms=10000 vertex-ms=1443 flush-in-vertex-ms=0 flush-other-ms=6098 bind-ms=349 iface-ms=5085 beginend-ms=879 swap-ms=591 vertices=470044 flushes=117511 draws=117511 sink-ms=643 sink-prep-ms=432 sinks=117511
+813 pid=FFFC8FBD sink begin-ms=184 flush-ms=0 copy-ms=121 prep-texture-ms=273 prep-state-ms=123 prep-same-ms=15
+814 pid=FFFC8FBD hwno hwtex-ms=149 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+815 pid=FFFC8FBD prim transform-ms=226 inside-ms=189 window-ms=324 assemble-ms=414 history-ms=82 fast=234726 clipped=296 culled=0
+816 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=1777289/6075941 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+817 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=17806 stubs=498 failed r4=9 r7=0 r8=0 other=0
+818 pid=FFFC8FBD time interval-ms=10003 swaps=148 present-ms=602 draw-ms=5072 upload-ms=0
+819 pid=FFFC8FBD tsc frames=148 wall-ms=10003 vertex-ms=1454 flush-in-vertex-ms=0 flush-other-ms=6062 bind-ms=330 iface-ms=5072 beginend-ms=883 swap-ms=603 vertices=470212 flushes=117553 draws=117553 sink-ms=644 sink-prep-ms=431 sinks=117553
+820 pid=FFFC8FBD sink begin-ms=187 flush-ms=0 copy-ms=122 prep-texture-ms=274 prep-state-ms=122 prep-same-ms=14
+821 pid=FFFC8FBD hwno hwtex-ms=146 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+822 pid=FFFC8FBD prim transform-ms=229 inside-ms=199 window-ms=323 assemble-ms=409 history-ms=88 fast=234810 clipped=296 culled=0
+823 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=1894842/6311195 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+824 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=17954 stubs=498 failed r4=9 r7=0 r8=0 other=0
+825 pid=FFFC8FBD time interval-ms=10002 swaps=147 present-ms=591 draw-ms=5081 upload-ms=0
+826 pid=FFFC8FBD tsc frames=147 wall-ms=10002 vertex-ms=1439 flush-in-vertex-ms=0 flush-other-ms=6084 bind-ms=339 iface-ms=5081 beginend-ms=886 swap-ms=592 vertices=470224 flushes=117556 draws=117556 sink-ms=647 sink-prep-ms=431 sinks=117556
+827 pid=FFFC8FBD sink begin-ms=186 flush-ms=0 copy-ms=125 prep-texture-ms=273 prep-state-ms=121 prep-same-ms=15
+828 pid=FFFC8FBD hwno hwtex-ms=148 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+829 pid=FFFC8FBD prim transform-ms=226 inside-ms=189 window-ms=334 assemble-ms=407 history-ms=83 fast=234818 clipped=294 culled=0
+830 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=2012398/6546454 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+831 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=18101 stubs=498 failed r4=9 r7=0 r8=0 other=0
+832 pid=FFFC8FBD time interval-ms=10000 swaps=148 present-ms=605 draw-ms=5070 upload-ms=0
+833 pid=FFFC8FBD tsc frames=148 wall-ms=10000 vertex-ms=1431 flush-in-vertex-ms=0 flush-other-ms=6070 bind-ms=330 iface-ms=5069 beginend-ms=880 swap-ms=606 vertices=470408 flushes=117602 draws=117602 sink-ms=644 sink-prep-ms=432 sinks=117602
+834 pid=FFFC8FBD sink begin-ms=191 flush-ms=0 copy-ms=121 prep-texture-ms=273 prep-state-ms=122 prep-same-ms=15
+835 pid=FFFC8FBD hwno hwtex-ms=146 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+836 pid=FFFC8FBD prim transform-ms=226 inside-ms=190 window-ms=327 assemble-ms=406 history-ms=82 fast=234908 clipped=296 culled=0
+837 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=2130000/6781806 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+838 pid=FFFC8FBD counters hwtex live=214 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=18249 stubs=498 failed r4=9 r7=0 r8=0 other=0
+839 pid=FFFC8FBD DrvReleaseContext context=1 -> 1
+840 pid=FFFC8FBD paths batches/triangles untextured=1164/2328 hw=2224771/6971467 cpu=9/45 cpu-nonsquare=0/0 hw-refused=0/0
+841 pid=FFFC8FBD counters hwtex live=0 creates=1126 create-failed=481 evictions=478 uploads=1127 upload-kb=22398 squared=357 alpha-dropped=18368 stubs=498 failed r4=9 r7=0 r8=0 other=0
+842 pid=FFFC8FBD DrvDeleteContext context=1 -> 1
+843 pid=FFFC8FBD detach slots-called=1 stub-calls=498

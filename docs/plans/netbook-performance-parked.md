@@ -81,5 +81,15 @@ those textures' sharpness and was not built.
 - **Netbook** (10.0.1.254, boot 88): full Intel set at ABI 2026100106,
   the HAL with textures to 1024 (`5653a86`), the ICD at `bafa3d1`
   (`hwno` counters), async on by default.
-- **Gateway** (10.0.1.22): the ATI set at ABI 2026100105 with the
-  texture-address fix (`871ebdc`); a version behind the netbook's ABI.
+- **Gateway** (10.0.1.22, boot 89): the current ATI set at ABI
+  2026100106 (`d978707`), every file hash-checked. `V9XTSHP` PASS (every
+  Mach64 shape and chain exact, no refusal or reset). Half-Life `mwd5`
+  Direct3D best 12.03 fps (12.09 on boot 86), no address refusals;
+  OpenGL best 7.40 fps (7.05 before the ICD's vertex and sink changes).
+  The first Direct3D attempt, on boot 88, stopped answering about 80 s
+  into its first timedemo and the machine came back as boot 89 three
+  minutes later; no fault dump was written. Since `871ebdc` the Mach64
+  Direct3D path differs only by the shared block's appended counters, so
+  this is taken as the Gateway's open intermittent lock, not established
+  as such. The retry ran clean
+  (`docs/probe/gateway-current-set-2026-10-02/`).
