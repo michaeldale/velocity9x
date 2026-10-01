@@ -20,6 +20,12 @@
  *    chose and its mismatch count says whether that level's layout is
  *    right.
  *
+ * 3. Large textures, Gen3 only (2026-10-02): single levels from 256 to
+ *    1024 and full 512 and 1024 chains, minified onto the target, to say
+ *    whether the sampler reads past the 256 the engine's limit was set at
+ *    from one measured 32x32 map. Their texel pattern carries x and y mod
+ *    32 exactly, so an error of one texel shows.
+ *
  * Writes C:\V9XDIAG\V9XTSHP.INI and a PPM per draw. Result=PASS only when
  * every single-level image is exact, every chain draw matches some level
  * exactly, and the engine counted no refusal, timeout or reset.
@@ -37,7 +43,7 @@
 #define V9X_TSP_STREAM_BYTES 4096ul
 #define V9X_TSP_LIST 4u
 #define V9X_TSP_TL 3u
-#define V9X_TSP_LEVELS 8u
+#define V9X_TSP_LEVELS 12u
 
 typedef HRESULT (WINAPI *V9X_TSP_CREATE)(GUID *, LPDIRECTDRAW *, IUnknown *);
 typedef void (WINAPI *V9X_TSP_GETLOCK)(void **);
@@ -108,6 +114,14 @@ static WORD v9x_tsp_texel(DWORD x, DWORD y, DWORD w, DWORD h, DWORD tag)
     DWORD b = h > 1ul ? (y * 31ul) / (h - 1ul) : 0ul;
     DWORD g = ((tag & 7ul) << 3) | ((x & 1ul) << 2) | ((y & 1ul) << 1) |
               ((x ^ y) & 1ul);
+
+    /* Past 64 the spread would repeat over runs of texels: red and blue are
+     * x and y mod 32, and green the tag and the 32-texel blocks. */
+    if (w > V9X_TSP_EDGE || h > V9X_TSP_EDGE) {
+        r = x & 31ul;
+        b = y & 31ul;
+        g = ((tag & 7ul) << 3) | (((x >> 5) + (y >> 5) * 3ul) & 7ul);
+    }
     return (WORD)((r << 11) | (g << 5) | b);
 }
 
@@ -486,6 +500,93 @@ void __stdcall V9xTexShapeProbeEntry(void)
         td.dwhContext = context.dwhContext; td.dwHandle = tc.dwHandle; td.ddrval = 0ul;
         v9x_tsp_enter(v9x_tsp_lock); texture_destroy(&td); v9x_tsp_leave(v9x_tsp_lock);
         IDirectDrawSurface_Release(texture);
+    }
+
+    /* 3. Large textures, on Gen3 only. */
+    if (shared->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        static const DWORD large_w[6] = { 256ul, 512ul, 512ul, 256ul, 1024ul, 1024ul };
+        static const DWORD large_h[6] = { 256ul, 512ul, 256ul, 512ul, 1024ul, 256ul };
+        static const DWORD big_chain[2] = { 512ul, 1024ul };
+
+        for (test = 0ul; test < 6ul; ++test) {
+            LPDIRECTDRAWSURFACE texture;
+            V9X_D3DHAL_TEXTURECREATEDATA tc;
+            V9X_D3DHAL_TEXTUREDESTROYDATA td;
+            HRESULT hr;
+            DWORD w = large_w[test], h = large_h[test];
+
+            texture = v9x_tsp_texture(dd, w, h, 1ul, &hr);
+            wsprintfA(key, "L%lux%luCreateHr", w, h); v9x_tsp_hex(key, (DWORD)hr);
+            if (texture == 0) { ok = 0; continue; }
+            if (!v9x_tsp_fill(texture, 0ul)) { ok = 0; }
+            v9x_tsp_zero(&tc, sizeof(tc)); tc.dwhContext = context.dwhContext; tc.lpDDS = texture;
+            v9x_tsp_enter(v9x_tsp_lock); texture_create(&tc); v9x_tsp_leave(v9x_tsp_lock);
+            before_refused = shared->d3d_diagnostics.batches_engine_refused;
+            if (tc.ddrval != 0ul || tc.dwHandle == 0ul || !v9x_tsp_clear(target) ||
+                !v9x_tsp_draw(draw, context.dwhContext, tc.dwHandle, 1ul, V9X_TSP_EDGE, V9X_TSP_EDGE) ||
+                !v9x_tsp_capture(target)) {
+                ok = 0;
+            } else {
+                v9x_tsp_expected(w, h, V9X_TSP_EDGE, V9X_TSP_EDGE, 0ul);
+                mismatch = v9x_tsp_mismatch();
+                wsprintfA(key, "L%lux%luMismatch", w, h); v9x_tsp_uint(key, mismatch);
+                wsprintfA(key, "L%lux%luRefused", w, h);
+                v9x_tsp_uint(key, shared->d3d_diagnostics.batches_engine_refused - before_refused);
+                wsprintfA(name, "TL%lu", test); v9x_tsp_image(name);
+                if (mismatch != 0ul) { ok = 0; }
+            }
+            if (tc.dwHandle != 0ul) {
+                td.dwhContext = context.dwhContext; td.dwHandle = tc.dwHandle; td.ddrval = 0ul;
+                v9x_tsp_enter(v9x_tsp_lock); texture_destroy(&td); v9x_tsp_leave(v9x_tsp_lock);
+            }
+            IDirectDrawSurface_Release(texture);
+        }
+
+        /* Full chains, drawn MIPNEAREST at 64 and 32: each draw against
+         * every level, the best match named. */
+        for (test = 0ul; test < 2ul; ++test) {
+            LPDIRECTDRAWSURFACE texture;
+            V9X_D3DHAL_TEXTURECREATEDATA tc;
+            V9X_D3DHAL_TEXTUREDESTROYDATA td;
+            HRESULT hr;
+            DWORD pitches[V9X_TSP_LEVELS];
+            DWORD w = big_chain[test], h = big_chain[test];
+            DWORD levels = 1ul, filled, size;
+
+            while ((w >> (levels - 1ul)) > 1ul) { ++levels; }
+            v9x_tsp_zero(pitches, sizeof(pitches));
+            texture = v9x_tsp_texture(dd, w, h, levels, &hr);
+            wsprintfA(key, "B%luCreateHr", w); v9x_tsp_hex(key, (DWORD)hr);
+            if (texture == 0) { ok = 0; continue; }
+            filled = v9x_tsp_fill_chain(texture, pitches);
+            wsprintfA(key, "B%luLevelsFilled", w); v9x_tsp_uint(key, filled);
+            v9x_tsp_zero(&tc, sizeof(tc)); tc.dwhContext = context.dwhContext; tc.lpDDS = texture;
+            v9x_tsp_enter(v9x_tsp_lock); texture_create(&tc); v9x_tsp_leave(v9x_tsp_lock);
+            if (tc.ddrval != 0ul || tc.dwHandle == 0ul) { ok = 0; IDirectDrawSurface_Release(texture); continue; }
+            for (size = V9X_TSP_EDGE; size >= 32ul; size /= 2ul) {
+                DWORD best = 0xfffffffful, best_level = 0xfffffffful, candidate;
+                before_refused = shared->d3d_diagnostics.batches_engine_refused;
+                if (!v9x_tsp_clear(target) ||
+                    !v9x_tsp_draw(draw, context.dwhContext, tc.dwHandle, 3ul, size, size) ||
+                    !v9x_tsp_capture(target)) { ok = 0; break; }
+                for (candidate = 0ul; candidate < filled; ++candidate) {
+                    DWORD cw = w >> candidate;
+                    if (cw == 0ul) { cw = 1ul; }
+                    v9x_tsp_expected(cw, cw, size, size, candidate + 1ul);
+                    mismatch = v9x_tsp_mismatch();
+                    if (mismatch < best) { best = mismatch; best_level = candidate; }
+                }
+                wsprintfA(key, "B%luAt%luBestLevel", w, size); v9x_tsp_uint(key, best_level);
+                wsprintfA(key, "B%luAt%luMismatch", w, size); v9x_tsp_uint(key, best);
+                wsprintfA(key, "B%luAt%luRefused", w, size);
+                v9x_tsp_uint(key, shared->d3d_diagnostics.batches_engine_refused - before_refused);
+                wsprintfA(name, "TB%lu%lu", test, size); v9x_tsp_image(name);
+                if (best != 0ul) { ok = 0; }
+            }
+            td.dwhContext = context.dwhContext; td.dwHandle = tc.dwHandle; td.ddrval = 0ul;
+            v9x_tsp_enter(v9x_tsp_lock); texture_destroy(&td); v9x_tsp_leave(v9x_tsp_lock);
+            IDirectDrawSurface_Release(texture);
+        }
     }
 
     v9x_tsp_uint("NewRefusals", shared->d3d_diagnostics.batches_engine_refused - baseline_refused);

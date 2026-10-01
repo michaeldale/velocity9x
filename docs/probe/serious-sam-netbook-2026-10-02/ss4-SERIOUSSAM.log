@@ -1,0 +1,150 @@
+
+  CPU speed not found in registry, using calculated value
+
+--- Serious Engine Startup ---
+  SeriousEngine Build: 10000.5
+
+Executable: C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\BIN\SERIOUSSAM.EXE
+Assumed engine directory: C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\
+
+Examining underlying OS...
+  Type: Win9x
+  Version: 4.10, build 2222
+  Misc:  A 
+
+Detecting CPU...
+  Vendor: GenuineIntel
+  Type: 0, Family: 6, Model: 12, Stepping: 2
+  MMX : Yes
+  CMOV: Yes
+  Clock: 1662MHz
+
+Global memory status...
+  Physical memory used:  321/2039MB
+  Page file used:          8/   8MB
+  Virtual memory used:    10/2044MB
+  Memory load:   8%
+  Process working set: 4095MB-6MB
+
+Cannot load variable from 'DefaultMod.txt':
+Cannot open file `C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\DefaultMod.txt' (No such file or directory) ()
+Current mod: <none>
+Cannot load variable from 'ModExt.txt':
+Cannot open file `C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\ModExt.txt' (No such file or directory) ()
+Loading group files...
+  C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\1_04_patch.gro: 1 files
+  C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\1_00c_scripts.gro: 28 files
+  C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\1_00c.gro: 2267 files
+  C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\1_00_music.gro: 55 files
+  C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\1_00_ExtraTools.gro: 58 files
+  D:\Install\1_04_patch.gro: 1 files
+  D:\Install\1_00c_scripts.gro: 28 files
+  D:\Install\1_00c.gro: 2267 files
+  D:\Install\1_00_music.gro: 55 files
+  D:\Install\1_00_ExtraTools.gro: 58 files
+
+Detecting input devices...
+  joysticks found: 0
+  joysticks allowed: 0
+
+Desktop settings...
+  Color Depth: 16bit
+  Screen: 1024x576
+  Virtual screen: 1024x576
+  Monitors directly reported: 1
+
+Current display: '' version 0 - 1024x576x16
+
+Initializing sound...
+  vorbisfile.dll loaded, ogg playing enabled
+MPX playing disabled: Cannot load amp11lib.dll.
+  Detected devices: 0
+
+
+WARNING: Gamma, brightness and contrast are not adjustable!
+
+IFeel mouse not found.
+Command line: ''
+  joysticks found: 0
+  joysticks allowed: 0
+Loading game library 'C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\Bin\Game.dll'...
+  ! WaveOut error: Bad device number.
+Setting sound format ...
+Direct Sound initialization ...
+  ! DirectSound error: Cannot create object.
+Direct Sound initialization ...
+  ! DirectSound error: Cannot create object.
+WaveOut initialization ...
+  ! WaveOut error: Bad device number.
+
+Cannot load variable from 'Data\Var\ModName.var':
+Cannot open file `C:\PROGRAM FILES\CROTEAM\SERIOUS SAM\Data\Var\ModName.var' (No such file or directory) ()
+Serious Sam version: v1.05
+Active mod: -   T H E   F I R S T   E N C O U N T E R   -
+Reading levels directory...
+  file 'Levels\01_Hatshepsut.wld' : 'Hatshepsut' spawn=0x0005000f
+  file 'Levels\02_SandCanyon.wld' : 'Sand Canyon' spawn=0x0005000f
+  file 'Levels\03_TombOfRamses.wld' : 'Tomb Of Ramses' spawn=0x0005000f
+  file 'Levels\04_ValleyOfTheKings.wld' : 'Valley Of The Kings' spawn=0x0005000f
+  file 'Levels\05_MoonMountains.wld' : 'Moon Mountains' spawn=0x0005000f
+  file 'Levels\06_Oasis.wld' : 'Oasis' spawn=0x0005000f
+  file 'Levels\07_Dunes.wld' : 'Dunes' spawn=0x0005000f
+  file 'Levels\08_Suburbs.wld' : 'Suburbs' spawn=0x0005000f
+  file 'Levels\09_Sewers.wld' : 'Sewers' spawn=0x0005000f
+  file 'Levels\10_Metropolis.wld' : 'Metropolis' spawn=0x0005000f
+  file 'Levels\11_AlleyOfSphinxes.wld' : 'Alley Of The Sphinxes' spawn=0x0005000f
+  file 'Levels\12_Karnak.wld' : 'Karnak' spawn=0x0005000f
+  file 'Levels\13_Luxor.wld' : 'Luxor' spawn=0x0005000f
+  file 'Levels\14_SacredYards.wld' : 'Sacred Yards' spawn=0x0005000f
+  file 'Levels\15_TheGreatPyramid.wld' : 'The Great Pyramid' spawn=0x0005000f
+  file 'Levels\Deathmatch\DesertTemple.wld' : 'Desert Temple' spawn=0x000201ff
+  file 'Levels\Intro.wld' : 'Intro and Flyover' spawn=0x00000000
+  file 'Levels\KarnakDemo.wld' : 'Karnak Demo' spawn=0x00050000
+  file 'Levels\TechTest.wld' : 'Technology Test Level' spawn=0x00010000
+Reading demos directory...
+  Demos\auto-demo0001.dem
+  Demos\auto-demo0002.dem
+  Demos\auto-demo0003.dem
+  Demos\auto-demoMP0001.dem
+  Demos\auto-demoMP0002.dem
+  Levels\Intro.wld
+
+* START NEW DISPLAY MODE ...
+  Starting display mode: 640x480xdesktop (fullscreen)
+  CDS: mode set to 640x480x0
+
+Pixel Format Description:
+  Number:     1 (TYPE_RGBA)
+  Flags:      DRAW_TO_WINDOW SUPPORT_OPENGL DOUBLEBUFFER SWAP_COPY 
+  Color bits: 16 (5:6:5:0)
+  Depth bits: 16 (0 for stencil)
+
+
+* OpenGL context created: *----------------------------------
+  (Velocity9x, Velocity9x GMA 950, 1.1.0)
+
+All textures reloaded.
+
+Automatic 3D-board preferences adjustment...
+Detected: Velocity9x - Velocity9x GMA 950 - 1.1.0
+Matching: * (unrecognized 3D accelerator)
+Similar to last, keeping same preferences.
+Starting session: 'Levels\Intro.wld'
+  level: 'Levels\Intro.wld'
+  spawnflags: 0008ffff
+  max players: 1
+  waiting: 0
+  network is off
+  started.
+Adding player: '^owin98user^r'
+  done.
+-> /PlayDemo("auto-demo0001")
+stopping game.
+Started playing demo: demos\auto-demo0001.dem
+
+<command>(1): parse error
+stopping game.
+Started playing demo: Demos\auto-demo0001.dem
+stopping game.
+Started playing demo: Demos\auto-demo0002.dem
+stopping game.

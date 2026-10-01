@@ -75,6 +75,46 @@ A 512 map with its chain is about 680 KB.
 2. Eviction that does not miss on every use of a cyclic working set.
 3. The system-memory pool ([plan](../plans/intel-gen3-system-memory-textures.md)).
 
+## Gen3 textures to 1024, measured (boot 88)
+
+`V9XTSHP` gains a Gen3-only section: single levels at 256x256, 512x512,
+512x256, 256x512, 1024x1024 and 1024x256, minified onto the 64x64 target
+and compared exactly with a pattern that carries x and y mod 32, and full
+512 and 1024 chains drawn MIPNEAREST at 64 and 32. With the HAL's
+`texture_size_max` at 1024 (`gen3-large-V9XTSHP.INI`): every image exact,
+the chains selecting levels 3 and 4 (512) and 4 and 5 (1024), no refusal,
+timeout or reset; the existing shapes and 128x32 chains exact too. The
+Direct3D path draws nothing for a refused batch, so an exact image is the
+engine's. 2048 was not sampled; the ceiling stays at 1024.
+
+Serious Sam, same procedure, HAL alone changed:
+
+| | `ss3` (256) | `ss4` (1024) |
+|---|---|---|
+| frames, average | 510 in 282 s, 1.81 fps | 875 in 321 s, **2.73 fps** |
+| CPU-textured batches per 10 s | 218 | **14** |
+| their render-interface draws, of wall | 73.7% | 4.9% |
+| hardware copies' create, evict and upload, of wall | 1.7% | **66.2%** |
+| creates / failed / evictions per 10 s | 416 / 198 / 196 | 4,365 / 2,182 / 2,175 |
+| upload per 10 s | 1.3 MB | 118 MB |
+
+The CPU path is gone and video memory is now the limit: the copies are
+made, evicted and made again.
+
+**Most-recently-used eviction was tried and is reverted** (`ss5`, the
+ICD alone changed from `ss4`): 1.91 fps, upload 141 MB a ten seconds,
+hardware copies 76.4% of wall. A cache simulation of a fixed cyclic order
+had favoured it (0 hits for LRU, 180 for MRU, 8 textures in 5 slots);
+Serious Sam's order is not that, and the simulation did not model
+DirectDraw's heap, where freeing one copy need not make room for a
+larger one. The next step is the real use sequence, not another guess.
+
+Regression checks on the same boot after these runs: Half-Life Direct3D
+`mwd5` 40.89 fps (42.24 on boot 86), no new refusal in its window; Quake
+2 demo2 20.6-20.8 fps (21.3-21.9 with the previous ICD build, which
+lacked the `hwno` counters). Neither difference is separated from the
+boot's history or the ICD's extra counters.
+
 ## Not established
 
 - What the scenes look like; nobody watched.

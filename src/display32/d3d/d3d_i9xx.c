@@ -100,13 +100,15 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     4ul,                        /* target_pitch_align     */
     2048ul,                     /* target_dimension_max   */
     /*
-     * 8 to 256, square and a power of two.
+     * 8 to 1024, a power of two.
      *
-     * GENERALISED from one measured size, and that is stated rather than
-     * implied: intel45 sampled a 32x32 map and nothing has sampled another.
-     * MAP_STATE's fields hold any dimension to 2048 and the builder is
-     * parameterised, so the packet is not the limit - what is unmeasured is
-     * whether the sampler behaves the same at every size.
+     * MEASURED to 1024 (2026-10-02, V9XTSHP on the netbook): 256x256,
+     * 512x512, 512x256, 256x512, 1024x1024 and 1024x256 single levels, and
+     * full 512 and 1024 chains drawn MIPNEAREST, all read back exactly with
+     * no refusal. Until then this was 256, generalised from intel45's one
+     * 32x32 map, and Serious Sam's 512 textures were drawn by the CPU.
+     * MAP_STATE's fields hold any dimension to 2048, so the packet is not
+     * the limit.
      *
      * Generalising is defensible here because the memory-safety argument does
      * not rest on it: v9x_d3d_i9xx_bind_map proves the footprint lies inside
@@ -114,12 +116,13 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * picture, not a write outside the surface. A claim that cost safety
      * rather than accuracy would not be worth making.
      *
-     * The ceiling is 256 rather than 2048 because a 2048-square map is 8 MiB
-     * and this part's stolen memory is 8. The floor is 8 because below it the
-     * pitch of a square map stops being a multiple of four.
+     * The ceiling is 1024 rather than 2048 because a 2048-square map is 8
+     * MiB and this part's stolen memory is 8, and 2048 was not sampled. The
+     * floor is 8 because below it the pitch of a square map stops being a
+     * multiple of four.
      */
     8ul,                        /* texture_size_min       */
-    256ul,                      /* texture_size_max       */
+    1024ul,                     /* texture_size_max       */
     4096.0f,                    /* coordinate_limit       */
     16ul,                       /* depth_bits_per_pixel   */
     /*
